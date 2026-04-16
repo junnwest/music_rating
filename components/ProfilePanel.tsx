@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+
 import { supabase } from '../lib/supabaseClient';
 import type { Session } from '@supabase/supabase-js';
 
@@ -132,19 +133,26 @@ export default function ProfilePanel() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {ratings.slice(0, 6).map((rating) => (
-              <div key={rating.id} className="overflow-hidden rounded-lg border border-slate-300 bg-white transition hover:shadow-md">
+              <Link key={rating.id} href={`/album/${rating.release_id}`} className="overflow-hidden rounded-lg border border-slate-300 bg-white transition hover:shadow-md block">
+                {rating.releases?.cover_url && (
+                  <img
+                    src={rating.releases.cover_url}
+                    alt={rating.releases.title}
+                    className="w-full aspect-square object-cover"
+                  />
+                )}
                 <div className="flex h-full flex-col p-4">
                   <p className="text-xs font-semibold uppercase text-slate-500">{rating.releases?.release_type ?? 'Release'}</p>
                   <h3 className="mt-2 line-clamp-2 font-semibold text-slate-900">{rating.releases?.title ?? rating.release_id}</h3>
                   <p className="mt-1 text-sm text-slate-600">{rating.releases?.artist ?? 'Unknown'}</p>
                   <div className="mt-auto pt-4">
                     <div className="flex items-center justify-between">
-                      <span className="text-lg font-bold text-blue-600">{rating.score}/10</span>
+                      <span className="text-lg font-bold text-blue-600">{rating.score}/5</span>
                       <span className="text-xs text-slate-500">{rating.status.replace(/([A-Z])/g, ' $1').trim()}</span>
                     </div>
                   </div>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         )}

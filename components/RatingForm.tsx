@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabaseClient';
 import type { AlbumRelease, RatingStatus } from '../types';
 import type { Session } from '@supabase/supabase-js';
 
-const ratingOptions = Array.from({ length: 10 }, (_, index) => index + 1);
+const ratingOptions = Array.from({ length: 5 }, (_, index) => index + 1);
 const statusOptions: RatingStatus[] = ['Listened', 'Listening', 'WantToListen', 'ReListening'];
 
 interface RatingFormProps {
@@ -22,7 +22,7 @@ interface SavedRating {
 export default function RatingForm({ release }: RatingFormProps) {
   const [session, setSession] = useState<Session | null>(null);
   const [savedRating, setSavedRating] = useState<SavedRating | null>(null);
-  const [score, setScore] = useState(7);
+  const [score, setScore] = useState(3);
   const [status, setStatus] = useState<RatingStatus>('Listened');
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
@@ -47,7 +47,7 @@ export default function RatingForm({ release }: RatingFormProps) {
         .select('id, score, status, note')
         .eq('release_id', release.id)
         .eq('user_id', session.user.id)
-        .single();
+        .maybeSingle();
 
       if (error && error.code !== 'PGRST116') {
         setMessage('Failed to fetch saved rating.');
@@ -79,13 +79,17 @@ export default function RatingForm({ release }: RatingFormProps) {
     setSaving(true);
     setMessage(null);
 
+    const coverRes = await fetch(`/api/cover?mbid=${release.id}`);
+    const { url: coverUrl } = coverRes.ok ? await coverRes.json() : { url: null };
+
     const releasePayload = {
       id: release.id,
       title: release.title,
       artist: release.artist,
       release_date: release.date,
       country: release.country,
-      release_type: release.releaseType
+      release_type: release.releaseType,
+      cover_url: coverUrl ?? null,
     };
 
     const { error: releaseError } = await supabase
@@ -142,7 +146,7 @@ export default function RatingForm({ release }: RatingFormProps) {
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="rounded-full bg-slate-900 px-3 py-1 text-xs uppercase tracking-[0.3em] text-brand-300">Rate this release</div>
         {savedRating ? (
-          <span className="text-sm text-slate-400">Saved: {savedRating.score}/10 • {savedRating.status}</span>
+          <span className="text-sm text-slate-400">Saved: {savedRating.score}/5 • {savedRating.status}</span>
         ) : (
           <span className="text-sm text-slate-400">No rating saved yet.</span>
         )}

@@ -9,6 +9,7 @@ export interface AlbumRelease {
   date: string | null;
   country: string | null;
   releaseType: ReleaseType;
+  coverUrl?: string | null;
 }
 
 export interface UserRating {
