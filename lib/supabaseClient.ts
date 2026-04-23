@@ -8,7 +8,7 @@ let client: SupabaseClient | null = null;
 if (supabaseUrl && supabaseAnonKey) {
   client = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
-      persistSession: false,
+      persistSession: true,
       detectSessionInUrl: true
     }
   });
