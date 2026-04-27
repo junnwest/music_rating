@@ -55,7 +55,7 @@ export default function PersonalizedFeed() {
 
       if (!ratings || ratings.length === 0) { setStatus('empty'); return; }
 
-      setRecentRatings(ratings.slice(0, 8) as RatedRelease[]);
+      setRecentRatings(ratings.slice(0, 8) as unknown as RatedRelease[]);
 
       // Extract top 2 artists by count
       const artistCount = new Map<string, number>();
