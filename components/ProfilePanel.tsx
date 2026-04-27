@@ -3,10 +3,12 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient';
+import PinnedTen from './PinnedTen';
+import CreateListSection from './CreateListSection';
 import type { Session } from '@supabase/supabase-js';
 
-type ReleaseType = 'All' | 'Albums' | 'EPs' | 'Singles' | 'Compilations';
-const TABS: ReleaseType[] = ['All', 'Albums', 'EPs', 'Singles', 'Compilations'];
+type Tab = 'All' | 'Albums' | 'EPs' | 'Singles' | 'Compilations' | 'Lists';
+const TABS: Tab[] = ['All', 'Albums', 'EPs', 'Singles', 'Compilations', 'Lists'];
 
 function TypePill({ children }: { children: React.ReactNode }) {
   return (
@@ -195,8 +197,9 @@ export default function ProfilePanel() {
   const [session, setSession] = useState<Session | null>(null);
   const [ratings, setRatings] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<ReleaseType>('All');
+  const [activeTab, setActiveTab] = useState<Tab>('All');
   const [communityStats, setCommunityStats] = useState<CommunityStats | null>(null);
+  const [lists, setLists] = useState<any[]>([]);
 
   const ratingsCount = ratings?.length ?? 0;
   const averageRating =
@@ -225,7 +228,7 @@ export default function ProfilePanel() {
   const fetchRatings = async (userId: string) => {
     if (!supabase) { setLoading(false); return; }
 
-    const [{ data }, { data: allRatings }] = await Promise.all([
+    const [{ data }, { data: allRatings }, { data: listsData }] = await Promise.all([
       supabase
         .from('ratings')
         .select('id, score, status, note, created_at, release_id, releases(*)')
@@ -234,7 +237,14 @@ export default function ProfilePanel() {
       supabase
         .from('ratings')
         .select('user_id, score'),
+      supabase
+        .from('lists')
+        .select('id, title, description, created_at, list_items(count)')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false }),
     ]);
+
+    setLists(listsData ?? []);
 
     setRatings(data ?? []);
 
@@ -369,16 +379,55 @@ export default function ProfilePanel() {
             </button>
           ))}
           <div className="flex-1" />
-          <div className="self-center text-[12px] font-medium text-muted">Sort: Recently rated ↓</div>
+          {activeTab !== 'Lists' && (
+            <div className="self-center text-[12px] font-medium text-muted">Sort: Recently rated ↓</div>
+          )}
         </div>
       </div>
+
+      {/* Pinned Ten */}
+      <PinnedTen userId={session.user.id} />
 
       {/* ── BODY ─────────────────────────────────────────────── */}
       <div
         className="max-w-[1440px] mx-auto px-5 py-9 pb-14 grid gap-12"
         style={{ gridTemplateColumns: '1fr 240px' }}
       >
+        {/* Lists tab */}
+        {activeTab === 'Lists' && (
+          <div className="col-span-2">
+            <div className="flex justify-between items-center mb-6">
+              <p className="text-[13px] text-muted">{lists.length} {lists.length === 1 ? 'list' : 'lists'}</p>
+              <CreateListSection />
+            </div>
+            {lists.length === 0 ? (
+              <div className="py-16 text-center">
+                <p className="text-sm text-muted">No lists yet. Create one to organize your albums.</p>
+              </div>
+            ) : (
+              <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                {lists.map((list) => (
+                  <Link
+                    key={list.id}
+                    href={`/lists/${list.id}`}
+                    className="border border-[#EBEBEB] rounded-[10px] p-4 hover:bg-surface transition block"
+                  >
+                    <div className="text-[14px] font-bold text-ink truncate">{list.title}</div>
+                    {list.description && (
+                      <p className="text-[12px] text-muted mt-1 line-clamp-2">{list.description}</p>
+                    )}
+                    <p className="text-[11px] text-muted mt-3">
+                      {list.list_items?.[0]?.count ?? 0} albums
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Album grid */}
+        {activeTab !== 'Lists' && (
         <div>
           {filteredRatings.length === 0 ? (
             <div className="py-16 text-center">
@@ -418,8 +467,10 @@ export default function ProfilePanel() {
             </div>
           )}
         </div>
+        )}
 
-        {/* Sidebar */}
+        {/* Sidebar — hidden on Lists tab */}
+        {activeTab !== 'Lists' && <div>
         <div>
           {/* Monthly Capsule */}
           {capsule && (
@@ -524,7 +575,7 @@ export default function ProfilePanel() {
           {/* Top Genres placeholder */}
           <div className="text-[15px] font-bold text-ink mb-3">Top Genres</div>
           <p className="text-[12px] text-muted">Rate more albums to see your top genres.</p>
-        </div>
+        </div>}
       </div>
     </div>
   );

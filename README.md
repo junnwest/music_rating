@@ -205,14 +205,15 @@ CREATE POLICY "artists_update" ON artists FOR UPDATE USING (true);
 - [x] Taste DNA (profile sidebar — genre + behavior tags)
 - [x] Genre storage on ratings (genres column in releases table)
 - [x] DB caching layer — albums and artists saved to Supabase on first visit, served from DB on repeat visits
+- [x] Monthly Capsule — monthly reflection card in profile sidebar
+- [x] Pinned Ten — 10 album slots on profile, pick from rated catalog
+- [x] Shelf Creation — Lists tab on profile showing user's created lists
 
 ### In progress
-- [ ] Monthly Capsule — monthly reflection summary on profile page
+- [ ] Pick 5 Perfect Albums — onboarding modal on first login
 
 ### Planned — profiles
-- [ ] Monthly Capsule — monthly reflection summary on homepage
-- [ ] Pinned Ten — 10 albums permanently pinned on profile
-- [ ] Shelf Creation — custom user shelves for organizing albums by theme
+- [ ] Top Genres — auto-derived from rated releases' genre data
 
 ### Planned — onboarding
 - [ ] Pick 5 Perfect Albums — shown on first login to seed personalization
