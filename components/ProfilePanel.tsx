@@ -42,11 +42,55 @@ function ScoreBar({ bars }: { bars: number[] }) {
   );
 }
 
+interface CommunityStats {
+  percentile: number;
+  communityAvg: number;
+}
+
+function getRatingInsights(ratings: any[], communityStats: CommunityStats | null): string[] {
+  const scores = (ratings ?? []).map((r) => r.score).filter(Boolean) as number[];
+  if (scores.length < 3) return [];
+
+  const insights: string[] = [];
+  const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+
+  // Strictness vs community
+  if (communityStats && scores.length >= 5) {
+    const p = communityStats.percentile;
+    if (p <= 25) insights.push(`You rate harder than ${100 - p}% of users`);
+    else if (p >= 75) insights.push(`You're more generous than ${p}% of users`);
+    else insights.push(`Your ratings land close to the community average`);
+  }
+
+  // Perfect score rarity
+  const fiveCount = scores.filter((s) => s === 5).length;
+  const fivePct = fiveCount / scores.length;
+  if (fiveCount === 0) insights.push(`You've never given a perfect score`);
+  else if (fivePct < 0.05) insights.push(`Perfect scores are rare for you — only ${fiveCount} given`);
+  else if (fivePct > 0.3) insights.push(`${Math.round(fivePct * 100)}% of your ratings are perfect scores`);
+
+  // Low score tendency
+  const lowCount = scores.filter((s) => s <= 2).length;
+  const lowPct = lowCount / scores.length;
+  if (lowPct > 0.25) insights.push(`You're not afraid to rate low — ${Math.round(lowPct * 100)}% are 2★ or below`);
+
+  // Polarizing vs consistent
+  if (scores.length >= 10) {
+    const variance = scores.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / scores.length;
+    const sd = Math.sqrt(variance);
+    if (sd > 1.4) insights.push(`Your taste is polarizing — you love or hate almost everything`);
+    else if (sd < 0.6) insights.push(`You're a measured rater — rarely surprised or disappointed`);
+  }
+
+  return insights.slice(0, 3);
+}
+
 export default function ProfilePanel() {
   const [session, setSession] = useState<Session | null>(null);
   const [ratings, setRatings] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<ReleaseType>('All');
+  const [communityStats, setCommunityStats] = useState<CommunityStats | null>(null);
 
   const ratingsCount = ratings?.length ?? 0;
   const averageRating =
@@ -74,12 +118,43 @@ export default function ProfilePanel() {
 
   const fetchRatings = async (userId: string) => {
     if (!supabase) { setLoading(false); return; }
-    const { data } = await supabase
-      .from('ratings')
-      .select('id, score, status, note, created_at, release_id, releases(*)')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+
+    const [{ data }, { data: allRatings }] = await Promise.all([
+      supabase
+        .from('ratings')
+        .select('id, score, status, note, created_at, release_id, releases(*)')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('ratings')
+        .select('user_id, score'),
+    ]);
+
     setRatings(data ?? []);
+
+    // Compute percentile from community data
+    if (allRatings && allRatings.length > 0) {
+      const userMap = new Map<string, number[]>();
+      for (const r of allRatings) {
+        if (!r.score) continue;
+        if (!userMap.has(r.user_id)) userMap.set(r.user_id, []);
+        userMap.get(r.user_id)!.push(r.score);
+      }
+      const userAvgs = [...userMap.entries()].map(([id, scores]) => ({
+        id,
+        avg: scores.reduce((a: number, b: number) => a + b, 0) / scores.length,
+      }));
+      const currentAvg = userAvgs.find((u) => u.id === userId)?.avg ?? null;
+      const allScores = allRatings.map((r) => r.score).filter(Boolean) as number[];
+      const communityAvg = allScores.reduce((a, b) => a + b, 0) / allScores.length;
+
+      if (currentAvg !== null && userAvgs.length > 1) {
+        const below = userAvgs.filter((u) => u.avg < currentAvg).length;
+        const percentile = Math.round((below / (userAvgs.length - 1)) * 100);
+        setCommunityStats({ percentile, communityAvg: Math.round(communityAvg * 10) / 10 });
+      }
+    }
+
     setLoading(false);
   };
 
@@ -118,6 +193,8 @@ export default function ProfilePanel() {
     if (activeTab === 'Compilations') return type === 'Compilation';
     return true;
   });
+
+  const insights = getRatingInsights(ratings ?? [], communityStats);
 
   return (
     <div className="bg-white">
@@ -239,6 +316,23 @@ export default function ProfilePanel() {
           {/* Score Distribution */}
           <div className="text-[15px] font-bold text-ink mb-[14px]">Score Distribution</div>
           <ScoreBar bars={bars} />
+
+          <div className="h-px bg-[#EBEBEB] my-5" />
+
+          {/* Rating Philosophy */}
+          <div className="text-[15px] font-bold text-ink mb-3">Rating Philosophy</div>
+          {insights.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {insights.map((insight, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <span className="text-mint font-bold flex-shrink-0 mt-0.5">—</span>
+                  <p className="text-[12px] text-mid leading-snug">{insight}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[12px] text-muted">Rate more albums to unlock insights.</p>
+          )}
 
           <div className="h-px bg-[#EBEBEB] my-5" />
 
