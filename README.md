@@ -204,9 +204,10 @@ CREATE POLICY "artists_update" ON artists FOR UPDATE USING (true);
 - [x] Rating Philosophy (profile sidebar — strictness, perfect score frequency, consistency)
 - [x] Taste DNA (profile sidebar — genre + behavior tags)
 - [x] Genre storage on ratings (genres column in releases table)
+- [x] DB caching layer — albums and artists saved to Supabase on first visit, served from DB on repeat visits
 
 ### In progress
-- [ ] DB caching layer — save full album + artist data to Supabase on first visit, serve from DB on repeat visits (eliminates Spotify calls for cached content)
+- [ ] Monthly Capsule — monthly reflection summary on profile page
 
 ### Planned — profiles
 - [ ] Monthly Capsule — monthly reflection summary on homepage

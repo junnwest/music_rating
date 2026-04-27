@@ -94,6 +94,65 @@ function getTasteDNA(ratings: any[]): string[] {
   return [genreTag, behaviorTag].filter(Boolean);
 }
 
+interface MonthlyCapsule {
+  monthLabel: string;
+  count: number;
+  topGenre: string | null;
+  highest: { title: string; score: number } | null;
+  lowest: { title: string; score: number } | null;
+}
+
+function getMonthlyCapsule(ratings: any[]): MonthlyCapsule | null {
+  if (!ratings || ratings.length === 0) return null;
+
+  const now = new Date();
+  let year = now.getFullYear();
+  let month = now.getMonth();
+
+  let monthRatings = ratings.filter((r) => {
+    const d = new Date(r.created_at);
+    return d.getFullYear() === year && d.getMonth() === month;
+  });
+
+  if (monthRatings.length === 0) {
+    month = month === 0 ? 11 : month - 1;
+    if (month === 11) year -= 1;
+    monthRatings = ratings.filter((r) => {
+      const d = new Date(r.created_at);
+      return d.getFullYear() === year && d.getMonth() === month;
+    });
+  }
+
+  if (monthRatings.length === 0) return null;
+
+  const monthLabel = new Date(year, month).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  const scored = monthRatings.filter((r) => r.score);
+  const highest = scored.length > 0 ? scored.reduce((a: any, b: any) => a.score > b.score ? a : b) : null;
+  const lowest = scored.length > 0 ? scored.reduce((a: any, b: any) => a.score < b.score ? a : b) : null;
+
+  const genreCount = new Map<string, number>();
+  for (const r of monthRatings) {
+    const genreStr = r.releases?.genres as string | null;
+    if (!genreStr) continue;
+    for (const g of genreStr.split(',')) {
+      const g2 = g.trim().toLowerCase();
+      if (g2) genreCount.set(g2, (genreCount.get(g2) ?? 0) + 1);
+    }
+  }
+  const topGenreRaw = [...genreCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  const topGenre = topGenreRaw
+    ? topGenreRaw.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+    : null;
+
+  return {
+    monthLabel,
+    count: monthRatings.length,
+    topGenre,
+    highest: highest ? { title: highest.releases?.title ?? '—', score: highest.score } : null,
+    lowest: lowest && lowest.release_id !== highest?.release_id ? { title: lowest.releases?.title ?? '—', score: lowest.score } : null,
+  };
+}
+
 function getRatingInsights(ratings: any[], communityStats: CommunityStats | null): string[] {
   const scores = (ratings ?? []).map((r) => r.score).filter(Boolean) as number[];
   if (scores.length < 3) return [];
@@ -243,6 +302,7 @@ export default function ProfilePanel() {
 
   const insights = getRatingInsights(ratings ?? [], communityStats);
   const tasteDNA = getTasteDNA(ratings ?? []);
+  const capsule = getMonthlyCapsule(ratings ?? []);
 
   return (
     <div className="bg-white">
@@ -361,6 +421,57 @@ export default function ProfilePanel() {
 
         {/* Sidebar */}
         <div>
+          {/* Monthly Capsule */}
+          {capsule && (
+            <>
+              <div className="rounded-[10px] p-4 border border-[#EBEBEB] bg-surface">
+                <div
+                  className="text-[10px] font-semibold text-muted uppercase mb-2"
+                  style={{ letterSpacing: '0.7px' }}
+                >
+                  Monthly Capsule
+                </div>
+                <div
+                  className="text-[15px] font-extrabold text-ink mb-4"
+                  style={{ letterSpacing: '-0.4px' }}
+                >
+                  {capsule.monthLabel}
+                </div>
+                <div className="flex flex-col gap-[10px]">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[12px] text-muted">Albums rated</span>
+                    <span className="text-[12px] font-semibold text-ink">{capsule.count}</span>
+                  </div>
+                  {capsule.topGenre && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-[12px] text-muted">Top genre</span>
+                      <span className="text-[12px] font-semibold text-ink">{capsule.topGenre}</span>
+                    </div>
+                  )}
+                  {capsule.highest && (
+                    <div className="flex justify-between items-start gap-3">
+                      <span className="text-[12px] text-muted flex-shrink-0">Highest rated</span>
+                      <span className="text-[12px] font-semibold text-ink text-right truncate">
+                        {capsule.highest.title}{' '}
+                        <span style={{ color: '#3DFFD1' }}>★{capsule.highest.score}</span>
+                      </span>
+                    </div>
+                  )}
+                  {capsule.lowest && (
+                    <div className="flex justify-between items-start gap-3">
+                      <span className="text-[12px] text-muted flex-shrink-0">Lowest rated</span>
+                      <span className="text-[12px] font-semibold text-ink text-right truncate">
+                        {capsule.lowest.title}{' '}
+                        <span className="text-muted">★{capsule.lowest.score}</span>
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="h-px bg-[#EBEBEB] my-5" />
+            </>
+          )}
+
           {/* Score Distribution */}
           <div className="text-[15px] font-bold text-ink mb-[14px]">Score Distribution</div>
           <ScoreBar bars={bars} />
