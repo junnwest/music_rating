@@ -6,6 +6,13 @@ const API_BASE = 'https://api.spotify.com/v1';
 // Server-side in-memory token cache
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
+// In-memory cache — survives hot reloads, prevents rate limits in dev
+const artistCache = new Map<string, { data: any; expiresAt: number }>();
+const albumsCache = new Map<string, { data: AlbumRelease[]; expiresAt: number }>();
+const recsCache = new Map<string, { data: AlbumRelease[]; expiresAt: number }>();
+const artistIdCache = new Map<string, { id: string | null; expiresAt: number }>();
+const TTL = 3600 * 1000;
+
 async function getToken(): Promise<string> {
   if (cachedToken && Date.now() < cachedToken.expiresAt) return cachedToken.value;
 
@@ -33,13 +40,14 @@ async function getToken(): Promise<string> {
 
 async function spotifyFetch(path: string, revalidate?: number): Promise<any> {
   const token = await getToken();
-  const res = await fetch(`${API_BASE}${path}`, {
+  const url = path.startsWith('https://') ? path : `${API_BASE}${path}`;
+  const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
     next: revalidate !== undefined ? { revalidate } : undefined,
   });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`Spotify ${res.status}: ${path} — ${body}`);
+    throw new Error(`Spotify ${res.status}: ${url} — ${body}`);
   }
   return res.json();
 }
@@ -69,7 +77,7 @@ function mapAlbum(a: any): AlbumRelease {
 
 export async function searchSpotifyAlbums(query: string, limit = 10): Promise<AlbumRelease[]> {
   const data = await spotifyFetch(
-    `/search?q=${encodeURIComponent(query)}&type=album&limit=${limit}&market=KR`
+    `/search?q=${encodeURIComponent(query)}&type=album&limit=${limit}`
   );
   return (data.albums?.items ?? [])
     .filter((a: any) => a.album_type !== 'compilation')
@@ -109,7 +117,7 @@ export interface SpotifyTrack {
 
 export async function searchSpotifyTracks(query: string, limit = 10): Promise<SpotifyTrack[]> {
   const data = await spotifyFetch(
-    `/search?q=${encodeURIComponent(query)}&type=track&limit=${limit}&market=KR`
+    `/search?q=${encodeURIComponent(query)}&type=track&limit=${limit}`
   );
   return (data.tracks?.items ?? []).map((t: any) => ({
     id: t.id,
@@ -180,20 +188,172 @@ export async function getSpotifyAlbum(id: string): Promise<SpotifyAlbumDetail | 
   }
 }
 
-// ── Recommendations ───────────────────────────────────────────────────────────
+// ── Artist detail ─────────────────────────────────────────────────────────────
 
-export async function getSpotifyRecommendations(query: string, limit = 10): Promise<AlbumRelease[]> {
+export interface SpotifyArtistDetail {
+  id: string;
+  name: string;
+  genres: string[];
+  followers: number;
+  popularity: number;
+  coverUrl: string | null;
+  spotifyUrl: string | null;
+}
+
+export async function getSpotifyArtist(id: string): Promise<SpotifyArtistDetail | null> {
+  const hit = artistCache.get(id);
+  if (hit && Date.now() < hit.expiresAt) return hit.data;
+  try {
+    const a = await spotifyFetch(`/artists/${id}`, 86400);
+    const result = {
+      id: a.id,
+      name: a.name,
+      genres: a.genres ?? [],
+      followers: a.followers?.total ?? 0,
+      popularity: a.popularity ?? 0,
+      coverUrl: a.images?.[0]?.url ?? null,
+      spotifyUrl: a.external_urls?.spotify ?? null,
+    };
+    artistCache.set(id, { data: result, expiresAt: Date.now() + TTL });
+    return result;
+  } catch {
+    return hit?.data ?? null;
+  }
+}
+
+export interface ArtistAlbumsPage {
+  releases: AlbumRelease[];
+  nextCursor: string | null;
+}
+
+async function paginateArtistAlbums(startUrl: string, pages = 4): Promise<ArtistAlbumsPage> {
+  const items: any[] = [];
+  let nextUrl: string | null = startUrl;
+  let page = 0;
+  while (nextUrl && page < pages) {
+    const data = await spotifyFetch(nextUrl, 3600);
+    items.push(...(data.items ?? []));
+    nextUrl = data.next ?? null;
+    page++;
+  }
+  return {
+    releases: items.filter((a: any) => a.album_group !== 'appears_on').map(mapAlbum),
+    nextCursor: nextUrl,
+  };
+}
+
+export async function getSpotifyArtistAlbums(id: string, artistName?: string): Promise<ArtistAlbumsPage> {
+  const hit = albumsCache.get(id);
+  if (hit && Date.now() < hit.expiresAt) return { releases: hit.data, nextCursor: null };
+  try {
+    const result = await paginateArtistAlbums(`/artists/${id}/albums`);
+    // Only cache when fully loaded (no cursor); partial pages stay uncached
+    if (!result.nextCursor) {
+      albumsCache.set(id, { data: result.releases, expiresAt: Date.now() + TTL });
+    }
+    return result;
+  } catch (err) {
+    console.error(`[Spotify] albums endpoint failed for ${id}:`, (err as Error).message);
+    if (hit) return { releases: hit.data, nextCursor: null };
+    // Fallback: search by artist name
+    if (artistName) {
+      try {
+        const allItems: any[] = [];
+        for (let offset = 0; offset < 30; offset += 10) {
+          const data = await spotifyFetch(
+            `/search?q=artist:${encodeURIComponent(artistName)}&type=album&limit=10&offset=${offset}`,
+            3600
+          );
+          const page = data.albums?.items ?? [];
+          allItems.push(...page);
+          if (page.length < 10) break; // no more results
+        }
+        const releases = allItems
+          .filter((a: any) => a.artists?.some((ar: any) => ar.id === id))
+          .map(mapAlbum);
+        console.log(`[Spotify] fallback search for "${artistName}" → ${releases.length} releases`);
+        albumsCache.set(id, { data: releases, expiresAt: Date.now() + TTL });
+        return { releases, nextCursor: null };
+      } catch (err2) {
+        console.error(`[Spotify] fallback search also failed:`, (err2 as Error).message);
+      }
+    }
+    return { releases: [], nextCursor: null };
+  }
+}
+
+export async function fetchMoreArtistAlbums(cursor: string): Promise<ArtistAlbumsPage> {
+  try {
+    return await paginateArtistAlbums(cursor);
+  } catch {
+    return { releases: [], nextCursor: cursor };
+  }
+}
+
+export async function resolveArtistId(name: string): Promise<string | null> {
+  const key = name.toLowerCase();
+  const hit = artistIdCache.get(key);
+  if (hit && Date.now() < hit.expiresAt) return hit.id;
   try {
     const data = await spotifyFetch(
-      `/search?q=${encodeURIComponent(query)}&type=album&limit=${limit}&market=KR`,
+      `/search?q=${encodeURIComponent(name)}&type=artist&limit=5`,
+      3600
+    );
+    const items: any[] = data.artists?.items ?? [];
+    const exact = items.find((a) => a.name.toLowerCase() === key);
+    const match = exact ?? items.sort((a, b) => b.popularity - a.popularity)[0];
+    const id = match?.id ?? null;
+    artistIdCache.set(key, { id, expiresAt: Date.now() + TTL });
+    return id;
+  } catch {
+    return null;
+  }
+}
+
+export async function searchAlbumsByArtistId(artistId: string, artistName: string, offset = 0): Promise<AlbumRelease[]> {
+  try {
+    const data = await spotifyFetch(
+      `/search?q=artist:${encodeURIComponent(artistName)}&type=album&limit=10&offset=${offset}`,
+      3600
+    );
+    return (data.albums?.items ?? [])
+      .filter((a: any) => a.artists?.some((ar: any) => ar.id === artistId))
+      .map(mapAlbum);
+  } catch {
+    return [];
+  }
+}
+
+export async function searchAlbumsByArtistName(artistName: string, offset = 0): Promise<AlbumRelease[]> {
+  try {
+    const data = await spotifyFetch(
+      `/search?q=artist:${encodeURIComponent(artistName)}&type=album&limit=10&offset=${offset}`,
+      3600
+    );
+    return (data.albums?.items ?? []).map(mapAlbum);
+  } catch {
+    return [];
+  }
+}
+
+// ── Recommendations ───────────────────────────────────────────────────────────
+
+export async function getSpotifyRecommendations(query: string): Promise<AlbumRelease[]> {
+  const hit = recsCache.get(query);
+  if (hit && Date.now() < hit.expiresAt) return hit.data;
+  try {
+    const data = await spotifyFetch(
+      `/search?q=${encodeURIComponent(query)}&type=album&limit=10`,
       3600
     );
     const results = (data.albums?.items ?? [])
       .filter((a: any) => a.album_type !== 'compilation')
       .map(mapAlbum);
-    console.log(`[Spotify] query="${query}" → ${results.length} albums`);
+    recsCache.set(query, { data: results, expiresAt: Date.now() + TTL });
     return results;
   } catch (err) {
+    // Return stale data rather than empty on any error (rate limit, etc.)
+    if (hit) return hit.data;
     console.error(`[Spotify] query="${query}" failed:`, err);
     return [];
   }

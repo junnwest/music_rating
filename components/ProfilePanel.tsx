@@ -2,27 +2,68 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-
 import { supabase } from '../lib/supabaseClient';
 import type { Session } from '@supabase/supabase-js';
+
+type ReleaseType = 'All' | 'Albums' | 'EPs' | 'Singles' | 'Compilations';
+const TABS: ReleaseType[] = ['All', 'Albums', 'EPs', 'Singles', 'Compilations'];
+
+function TypePill({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center px-[9px] py-[2px] rounded-full bg-surface border border-[#EBEBEB] text-[11px] font-medium text-muted">
+      {children}
+    </span>
+  );
+}
+
+function ScoreBar({ bars }: { bars: number[] }) {
+  const max = Math.max(...bars, 1);
+  return (
+    <div>
+      <div className="flex gap-[3px] items-end h-[72px]">
+        {bars.map((h, i) => (
+          <div key={i} className="flex-1 flex flex-col justify-end">
+            <div
+              className="w-full rounded-[2px_2px_0_0]"
+              style={{
+                height: `${(h / max) * 72}px`,
+                background: i >= 7 ? '#3DFFD1' : '#EBEBEB',
+                minHeight: h > 0 ? 2 : 0,
+              }}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-between mt-1">
+        <span className="text-[10px] text-muted">½★</span>
+        <span className="text-[10px] text-muted">5★</span>
+      </div>
+    </div>
+  );
+}
 
 export default function ProfilePanel() {
   const [session, setSession] = useState<Session | null>(null);
   const [ratings, setRatings] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState<string | null>(null);
-  const [ratingsCount, setRatingsCount] = useState(0);
-  const [averageRating, setAverageRating] = useState(0);
+  const [activeTab, setActiveTab] = useState<ReleaseType>('All');
+
+  const ratingsCount = ratings?.length ?? 0;
+  const averageRating =
+    ratingsCount > 0
+      ? Math.round((ratings!.reduce((s: number, r: any) => s + (r.score || 0), 0) / ratingsCount) * 10) / 10
+      : 0;
+
+  // Score distribution (10 bars: 0.5 → 5.0)
+  const bars = Array.from({ length: 10 }, (_, i) => {
+    const target = (i + 1) * 0.5;
+    return ratings?.filter((r) => r.score === target).length ?? 0;
+  });
 
   useEffect(() => {
-    if (!supabase) {
-      setLoading(false);
-      return;
-    }
-
+    if (!supabase) { setLoading(false); return; }
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
-
       if (data.session?.user) {
         fetchRatings(data.session.user.id);
       } else {
@@ -32,136 +73,185 @@ export default function ProfilePanel() {
   }, []);
 
   const fetchRatings = async (userId: string) => {
-    if (!supabase) {
-      setMessage('Supabase is not configured.');
-      setLoading(false);
-      return;
-    }
-
-    const { data, error } = await supabase
+    if (!supabase) { setLoading(false); return; }
+    const { data } = await supabase
       .from('ratings')
-      .select('id, score, status, note, created_at, releases(*)')
+      .select('id, score, status, note, created_at, release_id, releases(*)')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
-
-    if (error) {
-      setMessage('Unable to load saved ratings.');
-    } else {
-      const ratingsData = data ?? [];
-      setRatings(ratingsData);
-      setRatingsCount(ratingsData.length);
-      
-      if (ratingsData.length > 0) {
-        const avgScore = ratingsData.reduce((sum: number, r: any) => sum + (r.score || 0), 0) / ratingsData.length;
-        setAverageRating(Math.round(avgScore * 10) / 10);
-      }
-    }
-
+    setRatings(data ?? []);
     setLoading(false);
   };
 
   if (loading) {
-    return <p className="text-slate-300">Loading your profile…</p>;
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <p className="text-sm text-muted">Loading…</p>
+      </div>
+    );
   }
 
   if (!session?.user) {
     return (
-      <div className="rounded-2xl border border-slate-300 bg-white p-8 text-center text-slate-600">
-        <p className="mb-4 text-lg font-semibold text-slate-900">Sign in to view your profile</p>
-        <p className="mb-6 text-slate-600">Track your album ratings, build your music catalog, and discover new recommendations.</p>
-        <Link href="/login" className="inline-flex rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-blue-700">
+      <div className="max-w-[1440px] mx-auto px-5 py-16 text-center">
+        <p className="text-xl font-bold text-ink mb-2">Sign in to view your profile</p>
+        <p className="text-sm text-muted mb-8">Track your album ratings, build your music catalog, and discover new recommendations.</p>
+        <Link
+          href="/login"
+          className="inline-flex rounded-lg bg-ink px-6 py-3 text-sm font-semibold text-white hover:opacity-80 transition"
+        >
           Go to login
         </Link>
       </div>
     );
   }
 
+  const username = session.user.email?.split('@')[0] ?? '—';
+  const initial = session.user.email?.[0].toUpperCase() ?? '?';
+
+  const filteredRatings = (ratings ?? []).filter((r) => {
+    if (activeTab === 'All') return true;
+    const type = r.releases?.release_type ?? '';
+    if (activeTab === 'Albums') return type === 'Album';
+    if (activeTab === 'EPs') return type === 'EP';
+    if (activeTab === 'Singles') return type === 'Single';
+    if (activeTab === 'Compilations') return type === 'Compilation';
+    return true;
+  });
+
   return (
-    <div className="space-y-8">
-      {/* Profile Card */}
-      <div className="rounded-2xl border border-slate-300 bg-white p-8">
-        <div className="flex flex-col items-center text-center sm:flex-row sm:text-left">
+    <div className="bg-white">
+      {/* ── HEADER ─────────────────────────────────────────── */}
+      <div className="bg-surface border-b border-[#EBEBEB]">
+        <div className="max-w-[1440px] mx-auto px-5 pt-9 pb-0 flex gap-6 items-start">
           {/* Avatar */}
-          <div className="mb-6 sm:mb-0 sm:mr-8">
-            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-blue-200 to-blue-400 text-white text-4xl font-bold">
-              {session.user.email?.[0].toUpperCase()}
+          <div
+            className="w-[82px] h-[82px] rounded-full bg-mint-bg border-2 border-mint flex items-center justify-center flex-shrink-0 font-bold text-mint-dark text-[30px]"
+          >
+            {initial}
+          </div>
+
+          {/* Info */}
+          <div className="flex-1">
+            <div className="flex items-center gap-3 mb-1">
+              <h1
+                className="text-[24px] font-extrabold text-ink"
+                style={{ letterSpacing: '-0.6px' }}
+              >
+                {username}
+              </h1>
+            </div>
+            <p className="text-[13px] text-muted">Member · {session.user.email}</p>
+
+            {/* Stats */}
+            <div className="flex gap-8 mt-[18px]">
+              {[
+                [ratingsCount, 'albums rated'],
+                [`${averageRating || '—'} ★`, 'avg score'],
+                ['0', 'reviews'],
+                ['0', 'followers'],
+                ['0', 'following'],
+              ].map(([val, label]) => (
+                <div key={label as string}>
+                  <div className="text-[20px] font-bold text-ink">{val}</div>
+                  <div className="text-[12px] text-muted mt-0.5">{label}</div>
+                </div>
+              ))}
             </div>
           </div>
-          
-          {/* User Info */}
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold text-slate-900">{session.user.email?.split('@')[0]}</h1>
-            <p className="mt-1 text-slate-600">{session.user.email}</p>
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:gap-6">
-              <button className="rounded-lg border border-slate-300 bg-white px-6 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-50">
-                Edit profile
-              </button>
-              <button className="rounded-lg border border-slate-300 bg-white px-6 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-50">
-                Share profile
-              </button>
-            </div>
+
+          {/* Actions */}
+          <div className="flex gap-2 pt-1">
+            <button className="border border-[#EBEBEB] rounded-lg px-[18px] py-[9px] text-[13px] font-semibold text-ink hover:bg-surface transition">
+              Edit profile
+            </button>
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="mt-8 grid grid-cols-3 gap-6 border-t border-slate-200 pt-8 text-center">
-          <div>
-            <p className="text-2xl font-bold text-slate-900">{ratingsCount}</p>
-            <p className="text-sm text-slate-600">Ratings</p>
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-slate-900">{averageRating}</p>
-            <p className="text-sm text-slate-600">Average</p>
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-slate-900">0</p>
-            <p className="text-sm text-slate-600">Collections</p>
-          </div>
+        {/* Tabs */}
+        <div className="max-w-[1440px] mx-auto px-5 flex mt-5 border-t border-[#EBEBEB]">
+          {TABS.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-5 py-3 text-[13px] font-semibold border-b-2 transition ${
+                activeTab === tab
+                  ? 'text-ink border-ink'
+                  : 'text-muted border-transparent hover:text-mid'
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
+          <div className="flex-1" />
+          <div className="self-center text-[12px] font-medium text-muted">Sort: Recently rated ↓</div>
         </div>
       </div>
 
-      {/* Recent Ratings Section */}
-      <div>
-        <h2 className="mb-6 text-xl font-bold text-slate-900">Recent Ratings</h2>
-        
-        {message && <p className="mb-4 rounded-lg bg-red-50 p-4 text-sm text-red-600">{message}</p>}
-        
-        {!ratings || ratings.length === 0 ? (
-          <div className="rounded-2xl border border-slate-300 bg-white p-8 text-center">
-            <p className="text-slate-600">No saved ratings yet. Search albums and rate them to build your catalog.</p>
-          </div>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {ratings.slice(0, 6).map((rating) => (
-              <Link key={rating.id} href={`/album/${rating.release_id}`} className="overflow-hidden rounded-lg border border-slate-300 bg-white transition hover:shadow-md block">
-                {rating.releases?.cover_url && (
-                  <img
-                    src={rating.releases.cover_url}
-                    alt={rating.releases.title}
-                    className="w-full aspect-square object-cover"
-                  />
-                )}
-                <div className="flex h-full flex-col p-4">
-                  <p className="text-xs font-semibold uppercase text-slate-500">{rating.releases?.release_type ?? 'Release'}</p>
-                  <h3 className="mt-2 line-clamp-2 font-semibold text-slate-900">{rating.releases?.title ?? rating.release_id}</h3>
-                  <p className="mt-1 text-sm text-slate-600">{rating.releases?.artist ?? 'Unknown'}</p>
-                  <div className="mt-auto pt-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-lg font-bold text-blue-600">{rating.score}/5</span>
-                      <span className="text-xs text-slate-500">{rating.status.replace(/([A-Z])/g, ' $1').trim()}</span>
-                    </div>
+      {/* ── BODY ─────────────────────────────────────────────── */}
+      <div
+        className="max-w-[1440px] mx-auto px-5 py-9 pb-14 grid gap-12"
+        style={{ gridTemplateColumns: '1fr 240px' }}
+      >
+        {/* Album grid */}
+        <div>
+          {filteredRatings.length === 0 ? (
+            <div className="py-16 text-center">
+              <p className="text-sm text-muted">No ratings yet. Search for albums and rate them.</p>
+            </div>
+          ) : (
+            <div className="grid gap-[14px]" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
+              {filteredRatings.map((rating) => (
+                <Link key={rating.id} href={`/album/${rating.release_id}`} className="block min-w-0">
+                  <div className="relative overflow-hidden rounded-[6px]" style={{ aspectRatio: '1 / 1' }}>
+                    {rating.releases?.cover_url ? (
+                      <img
+                        src={rating.releases.cover_url}
+                        alt={rating.releases.title}
+                        className="absolute inset-0 w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 bg-surface border border-[#EBEBEB]" />
+                    )}
+                    {rating.score && (
+                      <div
+                        className="absolute bottom-1 right-1 text-[10px] font-bold rounded-[4px] px-[6px] py-[1px]"
+                        style={{ background: '#3DFFD1', color: '#00453A' }}
+                      >
+                        ★ {rating.score}
+                      </div>
+                    )}
                   </div>
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
-        
-        {ratings && ratings.length > 6 && (
-          <div className="mt-6 text-center">
-            <button className="text-blue-600 hover:underline">View all ratings →</button>
-          </div>
-        )}
+                  <div
+                    className="mt-[7px] text-[11px] font-semibold text-ink truncate"
+                    title={rating.releases?.title}
+                  >
+                    {rating.releases?.title ?? rating.release_id}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Sidebar */}
+        <div>
+          {/* Score Distribution */}
+          <div className="text-[15px] font-bold text-ink mb-[14px]">Score Distribution</div>
+          <ScoreBar bars={bars} />
+
+          <div className="h-px bg-[#EBEBEB] my-5" />
+
+          {/* Listen Later placeholder */}
+          <div className="text-[15px] font-bold text-ink mb-3">Listen Later</div>
+          <p className="text-[12px] text-muted">Nothing queued yet.</p>
+
+          <div className="h-px bg-[#EBEBEB] my-5" />
+
+          {/* Top Genres placeholder */}
+          <div className="text-[15px] font-bold text-ink mb-3">Top Genres</div>
+          <p className="text-[12px] text-muted">Rate more albums to see your top genres.</p>
+        </div>
       </div>
     </div>
   );

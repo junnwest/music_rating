@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neiro — Wireframes</title>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm"  crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #f5f5f0; font-family: 'Plus Jakarta Sans', sans-serif; }
+</style>
+</head>
+<body>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel">
+
+const MINT = '#3DFFD1';
+const MINT_LIGHT = '#d0fff6';
+const INK = '#1a1a1a';
+const GRAY = '#888';
+const LIGHT = '#e8e8e2';
+const WHITE = '#ffffff';
+
+// Sketchy style helpers
+const sk = {
+  font: "'Caveat', cursive",
+  sans: "'Plus Jakarta Sans', sans-serif",
+};
+
+// Reusable primitives
+function Box({ w, h, fill = LIGHT, stroke = INK, strokeW = 1.5, r = 4, children, style }) {
+  return (
+    <div style={{
+      width: w, height: h, background: fill,
+      border: `${strokeW}px solid ${stroke}`,
+      borderRadius: r, position: 'relative',
+      overflow: 'hidden', flexShrink: 0,
+      ...style
+    }}>
+      {children}
+    </div>
+  );
+}
+
+function Label({ children, size = 11, color = GRAY, bold, center, style }) {
+  return (
+    <div style={{
+      fontFamily: sk.font, fontSize: size,
+      color, fontWeight: bold ? 700 : 400,
+      textAlign: center ? 'center' : 'left',
+      lineHeight: 1.3, ...style
+    }}>{children}</div>
+  );
+}
+
+function SansLabel({ children, size = 10, color = GRAY, bold, center, style }) {
+  return (
+    <div style={{
+      fontFamily: sk.sans, fontSize: size,
+      color, fontWeight: bold ? 600 : 400,
+      textAlign: center ? 'center' : 'left',
+      lineHeight: 1.3, ...style
+    }}>{children}</div>
+  );
+}
+
+function Pill({ children, accent, style }) {
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center',
+      padding: '2px 8px', borderRadius: 20,
+      background: accent ? MINT : LIGHT,
+      border: `1.5px solid ${accent ? '#00c9a0' : '#ccc'}`,
+      fontFamily: sk.font, fontSize: 10,
+      color: accent ? '#006655' : GRAY,
+      fontWeight: 600, ...style
+    }}>{children}</div>
+  );
+}
+
+function Line({ y = 0, color = LIGHT }) {
+  return <div style={{ width: '100%', height: 1, background: color, marginTop: y, marginBottom: y }} />;
+}
+
+function AlbumCard({ size = 80, label, score, style }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0, ...style }}>
+      <Box w={size} h={size} fill={LIGHT} r={4} style={{ position: 'relative' }}>
+        <div style={{
+          position: 'absolute', bottom: 4, right: 4,
+          background: MINT, borderRadius: 3,
+          fontFamily: sk.font, fontSize: 10, fontWeight: 700,
+          padding: '1px 5px', color: '#004433',
+          display: score ? 'block' : 'none'
+        }}>{score}</div>
+        <div style={{
+          position: 'absolute', inset: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+          <div style={{ fontSize: 20, opacity: 0.15 }}>♪</div>
+        </div>
+      </Box>
+      {label && <Label size={9} style={{ width: size, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</Label>}
+    </div>
+  );
+}
+
+function NavBar({ page }) {
+  const pages = ['Home', 'Search', 'Activity', 'Profile'];
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center',
+      padding: '0 16px', height: 40,
+      borderBottom: `1.5px solid ${INK}`,
+      background: WHITE, gap: 16
+    }}>
+      <Label size={14} bold color={INK} style={{ fontFamily: sk.font, letterSpacing: -0.5 }}>音色 neiro</Label>
+      <div style={{ flex: 1 }} />
+      {pages.map(p => (
+        <Label key={p} size={10} color={p === page ? INK : GRAY} bold={p === page}>{p}</Label>
+      ))}
+      <Box w={22} h={22} fill={MINT} r={11} stroke={INK} strokeW={1.5}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+          <Label size={8} color={INK}>MK</Label>
+        </div>
+      </Box>
+    </div>
+  );
+}
+
+function SearchBar({ placeholder = "Search albums, artists…", style }) {
+  return (
+    <Box w="100%" h={32} fill={WHITE} stroke={INK} r={16} style={{ display: 'flex', alignItems: 'center', padding: '0 12px', gap: 6, ...style }}>
+      <Label size={11} color={GRAY}>⌕</Label>
+      <Label size={11} color={GRAY}>{placeholder}</Label>
+    </Box>
+  );
+}
+
+// ─── PAGE 1: HOMEPAGE ──────────────────────────────────────────────────────
+function HomePage() {
+  return (
+    <div style={{ background: WHITE, width: '100%', fontFamily: sk.font }}>
+      <NavBar page="Home" />
+
+      {/* Hero */}
+      <div style={{ background: '#f9f9f6', borderBottom: `1.5px solid ${LIGHT}`, padding: '20px 16px 16px' }}>
+        <Label size={22} bold color={INK} style={{ letterSpacing: -1, lineHeight: 1.1 }}>
+          Track every album<br />you've ever heard.
+        </Label>
+        <Label size={12} color={GRAY} style={{ marginTop: 6, marginBottom: 12 }}>
+          Rate, review & catalog your listening life.
+        </Label>
+        <SearchBar />
+        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <Pill accent>✦ Sign up free</Pill>
+          <Pill>Browse trending →</Pill>
+        </div>
+      </div>
+
+      {/* Recently Rated */}
+      <div style={{ padding: '14px 16px 0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <Label size={13} bold color={INK}>Recently Rated</Label>
+          <Label size={10} color={GRAY}>See all →</Label>
+        </div>
+        <div style={{ display: 'flex', gap: 10, overflowX: 'hidden' }}>
+          {[
+            { label: 'Brat', score: '8.4' },
+            { label: 'Chromakopia', score: '9.1' },
+            { label: 'Short n Sweet', score: '7.8' },
+            { label: 'GNX', score: '8.6' },
+            { label: 'Manning Fireworks', score: '8.9' },
+          ].map((a, i) => <AlbumCard key={i} label={a.label} score={a.score} size={72} />)}
+        </div>
+
+        {/* Activity feed row */}
+        <div style={{ marginTop: 14 }}>
+          {[
+            { user: 'maya_k', album: 'Brat', score: '8', verb: 'rated' },
+            { user: 'tonehunter', album: 'Chromakopia', score: '9', verb: 'reviewed' },
+            { user: 'waveform99', album: 'GNX', score: '10', verb: 'rated' },
+          ].map((item, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `1px solid ${LIGHT}` }}>
+              <Box w={24} h={24} r={12} fill={MINT_LIGHT} stroke={MINT} strokeW={1.5}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                  <Label size={7} color={'#006655'}>{item.user[0].toUpperCase()}</Label>
+                </div>
+              </Box>
+              <Label size={11} color={INK}>
+                <span style={{ fontWeight: 700 }}>{item.user}</span> {item.verb} <span style={{ fontWeight: 700 }}>{item.album}</span>
+              </Label>
+              <div style={{ flex: 1 }} />
+              <div style={{ background: MINT, borderRadius: 3, padding: '1px 6px' }}>
+                <Label size={10} bold color={INK}>{item.score}/10</Label>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Trending */}
+      <div style={{ padding: '14px 16px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <Label size={13} bold color={INK}>Trending This Week</Label>
+          <Label size={10} color={GRAY}>See all →</Label>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {[
+            { rank: 1, name: 'Brat', artist: 'Charli XCX', type: 'Album', avg: '8.7', ratings: '12.4k' },
+            { rank: 2, name: 'Chromakopia', artist: 'Tyler, the Creator', type: 'Album', avg: '9.0', ratings: '18.1k' },
+            { rank: 3, name: 'Stargate EP', artist: 'Fred again..', type: 'EP', avg: '8.2', ratings: '3.2k' },
+          ].map(item => (
+            <div key={item.rank} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: `1px solid ${LIGHT}` }}>
+              <Label size={11} color={GRAY} style={{ width: 14, textAlign: 'right' }}>{item.rank}</Label>
+              <Box w={40} h={40} fill={LIGHT} r={3}><div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}><div style={{ opacity: 0.2, fontSize: 14 }}>♪</div></div></Box>
+              <div style={{ flex: 1 }}>
+                <Label size={11} bold color={INK}>{item.name}</Label>
+                <div style={{ display: 'flex', gap: 5, marginTop: 2, alignItems: 'center' }}>
+                  <Label size={9} color={GRAY}>{item.artist}</Label>
+                  <Pill style={{ padding: '0px 5px', fontSize: 8 }}>{item.type}</Pill>
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <Label size={12} bold color={INK}>{item.avg}</Label>
+                <Label size={9} color={GRAY}>{item.ratings} ratings</Label>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Annotation */}
+      <div style={{ padding: '0 16px 16px' }}>
+        <div style={{ borderLeft: `3px solid ${MINT}`, paddingLeft: 8 }}>
+          <Label size={10} color={GRAY}>↑ hero collapses on scroll / search stays sticky</Label>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── PAGE 2: ALBUM PAGE ────────────────────────────────────────────────────
+function AlbumPage() {
+  return (
+    <div style={{ background: WHITE, width: '100%' }}>
+      <NavBar page="Search" />
+
+      {/* Hero strip */}
+      <div style={{ display: 'flex', gap: 12, padding: '14px 16px', background: '#f9f9f6', borderBottom: `1.5px solid ${LIGHT}` }}>
+        <Box w={90} h={90} fill={LIGHT} r={6} style={{ flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+            <div style={{ opacity: 0.2, fontSize: 30 }}>♪</div>
+          </div>
+        </Box>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', gap: 4, marginBottom: 4, flexWrap: 'wrap' }}>
+            <Pill>Album</Pill>
+            <Pill>2024</Pill>
+          </div>
+          <Label size={16} bold color={INK} style={{ lineHeight: 1.1 }}>Chromakopia</Label>
+          <Label size={11} color={GRAY}>Tyler, the Creator</Label>
+          <div style={{ display: 'flex', gap: 10, marginTop: 8, alignItems: 'center' }}>
+            <div>
+              <Label size={20} bold color={INK}>9.0</Label>
+              <Label size={9} color={GRAY}>community avg</Label>
+            </div>
+            <div style={{ width: 1, height: 28, background: LIGHT }} />
+            <div>
+              <Label size={11} color={GRAY}>18,142 ratings</Label>
+              <Label size={9} color={GRAY}>4,201 reviews</Label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* User action panel */}
+      <div style={{ padding: '12px 16px', background: WHITE, borderBottom: `1.5px solid ${LIGHT}` }}>
+        <Label size={11} bold color={INK} style={{ marginBottom: 6 }}>Your Rating</Label>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+          {[1,2,3,4,5,6,7,8,9,10].map(n => (
+            <Box key={n} w={22} h={22} fill={n <= 9 ? MINT : LIGHT} stroke={n <= 9 ? '#00c9a0' : '#ccc'} r={4}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                <Label size={9} bold color={n <= 9 ? '#004433' : GRAY}>{n}</Label>
+              </div>
+            </Box>
+          ))}
+        </div>
+
+        <Label size={11} bold color={INK} style={{ marginBottom: 6 }}>Listening Status</Label>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {['Listened ✓', 'Listening', 'Want to Listen', 'Re-listening'].map((s, i) => (
+            <Pill key={s} accent={i === 0}>{s}</Pill>
+          ))}
+        </div>
+
+        <Box w="100%" h={52} fill={'#fafaf8'} stroke={'#ddd'} r={6} style={{ marginTop: 10, display: 'flex', alignItems: 'center', padding: '0 10px' }}>
+          <Label size={10} color={'#bbb'}>Write a review… (optional)</Label>
+        </Box>
+        <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+          <Pill accent>Save →</Pill>
+        </div>
+      </div>
+
+      {/* Tracklist stub */}
+      <div style={{ padding: '12px 16px 0' }}>
+        <Label size={12} bold color={INK} style={{ marginBottom: 6 }}>Tracklist</Label>
+        {['St. Chroma', 'Rah Tah Tah', 'Noid', 'Darling, I'].map((t, i) => (
+          <div key={t} style={{ display: 'flex', gap: 8, padding: '5px 0', borderBottom: `1px solid ${LIGHT}` }}>
+            <Label size={10} color={GRAY} style={{ width: 14 }}>{i+1}</Label>
+            <Label size={10} color={INK}>{t}</Label>
+            <div style={{ flex: 1 }} />
+            <Label size={9} color={GRAY}>3:2{i+1}</Label>
+          </div>
+        ))}
+        <Label size={9} color={GRAY} style={{ marginTop: 4 }}>+ 10 more tracks</Label>
+      </div>
+
+      {/* Reviews */}
+      <div style={{ padding: '12px 16px 16px' }}>
+        <Label size={12} bold color={INK} style={{ marginBottom: 8 }}>Community Reviews</Label>
+        {[
+          { user: 'maya_k', score: 9, text: "Tyler just gets better every time. Chromakopia is his most ambitious yet — the concept album we didn't know we needed." },
+          { user: 'waveform99', score: 10, text: 'Flawless. The production textures alone earn a 10.' },
+        ].map((r, i) => (
+          <div key={i} style={{ padding: '8px 0', borderBottom: `1px solid ${LIGHT}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <Box w={20} h={20} r={10} fill={MINT_LIGHT} stroke={MINT} strokeW={1.5}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                  <Label size={7} color={'#006655'}>{r.user[0].toUpperCase()}</Label>
+                </div>
+              </Box>
+              <Label size={10} bold color={INK}>{r.user}</Label>
+              <div style={{ flex: 1 }} />
+              <div style={{ background: MINT, borderRadius: 3, padding: '1px 5px' }}>
+                <Label size={9} bold color={INK}>{r.score}/10</Label>
+              </div>
+            </div>
+            <Label size={10} color={INK} style={{ lineHeight: 1.5 }}>{r.text}</Label>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ padding: '0 16px 16px' }}>
+        <div style={{ borderLeft: `3px solid ${MINT}`, paddingLeft: 8 }}>
+          <Label size={10} color={GRAY}>↑ rating bar snaps, status pill toggles; "save" only appears after interaction</Label>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── PAGE 3: PROFILE PAGE ──────────────────────────────────────────────────
+function ProfilePage() {
+  return (
+    <div style={{ background: WHITE, width: '100%' }}>
+      <NavBar page="Profile" />
+
+      {/* Profile header */}
+      <div style={{ padding: '16px', background: '#f9f9f6', borderBottom: `1.5px solid ${LIGHT}` }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <Box w={56} h={56} r={28} fill={MINT_LIGHT} stroke={MINT} strokeW={2}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+              <Label size={20} color={'#006655'}>M</Label>
+            </div>
+          </Box>
+          <div style={{ flex: 1 }}>
+            <Label size={16} bold color={INK}>maya_k</Label>
+            <Label size={10} color={GRAY}>Joined March 2023 · Tokyo, JP</Label>
+            <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+              <div style={{ textAlign: 'center' }}>
+                <Label size={14} bold color={INK}>347</Label>
+                <Label size={9} color={GRAY}>rated</Label>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <Label size={14} bold color={INK}>7.6</Label>
+                <Label size={9} color={GRAY}>avg score</Label>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <Label size={14} bold color={INK}>82</Label>
+                <Label size={9} color={GRAY}>reviews</Label>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <Label size={14} bold color={INK}>24</Label>
+                <Label size={9} color={GRAY}>followers</Label>
+              </div>
+            </div>
+          </div>
+          <Pill>Follow</Pill>
+        </div>
+      </div>
+
+      {/* Filter tabs */}
+      <div style={{ display: 'flex', padding: '0 16px', gap: 16, borderBottom: `1.5px solid ${LIGHT}`, background: WHITE }}>
+        {['All', 'Albums', 'EPs', 'Singles'].map((t, i) => (
+          <div key={t} style={{ padding: '8px 0', borderBottom: i === 0 ? `2px solid ${INK}` : 'none' }}>
+            <Label size={10} bold={i === 0} color={i === 0 ? INK : GRAY}>{t}</Label>
+          </div>
+        ))}
+        <div style={{ flex: 1 }} />
+        <div style={{ padding: '8px 0', display: 'flex', alignItems: 'center' }}>
+          <Label size={9} color={GRAY}>Sort: Recent ↓</Label>
+        </div>
+      </div>
+
+      {/* Album grid */}
+      <div style={{ padding: '12px 16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
+          {[
+            { label: 'Brat', score: '8' },
+            { label: 'Chromakopia', score: '9' },
+            { label: 'Short n Sweet', score: '8' },
+            { label: 'GNX', score: '10' },
+            { label: 'Manning Fw.', score: '9' },
+            { label: 'Hit Me Hard', score: '7' },
+            { label: 'Radical Opt.', score: '8' },
+            { label: 'Diamond Jubilee', score: '9' },
+            { label: 'The Record', score: '8' },
+            { label: 'Javelin', score: '10' },
+          ].map((a, i) => (
+            <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <Box w="100%" h={0} fill={LIGHT} r={4} style={{ paddingBottom: '100%', position: 'relative' }}>
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ opacity: 0.15, fontSize: 16 }}>♪</div>
+                </div>
+                <div style={{
+                  position: 'absolute', bottom: 4, right: 4,
+                  background: MINT, borderRadius: 3,
+                  fontFamily: sk.font, fontSize: 9, fontWeight: 700,
+                  padding: '1px 4px', color: '#004433'
+                }}>{a.score}</div>
+              </Box>
+              <Label size={8} color={INK} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.label}</Label>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Score distribution */}
+      <div style={{ padding: '0 16px 16px' }}>
+        <Label size={11} bold color={INK} style={{ marginBottom: 6 }}>Score Distribution</Label>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end', height: 40 }}>
+          {[2, 3, 5, 8, 18, 40, 60, 90, 70, 45].map((h, i) => (
+            <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+              <Box w="100%" h={h * 0.35} fill={i >= 7 ? MINT : LIGHT} stroke={'none'} r={2} />
+              <Label size={7} color={GRAY}>{i+1}</Label>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ padding: '0 16px 16px' }}>
+        <div style={{ borderLeft: `3px solid ${MINT}`, paddingLeft: 8 }}>
+          <Label size={10} color={GRAY}>↑ grid is filterable by release type; score chip on album art</Label>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── PAGE 4: SEARCH RESULTS ────────────────────────────────────────────────
+function SearchPage() {
+  return (
+    <div style={{ background: WHITE, width: '100%' }}>
+      <NavBar page="Search" />
+
+      <div style={{ padding: '12px 16px', borderBottom: `1.5px solid ${LIGHT}`, background: '#f9f9f6' }}>
+        <SearchBar placeholder='billie eilish' />
+        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+          {['All', 'Albums', 'EPs', 'Singles', 'Artists'].map((t, i) => (
+            <Pill key={t} accent={i === 0}>{t}</Pill>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ padding: '10px 16px 4px' }}>
+        <Label size={11} color={GRAY}>Results for "billie eilish" — 38 albums found</Label>
+      </div>
+
+      {/* List results */}
+      <div style={{ padding: '0 16px' }}>
+        {[
+          { name: 'HIT ME HARD AND SOFT', type: 'Album', year: 2024, avg: '8.1', ratings: '31.2k' },
+          { name: 'Happier Than Ever', type: 'Album', year: 2021, avg: '8.4', ratings: '67.4k' },
+          { name: 'When We All Fall Asleep…', type: 'Album', year: 2019, avg: '8.9', ratings: '88.1k' },
+          { name: 'dont smile at me', type: 'EP', year: 2017, avg: '7.6', ratings: '22.0k' },
+          { name: 'bad guy (Single)', type: 'Single', year: 2019, avg: '8.2', ratings: '15.3k' },
+          { name: 'Ocean Eyes (Single)', type: 'Single', year: 2016, avg: '7.9', ratings: '9.1k' },
+        ].map((item, i) => (
+          <div key={i} style={{ display: 'flex', gap: 10, padding: '8px 0', borderBottom: `1px solid ${LIGHT}`, alignItems: 'center' }}>
+            <Box w={48} h={48} fill={LIGHT} r={4}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                <div style={{ opacity: 0.2, fontSize: 16 }}>♪</div>
+              </div>
+            </Box>
+            <div style={{ flex: 1 }}>
+              <Label size={11} bold color={INK}>{item.name}</Label>
+              <div style={{ display: 'flex', gap: 5, marginTop: 2, alignItems: 'center' }}>
+                <Label size={9} color={GRAY}>Billie Eilish · {item.year}</Label>
+                <Pill style={{ padding: '0px 5px', fontSize: 8 }}>{item.type}</Pill>
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+                <div style={{ background: MINT, borderRadius: 3, padding: '1px 5px' }}>
+                  <Label size={10} bold color={INK}>{item.avg}</Label>
+                </div>
+              </div>
+              <Label size={8} color={GRAY} style={{ marginTop: 2 }}>{item.ratings} ratings</Label>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Artist result card */}
+      <div style={{ margin: '10px 16px', padding: '10px', background: MINT_LIGHT, border: `1.5px solid ${MINT}`, borderRadius: 8 }}>
+        <Label size={9} color={'#006655'} style={{ marginBottom: 6 }}>Artist match</Label>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <Box w={36} h={36} r={18} fill={MINT} stroke={INK} strokeW={1.5}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+              <Label size={12} color={INK}>B</Label>
+            </div>
+          </Box>
+          <div>
+            <Label size={12} bold color={INK}>Billie Eilish</Label>
+            <Label size={9} color={GRAY}>6 releases · avg 8.4 on Neiro</Label>
+          </div>
+          <div style={{ flex: 1 }} />
+          <Pill>View artist →</Pill>
+        </div>
+      </div>
+
+      <div style={{ padding: '0 16px 16px' }}>
+        <div style={{ borderLeft: `3px solid ${MINT}`, paddingLeft: 8 }}>
+          <Label size={10} color={GRAY}>↑ filter tabs are sticky; artist card appears when artist match found</Label>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── PAGE 5: AUTH PAGE ─────────────────────────────────────────────────────
+function AuthPage() {
+  const [mode, setMode] = React.useState('login');
+
+  return (
+    <div style={{ background: WHITE, width: '100%', minHeight: 500 }}>
+      {/* Minimal nav */}
+      <div style={{ display: 'flex', alignItems: 'center', padding: '0 16px', height: 40, borderBottom: `1.5px solid ${LIGHT}` }}>
+        <Label size={14} bold color={INK} style={{ letterSpacing: -0.5 }}>音色 neiro</Label>
+      </div>
+
+      <div style={{ maxWidth: 280, margin: '0 auto', padding: '32px 16px' }}>
+        {/* Toggle */}
+        <div style={{ display: 'flex', background: LIGHT, borderRadius: 8, padding: 3, marginBottom: 20 }}>
+          {['login', 'signup'].map(m => (
+            <button key={m} onClick={() => setMode(m)} style={{
+              flex: 1, padding: '6px 0',
+              background: mode === m ? WHITE : 'transparent',
+              border: mode === m ? `1.5px solid ${INK}` : '1.5px solid transparent',
+              borderRadius: 6, cursor: 'pointer',
+              fontFamily: sk.font, fontSize: 11,
+              fontWeight: mode === m ? 700 : 400,
+              color: mode === m ? INK : GRAY,
+            }}>
+              {m === 'login' ? 'Log in' : 'Sign up'}
+            </button>
+          ))}
+        </div>
+
+        <Label size={18} bold color={INK} style={{ marginBottom: 4 }}>
+          {mode === 'login' ? 'Welcome back.' : 'Join neiro.'}
+        </Label>
+        <Label size={11} color={GRAY} style={{ marginBottom: 20 }}>
+          {mode === 'login' ? 'Log in to see your ratings and reviews.' : 'Start cataloging your listening life.'}
+        </Label>
+
+        {mode === 'signup' && (
+          <div style={{ marginBottom: 12 }}>
+            <Label size={10} bold color={INK} style={{ marginBottom: 4 }}>Username</Label>
+            <Box w="100%" h={32} fill={WHITE} stroke={INK} r={6} style={{ display: 'flex', alignItems: 'center', padding: '0 10px' }}>
+              <Label size={10} color={'#ccc'}>e.g. tonehunter</Label>
+            </Box>
+          </div>
+        )}
+
+        <div style={{ marginBottom: 12 }}>
+          <Label size={10} bold color={INK} style={{ marginBottom: 4 }}>Email</Label>
+          <Box w="100%" h={32} fill={WHITE} stroke={INK} r={6} style={{ display: 'flex', alignItems: 'center', padding: '0 10px' }}>
+            <Label size={10} color={'#ccc'}>you@example.com</Label>
+          </Box>
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <Label size={10} bold color={INK} style={{ marginBottom: 4 }}>Password</Label>
+          <Box w="100%" h={32} fill={WHITE} stroke={INK} r={6} style={{ display: 'flex', alignItems: 'center', padding: '0 10px' }}>
+            <Label size={10} color={'#ccc'}>••••••••</Label>
+          </Box>
+        </div>
+
+        <div style={{
+          width: '100%', height: 36,
+          background: INK, borderRadius: 8,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          marginBottom: 14
+        }}>
+          <Label size={11} bold color={WHITE}>{mode === 'login' ? 'Log in →' : 'Create account →'}</Label>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+          <div style={{ flex: 1, height: 1, background: LIGHT }} />
+          <Label size={9} color={GRAY}>or</Label>
+          <div style={{ flex: 1, height: 1, background: LIGHT }} />
+        </div>
+
+        <div style={{
+          width: '100%', height: 34,
+          background: WHITE, borderRadius: 8,
+          border: `1.5px solid ${INK}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          gap: 6, marginBottom: 8
+        }}>
+          <Label size={11} color={INK}>Continue with Google</Label>
+        </div>
+
+        <div style={{ textAlign: 'center' }}>
+          <Label size={9} color={GRAY}>
+            {mode === 'login' ? "No account? Sign up free →" : "Already have an account? Log in →"}
+          </Label>
+        </div>
+
+        {/* Bottom note */}
+        <div style={{ marginTop: 28, padding: '10px', background: MINT_LIGHT, border: `1.5px solid ${MINT}`, borderRadius: 8 }}>
+          <Label size={9} color={'#005544'}>One account = one rating per album. Your taste, tracked.</Label>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── MAIN APP ──────────────────────────────────────────────────────────────
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "scale": 100,
+  "showAnnotations": true,
+  "accentColor": "#3DFFD1"
+}/*EDITMODE-END*/;
+
+function App() {
+  const [tweaks, setTweaks] = React.useState(TWEAK_DEFAULTS);
+  const [tweakOpen, setTweakOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    window.addEventListener('message', (e) => {
+      if (e.data?.type === '__activate_edit_mode') setTweakOpen(true);
+      if (e.data?.type === '__deactivate_edit_mode') setTweakOpen(false);
+    });
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+  }, []);
+
+  const updateTweak = (key, val) => {
+    setTweaks(t => {
+      const next = { ...t, [key]: val };
+      window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { [key]: val } }, '*');
+      return next;
+    });
+  };
+
+  const pages = [
+    { id: 'home', label: '01 Homepage', width: 375, Component: HomePage },
+    { id: 'album', label: '02 Album Page', width: 375, Component: AlbumPage },
+    { id: 'profile', label: '03 Profile', width: 375, Component: ProfilePage },
+    { id: 'search', label: '04 Search Results', width: 375, Component: SearchPage },
+    { id: 'auth', label: '05 Sign Up / Login', width: 375, Component: AuthPage },
+  ];
+
+  return (
+    <>
+      <DesignCanvas>
+        <DCSection id="wireframes" title="Neiro — Wireframes (Mobile, 375px)">
+          {pages.map(({ id, label, width, Component }) => (
+            <DCArtboard key={id} id={id} label={label} width={width}>
+              <Component />
+            </DCArtboard>
+          ))}
+        </DCSection>
+      </DesignCanvas>
+
+      {/* Tweaks Panel */}
+      {tweakOpen && (
+        <div style={{
+          position: 'fixed', bottom: 20, right: 20,
+          background: WHITE, border: `1.5px solid ${INK}`,
+          borderRadius: 10, padding: 16, width: 220,
+          boxShadow: '0 4px 24px rgba(0,0,0,0.12)', zIndex: 10000,
+          fontFamily: sk.font
+        }}>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 12, color: INK }}>Tweaks</div>
+
+          <div style={{ marginBottom: 10 }}>
+            <Label size={10} bold color={INK} style={{ marginBottom: 4 }}>Accent Color</Label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {['#3DFFD1', '#FF6B6B', '#A78BFA', '#FBBF24'].map(c => (
+                <div key={c} onClick={() => updateTweak('accentColor', c)} style={{
+                  width: 24, height: 24, borderRadius: 12,
+                  background: c, cursor: 'pointer',
+                  border: tweaks.accentColor === c ? `2px solid ${INK}` : '2px solid transparent'
+                }} />
+              ))}
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 10 }}>
+            <Label size={10} bold color={INK} style={{ marginBottom: 4 }}>Wireframe Scale: {tweaks.scale}%</Label>
+            <input type="range" min={60} max={130} value={tweaks.scale}
+              onChange={e => updateTweak('scale', Number(e.target.value))}
+              style={{ width: '100%' }} />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input type="checkbox" checked={tweaks.showAnnotations}
+              onChange={e => updateTweak('showAnnotations', e.target.checked)} />
+            <Label size={10} color={INK}>Show annotations</Label>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+<div id="root"></div>
+</body>
+</html>

@@ -8,19 +8,17 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        brand: {
-          50: '#f5f3ff',
-          100: '#ede9fe',
-          200: '#ddd6fe',
-          300: '#c4b5fd',
-          400: '#a78bfa',
-          500: '#8b5cf6',
-          600: '#7c3aed',
-          700: '#6d28d9',
-          800: '#5b21b6',
-          900: '#4c1d95'
-        }
-      }
+        mint:        '#3DFFD1',
+        'mint-bg':   '#EDFFF9',
+        'mint-dark': '#00453A',
+        ink:         '#111111',
+        mid:         '#444444',
+        muted:       '#888888',
+        surface:     '#F7F7F5',
+      },
+      fontFamily: {
+        sans: ['var(--font-jakarta)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+      },
     }
   },
   plugins: []

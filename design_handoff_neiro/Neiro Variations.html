@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neiro — Layout Variations</title>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>* { box-sizing: border-box; margin: 0; padding: 0; } body { background: #f0f0ea; }</style>
+</head>
+<body>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel">
+
+// ── Tokens ──────────────────────────────────────────────────────────────────
+const MINT = '#3DFFD1';
+const MINT_LIGHT = '#d0fff6';
+const INK = '#1a1a1a';
+const GRAY = '#888';
+const LIGHT = '#e4e4dc';
+const WHITE = '#ffffff';
+const sk = { hand: "'Caveat', cursive", sans: "'Plus Jakarta Sans', sans-serif" };
+
+// ── Primitives ───────────────────────────────────────────────────────────────
+const L = ({ children, size=11, color=INK, bold, italic, center, style={} }) => (
+  <div style={{ fontFamily: sk.hand, fontSize: size, color, fontWeight: bold?700:400,
+    fontStyle: italic?'italic':'normal', textAlign: center?'center':'left',
+    lineHeight: 1.35, ...style }}>{children}</div>
+);
+
+const Box = ({ w, h, fill=LIGHT, stroke=INK, sw=1.5, r=4, children, style={} }) => (
+  <div style={{ width:w, height:h, background:fill, border:`${sw}px solid ${stroke}`,
+    borderRadius:r, position:'relative', overflow:'hidden', flexShrink:0, ...style }}>
+    {children}
+  </div>
+);
+
+const Pill = ({ children, accent, style={} }) => (
+  <div style={{ display:'inline-flex', alignItems:'center', padding:'2px 7px',
+    borderRadius:20, background: accent?MINT:LIGHT,
+    border:`1.5px solid ${accent?'#00c9a0':'#ccc'}`,
+    fontFamily:sk.hand, fontSize:10, color:accent?'#005544':GRAY,
+    fontWeight:600, ...style }}>{children}</div>
+);
+
+const Sep = ({ my=0, color=LIGHT }) => (
+  <div style={{ width:'100%', height:1, background:color, marginTop:my, marginBottom:my }} />
+);
+
+// Album art placeholder
+const Art = ({ size, r=4, label, score, style={} }) => (
+  <Box w={size} h={size} fill={LIGHT} stroke={INK} sw={1} r={r} style={style}>
+    <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center',
+      justifyContent:'center', opacity:0.12, fontSize: size*0.3 }}>♪</div>
+    {score && (
+      <div style={{ position:'absolute', bottom:3, right:3, background:MINT,
+        borderRadius:3, fontFamily:sk.hand, fontSize:9, fontWeight:700,
+        padding:'1px 4px', color:'#004433' }}>{score}</div>
+    )}
+    {label && (
+      <div style={{ position:'absolute', bottom:3, left:3,
+        fontFamily:sk.hand, fontSize:8, color:GRAY }}>{label}</div>
+    )}
+  </Box>
+);
+
+// Mini avatar
+const Avatar = ({ initials='M', size=24, accent }) => (
+  <Box w={size} h={size} r={size/2} fill={accent?MINT:MINT_LIGHT}
+    stroke={MINT} sw={1.5}>
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
+      height:'100%' }}>
+      <L size={size*0.38} color='#005544' bold>{initials}</L>
+    </div>
+  </Box>
+);
+
+// Star rating (5 stars, half-step visual)
+const Stars = ({ filled=4.5, size=14, interactive }) => {
+  const stars = [1,2,3,4,5];
+  return (
+    <div style={{ display:'flex', gap:2 }}>
+      {stars.map(n => {
+        const full = filled >= n;
+        const half = !full && filled >= n - 0.5;
+        return (
+          <div key={n} style={{ position:'relative', width:size, height:size }}>
+            {/* empty star */}
+            <svg width={size} height={size} viewBox="0 0 14 14">
+              <path d="M7 1l1.5 3.5H12l-2.8 2.1 1 3.4L7 8.2l-3.2 1.8 1-3.4L2 4.5h3.5z"
+                fill={LIGHT} stroke={INK} strokeWidth="1" />
+            </svg>
+            {/* filled portion */}
+            {(full || half) && (
+              <div style={{ position:'absolute', inset:0, overflow:'hidden',
+                width: half ? '50%' : '100%' }}>
+                <svg width={size} height={size} viewBox="0 0 14 14">
+                  <path d="M7 1l1.5 3.5H12l-2.8 2.1 1 3.4L7 8.2l-3.2 1.8 1-3.4L2 4.5h3.5z"
+                    fill={MINT} stroke={INK} strokeWidth="1" />
+                </svg>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+// Search bar
+const Search = ({ val='', style={} }) => (
+  <Box w="100%" h={34} fill={WHITE} stroke={INK} r={17} sw={1.5}
+    style={{ display:'flex', alignItems:'center', padding:'0 14px', gap:6, ...style }}>
+    <L size={12} color={GRAY}>⌕</L>
+    <L size={11} color='#bbb'>{val || 'Search albums, artists…'}</L>
+  </Box>
+);
+
+const Nav = ({ page }) => (
+  <div style={{ display:'flex', alignItems:'center', padding:'0 14px', height:40,
+    borderBottom:`1.5px solid ${INK}`, background:WHITE, gap:14, flexShrink:0 }}>
+    <L size={14} bold color={INK} style={{ letterSpacing:-0.5 }}>音色 neiro</L>
+    <div style={{ flex:1 }} />
+    {['Home','Search','Activity','Profile'].map(p => (
+      <L key={p} size={10} color={p===page?INK:GRAY} bold={p===page}>{p}</L>
+    ))}
+    <Avatar initials="MK" size={22} accent />
+  </div>
+);
+
+const Annotation = ({ children }) => (
+  <div style={{ margin:'8px 14px 0', borderLeft:`3px solid ${MINT}`, paddingLeft:8 }}>
+    <L size={9} color={GRAY} italic>{children}</L>
+  </div>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HOMEPAGE VARIATION A — Card-forward + activity feed (reference)
+// ─────────────────────────────────────────────────────────────────────────────
+function HomeA() {
+  return (
+    <div style={{ background:WHITE, minHeight:'100%' }}>
+      <Nav page="Home" />
+      {/* Compact hero */}
+      <div style={{ padding:'16px 14px 12px', background:'#f8f8f4',
+        borderBottom:`1.5px solid ${LIGHT}` }}>
+        <L size={19} bold color={INK} style={{ lineHeight:1.1, letterSpacing:-0.5 }}>
+          Track every album<br/>you've ever heard.
+        </L>
+        <L size={11} color={GRAY} style={{ marginTop:5, marginBottom:12 }}>
+          Rate, review & catalog your listening life.
+        </L>
+        <Search />
+        <div style={{ display:'flex', gap:7, marginTop:10 }}>
+          <Pill accent>Sign up free</Pill>
+          <Pill>Browse trending →</Pill>
+        </div>
+      </div>
+
+      {/* Recently Rated — horizontal scroll strip */}
+      <div style={{ padding:'12px 14px 0' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+          <L size={12} bold>Recently Rated</L>
+          <L size={9} color={GRAY}>See all →</L>
+        </div>
+        <div style={{ display:'flex', gap:10, overflowX:'hidden' }}>
+          {[['Brat','8.4'],['Chromakopia','9.1'],['Short n Sweet','7.8'],['GNX','8.6'],['Fireworks','8.9']].map(([name,sc],i)=>(
+            <div key={i} style={{ flexShrink:0 }}>
+              <Art size={66} score={sc} />
+              <L size={8} color={INK} style={{ marginTop:3, width:66, overflow:'hidden',
+                whiteSpace:'nowrap', textOverflow:'ellipsis' }}>{name}</L>
+            </div>
+          ))}
+        </div>
+
+        {/* Activity feed */}
+        <div style={{ marginTop:12 }}>
+          <L size={12} bold style={{ marginBottom:8 }}>Friend Activity</L>
+          {[['maya_k','Brat','8'],['tonehunter','Chromakopia','9'],['waveform99','GNX','10']].map(([u,a,s],i)=>(
+            <div key={i} style={{ display:'flex', alignItems:'center', gap:8,
+              padding:'6px 0', borderBottom:`1px solid ${LIGHT}` }}>
+              <Avatar initials={u[0].toUpperCase()} size={22} />
+              <L size={10} color={INK}><b>{u}</b> rated <b>{a}</b></L>
+              <div style={{ flex:1 }} />
+              <div style={{ background:MINT, borderRadius:3, padding:'1px 5px' }}>
+                <L size={9} bold color={INK}>{s}/10</L>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Trending */}
+        <div style={{ marginTop:12, paddingBottom:14 }}>
+          <L size={12} bold style={{ marginBottom:8 }}>Trending</L>
+          {[['Chromakopia','Tyler, the Creator','Album','9.0'],
+            ['Brat','Charli XCX','Album','8.7'],
+            ['Stargate EP','Fred again..','EP','8.2']].map(([n,ar,t,avg],i)=>(
+            <div key={i} style={{ display:'flex', gap:10, padding:'6px 0',
+              borderBottom:`1px solid ${LIGHT}`, alignItems:'center' }}>
+              <L size={10} color={GRAY} style={{ width:12 }}>{i+1}</L>
+              <Art size={38} />
+              <div style={{ flex:1 }}>
+                <L size={10} bold>{n}</L>
+                <div style={{ display:'flex', gap:5, alignItems:'center', marginTop:2 }}>
+                  <L size={8} color={GRAY}>{ar}</L>
+                  <Pill style={{ fontSize:7, padding:'0 4px' }}>{t}</Pill>
+                </div>
+              </div>
+              <L size={12} bold color={INK}>{avg}</L>
+            </div>
+          ))}
+        </div>
+      </div>
+      <Annotation>A — Card strip + activity feed. Current baseline direction.</Annotation>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HOMEPAGE VARIATION B — Feature hero / editorial
+// ─────────────────────────────────────────────────────────────────────────────
+function HomeB() {
+  return (
+    <div style={{ background:WHITE, minHeight:'100%' }}>
+      <Nav page="Home" />
+
+      {/* Editorial hero — featured album */}
+      <div style={{ position:'relative', background:INK, padding:16, paddingBottom:14 }}>
+        {/* Large art placeholder */}
+        <div style={{ display:'flex', gap:12 }}>
+          <Box w={96} h={96} fill='#2a2a2a' stroke='#444' sw={1} r={6}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
+              height:'100%', opacity:0.25, fontSize:36 }}>♪</div>
+          </Box>
+          <div style={{ flex:1 }}>
+            <div style={{ display:'inline-flex', background:MINT, borderRadius:3,
+              padding:'2px 7px', marginBottom:6 }}>
+              <L size={9} bold color={INK}>✦ Album of the week</L>
+            </div>
+            <L size={16} bold color={WHITE} style={{ lineHeight:1.1, letterSpacing:-0.3 }}>
+              Chromakopia
+            </L>
+            <L size={11} color='#aaa' style={{ marginTop:2 }}>Tyler, the Creator</L>
+            <div style={{ marginTop:8, display:'flex', gap:10, alignItems:'flex-end' }}>
+              <div>
+                <L size={22} bold color={MINT}>9.0</L>
+                <L size={9} color='#666'>avg · 18k ratings</L>
+              </div>
+              <Pill style={{ marginBottom:2 }}>Rate it →</Pill>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Search */}
+      <div style={{ padding:'12px 14px', borderBottom:`1.5px solid ${LIGHT}` }}>
+        <Search />
+      </div>
+
+      {/* Curated rows */}
+      {[
+        { title:'New this month', items:['Brat','Short n Sweet','GNX','Fireworks'] },
+        { title:'Beloved by your friends', items:['Javelin','Diamond Jub.','The Record','Hit Me Hard'] },
+      ].map(({ title, items }) => (
+        <div key={title} style={{ padding:'12px 14px 0' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+            <L size={12} bold>{title}</L>
+            <L size={9} color={GRAY}>All →</L>
+          </div>
+          <div style={{ display:'flex', gap:10, overflowX:'hidden', paddingBottom:14 }}>
+            {items.map((name,i)=>(
+              <div key={i} style={{ flexShrink:0 }}>
+                <Art size={60} />
+                <L size={8} style={{ marginTop:3, width:60, whiteSpace:'nowrap',
+                  overflow:'hidden', textOverflow:'ellipsis' }}>{name}</L>
+              </div>
+            ))}
+          </div>
+          <Sep />
+        </div>
+      ))}
+
+      {/* Mini trending list */}
+      <div style={{ padding:'12px 14px 14px' }}>
+        <L size={12} bold style={{ marginBottom:8 }}>Trending this week</L>
+        {['Chromakopia · 9.0','Brat · 8.7','Stargate EP · 8.2'].map((row,i)=>(
+          <div key={i} style={{ display:'flex', gap:10, padding:'5px 0',
+            borderBottom:`1px solid ${LIGHT}`, alignItems:'center' }}>
+            <L size={9} color={GRAY} style={{ width:12 }}>{i+1}</L>
+            <Art size={32} r={3} />
+            <L size={10} style={{ flex:1 }}>{row}</L>
+            <L size={9} color={GRAY}>→</L>
+          </div>
+        ))}
+      </div>
+      <Annotation>B — Dark editorial hero spotlights featured album; search below fold.</Annotation>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HOMEPAGE VARIATION C — Minimal list / airy
+// ─────────────────────────────────────────────────────────────────────────────
+function HomeC() {
+  return (
+    <div style={{ background:WHITE, minHeight:'100%' }}>
+      <Nav page="Home" />
+
+      {/* Airy top — just headline + search, very spacious */}
+      <div style={{ padding:'24px 14px 20px', borderBottom:`1px solid ${LIGHT}` }}>
+        <L size={11} color={GRAY} style={{ letterSpacing:2, textTransform:'uppercase', marginBottom:6 }}>
+          music cataloging
+        </L>
+        <L size={22} bold color={INK} style={{ lineHeight:1.0, letterSpacing:-1 }}>
+          Your taste,<br/>documented.
+        </L>
+        <Search style={{ marginTop:16 }} />
+      </div>
+
+      {/* Pure list — no card strips, editorial rows only */}
+      <div style={{ padding:'0 14px' }}>
+        <div style={{ padding:'14px 0 6px' }}>
+          <L size={10} color={GRAY} style={{ letterSpacing:1, textTransform:'uppercase' }}>Trending now</L>
+        </div>
+        {[
+          { n:'Chromakopia', ar:'Tyler, the Creator', t:'Album', yr:2024, avg:'9.0', r:'18.1k' },
+          { n:'Brat', ar:'Charli XCX', t:'Album', yr:2024, avg:'8.7', r:'12.4k' },
+          { n:'Short n Sweet', ar:'Sabrina Carpenter', t:'Album', yr:2024, avg:'7.8', r:'9.3k' },
+          { n:'GNX', ar:'Kendrick Lamar', t:'Album', yr:2024, avg:'8.6', r:'14.2k' },
+        ].map(({n,ar,t,yr,avg,r},i)=>(
+          <div key={i} style={{ display:'flex', gap:12, padding:'12px 0',
+            borderBottom:`1px solid ${LIGHT}`, alignItems:'center' }}>
+            <L size={11} color={LIGHT} bold style={{ width:16, textAlign:'right', flexShrink:0 }}>
+              {String(i+1).padStart(2,'0')}
+            </L>
+            <Art size={44} r={4} />
+            <div style={{ flex:1 }}>
+              <L size={12} bold color={INK}>{n}</L>
+              <div style={{ display:'flex', gap:6, marginTop:3, alignItems:'center' }}>
+                <L size={9} color={GRAY}>{ar} · {yr}</L>
+                <Pill style={{ fontSize:7, padding:'0 4px' }}>{t}</Pill>
+              </div>
+            </div>
+            <div style={{ textAlign:'right' }}>
+              <L size={14} bold color={INK}>{avg}</L>
+              <L size={8} color={GRAY}>{r}</L>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Recent — very sparse */}
+      <div style={{ padding:'12px 14px 14px' }}>
+        <L size={10} color={GRAY} style={{ letterSpacing:1, textTransform:'uppercase', marginBottom:10 }}>
+          Just rated by the community
+        </L>
+        <div style={{ display:'flex', gap:10, overflowX:'hidden' }}>
+          {[['Javelin','9'],['Diamond Jub.','9'],['The Record','8'],['Hit Me Hard','8']].map(([name,sc],i)=>(
+            <div key={i} style={{ flexShrink:0, textAlign:'center' }}>
+              <Art size={54} score={sc} />
+              <L size={7} color={GRAY} style={{ marginTop:3, width:54, whiteSpace:'nowrap',
+                overflow:'hidden', textOverflow:'ellipsis', textAlign:'center' }}>{name}</L>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* CTA — very understated */}
+      <div style={{ margin:'0 14px 16px', padding:'12px 14px',
+        border:`1.5px solid ${LIGHT}`, borderRadius:8 }}>
+        <L size={12} bold color={INK} style={{ marginBottom:2 }}>Start cataloging</L>
+        <L size={10} color={GRAY} style={{ marginBottom:10 }}>
+          Create a free account to rate albums and follow friends.
+        </L>
+        <div style={{ display:'flex', gap:7 }}>
+          <Pill accent>Sign up →</Pill>
+          <Pill>Log in</Pill>
+        </div>
+      </div>
+      <Annotation>C — Airy editorial list; no strip cards; CTA lives at bottom.</Annotation>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ALBUM PAGE VARIATION A — Side-by-side header, number rating (reference)
+// ─────────────────────────────────────────────────────────────────────────────
+function AlbumA() {
+  return (
+    <div style={{ background:WHITE }}>
+      <Nav page="Search" />
+      {/* Header */}
+      <div style={{ display:'flex', gap:12, padding:'14px', background:'#f8f8f4',
+        borderBottom:`1.5px solid ${LIGHT}` }}>
+        <Art size={88} r={6} style={{ flexShrink:0 }} />
+        <div style={{ flex:1 }}>
+          <div style={{ display:'flex', gap:4, marginBottom:5, flexWrap:'wrap' }}>
+            <Pill>Album</Pill><Pill>2024</Pill>
+          </div>
+          <L size={16} bold color={INK} style={{ lineHeight:1.05, letterSpacing:-0.3 }}>Chromakopia</L>
+          <L size={11} color={GRAY}>Tyler, the Creator</L>
+          <div style={{ display:'flex', gap:8, marginTop:8, alignItems:'center' }}>
+            <div>
+              <L size={20} bold color={INK}>9.0</L>
+              <L size={8} color={GRAY}>community avg</L>
+            </div>
+            <div style={{ width:1, height:26, background:LIGHT }} />
+            <div>
+              <L size={10} color={GRAY}>18,142 ratings</L>
+              <L size={8} color={GRAY}>4,201 reviews</L>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* User actions — number tap */}
+      <div style={{ padding:'12px 14px', borderBottom:`1.5px solid ${LIGHT}` }}>
+        <L size={10} bold style={{ marginBottom:6 }}>Your rating</L>
+        <div style={{ display:'flex', gap:4, marginBottom:10 }}>
+          {[1,2,3,4,5,6,7,8,9,10].map(n=>(
+            <Box key={n} w={24} h={24} fill={n<=9?MINT:LIGHT}
+              stroke={n<=9?'#00c9a0':'#ccc'} r={4}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%' }}>
+                <L size={9} bold color={n<=9?'#004433':GRAY}>{n}</L>
+              </div>
+            </Box>
+          ))}
+        </div>
+        <L size={10} bold style={{ marginBottom:6 }}>Status</L>
+        <div style={{ display:'flex', gap:5, flexWrap:'wrap' }}>
+          {['Listened ✓','Listening','Want to Listen','Re-listening'].map((s,i)=>(
+            <Pill key={s} accent={i===0}>{s}</Pill>
+          ))}
+        </div>
+      </div>
+      <Annotation>A — Reference: compact side header, 1–10 tap rating.</Annotation>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ALBUM PAGE VARIATION B — Full-bleed art header, star rating
+// ─────────────────────────────────────────────────────────────────────────────
+function AlbumB() {
+  return (
+    <div style={{ background:WHITE }}>
+      <Nav page="Search" />
+
+      {/* Full-bleed art block */}
+      <div style={{ position:'relative', width:'100%', height:160,
+        background:'#1a1a1a', borderBottom:`1.5px solid ${INK}` }}>
+        {/* Art fills full width */}
+        <div style={{ position:'absolute', inset:0, display:'flex',
+          alignItems:'center', justifyContent:'center', opacity:0.15, fontSize:60 }}>♪</div>
+        {/* Release type chip top-right */}
+        <div style={{ position:'absolute', top:10, right:10 }}>
+          <Pill>Album · 2024</Pill>
+        </div>
+        {/* Info floats over bottom */}
+        <div style={{ position:'absolute', bottom:0, left:0, right:0,
+          padding:'12px 14px', background:'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)' }}>
+          <L size={17} bold color={WHITE} style={{ lineHeight:1.0, letterSpacing:-0.4 }}>Chromakopia</L>
+          <L size={11} color='#bbb'>Tyler, the Creator</L>
+        </div>
+      </div>
+
+      {/* Stats row */}
+      <div style={{ display:'flex', padding:'10px 14px', gap:16,
+        borderBottom:`1px solid ${LIGHT}`, background:'#f8f8f4' }}>
+        <div>
+          <L size={18} bold color={INK}>9.0</L>
+          <L size={8} color={GRAY}>community avg</L>
+        </div>
+        <div style={{ width:1, height:'100%', background:LIGHT }} />
+        <div>
+          <L size={11} bold color={INK}>18,142</L>
+          <L size={8} color={GRAY}>ratings</L>
+        </div>
+        <div style={{ width:1, height:'100%', background:LIGHT }} />
+        <div>
+          <L size={11} bold color={INK}>4,201</L>
+          <L size={8} color={GRAY}>reviews</L>
+        </div>
+        <div style={{ flex:1 }} />
+        <Pill>+ Wishlist</Pill>
+      </div>
+
+      {/* User action — STAR RATING */}
+      <div style={{ padding:'14px', borderBottom:`1.5px solid ${LIGHT}` }}>
+        <L size={10} bold style={{ marginBottom:8 }}>Your rating</L>
+        <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+          <Stars filled={4.5} size={22} />
+          <L size={12} color={GRAY}>4.5 / 5</L>
+        </div>
+        <L size={9} color={GRAY} style={{ marginTop:4 }}>Tap a star · half-steps supported</L>
+
+        <Sep my={12} />
+
+        <L size={10} bold style={{ marginBottom:6 }}>Status</L>
+        <div style={{ display:'flex', gap:5, flexWrap:'wrap' }}>
+          {['Listened ✓','Listening','Want to Listen','Re-listening'].map((s,i)=>(
+            <Pill key={s} accent={i===0}>{s}</Pill>
+          ))}
+        </div>
+
+        <Box w="100%" h={46} fill='#fafaf8' stroke='#ddd' r={6}
+          style={{ marginTop:10, display:'flex', alignItems:'center', padding:'0 10px' }}>
+          <L size={10} color='#ccc'>Add a review…</L>
+        </Box>
+      </div>
+
+      {/* Tracklist */}
+      <div style={{ padding:'12px 14px 0' }}>
+        <L size={11} bold style={{ marginBottom:6 }}>Tracklist</L>
+        {['St. Chroma','Rah Tah Tah','Noid','Darling, I'].map((t,i)=>(
+          <div key={t} style={{ display:'flex', gap:8, padding:'5px 0',
+            borderBottom:`1px solid ${LIGHT}` }}>
+            <L size={9} color={GRAY} style={{ width:12 }}>{i+1}</L>
+            <L size={10}>{t}</L>
+            <div style={{ flex:1 }} />
+            <L size={9} color={GRAY}>3:2{i+1}</L>
+          </div>
+        ))}
+        <L size={8} color={GRAY} style={{ marginTop:3 }}>+ 10 more</L>
+      </div>
+
+      {/* Reviews */}
+      <div style={{ padding:'12px 14px 14px' }}>
+        <L size={11} bold style={{ marginBottom:8 }}>Community Reviews</L>
+        {[
+          { u:'maya_k', sc:4.5, txt:'Tyler at his most ambitious. Every track is a statement.' },
+          { u:'waveform99', sc:5, txt:'Flawless. Production textures alone earn a perfect score.' },
+        ].map((r,i)=>(
+          <div key={i} style={{ padding:'8px 0', borderBottom:`1px solid ${LIGHT}` }}>
+            <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
+              <Avatar initials={r.u[0].toUpperCase()} size={20} />
+              <L size={10} bold>{r.u}</L>
+              <div style={{ flex:1 }} />
+              <Stars filled={r.sc} size={11} />
+            </div>
+            <L size={10} color={INK} style={{ lineHeight:1.5 }}>{r.txt}</L>
+          </div>
+        ))}
+      </div>
+      <Annotation>B — Full-bleed art hero; star rating replaces number tap; stats in a row.</Annotation>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ALBUM PAGE VARIATION C — Centered/airy, large art, star rating, minimal
+// ─────────────────────────────────────────────────────────────────────────────
+function AlbumC() {
+  return (
+    <div style={{ background:WHITE }}>
+      <Nav page="Search" />
+
+      {/* Centered art */}
+      <div style={{ padding:'20px 14px 14px', display:'flex', flexDirection:'column',
+        alignItems:'center', borderBottom:`1px solid ${LIGHT}`, background:'#fafaf8' }}>
+        <Art size={130} r={8} style={{ boxShadow:'0 4px 20px rgba(0,0,0,0.08)' }} />
+        <div style={{ marginTop:12, textAlign:'center' }}>
+          <div style={{ display:'flex', gap:5, justifyContent:'center', marginBottom:6 }}>
+            <Pill>Album</Pill><Pill>2024</Pill>
+          </div>
+          <L size={18} bold color={INK} style={{ lineHeight:1.0, letterSpacing:-0.5 }}>Chromakopia</L>
+          <L size={11} color={GRAY} style={{ marginTop:2 }}>Tyler, the Creator</L>
+        </div>
+
+        {/* Community avg — centered */}
+        <div style={{ marginTop:14, display:'flex', gap:20, alignItems:'center' }}>
+          <div style={{ textAlign:'center' }}>
+            <L size={24} bold color={INK}>9.0</L>
+            <L size={8} color={GRAY}>avg score</L>
+          </div>
+          <Sep my={0} color={LIGHT} />
+          <div style={{ textAlign:'center' }}>
+            <L size={13} bold color={INK}>18,142</L>
+            <L size={8} color={GRAY}>ratings</L>
+          </div>
+          <div style={{ textAlign:'center' }}>
+            <L size={13} bold color={INK}>4,201</L>
+            <L size={8} color={GRAY}>reviews</L>
+          </div>
+        </div>
+      </div>
+
+      {/* YOUR rating — centered, prominent star rating */}
+      <div style={{ padding:'18px 14px 14px', borderBottom:`1px solid ${LIGHT}`,
+        display:'flex', flexDirection:'column', alignItems:'center' }}>
+        <L size={10} bold color={GRAY} style={{ letterSpacing:1,
+          textTransform:'uppercase', marginBottom:10 }}>Your rating</L>
+        <Stars filled={4.5} size={28} />
+        <L size={9} color={GRAY} style={{ marginTop:6 }}>4.5 stars · tap or drag to adjust</L>
+
+        {/* Status */}
+        <div style={{ display:'flex', gap:6, marginTop:14, flexWrap:'wrap', justifyContent:'center' }}>
+          {['Listened ✓','Listening','Want to Listen','Re-listening'].map((s,i)=>(
+            <Pill key={s} accent={i===0}>{s}</Pill>
+          ))}
+        </div>
+
+        {/* Review */}
+        <Box w="100%" h={44} fill='#f5f5f2' stroke={LIGHT} r={6}
+          style={{ marginTop:12, display:'flex', alignItems:'center', padding:'0 12px' }}>
+          <L size={10} color='#ccc'>Write a short review…</L>
+        </Box>
+        <div style={{ marginTop:8, alignSelf:'flex-end' }}>
+          <Pill accent>Save →</Pill>
+        </div>
+      </div>
+
+      {/* Tracklist minimal */}
+      <div style={{ padding:'12px 14px 8px' }}>
+        <L size={10} color={GRAY} style={{ letterSpacing:1, textTransform:'uppercase', marginBottom:8 }}>
+          Tracklist
+        </L>
+        {['St. Chroma','Rah Tah Tah','Noid','Darling, I'].map((t,i)=>(
+          <div key={t} style={{ display:'flex', gap:8, padding:'6px 0',
+            borderBottom:`1px solid ${LIGHT}` }}>
+            <L size={9} color={LIGHT} style={{ width:16 }}>{String(i+1).padStart(2,'0')}</L>
+            <L size={11}>{t}</L>
+            <div style={{ flex:1 }} />
+            <L size={9} color={GRAY}>3:2{i+1}</L>
+          </div>
+        ))}
+        <L size={8} color={GRAY} style={{ marginTop:4 }}>+ 10 more tracks</L>
+      </div>
+
+      {/* Reviews — minimal */}
+      <div style={{ padding:'8px 14px 14px' }}>
+        <L size={10} color={GRAY} style={{ letterSpacing:1, textTransform:'uppercase', marginBottom:10 }}>
+          Reviews
+        </L>
+        {[
+          { u:'maya_k', sc:4.5, txt:'Tyler at his most ambitious — the concept album we needed.' },
+          { u:'waveform99', sc:5, txt:'Flawless. Production alone earns a perfect score.' },
+        ].map((r,i)=>(
+          <div key={i} style={{ padding:'10px 0', borderBottom:`1px solid ${LIGHT}` }}>
+            <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:5 }}>
+              <Avatar initials={r.u[0].toUpperCase()} size={20} />
+              <L size={10} bold>{r.u}</L>
+              <div style={{ flex:1 }} />
+              <Stars filled={r.sc} size={11} />
+            </div>
+            <L size={10} color={INK} style={{ lineHeight:1.5 }}>{r.txt}</L>
+          </div>
+        ))}
+      </div>
+      <Annotation>C — Centered art, generous space, large stars, zero chrome distraction.</Annotation>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HOMEPAGE REFINED — Search in nav, no hero, personalized feed
+// ─────────────────────────────────────────────────────────────────────────────
+function NavWithSearch({ page }) {
+  return (
+    <div style={{ display:'flex', alignItems:'center', padding:'0 10px', height:46,
+      borderBottom:`1.5px solid ${INK}`, background:WHITE, gap:10, flexShrink:0 }}>
+      <L size={13} bold color={INK} style={{ letterSpacing:-0.5, whiteSpace:'nowrap' }}>音色 neiro</L>
+      {/* Search bar inline */}
+      <Box w="100%" h={28} fill={'#f4f4f0'} stroke={'#ccc'} sw={1} r={14}
+        style={{ display:'flex', alignItems:'center', padding:'0 10px', gap:5, flex:1 }}>
+        <L size={11} color={GRAY}>⌕</L>
+        <L size={10} color='#bbb'>Search albums, artists…</L>
+      </Box>
+      <Avatar initials="MK" size={28} accent />
+    </div>
+  );
+}
+
+function SectionHeader({ title, sub }) {
+  return (
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:8 }}>
+      <div>
+        <L size={12} bold color={INK}>{title}</L>
+        {sub && <L size={9} color={GRAY} style={{ marginTop:1 }}>{sub}</L>}
+      </div>
+      <L size={9} color={GRAY}>See all →</L>
+    </div>
+  );
+}
+
+function HomeRefined() {
+  return (
+    <div style={{ background:WHITE, minHeight:'100%' }}>
+      <NavWithSearch page="Home" />
+
+      {/* Greeting */}
+      <div style={{ padding:'16px 14px 12px', borderBottom:`1px solid ${LIGHT}` }}>
+        <L size={15} bold color={INK} style={{ letterSpacing:-0.3 }}>Good evening, maya 👋</L>
+        <L size={10} color={GRAY} style={{ marginTop:2 }}>You've rated 347 albums. Here's what's next.</L>
+      </div>
+
+      {/* Section 1 — Pick up where you left off */}
+      <div style={{ padding:'14px 14px 0' }}>
+        <SectionHeader title="Pick up where you left off" sub="Albums you started but haven't rated" />
+        <div style={{ display:'flex', gap:10, overflowX:'hidden', paddingBottom:14 }}>
+          {[['Brat','Charli XCX'],['Chromakopia','Tyler, the Creator'],['GNX','Kendrick']].map(([name,ar],i)=>(
+            <div key={i} style={{ flexShrink:0 }}>
+              <div style={{ position:'relative' }}>
+                <Art size={72} />
+                <div style={{ position:'absolute', bottom:4, right:4,
+                  background:WHITE, border:`1.5px solid ${INK}`, borderRadius:3,
+                  padding:'1px 5px' }}>
+                  <L size={8} bold color={INK}>Rate →</L>
+                </div>
+              </div>
+              <L size={8} bold color={INK} style={{ marginTop:3, width:72, whiteSpace:'nowrap',
+                overflow:'hidden', textOverflow:'ellipsis' }}>{name}</L>
+              <L size={8} color={GRAY} style={{ width:72, whiteSpace:'nowrap',
+                overflow:'hidden', textOverflow:'ellipsis' }}>{ar}</L>
+            </div>
+          ))}
+        </div>
+        <Sep />
+      </div>
+
+      {/* Section 2 — Because you love Kendrick */}
+      <div style={{ padding:'14px 14px 0' }}>
+        <SectionHeader title="Because you love Kendrick Lamar" sub="Albums fans of his also rated highly" />
+        <div style={{ display:'flex', gap:10, overflowX:'hidden', paddingBottom:14 }}>
+          {[['Section.80','8.8'],['good kid, m.A.A.d city','9.4'],['To Pimp a Butterfly','9.7'],['DAMN.','9.2']].map(([name,avg],i)=>(
+            <div key={i} style={{ flexShrink:0 }}>
+              <Art size={66} score={avg} />
+              <L size={8} color={INK} style={{ marginTop:3, width:66, whiteSpace:'nowrap',
+                overflow:'hidden', textOverflow:'ellipsis' }}>{name}</L>
+            </div>
+          ))}
+        </div>
+        <Sep />
+      </div>
+
+      {/* Section 3 — Friends recently rated */}
+      <div style={{ padding:'14px 14px 0' }}>
+        <SectionHeader title="Friends are listening to" sub="From people you follow" />
+        {[
+          { user:'tonehunter', album:'Short n Sweet', artist:'Sabrina Carpenter', sc:'8', stars:4 },
+          { user:'waveform99', album:'Manning Fireworks', artist:'MJ Lenderman', sc:'9', stars:4.5 },
+          { user:'diggr__', album:'Diamond Jubilee', artist:'Cindy Lee', sc:'10', stars:5 },
+        ].map((item,i)=>(
+          <div key={i} style={{ display:'flex', alignItems:'center', gap:10,
+            padding:'8px 0', borderBottom:`1px solid ${LIGHT}` }}>
+            <Avatar initials={item.user[0].toUpperCase()} size={28} />
+            <div style={{ flex:1, minWidth:0 }}>
+              <L size={10} color={INK}><b>{item.user}</b> rated</L>
+              <L size={11} bold color={INK} style={{ whiteSpace:'nowrap', overflow:'hidden',
+                textOverflow:'ellipsis' }}>{item.album}</L>
+              <L size={8} color={GRAY}>{item.artist}</L>
+            </div>
+            <div style={{ textAlign:'right', flexShrink:0 }}>
+              <Stars filled={item.stars} size={10} />
+              <L size={8} color={GRAY} style={{ marginTop:2 }}>{item.sc}/10</L>
+            </div>
+            <Art size={40} r={3} style={{ flexShrink:0 }} />
+          </div>
+        ))}
+      </div>
+
+      {/* Section 4 — Trending in your genres */}
+      <div style={{ padding:'14px 14px 0' }}>
+        <SectionHeader title="Trending in Hip-Hop & Indie" sub="Your top genres this year" />
+        <div style={{ display:'flex', gap:10, overflowX:'hidden', paddingBottom:14 }}>
+          {[['Javelin','9.1'],['The Record','8.4'],['Hit Me Hard','8.1'],['Radical Opt.','8.6']].map(([name,avg],i)=>(
+            <div key={i} style={{ flexShrink:0 }}>
+              <Art size={66} score={avg} />
+              <L size={8} color={INK} style={{ marginTop:3, width:66, whiteSpace:'nowrap',
+                overflow:'hidden', textOverflow:'ellipsis' }}>{name}</L>
+            </div>
+          ))}
+        </div>
+        <Sep />
+      </div>
+
+      {/* Section 5 — Your listen later list */}
+      <div style={{ padding:'14px 14px 16px' }}>
+        <SectionHeader title="Your Listen Later" sub="3 albums waiting" />
+        {[['Desire, I Want to Turn Into You','Caroline Polachek'],
+          ['All Born Screaming','St. Vincent'],
+          ['Bright Future','Adrianne Lenker']].map(([name,ar],i)=>(
+          <div key={i} style={{ display:'flex', gap:10, padding:'7px 0',
+            borderBottom:`1px solid ${LIGHT}`, alignItems:'center' }}>
+            <Art size={38} r={3} />
+            <div style={{ flex:1, minWidth:0 }}>
+              <L size={10} bold color={INK} style={{ whiteSpace:'nowrap', overflow:'hidden',
+                textOverflow:'ellipsis' }}>{name}</L>
+              <L size={8} color={GRAY}>{ar}</L>
+            </div>
+            <L size={9} color={GRAY}>→</L>
+          </div>
+        ))}
+      </div>
+      <Annotation>Refined A — Search in nav; hero gone; 5 personalized sections; no generic trending.</Annotation>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ALBUM PAGE REFINED — Centered art, star rating only, Listen Later CTA
+// ─────────────────────────────────────────────────────────────────────────────
+function AlbumRefined() {
+  return (
+    <div style={{ background:WHITE }}>
+      <NavWithSearch page="Search" />
+
+      {/* Centered art */}
+      <div style={{ padding:'20px 14px 16px', display:'flex', flexDirection:'column',
+        alignItems:'center', borderBottom:`1px solid ${LIGHT}`, background:'#fafaf8' }}>
+        <Art size={130} r={8} style={{ boxShadow:'0 4px 20px rgba(0,0,0,0.08)' }} />
+        <div style={{ marginTop:12, textAlign:'center' }}>
+          <div style={{ display:'flex', gap:5, justifyContent:'center', marginBottom:6 }}>
+            <Pill>Album</Pill><Pill>2024</Pill>
+          </div>
+          <L size={18} bold color={INK} style={{ lineHeight:1.0, letterSpacing:-0.5 }}>Chromakopia</L>
+          <L size={11} color={GRAY} style={{ marginTop:2 }}>Tyler, the Creator</L>
+        </div>
+
+        {/* Community avg — numeric only */}
+        <div style={{ marginTop:14, display:'flex', gap:20, alignItems:'center' }}>
+          <div style={{ textAlign:'center' }}>
+            <L size={22} bold color={INK}>9.0</L>
+            <L size={8} color={GRAY} style={{ marginTop:2 }}>community avg · 18,142 ratings</L>
+          </div>
+          <div style={{ textAlign:'center' }}>
+            <L size={14} bold color={INK}>4,201</L>
+            <L size={8} color={GRAY} style={{ marginTop:2 }}>reviews</L>
+          </div>
+        </div>
+      </div>
+
+      {/* Rate this album */}
+      <div style={{ padding:'18px 14px 16px', borderBottom:`1px solid ${LIGHT}`,
+        display:'flex', flexDirection:'column', alignItems:'center' }}>
+        <L size={10} bold color={GRAY} style={{ letterSpacing:1,
+          textTransform:'uppercase', marginBottom:10 }}>Rate this album</L>
+        <Stars filled={0} size={30} />
+        <L size={9} color={GRAY} style={{ marginTop:6 }}>Tap a star to rate · half-steps supported</L>
+
+        <Box w="100%" h={44} fill='#f5f5f2' stroke={LIGHT} r={6}
+          style={{ marginTop:14, display:'flex', alignItems:'center', padding:'0 12px' }}>
+          <L size={10} color='#ccc'>Write a short review… (optional)</L>
+        </Box>
+        <div style={{ marginTop:10, display:'flex', gap:8, alignItems:'center', alignSelf:'stretch', justifyContent:'space-between' }}>
+          {/* Listen Later button */}
+          <div style={{ display:'flex', alignItems:'center', gap:6,
+            border:`1.5px solid ${INK}`, borderRadius:20, padding:'4px 12px',
+            cursor:'pointer' }}>
+            <L size={10} bold color={INK}>＋ Listen Later</L>
+          </div>
+          <Pill accent style={{ padding:'5px 14px' }}>Save rating →</Pill>
+        </div>
+      </div>
+
+      {/* Tracklist */}
+      <div style={{ padding:'12px 14px 8px' }}>
+        <L size={10} color={GRAY} style={{ letterSpacing:1, textTransform:'uppercase', marginBottom:8 }}>
+          Tracklist
+        </L>
+        {['St. Chroma','Rah Tah Tah','Noid','Darling, I'].map((t,i)=>(
+          <div key={t} style={{ display:'flex', gap:8, padding:'6px 0',
+            borderBottom:`1px solid ${LIGHT}` }}>
+            <L size={9} color={LIGHT} style={{ width:16 }}>{String(i+1).padStart(2,'0')}</L>
+            <L size={11}>{t}</L>
+            <div style={{ flex:1 }} />
+            <L size={9} color={GRAY}>3:2{i+1}</L>
+          </div>
+        ))}
+        <L size={8} color={GRAY} style={{ marginTop:4 }}>+ 10 more tracks</L>
+      </div>
+
+      {/* Reviews */}
+      <div style={{ padding:'8px 14px 14px' }}>
+        <L size={10} color={GRAY} style={{ letterSpacing:1, textTransform:'uppercase', marginBottom:10 }}>
+          Reviews
+        </L>
+        {[
+          { u:'maya_k', sc:4.5, txt:'Tyler at his most ambitious — the concept album we needed.' },
+          { u:'waveform99', sc:5, txt:'Flawless. Production alone earns a perfect score.' },
+        ].map((r,i)=>(
+          <div key={i} style={{ padding:'10px 0', borderBottom:`1px solid ${LIGHT}` }}>
+            <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:5 }}>
+              <Avatar initials={r.u[0].toUpperCase()} size={20} />
+              <L size={10} bold>{r.u}</L>
+              <div style={{ flex:1 }} />
+              <Stars filled={r.sc} size={11} />
+            </div>
+            <L size={10} color={INK} style={{ lineHeight:1.5 }}>{r.txt}</L>
+          </div>
+        ))}
+      </div>
+      <Annotation>Refined C — Stars only; no status pills; Listen Later lives next to Save.</Annotation>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// APP
+// ─────────────────────────────────────────────────────────────────────────────
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accentColor": "#3DFFD1",
+  "inkColor": "#1a1a1a"
+}/*EDITMODE-END*/;
+
+function App() {
+  const [tweakOpen, setTweakOpen] = React.useState(false);
+  const [tweaks, setTweaks] = React.useState(TWEAK_DEFAULTS);
+
+  React.useEffect(() => {
+    window.addEventListener('message', e => {
+      if (e.data?.type === '__activate_edit_mode') setTweakOpen(true);
+      if (e.data?.type === '__deactivate_edit_mode') setTweakOpen(false);
+    });
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+  }, []);
+
+  const updateTweak = (key, val) => {
+    setTweaks(t => ({ ...t, [key]: val }));
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { [key]: val } }, '*');
+  };
+
+  return (
+    <>
+      <DesignCanvas>
+        <DCSection id="refined" title="↳ Refined Directions">
+          <DCArtboard id="homeR" label="Homepage — Search in nav, personalized" width={375} height={860}>
+            <HomeRefined />
+          </DCArtboard>
+          <DCArtboard id="albumR" label="Album — Stars + Listen Later" width={375} height={820}>
+            <AlbumRefined />
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="home" title="Homepage — 3 Layout Directions (reference)">
+          <DCArtboard id="homeA" label="A — Card strip + feed" width={375} height={740}>
+            <HomeA />
+          </DCArtboard>
+          <DCArtboard id="homeB" label="B — Editorial dark hero" width={375} height={740}>
+            <HomeB />
+          </DCArtboard>
+          <DCArtboard id="homeC" label="C — Minimal airy list" width={375} height={740}>
+            <HomeC />
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="album" title="Album Page — 3 Layout Directions (reference)">
+          <DCArtboard id="albumA" label="A — Side header + number tap" width={375} height={760}>
+            <AlbumA />
+          </DCArtboard>
+          <DCArtboard id="albumB" label="B — Full-bleed art + stars" width={375} height={820}>
+            <AlbumB />
+          </DCArtboard>
+          <DCArtboard id="albumC" label="C — Centered art + large stars" width={375} height={820}>
+            <AlbumC />
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+
+      {tweakOpen && (
+        <div style={{ position:'fixed', bottom:20, right:20,
+          background:WHITE, border:`1.5px solid ${INK}`,
+          borderRadius:10, padding:16, width:210,
+          boxShadow:'0 4px 24px rgba(0,0,0,0.12)', zIndex:10000 }}>
+          <div style={{ fontFamily:sk.hand, fontWeight:700, fontSize:13,
+            color:INK, marginBottom:12 }}>Tweaks</div>
+
+          <div style={{ marginBottom:10 }}>
+            <div style={{ fontFamily:sk.hand, fontSize:10, fontWeight:700,
+              color:INK, marginBottom:5 }}>Accent color</div>
+            <div style={{ display:'flex', gap:6 }}>
+              {['#3DFFD1','#FF6B6B','#A78BFA','#FBBF24'].map(c=>(
+                <div key={c} onClick={() => updateTweak('accentColor', c)} style={{
+                  width:22, height:22, borderRadius:11, background:c, cursor:'pointer',
+                  border: tweaks.accentColor===c ? `2px solid ${INK}` : '2px solid transparent'
+                }} />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontFamily:sk.hand, fontSize:10, fontWeight:700,
+              color:INK, marginBottom:5 }}>Ink style</div>
+            <div style={{ display:'flex', gap:6 }}>
+              {['#1a1a1a','#2d2416','#0f1f3d'].map(c=>(
+                <div key={c} onClick={() => updateTweak('inkColor', c)} style={{
+                  width:22, height:22, borderRadius:3, background:c, cursor:'pointer',
+                  border: tweaks.inkColor===c ? `2px solid ${MINT}` : '2px solid transparent'
+                }} />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+<div id="root"></div>
+</body>
+</html>

@@ -3,36 +3,31 @@
 import { useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '../../../lib/supabaseClient';
-import { Suspense } from 'react';
-
-function CallbackHandler() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-
-  useEffect(() => {
-    const code = searchParams.get('code');
-    if (!supabase) { router.replace('/'); return; }
-
-    if (code) {
-      supabase.auth.exchangeCodeForSession(code).then(() => {
-        router.replace('/profile');
-      });
-    } else {
-      router.replace('/profile');
-    }
-  }, []);
-
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50">
-      <p className="text-sm text-slate-500">Signing you in…</p>
-    </main>
-  );
-}
 
 export default function AuthCallbackPage() {
+  const router = useRouter();
+  const params = useSearchParams();
+
+  useEffect(() => {
+    const code = params.get('code');
+    if (!code || !supabase) {
+      router.replace('/login');
+      return;
+    }
+
+    supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
+      if (error) {
+        console.error('[auth/callback]', error.message);
+        router.replace('/login');
+      } else {
+        router.replace('/profile');
+      }
+    });
+  }, [params, router]);
+
   return (
-    <Suspense>
-      <CallbackHandler />
-    </Suspense>
+    <div className="flex items-center justify-center min-h-screen">
+      <p className="text-muted text-[14px]">Signing you in…</p>
+    </div>
   );
 }

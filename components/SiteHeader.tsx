@@ -16,13 +16,12 @@ export default function SiteHeader() {
   useEffect(() => {
     if (!supabase) return;
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
     });
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -33,8 +32,8 @@ export default function SiteHeader() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const handleSearch = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
     if (!query.trim()) return;
     router.push(`/search?query=${encodeURIComponent(query.trim())}`);
   };
@@ -48,71 +47,81 @@ export default function SiteHeader() {
   const initial = session?.user?.email?.[0].toUpperCase() ?? '';
 
   return (
-    <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 py-2 backdrop-blur-xl">
-      <div className="grid w-full items-center gap-4 px-6 md:grid-cols-[auto_1fr_auto]">
-        <Link href="/" className="flex items-center gap-2 text-slate-900">
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900 text-xs font-bold text-white">B</div>
-          <span className="text-sm font-semibold">Bside</span>
-        </Link>
+    <header className="h-[60px] bg-white border-b border-[#EBEBEB] sticky top-0 z-50 flex items-center px-5">
 
-        <form onSubmit={handleSearch} className="mx-auto w-full max-w-xl">
-          <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-100 px-3 py-1">
+      {/* Logo — fixed left */}
+      <Link
+        href="/"
+        className="flex-shrink-0 text-base font-extrabold text-ink"
+        style={{ letterSpacing: '-0.5px' }}
+      >
+        音色 <span className="text-mint">neiro</span>
+      </Link>
+
+      {/* Search — absolutely centered */}
+      <div className="absolute left-1/2 -translate-x-1/2 w-full max-w-[480px] px-4">
+        <form onSubmit={handleSearch}>
+          <div className="bg-surface border border-[#EBEBEB] rounded-full px-4 py-2 flex items-center gap-2">
+            <span className="text-muted" style={{ fontSize: 15 }}>⌕</span>
             <input
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search albums, artists, or releases"
-              className="w-full bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search albums, artists…"
+              className="flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-[#C0C0BE]"
             />
-            <button type="submit" className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white transition hover:bg-slate-800">
-              Search
-            </button>
           </div>
         </form>
+      </div>
 
-        <div className="flex items-center justify-end">
-          {session?.user?.email ? (
-            <div ref={dropdownRef} className="relative">
-              {/* Avatar button */}
-              <button
-                onClick={() => setDropdownOpen((o) => !o)}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white transition hover:opacity-80"
-                aria-label="Open profile menu"
-              >
-                {initial}
-              </button>
+      {/* Right side — nav + auth */}
+      <div className="ml-auto flex items-center gap-6 flex-shrink-0">
+        <Link href="/" className="text-[13px] font-medium text-muted hover:text-ink transition whitespace-nowrap">
+          Home
+        </Link>
+        <Link href="/activity" className="text-[13px] font-medium text-muted hover:text-ink transition whitespace-nowrap">
+          Activity
+        </Link>
+        <Link href="/lists" className="text-[13px] font-medium text-muted hover:text-ink transition whitespace-nowrap">
+          For You
+        </Link>
 
-              {/* Dropdown */}
-              {dropdownOpen && (
-                <div className="absolute right-0 mt-2 w-48 rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
-                  <div className="border-b border-slate-100 px-4 py-2">
-                    <p className="text-xs text-slate-500 truncate">{session.user.email}</p>
-                  </div>
-                  <Link
-                    href="/profile"
-                    onClick={() => setDropdownOpen(false)}
-                    className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition"
-                  >
-                    Profile
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={handleSignOut}
-                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-slate-50 transition"
-                  >
-                    Log out
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : (
-            <Link
-              href="/login"
-              className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm text-slate-900 transition hover:bg-slate-100"
+        {session?.user?.email ? (
+          <div ref={dropdownRef} className="relative">
+            <button
+              onClick={() => setDropdownOpen((o) => !o)}
+              className="w-[34px] h-[34px] rounded-full bg-mint-bg border-2 border-mint flex items-center justify-center font-bold text-mint-dark text-[12px] transition hover:opacity-80"
+              aria-label="Open profile menu"
             >
-              Log in
-            </Link>
-          )}
-        </div>
+              {initial}
+            </button>
+
+            {dropdownOpen && (
+              <div className="absolute right-0 mt-2 w-48 rounded-xl border border-[#EBEBEB] bg-white py-1 shadow-lg">
+                <div className="border-b border-[#EBEBEB] px-4 py-2">
+                  <p className="text-xs text-muted truncate">{session.user.email}</p>
+                </div>
+                <Link
+                  href="/profile"
+                  onClick={() => setDropdownOpen(false)}
+                  className="block px-4 py-2 text-sm text-mid hover:bg-surface transition"
+                >
+                  Profile
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-surface transition"
+                >
+                  Log out
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <Link href="/login" className="text-[13px] font-medium text-muted hover:text-ink transition">
+            Log in
+          </Link>
+        )}
       </div>
     </header>
   );

@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neiro — Hi-Fi</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #EDEDEA; font-family: 'Plus Jakarta Sans', sans-serif; }
+</style>
+</head>
+<body>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel">
+
+// ── TOKENS ────────────────────────────────────────────────────────────────────
+const C = {
+  mint:     '#3DFFD1',
+  mintBg:   '#EDFFF9',
+  mintDark: '#00453A',
+  ink:      '#111111',
+  mid:      '#444444',
+  muted:    '#888888',
+  border:   '#EBEBEB',
+  surface:  '#F7F7F5',
+  white:    '#FFFFFF',
+};
+
+const f = (weight, size, extra={}) => ({
+  fontFamily: "'Plus Jakarta Sans', sans-serif",
+  fontWeight: weight, fontSize: size, lineHeight: 1.4, ...extra,
+});
+
+// ── PRIMITIVES ────────────────────────────────────────────────────────────────
+
+// Album art placeholder — diagonal stripes
+let artSeq = 0;
+function Art({ size = 160, r = 8, score, style = {} }) {
+  const id = React.useRef(`art-${artSeq++}`).current;
+  return (
+    <div style={{ width: size, height: size, borderRadius: r, overflow: 'hidden',
+      flexShrink: 0, position: 'relative', ...style }}>
+      <svg width={size} height={size} style={{ display: 'block' }}>
+        <defs>
+          <pattern id={id} width="10" height="10"
+            patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <rect width="5" height="10" fill="#EDEDEA" />
+            <rect x="5" width="5" height="10" fill="#E2E2DC" />
+          </pattern>
+        </defs>
+        <rect width={size} height={size} fill={`url(#${id})`} />
+        <text x="50%" y="54%" textAnchor="middle" dominantBaseline="middle"
+          fontFamily="monospace" fontSize={Math.max(8, size * 0.075)} fill="#BBBBB5">
+          album art
+        </text>
+      </svg>
+      {score && (
+        <div style={{ position: 'absolute', bottom: 6, right: 6,
+          background: C.mint, borderRadius: 5, padding: '2px 7px',
+          ...f(700, 11), color: C.mintDark }}>
+          ★ {score}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Square art for grids — uses padding-bottom trick
+function ArtSquare({ score, r = 6 }) {
+  const id = React.useRef(`arts-${artSeq++}`).current;
+  return (
+    <div style={{ position: 'relative', width: '100%', paddingBottom: '100%', borderRadius: r, overflow: 'hidden', background: '#EDEDEA' }}>
+      <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+        <defs>
+          <pattern id={id} width="10" height="10"
+            patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <rect width="5" height="10" fill="#EDEDEA" />
+            <rect x="5" width="5" height="10" fill="#E2E2DC" />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill={`url(#${id})`} />
+      </svg>
+      {score && (
+        <div style={{ position: 'absolute', bottom: 4, right: 4,
+          background: C.mint, borderRadius: 4, padding: '1px 6px',
+          ...f(700, 10), color: C.mintDark }}>★ {score}</div>
+      )}
+    </div>
+  );
+}
+
+// Star rating display
+function Stars({ value = 0, size = 14 }) {
+  return (
+    <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+      {[1, 2, 3, 4, 5].map(n => {
+        const full = value >= n;
+        const half = !full && value >= n - 0.5;
+        return (
+          <div key={n} style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+            <svg width={size} height={size} viewBox="0 0 12 12">
+              <path d="M6 1 L7.3 4.1 L10.8 4.1 L8.0 6.2 L9.0 9.5 L6 7.5 L3.0 9.5 L4.0 6.2 L1.2 4.1 L4.7 4.1 Z"
+                fill="#E5E5E0" />
+            </svg>
+            {(full || half) && (
+              <div style={{ position: 'absolute', top: 0, left: 0, overflow: 'hidden', width: half ? '50%' : '100%', height: size }}>
+                <svg width={size} height={size} viewBox="0 0 12 12">
+                  <path d="M6 1 L7.3 4.1 L10.8 4.1 L8.0 6.2 L9.0 9.5 L6 7.5 L3.0 9.5 L4.0 6.2 L1.2 4.1 L4.7 4.1 Z"
+                    fill={C.mint} />
+                </svg>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Avatar
+function Avi({ initials = 'M', size = 36 }) {
+  return (
+    <div style={{ width: size, height: size, borderRadius: '50%',
+      background: C.mintBg, border: `2px solid ${C.mint}`,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+      <span style={{ ...f(700, size * 0.36), color: C.mintDark }}>{initials}</span>
+    </div>
+  );
+}
+
+// Chip / badge
+function Chip({ children, active }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 10px',
+      borderRadius: 20, background: active ? C.ink : C.surface,
+      border: `1.5px solid ${active ? C.ink : C.border}`,
+      ...f(600, 11), color: active ? C.white : C.muted, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+      {children}
+    </span>
+  );
+}
+
+// Label pill (release type)
+function TypePill({ children }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 9px',
+      borderRadius: 20, background: C.surface, border: `1px solid ${C.border}`,
+      ...f(500, 11), color: C.muted }}>
+      {children}
+    </span>
+  );
+}
+
+// Divider
+const HR = ({ my = 0 }) => <div style={{ height: 1, background: C.border, margin: `${my}px 0` }} />;
+
+// Section header row
+function SectionHead({ title, sub, action = 'See all →' }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 18 }}>
+      <div>
+        <div style={{ ...f(700, 17), color: C.ink }}>{title}</div>
+        {sub && <div style={{ ...f(400, 12), color: C.muted, marginTop: 2 }}>{sub}</div>}
+      </div>
+      {action && <div style={{ ...f(500, 12), color: C.muted, cursor: 'pointer' }}>{action}</div>}
+    </div>
+  );
+}
+
+// Nav with embedded search
+function Nav() {
+  return (
+    <div style={{ height: 60, background: C.white, borderBottom: `1px solid ${C.border}`,
+      display: 'flex', alignItems: 'center', padding: '0 36px', gap: 28, flexShrink: 0 }}>
+      <div style={{ ...f(800, 16), color: C.ink, letterSpacing: -0.5, whiteSpace: 'nowrap' }}>
+        音色 <span style={{ color: C.mint }}>neiro</span>
+      </div>
+      {/* Search bar */}
+      <div style={{ flex: 1, maxWidth: 420 }}>
+        <div style={{ background: C.surface, borderRadius: 24, padding: '8px 16px',
+          display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${C.border}` }}>
+          <span style={{ color: C.muted, fontSize: 15 }}>⌕</span>
+          <span style={{ ...f(400, 13), color: '#C0C0BE' }}>Search albums, artists, users…</span>
+        </div>
+      </div>
+      <div style={{ flex: 1 }} />
+      {['Home', 'Activity', 'Lists'].map(p => (
+        <span key={p} style={{ ...f(500, 13), color: C.muted, cursor: 'pointer', whiteSpace: 'nowrap' }}>{p}</span>
+      ))}
+      <Avi initials="MK" size={34} />
+    </div>
+  );
+}
+
+const W = 1104; // max content width
+const pad = { padding: '0 36px' };
+const content = { maxWidth: W, margin: '0 auto', padding: '0 36px' };
+
+// ── PAGE 1: HOMEPAGE ─────────────────────────────────────────────────────────
+function HomePage() {
+  const albums6 = ['Brat', 'Chromakopia', 'GNX', 'Short n Sweet', 'Manning Fw.', 'Radical Opt.'];
+  const recs = [
+    { t: 'good kid, m.A.A.d city', a: 'Kendrick Lamar', sc: '4.7' },
+    { t: 'To Pimp a Butterfly', a: 'Kendrick Lamar', sc: '4.9' },
+    { t: 'DAMN.', a: 'Kendrick Lamar', sc: '4.6' },
+    { t: 'Section.80', a: 'Kendrick Lamar', sc: '4.4' },
+    { t: 'Mr. Morale & The Big Steppers', a: 'Kendrick Lamar', sc: '4.2' },
+    { t: 'Black Panther OST', a: 'Kendrick Lamar', sc: '4.1' },
+  ];
+  const trending = [
+    { t: 'Chromakopia', a: 'Tyler, the Creator', sc: '4.5' },
+    { t: 'Javelin', a: 'Sufjan Stevens', sc: '4.5' },
+    { t: 'Diamond Jubilee', a: 'Cindy Lee', sc: '4.8' },
+    { t: 'The Record', a: 'boygenius', sc: '4.2' },
+    { t: 'Hit Me Hard and Soft', a: 'Billie Eilish', sc: '4.0' },
+    { t: 'Manning Fireworks', a: 'MJ Lenderman', sc: '4.4' },
+  ];
+  const friends = [
+    { u: 'tonehunter', album: 'Short n Sweet', artist: 'Sabrina Carpenter', sc: 4, note: 'A perfectly crafted pop record. Every song feels inevitable.' },
+    { u: 'waveform99', album: 'Manning Fireworks', artist: 'MJ Lenderman', sc: 4.5, note: 'Understated brilliance. Best guitar record of the year.' },
+    { u: 'diggr__', album: 'Diamond Jubilee', artist: 'Cindy Lee', sc: 5, note: 'Nothing sounds like this. Utterly singular and haunting.' },
+    { u: 'snd_shapes', album: 'Javelin', artist: 'Sufjan Stevens', sc: 4.5, note: 'A tender farewell. I cried three times on first listen.' },
+  ];
+
+  return (
+    <div style={{ background: C.white, minHeight: '100%' }}>
+      <Nav />
+      <div style={{ maxWidth: W, margin: '0 auto', padding: '44px 36px 56px' }}>
+
+        {/* Greeting */}
+        <div style={{ marginBottom: 44 }}>
+          <div style={{ ...f(800, 30), color: C.ink, letterSpacing: -1 }}>Good evening, maya.</div>
+          <div style={{ ...f(400, 14), color: C.muted, marginTop: 5 }}>
+            347 albums rated · avg 3.8 ★ · 82 reviews written
+          </div>
+        </div>
+
+        {/* § Pick up where you left off */}
+        <div style={{ marginBottom: 44 }}>
+          <SectionHead title="Pick up where you left off" sub="Albums you've started but haven't rated" />
+          <div style={{ display: 'flex', gap: 18, overflowX: 'hidden' }}>
+            {albums6.map((name, i) => (
+              <div key={i} style={{ width: 152, flexShrink: 0 }}>
+                <div style={{ position: 'relative' }}>
+                  <Art size={152} r={7} />
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex',
+                    alignItems: 'flex-end', justifyContent: 'flex-end', padding: 8 }}>
+                    <div style={{ background: C.ink, color: C.white, borderRadius: 6,
+                      padding: '5px 11px', ...f(600, 11), cursor: 'pointer' }}>
+                      Rate →
+                    </div>
+                  </div>
+                </div>
+                <div style={{ marginTop: 9 }}>
+                  <div style={{ ...f(600, 13), color: C.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>
+                  <div style={{ ...f(400, 12), color: C.muted, marginTop: 1 }}>Charli XCX</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <HR my={0} />
+
+        {/* § Because you love */}
+        <div style={{ margin: '44px 0' }}>
+          <SectionHead title="Because you love Kendrick Lamar" sub="Albums fans of his also rate highly" />
+          <div style={{ display: 'flex', gap: 18, overflowX: 'hidden' }}>
+            {recs.map((a, i) => (
+              <div key={i} style={{ width: 152, flexShrink: 0 }}>
+                <Art size={152} r={7} score={a.sc} />
+                <div style={{ marginTop: 9 }}>
+                  <div style={{ ...f(600, 13), color: C.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.t}</div>
+                  <div style={{ ...f(400, 12), color: C.muted, marginTop: 1 }}>{a.a}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <HR my={0} />
+
+        {/* § Friends activity */}
+        <div style={{ margin: '44px 0' }}>
+          <SectionHead title="Friends are listening to" sub="From people you follow" />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            {friends.map((item, i) => (
+              <div key={i} style={{ display: 'flex', gap: 14, padding: 16,
+                background: C.surface, borderRadius: 10, border: `1px solid ${C.border}` }}>
+                <Art size={54} r={5} style={{ flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+                    <Avi initials={item.u[0].toUpperCase()} size={22} />
+                    <span style={{ ...f(600, 12), color: C.ink }}>{item.u}</span>
+                    <Stars value={item.sc} size={11} />
+                  </div>
+                  <div style={{ ...f(600, 13), color: C.ink }}>{item.album}</div>
+                  <div style={{ ...f(400, 11), color: C.muted, marginTop: 1 }}>{item.artist}</div>
+                  <div style={{ ...f(400, 12), color: C.mid, marginTop: 6, lineHeight: 1.55,
+                    display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                    "{item.note}"
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <HR my={0} />
+
+        {/* § Trending */}
+        <div style={{ margin: '44px 0' }}>
+          <SectionHead title="Trending in Hip-Hop & Indie Rock" sub="Your top genres this year" />
+          <div style={{ display: 'flex', gap: 18, overflowX: 'hidden' }}>
+            {trending.map((a, i) => (
+              <div key={i} style={{ width: 152, flexShrink: 0 }}>
+                <Art size={152} r={7} score={a.sc} />
+                <div style={{ marginTop: 9 }}>
+                  <div style={{ ...f(600, 13), color: C.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.t}</div>
+                  <div style={{ ...f(400, 12), color: C.muted, marginTop: 1 }}>{a.a}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <HR my={0} />
+
+        {/* § Listen Later */}
+        <div style={{ marginTop: 44 }}>
+          <SectionHead title="Your Listen Later" sub="3 albums queued up" action="Manage →" />
+          {[
+            { t: 'Desire, I Want to Turn Into You', a: 'Caroline Polachek', type: 'Album' },
+            { t: 'All Born Screaming', a: 'St. Vincent', type: 'Album' },
+            { t: 'Bright Future', a: 'Adrianne Lenker', type: 'Album' },
+          ].map((item, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14,
+              padding: '12px 0', borderBottom: `1px solid ${C.border}` }}>
+              <Art size={46} r={4} />
+              <div style={{ flex: 1 }}>
+                <div style={{ ...f(600, 14), color: C.ink }}>{item.t}</div>
+                <div style={{ ...f(400, 12), color: C.muted, marginTop: 2 }}>
+                  {item.a} · <TypePill>{item.type}</TypePill>
+                </div>
+              </div>
+              <div style={{ ...f(500, 13), color: C.muted, cursor: 'pointer' }}>Rate now →</div>
+              <div style={{ ...f(300, 20), color: C.border, cursor: 'pointer', paddingLeft: 8 }}>×</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── PAGE 2: ALBUM PAGE ───────────────────────────────────────────────────────
+function AlbumPage() {
+  const tracks = ['St. Chroma', 'Rah Tah Tah', 'Noid', 'Darling, I', 'Like Him',
+    'Take Your Mask Off', 'Judge Judy', 'I Killed You', 'Sticky', 'Thought I Was Dead',
+    'Balloon', 'Tomorrow', 'Sawdust', 'Don\'t Laugh'];
+  const reviews = [
+    { u: 'maya_k', sc: 4.5, date: 'Nov 2024', txt: "Tyler at his most ambitious. Chromakopia is a dense, joyful, searching record — every track earns its place. 'Noid' might be a career high." },
+    { u: 'tonehunter', sc: 5, date: 'Nov 2024', txt: "I don't think I've heard a more complete vision of an artist in years. The concept runs deep — it's stunning from start to finish." },
+    { u: 'waveform99', sc: 4, date: 'Dec 2024', txt: "An undeniable statement. A few tracks drag slightly in the back half but the highs are some of his best work to date." },
+    { u: 'diggr__', sc: 4.5, date: 'Dec 2024', txt: "The production is doing things I didn't think were possible. A masterclass in texture and restraint." },
+  ];
+
+  return (
+    <div style={{ background: C.white }}>
+      <Nav />
+
+      {/* Hero */}
+      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ maxWidth: W, margin: '0 auto', padding: '44px 36px 40px', display: 'flex', gap: 44 }}>
+          <Art size={228} r={10} style={{ flexShrink: 0, boxShadow: '0 8px 40px rgba(0,0,0,0.09)' }} />
+
+          <div style={{ flex: 1, paddingTop: 4 }}>
+            <div style={{ display: 'flex', gap: 7, marginBottom: 14 }}>
+              <TypePill>Album</TypePill>
+              <TypePill>2024</TypePill>
+              <TypePill>Hip-Hop / Neo-Soul</TypePill>
+            </div>
+            <div style={{ ...f(800, 34), color: C.ink, letterSpacing: -1.2, lineHeight: 1.08 }}>
+              Chromakopia
+            </div>
+            <div style={{ ...f(500, 17), color: C.muted, marginTop: 8 }}>
+              Tyler, the Creator
+            </div>
+
+            {/* Community stats */}
+            <div style={{ display: 'flex', gap: 28, marginTop: 22, paddingTop: 18,
+              borderTop: `1px solid ${C.border}` }}>
+              <div>
+                <div style={{ ...f(800, 30), color: C.ink, letterSpacing: -0.8 }}>4.5</div>
+                <div style={{ ...f(400, 12), color: C.muted, marginTop: 2 }}>avg / 5</div>
+              </div>
+              <div style={{ width: 1, background: C.border, margin: '4px 0' }} />
+              <div>
+                <div style={{ ...f(700, 18), color: C.ink }}>18,142</div>
+                <div style={{ ...f(400, 12), color: C.muted, marginTop: 2 }}>ratings</div>
+              </div>
+              <div style={{ width: 1, background: C.border, margin: '4px 0' }} />
+              <div>
+                <div style={{ ...f(700, 18), color: C.ink }}>4,201</div>
+                <div style={{ ...f(400, 12), color: C.muted, marginTop: 2 }}>reviews</div>
+              </div>
+            </div>
+
+            {/* User rating */}
+            <div style={{ marginTop: 26 }}>
+              <div style={{ ...f(600, 12), color: C.muted, letterSpacing: 0.6,
+                textTransform: 'uppercase', marginBottom: 10 }}>Your Rating</div>
+              <Stars value={0} size={30} />
+              <div style={{ ...f(400, 12), color: C.muted, marginTop: 6 }}>
+                Tap to rate · half-steps supported
+              </div>
+
+              <div style={{ marginTop: 14, background: C.white,
+                border: `1px solid ${C.border}`, borderRadius: 8,
+                padding: '12px 16px', height: 68,
+                display: 'flex', alignItems: 'flex-start' }}>
+                <span style={{ ...f(400, 13), color: '#C8C8C4' }}>Write a review… (optional)</span>
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7,
+                  border: `1.5px solid ${C.border}`, borderRadius: 8, padding: '9px 18px',
+                  ...f(600, 13), color: C.ink, cursor: 'pointer' }}>
+                  + Listen Later
+                </div>
+                <div style={{ background: C.ink, color: C.white, borderRadius: 8,
+                  padding: '10px 22px', ...f(600, 13), cursor: 'pointer' }}>
+                  Save rating →
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div style={{ maxWidth: W, margin: '0 auto', padding: '40px 36px 56px',
+        display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: 52 }}>
+        {/* Tracklist */}
+        <div>
+          <div style={{ ...f(700, 17), color: C.ink, marginBottom: 18 }}>Tracklist</div>
+          {tracks.map((t, i) => (
+            <div key={t} style={{ display: 'flex', gap: 14, padding: '10px 0',
+              borderBottom: `1px solid ${C.border}`, alignItems: 'center' }}>
+              <span style={{ ...f(400, 12), color: '#DDDDD8', width: 22, textAlign: 'right', flexShrink: 0 }}>
+                {String(i + 1).padStart(2, '0')}
+              </span>
+              <span style={{ ...f(500, 14), color: C.ink, flex: 1 }}>{t}</span>
+              <span style={{ ...f(400, 12), color: C.muted }}>3:{String(17 + i).padStart(2, '0')}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Reviews */}
+        <div>
+          <div style={{ ...f(700, 17), color: C.ink, marginBottom: 18 }}>Community Reviews</div>
+          {reviews.map((r, i) => (
+            <div key={i} style={{ padding: '18px 0', borderBottom: `1px solid ${C.border}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <Avi initials={r.u[0].toUpperCase()} size={32} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ ...f(600, 13), color: C.ink }}>{r.u}</div>
+                  <div style={{ ...f(400, 11), color: C.muted }}>{r.date}</div>
+                </div>
+                <Stars value={r.sc} size={13} />
+              </div>
+              <div style={{ ...f(400, 14), color: C.mid, lineHeight: 1.65 }}>{r.txt}</div>
+            </div>
+          ))}
+          <div style={{ marginTop: 18, ...f(500, 13), color: C.muted, cursor: 'pointer' }}>
+            See all 4,201 reviews →
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── PAGE 3: PROFILE ──────────────────────────────────────────────────────────
+function ProfilePage() {
+  const albums = [
+    { t: 'Brat', sc: '4.0' }, { t: 'Chromakopia', sc: '4.5' },
+    { t: 'Short n Sweet', sc: '4.0' }, { t: 'GNX', sc: '5.0' },
+    { t: 'Manning Fw.', sc: '4.5' }, { t: 'Hit Me Hard', sc: '3.5' },
+    { t: 'Radical Opt.', sc: '4.0' }, { t: 'Diamond Jub.', sc: '4.5' },
+    { t: 'The Record', sc: '4.0' }, { t: 'Javelin', sc: '4.5' },
+    { t: 'Desire…', sc: '4.5' }, { t: 'All Born Scr.', sc: '4.0' },
+    { t: 'Bright Future', sc: '4.0' }, { t: 'Guts', sc: '3.5' },
+    { t: 'What Now', sc: '4.5' }, { t: 'Cowboy Carter', sc: '4.0' },
+    { t: 'HIT ME HARD', sc: '4.0' }, { t: 'Sable', sc: '4.5' },
+  ];
+  const bars = [2, 2, 3, 5, 9, 20, 42, 80, 68, 42];
+
+  return (
+    <div style={{ background: C.white }}>
+      <Nav />
+
+      {/* Header */}
+      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ maxWidth: W, margin: '0 auto', padding: '36px 36px 0', display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+          <Avi initials="M" size={82} />
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
+              <div style={{ ...f(800, 24), color: C.ink, letterSpacing: -0.6 }}>maya_k</div>
+              <TypePill>Tokyo, JP</TypePill>
+            </div>
+            <div style={{ ...f(400, 13), color: C.muted }}>Joined March 2023</div>
+            <div style={{ display: 'flex', gap: 32, marginTop: 18 }}>
+              {[['347', 'albums rated'], ['3.8 ★', 'avg score'], ['82', 'reviews'], ['24', 'followers'], ['31', 'following']].map(([v, l]) => (
+                <div key={l}>
+                  <div style={{ ...f(700, 20), color: C.ink }}>{v}</div>
+                  <div style={{ ...f(400, 12), color: C.muted, marginTop: 2 }}>{l}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, paddingTop: 4 }}>
+            <div style={{ border: `1.5px solid ${C.border}`, borderRadius: 8, padding: '9px 18px', ...f(600, 13), color: C.ink, cursor: 'pointer' }}>Follow</div>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ maxWidth: W, margin: '0 auto', padding: '0 36px', display: 'flex', marginTop: 20, borderTop: `1px solid ${C.border}` }}>
+          {['All', 'Albums', 'EPs', 'Singles', 'Compilations'].map((t, i) => (
+            <div key={t} style={{ padding: '12px 20px', ...f(600, 13),
+              color: i === 0 ? C.ink : C.muted, cursor: 'pointer',
+              borderBottom: `2px solid ${i === 0 ? C.ink : 'transparent'}` }}>
+              {t}
+            </div>
+          ))}
+          <div style={{ flex: 1 }} />
+          <div style={{ padding: '12px 0', ...f(500, 12), color: C.muted, alignSelf: 'center' }}>
+            Sort: Recently rated ↓
+          </div>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div style={{ maxWidth: W, margin: '0 auto', padding: '36px 36px 56px',
+        display: 'grid', gridTemplateColumns: '1fr 240px', gap: 48 }}>
+
+        {/* Album grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 14 }}>
+          {albums.map((a, i) => (
+            <div key={i}>
+              <ArtSquare score={a.sc} />
+              <div style={{ marginTop: 7, ...f(600, 11), color: C.ink,
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.t}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Sidebar */}
+        <div>
+          <div style={{ ...f(700, 15), color: C.ink, marginBottom: 14 }}>Score Distribution</div>
+          <div style={{ display: 'flex', gap: 3, alignItems: 'flex-end', height: 72 }}>
+            {bars.map((h, i) => {
+              const pct = h / 80;
+              return (
+                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                  <div style={{ width: '100%', height: 72 * pct,
+                    background: i >= 7 ? C.mint : C.border, borderRadius: '2px 2px 0 0' }} />
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+            <span style={{ ...f(400, 10), color: C.muted }}>½★</span>
+            <span style={{ ...f(400, 10), color: C.muted }}>5★</span>
+          </div>
+
+          <HR my={20} />
+
+          <div style={{ ...f(700, 15), color: C.ink, marginBottom: 12 }}>Listen Later</div>
+          {['Desire, I Want to Turn Into You', 'All Born Screaming', 'Bright Future'].map((t, i) => (
+            <div key={i} style={{ display: 'flex', gap: 10, padding: '9px 0',
+              borderBottom: `1px solid ${C.border}`, alignItems: 'center' }}>
+              <div style={{ width: 36, height: 36, borderRadius: 4, background: C.surface, border: `1px solid ${C.border}`, flexShrink: 0 }} />
+              <div style={{ ...f(500, 12), color: C.ink, flex: 1, overflow: 'hidden',
+                whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{t}</div>
+            </div>
+          ))}
+
+          <HR my={20} />
+
+          <div style={{ ...f(700, 15), color: C.ink, marginBottom: 12 }}>Top Genres</div>
+          {[['Hip-Hop', 41], ['Indie Rock', 28], ['Folk / Singer-Songwriter', 18], ['Electronic', 13]].map(([g, pct]) => (
+            <div key={g} style={{ marginBottom: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span style={{ ...f(500, 12), color: C.ink }}>{g}</span>
+                <span style={{ ...f(400, 11), color: C.muted }}>{pct}%</span>
+              </div>
+              <div style={{ height: 4, background: C.border, borderRadius: 2 }}>
+                <div style={{ height: 4, width: `${pct}%`, background: C.mint, borderRadius: 2 }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── PAGE 4: SEARCH ───────────────────────────────────────────────────────────
+function SearchPage() {
+  const results = [
+    { t: 'HIT ME HARD AND SOFT', a: 'Billie Eilish', yr: 2024, type: 'Album', sc: '4.0' },
+    { t: 'Happier Than Ever', a: 'Billie Eilish', yr: 2021, type: 'Album', sc: '4.2' },
+    { t: 'When We All Fall Asleep…', a: 'Billie Eilish', yr: 2019, type: 'Album', sc: '4.4' },
+    { t: 'dont smile at me', a: 'Billie Eilish', yr: 2017, type: 'EP', sc: '3.8' },
+    { t: 'bad guy (Single)', a: 'Billie Eilish', yr: 2019, type: 'Single', sc: '4.1' },
+    { t: 'Ocean Eyes (Single)', a: 'Billie Eilish', yr: 2016, type: 'Single', sc: '3.9' },
+  ];
+
+  return (
+    <div style={{ background: C.white }}>
+      <Nav />
+
+      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: '24px 0 20px' }}>
+        <div style={{ maxWidth: W, margin: '0 auto', padding: '0 36px' }}>
+          {/* Active search bar */}
+          <div style={{ background: C.white, borderRadius: 24, padding: '11px 20px',
+            display: 'flex', alignItems: 'center', gap: 10,
+            border: `1.5px solid ${C.ink}`, maxWidth: 520, marginBottom: 16 }}>
+            <span style={{ fontSize: 16, color: C.muted }}>⌕</span>
+            <span style={{ ...f(500, 14), color: C.ink }}>billie eilish</span>
+          </div>
+
+          {/* Artist match */}
+          <div style={{ display: 'inline-flex', gap: 14, background: C.mintBg,
+            border: `1.5px solid ${C.mint}`, borderRadius: 10, padding: '12px 18px',
+            alignItems: 'center', marginBottom: 16 }}>
+            <Avi initials="B" size={42} />
+            <div>
+              <div style={{ ...f(700, 14), color: C.ink }}>Billie Eilish</div>
+              <div style={{ ...f(400, 12), color: C.muted }}>6 releases · avg 4.1 ★ on neiro</div>
+            </div>
+            <div style={{ marginLeft: 12, ...f(600, 12), color: C.mintDark, cursor: 'pointer' }}>
+              View artist page →
+            </div>
+          </div>
+
+          {/* Filters */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {['All', 'Albums', 'EPs', 'Singles', 'Live'].map((t, i) => <Chip key={t} active={i === 0}>{t}</Chip>)}
+            <div style={{ flex: 1 }} />
+            <span style={{ ...f(400, 12), color: C.muted }}>38 results</span>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ maxWidth: W, margin: '0 auto', padding: '36px 36px 56px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 22 }}>
+          {results.map((item, i) => (
+            <div key={i}>
+              <Art size={152} r={7} score={item.sc} />
+              <div style={{ marginTop: 9 }}>
+                <div style={{ ...f(600, 13), color: C.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.t}</div>
+                <div style={{ ...f(400, 11), color: C.muted, marginTop: 2 }}>{item.a} · {item.yr}</div>
+                <div style={{ marginTop: 5 }}><TypePill>{item.type}</TypePill></div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── PAGE 5: AUTH ─────────────────────────────────────────────────────────────
+function AuthPage() {
+  const [mode, setMode] = React.useState('login');
+  return (
+    <div style={{ background: C.white, display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
+      <div style={{ height: 60, borderBottom: `1px solid ${C.border}`, display: 'flex',
+        alignItems: 'center', padding: '0 36px', flexShrink: 0 }}>
+        <div style={{ ...f(800, 16), color: C.ink, letterSpacing: -0.5 }}>
+          音色 <span style={{ color: C.mint }}>neiro</span>
+        </div>
+      </div>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 24px' }}>
+        <div style={{ width: 420 }}>
+          {/* Toggle */}
+          <div style={{ display: 'flex', background: C.surface, borderRadius: 10, padding: 4, marginBottom: 30 }}>
+            {['login', 'signup'].map(m => (
+              <div key={m} onClick={() => setMode(m)} style={{
+                flex: 1, padding: '10px 0', textAlign: 'center', borderRadius: 7, cursor: 'pointer',
+                background: mode === m ? C.white : 'transparent',
+                boxShadow: mode === m ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+                border: mode === m ? `1px solid ${C.border}` : '1px solid transparent',
+                ...f(600, 14), color: mode === m ? C.ink : C.muted,
+              }}>
+                {m === 'login' ? 'Log in' : 'Sign up'}
+              </div>
+            ))}
+          </div>
+
+          <div style={{ ...f(800, 30), color: C.ink, letterSpacing: -0.9, marginBottom: 6 }}>
+            {mode === 'login' ? 'Welcome back.' : 'Join neiro.'}
+          </div>
+          <div style={{ ...f(400, 14), color: C.muted, marginBottom: 30, lineHeight: 1.6 }}>
+            {mode === 'login'
+              ? 'Log in to see your ratings, reviews, and recommendations.'
+              : 'Start cataloging your listening life — free forever.'}
+          </div>
+
+          {mode === 'signup' && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ ...f(600, 13), color: C.ink, marginBottom: 7 }}>Username</div>
+              <div style={{ background: C.white, border: `1.5px solid ${C.border}`, borderRadius: 8, padding: '12px 14px', ...f(400, 14), color: '#C0C0BE' }}>
+                e.g. tonehunter
+              </div>
+            </div>
+          )}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ ...f(600, 13), color: C.ink, marginBottom: 7 }}>Email</div>
+            <div style={{ background: C.white, border: `1.5px solid ${C.border}`, borderRadius: 8, padding: '12px 14px', ...f(400, 14), color: '#C0C0BE' }}>
+              you@example.com
+            </div>
+          </div>
+          <div style={{ marginBottom: 26 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 7 }}>
+              <div style={{ ...f(600, 13), color: C.ink }}>Password</div>
+              {mode === 'login' && <div style={{ ...f(500, 12), color: C.muted, cursor: 'pointer' }}>Forgot password?</div>}
+            </div>
+            <div style={{ background: C.white, border: `1.5px solid ${C.border}`, borderRadius: 8, padding: '12px 14px', ...f(400, 14), color: '#C0C0BE' }}>
+              ••••••••
+            </div>
+          </div>
+
+          <div style={{ background: C.ink, color: C.white, borderRadius: 8, padding: '14px',
+            textAlign: 'center', ...f(700, 15), cursor: 'pointer', marginBottom: 16 }}>
+            {mode === 'login' ? 'Log in →' : 'Create account →'}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+            <div style={{ flex: 1, height: 1, background: C.border }} />
+            <span style={{ ...f(400, 12), color: C.muted }}>or</span>
+            <div style={{ flex: 1, height: 1, background: C.border }} />
+          </div>
+
+          <div style={{ background: C.white, border: `1.5px solid ${C.border}`, borderRadius: 8,
+            padding: '12px', textAlign: 'center', ...f(600, 14), color: C.ink, cursor: 'pointer', marginBottom: 22 }}>
+            Continue with Google
+          </div>
+
+          <div style={{ textAlign: 'center', ...f(400, 13), color: C.muted }}>
+            {mode === 'login' ? 'No account yet? Sign up free →' : 'Already have one? Log in →'}
+          </div>
+
+          <div style={{ marginTop: 30, padding: '14px 16px', background: C.mintBg,
+            border: `1.5px solid ${C.mint}`, borderRadius: 10 }}>
+            <div style={{ ...f(600, 13), color: C.mintDark, marginBottom: 4 }}>
+              One rating per album. Your taste, tracked.
+            </div>
+            <div style={{ ...f(400, 12), color: C.mintDark, opacity: 0.75, lineHeight: 1.55 }}>
+              Rate out of 5 stars, write reviews, build your catalog, follow friends.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── APP ───────────────────────────────────────────────────────────────────────
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accentColor": "#3DFFD1",
+  "surfaceTone": "#F7F7F5"
+}/*EDITMODE-END*/;
+
+function App() {
+  const [tweakOpen, setTweakOpen] = React.useState(false);
+  const [tweaks, setTweaks] = React.useState(TWEAK_DEFAULTS);
+
+  React.useEffect(() => {
+    window.addEventListener('message', e => {
+      if (e.data?.type === '__activate_edit_mode') setTweakOpen(true);
+      if (e.data?.type === '__deactivate_edit_mode') setTweakOpen(false);
+    });
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+  }, []);
+
+  const setT = (k, v) => {
+    setTweaks(t => ({ ...t, [k]: v }));
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { [k]: v } }, '*');
+  };
+
+  return (
+    <>
+      <DesignCanvas>
+        <DCSection id="hifi" title="Neiro — Hi-Fi Desktop (1280px)">
+          <DCArtboard id="home"    label="01 Homepage"       width={1280} height={980}><HomePage /></DCArtboard>
+          <DCArtboard id="album"   label="02 Album Page"     width={1280} height={960}><AlbumPage /></DCArtboard>
+          <DCArtboard id="profile" label="03 Profile"        width={1280} height={900}><ProfilePage /></DCArtboard>
+          <DCArtboard id="search"  label="04 Search Results" width={1280} height={700}><SearchPage /></DCArtboard>
+          <DCArtboard id="auth"    label="05 Sign Up / Login" width={1280} height={820}><AuthPage /></DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+
+      {tweakOpen && (
+        <div style={{ position: 'fixed', bottom: 20, right: 20, background: C.white,
+          border: `1px solid ${C.border}`, borderRadius: 12, padding: 18, width: 220,
+          boxShadow: '0 4px 24px rgba(0,0,0,0.10)', zIndex: 10000 }}>
+          <div style={{ ...f(700, 13), color: C.ink, marginBottom: 16 }}>Tweaks</div>
+
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ ...f(600, 11), color: C.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Accent</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {['#3DFFD1', '#FF6B6B', '#A78BFA', '#FBBF24'].map(col => (
+                <div key={col} onClick={() => setT('accentColor', col)}
+                  style={{ width: 26, height: 26, borderRadius: 13, background: col, cursor: 'pointer',
+                    border: tweaks.accentColor === col ? `2.5px solid ${C.ink}` : '2.5px solid transparent' }} />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ ...f(600, 11), color: C.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Surface</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {['#F7F7F5', '#F5F0E8', '#F0F5FF', '#F0F0F0'].map(col => (
+                <div key={col} onClick={() => setT('surfaceTone', col)}
+                  style={{ width: 26, height: 26, borderRadius: 4, background: col, cursor: 'pointer',
+                    border: tweaks.surfaceTone === col ? `2.5px solid ${C.ink}` : `1px solid ${C.border}` }} />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+<div id="root"></div>
+</body>
+</html>

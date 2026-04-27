@@ -1,18 +1,23 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
-import SiteHeader from '../components/SiteHeader';
+import { Plus_Jakarta_Sans } from 'next/font/google';
+
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700', '800'],
+  variable: '--font-jakarta',
+});
 
 export const metadata: Metadata = {
-  title: 'Bside',
-  description: 'Rate, review, and catalog albums with Korean music fans in mind.'
+  title: 'neiro',
+  description: 'Rate, review, and catalog albums.'
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
-      <body className="bg-slate-50 text-slate-950">
-        <SiteHeader />
+    <html lang="en" className={jakarta.variable}>
+      <body className="bg-white text-ink font-sans">
         {children}
       </body>
     </html>
