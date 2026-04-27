@@ -135,6 +135,7 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
                 releaseCountry={null}
                 releaseType={album.releaseType}
                 coverUrl={album.coverUrl}
+                genres={album.genres}
               />
             </div>
           </div>

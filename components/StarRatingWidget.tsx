@@ -48,6 +48,7 @@ interface StarRatingWidgetProps {
   releaseCountry: string | null;
   releaseType: string;
   coverUrl: string | null;
+  genres?: string[];
 }
 
 export default function StarRatingWidget({
@@ -58,6 +59,7 @@ export default function StarRatingWidget({
   releaseCountry,
   releaseType,
   coverUrl,
+  genres,
 }: StarRatingWidgetProps) {
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
@@ -98,7 +100,7 @@ export default function StarRatingWidget({
 
     setSaving(true);
     await supabase.from('releases').upsert(
-      { id: releaseId, title: releaseTitle, artist: releaseArtist, release_date: releaseDate, country: releaseCountry, release_type: releaseType, cover_url: coverUrl },
+      { id: releaseId, title: releaseTitle, artist: releaseArtist, release_date: releaseDate, country: releaseCountry, release_type: releaseType, cover_url: coverUrl, genres: genres?.join(',') ?? null },
       { onConflict: 'id' }
     );
     const { error } = await supabase.from('ratings').upsert(

@@ -47,6 +47,53 @@ interface CommunityStats {
   communityAvg: number;
 }
 
+function getTasteDNA(ratings: any[]): string[] {
+  if (!ratings || ratings.length < 5) return [];
+
+  const scores = ratings.map((r) => r.score).filter(Boolean) as number[];
+  const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+  const variance = scores.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / scores.length;
+  const sd = Math.sqrt(variance);
+  const fivePct = scores.filter((s) => s === 5).length / scores.length;
+
+  // Tally genres across all rated releases
+  const genreCount = new Map<string, number>();
+  for (const r of ratings) {
+    const genreStr = r.releases?.genres as string | null;
+    if (!genreStr) continue;
+    for (const g of genreStr.split(',')) {
+      const g2 = g.trim().toLowerCase();
+      if (g2) genreCount.set(g2, (genreCount.get(g2) ?? 0) + 1);
+    }
+  }
+  const topGenre = [...genreCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+
+  let genreTag = '';
+  if (topGenre.includes('k-pop') || topGenre.includes('korean pop')) genreTag = 'K-Pop devotee';
+  else if (topGenre.includes('k-r&b') || topGenre.includes('korean r&b')) genreTag = 'K-R&B connoisseur';
+  else if (topGenre.includes('k-rap') || topGenre.includes('korean hip')) genreTag = 'K-Rap head';
+  else if (topGenre.includes('r&b') || topGenre.includes('soul')) genreTag = 'R&B connoisseur';
+  else if (topGenre.includes('indie')) genreTag = 'Indie explorer';
+  else if (topGenre.includes('rap') || topGenre.includes('hip hop') || topGenre.includes('hip-hop')) genreTag = 'Hip-hop head';
+  else if (topGenre.includes('ballad')) genreTag = 'Ballad purist';
+  else if (topGenre.includes('jazz')) genreTag = 'Jazz aficionado';
+  else if (topGenre.includes('rock')) genreTag = 'Rock loyalist';
+  else if (topGenre.includes('electronic') || topGenre.includes('synth')) genreTag = 'Electronic wanderer';
+  else if (topGenre.includes('folk') || topGenre.includes('acoustic')) genreTag = 'Folk purist';
+  else if (topGenre.includes('classical')) genreTag = 'Classical devotee';
+  else if (topGenre.includes('pop')) genreTag = 'Pop enthusiast';
+
+  let behaviorTag = '';
+  if (avg < 2.5) behaviorTag = 'Harsh critic';
+  else if (avg > 4.3) behaviorTag = 'Eternal optimist';
+  else if (fivePct === 0 && scores.length >= 10) behaviorTag = 'Impossible to impress';
+  else if (fivePct > 0.35) behaviorTag = 'Generous soul';
+  else if (sd > 1.4) behaviorTag = 'All or nothing';
+  else if (sd < 0.5 && scores.length >= 10) behaviorTag = 'Measured listener';
+
+  return [genreTag, behaviorTag].filter(Boolean);
+}
+
 function getRatingInsights(ratings: any[], communityStats: CommunityStats | null): string[] {
   const scores = (ratings ?? []).map((r) => r.score).filter(Boolean) as number[];
   if (scores.length < 3) return [];
@@ -195,6 +242,7 @@ export default function ProfilePanel() {
   });
 
   const insights = getRatingInsights(ratings ?? [], communityStats);
+  const tasteDNA = getTasteDNA(ratings ?? []);
 
   return (
     <div className="bg-white">
@@ -324,14 +372,34 @@ export default function ProfilePanel() {
           {insights.length > 0 ? (
             <div className="flex flex-col gap-2">
               {insights.map((insight, i) => (
-                <div key={i} className="flex items-start gap-2">
-                  <span className="text-mint font-bold flex-shrink-0 mt-0.5">—</span>
+                <div key={i} className="flex items-center gap-2">
+                  <span className="text-mint font-bold flex-shrink-0">—</span>
                   <p className="text-[12px] text-mid leading-snug">{insight}</p>
                 </div>
               ))}
             </div>
           ) : (
             <p className="text-[12px] text-muted">Rate more albums to unlock insights.</p>
+          )}
+
+          <div className="h-px bg-[#EBEBEB] my-5" />
+
+          {/* Taste DNA */}
+          <div className="text-[15px] font-bold text-ink mb-3">Taste DNA</div>
+          {tasteDNA.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {tasteDNA.map((tag) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center px-[10px] py-[4px] rounded-full text-[12px] font-semibold"
+                  style={{ background: '#EDFFF9', border: '1.5px solid #3DFFD1', color: '#00453A' }}
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[12px] text-muted">Rate more albums to reveal your taste DNA.</p>
           )}
 
           <div className="h-px bg-[#EBEBEB] my-5" />
