@@ -130,17 +130,46 @@ CREATE POLICY "list_items_delete" ON list_items FOR DELETE USING (
 );
 ```
 
+### 6. DB caching columns (run after initial setup)
+```sql
+-- Extend releases table for full album caching
+ALTER TABLE releases ADD COLUMN IF NOT EXISTS genres text;
+ALTER TABLE releases ADD COLUMN IF NOT EXISTS label text;
+ALTER TABLE releases ADD COLUMN IF NOT EXISTS total_tracks int;
+ALTER TABLE releases ADD COLUMN IF NOT EXISTS tracklist jsonb;
+ALTER TABLE releases ADD COLUMN IF NOT EXISTS spotify_url text;
+ALTER TABLE releases ADD COLUMN IF NOT EXISTS artist_id text;
+ALTER TABLE releases ADD COLUMN IF NOT EXISTS cached_at timestamptz;
+
+-- Artist cache table
+CREATE TABLE IF NOT EXISTS artists (
+  id text PRIMARY KEY,
+  name text NOT NULL,
+  genres text,
+  followers int,
+  popularity int,
+  cover_url text,
+  spotify_url text,
+  cached_at timestamptz DEFAULT now()
+);
+ALTER TABLE artists ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "artists_select" ON artists FOR SELECT USING (true);
+CREATE POLICY "artists_insert" ON artists FOR INSERT WITH CHECK (true);
+CREATE POLICY "artists_update" ON artists FOR UPDATE USING (true);
+```
+
 ---
 
 ## Deployment checklist
 
 ### Before going live
 
-- [ ] Set all environment variables in your hosting provider (Vercel etc.) — same keys as `.env.local`, including `SEED_SECRET`
-- [ ] Run all Supabase SQL blocks above on the **production** Supabase project
+- [x] Set all environment variables in Vercel — same keys as `.env.local`, including `SEED_SECRET`
+- [x] Run all Supabase SQL blocks above on the production Supabase project
 - [ ] Enable **Supabase Auth** email confirmations if desired (Auth → Email Templates)
 - [ ] Update `privacy@neiro.app` and `legal@neiro.app` in `app/(main)/privacy/page.tsx` and `app/(main)/terms/page.tsx` to your real contact email
 - [ ] Add your jurisdiction to section 12 of Terms of Service
+- [ ] Enable Google OAuth provider in Supabase Auth dashboard
 
 ### After first deployment
 
@@ -149,19 +178,65 @@ CREATE POLICY "list_items_delete" ON list_items FOR DELETE USING (
   curl -X POST https://your-domain.com/api/admin/seed-curated \
     -H "x-seed-secret: YOUR_SEED_SECRET"
   ```
-  This fills the `curated_releases` table with K-Pop / Korean Indie / K-R&B albums from Spotify. After this runs, the homepage never calls Spotify again for those rows — it serves from your database permanently.
 
-- [ ] Verify the response shows `"count": 10` (or similar) for each category, not errors
+### Before public marketing / launch
 
-### Re-seeding (optional)
+- [ ] **Run the Korean music data ingestion script** — pre-populate the DB with albums from major Korean artists and genres before real users arrive. This is critical to reduce Spotify API dependency at scale. Script to be built at `scripts/ingest-korean-music.ts`. Target: top artists from K-Pop, Korean R&B, Korean Indie, K-Rap genres; major label rosters (HYBE, SM, YG, JYP, Kakao M). Run with rate-limited delays (200ms between requests). Re-run monthly to pick up new releases.
+- [ ] Verify Google OAuth works on production
+- [ ] Test rating, review, and list flows end-to-end on production
+- [ ] Confirm homepage genre rows are populated (curated_releases seed)
 
-Re-run the seed command any time you want to refresh the homepage genre rows with newer albums. It upserts so there's no risk of duplicates.
+---
+
+## Feature tracker
+
+### Done
+- [x] Album search (Spotify)
+- [x] Album detail page (tracklist, community stats, ratings, reviews)
+- [x] Artist page with discography
+- [x] Star rating widget (1–5, half-star steps)
+- [x] Community reviews
+- [x] Homepage genre rows (DB-first, Spotify fallback)
+- [x] For You page (personalized album feed)
+- [x] Activity feed (community ratings + reviews)
+- [x] Lists (create, view)
+- [x] Profile page (ratings grid, score distribution)
+- [x] Rating Philosophy (profile sidebar — strictness, perfect score frequency, consistency)
+- [x] Taste DNA (profile sidebar — genre + behavior tags)
+- [x] Genre storage on ratings (genres column in releases table)
+
+### In progress
+- [ ] DB caching layer — save full album + artist data to Supabase on first visit, serve from DB on repeat visits (eliminates Spotify calls for cached content)
+
+### Planned — profiles
+- [ ] Monthly Capsule — monthly reflection summary on homepage
+- [ ] Pinned Ten — 10 albums permanently pinned on profile
+- [ ] Shelf Creation — custom user shelves for organizing albums by theme
+
+### Planned — onboarding
+- [ ] Pick 5 Perfect Albums — shown on first login to seed personalization
+
+### Planned — rankings
+- [ ] Community rankings page — one vote per user per category, live leaderboards
+- [ ] Individual ranking page — top 10, vote counts, movement indicators, friends' picks
+- [ ] Ranking personalization — sections for unvoted, friends voted, taste-matched
+
+### Planned — social
+- [ ] Following system (required for friend-based features)
+- [ ] Friend Taste Collisions
+- [ ] Taste Contradictions
+
+### Planned — annual
+- [ ] Wrapped page — yearly summary designed for sharing
 
 ---
 
 ## Architecture notes
 
-- **Spotify API** is used only for album search (user-initiated). Homepage genre rows are served from Supabase after the one-time seed. This avoids rate limiting and Spotify API dependency on every page load.
-- **Supabase service role key** is used server-side to bypass RLS for aggregate queries (community stats, activity feed). Never exposed to the client.
-- **In-memory Spotify cache** (`lib/spotify.ts`) survives hot reloads but resets on full server restart. In production this is not an issue as the server runs continuously.
+- **DB-first pattern:** All homepage genre rows served from `curated_releases` table. Album and artist data cached to DB on first visit — Spotify only called on cache miss. This is the read-through cache pattern used by production music platforms.
+- **Data ingestion:** A pre-launch script will pre-populate the DB with Korean music catalog data from Spotify, so early users never hit cold-cache Spotify calls.
+- **Spotify rate limits:** Client credentials cap at ~100-180 req/min. Current safe zone is under 50 concurrent users without DB cache. DB cache removes this ceiling almost entirely for repeat content.
+- **Supabase free tier:** 500MB storage. Estimated capacity: ~100,000 albums cached. Paid tier ($25/mo) gives 8GB — effectively unlimited for this use case.
+- **Supabase service role key** is used server-side to bypass RLS for aggregate queries. Never exposed to the client.
+- **In-memory Spotify cache** (`lib/spotify.ts`) — 1hr TTL, survives hot reloads, resets on server restart.
 - Artist album pages use ISR (`revalidate: 3600`) — cached for 1 hour per artist.

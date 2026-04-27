@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { getSpotifyArtist, getSpotifyArtistAlbums } from '../../../../lib/spotify';
+import { getCachedArtist, cacheArtist } from '../../../../lib/dbCache';
 import DiscographyGrid from '../../../../components/DiscographyGrid';
 
 export const revalidate = 3600;
@@ -11,8 +12,12 @@ function formatFollowers(n: number): string {
 }
 
 export default async function ArtistPage({ params }: { params: { id: string } }) {
-  const artist = await getSpotifyArtist(params.id);
-  if (!artist) notFound();
+  let artist = await getCachedArtist(params.id);
+  if (!artist) {
+    artist = await getSpotifyArtist(params.id);
+    if (!artist) notFound();
+    cacheArtist(artist); // fire and forget
+  }
   const { releases, nextCursor } = await getSpotifyArtistAlbums(params.id, artist.name);
 
   // Deduplicate by title+type, then sort newest first

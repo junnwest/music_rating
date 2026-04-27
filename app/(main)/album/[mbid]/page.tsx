@@ -1,7 +1,9 @@
-import { unstable_noStore as noStore } from 'next/cache';
 import { notFound } from 'next/navigation';
 import { getSpotifyAlbum } from '../../../../lib/spotify';
+import { getCachedAlbum, cacheAlbum } from '../../../../lib/dbCache';
 import { createServerClient } from '../../../../lib/supabaseServer';
+
+export const revalidate = 60;
 import StarRatingWidget from '../../../../components/StarRatingWidget';
 import ReviewsSection from '../../../../components/ReviewsSection';
 
@@ -22,9 +24,12 @@ function TypePill({ children }: { children: React.ReactNode }) {
 }
 
 export default async function AlbumPage({ params }: { params: { mbid: string } }) {
-  noStore();
-  const album = await getSpotifyAlbum(params.mbid);
-  if (!album) notFound();
+  let album = await getCachedAlbum(params.mbid);
+  if (!album) {
+    album = await getSpotifyAlbum(params.mbid);
+    if (!album) notFound();
+    cacheAlbum(album); // fire and forget
+  }
 
   // Fetch community stats
   let ratingsCount = 0;
