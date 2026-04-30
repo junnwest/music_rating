@@ -1,0 +1,4 @@
+# Local Supabase state — not committed
+.branches
+.temp
+.env
