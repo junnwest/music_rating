@@ -45,6 +45,7 @@ export default function SiteHeader() {
   };
 
   const initial = session?.user?.email?.[0].toUpperCase() ?? '';
+  const username = session?.user?.email?.split('@')[0];
 
   return (
     <header className="h-[60px] bg-white border-b border-[#EBEBEB] sticky top-0 z-50 flex items-center px-5">
@@ -84,6 +85,18 @@ export default function SiteHeader() {
         <Link href="/lists" className="text-[13px] font-medium text-muted hover:text-ink transition whitespace-nowrap">
           For You
         </Link>
+        <Link href="/rankings" className="text-[13px] font-medium text-muted hover:text-ink transition whitespace-nowrap">
+          Rankings
+        </Link>
+        <Link href="/collisions" className="text-[13px] font-medium text-muted hover:text-ink transition whitespace-nowrap">
+          Collisions
+        </Link>
+        <Link href="/contradictions" className="text-[13px] font-medium text-muted hover:text-ink transition whitespace-nowrap">
+          Contradictions
+        </Link>
+        <Link href="/wrapped" className="text-[13px] font-medium text-muted hover:text-ink transition whitespace-nowrap">
+          Wrapped
+        </Link>
 
         {session?.user?.email ? (
           <div ref={dropdownRef} className="relative">
@@ -101,7 +114,7 @@ export default function SiteHeader() {
                   <p className="text-xs text-muted truncate">{session.user.email}</p>
                 </div>
                 <Link
-                  href="/profile"
+                  href={username ? `/profile/${username}` : '/profile'}
                   onClick={() => setDropdownOpen(false)}
                   className="block px-4 py-2 text-sm text-mid hover:bg-surface transition"
                 >

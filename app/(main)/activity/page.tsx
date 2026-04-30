@@ -1,6 +1,19 @@
-import { unstable_noStore as noStore } from 'next/cache';
+'use client';
+
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { createServerClient } from '../../../lib/supabaseServer';
+import { supabase } from '../../../lib/supabaseClient';
+
+type FeedItem = {
+  type: 'rating' | 'review';
+  userId: string;
+  username: string;
+  release: { id: string; title: string; artist: string; cover_url: string | null } | null;
+  score?: number;
+  body?: string;
+  date: string;
+  releaseId: string;
+};
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -14,75 +27,32 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 }
 
-export default async function ActivityPage() {
-  noStore();
-  const supabase = createServerClient();
+export default function ActivityPage() {
+  const [feed, setFeed] = useState<FeedItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isFiltered, setIsFiltered] = useState(false);
 
-  if (!supabase) {
-    return (
-      <div className="max-w-[720px] mx-auto px-5 py-16 text-center">
-        <p className="text-sm text-muted">Database not available.</p>
-      </div>
-    );
-  }
+  useEffect(() => {
+    const load = async () => {
+      let userId: string | null = null;
+      if (supabase) {
+        const { data } = await supabase.auth.getSession();
+        userId = data.session?.user?.id ?? null;
+      }
 
-  const [{ data: ratings }, { data: reviews }] = await Promise.all([
-    supabase
-      .from('ratings')
-      .select('user_id, release_id, score, created_at, releases(id, title, artist, cover_url)')
-      .order('created_at', { ascending: false })
-      .limit(30),
-    supabase
-      .from('reviews')
-      .select('user_id, username, release_id, body, created_at')
-      .order('created_at', { ascending: false })
-      .limit(30),
-  ]);
+      const url = userId ? `/api/activity?userId=${userId}` : '/api/activity';
+      const res = await fetch(url);
+      const json = await res.json();
+      setFeed(json.feed ?? []);
+      setIsFiltered(json.isFiltered ?? false);
+      setLoading(false);
+    };
+    load();
+  }, []);
 
-  // Build username map from auth
-  let userMap = new Map<string, string>();
-  try {
-    const { data: { users } } = await supabase.auth.admin.listUsers();
-    userMap = new Map(users.map((u) => [u.id, u.email?.split('@')[0] ?? 'user']));
-  } catch {}
-
-  // Get release info for reviews
-  const reviewReleaseIds = [...new Set((reviews ?? []).map((r) => r.release_id))];
-  const { data: reviewReleases } = reviewReleaseIds.length > 0
-    ? await supabase.from('releases').select('id, title, artist, cover_url').in('id', reviewReleaseIds)
-    : { data: [] };
-  const releaseMap = new Map((reviewReleases ?? []).map((r: any) => [r.id, r]));
-
-  type FeedItem = {
-    type: 'rating' | 'review';
-    username: string;
-    release: any;
-    score?: number;
-    body?: string;
-    date: string;
-    releaseId: string;
-  };
-
-  const feed: FeedItem[] = [
-    ...(ratings ?? []).map((r: any) => ({
-      type: 'rating' as const,
-      username: userMap.get(r.user_id) ?? 'user',
-      release: r.releases,
-      score: r.score,
-      date: r.created_at,
-      releaseId: r.release_id,
-    })),
-    ...(reviews ?? []).map((r: any) => ({
-      type: 'review' as const,
-      username: r.username,
-      release: releaseMap.get(r.release_id) ?? null,
-      body: r.body,
-      date: r.created_at,
-      releaseId: r.release_id,
-    })),
-  ]
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 50);
+  const subtitle = isFiltered
+    ? 'Recent activity from people you follow'
+    : 'Recent ratings and reviews from the community';
 
   return (
     <div className="bg-white min-h-screen">
@@ -91,28 +61,43 @@ export default async function ActivityPage() {
           <h1 className="text-[24px] font-extrabold text-ink" style={{ letterSpacing: '-0.6px' }}>
             Activity
           </h1>
-          <p className="text-[13px] text-muted mt-1">Recent ratings and reviews from the community</p>
+          <p className="text-[13px] text-muted mt-1">{subtitle}</p>
         </div>
       </div>
 
       <div className="max-w-[720px] mx-auto px-5 py-9 pb-14">
-        {feed.length === 0 ? (
-          <p className="text-sm text-muted">No activity yet. Be the first to rate an album.</p>
+        {loading ? (
+          <p className="text-sm text-muted">Loading…</p>
+        ) : feed.length === 0 ? (
+          <div className="py-16 text-center">
+            <p className="text-[15px] font-bold text-ink mb-2">
+              {isFiltered ? 'No activity from your follows yet' : 'No activity yet'}
+            </p>
+            {isFiltered && (
+              <p className="text-[13px] text-muted">
+                The people you follow haven&apos;t rated or reviewed anything recently.
+              </p>
+            )}
+          </div>
         ) : (
           <div className="flex flex-col">
             {feed.map((item, i) => (
               <div key={i} className="flex gap-4 py-5 border-b border-[#EBEBEB] last:border-0">
                 {/* Avatar */}
-                <div className="w-8 h-8 rounded-full bg-mint-bg border border-mint flex items-center justify-center text-[11px] font-bold text-mint-dark flex-shrink-0 mt-0.5">
-                  {item.username[0].toUpperCase()}
-                </div>
+                <Link href={`/profile/${item.username}`} className="flex-shrink-0 mt-0.5">
+                  <div className="w-8 h-8 rounded-full bg-mint-bg border border-mint flex items-center justify-center text-[11px] font-bold text-mint-dark hover:opacity-80 transition">
+                    {item.username[0].toUpperCase()}
+                  </div>
+                </Link>
 
                 {/* Content */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <p className="text-[13px] leading-snug">
-                        <span className="font-semibold text-ink">{item.username}</span>
+                        <Link href={`/profile/${item.username}`} className="font-semibold text-ink hover:text-mid transition">
+                          {item.username}
+                        </Link>
                         <span className="text-muted"> {item.type === 'rating' ? 'rated' : 'reviewed'} </span>
                         <Link href={`/album/${item.releaseId}`} className="font-semibold text-ink hover:text-mid transition">
                           {item.release?.title ?? '—'}
@@ -131,7 +116,7 @@ export default async function ActivityPage() {
                       )}
                       {item.type === 'review' && item.body && (
                         <p className="text-[13px] text-mid mt-2 leading-relaxed line-clamp-2 italic">
-                          "{item.body}"
+                          &ldquo;{item.body}&rdquo;
                         </p>
                       )}
                       <p className="text-[11px] text-muted mt-1.5">{timeAgo(item.date)}</p>
@@ -141,7 +126,7 @@ export default async function ActivityPage() {
                       <Link href={`/album/${item.releaseId}`} className="flex-shrink-0">
                         <img
                           src={item.release.cover_url}
-                          alt={item.release.title}
+                          alt={item.release.title ?? ''}
                           className="w-[52px] h-[52px] rounded-[5px] object-cover"
                         />
                       </Link>

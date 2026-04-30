@@ -130,7 +130,88 @@ CREATE POLICY "list_items_delete" ON list_items FOR DELETE USING (
 );
 ```
 
-### 6. DB caching columns (run after initial setup)
+### 6. Pinned albums
+```sql
+CREATE TABLE pinned_albums (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  release_id text NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  UNIQUE(user_id, release_id)
+);
+ALTER TABLE pinned_albums ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "pinned_select" ON pinned_albums FOR SELECT USING (true);
+CREATE POLICY "pinned_insert" ON pinned_albums FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "pinned_delete" ON pinned_albums FOR DELETE USING (auth.uid() = user_id);
+```
+
+### 7. Rankings
+
+```sql
+CREATE TABLE ranking_categories (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug text UNIQUE NOT NULL,
+  title text NOT NULL,
+  description text,
+  genre text,
+  year int,
+  sort_order int DEFAULT 0,
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE ranking_categories ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "ranking_categories_select" ON ranking_categories FOR SELECT USING (true);
+
+CREATE TABLE ranking_votes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  category_id uuid NOT NULL REFERENCES ranking_categories(id) ON DELETE CASCADE,
+  release_id text NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  UNIQUE(user_id, category_id)
+);
+ALTER TABLE ranking_votes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "ranking_votes_select" ON ranking_votes FOR SELECT USING (true);
+CREATE POLICY "ranking_votes_insert" ON ranking_votes FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "ranking_votes_delete" ON ranking_votes FOR DELETE USING (auth.uid() = user_id);
+```
+
+After running the SQL, seed the initial categories:
+```bash
+curl -X POST https://your-domain.com/api/admin/seed-rankings \
+  -H "x-seed-secret: YOUR_SEED_SECRET"
+```
+
+### 8. Profiles
+
+```sql
+CREATE TABLE profiles (
+  id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  username text UNIQUE NOT NULL,
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "profiles_select" ON profiles FOR SELECT USING (true);
+CREATE POLICY "profiles_insert" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "profiles_update" ON profiles FOR UPDATE USING (auth.uid() = id);
+```
+
+### 9. Follows
+
+```sql
+CREATE TABLE follows (
+  follower_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  following_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  created_at timestamptz DEFAULT now(),
+  PRIMARY KEY (follower_id, following_id),
+  CHECK (follower_id != following_id)
+);
+ALTER TABLE follows ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "follows_select" ON follows FOR SELECT USING (true);
+CREATE POLICY "follows_insert" ON follows FOR INSERT WITH CHECK (auth.uid() = follower_id);
+CREATE POLICY "follows_delete" ON follows FOR DELETE USING (auth.uid() = follower_id);
+```
+
+### 10. DB caching columns (run after initial setup)
 ```sql
 -- Extend releases table for full album caching
 ALTER TABLE releases ADD COLUMN IF NOT EXISTS genres text;
@@ -165,7 +246,8 @@ CREATE POLICY "artists_update" ON artists FOR UPDATE USING (true);
 ### Before going live
 
 - [x] Set all environment variables in Vercel — same keys as `.env.local`, including `SEED_SECRET`
-- [x] Run all Supabase SQL blocks above on the production Supabase project
+- [x] Run Supabase SQL blocks 1–7 on the production Supabase project
+- [ ] Run SQL blocks 8 (profiles) and 9 (follows) — added for the following system
 - [ ] Enable **Supabase Auth** email confirmations if desired (Auth → Email Templates)
 - [ ] Update `privacy@neiro.app` and `legal@neiro.app` in `app/(main)/privacy/page.tsx` and `app/(main)/terms/page.tsx` to your real contact email
 - [ ] Add your jurisdiction to section 12 of Terms of Service
@@ -209,27 +291,29 @@ CREATE POLICY "artists_update" ON artists FOR UPDATE USING (true);
 - [x] Pinned Ten — 10 album slots on profile, pick from rated catalog
 - [x] Shelf Creation — Lists tab on profile showing user's created lists
 
-### In progress
-- [ ] Pick 5 Perfect Albums — onboarding modal on first login
+### Done — profiles
+- [x] Top Genres — auto-derived from rated releases' genre data
 
-### Planned — profiles
-- [ ] Top Genres — auto-derived from rated releases' genre data
+### Done — onboarding
+- [x] Pick 5 Perfect Albums — modal on first login, seeds personalization
 
-### Planned — onboarding
-- [ ] Pick 5 Perfect Albums — shown on first login to seed personalization
+### Done — rankings
+- [x] Community rankings page — one vote per user per category, live leaderboards
+- [x] Individual ranking page — top 10, vote counts, movement indicators, friends' picks
 
-### Planned — rankings
-- [ ] Community rankings page — one vote per user per category, live leaderboards
-- [ ] Individual ranking page — top 10, vote counts, movement indicators, friends' picks
-- [ ] Ranking personalization — sections for unvoted, friends voted, taste-matched
+### Done — social
+- [x] Following system — follow/unfollow users, follower/following counts on profile, dynamic `/profile/[username]` pages
+- [x] Following feed — Activity page filters to followed users when logged in; falls back to community feed
+- [x] Friend Taste Collisions — `/collisions` page showing albums where you and followed users rated ≥1.5 stars apart
+- [x] Taste Contradictions — `/contradictions` page showing albums where your score diverges from community avg by ≥1.5, split into "rated higher" / "rated lower"
+- [x] Activity feed following filter — when logged in, activity defaults to followed users; falls back to community feed
+- [x] Profile pages (public) — `/profile/[username]` shows any user's profile with read-only PinnedTen, ratings, and follow button
 
-### Planned — social
-- [ ] Following system (required for friend-based features)
-- [ ] Friend Taste Collisions
-- [ ] Taste Contradictions
+### Done — rankings
+- [x] Ranking personalization — filter tabs (All / To Vote / Friends Active) with friend vote counts on each card
 
-### Planned — annual
-- [ ] Wrapped page — yearly summary designed for sharing
+### Done — annual
+- [x] Wrapped page — yearly summary: total albums, top genre, top artist, avg score, active month, best/worst album
 
 ---
 

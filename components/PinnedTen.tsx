@@ -11,7 +11,7 @@ interface PinnedAlbum {
 
 const MAX_PINS = 10;
 
-export default function PinnedTen({ userId }: { userId: string }) {
+export default function PinnedTen({ userId, canEdit = true }: { userId: string; canEdit?: boolean }) {
   const [pinned, setPinned] = useState<PinnedAlbum[]>([]);
   const [rated, setRated] = useState<any[]>([]);
   const [editing, setEditing] = useState(false);
@@ -26,7 +26,7 @@ export default function PinnedTen({ userId }: { userId: string }) {
       .select('release_id, releases(title, artist, cover_url)')
       .eq('user_id', userId)
       .order('created_at');
-    setPinned((data ?? []) as PinnedAlbum[]);
+    setPinned((data ?? []) as unknown as PinnedAlbum[]);
     setLoading(false);
   };
 
@@ -66,12 +66,14 @@ export default function PinnedTen({ userId }: { userId: string }) {
       <div className="max-w-[1440px] mx-auto px-5 py-6">
         <div className="flex items-center justify-between mb-4">
           <span className="text-[13px] font-bold text-ink">Pinned Ten</span>
-          <button
-            onClick={editing ? () => setEditing(false) : startEditing}
-            className="text-[12px] font-medium text-muted hover:text-ink transition"
-          >
-            {editing ? 'Done' : 'Edit'}
-          </button>
+          {canEdit && (
+            <button
+              onClick={editing ? () => setEditing(false) : startEditing}
+              className="text-[12px] font-medium text-muted hover:text-ink transition"
+            >
+              {editing ? 'Done' : 'Edit'}
+            </button>
+          )}
         </div>
 
         {/* Pinned slots */}
@@ -87,7 +89,7 @@ export default function PinnedTen({ userId }: { userId: string }) {
                   )}
                 </div>
               </Link>
-              {editing && (
+              {canEdit && editing && (
                 <button
                   onClick={() => handleUnpin(p.release_id)}
                   className="absolute -top-1.5 -right-1.5 w-[18px] h-[18px] rounded-full bg-ink text-white text-[11px] font-bold flex items-center justify-center hover:bg-red-500 transition z-10 leading-none"
@@ -108,7 +110,7 @@ export default function PinnedTen({ userId }: { userId: string }) {
         </div>
 
         {/* Picker */}
-        {editing && unpinned.length > 0 && (
+        {canEdit && editing && unpinned.length > 0 && (
           <div className="mt-4">
             <p className="text-[11px] text-muted mb-3">
               {isFull ? 'All 10 slots filled. Unpin an album to add another.' : `Pick from your catalog — ${emptySlots} slot${emptySlots !== 1 ? 's' : ''} remaining`}

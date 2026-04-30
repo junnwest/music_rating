@@ -4,11 +4,17 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient';
 import PinnedTen from './PinnedTen';
+import Pick5Modal from './Pick5Modal';
 import CreateListSection from './CreateListSection';
 import type { Session } from '@supabase/supabase-js';
 
 type Tab = 'All' | 'Albums' | 'EPs' | 'Singles' | 'Compilations' | 'Lists';
 const TABS: Tab[] = ['All', 'Albums', 'EPs', 'Singles', 'Compilations', 'Lists'];
+
+interface Props {
+  targetUserId?: string;
+  targetUsername?: string;
+}
 
 function TypePill({ children }: { children: React.ReactNode }) {
   return (
@@ -58,7 +64,6 @@ function getTasteDNA(ratings: any[]): string[] {
   const sd = Math.sqrt(variance);
   const fivePct = scores.filter((s) => s === 5).length / scores.length;
 
-  // Tally genres across all rated releases
   const genreCount = new Map<string, number>();
   for (const r of ratings) {
     const genreStr = r.releases?.genres as string | null;
@@ -94,6 +99,33 @@ function getTasteDNA(ratings: any[]): string[] {
   else if (sd < 0.5 && scores.length >= 10) behaviorTag = 'Measured listener';
 
   return [genreTag, behaviorTag].filter(Boolean);
+}
+
+function formatGenreName(raw: string): string {
+  const known: Record<string, string> = {
+    'k-pop': 'K-Pop', 'korean pop': 'Korean Pop',
+    'k-r&b': 'K-R&B', 'korean r&b': 'Korean R&B',
+    'k-rap': 'K-Rap', 'k-indie': 'K-Indie',
+    'korean hip hop': 'Korean Hip Hop', 'korean hip-hop': 'Korean Hip Hop',
+    'r&b': 'R&B', 'hip hop': 'Hip Hop', 'hip-hop': 'Hip Hop',
+  };
+  return known[raw] ?? raw.split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+function getTopGenres(ratings: any[]): { name: string; count: number }[] {
+  const tally = new Map<string, number>();
+  for (const r of ratings) {
+    const genreStr = r.releases?.genres as string | null;
+    if (!genreStr) continue;
+    for (const g of genreStr.split(',')) {
+      const g2 = g.trim().toLowerCase();
+      if (g2) tally.set(g2, (tally.get(g2) ?? 0) + 1);
+    }
+  }
+  return [...tally.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([raw, count]) => ({ name: formatGenreName(raw), count }));
 }
 
 interface MonthlyCapsule {
@@ -162,7 +194,6 @@ function getRatingInsights(ratings: any[], communityStats: CommunityStats | null
   const insights: string[] = [];
   const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
 
-  // Strictness vs community
   if (communityStats && scores.length >= 5) {
     const p = communityStats.percentile;
     if (p <= 25) insights.push(`You rate harder than ${100 - p}% of users`);
@@ -170,19 +201,16 @@ function getRatingInsights(ratings: any[], communityStats: CommunityStats | null
     else insights.push(`Your ratings land close to the community average`);
   }
 
-  // Perfect score rarity
   const fiveCount = scores.filter((s) => s === 5).length;
   const fivePct = fiveCount / scores.length;
   if (fiveCount === 0) insights.push(`You've never given a perfect score`);
   else if (fivePct < 0.05) insights.push(`Perfect scores are rare for you — only ${fiveCount} given`);
   else if (fivePct > 0.3) insights.push(`${Math.round(fivePct * 100)}% of your ratings are perfect scores`);
 
-  // Low score tendency
   const lowCount = scores.filter((s) => s <= 2).length;
   const lowPct = lowCount / scores.length;
   if (lowPct > 0.25) insights.push(`You're not afraid to rate low — ${Math.round(lowPct * 100)}% are 2★ or below`);
 
-  // Polarizing vs consistent
   if (scores.length >= 10) {
     const variance = scores.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / scores.length;
     const sd = Math.sqrt(variance);
@@ -193,13 +221,18 @@ function getRatingInsights(ratings: any[], communityStats: CommunityStats | null
   return insights.slice(0, 3);
 }
 
-export default function ProfilePanel() {
+export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
   const [session, setSession] = useState<Session | null>(null);
   const [ratings, setRatings] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('All');
   const [communityStats, setCommunityStats] = useState<CommunityStats | null>(null);
   const [lists, setLists] = useState<any[]>([]);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [followerCount, setFollowerCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
 
   const ratingsCount = ratings?.length ?? 0;
   const averageRating =
@@ -207,7 +240,6 @@ export default function ProfilePanel() {
       ? Math.round((ratings!.reduce((s: number, r: any) => s + (r.score || 0), 0) / ratingsCount) * 10) / 10
       : 0;
 
-  // Score distribution (10 bars: 0.5 → 5.0)
   const bars = Array.from({ length: 10 }, (_, i) => {
     const target = (i + 1) * 0.5;
     return ratings?.filter((r) => r.score === target).length ?? 0;
@@ -217,18 +249,28 @@ export default function ProfilePanel() {
     if (!supabase) { setLoading(false); return; }
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
-      if (data.session?.user) {
-        fetchRatings(data.session.user.id);
+      const effectiveId = targetUserId ?? data.session?.user?.id;
+      if (effectiveId) {
+        fetchData(effectiveId, data.session?.user?.id ?? null, data.session?.user?.email ?? null);
       } else {
         setLoading(false);
       }
     });
-  }, []);
+  }, [targetUserId]);
 
-  const fetchRatings = async (userId: string) => {
+  useEffect(() => {
+    if (!session || ratings === null || targetUserId) return;
+    const alreadyDone = !!session.user.user_metadata?.onboarding_completed;
+    const hasHistory = ratings.length >= 5;
+    if (!alreadyDone && !hasHistory) setShowOnboarding(true);
+  }, [session, ratings, targetUserId]);
+
+  const fetchData = async (userId: string, currentUserId: string | null, currentUserEmail: string | null = null) => {
     if (!supabase) { setLoading(false); return; }
 
-    const [{ data }, { data: allRatings }, { data: listsData }] = await Promise.all([
+    const isOwn = !targetUserId || userId === currentUserId;
+
+    const [ratingsRes, allRatingsRes, listsRes, followersRes, followingRes] = await Promise.all([
       supabase
         .from('ratings')
         .select('id, score, status, note, created_at, release_id, releases(*)')
@@ -242,13 +284,33 @@ export default function ProfilePanel() {
         .select('id, title, description, created_at, list_items(count)')
         .eq('user_id', userId)
         .order('created_at', { ascending: false }),
+      supabase
+        .from('follows')
+        .select('*', { count: 'exact', head: true })
+        .eq('following_id', userId),
+      supabase
+        .from('follows')
+        .select('*', { count: 'exact', head: true })
+        .eq('follower_id', userId),
     ]);
 
-    setLists(listsData ?? []);
+    setLists(listsRes.data ?? []);
+    setRatings(ratingsRes.data ?? []);
+    setFollowerCount(followersRes.count ?? 0);
+    setFollowingCount(followingRes.count ?? 0);
 
-    setRatings(data ?? []);
+    if (!isOwn && currentUserId) {
+      const { data: followCheck } = await supabase
+        .from('follows')
+        .select('follower_id')
+        .eq('follower_id', currentUserId)
+        .eq('following_id', userId)
+        .maybeSingle();
+      setIsFollowing(!!followCheck);
+    }
 
-    // Compute percentile from community data
+    // Compute percentile
+    const allRatings = allRatingsRes.data;
     if (allRatings && allRatings.length > 0) {
       const userMap = new Map<string, number[]>();
       for (const r of allRatings) {
@@ -261,8 +323,8 @@ export default function ProfilePanel() {
         avg: scores.reduce((a: number, b: number) => a + b, 0) / scores.length,
       }));
       const currentAvg = userAvgs.find((u) => u.id === userId)?.avg ?? null;
-      const allScores = allRatings.map((r) => r.score).filter(Boolean) as number[];
-      const communityAvg = allScores.reduce((a, b) => a + b, 0) / allScores.length;
+      const allScores = allRatings.map((r: any) => r.score).filter(Boolean) as number[];
+      const communityAvg = allScores.reduce((a: number, b: number) => a + b, 0) / allScores.length;
 
       if (currentAvg !== null && userAvgs.length > 1) {
         const below = userAvgs.filter((u) => u.avg < currentAvg).length;
@@ -271,7 +333,50 @@ export default function ProfilePanel() {
       }
     }
 
+    // Upsert profile for own profile so others can find this user by username
+    if (isOwn && currentUserId && supabase) {
+      const username = currentUserEmail?.split('@')[0] ?? targetUsername;
+      if (username) {
+        supabase
+          .from('profiles')
+          .upsert({ id: currentUserId, username }, { onConflict: 'id' })
+          .then(() => {});
+      }
+    }
+
     setLoading(false);
+  };
+
+  const handleFollow = async () => {
+    if (!session?.user || !targetUserId || followLoading) return;
+    setFollowLoading(true);
+    try {
+      await fetch('/api/follow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ followerId: session.user.id, followingId: targetUserId }),
+      });
+      setIsFollowing(true);
+      setFollowerCount((c) => c + 1);
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
+  const handleUnfollow = async () => {
+    if (!session?.user || !targetUserId || followLoading) return;
+    setFollowLoading(true);
+    try {
+      await fetch('/api/follow', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ followerId: session.user.id, followingId: targetUserId }),
+      });
+      setIsFollowing(false);
+      setFollowerCount((c) => Math.max(0, c - 1));
+    } finally {
+      setFollowLoading(false);
+    }
   };
 
   if (loading) {
@@ -282,7 +387,17 @@ export default function ProfilePanel() {
     );
   }
 
-  if (!session?.user) {
+  const isOwnProfile = !targetUserId || targetUserId === session?.user?.id;
+
+  if (!isOwnProfile && !targetUserId) {
+    return (
+      <div className="max-w-[1440px] mx-auto px-5 py-16 text-center">
+        <p className="text-xl font-bold text-ink mb-2">User not found</p>
+      </div>
+    );
+  }
+
+  if (isOwnProfile && !session?.user) {
     return (
       <div className="max-w-[1440px] mx-auto px-5 py-16 text-center">
         <p className="text-xl font-bold text-ink mb-2">Sign in to view your profile</p>
@@ -297,8 +412,9 @@ export default function ProfilePanel() {
     );
   }
 
-  const username = session.user.email?.split('@')[0] ?? '—';
-  const initial = session.user.email?.[0].toUpperCase() ?? '?';
+  const effectiveUserId = targetUserId ?? session!.user.id;
+  const username = targetUsername ?? session?.user?.email?.split('@')[0] ?? '—';
+  const initial = username[0]?.toUpperCase() ?? '?';
 
   const filteredRatings = (ratings ?? []).filter((r) => {
     if (activeTab === 'All') return true;
@@ -313,16 +429,22 @@ export default function ProfilePanel() {
   const insights = getRatingInsights(ratings ?? [], communityStats);
   const tasteDNA = getTasteDNA(ratings ?? []);
   const capsule = getMonthlyCapsule(ratings ?? []);
+  const topGenres = getTopGenres(ratings ?? []);
 
   return (
     <div className="bg-white">
+      {isOwnProfile && showOnboarding && session?.user && (
+        <Pick5Modal
+          userId={session.user.id}
+          onComplete={() => setShowOnboarding(false)}
+        />
+      )}
+
       {/* ── HEADER ─────────────────────────────────────────── */}
       <div className="bg-surface border-b border-[#EBEBEB]">
         <div className="max-w-[1440px] mx-auto px-5 pt-9 pb-0 flex gap-6 items-start">
           {/* Avatar */}
-          <div
-            className="w-[82px] h-[82px] rounded-full bg-mint-bg border-2 border-mint flex items-center justify-center flex-shrink-0 font-bold text-mint-dark text-[30px]"
-          >
+          <div className="w-[82px] h-[82px] rounded-full bg-mint-bg border-2 border-mint flex items-center justify-center flex-shrink-0 font-bold text-mint-dark text-[30px]">
             {initial}
           </div>
 
@@ -336,7 +458,9 @@ export default function ProfilePanel() {
                 {username}
               </h1>
             </div>
-            <p className="text-[13px] text-muted">Member · {session.user.email}</p>
+            {isOwnProfile && (
+              <p className="text-[13px] text-muted">Member · {session!.user.email}</p>
+            )}
 
             {/* Stats */}
             <div className="flex gap-8 mt-[18px]">
@@ -344,8 +468,8 @@ export default function ProfilePanel() {
                 [ratingsCount, 'albums rated'],
                 [`${averageRating || '—'} ★`, 'avg score'],
                 ['0', 'reviews'],
-                ['0', 'followers'],
-                ['0', 'following'],
+                [followerCount, 'followers'],
+                [followingCount, 'following'],
               ].map(([val, label]) => (
                 <div key={label as string}>
                   <div className="text-[20px] font-bold text-ink">{val}</div>
@@ -357,9 +481,23 @@ export default function ProfilePanel() {
 
           {/* Actions */}
           <div className="flex gap-2 pt-1">
-            <button className="border border-[#EBEBEB] rounded-lg px-[18px] py-[9px] text-[13px] font-semibold text-ink hover:bg-surface transition">
-              Edit profile
-            </button>
+            {isOwnProfile ? (
+              <button className="border border-[#EBEBEB] rounded-lg px-[18px] py-[9px] text-[13px] font-semibold text-ink hover:bg-surface transition">
+                Edit profile
+              </button>
+            ) : session?.user ? (
+              <button
+                onClick={isFollowing ? handleUnfollow : handleFollow}
+                disabled={followLoading}
+                className={`rounded-lg px-[18px] py-[9px] text-[13px] font-semibold transition ${
+                  isFollowing
+                    ? 'border border-[#EBEBEB] text-ink hover:bg-surface'
+                    : 'bg-ink text-white hover:opacity-80'
+                } disabled:opacity-50`}
+              >
+                {followLoading ? '…' : isFollowing ? 'Following' : 'Follow'}
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -386,7 +524,7 @@ export default function ProfilePanel() {
       </div>
 
       {/* Pinned Ten */}
-      <PinnedTen userId={session.user.id} />
+      <PinnedTen userId={effectiveUserId} canEdit={isOwnProfile} />
 
       {/* ── BODY ─────────────────────────────────────────────── */}
       <div
@@ -398,11 +536,13 @@ export default function ProfilePanel() {
           <div className="col-span-2">
             <div className="flex justify-between items-center mb-6">
               <p className="text-[13px] text-muted">{lists.length} {lists.length === 1 ? 'list' : 'lists'}</p>
-              <CreateListSection />
+              {isOwnProfile && <CreateListSection />}
             </div>
             {lists.length === 0 ? (
               <div className="py-16 text-center">
-                <p className="text-sm text-muted">No lists yet. Create one to organize your albums.</p>
+                <p className="text-sm text-muted">
+                  {isOwnProfile ? 'No lists yet. Create one to organize your albums.' : 'No lists yet.'}
+                </p>
               </div>
             ) : (
               <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
@@ -428,154 +568,174 @@ export default function ProfilePanel() {
 
         {/* Album grid */}
         {activeTab !== 'Lists' && (
-        <div>
-          {filteredRatings.length === 0 ? (
-            <div className="py-16 text-center">
-              <p className="text-sm text-muted">No ratings yet. Search for albums and rate them.</p>
-            </div>
-          ) : (
-            <div className="grid gap-[14px]" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
-              {filteredRatings.map((rating) => (
-                <Link key={rating.id} href={`/album/${rating.release_id}`} className="block min-w-0">
-                  <div className="relative overflow-hidden rounded-[6px]" style={{ aspectRatio: '1 / 1' }}>
-                    {rating.releases?.cover_url ? (
-                      <img
-                        src={rating.releases.cover_url}
-                        alt={rating.releases.title}
-                        className="absolute inset-0 w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 bg-surface border border-[#EBEBEB]" />
-                    )}
-                    {rating.score && (
-                      <div
-                        className="absolute bottom-1 right-1 text-[10px] font-bold rounded-[4px] px-[6px] py-[1px]"
-                        style={{ background: '#3DFFD1', color: '#00453A' }}
-                      >
-                        ★ {rating.score}
-                      </div>
-                    )}
-                  </div>
-                  <div
-                    className="mt-[7px] text-[11px] font-semibold text-ink truncate"
-                    title={rating.releases?.title}
-                  >
-                    {rating.releases?.title ?? rating.release_id}
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
+          <div>
+            {filteredRatings.length === 0 ? (
+              <div className="py-16 text-center">
+                <p className="text-sm text-muted">No ratings yet. Search for albums and rate them.</p>
+              </div>
+            ) : (
+              <div className="grid gap-[14px]" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
+                {filteredRatings.map((rating) => (
+                  <Link key={rating.id} href={`/album/${rating.release_id}`} className="block min-w-0">
+                    <div className="relative overflow-hidden rounded-[6px]" style={{ aspectRatio: '1 / 1' }}>
+                      {rating.releases?.cover_url ? (
+                        <img
+                          src={rating.releases.cover_url}
+                          alt={rating.releases.title}
+                          className="absolute inset-0 w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="absolute inset-0 bg-surface border border-[#EBEBEB]" />
+                      )}
+                      {rating.score && (
+                        <div
+                          className="absolute bottom-1 right-1 text-[10px] font-bold rounded-[4px] px-[6px] py-[1px]"
+                          style={{ background: '#3DFFD1', color: '#00453A' }}
+                        >
+                          ★ {rating.score}
+                        </div>
+                      )}
+                    </div>
+                    <div
+                      className="mt-[7px] text-[11px] font-semibold text-ink truncate"
+                      title={rating.releases?.title}
+                    >
+                      {rating.releases?.title ?? rating.release_id}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Sidebar — hidden on Lists tab */}
-        {activeTab !== 'Lists' && <div>
-        <div>
-          {/* Monthly Capsule */}
-          {capsule && (
-            <>
-              <div className="rounded-[10px] p-4 border border-[#EBEBEB] bg-surface">
-                <div
-                  className="text-[10px] font-semibold text-muted uppercase mb-2"
-                  style={{ letterSpacing: '0.7px' }}
-                >
-                  Monthly Capsule
-                </div>
-                <div
-                  className="text-[15px] font-extrabold text-ink mb-4"
-                  style={{ letterSpacing: '-0.4px' }}
-                >
-                  {capsule.monthLabel}
-                </div>
-                <div className="flex flex-col gap-[10px]">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[12px] text-muted">Albums rated</span>
-                    <span className="text-[12px] font-semibold text-ink">{capsule.count}</span>
+        {activeTab !== 'Lists' && (
+          <div>
+            {/* Monthly Capsule */}
+            {capsule && (
+              <>
+                <div className="rounded-[10px] p-4 border border-[#EBEBEB] bg-surface">
+                  <div
+                    className="text-[10px] font-semibold text-muted uppercase mb-2"
+                    style={{ letterSpacing: '0.7px' }}
+                  >
+                    Monthly Capsule
                   </div>
-                  {capsule.topGenre && (
+                  <div
+                    className="text-[15px] font-extrabold text-ink mb-4"
+                    style={{ letterSpacing: '-0.4px' }}
+                  >
+                    {capsule.monthLabel}
+                  </div>
+                  <div className="flex flex-col gap-[10px]">
                     <div className="flex justify-between items-center">
-                      <span className="text-[12px] text-muted">Top genre</span>
-                      <span className="text-[12px] font-semibold text-ink">{capsule.topGenre}</span>
+                      <span className="text-[12px] text-muted">Albums rated</span>
+                      <span className="text-[12px] font-semibold text-ink">{capsule.count}</span>
                     </div>
-                  )}
-                  {capsule.highest && (
-                    <div className="flex justify-between items-start gap-3">
-                      <span className="text-[12px] text-muted flex-shrink-0">Highest rated</span>
-                      <span className="text-[12px] font-semibold text-ink text-right truncate">
-                        {capsule.highest.title}{' '}
-                        <span style={{ color: '#3DFFD1' }}>★{capsule.highest.score}</span>
-                      </span>
-                    </div>
-                  )}
-                  {capsule.lowest && (
-                    <div className="flex justify-between items-start gap-3">
-                      <span className="text-[12px] text-muted flex-shrink-0">Lowest rated</span>
-                      <span className="text-[12px] font-semibold text-ink text-right truncate">
-                        {capsule.lowest.title}{' '}
-                        <span className="text-muted">★{capsule.lowest.score}</span>
-                      </span>
-                    </div>
-                  )}
+                    {capsule.topGenre && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-[12px] text-muted">Top genre</span>
+                        <span className="text-[12px] font-semibold text-ink">{capsule.topGenre}</span>
+                      </div>
+                    )}
+                    {capsule.highest && (
+                      <div className="flex justify-between items-start gap-3">
+                        <span className="text-[12px] text-muted flex-shrink-0">Highest rated</span>
+                        <span className="text-[12px] font-semibold text-ink text-right truncate">
+                          {capsule.highest.title}{' '}
+                          <span style={{ color: '#3DFFD1' }}>★{capsule.highest.score}</span>
+                        </span>
+                      </div>
+                    )}
+                    {capsule.lowest && (
+                      <div className="flex justify-between items-start gap-3">
+                        <span className="text-[12px] text-muted flex-shrink-0">Lowest rated</span>
+                        <span className="text-[12px] font-semibold text-ink text-right truncate">
+                          {capsule.lowest.title}{' '}
+                          <span className="text-muted">★{capsule.lowest.score}</span>
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
+                <div className="h-px bg-[#EBEBEB] my-5" />
+              </>
+            )}
+
+            {/* Score Distribution */}
+            <div className="text-[15px] font-bold text-ink mb-[14px]">Score Distribution</div>
+            <ScoreBar bars={bars} />
+
+            <div className="h-px bg-[#EBEBEB] my-5" />
+
+            {/* Rating Philosophy */}
+            <div className="text-[15px] font-bold text-ink mb-3">Rating Philosophy</div>
+            {insights.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                {insights.map((insight, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="text-mint font-bold flex-shrink-0">—</span>
+                    <p className="text-[12px] text-mid leading-snug">{insight}</p>
+                  </div>
+                ))}
               </div>
-              <div className="h-px bg-[#EBEBEB] my-5" />
-            </>
-          )}
+            ) : (
+              <p className="text-[12px] text-muted">Rate more albums to unlock insights.</p>
+            )}
 
-          {/* Score Distribution */}
-          <div className="text-[15px] font-bold text-ink mb-[14px]">Score Distribution</div>
-          <ScoreBar bars={bars} />
+            <div className="h-px bg-[#EBEBEB] my-5" />
 
-          <div className="h-px bg-[#EBEBEB] my-5" />
+            {/* Taste DNA */}
+            <div className="text-[15px] font-bold text-ink mb-3">Taste DNA</div>
+            {tasteDNA.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {tasteDNA.map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center px-[10px] py-[4px] rounded-full text-[12px] font-semibold"
+                    style={{ background: '#EDFFF9', border: '1.5px solid #3DFFD1', color: '#00453A' }}
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[12px] text-muted">Rate more albums to reveal your taste DNA.</p>
+            )}
 
-          {/* Rating Philosophy */}
-          <div className="text-[15px] font-bold text-ink mb-3">Rating Philosophy</div>
-          {insights.length > 0 ? (
-            <div className="flex flex-col gap-2">
-              {insights.map((insight, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="text-mint font-bold flex-shrink-0">—</span>
-                  <p className="text-[12px] text-mid leading-snug">{insight}</p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-[12px] text-muted">Rate more albums to unlock insights.</p>
-          )}
+            <div className="h-px bg-[#EBEBEB] my-5" />
 
-          <div className="h-px bg-[#EBEBEB] my-5" />
+            {/* Listen Later placeholder */}
+            <div className="text-[15px] font-bold text-ink mb-3">Listen Later</div>
+            <p className="text-[12px] text-muted">Nothing queued yet.</p>
 
-          {/* Taste DNA */}
-          <div className="text-[15px] font-bold text-ink mb-3">Taste DNA</div>
-          {tasteDNA.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {tasteDNA.map((tag) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center px-[10px] py-[4px] rounded-full text-[12px] font-semibold"
-                  style={{ background: '#EDFFF9', border: '1.5px solid #3DFFD1', color: '#00453A' }}
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <p className="text-[12px] text-muted">Rate more albums to reveal your taste DNA.</p>
-          )}
+            <div className="h-px bg-[#EBEBEB] my-5" />
 
-          <div className="h-px bg-[#EBEBEB] my-5" />
-
-          {/* Listen Later placeholder */}
-          <div className="text-[15px] font-bold text-ink mb-3">Listen Later</div>
-          <p className="text-[12px] text-muted">Nothing queued yet.</p>
-
-          <div className="h-px bg-[#EBEBEB] my-5" />
-
-          {/* Top Genres placeholder */}
-          <div className="text-[15px] font-bold text-ink mb-3">Top Genres</div>
-          <p className="text-[12px] text-muted">Rate more albums to see your top genres.</p>
-        </div>}
+            {/* Top Genres */}
+            <div className="text-[15px] font-bold text-ink mb-3">Top Genres</div>
+            {topGenres.length > 0 ? (
+              <div className="flex flex-col gap-[10px]">
+                {topGenres.map(({ name, count }) => (
+                  <div key={name}>
+                    <div className="flex justify-between items-center mb-[5px]">
+                      <span className="text-[12px] font-medium text-ink">{name}</span>
+                      <span className="text-[11px] text-muted">{count}</span>
+                    </div>
+                    <div className="h-[3px] bg-[#EBEBEB] rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full"
+                        style={{ width: `${(count / topGenres[0].count) * 100}%`, background: '#3DFFD1' }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[12px] text-muted">Rate more albums to see your top genres.</p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
