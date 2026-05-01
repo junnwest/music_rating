@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient';
 import ScrollRow from './ScrollRow';
+import { getCanonSuggestions, toAlbumRelease } from '../lib/canon-suggestions';
 import type { AlbumRelease } from '../types';
 
 type Status = 'loading' | 'guest' | 'empty' | 'ready';
@@ -36,6 +37,8 @@ export default function PersonalizedFeed() {
   const [username, setUsername] = useState('');
   const [recentRatings, setRecentRatings] = useState<RatedRelease[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
+  const [coldStartAlbums, setColdStartAlbums] = useState<AlbumRelease[]>([]);
+  const [coldStartLabel, setColdStartLabel] = useState('');
 
   useEffect(() => {
     if (!supabase) { setStatus('guest'); return; }
@@ -53,7 +56,27 @@ export default function PersonalizedFeed() {
         .order('created_at', { ascending: false })
         .limit(30);
 
-      if (!ratings || ratings.length === 0) { setStatus('empty'); return; }
+      if (!ratings || ratings.length === 0) {
+        // Cold-start: show canonical suggestions based on onboarding genre picks
+        const { data: profile } = await supabase!
+          .from('profiles')
+          .select('preferred_genres, display_name')
+          .eq('id', session.user.id)
+          .maybeSingle();
+
+        if (profile?.display_name) setUsername(profile.display_name);
+
+        if (profile?.preferred_genres && supabase) {
+          const genres = (profile.preferred_genres as string).split(',').filter(Boolean);
+          const suggestions = await getCanonSuggestions(supabase, genres, 20);
+          if (suggestions.length > 0) {
+            setColdStartAlbums(suggestions.map(toAlbumRelease));
+            setColdStartLabel(genres.slice(0, 3).join(', '));
+          }
+        }
+        setStatus('empty');
+        return;
+      }
 
       setRecentRatings(ratings.slice(0, 8) as unknown as RatedRelease[]);
 
@@ -86,6 +109,21 @@ export default function PersonalizedFeed() {
     })();
   }, []);
 
+  const recentScrollRef = useRef<HTMLDivElement>(null);
+  const SCROLL_PX = (180 + 18) * 4;
+
+  const scrollRecent = (direction: 'left' | 'right') => {
+    const el = recentScrollRef.current;
+    if (!el) return;
+    if (direction === 'right') {
+      const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 4;
+      el.scrollBy({ left: atEnd ? -el.scrollWidth : SCROLL_PX, behavior: 'smooth' });
+    } else {
+      const atStart = el.scrollLeft <= 4;
+      el.scrollTo({ left: atStart ? el.scrollWidth : el.scrollLeft - SCROLL_PX, behavior: 'smooth' });
+    }
+  };
+
   const greeting = (
     <div className="mb-11">
       {status === 'ready' ? (
@@ -108,8 +146,29 @@ export default function PersonalizedFeed() {
     </div>
   );
 
-  if (status === 'loading' || status === 'guest' || status === 'empty') {
+  if (status === 'loading' || status === 'guest') {
     return greeting;
+  }
+
+  if (status === 'empty') {
+    return (
+      <div>
+        {greeting}
+        {coldStartAlbums.length > 0 && (
+          <div>
+            <div className="flex items-end justify-between mb-[18px]">
+              <div>
+                <div className="text-[17px] font-bold text-ink">Start Here</div>
+                <div className="text-[12px] text-muted mt-0.5">
+                  {coldStartLabel ? `Canonical picks · ${coldStartLabel}` : 'Canonical picks for serious listeners'}
+                </div>
+              </div>
+            </div>
+            <ScrollRow albums={coldStartAlbums} />
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -128,36 +187,60 @@ export default function PersonalizedFeed() {
               See all →
             </Link>
           </div>
-          <div className="overflow-x-hidden">
-            <div className="flex gap-[18px] pb-2">
-              {recentRatings.map((r) => {
-                const rel = r.releases;
-                if (!rel) return null;
-                return (
-                  <Link key={r.release_id} href={`/album/${r.release_id}`} className="flex-shrink-0 w-[152px] group/card">
-                    <div className="relative w-[152px] h-[152px] rounded-[7px] overflow-hidden">
-                      {rel.cover_url ? (
-                        <img src={rel.cover_url} alt={rel.title} className="absolute inset-0 w-full h-full object-cover" />
-                      ) : (
-                        <div className="absolute inset-0 bg-surface border border-[#EBEBEB]" />
-                      )}
-                      {r.score && (
-                        <div
-                          className="absolute bottom-1.5 right-1.5 text-[10px] font-bold rounded-[4px] px-[6px] py-[2px]"
-                          style={{ background: '#3DFFD1', color: '#00453A' }}
-                        >
-                          ★ {r.score}
-                        </div>
-                      )}
-                    </div>
-                    <div className="mt-[9px]">
-                      <div className="text-[13px] font-semibold text-ink truncate leading-snug">{rel.title}</div>
-                      <div className="text-[12px] text-muted mt-0.5 truncate">{rel.artist}</div>
-                    </div>
-                  </Link>
-                );
-              })}
+          <div className="group relative">
+            {/* Left arrow */}
+            <button
+              onClick={() => scrollRecent('left')}
+              className="absolute left-0 top-[90px] z-10 -translate-x-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-white border border-[#EBEBEB] shadow-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface"
+              aria-label="Scroll left"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#444444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+
+            <div ref={recentScrollRef} className="overflow-x-hidden">
+              <div className="flex gap-[18px] pb-2">
+                {recentRatings.map((r) => {
+                  const rel = r.releases;
+                  if (!rel) return null;
+                  return (
+                    <Link key={r.release_id} href={`/album/${r.release_id}`} className="flex-shrink-0 w-[180px] group/card">
+                      <div className="relative w-[180px] h-[180px] rounded-[7px] overflow-hidden">
+                        {rel.cover_url ? (
+                          <img src={rel.cover_url} alt={rel.title} className="absolute inset-0 w-full h-full object-cover" />
+                        ) : (
+                          <div className="absolute inset-0 bg-surface border border-[#EBEBEB]" />
+                        )}
+                        {r.score && (
+                          <div
+                            className="absolute bottom-1.5 right-1.5 text-[10px] font-bold rounded-[4px] px-[6px] py-[2px]"
+                            style={{ background: '#3DFFD1', color: '#00453A' }}
+                          >
+                            ★ {r.score}
+                          </div>
+                        )}
+                      </div>
+                      <div className="mt-[9px]">
+                        <div className="text-[13px] font-semibold text-ink truncate leading-snug">{rel.title}</div>
+                        <div className="text-[12px] text-muted mt-0.5 truncate">{rel.artist}</div>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
+
+            {/* Right arrow */}
+            <button
+              onClick={() => scrollRecent('right')}
+              className="absolute right-0 top-[90px] z-10 translate-x-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-white border border-[#EBEBEB] shadow-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface"
+              aria-label="Scroll right"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#444444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
           </div>
         </div>
       )}

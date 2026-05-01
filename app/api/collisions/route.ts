@@ -41,12 +41,15 @@ export async function GET(req: NextRequest) {
 
   if (!friendRatings || friendRatings.length === 0) return NextResponse.json({ collisions: [] });
 
-  // Build username map
+  // Build username map from profiles table
   let userMap = new Map<string, string>();
-  try {
-    const { data: { users } } = await supabase.auth.admin.listUsers({ perPage: 1000 });
-    userMap = new Map(users.map((u) => [u.id, u.email?.split('@')[0] ?? 'user']));
-  } catch {}
+  if (followedIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, username')
+      .in('id', followedIds);
+    userMap = new Map((profiles ?? []).map((p: any) => [p.id, p.username]));
+  }
 
   // Compute collisions
   const collisions = (friendRatings as any[])

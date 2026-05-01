@@ -1,6 +1,6 @@
 # 音色 neiro
 
-A music rating and discovery platform for Korean music fans. Rate albums, write reviews, and get personalized recommendations.
+A music rating and discovery platform for serious listeners. Rate albums, write reviews, and get personalized recommendations.
 
 **Stack:** Next.js 14 (App Router) · Supabase (auth + database) · Spotify API · Tailwind CSS
 
@@ -32,27 +32,25 @@ A music rating and discovery platform for Korean music fans. Rate albums, write 
 
 ## Supabase setup
 
-Schema is managed via **Supabase CLI migrations** — no more manual SQL editor.
+Schema is managed via **Supabase CLI migrations** — no manual SQL editor needed.
+
+### Install the CLI (Windows)
+
+Download the binary from GitHub releases and add to PATH:
+```
+https://github.com/supabase/cli/releases/latest → supabase_windows_amd64.tar.gz
+```
+Extract `supabase.exe` to a folder and add that folder to your system PATH.
 
 ### First-time setup (one time only)
 
-1. Install the CLI:
-   ```bash
-   npm install -g supabase
-   ```
+```bash
+supabase login
+supabase link --project-ref mmbptchpetwdievhrdsj
+supabase db push
+```
 
-2. Log in and link to your project:
-   ```bash
-   supabase login
-   supabase link --project-ref <your-project-ref>
-   ```
-   Find your project ref in Supabase → Project Settings → General.
-
-3. Apply all migrations:
-   ```bash
-   supabase db push
-   ```
-   This runs every file in `supabase/migrations/` in order.
+`db push` runs every file in `supabase/migrations/` in order.
 
 ### Adding a new schema change
 
@@ -61,8 +59,6 @@ supabase migration new <short_description>
 # edit the generated file in supabase/migrations/
 supabase db push
 ```
-
-That's it — no dashboard copy-paste required.
 
 ### Seeding ranking categories (run once after first push)
 
@@ -77,28 +73,27 @@ curl -X POST https://your-domain.com/api/admin/seed-rankings \
 
 ### Before going live
 
-- [x] Set all environment variables in Vercel — same keys as `.env.local`, including `SEED_SECRET`
-- [x] Run Supabase SQL blocks 1–7 on the production Supabase project
-- [ ] Run SQL blocks 8 (profiles) and 9 (follows) — added for the following system
-- [ ] Enable **Supabase Auth** email confirmations if desired (Auth → Email Templates)
-- [ ] Update `privacy@neiro.app` and `legal@neiro.app` in `app/(main)/privacy/page.tsx` and `app/(main)/terms/page.tsx` to your real contact email
-- [ ] Add your jurisdiction to section 12 of Terms of Service
-- [ ] Enable Google OAuth provider in Supabase Auth dashboard
+- [x] Set all environment variables in Vercel
+- [x] Run all migrations (`supabase db push`) — all 11 tables + RLS policies applied
+- [x] Add jurisdiction to Terms of Service (Republic of Korea)
+- [x] Enable Google OAuth in Supabase Auth dashboard
+- [ ] Replace `privacy@neiro.app` and `legal@neiro.app` in privacy/terms pages with real email
+- [ ] Enable Supabase Auth email confirmations if desired (Auth → Email Templates)
 
 ### After first deployment
 
-- [ ] **Seed the homepage genre rows** — run this once after the site is live:
+- [ ] **Seed the homepage genre rows:**
   ```bash
   curl -X POST https://your-domain.com/api/admin/seed-curated \
     -H "x-seed-secret: YOUR_SEED_SECRET"
   ```
 
-### Before public marketing / launch
+### Before public launch
 
-- [ ] **Run the Korean music data ingestion script** — pre-populate the DB with albums from major Korean artists and genres before real users arrive. This is critical to reduce Spotify API dependency at scale. Script to be built at `scripts/ingest-korean-music.ts`. Target: top artists from K-Pop, Korean R&B, Korean Indie, K-Rap genres; major label rosters (HYBE, SM, YG, JYP, Kakao M). Run with rate-limited delays (200ms between requests). Re-run monthly to pick up new releases.
+- [ ] **Run music ingestion** — see [Music catalog ingestion](#music-catalog-ingestion) below
 - [ ] Verify Google OAuth works on production
 - [ ] Test rating, review, and list flows end-to-end on production
-- [ ] Confirm homepage genre rows are populated (curated_releases seed)
+- [ ] Confirm homepage genre rows are populated
 
 ---
 
@@ -112,49 +107,144 @@ curl -X POST https://your-domain.com/api/admin/seed-rankings \
 - [x] Community reviews
 - [x] Homepage genre rows (DB-first, Spotify fallback)
 - [x] For You page (personalized album feed)
-- [x] Activity feed (community ratings + reviews)
+- [x] Activity feed — community ratings + reviews; filters to followed users when logged in
 - [x] Lists (create, view)
 - [x] Profile page (ratings grid, score distribution)
-- [x] Rating Philosophy (profile sidebar — strictness, perfect score frequency, consistency)
+- [x] Rating Philosophy (profile sidebar)
 - [x] Taste DNA (profile sidebar — genre + behavior tags)
-- [x] Genre storage on ratings (genres column in releases table)
-- [x] DB caching layer — albums and artists saved to Supabase on first visit, served from DB on repeat visits
-- [x] Monthly Capsule — monthly reflection card in profile sidebar
-- [x] Pinned Ten — 10 album slots on profile, pick from rated catalog
-- [x] Shelf Creation — Lists tab on profile showing user's created lists
-
-### Done — profiles
-- [x] Top Genres — auto-derived from rated releases' genre data
-
-### Done — onboarding
-- [x] Pick 5 Perfect Albums — modal on first login, seeds personalization
-
-### Done — rankings
-- [x] Community rankings page — one vote per user per category, live leaderboards
-- [x] Individual ranking page — top 10, vote counts, movement indicators, friends' picks
+- [x] Top Genres (profile sidebar)
+- [x] Monthly Capsule (profile sidebar)
+- [x] Pinned Ten — 10 album slots, pick from rated catalog
+- [x] Shelf Creation — Lists tab on profile
+- [x] Pick 5 onboarding modal on first login
+- [x] DB caching layer — albums + artists saved to Supabase on first visit
+- [x] Genre storage on ratings
 
 ### Done — social
-- [x] Following system — follow/unfollow users, follower/following counts on profile, dynamic `/profile/[username]` pages
-- [x] Following feed — Activity page filters to followed users when logged in; falls back to community feed
-- [x] Friend Taste Collisions — `/collisions` page showing albums where you and followed users rated ≥1.5 stars apart
-- [x] Taste Contradictions — `/contradictions` page showing albums where your score diverges from community avg by ≥1.5, split into "rated higher" / "rated lower"
-- [x] Activity feed following filter — when logged in, activity defaults to followed users; falls back to community feed
-- [x] Profile pages (public) — `/profile/[username]` shows any user's profile with read-only PinnedTen, ratings, and follow button
+- [x] Following system — follow/unfollow, follower/following counts, public `/profile/[username]` pages
+- [x] Friend Taste Collisions — `/collisions`: albums rated ≥1.5★ apart from followed users
+- [x] Taste Contradictions — `/contradictions`: your score vs community avg, split higher/lower
 
 ### Done — rankings
-- [x] Ranking personalization — filter tabs (All / To Vote / Friends Active) with friend vote counts on each card
+- [x] Community rankings page — one vote per category, live leaderboards
+- [x] Individual ranking page — top 10, vote counts, movement indicators
+- [x] Ranking personalization — filter tabs (All / To Vote / Friends Active), friend counts on cards
 
 ### Done — annual
-- [x] Wrapped page — yearly summary: total albums, top genre, top artist, avg score, active month, best/worst album
+- [x] Wrapped page — yearly summary: albums rated, top genre, top artist, avg score, active month, best/worst album
+
+### Planned
+- [ ] Music ingestion script (`scripts/ingest-music.ts`) — Korean (full), Japanese (curated ~80 artists), Western essentials (~200 artists); albums/EPs only
 
 ---
 
-## Architecture notes
+## Music catalog ingestion
 
-- **DB-first pattern:** All homepage genre rows served from `curated_releases` table. Album and artist data cached to DB on first visit — Spotify only called on cache miss. This is the read-through cache pattern used by production music platforms.
-- **Data ingestion:** A pre-launch script will pre-populate the DB with Korean music catalog data from Spotify, so early users never hit cold-cache Spotify calls.
-- **Spotify rate limits:** Client credentials cap at ~100-180 req/min. Current safe zone is under 50 concurrent users without DB cache. DB cache removes this ceiling almost entirely for repeat content.
-- **Supabase free tier:** 500MB storage. Estimated capacity: ~100,000 albums cached. Paid tier ($25/mo) gives 8GB — effectively unlimited for this use case.
-- **Supabase service role key** is used server-side to bypass RLS for aggregate queries. Never exposed to the client.
-- **In-memory Spotify cache** (`lib/spotify.ts`) — 1hr TTL, survives hot reloads, resets on server restart.
-- Artist album pages use ISR (`revalidate: 3600`) — cached for 1 hour per artist.
+Pre-populating the DB is a three-phase process. Each phase builds on the previous one.
+
+### Phase 1 — Seed catalog (315 curated albums)
+
+Source: `research/research1/korean_serious_music_seed_catalog_315.csv`
+Breakdown: 188 Korean (60%) · 82 Western (26%) · 30 Japanese (10%) · 15 Other (5%)
+
+```bash
+npm run ingest           # full run
+npm run ingest:dry       # preview without DB writes
+npm run ingest:retry     # re-attempt previously not-found entries
+```
+
+State is saved to `scripts/ingest-state.json` after every 10 entries — safe to Ctrl-C and resume.
+
+If an album isn't found with romanized names, add a Korean/native-script override to `scripts/search-overrides.json`:
+```json
+"Artist Name|Album Name": { "query": "아티스트 앨범명" }
+```
+Then run `npm run ingest:retry` to re-attempt only the not-found entries.
+
+**Result:** 306/315 found (97%). The remaining 9 are genuinely not on Spotify.
+
+---
+
+### Phase 2 — Discography expansion
+
+Fetches every album/EP from each artist already in the DB (one-hop, no text matching — no false positive risk).
+
+```bash
+npm run expand:discography
+```
+
+**Spotify daily quota:** The artist-albums endpoint has a ~23-hour daily quota separate from the per-minute rate limit. Run in batches of ~60 artists/day (the default). The script resumes automatically from where it left off.
+
+```bash
+# Override batch size if needed
+npx tsx --env-file=.env.local scripts/expand-catalog.ts discography --max-artists=40
+```
+
+State saved to `scripts/expand-state.json` after every artist. If the quota is hit mid-run, the script stops cleanly and prints the exact wait time.
+
+---
+
+### Phase 3 — Related artist expansion
+
+One hop from all seeded artists, gated by follower count to keep quality high:
+
+| Origin   | Min followers |
+|----------|--------------|
+| Korean   | 5,000        |
+| Japanese | 20,000       |
+| Western  | 100,000      |
+| Other    | 50,000       |
+
+```bash
+npm run expand:related
+```
+
+---
+
+### Phase 4 — Genre sweeps
+
+Spotify genre-tag search across 12 tags (Korean indie, k-rap, city pop, shoegaze, neo-soul, etc.) with a minimum popularity threshold per tag.
+
+```bash
+npm run expand:genre
+```
+
+---
+
+### ⚠️ NEXT SESSION — Do this first
+
+The Spotify credentials are currently rate-limited from a failed `seed:prestige` run. Before doing anything else:
+
+```bash
+npm run seed:prestige
+```
+
+The script will check the rate limit at startup and print how many minutes to wait if still blocked. Once it runs clean, it seeds `prestige` scores and `genres` into the `releases` table — required for:
+- Onboarding "Albums that shaped you" suggestions
+- Cold-start main page recommendations ("Start Here" row)
+
+After `seed:prestige` completes successfully, resume the normal expansion pipeline below.
+
+---
+
+### Resume expansion pipeline
+
+Run `npm run expand:discography` once the 23-hour Spotify daily quota clears. Default batch is 60 artists/day; run again each day until all 247 are done (~4 days total), then move to `expand:related` and `expand:genre`.
+
+---
+
+### Spotify rate limit notes
+
+- **Per-minute limit:** ~100 req/min (client credentials). Script uses 2000ms between calls.
+- **Daily quota:** The `/artists/{id}/albums` endpoint has a hard daily limit. Exceeding it returns `Retry-After: ~82000s` (~23 hours). Run discography in batches of 60 artists/day to stay under it.
+- **The canary check:** Each expand run starts with a `/search` call. If that returns 429, the script exits immediately with the exact wait time before making any real calls.
+- **State files** (`scripts/ingest-state.json`, `scripts/expand-state.json`) track progress across sessions. Never delete them mid-run — they're how the scripts resume.
+
+- **DB-first pattern:** Homepage genre rows served from `curated_releases`. Album and artist data cached to DB on first visit — Spotify only called on cache miss.
+- **Data ingestion:** Four-phase pipeline pre-populates DB — seed catalog (315 albums) → discography expansion → related artists → genre sweeps. See [Music catalog ingestion](#music-catalog-ingestion).
+- **Spotify rate limits:** Client credentials ~100 req/min per-minute; artist-albums endpoint also has a ~23hr daily quota. Script batches at 60 artists/day and exits cleanly on quota hit. DB cache removes the per-minute ceiling for repeat content.
+- **Supabase free tier:** 500MB storage (~100,000 albums). Paid tier ($25/mo) gives 8GB.
+- **Service role key** — used server-side only for aggregate queries. Never exposed to client.
+- **In-memory Spotify cache** (`lib/spotify.ts`) — 1hr TTL, resets on server restart.
+- **ISR** — artist album pages revalidate every 3600s.
+- **Migrations** — all schema changes in `supabase/migrations/`, applied with `supabase db push`.

@@ -4,12 +4,34 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient';
 import PinnedTen from './PinnedTen';
-import Pick5Modal from './Pick5Modal';
 import CreateListSection from './CreateListSection';
 import type { Session } from '@supabase/supabase-js';
 
 type Tab = 'All' | 'Albums' | 'EPs' | 'Singles' | 'Compilations' | 'Lists';
 const TABS: Tab[] = ['All', 'Albums', 'EPs', 'Singles', 'Compilations', 'Lists'];
+
+type Collision = {
+  releaseId: string;
+  title: string;
+  artist: string;
+  coverUrl: string | null;
+  myScore: number;
+  friendScore: number;
+  friendUsername: string;
+  diff: number;
+};
+
+type Contradiction = {
+  releaseId: string;
+  title: string;
+  artist: string;
+  coverUrl: string | null;
+  myScore: number;
+  communityAvg: number;
+  diff: number;
+  absDiff: number;
+  communityCount: number;
+};
 
 interface Props {
   targetUserId?: string;
@@ -108,6 +130,14 @@ function formatGenreName(raw: string): string {
     'k-rap': 'K-Rap', 'k-indie': 'K-Indie',
     'korean hip hop': 'Korean Hip Hop', 'korean hip-hop': 'Korean Hip Hop',
     'r&b': 'R&B', 'hip hop': 'Hip Hop', 'hip-hop': 'Hip Hop',
+    'rnb': 'R&B', 'lo-fi': 'Lo-Fi', 'lo fi': 'Lo-Fi',
+    'j-pop': 'J-Pop', 'j-rock': 'J-Rock', 'city pop': 'City Pop',
+    'alt-rock': 'Alt-Rock', 'alt rock': 'Alt-Rock',
+    'indie rock': 'Indie Rock', 'indie pop': 'Indie Pop',
+    'singer-songwriter': 'Singer-Songwriter',
+    'post-punk': 'Post-Punk', 'post-rock': 'Post-Rock',
+    'bedroom pop': 'Bedroom Pop', 'dream pop': 'Dream Pop',
+    'shoegaze': 'Shoegaze', 'emo': 'Emo',
   };
   return known[raw] ?? raw.split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
@@ -228,11 +258,13 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('All');
   const [communityStats, setCommunityStats] = useState<CommunityStats | null>(null);
   const [lists, setLists] = useState<any[]>([]);
-  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
   const [isFollowing, setIsFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
+  const [collisions, setCollisions] = useState<Collision[]>([]);
+  const [contradictions, setContradictions] = useState<Contradiction[]>([]);
 
   const ratingsCount = ratings?.length ?? 0;
   const averageRating =
@@ -258,17 +290,15 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
     });
   }, [targetUserId]);
 
-  useEffect(() => {
-    if (!session || ratings === null || targetUserId) return;
-    const alreadyDone = !!session.user.user_metadata?.onboarding_completed;
-    const hasHistory = ratings.length >= 5;
-    if (!alreadyDone && !hasHistory) setShowOnboarding(true);
-  }, [session, ratings, targetUserId]);
 
   const fetchData = async (userId: string, currentUserId: string | null, currentUserEmail: string | null = null) => {
     if (!supabase) { setLoading(false); return; }
 
     const isOwn = !targetUserId || userId === currentUserId;
+
+    // Fetch display_name from profiles
+    supabase.from('profiles').select('display_name').eq('id', userId).maybeSingle()
+      .then(({ data }) => { if (data?.display_name) setDisplayName(data.display_name); });
 
     const [ratingsRes, allRatingsRes, listsRes, followersRes, followingRes] = await Promise.all([
       supabase
@@ -331,6 +361,18 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
         const percentile = Math.round((below / (userAvgs.length - 1)) * 100);
         setCommunityStats({ percentile, communityAvg: Math.round(communityAvg * 10) / 10 });
       }
+    }
+
+    // Fetch taste collisions and contradictions (own profile only)
+    if (isOwn) {
+      fetch(`/api/collisions?userId=${userId}`)
+        .then((r) => r.json())
+        .then((json) => setCollisions(json.collisions ?? []))
+        .catch(() => {});
+      fetch(`/api/contradictions?userId=${userId}`)
+        .then((r) => r.json())
+        .then((json) => setContradictions(json.contradictions ?? []))
+        .catch(() => {});
     }
 
     // Upsert profile for own profile so others can find this user by username
@@ -414,7 +456,8 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
 
   const effectiveUserId = targetUserId ?? session!.user.id;
   const username = targetUsername ?? session?.user?.email?.split('@')[0] ?? '—';
-  const initial = username[0]?.toUpperCase() ?? '?';
+  const profileDisplayName = displayName ?? username;
+  const initial = profileDisplayName[0]?.toUpperCase() ?? '?';
 
   const filteredRatings = (ratings ?? []).filter((r) => {
     if (activeTab === 'All') return true;
@@ -433,13 +476,6 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
 
   return (
     <div className="bg-white">
-      {isOwnProfile && showOnboarding && session?.user && (
-        <Pick5Modal
-          userId={session.user.id}
-          onComplete={() => setShowOnboarding(false)}
-        />
-      )}
-
       {/* ── HEADER ─────────────────────────────────────────── */}
       <div className="bg-surface border-b border-[#EBEBEB]">
         <div className="max-w-[1440px] mx-auto px-5 pt-9 pb-0 flex gap-6 items-start">
@@ -455,8 +491,11 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                 className="text-[24px] font-extrabold text-ink"
                 style={{ letterSpacing: '-0.6px' }}
               >
-                {username}
+                {profileDisplayName}
               </h1>
+              {displayName && (
+                <p className="text-[13px] text-muted">@{username}</p>
+              )}
             </div>
             {isOwnProfile && (
               <p className="text-[13px] text-muted">Member · {session!.user.email}</p>
@@ -737,6 +776,148 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
           </div>
         )}
       </div>
+
+      {/* ── TASTE INSIGHTS (own profile, data must exist) ───────── */}
+      {isOwnProfile && session?.user && (collisions.length > 0 || contradictions.length > 0) && (
+        <div className="max-w-[1440px] mx-auto px-5 pb-14 flex flex-col gap-10">
+          <div className="h-px bg-[#EBEBEB]" />
+
+          {/* Taste Collisions */}
+          {collisions.length > 0 && (
+            <div>
+              <h2 className="text-[18px] font-extrabold text-ink" style={{ letterSpacing: '-0.4px' }}>
+                Taste Collisions
+              </h2>
+              <p className="text-[13px] text-muted mt-0.5 mb-5">
+                Albums where you and someone you follow strongly disagree
+              </p>
+              <div className="flex flex-col max-w-[680px]">
+                {collisions.map((c, i) => (
+                  <div key={`${c.releaseId}-${i}`} className="flex gap-4 py-4 border-b border-[#EBEBEB] last:border-0">
+                    <Link href={`/album/${c.releaseId}`} className="flex-shrink-0">
+                      {c.coverUrl ? (
+                        <img src={c.coverUrl} alt={c.title} className="w-[48px] h-[48px] rounded-[6px] object-cover" />
+                      ) : (
+                        <div className="w-[48px] h-[48px] rounded-[6px] bg-surface border border-[#EBEBEB]" />
+                      )}
+                    </Link>
+                    <div className="flex-1 min-w-0">
+                      <Link href={`/album/${c.releaseId}`}>
+                        <p className="text-[13px] font-bold text-ink truncate hover:text-mid transition">{c.title}</p>
+                      </Link>
+                      <p className="text-[11px] text-muted mt-0.5 truncate">{c.artist}</p>
+                      <div className="flex items-center gap-3 mt-2">
+                        <span className="inline-flex items-center text-[11px] font-bold rounded-[4px] px-[7px] py-[2px]" style={{ background: '#3DFFD1', color: '#00453A' }}>
+                          You ★{c.myScore}
+                        </span>
+                        <span className="text-[11px] text-muted">vs</span>
+                        <span className="inline-flex items-center text-[11px] font-bold rounded-[4px] px-[7px] py-[2px] bg-surface border border-[#EBEBEB] text-ink">
+                          {c.friendUsername} ★{c.friendScore}
+                        </span>
+                        <span className="ml-auto text-[11px] font-semibold" style={{ color: c.diff >= 3 ? '#E53E3E' : c.diff >= 2 ? '#DD6B20' : '#718096' }}>
+                          ±{c.diff.toFixed(1)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Taste Contradictions */}
+          {contradictions.length > 0 && (() => {
+            const higher = contradictions.filter((c) => c.diff > 0);
+            const lower = contradictions.filter((c) => c.diff < 0);
+            return (
+              <div>
+                <h2 className="text-[18px] font-extrabold text-ink" style={{ letterSpacing: '-0.4px' }}>
+                  Taste Contradictions
+                </h2>
+                <p className="text-[13px] text-muted mt-0.5 mb-5">
+                  Albums where your score strongly disagrees with the community
+                </p>
+                <div className="max-w-[680px]">
+                  {higher.length > 0 && (
+                    <div className="mb-8">
+                      <p className="text-[13px] font-bold text-ink mb-4">You rated higher</p>
+                      <div className="flex flex-col">
+                        {higher.map((c, i) => (
+                          <div key={`${c.releaseId}-h-${i}`} className="flex gap-4 py-4 border-b border-[#EBEBEB] last:border-0">
+                            <Link href={`/album/${c.releaseId}`} className="flex-shrink-0">
+                              {c.coverUrl ? (
+                                <img src={c.coverUrl} alt={c.title} className="w-[48px] h-[48px] rounded-[6px] object-cover" />
+                              ) : (
+                                <div className="w-[48px] h-[48px] rounded-[6px] bg-surface border border-[#EBEBEB]" />
+                              )}
+                            </Link>
+                            <div className="flex-1 min-w-0">
+                              <Link href={`/album/${c.releaseId}`}>
+                                <p className="text-[13px] font-bold text-ink truncate hover:text-mid transition">{c.title}</p>
+                              </Link>
+                              <p className="text-[11px] text-muted mt-0.5 truncate">{c.artist}</p>
+                              <div className="flex items-center gap-3 mt-2">
+                                <span className="inline-flex items-center text-[11px] font-bold rounded-[4px] px-[7px] py-[2px]" style={{ background: '#3DFFD1', color: '#00453A' }}>
+                                  You ★{c.myScore}
+                                </span>
+                                <span className="text-[11px] text-muted">vs</span>
+                                <span className="inline-flex items-center text-[11px] font-bold rounded-[4px] px-[7px] py-[2px] bg-surface border border-[#EBEBEB] text-ink">
+                                  Community ★{c.communityAvg}
+                                </span>
+                                <span className="text-[11px] text-muted">({c.communityCount})</span>
+                                <span className="ml-auto text-[11px] font-semibold" style={{ color: c.absDiff >= 3 ? '#E53E3E' : c.absDiff >= 2 ? '#DD6B20' : '#718096' }}>
+                                  +{c.diff.toFixed(1)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {lower.length > 0 && (
+                    <div>
+                      <p className="text-[13px] font-bold text-ink mb-4">You rated lower</p>
+                      <div className="flex flex-col">
+                        {lower.map((c, i) => (
+                          <div key={`${c.releaseId}-l-${i}`} className="flex gap-4 py-4 border-b border-[#EBEBEB] last:border-0">
+                            <Link href={`/album/${c.releaseId}`} className="flex-shrink-0">
+                              {c.coverUrl ? (
+                                <img src={c.coverUrl} alt={c.title} className="w-[48px] h-[48px] rounded-[6px] object-cover" />
+                              ) : (
+                                <div className="w-[48px] h-[48px] rounded-[6px] bg-surface border border-[#EBEBEB]" />
+                              )}
+                            </Link>
+                            <div className="flex-1 min-w-0">
+                              <Link href={`/album/${c.releaseId}`}>
+                                <p className="text-[13px] font-bold text-ink truncate hover:text-mid transition">{c.title}</p>
+                              </Link>
+                              <p className="text-[11px] text-muted mt-0.5 truncate">{c.artist}</p>
+                              <div className="flex items-center gap-3 mt-2">
+                                <span className="inline-flex items-center text-[11px] font-bold rounded-[4px] px-[7px] py-[2px]" style={{ background: '#3DFFD1', color: '#00453A' }}>
+                                  You ★{c.myScore}
+                                </span>
+                                <span className="text-[11px] text-muted">vs</span>
+                                <span className="inline-flex items-center text-[11px] font-bold rounded-[4px] px-[7px] py-[2px] bg-surface border border-[#EBEBEB] text-ink">
+                                  Community ★{c.communityAvg}
+                                </span>
+                                <span className="text-[11px] text-muted">({c.communityCount})</span>
+                                <span className="ml-auto text-[11px] font-semibold" style={{ color: c.absDiff >= 3 ? '#E53E3E' : c.absDiff >= 2 ? '#DD6B20' : '#718096' }}>
+                                  {c.diff.toFixed(1)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
     </div>
   );
 }

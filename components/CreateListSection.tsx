@@ -73,7 +73,7 @@ export default function CreateListSection() {
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="e.g. My Favorite K-Pop Albums"
+            placeholder="e.g. Albums I Loved This Year"
             maxLength={80}
             required
             className="w-full text-sm border border-[#EBEBEB] rounded-lg px-3 py-2 bg-white text-ink outline-none focus:border-mint transition"

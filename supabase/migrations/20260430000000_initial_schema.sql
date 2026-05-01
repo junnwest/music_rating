@@ -10,7 +10,6 @@ CREATE TABLE IF NOT EXISTS releases (
   cover_url text,
   release_type text DEFAULT 'Album',
   release_date text,
-  -- caching columns (added inline so migrations stay in one file)
   genres text,
   label text,
   total_tracks int,
@@ -20,8 +19,10 @@ CREATE TABLE IF NOT EXISTS releases (
   cached_at timestamptz
 );
 ALTER TABLE releases ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "releases_select" ON releases FOR SELECT USING (true);
-CREATE POLICY IF NOT EXISTS "releases_insert" ON releases FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "releases_select" ON releases;
+CREATE POLICY "releases_select" ON releases FOR SELECT USING (true);
+DROP POLICY IF EXISTS "releases_insert" ON releases;
+CREATE POLICY "releases_insert" ON releases FOR INSERT WITH CHECK (true);
 
 -- ── 2. artists ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS artists (
@@ -35,9 +36,12 @@ CREATE TABLE IF NOT EXISTS artists (
   cached_at timestamptz DEFAULT now()
 );
 ALTER TABLE artists ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "artists_select" ON artists FOR SELECT USING (true);
-CREATE POLICY IF NOT EXISTS "artists_insert" ON artists FOR INSERT WITH CHECK (true);
-CREATE POLICY IF NOT EXISTS "artists_update" ON artists FOR UPDATE USING (true);
+DROP POLICY IF EXISTS "artists_select" ON artists;
+CREATE POLICY "artists_select" ON artists FOR SELECT USING (true);
+DROP POLICY IF EXISTS "artists_insert" ON artists;
+CREATE POLICY "artists_insert" ON artists FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "artists_update" ON artists;
+CREATE POLICY "artists_update" ON artists FOR UPDATE USING (true);
 
 -- ── 3. curated_releases ─────────────────────────────────────
 CREATE TABLE IF NOT EXISTS curated_releases (
@@ -51,22 +55,27 @@ CREATE TABLE IF NOT EXISTS curated_releases (
   UNIQUE(category, release_id)
 );
 ALTER TABLE curated_releases ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "curated_select" ON curated_releases FOR SELECT USING (true);
+DROP POLICY IF EXISTS "curated_select" ON curated_releases;
+CREATE POLICY "curated_select" ON curated_releases FOR SELECT USING (true);
 
 -- ── 4. ratings ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS ratings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   release_id text NOT NULL,
-  score int CHECK (score BETWEEN 1 AND 10),
+  score numeric(3,1) CHECK (score BETWEEN 0.5 AND 5.0),
   created_at timestamptz DEFAULT now(),
   UNIQUE(user_id, release_id)
 );
 ALTER TABLE ratings ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "ratings_select" ON ratings FOR SELECT USING (true);
-CREATE POLICY IF NOT EXISTS "ratings_insert" ON ratings FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY IF NOT EXISTS "ratings_update" ON ratings FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY IF NOT EXISTS "ratings_delete" ON ratings FOR DELETE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "ratings_select" ON ratings;
+CREATE POLICY "ratings_select" ON ratings FOR SELECT USING (true);
+DROP POLICY IF EXISTS "ratings_insert" ON ratings;
+CREATE POLICY "ratings_insert" ON ratings FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "ratings_update" ON ratings;
+CREATE POLICY "ratings_update" ON ratings FOR UPDATE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "ratings_delete" ON ratings;
+CREATE POLICY "ratings_delete" ON ratings FOR DELETE USING (auth.uid() = user_id);
 
 -- ── 5. reviews ──────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS reviews (
@@ -79,9 +88,12 @@ CREATE TABLE IF NOT EXISTS reviews (
   UNIQUE(user_id, release_id)
 );
 ALTER TABLE reviews ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "reviews_select" ON reviews FOR SELECT USING (true);
-CREATE POLICY IF NOT EXISTS "reviews_insert" ON reviews FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY IF NOT EXISTS "reviews_delete" ON reviews FOR DELETE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "reviews_select" ON reviews;
+CREATE POLICY "reviews_select" ON reviews FOR SELECT USING (true);
+DROP POLICY IF EXISTS "reviews_insert" ON reviews;
+CREATE POLICY "reviews_insert" ON reviews FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "reviews_delete" ON reviews;
+CREATE POLICY "reviews_delete" ON reviews FOR DELETE USING (auth.uid() = user_id);
 
 -- ── 6. lists ────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS lists (
@@ -101,14 +113,20 @@ CREATE TABLE IF NOT EXISTS list_items (
 );
 ALTER TABLE lists ENABLE ROW LEVEL SECURITY;
 ALTER TABLE list_items ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "lists_select" ON lists FOR SELECT USING (true);
-CREATE POLICY IF NOT EXISTS "lists_insert" ON lists FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY IF NOT EXISTS "lists_delete" ON lists FOR DELETE USING (auth.uid() = user_id);
-CREATE POLICY IF NOT EXISTS "list_items_select" ON list_items FOR SELECT USING (true);
-CREATE POLICY IF NOT EXISTS "list_items_insert" ON list_items FOR INSERT WITH CHECK (
+DROP POLICY IF EXISTS "lists_select" ON lists;
+CREATE POLICY "lists_select" ON lists FOR SELECT USING (true);
+DROP POLICY IF EXISTS "lists_insert" ON lists;
+CREATE POLICY "lists_insert" ON lists FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "lists_delete" ON lists;
+CREATE POLICY "lists_delete" ON lists FOR DELETE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "list_items_select" ON list_items;
+CREATE POLICY "list_items_select" ON list_items FOR SELECT USING (true);
+DROP POLICY IF EXISTS "list_items_insert" ON list_items;
+CREATE POLICY "list_items_insert" ON list_items FOR INSERT WITH CHECK (
   auth.uid() = (SELECT user_id FROM lists WHERE id = list_id)
 );
-CREATE POLICY IF NOT EXISTS "list_items_delete" ON list_items FOR DELETE USING (
+DROP POLICY IF EXISTS "list_items_delete" ON list_items;
+CREATE POLICY "list_items_delete" ON list_items FOR DELETE USING (
   auth.uid() = (SELECT user_id FROM lists WHERE id = list_id)
 );
 
@@ -121,9 +139,12 @@ CREATE TABLE IF NOT EXISTS pinned_albums (
   UNIQUE(user_id, release_id)
 );
 ALTER TABLE pinned_albums ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "pinned_select" ON pinned_albums FOR SELECT USING (true);
-CREATE POLICY IF NOT EXISTS "pinned_insert" ON pinned_albums FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY IF NOT EXISTS "pinned_delete" ON pinned_albums FOR DELETE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "pinned_select" ON pinned_albums;
+CREATE POLICY "pinned_select" ON pinned_albums FOR SELECT USING (true);
+DROP POLICY IF EXISTS "pinned_insert" ON pinned_albums;
+CREATE POLICY "pinned_insert" ON pinned_albums FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "pinned_delete" ON pinned_albums;
+CREATE POLICY "pinned_delete" ON pinned_albums FOR DELETE USING (auth.uid() = user_id);
 
 -- ── 8. ranking_categories ───────────────────────────────────
 CREATE TABLE IF NOT EXISTS ranking_categories (
@@ -137,7 +158,8 @@ CREATE TABLE IF NOT EXISTS ranking_categories (
   created_at timestamptz DEFAULT now()
 );
 ALTER TABLE ranking_categories ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "ranking_categories_select" ON ranking_categories FOR SELECT USING (true);
+DROP POLICY IF EXISTS "ranking_categories_select" ON ranking_categories;
+CREATE POLICY "ranking_categories_select" ON ranking_categories FOR SELECT USING (true);
 
 -- ── 9. ranking_votes ────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS ranking_votes (
@@ -149,9 +171,12 @@ CREATE TABLE IF NOT EXISTS ranking_votes (
   UNIQUE(user_id, category_id)
 );
 ALTER TABLE ranking_votes ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "ranking_votes_select" ON ranking_votes FOR SELECT USING (true);
-CREATE POLICY IF NOT EXISTS "ranking_votes_insert" ON ranking_votes FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY IF NOT EXISTS "ranking_votes_delete" ON ranking_votes FOR DELETE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "ranking_votes_select" ON ranking_votes;
+CREATE POLICY "ranking_votes_select" ON ranking_votes FOR SELECT USING (true);
+DROP POLICY IF EXISTS "ranking_votes_insert" ON ranking_votes;
+CREATE POLICY "ranking_votes_insert" ON ranking_votes FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "ranking_votes_delete" ON ranking_votes;
+CREATE POLICY "ranking_votes_delete" ON ranking_votes FOR DELETE USING (auth.uid() = user_id);
 
 -- ── 10. profiles ────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS profiles (
@@ -160,9 +185,12 @@ CREATE TABLE IF NOT EXISTS profiles (
   created_at timestamptz DEFAULT now()
 );
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "profiles_select" ON profiles FOR SELECT USING (true);
-CREATE POLICY IF NOT EXISTS "profiles_insert" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
-CREATE POLICY IF NOT EXISTS "profiles_update" ON profiles FOR UPDATE USING (auth.uid() = id);
+DROP POLICY IF EXISTS "profiles_select" ON profiles;
+CREATE POLICY "profiles_select" ON profiles FOR SELECT USING (true);
+DROP POLICY IF EXISTS "profiles_insert" ON profiles;
+CREATE POLICY "profiles_insert" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+DROP POLICY IF EXISTS "profiles_update" ON profiles;
+CREATE POLICY "profiles_update" ON profiles FOR UPDATE USING (auth.uid() = id);
 
 -- ── 11. follows ─────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS follows (
@@ -173,6 +201,9 @@ CREATE TABLE IF NOT EXISTS follows (
   CHECK (follower_id != following_id)
 );
 ALTER TABLE follows ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "follows_select" ON follows FOR SELECT USING (true);
-CREATE POLICY IF NOT EXISTS "follows_insert" ON follows FOR INSERT WITH CHECK (auth.uid() = follower_id);
-CREATE POLICY IF NOT EXISTS "follows_delete" ON follows FOR DELETE USING (auth.uid() = follower_id);
+DROP POLICY IF EXISTS "follows_select" ON follows;
+CREATE POLICY "follows_select" ON follows FOR SELECT USING (true);
+DROP POLICY IF EXISTS "follows_insert" ON follows;
+CREATE POLICY "follows_insert" ON follows FOR INSERT WITH CHECK (auth.uid() = follower_id);
+DROP POLICY IF EXISTS "follows_delete" ON follows;
+CREATE POLICY "follows_delete" ON follows FOR DELETE USING (auth.uid() = follower_id);

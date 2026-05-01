@@ -4,7 +4,7 @@ import { useRef } from 'react';
 import Link from 'next/link';
 import type { AlbumRelease } from '../types';
 
-const CARD_WIDTH = 152;
+const CARD_WIDTH = 180;
 const CARD_GAP = 18;
 const SCROLL_CARDS = 4;
 const SCROLL_PX = (CARD_WIDTH + CARD_GAP) * SCROLL_CARDS;
@@ -38,7 +38,7 @@ export default function ScrollRow({ albums }: { albums: AlbumRelease[] }) {
       {/* Left arrow */}
       <button
         onClick={() => scroll('left')}
-        className="absolute left-0 top-[76px] z-10 -translate-x-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-white border border-[#EBEBEB] shadow-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface"
+        className="absolute left-0 top-[90px] z-10 -translate-x-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-white border border-[#EBEBEB] shadow-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface"
         aria-label="Scroll left"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#444444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -52,9 +52,9 @@ export default function ScrollRow({ albums }: { albums: AlbumRelease[] }) {
             <Link
               key={album.id}
               href={`/album/${album.id}`}
-              className="flex-shrink-0 w-[152px] group/card"
+              className="flex-shrink-0 w-[180px] group/card"
             >
-              <div className="relative w-[152px] h-[152px] flex-shrink-0 rounded-[7px] overflow-hidden">
+              <div className="relative w-[180px] h-[180px] flex-shrink-0 rounded-[7px] overflow-hidden">
                 {album.coverUrl ? (
                   <img
                     src={album.coverUrl}
@@ -86,7 +86,7 @@ export default function ScrollRow({ albums }: { albums: AlbumRelease[] }) {
       {/* Right arrow */}
       <button
         onClick={() => scroll('right')}
-        className="absolute right-0 top-[76px] z-10 translate-x-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-white border border-[#EBEBEB] shadow-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface"
+        className="absolute right-0 top-[90px] z-10 translate-x-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-white border border-[#EBEBEB] shadow-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface"
         aria-label="Scroll right"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#444444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

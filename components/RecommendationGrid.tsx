@@ -1,64 +1,84 @@
+import Link from 'next/link';
 import ScrollRow from './ScrollRow';
 import { createServerClient } from '../lib/supabaseServer';
 import { getSpotifyRecommendations } from '../lib/spotify';
+import { GENRE_CATEGORIES } from '../lib/genre-categories';
 import type { AlbumRelease } from '../types';
 
-const CATEGORIES = [
-  { key: 'k-pop', name: 'K-Pop Sensations', description: 'Popular K-Pop albums you might enjoy' },
-  { key: 'korean-indie', name: 'Korean Indie & Ballad', description: 'Thoughtful indie and ballad albums' },
-  { key: 'korean-rb', name: 'Trending K-R&B', description: 'Smooth and soulful Korean R&B' },
-];
+// Approximate number of cards visible at full width — show "See all" beyond this
+const VISIBLE_THRESHOLD = 8;
 
-const SPOTIFY_QUERIES: Record<string, string> = {
-  'k-pop': 'k-pop',
-  'korean-indie': 'korean indie',
-  'korean-rb': 'korean r&b',
-};
+async function fetchFromReleases(
+  supabase: NonNullable<ReturnType<typeof createServerClient>>,
+  genreFilters: readonly string[],
+): Promise<AlbumRelease[]> {
+  const orClause = genreFilters.map((g) => `genres.ilike.%${g}%`).join(',');
+
+  const { data, error } = await supabase
+    .from('releases')
+    .select('id, title, artist, cover_url, release_type')
+    .or(orClause)
+    .not('cover_url', 'is', null)
+    .order('prestige', { ascending: true, nullsFirst: false })
+    .order('release_date', { ascending: false, nullsFirst: false })
+    .limit(40);
+
+  if (error || !data) return [];
+
+  return data.map((r: any) => ({
+    id: r.id,
+    title: r.title,
+    artist: r.artist,
+    coverUrl: r.cover_url ?? null,
+    releaseType: (r.release_type as AlbumRelease['releaseType']) ?? 'Album',
+    date: null,
+    country: null,
+  }));
+}
 
 export default async function RecommendationGrid() {
-  // ── Primary: serve from Supabase (no Spotify calls) ──────────────────────
-  let sections: { key: string; name: string; description: string; albums: AlbumRelease[] }[] = [];
+  const supabase = createServerClient();
 
-  try {
-    const supabase = createServerClient();
+  const sections: { key: string; name: string; description: string; albums: AlbumRelease[] }[] = [];
+
+  for (const cat of GENRE_CATEGORIES) {
+    let albums: AlbumRelease[] = [];
+
+    // Primary: query our releases table by genre
     if (supabase) {
-      const { data } = await supabase
-        .from('curated_releases')
-        .select('category, release_id, title, artist, cover_url, release_type')
-        .in('category', CATEGORIES.map((c) => c.key));
-
-      if (data && data.length > 0) {
-        const grouped = new Map<string, AlbumRelease[]>();
-        for (const row of data) {
-          if (!grouped.has(row.category)) grouped.set(row.category, []);
-          grouped.get(row.category)!.push({
-            id: row.release_id,
-            title: row.title,
-            artist: row.artist,
-            coverUrl: row.cover_url ?? null,
-            releaseType: (row.release_type as AlbumRelease['releaseType']) ?? 'Album',
-            date: null,
-            country: null,
-          });
-        }
-        sections = CATEGORIES
-          .map((cat) => ({ ...cat, albums: grouped.get(cat.key) ?? [] }))
-          .filter((s) => s.albums.length > 0);
-      }
+      albums = await fetchFromReleases(supabase, cat.genreFilters);
     }
-  } catch {}
 
-  // ── Fallback: Spotify (only if curated table is empty) ───────────────────
-  if (sections.length === 0) {
-    try {
-      const spotifySections = await Promise.all(
-        CATEGORIES.map(async (cat) => {
-          const albums = await getSpotifyRecommendations(SPOTIFY_QUERIES[cat.key]);
-          return { ...cat, albums };
-        })
-      );
-      sections = spotifySections.filter((s) => s.albums.length > 0);
-    } catch {}
+    // Secondary fallback: curated_releases (Spotify-seeded static list)
+    if (albums.length === 0 && supabase) {
+      try {
+        const { data } = await supabase
+          .from('curated_releases')
+          .select('release_id, title, artist, cover_url, release_type')
+          .eq('category', cat.key);
+
+        albums = (data ?? []).map((r: any) => ({
+          id: r.release_id,
+          title: r.title,
+          artist: r.artist,
+          coverUrl: r.cover_url ?? null,
+          releaseType: (r.release_type as AlbumRelease['releaseType']) ?? 'Album',
+          date: null,
+          country: null,
+        }));
+      } catch {}
+    }
+
+    // Final fallback: live Spotify search
+    if (albums.length === 0) {
+      try {
+        albums = await getSpotifyRecommendations(cat.spotifyQuery);
+      } catch {}
+    }
+
+    if (albums.length > 0) {
+      sections.push({ key: cat.key, name: cat.name, description: cat.description, albums });
+    }
   }
 
   if (sections.length === 0) return null;
@@ -70,9 +90,20 @@ export default async function RecommendationGrid() {
           {i > 0 && <div className="h-px bg-[#EBEBEB] my-11" />}
           <div className="flex items-end justify-between mb-[18px]">
             <div>
-              <div className="text-[17px] font-bold text-ink">{cat.name}</div>
+              <div className="flex items-baseline gap-2">
+                <div className="text-[17px] font-bold text-ink">{cat.name}</div>
+                <div className="text-[12px] text-muted">{cat.albums.length} albums</div>
+              </div>
               <div className="text-[12px] text-muted mt-0.5">{cat.description}</div>
             </div>
+            {cat.albums.length > VISIBLE_THRESHOLD && (
+              <Link
+                href={`/genre/${cat.key}`}
+                className="text-[12px] font-medium text-muted hover:text-mid transition whitespace-nowrap"
+              >
+                See all →
+              </Link>
+            )}
           </div>
           <ScrollRow albums={cat.albums} />
         </div>

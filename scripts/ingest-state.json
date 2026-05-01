@@ -1,0 +1,2170 @@
+{
+  "processed": {
+    "Yoo Jae Ha|Because I Love You": {
+      "status": "found",
+      "spotifyId": "1vytHrBGJ5eMT1jvfOEDgj",
+      "title": "Alive, Pt. 3-1 Yoo Jae Ha - Because I Love You",
+      "artist": "Yoo Jae Ha",
+      "similarity": 0.8875
+    },
+    "Shin Joong Hyun & Yup Juns|Shin Joong Hyun & Yup Juns": {
+      "status": "found",
+      "spotifyId": "2E4jkgXNAL1rCQ2NxhCUF7",
+      "title": "Shin Joong Hyun & Yup Juns",
+      "artist": "Shin Joong Hyun",
+      "similarity": 0.9625
+    },
+    "N.EX.T|The Return of N.EX.T Part 1: The Being": {
+      "status": "found",
+      "spotifyId": "6yx5LME9Nrj6Pcu9J1Ckor",
+      "title": "The Return Of N.EX.T Part 1 - The Being Live Concert Chapter 2",
+      "artist": "N.EX.T",
+      "similarity": 0.8875
+    },
+    "Lee Sang Eun|Gongmudohaga": {
+      "status": "found",
+      "spotifyId": "6z7xAC1UGHnk83UviPNdCh",
+      "title": "Gongmudohaga",
+      "artist": "Lee Sang-Eun",
+      "similarity": 1
+    },
+    "Sinawe|Heavy Metal Sinawe": {
+      "status": "found",
+      "spotifyId": "72yo6W7RHCvVtw9DeW7PXm",
+      "title": "Heavy Metal Sinawe",
+      "artist": "Sinawe",
+      "similarity": 1
+    },
+    "Seo Taiji and Boys|Seo Taiji and Boys": {
+      "status": "found",
+      "spotifyId": "53OG0dLStOizLfNxsD3LPr",
+      "title": "Seotaiji and Boys",
+      "artist": "Seo Taiji and Boys",
+      "similarity": 0.55
+    },
+    "Seo Taiji and Boys|Seo Taiji and Boys II": {
+      "status": "found",
+      "spotifyId": "2Jtnnru7rcvRnU4tywT4X7",
+      "title": "Seotaiji and Boys II",
+      "artist": "Seo Taiji and Boys",
+      "similarity": 0.625
+    },
+    "Seo Taiji and Boys|Seo Taiji and Boys III": {
+      "status": "found",
+      "spotifyId": "4PeDPVydANLdboKFW69evd",
+      "title": "Seotaiji and Boys III",
+      "artist": "Seo Taiji and Boys",
+      "similarity": 0.625
+    },
+    "Panic|Panic": {
+      "status": "found",
+      "spotifyId": "6saL4k96Bv5MFsvG61x11Q",
+      "title": "Widespread Panic",
+      "artist": "Widespread Panic",
+      "similarity": 0.85
+    },
+    "Panic|Sea Within": {
+      "status": "found",
+      "spotifyId": "4c5i6G7E10KEUy16HVCSbv",
+      "title": "Sea Within",
+      "artist": "Panic",
+      "similarity": 1
+    },
+    "015B|The Fourth Movement": {
+      "status": "found",
+      "spotifyId": "66B1PnXhGDtStX4yWcyc7E",
+      "title": "The Fourth Movement",
+      "artist": "015B",
+      "similarity": 1
+    },
+    "Toy|A Night In Seoul": {
+      "status": "found",
+      "spotifyId": "795kpqAqEQOrnWoo575oAl",
+      "title": "A Night In Seoul (4집)",
+      "artist": "TOY | YOO HEE YEOL",
+      "similarity": 0.85
+    },
+    "Lee Sora|Diary": {
+      "status": "found",
+      "spotifyId": "2ubboHYVLaL77NtiCd72Q6",
+      "title": "SoRa's 5 Diary",
+      "artist": "Lee So Ra",
+      "similarity": 0.7
+    },
+    "Lee Juck|Dead End": {
+      "status": "found",
+      "spotifyId": "0lLCE3UPVvppCmTL0sy8e9",
+      "title": "Dead End",
+      "artist": "Lee Juck",
+      "similarity": 1
+    },
+    "Kim Dong Ryul|The Shadow of Forgetfulness": {
+      "status": "found",
+      "spotifyId": "78FYrEEKbOAbC9Bg6zBmGK",
+      "title": "The Shadow Of Forgetfulness",
+      "artist": "Kim Dong Ryul",
+      "similarity": 1
+    },
+    "Brown Eyed Soul|Soul Free": {
+      "status": "found",
+      "spotifyId": "7zM9ILBsO6580uSLZzV8hC",
+      "title": "Soul Free",
+      "artist": "BROWN EYED SOUL",
+      "similarity": 1
+    },
+    "W&Whale|Hardboiled": {
+      "status": "found",
+      "spotifyId": "1htcwOz9QS7Ccd2yy6NYyW",
+      "title": "Hardboiled",
+      "artist": "W&Whale",
+      "similarity": 1
+    },
+    "Lucid Fall|Oh, Love": {
+      "status": "found",
+      "spotifyId": "6Y9zA20rQyAeUSVwK26hLd",
+      "title": "Oh, love",
+      "artist": "Lucid Fall",
+      "similarity": 1
+    },
+    "Jaurim|Purple Heart": {
+      "status": "found",
+      "spotifyId": "50zXa5ZUy6undYjdVKUSSS",
+      "title": "Purple Heart",
+      "artist": "JAURIM",
+      "similarity": 1
+    },
+    "Sister's Barbershop|Most Ordinary Existence": {
+      "status": "found",
+      "spotifyId": "4QEgFm1iVCWyHiSTM72YGX",
+      "title": "Most Ordinary Existence",
+      "artist": "Sister's Barbershop",
+      "similarity": 1
+    },
+    "Crying Nut|Speed Up Losers": {
+      "status": "found",
+      "spotifyId": "2qGZXupHBC6oJQawNh13Pc",
+      "title": "말달리자 Speed Up Losers",
+      "artist": "CRYING NUT",
+      "similarity": 1
+    },
+    "No Brain|Youth 98": {
+      "status": "found",
+      "spotifyId": "18v6XoaeQ1mFeJdTJWE05x",
+      "title": "Youth 98",
+      "artist": "No Brain",
+      "similarity": 1
+    },
+    "Bulldog Mansion|Funk": {
+      "status": "found",
+      "spotifyId": "30X3DUdhA3tYYMtu2anikH",
+      "title": "Funk",
+      "artist": "Bulldog Mansion",
+      "similarity": 1
+    },
+    "Peppertones|Colorful Express": {
+      "status": "found",
+      "spotifyId": "1HxFPueCqCrkt0BtDzXzRi",
+      "title": "Colorful Express",
+      "artist": "PEPPERTONES",
+      "similarity": 1
+    },
+    "Mot|Non-Linear": {
+      "status": "found",
+      "spotifyId": "077x25yRWUefI1Zagn9D9Z",
+      "title": "Non-Linear",
+      "artist": "Mot",
+      "similarity": 1
+    },
+    "MOT|Strange Season": {
+      "status": "found",
+      "spotifyId": "4gIVZ2JUrMH0eedPYX27fK",
+      "title": "Strange Season",
+      "artist": "Mot",
+      "similarity": 1
+    },
+    "3rd Line Butterfly|Time Table": {
+      "status": "found",
+      "spotifyId": "1ve6Aj1jPuJK9sUO04dp25",
+      "title": "Time Table (2010 Remastered Version)",
+      "artist": "3rd Line Butterfly",
+      "similarity": 0.8875
+    },
+    "3rd Line Butterfly|Dreamtalk": {
+      "status": "found",
+      "spotifyId": "7aXOupBwysyCOhPOXXOANo",
+      "title": "Dreamtalk",
+      "artist": "3rd Line Butterfly",
+      "similarity": 1
+    },
+    "Kiha & The Faces|Kiha & The Faces": {
+      "status": "found",
+      "spotifyId": "2uuIKw0jid92nNMMCU7HXh",
+      "title": "Kiha & The Faces",
+      "artist": "Kiha & The Faces",
+      "similarity": 1
+    },
+    "Broccoli, you too?|No More Encore": {
+      "status": "found",
+      "spotifyId": "2dwpbRMrFWFJ2ZxesBBmjz",
+      "title": "No More Encore.",
+      "artist": "Broccoli, you too?",
+      "similarity": 1
+    },
+    "The Black Skirts|201": {
+      "status": "found",
+      "spotifyId": "2mQh6ylsGMRgZhLMrxK01X",
+      "title": "201 (Special Edition)",
+      "artist": "The Black Skirts",
+      "similarity": 0.8875
+    },
+    "The Black Skirts|TEAM BABY": {
+      "status": "found",
+      "spotifyId": "4x4xyLYUjyyBqKlkFT4YdY",
+      "title": "TEAM BABY",
+      "artist": "The Black Skirts",
+      "similarity": 1
+    },
+    "The Black Skirts|THIRSTY": {
+      "status": "found",
+      "spotifyId": "2UzKMhlGEzkrgZrb95qOGu",
+      "title": "THIRSTY",
+      "artist": "The Black Skirts",
+      "similarity": 1
+    },
+    "Hyukoh|20": {
+      "status": "found",
+      "spotifyId": "6bzkEKKOMT3I3jaIrUtEaO",
+      "title": "20",
+      "artist": "HYUKOH",
+      "similarity": 1
+    },
+    "Hyukoh|23": {
+      "status": "found",
+      "spotifyId": "2VDNZYzubQxFNOR3qD1K9B",
+      "title": "23",
+      "artist": "HYUKOH",
+      "similarity": 1
+    },
+    "Hyukoh|24 : How to find true love and happiness": {
+      "status": "found",
+      "spotifyId": "5PBv1FrNgnUw7mb3k4OmMo",
+      "title": "24 : How to find true love and happiness",
+      "artist": "HYUKOH",
+      "similarity": 1
+    },
+    "Jannabi|Legend": {
+      "status": "found",
+      "spotifyId": "28GiIRNu9nEugqnUci3aIC",
+      "title": "LEGEND",
+      "artist": "JANNABI",
+      "similarity": 1
+    },
+    "Jannabi|MONKEY HOTEL": {
+      "status": "found",
+      "spotifyId": "7l4uULQ4qODIw5MSlLDM3r",
+      "title": "MONKEY HOTEL",
+      "artist": "JANNABI",
+      "similarity": 1
+    },
+    "Silica Gel|Machine Boy": {
+      "status": "found",
+      "spotifyId": "0Q3GYh59zmuF7hrjQFrypD",
+      "title": "Machine Boy",
+      "artist": "Silica Gel",
+      "similarity": 1
+    },
+    "Silica Gel|POWER ANDRE 99": {
+      "status": "found",
+      "spotifyId": "49CqNP5omI7QbOe8TPAR0y",
+      "title": "POWER ANDRE 99",
+      "artist": "Silica Gel",
+      "similarity": 1
+    },
+    "THORNAPPLE|Enlightenment": {
+      "status": "found",
+      "spotifyId": "5mfhM5hlMcZdpuR0h4No0D",
+      "title": "Enlightenment",
+      "artist": "THORNAPPLE",
+      "similarity": 1
+    },
+    "Parannoul|To See the Next Part of the Dream": {
+      "status": "found",
+      "spotifyId": "5IyHtkKQvafw7bQYFnx4FO",
+      "title": "To See the Next Part of the Dream",
+      "artist": "Parannoul",
+      "similarity": 1
+    },
+    "Parannoul|After the Magic": {
+      "status": "found",
+      "spotifyId": "0vlJYAD6IpbwmZE9vbhErT",
+      "title": "After the Magic",
+      "artist": "Parannoul",
+      "similarity": 1
+    },
+    "Parannoul|Sky Hundred": {
+      "status": "found",
+      "spotifyId": "45rVXGAItPUFuTG9e10ldd",
+      "title": "Sky Hundred",
+      "artist": "Parannoul",
+      "similarity": 1
+    },
+    "Asian Glow|Cull Ficle": {
+      "status": "found",
+      "spotifyId": "7MY3IBjtMp3Fjp2NimCUnq",
+      "title": "Cull Ficle",
+      "artist": "Asian Glow",
+      "similarity": 1
+    },
+    "Asian Glow|Stalled Flutes, means": {
+      "status": "found",
+      "spotifyId": "6slr2dYw2oLmOSgPeKGBKy",
+      "title": "Stalled Flutes, means",
+      "artist": "Asian Glow",
+      "similarity": 1
+    },
+    "Meaningful Stone|A Call from My Dream": {
+      "status": "found",
+      "spotifyId": "7zY2ieneVxxTqhdY9c6Jio",
+      "title": "A Call from My Dream",
+      "artist": "Meaningful Stone",
+      "similarity": 1
+    },
+    "Mid-Air Thief|Crumbling": {
+      "status": "found",
+      "spotifyId": "0p4awV64ILfveFGtZBsaAD",
+      "title": "Crumbling",
+      "artist": "Mid-Air Thief",
+      "similarity": 1
+    },
+    "Mid-Air Thief|Gongjoong Doduk": {
+      "status": "found",
+      "spotifyId": "6xzqytqEOwBgNIYaGzgTMR",
+      "title": "Gongjoong Doduk",
+      "artist": "Mid-Air Thief",
+      "similarity": 1
+    },
+    "Lang Lee|There Is A Wolf": {
+      "status": "found",
+      "spotifyId": "1QrWbdIbZAigQwNOqBtIjC",
+      "title": "There is A Wolf",
+      "artist": "Lang Lee",
+      "similarity": 1
+    },
+    "Cadejo|FREEBODY": {
+      "status": "found",
+      "spotifyId": "0TF9Xjn7GOz2lTJp49JBe6",
+      "title": "FREEBODY",
+      "artist": "CADEJO",
+      "similarity": 1
+    },
+    "JAMBINAI|Differance": {
+      "status": "found",
+      "spotifyId": "2qOacxpUaO1sXYlGdcGjww",
+      "title": "Differance",
+      "artist": "JAMBINAI",
+      "similarity": 1
+    },
+    "JAMBINAI|A Hermitage": {
+      "status": "found",
+      "spotifyId": "10SFchbrRu6d4tnlkDdWce",
+      "title": "A Hermitage",
+      "artist": "JAMBINAI",
+      "similarity": 1
+    },
+    "ADG7|Ak Dan Gwang Chil": {
+      "status": "found",
+      "spotifyId": "1OpCM8OYtaH2lot332ON3o",
+      "title": "Ak Dan Gwang Chil",
+      "artist": "ADG7",
+      "similarity": 1
+    },
+    "250|PPONG": {
+      "status": "found",
+      "spotifyId": "6A5LaZtfa7OvC3lDZFg5k4",
+      "title": "PPONG",
+      "artist": "250",
+      "similarity": 1
+    },
+    "Peggy Gou|I Hear You": {
+      "status": "found",
+      "spotifyId": "5pnr4GOQkBuGuYPeiLw1T6",
+      "title": "I Hear You",
+      "artist": "Peggy Gou",
+      "similarity": 1
+    },
+    "Yaeji|With A Hammer": {
+      "status": "found",
+      "spotifyId": "2VYo0PSqdxVTMI0ydKUtoL",
+      "title": "With A Hammer",
+      "artist": "Yaeji",
+      "similarity": 1
+    },
+    "Yukika|Soul Lady": {
+      "status": "found",
+      "spotifyId": "5rsgGy09HIAwtIy5oF5MhF",
+      "title": "SOUL LADY",
+      "artist": "YUKIKA",
+      "similarity": 1
+    },
+    "SUMIN|Your Home": {
+      "status": "found",
+      "spotifyId": "6CFALkonieGvoS0KFgEVcw",
+      "title": "Your Home",
+      "artist": "SUMIN",
+      "similarity": 1
+    },
+    "SUMIN|Sichimi": {
+      "status": "found",
+      "spotifyId": "39b4TqR7yPKfBJVFUvQjny",
+      "title": "SICHIMI",
+      "artist": "SUMIN",
+      "similarity": 1
+    },
+    "SUMIN & Slom|MINISERIES": {
+      "status": "found",
+      "spotifyId": "4c0fvocypE3743qXeleq3b",
+      "title": "MINISERIES",
+      "artist": "SUMIN, Slom",
+      "similarity": 1
+    },
+    "Slom|WEATHER REPORT": {
+      "status": "found",
+      "spotifyId": "7fovUQYXBmAfq8FGN8eEzm",
+      "title": "WEATHER REPORT",
+      "artist": "Slom",
+      "similarity": 1
+    },
+    "Jclef|flaw, flaw": {
+      "status": "found",
+      "spotifyId": "1j9Zu5yKPcsoTdpspjsn0q",
+      "title": "flaw, flaw",
+      "artist": "Jclef",
+      "similarity": 1
+    },
+    "Jclef|O, Pruned!": {
+      "status": "found",
+      "spotifyId": "7iog4Q3nlBPrUv6MMkeaJi",
+      "title": "O, Pruned!",
+      "artist": "Jclef",
+      "similarity": 1
+    },
+    "So!YoON!|Episode1 : Love": {
+      "status": "found",
+      "spotifyId": "3GcHEIy7bdne8Yb0rGTnsE",
+      "title": "Episode1 : Love",
+      "artist": "So!YoON!",
+      "similarity": 1
+    },
+    "Se So Neon|Summer Plumage": {
+      "status": "found",
+      "spotifyId": "0fDeHCMCA3UZ1s2dKSawFQ",
+      "title": "Summer Plumage",
+      "artist": "SE SO NEON",
+      "similarity": 1
+    },
+    "Se So Neon|Nonadaptation": {
+      "status": "found",
+      "spotifyId": "6BS3zt0gQalEc1R6hVuFP6",
+      "title": "Nonadaptation",
+      "artist": "SE SO NEON",
+      "similarity": 1
+    },
+    "Sunwoo Jung A|Serenade": {
+      "status": "found",
+      "spotifyId": "1UwujQYhEc2DN6Xotwmep8",
+      "title": "Serenade",
+      "artist": "sunwoojunga",
+      "similarity": 0.75
+    },
+    "Yerin Baek|Every letter I sent you.": {
+      "status": "found",
+      "spotifyId": "22DH3kdbdLrelnvpkf6VHu",
+      "title": "Every letter I sent you.",
+      "artist": "Yerin Baek",
+      "similarity": 1
+    },
+    "Yerin Baek|tellusboutyourself": {
+      "status": "found",
+      "spotifyId": "2amJH3TGEMVxSQktJNmHkj",
+      "title": "tellusboutyourself",
+      "artist": "Yerin Baek",
+      "similarity": 1
+    },
+    "Yerin Baek|Love, Yerin": {
+      "status": "found",
+      "spotifyId": "5a3LnwhYHFlx82Do9iuU8t",
+      "title": "Love, Yerin",
+      "artist": "Yerin Baek",
+      "similarity": 1
+    },
+    "DEAN|130 mood : TRBL": {
+      "status": "found",
+      "spotifyId": "1MW3txTS49ZGvyLi0fziLU",
+      "title": "130 Mood : TRBL",
+      "artist": "DEAN",
+      "similarity": 1
+    },
+    "Crush|Crush On You": {
+      "status": "found",
+      "spotifyId": "6hvSnbuh5dAzYqO87FZHWY",
+      "title": "Crush on You",
+      "artist": "Crush",
+      "similarity": 1
+    },
+    "Crush|From Midnight To Sunrise": {
+      "status": "found",
+      "spotifyId": "4HejSNN1hxuW9AVVE9cr6h",
+      "title": "From Midnight To Sunrise",
+      "artist": "Crush",
+      "similarity": 1
+    },
+    "Zion.T|Red Light": {
+      "status": "found",
+      "spotifyId": "0kNBVdH0reEe7q623EYijH",
+      "title": "Red Light",
+      "artist": "Zion.T",
+      "similarity": 1
+    },
+    "Zion.T|OO": {
+      "status": "found",
+      "spotifyId": "20WQSlujuTbzd9d5V46mkc",
+      "title": "OO",
+      "artist": "Zion.T",
+      "similarity": 1
+    },
+    "Rad Museum|Scene": {
+      "status": "found",
+      "spotifyId": "4IN4kuC0ut0BcdV3WNs8Tk",
+      "title": "Scene",
+      "artist": "Rad Museum",
+      "similarity": 1
+    },
+    "DPR IAN|Moodswings In This Order": {
+      "status": "found",
+      "spotifyId": "2hPHncbZRuWiCBauEUJxyA",
+      "title": "Moodswings In This Order",
+      "artist": "DPR IAN",
+      "similarity": 1
+    },
+    "DPR IAN|Dear Insanity...": {
+      "status": "found",
+      "spotifyId": "0tOtw8pNMRmDa57nZ6GZ9Q",
+      "title": "Dear Insanity...",
+      "artist": "DPR IAN",
+      "similarity": 1
+    },
+    "Colde|Wave": {
+      "status": "found",
+      "spotifyId": "4hWXKLNdKvCEaytohINtdD",
+      "title": "Wave",
+      "artist": "Colde",
+      "similarity": 1
+    },
+    "offonoff|boy.": {
+      "status": "found",
+      "spotifyId": "4crHesv3PHfci2PBJ6m9sj",
+      "title": "boy.",
+      "artist": "offonoff",
+      "similarity": 1
+    },
+    "Hoody|On And On": {
+      "status": "found",
+      "spotifyId": "7hq1c0ZrLiSKxzhoRacoG7",
+      "title": "On and On",
+      "artist": "Hoody",
+      "similarity": 1
+    },
+    "SAAY|CLAASSIC": {
+      "status": "found",
+      "spotifyId": "5KL4s0DShFK5oz3zKy9zmP",
+      "title": "CLAASSIC",
+      "artist": "SAAY",
+      "similarity": 1
+    },
+    "Samuel Seo|Frameworks": {
+      "status": "found",
+      "spotifyId": "4ohCHZErcKyDhE0qags6zs",
+      "title": "Frameworks",
+      "artist": "Samuel Seo",
+      "similarity": 1
+    },
+    "Samuel Seo|The Misfit": {
+      "status": "found",
+      "spotifyId": "2JyTGlLJNrWwcJxDMuEPXR",
+      "title": "The Misfit",
+      "artist": "Samuel Seo",
+      "similarity": 1
+    },
+    "Beenzino|24:26": {
+      "status": "found",
+      "spotifyId": "6GzOG46xmgSfB0PQdsnMDU",
+      "title": "24:26 (5th Anniversary Remaster Edition)",
+      "artist": "Beenzino",
+      "similarity": 0.8875
+    },
+    "Beenzino|12": {
+      "status": "found",
+      "spotifyId": "5EOIB0TzyKgOG1WoeE9gLE",
+      "title": "12",
+      "artist": "Beenzino",
+      "similarity": 1
+    },
+    "Beenzino|NOWITZKI": {
+      "status": "found",
+      "spotifyId": "2ZcI7Sbm7s2yz8l8wvIyUq",
+      "title": "NOWITZKI",
+      "artist": "Beenzino",
+      "similarity": 1
+    },
+    "E SENS|The Anecdote": {
+      "status": "found",
+      "spotifyId": "2C6c7NXZwrSOqCNzrfNI4Q",
+      "title": "The Anecdote",
+      "artist": "E SENS",
+      "similarity": 1
+    },
+    "E SENS|Stranger": {
+      "status": "found",
+      "spotifyId": "68qFH3Tshdnqp4u3ttmHJB",
+      "title": "THE STRANGER",
+      "artist": "E SENS",
+      "similarity": 0.8875
+    },
+    "XXX|LANGUAGE": {
+      "status": "found",
+      "spotifyId": "6rVVkz4a3LZpYFWPIMPG4H",
+      "title": "LANGUAGE",
+      "artist": "XXX",
+      "similarity": 1
+    },
+    "XXX|SECOND LANGUAGE": {
+      "status": "found",
+      "spotifyId": "2ms8i4hamiarIy7vJ2xm7E",
+      "title": "SECOND LANGUAGE",
+      "artist": "XXX",
+      "similarity": 1
+    },
+    "C JAMM|Keung": {
+      "status": "found",
+      "spotifyId": "27DBdAQYbalG0di7blGfDc",
+      "title": "KEUNG",
+      "artist": "C JAMM",
+      "similarity": 1
+    },
+    "B-Free|Korean Dream": {
+      "status": "found",
+      "spotifyId": "6kAU18tJkLQnvQ2g24NxsH",
+      "title": "Korean Dream",
+      "artist": "B-Free",
+      "similarity": 1
+    },
+    "B-Free|Free The Beast": {
+      "status": "found",
+      "spotifyId": "0bfqzswYir79oZGuGLRYFQ",
+      "title": "FREE THE BEAST",
+      "artist": "B-Free",
+      "similarity": 1
+    },
+    "B-Free|Free The Mane 3 “Free The Mane VS B-Free”": {
+      "status": "found",
+      "spotifyId": "3jWO6OEhPV7F4Rqe1nZsh3",
+      "title": "FREE THE MANE 3 “FREE THE MANE VS B-FREE”",
+      "artist": "B-Free",
+      "similarity": 1
+    },
+    "JUSTHIS|2 MANY HOMES 4 1 KID": {
+      "status": "found",
+      "spotifyId": "4psgHQs18meZnmcFIo0dYE",
+      "title": "2 MANY HOMES 4 1 KID",
+      "artist": "JUSTHIS",
+      "similarity": 1
+    },
+    "Nucksal|The God of Small Things": {
+      "status": "found",
+      "spotifyId": "03UJQowlQWa3jnOgp7FPXf",
+      "title": "The God of Small Things",
+      "artist": "Nucksal",
+      "similarity": 1
+    },
+    "Khundi Panda|Garosawk": {
+      "status": "found",
+      "spotifyId": "4WXMcC4tSLWowFlX67HMwi",
+      "title": "GAROSAWK",
+      "artist": "Khundi Panda",
+      "similarity": 1
+    },
+    "Hwaji|ZISSOU": {
+      "status": "found",
+      "spotifyId": "6ekuI1dgGyoYI0mCcTnWBQ",
+      "title": "ZISSOU",
+      "artist": "Hwaji",
+      "similarity": 1
+    },
+    "Deepflow|Yanghwa": {
+      "status": "found",
+      "spotifyId": "2MUW5FYsnyWRAL2j6zc9hL",
+      "title": "YANGHWA",
+      "artist": "DEEPFLOW",
+      "similarity": 1
+    },
+    "Paloalto|Chief Life": {
+      "status": "found",
+      "spotifyId": "4BAu8Tv5B3yAuColglWeIj",
+      "title": "Chief Life",
+      "artist": "Paloalto",
+      "similarity": 1
+    },
+    "Verbal Jint|Modern Rhymes": {
+      "status": "found",
+      "spotifyId": "220KNMbQ5OF9XeLYT0AI9C",
+      "title": "Modern Rhymes EP",
+      "artist": "Verbal Jint",
+      "similarity": 0.8875
+    },
+    "Garion|Garion": {
+      "status": "found",
+      "spotifyId": "5ym8UvuOOIEGRqPPYkNRFw",
+      "title": "Garion [Special Edition]",
+      "artist": "Garion",
+      "similarity": 0.8875
+    },
+    "Epik High|Swan Songs": {
+      "status": "found",
+      "spotifyId": "2r893IZjz94r7mmqxNz4A6",
+      "title": "Swan Songs",
+      "artist": "Epik High",
+      "similarity": 1
+    },
+    "Epik High|Remapping the Human Soul": {
+      "status": "found",
+      "spotifyId": "0dcpWdZ9nKIbxgZma4NhMa",
+      "title": "Remapping the Human Soul",
+      "artist": "Epik High",
+      "similarity": 1
+    },
+    "Drunken Tiger|Year of the Tiger": {
+      "status": "found",
+      "spotifyId": "0bU84bQLsRzW4THAlnQGw0",
+      "title": "Year of The Tiger",
+      "artist": "Drunken Tiger",
+      "similarity": 1
+    },
+    "Dynamicduo|Taxi Driver": {
+      "status": "found",
+      "spotifyId": "4xN7vgVNxSdPPswb9pWlCM",
+      "title": "Taxi Driver",
+      "artist": "Dynamicduo",
+      "similarity": 1
+    },
+    "Leessang|Library of Soul": {
+      "status": "found",
+      "spotifyId": "0SpyB2vsCI6QJdSjAiFkWY",
+      "title": "Library Of Soul",
+      "artist": "Leessang",
+      "similarity": 1
+    },
+    "NewJeans|NewJeans 1st EP 'New Jeans'": {
+      "status": "found",
+      "spotifyId": "1HMLpmZAnNyl9pxvOnTovV",
+      "title": "NewJeans 1st EP 'New Jeans'",
+      "artist": "NewJeans",
+      "similarity": 1
+    },
+    "NewJeans|NewJeans 2nd EP 'Get Up'": {
+      "status": "found",
+      "spotifyId": "4N1fROq2oeyLGAlQ1C1j18",
+      "title": "NewJeans 2nd EP 'Get Up'",
+      "artist": "NewJeans",
+      "similarity": 1
+    },
+    "Red Velvet|The Perfect Red Velvet": {
+      "status": "found",
+      "spotifyId": "0OkJThJls8FO1lutMzMDJ0",
+      "title": "The Perfect Red Velvet - The 2nd Album Repackage",
+      "artist": "Red Velvet",
+      "similarity": 0.8875
+    },
+    "Red Velvet|The Red": {
+      "status": "found",
+      "spotifyId": "6YL9J0E6PGtYzkhyMxnmXd",
+      "title": "The Red - The 1st Album",
+      "artist": "Red Velvet",
+      "similarity": 0.8875
+    },
+    "f(x)|Pink Tape": {
+      "status": "found",
+      "spotifyId": "62tuEHFtjk3L6Xjdkzyt4z",
+      "title": "Pink Tape - The 2nd Album",
+      "artist": "f(x)",
+      "similarity": 0.8875
+    },
+    "f(x)|4 Walls": {
+      "status": "found",
+      "spotifyId": "6yJdchE7ARS996BxRgplFH",
+      "title": "4 Walls - The 4th Album",
+      "artist": "f(x)",
+      "similarity": 0.8875
+    },
+    "SHINee|1 of 1": {
+      "status": "found",
+      "spotifyId": "1hG9lZDk2HqmOHMtuI3Zdj",
+      "title": "1 of 1 - The 5th Album",
+      "artist": "SHINee",
+      "similarity": 0.8875
+    },
+    "SHINee|The Misconceptions of Us": {
+      "status": "found",
+      "spotifyId": "0f0brenHcU2NmUANeix9rN",
+      "title": "SHINee The 3rd Album 'The Misconceptions Of Us'",
+      "artist": "SHINee",
+      "similarity": 0.8875
+    },
+    "BTS|The Most Beautiful Moment in Life: Young Forever": {
+      "status": "found",
+      "spotifyId": "1k5bJ8l5oL5xxVBVHjil09",
+      "title": "The Most Beautiful Moment in Life: Young Forever",
+      "artist": "BTS",
+      "similarity": 1
+    },
+    "BTS|WINGS": {
+      "status": "found",
+      "spotifyId": "1vhNGBTFoaSTLbHjPGFIlF",
+      "title": "Wings",
+      "artist": "BTS",
+      "similarity": 1
+    },
+    "BTS|Love Yourself 轉 'Tear'": {
+      "status": "found",
+      "spotifyId": "4NIqCxqP9o8Tp6tGLBqd8O",
+      "title": "Love Yourself 轉 'Tear'",
+      "artist": "BTS",
+      "similarity": 1
+    },
+    "IU|Palette": {
+      "status": "found",
+      "spotifyId": "5V8n6fqyAPxvFTibPhQVcp",
+      "title": "Palette",
+      "artist": "IU",
+      "similarity": 1
+    },
+    "IU|Modern Times": {
+      "status": "found",
+      "spotifyId": "2QcuXvQBWv1ZKyQtEhLbFe",
+      "title": "Modern Times",
+      "artist": "IU",
+      "similarity": 1
+    },
+    "IU|LILAC": {
+      "status": "found",
+      "spotifyId": "01dPJcwyht77brL4JQiR8R",
+      "title": "IU 5th Album 'LILAC'",
+      "artist": "IU",
+      "similarity": 0.8875
+    },
+    "TAEYEON|Purpose - The 2nd Album": {
+      "status": "found",
+      "spotifyId": "0h6wCpdgpSOAbYDDYJVuwr",
+      "title": "Purpose - The 2nd Album",
+      "artist": "TAEYEON",
+      "similarity": 1
+    },
+    "TAEYEON|INVU - The 3rd Album": {
+      "status": "found",
+      "spotifyId": "7i2YLTVQ0dyngRuUqtGmr9",
+      "title": "INVU - The 3rd Album",
+      "artist": "TAEYEON",
+      "similarity": 1
+    },
+    "BoA|No.1": {
+      "status": "found",
+      "spotifyId": "6RAFsj3MN29aHPg8oIsmmK",
+      "title": "奇蹟/NO.1",
+      "artist": "BoA",
+      "similarity": 1
+    },
+    "BoA|Kiss My Lips": {
+      "status": "found",
+      "spotifyId": "0SmJjNGEXCMp5bTGbxmjyy",
+      "title": "Kiss My Lips - The 8th Album",
+      "artist": "BoA",
+      "similarity": 0.8875
+    },
+    "Girls' Generation|The Boys": {
+      "status": "found",
+      "spotifyId": "4vGkZl9P0sKxupLdJE7ndS",
+      "title": "The Boys - The 3rd Album",
+      "artist": "Girls' Generation",
+      "similarity": 0.8875
+    },
+    "Wonder Girls|Reboot": {
+      "status": "found",
+      "spotifyId": "3in3RzViPTp3fZo51rmJoB",
+      "title": "REBOOT",
+      "artist": "Wonder Girls",
+      "similarity": 1
+    },
+    "2NE1|To Anyone": {
+      "status": "found",
+      "spotifyId": "2SNSGfhfcfBLyQDTXMCPXG",
+      "title": "To Anyone",
+      "artist": "2NE1",
+      "similarity": 1
+    },
+    "BIGBANG|MADE": {
+      "status": "found",
+      "spotifyId": "2SPrl8C8pgSM5gXbAiyJHY",
+      "title": "MADE",
+      "artist": "BIGBANG",
+      "similarity": 1
+    },
+    "G-DRAGON|Coup D'Etat": {
+      "status": "found",
+      "spotifyId": "4msI9bSfKohOPFic15aLR4",
+      "title": "COUP D'ETAT",
+      "artist": "G-DRAGON",
+      "similarity": 1
+    },
+    "Taeyang|RISE": {
+      "status": "found",
+      "spotifyId": "1Y9so4jq4t4taAHu0VdKX3",
+      "title": "RISE",
+      "artist": "TAEYANG",
+      "similarity": 1
+    },
+    "EXO|EXODUS": {
+      "status": "found",
+      "spotifyId": "0PepQsL30ADZO7gc4Tz7Af",
+      "title": "EXODUS - The 2nd Album",
+      "artist": "EXO",
+      "similarity": 0.8875
+    },
+    "EXO|The War": {
+      "status": "found",
+      "spotifyId": "53pJcIJBdlm5rhVhjSnvHn",
+      "title": "THE WAR - The 4th Album",
+      "artist": "EXO",
+      "similarity": 0.8875
+    },
+    "NCT 127|NCT #127 Neo Zone": {
+      "status": "found",
+      "spotifyId": "4s2GP5sUG5xgPDJY3t3CaQ",
+      "title": "NCT #127 Neo Zone - The 2nd Album",
+      "artist": "NCT 127",
+      "similarity": 0.8875
+    },
+    "NCT 127|Sticker - The 3rd Album": {
+      "status": "found",
+      "spotifyId": "6p7fGgEP7tBrppR6lru7HX",
+      "title": "Sticker - The 3rd Album",
+      "artist": "NCT 127",
+      "similarity": 1
+    },
+    "aespa|Savage - The 1st Mini Album": {
+      "status": "found",
+      "spotifyId": "3vyyDkvYWC36DwgZCYd3Wu",
+      "title": "Savage - The 1st Mini Album",
+      "artist": "aespa",
+      "similarity": 1
+    },
+    "aespa|Armageddon - The 1st Album": {
+      "status": "found",
+      "spotifyId": "4SboBpuYojDm02qS4iFeJC",
+      "title": "Armageddon - The 1st Album",
+      "artist": "aespa",
+      "similarity": 1
+    },
+    "LE SSERAFIM|ANTIFRAGILE": {
+      "status": "found",
+      "spotifyId": "3u0ggfmK0vjuHMNdUbtaa9",
+      "title": "ANTIFRAGILE",
+      "artist": "LE SSERAFIM",
+      "similarity": 1
+    },
+    "LE SSERAFIM|EASY": {
+      "status": "found",
+      "spotifyId": "1YCj4PZi08G20y2ekGKY0C",
+      "title": "EASY",
+      "artist": "LE SSERAFIM",
+      "similarity": 1
+    },
+    "tripleS|ASSEMBLE24": {
+      "status": "found",
+      "spotifyId": "1FEdDqMaOL8oZYzI4n27GM",
+      "title": "<ASSEMBLE24>",
+      "artist": "tripleS",
+      "similarity": 1
+    },
+    "NMIXX|Fe3O4: BREAK": {
+      "status": "found",
+      "spotifyId": "5CCxLQgcI7cVwmgFDlicbP",
+      "title": "Fe3O4: BREAK",
+      "artist": "NMIXX",
+      "similarity": 1
+    },
+    "DAY6|SUNRISE": {
+      "status": "found",
+      "spotifyId": "70ryb5nR8iCsY8OlIq2J8c",
+      "title": "SUNRISE",
+      "artist": "DAY6",
+      "similarity": 1
+    },
+    "DAY6|The Book of Us : Entropy": {
+      "status": "found",
+      "spotifyId": "3k0QCw6Cpvq6hIEXUf6qAr",
+      "title": "The Book of Us : Entropy",
+      "artist": "DAY6",
+      "similarity": 1
+    },
+    "WOODZ|ONLY LOVERS LEFT": {
+      "status": "found",
+      "spotifyId": "1u9nYBB0Qw5jyjkexe9Xk6",
+      "title": "ONLY LOVERS LEFT",
+      "artist": "WOODZ",
+      "similarity": 1
+    },
+    "WOODZ|OO-LI": {
+      "status": "found",
+      "spotifyId": "06isIi4cIfsaH8ot5UoRD4",
+      "title": "OO-LI",
+      "artist": "WOODZ",
+      "similarity": 1
+    },
+    "Dreamcatcher|Dystopia : The Tree of Language": {
+      "status": "found",
+      "spotifyId": "6m5pDOafdvIKxNRxx5hVbr",
+      "title": "1st Album [Dystopia : The Tree of Language]",
+      "artist": "Dreamcatcher",
+      "similarity": 0.8875
+    },
+    "Aseul|New Pop": {
+      "status": "found",
+      "spotifyId": "70d405wIFsxHndtDB8ooHn",
+      "title": "New Pop",
+      "artist": "Aseul",
+      "similarity": 1
+    },
+    "CIFIKA|PRISM": {
+      "status": "found",
+      "spotifyId": "7wNwywiHJvGx7fBaz30zLf",
+      "title": "PRISM",
+      "artist": "CIFIKA",
+      "similarity": 1
+    },
+    "Hathaw9y|Essential": {
+      "status": "found",
+      "spotifyId": "0qhbg9fwCAk6hfZFMbJeUp",
+      "title": "Essential",
+      "artist": "hathaw9y",
+      "similarity": 1
+    },
+    "wave to earth|0.1 flaws and all.": {
+      "status": "found",
+      "spotifyId": "5T0Gt5JYXh6gEttuB8ujML",
+      "title": "0.1 flaws and all.",
+      "artist": "wave to earth",
+      "similarity": 1
+    },
+    "ADOY|VIVID": {
+      "status": "found",
+      "spotifyId": "0qpYN6nZdr4CCp8Jj3EVPz",
+      "title": "Vivid",
+      "artist": "ADOY",
+      "similarity": 1
+    },
+    "Dasutt|YOUTH": {
+      "status": "found",
+      "spotifyId": "7BCfH2egHZqKnWrBOLf0fE",
+      "title": "YOUTH",
+      "artist": "DASUTT",
+      "similarity": 1
+    },
+    "Balming Tiger|January Never Dies": {
+      "status": "found",
+      "spotifyId": "3KfVspuHZTMj8eg5wAH5t1",
+      "title": "January Never Dies",
+      "artist": "Balming Tiger",
+      "similarity": 1
+    },
+    "Radiohead|OK Computer": {
+      "status": "found",
+      "spotifyId": "6dVIqQ8qmQ5GBnJ9shOYGE",
+      "title": "OK Computer",
+      "artist": "Radiohead",
+      "similarity": 1
+    },
+    "Radiohead|Kid A": {
+      "status": "found",
+      "spotifyId": "6GjwtEZcfenmOf6l18N7T7",
+      "title": "Kid A",
+      "artist": "Radiohead",
+      "similarity": 1
+    },
+    "Radiohead|In Rainbows": {
+      "status": "found",
+      "spotifyId": "5vkqYmiPBYLaalcmjujWxK",
+      "title": "In Rainbows",
+      "artist": "Radiohead",
+      "similarity": 1
+    },
+    "The Beatles|Abbey Road": {
+      "status": "found",
+      "spotifyId": "5gRj0X8Bl2dKidoC428AoB",
+      "title": "Abbey Road",
+      "artist": "The Beatles Complete On Ukulele",
+      "similarity": 0.9625
+    },
+    "The Beatles|Revolver": {
+      "status": "found",
+      "spotifyId": "4nQ5UtCV2XCnOZ9nHCufVs",
+      "title": "Revolver",
+      "artist": "The Beatles Complete On Ukulele",
+      "similarity": 0.9625
+    },
+    "The Velvet Underground|The Velvet Underground & Nico": {
+      "status": "found",
+      "spotifyId": "4xwx0x7k6c5VuThz5qVqmV",
+      "title": "The Velvet Underground & Nico 45th Anniversary",
+      "artist": "The Velvet Underground, Nico",
+      "similarity": 0.85
+    },
+    "Nirvana|Nevermind": {
+      "status": "found",
+      "spotifyId": "6yaiubHHJy8N8QcHy3julo",
+      "title": "Nevermind",
+      "artist": "Nirvana",
+      "similarity": 1
+    },
+    "Oasis|Definitely Maybe": {
+      "status": "found",
+      "spotifyId": "3LzKUdUTdJb6P7xGN6SotC",
+      "title": "Definitely Maybe",
+      "artist": "Oasis",
+      "similarity": 1
+    },
+    "Oasis|(What's The Story) Morning Glory?": {
+      "status": "found",
+      "spotifyId": "2u30gztZTylY4RG7IvfXs8",
+      "title": "(What's The Story) Morning Glory?",
+      "artist": "Oasis",
+      "similarity": 1
+    },
+    "The Strokes|Is This It": {
+      "status": "found",
+      "spotifyId": "2k8KgmDp9oHrmu0MIj4XDE",
+      "title": "Is This It",
+      "artist": "The Strokes",
+      "similarity": 1
+    },
+    "Arctic Monkeys|Whatever People Say I Am, That's What I'm Not": {
+      "status": "found",
+      "spotifyId": "50Zz8CkIhATKUlQMbHO3k1",
+      "title": "Whatever People Say I Am, That's What I'm Not",
+      "artist": "Arctic Monkeys",
+      "similarity": 1
+    },
+    "Arcade Fire|Funeral": {
+      "status": "found",
+      "spotifyId": "6ZB8qaR9JNuS0Q0bG1nbcH",
+      "title": "Funeral",
+      "artist": "Arcade Fire",
+      "similarity": 1
+    },
+    "Neutral Milk Hotel|In the Aeroplane Over the Sea": {
+      "status": "found",
+      "spotifyId": "17q5eeNk3HAjX1gzQnkTX7",
+      "title": "In the Aeroplane Over the Sea",
+      "artist": "Neutral Milk Hotel",
+      "similarity": 1
+    },
+    "Elliott Smith|Either/Or": {
+      "status": "found",
+      "spotifyId": "5bmpvyP7UGqB4VuXmrJUMy",
+      "title": "Either/Or",
+      "artist": "Elliott Smith",
+      "similarity": 1
+    },
+    "Jeff Buckley|Grace": {
+      "status": "found",
+      "spotifyId": "7yQtjAjhtNi76KRu05XWFS",
+      "title": "Grace",
+      "artist": "Jeff Buckley",
+      "similarity": 1
+    },
+    "David Bowie|The Rise and Fall of Ziggy Stardust and the Spiders from Mars": {
+      "status": "found",
+      "spotifyId": "48D1hRORqJq52qsnUYZX56",
+      "title": "The Rise and Fall of Ziggy Stardust and the Spiders from Mars (2012 Remaster)",
+      "artist": "David Bowie",
+      "similarity": 0.8875
+    },
+    "David Bowie|Low": {
+      "status": "found",
+      "spotifyId": "2de6LD7eOW8zrlorbS28na",
+      "title": "Low (2017 Remaster)",
+      "artist": "David Bowie",
+      "similarity": 0.8875
+    },
+    "Pink Floyd|The Dark Side of the Moon": {
+      "status": "found",
+      "spotifyId": "4LH4d3cOWNNsVw41Gqt2kv",
+      "title": "The Dark Side of the Moon",
+      "artist": "Pink Floyd",
+      "similarity": 1
+    },
+    "King Crimson|In the Court of the Crimson King": {
+      "status": "found",
+      "spotifyId": "75ol9OP8bJaRqzGimpFHDm",
+      "title": "In The Court Of The Crimson King (Expanded & Remastered Original Album Mix)",
+      "artist": "King Crimson",
+      "similarity": 0.8875
+    },
+    "Joy Division|Unknown Pleasures": {
+      "status": "found",
+      "spotifyId": "5Dgqy4bBg09Rdw7CQM545s",
+      "title": "Unknown Pleasures",
+      "artist": "Joy Division",
+      "similarity": 1
+    },
+    "The Cure|Disintegration": {
+      "status": "found",
+      "spotifyId": "6vQB3ZBxnQPP3jQcGV2qzg",
+      "title": "Disintegration (Deluxe Edition)",
+      "artist": "The Cure",
+      "similarity": 0.8875
+    },
+    "New Order|Power, Corruption & Lies": {
+      "status": "found",
+      "spotifyId": "6NTrwu1XJ56jBPx7HMksbZ",
+      "title": "Power Corruption and Lies",
+      "artist": "New Order",
+      "similarity": 0.8125
+    },
+    "Talking Heads|Remain in Light": {
+      "status": "found",
+      "spotifyId": "1JvXxLsm0PxlGH4LXzqMGq",
+      "title": "Remain in Light",
+      "artist": "Talking Heads",
+      "similarity": 1
+    },
+    "Sonic Youth|Daydream Nation": {
+      "status": "found",
+      "spotifyId": "23O4F21GDWiGd33tFN3ZgI",
+      "title": "Daydream Nation (Deluxe Edition)",
+      "artist": "Sonic Youth",
+      "similarity": 0.8875
+    },
+    "Pixies|Doolittle": {
+      "status": "found",
+      "spotifyId": "0DQyTVcDhK9wm0f6RaErWO",
+      "title": "Doolittle",
+      "artist": "Pixies",
+      "similarity": 1
+    },
+    "Slowdive|Souvlaki": {
+      "status": "found",
+      "spotifyId": "53eHm1f3sFiSzWMaKOl98Z",
+      "title": "Souvlaki",
+      "artist": "Slowdive",
+      "similarity": 1
+    },
+    "The Smiths|The Queen Is Dead": {
+      "status": "found",
+      "spotifyId": "5Y0p2XCgRRIjna91aQE8q7",
+      "title": "The Queen Is Dead",
+      "artist": "The Smiths",
+      "similarity": 1
+    },
+    "Fleetwood Mac|Rumours": {
+      "status": "found",
+      "spotifyId": "1bt6q2SruMsBtcerNVtpZB",
+      "title": "Rumours",
+      "artist": "Fleetwood Mac",
+      "similarity": 1
+    },
+    "Joni Mitchell|Blue": {
+      "status": "found",
+      "spotifyId": "1vz94WpXDVYIEGja8cjFNa",
+      "title": "Blue",
+      "artist": "Joni Mitchell",
+      "similarity": 1
+    },
+    "Nick Drake|Pink Moon": {
+      "status": "found",
+      "spotifyId": "5mwOo1zikswhmfHvtqVSXg",
+      "title": "Pink Moon",
+      "artist": "Nick Drake",
+      "similarity": 1
+    },
+    "Bob Dylan|Highway 61 Revisited": {
+      "status": "found",
+      "spotifyId": "6YabPKtZAjxwyWbuO9p4ZD",
+      "title": "Highway 61 Revisited",
+      "artist": "Bob Dylan",
+      "similarity": 1
+    },
+    "Stevie Wonder|Songs in the Key of Life": {
+      "status": "found",
+      "spotifyId": "6YUCc2RiXcEKS9ibuZxjt0",
+      "title": "Songs In The Key Of Life",
+      "artist": "Stevie Wonder",
+      "similarity": 1
+    },
+    "Michael Jackson|Thriller": {
+      "status": "found",
+      "spotifyId": "2ANVost0y2y52ema1E9xAZ",
+      "title": "Thriller",
+      "artist": "Michael Jackson",
+      "similarity": 1
+    },
+    "Prince|Purple Rain": {
+      "status": "found",
+      "spotifyId": "2umoqwMrmjBBPeaqgYu6J9",
+      "title": "Purple Rain",
+      "artist": "Prince",
+      "similarity": 1
+    },
+    "Kate Bush|Hounds of Love": {
+      "status": "found",
+      "spotifyId": "5G5UwqPsxDKpxJLX4xsyuh",
+      "title": "Hounds Of Love",
+      "artist": "Kate Bush",
+      "similarity": 1
+    },
+    "Björk|Homogenic": {
+      "status": "found",
+      "spotifyId": "0HMsmYvoT1h2x1C4di5faf",
+      "title": "Homogenic",
+      "artist": "Björk",
+      "similarity": 1
+    },
+    "Björk|Vespertine": {
+      "status": "found",
+      "spotifyId": "5vBpIxm8ws6pWyVmTWiGE1",
+      "title": "Vespertine",
+      "artist": "Björk",
+      "similarity": 1
+    },
+    "Portishead|Dummy": {
+      "status": "found",
+      "spotifyId": "3539EbNgIdEDGBKkUf4wno",
+      "title": "Dummy",
+      "artist": "Portishead",
+      "similarity": 1
+    },
+    "Massive Attack|Mezzanine": {
+      "status": "found",
+      "spotifyId": "49MNmJhZQewjt06rpwp6QR",
+      "title": "Mezzanine",
+      "artist": "Massive Attack",
+      "similarity": 1
+    },
+    "Aphex Twin|Selected Ambient Works 85-92": {
+      "status": "found",
+      "spotifyId": "7aNclGRxTysfh6z0d8671k",
+      "title": "Selected Ambient Works 85-92",
+      "artist": "Aphex Twin",
+      "similarity": 1
+    },
+    "Daft Punk|Discovery": {
+      "status": "found",
+      "spotifyId": "2noRn2Aes5aoNVsU6iWThc",
+      "title": "Discovery",
+      "artist": "Daft Punk",
+      "similarity": 1
+    },
+    "Boards of Canada|Music Has the Right to Children": {
+      "status": "found",
+      "spotifyId": "6LZiNXaDvhzvnXUubVOmNU",
+      "title": "Music Has The Right To Children",
+      "artist": "Boards of Canada",
+      "similarity": 1
+    },
+    "Burial|Untrue": {
+      "status": "found",
+      "spotifyId": "1iRPiEYHIX2zpF8lkW54SK",
+      "title": "Untrue",
+      "artist": "Burial",
+      "similarity": 1
+    },
+    "LCD Soundsystem|Sound of Silver": {
+      "status": "found",
+      "spotifyId": "1R8kkopLT4IAxzMMkjic6X",
+      "title": "Sound of Silver",
+      "artist": "LCD Soundsystem",
+      "similarity": 1
+    },
+    "The Avalanches|Since I Left You": {
+      "status": "found",
+      "spotifyId": "0YtYaaO0aipyeQl0xhAWTO",
+      "title": "Since I Left You (20th Anniversary Deluxe Edition)",
+      "artist": "The Avalanches",
+      "similarity": 0.8875
+    },
+    "Frank Ocean|Blonde": {
+      "status": "found",
+      "spotifyId": "3mH6qwIy9crq0I9YQbOuDf",
+      "title": "Blonde",
+      "artist": "Frank Ocean",
+      "similarity": 1
+    },
+    "Frank Ocean|channel ORANGE": {
+      "status": "found",
+      "spotifyId": "392p3shh2jkxUxY2VHvlH8",
+      "title": "channel ORANGE",
+      "artist": "Frank Ocean",
+      "similarity": 1
+    },
+    "Kendrick Lamar|good kid, m.A.A.d city": {
+      "status": "found",
+      "spotifyId": "6PBZN8cbwkqm1ERj2BGXJ1",
+      "title": "good kid, m.A.A.d city",
+      "artist": "Kendrick Lamar",
+      "similarity": 1
+    },
+    "Kendrick Lamar|To Pimp A Butterfly": {
+      "status": "found",
+      "spotifyId": "7ycBtnsMtyVbbwTfJwRjSP",
+      "title": "To Pimp A Butterfly",
+      "artist": "Kendrick Lamar",
+      "similarity": 1
+    },
+    "Kanye West|My Beautiful Dark Twisted Fantasy": {
+      "status": "found",
+      "spotifyId": "20r762YmB5HeofjMCiPMLv",
+      "title": "My Beautiful Dark Twisted Fantasy",
+      "artist": "Kanye West",
+      "similarity": 1
+    },
+    "Kanye West|Yeezus": {
+      "status": "found",
+      "spotifyId": "7D2NdGvBHIavgLhmcwhluK",
+      "title": "Yeezus",
+      "artist": "Kanye West",
+      "similarity": 1
+    },
+    "Tyler, The Creator|IGOR": {
+      "status": "found",
+      "spotifyId": "5zi7WsKlIiUXv09tbGLKsE",
+      "title": "IGOR",
+      "artist": "Tyler, The Creator",
+      "similarity": 1
+    },
+    "Tyler, The Creator|CALL ME IF YOU GET LOST": {
+      "status": "found",
+      "spotifyId": "45ba6QAtNrdv6Ke4MFOKk9",
+      "title": "CALL ME IF YOU GET LOST",
+      "artist": "Tyler, The Creator",
+      "similarity": 1
+    },
+    "SZA|Ctrl": {
+      "status": "found",
+      "spotifyId": "6OgQ8QxV9rrdtmRmzGvwiT",
+      "title": "Ctrl",
+      "artist": "SZA",
+      "similarity": 1
+    },
+    "Solange|A Seat at the Table": {
+      "status": "found",
+      "spotifyId": "3Yko2SxDk4hc6fncIBQlcM",
+      "title": "A Seat at the Table",
+      "artist": "Solange",
+      "similarity": 1
+    },
+    "FKA twigs|LP1": {
+      "status": "found",
+      "spotifyId": "070rEVRV6FWywkncMWLhs6",
+      "title": "LP1",
+      "artist": "FKA twigs",
+      "similarity": 1
+    },
+    "FKA twigs|MAGDALENE": {
+      "status": "found",
+      "spotifyId": "3DMR3yM5crnt1dG9lLaMTZ",
+      "title": "MAGDALENE",
+      "artist": "FKA twigs",
+      "similarity": 1
+    },
+    "Charli xcx|how i'm feeling now": {
+      "status": "found",
+      "spotifyId": "3a9qH2VEsSiOZvMrjaS0Nu",
+      "title": "how i'm feeling now",
+      "artist": "Charli xcx",
+      "similarity": 1
+    },
+    "Charli xcx|BRAT": {
+      "status": "found",
+      "spotifyId": "2lIZef4lzdvZkiiCzvPKj7",
+      "title": "BRAT",
+      "artist": "Charli xcx",
+      "similarity": 1
+    },
+    "Caroline Polachek|Desire, I Want To Turn Into You": {
+      "status": "found",
+      "spotifyId": "22PkV1Le9P3X4RY4xtmK0q",
+      "title": "Desire, I Want To Turn Into You",
+      "artist": "Caroline Polachek",
+      "similarity": 1
+    },
+    "Lana Del Rey|Norman Fucking Rockwell!": {
+      "status": "found",
+      "spotifyId": "5XpEKORZ4y6OrCZSKsi46A",
+      "title": "Norman Fucking Rockwell!",
+      "artist": "Lana Del Rey",
+      "similarity": 1
+    },
+    "Taylor Swift|folklore": {
+      "status": "found",
+      "spotifyId": "2fenSS68JI1h4Fo296JfGr",
+      "title": "folklore",
+      "artist": "Taylor Swift",
+      "similarity": 1
+    },
+    "Billie Eilish|HIT ME HARD AND SOFT": {
+      "status": "found",
+      "spotifyId": "7aJuG4TFXa2hmE4z1yxc3n",
+      "title": "HIT ME HARD AND SOFT",
+      "artist": "Billie Eilish",
+      "similarity": 1
+    },
+    "Beyoncé|RENAISSANCE": {
+      "status": "found",
+      "spotifyId": "6FJxoadUE4JNVwWHghBwnb",
+      "title": "RENAISSANCE",
+      "artist": "Beyoncé",
+      "similarity": 1
+    },
+    "Beyoncé|COWBOY CARTER": {
+      "status": "found",
+      "spotifyId": "6BzxX6zkDsYKFJ04ziU5xQ",
+      "title": "COWBOY CARTER",
+      "artist": "Beyoncé",
+      "similarity": 1
+    },
+    "Rosalía|MOTOMAMI": {
+      "status": "found",
+      "spotifyId": "3zbiiu3JTibw0esC7eoMXr",
+      "title": "MOTOMAMI +",
+      "artist": "ROSALÍA",
+      "similarity": 1
+    },
+    "Tame Impala|Currents": {
+      "status": "found",
+      "spotifyId": "79dL7FLiJFOO0EoehUHQBv",
+      "title": "Currents",
+      "artist": "Tame Impala",
+      "similarity": 1
+    },
+    "Mac DeMarco|Salad Days": {
+      "status": "found",
+      "spotifyId": "2sij95QgjmgrhNv33achzn",
+      "title": "Salad Days",
+      "artist": "Mac DeMarco",
+      "similarity": 1
+    },
+    "Phoebe Bridgers|Punisher": {
+      "status": "found",
+      "spotifyId": "6Pp6qGEywDdofgFC1oFbSH",
+      "title": "Punisher",
+      "artist": "Phoebe Bridgers",
+      "similarity": 1
+    },
+    "Big Thief|Dragon New Warm Mountain I Believe In You": {
+      "status": "found",
+      "spotifyId": "7Ln81p86r5cCsesd3KBWIY",
+      "title": "Dragon New Warm Mountain I Believe In You",
+      "artist": "Big Thief",
+      "similarity": 1
+    },
+    "Black Country, New Road|Ants From Up There": {
+      "status": "found",
+      "spotifyId": "21xp7NdU1ajmO1CX0w2Egd",
+      "title": "Ants From Up There",
+      "artist": "Black Country, New Road",
+      "similarity": 1
+    },
+    "Squid|Bright Green Field": {
+      "status": "found",
+      "spotifyId": "219LGvgmAhhwlfc3unDhUt",
+      "title": "Bright Green Field",
+      "artist": "Squid",
+      "similarity": 1
+    },
+    "Alvvays|Blue Rev": {
+      "status": "found",
+      "spotifyId": "1dShPPoxXfzbjFO1jIHJZz",
+      "title": "Blue Rev",
+      "artist": "Alvvays",
+      "similarity": 1
+    },
+    "Weyes Blood|Titanic Rising": {
+      "status": "found",
+      "spotifyId": "0Cuqhgy8vm96JEkBY3polk",
+      "title": "Titanic Rising",
+      "artist": "Weyes Blood",
+      "similarity": 1
+    },
+    "Mitski|Be the Cowboy": {
+      "status": "found",
+      "spotifyId": "42cH7mrkfljkqkxA2Ip9Xq",
+      "title": "Be the Cowboy",
+      "artist": "Mitski",
+      "similarity": 1
+    },
+    "Mitski|The Land Is Inhospitable and So Are We": {
+      "status": "found",
+      "spotifyId": "2Cn1d2KgbkAqbZCJ1RzdkA",
+      "title": "The Land Is Inhospitable and So Are We",
+      "artist": "Mitski",
+      "similarity": 1
+    },
+    "Japanese Breakfast|Jubilee": {
+      "status": "found",
+      "spotifyId": "1uD1kdwTWH1DZQZqGKz6rY",
+      "title": "Jubilee",
+      "artist": "Japanese Breakfast",
+      "similarity": 1
+    },
+    "Fishmans|LONG SEASON": {
+      "status": "found",
+      "spotifyId": "4EX1fAypgQC9wDjGI5QzbZ",
+      "title": "LONG SEASON",
+      "artist": "Fishmans",
+      "similarity": 1
+    },
+    "Fishmans|Uchu Nippon Setagaya": {
+      "status": "found",
+      "spotifyId": "0hUfv1cSXNaBZ6dHKGluEy",
+      "title": "宇宙 日本 世田谷",
+      "artist": "Fishmans",
+      "similarity": 0.8875
+    },
+    "Cornelius|Fantasma": {
+      "status": "found",
+      "spotifyId": "3Wml3n8kxQ1S14zXynLduY",
+      "title": "Fantasma (Remastered)",
+      "artist": "Cornelius",
+      "similarity": 0.8875
+    },
+    "Sheena Ringo|Shoso Strip": {
+      "status": "found",
+      "spotifyId": "0QWI6wd3QBiQscVpBu6kUE",
+      "title": "勝訴ストリップ",
+      "artist": "Sheena Ringo",
+      "similarity": 0.8875
+    },
+    "Haruomi Hosono|Hosono House": {
+      "status": "found",
+      "spotifyId": "0YbvbjeWwBhgeGfaiuEbAj",
+      "title": "Hosono House Revisited",
+      "artist": "Haruomi Hosono",
+      "similarity": 0.8875
+    },
+    "Yellow Magic Orchestra|Solid State Survivor": {
+      "status": "found",
+      "spotifyId": "5z480Ywi9Hn3EQV8N4UwEN",
+      "title": "Solid State Survivor",
+      "artist": "YELLOW MAGIC ORCHESTRA",
+      "similarity": 1
+    },
+    "Taeko Onuki|SUNSHOWER": {
+      "status": "found",
+      "spotifyId": "53YDN7b4vQ5MLMSPcnh9Os",
+      "title": "SUNSHOWER",
+      "artist": "Taeko Onuki",
+      "similarity": 1
+    },
+    "Mariya Takeuchi|VARIETY": {
+      "status": "found",
+      "spotifyId": "3CBcuIFKPBBTHy7wLfGudH",
+      "title": "VARIETY (30th Anniversary Edition)",
+      "artist": "Mariya Takeuchi",
+      "similarity": 0.8875
+    },
+    "Hikaru Utada|First Love": {
+      "status": "found",
+      "spotifyId": "29U9LtzSF0ftWiLNNw1CP6",
+      "title": "First Love",
+      "artist": "Hikaru Utada",
+      "similarity": 1
+    },
+    "Hikaru Utada|BAD Mode": {
+      "status": "found",
+      "spotifyId": "7Kxd4i6FPfW0ZuP3Q96uij",
+      "title": "BADモード",
+      "artist": "Hikaru Utada",
+      "similarity": 0.8875
+    },
+    "Nujabes|Modal Soul": {
+      "status": "found",
+      "spotifyId": "6nVACH6a27eOWiumAJhDWS",
+      "title": "Modal Soul",
+      "artist": "Nujabes",
+      "similarity": 1
+    },
+    "Nujabes|Metaphorical Music": {
+      "status": "found",
+      "spotifyId": "5FrjDW96mCYw9ECc74c637",
+      "title": "Metaphorical Music",
+      "artist": "Nujabes",
+      "similarity": 1
+    },
+    "Ryuichi Sakamoto|async": {
+      "status": "found",
+      "spotifyId": "2OKN3NwlITzfVpDJecA4Z3",
+      "title": "async",
+      "artist": "Ryuichi Sakamoto",
+      "similarity": 1
+    },
+    "Boris|Pink": {
+      "status": "found",
+      "spotifyId": "0L7mC9kTa31p3cEaFwHIgD",
+      "title": "Pink",
+      "artist": "Boris",
+      "similarity": 1
+    },
+    "Boris|Flood": {
+      "status": "found",
+      "spotifyId": "6U9ckLnnzFuLMtPCSEo36N",
+      "title": "flood",
+      "artist": "Boris",
+      "similarity": 1
+    },
+    "toe|For Long Tomorrow": {
+      "status": "found",
+      "spotifyId": "6li0rkNGD98cO8Gxf7nnSk",
+      "title": "For Long Tomorrow",
+      "artist": "toe",
+      "similarity": 1
+    },
+    "tricot|T H E": {
+      "status": "found",
+      "spotifyId": "7zNn3gNnkOp2XywYEbQBQN",
+      "title": "T H E",
+      "artist": "tricot",
+      "similarity": 1
+    },
+    "NUMBER GIRL|Sappukei": {
+      "status": "found",
+      "spotifyId": "4WiWqQjkdvOrSLfazFxW01",
+      "title": "SAPPUKEI",
+      "artist": "Number Girl",
+      "similarity": 1
+    },
+    "Lamp|For Lovers": {
+      "status": "found",
+      "spotifyId": "0gwS2D9sukMLXNvleEnYr2",
+      "title": "For Lovers",
+      "artist": "Lamp",
+      "similarity": 1
+    },
+    "Ichiko Aoba|Windswept Adan": {
+      "status": "found",
+      "spotifyId": "0LxeUCxtPfUtnHTKbW52MB",
+      "title": "Windswept Adan",
+      "artist": "Ichiko Aoba",
+      "similarity": 1
+    },
+    "Ichiko Aoba|0": {
+      "status": "found",
+      "spotifyId": "4yqm0ZLcphXs8M8cVvLKym",
+      "title": "０",
+      "artist": "Ichiko Aoba",
+      "similarity": 0.8875
+    },
+    "Kikagaku Moyo|Masana Temples": {
+      "status": "found",
+      "spotifyId": "5g5l9entA4bTztfpLJd1kS",
+      "title": "Masana Temples",
+      "artist": "Kikagaku Moyo",
+      "similarity": 1
+    },
+    "betcover!!|卵": {
+      "status": "found",
+      "spotifyId": "4qe0XanRyN4rIkJxjdSoh6",
+      "title": "卵",
+      "artist": "betcover!!",
+      "similarity": 1
+    },
+    "Wednesday Campanella|UMA": {
+      "status": "found",
+      "spotifyId": "3sTQN32yaw0J9XliviqLpM",
+      "title": "UMA",
+      "artist": "WEDNESDAY CAMPANELLA",
+      "similarity": 1
+    },
+    "Perfume|GAME": {
+      "status": "found",
+      "spotifyId": "6kzdxF5o6XpDNTLVVdjoMj",
+      "title": "GAME",
+      "artist": "Perfume",
+      "similarity": 1
+    },
+    "Sigur Rós|Ágætis byrjun": {
+      "status": "found",
+      "spotifyId": "1DMMv1Kmoli3Y9fVEZDUVC",
+      "title": "Ágætis byrjun",
+      "artist": "Sigur Rós",
+      "similarity": 1
+    },
+    "Baden Powell|Os Afro Sambas": {
+      "status": "found",
+      "spotifyId": "4zyGU4SFL8DEE9Ee9yAjnk",
+      "title": "Os Afro-Sambas",
+      "artist": "Baden Powell",
+      "similarity": 1
+    },
+    "Caetano Veloso|Transa": {
+      "status": "found",
+      "spotifyId": "49cBF5iGpJ7nx6EAR8BLga",
+      "title": "Transa",
+      "artist": "Caetano Veloso",
+      "similarity": 1
+    },
+    "Milton Nascimento & Lô Borges|Clube Da Esquina": {
+      "status": "found",
+      "spotifyId": "5risYG7klZCSLMNxB9dZhf",
+      "title": "Clube Da Esquina",
+      "artist": "Milton Nascimento, Lô Borges",
+      "similarity": 1
+    },
+    "Fela Kuti|Zombie": {
+      "status": "found",
+      "spotifyId": "5daEPaHfFiOSpKJLMraH9D",
+      "title": "Zombie",
+      "artist": "Fela Kuti",
+      "similarity": 1
+    },
+    "Buena Vista Social Club|Buena Vista Social Club": {
+      "status": "found",
+      "spotifyId": "5qcOy8sMqROZ0VEfK8LJZt",
+      "title": "Buena Vista Social Club",
+      "artist": "Buena Vista Social Club",
+      "similarity": 1
+    },
+    "Daft Punk|Random Access Memories": {
+      "status": "found",
+      "spotifyId": "4m2880jivSbbyEGAKfITCa",
+      "title": "Random Access Memories",
+      "artist": "Daft Punk",
+      "similarity": 1
+    },
+    "Air|Moon Safari": {
+      "status": "found",
+      "spotifyId": "206GTDefY2qRMQxYXmfb0a",
+      "title": "Moon Safari",
+      "artist": "Air",
+      "similarity": 1
+    },
+    "Stereolab|Dots and Loops": {
+      "status": "found",
+      "spotifyId": "4TQhvd3hojFZAIZCRULdhn",
+      "title": "Dots And Loops",
+      "artist": "Stereolab",
+      "similarity": 1
+    },
+    "CAN|Tago Mago": {
+      "status": "found",
+      "spotifyId": "1txmvzex0gtGwbqQCcXEtt",
+      "title": "Tago Mago (2011 Remastered)",
+      "artist": "CAN",
+      "similarity": 0.8875
+    },
+    "Kraftwerk|The Man-Machine": {
+      "status": "found",
+      "spotifyId": "3eyz60xEK5dGEeZF1JJSi9",
+      "title": "The Man-Machine (2009 Remaster)",
+      "artist": "Kraftwerk",
+      "similarity": 0.8875
+    },
+    "Sigur Rós|Takk...": {
+      "status": "found",
+      "spotifyId": "12tw1A9HmwE3MHvPfHhdoP",
+      "title": "Takk...",
+      "artist": "Sigur Rós",
+      "similarity": 1
+    },
+    "Bomba Estéreo|Deja": {
+      "status": "found",
+      "spotifyId": "5znLnc0oe8wA9On08nv8gd",
+      "title": "Deja",
+      "artist": "Bomba Estéreo",
+      "similarity": 1
+    },
+    "Mdou Moctar|Afrique Victime": {
+      "status": "found",
+      "spotifyId": "3ZZMK1Hd8E9Uzj1Tycdlf2",
+      "title": "Afrique Victime",
+      "artist": "Mdou Moctar",
+      "similarity": 1
+    },
+    "Deulgukhwa|Deulgukhwa": {
+      "status": "not_found"
+    },
+    "Kim Min Ki|Kim Min Ki": {
+      "status": "found",
+      "spotifyId": "6L9IGYuMWrWUMIVm3KFjUw",
+      "title": "김광석 다시 부르기 I",
+      "artist": "Kim Kwang Seok",
+      "similarity": 0.6875
+    },
+    "Sanulrim|What, Already?": {
+      "status": "found",
+      "spotifyId": "0RYGlnCiNeJRN3xzIjdm4Q",
+      "title": "이산 시간",
+      "artist": "멀리 이동하려면",
+      "similarity": 0.85
+    },
+    "One Day|1960·1965": {
+      "status": "found",
+      "spotifyId": "6TIJ2M5G7lhqUk9yaKWhsJ",
+      "title": "oneday 1 (1960:1965)",
+      "artist": "어떤날",
+      "similarity": 0.85
+    },
+    "Sanulrim|Even If It's Not Necessary": {
+      "status": "not_found"
+    },
+    "Han Dae Soo|Long Long Road": {
+      "status": "found",
+      "spotifyId": "0RYGlnCiNeJRN3xzIjdm4Q",
+      "title": "이산 시간",
+      "artist": "멀리 이동하려면",
+      "similarity": 0.85
+    },
+    "Jang Pill Soon|When My Loneliness Calls You": {
+      "status": "found",
+      "spotifyId": "6lu0rvskUB6L3XhyL12VIm",
+      "title": "나의 외로움이 널 부를 때",
+      "artist": "Jang Pill Soon",
+      "similarity": 0.8875
+    },
+    "Kim Hyun Chul|Kim Hyun Chul Vol. 1": {
+      "status": "found",
+      "spotifyId": "6KV2GtukaOZmzsFKuvQggF",
+      "title": "김현철 Vol.1 (오랜만에/동네)",
+      "artist": "Kim Hyun Chul",
+      "similarity": 0.8875
+    },
+    "Lee Moon Sae|Lee Moon Sae 4": {
+      "status": "found",
+      "spotifyId": "031envKZiWUDD9cRdb0ZbX",
+      "title": "이문세 4집",
+      "artist": "Lee Moon Sae",
+      "similarity": 0.8875
+    },
+    "Poet and Village Chief|Blue Sail": {
+      "status": "found",
+      "spotifyId": "5ka1jbuOzofnAJUs5p02SQ",
+      "title": "푸른 돛",
+      "artist": "Towner & Town Chief",
+      "similarity": 0.6791666666666666
+    },
+    "Kim Hyun Sik|Kim Hyun Sik Vol. 3": {
+      "status": "found",
+      "spotifyId": "6hLb90wBBAeEQnrS1MgcMG",
+      "title": "김현식 Vol.3",
+      "artist": "Kim Hyunshik",
+      "similarity": 0.7
+    },
+    "Light and Salt|Light and Salt Vol. 1": {
+      "status": "found",
+      "spotifyId": "2VHGFXnWLGnbwhZokQfzV8",
+      "title": "빛과 소금 Vol.1",
+      "artist": "Light & Salt",
+      "similarity": 0.8041666666666666
+    },
+    "H2O|Today I Saw The Past": {
+      "status": "not_found"
+    },
+    "Deli Spice|Deli Spice": {
+      "status": "found",
+      "spotifyId": "5ooEdlSXdzcTXLTHMg6QMO",
+      "title": "아홉가지기분",
+      "artist": "네스티요나",
+      "similarity": 0.85
+    },
+    "The Classic|The Classic": {
+      "status": "found",
+      "spotifyId": "6BBi72wQjfhvlraQNbimvz",
+      "title": "마법의 성",
+      "artist": "The Classic",
+      "similarity": 0.8875
+    },
+    "Lee Sora|Vol. 6: Nunsseopdal": {
+      "status": "found",
+      "spotifyId": "5ooEdlSXdzcTXLTHMg6QMO",
+      "title": "아홉가지기분",
+      "artist": "네스티요나",
+      "similarity": 0.85
+    },
+    "Brown Eyes|Brown Eyes": {
+      "status": "found",
+      "spotifyId": "59LLKRi3hOZZvszabtTeWA",
+      "title": "Brown Eyes",
+      "artist": "Brown Eyes",
+      "similarity": 1
+    },
+    "Lucid Fall|Lucid Fall": {
+      "status": "not_found"
+    },
+    "Jaurim|The Wonderland": {
+      "status": "found",
+      "spotifyId": "2v4ebwS0Pd1CPMyGT2UDTs",
+      "title": "자우림",
+      "artist": "JAURIM",
+      "similarity": 0.8875
+    },
+    "Sister's Barbershop|Who Is the Veteran?": {
+      "status": "not_found"
+    },
+    "Kiha & The Faces|Living Without Possession": {
+      "status": "found",
+      "spotifyId": "0RYGlnCiNeJRN3xzIjdm4Q",
+      "title": "이산 시간",
+      "artist": "멀리 이동하려면",
+      "similarity": 0.85
+    },
+    "Silica Gel|Silica Gel": {
+      "status": "found",
+      "spotifyId": "3jdftyiGhGMy4QKJae18CJ",
+      "title": "Silica Gel",
+      "artist": "Silica Gel",
+      "similarity": 1
+    },
+    "THORNAPPLE|Abnormal Climate": {
+      "status": "found",
+      "spotifyId": "3qZHy4M9znhKoMg0qmAXVM",
+      "title": "유아해피송",
+      "artist": "엘키즈",
+      "similarity": 0.85
+    },
+    "Lang Lee|Playing God": {
+      "status": "not_found"
+    },
+    "Kim Oki|Cherubim's Wrath": {
+      "status": "found",
+      "spotifyId": "6L9IGYuMWrWUMIVm3KFjUw",
+      "title": "김광석 다시 부르기 I",
+      "artist": "Kim Kwang Seok",
+      "similarity": 0.7
+    },
+    "Cadejo|Psyche": {
+      "status": "not_found"
+    },
+    "Leenalchi|Sugungga": {
+      "status": "found",
+      "spotifyId": "6rwqrHdQ9S9FXl1W6dtpsb",
+      "title": "좋아좋아",
+      "artist": "일기예보",
+      "similarity": 0.85
+    },
+    "Sunwoo Jung A|It's Okay, Dear": {
+      "status": "found",
+      "spotifyId": "5JKIbI8IWlQ5fXddhnT0xE",
+      "title": "It's Okay, Dear",
+      "artist": "sunwoojunga",
+      "similarity": 0.75
+    },
+    "Garion|Garion 2": {
+      "status": "found",
+      "spotifyId": "0ZU9Kci0rojuL570psUv1c",
+      "title": "무투",
+      "artist": "Garion",
+      "similarity": 0.8875
+    },
+    "Girls' Generation|Girls' Generation": {
+      "status": "found",
+      "spotifyId": "2U1BPwhkzHt05OFugiSB3g",
+      "title": "Girls' Generation",
+      "artist": "Girls' Generation",
+      "similarity": 1
+    },
+    "IVE|I've IVE": {
+      "status": "found",
+      "spotifyId": "38VzP4yWfHdHafITKKRHEB",
+      "title": "I've IVE",
+      "artist": "IVE",
+      "similarity": 1
+    },
+    "SURL|Aren't You?": {
+      "status": "found",
+      "spotifyId": "1pyBgBOQTAvZcIEcCluNj6",
+      "title": "Aren't You?",
+      "artist": "SURL",
+      "similarity": 1
+    },
+    "My Bloody Valentine|Loveless": {
+      "status": "found",
+      "spotifyId": "6oICQlFFse7v0qbnPo2L7l",
+      "title": "Loveless",
+      "artist": "Loveless",
+      "similarity": 0.75
+    },
+    "Marvin Gaye|What's Going On": {
+      "status": "found",
+      "spotifyId": "2v6ANhWhZBUKkg6pJJBs3B",
+      "title": "What's Going On",
+      "artist": "Marvin Gaye",
+      "similarity": 1
+    },
+    "D'Angelo|Voodoo": {
+      "status": "found",
+      "spotifyId": "2lO9yuuIDgBpSJzxTh3ai8",
+      "title": "Voodoo",
+      "artist": "D'Angelo",
+      "similarity": 1
+    },
+    "D'Angelo and The Vanguard|Black Messiah": {
+      "status": "found",
+      "spotifyId": "5Hfbag0SsHxafx1SySFSX6",
+      "title": "Black Messiah",
+      "artist": "D'Angelo",
+      "similarity": 0.9625
+    },
+    "King Gizzard & The Lizard Wizard|Nonagon Infinity": {
+      "status": "not_found"
+    },
+    "Sheena Ringo|Kalk Samen Kuri no Hana": {
+      "status": "found",
+      "spotifyId": "2i4fy6a51XTaZOYA8rIdRK",
+      "title": "加爾基 精液 栗ノ花",
+      "artist": "Sheena Ringo",
+      "similarity": 0.8875
+    },
+    "Tatsuro Yamashita|FOR YOU": {
+      "status": "found",
+      "spotifyId": "1qWA39v5KzquKUCWqRAoiH",
+      "title": "山下　達郎／竹内　まりや　作品集",
+      "artist": "ビクター・ファンタスティック・オーケストラ",
+      "similarity": 0.85
+    },
+    "ASIAN KUNG-FU GENERATION|Sol-fa": {
+      "status": "found",
+      "spotifyId": "56xQzwz8VKC3LOtvrI4g04",
+      "title": "ソルファ",
+      "artist": "ASIAN KUNG-FU GENERATION",
+      "similarity": 0.8875
+    },
+    "Midori|Aratamemashite, Hajimemashite, Midori Desu.": {
+      "status": "found",
+      "spotifyId": "5q8Hkakvwmb5Zyk4nUZKyD",
+      "title": "あらためまして、はじめまして、ミドリです。",
+      "artist": "ミドリ",
+      "similarity": 0.85
+    },
+    "Haru Nemuri|Haru to Shura": {
+      "status": "found",
+      "spotifyId": "4YKJk4juMZQr2sDnKzDlBz",
+      "title": "春泥棒",
+      "artist": "ヨルシカ",
+      "similarity": 0.85
+    },
+    "Sigur Rós|()": {
+      "status": "found",
+      "spotifyId": "3FR8CV7OSyZDnxneavnh8t",
+      "title": "( )",
+      "artist": "Sigur Rós",
+      "similarity": 1
+    }
+  }
+}

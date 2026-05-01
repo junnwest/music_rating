@@ -70,7 +70,7 @@ export default async function RankingsPage() {
             Rankings
           </h1>
           <p className="text-[15px] text-muted mt-3 max-w-[500px] leading-relaxed">
-            One vote per listener. Community-driven leaderboards across Korean music's best categories.
+            One vote per listener. Community-driven leaderboards across music's best categories.
           </p>
         </div>
       </div>

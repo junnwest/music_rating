@@ -123,8 +123,8 @@ export default function TermsPage() {
 
         <Section title="12. Governing Law">
           <p>
-            These Terms are governed by and construed in accordance with applicable law. Any disputes
-            shall be resolved in the courts of competent jurisdiction.
+            These Terms are governed by and construed in accordance with the laws of the Republic of Korea.
+            Any disputes shall be resolved in the courts of competent jurisdiction in the Republic of Korea.
           </p>
         </Section>
 

@@ -52,12 +52,19 @@ export async function GET(req: NextRequest) {
           .limit(40),
   ]);
 
-  // Build username map
+  // Build username map from profiles table
+  const allUserIds = [...new Set([
+    ...(ratings ?? []).map((r: any) => r.user_id),
+    ...(reviews ?? []).map((r: any) => r.user_id),
+  ])];
   let userMap = new Map<string, string>();
-  try {
-    const { data: { users } } = await supabase.auth.admin.listUsers({ perPage: 1000 });
-    userMap = new Map(users.map((u) => [u.id, u.email?.split('@')[0] ?? 'user']));
-  } catch {}
+  if (allUserIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, username')
+      .in('id', allUserIds);
+    userMap = new Map((profiles ?? []).map((p: any) => [p.id, p.username]));
+  }
 
   // Resolve release info for reviews
   const reviewReleaseIds = [...new Set((reviews ?? []).map((r: any) => r.release_id))];

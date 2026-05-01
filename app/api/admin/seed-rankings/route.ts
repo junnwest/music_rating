@@ -3,6 +3,14 @@ import { createServerClient } from '../../../../lib/supabaseServer';
 
 const CATEGORIES = [
   {
+    slug: 'album-2024',
+    title: 'Best Album of 2024',
+    description: 'The essential listen of the year — any genre, any country. One vote per listener.',
+    genre: null,
+    year: 2024,
+    sort_order: 0,
+  },
+  {
     slug: 'kpop-2024',
     title: 'Best K-Pop Album of 2024',
     description: 'The album that defined K-Pop in 2024. One vote per listener.',
@@ -35,12 +43,28 @@ const CATEGORIES = [
     sort_order: 4,
   },
   {
+    slug: 'indie-2024',
+    title: 'Best Indie Album of 2024',
+    description: 'The most essential independent release of the year from anywhere in the world.',
+    genre: 'Indie',
+    year: 2024,
+    sort_order: 5,
+  },
+  {
+    slug: 'hiphop-2024',
+    title: 'Best Hip-Hop Album of 2024',
+    description: 'The rap record that hit hardest this year.',
+    genre: 'Hip-Hop',
+    year: 2024,
+    sort_order: 6,
+  },
+  {
     slug: 'all-time',
-    title: 'Greatest Korean Album of All Time',
-    description: 'The one album you would hand to someone who asked what Korean music is all about.',
+    title: 'Greatest Album of All Time',
+    description: 'The one album you would hand to someone who asked you what music is all about.',
     genre: null,
     year: null,
-    sort_order: 0,
+    sort_order: 99,
   },
 ];
 

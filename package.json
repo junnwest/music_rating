@@ -6,23 +6,32 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "ingest": "tsx --env-file=.env.local scripts/ingest-music.ts",
+    "ingest:dry": "tsx --env-file=.env.local scripts/ingest-music.ts --dry-run",
+    "ingest:retry": "tsx --env-file=.env.local scripts/ingest-music.ts --retry",
+    "expand:discography": "tsx --env-file=.env.local scripts/expand-catalog.ts discography",
+    "expand:related": "tsx --env-file=.env.local scripts/expand-catalog.ts related",
+    "expand:genre": "tsx --env-file=.env.local scripts/expand-catalog.ts genre",
+    "seed:prestige": "tsx --env-file=.env.local scripts/seed-prestige.ts",
+    "seed:prestige:dry": "tsx --env-file=.env.local scripts/seed-prestige.ts --dry-run"
   },
   "dependencies": {
+    "@supabase/supabase-js": "2.103.2",
+    "autoprefixer": "10.5.0",
     "next": "14.2.5",
+    "postcss": "8.4.35",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "@supabase/supabase-js": "2.103.2",
-    "tailwindcss": "3.4.19",
-    "autoprefixer": "10.5.0",
-    "postcss": "8.4.35"
+    "tailwindcss": "3.4.19"
   },
   "devDependencies": {
-    "typescript": "5.5.4",
     "@types/node": "20.14.0",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
     "eslint": "8.57.0",
-    "eslint-config-next": "14.2.5"
+    "eslint-config-next": "14.2.5",
+    "tsx": "^4.21.0",
+    "typescript": "5.5.4"
   }
 }
