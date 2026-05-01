@@ -129,7 +129,7 @@ function parseCSV(filePath: string): CatalogRow[] {
       else { cur += c; }
     }
     cols.push(cur.trim());
-    return Object.fromEntries(headers.map((h, i) => [h.toLowerCase(), cols[i] ?? ''])) as CatalogRow;
+    return Object.fromEntries(headers.map((h, i) => [h.toLowerCase(), cols[i] ?? ''])) as unknown as CatalogRow;
   });
 }
 
