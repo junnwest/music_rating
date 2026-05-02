@@ -120,7 +120,7 @@ export default function Pick5Modal({ userId, onComplete }: { userId: string; onC
         <div className="px-7 pt-7 pb-5 flex-shrink-0">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-semibold text-muted uppercase" style={{ letterSpacing: '0.7px' }}>
-              Welcome to neiro
+              Welcome to sillajuku
             </span>
             <button
               onClick={handleSkip}

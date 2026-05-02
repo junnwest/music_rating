@@ -1,4 +1,4 @@
-# 音色 neiro
+# sillajuku
 
 A music rating and discovery platform for serious listeners. Rate albums, write reviews, and get personalized recommendations.
 
@@ -77,7 +77,7 @@ curl -X POST https://your-domain.com/api/admin/seed-rankings \
 - [x] Run all migrations (`supabase db push`) — all 11 tables + RLS policies applied
 - [x] Add jurisdiction to Terms of Service (Republic of Korea)
 - [x] Enable Google OAuth in Supabase Auth dashboard
-- [ ] Replace `privacy@neiro.app` and `legal@neiro.app` in privacy/terms pages with real email
+- [ ] Replace `privacy@sillajuku.app` and `legal@sillajuku.app` in privacy/terms pages with real email
 - [ ] Enable Supabase Auth email confirmations if desired (Auth → Email Templates)
 
 ### After first deployment
@@ -109,16 +109,24 @@ curl -X POST https://your-domain.com/api/admin/seed-rankings \
 - [x] For You page (personalized album feed)
 - [x] Activity feed — community ratings + reviews; filters to followed users when logged in
 - [x] Lists (create, view)
-- [x] Profile page (ratings grid, score distribution)
-- [x] Rating Philosophy (profile sidebar)
-- [x] Taste DNA (profile sidebar — genre + behavior tags)
-- [x] Top Genres (profile sidebar)
-- [x] Monthly Capsule (profile sidebar)
+- [x] Profile page (ratings grid, score distribution, sidebar-left layout)
+- [x] Rating Philosophy / Insights (profile sidebar card)
+- [x] Taste DNA badges in profile header (genre + behavior tags)
+- [x] Top Genres (profile sidebar card)
+- [x] Monthly Capsule (profile sidebar card)
+- [x] Avg Score card (profile sidebar)
 - [x] Pinned Ten — 10 album slots, pick from rated catalog
 - [x] Shelf Creation — Lists tab on profile
 - [x] Pick 5 onboarding modal on first login
 - [x] DB caching layer — albums + artists saved to Supabase on first visit
 - [x] Genre storage on ratings
+- [x] Add to Pinned Ten button on album page (real Supabase toggle)
+- [x] Listen Later button on album page (localStorage toggle)
+- [x] Listen Later page (`/listen-later`) — saved albums grid
+- [x] Settings page — 5-tab settings (Account, Preferences, Notifications, Privacy, Danger Zone)
+- [x] Help page — FAQ accordion + contact form
+- [x] Notifications page — real data (new followers + friend ratings via `/api/notifications`)
+- [x] Friends page — real Supabase follows (Following / Followers / Discover tabs)
 
 ### Done — social
 - [x] Following system — follow/unfollow, follower/following counts, public `/profile/[username]` pages
@@ -129,6 +137,8 @@ curl -X POST https://your-domain.com/api/admin/seed-rankings \
 - [x] Community rankings page — one vote per category, live leaderboards
 - [x] Individual ranking page — top 10, vote counts, movement indicators
 - [x] Ranking personalization — filter tabs (All / To Vote / Friends Active), friend counts on cards
+- [x] Filter Builder — Country / Genre / Time dropdowns with live title preview, links to `/rankings/build`
+- [x] Rankings Build page — shows matching DB categories for selected filter combination
 
 ### Done — annual
 - [x] Wrapped page — yearly summary: albums rated, top genre, top artist, avg score, active month, best/worst album

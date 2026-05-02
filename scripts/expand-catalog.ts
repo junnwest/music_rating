@@ -485,7 +485,7 @@ async function runGenre(db: ReturnType<typeof getDB>, state: ExpandState) {
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log(`\n🎵  neiro catalog expansion — mode: ${MODE}`);
+  console.log(`\n🎵  sillajuku catalog expansion — mode: ${MODE}`);
   if (DRY_RUN) console.log('   [DRY RUN — no DB writes]');
   console.log('');
 

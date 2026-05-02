@@ -20,6 +20,50 @@ import path from 'path';
 const DRY_RUN = process.argv.includes('--dry-run');
 const DELAY_MS = 1200;
 const STATE_PATH = path.resolve('scripts/seed-prestige-state.json');
+const MATCH_THRESHOLD = 0.45;
+
+// ── Similarity scoring ────────────────────────────────────────────────────────
+
+function normalize(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[''`]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function stringSimilarity(a: string, b: string): number {
+  const na = normalize(a);
+  const nb = normalize(b);
+  if (na === nb) return 1;
+  if (na.includes(nb) || nb.includes(na)) return 0.85;
+  const wa = new Set(na.split(' ').filter(w => w.length > 1));
+  const wb = new Set(nb.split(' ').filter(w => w.length > 1));
+  if (wa.size === 0 || wb.size === 0) return 0;
+  const intersection = [...wa].filter(w => wb.has(w)).length;
+  const union = new Set([...wa, ...wb]).size;
+  return union === 0 ? 0 : intersection / union;
+}
+
+function matchScore(
+  expectedTitle: string, actualTitle: string,
+  expectedArtist: string, actualArtist: string,
+): number {
+  const titleScore  = stringSimilarity(expectedTitle, actualTitle);
+  const artistScore = stringSimilarity(expectedArtist, actualArtist);
+  if (artistScore < 0.15) return 0;
+  return titleScore * 0.75 + artistScore * 0.25;
+}
+
+// Similarity that works on raw strings — handles Korean/Japanese without stripping
+function rawSimilarity(a: string, b: string): number {
+  const la = a.toLowerCase().trim();
+  const lb = b.toLowerCase().trim();
+  if (la === lb) return 1.0;
+  if (la.includes(lb) || lb.includes(la)) return 0.85;
+  return stringSimilarity(a, b);
+}
 
 function loadState(): Set<string> {
   try {
@@ -35,14 +79,15 @@ function saveState(done: Set<string>) {
 }
 
 // ── Canonical album list ──────────────────────────────────────────────────────
-// Format: [artistQuery, albumQuery, prestige, genres, nativeQuery?]
+// Format: [artistQuery, albumQuery, prestige, genres, nativeQuery?, spotifyId?]
 //   artistQuery / albumQuery : used for primary free-text search
 //   nativeQuery              : fallback for albums where Korean/Japanese script
 //                              yields better Spotify results than romanized text
+//   spotifyId                : skip search entirely — use this when search fails consistently
 // genres: comma-separated lowercase tags matching lib/canon-suggestions GENRE_KEYWORD_MAP
 // Prestige: 1=Undisputed classic | 2=Critically acclaimed | 3=Notable
 
-const CANONICAL_ALBUMS: [string, string, 1 | 2 | 3, string, string?][] = [
+const CANONICAL_ALBUMS: [string, string, 1 | 2 | 3, string, string?, string?][] = [
   // ── KOREAN — Prestige 1 ────────────────────────────────────────────────────
   ['Seo Taiji and Boys', '서태지와 아이들', 1, 'k-pop, hip-hop, rock, dance pop', '서태지와 아이들 1집'],
   ['Seo Taiji and Boys', 'Seo Taiji and Boys IV', 1, 'rock, alternative rock, k-pop, hip-hop', '서태지와 아이들 하여가'],
@@ -70,7 +115,7 @@ const CANONICAL_ALBUMS: [string, string, 1 | 2 | 3, string, string?][] = [
   ['Hyukoh', '22', 1, 'indie rock, art rock, k-indie', '혁오 22'],
   ['Hyukoh', '23', 1, 'indie rock, art rock, k-indie', '혁오 23'],
   ['Silica Gel', 'Machine Boy', 1, 'indie rock, experimental rock, k-indie', '실리카겔 Machine Boy'],
-  ['NewJeans', 'NewJeans', 1, 'k-pop, r&b pop, dance pop'],
+  ['NewJeans', 'NewJeans', 1, 'k-pop, r&b pop, dance pop', '뉴진스 NewJeans'],
   ['NewJeans', 'Get Up', 1, 'k-pop, r&b pop, dance pop'],
   ['BTS', "Love Yourself 轉 'Tear'", 1, 'k-pop, hip-hop, r&b pop'],
   ['BTS', 'Map of the Soul: 7', 1, 'k-pop, pop'],
@@ -118,7 +163,7 @@ const CANONICAL_ALBUMS: [string, string, 1 | 2 | 3, string, string?][] = [
   ['Brown Eyes', 'Brown Eyes', 2, 'r&b, ballad, k-r&b', '브라운 아이즈 1집'],
   ['Dean', '130 mood: TRBL', 2, 'r&b, alternative r&b, k-r&b'],
   ['Zion.T', 'Red Light', 2, 'r&b, neo-soul, hip-hop soul, k-r&b'],
-  ['Kirara', 'KIRARA', 2, 'electronic, ambient, k-indie', '키라라 KIRARA'],
+  ['키라라', 'KIRARA', 2, 'electronic, ambient, k-indie', '키라라 KIRARA'],
   ['Lee Seung-yoon', '역성', 2, 'rock, folk rock', '이승윤 역성'],
 
   // ── JAPANESE — Prestige 1 ──────────────────────────────────────────────────
@@ -288,33 +333,82 @@ async function spotifyGet(path: string, attempt = 0): Promise<any> {
   return res.json();
 }
 
+type AlbumHit = { id: string; title: string; artist: string; cover_url: string | null };
+
+// Strategy 1: album text search with scoring — fast, works for most Western/popular albums
+async function searchByAlbumText(artist: string, album: string): Promise<AlbumHit | null> {
+  const params = new URLSearchParams({ q: `${artist} ${album}`, type: 'album', limit: '5' });
+  const json   = await spotifyGet(`/search?${params}`);
+  const items: any[] = json?.albums?.items ?? [];
+  if (items.length === 0) return null;
+
+  const scored = items.map(item => {
+    const itemArtist = item.artists?.map((a: any) => a.name).join(', ') ?? '';
+    return { item, score: matchScore(album, item.name, artist, itemArtist) };
+  }).sort((a, b) => b.score - a.score);
+
+  const best = scored[0];
+  if (best.score < MATCH_THRESHOLD) return null;
+
+  return {
+    id: best.item.id,
+    title: best.item.name,
+    artist: best.item.artists?.[0]?.name ?? artist,
+    cover_url: best.item.images?.[0]?.url ?? null,
+  };
+}
+
+// Strategy 2: find artist → fetch discography → match album locally.
+// Reliable for Korean/Japanese entries where album text search picks wrong artists.
+// nativeQuery can be the native artist name (e.g. '이날치') or artist+album (e.g. '이날치 수궁가') —
+// Spotify's artist search is fuzzy enough to find the artist either way.
+async function searchByDiscography(nativeQuery: string, album: string): Promise<AlbumHit | null> {
+  await sleep(400);
+
+  // Find artist
+  const artistParams = new URLSearchParams({ q: nativeQuery, type: 'artist', limit: '3' });
+  const artistJson   = await spotifyGet(`/search?${artistParams}`);
+  const artists: any[] = artistJson?.artists?.items ?? [];
+  if (artists.length === 0) return null;
+  const foundArtist = artists[0];
+
+  await sleep(400);
+
+  // Fetch full discography (albums + EPs/singles that may be EPs)
+  const discoData = await spotifyGet(
+    `/artists/${foundArtist.id}/albums?include_groups=album,single&market=KR&limit=50`
+  );
+  const albums: any[] = discoData?.items ?? [];
+
+  // Match album name — rawSimilarity preserves Korean/Japanese characters
+  const scored = albums
+    .map(a => ({ a, score: rawSimilarity(album, a.name) }))
+    .sort((x, y) => y.score - x.score);
+
+  if (scored.length === 0 || scored[0].score < 0.4) return null;
+
+  const best = scored[0].a;
+  return {
+    id: best.id,
+    title: best.name,
+    artist: foundArtist.name,
+    cover_url: best.images?.[0]?.url ?? null,
+  };
+}
+
 async function searchAlbum(
   artist: string,
   album: string,
   nativeQuery?: string,
-): Promise<{ id: string; title: string; artist: string; cover_url: string | null } | null> {
-  const tryQuery = async (q: string) => {
-    const params = new URLSearchParams({ q, type: 'album', limit: '3' });
-    const json   = await spotifyGet(`/search?${params}`);
-    const items: any[] = json?.albums?.items ?? [];
-    if (items.length === 0) return null;
-    const first = items[0];
-    return {
-      id: first.id,
-      title: first.name,
-      artist: first.artists?.[0]?.name ?? artist,
-      cover_url: first.images?.[0]?.url ?? null,
-    };
-  };
-
-  // Strategy 1: free-text "${artist} ${album}"
-  const result = await tryQuery(`${artist} ${album}`);
+): Promise<AlbumHit | null> {
+  // Strategy 1: album text search with scoring
+  const result = await searchByAlbumText(artist, album);
   if (result) return result;
 
-  // Strategy 2: native-script fallback (Korean/Japanese)
+  // Strategy 2: artist discography match (handles Korean/Japanese reliably)
   if (nativeQuery) {
     await sleep(400);
-    return tryQuery(nativeQuery);
+    return searchByDiscography(nativeQuery, album);
   }
 
   return null;
@@ -357,7 +451,7 @@ async function main() {
   let skipped = 0;
   let failed = 0;
 
-  for (const [artist, album, prestige, genres, nativeQuery] of CANONICAL_ALBUMS) {
+  for (const [artist, album, prestige, genres, nativeQuery, spotifyId] of CANONICAL_ALBUMS) {
     const key = `${artist}|${album}`;
 
     if (done.has(key)) {
@@ -368,7 +462,27 @@ async function main() {
 
     await new Promise((r) => setTimeout(r, DELAY_MS));
 
-    const result = await searchAlbum(artist, album, nativeQuery);
+    let result: { id: string; title: string; artist: string; cover_url: string | null } | null = null;
+
+    if (spotifyId) {
+      // Direct ID — bypass search entirely
+      try {
+        const data = await spotifyGet(`/albums/${spotifyId}`);
+        result = {
+          id: data.id,
+          title: data.name,
+          artist: data.artists?.map((a: any) => a.name).join(', ') ?? artist,
+          cover_url: data.images?.[0]?.url ?? null,
+        };
+      } catch (err: any) {
+        console.warn(`  ✗ ID fetch failed: "${artist}" — "${album}" [${spotifyId}]: ${err.message}`);
+        failed++;
+        continue;
+      }
+    } else {
+      result = await searchAlbum(artist, album, nativeQuery);
+    }
+
     if (!result) {
       console.warn(`  ✗ Not found: "${artist}" — "${album}"`);
       failed++;

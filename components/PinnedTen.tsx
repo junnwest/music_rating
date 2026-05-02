@@ -21,24 +21,34 @@ export default function PinnedTen({ userId, canEdit = true }: { userId: string; 
 
   const loadPinned = async () => {
     if (!supabase) { setLoading(false); return; }
-    const { data } = await supabase
+    const { data: pinnedRows } = await supabase
       .from('pinned_albums')
-      .select('release_id, releases(title, artist, cover_url)')
+      .select('release_id')
       .eq('user_id', userId)
       .order('created_at');
-    setPinned((data ?? []) as unknown as PinnedAlbum[]);
+    if (!pinnedRows || pinnedRows.length === 0) { setPinned([]); setLoading(false); return; }
+    const ids = pinnedRows.map((p: any) => p.release_id);
+    const { data: releaseRows } = await supabase
+      .from('releases').select('id, title, artist, cover_url').in('id', ids);
+    const rmap = new Map((releaseRows ?? []).map((r: any) => [r.id, { title: r.title, artist: r.artist, cover_url: r.cover_url }]));
+    setPinned(pinnedRows.map((p: any) => ({ release_id: p.release_id, releases: rmap.get(p.release_id) ?? null })) as PinnedAlbum[]);
     setLoading(false);
   };
 
   const startEditing = async () => {
     setEditing(true);
     if (!supabase || rated.length > 0) return;
-    const { data } = await supabase
+    const { data: ratingRows } = await supabase
       .from('ratings')
-      .select('release_id, releases(title, artist, cover_url)')
+      .select('release_id')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
-    setRated(data ?? []);
+    if (!ratingRows || ratingRows.length === 0) return;
+    const ids = ratingRows.map((r: any) => r.release_id);
+    const { data: releaseRows } = await supabase
+      .from('releases').select('id, title, artist, cover_url').in('id', ids);
+    const rmap = new Map((releaseRows ?? []).map((r: any) => [r.id, { title: r.title, artist: r.artist, cover_url: r.cover_url }]));
+    setRated(ratingRows.map((r: any) => ({ release_id: r.release_id, releases: rmap.get(r.release_id) ?? null })));
   };
 
   const handlePin = async (releaseId: string) => {

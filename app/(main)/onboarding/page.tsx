@@ -353,8 +353,25 @@ function StepAlbums({
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!query.trim()) { loadDefaults(); return; }
     debounceRef.current = setTimeout(async () => {
+      if (!supabase) return;
+      const q = query.trim();
+      // Search DB first — no rate limits, covers seeded catalog
+      const { data } = await supabase
+        .from('releases')
+        .select('id, title, artist, cover_url, release_type')
+        .or(`title.ilike.%${q}%,artist.ilike.%${q}%`)
+        .not('cover_url', 'is', null)
+        .limit(GRID_SIZE);
+      if (data && data.length > 0) {
+        setPool(data.map((r: any) => ({
+          id: r.id, title: r.title, artist: r.artist,
+          cover_url: r.cover_url, release_type: r.release_type ?? 'Album',
+        })));
+        return;
+      }
+      // Fallback to Spotify for albums not yet in DB
       try {
-        const res = await fetch(`/api/search?query=${encodeURIComponent(query.trim())}`);
+        const res = await fetch(`/api/search?query=${encodeURIComponent(q)}`);
         const json = await res.json();
         if (json.releases) {
           setPool(json.releases.slice(0, GRID_SIZE).map((r: any) => ({
@@ -501,7 +518,7 @@ export default function OnboardingPage() {
       >
         {/* Top label */}
         <div className="text-[11px] font-semibold text-muted uppercase mb-6" style={{ letterSpacing: '0.7px' }}>
-          音色 neiro — Welcome
+          sillajuku — Welcome
         </div>
 
         {step === 0 && (

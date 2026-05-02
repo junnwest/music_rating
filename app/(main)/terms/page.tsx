@@ -1,150 +1,90 @@
+import Link from 'next/link';
+import { FileText, CheckCircle, AlertCircle, Music, AlertTriangle, ArrowLeft, Mail } from 'lucide-react';
+
+const sections = [
+  {
+    icon: CheckCircle,
+    title: '1. Acceptance of Terms',
+    body: 'By creating an account or using sillajuku, you agree to these Terms of Service. If you do not agree, please do not use the service. We may update these terms from time to time; continued use after changes constitutes acceptance.',
+  },
+  {
+    icon: FileText,
+    title: '2. Your Account',
+    body: 'You are responsible for maintaining the confidentiality of your login credentials and for all activity under your account. You must be at least 13 years old. You agree to provide accurate information when registering.',
+  },
+  {
+    icon: Music,
+    title: '3. User Content',
+    body: 'You retain ownership of the reviews and content you post. By submitting content, you grant sillajuku a non-exclusive, royalty-free license to display and distribute that content within the platform. You are solely responsible for what you submit. Do not post anything defamatory, illegal, or harmful.',
+  },
+  {
+    icon: AlertCircle,
+    title: '4. Prohibited Conduct',
+    body: 'You may not impersonate anyone, post false or spam content, attempt unauthorized access, use automated means to scrape data, or violate any applicable laws.',
+  },
+  {
+    icon: Music,
+    title: '5. Music Data',
+    body: 'Music metadata is sourced from Spotify. We are not affiliated with or endorsed by Spotify. Album artwork, artist images, and metadata are property of their respective rights holders and are used for informational purposes.',
+  },
+  {
+    icon: AlertTriangle,
+    title: '6. Disclaimers & Liability',
+    body: 'sillajuku is provided "as is" without warranties. We do not guarantee uninterrupted service. Ratings and reviews represent individual user opinions, not ours. We are not liable for indirect, incidental, or consequential damages.',
+  },
+  {
+    icon: FileText,
+    title: '7. Termination',
+    body: 'We reserve the right to suspend or terminate accounts that violate these terms. You may delete your account at any time from Settings.',
+  },
+  {
+    icon: Mail,
+    title: '8. Contact',
+    body: 'For legal questions, contact legal@sillajuku.app.',
+  },
+];
+
 export default function TermsPage() {
   return (
-    <div className="bg-white min-h-screen">
-      <div className="bg-surface border-b border-[#EBEBEB]">
-        <div className="max-w-[720px] mx-auto px-5 py-8">
-          <h1 className="text-[24px] font-extrabold text-ink" style={{ letterSpacing: '-0.6px' }}>
-            Terms of Service
-          </h1>
-          <p className="text-[13px] text-muted mt-1">Last updated: April 2025</p>
+    <div className="flex-1">
+      {/* Hero */}
+      <div className="border-b border-divider bg-surface">
+        <div className="max-w-[720px] mx-auto px-5 py-12 md:py-16">
+          <Link href="/" className="inline-flex items-center gap-1.5 text-[12px] text-muted hover:text-ink transition mb-4">
+            <ArrowLeft size={14} /> Back to home
+          </Link>
+          <div className="flex items-center gap-3 mb-3">
+            <FileText size={28} className="text-ink" strokeWidth={1.8} />
+            <h1 className="text-[28px] md:text-[34px] font-extrabold text-ink tracking-tight">Terms of Service</h1>
+          </div>
+          <p className="text-[13px] text-muted">Last updated: January 2026</p>
         </div>
       </div>
 
-      <div className="max-w-[720px] mx-auto px-5 py-10 pb-16">
-        <Section title="1. Acceptance of Terms">
-          <p>
-            By creating an account or using neiro (the "Service"), you agree to be bound by these
-            Terms of Service. If you do not agree, do not use the Service.
+      {/* Body */}
+      <div className="max-w-[720px] mx-auto px-5 py-10 pb-20">
+        <div className="flex flex-col gap-8">
+          {sections.map(({ icon: Icon, title, body }) => (
+            <div key={title} className="flex gap-4">
+              <div className="flex-shrink-0 mt-0.5">
+                <div className="w-9 h-9 rounded-xl bg-surface border border-divider flex items-center justify-center">
+                  <Icon size={16} strokeWidth={1.8} className="text-muted" />
+                </div>
+              </div>
+              <div>
+                <h2 className="text-[15px] font-bold text-ink mb-2">{title}</h2>
+                <p className="text-[14px] leading-relaxed text-mid">{body}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-12 pt-8 border-t border-divider">
+          <p className="text-[13px] text-muted">
+            By using sillajuku, you agree to these terms and our{' '}
+            <Link href="/privacy" className="text-ink underline hover:opacity-70">Privacy Policy</Link>.
           </p>
-        </Section>
-
-        <Section title="2. Description of Service">
-          <p>
-            neiro is a music rating and discovery platform that allows users to rate albums, write
-            reviews, and receive personalized music recommendations. Music metadata and artwork are
-            provided via the Spotify API.
-          </p>
-        </Section>
-
-        <Section title="3. Accounts">
-          <ul>
-            <li>You must provide a valid email address to create an account.</li>
-            <li>You are responsible for maintaining the security of your account and password.</li>
-            <li>You may not share your account with others or create accounts on behalf of others.</li>
-            <li>
-              We reserve the right to suspend or terminate accounts that violate these Terms.
-            </li>
-          </ul>
-        </Section>
-
-        <Section title="4. User Content">
-          <p>
-            "User Content" means any ratings, reviews, or other content you submit to neiro.
-          </p>
-          <ul>
-            <li>
-              <strong>You retain ownership</strong> of your User Content.
-            </li>
-            <li>
-              By submitting User Content, you grant neiro a non-exclusive, worldwide, royalty-free
-              license to display and distribute it as part of the Service.
-            </li>
-            <li>
-              Your ratings and reviews are visible to other users by default. This is core to the
-              Service.
-            </li>
-            <li>
-              You are solely responsible for the content you submit. Do not post content that is
-              unlawful, defamatory, harassing, or infringes on third-party rights.
-            </li>
-          </ul>
-        </Section>
-
-        <Section title="5. Prohibited Conduct">
-          <p>You agree not to:</p>
-          <ul>
-            <li>Use the Service for any unlawful purpose.</li>
-            <li>Attempt to gain unauthorized access to any part of the Service or its infrastructure.</li>
-            <li>Scrape, crawl, or otherwise extract data from the Service in bulk without written permission.</li>
-            <li>Submit false, misleading, or spam reviews.</li>
-            <li>Harass, threaten, or abuse other users.</li>
-            <li>Impersonate another person or entity.</li>
-          </ul>
-        </Section>
-
-        <Section title="6. Music Data and Spotify">
-          <p>
-            Music metadata, album artwork, and related content displayed on neiro are sourced from the
-            Spotify API and are subject to Spotify's terms. neiro is not affiliated with or endorsed
-            by Spotify AB.
-          </p>
-        </Section>
-
-        <Section title="7. Intellectual Property">
-          <p>
-            The neiro name, logo, and all original site content (excluding User Content and Spotify
-            data) are the property of neiro. You may not reproduce or use them without written
-            permission.
-          </p>
-        </Section>
-
-        <Section title="8. Disclaimer of Warranties">
-          <p>
-            The Service is provided "as is" and "as available" without warranties of any kind, either
-            express or implied. We do not warrant that the Service will be uninterrupted, error-free,
-            or free of harmful components. We do not guarantee the accuracy of any music metadata
-            sourced from third parties.
-          </p>
-        </Section>
-
-        <Section title="9. Limitation of Liability">
-          <p>
-            To the fullest extent permitted by applicable law, neiro shall not be liable for any
-            indirect, incidental, special, consequential, or punitive damages arising out of your use
-            of — or inability to use — the Service, even if we have been advised of the possibility of
-            such damages.
-          </p>
-        </Section>
-
-        <Section title="10. Termination">
-          <p>
-            You may delete your account at any time. We may suspend or terminate your access to the
-            Service at our discretion, including for violation of these Terms, with or without notice.
-          </p>
-        </Section>
-
-        <Section title="11. Changes to These Terms">
-          <p>
-            We may update these Terms from time to time. We will notify registered users of material
-            changes by email or by posting a notice on the site. Continued use of the Service after
-            changes take effect constitutes your acceptance of the new Terms.
-          </p>
-        </Section>
-
-        <Section title="12. Governing Law">
-          <p>
-            These Terms are governed by and construed in accordance with the laws of the Republic of Korea.
-            Any disputes shall be resolved in the courts of competent jurisdiction in the Republic of Korea.
-          </p>
-        </Section>
-
-        <Section title="13. Contact">
-          <p>
-            For questions about these Terms, contact us at:{' '}
-            <a href="mailto:legal@neiro.app">legal@neiro.app</a>
-          </p>
-        </Section>
-      </div>
-    </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="mb-8">
-      <h2 className="text-[16px] font-bold text-ink mb-3">{title}</h2>
-      <div className="text-[14px] text-mid leading-relaxed space-y-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1.5 [&_a]:text-mint-dark [&_a]:underline [&_a]:hover:opacity-80 [&_strong]:text-ink">
-        {children}
+        </div>
       </div>
     </div>
   );

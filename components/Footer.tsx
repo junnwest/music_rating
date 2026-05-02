@@ -4,17 +4,17 @@ export default function Footer() {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="border-t border-[#EBEBEB] bg-white mt-auto">
+    <footer className="border-t border-divider bg-white mt-auto">
       <div className="max-w-[1440px] mx-auto px-5 py-10">
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-8">
 
           {/* Brand */}
           <div className="flex-shrink-0">
-            <Link href="/" className="text-base font-extrabold text-ink" style={{ letterSpacing: '-0.5px' }}>
-              音色 <span className="text-mint">neiro</span>
+            <Link href="/" aria-label="Home">
+              <img src="/sillajuku_logo.svg" alt="sillajuku" className="h-[34px] w-auto object-contain" />
             </Link>
             <p className="text-[12px] text-muted mt-1.5">Rate, discover, remember.</p>
-            <p className="text-[11px] text-[#C0C0BE] mt-3">
+            <p className="text-[11px] text-placeholder mt-3">
               Music data powered by{' '}
               <a
                 href="https://spotify.com"
@@ -35,6 +35,8 @@ export default function Footer() {
                 <Link href="/" className="text-[13px] text-muted hover:text-ink transition">Home</Link>
                 <Link href="/activity" className="text-[13px] text-muted hover:text-ink transition">Activity</Link>
                 <Link href="/lists" className="text-[13px] text-muted hover:text-ink transition">For You</Link>
+                <Link href="/wrapped" className="text-[13px] text-muted hover:text-ink transition">Wrapped</Link>
+                <Link href="/help" className="text-[13px] text-muted hover:text-ink transition">Help & Feedback</Link>
               </div>
             </div>
 
@@ -48,8 +50,8 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="border-t border-[#EBEBEB] mt-8 pt-6">
-          <p className="text-[11px] text-[#C0C0BE]">© {year} neiro. All rights reserved.</p>
+        <div className="border-t border-divider mt-8 pt-6">
+          <p className="text-[11px] text-placeholder">© {year} sillajuku. All rights reserved.</p>
         </div>
       </div>
     </footer>

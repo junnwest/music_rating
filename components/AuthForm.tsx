@@ -79,7 +79,7 @@ export default function AuthForm() {
         className="text-[30px] font-extrabold text-ink mb-1.5"
         style={{ letterSpacing: '-0.9px' }}
       >
-        {mode === 'login' ? 'Welcome back.' : 'Join neiro.'}
+        {mode === 'login' ? 'Welcome back.' : 'Join sillajuku.'}
       </h1>
       <p className="text-[14px] text-muted mb-[30px] leading-relaxed">
         {mode === 'login'

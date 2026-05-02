@@ -1,134 +1,93 @@
+import Link from 'next/link';
+import { Shield, Lock, Globe, Eye, Trash2, Cookie, Mail, FileText, ArrowLeft } from 'lucide-react';
+
+const sections = [
+  {
+    icon: Shield,
+    title: '1. Information We Collect',
+    body: 'We collect information you provide directly when creating an account, including your email address, display name, username, and profile photo. We also collect activity data — ratings, written reviews, Pinned Ten selections, and Listen Later saves. We collect usage data such as pages visited, search queries, and interaction data to improve the service.',
+  },
+  {
+    icon: Lock,
+    title: '2. How We Use Your Information',
+    body: 'We use your information to operate sillajuku, personalize your discovery feed and recommendations, display your public profile and reviews to other users, improve the platform, and communicate important service updates.',
+  },
+  {
+    icon: Globe,
+    title: '3. Information Sharing',
+    body: "We do not sell your personal data. Your ratings and reviews are public by default and visible to all users. We may share anonymized, aggregated data for research purposes. We use Supabase for database and authentication, and Spotify for music metadata.",
+  },
+  {
+    icon: Trash2,
+    title: '4. Data Retention',
+    body: 'We retain account data for as long as your account is active. If you delete your account, personal information is removed within 30 days. Anonymized activity data may be retained for statistical purposes.',
+  },
+  {
+    icon: Eye,
+    title: '5. Your Rights',
+    body: 'You have the right to access, correct, or delete your personal data. Most settings can be managed directly from your profile. For account deletion or data export, contact privacy@sillajuku.app.',
+  },
+  {
+    icon: Cookie,
+    title: '6. Cookies',
+    body: 'We use cookies to maintain your session and remember preferences. We do not use cookies for advertising tracking.',
+  },
+  {
+    icon: FileText,
+    title: '7. Changes to This Policy',
+    body: 'We may update this policy from time to time. Significant changes will be posted on the site or emailed to you. Continued use after changes constitutes acceptance.',
+  },
+  {
+    icon: Mail,
+    title: '8. Contact',
+    body: 'For privacy questions, contact privacy@sillajuku.app. We typically respond within 24–48 hours.',
+  },
+];
+
 export default function PrivacyPage() {
   return (
-    <div className="bg-white min-h-screen">
-      <div className="bg-surface border-b border-[#EBEBEB]">
-        <div className="max-w-[720px] mx-auto px-5 py-8">
-          <h1 className="text-[24px] font-extrabold text-ink" style={{ letterSpacing: '-0.6px' }}>
-            Privacy Policy
-          </h1>
-          <p className="text-[13px] text-muted mt-1">Last updated: April 2025</p>
+    <div className="flex-1">
+      {/* Hero */}
+      <div className="border-b border-divider bg-surface">
+        <div className="max-w-[720px] mx-auto px-5 py-12 md:py-16">
+          <Link href="/" className="inline-flex items-center gap-1.5 text-[12px] text-muted hover:text-ink transition mb-4">
+            <ArrowLeft size={14} /> Back to home
+          </Link>
+          <div className="flex items-center gap-3 mb-3">
+            <Shield size={28} className="text-ink" strokeWidth={1.8} />
+            <h1 className="text-[28px] md:text-[34px] font-extrabold text-ink tracking-tight">Privacy Policy</h1>
+          </div>
+          <p className="text-[13px] text-muted">Last updated: January 2026</p>
         </div>
       </div>
 
-      <div className="max-w-[720px] mx-auto px-5 py-10 pb-16 prose-section">
-        <Section title="1. Who We Are">
-          <p>
-            neiro ("we", "us", "our") is a music rating and discovery platform. We are committed to
-            protecting your personal information and being transparent about what we collect and why.
-          </p>
-        </Section>
+      {/* Body */}
+      <div className="max-w-[720px] mx-auto px-5 py-10 pb-20">
+        <div className="flex flex-col gap-8">
+          {sections.map(({ icon: Icon, title, body }) => (
+            <div key={title} className="flex gap-4">
+              <div className="flex-shrink-0 mt-0.5">
+                <div className="w-9 h-9 rounded-xl bg-surface border border-divider flex items-center justify-center">
+                  <Icon size={16} strokeWidth={1.8} className="text-muted" />
+                </div>
+              </div>
+              <div>
+                <h2 className="text-[15px] font-bold text-ink mb-2">{title}</h2>
+                <p className="text-[14px] leading-relaxed text-mid">{body}</p>
+              </div>
+            </div>
+          ))}
+        </div>
 
-        <Section title="2. Information We Collect">
-          <p>We collect the following information when you use neiro:</p>
-          <ul>
-            <li>
-              <strong>Account information</strong> — your email address when you register or log in.
-            </li>
-            <li>
-              <strong>User-generated content</strong> — album ratings, written reviews, and any other
-              content you submit to the platform.
-            </li>
-            <li>
-              <strong>Usage data</strong> — pages visited and interactions within the app, used solely
-              to improve the service.
-            </li>
-          </ul>
-          <p>We do not collect payment information, phone numbers, or physical addresses.</p>
-        </Section>
-
-        <Section title="3. How We Use Your Information">
-          <ul>
-            <li>To create and maintain your account.</li>
-            <li>To display your ratings and reviews to other users (this is core to the service).</li>
-            <li>To generate personalized music recommendations based on your rating history.</li>
-            <li>To improve the platform and fix issues.</li>
-          </ul>
-          <p>We do not sell your personal data to third parties. We do not use your data for advertising.</p>
-        </Section>
-
-        <Section title="4. Third-Party Services">
-          <p>neiro relies on the following third-party services:</p>
-          <ul>
-            <li>
-              <strong>Spotify</strong> — we use the Spotify API to display album artwork, metadata, and
-              music discovery features. Your use of neiro is subject to{' '}
-              <a href="https://www.spotify.com/us/legal/privacy-policy/" target="_blank" rel="noopener noreferrer">
-                Spotify's Privacy Policy
-              </a>
-              .
-            </li>
-            <li>
-              <strong>Supabase</strong> — we use Supabase for authentication and database storage. Your
-              data is stored on Supabase-managed infrastructure. See{' '}
-              <a href="https://supabase.com/privacy" target="_blank" rel="noopener noreferrer">
-                Supabase's Privacy Policy
-              </a>
-              .
-            </li>
-          </ul>
-        </Section>
-
-        <Section title="5. Data Retention">
-          <p>
-            We retain your account data and content for as long as your account is active. If you
-            delete your account, your personal information and content will be removed from our systems
-            within 30 days, except where we are required by law to retain it.
-          </p>
-        </Section>
-
-        <Section title="6. Your Rights">
-          <p>You have the right to:</p>
-          <ul>
-            <li>Access the personal data we hold about you.</li>
-            <li>Request correction of inaccurate data.</li>
-            <li>Request deletion of your account and associated data.</li>
-            <li>Export your ratings and reviews.</li>
-          </ul>
-          <p>
-            To exercise any of these rights, contact us at the email address below.
-          </p>
-        </Section>
-
-        <Section title="7. Cookies">
-          <p>
-            neiro uses essential cookies only — specifically, a session cookie to keep you logged in.
-            We do not use tracking cookies or third-party advertising cookies.
-          </p>
-        </Section>
-
-        <Section title="8. Children's Privacy">
-          <p>
-            neiro is not directed at children under the age of 13. We do not knowingly collect personal
-            information from children. If you believe a child has provided us with personal data, please
-            contact us and we will delete it promptly.
-          </p>
-        </Section>
-
-        <Section title="9. Changes to This Policy">
-          <p>
-            We may update this Privacy Policy from time to time. We will notify registered users of
-            significant changes by email or by posting a notice on the site. Continued use of neiro
-            after changes constitutes acceptance of the updated policy.
-          </p>
-        </Section>
-
-        <Section title="10. Contact">
-          <p>
-            If you have questions about this Privacy Policy or how your data is handled, please contact
-            us at: <a href="mailto:privacy@neiro.app">privacy@neiro.app</a>
-          </p>
-        </Section>
-      </div>
-    </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="mb-8">
-      <h2 className="text-[16px] font-bold text-ink mb-3">{title}</h2>
-      <div className="text-[14px] text-mid leading-relaxed space-y-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1.5 [&_a]:text-mint-dark [&_a]:underline [&_a]:hover:opacity-80 [&_strong]:text-ink">
-        {children}
+        <div className="mt-12 pt-8 border-t border-divider">
+          <p className="text-[13px] text-muted">Questions about your data?</p>
+          <a
+            href="mailto:privacy@sillajuku.app"
+            className="inline-flex items-center gap-2 mt-2 text-[13px] font-semibold text-ink border border-divider rounded-lg px-4 py-2 hover:bg-surface transition"
+          >
+            <Mail size={14} /> Contact us
+          </a>
+        </div>
       </div>
     </div>
   );

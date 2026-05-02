@@ -10,7 +10,7 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: 'neiro',
+  title: 'sillajuku',
   description: 'Rate, review, and catalog albums.'
 };
 

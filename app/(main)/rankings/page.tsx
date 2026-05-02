@@ -1,6 +1,6 @@
-import Link from 'next/link';
 import { createServerClient } from '../../../lib/supabaseServer';
 import RankingsGrid from '../../../components/RankingsGrid';
+import FilterBuilder from '../../../components/FilterBuilder';
 
 export const revalidate = 60;
 
@@ -75,17 +75,24 @@ export default async function RankingsPage() {
         </div>
       </div>
 
-      {/* Category grid */}
-      <div className="max-w-[1440px] mx-auto px-5 py-10 pb-16">
-        {categories.length === 0 ? (
-          <p className="text-sm text-muted">No ranking categories yet. Run the seed endpoint to get started.</p>
-        ) : (
-          <RankingsGrid
-            categories={categories}
-            leaderMap={leaderMap}
-            voteCountMap={voteCountMap}
-          />
-        )}
+      {/* Content */}
+      <div className="max-w-[1440px] mx-auto px-5 py-10 pb-16 flex flex-col gap-14">
+        <section>
+          <h2 className="text-[13px] font-bold text-muted uppercase mb-5" style={{ letterSpacing: '0.7px' }}>
+            Most Active Rankings
+          </h2>
+          {categories.length === 0 ? (
+            <p className="text-sm text-muted">No ranking categories yet. Run the seed endpoint to get started.</p>
+          ) : (
+            <RankingsGrid
+              categories={categories}
+              leaderMap={leaderMap}
+              voteCountMap={voteCountMap}
+            />
+          )}
+        </section>
+
+        <FilterBuilder />
       </div>
     </div>
   );

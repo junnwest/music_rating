@@ -477,8 +477,8 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
   return (
     <div className="bg-white">
       {/* ── HEADER ─────────────────────────────────────────── */}
-      <div className="bg-surface border-b border-[#EBEBEB]">
-        <div className="max-w-[1440px] mx-auto px-5 pt-9 pb-0 flex gap-6 items-start">
+      <div className="bg-white border-b border-[#EBEBEB]">
+        <div className="max-w-[1440px] mx-auto px-5 pt-9 pb-8 flex gap-6 items-start">
           {/* Avatar */}
           <div className="w-[82px] h-[82px] rounded-full bg-mint-bg border-2 border-mint flex items-center justify-center flex-shrink-0 font-bold text-mint-dark text-[30px]">
             {initial}
@@ -516,6 +516,19 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                 </div>
               ))}
             </div>
+            {tasteDNA.length > 0 && (
+              <div className="flex gap-2 mt-3 flex-wrap">
+                {tasteDNA.map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center px-[10px] py-[3px] rounded-full text-[11px] font-semibold"
+                    style={{ background: '#EDFFF9', border: '1.5px solid #3DFFD1', color: '#00453A' }}
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Actions */}
@@ -540,241 +553,192 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="max-w-[1440px] mx-auto px-5 flex mt-5 border-t border-[#EBEBEB]">
-          {TABS.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-5 py-3 text-[13px] font-semibold border-b-2 transition ${
-                activeTab === tab
-                  ? 'text-ink border-ink'
-                  : 'text-muted border-transparent hover:text-mid'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
-          <div className="flex-1" />
-          {activeTab !== 'Lists' && (
-            <div className="self-center text-[12px] font-medium text-muted">Sort: Recently rated ↓</div>
-          )}
-        </div>
       </div>
 
       {/* Pinned Ten */}
       <PinnedTen userId={effectiveUserId} canEdit={isOwnProfile} />
 
       {/* ── BODY ─────────────────────────────────────────────── */}
-      <div
-        className="max-w-[1440px] mx-auto px-5 py-9 pb-14 grid gap-12"
-        style={{ gridTemplateColumns: '1fr 240px' }}
-      >
-        {/* Lists tab */}
-        {activeTab === 'Lists' && (
-          <div className="col-span-2">
-            <div className="flex justify-between items-center mb-6">
-              <p className="text-[13px] text-muted">{lists.length} {lists.length === 1 ? 'list' : 'lists'}</p>
-              {isOwnProfile && <CreateListSection />}
+      <div className="max-w-[1440px] mx-auto px-5 py-9 pb-14">
+        <div className="flex flex-col md:flex-row gap-8">
+
+          {/* LEFT: stats sidebar */}
+          <div className="w-full md:w-[220px] flex-shrink-0 flex flex-row md:flex-col gap-4 overflow-x-auto md:overflow-visible pb-2 md:pb-0">
+
+            <div className="bg-white rounded-xl border border-[#EBEBEB] p-4 min-w-[140px] md:min-w-0">
+              <p className="text-[11px] font-semibold text-muted uppercase mb-2" style={{ letterSpacing: '0.6px' }}>Avg Score</p>
+              <p className="text-[32px] font-extrabold text-ink tracking-tight">{averageRating > 0 ? averageRating.toFixed(1) : '—'}</p>
+              <p className="text-[12px] text-muted">out of 5</p>
             </div>
-            {lists.length === 0 ? (
-              <div className="py-16 text-center">
-                <p className="text-sm text-muted">
-                  {isOwnProfile ? 'No lists yet. Create one to organize your albums.' : 'No lists yet.'}
-                </p>
-              </div>
-            ) : (
-              <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-                {lists.map((list) => (
-                  <Link
-                    key={list.id}
-                    href={`/lists/${list.id}`}
-                    className="border border-[#EBEBEB] rounded-[10px] p-4 hover:bg-surface transition block"
-                  >
-                    <div className="text-[14px] font-bold text-ink truncate">{list.title}</div>
-                    {list.description && (
-                      <p className="text-[12px] text-muted mt-1 line-clamp-2">{list.description}</p>
-                    )}
-                    <p className="text-[11px] text-muted mt-3">
-                      {list.list_items?.[0]?.count ?? 0} albums
-                    </p>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
 
-        {/* Album grid */}
-        {activeTab !== 'Lists' && (
-          <div>
-            {filteredRatings.length === 0 ? (
-              <div className="py-16 text-center">
-                <p className="text-sm text-muted">No ratings yet. Search for albums and rate them.</p>
-              </div>
-            ) : (
-              <div className="grid gap-[14px]" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
-                {filteredRatings.map((rating) => (
-                  <Link key={rating.id} href={`/album/${rating.release_id}`} className="block min-w-0">
-                    <div className="relative overflow-hidden rounded-[6px]" style={{ aspectRatio: '1 / 1' }}>
-                      {rating.releases?.cover_url ? (
-                        <img
-                          src={rating.releases.cover_url}
-                          alt={rating.releases.title}
-                          className="absolute inset-0 w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="absolute inset-0 bg-surface border border-[#EBEBEB]" />
-                      )}
-                      {rating.score && (
-                        <div
-                          className="absolute bottom-1 right-1 text-[10px] font-bold rounded-[4px] px-[6px] py-[1px]"
-                          style={{ background: '#3DFFD1', color: '#00453A' }}
-                        >
-                          ★ {rating.score}
-                        </div>
-                      )}
-                    </div>
-                    <div
-                      className="mt-[7px] text-[11px] font-semibold text-ink truncate"
-                      title={rating.releases?.title}
-                    >
-                      {rating.releases?.title ?? rating.release_id}
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+            <div className="bg-white rounded-xl border border-[#EBEBEB] p-4 min-w-[180px] md:min-w-0">
+              <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.6px' }}>Distribution</p>
+              <ScoreBar bars={bars} />
+            </div>
 
-        {/* Sidebar — hidden on Lists tab */}
-        {activeTab !== 'Lists' && (
-          <div>
-            {/* Monthly Capsule */}
-            {capsule && (
-              <>
-                <div className="rounded-[10px] p-4 border border-[#EBEBEB] bg-surface">
-                  <div
-                    className="text-[10px] font-semibold text-muted uppercase mb-2"
-                    style={{ letterSpacing: '0.7px' }}
-                  >
-                    Monthly Capsule
-                  </div>
-                  <div
-                    className="text-[15px] font-extrabold text-ink mb-4"
-                    style={{ letterSpacing: '-0.4px' }}
-                  >
-                    {capsule.monthLabel}
-                  </div>
-                  <div className="flex flex-col gap-[10px]">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[12px] text-muted">Albums rated</span>
-                      <span className="text-[12px] font-semibold text-ink">{capsule.count}</span>
+            <div className="bg-white rounded-xl border border-[#EBEBEB] p-4 min-w-[160px] md:min-w-0">
+              <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.6px' }}>Top Genres</p>
+              {topGenres.length > 0 ? (
+                <div className="flex flex-col gap-2">
+                  {topGenres.map(({ name, count }) => (
+                    <div key={name}>
+                      <div className="flex justify-between items-center mb-[4px]">
+                        <span className="text-[12px] font-medium text-ink">{name}</span>
+                        <span className="text-[11px] text-muted">{count}</span>
+                      </div>
+                      <div className="h-[3px] bg-[#EBEBEB] rounded-full overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${(count / topGenres[0].count) * 100}%`, background: '#3DFFD1' }} />
+                      </div>
                     </div>
-                    {capsule.topGenre && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-[12px] text-muted">Top genre</span>
-                        <span className="text-[12px] font-semibold text-ink">{capsule.topGenre}</span>
-                      </div>
-                    )}
-                    {capsule.highest && (
-                      <div className="flex justify-between items-start gap-3">
-                        <span className="text-[12px] text-muted flex-shrink-0">Highest rated</span>
-                        <span className="text-[12px] font-semibold text-ink text-right truncate">
-                          {capsule.highest.title}{' '}
-                          <span style={{ color: '#3DFFD1' }}>★{capsule.highest.score}</span>
-                        </span>
-                      </div>
-                    )}
-                    {capsule.lowest && (
-                      <div className="flex justify-between items-start gap-3">
-                        <span className="text-[12px] text-muted flex-shrink-0">Lowest rated</span>
-                        <span className="text-[12px] font-semibold text-ink text-right truncate">
-                          {capsule.lowest.title}{' '}
-                          <span className="text-muted">★{capsule.lowest.score}</span>
-                        </span>
-                      </div>
-                    )}
-                  </div>
+                  ))}
                 </div>
-                <div className="h-px bg-[#EBEBEB] my-5" />
-              </>
-            )}
+              ) : (
+                <p className="text-[12px] text-muted">Rate more albums to see your top genres.</p>
+              )}
+            </div>
 
-            {/* Score Distribution */}
-            <div className="text-[15px] font-bold text-ink mb-[14px]">Score Distribution</div>
-            <ScoreBar bars={bars} />
+            <div className="bg-white rounded-xl border border-[#EBEBEB] p-4 min-w-[200px] md:min-w-0">
+              <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.6px' }}>Insights</p>
+              {insights.length > 0 ? (
+                <div className="flex flex-col gap-2">
+                  {insights.map((insight, i) => (
+                    <p key={i} className="text-[12px] text-mid leading-snug">{insight}</p>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[12px] text-muted">Rate more albums to unlock insights.</p>
+              )}
+            </div>
 
-            <div className="h-px bg-[#EBEBEB] my-5" />
-
-            {/* Rating Philosophy */}
-            <div className="text-[15px] font-bold text-ink mb-3">Rating Philosophy</div>
-            {insights.length > 0 ? (
-              <div className="flex flex-col gap-2">
-                {insights.map((insight, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <span className="text-mint font-bold flex-shrink-0">—</span>
-                    <p className="text-[12px] text-mid leading-snug">{insight}</p>
+            {capsule && (
+              <div className="bg-white rounded-xl border border-[#EBEBEB] p-4 min-w-[180px] md:min-w-0">
+                <p className="text-[11px] font-semibold text-muted uppercase mb-2" style={{ letterSpacing: '0.6px' }}>Monthly Capsule</p>
+                <p className="text-[14px] font-extrabold text-ink mb-3" style={{ letterSpacing: '-0.3px' }}>{capsule.monthLabel}</p>
+                <div className="flex flex-col gap-2">
+                  <div className="flex justify-between">
+                    <span className="text-[12px] text-muted">Albums rated</span>
+                    <span className="text-[12px] font-semibold text-ink">{capsule.count}</span>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-[12px] text-muted">Rate more albums to unlock insights.</p>
-            )}
-
-            <div className="h-px bg-[#EBEBEB] my-5" />
-
-            {/* Taste DNA */}
-            <div className="text-[15px] font-bold text-ink mb-3">Taste DNA</div>
-            {tasteDNA.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {tasteDNA.map((tag) => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center px-[10px] py-[4px] rounded-full text-[12px] font-semibold"
-                    style={{ background: '#EDFFF9', border: '1.5px solid #3DFFD1', color: '#00453A' }}
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <p className="text-[12px] text-muted">Rate more albums to reveal your taste DNA.</p>
-            )}
-
-            <div className="h-px bg-[#EBEBEB] my-5" />
-
-            {/* Listen Later placeholder */}
-            <div className="text-[15px] font-bold text-ink mb-3">Listen Later</div>
-            <p className="text-[12px] text-muted">Nothing queued yet.</p>
-
-            <div className="h-px bg-[#EBEBEB] my-5" />
-
-            {/* Top Genres */}
-            <div className="text-[15px] font-bold text-ink mb-3">Top Genres</div>
-            {topGenres.length > 0 ? (
-              <div className="flex flex-col gap-[10px]">
-                {topGenres.map(({ name, count }) => (
-                  <div key={name}>
-                    <div className="flex justify-between items-center mb-[5px]">
-                      <span className="text-[12px] font-medium text-ink">{name}</span>
-                      <span className="text-[11px] text-muted">{count}</span>
+                  {capsule.topGenre && (
+                    <div className="flex justify-between">
+                      <span className="text-[12px] text-muted">Top genre</span>
+                      <span className="text-[12px] font-semibold text-ink">{capsule.topGenre}</span>
                     </div>
-                    <div className="h-[3px] bg-[#EBEBEB] rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full"
-                        style={{ width: `${(count / topGenres[0].count) * 100}%`, background: '#3DFFD1' }}
-                      />
+                  )}
+                  {capsule.highest && (
+                    <div className="flex justify-between items-start gap-2">
+                      <span className="text-[12px] text-muted flex-shrink-0">Highest</span>
+                      <span className="text-[11px] font-semibold text-ink text-right truncate">
+                        {capsule.highest.title} <span style={{ color: '#3DFFD1' }}>★{capsule.highest.score}</span>
+                      </span>
                     </div>
-                  </div>
-                ))}
+                  )}
+                </div>
               </div>
-            ) : (
-              <p className="text-[12px] text-muted">Rate more albums to see your top genres.</p>
             )}
           </div>
-        )}
+
+          {/* RIGHT: catalog */}
+          <div className="flex-1 min-w-0">
+            {/* Tabs */}
+            <div className="flex gap-1 mb-6 border-b border-[#EBEBEB] overflow-x-auto">
+              {TABS.map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-4 py-2.5 text-[13px] font-semibold whitespace-nowrap transition-colors ${
+                    activeTab === tab ? 'text-ink border-b-2 border-ink -mb-px' : 'text-muted hover:text-ink'
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+              {activeTab !== 'Lists' && (
+                <div className="flex-1 flex justify-end items-center">
+                  <span className="text-[12px] font-medium text-muted pr-1">Sort: Recently rated ↓</span>
+                </div>
+              )}
+            </div>
+
+            {/* Lists content */}
+            {activeTab === 'Lists' && (
+              <div>
+                <div className="flex justify-between items-center mb-6">
+                  <p className="text-[13px] text-muted">{lists.length} {lists.length === 1 ? 'list' : 'lists'}</p>
+                  {isOwnProfile && <CreateListSection />}
+                </div>
+                {lists.length === 0 ? (
+                  <div className="py-16 text-center">
+                    <p className="text-sm text-muted">
+                      {isOwnProfile ? 'No lists yet. Create one to organize your albums.' : 'No lists yet.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+                    {lists.map((list) => (
+                      <Link
+                        key={list.id}
+                        href={`/lists/${list.id}`}
+                        className="border border-[#EBEBEB] rounded-[10px] p-4 hover:bg-surface transition block"
+                      >
+                        <div className="text-[14px] font-bold text-ink truncate">{list.title}</div>
+                        {list.description && (
+                          <p className="text-[12px] text-muted mt-1 line-clamp-2">{list.description}</p>
+                        )}
+                        <p className="text-[11px] text-muted mt-3">
+                          {list.list_items?.[0]?.count ?? 0} albums
+                        </p>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Album grid */}
+            {activeTab !== 'Lists' && (
+              <div>
+                {filteredRatings.length === 0 ? (
+                  <div className="py-16 text-center">
+                    <p className="text-sm text-muted">No ratings yet. Search for albums and rate them.</p>
+                  </div>
+                ) : (
+                  <div className="grid gap-[14px]" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))' }}>
+                    {filteredRatings.map((rating) => (
+                      <Link key={rating.id} href={`/album/${rating.release_id}`} className="block min-w-0">
+                        <div className="relative overflow-hidden rounded-[6px]" style={{ aspectRatio: '1 / 1' }}>
+                          {rating.releases?.cover_url ? (
+                            <img
+                              src={rating.releases.cover_url}
+                              alt={rating.releases.title}
+                              className="absolute inset-0 w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="absolute inset-0 bg-surface border border-[#EBEBEB]" />
+                          )}
+                          {rating.score && (
+                            <div
+                              className="absolute bottom-1 right-1 text-[10px] font-bold rounded-[4px] px-[6px] py-[1px]"
+                              style={{ background: '#3DFFD1', color: '#00453A' }}
+                            >
+                              ★ {rating.score}
+                            </div>
+                          )}
+                        </div>
+                        <div
+                          className="mt-[7px] text-[11px] font-semibold text-ink truncate"
+                          title={rating.releases?.title}
+                        >
+                          {rating.releases?.title ?? rating.release_id}
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* ── TASTE INSIGHTS (own profile, data must exist) ───────── */}

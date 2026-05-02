@@ -5,8 +5,16 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../lib/supabaseClient';
 import type { Session } from '@supabase/supabase-js';
+import {
+  Search, Menu, User, Bookmark, BarChart3, Bell,
+  Settings, LogOut, HelpCircle
+} from 'lucide-react';
 
-export default function SiteHeader() {
+interface SiteHeaderProps {
+  onMenuClick?: () => void;
+}
+
+export default function SiteHeader({ onMenuClick }: SiteHeaderProps) {
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
   const [query, setQuery] = useState('');
@@ -34,14 +42,15 @@ export default function SiteHeader() {
         setProfileOpen(false);
       }
     };
-    document.addEventListener('mousedown', handler);
+    if (profileOpen) document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, []);
+  }, [profileOpen]);
 
   const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!query.trim()) return;
     router.push(`/search?query=${encodeURIComponent(query.trim())}`);
+    setQuery('');
   };
 
   const handleSignOut = async () => {
@@ -51,93 +60,107 @@ export default function SiteHeader() {
   };
 
   const initial = session?.user?.email?.[0].toUpperCase() ?? '';
-  const username = session?.user?.email?.split('@')[0];
+  const username = session?.user?.user_metadata?.username ?? session?.user?.email?.split('@')[0];
+
+  const menuItems = [
+    { icon: User, label: 'Profile', href: username ? `/profile/${username}` : '/profile' },
+    { icon: Bookmark, label: 'Listen Later', href: '/listen-later' },
+    { icon: BarChart3, label: 'Wrapped', href: '/wrapped' },
+    { icon: Bell, label: 'Notifications', href: '/notifications' },
+    { icon: Settings, label: 'Settings', href: '/settings' },
+    { icon: HelpCircle, label: 'Help', href: '/help' },
+  ];
 
   return (
-    <header className="h-[60px] bg-white border-b border-[#EBEBEB] sticky top-0 z-50 flex items-center px-5">
+    <header className="h-[72px] bg-white border-b border-divider sticky top-0 z-50 flex items-center px-5">
 
-      {/* Logo — fixed left, navigates home */}
-      <Link
-        href="/"
-        className="flex-shrink-0 text-base font-extrabold text-ink"
-        style={{ letterSpacing: '-0.5px' }}
-      >
-        音色 <span className="text-mint">neiro</span>
-      </Link>
-
-      {/* Search — absolutely centered */}
-      <div className="absolute left-1/2 -translate-x-1/2 w-full max-w-[480px] px-4">
-        <form onSubmit={handleSearch}>
-          <div className="bg-surface border border-[#EBEBEB] rounded-full px-4 py-2 flex items-center gap-2">
-            <span className="text-muted" style={{ fontSize: 15 }}>⌕</span>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search albums, artists…"
-              className="flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-[#C0C0BE]"
-            />
-          </div>
-        </form>
+      {/* Left: hamburger (mobile/small screens) + logo */}
+      <div className="flex items-center gap-3 flex-shrink-0">
+        <button
+          className="xl:hidden p-1 -ml-1 text-ink hover:text-mid transition"
+          onClick={onMenuClick}
+          aria-label="Open menu"
+        >
+          <Menu size={22} />
+        </button>
+        <Link href="/" className="flex items-center" aria-label="Home">
+          <img src="/sillajuku_logo.svg" alt="sillajuku" className="h-[52px] w-auto" />
+        </Link>
       </div>
 
+      {/* Center: Search — absolutely centered, hidden on mobile */}
+      <form
+        onSubmit={handleSearch}
+        className="hidden md:flex absolute left-1/2 -translate-x-1/2 w-full max-w-[560px] px-4"
+      >
+        <div className="bg-surface border border-divider rounded-full px-4 py-2 flex items-center gap-2 w-full hover:border-mid transition">
+          <Search size={15} className="text-muted flex-shrink-0" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search albums, artists…"
+            className="flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-placeholder"
+          />
+        </div>
+      </form>
+
       {/* Right side */}
-      <div className="ml-auto flex items-center gap-6 flex-shrink-0">
-        <Link href="/rankings" className="text-[13px] font-medium text-muted hover:text-ink transition whitespace-nowrap">
-          Rankings
-        </Link>
-        <Link href="/activity" className="text-[13px] font-medium text-muted hover:text-ink transition whitespace-nowrap">
-          Feed
+      <div className="ml-auto flex items-center gap-3 flex-shrink-0">
+        {/* Mobile search icon */}
+        <Link href="/search" className="md:hidden p-1 text-muted hover:text-ink transition" aria-label="Search">
+          <Search size={20} />
         </Link>
 
         {/* Profile avatar / auth */}
-        {session?.user?.email ? (
+        {session?.user ? (
           <div ref={profileRef} className="relative">
             <button
               onClick={() => setProfileOpen((o) => !o)}
-              className="w-[34px] h-[34px] rounded-full bg-mint-bg border-2 border-mint flex items-center justify-center font-bold text-mint-dark text-[12px] transition hover:opacity-80"
+              className={`w-[34px] h-[34px] rounded-full bg-mint-bg border-2 flex items-center justify-center font-bold text-[12px] transition relative ${
+                profileOpen ? 'border-ink' : 'border-mint hover:scale-105'
+              } text-mint-dark`}
               aria-label="Open profile menu"
             >
               {initial}
             </button>
 
             {profileOpen && (
-              <div className="absolute right-0 mt-2 w-48 rounded-xl border border-[#EBEBEB] bg-white py-1 shadow-lg">
-                <div className="border-b border-[#EBEBEB] px-4 py-2">
-                  <p className="text-xs text-muted truncate">{session.user.email}</p>
+              <div className="absolute right-0 top-[42px] w-[200px] bg-white border border-divider rounded-xl shadow-lg py-2 z-50">
+                <div className="px-3 py-2 border-b border-divider mb-1">
+                  <p className="text-[13px] font-bold text-ink truncate">{session.user.user_metadata?.display_name ?? username}</p>
+                  <p className="text-[11px] text-muted truncate">@{username}</p>
                 </div>
-                <Link
-                  href={username ? `/profile/${username}` : '/profile'}
-                  onClick={() => setProfileOpen(false)}
-                  className="block px-4 py-2 text-sm text-mid hover:bg-surface transition"
-                >
-                  Profile
-                </Link>
-                <Link
-                  href="/lists"
-                  onClick={() => setProfileOpen(false)}
-                  className="block px-4 py-2 text-sm text-mid hover:bg-surface transition"
-                >
-                  For You
-                </Link>
-                <Link
-                  href="/wrapped"
-                  onClick={() => setProfileOpen(false)}
-                  className="block px-4 py-2 text-sm text-mid hover:bg-surface transition"
-                >
-                  Wrapped
-                </Link>
-                <button
-                  type="button"
-                  onClick={handleSignOut}
-                  className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-surface transition"
-                >
-                  Log out
-                </button>
+
+                {menuItems.map(({ icon: Icon, label, href }) => (
+                  <Link
+                    key={label}
+                    href={href}
+                    onClick={() => setProfileOpen(false)}
+                    className="flex items-center gap-3 px-3 py-2 text-[13px] text-ink hover:bg-surface transition"
+                  >
+                    <Icon size={16} strokeWidth={1.8} className="text-muted flex-shrink-0" />
+                    <span className="flex-1">{label}</span>
+                  </Link>
+                ))}
+
+                <div className="border-t border-divider mt-1 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleSignOut}
+                    className="flex items-center gap-3 px-3 py-2 text-[13px] text-muted hover:text-red-500 hover:bg-surface w-full text-left transition"
+                  >
+                    <LogOut size={16} strokeWidth={1.8} className="flex-shrink-0" />
+                    Log out
+                  </button>
+                </div>
               </div>
             )}
           </div>
         ) : (
-          <Link href="/login" className="text-[13px] font-medium text-muted hover:text-ink transition">
+          <Link
+            href="/login"
+            className="text-[13px] font-semibold text-ink border border-divider rounded-lg px-4 py-2 hover:bg-surface transition"
+          >
             Log in
           </Link>
         )}

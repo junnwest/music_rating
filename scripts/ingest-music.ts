@@ -257,7 +257,7 @@ async function searchAndFetch(row: CatalogRow, overrideQuery?: string): Promise<
 }
 
 async function main() {
-  console.log(`\n🎵  neiro music ingestion script`);
+  console.log(`\n🎵  sillajuku music ingestion script`);
   if (DRY_RUN) console.log('   [DRY RUN — no DB writes]');
   if (RETRY_MODE) console.log('   [RETRY MODE — only processing previous not_found entries]');
   console.log('');

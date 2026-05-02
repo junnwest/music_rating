@@ -6,6 +6,7 @@ import { createServerClient } from '../../../../lib/supabaseServer';
 export const revalidate = 60;
 import StarRatingWidget from '../../../../components/StarRatingWidget';
 import ReviewsSection from '../../../../components/ReviewsSection';
+import AlbumActions from '../../../../components/AlbumActions';
 
 function formatDuration(ms: number | null): string {
   if (!ms) return '—';
@@ -142,6 +143,7 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
                 coverUrl={album.coverUrl}
                 genres={album.genres}
               />
+              <AlbumActions albumId={album.id} />
             </div>
           </div>
         </div>
