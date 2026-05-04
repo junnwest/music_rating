@@ -46,13 +46,27 @@ function stringSimilarity(a: string, b: string): number {
   return union === 0 ? 0 : intersection / union;
 }
 
+// Jaccard-only for artists — no substring bonus to prevent "The Beatles" from
+// matching "The Beatles Complete On Ukulele" with a 0.85 artist score.
+function artistSimilarity(a: string, b: string): number {
+  const na = normalize(a);
+  const nb = normalize(b);
+  if (na === nb) return 1;
+  const wa = new Set(na.split(' ').filter(w => w.length > 1));
+  const wb = new Set(nb.split(' ').filter(w => w.length > 1));
+  if (wa.size === 0 || wb.size === 0) return 0;
+  const intersection = [...wa].filter(w => wb.has(w)).length;
+  const union = new Set([...wa, ...wb]).size;
+  return union === 0 ? 0 : intersection / union;
+}
+
 function matchScore(
   expectedTitle: string, actualTitle: string,
   expectedArtist: string, actualArtist: string,
 ): number {
   const titleScore  = stringSimilarity(expectedTitle, actualTitle);
-  const artistScore = stringSimilarity(expectedArtist, actualArtist);
-  if (artistScore < 0.15) return 0;
+  const artistScore = artistSimilarity(expectedArtist, actualArtist);
+  if (artistScore < 0.25) return 0;
   return titleScore * 0.75 + artistScore * 0.25;
 }
 

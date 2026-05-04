@@ -57,11 +57,7 @@
       "similarity": 0.625
     },
     "Panic|Panic": {
-      "status": "found",
-      "spotifyId": "6saL4k96Bv5MFsvG61x11Q",
-      "title": "Widespread Panic",
-      "artist": "Widespread Panic",
-      "similarity": 0.85
+      "status": "not_found"
     },
     "Panic|Sea Within": {
       "status": "found",
@@ -1107,18 +1103,10 @@
       "similarity": 1
     },
     "The Beatles|Abbey Road": {
-      "status": "found",
-      "spotifyId": "5gRj0X8Bl2dKidoC428AoB",
-      "title": "Abbey Road",
-      "artist": "The Beatles Complete On Ukulele",
-      "similarity": 0.9625
+      "status": "not_found"
     },
     "The Beatles|Revolver": {
-      "status": "found",
-      "spotifyId": "4nQ5UtCV2XCnOZ9nHCufVs",
-      "title": "Revolver",
-      "artist": "The Beatles Complete On Ukulele",
-      "similarity": 0.9625
+      "status": "not_found"
     },
     "The Velvet Underground|The Velvet Underground & Nico": {
       "status": "found",
@@ -1901,18 +1889,10 @@
       "status": "not_found"
     },
     "Kim Min Ki|Kim Min Ki": {
-      "status": "found",
-      "spotifyId": "6L9IGYuMWrWUMIVm3KFjUw",
-      "title": "김광석 다시 부르기 I",
-      "artist": "Kim Kwang Seok",
-      "similarity": 0.6875
+      "status": "not_found"
     },
     "Sanulrim|What, Already?": {
-      "status": "found",
-      "spotifyId": "0RYGlnCiNeJRN3xzIjdm4Q",
-      "title": "이산 시간",
-      "artist": "멀리 이동하려면",
-      "similarity": 0.85
+      "status": "not_found"
     },
     "One Day|1960·1965": {
       "status": "found",
@@ -1925,11 +1905,7 @@
       "status": "not_found"
     },
     "Han Dae Soo|Long Long Road": {
-      "status": "found",
-      "spotifyId": "0RYGlnCiNeJRN3xzIjdm4Q",
-      "title": "이산 시간",
-      "artist": "멀리 이동하려면",
-      "similarity": 0.85
+      "status": "not_found"
     },
     "Jang Pill Soon|When My Loneliness Calls You": {
       "status": "found",
@@ -1977,11 +1953,7 @@
       "status": "not_found"
     },
     "Deli Spice|Deli Spice": {
-      "status": "found",
-      "spotifyId": "5ooEdlSXdzcTXLTHMg6QMO",
-      "title": "아홉가지기분",
-      "artist": "네스티요나",
-      "similarity": 0.85
+      "status": "not_found"
     },
     "The Classic|The Classic": {
       "status": "found",
@@ -1991,11 +1963,7 @@
       "similarity": 0.8875
     },
     "Lee Sora|Vol. 6: Nunsseopdal": {
-      "status": "found",
-      "spotifyId": "5ooEdlSXdzcTXLTHMg6QMO",
-      "title": "아홉가지기분",
-      "artist": "네스티요나",
-      "similarity": 0.85
+      "status": "not_found"
     },
     "Brown Eyes|Brown Eyes": {
       "status": "found",
@@ -2018,11 +1986,7 @@
       "status": "not_found"
     },
     "Kiha & The Faces|Living Without Possession": {
-      "status": "found",
-      "spotifyId": "0RYGlnCiNeJRN3xzIjdm4Q",
-      "title": "이산 시간",
-      "artist": "멀리 이동하려면",
-      "similarity": 0.85
+      "status": "not_found"
     },
     "Silica Gel|Silica Gel": {
       "status": "found",
@@ -2032,31 +1996,19 @@
       "similarity": 1
     },
     "THORNAPPLE|Abnormal Climate": {
-      "status": "found",
-      "spotifyId": "3qZHy4M9znhKoMg0qmAXVM",
-      "title": "유아해피송",
-      "artist": "엘키즈",
-      "similarity": 0.85
+      "status": "not_found"
     },
     "Lang Lee|Playing God": {
       "status": "not_found"
     },
     "Kim Oki|Cherubim's Wrath": {
-      "status": "found",
-      "spotifyId": "6L9IGYuMWrWUMIVm3KFjUw",
-      "title": "김광석 다시 부르기 I",
-      "artist": "Kim Kwang Seok",
-      "similarity": 0.7
+      "status": "not_found"
     },
     "Cadejo|Psyche": {
       "status": "not_found"
     },
     "Leenalchi|Sugungga": {
-      "status": "found",
-      "spotifyId": "6rwqrHdQ9S9FXl1W6dtpsb",
-      "title": "좋아좋아",
-      "artist": "일기예보",
-      "similarity": 0.85
+      "status": "not_found"
     },
     "Sunwoo Jung A|It's Okay, Dear": {
       "status": "found",
@@ -2094,11 +2046,7 @@
       "similarity": 1
     },
     "My Bloody Valentine|Loveless": {
-      "status": "found",
-      "spotifyId": "6oICQlFFse7v0qbnPo2L7l",
-      "title": "Loveless",
-      "artist": "Loveless",
-      "similarity": 0.75
+      "status": "not_found"
     },
     "Marvin Gaye|What's Going On": {
       "status": "found",
@@ -2132,11 +2080,7 @@
       "similarity": 0.8875
     },
     "Tatsuro Yamashita|FOR YOU": {
-      "status": "found",
-      "spotifyId": "1qWA39v5KzquKUCWqRAoiH",
-      "title": "山下　達郎／竹内　まりや　作品集",
-      "artist": "ビクター・ファンタスティック・オーケストラ",
-      "similarity": 0.85
+      "status": "not_found"
     },
     "ASIAN KUNG-FU GENERATION|Sol-fa": {
       "status": "found",
@@ -2153,11 +2097,7 @@
       "similarity": 0.85
     },
     "Haru Nemuri|Haru to Shura": {
-      "status": "found",
-      "spotifyId": "4YKJk4juMZQr2sDnKzDlBz",
-      "title": "春泥棒",
-      "artist": "ヨルシカ",
-      "similarity": 0.85
+      "status": "not_found"
     },
     "Sigur Rós|()": {
       "status": "found",

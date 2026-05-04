@@ -173,6 +173,8 @@ Then run `npm run ingest:retry` to re-attempt only the not-found entries.
 
 **Result:** 306/315 found (97%). The remaining 9 are genuinely not on Spotify.
 
+15 entries were reset to `not_found` after a false-positive audit — wrong albums had been matched due to overly lenient artist similarity scoring. The matching logic has since been tightened (`artistSimilarity` Jaccard-only, guard raised to 0.25). Add native-script overrides to `scripts/search-overrides.json` and run `npm run ingest:retry` to recover them. See table of suggested overrides in git history.
+
 ---
 
 ### Phase 2 — Discography expansion
@@ -223,23 +225,13 @@ npm run expand:genre
 
 ### ⚠️ NEXT SESSION — Do this first
 
-The Spotify credentials are currently rate-limited from a failed `seed:prestige` run. Before doing anything else:
+`seed:prestige` is complete. `expand:discography` is in progress — **12/298 artists done** (251 albums added, hit daily quota mid-run). Resume with:
 
 ```bash
-npm run seed:prestige
+npm run expand:discography
 ```
 
-The script will check the rate limit at startup and print how many minutes to wait if still blocked. Once it runs clean, it seeds `prestige` scores and `genres` into the `releases` table — required for:
-- Onboarding "Albums that shaped you" suggestions
-- Cold-start main page recommendations ("Start Here" row)
-
-After `seed:prestige` completes successfully, resume the normal expansion pipeline below.
-
----
-
-### Resume expansion pipeline
-
-Run `npm run expand:discography` once the 23-hour Spotify daily quota clears. Default batch is 60 artists/day; run again each day until all 247 are done (~4 days total), then move to `expand:related` and `expand:genre`.
+Default batch is 60 artists/day. Run once per day until all 298 are done (~4 more days), then move to `expand:related` and `expand:genre`.
 
 ---
 

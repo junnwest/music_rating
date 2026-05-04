@@ -89,16 +89,31 @@ function stringSimilarity(a: string, b: string): number {
   return union === 0 ? 0 : intersection / union;
 }
 
-// Combined score: title is primary, artist is a guard against false positives.
-// Artist check is lenient because romanizations vary (Seotaiji vs Seo Taiji and Boys).
+// Jaccard-only for artists — no substring bonus. Substring containment causes
+// "Panic" to score 0.85 against "Widespread Panic", and "The Beatles" to score
+// 0.85 against "The Beatles Complete On Ukulele".
+function artistSimilarity(a: string, b: string): number {
+  const na = normalize(a);
+  const nb = normalize(b);
+  if (na === nb) return 1;
+  const wa = new Set(na.split(' ').filter(w => w.length > 1));
+  const wb = new Set(nb.split(' ').filter(w => w.length > 1));
+  if (wa.size === 0 || wb.size === 0) return 0;
+  const intersection = [...wa].filter(w => wb.has(w)).length;
+  const union = new Set([...wa, ...wb]).size;
+  return union === 0 ? 0 : intersection / union;
+}
+
 function matchScore(
   expectedTitle: string, actualTitle: string,
   expectedArtist: string, actualArtist: string,
 ): number {
   const titleScore = stringSimilarity(expectedTitle, actualTitle);
-  const artistScore = stringSimilarity(expectedArtist, actualArtist);
-  // Reject if artist is clearly wrong (different band entirely)
-  if (artistScore < 0.15 && titleScore < 0.9) return 0;
+  const artistScore = artistSimilarity(expectedArtist, actualArtist);
+  // Reject if artist is wrong — no bypass for high title scores.
+  // The old `&& titleScore < 0.9` let "My Bloody Valentine|Loveless" match
+  // an artist literally named "Loveless" because titleScore was 1.0.
+  if (artistScore < 0.25) return 0;
   return titleScore * 0.75 + artistScore * 0.25;
 }
 
