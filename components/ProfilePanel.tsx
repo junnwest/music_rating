@@ -259,12 +259,16 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
   const [communityStats, setCommunityStats] = useState<CommunityStats | null>(null);
   const [lists, setLists] = useState<any[]>([]);
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [usernameFromProfile, setUsernameFromProfile] = useState<string | null>(null);
+  const [bioText, setBioText] = useState<string | null>(null);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
   const [isFollowing, setIsFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
   const [collisions, setCollisions] = useState<Collision[]>([]);
   const [contradictions, setContradictions] = useState<Contradiction[]>([]);
+  const [sortOrder, setSortOrder] = useState<'recent' | 'score-high' | 'score-low' | 'alpha'>('recent');
+  const [showSortMenu, setShowSortMenu] = useState(false);
 
   const ratingsCount = ratings?.length ?? 0;
   const averageRating =
@@ -296,11 +300,8 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
 
     const isOwn = !targetUserId || userId === currentUserId;
 
-    // Fetch display_name from profiles
-    supabase.from('profiles').select('display_name').eq('id', userId).maybeSingle()
-      .then(({ data }) => { if (data?.display_name) setDisplayName(data.display_name); });
-
-    const [ratingsRes, allRatingsRes, listsRes, followersRes, followingRes] = await Promise.all([
+    const [profileRes, ratingsRes, allRatingsRes, listsRes, followersRes, followingRes] = await Promise.all([
+      supabase.from('profiles').select('display_name, username, bio').eq('id', userId).maybeSingle(),
       supabase
         .from('ratings')
         .select('id, score, status, note, created_at, release_id, releases(*)')
@@ -323,6 +324,11 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
         .select('*', { count: 'exact', head: true })
         .eq('follower_id', userId),
     ]);
+
+    const prof = profileRes.data;
+    if (prof?.display_name) setDisplayName(prof.display_name);
+    if (prof?.username) setUsernameFromProfile(prof.username);
+    if (prof?.bio) setBioText(prof.bio);
 
     setLists(listsRes.data ?? []);
     setRatings(ratingsRes.data ?? []);
@@ -373,17 +379,6 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
         .then((r) => r.json())
         .then((json) => setContradictions(json.contradictions ?? []))
         .catch(() => {});
-    }
-
-    // Upsert profile for own profile so others can find this user by username
-    if (isOwn && currentUserId && supabase) {
-      const username = currentUserEmail?.split('@')[0] ?? targetUsername;
-      if (username) {
-        supabase
-          .from('profiles')
-          .upsert({ id: currentUserId, username }, { onConflict: 'id' })
-          .then(() => {});
-      }
     }
 
     setLoading(false);
@@ -455,7 +450,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
   }
 
   const effectiveUserId = targetUserId ?? session!.user.id;
-  const username = targetUsername ?? session?.user?.email?.split('@')[0] ?? '—';
+  const username = targetUsername ?? usernameFromProfile ?? session?.user?.email?.split('@')[0] ?? '—';
   const profileDisplayName = displayName ?? username;
   const initial = profileDisplayName[0]?.toUpperCase() ?? '?';
 
@@ -467,7 +462,14 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
     if (activeTab === 'Singles') return type === 'Single';
     if (activeTab === 'Compilations') return type === 'Compilation';
     return true;
+  }).sort((a, b) => {
+    if (sortOrder === 'score-high') return (b.score ?? 0) - (a.score ?? 0);
+    if (sortOrder === 'score-low') return (a.score ?? 0) - (b.score ?? 0);
+    if (sortOrder === 'alpha') return (a.releases?.title ?? '').localeCompare(b.releases?.title ?? '');
+    return 0;
   });
+
+  const SORT_LABELS = { recent: 'Recently rated', 'score-high': 'Highest rated', 'score-low': 'Lowest rated', alpha: 'A–Z' } as const;
 
   const insights = getRatingInsights(ratings ?? [], communityStats);
   const tasteDNA = getTasteDNA(ratings ?? []);
@@ -491,21 +493,17 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                 className="text-[24px] font-extrabold text-ink"
                 style={{ letterSpacing: '-0.6px' }}
               >
-                {profileDisplayName}
+                @{username}
               </h1>
-              {displayName && (
-                <p className="text-[13px] text-muted">@{username}</p>
+              {displayName && displayName !== username && (
+                <p className="text-[13px] text-muted">{displayName}</p>
               )}
             </div>
-            {isOwnProfile && (
-              <p className="text-[13px] text-muted">Member · {session!.user.email}</p>
-            )}
 
             {/* Stats */}
             <div className="flex gap-8 mt-[18px]">
               {[
                 [ratingsCount, 'albums rated'],
-                [`${averageRating || '—'} ★`, 'avg score'],
                 ['0', 'reviews'],
                 [followerCount, 'followers'],
                 [followingCount, 'following'],
@@ -516,6 +514,9 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                 </div>
               ))}
             </div>
+            {bioText && (
+              <p className="text-[13px] text-muted mt-1 max-w-[480px] leading-relaxed">{bioText}</p>
+            )}
             {tasteDNA.length > 0 && (
               <div className="flex gap-2 mt-3 flex-wrap">
                 {tasteDNA.map((tag) => (
@@ -534,9 +535,9 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
           {/* Actions */}
           <div className="flex gap-2 pt-1">
             {isOwnProfile ? (
-              <button className="border border-[#EBEBEB] rounded-lg px-[18px] py-[9px] text-[13px] font-semibold text-ink hover:bg-surface transition">
+              <Link href="/settings" className="border border-[#EBEBEB] rounded-lg px-[18px] py-[9px] text-[13px] font-semibold text-ink hover:bg-surface transition">
                 Edit profile
-              </button>
+              </Link>
             ) : session?.user ? (
               <button
                 onClick={isFollowing ? handleUnfollow : handleFollow}
@@ -554,9 +555,6 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
         </div>
 
       </div>
-
-      {/* Pinned Ten */}
-      <PinnedTen userId={effectiveUserId} canEdit={isOwnProfile} />
 
       {/* ── BODY ─────────────────────────────────────────────── */}
       <div className="max-w-[1440px] mx-auto px-5 py-9 pb-14">
@@ -640,22 +638,47 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
 
           {/* RIGHT: catalog */}
           <div className="flex-1 min-w-0">
-            {/* Tabs */}
-            <div className="flex gap-1 mb-6 border-b border-[#EBEBEB] overflow-x-auto">
-              {TABS.map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-4 py-2.5 text-[13px] font-semibold whitespace-nowrap transition-colors ${
-                    activeTab === tab ? 'text-ink border-b-2 border-ink -mb-px' : 'text-muted hover:text-ink'
-                  }`}
-                >
-                  {tab}
-                </button>
-              ))}
+            {/* Pinned Six */}
+            <PinnedTen userId={effectiveUserId} canEdit={isOwnProfile} />
+
+            {/* Tabs + Sort */}
+            <div className="flex items-end justify-between mb-6 border-b border-[#EBEBEB]">
+              <div className="flex gap-1 overflow-x-auto scrollbar-hide">
+                {TABS.map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`px-4 py-2.5 text-[13px] font-semibold whitespace-nowrap transition-colors ${
+                      activeTab === tab ? 'text-ink border-b-2 border-ink -mb-px' : 'text-muted hover:text-ink'
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
               {activeTab !== 'Lists' && (
-                <div className="flex-1 flex justify-end items-center">
-                  <span className="text-[12px] font-medium text-muted pr-1">Sort: Recently rated ↓</span>
+                <div className="relative pb-2 flex-shrink-0">
+                  <button
+                    onClick={() => setShowSortMenu(s => !s)}
+                    className="text-[12px] font-medium text-muted hover:text-ink transition px-1"
+                  >
+                    {SORT_LABELS[sortOrder]} ↓
+                  </button>
+                  {showSortMenu && (
+                    <div className="absolute right-0 top-full mt-1 bg-white border border-[#EBEBEB] rounded-[10px] shadow-lg z-20 py-1 min-w-[150px]">
+                      {(Object.entries(SORT_LABELS) as [typeof sortOrder, string][]).map(([key, label]) => (
+                        <button
+                          key={key}
+                          onClick={() => { setSortOrder(key); setShowSortMenu(false); }}
+                          className={`w-full text-left px-4 py-2 text-[12px] transition ${
+                            sortOrder === key ? 'font-semibold text-ink' : 'text-muted hover:text-ink'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

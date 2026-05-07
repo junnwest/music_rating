@@ -1,7 +1,7 @@
 'use client';
 
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useState, Suspense } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import {
   User, Sliders, Bell, Shield, AlertTriangle,
   LogOut, Trash2, Camera
@@ -30,12 +30,64 @@ function SettingsContent() {
   const [activeTab, setActiveTab] = useState<TabKey>(
     urlTab && validTabs.includes(urlTab) ? urlTab : 'account'
   );
+
+  const [userId, setUserId] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState('');
+  const [username, setUsername] = useState('');
+  const [bio, setBio] = useState('');
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [activeGenres, setActiveGenres] = useState<Set<string>>(new Set(['K-R&B', 'K-Indie', 'Hip-Hop']));
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  useEffect(() => {
+    if (!supabase) return;
+    supabase.auth.getSession().then(async ({ data }) => {
+      const uid = data.session?.user?.id;
+      if (!uid) return;
+      setUserId(uid);
+      const { data: profile } = await supabase!
+        .from('profiles')
+        .select('display_name, username, bio')
+        .eq('id', uid)
+        .maybeSingle();
+      if (profile) {
+        setDisplayName(profile.display_name ?? '');
+        setUsername(profile.username ?? data.session!.user.email?.split('@')[0] ?? '');
+        setBio(profile.bio ?? '');
+      } else {
+        setUsername(data.session!.user.email?.split('@')[0] ?? '');
+      }
+    });
+  }, []);
+
+  const handleSave = async () => {
+    if (!supabase || !userId) return;
+    setSaving(true);
+    setError(null);
+
+    const { data: existing } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', userId)
+      .maybeSingle();
+
+    const { error: saveError } = existing
+      ? await supabase
+          .from('profiles')
+          .update({ display_name: displayName, username, bio })
+          .eq('id', userId)
+      : await supabase
+          .from('profiles')
+          .insert({ id: userId, display_name: displayName, username, bio });
+
+    if (saveError) {
+      setError(saveError.message);
+    } else {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    }
+    setSaving(false);
   };
 
   const handleSignOut = async () => {
@@ -51,6 +103,8 @@ function SettingsContent() {
       return next;
     });
   };
+
+  const avatarInitial = (displayName || username || '?')[0].toUpperCase();
 
   return (
     <div className="flex-1">
@@ -85,19 +139,23 @@ function SettingsContent() {
               <Section title="Account">
                 <div className="flex items-center gap-4 mb-6">
                   <div className="w-16 h-16 rounded-full bg-mint-bg border-2 border-mint flex items-center justify-center font-extrabold text-mint-dark text-[20px]">
-                    K
+                    {avatarInitial}
                   </div>
                   <button className="flex items-center gap-2 px-4 py-2 rounded-lg border border-divider text-[12px] font-semibold text-muted hover:bg-surface transition">
                     <Camera size={14} /> Change photo
                   </button>
                 </div>
-                <Field label="Display name" defaultValue="Kenneth" />
-                <Field label="Username" defaultValue="kenneth" hint="@kenneth" />
-                <Field label="Bio" defaultValue="Music explorer. K-indie obsessive." textarea />
-                <Field label="Email" type="email" />
+                <Field label="Display name" value={displayName} onChange={setDisplayName} />
+                <Field label="Username" value={username} onChange={setUsername} hint={username ? `@${username}` : undefined} />
+                <Field label="Bio" value={bio} onChange={setBio} textarea />
+                {error && <p className="text-[12px] text-red-500 mb-3">{error}</p>}
                 <div className="flex gap-3 mt-6">
-                  <button onClick={handleSave} className="bg-ink text-white rounded-xl px-6 py-2.5 text-[13px] font-bold hover:opacity-80 transition">
-                    {saved ? 'Saved ✓' : 'Save changes'}
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="bg-ink text-white rounded-xl px-6 py-2.5 text-[13px] font-bold hover:opacity-80 transition disabled:opacity-50"
+                  >
+                    {saved ? 'Saved' : saving ? 'Saving…' : 'Save changes'}
                   </button>
                   <button onClick={handleSignOut} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-divider text-[13px] font-semibold text-muted hover:bg-surface transition">
                     <LogOut size={14} /> Log out
@@ -149,9 +207,6 @@ function SettingsContent() {
                     {visibilityOptions.map(v => <option key={v}>{v}</option>)}
                   </select>
                 </div>
-                <button onClick={handleSave} className="bg-ink text-white rounded-xl px-6 py-2.5 text-[13px] font-bold hover:opacity-80 transition mt-2">
-                  {saved ? 'Saved ✓' : 'Save changes'}
-                </button>
               </Section>
             )}
 
@@ -162,9 +217,6 @@ function SettingsContent() {
                 <Toggle label="New followers" defaultOn />
                 <Toggle label="Ranking updates" defaultOn />
                 <Toggle label="Monthly capsule" />
-                <button onClick={handleSave} className="bg-ink text-white rounded-xl px-6 py-2.5 text-[13px] font-bold hover:opacity-80 transition mt-4">
-                  {saved ? 'Saved ✓' : 'Save changes'}
-                </button>
               </Section>
             )}
 
@@ -188,9 +240,6 @@ function SettingsContent() {
                     {['Public', 'Private'].map(v => <option key={v}>{v}</option>)}
                   </select>
                 </div>
-                <button onClick={handleSave} className="bg-ink text-white rounded-xl px-6 py-2.5 text-[13px] font-bold hover:opacity-80 transition mt-2">
-                  {saved ? 'Saved ✓' : 'Save changes'}
-                </button>
               </Section>
             )}
 
@@ -237,8 +286,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Field({ label, defaultValue, hint, type = 'text', textarea }: {
-  label: string; defaultValue?: string; hint?: string; type?: string; textarea?: boolean;
+function Field({ label, value, onChange, hint, type = 'text', textarea }: {
+  label: string; value: string; onChange: (v: string) => void; hint?: string; type?: string; textarea?: boolean;
 }) {
   return (
     <div className="mb-4">
@@ -246,13 +295,15 @@ function Field({ label, defaultValue, hint, type = 'text', textarea }: {
       {textarea ? (
         <textarea
           rows={3}
-          defaultValue={defaultValue}
+          value={value}
+          onChange={e => onChange(e.target.value)}
           className="w-full bg-surface border border-divider rounded-xl px-4 py-2.5 text-[13px] text-ink outline-none resize-none hover:border-mid focus:border-ink transition"
         />
       ) : (
         <input
           type={type}
-          defaultValue={defaultValue}
+          value={value}
+          onChange={e => onChange(e.target.value)}
           className="w-full bg-surface border border-divider rounded-xl px-4 py-2.5 text-[13px] text-ink outline-none hover:border-mid focus:border-ink transition"
         />
       )}

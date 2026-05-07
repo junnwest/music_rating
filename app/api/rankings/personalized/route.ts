@@ -3,18 +3,18 @@ import { createServerClient } from '../../../../lib/supabaseServer';
 
 export async function GET(req: NextRequest) {
   const userId = req.nextUrl.searchParams.get('userId');
-  if (!userId) return NextResponse.json({ myVotes: {}, friendVoteCounts: {} });
+  if (!userId) return NextResponse.json({ myRankings: {}, friendVoteCounts: {} });
 
   const supabase = createServerClient();
-  if (!supabase) return NextResponse.json({ myVotes: {}, friendVoteCounts: {} });
+  if (!supabase) return NextResponse.json({ myRankings: {}, friendVoteCounts: {} });
 
-  const [{ data: myVoteRows }, { data: follows }] = await Promise.all([
-    supabase.from('ranking_votes').select('category_id, release_id').eq('user_id', userId),
+  const [{ data: myRankingRows }, { data: follows }] = await Promise.all([
+    supabase.from('user_rankings').select('category_id').eq('user_id', userId),
     supabase.from('follows').select('following_id').eq('follower_id', userId),
   ]);
 
-  const myVotes: Record<string, string> = {};
-  for (const v of myVoteRows ?? []) myVotes[v.category_id] = v.release_id;
+  const myRankings: Record<string, boolean> = {};
+  for (const r of myRankingRows ?? []) myRankings[r.category_id] = true;
 
   const followedIds = (follows ?? []).map((f: any) => f.following_id);
   const friendVoteCounts: Record<string, number> = {};
@@ -30,5 +30,5 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ myVotes, friendVoteCounts });
+  return NextResponse.json({ myRankings, friendVoteCounts });
 }

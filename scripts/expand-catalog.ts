@@ -263,7 +263,8 @@ async function upsertAlbum(db: ReturnType<typeof getDB>, album: AlbumResult) {
 
 async function fetchArtistAlbums(artistId: string): Promise<any[]> {
   const items: any[] = [];
-  let url: string | null = `/artists/${artistId}/albums`;
+  // include_groups=album,single explicitly excludes appears_on and compilation
+  let url: string | null = `/artists/${artistId}/albums?include_groups=album,single&limit=50&market=KR`;
   while (url) {
     await sleep(DELAY_MS);
     const data = await spotifyGet(url);
@@ -291,7 +292,12 @@ async function runDiscography(db: ReturnType<typeof getDB>, state: ExpandState) 
 
     try {
       const albums = await fetchArtistAlbums(artistId);
-      const candidates = albums.filter(a => isCurationPass(a) && !releaseIds.has(a.id));
+      const candidates = albums.filter(a =>
+        isCurationPass(a) &&
+        !releaseIds.has(a.id) &&
+        // Guard: target artist must be listed as a primary album artist
+        (a.artists ?? []).some((art: any) => art.id === artistId)
+      );
 
       if (candidates.length === 0) {
         process.stdout.write(`no new albums\n`);
@@ -405,7 +411,11 @@ async function runRelated(db: ReturnType<typeof getDB>, state: ExpandState) {
 
     try {
       const albums = await fetchArtistAlbums(artist.id);
-      const candidates = albums.filter(a => isCurationPass(a) && !releaseIds.has(a.id));
+      const candidates = albums.filter(a =>
+        isCurationPass(a) &&
+        !releaseIds.has(a.id) &&
+        (a.artists ?? []).some((art: any) => art.id === artist.id)
+      );
 
       if (candidates.length === 0) {
         process.stdout.write(`no new albums\n`);

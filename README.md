@@ -74,7 +74,7 @@ curl -X POST https://your-domain.com/api/admin/seed-rankings \
 ### Before going live
 
 - [x] Set all environment variables in Vercel
-- [x] Run all migrations (`supabase db push`) — all 11 tables + RLS policies applied
+- [x] Run all migrations (`supabase db push`) — all 13 tables + RLS policies applied
 - [x] Add jurisdiction to Terms of Service (Republic of Korea)
 - [x] Enable Google OAuth in Supabase Auth dashboard
 - [ ] Replace `privacy@sillajuku.app` and `legal@sillajuku.app` in privacy/terms pages with real email
@@ -82,18 +82,50 @@ curl -X POST https://your-domain.com/api/admin/seed-rankings \
 
 ### After first deployment
 
+- [ ] **Push the new migration** (`ranking_seed_entries` table):
+  ```bash
+  supabase db push
+  ```
+- [ ] **Seed the ranking categories** (6 curated categories):
+  ```bash
+  curl -X POST https://your-domain.com/api/admin/seed-rankings \
+    -H "x-seed-secret: YOUR_SEED_SECRET"
+  ```
 - [ ] **Seed the homepage genre rows:**
   ```bash
   curl -X POST https://your-domain.com/api/admin/seed-curated \
     -H "x-seed-secret: YOUR_SEED_SECRET"
   ```
+- [ ] **Seed default ranking votes** — fill in `scripts/seed-votes.ts` with albums (Spotify IDs) for each of the 6 categories, then run:
+  ```bash
+  SEED_SECRET=your-secret NEXT_PUBLIC_SITE_URL=https://your-domain.com npx ts-node scripts/seed-votes.ts
+  ```
 
 ### Before public launch
 
 - [ ] **Run music ingestion** — see [Music catalog ingestion](#music-catalog-ingestion) below
+- [ ] **Seed Rolling Stone 500 baseline** into "all-time" ranking category:
+  ```bash
+  $env:SPOTIFY_CLIENT_ID="..."; $env:SPOTIFY_CLIENT_SECRET="..."; $env:NEXT_PUBLIC_SUPABASE_URL="..."; $env:SUPABASE_SERVICE_ROLE_KEY="..."; npx ts-node scripts/seed-rankings.ts --category all-time
+  ```
+  Progress saved to `scripts/seed-rankings-state-all-time.json` — safe to re-run on interruption.
 - [ ] Verify Google OAuth works on production
 - [ ] Test rating, review, and list flows end-to-end on production
 - [ ] Confirm homepage genre rows are populated
+- [ ] Replace `privacy@sillajuku.app` and `legal@sillajuku.app` in privacy/terms pages
+
+### After launch (once real users are voting)
+
+- [ ] **Remove or reduce seed votes** — once each ranking category has real votes overtaking the seeds, clear seed data so the leaderboard is purely community-driven:
+  ```bash
+  curl -X DELETE https://your-domain.com/api/admin/seed-votes \
+    -H "x-seed-secret: YOUR_SEED_SECRET" \
+    -H "Content-Type: application/json" \
+    -d '{}'
+  ```
+  Or clear a single category by passing `{ "categorySlug": "all-time" }` in the body.
+- [ ] **Revisit FilterBuilder genre map** — once you have real user data, check which genres are actually being used and update `genresByCountry` in `components/FilterBuilder.tsx` accordingly. Current map is a one-time editorial judgment, not live data.
+- [ ] **Re-curate ranking categories** — add new year-specific categories (e.g. "Best Album of 2027") by updating `app/api/admin/seed-rankings/route.ts` and re-running the seed endpoint.
 
 ---
 
@@ -134,17 +166,100 @@ curl -X POST https://your-domain.com/api/admin/seed-rankings \
 - [x] Taste Contradictions — `/contradictions`: your score vs community avg, split higher/lower
 
 ### Done — rankings
-- [x] Community rankings page — one vote per category, live leaderboards
-- [x] Individual ranking page — top 10, vote counts, movement indicators
-- [x] Ranking personalization — filter tabs (All / To Vote / Friends Active), friend counts on cards
-- [x] Filter Builder — Country / Genre / Time dropdowns with live title preview, links to `/rankings/build`
-- [x] Rankings Build page — shows matching DB categories for selected filter combination
+- [x] Community rankings page — leaderboards with seed + real vote merging
+- [x] Individual ranking page — top 10, vote counts, "Build your ranking" button
+- [x] Ranking personalization — filter tabs (All / To Vote / Friends Active); "To Vote" sorted by most active first
+- [x] Filter Builder — country-aware genre dropdowns (genres change per country); vote status indicator + Vote/Change Vote button when filter matches a curated category
+- [x] Rank Builder — `/rankings/[slug]/rank`: personal tiered ranking per category, drag-and-drop, ties supported, search panel with suggestions; saves to `user_rankings` + syncs rank-1 pick to community leaderboard
+- [x] Ranking seed infrastructure — `ranking_seed_entries` table for pre-launch default leaderboard data; admin endpoint + `scripts/seed-votes.ts`
+- [x] 6 curated ranking categories: Greatest Album of All Time · Best Hip-Hop All Time · Best K-Pop All Time · Best Album of 2026 · Best Korean Album All Time · Best K-Hip-Hop All Time
+- [x] Rolling Stone 500 baseline seeds — `scripts/seed-rankings.ts` seeds all 500 albums into the "all-time" category as a single virtual ranked vote (`seed_votes = 1/rank`); `seed_votes` column migrated from `int` to `numeric(10,4)`
+
+### Done — profile + settings (2026-05-07)
+- [x] Settings page — username/display name/bio now correctly saved to DB and reflected immediately on profile
+- [x] Profile page — username + bio read from `profiles` table (not derived from email); removed auto-upsert that was overwriting username on every visit
+- [x] Navbar dropdown — username and display name now read from `profiles` table instead of `user_metadata`/email split
+- [x] `[username]/page.tsx` — removed `targetUsername` prop that was overriding the DB-fetched username
+- [x] Homepage — removed "Good morning / Here's what's waiting" greeting for logged-in users
 
 ### Done — annual
 - [x] Wrapped page — yearly summary: albums rated, top genre, top artist, avg score, active month, best/worst album
 
 ### Planned
 - [ ] Music ingestion script (`scripts/ingest-music.ts`) — Korean (full), Japanese (curated ~80 artists), Western essentials (~200 artists); albums/EPs only
+
+---
+
+## Pre-launch roadmap
+
+Target: **mid-June 2026** (earlier the better). Wrapped page is the only feature deferred post-launch.
+
+---
+
+### Data collection
+
+**The app caches albums automatically.** Every time a user searches for or rates an album, it's fetched from Spotify and stored in `releases`. The DB grows organically with every user interaction — pre-seeding is not about being exhaustive.
+
+**Pre-seeding solves cold start only.** Without it, day-one users see an empty homepage, empty rankings, and onboarding with nothing to pick from. The goal is enough content for the first users to have a real experience — not a complete catalog.
+
+| Phase | What it does | Est. albums | Status |
+|-------|-------------|-------------|--------|
+| Phase 1 — seed catalog | 315 curated Korean/Japanese/Western classics | 306 | ✓ done |
+| RS500 baseline | Rolling Stone 500 seeds "all-time" ranking | 481 seeded | ✓ done |
+| Phase 2 — discography expansion | All albums from every artist already in DB | ~2,600 more | in progress (41/331 artists) |
+| Phase 3 — related artists | One hop from seeded artists (Korean ≥5k followers, J ≥20k, Western ≥100k) | ~3,200 more | not started |
+| Phase 4 — genre sweeps | 12 genre tags with popularity threshold | ~800–1,200 more | not started |
+
+**Phase 1 + RS500 (~750 albums) is the hard requirement for launch.** Both are done. Phases 2–4 improve cache warmth and search speed but are not blocking — any album not pre-loaded gets fetched live from Spotify on first visit and cached for all future users. Run them when convenient, not on a strict deadline.
+
+```bash
+# Run once per day until Phase 2 is done (~5 days), then move to Phase 3
+npm run expand:discography
+
+# Phase 3 (run after Phase 2 completes)
+npm run expand:related
+
+# Phase 4 (run after Phase 3 completes)
+npm run expand:genre
+```
+
+---
+
+### Week 1 — May 7–16: UI polish + mobile
+- [ ] Full UI polish pass on every major page (homepage, search, album detail, artist, rankings, profile, settings, notifications, listen later, onboarding)
+- [ ] Mobile responsiveness pass — critical for K-pop audience
+- [ ] Error states and loading skeletons throughout
+- [ ] Empty states (no ratings, no followers, no lists, etc.)
+
+### Week 2 — May 17–23: Functional gaps
+- [ ] Password reset flow
+- [ ] Email verification on signup
+- [ ] Onboarding polish (first-time user experience)
+- [ ] 404 + 500 error pages
+
+### Week 3 — May 24–30: Auth + legal + analytics
+- [ ] KakaoTalk login
+- [ ] Spotify login
+- [ ] Privacy policy + Terms of Service (finalize — fill in real contact emails)
+- [ ] Analytics setup (Posthog or Vercel Analytics)
+- [ ] Dark mode
+
+### Week 4 — May 31–Jun 6: App + translation + store submission
+- [ ] Korean translation (i18n setup with next-intl; language toggle in settings)
+- [ ] Capacitor app build (wraps existing Next.js app into native shell)
+- [ ] App Store (iOS) + Play Store (Android) submission
+  - ⚠️ Apple review takes 1–2 weeks — submit by Jun 1 to hit mid-June
+
+### Week 5 — Jun 7–14: QA + production deploy
+- [ ] Create dummy/test account and QA all social flows end-to-end
+- [ ] Production deployment (custom domain, all env vars set, migrations pushed)
+- [ ] Seed all ranking categories with baseline data
+- [ ] Final bug fixes + buffer for App Store review delays
+
+### Post-launch
+- [ ] Wrapped page — needs months of user data to be meaningful
+- [ ] Remove/reduce seed votes once real community votes overtake the baseline
+- [ ] Re-curate ranking categories (add year-specific categories)
 
 ---
 
@@ -225,13 +340,17 @@ npm run expand:genre
 
 ### ⚠️ NEXT SESSION — Do this first
 
-`seed:prestige` is complete. `expand:discography` is in progress — **12/298 artists done** (251 albums added, hit daily quota mid-run). Resume with:
+`expand:discography` is in progress — **42/331 artists done** (369 albums added so far, hit daily quota mid-run on 2026-05-07). Resume with:
 
 ```bash
 npm run expand:discography
 ```
 
-Default batch is 60 artists/day. Run once per day until all 298 are done (~4 more days), then move to `expand:related` and `expand:genre`.
+Default batch is 60 artists/day. Run once per day until all 331 are done (~5 more days), then move to `expand:related` and `expand:genre`.
+
+**False-positive fix applied (2026-05-07):** The expand script now passes `include_groups=album,single` to exclude `appears_on` compilations, and verifies the target artist is listed as a primary album artist. 18 false positives from the previous session (Defected Radio episodes, Café del Mar compilations, etc.) were cleaned up via `scripts/cleanup-false-positives.ts`.
+
+**Rolling Stone 500 seed (2026-05-07):** `scripts/seed-rankings.ts` created and running. Seeds all 500 RS500 albums into the "all-time" ranking category as a single virtual ranked vote. `seed_votes` column migrated to `numeric(10,4)`. If interrupted, re-run the same command — progress is saved to `scripts/seed-rankings-state-all-time.json`.
 
 ---
 

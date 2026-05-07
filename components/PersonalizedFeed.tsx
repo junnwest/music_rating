@@ -124,27 +124,16 @@ export default function PersonalizedFeed() {
     }
   };
 
-  const greeting = (
+  const greeting = status !== 'ready' ? (
     <div className="mb-11">
-      {status === 'ready' ? (
-        <>
-          <h1 className="text-[30px] font-extrabold text-ink" style={{ letterSpacing: '-1px' }}>
-            {timeGreeting()}, {username}.
-          </h1>
-          <p className="text-sm text-muted mt-1.5">Here's what's waiting for you.</p>
-        </>
-      ) : (
-        <>
-          <h1 className="text-[30px] font-extrabold text-ink" style={{ letterSpacing: '-1px' }}>
-            Discover your next favorite album.
-          </h1>
-          <p className="text-sm text-muted mt-1.5">
-            Rate albums, write reviews, and build your music catalog.
-          </p>
-        </>
-      )}
+      <h1 className="text-[30px] font-extrabold text-ink" style={{ letterSpacing: '-1px' }}>
+        Discover your next favorite album.
+      </h1>
+      <p className="text-sm text-muted mt-1.5">
+        Rate albums, write reviews, and build your music catalog.
+      </p>
     </div>
-  );
+  ) : null;
 
   if (status === 'loading' || status === 'guest') {
     return greeting;

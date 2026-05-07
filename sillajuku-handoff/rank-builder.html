@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rank — Sillajuku</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #FFFFFF;
+      --ink: #111111;
+      --inkLight: #444444;
+      --muted: #888888;
+      --surface: #F7F7F5;
+      --border: #EBEBEB;
+      --mint: #3DFFD1;
+      --mintDark: #00453A;
+      --placeholder: #C0C0BE;
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overflow-x: hidden;
+    }
+
+    /* ── Header ── */
+    .header {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      height: 56px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .header-left { display: flex; align-items: center; gap: 16px; }
+    .header-logo {
+      font-size: 18px; font-weight: 800; letter-spacing: -0.5px; color: var(--ink);
+      text-decoration: none;
+    }
+    .header-logo span { color: var(--muted); font-weight: 500; }
+    .header-back {
+      font-size: 12px; color: var(--muted); text-decoration: none;
+      display: flex; align-items: center; gap: 4px; transition: color 0.15s;
+    }
+    .header-back:hover { color: var(--ink); }
+    .header-back svg { width: 14px; height: 14px; }
+    .header-save {
+      background: var(--ink); color: #fff; border: none;
+      font-size: 12px; font-weight: 700; letter-spacing: 0.02em;
+      padding: 8px 20px; border-radius: 8px; cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .header-save:hover { opacity: 0.75; }
+    .header-save:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── Layout ── */
+    .container {
+      max-width: 1280px; margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 0;
+      min-height: calc(100vh - 56px);
+    }
+    @media (max-width: 900px) {
+      .container { grid-template-columns: 1fr; }
+    }
+
+    /* ── Left Panel ── */
+    .builder {
+      border-right: 1px solid var(--border);
+      padding: 32px 28px 80px;
+      position: relative;
+    }
+    @media (max-width: 900px) {
+      .builder { border-right: none; border-bottom: 1px solid var(--border); padding-bottom: 40px; }
+    }
+    .builder-header {
+      position: sticky; top: 56px; z-index: 50;
+      background: var(--bg);
+      margin: -32px -28px 24px; padding: 24px 28px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .builder-title {
+      font-size: 28px; font-weight: 800; letter-spacing: -0.8px; line-height: 1.05;
+      color: var(--ink);
+    }
+    .builder-sub {
+      font-size: 13px; color: var(--muted); margin-top: 6px;
+    }
+
+    /* ── Tier / Slot ── */
+    .tier {
+      display: flex; align-items: flex-start; gap: 16px;
+      padding: 14px 0; border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+      position: relative;
+    }
+    .tier.drag-over { background: var(--surface); }
+    .tier-rank {
+      flex-shrink: 0; width: 48px; text-align: right;
+      font-size: 32px; font-weight: 800; color: var(--border);
+      line-height: 1; padding-top: 10px; user-select: none;
+      font-variant-numeric: tabular-nums;
+    }
+    .tier.albums-present .tier-rank { color: var(--inkLight); }
+    .tier.albums-present.tier-tied .tier-rank { color: var(--muted); }
+    .tier-body {
+      flex: 1; min-width: 0;
+      display: flex; flex-wrap: wrap; gap: 10px;
+      min-height: 64px;
+      padding: 4px; border-radius: 10px;
+      transition: background 0.15s, box-shadow 0.15s;
+    }
+    .tier-body.drag-over {
+      background: var(--surface);
+      box-shadow: inset 0 0 0 2px var(--mint);
+    }
+    .tier-body:empty::before {
+      content: "Drop album here";
+      display: block; width: 100%;
+      font-size: 12px; color: var(--placeholder);
+      padding: 20px 12px; border: 1.5px dashed var(--border);
+      border-radius: 8px; text-align: center;
+      pointer-events: none;
+    }
+
+    /* Drop zone between tiers */
+    .drop-zone {
+      height: 8px; margin: -4px 0; border-radius: 4px;
+      transition: background 0.15s, height 0.15s;
+      position: relative; z-index: 5;
+    }
+    .drop-zone.drag-over {
+      height: 48px; background: var(--surface);
+      box-shadow: inset 0 0 0 2px var(--mint);
+    }
+    .drop-zone.drag-over::after {
+      content: "New rank";
+      position: absolute; left: 64px; top: 50%; transform: translateY(-50%);
+      font-size: 11px; font-weight: 600; color: var(--mintDark);
+      background: var(--mint); padding: 2px 10px; border-radius: 4px;
+    }
+
+    /* ── Album Card ── */
+    .album-card {
+      position: relative; width: 64px; flex-shrink: 0;
+      cursor: grab; user-select: none;
+      transition: transform 0.15s, opacity 0.15s;
+    }
+    .album-card:active { cursor: grabbing; }
+    .album-card.dragging { opacity: 0.3; }
+    .album-card .cover {
+      width: 64px; height: 64px; border-radius: 6px;
+      background: var(--surface); border: 1px solid var(--border);
+      overflow: hidden; position: relative;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .album-card .cover-img {
+      width: 100%; height: 100%; object-fit: cover;
+    }
+    .album-card .cover-placeholder {
+      font-size: 10px; font-weight: 700; color: var(--placeholder);
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .album-card .meta {
+      margin-top: 5px;
+    }
+    .album-card .meta-title {
+      font-size: 10px; font-weight: 600; color: var(--ink);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      line-height: 1.2;
+    }
+    .album-card .meta-artist {
+      font-size: 9px; color: var(--muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      line-height: 1.2; margin-top: 1px;
+    }
+    .album-card .remove {
+      position: absolute; top: -6px; right: -6px; z-index: 10;
+      width: 18px; height: 18px; border-radius: 50%;
+      background: var(--bg); border: 1px solid var(--border);
+      color: var(--muted); font-size: 14px; line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; opacity: 0; transition: opacity 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .album-card:hover .remove { opacity: 1; }
+    .album-card .remove:hover { border-color: var(--ink); color: var(--ink); }
+
+    /* Drag preview (floating) */
+    .drag-ghost {
+      position: fixed; z-index: 9999; pointer-events: none;
+      width: 64px; border-radius: 6px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+      transform: rotate(3deg);
+    }
+    .drag-ghost img { width: 100%; border-radius: 6px; display: block; }
+
+    /* ── Add Tier Button ── */
+    .add-tier {
+      display: flex; align-items: center; justify-content: center;
+      padding: 16px 0; margin-top: 4px;
+    }
+    .add-tier-btn {
+      font-size: 12px; font-weight: 600; color: var(--placeholder);
+      background: none; border: 1.5px dashed var(--border);
+      padding: 8px 24px; border-radius: 8px; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .add-tier-btn.drag-over {
+      border-color: var(--mint);
+      color: var(--mintDark);
+      background: rgba(61, 255, 209, 0.08);
+    }
+
+    /* ── Right Panel ── */
+    .picker {
+      background: var(--bg);
+      padding: 24px;
+      position: sticky; top: 56px;
+      height: calc(100vh - 56px);
+      overflow-y: auto;
+      display: flex; flex-direction: column;
+    }
+    @media (max-width: 900px) {
+      .picker {
+        position: static; height: auto;
+        padding: 24px 28px 60px;
+      }
+    }
+
+    .picker-search {
+      position: sticky; top: 0; z-index: 10;
+      background: var(--bg);
+      padding-bottom: 16px;
+    }
+    .picker-search input {
+      width: 100%; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 14px;
+      font-size: 13px; color: var(--ink); outline: none;
+      transition: border-color 0.15s;
+    }
+    .picker-search input:focus { border-color: var(--ink); }
+    .picker-search input::placeholder { color: var(--placeholder); }
+
+    .picker-section-title {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--muted);
+      margin: 8px 0 12px;
+    }
+
+    .suggested-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .suggested-card {
+      position: relative; cursor: pointer;
+      transition: transform 0.15s;
+    }
+    .suggested-card:hover { transform: translateY(-2px); }
+    .suggested-card .cover-wrap {
+      position: relative; width: 100%; aspect-ratio: 1;
+      border-radius: 8px; overflow: hidden;
+      background: var(--surface); border: 1px solid var(--border);
+    }
+    .suggested-card .cover-wrap img {
+      width: 100%; height: 100%; object-fit: cover;
+    }
+    .suggested-card .cover-placeholder {
+      width: 100%; height: 100%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 700; color: var(--placeholder);
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .suggested-card .add-overlay {
+      position: absolute; inset: 0;
+      background: rgba(0,0,0,0.35);
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; transition: opacity 0.15s;
+      border-radius: 8px;
+    }
+    .suggested-card:hover .add-overlay { opacity: 1; }
+    .suggested-card .add-overlay span {
+      font-size: 11px; font-weight: 700; color: #fff;
+      background: var(--mint); color: var(--mintDark);
+      padding: 4px 12px; border-radius: 6px;
+    }
+    .suggested-card.already-added .add-overlay {
+      opacity: 1; background: rgba(255,255,255,0.7);
+    }
+    .suggested-card.already-added .add-overlay span {
+      background: var(--border); color: var(--muted);
+    }
+    .suggested-card.already-added { cursor: default; }
+    .suggested-card.already-added:hover { transform: none; }
+
+    .suggested-card .meta { margin-top: 6px; }
+    .suggested-card .meta-title {
+      font-size: 11px; font-weight: 600; color: var(--ink);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .suggested-card .meta-artist {
+      font-size: 10px; color: var(--muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      margin-top: 1px;
+    }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);
+      background: var(--ink); color: #fff; font-size: 12px; font-weight: 600;
+      padding: 10px 24px; border-radius: 10px; z-index: 200;
+      opacity: 0; transition: all 0.3s; pointer-events: none;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-left">
+      <a href="#" class="header-back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+        Rankings
+      </a>
+      <a href="/" class="header-logo">sillajuku</a>
+    </div>
+    <button class="header-save" id="saveBtn" onclick="saveRanking()">Save Ranking</button>
+  </header>
+
+  <!-- Main -->
+  <div class="container">
+
+    <!-- LEFT: Ranking Builder -->
+    <div class="builder" id="builder">
+      <div class="builder-header">
+        <h1 class="builder-title">Greatest Album of All Time</h1>
+        <p class="builder-sub">Drag albums to rank. Drop between slots to create a new tier.</p>
+      </div>
+      <div id="tierList"></div>
+      <div class="add-tier">
+        <button class="add-tier-btn" id="addTierBtn" onclick="addTier()">+ Add Tier</button>
+      </div>
+    </div>
+
+    <!-- RIGHT: Album Picker -->
+    <div class="picker" id="picker">
+      <div class="picker-search">
+        <input type="text" id="searchInput" placeholder="Search for an album…" oninput="filterSuggestions()">
+      </div>
+      <div class="picker-section-title">Suggested</div>
+      <div class="suggested-grid" id="suggestedGrid"></div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast">Ranking saved</div>
+
+  <!-- Drag ghost -->
+  <div class="drag-ghost" id="dragGhost" style="display:none;"></div>
+
+  <script>
+    // ── Data ──
+    const POOL_SIZE = 8;
+    const suggestedAlbums = [
+      { id: 'a1', title: 'To Pimp a Butterfly', artist: 'Kendrick Lamar', year: '2015', color: '#D4825A' },
+      { id: 'a2', title: 'OK Computer', artist: 'Radiohead', year: '1997', color: '#7A8B9A' },
+      { id: 'a3', title: 'Blonde', artist: 'Frank Ocean', year: '2016', color: '#C4B9A8' },
+      { id: 'a4', title: 'Illmatic', artist: 'Nas', year: '1994', color: '#5A5A5A' },
+      { id: 'a5', title: 'My Beautiful Dark Twisted Fantasy', artist: 'Kanye West', year: '2010', color: '#D44638' },
+      { id: 'a6', title: 'Loveless', artist: 'My Bloody Valentine', year: '1991', color: '#E8927C' },
+      { id: 'a7', title: 'Remain in Light', artist: 'Talking Heads', year: '1980', color: '#C9A44A' },
+      { id: 'a8', title: 'Aquemini', artist: 'OutKast', year: '1998', color: '#6B8A6E' },
+      { id: 'a9', title: 'Low', artist: 'David Bowie', year: '1977', color: '#8A8A9A' },
+      { id: 'a10', title: 'Homogenic', artist: 'Björk', year: '1997', color: '#7A6B8A' },
+      { id: 'a11', title: 'Spiderland', artist: 'Slint', year: '1991', color: '#9A8A7A' },
+      { id: 'a12', title: 'Enter the Wu-Tang', artist: 'Wu-Tang Clan', year: '1993', color: '#D4B830' },
+      { id: 'a13', title: 'In the Aeroplane Over the Sea', artist: 'Neutral Milk Hotel', year: '1998', color: '#C4A86B' },
+      { id: 'a14', title: 'Discovery', artist: 'Daft Punk', year: '2001', color: '#5A7AA0' },
+      { id: 'a15', title: 'Psychocandy', artist: 'The Jesus and Mary Chain', year: '1985', color: '#D45A5A' },
+      { id: 'a16', title: 'Harvest', artist: 'Neil Young', year: '1972', color: '#8AA05A' },
+      { id: 'a17', title: 'Untrue', artist: 'Burial', year: '2007', color: '#6A6A6A' },
+      { id: 'a18', title: 'Hounds of Love', artist: 'Kate Bush', year: '1985', color: '#7A5AA0' },
+      { id: 'a19', title: 'Madvillainy', artist: 'Madvillain', year: '2004', color: '#A08A5A' },
+      { id: 'a20', title: 'Closer', artist: 'Joy Division', year: '1980', color: '#5A6A7A' },
+      { id: 'a21', title: 'Selected Ambient Works', artist: 'Aphex Twin', year: '1992', color: '#5AA07A' },
+      { id: 'a22', title: 'The Miseducation of Lauryn Hill', artist: 'Lauryn Hill', year: '1998', color: '#A05A5A' },
+      { id: 'a23', title: 'Unknown Pleasures', artist: 'Joy Division', year: '1979', color: '#3A3A3A' },
+      { id: 'a24', title: 'AmeriKKKa\'s Most Wanted', artist: 'Ice Cube', year: '1990', color: '#D4A030' },
+      { id: 'a25', title: 'Either / Or', artist: 'Elliott Smith', year: '1997', color: '#8A7A6A' },
+      { id: 'a26', title: 'Pet Sounds', artist: 'The Beach Boys', year: '1966', color: '#6A9AA0' },
+      { id: 'a27', title: 'Blue', artist: 'Joni Mitchell', year: '1971', color: '#5A7AA0' },
+      { id: 'a28', title: 'Liquid Swords', artist: 'GZA', year: '1995', color: '#7A8A6A' },
+    ];
+
+    // Initial ranking state: array of tiers, each tier is array of album objects
+    let ranking = [
+      [{ id: 'a1', title: 'To Pimp a Butterfly', artist: 'Kendrick Lamar', year: '2015', color: '#D4825A' }],
+      [{ id: 'a2', title: 'OK Computer', artist: 'Radiohead', year: '1997', color: '#7A8B9A' }],
+      [{ id: 'a3', title: 'Blonde', artist: 'Frank Ocean', year: '2016', color: '#C4B9A8' }],
+      [],
+      [],
+    ];
+
+    let draggedAlbum = null;
+    let draggedFromTier = null;
+    let dragGhostEl = document.getElementById('dragGhost');
+
+    // ── Render ──
+    function renderBuilder() {
+      const container = document.getElementById('tierList');
+      container.innerHTML = '';
+
+      ranking.forEach((tier, tierIndex) => {
+        // Drop zone above
+        const dropZone = document.createElement('div');
+        dropZone.className = 'drop-zone';
+        dropZone.dataset.dropIndex = tierIndex;
+        setupDropZone(dropZone);
+        container.appendChild(dropZone);
+
+        // Tier row
+        const tierEl = document.createElement('div');
+        tierEl.className = 'tier' + (tier.length > 0 ? ' albums-present' : '') + (tier.length > 1 ? ' tier-tied' : '');
+        tierEl.dataset.tierIndex = tierIndex;
+        setupTierDrag(tierEl, tierIndex);
+
+        // Rank number
+        const rankEl = document.createElement('div');
+        rankEl.className = 'tier-rank';
+        rankEl.textContent = tierIndex + 1;
+        tierEl.appendChild(rankEl);
+
+        // Albums container
+        const bodyEl = document.createElement('div');
+        bodyEl.className = 'tier-body';
+        bodyEl.dataset.tierIndex = tierIndex;
+        setupTierBodyDrop(bodyEl, tierIndex);
+
+        tier.forEach((album, albumIndex) => {
+          const card = createAlbumCard(album, tierIndex, albumIndex);
+          bodyEl.appendChild(card);
+        });
+
+        tierEl.appendChild(bodyEl);
+        container.appendChild(tierEl);
+      });
+
+      // Final drop zone at bottom
+      const finalDrop = document.createElement('div');
+      finalDrop.className = 'drop-zone';
+      finalDrop.dataset.dropIndex = ranking.length;
+      setupDropZone(finalDrop);
+      container.appendChild(finalDrop);
+
+      renderSuggestions();
+    }
+
+    function createAlbumCard(album, tierIndex, albumIndex) {
+      const card = document.createElement('div');
+      card.className = 'album-card';
+      card.draggable = true;
+      card.dataset.albumId = album.id;
+      card.dataset.tierIndex = tierIndex;
+      card.dataset.albumIndex = albumIndex;
+
+      card.innerHTML = `
+        <div class="cover" style="background:${album.color}">
+          <span class="cover-placeholder">${album.title.slice(0,2)}</span>
+        </div>
+        <div class="meta">
+          <div class="meta-title">${album.title}</div>
+          <div class="meta-artist">${album.artist}</div>
+        </div>
+        <button class="remove" onclick="removeAlbum(${tierIndex}, ${albumIndex})">×</button>
+      `;
+
+      // Drag events
+      card.addEventListener('dragstart', (e) => {
+        draggedAlbum = album;
+        draggedFromTier = tierIndex;
+        card.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', JSON.stringify({ albumId: album.id, fromTier: tierIndex }));
+
+        // Ghost
+        const rect = card.querySelector('.cover').getBoundingClientRect();
+        dragGhostEl.innerHTML = `<div style="width:64px;height:64px;border-radius:6px;background:${album.color};border:2px solid var(--mint);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;">${album.title.slice(0,2)}</div>`;
+        dragGhostEl.style.display = 'block';
+        dragGhostEl.style.left = (e.clientX - 32) + 'px';
+        dragGhostEl.style.top = (e.clientY - 32) + 'px';
+      });
+
+      card.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+        draggedAlbum = null;
+        draggedFromTier = null;
+        dragGhostEl.style.display = 'none';
+        document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+      });
+
+      return card;
+    }
+
+    // ── Drag & Drop: Tier body (add to existing tier) ──
+    function setupTierBodyDrop(el, tierIndex) {
+      el.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        el.classList.add('drag-over');
+      });
+      el.addEventListener('dragleave', () => {
+        el.classList.remove('drag-over');
+      });
+      el.addEventListener('drop', (e) => {
+        e.preventDefault();
+        el.classList.remove('drag-over');
+        const data = JSON.parse(e.dataTransfer.getData('text/plain') || '{}');
+        handleDrop(data.albumId, data.fromTier, tierIndex, 'into');
+      });
+    }
+
+    // ── Drag & Drop: Between tiers (create new tier) ──
+    function setupDropZone(el) {
+      el.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        el.classList.add('drag-over');
+      });
+      el.addEventListener('dragleave', () => {
+        el.classList.remove('drag-over');
+      });
+      el.addEventListener('drop', (e) => {
+        e.preventDefault();
+        el.classList.remove('drag-over');
+        const dropIndex = parseInt(el.dataset.dropIndex);
+        const data = JSON.parse(e.dataTransfer.getData('text/plain') || '{}');
+        handleDrop(data.albumId, data.fromTier, dropIndex, 'between');
+      });
+    }
+
+    // ── Drag: Reorder entire tier ──
+    let draggedTierIndex = null;
+    function setupTierDrag(el, tierIndex) {
+      el.draggable = true;
+      el.addEventListener('dragstart', (e) => {
+        if (e.target.closest('.album-card')) return; // let album handle it
+        draggedTierIndex = tierIndex;
+        el.style.opacity = '0.4';
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', JSON.stringify({ reorderTier: tierIndex }));
+      });
+      el.addEventListener('dragend', () => {
+        el.style.opacity = '1';
+        draggedTierIndex = null;
+      });
+      // Allow dropping on tier to reorder
+      el.addEventListener('dragover', (e) => {
+        if (draggedTierIndex !== null && draggedTierIndex !== tierIndex) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+        }
+      });
+      el.addEventListener('drop', (e) => {
+        if (draggedTierIndex !== null && draggedTierIndex !== tierIndex) {
+          e.preventDefault();
+          const data = JSON.parse(e.dataTransfer.getData('text/plain') || '{}');
+          if (data.reorderTier !== undefined) {
+            reorderTier(data.reorderTier, tierIndex);
+          }
+        }
+      });
+    }
+
+    // ── Drop Logic ──
+    function handleDrop(albumId, fromTier, toIndex, mode) {
+      if (fromTier === toIndex && mode === 'into') return;
+
+      const album = suggestedAlbums.find(a => a.id === albumId);
+      if (!album) return;
+
+      // Remove from source
+      if (fromTier !== null && fromTier >= 0) {
+        const idx = ranking[fromTier].findIndex(a => a.id === albumId);
+        if (idx > -1) ranking[fromTier].splice(idx, 1);
+      }
+
+      if (mode === 'into') {
+        // Add to existing tier
+        ranking[toIndex].push(album);
+      } else if (mode === 'between') {
+        // Create new tier at position
+        ranking.splice(toIndex, 0, [album]);
+      } else if (mode === 'addTier') {
+        // Add new tier at bottom with this album
+        ranking.push([album]);
+      }
+
+      // Clean empty tiers (except for addTier which just created a filled one)
+      if (mode !== 'addTier') {
+        ranking = ranking.filter(tier => tier.length > 0);
+      }
+
+      renderBuilder();
+    }
+
+    function reorderTier(fromIndex, toIndex) {
+      const tier = ranking.splice(fromIndex, 1)[0];
+      // Insert before target if dragging down, after if dragging up
+      const insertIndex = fromIndex < toIndex ? toIndex : toIndex;
+      ranking.splice(insertIndex, 0, tier);
+      renderBuilder();
+    }
+
+    function removeAlbum(tierIndex, albumIndex) {
+      ranking[tierIndex].splice(albumIndex, 1);
+      // Don't remove empty tiers — they serve as placeholders
+      renderBuilder();
+    }
+
+    function addTier() {
+      ranking.push([]);
+      renderBuilder();
+    }
+
+    function setupAddTierDrop() {
+      const btn = document.getElementById('addTierBtn');
+      if (!btn) return;
+      btn.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        btn.classList.add('drag-over');
+      });
+      btn.addEventListener('dragleave', () => {
+        btn.classList.remove('drag-over');
+      });
+      btn.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        btn.classList.remove('drag-over');
+        const data = JSON.parse(e.dataTransfer.getData('text/plain') || '{}');
+        if (data.albumId) {
+          handleDrop(data.albumId, data.fromTier, ranking.length, 'addTier');
+        }
+      });
+    }
+
+    // ── Suggestions ──
+    function renderSuggestions() {
+      const usedIds = new Set(ranking.flat().map(a => a.id));
+      const grid = document.getElementById('suggestedGrid');
+      const query = document.getElementById('searchInput').value.toLowerCase().trim();
+
+      grid.innerHTML = '';
+
+      if (query) {
+        // Search mode: show all matches, mark added ones
+        const matches = suggestedAlbums.filter(a =>
+          a.title.toLowerCase().includes(query) || a.artist.toLowerCase().includes(query)
+        );
+        matches.forEach(album => {
+          const isAdded = usedIds.has(album.id);
+          const card = document.createElement('div');
+          card.className = 'suggested-card' + (isAdded ? ' already-added' : '');
+          card.innerHTML = `
+            <div class="cover-wrap" style="background:${album.color};${isAdded ? 'opacity:0.5' : ''}">
+              <div class="cover-placeholder">${album.title.slice(0,2)}</div>
+              <div class="add-overlay"><span>${isAdded ? 'Added' : 'Add'}</span></div>
+            </div>
+            <div class="meta">
+              <div class="meta-title">${album.title}</div>
+              <div class="meta-artist">${album.artist}</div>
+            </div>
+          `;
+          if (!isAdded) {
+            card.onclick = () => addFromSuggestions(album);
+            setupSuggestionDrag(card, album);
+          }
+          grid.appendChild(card);
+        });
+      } else {
+        // Normal mode: only show unadded albums, up to POOL_SIZE
+        const available = suggestedAlbums.filter(a => !usedIds.has(a.id));
+        const visible = available.slice(0, POOL_SIZE);
+        visible.forEach(album => {
+          const card = document.createElement('div');
+          card.className = 'suggested-card';
+          card.innerHTML = `
+            <div class="cover-wrap" style="background:${album.color}">
+              <div class="cover-placeholder">${album.title.slice(0,2)}</div>
+              <div class="add-overlay"><span>Add</span></div>
+            </div>
+            <div class="meta">
+              <div class="meta-title">${album.title}</div>
+              <div class="meta-artist">${album.artist}</div>
+            </div>
+          `;
+          card.onclick = () => addFromSuggestions(album);
+          setupSuggestionDrag(card, album);
+          grid.appendChild(card);
+        });
+      }
+    }
+
+    function setupSuggestionDrag(card, album) {
+      card.draggable = true;
+      card.addEventListener('dragstart', (e) => {
+        draggedAlbum = album;
+        draggedFromTier = -1;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', JSON.stringify({ albumId: album.id, fromTier: -1 }));
+
+        const rect = card.querySelector('.cover-wrap').getBoundingClientRect();
+        dragGhostEl.innerHTML = `<div style="width:64px;height:64px;border-radius:6px;background:${album.color};border:2px solid var(--mint);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;">${album.title.slice(0,2)}</div>`;
+        dragGhostEl.style.display = 'block';
+        dragGhostEl.style.left = (e.clientX - 32) + 'px';
+        dragGhostEl.style.top = (e.clientY - 32) + 'px';
+      });
+      card.addEventListener('dragend', () => {
+        draggedAlbum = null;
+        draggedFromTier = null;
+        dragGhostEl.style.display = 'none';
+      });
+    }
+
+    function addFromSuggestions(album) {
+      // Find first empty tier or append to last
+      let placed = false;
+      for (let i = 0; i < ranking.length; i++) {
+        if (ranking[i].length === 0) {
+          ranking[i].push(album);
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) ranking.push([album]);
+      renderBuilder();
+    }
+
+    function filterSuggestions() {
+      renderSuggestions();
+    }
+
+    // ── Ghost follow mouse ──
+    document.addEventListener('dragover', (e) => {
+      if (dragGhostEl.style.display === 'block') {
+        dragGhostEl.style.left = (e.clientX - 32) + 'px';
+        dragGhostEl.style.top = (e.clientY - 32) + 'px';
+      }
+    });
+
+    // ── Save ──
+    function saveRanking() {
+      const toast = document.getElementById('toast');
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2000);
+    }
+
+    // ── Init ──
+    renderBuilder();
+    setupAddTierDrop();
+  </script>
+</body>
+</html>

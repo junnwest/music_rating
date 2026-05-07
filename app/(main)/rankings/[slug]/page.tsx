@@ -5,6 +5,37 @@ import Link from 'next/link';
 
 export const revalidate = 30;
 
+function computeSillaScores(
+  entries: { ranking_id: string; release_id: string; rank: number }[]
+): Map<string, number> {
+  const byRanking = new Map<string, { release_id: string; rank: number }[]>();
+  for (const e of entries) {
+    if (!byRanking.has(e.ranking_id)) byRanking.set(e.ranking_id, []);
+    byRanking.get(e.ranking_id)!.push(e);
+  }
+
+  const scores = new Map<string, number>();
+  for (const userEntries of byRanking.values()) {
+    const byRank = new Map<number, string[]>();
+    for (const e of userEntries) {
+      if (!byRank.has(e.rank)) byRank.set(e.rank, []);
+      byRank.get(e.rank)!.push(e.release_id);
+    }
+
+    let pos = 1;
+    for (const [, albums] of [...byRank.entries()].sort(([a], [b]) => a - b)) {
+      const t = albums.length;
+      const effectivePos = pos + (t - 1) / 2;
+      const score = 1 / effectivePos;
+      for (const releaseId of albums) {
+        scores.set(releaseId, (scores.get(releaseId) ?? 0) + score);
+      }
+      pos += t;
+    }
+  }
+  return scores;
+}
+
 export default async function RankingCategoryPage({ params }: { params: { slug: string } }) {
   const supabase = createServerClient();
   if (!supabase) notFound();
@@ -18,37 +49,62 @@ export default async function RankingCategoryPage({ params }: { params: { slug: 
 
   if (!category) notFound();
 
-  // Fetch all votes for this category
-  const { data: votes } = await supabase
-    .from('ranking_votes')
-    .select('release_id')
-    .eq('category_id', category.id);
+  // Fetch user rankings + seed entries in parallel
+  const [{ data: rankings }, { data: seedEntries }] = await Promise.all([
+    supabase.from('user_rankings').select('id').eq('category_id', category.id),
+    supabase.from('ranking_seed_entries').select('release_id, seed_votes').eq('category_id', category.id),
+  ]);
 
-  // Tally votes per release
-  const tally = new Map<string, number>();
-  for (const v of votes ?? []) {
-    tally.set(v.release_id, (tally.get(v.release_id) ?? 0) + 1);
+  // Fetch all entries for this category's rankings
+  const rankingIds = (rankings ?? []).map(r => r.id);
+  let entries: { ranking_id: string; release_id: string; rank: number }[] = [];
+  if (rankingIds.length > 0) {
+    const { data } = await supabase
+      .from('user_ranking_entries')
+      .select('ranking_id, release_id, rank')
+      .in('ranking_id', rankingIds);
+    entries = data ?? [];
   }
 
-  const sortedEntries = [...tally.entries()].sort((a, b) => b[1] - a[1]);
-  const totalVotes = sortedEntries.reduce((s, [, c]) => s + c, 0);
-  const topIds = sortedEntries.slice(0, 10).map(([id]) => id);
+  // Silla Scores from real rankings
+  const scores = computeSillaScores(entries);
 
-  // Fetch release details for top 10
+  // Seed entries contribute rank-1 equivalent (1.0 per seed vote)
+  for (const s of seedEntries ?? []) {
+    scores.set(s.release_id, (scores.get(s.release_id) ?? 0) + s.seed_votes);
+  }
+
+  const totalRankers = rankings?.length ?? 0;
+  const sortedEntries = [...scores.entries()].sort((a, b) => b[1] - a[1]);
+  const topIds = sortedEntries.slice(0, 10).map(([id]) => id);
+  const maxRawScore = sortedEntries[0]?.[1] ?? 1;
+
+  // Fetch release details + rating stats for top 10 in parallel
   let releaseMap = new Map<string, { title: string; artist: string; coverUrl: string | null }>();
+  let avgRatingMap = new Map<string, number>();
+
   if (topIds.length > 0) {
-    const { data: releases } = await supabase
-      .from('releases')
-      .select('id, title, artist, cover_url')
-      .in('id', topIds);
+    const [{ data: releases }, { data: ratingRows }] = await Promise.all([
+      supabase.from('releases').select('id, title, artist, cover_url').in('id', topIds),
+      supabase.from('ratings').select('release_id, score').in('release_id', topIds),
+    ]);
     for (const r of releases ?? []) {
       releaseMap.set(r.id, { title: r.title, artist: r.artist, coverUrl: r.cover_url });
+    }
+    // Compute avg rating per release
+    const ratingAccum = new Map<string, { sum: number; count: number }>();
+    for (const r of ratingRows ?? []) {
+      const cur = ratingAccum.get(r.release_id) ?? { sum: 0, count: 0 };
+      ratingAccum.set(r.release_id, { sum: cur.sum + Number(r.score), count: cur.count + 1 });
+    }
+    for (const [id, { sum, count }] of ratingAccum) {
+      avgRatingMap.set(id, sum / count);
     }
   }
 
   const leaderboard: LeaderboardEntry[] = sortedEntries
     .slice(0, 10)
-    .map(([releaseId, voteCount], i) => {
+    .map(([releaseId, rawScore], i) => {
       const rel = releaseMap.get(releaseId);
       return {
         rank: i + 1,
@@ -56,7 +112,8 @@ export default async function RankingCategoryPage({ params }: { params: { slug: 
         title: rel?.title ?? 'Unknown album',
         artist: rel?.artist ?? '—',
         coverUrl: rel?.coverUrl ?? null,
-        voteCount,
+        sillaScore: (rawScore / maxRawScore) * 100,
+        avgRating: avgRatingMap.get(releaseId) ?? null,
       };
     });
 
@@ -91,22 +148,25 @@ export default async function RankingCategoryPage({ params }: { params: { slug: 
           >
             {category.title}
           </h1>
-          {category.description && (
-            <p className="text-[15px] text-muted mt-3 max-w-[520px] leading-relaxed">
-              {category.description}
-            </p>
-          )}
 
-          <div className="flex items-center gap-2 mt-5">
-            <div
-              className="text-[22px] font-extrabold text-ink"
-              style={{ letterSpacing: '-0.6px' }}
+          <div className="flex items-center gap-4 mt-5">
+            <div className="flex items-center gap-2">
+              <div
+                className="text-[22px] font-extrabold text-ink"
+                style={{ letterSpacing: '-0.6px' }}
+              >
+                {totalRankers.toLocaleString()}
+              </div>
+              <div className="text-[13px] text-muted">
+                {totalRankers === 1 ? 'ranking submitted' : 'rankings submitted'}
+              </div>
+            </div>
+            <Link
+              href={`/rankings/${category.slug}/rank`}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12px] font-semibold text-ink border border-[#EBEBEB] hover:bg-surface transition"
             >
-              {totalVotes.toLocaleString()}
-            </div>
-            <div className="text-[13px] text-muted">
-              {totalVotes === 1 ? 'vote cast' : 'votes cast'}
-            </div>
+              Build your ranking →
+            </Link>
           </div>
         </div>
       </div>
@@ -116,7 +176,7 @@ export default async function RankingCategoryPage({ params }: { params: { slug: 
         <RankingVoteWidget
           categoryId={category.id}
           leaderboard={leaderboard}
-          totalVotes={totalVotes}
+          totalRankers={totalRankers}
         />
       </div>
     </div>

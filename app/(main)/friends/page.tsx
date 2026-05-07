@@ -139,15 +139,27 @@ export default function FriendsPage() {
     discover: discoverUsers.length,
   };
 
+  const hero = (
+    <div className="bg-surface border-b border-[#EBEBEB]">
+      <div className="max-w-[1440px] mx-auto px-5 py-12">
+        <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.7px' }}>
+          People
+        </p>
+        <h1 className="text-[38px] font-extrabold text-ink leading-[1.06]" style={{ letterSpacing: '-1.2px' }}>
+          Friends
+        </h1>
+        <p className="text-[15px] text-muted mt-3 max-w-[500px] leading-relaxed">
+          Discover people who love the same music you do.
+        </p>
+      </div>
+    </div>
+  );
+
   if (loading) {
     return (
-      <div className="flex-1">
-        <div className="border-b border-divider">
-          <div className="max-w-[720px] mx-auto px-5 py-10 md:py-12">
-            <h1 className="text-[28px] md:text-[34px] font-extrabold text-ink tracking-tight leading-[1.05]">Friends</h1>
-          </div>
-        </div>
-        <div className="max-w-[720px] mx-auto px-5 py-12 text-center">
+      <div className="bg-white min-h-screen">
+        {hero}
+        <div className="max-w-[720px] mx-auto px-5 py-10 pb-16 text-center">
           <p className="text-sm text-muted">Loading…</p>
         </div>
       </div>
@@ -156,14 +168,9 @@ export default function FriendsPage() {
 
   if (!myId) {
     return (
-      <div className="flex-1">
-        <div className="border-b border-divider">
-          <div className="max-w-[720px] mx-auto px-5 py-10 md:py-12">
-            <h1 className="text-[28px] md:text-[34px] font-extrabold text-ink tracking-tight leading-[1.05]">Friends</h1>
-            <p className="text-[14px] text-muted mt-2">Discover people who love the same music you do.</p>
-          </div>
-        </div>
-        <div className="max-w-[720px] mx-auto px-5 py-12 text-center">
+      <div className="bg-white min-h-screen">
+        {hero}
+        <div className="max-w-[720px] mx-auto px-5 py-10 pb-16 text-center">
           <Users size={32} className="text-subtle mx-auto mb-4" />
           <p className="text-[14px] text-ink font-semibold mb-1">Sign in to see your friends</p>
           <p className="text-[13px] text-muted mb-6">Follow people and discover who shares your taste.</p>
@@ -179,15 +186,10 @@ export default function FriendsPage() {
   }
 
   return (
-    <div className="flex-1">
-      <div className="border-b border-divider">
-        <div className="max-w-[720px] mx-auto px-5 py-10 md:py-12">
-          <h1 className="text-[28px] md:text-[34px] font-extrabold text-ink tracking-tight leading-[1.05]">Friends</h1>
-          <p className="text-[14px] text-muted mt-2">Discover people who love the same music you do.</p>
-        </div>
-      </div>
+    <div className="bg-white min-h-screen">
+      {hero}
 
-      <div className="max-w-[720px] mx-auto px-5 py-6 pb-16 w-full">
+      <div className="max-w-[720px] mx-auto px-5 py-10 pb-16 w-full">
         <div className="bg-surface border border-divider rounded-xl px-4 py-2.5 flex items-center gap-2 mb-6">
           <Search size={15} className="text-muted flex-shrink-0" />
           <input

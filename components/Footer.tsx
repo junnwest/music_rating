@@ -10,10 +10,7 @@ export default function Footer() {
 
           {/* Brand */}
           <div className="flex-shrink-0">
-            <Link href="/" aria-label="Home">
-              <img src="/sillajuku_logo.svg" alt="sillajuku" className="h-[34px] w-auto object-contain" />
-            </Link>
-            <p className="text-[12px] text-muted mt-1.5">Rate, discover, remember.</p>
+            <p className="text-[12px] text-muted">Rate, discover, remember.</p>
             <p className="text-[11px] text-placeholder mt-3">
               Music data powered by{' '}
               <a

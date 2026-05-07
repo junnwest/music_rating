@@ -5,6 +5,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get('query');
   const type = searchParams.get('type') ?? 'releases';
+  const year = searchParams.get('year');
 
   if (!query) {
     return new Response(JSON.stringify({ error: 'Missing query parameter' }), { status: 400 });
@@ -19,7 +20,16 @@ export async function GET(request: NextRequest) {
       const recordings = await searchSpotifyTracks(query);
       return new Response(JSON.stringify({ recordings }), { headers: { 'Content-Type': 'application/json' } });
     }
-    const releases = await searchSpotifyAlbums(query);
+
+    // Append year filter to Spotify query if provided (Spotify supports year:XXXX natively)
+    const spotifyQuery = year ? `${query} year:${year}` : query;
+    let releases = await searchSpotifyAlbums(spotifyQuery);
+
+    // Post-filter by year as a belt-and-suspenders check
+    if (year) {
+      releases = releases.filter(r => !r.date || r.date.startsWith(year));
+    }
+
     return new Response(JSON.stringify({ releases }), { headers: { 'Content-Type': 'application/json' } });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Search failed';

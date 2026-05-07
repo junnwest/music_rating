@@ -1,52 +1,113 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { supabase } from '../lib/supabaseClient';
+
+interface Category {
+  id: string;
+  slug: string;
+  title: string;
+  genre: string | null;
+  year: number | null;
+}
 
 const filterCountries = [
   'Global', 'South Korea', 'Japan', 'United States', 'United Kingdom',
   'Canada', 'Australia', 'France', 'Germany', 'Brazil', 'Nigeria',
 ];
 
-const filterGenres = [
-  'All Genres', 'K-Pop', 'K-R&B', 'K-Indie', 'K-Rap',
-  'Hip-Hop', 'R&B', 'Pop', 'Indie', 'Rock', 'Jazz',
-  'Electronic', 'Classical', 'Folk', 'Alternative',
-];
+const genresByCountry: Record<string, string[]> = {
+  'Global':         ['All Genres', 'Hip-Hop', 'R&B', 'Pop', 'Indie', 'Rock', 'Jazz', 'Electronic', 'Folk', 'Alternative', 'Classical'],
+  'South Korea':    ['All Genres', 'K-Pop', 'K-Hip-Hop', 'R&B', 'Indie', 'Rock'],
+  'Japan':          ['All Genres', 'J-Pop', 'City Pop', 'Rock', 'Indie', 'Electronic', 'Hip-Hop'],
+  'United States':  ['All Genres', 'Hip-Hop', 'R&B', 'Pop', 'Indie', 'Rock', 'Country', 'Jazz', 'Electronic'],
+  'United Kingdom': ['All Genres', 'Pop', 'Indie', 'Rock', 'Electronic', 'Hip-Hop', 'R&B'],
+  'Canada':         ['All Genres', 'Hip-Hop', 'Pop', 'Indie', 'Rock', 'R&B'],
+  'Australia':      ['All Genres', 'Pop', 'Indie', 'Rock', 'Hip-Hop', 'Electronic'],
+  'France':         ['All Genres', 'Chanson', 'Pop', 'Electronic', 'Jazz', 'Hip-Hop', 'Indie'],
+  'Germany':        ['All Genres', 'Electronic', 'Rock', 'Pop', 'Hip-Hop', 'Jazz'],
+  'Brazil':         ['All Genres', 'Samba', 'Bossa Nova', 'MPB', 'Funk', 'Hip-Hop', 'Rock', 'Electronic'],
+  'Nigeria':        ['All Genres', 'Afrobeats', 'Hip-Hop', 'R&B', 'Pop'],
+};
 
 const filterTimes = [
-  'All Time', '2020s', '2010s', '2000s', '1990s', '1980s', '1970s', '1960s',
+  'All Time', '2026', '2025', '2024', '2020s', '2010s', '2000s', '1990s', '1980s', '1970s', '1960s',
 ];
 
-function generateTitle(country: string, genre: string, time: string): string {
-  const parts: string[] = ['Greatest'];
-  if (country !== 'Global') parts.push(country);
-  if (genre !== 'All Genres') parts.push(genre);
-  else if (country === 'Global') parts.push('Albums');
-  else parts.push('Albums');
-  if (time !== 'All Time') parts.push(`of the ${time}`);
-  else if (parts.length === 2) parts.push('of All Time');
-  if (parts.length === 1) parts.push('Albums of All Time');
-  return parts.join(' ');
+function inferCategoryCountry(cat: Category): string {
+  if (cat.genre?.startsWith('K-') || cat.title.toLowerCase().includes('korean')) return 'South Korea';
+  if (cat.genre?.startsWith('J-') || cat.title.toLowerCase().includes('japanese')) return 'Japan';
+  return 'Global';
 }
 
-export default function FilterBuilder() {
+function timeToYear(time: string): number | null | undefined {
+  if (time === 'All Time') return null;
+  const n = parseInt(time);
+  if (!isNaN(n) && n > 2000 && n < 2100) return n;
+  return undefined;
+}
+
+export default function FilterBuilder({
+  categories,
+  topAlbumsMap = {},
+}: {
+  categories: Category[];
+  topAlbumsMap?: Record<string, { coverUrl: string | null }[]>;
+}) {
   const [country, setCountry] = useState('Global');
   const [genre, setGenre] = useState('All Genres');
   const [time, setTime] = useState('All Time');
+  const [userId, setUserId] = useState<string | null>(null);
+  const [myRankings, setMyRankings] = useState<Record<string, boolean>>({});
+
+  const availableGenres = genresByCountry[country] ?? genresByCountry['Global'];
+
+  const handleCountryChange = (c: string) => {
+    setCountry(c);
+    setGenre('All Genres');
+  };
+
+  useEffect(() => {
+    if (!supabase) return;
+    supabase.auth.getSession().then(async ({ data }) => {
+      const uid = data.session?.user?.id ?? null;
+      setUserId(uid);
+      if (!uid) return;
+      const res = await fetch(`/api/rankings/personalized?userId=${uid}`);
+      const json = await res.json();
+      setMyRankings(json.myRankings ?? {});
+    });
+  }, []);
+
+  const matchedCategory = useMemo(() => {
+    const year = timeToYear(time);
+    if (year === undefined) return null;
+    return categories.find((cat) => {
+      const catCountry = inferCategoryCountry(cat);
+      const countryMatch = catCountry === country;
+      const genreMatch = genre === 'All Genres' ? cat.genre === null : cat.genre === genre;
+      const yearMatch = cat.year === year;
+      return countryMatch && genreMatch && yearMatch;
+    }) ?? null;
+  }, [country, genre, time, categories]);
+
+  const hasRanked = matchedCategory ? !!myRankings[matchedCategory.id] : false;
 
   return (
     <section>
       <h2 className="text-[13px] font-bold text-muted uppercase mb-5" style={{ letterSpacing: '0.7px' }}>
-        Filter Builder
+        Browse Rankings
       </h2>
+
       <div className="border border-divider rounded-2xl p-6 md:p-8 bg-white">
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-3 mb-8">
+        {/* Dropdowns */}
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-3 mb-6">
           <div>
             <label className="block text-[12px] font-semibold text-muted uppercase mb-2" style={{ letterSpacing: '0.5px' }}>Country</label>
             <select
               value={country}
-              onChange={e => setCountry(e.target.value)}
+              onChange={e => handleCountryChange(e.target.value)}
               className="w-full bg-surface border border-divider rounded-xl px-4 py-3 text-[14px] text-ink outline-none cursor-pointer hover:border-mid transition"
             >
               {filterCountries.map(c => <option key={c} value={c}>{c}</option>)}
@@ -59,7 +120,7 @@ export default function FilterBuilder() {
               onChange={e => setGenre(e.target.value)}
               className="w-full bg-surface border border-divider rounded-xl px-4 py-3 text-[14px] text-ink outline-none cursor-pointer hover:border-mid transition"
             >
-              {filterGenres.map(g => <option key={g} value={g}>{g}</option>)}
+              {availableGenres.map(g => <option key={g} value={g}>{g}</option>)}
             </select>
           </div>
           <div>
@@ -74,21 +135,60 @@ export default function FilterBuilder() {
           </div>
         </div>
 
-        <div className="bg-surface rounded-xl p-5 mb-6">
-          <p className="text-[11px] font-semibold text-muted uppercase mb-2" style={{ letterSpacing: '0.5px' }}>Preview</p>
-          <p className="text-[20px] md:text-[24px] font-extrabold text-ink tracking-tight">
-            {generateTitle(country, genre, time)}
-          </p>
-        </div>
+        {/* Result */}
+        {matchedCategory ? (
+          <div className="border border-[#EBEBEB] rounded-[12px] px-4 py-3 flex items-center gap-4">
+            {/* Top 5 covers */}
+            <div className="flex gap-[4px] flex-shrink-0">
+              {Array.from({ length: 5 }).map((_, i) => {
+                const album = (topAlbumsMap[matchedCategory.id] ?? [])[i];
+                return album?.coverUrl ? (
+                  <img
+                    key={i}
+                    src={album.coverUrl}
+                    alt=""
+                    className="w-[36px] h-[36px] rounded-[4px] object-cover border border-[#EBEBEB] flex-shrink-0"
+                  />
+                ) : (
+                  <div
+                    key={i}
+                    className="w-[36px] h-[36px] rounded-[4px] border border-dashed border-[#DDDDD8] bg-surface flex-shrink-0"
+                  />
+                );
+              })}
+            </div>
 
-        <Link
-          href={`/rankings/build?country=${encodeURIComponent(country)}&genre=${encodeURIComponent(genre)}&time=${encodeURIComponent(time)}`}
-          className="inline-block"
-        >
-          <button className="bg-ink text-white rounded-xl px-8 py-3.5 text-[14px] font-bold hover:opacity-80 transition">
-            View Ranking →
-          </button>
-        </Link>
+            {/* Title */}
+            <div className="flex-1 min-w-0">
+              <div
+                className="text-[14px] font-extrabold text-ink truncate"
+                style={{ letterSpacing: '-0.3px' }}
+              >
+                {matchedCategory.title}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <Link
+                href={`/rankings/${matchedCategory.slug}`}
+                className="text-[12px] font-medium text-muted hover:text-ink transition"
+              >
+                View ranking
+              </Link>
+              <Link
+                href={`/rankings/${matchedCategory.slug}/rank`}
+                className="text-[12px] font-semibold text-ink border border-[#DDDDD8] rounded-lg px-3 py-1.5 hover:bg-surface transition whitespace-nowrap"
+              >
+                {hasRanked ? 'Re-rank →' : 'Rank →'}
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <p className="text-[13px] text-muted">
+            No curated ranking for this combination yet.
+          </p>
+        )}
       </div>
     </section>
   );

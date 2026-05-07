@@ -104,11 +104,14 @@ export default function ForYouPage() {
   return (
     <div className="bg-white min-h-screen">
       <div className="bg-surface border-b border-[#EBEBEB]">
-        <div className="max-w-[1440px] mx-auto px-5 py-8">
-          <h1 className="text-[24px] font-extrabold text-ink" style={{ letterSpacing: '-0.6px' }}>
+        <div className="max-w-[1440px] mx-auto px-5 py-12">
+          <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.7px' }}>
+            Discover
+          </p>
+          <h1 className="text-[38px] font-extrabold text-ink leading-[1.06]" style={{ letterSpacing: '-1.2px' }}>
             For You
           </h1>
-          <p className="text-[13px] text-muted mt-1">
+          <p className="text-[15px] text-muted mt-3 max-w-[500px] leading-relaxed">
             {status === 'guest'
               ? 'Log in to get personalized album suggestions.'
               : 'Albums you might love or already know.'}
@@ -116,7 +119,7 @@ export default function ForYouPage() {
         </div>
       </div>
 
-      <div className="max-w-[1440px] mx-auto px-5 py-9 pb-14">
+      <div className="max-w-[1440px] mx-auto px-5 py-10 pb-16">
 
         {status === 'init' && skeletonGrid}
 

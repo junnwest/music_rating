@@ -19,13 +19,30 @@ export default function SiteHeader({ onMenuClick }: SiteHeaderProps) {
   const [session, setSession] = useState<Session | null>(null);
   const [query, setQuery] = useState('');
   const [profileOpen, setProfileOpen] = useState(false);
+  const [profileUsername, setProfileUsername] = useState<string | null>(null);
+  const [profileDisplayName, setProfileDisplayName] = useState<string | null>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+
+  const fetchProfile = async (uid: string) => {
+    if (!supabase) return;
+    const { data } = await supabase
+      .from('profiles')
+      .select('username, display_name')
+      .eq('id', uid)
+      .maybeSingle();
+    if (data?.username) setProfileUsername(data.username);
+    if (data?.display_name) setProfileDisplayName(data.display_name);
+  };
 
   useEffect(() => {
     if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      if (data.session?.user?.id) fetchProfile(data.session.user.id);
+    });
     const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
+      if (s?.user?.id) fetchProfile(s.user.id);
       if (s?.user && !s.user.user_metadata?.onboarding_completed) {
         const path = window.location.pathname;
         if (path !== '/onboarding' && path !== '/login') {
@@ -59,8 +76,9 @@ export default function SiteHeader({ onMenuClick }: SiteHeaderProps) {
     await supabase.auth.signOut();
   };
 
-  const initial = session?.user?.email?.[0].toUpperCase() ?? '';
-  const username = session?.user?.user_metadata?.username ?? session?.user?.email?.split('@')[0];
+  const username = profileUsername ?? session?.user?.email?.split('@')[0] ?? '';
+  const displayName = profileDisplayName ?? username;
+  const initial = (profileDisplayName ?? profileUsername ?? session?.user?.email ?? '')[0]?.toUpperCase() ?? '';
 
   const menuItems = [
     { icon: User, label: 'Profile', href: username ? `/profile/${username}` : '/profile' },
@@ -127,7 +145,7 @@ export default function SiteHeader({ onMenuClick }: SiteHeaderProps) {
             {profileOpen && (
               <div className="absolute right-0 top-[42px] w-[200px] bg-white border border-divider rounded-xl shadow-lg py-2 z-50">
                 <div className="px-3 py-2 border-b border-divider mb-1">
-                  <p className="text-[13px] font-bold text-ink truncate">{session.user.user_metadata?.display_name ?? username}</p>
+                  <p className="text-[13px] font-bold text-ink truncate">{displayName}</p>
                   <p className="text-[11px] text-muted truncate">@{username}</p>
                 </div>
 

@@ -44,7 +44,7 @@ export default async function UserProfilePage({ params }: Props) {
 
   return (
     <main className="min-h-screen bg-white">
-      <ProfilePanel targetUserId={userId} targetUsername={username} />
+      <ProfilePanel targetUserId={userId} />
     </main>
   );
 }
