@@ -771,7 +771,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                           )}
                           {rating.score && (
                             <div
-                              className="absolute bottom-1 right-1 text-[10px] font-bold rounded-[4px] px-[6px] py-[1px]"
+                              className="absolute bottom-1 right-1 text-[11px] font-bold rounded-[4px] px-[6px] py-[2px]"
                               style={{ background: '#3DFFD1', color: '#00453A' }}
                             >
                               ★ {rating.score}
@@ -779,7 +779,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                           )}
                         </div>
                         <div
-                          className="mt-[7px] text-[11px] font-semibold text-ink truncate"
+                          className="mt-[7px] text-[12px] font-semibold text-ink truncate"
                           title={rating.releases?.title}
                         >
                           {rating.releases?.title ?? rating.release_id}
