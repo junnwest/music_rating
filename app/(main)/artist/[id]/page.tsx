@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { getSpotifyArtist, getSpotifyArtistAlbums } from '../../../../lib/spotify';
-import { getCachedArtist, cacheArtist } from '../../../../lib/dbCache';
+import { getCachedArtist, cacheArtist, getArtistReleases } from '../../../../lib/dbCache';
 import DiscographyGrid from '../../../../components/DiscographyGrid';
 
 export const revalidate = 3600;
@@ -18,11 +18,16 @@ export default async function ArtistPage({ params }: { params: { id: string } })
     if (!artist) notFound();
     cacheArtist(artist); // fire and forget
   }
-  const { releases, nextCursor } = await getSpotifyArtistAlbums(params.id, artist.name);
+  const { releases: spotifyReleases, nextCursor } = await getSpotifyArtistAlbums(params.id, artist.name);
+
+  // If Spotify returned nothing (rate limit or network failure), fall back to the DB
+  const rawReleases = spotifyReleases.length > 0
+    ? spotifyReleases
+    : await getArtistReleases(params.id);
 
   // Deduplicate by title+type, then sort newest first
   const seen = new Set<string>();
-  const deduped = releases
+  const deduped = rawReleases
     .filter((r) => {
       const key = `${r.title.toLowerCase()}::${r.releaseType}`;
       if (seen.has(key)) return false;

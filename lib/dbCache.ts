@@ -1,5 +1,6 @@
 import { createServerClient } from './supabaseServer';
 import type { SpotifyAlbumDetail, SpotifyArtistDetail } from './spotify';
+import type { AlbumRelease } from '../types';
 
 const ALBUM_TTL_DAYS = 30;
 const ARTIST_TTL_DAYS = 7;
@@ -62,6 +63,29 @@ export async function cacheAlbum(album: SpotifyAlbumDetail): Promise<void> {
     },
     { onConflict: 'id' }
   );
+}
+
+export async function getArtistReleases(artistId: string): Promise<AlbumRelease[]> {
+  const supabase = createServerClient();
+  if (!supabase) return [];
+
+  const { data } = await supabase
+    .from('releases')
+    .select('id, title, artist, release_date, release_type, cover_url')
+    .eq('artist_id', artistId)
+    .order('release_date', { ascending: false });
+
+  if (!data) return [];
+
+  return data.map((r) => ({
+    id: r.id,
+    title: r.title,
+    artist: r.artist,
+    date: r.release_date ?? null,
+    country: null,
+    releaseType: (r.release_type ?? 'Album') as AlbumRelease['releaseType'],
+    coverUrl: r.cover_url ?? null,
+  }));
 }
 
 // ── Artist ────────────────────────────────────────────────────────────────────
