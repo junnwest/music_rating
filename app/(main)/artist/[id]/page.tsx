@@ -40,12 +40,30 @@ export default async function ArtistPage({ params }: { params: { id: string } })
     <div className="bg-white min-h-screen">
 
       {/* ── HEADER ────────────────────────────────────────────── */}
-      <div className="bg-surface border-b border-[#EBEBEB]">
-        <div className="max-w-[1440px] mx-auto px-5 py-8 sm:py-10 flex gap-5 sm:gap-9 items-center">
+      <div className="relative overflow-hidden">
+        {/* Blurred photo bleeds colour into the gradient — desaturated + brightened so it reads as a soft tint, not a photo */}
+        {artist.coverUrl && (
+          <div
+            className="absolute inset-0 scale-110"
+            style={{
+              backgroundImage: `url(${artist.coverUrl})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center top',
+              filter: 'blur(70px) saturate(0.55) brightness(1.55)',
+            }}
+          />
+        )}
+        {/* White gradient washes out the bottom so the discography section below blends cleanly */}
+        <div
+          className="absolute inset-0"
+          style={{ background: 'linear-gradient(to bottom, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.82) 100%)' }}
+        />
+
+        <div className="relative max-w-[1440px] mx-auto px-5 py-8 sm:py-10 flex gap-5 sm:gap-9 items-center">
 
           {/* Avatar */}
           <div
-            className="w-[72px] h-[72px] sm:w-[96px] sm:h-[96px] rounded-full flex-shrink-0 overflow-hidden border border-[#EBEBEB] flex items-center justify-center font-bold text-mint-dark text-[28px] sm:text-[36px]"
+            className="w-[72px] h-[72px] sm:w-[96px] sm:h-[96px] rounded-full flex-shrink-0 overflow-hidden border border-black/10 flex items-center justify-center font-bold text-mint-dark text-[28px] sm:text-[36px]"
             style={{ background: '#EDFFF9' }}
           >
             {artist.coverUrl ? (
