@@ -6,10 +6,16 @@ const admin = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
+const TEST_PASSWORD = process.env.TEST_USER2_PASSWORD;
+if (!TEST_PASSWORD) {
+  console.error('Missing TEST_USER2_PASSWORD in .env.local');
+  process.exit(1);
+}
+
 async function main() {
   const { data, error } = await admin.auth.admin.createUser({
     email: 'music.lover@sillajuku.com',
-    password: 'TestUser2026!',
+    password: TEST_PASSWORD,
     email_confirm: true,
     user_metadata: { onboarding_completed: true },
   });
@@ -23,7 +29,6 @@ async function main() {
 
   console.log('✓ Created @music_lover');
   console.log('  Email:    music.lover@sillajuku.com');
-  console.log('  Password: TestUser2026!');
   console.log('  ID:      ', uid);
 }
 

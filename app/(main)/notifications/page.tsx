@@ -216,7 +216,7 @@ function NotifGroup({ title, items, onMarkRead }: {
 
           const inner = (
             <>
-              <div className={`w-9 h-9 rounded-lg border flex items-center justify-center flex-shrink-0 ${colorMap[n.type] ?? colorMap.rate}`}>
+              <div className={`w-9 h-9 rounded-lg border flex items-center justify-center flex-shrink-0 ${colorMap[n.type] ?? colorMap.follow}`}>
                 <Icon size={15} strokeWidth={2} />
               </div>
               <div className="flex-1 min-w-0">

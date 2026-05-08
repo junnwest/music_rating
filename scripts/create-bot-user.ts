@@ -9,14 +9,14 @@ import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const BOT_PASSWORD = process.env.BOT_PASSWORD!;
 
-if (!SUPABASE_URL || !SERVICE_KEY) {
-  console.error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env.local');
+if (!SUPABASE_URL || !SERVICE_KEY || !BOT_PASSWORD) {
+  console.error('Missing NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, or BOT_PASSWORD in .env.local');
   process.exit(1);
 }
 
 const BOT_EMAIL    = 'silla.bot@sillajuku.com';
-const BOT_PASSWORD = 'SillaBot2026!';
 const BOT_USERNAME = 'silla_bot';
 const BOT_DISPLAY  = 'Silla Bot';
 
@@ -57,7 +57,6 @@ async function main() {
   console.log('✓ Profile created');
   console.log('\n── Bot account ready ──────────────────');
   console.log(`  Email:    ${BOT_EMAIL}`);
-  console.log(`  Password: ${BOT_PASSWORD}`);
   console.log(`  Username: @${BOT_USERNAME}`);
   console.log(`  User ID:  ${uid}`);
   console.log('────────────────────────────────────────');
