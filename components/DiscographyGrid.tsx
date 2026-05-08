@@ -24,7 +24,7 @@ function Chip({ children, active, onClick }: { children: React.ReactNode; active
 
 function TypePill({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center px-[9px] py-[2px] rounded-full bg-surface border border-[#EBEBEB] text-[11px] font-medium text-muted">
+    <span className="inline-flex items-center px-[9px] py-[2px] rounded-full bg-surface border border-[#EBEBEB] text-[12px] font-medium text-muted">
       {children}
     </span>
   );
@@ -101,7 +101,7 @@ export default function DiscographyGrid({ initialReleases, initialNextCursor }: 
               </div>
               <div className="mt-[9px]">
                 <div className="text-[13px] font-semibold text-ink truncate group-hover:text-mint-dark transition-colors">{release.title}</div>
-                <div className="text-[11px] text-muted mt-0.5">{release.date?.slice(0, 4) ?? '—'}</div>
+                <div className="text-[12px] text-muted mt-0.5">{release.date?.slice(0, 4) ?? '—'}</div>
                 <div className="mt-[5px]">
                   <TypePill>{release.releaseType}</TypePill>
                 </div>
