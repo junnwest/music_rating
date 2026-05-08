@@ -83,7 +83,11 @@ export default function DiscographyGrid({ initialReleases, initialNextCursor }: 
       </div>
 
       {filtered.length === 0 ? (
-        <p className="text-sm text-muted">No releases found.</p>
+        <p className="text-sm text-muted">
+          {releases.length === 0
+            ? 'Discography temporarily unavailable. Check back soon.'
+            : 'No releases in this category.'}
+        </p>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-[22px]">
           {filtered.map((release) => (
