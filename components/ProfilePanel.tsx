@@ -66,8 +66,8 @@ function ScoreBar({ bars }: { bars: number[] }) {
         ))}
       </div>
       <div className="flex justify-between mt-1">
-        <span className="text-[10px] text-muted">½★</span>
-        <span className="text-[10px] text-muted">5★</span>
+        <span className="text-[11px] text-muted">½★</span>
+        <span className="text-[11px] text-muted">5★</span>
       </div>
     </div>
   );
@@ -678,7 +678,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
-                    className={`px-4 py-2.5 text-[13px] font-semibold whitespace-nowrap transition-colors ${
+                    className={`px-4 py-3 text-[13px] font-semibold whitespace-nowrap transition-colors ${
                       activeTab === tab ? 'text-ink border-b-2 border-ink -mb-px' : 'text-muted hover:text-ink'
                     }`}
                   >
