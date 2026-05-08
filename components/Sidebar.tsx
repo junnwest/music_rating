@@ -36,30 +36,33 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
       )}
 
       <aside
-        className={`fixed xl:sticky top-[72px] left-0 h-[calc(100vh-72px)] w-[72px] bg-white border-r border-divider z-40 flex flex-col items-center pt-4 pb-5 transition-transform duration-300 ease-out ${
-          open ? 'translate-x-0' : '-translate-x-full'
+        className={`fixed xl:sticky top-[72px] left-0 h-[calc(100vh-72px)] bg-white z-40 overflow-hidden transition-all duration-300 ease-out ${
+          open
+            ? 'translate-x-0 w-[72px] border-r border-divider'
+            : '-translate-x-full w-[72px] xl:translate-x-0 xl:w-0 xl:border-0'
         }`}
       >
-        <nav className="flex flex-col gap-2 flex-1 w-full px-2">
-          {navItems.map(({ icon: Icon, label, path }) => {
-            const isActive = pathname === path || (path !== '/' && pathname.startsWith(path));
-            return (
-              <Link
-                key={label}
-                href={path}
-                className={`flex flex-col items-center justify-center gap-[2px] aspect-square rounded-xl transition ${
-                  isActive
-                    ? 'bg-mint-bg text-mint-dark'
-                    : 'text-muted hover:bg-surface hover:text-ink'
-                }`}
-              >
-                <Icon size={22} strokeWidth={isActive ? 2.2 : 1.8} />
-                <span className="text-[9px] font-semibold leading-tight">{label}</span>
-              </Link>
-            );
-          })}
-        </nav>
-
+        <div className="w-[72px] h-full flex flex-col items-center pt-4 pb-5">
+          <nav className="flex flex-col gap-2 flex-1 w-full px-2">
+            {navItems.map(({ icon: Icon, label, path }) => {
+              const isActive = pathname === path || (path !== '/' && pathname.startsWith(path));
+              return (
+                <Link
+                  key={label}
+                  href={path}
+                  className={`flex flex-col items-center justify-center gap-[2px] aspect-square rounded-xl transition ${
+                    isActive
+                      ? 'bg-mint-bg text-mint-dark'
+                      : 'text-muted hover:bg-surface hover:text-ink'
+                  }`}
+                >
+                  <Icon size={22} strokeWidth={isActive ? 2.2 : 1.8} />
+                  <span className="text-[9px] font-semibold leading-tight">{label}</span>
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
       </aside>
     </>
   );
