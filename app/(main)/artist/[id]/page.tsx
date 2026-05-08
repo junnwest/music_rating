@@ -70,10 +70,12 @@ export default async function ArtistPage({ params }: { params: { id: string } })
               </p>
             )}
             <div className="flex gap-6 mt-4">
-              <div>
-                <div className="text-[16px] font-bold text-ink">{formatFollowers(artist.followers)}</div>
-                <div className="text-[11px] text-muted">followers</div>
-              </div>
+              {artist.followers > 0 && (
+                <div>
+                  <div className="text-[16px] font-bold text-ink">{formatFollowers(artist.followers)}</div>
+                  <div className="text-[11px] text-muted">Spotify followers</div>
+                </div>
+              )}
               <div>
                 <div className="text-[16px] font-bold text-ink">{deduped.length}</div>
                 <div className="text-[11px] text-muted">releases</div>
