@@ -534,7 +534,6 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
             <div className="flex gap-8 mt-[18px]">
               {[
                 [ratingsCount, 'albums rated'],
-                [commentCount, 'comments'],
                 [followerCount, 'followers'],
                 [followingCount, 'following'],
               ].map(([val, label]) => (
