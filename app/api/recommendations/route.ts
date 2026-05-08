@@ -67,12 +67,12 @@ export async function GET(req: NextRequest) {
 
         // Primary: filter by Spotify artist ID (exact, no lookalikes)
         if (id) {
-          const results = await searchAlbumsByArtistId(id, name, offset);
+          const results = await searchAlbumsByArtistId(id, name);
           if (results.length > 0) return results;
         }
 
         // Fallback: name search + exact name match filter
-        const fallback = await searchAlbumsByArtistName(name, offset);
+        const fallback = await searchAlbumsByArtistName(name);
         const nameLower = name.toLowerCase();
         return fallback.filter((album) =>
           album.artist.split(',').some((a) => a.trim().toLowerCase() === nameLower)
