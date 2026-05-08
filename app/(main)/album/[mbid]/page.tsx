@@ -16,9 +16,7 @@ function formatDuration(ms: number | null): string {
 
 function TypePill({ children }: { children: React.ReactNode }) {
   return (
-    <span
-      className="inline-flex items-center px-[9px] py-[2px] rounded-full bg-surface border border-[#EBEBEB] text-[11px] font-medium text-muted"
-    >
+    <span className="inline-flex items-center px-[9px] py-[2px] rounded-full bg-white/10 border border-white/20 text-[11px] font-medium text-white/75">
       {children}
     </span>
   );
@@ -55,8 +53,22 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
     <div className="bg-white min-h-screen">
 
       {/* ── HERO ─────────────────────────────────────────────── */}
-      <div className="bg-surface border-b border-[#EBEBEB]">
-        <div className="max-w-[1440px] mx-auto px-5 py-8 sm:py-11 pb-10 flex flex-col sm:flex-row gap-6 sm:gap-11">
+      <div className="relative overflow-hidden">
+        {/* Blurred album art background */}
+        {album.coverUrl && (
+          <div
+            className="absolute inset-0 scale-110"
+            style={{
+              backgroundImage: `url(${album.coverUrl})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              filter: 'blur(60px) saturate(1.4)',
+            }}
+          />
+        )}
+        <div className="absolute inset-0 bg-black/55" />
+
+        <div className="relative max-w-[1440px] mx-auto px-5 py-8 sm:py-11 pb-10 flex flex-col sm:flex-row gap-6 sm:gap-11">
 
           {/* Cover */}
           <div className="flex-shrink-0 flex sm:block justify-center">
@@ -65,10 +77,10 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
                 src={album.coverUrl}
                 alt={album.title}
                 className="w-[160px] h-[160px] sm:w-[228px] sm:h-[228px] object-cover rounded-[10px]"
-                style={{ boxShadow: '0 8px 40px rgba(0,0,0,0.09)' }}
+                style={{ boxShadow: '0 8px 48px rgba(0,0,0,0.35)' }}
               />
             ) : (
-              <div className="w-[160px] h-[160px] sm:w-[228px] sm:h-[228px] rounded-[10px] bg-[#EBEBEB] flex items-center justify-center text-muted text-sm">
+              <div className="w-[160px] h-[160px] sm:w-[228px] sm:h-[228px] rounded-[10px] bg-white/10 flex items-center justify-center text-white/50 text-sm">
                 No cover
               </div>
             )}
@@ -87,25 +99,25 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
 
             {/* Title */}
             <h1
-              className="text-[26px] sm:text-[34px] font-extrabold text-ink leading-[1.08]"
+              className="text-[26px] sm:text-[34px] font-extrabold text-white leading-[1.08]"
               style={{ letterSpacing: '-1.2px' }}
             >
               {album.title}
             </h1>
 
             {/* Artist(s) */}
-            <p className="text-[17px] font-medium text-muted mt-2">
+            <p className="text-[17px] font-medium text-white/65 mt-2">
               {album.artists && album.artists.length > 0 ? (
                 album.artists.map((a, i) => (
                   <span key={a.id}>
                     {i > 0 && <span className="mx-[3px]">,</span>}
-                    <a href={`/artist/${a.id}`} className="hover:text-ink transition">
+                    <a href={`/artist/${a.id}`} className="hover:text-white transition">
                       {a.name}
                     </a>
                   </span>
                 ))
               ) : album.artistId ? (
-                <a href={`/artist/${album.artistId}`} className="hover:text-ink transition">
+                <a href={`/artist/${album.artistId}`} className="hover:text-white transition">
                   {album.artist}
                 </a>
               ) : (
@@ -114,29 +126,29 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
             </p>
 
             {/* Community stats */}
-            <div className="flex items-center gap-7 mt-[22px] pt-[18px] border-t border-[#EBEBEB]">
+            <div className="flex items-center gap-7 mt-[22px] pt-[18px] border-t border-white/15">
               <div>
                 <div
-                  className="text-[30px] font-extrabold text-ink"
+                  className="text-[30px] font-extrabold text-white"
                   style={{ letterSpacing: '-0.8px' }}
                 >
-                    {avgScore !== null ? (
-                  <span>{avgScore.toFixed(1)}</span>
-                ) : (
-                  <span className="text-[22px]">—</span>
-                )}
+                  {avgScore !== null ? (
+                    <span>{avgScore.toFixed(1)}</span>
+                  ) : (
+                    <span className="text-[22px]">—</span>
+                  )}
                 </div>
-                <div className="text-[12px] text-muted mt-0.5">avg</div>
+                <div className="text-[12px] text-white/50 mt-0.5">avg</div>
               </div>
-              <div className="w-px bg-[#EBEBEB] self-stretch" />
+              <div className="w-px bg-white/15 self-stretch" />
               <div>
-                <div className="text-[18px] font-bold text-ink">{ratingsCount}</div>
-                <div className="text-[12px] text-muted mt-0.5">ratings</div>
+                <div className="text-[18px] font-bold text-white">{ratingsCount}</div>
+                <div className="text-[12px] text-white/50 mt-0.5">ratings</div>
               </div>
-              <div className="w-px bg-[#EBEBEB] self-stretch" />
+              <div className="w-px bg-white/15 self-stretch" />
               <div>
-                <div className="text-[18px] font-bold text-ink">{reviewsCount}</div>
-                <div className="text-[12px] text-muted mt-0.5">comments</div>
+                <div className="text-[18px] font-bold text-white">{reviewsCount}</div>
+                <div className="text-[12px] text-white/50 mt-0.5">comments</div>
               </div>
               <div className="ml-auto">
                 <AlbumActions
