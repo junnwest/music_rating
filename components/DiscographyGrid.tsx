@@ -87,20 +87,20 @@ export default function DiscographyGrid({ initialReleases, initialNextCursor }: 
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-[22px]">
           {filtered.map((release) => (
-            <Link key={release.id} href={`/album/${release.id}`} className="block min-w-0">
+            <Link key={release.id} href={`/album/${release.id}`} className="block min-w-0 group">
               <div className="relative overflow-hidden rounded-[7px]" style={{ aspectRatio: '1 / 1' }}>
                 {release.coverUrl ? (
                   <img
                     src={release.coverUrl}
                     alt={release.title}
-                    className="absolute inset-0 w-full h-full object-cover"
+                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
                   />
                 ) : (
                   <div className="absolute inset-0 bg-surface border border-[#EBEBEB]" />
                 )}
               </div>
               <div className="mt-[9px]">
-                <div className="text-[13px] font-semibold text-ink truncate">{release.title}</div>
+                <div className="text-[13px] font-semibold text-ink truncate group-hover:text-mint-dark transition-colors">{release.title}</div>
                 <div className="text-[11px] text-muted mt-0.5">{release.date?.slice(0, 4) ?? '—'}</div>
                 <div className="mt-[5px]">
                   <TypePill>{release.releaseType}</TypePill>
