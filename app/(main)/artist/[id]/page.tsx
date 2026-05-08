@@ -76,10 +76,6 @@ export default async function ArtistPage({ params }: { params: { id: string } })
                   <div className="text-[11px] text-muted">Spotify followers</div>
                 </div>
               )}
-              <div>
-                <div className="text-[16px] font-bold text-ink">{deduped.length}</div>
-                <div className="text-[11px] text-muted">releases</div>
-              </div>
             </div>
           </div>
         </div>
