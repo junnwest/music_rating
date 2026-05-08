@@ -690,7 +690,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                 <div className="relative pb-2 flex-shrink-0">
                   <button
                     onClick={() => setShowSortMenu(s => !s)}
-                    className="text-[12px] font-medium text-muted hover:text-ink transition px-1"
+                    className="text-[12px] font-medium text-muted hover:text-ink transition px-2 py-[13px]"
                   >
                     {SORT_LABELS[sortOrder]} ↓
                   </button>

@@ -129,6 +129,43 @@ curl -X POST https://your-domain.com/api/admin/seed-rankings \
 
 ---
 
+## gstack skills
+
+gstack is installed at `~/.claude/skills/gstack`. Skills are available as slash commands in Claude Code.
+
+### By workflow stage
+
+| Stage | Skill | When to use |
+|---|---|---|
+| Planning a feature | `/office-hours` | Before writing any code — 6 forcing questions that reframe the problem |
+| | `/plan-eng-review` | Lock in architecture, data flow, edge cases, test plan |
+| | `/plan-design-review` | Rate each design dimension 0–10, catch assumptions before building |
+| | `/autoplan` | Runs CEO → design → eng review in one shot |
+| Building | `/review` | Pre-merge code review — SQL safety, LLM trust boundaries, structural issues |
+| | `/investigate` | Stuck on a bug — systematic root-cause process, no guessing |
+| UI / design | `/design-review` | Audit live UI, rate dimensions, fix AI slop, before/after screenshots |
+| | `/design-shotgun` | Generate 4–6 design variants, compare, iterate until you like one |
+| QA | `/qa` | Real browser — clicks through flows, finds bugs, commits fixes |
+| | `/qa-only` | Same as `/qa` but report-only, no code changes |
+| Security | `/cso` | OWASP Top 10 + STRIDE — run before any auth feature ships |
+| Shipping | `/ship` | Sync main, run tests, push, open PR |
+| | `/land-and-deploy` | Merge PR, wait for CI + deploy, verify production |
+| Post-deploy | `/canary` | Watch for console errors, perf regressions, page failures |
+| Debugging | `/browse` | Give Claude a real browser — use instead of any MCP browser tools |
+
+### For this project's remaining roadmap
+
+| Roadmap task | Skills |
+|---|---|
+| Page reviews (artist, profile, activity, settings, rankings, listen-later, collisions, contradictions, wrapped, lists) | `/design-review` then `/qa` |
+| Password reset + email verification (Week 2) | `/plan-eng-review` → build → `/review` → `/cso` |
+| KakaoTalk + Spotify OAuth (Week 3) | `/plan-eng-review` → build → `/cso` |
+| Korean i18n / next-intl (Week 4) | `/office-hours` → `/plan-eng-review` → build → `/review` |
+| Capacitor build (Week 4) | `/office-hours` → `/plan-eng-review` → build |
+| Production deploy + QA (Week 5) | `/qa` → `/ship` → `/land-and-deploy` → `/canary` |
+
+---
+
 ## Feature tracker
 
 ### Done
