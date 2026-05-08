@@ -105,22 +105,30 @@ export default function WrappedPage() {
 
   if (!userId && !loading) {
     return (
-      <div className="max-w-[640px] mx-auto px-5 py-24 text-center">
-        <div className="text-[11px] font-semibold text-muted uppercase mb-4" style={{ letterSpacing: '0.7px' }}>
-          Wrapped
+      <div className="bg-white min-h-screen">
+        <div className="bg-surface border-b border-[#EBEBEB]">
+          <div className="max-w-[1440px] mx-auto px-5 py-12">
+            <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.7px' }}>
+              Your year in music
+            </p>
+            <h1 className="text-[38px] font-extrabold text-ink leading-[1.06]" style={{ letterSpacing: '-1.2px' }}>
+              Wrapped
+            </h1>
+            <p className="text-[15px] text-muted mt-3 max-w-[480px] leading-relaxed">
+              Every album, every score — your listening story.
+            </p>
+          </div>
         </div>
-        <h1 className="text-[34px] font-extrabold text-ink mb-4" style={{ letterSpacing: '-1px' }}>
-          Your year in music
-        </h1>
-        <p className="text-[15px] text-muted mb-8 leading-relaxed">
-          Sign in to see your yearly listening summary.
-        </p>
-        <Link
-          href="/login"
-          className="inline-flex rounded-lg bg-ink px-6 py-3 text-[14px] font-semibold text-white hover:opacity-80 transition"
-        >
-          Log in →
-        </Link>
+        <div className="flex flex-col items-center py-20 text-center">
+          <p className="text-[14px] font-semibold text-ink mb-1">Sign in to see your year in music</p>
+          <p className="text-[13px] text-muted mb-6">Your ratings, top genres, and listening stats all in one place.</p>
+          <Link
+            href="/login"
+            className="bg-ink text-white text-[13px] font-bold px-5 py-2.5 rounded-lg hover:opacity-80 transition inline-block"
+          >
+            Sign In
+          </Link>
+        </div>
       </div>
     );
   }

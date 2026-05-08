@@ -96,10 +96,9 @@ export default function PersonalizedFeed() {
 
       if (topArtists.length === 0) { setStatus('empty'); return; }
 
-      const ratedIds = ratings.map((r) => r.release_id);
       const params = new URLSearchParams({
         artists: topArtists.join(','),
-        excludeIds: ratedIds.join(','),
+        userId: session.user.id,
       });
 
       const res = await fetch(`/api/personalized?${params}`);
@@ -135,7 +134,25 @@ export default function PersonalizedFeed() {
     </div>
   ) : null;
 
-  if (status === 'loading' || status === 'guest') {
+  if (status === 'loading') {
+    return (
+      <div>
+        <div className="flex gap-[18px] overflow-hidden">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="flex-shrink-0 w-[140px] md:w-[180px]">
+              <div className="w-[140px] h-[140px] md:w-[180px] md:h-[180px] rounded-[7px] bg-surface animate-pulse" />
+              <div className="mt-[9px] space-y-1.5">
+                <div className="h-3 bg-surface animate-pulse rounded w-4/5" />
+                <div className="h-2.5 bg-surface animate-pulse rounded w-3/5" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (status === 'guest') {
     return greeting;
   }
 
@@ -180,7 +197,7 @@ export default function PersonalizedFeed() {
             {/* Left arrow */}
             <button
               onClick={() => scrollRecent('left')}
-              className="absolute left-0 top-[90px] z-10 -translate-x-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-white border border-[#EBEBEB] shadow-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface"
+              className="absolute left-0 top-[90px] z-10 -translate-x-1/2 -translate-y-1/2 hidden md:flex h-8 w-8 items-center justify-center rounded-full bg-white border border-[#EBEBEB] shadow-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface"
               aria-label="Scroll left"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#444444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -188,14 +205,14 @@ export default function PersonalizedFeed() {
               </svg>
             </button>
 
-            <div ref={recentScrollRef} className="overflow-x-hidden">
+            <div ref={recentScrollRef} className="overflow-x-auto scrollbar-hide">
               <div className="flex gap-[18px] pb-2">
                 {recentRatings.map((r) => {
                   const rel = r.releases;
                   if (!rel) return null;
                   return (
-                    <Link key={r.release_id} href={`/album/${r.release_id}`} className="flex-shrink-0 w-[180px] group/card">
-                      <div className="relative w-[180px] h-[180px] rounded-[7px] overflow-hidden">
+                    <Link key={r.release_id} href={`/album/${r.release_id}`} className="flex-shrink-0 w-[140px] md:w-[180px] group/card">
+                      <div className="relative w-[140px] h-[140px] md:w-[180px] md:h-[180px] rounded-[7px] overflow-hidden">
                         {rel.cover_url ? (
                           <img src={rel.cover_url} alt={rel.title} className="absolute inset-0 w-full h-full object-cover" />
                         ) : (
@@ -223,7 +240,7 @@ export default function PersonalizedFeed() {
             {/* Right arrow */}
             <button
               onClick={() => scrollRecent('right')}
-              className="absolute right-0 top-[90px] z-10 translate-x-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-white border border-[#EBEBEB] shadow-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface"
+              className="absolute right-0 top-[90px] z-10 translate-x-1/2 -translate-y-1/2 hidden md:flex h-8 w-8 items-center justify-center rounded-full bg-white border border-[#EBEBEB] shadow-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface"
               aria-label="Scroll right"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#444444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

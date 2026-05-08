@@ -140,11 +140,6 @@ export default function StarRatingWidget({
         })}
       </div>
 
-      <p className="mt-1.5 text-[12px] text-muted">
-        {savedScore !== null && hovered === null
-          ? <>Your rating: {savedScore} / 5 · <button onClick={() => handleRate(savedScore)} className="underline hover:text-mid">Clear</button></>
-          : 'Tap to rate · half-steps supported'}
-      </p>
 
       {/* Login popup */}
       {showLoginPopup && (

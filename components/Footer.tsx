@@ -1,15 +1,16 @@
 import Link from 'next/link';
 
-export default function Footer() {
+export default function Footer({ className }: { className?: string }) {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="border-t border-divider bg-white mt-auto">
+    <footer className={`border-t border-divider bg-white mt-auto${className ? ` ${className}` : ''}`}>
       <div className="max-w-[1440px] mx-auto px-5 py-10">
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-8">
 
           {/* Brand */}
           <div className="flex-shrink-0">
+            <img src="/logo-bnw.svg" alt="sillajuku" className="h-[40px] w-auto mb-3" />
             <p className="text-[12px] text-muted">Rate, discover, remember.</p>
             <p className="text-[11px] text-placeholder mt-3">
               Music data powered by{' '}

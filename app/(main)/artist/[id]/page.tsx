@@ -36,11 +36,11 @@ export default async function ArtistPage({ params }: { params: { id: string } })
 
       {/* ── HEADER ────────────────────────────────────────────── */}
       <div className="bg-surface border-b border-[#EBEBEB]">
-        <div className="max-w-[1440px] mx-auto px-5 py-10 flex gap-9 items-center">
+        <div className="max-w-[1440px] mx-auto px-5 py-8 sm:py-10 flex gap-5 sm:gap-9 items-center">
 
           {/* Avatar */}
           <div
-            className="w-[96px] h-[96px] rounded-full flex-shrink-0 overflow-hidden border-2 border-mint flex items-center justify-center font-bold text-mint-dark text-[36px]"
+            className="w-[72px] h-[72px] sm:w-[96px] sm:h-[96px] rounded-full flex-shrink-0 overflow-hidden border-2 border-mint flex items-center justify-center font-bold text-mint-dark text-[28px] sm:text-[36px]"
             style={{ background: '#EDFFF9' }}
           >
             {artist.coverUrl ? (
@@ -59,7 +59,7 @@ export default async function ArtistPage({ params }: { params: { id: string } })
               Artist
             </p>
             <h1
-              className="text-[32px] font-extrabold text-ink"
+              className="text-[24px] sm:text-[32px] font-extrabold text-ink"
               style={{ letterSpacing: '-1px' }}
             >
               {artist.name}

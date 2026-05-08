@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient';
-import PinnedTen from './PinnedTen';
+import Essentials from './Essentials';
+import UserAvatar from './UserAvatar';
 import CreateListSection from './CreateListSection';
 import type { Session } from '@supabase/supabase-js';
 
@@ -263,6 +264,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
   const [bioText, setBioText] = useState<string | null>(null);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
+  const [commentCount, setCommentCount] = useState(0);
   const [isFollowing, setIsFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
   const [collisions, setCollisions] = useState<Collision[]>([]);
@@ -300,7 +302,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
 
     const isOwn = !targetUserId || userId === currentUserId;
 
-    const [profileRes, ratingsRes, allRatingsRes, listsRes, followersRes, followingRes] = await Promise.all([
+    const [profileRes, ratingsRes, allRatingsRes, listsRes, followersRes, followingRes, commentsRes] = await Promise.all([
       supabase.from('profiles').select('display_name, username, bio').eq('id', userId).maybeSingle(),
       supabase
         .from('ratings')
@@ -323,6 +325,10 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
         .from('follows')
         .select('*', { count: 'exact', head: true })
         .eq('follower_id', userId),
+      supabase
+        .from('reviews')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId),
     ]);
 
     const prof = profileRes.data;
@@ -334,6 +340,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
     setRatings(ratingsRes.data ?? []);
     setFollowerCount(followersRes.count ?? 0);
     setFollowingCount(followingRes.count ?? 0);
+    setCommentCount(commentsRes.count ?? 0);
 
     if (!isOwn && currentUserId) {
       const { data: followCheck } = await supabase
@@ -418,8 +425,33 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <p className="text-sm text-muted">Loading…</p>
+      <div className="bg-white">
+        <div className="bg-white border-b border-[#EBEBEB]">
+          <div className="max-w-[1440px] mx-auto px-5 pt-9 pb-8 flex gap-6 items-start">
+            <div className="w-[82px] h-[82px] rounded-full bg-surface animate-pulse flex-shrink-0" />
+            <div className="flex-1 space-y-3 pt-2">
+              <div className="h-5 bg-surface animate-pulse rounded w-40" />
+              <div className="flex gap-8 mt-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="space-y-1.5">
+                    <div className="h-5 bg-surface animate-pulse rounded w-8" />
+                    <div className="h-3 bg-surface animate-pulse rounded w-16" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="max-w-[1440px] mx-auto px-5 py-9">
+          <div className="grid gap-[14px]" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))' }}>
+            {Array.from({ length: 18 }).map((_, i) => (
+              <div key={i}>
+                <div className="aspect-square rounded-[6px] bg-surface animate-pulse" />
+                <div className="h-2.5 bg-surface animate-pulse rounded mt-2 w-4/5" />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
@@ -482,9 +514,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
       <div className="bg-white border-b border-[#EBEBEB]">
         <div className="max-w-[1440px] mx-auto px-5 pt-9 pb-8 flex gap-6 items-start">
           {/* Avatar */}
-          <div className="w-[82px] h-[82px] rounded-full bg-mint-bg border-2 border-mint flex items-center justify-center flex-shrink-0 font-bold text-mint-dark text-[30px]">
-            {initial}
-          </div>
+          <UserAvatar size={82} />
 
           {/* Info */}
           <div className="flex-1">
@@ -504,7 +534,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
             <div className="flex gap-8 mt-[18px]">
               {[
                 [ratingsCount, 'albums rated'],
-                ['0', 'reviews'],
+                [commentCount, 'comments'],
                 [followerCount, 'followers'],
                 [followingCount, 'following'],
               ].map(([val, label]) => (
@@ -638,8 +668,8 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
 
           {/* RIGHT: catalog */}
           <div className="flex-1 min-w-0">
-            {/* Pinned Six */}
-            <PinnedTen userId={effectiveUserId} canEdit={isOwnProfile} />
+            {/* Essentials */}
+            <Essentials userId={effectiveUserId} canEdit={isOwnProfile} />
 
             {/* Tabs + Sort */}
             <div className="flex items-end justify-between mb-6 border-b border-[#EBEBEB]">

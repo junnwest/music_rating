@@ -22,7 +22,7 @@ const MAX_PINS = 6;
 const ROWS = [[0], [1, 2], [3, 4, 5]];
 const ROW_SIZES = [108, 92, 80];
 
-export default function PinnedTen({ userId, canEdit = true }: { userId: string; canEdit?: boolean }) {
+export default function Essentials({ userId, canEdit = true }: { userId: string; canEdit?: boolean }) {
   const [pinned, setPinned] = useState<PinnedAlbum[]>([]);
   const [ratedMap, setRatedMap] = useState<Map<string, number | null>>(new Map());
   const [ratedList, setRatedList] = useState<PickerAlbum[]>([]);

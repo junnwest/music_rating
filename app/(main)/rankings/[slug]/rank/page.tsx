@@ -5,7 +5,13 @@ import RankBuilder, { type RankedAlbum } from '../../../../../components/RankBui
 export const revalidate = 0;
 
 
-export default async function RankBuilderPage({ params }: { params: { slug: string } }) {
+export default async function RankBuilderPage({
+  params,
+  searchParams,
+}: {
+  params: { slug: string };
+  searchParams: { album?: string; title?: string; artist?: string; cover?: string };
+}) {
   const supabase = createServerClient();
   if (!supabase) notFound();
 
@@ -54,6 +60,15 @@ export default async function RankBuilderPage({ params }: { params: { slug: stri
     if (suggestions.length >= 40) break;
   }
 
+  const prefillAlbum: RankedAlbum | null = searchParams.album
+    ? {
+        id: searchParams.album,
+        title: searchParams.title ?? '',
+        artist: searchParams.artist ?? '',
+        coverUrl: searchParams.cover ?? null,
+      }
+    : null;
+
   return (
     <div style={{ background: '#fff', minHeight: '100vh' }}>
       <RankBuilder
@@ -63,6 +78,7 @@ export default async function RankBuilderPage({ params }: { params: { slug: stri
         initialSuggestions={suggestions}
         filterYear={category.year ?? null}
         filterGenre={category.genre ?? null}
+        prefillAlbum={prefillAlbum}
       />
     </div>
   );

@@ -65,7 +65,7 @@ export default async function GenrePage({ params }: Props) {
         ) : (
           <div
             className="grid gap-x-[18px] gap-y-8"
-            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}
+            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))' }}
           >
             {albums.map((album) => (
               <Link key={album.id} href={`/album/${album.id}`} className="group/card block">

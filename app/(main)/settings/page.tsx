@@ -7,6 +7,7 @@ import {
   LogOut, Trash2, Camera
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
+import UserAvatar from '../../../components/UserAvatar';
 
 type TabKey = 'account' | 'preferences' | 'notifications' | 'privacy' | 'danger';
 
@@ -138,9 +139,7 @@ function SettingsContent() {
             {activeTab === 'account' && (
               <Section title="Account">
                 <div className="flex items-center gap-4 mb-6">
-                  <div className="w-16 h-16 rounded-full bg-mint-bg border-2 border-mint flex items-center justify-center font-extrabold text-mint-dark text-[20px]">
-                    {avatarInitial}
-                  </div>
+                  <UserAvatar size={64} />
                   <button className="flex items-center gap-2 px-4 py-2 rounded-lg border border-divider text-[12px] font-semibold text-muted hover:bg-surface transition">
                     <Camera size={14} /> Change photo
                   </button>
@@ -202,7 +201,7 @@ function SettingsContent() {
                   </div>
                 </div>
                 <div className="mb-5">
-                  <label className="block text-[13px] font-semibold text-ink mb-2">Default review visibility</label>
+                  <label className="block text-[13px] font-semibold text-ink mb-2">Default comment visibility</label>
                   <select className="w-full bg-surface border border-divider rounded-xl px-4 py-2.5 text-[13px] text-ink outline-none cursor-pointer hover:border-mid transition">
                     {visibilityOptions.map(v => <option key={v}>{v}</option>)}
                   </select>
@@ -212,8 +211,8 @@ function SettingsContent() {
 
             {activeTab === 'notifications' && (
               <Section title="Notifications">
-                <Toggle label="Likes on my reviews" defaultOn />
-                <Toggle label="Replies to my reviews" defaultOn />
+                <Toggle label="Likes on my comments" defaultOn />
+                <Toggle label="Replies to my comments" defaultOn />
                 <Toggle label="New followers" defaultOn />
                 <Toggle label="Ranking updates" defaultOn />
                 <Toggle label="Monthly capsule" />

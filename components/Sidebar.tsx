@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef } from 'react';
-import { Trophy, Flame, Compass, Users } from 'lucide-react';
+import { Trophy, Flame, Compass } from 'lucide-react';
 
 interface SidebarProps {
   open: boolean;
@@ -14,7 +14,6 @@ const navItems = [
   { icon: Trophy, label: 'Ranking', path: '/rankings' },
   { icon: Flame, label: 'Feed', path: '/activity' },
   { icon: Compass, label: 'Explore', path: '/lists' },
-  { icon: Users, label: 'Friends', path: '/friends' },
 ];
 
 export default function Sidebar({ open, onClose }: SidebarProps) {
@@ -23,7 +22,8 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
 
   useEffect(() => {
     if (!mounted.current) { mounted.current = true; return; }
-    onClose();
+    // Only auto-close on mobile (sidebar is an overlay there)
+    if (window.innerWidth < 1280) onClose();
   }, [pathname]);
 
   return (
@@ -36,7 +36,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
       )}
 
       <aside
-        className={`fixed xl:sticky top-[72px] left-0 h-[calc(100vh-72px)] w-[72px] bg-white border-r border-divider z-40 flex flex-col items-center pt-4 pb-5 transition-transform duration-300 ease-out xl:translate-x-0 ${
+        className={`fixed xl:sticky top-[72px] left-0 h-[calc(100vh-72px)] w-[72px] bg-white border-r border-divider z-40 flex flex-col items-center pt-4 pb-5 transition-transform duration-300 ease-out ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -60,11 +60,6 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           })}
         </nav>
 
-        <div className="mt-auto pt-3 border-t border-divider w-full flex justify-center">
-          <Link href="/" onClick={onClose} className="p-1">
-            <img src="/sillajuku_logo.svg" alt="sillajuku" className="h-11 w-auto object-contain" />
-          </Link>
-        </div>
       </aside>
     </>
   );

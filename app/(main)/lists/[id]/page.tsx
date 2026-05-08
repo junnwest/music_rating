@@ -2,6 +2,7 @@ import { unstable_noStore as noStore } from 'next/cache';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createServerClient } from '../../../../lib/supabaseServer';
+import UserAvatar from '../../../../components/UserAvatar';
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -57,9 +58,7 @@ export default async function ListDetailPage({ params }: { params: { id: string 
             <p className="text-[13px] text-muted mt-1">{list.description}</p>
           )}
           <div className="flex items-center gap-2 mt-3">
-            <div className="w-5 h-5 rounded-full bg-mint-bg border border-mint flex items-center justify-center text-[9px] font-bold text-mint-dark">
-              {(list.username ?? 'u')[0].toUpperCase()}
-            </div>
+            <UserAvatar size={20} />
             <span className="text-[12px] text-muted">{list.username ?? 'user'}</span>
             <span className="text-[12px] text-[#D0D0CE]">·</span>
             <span className="text-[12px] text-muted">{albums.length} {albums.length === 1 ? 'album' : 'albums'}</span>

@@ -56,26 +56,26 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
 
       {/* ── HERO ─────────────────────────────────────────────── */}
       <div className="bg-surface border-b border-[#EBEBEB]">
-        <div className="max-w-[1440px] mx-auto px-5 py-11 pb-10 flex gap-11">
+        <div className="max-w-[1440px] mx-auto px-5 py-8 sm:py-11 pb-10 flex flex-col sm:flex-row gap-6 sm:gap-11">
 
           {/* Cover */}
-          <div className="flex-shrink-0">
+          <div className="flex-shrink-0 flex sm:block justify-center">
             {album.coverUrl ? (
               <img
                 src={album.coverUrl}
                 alt={album.title}
-                className="w-[228px] h-[228px] object-cover rounded-[10px]"
+                className="w-[160px] h-[160px] sm:w-[228px] sm:h-[228px] object-cover rounded-[10px]"
                 style={{ boxShadow: '0 8px 40px rgba(0,0,0,0.09)' }}
               />
             ) : (
-              <div className="w-[228px] h-[228px] rounded-[10px] bg-[#EBEBEB] flex items-center justify-center text-muted text-sm">
+              <div className="w-[160px] h-[160px] sm:w-[228px] sm:h-[228px] rounded-[10px] bg-[#EBEBEB] flex items-center justify-center text-muted text-sm">
                 No cover
               </div>
             )}
           </div>
 
           {/* Info */}
-          <div className="flex-1 pt-1">
+          <div className="flex-1 pt-0 sm:pt-1">
             {/* Pills */}
             <div className="flex flex-wrap gap-[7px] mb-[14px]">
               <TypePill>{album.releaseType}</TypePill>
@@ -87,7 +87,7 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
 
             {/* Title */}
             <h1
-              className="text-[34px] font-extrabold text-ink leading-[1.08]"
+              className="text-[26px] sm:text-[34px] font-extrabold text-ink leading-[1.08]"
               style={{ letterSpacing: '-1.2px' }}
             >
               {album.title}
@@ -103,36 +103,42 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
             )}
 
             {/* Community stats */}
-            <div className="flex gap-7 mt-[22px] pt-[18px] border-t border-[#EBEBEB]">
+            <div className="flex items-center gap-7 mt-[22px] pt-[18px] border-t border-[#EBEBEB]">
               <div>
                 <div
                   className="text-[30px] font-extrabold text-ink"
                   style={{ letterSpacing: '-0.8px' }}
                 >
-                  {avgScore !== null ? avgScore.toFixed(1) : '—'}
+                    {avgScore !== null ? (
+                  <span>{avgScore.toFixed(1)}</span>
+                ) : (
+                  <span className="text-[22px]">—</span>
+                )}
                 </div>
-                <div className="text-[12px] text-muted mt-0.5">avg / 5</div>
+                <div className="text-[12px] text-muted mt-0.5">avg</div>
               </div>
-              <div className="w-px bg-[#EBEBEB] my-1" />
+              <div className="w-px bg-[#EBEBEB] self-stretch" />
               <div>
                 <div className="text-[18px] font-bold text-ink">{ratingsCount}</div>
                 <div className="text-[12px] text-muted mt-0.5">ratings</div>
               </div>
-              <div className="w-px bg-[#EBEBEB] my-1" />
+              <div className="w-px bg-[#EBEBEB] self-stretch" />
               <div>
                 <div className="text-[18px] font-bold text-ink">{reviewsCount}</div>
-                <div className="text-[12px] text-muted mt-0.5">reviews</div>
+                <div className="text-[12px] text-muted mt-0.5">comments</div>
+              </div>
+              <div className="ml-auto">
+                <AlbumActions
+                  albumId={album.id}
+                  albumTitle={album.title}
+                  albumArtist={album.artist}
+                  coverUrl={album.coverUrl}
+                />
               </div>
             </div>
 
             {/* User rating */}
-            <div className="mt-[26px]">
-              <div
-                className="text-[12px] font-semibold text-muted uppercase mb-[10px]"
-                style={{ letterSpacing: '0.6px' }}
-              >
-                Your Rating
-              </div>
+            <div className="mt-[22px]">
               <StarRatingWidget
                 releaseId={album.id}
                 releaseTitle={album.title}
@@ -143,17 +149,13 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
                 coverUrl={album.coverUrl}
                 genres={album.genres}
               />
-              <AlbumActions albumId={album.id} />
             </div>
           </div>
         </div>
       </div>
 
       {/* ── BODY ─────────────────────────────────────────────── */}
-      <div
-        className="max-w-[1440px] mx-auto px-5 py-10 pb-14 grid gap-[52px]"
-        style={{ gridTemplateColumns: '1fr 1.3fr' }}
-      >
+      <div className="max-w-[1440px] mx-auto px-5 py-10 pb-14 grid gap-[52px] grid-cols-1 md:grid-cols-[1fr_1.3fr]">
 
         {/* Tracklist */}
         {album.tracks.length > 0 && (

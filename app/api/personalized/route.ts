@@ -3,14 +3,25 @@ import { createServerClient } from '../../../lib/supabaseServer';
 import { resolveArtistId, searchAlbumsByArtistId, searchAlbumsByArtistName } from '../../../lib/spotify';
 import type { AlbumRelease } from '../../../types';
 
+const MIN_UNRATED = 5;
+
 export async function GET(req: NextRequest) {
   const artistsParam = req.nextUrl.searchParams.get('artists') ?? '';
-  const excludeIdsParam = req.nextUrl.searchParams.get('excludeIds') ?? '';
+  const userId = req.nextUrl.searchParams.get('userId') ?? '';
 
   const artists = artistsParam.split(',').filter(Boolean).slice(0, 5);
-  const excludeIds = new Set(excludeIdsParam.split(',').filter(Boolean));
 
   const supabase = createServerClient();
+
+  // Fetch all rated release IDs for this user from the server
+  let excludeIds = new Set<string>();
+  if (supabase && userId) {
+    const { data: ratedRows } = await supabase
+      .from('ratings')
+      .select('release_id')
+      .eq('user_id', userId);
+    excludeIds = new Set((ratedRows ?? []).map((r: any) => r.release_id));
+  }
 
   const sections = (
     await Promise.all(
@@ -20,54 +31,54 @@ export async function GET(req: NextRequest) {
 
         // ── Primary: query releases already in our DB ─────────────────────
         if (supabase) {
-          const { data: dbReleases } = await supabase
+          let query = supabase
             .from('releases')
             .select('id, title, artist, cover_url, release_type, release_date')
-            .ilike('artist', `%${artistName}%`)
-            .limit(20);
+            .ilike('artist', `%${artistName}%`);
 
-          albums = (dbReleases ?? [])
-            .filter((r: any) => !excludeIds.has(r.id))
-            .map((r: any) => ({
-              id: r.id,
-              title: r.title,
-              artist: r.artist,
-              date: r.release_date ?? null,
-              country: null,
-              releaseType: r.release_type ?? 'Album',
-              coverUrl: r.cover_url ?? null,
-            }));
+          if (excludeIds.size > 0) {
+            query = query.not('id', 'in', `(${[...excludeIds].join(',')})`);
+          }
+
+          const { data: dbReleases } = await query.limit(40);
+
+          albums = (dbReleases ?? []).map((r: any) => ({
+            id: r.id,
+            title: r.title,
+            artist: r.artist,
+            date: r.release_date ?? null,
+            country: null,
+            releaseType: r.release_type ?? 'Album',
+            coverUrl: r.cover_url ?? null,
+          }));
         }
 
-        // ── Fallback: Spotify (only if DB has fewer than 5 results) ──────
-        if (albums.length < 5) {
-          try {
-            const id = await resolveArtistId(artistName);
-            let spotifyAlbums: AlbumRelease[] = [];
+        // ── Supplement with Spotify (always merge to fill gaps) ──────────
+        try {
+          const id = await resolveArtistId(artistName);
+          let spotifyAlbums: AlbumRelease[] = [];
 
-            if (id) {
-              spotifyAlbums = await searchAlbumsByArtistId(id, artistName);
-            }
-            if (!id || spotifyAlbums.length === 0) {
-              const fallback = await searchAlbumsByArtistName(artistName);
-              spotifyAlbums = fallback.filter((a) =>
-                a.artist.split(',').some((p) => p.trim().toLowerCase() === nameLower)
-              );
-            }
+          if (id) {
+            spotifyAlbums = await searchAlbumsByArtistId(id, artistName);
+          }
+          if (!id || spotifyAlbums.length === 0) {
+            const fallback = await searchAlbumsByArtistName(artistName);
+            spotifyAlbums = fallback.filter((a) =>
+              a.artist.split(',').some((p) => p.trim().toLowerCase() === nameLower)
+            );
+          }
 
-            // Merge with existing DB results, dedup
-            const seen = new Set(albums.map((a) => a.id));
-            for (const a of spotifyAlbums) {
-              if (!excludeIds.has(a.id) && !seen.has(a.id)) {
-                seen.add(a.id);
-                albums.push(a);
-              }
+          const seen = new Set(albums.map((a) => a.id));
+          for (const a of spotifyAlbums) {
+            if (!excludeIds.has(a.id) && !seen.has(a.id)) {
+              seen.add(a.id);
+              albums.push(a);
             }
-          } catch {}
-        }
+          }
+        } catch {}
 
         const filtered = albums.slice(0, 20);
-        if (filtered.length === 0) return null;
+        if (filtered.length < MIN_UNRATED) return null;
 
         return {
           title: `More from ${artistName}`,

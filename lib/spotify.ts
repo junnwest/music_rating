@@ -310,27 +310,36 @@ export async function resolveArtistId(name: string): Promise<string | null> {
   }
 }
 
-export async function searchAlbumsByArtistId(artistId: string, artistName: string, offset = 0): Promise<AlbumRelease[]> {
+export async function searchAlbumsByArtistId(artistId: string, _artistName: string): Promise<AlbumRelease[]> {
   try {
-    const data = await spotifyFetch(
-      `/search?q=artist:${encodeURIComponent(artistName)}&type=album&limit=10&offset=${offset}`,
-      3600
-    );
-    return (data.albums?.items ?? [])
-      .filter((a: any) => a.artists?.some((ar: any) => ar.id === artistId))
-      .map(mapAlbum);
+    const items: any[] = [];
+    let url: string | null =
+      `/artists/${artistId}/albums?include_groups=album,single,ep,compilation&limit=50&market=KR`;
+    while (url) {
+      const data = await spotifyFetch(url, 3600);
+      items.push(...(data.items ?? []));
+      url = data.next ?? null;
+      if (items.length >= 100) break;
+    }
+    return items.filter((a: any) => a.album_group !== 'appears_on').map(mapAlbum);
   } catch {
     return [];
   }
 }
 
-export async function searchAlbumsByArtistName(artistName: string, offset = 0): Promise<AlbumRelease[]> {
+export async function searchAlbumsByArtistName(artistName: string): Promise<AlbumRelease[]> {
   try {
-    const data = await spotifyFetch(
-      `/search?q=artist:${encodeURIComponent(artistName)}&type=album&limit=10&offset=${offset}`,
-      3600
-    );
-    return (data.albums?.items ?? []).map(mapAlbum);
+    const allItems: any[] = [];
+    for (let offset = 0; offset < 50; offset += 10) {
+      const data = await spotifyFetch(
+        `/search?q=artist:${encodeURIComponent(artistName)}&type=album&limit=10&offset=${offset}`,
+        3600
+      );
+      const page = data.albums?.items ?? [];
+      allItems.push(...page);
+      if (page.length < 10) break;
+    }
+    return allItems.map(mapAlbum);
   } catch {
     return [];
   }

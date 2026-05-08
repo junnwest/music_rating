@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Search, UserPlus, UserCheck, Users } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
+import UserAvatar from '../../../components/UserAvatar';
 
 interface UserRow {
   id: string;
@@ -34,6 +36,7 @@ function getColor(id: string): string {
 }
 
 export default function FriendsPage() {
+  const router = useRouter();
   const [myId, setMyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('following');
@@ -42,6 +45,9 @@ export default function FriendsPage() {
   const [discoverUsers, setDiscoverUsers] = useState<UserRow[]>([]);
   const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<UserRow[]>([]);
+  const [searching, setSearching] = useState(false);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   useEffect(() => {
@@ -67,8 +73,38 @@ export default function FriendsPage() {
     const fSet = new Set<string>(fIds);
     setFollowingIds(fSet);
 
-    const excludeIds = [uid, ...fIds];
-    const excludeStr = `(${excludeIds.join(',')})`;
+    const excludeSet = new Set([uid, ...fIds]);
+    const excludeStr = `(${[uid, ...fIds].join(',')})`;
+
+    // Friends of friends: people who follow someone you follow
+    let fofIds: string[] = [];
+    if (fIds.length > 0) {
+      const { data: fofRows } = await supabase
+        .from('follows')
+        .select('follower_id')
+        .in('following_id', fIds)
+        .not('follower_id', 'in', excludeStr)
+        .limit(100);
+      fofIds = [...new Set((fofRows ?? []).map((r: any) => r.follower_id as string))].slice(0, 10);
+    }
+
+    // Popular: most-followed users (sample the follows table and count)
+    const { data: popularRows } = await supabase
+      .from('follows')
+      .select('following_id')
+      .limit(500);
+
+    const followerCount = new Map<string, number>();
+    for (const r of popularRows ?? []) {
+      followerCount.set(r.following_id, (followerCount.get(r.following_id) ?? 0) + 1);
+    }
+    const popularIds = [...followerCount.entries()]
+      .filter(([id]) => !excludeSet.has(id) && !fofIds.includes(id))
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([id]) => id);
+
+    const discoverIds = [...fofIds, ...popularIds].slice(0, 20);
 
     const [fProfiles, followerProfiles, discoverProfiles] = await Promise.all([
       fIds.length > 0
@@ -77,11 +113,9 @@ export default function FriendsPage() {
       followerIds.length > 0
         ? supabase.from('profiles').select('id, username, display_name, bio').in('id', followerIds)
         : Promise.resolve({ data: [] as any[] }),
-      supabase
-        .from('profiles')
-        .select('id, username, display_name, bio')
-        .not('id', 'in', excludeStr)
-        .limit(20),
+      discoverIds.length > 0
+        ? supabase.from('profiles').select('id, username, display_name, bio').in('id', discoverIds)
+        : supabase.from('profiles').select('id, username, display_name, bio').not('id', 'in', excludeStr).limit(20),
     ]);
 
     const toRow = (p: any): UserRow => ({
@@ -117,21 +151,33 @@ export default function FriendsPage() {
     }
   };
 
-  const filterUsers = (users: UserRow[]) => {
-    if (!searchQuery) return users;
-    const q = searchQuery.toLowerCase();
-    return users.filter(u =>
-      (u.displayName ?? '').toLowerCase().includes(q) ||
-      (u.username ?? '').toLowerCase().includes(q) ||
-      (u.bio ?? '').toLowerCase().includes(q)
-    );
-  };
+  useEffect(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (!searchQuery.trim() || !supabase || !myId) { setSearchResults([]); return; }
 
-  const displayUsers = filterUsers(
+    setSearching(true);
+    searchTimer.current = setTimeout(async () => {
+      const q = searchQuery.trim();
+      const { data } = await supabase!
+        .from('profiles')
+        .select('id, username, display_name, bio')
+        .or(`username.ilike.%${q}%,display_name.ilike.%${q}%`)
+        .neq('id', myId)
+        .limit(20);
+
+      const toRow = (p: any): UserRow => ({
+        id: p.id, username: p.username ?? null,
+        displayName: p.display_name ?? null, bio: p.bio ?? null,
+      });
+      setSearchResults((data ?? []).map(toRow));
+      setSearching(false);
+    }, 300);
+  }, [searchQuery, myId]);
+
+  const displayUsers =
     activeTab === 'following' ? followingUsers :
     activeTab === 'followers' ? followerUsers :
-    discoverUsers
-  );
+    discoverUsers;
 
   const counts = {
     following: followingUsers.length,
@@ -190,14 +236,70 @@ export default function FriendsPage() {
       {hero}
 
       <div className="max-w-[720px] mx-auto px-5 py-10 pb-16 w-full">
-        <div className="bg-surface border border-divider rounded-xl px-4 py-2.5 flex items-center gap-2 mb-6">
-          <Search size={15} className="text-muted flex-shrink-0" />
-          <input
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search people…"
-            className="flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-placeholder"
-          />
+        <div className="relative mb-6">
+          <div className="bg-surface border border-divider rounded-xl px-4 py-2.5 flex items-center gap-2">
+            <Search size={15} className="text-muted flex-shrink-0" />
+            <input
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Escape') { setSearchQuery(''); return; }
+                if (e.key === 'Enter' && searchResults.length > 0) {
+                  const top = searchResults[0];
+                  router.push(`/profile/${top.username ?? top.id}`);
+                  setSearchQuery('');
+                }
+              }}
+              placeholder="Search people…"
+              className="flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-placeholder"
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="text-muted hover:text-ink text-[16px] leading-none">×</button>
+            )}
+          </div>
+
+          {searchQuery.trim() && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-divider rounded-xl shadow-lg z-20 overflow-hidden">
+              {searching ? (
+                <p className="text-[13px] text-muted px-4 py-3">Searching…</p>
+              ) : searchResults.length === 0 ? (
+                <p className="text-[13px] text-muted px-4 py-3">No users found.</p>
+              ) : (
+                <div className="max-h-[360px] overflow-y-auto">
+                  {searchResults.map(user => {
+                    const name = user.displayName ?? user.username ?? 'Unknown';
+                    const isFollowing = followingIds.has(user.id);
+                    return (
+                      <div key={user.id} className="flex items-center gap-3 px-4 py-3 hover:bg-surface transition border-b border-divider last:border-0">
+                        <Link href={`/profile/${user.username ?? user.id}`} onClick={() => setSearchQuery('')} className="flex-shrink-0">
+                          <UserAvatar size={36} />
+                        </Link>
+                        <div className="flex-1 min-w-0">
+                          <Link href={`/profile/${user.username ?? user.id}`} onClick={() => setSearchQuery('')} className="text-[13px] font-semibold text-ink hover:text-mid transition block truncate">
+                            {name}
+                          </Link>
+                          {user.username && <p className="text-[11px] text-muted truncate">@{user.username}</p>}
+                        </div>
+                        {user.id !== myId && (
+                          <button
+                            onClick={() => toggleFollow(user.id)}
+                            disabled={actionLoading === user.id}
+                            className={`flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-bold transition disabled:opacity-50 ${
+                              isFollowing
+                                ? 'bg-surface text-ink border border-divider hover:border-red-300 hover:text-red-500'
+                                : 'bg-ink text-white hover:opacity-80'
+                            }`}
+                          >
+                            {isFollowing ? <><UserCheck size={12} /> Following</> : <><UserPlus size={12} /> Follow</>}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="flex gap-1 mb-6 border-b border-divider">
@@ -227,10 +329,8 @@ export default function FriendsPage() {
                 key={user.id}
                 className="flex items-start gap-4 border border-divider rounded-xl p-4 bg-white hover:border-mid transition"
               >
-                <Link href={`/profile/${user.username ?? user.id}`} className="flex-shrink-0">
-                  <div className={`w-11 h-11 rounded-full border-2 flex items-center justify-center text-[13px] font-bold ${color}`}>
-                    {initial}
-                  </div>
+                <Link href={`/profile/${user.username ?? user.id}`} className="flex-shrink-0 hover:opacity-80 transition">
+                  <UserAvatar size={44} />
                 </Link>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-3">
@@ -268,11 +368,11 @@ export default function FriendsPage() {
             <div className="flex flex-col items-center py-16 text-center">
               <Users size={32} className="text-subtle mb-3" />
               <p className="text-[14px] text-muted">
-                {activeTab === 'discover'
-                  ? searchQuery ? 'No users match your search.' : 'No new users to discover yet.'
-                  : activeTab === 'following'
-                  ? searchQuery ? 'No matches.' : "You're not following anyone yet."
-                  : searchQuery ? 'No matches.' : 'No followers yet.'}
+                {activeTab === 'following'
+                  ? "You're not following anyone yet."
+                  : activeTab === 'followers'
+                  ? 'No followers yet.'
+                  : 'No new users to discover yet.'}
               </p>
             </div>
           )}

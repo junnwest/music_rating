@@ -85,7 +85,7 @@ export default function DiscographyGrid({ initialReleases, initialNextCursor }: 
       {filtered.length === 0 ? (
         <p className="text-sm text-muted">No releases found.</p>
       ) : (
-        <div className="grid gap-[22px]" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-[22px]">
           {filtered.map((release) => (
             <Link key={release.id} href={`/album/${release.id}`} className="block min-w-0">
               <div className="relative overflow-hidden rounded-[7px]" style={{ aspectRatio: '1 / 1' }}>

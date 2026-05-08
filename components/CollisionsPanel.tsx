@@ -37,43 +37,46 @@ export default function CollisionsPanel() {
 
   return (
     <div className="bg-white min-h-screen">
-      {/* Header */}
+      {/* Hero */}
       <div className="bg-surface border-b border-[#EBEBEB]">
-        <div className="max-w-[1440px] mx-auto px-5 py-8">
-          <h1 className="text-[24px] font-extrabold text-ink" style={{ letterSpacing: '-0.6px' }}>
+        <div className="max-w-[1440px] mx-auto px-5 py-12">
+          <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.7px' }}>
+            Social
+          </p>
+          <h1 className="text-[38px] font-extrabold text-ink leading-[1.06]" style={{ letterSpacing: '-1.2px' }}>
             Taste Collisions
           </h1>
-          <p className="text-[13px] text-muted mt-1">
-            Albums where you and the people you follow strongly disagree
+          <p className="text-[15px] text-muted mt-3 max-w-[500px] leading-relaxed">
+            Albums where you and the people you follow strongly disagree.
           </p>
         </div>
       </div>
 
-      <div className="max-w-[720px] mx-auto px-5 py-9 pb-14">
+      <div className="max-w-[720px] mx-auto px-5 py-10 pb-16">
         {loading ? (
           <p className="text-sm text-muted">Loading…</p>
         ) : !loggedIn ? (
-          <div className="py-16 text-center">
-            <p className="text-[15px] font-bold text-ink mb-2">Sign in to see taste collisions</p>
+          <div className="flex flex-col items-center py-20 text-center">
+            <p className="text-[14px] font-semibold text-ink mb-1">Sign in to see taste collisions</p>
             <p className="text-[13px] text-muted mb-6">Follow people and compare your ratings.</p>
             <Link
               href="/login"
-              className="inline-flex rounded-lg bg-ink px-6 py-3 text-sm font-semibold text-white hover:opacity-80 transition"
+              className="bg-ink text-white text-[13px] font-bold px-5 py-2.5 rounded-lg hover:opacity-80 transition inline-block"
             >
-              Go to login
+              Sign In
             </Link>
           </div>
         ) : noFollows ? (
-          <div className="py-16 text-center">
-            <p className="text-[15px] font-bold text-ink mb-2">You&apos;re not following anyone yet</p>
-            <p className="text-[13px] text-muted">
+          <div className="flex flex-col items-center py-20 text-center">
+            <p className="text-[14px] font-semibold text-ink mb-1">You&apos;re not following anyone yet</p>
+            <p className="text-[13px] text-muted max-w-[280px]">
               Visit someone&apos;s profile and hit Follow to start comparing tastes.
             </p>
           </div>
         ) : collisions.length === 0 ? (
-          <div className="py-16 text-center">
-            <p className="text-[15px] font-bold text-ink mb-2">No collisions yet</p>
-            <p className="text-[13px] text-muted">
+          <div className="flex flex-col items-center py-20 text-center">
+            <p className="text-[14px] font-semibold text-ink mb-1">No collisions yet</p>
+            <p className="text-[13px] text-muted max-w-[320px]">
               You and the people you follow haven&apos;t rated many of the same albums — or you agree on everything.
             </p>
           </div>

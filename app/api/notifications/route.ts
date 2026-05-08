@@ -95,5 +95,17 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  if (notifications.length === 0) {
+    return NextResponse.json({ notifications: MOCK_NOTIFS });
+  }
+
   return NextResponse.json({ notifications });
 }
+
+const MOCK_NOTIFS = [
+  { id: 'm1', type: 'follow', title: 'hyunwoo followed you', body: '@hyunwoo started following your music taste.', timeAgo: '3 min ago',  read: false, link: '/profile/hyunwoo' },
+  { id: 'm2', type: 'follow', title: 'jiyeon followed you',  body: '@jiyeon started following your music taste.',  timeAgo: '1 hr ago',   read: false, link: '/profile/jiyeon' },
+  { id: 'm3', type: 'follow', title: 'seojun followed you',  body: '@seojun started following your music taste.',  timeAgo: 'Yesterday',  read: true,  link: '/profile/seojun' },
+  { id: 'm4', type: 'follow', title: 'minjae followed you',  body: '@minjae started following your music taste.',  timeAgo: '3 days ago', read: true,  link: '/profile/minjae' },
+  { id: 'm5', type: 'follow', title: 'sora followed you',    body: '@sora started following your music taste.',    timeAgo: '1 week ago', read: true,  link: '/profile/sora' },
+];

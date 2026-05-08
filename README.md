@@ -133,32 +133,32 @@ curl -X POST https://your-domain.com/api/admin/seed-rankings \
 
 ### Done
 - [x] Album search (Spotify)
-- [x] Album detail page (tracklist, community stats, ratings, reviews)
+- [x] Album detail page (tracklist, community stats, ratings, comments)
 - [x] Artist page with discography
-- [x] Star rating widget (1–5, half-star steps)
-- [x] Community reviews
+- [x] Star rating widget (1–5, half-star steps; click same star to clear)
+- [x] Comments (renamed from reviews) — visibility control (public / friends / private), commenter's star rating shown, likes, live username resolution from `profiles`
 - [x] Homepage genre rows (DB-first, Spotify fallback)
 - [x] For You page (personalized album feed)
-- [x] Activity feed — community ratings + reviews; filters to followed users when logged in
+- [x] Activity feed — community ratings + comments; filters to followed users when logged in
 - [x] Lists (create, view)
-- [x] Profile page (ratings grid, score distribution, sidebar-left layout)
+- [x] Profile page (ratings grid, score distribution, sidebar-left layout; real comment count in stats)
 - [x] Rating Philosophy / Insights (profile sidebar card)
 - [x] Taste DNA badges in profile header (genre + behavior tags)
 - [x] Top Genres (profile sidebar card)
 - [x] Monthly Capsule (profile sidebar card)
 - [x] Avg Score card (profile sidebar)
-- [x] Pinned Ten — 10 album slots, pick from rated catalog
+- [x] Essentials — 6-album pyramid, pick from rated catalog, drag-to-reorder, swap picker
 - [x] Shelf Creation — Lists tab on profile
 - [x] Pick 5 onboarding modal on first login
 - [x] DB caching layer — albums + artists saved to Supabase on first visit
 - [x] Genre storage on ratings
-- [x] Add to Pinned Ten button on album page (real Supabase toggle)
-- [x] Listen Later button on album page (localStorage toggle)
+- [x] Add button on album page — dropdown with Listen Later, Essentials (with swap popup + ★5 confirmation), Add to Ranking (popup with Top 6 + Browse filter)
 - [x] Listen Later page (`/listen-later`) — saved albums grid
 - [x] Settings page — 5-tab settings (Account, Preferences, Notifications, Privacy, Danger Zone)
 - [x] Help page — FAQ accordion + contact form
 - [x] Notifications page — real data (new followers + friend ratings via `/api/notifications`)
 - [x] Friends page — real Supabase follows (Following / Followers / Discover tabs)
+- [x] Search page — mobile header transforms to search overlay on icon tap; landing state with no duplicate bar
 
 ### Done — social
 - [x] Following system — follow/unfollow, follower/following counts, public `/profile/[username]` pages
@@ -181,6 +181,15 @@ curl -X POST https://your-domain.com/api/admin/seed-rankings \
 - [x] Navbar dropdown — username and display name now read from `profiles` table instead of `user_metadata`/email split
 - [x] `[username]/page.tsx` — removed `targetUsername` prop that was overriding the DB-fetched username
 - [x] Homepage — removed "Good morning / Here's what's waiting" greeting for logged-in users
+
+### Done — UI polish pass (2026-05-08)
+- [x] Album page — "avg/5" → "avg"; oversized dash on no-rating fixed; Add button consolidated into dropdown (Listen Later + Essentials + Add to Ranking); star rating text removed; Add button moved into stats row
+- [x] Comments — renamed from Reviews throughout; visibility dropdown with icons; commenter's star rating shown; comment likes; live username → profile link
+- [x] Essentials (was Pinned Ten) — swap modal with pyramid layout; ★5 confirmation flow matching profile picker; `checkPinned` split into two queries (was broken due to missing FK join)
+- [x] Add to Ranking popup — Top 6 list + Browse Rankings filter (Country / Genre / Time dropdowns)
+- [x] Profile page — real comment count replaces hardcoded "0 reviews"; Essentials component (was PinnedTen)
+- [x] Search page — mobile header search overlay; landing empty state
+- [x] Activity + Settings — "reviewed/reviews" text updated to "commented/comments"
 
 ### Done — annual
 - [x] Wrapped page — yearly summary: albums rated, top genre, top artist, avg score, active month, best/worst album
@@ -226,16 +235,19 @@ npm run expand:genre
 ---
 
 ### Week 1 — May 7–16: UI polish + mobile
-- [ ] Full UI polish pass on every major page (homepage, search, album detail, artist, rankings, profile, settings, notifications, listen later, onboarding)
-- [ ] Mobile responsiveness pass — critical for K-pop audience
-- [ ] Error states and loading skeletons throughout
-- [ ] Empty states (no ratings, no followers, no lists, etc.)
+- [x] Mobile responsiveness pass — ScrollRow touch scroll, album/artist/search/rankings/discography/onboarding grids all responsive
+- [x] Loading skeletons — homepage feed, activity feed, profile header + grid
+- [x] Empty states improved — search "no results" with icon + copy; listen later empty state already good
+- [x] 404 + 500 error pages (`app/not-found.tsx`, `app/error.tsx`)
+- [x] Mobile nav UX — bottom tab bar (Home / Search / Feed / Rankings / Profile), hidden at xl where sidebar takes over; iOS safe-area aware
+- [x] Page reviews: main, search, album, notifications, friends
+- [ ] Page reviews: artist, profile, activity, settings, rankings, listen-later, collisions, contradictions, wrapped, lists
 
 ### Week 2 — May 17–23: Functional gaps
 - [ ] Password reset flow
 - [ ] Email verification on signup
 - [ ] Onboarding polish (first-time user experience)
-- [ ] 404 + 500 error pages
+- [x] 404 + 500 error pages (done in Week 1)
 
 ### Week 3 — May 24–30: Auth + legal + analytics
 - [ ] KakaoTalk login

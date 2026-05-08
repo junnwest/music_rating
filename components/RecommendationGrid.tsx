@@ -1,12 +1,8 @@
-import Link from 'next/link';
-import ScrollRow from './ScrollRow';
 import { createServerClient } from '../lib/supabaseServer';
 import { getSpotifyRecommendations } from '../lib/spotify';
 import { GENRE_CATEGORIES } from '../lib/genre-categories';
+import RecommendationGridClient from './RecommendationGridClient';
 import type { AlbumRelease } from '../types';
-
-// Approximate number of cards visible at full width — show "See all" beyond this
-const VISIBLE_THRESHOLD = 8;
 
 async function fetchFromReleases(
   supabase: NonNullable<ReturnType<typeof createServerClient>>,
@@ -83,31 +79,5 @@ export default async function RecommendationGrid() {
 
   if (sections.length === 0) return null;
 
-  return (
-    <section className="max-w-[1440px] mx-auto px-5 pb-14">
-      {sections.map((cat, i) => (
-        <div key={cat.key}>
-          {i > 0 && <div className="h-px bg-[#EBEBEB] my-11" />}
-          <div className="flex items-end justify-between mb-[18px]">
-            <div>
-              <div className="flex items-baseline gap-2">
-                <div className="text-[17px] font-bold text-ink">{cat.name}</div>
-                <div className="text-[12px] text-muted">{cat.albums.length} albums</div>
-              </div>
-              <div className="text-[12px] text-muted mt-0.5">{cat.description}</div>
-            </div>
-            {cat.albums.length > VISIBLE_THRESHOLD && (
-              <Link
-                href={`/genre/${cat.key}`}
-                className="text-[12px] font-medium text-muted hover:text-mid transition whitespace-nowrap"
-              >
-                See all →
-              </Link>
-            )}
-          </div>
-          <ScrollRow albums={cat.albums} />
-        </div>
-      ))}
-    </section>
-  );
+  return <RecommendationGridClient sections={sections} />;
 }

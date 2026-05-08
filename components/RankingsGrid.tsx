@@ -97,7 +97,7 @@ export default function RankingsGrid({ categories, topAlbumsMap, voteCountMap }:
           </p>
         </div>
       ) : (
-        <div className="grid gap-5" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {filtered.map((cat) => {
             const topAlbums = topAlbumsMap[cat.id] ?? [];
             const voteCount = voteCountMap[cat.id] ?? 0;

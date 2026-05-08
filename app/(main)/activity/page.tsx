@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../../../lib/supabaseClient';
+import UserAvatar from '../../../components/UserAvatar';
 
 type FeedItem = {
   type: 'rating' | 'review';
@@ -52,7 +53,7 @@ export default function ActivityPage() {
 
   const subtitle = isFiltered
     ? 'Recent activity from people you follow'
-    : 'Recent ratings and reviews from the community';
+    : 'Recent ratings and comments from the community';
 
   return (
     <div className="bg-white min-h-screen">
@@ -61,7 +62,7 @@ export default function ActivityPage() {
           <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.7px' }}>
             Community
           </p>
-          <h1 className="text-[38px] font-extrabold text-ink leading-[1.06]" style={{ letterSpacing: '-1.2px' }}>
+          <h1 className="text-[28px] sm:text-[38px] font-extrabold text-ink leading-[1.06]" style={{ letterSpacing: '-1.2px' }}>
             Activity
           </h1>
           <p className="text-[15px] text-muted mt-3 max-w-[500px] leading-relaxed">{subtitle}</p>
@@ -70,7 +71,18 @@ export default function ActivityPage() {
 
       <div className="max-w-[720px] mx-auto px-5 py-10 pb-16">
         {loading ? (
-          <p className="text-sm text-muted">Loading…</p>
+          <div className="flex flex-col">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex gap-4 py-5 border-b border-[#EBEBEB]">
+                <div className="w-8 h-8 rounded-full bg-surface animate-pulse flex-shrink-0 mt-0.5" />
+                <div className="flex-1 space-y-2 pt-1">
+                  <div className="h-3 bg-surface animate-pulse rounded w-3/4" />
+                  <div className="h-2.5 bg-surface animate-pulse rounded w-1/2" />
+                </div>
+                <div className="w-[52px] h-[52px] rounded-[5px] bg-surface animate-pulse flex-shrink-0" />
+              </div>
+            ))}
+          </div>
         ) : feed.length === 0 ? (
           <div className="py-16 text-center">
             <p className="text-[15px] font-bold text-ink mb-2">
@@ -87,10 +99,8 @@ export default function ActivityPage() {
             {feed.map((item, i) => (
               <div key={i} className="flex gap-4 py-5 border-b border-[#EBEBEB] last:border-0">
                 {/* Avatar */}
-                <Link href={`/profile/${item.username}`} className="flex-shrink-0 mt-0.5">
-                  <div className="w-8 h-8 rounded-full bg-mint-bg border border-mint flex items-center justify-center text-[11px] font-bold text-mint-dark hover:opacity-80 transition">
-                    {item.username[0].toUpperCase()}
-                  </div>
+                <Link href={`/profile/${item.username}`} className="flex-shrink-0 mt-0.5 hover:opacity-80 transition">
+                  <UserAvatar size={32} />
                 </Link>
 
                 {/* Content */}
@@ -101,7 +111,7 @@ export default function ActivityPage() {
                         <Link href={`/profile/${item.username}`} className="font-semibold text-ink hover:text-mid transition">
                           {item.username}
                         </Link>
-                        <span className="text-muted"> {item.type === 'rating' ? 'rated' : 'reviewed'} </span>
+                        <span className="text-muted"> {item.type === 'rating' ? 'rated' : 'commented on'} </span>
                         <Link href={`/album/${item.releaseId}`} className="font-semibold text-ink hover:text-mid transition">
                           {item.release?.title ?? '—'}
                         </Link>

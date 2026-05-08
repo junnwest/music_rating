@@ -19,6 +19,7 @@ interface Props {
   initialSuggestions: RankedAlbum[];
   filterYear?: number | null;
   filterGenre?: string | null;
+  prefillAlbum?: RankedAlbum | null;
 }
 
 const POOL_SIZE = 8;
@@ -36,7 +37,7 @@ type DragTarget =
   | { type: 'addTier' }
   | null;
 
-export default function RankBuilder({ categoryId, categoryTitle, slug, initialSuggestions, filterYear, filterGenre }: Props) {
+export default function RankBuilder({ categoryId, categoryTitle, slug, initialSuggestions, filterYear, filterGenre, prefillAlbum }: Props) {
   const router = useRouter();
   const [ranking, setRanking] = useState<RankedAlbum[][]>([[], [], []]);
   const [query, setQuery] = useState('');
@@ -54,15 +55,29 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
 
   // Load user + existing ranking
   useEffect(() => {
-    if (!supabase) { setLoaded(true); return; }
+    if (!supabase) {
+      if (prefillAlbum) setRanking([[prefillAlbum], [], []]);
+      setLoaded(true);
+      return;
+    }
     supabase.auth.getSession().then(async ({ data }) => {
       const uid = data.session?.user?.id ?? null;
       setUserId(uid);
+      let tiers: RankedAlbum[][] = [[], [], []];
       if (uid) {
         const res = await fetch(`/api/rankings/user-ranking?categoryId=${categoryId}&userId=${uid}`);
         const json = await res.json();
-        if (json.tiers?.length) setRanking(json.tiers);
+        if (json.tiers?.length) tiers = json.tiers;
       }
+      if (prefillAlbum && !tiers.flat().some((a: RankedAlbum) => a.id === prefillAlbum.id)) {
+        const emptyIdx = tiers.findIndex((t: RankedAlbum[]) => t.length === 0);
+        if (emptyIdx >= 0) {
+          tiers = tiers.map((t: RankedAlbum[], i: number) => i === emptyIdx ? [prefillAlbum] : t);
+        } else {
+          tiers = [...tiers, [prefillAlbum]];
+        }
+      }
+      setRanking(tiers);
       setLoaded(true);
     });
   }, [categoryId]);

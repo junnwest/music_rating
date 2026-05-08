@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { Search } from 'lucide-react';
 import type { AlbumRelease } from '../types';
 import type { SpotifyArtist } from '../lib/spotify';
 
@@ -41,7 +42,6 @@ export default function AlbumSearchForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
-  const [totalCount, setTotalCount] = useState(0);
 
   async function runSearch(q: string) {
     if (!q.trim()) return;
@@ -61,7 +61,6 @@ export default function AlbumSearchForm() {
 
       const allReleases: AlbumRelease[] = relData.releases ?? [];
       setReleases(allReleases);
-      setTotalCount(allReleases.length);
 
       const artists: SpotifyArtist[] = artData.artists ?? [];
       if (artists.length > 0) setArtistMatch(artists[0]);
@@ -91,28 +90,10 @@ export default function AlbumSearchForm() {
 
   return (
     <div>
-      {/* Search bar area */}
-      <div className="bg-surface border-b border-[#EBEBEB] px-0 py-6">
+      {/* Filter bar — only shown when there are results */}
+      {searched && (
+      <div className="bg-surface border-b border-[#EBEBEB] px-0 py-4">
         <div className="max-w-[1440px] mx-auto px-5">
-          {/* Active search bar */}
-          <form
-            onSubmit={(e) => { e.preventDefault(); runSearch(query); }}
-            className="mb-4"
-          >
-            <div
-              className="flex items-center gap-3 bg-white rounded-full px-5 py-[11px] max-w-[520px]"
-              style={{ border: `1.5px solid ${query ? '#111111' : '#EBEBEB'}` }}
-            >
-              <span className="text-muted" style={{ fontSize: 16 }}>⌕</span>
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search albums, artists…"
-                className="flex-1 bg-transparent text-[14px] font-medium text-ink outline-none placeholder:text-[#C0C0BE]"
-              />
-            </div>
-          </form>
-
           {/* Artist match card */}
           {artistMatch && (
             <Link
@@ -152,23 +133,47 @@ export default function AlbumSearchForm() {
               </Chip>
             ))}
             <div className="flex-1" />
-            {searched && !loading && (
+            {!loading && (
               <span className="text-[12px] text-muted">{filteredReleases.length} results</span>
             )}
           </div>
         </div>
       </div>
+      )}
 
       {/* Results */}
       <div className="max-w-[1440px] mx-auto px-5 py-9 pb-14">
-        {loading && <p className="text-sm text-muted">Searching…</p>}
+        {!searched && !loading && (
+          <div className="flex flex-col items-center py-24 text-center">
+            <Search size={32} className="text-subtle mb-4" />
+            <p className="text-[15px] font-semibold text-ink mb-1">Search for albums and artists</p>
+            <p className="text-[13px] text-muted">Use the search bar above to find something to rate.</p>
+          </div>
+        )}
+        {loading && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-[22px]">
+            {Array.from({ length: 12 }).map((_, i) => (
+              <div key={i}>
+                <div className="rounded-[7px] bg-surface animate-pulse aspect-square" />
+                <div className="mt-[9px] space-y-1.5">
+                  <div className="h-3 bg-surface animate-pulse rounded w-4/5" />
+                  <div className="h-2.5 bg-surface animate-pulse rounded w-3/5" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         {error && <p className="text-sm text-red-500">{error}</p>}
         {!loading && searched && filteredReleases.length === 0 && !error && (
-          <p className="text-sm text-muted">No results found.</p>
+          <div className="flex flex-col items-center py-20 text-center">
+            <Search size={32} className="text-subtle mb-4" />
+            <p className="text-[15px] font-semibold text-ink mb-1">No results for &ldquo;{query}&rdquo;</p>
+            <p className="text-[13px] text-muted">Try a different spelling or search by artist name.</p>
+          </div>
         )}
 
         {filteredReleases.length > 0 && (
-          <div className="grid gap-[22px]" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-[22px]">
             {filteredReleases.map((release) => (
               <Link key={release.id} href={`/album/${release.id}`} className="block min-w-0">
                 <div className="relative overflow-hidden rounded-[7px]" style={{ aspectRatio: '1 / 1' }}>

@@ -114,7 +114,7 @@ export default async function RankingsPage() {
             Community
           </p>
           <h1
-            className="text-[38px] font-extrabold text-ink leading-[1.06]"
+            className="text-[28px] sm:text-[38px] font-extrabold text-ink leading-[1.06]"
             style={{ letterSpacing: '-1.2px' }}
           >
             Rankings

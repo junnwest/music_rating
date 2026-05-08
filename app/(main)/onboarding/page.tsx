@@ -422,10 +422,7 @@ function StepAlbums({
       />
 
       {/* Fixed grid — no internal scroll */}
-      <div
-        className="grid"
-        style={{ gridTemplateColumns: `repeat(${COLS}, minmax(0, 1fr))`, gap: 10 }}
-      >
+      <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-7 gap-[10px]">
         {displayed.map((album) => (
           <AlbumCell
             key={album.id}
@@ -513,8 +510,8 @@ export default function OnboardingPage() {
     <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4 py-8 gap-4">
       {/* Card */}
       <div
-        className="bg-white rounded-[20px] border border-[#EBEBEB] shadow-xl w-full flex flex-col"
-        style={{ maxWidth: 860, padding: '40px' }}
+        className="bg-white rounded-[20px] border border-[#EBEBEB] shadow-xl w-full flex flex-col p-5 sm:p-10"
+        style={{ maxWidth: 860 }}
       >
         {/* Top label */}
         <div className="text-[11px] font-semibold text-muted uppercase mb-6" style={{ letterSpacing: '0.7px' }}>
