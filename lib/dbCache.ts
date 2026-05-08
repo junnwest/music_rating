@@ -18,7 +18,7 @@ export async function getCachedAlbum(id: string): Promise<SpotifyAlbumDetail | n
 
   const { data } = await supabase
     .from('releases')
-    .select('id, title, artist, artist_id, release_date, release_type, label, total_tracks, tracklist, genres, cover_url, spotify_url, cached_at')
+    .select('id, title, artist, artist_id, artists_json, release_date, release_type, label, total_tracks, tracklist, genres, cover_url, spotify_url, cached_at')
     .eq('id', id)
     .not('tracklist', 'is', null)
     .maybeSingle();
@@ -30,6 +30,7 @@ export async function getCachedAlbum(id: string): Promise<SpotifyAlbumDetail | n
     title: data.title,
     artist: data.artist,
     artistId: data.artist_id ?? null,
+    artists: data.artists_json ?? (data.artist_id ? [{ id: data.artist_id, name: data.artist }] : []),
     date: data.release_date ?? null,
     releaseType: data.release_type ?? 'Album',
     label: data.label ?? null,
@@ -51,6 +52,7 @@ export async function cacheAlbum(album: SpotifyAlbumDetail): Promise<void> {
       title: album.title,
       artist: album.artist,
       artist_id: album.artistId,
+      artists_json: album.artists,
       release_date: album.date,
       release_type: album.releaseType,
       label: album.label,

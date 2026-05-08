@@ -93,14 +93,25 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
               {album.title}
             </h1>
 
-            {/* Artist */}
-            {album.artistId ? (
-              <a href={`/artist/${album.artistId}`} className="text-[17px] font-medium text-muted mt-2 hover:text-ink transition block">
-                {album.artist}
-              </a>
-            ) : (
-              <p className="text-[17px] font-medium text-muted mt-2">{album.artist}</p>
-            )}
+            {/* Artist(s) */}
+            <p className="text-[17px] font-medium text-muted mt-2">
+              {album.artists && album.artists.length > 0 ? (
+                album.artists.map((a, i) => (
+                  <span key={a.id}>
+                    {i > 0 && <span className="mx-[3px]">,</span>}
+                    <a href={`/artist/${a.id}`} className="hover:text-ink transition">
+                      {a.name}
+                    </a>
+                  </span>
+                ))
+              ) : album.artistId ? (
+                <a href={`/artist/${album.artistId}`} className="hover:text-ink transition">
+                  {album.artist}
+                </a>
+              ) : (
+                album.artist
+              )}
+            </p>
 
             {/* Community stats */}
             <div className="flex items-center gap-7 mt-[22px] pt-[18px] border-t border-[#EBEBEB]">

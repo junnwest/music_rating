@@ -137,6 +137,7 @@ export interface SpotifyAlbumDetail {
   title: string;
   artist: string;
   artistId: string | null;
+  artists: { id: string; name: string }[];
   date: string | null;
   releaseType: string;
   label: string | null;
@@ -172,6 +173,7 @@ export async function getSpotifyAlbum(id: string): Promise<SpotifyAlbumDetail | 
       title: album.name,
       artist: album.artists?.map((a: any) => a.name).join(', ') ?? 'Unknown artist',
       artistId: album.artists?.[0]?.id ?? null,
+      artists: (album.artists ?? []).map((a: any) => ({ id: a.id, name: a.name })),
       date: album.release_date ?? null,
       releaseType: albumTypeMap[album.album_type] === 'Single' && (album.total_tracks ?? 0) >= 4
         ? 'EP'
