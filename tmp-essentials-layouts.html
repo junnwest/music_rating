@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Essentials — layout options</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f0f0ee; padding: 40px 24px; display: flex; flex-direction: column; gap: 48px; }
+  .label { font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: #888; margin-bottom: 12px; }
+  .frame { background: #fff; border-radius: 12px; padding: 24px 28px; box-shadow: 0 2px 20px rgba(0,0,0,0.08); max-width: 860px; }
+  .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .section-title { font-size: 13px; font-weight: 800; color: #111; letter-spacing: -0.2px; }
+  .edit-btn { font-size: 12px; font-weight: 500; color: #888; cursor: pointer; }
+
+  /* ── Shared cover tile ── */
+  .cover { background: #EBEBEB; border-radius: 7px; overflow: hidden; border: 1.5px solid #EBEBEB; }
+  .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+  /* ── Option A: horizontal strip ── */
+  .strip { display: flex; gap: 8px; }
+  .strip .cover { width: 72px; height: 72px; flex-shrink: 0; }
+
+  /* ── Option B: 2 large + 4 small ── */
+  .bento { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; grid-template-rows: auto auto; gap: 8px; max-width: 360px; }
+  .bento .cover-lg { grid-column: span 2; aspect-ratio: 1; }
+  .bento .cover-sm { aspect-ratio: 1; }
+
+  /* ── Option C: 3×2 grid, free-sized ── */
+  .grid3x2 { display: grid; grid-template-columns: repeat(3, 96px); gap: 8px; }
+  .grid3x2 .cover { width: 96px; height: 96px; }
+
+  /* ── Option D: 1 featured + 5 small ── */
+  .featured { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; max-width: 340px; }
+  .featured .cover-hero { grid-row: span 2; aspect-ratio: 1; }
+  .featured .cover-sm { aspect-ratio: 1; }
+</style>
+</head>
+<body>
+
+<script>
+  const IMGS = [
+    "https://i.scdn.co/image/ab67616d0000b273df55e326ed144ab4f5cecf95",
+    "https://i.scdn.co/image/ab67616d0000b2735eb3e81a51b228d4ec7bc538",
+    "https://i.scdn.co/image/ab67616d0000b273d0f5ba03a29742f9c3270847",
+    "https://i.scdn.co/image/ab67616d0000b27338cf6c5b0b64fa3ddb12d8d2",
+    "https://i.scdn.co/image/ab67616d0000b273e787c2f1dc55e4b4126d4dea",
+    "https://i.scdn.co/image/ab67616d0000b2735a6a8c6c1d32f9e4c00a2df8",
+  ];
+  window.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[data-covers]').forEach(container => {
+      const mode = container.dataset.covers;
+      if (mode === 'strip') {
+        IMGS.forEach(src => {
+          const d = document.createElement('div'); d.className = 'cover';
+          const img = document.createElement('img'); img.src = src;
+          d.appendChild(img); container.appendChild(d);
+        });
+      } else if (mode === 'bento') {
+        IMGS.forEach((src, i) => {
+          const d = document.createElement('div'); d.className = i < 2 ? 'cover cover-lg' : 'cover cover-sm';
+          const img = document.createElement('img'); img.src = src;
+          d.appendChild(img); container.appendChild(d);
+        });
+      } else if (mode === 'grid') {
+        IMGS.forEach(src => {
+          const d = document.createElement('div'); d.className = 'cover';
+          const img = document.createElement('img'); img.src = src;
+          d.appendChild(img); container.appendChild(d);
+        });
+      } else if (mode === 'featured') {
+        IMGS.forEach((src, i) => {
+          const d = document.createElement('div'); d.className = i === 0 ? 'cover cover-hero' : 'cover cover-sm';
+          const img = document.createElement('img'); img.src = src;
+          d.appendChild(img); container.appendChild(d);
+        });
+      }
+    });
+  });
+</script>
+
+<!-- ─── OPTION A ─── -->
+<p class="label">Option A — Horizontal strip (1 row × 6)</p>
+<div class="frame">
+  <div class="section-header">
+    <span class="section-title">Essentials</span>
+    <span class="edit-btn">Edit</span>
+  </div>
+  <div class="strip" data-covers="strip"></div>
+</div>
+
+<!-- ─── OPTION B ─── -->
+<p class="label">Option B — 2 large + 4 small (bento)</p>
+<div class="frame">
+  <div class="section-header">
+    <span class="section-title">Essentials</span>
+    <span class="edit-btn">Edit</span>
+  </div>
+  <div class="bento" data-covers="bento"></div>
+</div>
+
+<!-- ─── OPTION C ─── -->
+<p class="label">Option C — 3×2 equal grid (96px each)</p>
+<div class="frame">
+  <div class="section-header">
+    <span class="section-title">Essentials</span>
+    <span class="edit-btn">Edit</span>
+  </div>
+  <div class="grid3x2" data-covers="grid"></div>
+</div>
+
+<!-- ─── OPTION D ─── -->
+<p class="label">Option D — 1 featured + 5 small</p>
+<div class="frame">
+  <div class="section-header">
+    <span class="section-title">Essentials</span>
+    <span class="edit-btn">Edit</span>
+  </div>
+  <div class="featured" data-covers="featured"></div>
+</div>
+
+</body>
+</html>

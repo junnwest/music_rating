@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Profile page — hero & capsule options</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f0f0ee; padding: 40px 24px; display: flex; flex-direction: column; gap: 56px; }
+  .label { font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: #888; margin-bottom: 12px; }
+  .frame { background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 20px rgba(0,0,0,0.08); max-width: 860px; }
+
+  /* ── Shared header elements ── */
+  .avatar { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; border: 1px solid #EBEBEB; flex-shrink: 0; }
+  .username { font-size: 22px; font-weight: 800; color: #111; letter-spacing: -0.6px; }
+  .display-name { font-size: 13px; color: #888; }
+  .stats { display: flex; gap: 28px; margin-top: 14px; }
+  .stat-val { font-size: 18px; font-weight: 700; color: #111; }
+  .stat-lbl { font-size: 11px; color: #888; margin-top: 1px; }
+  .dna-chip { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; background: #EDFFF9; border: 1.5px solid #3DFFD1; color: #00453A; margin-top: 10px; }
+  .inset-sep { border: none; border-top: 1px solid #EBEBEB; margin: 0 28px; }
+
+  /* ── Option A: current white ── */
+  .optA-hero { padding: 28px 28px 24px; display: flex; gap: 18px; align-items: flex-start; background: #fff; }
+
+  /* ── Option B: blurred album mosaic ── */
+  .optB-hero { position: relative; overflow: hidden; padding: 28px 28px 24px; display: flex; gap: 18px; align-items: flex-start; }
+  .mosaic-bg { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(6, 1fr); gap: 0; opacity: 0.18; }
+  .mosaic-bg img { width: 100%; height: 100%; object-fit: cover; }
+  .mosaic-overlay { position: absolute; inset: 0; background: linear-gradient(to right, rgba(255,255,255,0.96) 0%, rgba(255,255,255,0.82) 55%, rgba(255,255,255,0.5) 100%); }
+  .optB-content { position: relative; display: flex; gap: 18px; align-items: flex-start; width: 100%; }
+
+  /* ── Option C: warm surface tint ── */
+  .optC-hero { padding: 28px 28px 24px; display: flex; gap: 18px; align-items: flex-start; background: #F7F6F3; border-bottom: 1px solid #EBEBEB; }
+
+  /* ── Shared body stub ── */
+  .body-stub { padding: 20px 28px; display: flex; gap: 16px; }
+  .stat-card { background: #fff; border: 1px solid #EBEBEB; border-radius: 10px; padding: 14px; width: 100px; }
+  .stat-card-lbl { font-size: 10px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  .stat-card-val { font-size: 26px; font-weight: 800; color: #111; }
+  .stat-card-sub { font-size: 11px; color: #888; }
+
+  /* ── Capsule star options ── */
+  .capsule-row { display: flex; gap: 24px; padding: 20px 28px; }
+  .capsule-box { flex: 1; border: 1px solid #EBEBEB; border-radius: 10px; padding: 14px; }
+  .capsule-lbl { font-size: 10px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+  .capsule-title { font-size: 14px; font-weight: 800; color: #111; margin-bottom: 8px; }
+  .capsule-month { font-size: 13px; color: #888; margin-bottom: 10px; }
+  .capsule-row-item { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .capsule-row-item .key { font-size: 12px; color: #888; }
+  /* Option A: badge pill */
+  .score-badge { display: inline-flex; align-items: center; font-size: 11px; font-weight: 700; background: #3DFFD1; color: #00453A; border-radius: 4px; padding: 2px 7px; }
+  /* Option B: clean number */
+  .score-clean { font-size: 12px; font-weight: 700; color: #111; }
+  .score-clean .album-title { font-weight: 600; color: #333; }
+
+  /* Option C: subtle dot separator */
+  .score-dot { font-size: 12px; color: #888; }
+  .score-dot strong { color: #111; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<script>
+  const AVATAR = "https://i.scdn.co/image/ab6761610000e5eb789f38042e5ef8911fc3826b";
+  const A1 = "https://i.scdn.co/image/ab67616d0000b273df55e326ed144ab4f5cecf95";
+  const A2 = "https://i.scdn.co/image/ab67616d0000b2735eb3e81a51b228d4ec7bc538";
+  const A3 = "https://i.scdn.co/image/ab67616d0000b273d0f5ba03a29742f9c3270847";
+  const A4 = "https://i.scdn.co/image/ab67616d0000b27338cf6c5b0b64fa3ddb12d8d2";
+  const A5 = "https://i.scdn.co/image/ab67616d0000b273e787c2f1dc55e4b4126d4dea";
+  const A6 = "https://i.scdn.co/image/ab67616d0000b2735a6a8c6c1d32f9e4c00a2df8";
+  const COVERS = [A1, A2, A3, A4, A5, A6];
+
+  window.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[data-avatar]').forEach(el => el.src = AVATAR);
+    document.querySelectorAll('[data-mosaic]').forEach(container => {
+      COVERS.forEach(src => {
+        const img = document.createElement('img');
+        img.src = src;
+        container.appendChild(img);
+      });
+    });
+  });
+</script>
+
+<!-- ─── HERO OPTIONS ────────────────────────────────────────── -->
+
+<p class="label">Hero — Option A: current (white canvas)</p>
+<div class="frame">
+  <div class="optA-hero">
+    <img class="avatar" data-avatar src="" alt="junnwest" />
+    <div style="flex:1">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:2px">
+        <div class="username">@junnwest</div>
+        <div class="display-name">Kenneth Yong</div>
+      </div>
+      <div class="stats">
+        <div><div class="stat-val">24</div><div class="stat-lbl">albums rated</div></div>
+        <div><div class="stat-val">3</div><div class="stat-lbl">followers</div></div>
+        <div><div class="stat-val">1</div><div class="stat-lbl">following</div></div>
+      </div>
+      <div class="dna-chip">K-R&B connoisseur</div>
+    </div>
+  </div>
+  <hr class="inset-sep" />
+  <div class="body-stub">
+    <div class="stat-card"><div class="stat-card-lbl">Avg Score</div><div class="stat-card-val">4.2</div><div class="stat-card-sub">out of 5</div></div>
+    <div style="font-size:12px;color:#888;align-self:center;padding-left:8px">← catalog continues →</div>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+
+<p class="label">Hero — Option B: blurred album mosaic (user's own pins)</p>
+<div class="frame">
+  <div class="optB-hero">
+    <div class="mosaic-bg" data-mosaic></div>
+    <div class="mosaic-overlay"></div>
+    <div class="optB-content">
+      <img class="avatar" data-avatar src="" alt="junnwest" />
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:2px">
+          <div class="username">@junnwest</div>
+          <div class="display-name">Kenneth Yong</div>
+        </div>
+        <div class="stats">
+          <div><div class="stat-val">24</div><div class="stat-lbl">albums rated</div></div>
+          <div><div class="stat-val">3</div><div class="stat-lbl">followers</div></div>
+          <div><div class="stat-val">1</div><div class="stat-lbl">following</div></div>
+        </div>
+        <div class="dna-chip">K-R&B connoisseur</div>
+      </div>
+    </div>
+  </div>
+  <hr class="inset-sep" />
+  <div class="body-stub">
+    <div class="stat-card"><div class="stat-card-lbl">Avg Score</div><div class="stat-card-val">4.2</div><div class="stat-card-sub">out of 5</div></div>
+    <div style="font-size:12px;color:#888;align-self:center;padding-left:8px">← catalog continues →</div>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────── -->
+
+<p class="label">Hero — Option C: warm surface tint (no image, flat colour)</p>
+<div class="frame">
+  <div class="optC-hero">
+    <img class="avatar" data-avatar src="" alt="junnwest" style="border-color:#E0DDD7" />
+    <div style="flex:1">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:2px">
+        <div class="username">@junnwest</div>
+        <div class="display-name">Kenneth Yong</div>
+      </div>
+      <div class="stats">
+        <div><div class="stat-val">24</div><div class="stat-lbl">albums rated</div></div>
+        <div><div class="stat-val">3</div><div class="stat-lbl">followers</div></div>
+        <div><div class="stat-val">1</div><div class="stat-lbl">following</div></div>
+      </div>
+      <div class="dna-chip">K-R&B connoisseur</div>
+    </div>
+  </div>
+  <div class="body-stub" style="background:#fff">
+    <div class="stat-card"><div class="stat-card-lbl">Avg Score</div><div class="stat-card-val">4.2</div><div class="stat-card-sub">out of 5</div></div>
+    <div style="font-size:12px;color:#888;align-self:center;padding-left:8px">← catalog continues →</div>
+  </div>
+</div>
+
+<!-- ─── MONTHLY CAPSULE STAR ───────────────────────────────── -->
+
+<p class="label">Monthly capsule — "Highest" score formatting</p>
+<div class="frame">
+  <div class="capsule-row">
+
+    <div class="capsule-box">
+      <div class="capsule-lbl">Option A — badge pill</div>
+      <div class="capsule-title">May 2026</div>
+      <div class="capsule-row-item">
+        <span class="key">Albums rated</span>
+        <strong style="font-size:12px;color:#111">4</strong>
+      </div>
+      <div class="capsule-row-item">
+        <span class="key">Top genre</span>
+        <strong style="font-size:12px;color:#111">K-R&B</strong>
+      </div>
+      <div class="capsule-row-item" style="align-items:flex-start;gap:8px">
+        <span class="key" style="flex-shrink:0">Highest</span>
+        <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+          <span style="font-size:11px;font-weight:600;color:#333;text-align:right">LILAC</span>
+          <span class="score-badge">★ 5</span>
+        </span>
+      </div>
+    </div>
+
+    <div class="capsule-box">
+      <div class="capsule-lbl">Option B — clean number</div>
+      <div class="capsule-title">May 2026</div>
+      <div class="capsule-row-item">
+        <span class="key">Albums rated</span>
+        <strong style="font-size:12px;color:#111">4</strong>
+      </div>
+      <div class="capsule-row-item">
+        <span class="key">Top genre</span>
+        <strong style="font-size:12px;color:#111">K-R&B</strong>
+      </div>
+      <div class="capsule-row-item" style="align-items:flex-start">
+        <span class="key" style="flex-shrink:0">Highest</span>
+        <span class="score-clean" style="text-align:right">LILAC &mdash; <span style="color:#00453A">5.0</span></span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

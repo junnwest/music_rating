@@ -499,7 +499,6 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
 
   const SORT_LABELS = { recent: 'Recently rated', 'score-high': 'Highest rated', 'score-low': 'Lowest rated', alpha: 'A–Z' } as const;
 
-  const insights = getRatingInsights(ratings ?? [], communityStats);
   const tasteDNA = getTasteDNA(ratings ?? []);
   const capsule = getMonthlyCapsule(ratings ?? []);
   const topGenres = getTopGenres(ratings ?? []);
@@ -620,19 +619,6 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
               )}
             </div>
 
-            <div className="bg-white rounded-xl border border-[#EBEBEB] p-4 min-w-[200px] md:min-w-0">
-              <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.6px' }}>Insights</p>
-              {insights.length > 0 ? (
-                <div className="flex flex-col gap-2">
-                  {insights.map((insight, i) => (
-                    <p key={i} className="text-[12px] text-mid leading-snug">{insight}</p>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-[12px] text-muted">Rate more albums to unlock insights.</p>
-              )}
-            </div>
-
             {capsule && (
               <div className="bg-white rounded-xl border border-[#EBEBEB] p-4 min-w-[180px] md:min-w-0">
                 <p className="text-[11px] font-semibold text-muted uppercase mb-2" style={{ letterSpacing: '0.6px' }}>Monthly Capsule</p>
@@ -651,8 +637,8 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                   {capsule.highest && (
                     <div className="flex justify-between items-start gap-2">
                       <span className="text-[12px] text-muted flex-shrink-0">Highest</span>
-                      <span className="text-[11px] font-semibold text-ink text-right truncate">
-                        {capsule.highest.title} <span style={{ color: '#3DFFD1' }}>★{capsule.highest.score}</span>
+                      <span className="text-[12px] font-semibold text-ink text-right truncate">
+                        {capsule.highest.title}<span style={{ color: '#00453A' }}> — {capsule.highest.score}</span>
                       </span>
                     </div>
                   )}

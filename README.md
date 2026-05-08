@@ -219,6 +219,11 @@ gstack is installed at `~/.claude/skills/gstack`. Skills are available as slash 
 - [x] `[username]/page.tsx` — removed `targetUsername` prop that was overriding the DB-fetched username
 - [x] Homepage — removed "Good morning / Here's what's waiting" greeting for logged-in users
 
+### Done — profile layout (2026-05-08)
+- [x] Essentials — layout changed from pyramid → 2×3 grid → 1×6 horizontal strip; fixed 96px items with `justify-between` spacing so covers span the full section width; "Essentials" label added above strip
+- [x] Monthly Capsule — "Highest" score format changed from mint badge pill to clean text (e.g. "LILAC — 5" with score in dark green)
+- [x] Profile sidebar — Insights card removed; replaced by planned Insights + History page (post-launch, see roadmap)
+
 ### Done — UI polish pass (2026-05-08)
 - [x] Album page — "avg/5" → "avg"; oversized dash on no-rating fixed; Add button consolidated into dropdown (Listen Later + Essentials + Add to Ranking); star rating text removed; Add button moved into stats row
 - [x] Comments — renamed from Reviews throughout; visibility dropdown with icons; commenter's star rating shown; comment likes; live username → profile link
@@ -309,6 +314,7 @@ npm run expand:genre
 - [ ] Wrapped page — needs months of user data to be meaningful
 - [ ] Remove/reduce seed votes once real community votes overtake the baseline
 - [ ] Re-curate ranking categories (add year-specific categories)
+- [ ] **Insights + History page** — dedicated `/profile/[username]/insights` page: rating history timeline, score distribution over time, streak tracking, genre evolution, taste drift vs community, comparison with friends. Replaces the removed sidebar insights card. Needs enough user history to be meaningful (~1–3 months post-launch).
 
 ---
 

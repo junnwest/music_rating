@@ -197,18 +197,21 @@ export default function Essentials({ userId, canEdit = true }: { userId: string;
   const displayList = search.trim() ? searchResults : ratedList.filter(r => !pinnedIds.has(r.release_id));
 
   return (
-    <div className="mb-8 relative">
-      {canEdit && (
-        <button
-          onClick={() => setEditing(e => !e)}
-          className="absolute top-0 right-0 text-[12px] font-medium text-muted hover:text-ink transition"
-        >
-          {editing ? 'Done' : 'Edit'}
-        </button>
-      )}
+    <div className="mb-8">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[11px] font-semibold text-muted uppercase" style={{ letterSpacing: '0.6px' }}>Essentials</p>
+        {canEdit && (
+          <button
+            onClick={() => setEditing(e => !e)}
+            className="text-[12px] font-medium text-muted hover:text-ink transition"
+          >
+            {editing ? 'Done' : 'Edit'}
+          </button>
+        )}
+      </div>
 
-      {/* 2×3 grid */}
-      <div className="grid grid-cols-3 gap-2">
+      {/* 1×6 horizontal strip — fixed 80px items, space-between fills the row */}
+      <div className="grid justify-between" style={{ gridTemplateColumns: 'repeat(6, 96px)' }}>
         {Array.from({ length: MAX_PINS }, (_, pos) => {
           const album = pinned[pos];
           const isDragging = dragPos === pos;
