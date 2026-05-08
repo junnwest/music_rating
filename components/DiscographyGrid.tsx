@@ -11,9 +11,9 @@ function Chip({ children, active, onClick }: { children: React.ReactNode; active
   return (
     <button
       onClick={onClick}
-      className={`inline-flex items-center px-[14px] py-[6px] rounded-full text-[12px] font-semibold border transition ${
+      className={`inline-flex items-center px-[14px] py-[10px] rounded-full text-[12px] font-semibold border transition ${
         active
-          ? 'bg-ink border-ink text-white'
+          ? 'bg-mint-dark border-mint-dark text-white'
           : 'bg-surface border-[#EBEBEB] text-muted hover:text-mid'
       }`}
     >
