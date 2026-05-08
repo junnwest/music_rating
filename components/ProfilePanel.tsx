@@ -65,10 +65,6 @@ function ScoreBar({ bars }: { bars: number[] }) {
           </div>
         ))}
       </div>
-      <div className="flex justify-between mt-1">
-        <span className="text-[11px] text-muted">½★</span>
-        <span className="text-[11px] text-muted">5★</span>
-      </div>
     </div>
   );
 }

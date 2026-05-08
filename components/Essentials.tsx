@@ -19,8 +19,6 @@ interface PickerAlbum {
 }
 
 const MAX_PINS = 6;
-const ROWS = [[0], [1, 2], [3, 4, 5]];
-const ROW_SIZES = [108, 92, 80];
 
 export default function Essentials({ userId, canEdit = true }: { userId: string; canEdit?: boolean }) {
   const [pinned, setPinned] = useState<PinnedAlbum[]>([]);
@@ -209,89 +207,77 @@ export default function Essentials({ userId, canEdit = true }: { userId: string;
         </button>
       )}
 
-      {/* Pyramid */}
-      <div className="flex flex-col items-center gap-3">
-        {ROWS.map((positions, rowIdx) => {
-          const size = ROW_SIZES[rowIdx];
-          return (
-            <div key={rowIdx} className="flex gap-3">
-              {positions.map(pos => {
-                const album = pinned[pos];
-                const isDragging = dragPos === pos;
-                const isOver = dragOverPos === pos && dragPos !== pos;
+      {/* 2×3 grid */}
+      <div className="grid grid-cols-3 gap-2">
+        {Array.from({ length: MAX_PINS }, (_, pos) => {
+          const album = pinned[pos];
+          const isDragging = dragPos === pos;
+          const isOver = dragOverPos === pos && dragPos !== pos;
 
-                return album ? (
-                  <div
-                    key={pos}
-                    className="relative flex-shrink-0 group/pin"
-                    draggable={editing}
-                    onDragStart={e => {
-                      setDragPos(pos);
-                      const ghost = document.createElement('div');
-                      ghost.style.cssText = 'width:1px;height:1px;opacity:0;position:fixed;top:0;left:0';
-                      document.body.appendChild(ghost);
-                      e.dataTransfer.setDragImage(ghost, 0, 0);
-                      requestAnimationFrame(() => document.body.removeChild(ghost));
-                    }}
-                    onDragEnd={() => { setDragPos(null); setDragOverPos(null); }}
-                    onDragOver={e => { e.preventDefault(); setDragOverPos(pos); }}
-                    onDrop={() => handleDrop(pos)}
-                  >
-                    <div
-                      style={{ width: size, height: size }}
-                      className={`pin-shine rounded-[8px] overflow-hidden relative bg-surface border-2 transition ${
-                        isDragging ? 'opacity-40 border-[#EBEBEB]'
-                        : isOver ? 'border-ink scale-[1.04]'
-                        : editing ? 'border-[#EBEBEB] cursor-grab active:cursor-grabbing'
-                        : 'border-[#EBEBEB]'
-                      }`}
-                    >
-                      {album.releases?.cover_url ? (
-                        <img src={album.releases.cover_url} alt={album.releases.title ?? ''} className="w-full h-full object-cover" draggable={false} />
-                      ) : (
-                        <div className="w-full h-full bg-surface" />
-                      )}
-                      {editing && (
-                        <div
-                          onClick={() => openPicker(pos)}
-                          className="absolute inset-0 bg-black/0 group-hover/pin:bg-black/40 transition-all flex items-center justify-center cursor-pointer pointer-events-auto"
-                        >
-                          <RefreshCw
-                            size={size > 90 ? 22 : 16}
-                            className="text-white opacity-0 group-hover/pin:opacity-100 transition-opacity"
-                          />
-                        </div>
-                      )}
-                    </div>
-                    {!editing && (
-                      <Link href={`/album/${album.release_id}`} className="absolute inset-0" />
-                    )}
-                    {canEdit && editing && (
-                      <button
-                        onClick={e => { e.stopPropagation(); handleUnpin(album.release_id); }}
-                        className="absolute -top-1.5 -right-1.5 w-[18px] h-[18px] rounded-full bg-ink text-white text-[11px] font-bold flex items-center justify-center hover:bg-red-500 transition z-10 leading-none"
-                      >
-                        ×
-                      </button>
-                    )}
-                  </div>
+          return album ? (
+            <div
+              key={pos}
+              className="relative group/pin"
+              draggable={editing}
+              onDragStart={e => {
+                setDragPos(pos);
+                const ghost = document.createElement('div');
+                ghost.style.cssText = 'width:1px;height:1px;opacity:0;position:fixed;top:0;left:0';
+                document.body.appendChild(ghost);
+                e.dataTransfer.setDragImage(ghost, 0, 0);
+                requestAnimationFrame(() => document.body.removeChild(ghost));
+              }}
+              onDragEnd={() => { setDragPos(null); setDragOverPos(null); }}
+              onDragOver={e => { e.preventDefault(); setDragOverPos(pos); }}
+              onDrop={() => handleDrop(pos)}
+            >
+              <div
+                className={`w-full aspect-square pin-shine rounded-[8px] overflow-hidden relative bg-surface border-2 transition ${
+                  isDragging ? 'opacity-40 border-[#EBEBEB]'
+                  : isOver ? 'border-ink scale-[1.04]'
+                  : editing ? 'border-[#EBEBEB] cursor-grab active:cursor-grabbing'
+                  : 'border-[#EBEBEB]'
+                }`}
+              >
+                {album.releases?.cover_url ? (
+                  <img src={album.releases.cover_url} alt={album.releases.title ?? ''} className="w-full h-full object-cover" draggable={false} />
                 ) : (
+                  <div className="w-full h-full bg-surface" />
+                )}
+                {editing && (
                   <div
-                    key={`empty-${pos}`}
-                    style={{ width: size, height: size }}
-                    onDragOver={e => { e.preventDefault(); setDragOverPos(pos); }}
-                    onDrop={() => handleDrop(pos)}
-                    onClick={canEdit && !isFull ? () => openPicker() : undefined}
-                    className={`rounded-[8px] border-2 border-dashed flex-shrink-0 flex items-center justify-center transition ${
-                      isOver
-                        ? 'border-ink text-ink scale-[1.04]'
-                        : 'border-[#DDDDD8] text-[#DDDDD8] hover:border-mid hover:text-mid'
-                    } ${!canEdit || isFull ? 'cursor-default' : 'cursor-pointer'}`}
+                    onClick={() => openPicker(pos)}
+                    className="absolute inset-0 bg-black/0 group-hover/pin:bg-black/40 transition-all flex items-center justify-center cursor-pointer pointer-events-auto"
                   >
-                    <span className="text-[20px] font-light leading-none">+</span>
+                    <RefreshCw size={22} className="text-white opacity-0 group-hover/pin:opacity-100 transition-opacity" />
                   </div>
-                );
-              })}
+                )}
+              </div>
+              {!editing && (
+                <Link href={`/album/${album.release_id}`} className="absolute inset-0" />
+              )}
+              {canEdit && editing && (
+                <button
+                  onClick={e => { e.stopPropagation(); handleUnpin(album.release_id); }}
+                  className="absolute -top-1.5 -right-1.5 w-[18px] h-[18px] rounded-full bg-ink text-white text-[11px] font-bold flex items-center justify-center hover:bg-red-500 transition z-10 leading-none"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          ) : (
+            <div
+              key={`empty-${pos}`}
+              onDragOver={e => { e.preventDefault(); setDragOverPos(pos); }}
+              onDrop={() => handleDrop(pos)}
+              onClick={canEdit && !isFull ? () => openPicker() : undefined}
+              className={`w-full aspect-square rounded-[8px] border-2 border-dashed flex items-center justify-center transition ${
+                isOver
+                  ? 'border-ink text-ink scale-[1.04]'
+                  : 'border-[#DDDDD8] text-[#DDDDD8] hover:border-mid hover:text-mid'
+              } ${!canEdit || isFull ? 'cursor-default' : 'cursor-pointer'}`}
+            >
+              <span className="text-[20px] font-light leading-none">+</span>
             </div>
           );
         })}
