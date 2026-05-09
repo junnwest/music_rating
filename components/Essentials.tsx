@@ -184,9 +184,9 @@ export default function Essentials({ userId, canEdit = true }: { userId: string;
   };
 
   const handleUnpin = async (releaseId: string) => {
-    if (!supabase) return;
-    await supabase.from('pinned_albums').delete().eq('user_id', userId).eq('release_id', releaseId);
-    await loadPinned();
+    const newPinned = pinned.filter(p => p.release_id !== releaseId);
+    setPinned(newPinned);
+    await persistOrder(newPinned);
   };
 
   if (loading) return null;
