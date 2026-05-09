@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { Settings as SettingsIcon } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import Essentials from './Essentials';
 import UserAvatar from './UserAvatar';
@@ -49,25 +50,34 @@ function TypePill({ children }: { children: React.ReactNode }) {
 
 function ScoreBar({ bars }: { bars: number[] }) {
   const max = Math.max(...bars, 1);
+  const maxVal = Math.max(...bars);
+  const modeIdx = maxVal > 0 ? bars.indexOf(maxVal) : -1;
   return (
-    <div>
-      <div className="flex gap-[3px] items-end h-[72px]">
-        {bars.map((h, i) => (
-          <div key={i} className="flex-1 flex flex-col justify-end">
+    <div className="flex gap-[3px] h-[82px]">
+      {bars.map((h, i) => {
+        const score = (i + 1) * 0.5;
+        const isFirst = i === 0;
+        const isLast = i === bars.length - 1;
+        const isMode = i === modeIdx && !isFirst && !isLast;
+        const label = isFirst || isLast || isMode
+          ? (score % 1 === 0 ? String(score) : score.toFixed(1))
+          : null;
+        return (
+          <div key={i} className="flex-1 flex flex-col items-center justify-end">
+            {label && (
+              <span className="text-[9px] text-muted leading-none mb-[2px]">{label}</span>
+            )}
             <div
               className="w-full rounded-[2px_2px_0_0]"
               style={{
                 height: `${(h / max) * 72}px`,
-                background: i >= 7 ? '#3DFFD1' : '#EBEBEB',
-                minHeight: h > 0 ? 2 : 0,
+                background: i === modeIdx ? '#3DFFD1' : '#C2EDE8',
+                minHeight: 2,
               }}
             />
           </div>
-        ))}
-      </div>
-      <div className="flex justify-end mt-1">
-        <span className="text-[10px] text-muted">5★</span>
-      </div>
+        );
+      })}
     </div>
   );
 }
@@ -270,6 +280,10 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
   const [contradictions, setContradictions] = useState<Contradiction[]>([]);
   const [sortOrder, setSortOrder] = useState<'recent' | 'score-high' | 'score-low' | 'alpha'>('recent');
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [followModal, setFollowModal] = useState<'followers' | 'following' | null>(null);
+  const [followModalUsers, setFollowModalUsers] = useState<{ id: string; username: string; display_name: string | null }[]>([]);
+  const [followModalLoading, setFollowModalLoading] = useState(false);
+  const [followModalSearch, setFollowModalSearch] = useState('');
 
   const ratingsCount = ratings?.length ?? 0;
   const averageRating =
@@ -422,6 +436,46 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
     }
   };
 
+  const openFollowModal = async (type: 'followers' | 'following') => {
+    const uid = targetUserId ?? session?.user?.id;
+    if (!supabase || !uid) return;
+    setFollowModal(type);
+    setFollowModalSearch('');
+    setFollowModalLoading(true);
+    setFollowModalUsers([]);
+    let userIds: string[] = [];
+    if (type === 'followers') {
+      const { data } = await supabase.from('follows').select('follower_id').eq('following_id', uid);
+      userIds = (data ?? []).map((r: any) => r.follower_id);
+    } else {
+      const { data } = await supabase.from('follows').select('following_id').eq('follower_id', uid);
+      userIds = (data ?? []).map((r: any) => r.following_id);
+    }
+    if (userIds.length > 0) {
+      const { data: profiles } = await supabase.from('profiles').select('id, username, display_name').in('id', userIds);
+      setFollowModalUsers((profiles ?? []) as { id: string; username: string; display_name: string | null }[]);
+    }
+    setFollowModalLoading(false);
+  };
+
+  const handleRemoveFollower = async (followerId: string) => {
+    if (!supabase) return;
+    const uid = targetUserId ?? session?.user?.id;
+    if (!uid) return;
+    await supabase.from('follows').delete().eq('follower_id', followerId).eq('following_id', uid);
+    setFollowModalUsers(prev => prev.filter(u => u.id !== followerId));
+    setFollowerCount(c => Math.max(0, c - 1));
+  };
+
+  const handleUnfollowUser = async (followingId: string) => {
+    if (!supabase) return;
+    const uid = targetUserId ?? session?.user?.id;
+    if (!uid) return;
+    await supabase.from('follows').delete().eq('follower_id', uid).eq('following_id', followingId);
+    setFollowModalUsers(prev => prev.filter(u => u.id !== followingId));
+    setFollowingCount(c => Math.max(0, c - 1));
+  };
+
   if (loading) {
     return (
       <div className="bg-white">
@@ -509,82 +563,86 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
   return (
     <div className="bg-white">
       {/* ── HEADER ─────────────────────────────────────────── */}
-      <div className="bg-white border-b border-[#EBEBEB]">
-        <div className="max-w-[1440px] mx-auto px-5 pt-9 pb-8 flex gap-6 items-start">
-          {/* Avatar */}
-          <UserAvatar size={82} />
-
-          {/* Info */}
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-1">
-              <h1
-                className="text-[24px] font-extrabold text-ink"
-                style={{ letterSpacing: '-0.6px' }}
-              >
-                @{username}
-              </h1>
-              {displayName && displayName !== username && (
-                <p className="text-[13px] text-muted">{displayName}</p>
-              )}
-            </div>
-
-            {/* Stats */}
-            <div className="flex gap-8 mt-[18px]">
-              {[
-                [ratingsCount, 'albums rated'],
-                [followerCount, 'followers'],
-                [followingCount, 'following'],
-              ].map(([val, label]) => (
-                <div key={label as string}>
-                  <div className="text-[20px] font-bold text-ink">{val}</div>
-                  <div className="text-[12px] text-muted mt-0.5">{label}</div>
-                </div>
-              ))}
-            </div>
-            {bioText && (
-              <p className="text-[13px] text-muted mt-1 max-w-[480px] leading-relaxed">{bioText}</p>
-            )}
-            {tasteDNA.length > 0 && (
-              <div className="flex gap-2 mt-3 flex-wrap">
-                {tasteDNA.map((tag) => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center px-[10px] py-[3px] rounded-full text-[11px] font-semibold"
-                    style={{ background: '#EDFFF9', border: '1.5px solid #3DFFD1', color: '#00453A' }}
-                  >
-                    {tag}
-                  </span>
-                ))}
+      <div className="bg-white">
+        <div className="max-w-[1440px] mx-auto px-5 pt-9 pb-4">
+          <div
+            className="bg-white border border-[#E8E8E8] rounded-2xl overflow-hidden"
+            style={{ display: 'grid', gridTemplateColumns: '1fr 1px auto 1px auto' }}
+          >
+            {/* LEFT: identity */}
+            <div className="flex gap-8 items-start p-9">
+              <UserAvatar size={88} />
+              <div>
+                <h1 className="text-[20px] font-extrabold text-ink" style={{ letterSpacing: '-0.5px' }}>
+                  {username}
+                </h1>
+                {displayName && displayName !== username && (
+                  <p className="text-[13px] text-muted mt-1">{displayName}</p>
+                )}
+                {bioText && (
+                  <p className="text-[12px] text-muted mt-3 leading-relaxed max-w-[220px]">{bioText}</p>
+                )}
               </div>
-            )}
-          </div>
+            </div>
 
-          {/* Actions */}
-          <div className="flex gap-2 pt-1">
-            {isOwnProfile ? (
-              <Link href="/settings" className="border border-[#EBEBEB] rounded-lg px-[18px] py-[9px] text-[13px] font-semibold text-ink hover:bg-surface transition">
-                Edit profile
-              </Link>
-            ) : session?.user ? (
-              <button
-                onClick={isFollowing ? handleUnfollow : handleFollow}
-                disabled={followLoading}
-                className={`rounded-lg px-[18px] py-[9px] text-[13px] font-semibold transition ${
-                  isFollowing
-                    ? 'border border-[#EBEBEB] text-ink hover:bg-surface'
-                    : 'bg-ink text-white hover:opacity-80'
-                } disabled:opacity-50`}
-              >
-                {followLoading ? '…' : isFollowing ? 'Following' : 'Follow'}
+            <div className="bg-[#EBEBEB] my-8" />
+
+            {/* MIDDLE: stats */}
+            <div className="flex items-center justify-center gap-14 p-9">
+              <div>
+                <div className="text-[22px] font-extrabold text-ink" style={{ letterSpacing: '-0.5px' }}>{ratingsCount}</div>
+                <div className="text-[11px] text-muted mt-0.5">ratings</div>
+              </div>
+              <button onClick={() => openFollowModal('followers')} className="hover:opacity-70 transition text-left">
+                <div className="text-[22px] font-extrabold text-ink" style={{ letterSpacing: '-0.5px' }}>{followerCount}</div>
+                <div className="text-[11px] text-muted mt-0.5">followers</div>
               </button>
-            ) : null}
+              <button onClick={() => openFollowModal('following')} className="hover:opacity-70 transition text-left">
+                <div className="text-[22px] font-extrabold text-ink" style={{ letterSpacing: '-0.5px' }}>{followingCount}</div>
+                <div className="text-[11px] text-muted mt-0.5">following</div>
+              </button>
+            </div>
+
+            <div className="bg-[#EBEBEB] my-8" />
+
+            {/* RIGHT: actions */}
+            <div className="flex flex-col justify-center items-stretch gap-2 p-7 min-w-[160px]">
+              {isOwnProfile ? (
+                <>
+                  <Link
+                    href="/settings"
+                    className="flex items-center justify-center border border-[#DDDDD8] rounded-[8px] px-[13px] py-[7px] text-[12px] font-semibold text-ink hover:bg-surface transition"
+                  >
+                    Edit profile
+                  </Link>
+                  <Link
+                    href="/settings"
+                    className="flex items-center justify-center gap-1.5 text-[12px] font-medium text-muted hover:text-ink transition px-[13px] py-[7px]"
+                  >
+                    <SettingsIcon size={13} />
+                    Settings
+                  </Link>
+                </>
+              ) : session?.user ? (
+                <button
+                  onClick={isFollowing ? handleUnfollow : handleFollow}
+                  disabled={followLoading}
+                  className={`rounded-[9px] px-[18px] py-[9px] text-[13px] font-semibold transition ${
+                    isFollowing
+                      ? 'border border-[#EBEBEB] text-ink hover:bg-surface'
+                      : 'bg-ink text-white hover:opacity-80'
+                  } disabled:opacity-50`}
+                >
+                  {followLoading ? '…' : isFollowing ? 'Following' : 'Follow'}
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
-
       </div>
 
       {/* ── BODY ─────────────────────────────────────────────── */}
-      <div className="max-w-[1440px] mx-auto px-5 py-9 pb-14">
+      <div className="max-w-[1440px] mx-auto px-5 pt-5 pb-14">
         <div className="flex flex-col md:flex-row gap-8">
 
           {/* LEFT: stats sidebar */}
@@ -597,7 +655,20 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
             </div>
 
             <div className="bg-white rounded-xl border border-[#EBEBEB] p-4 min-w-[180px] md:min-w-0">
-              <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.6px' }}>Distribution</p>
+              <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.6px' }}>Analytics</p>
+              {tasteDNA.length > 0 && (
+                <div className="flex gap-2 mb-3 flex-wrap">
+                  {tasteDNA.map((tag) => (
+                    <span
+                      key={tag}
+                      className="inline-flex items-center px-[10px] py-[3px] rounded-full text-[11px] font-semibold"
+                      style={{ background: '#EDFFF9', border: '1.5px solid #3DFFD1', color: '#00453A' }}
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
               <ScoreBar bars={bars} />
             </div>
 
@@ -917,6 +988,96 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
               </div>
             );
           })()}
+        </div>
+      )}
+
+      {/* ── FOLLOW MODAL ──────────────────────────────────── */}
+      {followModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={e => { if (e.target === e.currentTarget) setFollowModal(null); }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[400px] mx-4 overflow-hidden">
+            {/* Header */}
+            <div className="relative flex items-center justify-center px-5 py-4 border-b border-[#EBEBEB]">
+              <p className="text-[14px] font-bold text-ink capitalize">{followModal}</p>
+              <button
+                onClick={() => setFollowModal(null)}
+                className="absolute right-4 text-[22px] font-light text-muted hover:text-ink transition leading-none"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Search */}
+            <div className="px-4 py-3 border-b border-[#EBEBEB]">
+              <input
+                value={followModalSearch}
+                onChange={e => setFollowModalSearch(e.target.value)}
+                placeholder="Search"
+                className="w-full bg-[#F5F5F3] rounded-lg px-3 py-2 text-[13px] text-ink outline-none placeholder:text-muted"
+                autoFocus
+              />
+            </div>
+
+            {/* List */}
+            <div className="max-h-[420px] overflow-y-auto py-2">
+              {followModalLoading ? (
+                <div className="py-10 text-center text-[13px] text-muted">Loading…</div>
+              ) : (() => {
+                const q = followModalSearch.trim().toLowerCase();
+                const filtered = q
+                  ? followModalUsers.filter(u =>
+                      u.username.toLowerCase().includes(q) ||
+                      (u.display_name ?? '').toLowerCase().includes(q)
+                    )
+                  : followModalUsers;
+                if (filtered.length === 0) {
+                  return (
+                    <div className="py-10 text-center text-[13px] text-muted">
+                      {q ? 'No results.' : `No ${followModal} yet.`}
+                    </div>
+                  );
+                }
+                return filtered.map(user => (
+                  <div key={user.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-surface transition">
+                    <Link
+                      href={`/profile/${user.username}`}
+                      onClick={() => setFollowModal(null)}
+                      className="flex items-center gap-3 flex-1 min-w-0"
+                    >
+                      <div className="w-11 h-11 rounded-full bg-[#EBEBEB] flex items-center justify-center text-[15px] font-bold text-ink flex-shrink-0">
+                        {(user.username?.[0] ?? '?').toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-semibold text-ink truncate">{user.username}</p>
+                        {user.display_name && user.display_name !== user.username && (
+                          <p className="text-[12px] text-muted truncate">{user.display_name}</p>
+                        )}
+                      </div>
+                    </Link>
+                    {isOwnProfile && (
+                      followModal === 'followers' ? (
+                        <button
+                          onClick={() => handleRemoveFollower(user.id)}
+                          className="flex-shrink-0 border border-[#DDDDD8] rounded-lg px-3 py-1.5 text-[12px] font-semibold text-ink hover:bg-surface transition"
+                        >
+                          Remove
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleUnfollowUser(user.id)}
+                          className="flex-shrink-0 border border-[#DDDDD8] rounded-lg px-3 py-1.5 text-[12px] font-semibold text-ink hover:bg-surface transition"
+                        >
+                          Unfollow
+                        </button>
+                      )
+                    )}
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -123,7 +123,7 @@ export default function PersonalizedFeed() {
     }
   };
 
-  const greeting = status !== 'ready' ? (
+  const greeting = (
     <div className="mb-11">
       <h1 className="text-[30px] font-extrabold text-ink" style={{ letterSpacing: '-1px' }}>
         Discover your next favorite album.
@@ -132,7 +132,7 @@ export default function PersonalizedFeed() {
         Rate albums, write reviews, and build your music catalog.
       </p>
     </div>
-  ) : null;
+  );
 
   if (status === 'loading') {
     return (

@@ -18,10 +18,13 @@ export async function GET(req: NextRequest) {
       .eq('follower_id', userId);
 
     const followedIds = (follows ?? []).map((f: any) => f.following_id);
-    if (followedIds.length > 0) {
-      filterIds = [...followedIds, userId];
-      isFiltered = true;
-    }
+    filterIds = followedIds.length > 0 ? followedIds : [];
+    isFiltered = true;
+  }
+
+  // Logged-in user follows nobody — return empty feed immediately
+  if (isFiltered && filterIds!.length === 0) {
+    return NextResponse.json({ feed: [], isFiltered: true });
   }
 
   // Fetch ratings and reviews

@@ -197,8 +197,8 @@ export default function Essentials({ userId, canEdit = true }: { userId: string;
   const displayList = search.trim() ? searchResults : ratedList.filter(r => !pinnedIds.has(r.release_id));
 
   return (
-    <div className="mb-8">
-      <div className="flex items-center justify-between mb-3">
+    <div className="mb-4 bg-white border border-[#E8E8E8] rounded-2xl overflow-hidden">
+      <div className="flex items-center justify-between px-6 pt-5 pb-4">
         <p className="text-[11px] font-semibold text-muted uppercase" style={{ letterSpacing: '0.6px' }}>Essentials</p>
         {canEdit && (
           <button
@@ -210,8 +210,8 @@ export default function Essentials({ userId, canEdit = true }: { userId: string;
         )}
       </div>
 
-      {/* 1×6 horizontal strip — fixed 80px items, space-between fills the row */}
-      <div className="grid justify-between" style={{ gridTemplateColumns: 'repeat(6, 96px)' }}>
+      {/* 1×6 horizontal strip — fixed 96px items, space-between fills the row */}
+      <div className="grid px-6 pb-6" style={{ gridTemplateColumns: 'repeat(6, 96px)', justifyContent: 'space-between' }}>
         {Array.from({ length: MAX_PINS }, (_, pos) => {
           const album = pinned[pos];
           const isDragging = dragPos === pos;
