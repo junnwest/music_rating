@@ -4,6 +4,35 @@ import FilterBuilder from '../../../components/FilterBuilder';
 
 export const revalidate = 60;
 
+function computeSillaScores(
+  entries: { ranking_id: string; release_id: string; rank: number }[]
+): Map<string, number> {
+  const byRanking = new Map<string, { release_id: string; rank: number }[]>();
+  for (const e of entries) {
+    if (!byRanking.has(e.ranking_id)) byRanking.set(e.ranking_id, []);
+    byRanking.get(e.ranking_id)!.push(e);
+  }
+  const scores = new Map<string, number>();
+  for (const userEntries of byRanking.values()) {
+    const byRank = new Map<number, string[]>();
+    for (const e of userEntries) {
+      if (!byRank.has(e.rank)) byRank.set(e.rank, []);
+      byRank.get(e.rank)!.push(e.release_id);
+    }
+    let pos = 1;
+    for (const [, albums] of [...byRank.entries()].sort(([a], [b]) => a - b)) {
+      const t = albums.length;
+      const effectivePos = pos + (t - 1) / 2;
+      const score = 1 / effectivePos;
+      for (const releaseId of albums) {
+        scores.set(releaseId, (scores.get(releaseId) ?? 0) + score);
+      }
+      pos += t;
+    }
+  }
+  return scores;
+}
+
 export default async function RankingsPage() {
   const supabase = createServerClient();
 
@@ -18,7 +47,7 @@ export default async function RankingsPage() {
         .select('id, slug, title, description, genre, year, sort_order')
         .order('sort_order')
         .order('created_at'),
-      supabase.from('user_rankings').select('category_id'),
+      supabase.from('user_rankings').select('id, category_id'),
       supabase.from('ranking_seed_entries').select('category_id, release_id, seed_votes'),
     ]);
 
@@ -29,64 +58,50 @@ export default async function RankingsPage() {
       voteCountMap[r.category_id] = (voteCountMap[r.category_id] ?? 0) + 1;
     }
 
-    // Top 5 albums per category from seed entries (pre-launch baseline)
-    // When real rankings exist, compute from ranking_entries instead
-    const seedByCategory = new Map<string, { release_id: string; seed_votes: number }[]>();
+    // Build combined Silla Scores per category (seed + real rankings, same formula as leaderboard)
+    const scoresByCat = new Map<string, Map<string, number>>();
+
+    // Seed votes
     for (const s of seedEntries ?? []) {
-      if (!seedByCategory.has(s.category_id)) seedByCategory.set(s.category_id, []);
-      seedByCategory.get(s.category_id)!.push(s);
+      if (!scoresByCat.has(s.category_id)) scoresByCat.set(s.category_id, new Map());
+      const m = scoresByCat.get(s.category_id)!;
+      m.set(s.release_id, (m.get(s.release_id) ?? 0) + s.seed_votes);
+    }
+
+    // Real user ranking entries
+    const rankingIdToCatId = new Map((rankingRows ?? []).map(r => [r.id, r.category_id]));
+    const allRankingIds = (rankingRows ?? []).map(r => r.id);
+    if (allRankingIds.length > 0) {
+      const { data: entryRows } = await supabase
+        .from('user_ranking_entries')
+        .select('ranking_id, release_id, rank')
+        .in('ranking_id', allRankingIds);
+
+      // Group entries by category
+      const entriesByCat = new Map<string, { ranking_id: string; release_id: string; rank: number }[]>();
+      for (const e of entryRows ?? []) {
+        const catId = rankingIdToCatId.get(e.ranking_id);
+        if (!catId) continue;
+        if (!entriesByCat.has(catId)) entriesByCat.set(catId, []);
+        entriesByCat.get(catId)!.push(e);
+      }
+
+      for (const [catId, entries] of entriesByCat) {
+        const silla = computeSillaScores(entries);
+        if (!scoresByCat.has(catId)) scoresByCat.set(catId, new Map());
+        const m = scoresByCat.get(catId)!;
+        for (const [releaseId, score] of silla) {
+          m.set(releaseId, (m.get(releaseId) ?? 0) + score);
+        }
+      }
     }
 
     const top5PerCategory = new Map<string, string[]>();
     const allTopIds = new Set<string>();
 
-    // For categories with real rankings, use ranking_entries; otherwise use seed
-    const categoryIds = categories.map(c => c.id);
-    let rankingEntryMap = new Map<string, string[]>(); // catId -> top5 releaseIds from real rankings
-
-    if (categoryIds.length > 0) {
-      const catWithRankings = categories.filter(c => (voteCountMap[c.id] ?? 0) > 0).map(c => c.id);
-      if (catWithRankings.length > 0) {
-        const { data: rankingsByCat } = await supabase
-          .from('user_rankings')
-          .select('id, category_id')
-          .in('category_id', catWithRankings);
-
-        const rankingIdsToCat = new Map((rankingsByCat ?? []).map(r => [r.id, r.category_id]));
-        const allRankingIds = (rankingsByCat ?? []).map(r => r.id);
-
-        if (allRankingIds.length > 0) {
-          const { data: entryRows } = await supabase
-            .from('user_ranking_entries')
-            .select('ranking_id, release_id, rank')
-            .in('ranking_id', allRankingIds);
-
-          // Compute simple vote count per release per category (rank=1 only, for top-5 display)
-          const scoresByCat = new Map<string, Map<string, number>>();
-          for (const e of entryRows ?? []) {
-            const catId = rankingIdsToCat.get(e.ranking_id);
-            if (!catId) continue;
-            if (!scoresByCat.has(catId)) scoresByCat.set(catId, new Map());
-            const m = scoresByCat.get(catId)!;
-            m.set(e.release_id, (m.get(e.release_id) ?? 0) + (e.rank === 1 ? 2 : 1));
-          }
-
-          for (const [catId, m] of scoresByCat) {
-            const top5 = [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id]) => id);
-            rankingEntryMap.set(catId, top5);
-          }
-        }
-      }
-    }
-
     for (const cat of categories) {
-      const fromRealRankings = rankingEntryMap.get(cat.id);
-      const fromSeed = (seedByCategory.get(cat.id) ?? [])
-        .sort((a, b) => b.seed_votes - a.seed_votes)
-        .slice(0, 5)
-        .map(s => s.release_id);
-
-      const top5 = fromRealRankings ?? fromSeed;
+      const m = scoresByCat.get(cat.id) ?? new Map();
+      const top5 = [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id]) => id);
       top5PerCategory.set(cat.id, top5);
       top5.forEach(id => allTopIds.add(id));
     }

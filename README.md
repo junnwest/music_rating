@@ -205,12 +205,22 @@ gstack is installed at `~/.claude/skills/gstack`. Skills are available as slash 
 ### Done — rankings
 - [x] Community rankings page — leaderboards with seed + real vote merging
 - [x] Individual ranking page — top 10, vote counts, "Build your ranking" button
-- [x] Ranking personalization — filter tabs (All / To Vote / Friends Active); "To Vote" sorted by most active first
+- [x] Ranking personalization — filter tabs (All / To Vote / Friends Active); "To Vote" capped at 6, sorted by most active, number badge removed
 - [x] Filter Builder — country-aware genre dropdowns (genres change per country); vote status indicator + Vote/Change Vote button when filter matches a curated category
 - [x] Rank Builder — `/rankings/[slug]/rank`: personal tiered ranking per category, drag-and-drop, ties supported, search panel with suggestions; saves to `user_rankings` + syncs rank-1 pick to community leaderboard
-- [x] Ranking seed infrastructure — `ranking_seed_entries` table for pre-launch default leaderboard data; admin endpoint + `scripts/seed-votes.ts`
+- [x] Ranking seed infrastructure — `ranking_seed_entries` table for pre-launch default leaderboard data; admin endpoint + `scripts/seed-rankings.ts`
 - [x] 6 curated ranking categories: Greatest Album of All Time · Best Hip-Hop All Time · Best K-Pop All Time · Best Album of 2026 · Best Korean Album All Time · Best K-Hip-Hop All Time
-- [x] Rolling Stone 500 baseline seeds — `scripts/seed-rankings.ts` seeds all 500 albums into the "all-time" category as a single virtual ranked vote (`seed_votes = 1/rank`); `seed_votes` column migrated from `int` to `numeric(10,4)`
+- [x] Rolling Stone 500 baseline seeds — 467/500 seeded into "all-time"; `seed_votes = 1/rank`; `seed_votes` column migrated from `int` to `numeric(10,4)`
+- [x] Hip-hop seed — 59/63 RS500 hip-hop albums seeded into "hiphop-all-time" (Jay-Z + Fugees not on Spotify)
+- [x] K-Pop seed dataset added — 30 albums in `scripts/seed-rankings.ts`; kpop-all-time seed **pending** (hit Spotify rate limit, run next session)
+- [x] Seed script CASCADE DELETE bug fixed — admin endpoint now uses upsert; re-seeding categories no longer wipes existing seed entries
+- [x] Rankings leaderboard pagination — 10 per page, ellipsis page numbers (max 10 visible), jump-to-page input; rank numbers offset correctly per page
+- [x] Silla score color — changed to cyan mint (#00C2A8) across bar and value
+- [x] Ranking leaderboard rows — clickable links to album pages
+- [x] Rankings page thumbnails — fixed to use actual Silla Score formula (was using a simplistic rank=1 heuristic); now consistent with leaderboard order
+- [x] Album page "In Rankings" — shows each ranking the album appears in with its Silla-computed rank number (e.g. "Greatest Album of All Time #1") in cyan
+- [x] Add to Ranking modal — shows checkmark on categories user has already ranked this album in; refreshes on every modal open
+- [x] Album page hero overflow fix — `overflow-hidden` moved to inner background layer so Add dropdown is no longer clipped
 
 ### Done — profile + settings (2026-05-07)
 - [x] Settings page — username/display name/bio now correctly saved to DB and reflected immediately on profile
@@ -257,7 +267,7 @@ Target: **mid-June 2026** (earlier the better). Wrapped page is the only feature
 |-------|-------------|-------------|--------|
 | Phase 1 — seed catalog | 315 curated Korean/Japanese/Western classics | 306 | ✓ done |
 | RS500 baseline | Rolling Stone 500 seeds "all-time" ranking | 481 seeded | ✓ done |
-| Phase 2 — discography expansion | All albums from every artist already in DB | ~2,600 more | in progress (41/331 artists) |
+| Phase 2 — discography expansion | All albums from every artist already in DB | ~2,600 more | in progress (76/331 artists) |
 | Phase 3 — related artists | One hop from seeded artists (Korean ≥5k followers, J ≥20k, Western ≥100k) | ~3,200 more | not started |
 | Phase 4 — genre sweeps | 12 genre tags with popularity threshold | ~800–1,200 more | not started |
 
@@ -395,17 +405,41 @@ npm run expand:genre
 
 ### ⚠️ NEXT SESSION — Do this first
 
-`expand:discography` is in progress — **42/331 artists done** (369 albums added so far, hit daily quota mid-run on 2026-05-07). Resume with:
+**1. Seed kpop-all-time (hit Spotify rate limit last session — run first thing):**
+```bash
+npx tsx --env-file=.env.local scripts/seed-rankings.ts --category kpop-all-time
+```
+30 albums, ~1 min. Progress saved to `scripts/seed-rankings-state-kpop-all-time.json`.
 
+**2. Seed remaining 3 ranking categories** (no datasets written yet — need lists):
+- `album-2026` — Best Album of 2026 (need the album list)
+- `korean-all-time` — Best Korean Album All Time (need the album list)
+- `khiphop-all-time` — Best K-Hip-Hop Album All Time (need the album list)
+
+Add each as a new `const` array in `scripts/seed-rankings.ts` (same format as `KPOP`) and register in `DATASETS`, then run:
+```bash
+npx tsx --env-file=.env.local scripts/seed-rankings.ts --category <slug>
+```
+
+**3. Continue discography expansion** — 76/331 artists done:
 ```bash
 npm run expand:discography
 ```
+Run once per day (~60 artists/batch). ~4 more days to completion, then move to `expand:related`.
 
-Default batch is 60 artists/day. Run once per day until all 331 are done (~5 more days), then move to `expand:related` and `expand:genre`.
+**4. Remaining page reviews** (design-review + QA pass):
+- artist, profile, activity, settings, listen-later, collisions, contradictions, wrapped, lists
 
-**False-positive fix applied (2026-05-07):** The expand script now passes `include_groups=album,single` to exclude `appears_on` compilations, and verifies the target artist is listed as a primary album artist. 18 false positives from the previous session (Defected Radio episodes, Café del Mar compilations, etc.) were cleaned up via `scripts/cleanup-false-positives.ts`.
+---
 
-**Rolling Stone 500 seed (2026-05-07):** `scripts/seed-rankings.ts` created and running. Seeds all 500 RS500 albums into the "all-time" ranking category as a single virtual ranked vote. `seed_votes` column migrated to `numeric(10,4)`. If interrupted, re-run the same command — progress is saved to `scripts/seed-rankings-state-all-time.json`.
+**Session summary (2026-05-11):**
+- Fixed CASCADE DELETE bug in ranking seed endpoint (upsert instead of delete+insert)
+- Seeded RS500 "all-time" (467/500) and hip-hop subset "hiphop-all-time" (59/63)
+- Added K-Pop 30-album dataset to seed script; kpop-all-time seed pending (rate limited)
+- Rankings: pagination (10/page + ellipsis + jump-to-page), silla score → cyan mint, leaderboard rows clickable
+- Rankings page thumbnails: fixed to use real Silla Score formula
+- Album page: hero overflow fix (dropdown no longer clipped), "In Rankings" now shows rank number (#N)
+- Add to Ranking modal: checkmarks on categories user has already ranked this album in
 
 ---
 

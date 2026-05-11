@@ -36,9 +36,30 @@ function computeSillaScores(
   return scores;
 }
 
-export default async function RankingCategoryPage({ params }: { params: { slug: string } }) {
+const PAGE_SIZE = 10;
+
+function getPageNumbers(current: number, total: number): (number | '...')[] {
+  if (total <= 10) return Array.from({ length: total }, (_, i) => i + 1);
+  if (current <= 6) {
+    return [...Array.from({ length: 8 }, (_, i) => i + 1), '...', total];
+  }
+  if (current >= total - 5) {
+    return [1, '...', ...Array.from({ length: 8 }, (_, i) => total - 7 + i)];
+  }
+  return [1, '...', current - 2, current - 1, current, current + 1, current + 2, '...', total];
+}
+
+export default async function RankingCategoryPage({
+  params,
+  searchParams,
+}: {
+  params: { slug: string };
+  searchParams?: { page?: string };
+}) {
   const supabase = createServerClient();
   if (!supabase) notFound();
+
+  const page = Math.max(1, parseInt(searchParams?.page ?? '1', 10));
 
   // Fetch category
   const { data: category } = await supabase
@@ -76,22 +97,25 @@ export default async function RankingCategoryPage({ params }: { params: { slug: 
 
   const totalRankers = rankings?.length ?? 0;
   const sortedEntries = [...scores.entries()].sort((a, b) => b[1] - a[1]);
-  const topIds = sortedEntries.slice(0, 10).map(([id]) => id);
+  const totalAlbums = sortedEntries.length;
+  const totalPages = Math.ceil(totalAlbums / PAGE_SIZE);
+  const currentPage = Math.min(page, totalPages || 1);
+  const offset = (currentPage - 1) * PAGE_SIZE;
+  const pageIds = sortedEntries.slice(offset, offset + PAGE_SIZE).map(([id]) => id);
   const maxRawScore = sortedEntries[0]?.[1] ?? 1;
 
-  // Fetch release details + rating stats for top 10 in parallel
+  // Fetch release details + rating stats for current page only
   let releaseMap = new Map<string, { title: string; artist: string; coverUrl: string | null }>();
   let avgRatingMap = new Map<string, number>();
 
-  if (topIds.length > 0) {
+  if (pageIds.length > 0) {
     const [{ data: releases }, { data: ratingRows }] = await Promise.all([
-      supabase.from('releases').select('id, title, artist, cover_url').in('id', topIds),
-      supabase.from('ratings').select('release_id, score').in('release_id', topIds),
+      supabase.from('releases').select('id, title, artist, cover_url').in('id', pageIds),
+      supabase.from('ratings').select('release_id, score').in('release_id', pageIds),
     ]);
     for (const r of releases ?? []) {
       releaseMap.set(r.id, { title: r.title, artist: r.artist, coverUrl: r.cover_url });
     }
-    // Compute avg rating per release
     const ratingAccum = new Map<string, { sum: number; count: number }>();
     for (const r of ratingRows ?? []) {
       const cur = ratingAccum.get(r.release_id) ?? { sum: 0, count: 0 };
@@ -103,11 +127,11 @@ export default async function RankingCategoryPage({ params }: { params: { slug: 
   }
 
   const leaderboard: LeaderboardEntry[] = sortedEntries
-    .slice(0, 10)
+    .slice(offset, offset + PAGE_SIZE)
     .map(([releaseId, rawScore], i) => {
       const rel = releaseMap.get(releaseId);
       return {
-        rank: i + 1,
+        rank: offset + i + 1,
         releaseId,
         title: rel?.title ?? 'Unknown album',
         artist: rel?.artist ?? '—',
@@ -178,6 +202,73 @@ export default async function RankingCategoryPage({ params }: { params: { slug: 
           leaderboard={leaderboard}
           totalRankers={totalRankers}
         />
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between gap-4 mt-10">
+            {/* Page numbers + prev/next */}
+            <div className="flex items-center gap-1">
+              {currentPage > 1 ? (
+                <Link
+                  href={`/rankings/${category.slug}?page=${currentPage - 1}`}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-[13px] text-muted hover:text-ink border border-[#EBEBEB] hover:bg-surface transition"
+                >
+                  ←
+                </Link>
+              ) : (
+                <span className="w-8 h-8 flex items-center justify-center text-[13px] text-[#DDDDD8]">←</span>
+              )}
+
+              {getPageNumbers(currentPage, totalPages).map((p, i) =>
+                p === '...' ? (
+                  <span key={`e${i}`} className="w-8 h-8 flex items-center justify-center text-[12px] text-muted">…</span>
+                ) : (
+                  <Link
+                    key={p}
+                    href={`/rankings/${category.slug}?page=${p}`}
+                    className={`w-8 h-8 flex items-center justify-center rounded-lg text-[12px] font-semibold transition ${
+                      p === currentPage
+                        ? 'bg-ink text-white'
+                        : 'text-muted hover:text-ink border border-[#EBEBEB] hover:bg-surface'
+                    }`}
+                  >
+                    {p}
+                  </Link>
+                )
+              )}
+
+              {currentPage < totalPages ? (
+                <Link
+                  href={`/rankings/${category.slug}?page=${currentPage + 1}`}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-[13px] text-muted hover:text-ink border border-[#EBEBEB] hover:bg-surface transition"
+                >
+                  →
+                </Link>
+              ) : (
+                <span className="w-8 h-8 flex items-center justify-center text-[13px] text-[#DDDDD8]">→</span>
+              )}
+            </div>
+
+            {/* Jump to page */}
+            <form method="GET" action={`/rankings/${category.slug}`} className="flex items-center gap-2">
+              <label className="text-[11px] text-muted whitespace-nowrap">Go to page</label>
+              <input
+                type="number"
+                name="page"
+                min={1}
+                max={totalPages}
+                defaultValue={currentPage}
+                className="w-14 h-8 px-2 text-[12px] text-ink border border-[#EBEBEB] rounded-lg text-center focus:outline-none focus:border-ink transition"
+              />
+              <button
+                type="submit"
+                className="h-8 px-3 text-[12px] font-semibold text-ink border border-[#EBEBEB] rounded-lg hover:bg-surface transition"
+              >
+                Go
+              </button>
+            </form>
+          </div>
+        )}
       </div>
     </div>
   );

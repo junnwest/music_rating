@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import { getSpotifyAlbum } from '../../../../lib/spotify';
 import { getCachedAlbum, cacheAlbum } from '../../../../lib/dbCache';
 import { createServerClient } from '../../../../lib/supabaseServer';
@@ -12,6 +13,35 @@ function formatDuration(ms: number | null): string {
   if (!ms) return '—';
   const s = Math.floor(ms / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function computeSillaScores(
+  entries: { ranking_id: string; release_id: string; rank: number }[]
+): Map<string, number> {
+  const byRanking = new Map<string, { release_id: string; rank: number }[]>();
+  for (const e of entries) {
+    if (!byRanking.has(e.ranking_id)) byRanking.set(e.ranking_id, []);
+    byRanking.get(e.ranking_id)!.push(e);
+  }
+  const scores = new Map<string, number>();
+  for (const userEntries of byRanking.values()) {
+    const byRank = new Map<number, string[]>();
+    for (const e of userEntries) {
+      if (!byRank.has(e.rank)) byRank.set(e.rank, []);
+      byRank.get(e.rank)!.push(e.release_id);
+    }
+    let pos = 1;
+    for (const [, albums] of [...byRank.entries()].sort(([a], [b]) => a - b)) {
+      const t = albums.length;
+      const effectivePos = pos + (t - 1) / 2;
+      const score = 1 / effectivePos;
+      for (const releaseId of albums) {
+        scores.set(releaseId, (scores.get(releaseId) ?? 0) + score);
+      }
+      pos += t;
+    }
+  }
+  return scores;
 }
 
 function TypePill({ children }: { children: React.ReactNode }) {
@@ -30,43 +60,101 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
     cacheAlbum(album); // fire and forget
   }
 
-  // Fetch community stats
+  // Fetch community stats + ranking memberships
   let ratingsCount = 0;
   let avgScore: number | null = null;
   let reviewsCount = 0;
+  let rankingMemberships: { slug: string; title: string; rank: number }[] = [];
 
   const supabase = createServerClient();
   if (supabase) {
-    const [{ data: ratingRows }, { count }] = await Promise.all([
+    const [{ data: ratingRows }, { count }, { data: seedEntryRows }, { data: userEntryRows }] = await Promise.all([
       supabase.from('ratings').select('score').eq('release_id', album.id),
       supabase.from('reviews').select('id', { count: 'exact', head: true }).eq('release_id', album.id),
+      supabase.from('ranking_seed_entries').select('category_id').eq('release_id', album.id),
+      supabase.from('user_ranking_entries').select('ranking_id').eq('release_id', album.id),
     ]);
+
     if (ratingRows && ratingRows.length > 0) {
       ratingsCount = ratingRows.length;
       const sum = ratingRows.reduce((s: number, r: { score: number | null }) => s + (r.score ?? 0), 0);
       avgScore = Math.round((sum / ratingsCount) * 10) / 10;
     }
     reviewsCount = count ?? 0;
+
+    // Resolve category IDs from seed + user ranking entries
+    const seedCatIds = (seedEntryRows ?? []).map(r => r.category_id);
+    let userCatIds: string[] = [];
+    const userRankingIds = (userEntryRows ?? []).map(r => r.ranking_id);
+    if (userRankingIds.length > 0) {
+      const { data: userRankings } = await supabase
+        .from('user_rankings')
+        .select('category_id')
+        .in('id', userRankingIds);
+      userCatIds = (userRankings ?? []).map(r => r.category_id);
+    }
+    const allCatIds = [...new Set([...seedCatIds, ...userCatIds])];
+    if (allCatIds.length > 0) {
+      const { data: cats } = await supabase
+        .from('ranking_categories')
+        .select('id, slug, title')
+        .in('id', allCatIds)
+        .order('sort_order');
+
+      // For each category, compute this album's rank
+      const catList = cats ?? [];
+      const rankResults = await Promise.all(catList.map(async (cat) => {
+        const [{ data: allSeedEntries }, { data: catRankings }] = await Promise.all([
+          supabase!.from('ranking_seed_entries').select('release_id, seed_votes').eq('category_id', cat.id),
+          supabase!.from('user_rankings').select('id').eq('category_id', cat.id),
+        ]);
+
+        const scores = new Map<string, number>();
+        for (const s of allSeedEntries ?? []) {
+          scores.set(s.release_id, (scores.get(s.release_id) ?? 0) + s.seed_votes);
+        }
+
+        const catRankingIds = (catRankings ?? []).map(r => r.id);
+        if (catRankingIds.length > 0) {
+          const { data: entries } = await supabase!
+            .from('user_ranking_entries')
+            .select('ranking_id, release_id, rank')
+            .in('ranking_id', catRankingIds);
+          const sillaScores = computeSillaScores(entries ?? []);
+          for (const [releaseId, score] of sillaScores) {
+            scores.set(releaseId, (scores.get(releaseId) ?? 0) + score);
+          }
+        }
+
+        const sorted = [...scores.entries()].sort((a, b) => b[1] - a[1]);
+        const rankIdx = sorted.findIndex(([id]) => id === album.id);
+        return { slug: cat.slug, title: cat.title, rank: rankIdx + 1 };
+      }));
+
+      rankingMemberships = rankResults.filter(r => r.rank > 0);
+    }
   }
 
   return (
     <div className="bg-white min-h-screen">
 
       {/* ── HERO ─────────────────────────────────────────────── */}
-      <div className="relative overflow-hidden">
-        {/* Blurred album art background */}
-        {album.coverUrl && (
-          <div
-            className="absolute inset-0 scale-110"
-            style={{
-              backgroundImage: `url(${album.coverUrl})`,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-              filter: 'blur(60px) saturate(1.4)',
-            }}
-          />
-        )}
-        <div className="absolute inset-0 bg-black/55" />
+      <div className="relative">
+        {/* Blurred album art background — overflow-hidden scoped here so dropdowns aren't clipped */}
+        <div className="absolute inset-0 overflow-hidden">
+          {album.coverUrl && (
+            <div
+              className="absolute inset-0 scale-110"
+              style={{
+                backgroundImage: `url(${album.coverUrl})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                filter: 'blur(60px) saturate(1.4)',
+              }}
+            />
+          )}
+          <div className="absolute inset-0 bg-black/55" />
+        </div>
 
         <div className="relative max-w-[1440px] mx-auto px-5 py-8 sm:py-11 pb-10 flex flex-col sm:flex-row gap-6 sm:gap-11">
 
@@ -176,6 +264,27 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
           </div>
         </div>
       </div>
+
+      {/* ── RANKINGS ─────────────────────────────────────────── */}
+      {rankingMemberships.length > 0 && (
+        <div className="max-w-[1440px] mx-auto px-5 pt-8">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-[11px] font-semibold text-muted uppercase tracking-wider">
+              In Rankings
+            </span>
+            {rankingMemberships.map((cat) => (
+              <Link
+                key={cat.slug}
+                href={`/rankings/${cat.slug}`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#EBEBEB] text-[12px] font-medium text-ink hover:bg-surface hover:border-ink/20 transition"
+              >
+                {cat.title}
+                <span className="text-[#00C2A8] font-semibold">#{cat.rank}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── BODY ─────────────────────────────────────────────── */}
       <div className="max-w-[1440px] mx-auto px-5 py-10 pb-14 grid gap-[52px] grid-cols-1 md:grid-cols-[1fr_1.3fr]">

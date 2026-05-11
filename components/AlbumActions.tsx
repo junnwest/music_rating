@@ -91,6 +91,7 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
   const [rankCountry, setRankCountry] = useState('South Korea');
   const [rankGenre, setRankGenre] = useState('All Genres');
   const [rankTime, setRankTime] = useState('All Time');
+  const [myRankedCategoryIds, setMyRankedCategoryIds] = useState<Set<string>>(new Set());
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -234,6 +235,27 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
         .order('created_at');
       setCategories(data ?? []);
       setLoadingCats(false);
+    }
+    // Refresh which rankings the user has already placed this album in
+    if (userId && supabase) {
+      const { data: userRankings } = await supabase
+        .from('user_rankings')
+        .select('id, category_id')
+        .eq('user_id', userId);
+      if (userRankings && userRankings.length > 0) {
+        const rankingIds = userRankings.map(r => r.id);
+        const { data: entries } = await supabase
+          .from('user_ranking_entries')
+          .select('ranking_id')
+          .eq('release_id', albumId)
+          .in('ranking_id', rankingIds);
+        const rankedRankingIds = new Set((entries ?? []).map(e => e.ranking_id));
+        setMyRankedCategoryIds(new Set(
+          userRankings.filter(r => rankedRankingIds.has(r.id)).map(r => r.category_id)
+        ));
+      } else {
+        setMyRankedCategoryIds(new Set());
+      }
     }
   };
 
@@ -479,17 +501,22 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
                   </div>
                 ) : (
                   <div className="flex flex-col">
-                    {categories.slice(0, 6).map(cat => (
-                      <button
-                        key={cat.slug}
-                        onClick={() => goToRanking(cat.slug)}
-                        className="flex items-center gap-3 w-full text-left px-3 py-2.5 rounded-lg hover:bg-surface transition"
-                      >
-                        <Trophy size={13} className="text-muted flex-shrink-0" />
-                        <span className="flex-1 text-[13px] font-semibold text-ink truncate">{cat.title}</span>
-                        <ChevronRight size={13} className="text-muted flex-shrink-0" />
-                      </button>
-                    ))}
+                    {categories.slice(0, 6).map(cat => {
+                      const alreadyRanked = myRankedCategoryIds.has(cat.id);
+                      return (
+                        <button
+                          key={cat.slug}
+                          onClick={() => goToRanking(cat.slug)}
+                          className="flex items-center gap-3 w-full text-left px-3 py-2.5 rounded-lg hover:bg-surface transition"
+                        >
+                          <Trophy size={13} className={`flex-shrink-0 ${alreadyRanked ? 'text-[#00C2A8]' : 'text-muted'}`} />
+                          <span className="flex-1 text-[13px] font-semibold text-ink truncate">{cat.title}</span>
+                          {alreadyRanked
+                            ? <Check size={13} className="text-[#00C2A8] flex-shrink-0" />
+                            : <ChevronRight size={13} className="text-muted flex-shrink-0" />}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -540,9 +567,17 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
                 ) : matchedCategory ? (
                   <div className="border border-divider rounded-xl px-4 py-3 flex items-center gap-3">
                     <div className="flex-1 min-w-0">
-                      <p className="text-[14px] font-extrabold text-ink truncate" style={{ letterSpacing: '-0.3px' }}>
-                        {matchedCategory.title}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-[14px] font-extrabold text-ink truncate" style={{ letterSpacing: '-0.3px' }}>
+                          {matchedCategory.title}
+                        </p>
+                        {myRankedCategoryIds.has(matchedCategory.id) && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#00C2A8] flex-shrink-0">
+                            <Check size={10} />
+                            Ranked
+                          </span>
+                        )}
+                      </div>
                       {matchedCategory.description && (
                         <p className="text-[11px] text-muted mt-0.5 truncate">{matchedCategory.description}</p>
                       )}

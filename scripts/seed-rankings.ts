@@ -596,6 +596,74 @@ const RS500: Entry[] = [
   { rank: 500, title: 'Funeral',                                                     artist: 'Arcade Fire' },
 ];
 
+// ── Hip-Hop subset (RS500 ranks preserved, re-numbered 1–63 for seed weight) ──
+// Includes rap, alternative hip-hop, reggaeton, and hip-hop-adjacent R&B.
+const HIPHOP: Entry[] = [
+  { rank:  1, title: 'It Takes a Nation of Millions to Hold Us Back', artist: 'Public Enemy' },
+  { rank:  2, title: 'My Beautiful Dark Twisted Fantasy',             artist: 'Kanye West' },
+  { rank:  3, title: 'To Pimp a Butterfly',                           artist: 'Kendrick Lamar' },
+  { rank:  4, title: 'Ready to Die',                                  artist: 'The Notorious B.I.G.' },
+  { rank:  5, title: 'Enter the Wu-Tang (36 Chambers)',               artist: 'Wu-Tang Clan' },
+  { rank:  6, title: 'The Chronic',                                   artist: 'Dr. Dre' },
+  { rank:  7, title: 'The Low End Theory',                            artist: 'A Tribe Called Quest' },
+  { rank:  8, title: 'Illmatic',                                      artist: 'Nas' },
+  { rank:  9, title: 'Aquemini',                                      artist: 'Outkast' },
+  { rank: 10, title: 'The Blueprint',                                 artist: 'Jay-Z' },
+  { rank: 11, title: 'Paid in Full',                                  artist: 'Eric B. & Rakim' },
+  { rank: 12, title: 'Stankonia',                                     artist: 'Outkast' },
+  { rank: 13, title: 'Reasonable Doubt',                              artist: 'Jay-Z' },
+  { rank: 14, title: 'Straight Outta Compton',                        artist: 'N.W.A' },
+  { rank: 15, title: 'The College Dropout',                           artist: 'Kanye West' },
+  { rank: 16, title: 'Take Care',                                     artist: 'Drake' },
+  { rank: 17, title: '3 Feet High and Rising',                        artist: 'De La Soul' },
+  { rank: 18, title: 'Good Kid, M.A.A.D City',                       artist: 'Kendrick Lamar' },
+  { rank: 19, title: 'Late Registration',                             artist: 'Kanye West' },
+  { rank: 20, title: "Paul's Boutique",                               artist: 'Beastie Boys' },
+  { rank: 21, title: 'The Score',                                     artist: 'Fugees' },
+  { rank: 22, title: 'The Marshall Mathers LP',                       artist: 'Eminem' },
+  { rank: 23, title: 'The Black Album',                               artist: 'Jay-Z' },
+  { rank: 24, title: 'Damn',                                          artist: 'Kendrick Lamar' },
+  { rank: 25, title: 'Fear of a Black Planet',                        artist: 'Public Enemy' },
+  { rank: 26, title: "AmeriKKKa's Most Wanted",                       artist: 'Ice Cube' },
+  { rank: 27, title: 'Licensed to Ill',                               artist: 'Beastie Boys' },
+  { rank: 28, title: 'Midnight Marauders',                            artist: 'A Tribe Called Quest' },
+  { rank: 29, title: 'Graduation',                                    artist: 'Kanye West' },
+  { rank: 30, title: 'Tha Carter III',                                artist: 'Lil Wayne' },
+  { rank: 31, title: 'Raising Hell',                                  artist: 'Run-DMC' },
+  { rank: 32, title: 'Only Built 4 Cuban Linx...',                   artist: 'Raekwon' },
+  { rank: 33, title: 'De La Soul Is Dead',                            artist: 'De La Soul' },
+  { rank: 34, title: 'Criminal Minded',                               artist: 'Boogie Down Productions' },
+  { rank: 35, title: '808s & Heartbreak',                             artist: 'Kanye West' },
+  { rank: 36, title: 'Mama Said Knock You Out',                       artist: 'LL Cool J' },
+  { rank: 37, title: 'Check Your Head',                               artist: 'Beastie Boys' },
+  { rank: 38, title: 'Yeezus',                                        artist: 'Kanye West' },
+  { rank: 39, title: "Get Rich or Die Tryin'",                        artist: '50 Cent' },
+  { rank: 40, title: 'Speakerboxxx/The Love Below',                   artist: 'Outkast' },
+  { rank: 41, title: 'Doggystyle',                                    artist: 'Snoop Dogg' },
+  { rank: 42, title: 'Liquid Swords',                                 artist: 'GZA' },
+  { rank: 43, title: 'SOS',                                           artist: 'SZA' },
+  { rank: 44, title: 'The Slim Shady LP',                             artist: 'Eminem' },
+  { rank: 45, title: 'Madvillainy',                                   artist: 'Madvillain' },
+  { rank: 46, title: "If You're Reading This It's Too Late",          artist: 'Drake' },
+  { rank: 47, title: 'The Infamous',                                  artist: 'Mobb Deep' },
+  { rank: 48, title: 'Tha Carter II',                                 artist: 'Lil Wayne' },
+  { rank: 49, title: 'Run-D.M.C.',                                    artist: 'Run-DMC' },
+  { rank: 50, title: 'Donuts',                                        artist: 'J Dilla' },
+  { rank: 51, title: 'Kaleidoscope',                                  artist: 'Kelis' },
+  { rank: 52, title: 'Supreme Clientele',                             artist: 'Ghostface Killah' },
+  { rank: 53, title: 'Things Fall Apart',                             artist: 'The Roots' },
+  { rank: 54, title: 'Arular',                                        artist: 'M.I.A.' },
+  { rank: 55, title: 'Un Verano Sin Ti',                              artist: 'Bad Bunny' },
+  { rank: 56, title: 'Confessions',                                   artist: 'Usher' },
+  { rank: 57, title: 'All Eyez on Me',                                artist: '2Pac' },
+  { rank: 58, title: 'Demon Days',                                    artist: 'Gorillaz' },
+  { rank: 59, title: 'X 100pre',                                      artist: 'Bad Bunny' },
+  { rank: 60, title: 'Man on the Moon: The End of Day',               artist: 'Kid Cudi' },
+  { rank: 61, title: '400 Degreez',                                   artist: 'Juvenile' },
+  { rank: 62, title: 'Barrio Fino',                                   artist: 'Daddy Yankee' },
+  { rank: 63, title: 'Bizarre Ride II the Pharcyde',                  artist: 'The Pharcyde' },
+];
+
 // ── Spotify auth ──────────────────────────────────────────────────────────────
 
 const SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token';
@@ -669,6 +737,40 @@ async function searchAlbum(title: string, artist: string): Promise<AlbumHit | nu
   };
 }
 
+// ── K-Pop Greatest Albums (rank 1 = best) ────────────────────────────────────
+const KPOP: Entry[] = [
+  { rank:  1, title: 'Pink Tape',                              artist: 'f(x)' },
+  { rank:  2, title: 'Jack In The Box',                        artist: 'j-hope' },
+  { rank:  3, title: 'Love Yourself: Tear',                    artist: 'BTS' },
+  { rank:  4, title: 'Palette',                                artist: 'IU' },
+  { rank:  5, title: 'Perfect Velvet',                         artist: 'Red Velvet' },
+  { rank:  6, title: 'Odd',                                    artist: 'SHINee' },
+  { rank:  7, title: 'The Chaos Chapter: FREEZE',              artist: 'TOMORROW X TOGETHER' },
+  { rank:  8, title: 'Reboot',                                 artist: 'Wonder Girls' },
+  { rank:  9, title: 'INVU',                                   artist: 'TAEYEON' },
+  { rank: 10, title: 'Noeasy',                                 artist: 'Stray Kids' },
+  { rank: 11, title: 'Advice',                                 artist: 'TAEMIN' },
+  { rank: 12, title: 'MADE',                                   artist: 'BIGBANG' },
+  { rank: 13, title: 'Heng:garae',                             artist: 'SEVENTEEN' },
+  { rank: 14, title: 'Lucky Man',                              artist: 'BOBBY' },
+  { rank: 15, title: 'THE ALBUM',                              artist: 'BLACKPINK' },
+  { rank: 16, title: 'THE WORLD EP.1 : MOVEMENT',              artist: 'ATEEZ' },
+  { rank: 17, title: 'María',                                  artist: 'HWASA' },
+  { rank: 18, title: 'Get Up',                                 artist: 'NewJeans' },
+  { rank: 19, title: 'FEEL SPECIAL',                           artist: 'TWICE' },
+  { rank: 20, title: 'CRUSH',                                  artist: '2NE1' },
+  { rank: 21, title: 'Sorry, Sorry',                           artist: 'Super Junior' },
+  { rank: 22, title: 'Querencia',                              artist: 'CHUNGHA' },        // TODO: add spotifyId — fuzzy match fails
+  { rank: 23, title: 'I Never Die',                            artist: '(G)I-DLE' },
+  { rank: 24, title: 'Interview',                              artist: 'Eric Nam' },
+  { rank: 25, title: 'EXODUS',                                 artist: 'EXO' },
+  { rank: 26, title: "Girls' Generation",                      artist: "Girls' Generation" },
+  { rank: 27, title: 'Come Come Come Baby',                    artist: 'Baby V.O.X' },
+  { rank: 28, title: 'I Yah!',                                 artist: 'H.O.T.' },
+  { rank: 29, title: 'Rainism',                                artist: 'Rain' },
+  { rank: 30, title: "It's Hyorish",                           artist: 'Lee Hyori' },      // TODO: add spotifyId — matched wrong artist (Lee Hyun)
+];
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -715,12 +817,25 @@ async function main() {
     process.exit(1);
   }
 
+  const DATASETS: Record<string, Entry[]> = {
+    'all-time':        RS500,
+    'hiphop-all-time': HIPHOP,
+    'kpop-all-time':   KPOP,
+  };
+
+  const dataset = DATASETS[CATEGORY_SLUG];
+  if (!dataset) {
+    console.error(`No seed dataset defined for category "${CATEGORY_SLUG}"`);
+    console.error(`Available: ${Object.keys(DATASETS).join(', ')}`);
+    process.exit(1);
+  }
+
   const done = loadState();
   let seeded = 0;
   let skipped = 0;
   let failed = 0;
 
-  for (const entry of RS500) {
+  for (const entry of dataset) {
     const key = `${entry.rank}|${entry.title}`;
 
     if (done.has(key)) {

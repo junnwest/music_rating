@@ -8,6 +8,8 @@ export interface LeaderboardEntry {
   avgRating: number | null;
 }
 
+import Link from 'next/link';
+
 export default function RankingVoteWidget({
   leaderboard,
 }: {
@@ -40,8 +42,9 @@ export default function RankingVoteWidget({
 
       <div className="flex flex-col gap-[2px]">
         {leaderboard.map((entry) => (
-          <div
+          <Link
             key={entry.releaseId}
+            href={`/album/${entry.releaseId}`}
             className="flex items-center gap-4 rounded-[10px] px-4 py-3 hover:bg-surface transition"
           >
             {/* Rank */}
@@ -71,11 +74,11 @@ export default function RankingVoteWidget({
             <div className="w-[120px] flex-shrink-0 flex items-center gap-2">
               <div className="flex-1 h-[4px] bg-[#EBEBEB] rounded-full overflow-hidden">
                 <div
-                  className="h-full rounded-full bg-[#111]"
+                  className="h-full rounded-full bg-[#00C2A8]"
                   style={{ width: `${entry.sillaScore}%` }}
                 />
               </div>
-              <span className="text-[12px] font-semibold text-ink tabular-nums w-[36px] text-right">
+              <span className="text-[12px] font-semibold text-[#00C2A8] tabular-nums w-[36px] text-right">
                 {entry.sillaScore.toFixed(1)}
               </span>
             </div>
@@ -90,7 +93,7 @@ export default function RankingVoteWidget({
                 <span className="text-[12px] text-muted">—</span>
               )}
             </div>
-          </div>
+          </Link>
         ))}
       </div>
     </div>

@@ -14,6 +14,7 @@
  */
 
 import fs from 'fs';
+import http from 'http';
 import path from 'path';
 import { createClient } from '@supabase/supabase-js';
 
@@ -64,26 +65,115 @@ const GENRE_SWEEPS = [
 
 const SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token';
 const SPOTIFY_API = 'https://api.spotify.com/v1';
+const REDIRECT_URI = 'http://127.0.0.1:8888/callback';
+const TOKENS_PATH = path.resolve('.spotify-tokens.json');
 
-let tokenCache: { value: string; expiresAt: number } | null = null;
+interface TokenStore {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+}
 
-async function getToken(): Promise<string> {
-  if (tokenCache && Date.now() < tokenCache.expiresAt) return tokenCache.value;
-  const id = process.env.SPOTIFY_CLIENT_ID;
-  const secret = process.env.SPOTIFY_CLIENT_SECRET;
-  if (!id || !secret) throw new Error('SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET not set');
+function loadTokenStore(): TokenStore | null {
+  if (!fs.existsSync(TOKENS_PATH)) return null;
+  try { return JSON.parse(fs.readFileSync(TOKENS_PATH, 'utf8')); } catch { return null; }
+}
+
+function saveTokenStore(store: TokenStore) {
+  fs.writeFileSync(TOKENS_PATH, JSON.stringify(store, null, 2));
+}
+
+async function refreshAccessToken(refreshToken: string, id: string, secret: string): Promise<TokenStore> {
   const res = await fetch(SPOTIFY_TOKEN_URL, {
     method: 'POST',
     headers: {
       Authorization: `Basic ${Buffer.from(`${id}:${secret}`).toString('base64')}`,
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: 'grant_type=client_credentials',
+    body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken }).toString(),
   });
-  if (!res.ok) throw new Error(`Token fetch ${res.status}`);
-  const data = await res.json() as { access_token: string; expires_in: number };
-  tokenCache = { value: data.access_token, expiresAt: Date.now() + (data.expires_in - 60) * 1000 };
-  return tokenCache.value;
+  if (!res.ok) throw new Error(`Token refresh ${res.status}: ${await res.text()}`);
+  const d = await res.json() as { access_token: string; refresh_token?: string; expires_in: number };
+  return {
+    accessToken: d.access_token,
+    refreshToken: d.refresh_token ?? refreshToken,
+    expiresAt: Date.now() + (d.expires_in - 60) * 1000,
+  };
+}
+
+async function authorizeViaBrowser(id: string, secret: string): Promise<TokenStore> {
+  const state = Math.random().toString(36).slice(2);
+  const authUrl = `https://accounts.spotify.com/authorize?client_id=${id}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${state}`;
+
+  console.log('\n  ── Spotify OAuth setup ────────────────────────────────────────');
+  console.log('  Opening your browser for Spotify authorization…');
+  console.log(`\n  If browser did not open, paste this URL manually:\n  ${authUrl}\n`);
+
+  const { exec } = await import('child_process');
+  exec(`start "" "${authUrl}"`);
+
+  const code = await new Promise<string>((resolve, reject) => {
+    const server = http.createServer((req, res) => {
+      const url = new URL(req.url!, 'http://localhost:8888');
+      const code = url.searchParams.get('code');
+      const retState = url.searchParams.get('state');
+      const error = url.searchParams.get('error');
+
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      if (error || !code || retState !== state) {
+        res.end('<h1>Authorization failed — check the terminal.</h1>');
+        server.close();
+        reject(new Error(error ?? 'Missing code or state mismatch'));
+        return;
+      }
+      res.end('<h1>Authorization successful — you can close this tab.</h1>');
+      server.close();
+      resolve(code);
+    });
+    server.listen(8888, () => console.log('  Waiting for Spotify callback on port 8888…'));
+    server.on('error', (err: Error) => reject(err));
+  });
+
+  const res = await fetch(SPOTIFY_TOKEN_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${id}:${secret}`).toString('base64')}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: REDIRECT_URI }).toString(),
+  });
+  if (!res.ok) throw new Error(`Token exchange ${res.status}: ${await res.text()}`);
+  const d = await res.json() as { access_token: string; refresh_token: string; expires_in: number };
+  console.log('  Token saved — future runs will skip this step.\n');
+  return {
+    accessToken: d.access_token,
+    refreshToken: d.refresh_token,
+    expiresAt: Date.now() + (d.expires_in - 60) * 1000,
+  };
+}
+
+async function getToken(): Promise<string> {
+  const id = process.env.SPOTIFY_CLIENT_ID;
+  const secret = process.env.SPOTIFY_CLIENT_SECRET;
+  if (!id || !secret) throw new Error('SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET not set');
+
+  let store = loadTokenStore();
+
+  if (store && Date.now() < store.expiresAt) return store.accessToken;
+
+  if (store?.refreshToken) {
+    try {
+      store = await refreshAccessToken(store.refreshToken, id, secret);
+      saveTokenStore(store);
+      return store.accessToken;
+    } catch {
+      console.log('  Refresh token expired — re-authorizing…');
+    }
+  }
+
+  store = await authorizeViaBrowser(id, secret);
+  saveTokenStore(store);
+  return store.accessToken;
 }
 
 class RateLimitError extends Error {
@@ -264,7 +354,7 @@ async function upsertAlbum(db: ReturnType<typeof getDB>, album: AlbumResult) {
 async function fetchArtistAlbums(artistId: string): Promise<any[]> {
   const items: any[] = [];
   // include_groups=album,single explicitly excludes appears_on and compilation
-  let url: string | null = `/artists/${artistId}/albums?include_groups=album,single&limit=50&market=KR`;
+  let url: string | null = `/artists/${artistId}/albums?include_groups=album,single&limit=10&market=KR`;
   while (url) {
     await sleep(DELAY_MS);
     const data = await spotifyGet(url);
@@ -456,11 +546,11 @@ async function runGenre(db: ReturnType<typeof getDB>, state: ExpandState) {
     console.log(`  ── genre: "${sweep.tag}" (min popularity ${sweep.minPopularity}) ──`);
     const seen = new Set<string>();
 
-    for (let offset = 0; offset < 200; offset += 50) {
+    for (let offset = 0; offset < 200; offset += 10) {
       await sleep(DELAY_MS);
       try {
         const data = await spotifyGet(
-          `/search?q=genre:"${encodeURIComponent(sweep.tag)}"&type=album&limit=50&offset=${offset}&market=KR`
+          `/search?q=genre:"${encodeURIComponent(sweep.tag)}"&type=album&limit=10&offset=${offset}&market=KR`
         );
         const items: any[] = data.albums?.items ?? [];
         if (items.length === 0) break;

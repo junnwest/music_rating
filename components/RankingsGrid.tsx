@@ -42,16 +42,18 @@ export default function RankingsGrid({ categories, topAlbumsMap, voteCountMap }:
     });
   }, []);
 
-  const filtered = categories
-    .filter((cat) => {
-      if (activeTab === 'To Vote') return !myRankings[cat.id];
-      if (activeTab === 'Friends Active') return (friendVoteCounts[cat.id] ?? 0) > 0;
-      return true;
-    })
-    .sort((a, b) => {
-      if (activeTab === 'To Vote') return (voteCountMap[b.id] ?? 0) - (voteCountMap[a.id] ?? 0);
-      return 0;
-    });
+  const filtered = (() => {
+    if (activeTab === 'To Vote') {
+      return categories
+        .filter((cat) => !myRankings[cat.id])
+        .sort((a, b) => (voteCountMap[b.id] ?? 0) - (voteCountMap[a.id] ?? 0))
+        .slice(0, 6);
+    }
+    if (activeTab === 'Friends Active') {
+      return categories.filter((cat) => (friendVoteCounts[cat.id] ?? 0) > 0);
+    }
+    return categories;
+  })();
 
   const tabs: FilterTab[] = loggedIn ? ['All', 'To Vote', ...(hasFriends ? ['Friends Active' as FilterTab] : [])] : ['All'];
 
@@ -71,11 +73,6 @@ export default function RankingsGrid({ categories, topAlbumsMap, voteCountMap }:
               }`}
             >
               {tab}
-              {tab === 'To Vote' && (
-                <span className="ml-1.5 text-[10px] opacity-70">
-                  {categories.filter((c) => !myRankings[c.id]).length}
-                </span>
-              )}
               {tab === 'Friends Active' && (
                 <span className="ml-1.5 text-[10px] opacity-70">
                   {categories.filter((c) => (friendVoteCounts[c.id] ?? 0) > 0).length}

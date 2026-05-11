@@ -61,10 +61,10 @@ export async function POST(req: NextRequest) {
   const supabase = createServerClient();
   if (!supabase) return NextResponse.json({ error: 'DB unavailable' }, { status: 503 });
 
-  // Full reset: delete all existing categories (cascades to votes/seeds), then insert fresh
-  await supabase.from('ranking_categories').delete().neq('slug', '__never__');
-
-  const { error } = await supabase.from('ranking_categories').insert(CATEGORIES);
+  const { error } = await supabase.from('ranking_categories').upsert(CATEGORIES, {
+    onConflict: 'slug',
+    ignoreDuplicates: false,
+  });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true, seeded: CATEGORIES.length });
