@@ -36,7 +36,7 @@ function normalize(s: string): string {
   return s
     .toLowerCase()
     .replace(/[''`]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/[^a-z0-9\s가-힣]/g, ' ')  // keep Latin + Korean Hangul syllables
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -771,6 +771,247 @@ const KPOP: Entry[] = [
   { rank: 30, title: "It's Hyorish",                           artist: 'Lee Hyori' },      // TODO: add spotifyId — matched wrong artist (Lee Hyun)
 ];
 
+// ── Best Korean Album All Time (rank 1 = best) ───────────────────────────────
+// Source: 한국 대중음악 100대 명반 critical consensus list.
+// normalize() keeps Korean (Hangul) so Korean artist names match Spotify directly.
+// Artists with known English Spotify names use those; all others use Korean names.
+const KOREAN_ALL_TIME: Entry[] = [
+  { rank:   1, title: '사랑하기 때문에',                                      artist: '유재하' },
+  { rank:   2, title: '들국화',                                              artist: '들국화' },
+  { rank:   3, title: '신중현과 엽전들',                                       artist: '신중현과 엽전들' },
+  { rank:   4, title: '김민기',                                              artist: '김민기' },
+  { rank:   5, title: '산울림 새노래 모음',                                    artist: '산울림' },
+  { rank:   6, title: '어떤날 I',                                            artist: '어떤날' },
+  { rank:   7, title: '내 마음에 주단을 깔고',                                 artist: '산울림' },
+  { rank:   8, title: '멀고 먼 길',                                          artist: '한대수' },
+  { rank:   9, title: 'The Return of N.EX.T Part 1: The Being',            artist: 'N.EX.T' },
+  { rank:  10, title: '공무도하가',                                           artist: '이상은' },
+  { rank:  11, title: '나의 외로움이 널 부를 때',                               artist: '장필순' },
+  { rank:  12, title: '김현철 VOL.1',                                        artist: '김현철' },
+  { rank:  13, title: '이문세 4집',                                           artist: '이문세' },
+  { rank:  14, title: '푸른 돛',                                             artist: '시인과 촌장' },
+  { rank:  15, title: '한동안 뜸했었지',                                       artist: '사랑과 평화' },
+  { rank:  16, title: '김현식 III',                                          artist: '김현식' },
+  { rank:  17, title: '바라본다',                                             artist: '한영애' },
+  { rank:  18, title: 'Deli Spice',                                         artist: 'Deli Spice' },
+  { rank:  19, title: 'FORCE DEUX',                                         artist: '듀스' },
+  { rank:  20, title: '어떤날 II',                                           artist: '어떤날' },
+  { rank:  21, title: 'nOiZeGaRdEn',                                       artist: '노이즈가든' },
+  { rank:  22, title: 'Seotaiji and Boys',                                  artist: '서태지와 아이들' },
+  { rank:  23, title: '송골매 II',                                           artist: '송골매' },
+  { rank:  24, title: '다시부르기 II',                                        artist: '김광석' },
+  { rank:  25, title: '조동진 1',                                            artist: '조동진' },
+  { rank:  26, title: '청년폭도맹진가',                                        artist: '노브레인' },
+  { rank:  27, title: '신촌 Blues II',                                       artist: '신촌블루스' },
+  { rank:  28, title: '조용필 7집',                                          artist: '조용필' },
+  { rank:  29, title: '92년 장마, 종로에서',                                   artist: '정태춘, 박은옥' },
+  { rank:  30, title: '눈썹달',                                              artist: '이소라' },
+  { rank:  31, title: '오늘 나는',                                           artist: 'H2O' },
+  { rank:  32, title: '작은거인 김수철',                                       artist: '김수철' },
+  { rank:  33, title: '문화혁명',                                             artist: '삐삐밴드' },
+  { rank:  34, title: 'Heavy Metal Sinawe',                                 artist: '시나위' },
+  { rank:  35, title: '봄여름가을겨울',                                        artist: '봄여름가을겨울' },
+  { rank:  36, title: 'GARION',                                             artist: '가리온' },
+  { rank:  37, title: 'MAGMA',                                              artist: '마그마' },
+  { rank:  38, title: '동물원',                                              artist: '동물원' },
+  { rank:  39, title: '180g Beats',                                         artist: 'DJ Soulscape' },
+  { rank:  40, title: 'Cry... Our Wanna Be Nation!',                        artist: '유앤미블루' },
+  { rank:  41, title: '낯선 사람들',                                          artist: '낯선 사람들' },
+  { rank:  42, title: '이문세 5집',                                           artist: '이문세' },
+  { rank:  43, title: '빛과 소금 VOL.1',                                     artist: '빛과 소금' },
+  { rank:  44, title: '노래를 찾는 사람들 2',                                  artist: '노래를 찾는 사람들' },
+  { rank:  45, title: 'Sound Renovates A Structure',                        artist: '아소토 유니온' },
+  { rank:  46, title: '일상다반사',                                           artist: '롤러코스터' },
+  { rank:  47, title: '작은거인 2집',                                         artist: '작은거인' },
+  { rank:  48, title: '동경',                                               artist: '조동익' },
+  { rank:  49, title: '두 번째 노래모음',                                      artist: '동물원' },
+  { rank:  50, title: '가장 보통의 존재',                                      artist: '언니네 이발관' },
+  { rank:  51, title: 'Endless Supply Of Pain',                             artist: 'CRASH' },
+  { rank:  52, title: 'Seotaiji and Boys II',                               artist: '서태지와 아이들' },
+  { rank:  53, title: 'Soony 6',                                            artist: '장필순' },
+  { rank:  54, title: '숲',                                                 artist: '시인과 촌장' },
+  { rank:  55, title: '조용필 대표곡 모음',                                    artist: '조용필' },
+  { rank:  56, title: 'The Anecdote',                                       artist: 'E Sens' },     // 이센스 Spotify name = E Sens
+  { rank:  57, title: 'Myself',                                             artist: '신해철' },
+  { rank:  58, title: 'NOW',                                                artist: '김정미' },
+  { rank:  59, title: 'Rock Will Never Die',                                artist: '부활' },
+  { rank:  60, title: 'THE LIFE... DOC BLUES 5%',                          artist: 'DJ DOC' },
+  { rank:  61, title: '밑',                                                 artist: '패닉' },
+  { rank:  62, title: '자유혼',                                              artist: '김두수' },     // 自由魂 in Hangul
+  { rank:  63, title: '30대',                                               artist: '이정선' },
+  { rank:  64, title: 'The Third Wave',                                     artist: '015B' },
+  { rank:  65, title: 'Lucid Fall',                                         artist: 'Lucid Fall' },
+  { rank:  66, title: '시인의 마을',                                          artist: '정태춘' },    // 詩人의 마을 in Hangul
+  { rank:  67, title: 'Brown Eyes',                                         artist: 'Brown Eyes' },
+  { rank:  68, title: '추억',                                               artist: '전인권' },
+  { rank:  69, title: 'Seotaiji and Boys III',                              artist: '서태지와 아이들' },
+  { rank:  70, title: '비선형',                                              artist: '못' },
+  { rank:  71, title: 'Just Pop',                                           artist: 'My Aunt Mary' }, // 마이 앤트 메리 Spotify name
+  { rank:  72, title: '신촌 Blues',                                         artist: '신촌블루스' },
+  { rank:  73, title: '201',                                                artist: 'Black Skirts' }, // 검정치마 Spotify name = Black Skirts
+  { rank:  74, title: '그건 너!',                                            artist: '이장희' },
+  { rank:  75, title: 'Life is Strange',                                    artist: '서울전자음악단' },
+  { rank:  76, title: '우리노래전시회 1집',                                    artist: 'Various Artists' },
+  { rank:  77, title: 'Dreamtalk',                                          artist: 'Line 3 Butterfly' }, // 3호선 버터플라이 Spotify name
+  { rank:  78, title: 'Remember',                                           artist: '부활' },
+  { rank:  79, title: '이장혁 Vol.1',                                        artist: '이장혁' },
+  { rank:  80, title: '양희은 1991',                                         artist: '양희은' },
+  { rank:  81, title: 'CLICHE',                                             artist: '윤상' },
+  { rank:  82, title: 'Seotaiji and Boys IV',                               artist: '서태지와 아이들' },
+  { rank:  83, title: 'Human',                                              artist: '이승환' },
+  { rank:  84, title: '비둘기는 하늘의 쥐',                                    artist: '언니네 이발관' },
+  { rank:  85, title: '양희은 고운노래 모음',                                  artist: '양희은' },
+  { rank:  86, title: '나의 아름다운 노래가 당신의 마음을 깨끗하게 할 수 있다면', artist: '봄여름가을겨울' },
+  { rank:  87, title: '김광석 네번째',                                        artist: '김광석' },
+  { rank:  88, title: 'Kim Gun Mo 3',                                       artist: '김건모' },
+  { rank:  89, title: 'Drifting',                                           artist: '미선이' },
+  { rank:  90, title: '후일담',                                              artist: '언니네 이발관' },
+  { rank:  91, title: 'PANIC',                                              artist: '패닉' },
+  { rank:  92, title: 'EXHIBITION',                                         artist: '전람회' },
+  { rank:  93, title: 'Rough Draft In Progress',                            artist: 'Hollow Jan' },  // 할로우 잰 Spotify name
+  { rank:  94, title: '별일 없이 산다',                                       artist: '장기하와 얼굴들' },
+  { rank:  95, title: '안치환 4집',                                          artist: '안치환' },
+  { rank:  96, title: 'PINK TAPE',                                          artist: 'f(x)' },
+  { rank:  97, title: '누명',                                               artist: '버벌진트' },
+  { rank:  98, title: 'Where The Story Ends',                               artist: 'W' },          // TODO: "W" is very generic — add spotifyId if wrong match
+  { rank:  99, title: '위험한 세계',                                          artist: '윤영배' },
+  { rank: 100, title: '사랑이야',                                             artist: '송창식' },
+];
+
+// ── Best K-Hip-Hop Album of All Time (rank 1 = best) ─────────────────────────
+// Source: community poll results (points-weighted).
+// Artists with known English Spotify names use those; others use Korean names.
+const KHIPHOP: Entry[] = [
+  { rank:  1, title: '킁',                                   artist: 'CJAMM' },         // 씨잼 Spotify name
+  { rank:  2, title: 'The Anecdote',                        artist: 'E Sens' },         // 이센스 Spotify name
+  { rank:  3, title: '24:26',                               artist: 'Beenzino' },        // 빈지노 Spotify name
+  { rank:  4, title: "life's like",                         artist: 'Jazzyfact' },       // 재지팩트 Spotify name
+  { rank:  5, title: '누명',                                 artist: 'Verbal Jint' },    // 버벌진트 Spotify name
+  { rank:  6, title: 'Korean Dream',                        artist: 'B-Free' },         // 비프리 Spotify name
+  { rank:  7, title: '파급효과',                              artist: 'Just Music' },      // 저스트뮤직 Spotify name
+  { rank:  8, title: '2 Many Homes 4 1 Kid',               artist: 'JUSTHIS' },         // 저스디스 Spotify name
+  { rank:  9, title: 'FREE THE BEAST',                      artist: 'B-Free' },
+  { rank: 10, title: '11:11',                               artist: 'Illionaire Records' }, // 일리네어 레코즈 Spotify name
+  { rank: 11, title: 'P.O.E.M',                             artist: 'OWEN' },            // 오왼 Spotify name
+  { rank: 12, title: 'k flip+',                            artist: 'Sik-K' },           // 식케이 Spotify name
+  { rank: 13, title: '녹색이념',                              artist: 'Take One' },       // 테이크원 Spotify name
+  { rank: 14, title: '노비츠키',                              artist: 'Beenzino' },
+  { rank: 15, title: '탑승수속',                              artist: 'Okasian' },        // 오케이션 Spotify name
+  { rank: 16, title: 'primary and the messengers LP',      artist: 'Primary' },         // 프라이머리 Spotify name
+  { rank: 17, title: '탕아',                                 artist: '뱃사공' },
+  { rank: 18, title: 'KYOMI',                              artist: 'XXX' },             // TODO: "XXX" is very generic — add spotifyId if wrong match
+  { rank: 19, title: 'Taxi Driver',                        artist: 'Dynamic Duo' },     // 다이나믹 듀오 Spotify name
+  { rank: 20, title: 'Remapping the Human Soul',           artist: 'Epik High' },       // 에픽하이 Spotify name
+  { rank: 21, title: '돈 벌 시간 2',                         artist: 'CHANGMO' },         // 창모 Spotify name
+  { rank: 22, title: 'heavy bass',                         artist: '피타입' },
+  { rank: 23, title: '130 mood: TRBL',                     artist: 'DEAN' },            // 딘 Spotify name
+  { rank: 24, title: 'GARION',                             artist: '가리온' },
+  { rank: 25, title: 'BEIGE',                              artist: 'Kid Milli' },       // 키드밀리 Spotify name
+  { rank: 26, title: '열꽃',                                artist: 'TABLO' },           // 타블로 Spotify name
+  { rank: 27, title: 'Fanatic',                            artist: '화나' },
+  { rank: 28, title: 'Eat',                               artist: '화지' },
+  { rank: 29, title: 'Demolish',                          artist: '이그니토' },
+  { rank: 30, title: 'DETOX',                             artist: '빌스택스' },
+  { rank: 31, title: '작은 것들의 신',                        artist: 'Nucksal' },         // 넉살 Spotify name
+  { rank: 32, title: 'orca tape',                         artist: '코홀트' },
+  { rank: 33, title: 'slowmo',                            artist: 'Yang Hong Won' },    // 양홍원 Spotify name
+  { rank: 34, title: 'Hi-Life',                           artist: '하이라이트' },         // TODO: may conflict with boy group HIGHLIGHT on Spotify — add spotifyId
+  { rank: 35, title: 'Ai, The Playlist',                  artist: 'Kid Milli' },
+  { rank: 36, title: '전설',                               artist: '최성' },
+  { rank: 37, title: '해방',                               artist: '스카이민혁' },
+  { rank: 38, title: '양화',                               artist: 'Deepflow' },         // 딥플로우 Spotify name
+  { rank: 39, title: 'everything you wanted',             artist: 'Jay Park' },         // 박재범 Spotify name
+  { rank: 40, title: 'junk drunk love',                   artist: 'Legit Goons' },      // 리짓군즈 Spotify name
+  { rank: 41, title: 'LeeSSang of Honey Family',          artist: 'Leessang' },         // 리쌍 Spotify name
+  { rank: 42, title: 'sky is the limit',                  artist: 'Drunken Tiger' },    // 드렁큰타이거 Spotify name
+  { rank: 43, title: 'Undisputed',                        artist: '데드피' },
+  { rank: 44, title: 'Upgrade II',                        artist: 'Swings' },           // 스윙스 Spotify name
+  { rank: 45, title: 'Daily Routine',                     artist: 'Paloalto' },         // 팔로알토 Spotify name
+  { rank: 46, title: 'challenge 4 da change',             artist: '키네틱플로우' },
+  { rank: 47, title: 'mood schula',                       artist: 'simo' },
+  { rank: 48, title: 'Undercover Angel',                  artist: '스월비' },
+  { rank: 49, title: '그물, 덫, 발사대기, 포획',              artist: '이수린' },
+  { rank: 50, title: 'How Bad Do U Want It',              artist: 'MC 스나이퍼' },
+  { rank: 51, title: 'Crumple',                           artist: 'Code Kunst' },       // 코드쿤스트 Spotify name
+  { rank: 52, title: '더 뱅어즈',                           artist: '소울컴퍼니' },
+  { rank: 53, title: '180g Beats',                        artist: 'DJ Soulscape' },     // user wrote "soulcape" — correct name is Soulscape
+  { rank: 54, title: 'Original',                         artist: '차붐' },
+  { rank: 55, title: '마왕',                              artist: '제리케이' },
+  { rank: 56, title: '22 channels',                      artist: '랍티미스트' },
+  { rank: 57, title: 'Massmediah',                       artist: 'CB Mass' },
+  { rank: 58, title: '물질보다정신',                        artist: '와비사비룸' },
+  { rank: 59, title: '마이동풍',                           artist: '배치기' },
+  { rank: 60, title: 'Humonoid, Hypnotica',              artist: '마이노스' },
+  { rank: 61, title: 'Loaded',                           artist: '마일드비츠' },
+  { rank: 62, title: '1 LIFE 2 LIVE',                    artist: 'The Quiett' },        // 더 콰이엇 Spotify name
+  { rank: 63, title: 'Red Light',                        artist: 'Zion.T' },            // zion.t Spotify name
+  { rank: 64, title: 'AMBITIQN',                         artist: 'The Quiett' },
+  { rank: 65, title: 'Supremier',                        artist: '슈프림팀' },
+  { rank: 66, title: 'Neo EvE',                          artist: 'Jvcki Wai' },         // 재키와이 Spotify name = Jvcki Wai
+  { rank: 67, title: '거울',                              artist: 'YDG' },
+  { rank: 68, title: 'Message From Underground 2006',    artist: '라임어택' },
+  { rank: 69, title: 'Beatz 4 Da Streetz',               artist: '주석' },
+  { rank: 70, title: 'Poetree Syndrome',                 artist: '키비' },
+  { rank: 71, title: '완전 힙합',                          artist: '이현도' },
+  { rank: 72, title: 'Hustle Real Hard',                 artist: 'Dok2' },
+  { rank: 73, title: 't 3 yoonmirae',                    artist: 'Yoon Mirae' },        // 윤미래 Spotify name
+];
+
+// ── Best Album of 2025 (rank 1 = best) ───────────────────────────────────────
+// Source: community poll results (points-weighted).
+const ALBUM_2025: Entry[] = [
+  { rank:  1, title: 'LUX',                                    artist: 'ROSALÍA' },
+  { rank:  2, title: 'Getting Killed',                         artist: 'Geese' },
+  { rank:  3, title: 'Bleeds',                                 artist: 'Wednesday' },
+  { rank:  4, title: 'EURO-COUNTRY',                           artist: 'CMAT' },
+  { rank:  5, title: 'EUSEXUA',                                artist: 'FKA twigs' },
+  { rank:  6, title: 'Let God Sort Em Out',                    artist: 'Clipse' },
+  { rank:  7, title: 'DeBÍ TiRAR MáS FOToS',                  artist: 'Bad Bunny' },
+  { rank:  8, title: 'NEVER ENOUGH',                           artist: 'Turnstile' },
+  { rank:  9, title: 'choke enough',                           artist: 'Oklou' },
+  { rank: 10, title: 'Ego Death At A Bachelorette Party',      artist: 'Hayley Williams' },
+  { rank: 11, title: 'West End Girl',                          artist: 'Lily Allen' },
+  { rank: 12, title: 'Baby',                                   artist: 'Dijon' },
+  { rank: 13, title: 'Addison',                                artist: 'Addison Rae' },
+  { rank: 14, title: 'GOLLIWOG',                               artist: 'billy woods' },
+  { rank: 15, title: 'More',                                   artist: 'Pulp' },
+  { rank: 16, title: 'Fancy That',                             artist: 'PinkPantheress' },
+  { rank: 17, title: 'Essex Honey',                            artist: 'Blood Orange' },
+  { rank: 18, title: 'moisturizer',                            artist: 'Wet Leg' },
+  { rank: 19, title: 'Lotus',                                  artist: 'Little Simz' },
+  { rank: 20, title: 'The Passionate Ones',                    artist: 'Nourished By Time' },
+  { rank: 21, title: 'private music',                          artist: 'Deftones' },
+  { rank: 22, title: 'black british music (2025)',             artist: 'Jim Legxacy' },
+  { rank: 23, title: 'Lonely People With Power',               artist: 'Deafheaven' },
+  { rank: 24, title: 'MAYHEM',                                 artist: 'Lady Gaga' },
+  { rank: 25, title: 'The Art of Loving',                      artist: 'Olivia Dean' },
+  { rank: 26, title: 'Phonetics On and On',                    artist: 'Horsegirl' },
+  { rank: 27, title: "It's A Beautiful Place",                 artist: 'Water From Your Eyes' },
+  { rank: 28, title: "THAT'S SHOWBIZ BABY!",                   artist: 'JADE' },
+  { rank: 29, title: 'Double Infinity',                        artist: 'Big Thief' },
+  { rank: 30, title: 'viagr aboys',                            artist: 'Viagra Boys' },
+  { rank: 31, title: 'Instant Holograms On Metal Film',        artist: 'Stereolab' },
+  { rank: 32, title: 'THE BPM',                                artist: 'Sudan Archives' },
+  { rank: 33, title: 'The Clearing',                           artist: 'Wolf Alice' },
+  { rank: 34, title: 'Everybody Scream',                       artist: 'Florence + the Machine' },
+  { rank: 35, title: 'New Threats From the Soul',              artist: 'Ryan Davis & The Roadhouse Band' },
+  { rank: 36, title: 'ICONOCLASTS',                            artist: 'Anna von Hausswolff' },
+  { rank: 37, title: 'SABLE, fABLE',                           artist: 'Bon Iver' },
+  { rank: 38, title: 'Virgin',                                 artist: 'Lorde' },
+  { rank: 39, title: 'Antidepressants',                        artist: 'Suede' },
+  { rank: 40, title: "Willoughby Tucker, I'll Always Love You", artist: 'Ethel Cain' },
+  { rank: 41, title: 'caroline 2',                             artist: 'caroline' },
+  { rank: 42, title: 'Headlights',                             artist: 'Alex G' },
+  { rank: 43, title: 'Snipe Hunter',                           artist: 'Tyler Childers' },
+  { rank: 44, title: 'Live Laugh Love',                        artist: 'Earl Sweatshirt' },
+  { rank: 45, title: 'Sinister Grift',                         artist: 'Panda Bear' },
+  { rank: 46, title: 'hexed!',                                 artist: 'aya' },
+  { rank: 47, title: 'I Love My Computer',                     artist: 'Ninajirachi' },
+  { rank: 48, title: 'Big city life',                          artist: 'Smerz' },
+  { rank: 49, title: 'Through The Wall',                       artist: 'Rochelle Jordan' },
+  { rank: 50, title: 'Glory',                                  artist: 'Perfume Genius' },
+];
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -821,6 +1062,9 @@ async function main() {
     'all-time':        RS500,
     'hiphop-all-time': HIPHOP,
     'kpop-all-time':   KPOP,
+    'album-2025':      ALBUM_2025,
+    'korean-all-time':   KOREAN_ALL_TIME,
+    'khiphop-all-time':  KHIPHOP,
   };
 
   const dataset = DATASETS[CATEGORY_SLUG];
@@ -871,7 +1115,7 @@ async function main() {
       continue;
     }
 
-    const seedVotes = parseFloat((1.0 / entry.rank).toFixed(4));
+    const seedVotes = parseFloat(Math.pow(0.99, entry.rank - 1).toFixed(4));
     console.log(`  #${String(entry.rank).padStart(3)} [${seedVotes.toFixed(4)}] ${hit.artist} — ${hit.title}`);
 
     if (DRY_RUN) { skipped++; continue; }

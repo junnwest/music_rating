@@ -74,6 +74,22 @@ export async function POST(req: NextRequest) {
     await supabase.from('releases').upsert(releases, { onConflict: 'id' });
   }
 
+  // If no entries, treat as a full delete
+  if (entries.length === 0) {
+    const { data: existing } = await supabase
+      .from('user_rankings')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('category_id', categoryId)
+      .maybeSingle();
+    if (existing) {
+      await supabase.from('user_ranking_entries').delete().eq('ranking_id', existing.id);
+      await supabase.from('user_rankings').delete().eq('id', existing.id);
+    }
+    await supabase.from('ranking_votes').delete().eq('user_id', userId).eq('category_id', categoryId);
+    return NextResponse.json({ ok: true });
+  }
+
   // Upsert user_rankings row
   const { data: ranking, error: rankErr } = await supabase
     .from('user_rankings')
@@ -85,15 +101,13 @@ export async function POST(req: NextRequest) {
 
   // Replace entries
   await supabase.from('user_ranking_entries').delete().eq('ranking_id', ranking.id);
-  if (entries.length) {
-    await supabase.from('user_ranking_entries').insert(
-      entries.map((e: { releaseId: string; rank: number }) => ({
-        ranking_id: ranking.id,
-        release_id: e.releaseId,
-        rank: e.rank,
-      }))
-    );
-  }
+  await supabase.from('user_ranking_entries').insert(
+    entries.map((e: { releaseId: string; rank: number }) => ({
+      ranking_id: ranking.id,
+      release_id: e.releaseId,
+      rank: e.rank,
+    }))
+  );
 
   // Keep community ranking_votes in sync with rank-1 pick
   const topPick = entries.find((e: { rank: number }) => e.rank === 1);

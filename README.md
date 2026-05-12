@@ -209,7 +209,7 @@ gstack is installed at `~/.claude/skills/gstack`. Skills are available as slash 
 - [x] Filter Builder — country-aware genre dropdowns (genres change per country); vote status indicator + Vote/Change Vote button when filter matches a curated category
 - [x] Rank Builder — `/rankings/[slug]/rank`: personal tiered ranking per category, drag-and-drop, ties supported, search panel with suggestions; saves to `user_rankings` + syncs rank-1 pick to community leaderboard
 - [x] Ranking seed infrastructure — `ranking_seed_entries` table for pre-launch default leaderboard data; admin endpoint + `scripts/seed-rankings.ts`
-- [x] 6 curated ranking categories: Greatest Album of All Time · Best Hip-Hop All Time · Best K-Pop All Time · Best Album of 2026 · Best Korean Album All Time · Best K-Hip-Hop All Time
+- [x] 6 curated ranking categories: Greatest Album of All Time · Best Hip-Hop All Time · Best K-Pop All Time · Best Album of 2025 · Best Korean Album All Time · Best K-Hip-Hop All Time
 - [x] Rolling Stone 500 baseline seeds — 467/500 seeded into "all-time"; `seed_votes = 1/rank`; `seed_votes` column migrated from `int` to `numeric(10,4)`
 - [x] Hip-hop seed — 59/63 RS500 hip-hop albums seeded into "hiphop-all-time" (Jay-Z + Fugees not on Spotify)
 - [x] K-Pop seed dataset added — 30 albums in `scripts/seed-rankings.ts`; kpop-all-time seed **pending** (hit Spotify rate limit, run next session)
@@ -411,15 +411,13 @@ npx tsx --env-file=.env.local scripts/seed-rankings.ts --category kpop-all-time
 ```
 30 albums, ~1 min. Progress saved to `scripts/seed-rankings-state-kpop-all-time.json`.
 
-**2. Seed remaining 3 ranking categories** (no datasets written yet — need lists):
-- `album-2026` — Best Album of 2026 (need the album list)
-- `korean-all-time` — Best Korean Album All Time (need the album list)
-- `khiphop-all-time` — Best K-Hip-Hop Album All Time (need the album list)
-
-Add each as a new `const` array in `scripts/seed-rankings.ts` (same format as `KPOP`) and register in `DATASETS`, then run:
-```bash
-npx tsx --env-file=.env.local scripts/seed-rankings.ts --category <slug>
-```
+**2. Seed remaining ranking categories:**
+- `korean-all-time` — **pending user-curated list**
+- `khiphop-all-time` — **pending user-curated list**
+- `album-2025` — **no dataset yet** (need a curated list of 2025 albums). Add an `ALBUM_2025` array to `scripts/seed-rankings.ts` and register it in `DATASETS` as `'album-2025': ALBUM_2025`, then run:
+  ```bash
+  npx tsx --env-file=.env.local scripts/seed-rankings.ts --category album-2025
+  ```
 
 **3. Continue discography expansion** — 76/331 artists done:
 ```bash

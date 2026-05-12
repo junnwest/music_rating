@@ -27,11 +27,11 @@ const CATEGORIES = [
     sort_order: 2,
   },
   {
-    slug: 'album-2026',
-    title: 'Best Album of 2026',
+    slug: 'album-2025',
+    title: 'Best Album of 2025',
     description: 'The essential listen of the year — any genre, any country. One vote per listener.',
     genre: null,
-    year: 2026,
+    year: 2025,
     sort_order: 3,
   },
   {

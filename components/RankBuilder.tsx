@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../lib/supabaseClient';
 
@@ -22,7 +21,7 @@ interface Props {
   prefillAlbum?: RankedAlbum | null;
 }
 
-const POOL_SIZE = 8;
+const SUGGESTION_COUNT = 12;
 const MAX_TIER_SIZE = 5;
 
 function coverColor(id: string) {
@@ -48,6 +47,11 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
   const [toast, setToast] = useState<{ msg: string; visible: boolean }>({ msg: '', visible: false });
   const [userId, setUserId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [savedRanking, setSavedRanking] = useState<RankedAlbum[][]>([[], [], []]);
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [addTarget, setAddTarget] = useState<string | null>(null);
 
   const draggedRef = useRef<{ album: RankedAlbum; fromTier: number } | null>(null);
   const ghostRef = useRef<HTMLDivElement>(null);
@@ -69,6 +73,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
         const json = await res.json();
         if (json.tiers?.length) tiers = json.tiers;
       }
+      setSavedRanking(tiers.map(t => [...t]));
       if (prefillAlbum && !tiers.flat().some((a: RankedAlbum) => a.id === prefillAlbum.id)) {
         const emptyIdx = tiers.findIndex((t: RankedAlbum[]) => t.length === 0);
         if (emptyIdx >= 0) {
@@ -81,6 +86,15 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
       setLoaded(true);
     });
   }, [categoryId]);
+
+  // Warn on browser-level navigation (refresh / close tab) when dirty
+  useEffect(() => {
+    const isDirty = JSON.stringify(ranking.map(t => t.map(a => a.id))) !== JSON.stringify(savedRanking.map(t => t.map(a => a.id)));
+    if (!loaded || !userId || !isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [ranking, savedRanking, loaded, userId]);
 
   // Ghost follows cursor globally during drag
   useEffect(() => {
@@ -200,6 +214,23 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
     });
   }
 
+  function addToTier(album: RankedAlbum, targetIdx: number) {
+    if (targetIdx >= 0 && (ranking[targetIdx]?.length ?? 0) >= MAX_TIER_SIZE) {
+      showToast('Max 5 albums per tier');
+      setAddTarget(null);
+      return;
+    }
+    setRanking(prev => {
+      const next = prev.map(t => [...t]);
+      if (targetIdx >= 0) {
+        next[targetIdx] = [...next[targetIdx], album];
+        return next.filter(t => t.length > 0);
+      }
+      return [...next.filter(t => t.length > 0), [album]];
+    });
+    setAddTarget(null);
+  }
+
   // ── Save ──
   async function save() {
     if (!userId) { showToast('Sign in to save your ranking'); return; }
@@ -213,16 +244,27 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, categoryId, entries }),
       });
-      showToast(res.ok ? 'Ranking saved' : 'Failed to save');
-      if (res.ok) router.refresh();
+      if (res.ok) {
+        setSavedRanking(ranking.map(t => [...t]));
+        showToast('Ranking saved');
+        router.refresh();
+      } else {
+        showToast('Failed to save');
+      }
     } catch { showToast('Failed to save'); }
     setSaving(false);
   }
 
   const usedIds = new Set(ranking.flat().map(a => a.id));
-  const pool = query.trim()
-    ? searchResults
-    : initialSuggestions.filter(a => !usedIds.has(a.id)).slice(0, POOL_SIZE);
+  const visible = initialSuggestions.filter(a => !dismissed.has(a.id) && !usedIds.has(a.id)).slice(0, SUGGESTION_COUNT);
+
+  const isDirty = loaded && !!userId &&
+    JSON.stringify(ranking.map(t => t.map(a => a.id))) !== JSON.stringify(savedRanking.map(t => t.map(a => a.id)));
+
+  function tryNavigate(href: string) {
+    if (isDirty) { setPendingHref(href); setShowLeaveModal(true); }
+    else router.push(href);
+  }
 
   if (!loaded) return null;
 
@@ -245,12 +287,12 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
         padding: '0 24px', height: 56,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <Link href={`/rankings/${slug}`} style={{ fontSize: 12, color: '#888', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
+        <button onClick={() => tryNavigate(`/rankings/${slug}`)} style={{ fontSize: 12, color: '#888', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, padding: 0 }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M15 18l-6-6 6-6" />
           </svg>
           Rankings
-        </Link>
+        </button>
         <button
           onClick={save}
           disabled={saving}
@@ -266,7 +308,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
       </header>
 
       {/* Body */}
-      <div style={{ maxWidth: 1280, margin: '0 auto', display: 'grid', gridTemplateColumns: '1fr 380px', minHeight: 'calc(100vh - 56px)' }}>
+      <div style={{ maxWidth: 1280, margin: '0 auto', display: 'grid', gridTemplateColumns: '1fr 520px', minHeight: 'calc(100vh - 56px)' }}>
 
         {/* LEFT: Builder */}
         <div style={{ borderRight: '1px solid #EBEBEB', padding: '32px 28px 80px', position: 'relative' }}>
@@ -400,7 +442,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
         </div>
 
         {/* RIGHT: Picker */}
-        <div style={{ background: '#fff', padding: 24, position: 'sticky', top: 56, height: 'calc(100vh - 56px)', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+        <div className="h-[calc(100vh-120px)] xl:h-[calc(100vh-56px)]" style={{ background: '#fff', padding: 24, position: 'sticky', top: 56, overflowY: query.trim() ? 'auto' : 'hidden', display: 'flex', flexDirection: 'column' }}>
           {/* Search */}
           <div style={{ position: 'sticky', top: 0, zIndex: 10, background: '#fff', paddingBottom: 16 }}>
             <input
@@ -438,27 +480,44 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
             {query.trim() ? 'Results' : 'Suggested'}
           </p>
 
-          {pool.length === 0 && !searching && (
+          {(query.trim() ? searchResults.length === 0 && !searching : visible.length === 0) && (
             <p style={{ fontSize: 12, color: '#C0C0BE', textAlign: 'center', padding: '32px 0' }}>
-              {query.trim() ? 'No albums found.' : 'All suggested albums added.'}
+              {query.trim() ? 'No albums found.' : 'All suggested albums added or dismissed.'}
             </p>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
-            {pool.map(album => {
-              const isAdded = usedIds.has(album.id);
-              return (
-                <SuggestedCard
+          {query.trim() ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+              {searchResults.map(album => {
+                const isAdded = usedIds.has(album.id);
+                return (
+                  <SuggestedCard
+                    key={album.id}
+                    album={album}
+                    isAdded={isAdded}
+                    onClick={() => !isAdded && addFromClick(album)}
+                    onDragStart={e => !isAdded && startDrag(e, album, -1)}
+                    onDragEnd={endDrag}
+                  />
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 }}>
+              {visible.map(album => (
+                <SuggestionCard
                   key={album.id}
                   album={album}
-                  isAdded={isAdded}
-                  onClick={() => !isAdded && addFromClick(album)}
-                  onDragStart={e => !isAdded && startDrag(e, album, -1)}
-                  onDragEnd={endDrag}
+                  isAddTarget={addTarget === album.id}
+                  ranking={ranking}
+                  onAdd={() => setAddTarget(album.id)}
+                  onDismiss={() => setDismissed(prev => new Set([...prev, album.id]))}
+                  onCancel={() => setAddTarget(null)}
+                  onAddToTier={tierIdx => addToTier(album, tierIdx)}
                 />
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -472,6 +531,43 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
       }}>
         {toast.msg}
       </div>
+
+      {/* Leave confirmation modal */}
+      {showLeaveModal && (
+        <div
+          onClick={() => setShowLeaveModal(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 16, padding: '32px 28px', maxWidth: 380, width: '100%', boxShadow: '0 24px 64px rgba(0,0,0,0.25)' }}
+          >
+            <h2 style={{ fontSize: 18, fontWeight: 800, color: '#111', margin: '0 0 8px' }}>Save changes?</h2>
+            <p style={{ fontSize: 14, color: '#666', lineHeight: 1.55, margin: '0 0 28px' }}>
+              Your ranking has unsaved changes.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button
+                disabled={saving}
+                onClick={async () => {
+                  await save();
+                  setShowLeaveModal(false);
+                  if (pendingHref) router.push(pendingHref);
+                }}
+                style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 20px', fontSize: 14, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.5 : 1, transition: 'opacity 0.15s' }}
+              >{saving ? 'Saving…' : 'Save & Leave'}</button>
+              <button
+                onClick={() => { setShowLeaveModal(false); if (pendingHref) router.push(pendingHref); }}
+                style={{ background: '#F7F7F5', color: '#444', border: 'none', borderRadius: 10, padding: '12px 20px', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+              >Leave without saving</button>
+              <button
+                onClick={() => setShowLeaveModal(false)}
+                style={{ background: 'none', color: '#999', border: 'none', padding: '8px', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}
+              >Stay on page</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -518,6 +614,62 @@ function AlbumCard({ album, onDragStart, onDragEnd, onRemove }: {
       >
         ×
       </button>
+    </div>
+  );
+}
+
+function SuggestionCard({ album, isAddTarget, ranking, onAdd, onDismiss, onCancel, onAddToTier }: {
+  album: RankedAlbum;
+  isAddTarget: boolean;
+  ranking: RankedAlbum[][];
+  onAdd: () => void;
+  onDismiss: () => void;
+  onCancel: () => void;
+  onAddToTier: (tierIdx: number) => void;
+}) {
+  const pickable = ranking.map((t, i) => ({ i, len: t.length })).filter(({ len }) => len > 0 && len < MAX_TIER_SIZE);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <div style={{ position: 'relative', width: '100%', aspectRatio: '1', borderRadius: 6, overflow: 'hidden', background: coverColor(album.id), border: '1px solid #EBEBEB' }}>
+        {album.coverUrl
+          ? <img src={album.coverUrl} alt={album.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff', textTransform: 'uppercase' }}>{album.title.slice(0, 2)}</div>
+        }
+        {isAddTarget && (
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.82)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 5, padding: 4 }}>
+            <button
+              onClick={onCancel}
+              style={{ position: 'absolute', top: 3, right: 3, width: 14, height: 14, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', fontSize: 9, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, lineHeight: 1 }}
+            >×</button>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, justifyContent: 'center', maxWidth: '100%' }}>
+              {pickable.map(({ i }) => (
+                <button
+                  key={i}
+                  onClick={() => onAddToTier(i)}
+                  style={{ width: 22, height: 22, borderRadius: 4, background: '#fff', border: 'none', fontSize: 9, fontWeight: 700, color: '#111', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >{i + 1}</button>
+              ))}
+              <button
+                onClick={() => onAddToTier(-1)}
+                style={{ width: 22, height: 22, borderRadius: 4, background: '#3DFFD1', border: 'none', fontSize: 13, fontWeight: 700, color: '#00453A', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >+</button>
+            </div>
+          </div>
+        )}
+      </div>
+      <div style={{ fontSize: 10, fontWeight: 600, color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.2 }}>{album.title}</div>
+      <div style={{ fontSize: 9, color: '#888', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.2 }}>{album.artist}</div>
+      <div style={{ display: 'flex', gap: 3, marginTop: 1, visibility: isAddTarget ? 'hidden' : 'visible' }}>
+        <button
+          onClick={onAdd}
+          style={{ flex: 1, fontSize: 9, fontWeight: 700, background: '#111', color: '#fff', border: 'none', borderRadius: 3, padding: '4px 0', cursor: 'pointer', lineHeight: 1 }}
+        >Add</button>
+        <button
+          onClick={onDismiss}
+          style={{ flex: 1, fontSize: 9, fontWeight: 600, background: '#F0F0EE', color: '#888', border: 'none', borderRadius: 3, padding: '4px 0', cursor: 'pointer', lineHeight: 1 }}
+        >Skip</button>
+      </div>
     </div>
   );
 }
