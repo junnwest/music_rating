@@ -40,6 +40,7 @@ function SettingsContent() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeGenres, setActiveGenres] = useState<Set<string>>(new Set(['K-R&B', 'K-Indie', 'Hip-Hop']));
+  const [ratingDisplay, setRatingDisplay] = useState<'Stars' | 'Decimal'>('Stars');
 
   useEffect(() => {
     if (!supabase) return;
@@ -193,8 +194,8 @@ function SettingsContent() {
                 <div className="mb-5">
                   <label className="block text-[13px] font-semibold text-ink mb-2">Rating display</label>
                   <div className="flex gap-2">
-                    {['Stars', 'Decimal'].map((opt, i) => (
-                      <button key={opt} className={`px-4 py-2 rounded-lg text-[12px] font-semibold border transition ${i === 0 ? 'border-ink text-ink' : 'border-divider text-muted hover:border-mid'}`}>
+                    {(['Stars', 'Decimal'] as const).map((opt) => (
+                      <button key={opt} onClick={() => setRatingDisplay(opt)} className={`px-4 py-2 rounded-lg text-[12px] font-semibold border transition ${ratingDisplay === opt ? 'border-ink text-ink' : 'border-divider text-muted hover:border-mid'}`}>
                         {opt}
                       </button>
                     ))}
