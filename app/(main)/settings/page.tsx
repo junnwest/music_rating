@@ -323,7 +323,7 @@ function Toggle({ label, defaultOn = false }: { label: string; defaultOn?: boole
         aria-pressed={on}
         aria-label={label}
       >
-        <span className={`absolute top-[2px] w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${on ? 'translate-x-[18px]' : 'translate-x-[2px]'}`} />
+        <span className={`absolute top-[2px] left-0 w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${on ? 'translate-x-[18px]' : 'translate-x-[2px]'}`} />
       </button>
     </div>
   );
