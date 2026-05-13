@@ -293,7 +293,8 @@ npm run expand:genre
 - [x] 404 + 500 error pages (`app/not-found.tsx`, `app/error.tsx`)
 - [x] Mobile nav UX — bottom tab bar (Home / Search / Feed / Rankings / Profile), hidden at xl where sidebar takes over; iOS safe-area aware
 - [x] Page reviews: main, search, album, notifications, friends
-- [ ] Page reviews: artist, profile, activity, settings, rankings, listen-later, collisions, contradictions, wrapped, lists
+- [x] Page reviews: profile, rankings, artist, activity
+- [ ] Page reviews: settings, listen-later, collisions, contradictions, wrapped, lists
 
 ### Week 2 — May 17–23: Functional gaps
 - [ ] Password reset flow
