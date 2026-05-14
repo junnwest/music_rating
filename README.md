@@ -186,7 +186,7 @@ gstack is installed at `~/.claude/skills/gstack`. Skills are available as slash 
 - [x] Avg Score card (profile sidebar)
 - [x] Essentials — 6-album pyramid, pick from rated catalog, drag-to-reorder, swap picker
 - [x] Shelf Creation — Lists tab on profile
-- [x] Pick 5 onboarding modal on first login
+- [x] Onboarding modal — 3-step: profile setup → genres → Essentials (pick up to 6 albums; renamed from "Albums that shaped you" / was 10)
 - [x] DB caching layer — albums + artists saved to Supabase on first visit
 - [x] Genre storage on ratings
 - [x] Add button on album page — dropdown with Listen Later, Essentials (with swap popup + ★5 confirmation), Add to Ranking (popup with Top 6 + Browse filter)
@@ -212,7 +212,10 @@ gstack is installed at `~/.claude/skills/gstack`. Skills are available as slash 
 - [x] 6 curated ranking categories: Greatest Album of All Time · Best Hip-Hop All Time · Best K-Pop All Time · Best Album of 2025 · Best Korean Album All Time · Best K-Hip-Hop All Time
 - [x] Rolling Stone 500 baseline seeds — 467/500 seeded into "all-time"; `seed_votes = 1/rank`; `seed_votes` column migrated from `int` to `numeric(10,4)`
 - [x] Hip-hop seed — 59/63 RS500 hip-hop albums seeded into "hiphop-all-time" (Jay-Z + Fugees not on Spotify)
-- [x] K-Pop seed dataset added — 30 albums in `scripts/seed-rankings.ts`; kpop-all-time seed **pending** (hit Spotify rate limit, run next session)
+- [x] K-Pop seed dataset added — 30 albums in `scripts/seed-rankings.ts`; kpop-all-time seeded (29/30 fuzzy + 1 via spotifyId override for CHUNGHA)
+- [x] Korean all-time seed — done
+- [x] K-Hip-Hop all-time seed — done
+- [x] Best Album of 2025 seed — done
 - [x] Seed script CASCADE DELETE bug fixed — admin endpoint now uses upsert; re-seeding categories no longer wipes existing seed entries
 - [x] Rankings leaderboard pagination — 10 per page, ellipsis page numbers (max 10 visible), jump-to-page input; rank numbers offset correctly per page
 - [x] Silla score color — changed to cyan mint (#00C2A8) across bar and value
@@ -242,6 +245,14 @@ gstack is installed at `~/.claude/skills/gstack`. Skills are available as slash 
 - [x] Profile page — real comment count replaces hardcoded "0 reviews"; Essentials component (was PinnedTen)
 - [x] Search page — mobile header search overlay; landing empty state
 - [x] Activity + Settings — "reviewed/reviews" text updated to "commented/comments"
+
+### Done — auth + signup (2026-05-14)
+- [x] Password reset flow — forgot mode in AuthForm → email link → `/auth/callback?next=/reset-password` → `/reset-password` page
+- [x] Auth page redesign — no navbar; logo centered at top of login/reset-password pages
+- [x] Signup: username field removed (collected in onboarding instead)
+- [x] Signup: duplicate email detection — Supabase `identities.length === 0` check → "An account with this email already exists"
+- [x] Signup: cross-tab confirmation — `onAuthStateChange` listener auto-redirects original signup tab to `/onboarding` when user confirms in a separate tab
+- [x] OG / social preview — `app/opengraph-image.tsx` (wordmark + mint accent + star grid); root metadata updated with og + twitter card tags
 
 ### Done — annual
 - [x] Wrapped page — yearly summary: albums rated, top genre, top artist, avg score, active month, best/worst album
@@ -294,13 +305,15 @@ npm run expand:genre
 - [x] Mobile nav UX — bottom tab bar (Home / Search / Feed / Rankings / Profile), hidden at xl where sidebar takes over; iOS safe-area aware
 - [x] Page reviews: main, search, album, notifications, friends
 - [x] Page reviews: profile, rankings, artist, activity, settings
-- [ ] Page reviews: listen-later, collisions, contradictions, wrapped, lists
+- [x] Page reviews: listen-later hero updated; collisions/contradictions/wrapped deleted; lists renamed → explore (/explore)
 
 ### Week 2 — May 17–23: Functional gaps
-- [ ] Password reset flow
+- [x] Password reset flow
 - [ ] Email verification on signup
 - [ ] Onboarding polish (first-time user experience)
 - [x] 404 + 500 error pages (done in Week 1)
+- [ ] **Transactional email setup** — replace Supabase's default sender with a branded address (e.g. `noreply@sillajuku.app`). Recommended service: [Resend](https://resend.com) (free tier: 3k emails/mo). Steps: add domain in Resend → configure SMTP in Supabase Auth dashboard (Auth → Settings → SMTP). Required before public launch so confirmation emails don't land in spam.
+- [x] **Email template design** — `supabase/templates/confirmation.html` and `recovery.html` created. Paste into Supabase dashboard → Auth → Email Templates to apply.
 
 ### Week 3 — May 24–30: Auth + legal + analytics
 - [ ] KakaoTalk login
@@ -326,6 +339,29 @@ npm run expand:genre
 - [ ] Remove/reduce seed votes once real community votes overtake the baseline
 - [ ] Re-curate ranking categories (add year-specific categories)
 - [ ] **Insights + History page** — dedicated `/profile/[username]/insights` page: rating history timeline, score distribution over time, streak tracking, genre evolution, taste drift vs community, comparison with friends. Replaces the removed sidebar insights card. Needs enough user history to be meaningful (~1–3 months post-launch).
+
+---
+
+### Recommendation algorithm roadmap
+
+Current state: genre-based + artist-based pools with random shuffle for variety. This is a presentation trick, not a real recommendation algorithm.
+
+The upgrade path is gated on user volume — collaborative filtering needs rating overlap between users to produce meaningful signal.
+
+| Stage | Users | Approach |
+|---|---|---|
+| Now | 0–500 | Genre + artist pools, shuffled. Current implementation. |
+| Phase 1 | 500–5k | **Item-based collaborative filtering in SQL** — for each album the user rated highly, query which other albums were also rated highly by users who rated that album. Computable in Postgres with no ML infra. |
+| Phase 2 | 5k+ | **Matrix factorization via `pgvector`** — store user and album embeddings in Supabase, query nearest neighbors. Or use an external service. |
+
+**Why explicit ratings matter:** sillajuku collects star ratings, which are a stronger signal than Spotify's implicit play counts. The cold start problem (needing enough users) is the only blocker — the data quality is already better than most streaming services have.
+
+**Watcha comparison:** Watcha (closest product analogy) uses collaborative filtering on explicit star ratings, which is exactly what Phase 1 would implement here.
+
+**What to build in Phase 1 (once ~500 users):**
+- A SQL query that, given a user's top-rated albums, finds the albums most frequently co-rated-highly by similar users
+- Surface results on the For You page and homepage "More from..." sections
+- Can be computed on-demand per request or cached daily per user in a `recommendations` table
 
 ---
 
@@ -406,28 +442,17 @@ npm run expand:genre
 
 ### ⚠️ NEXT SESSION — Do this first
 
-**1. Seed kpop-all-time (hit Spotify rate limit last session — run first thing):**
-```bash
-npx tsx --env-file=.env.local scripts/seed-rankings.ts --category kpop-all-time
-```
-30 albums, ~1 min. Progress saved to `scripts/seed-rankings-state-kpop-all-time.json`.
-
-**2. Seed remaining ranking categories:**
-- `korean-all-time` — **pending user-curated list**
-- `khiphop-all-time` — **pending user-curated list**
-- `album-2025` — **no dataset yet** (need a curated list of 2025 albums). Add an `ALBUM_2025` array to `scripts/seed-rankings.ts` and register it in `DATASETS` as `'album-2025': ALBUM_2025`, then run:
-  ```bash
-  npx tsx --env-file=.env.local scripts/seed-rankings.ts --category album-2025
-  ```
-
-**3. Continue discography expansion** — 76/331 artists done:
+**1. Continue discography expansion** — run once per day:
 ```bash
 npm run expand:discography
 ```
-Run once per day (~60 artists/batch). ~4 more days to completion, then move to `expand:related`.
+~60 artists/batch. Move to `expand:related` once complete.
 
-**4. Remaining page reviews** (design-review + QA pass):
-- artist, profile, activity, settings, listen-later, collisions, contradictions, wrapped, lists
+**2. Week 2 — Remaining:**
+- Email verification on signup (block login if email unconfirmed; handle error gracefully)
+- Onboarding polish
+- Transactional email setup (Resend + Supabase SMTP) — required before launch so emails don't land in spam
+- Apply email templates: paste `supabase/templates/confirmation.html` and `recovery.html` into Supabase dashboard → Auth → Email Templates
 
 ---
 
@@ -437,6 +462,27 @@ Run once per day (~60 artists/batch). ~4 more days to completion, then move to `
 - Added K-Pop 30-album dataset to seed script; kpop-all-time seed pending (rate limited)
 - Rankings: pagination (10/page + ellipsis + jump-to-page), silla score → cyan mint, leaderboard rows clickable
 - Rankings page thumbnails: fixed to use real Silla Score formula
+
+**Session summary (2026-05-14):**
+- Password reset flow: forgot mode in AuthForm, /auth/callback ?next= param, /reset-password page + ResetPasswordForm
+- Auth layout: removed header, logo centered at top; login + reset-password pages updated
+- Signup: username field removed, duplicate email detection (identities.length === 0), cross-tab confirmation via onAuthStateChange
+- Onboarding step 3: renamed "Albums that shaped you" → "Your Essentials", MAX_ALBUMS 10 → 6
+- Email templates: supabase/templates/confirmation.html + recovery.html (branded, ready to paste into Supabase dashboard)
+- OG/social preview: app/opengraph-image.tsx + og/twitter metadata in root layout
+- Settings: removed change-password section (social auth is primary path)
+- Homepage: HomeReadyContext + RevealWhenReady for coordinated load (personalized + grid reveal together)
+- Explore page: renamed from ForYou/Lists, removed 5-artist cap, DB range() pagination, prestige fallback
+- Recommendation variety: shuffle on both personalized + recommendations APIs
+
+**Session summary (2026-05-13):**
+- Seeded kpop-all-time (29/30 fuzzy + CHUNGHA Querencia via spotifyId); all 6 ranking categories now seeded
+- Homepage load time: personalized API skips Spotify when DB has ≥10 albums; heading shows immediately; RecommendationGrid hidden until PersonalizedFeed ready then fades in together
+- Recommendation variety: genre rows fetch 80 and shuffle; ForYou community pool top-60 shuffled to 20; per-artist albums shuffled before slice
+- Deleted collisions, contradictions, wrapped pages; renamed lists → explore (/explore); ForYouPage → ExplorePage with "Explore" heading
+- Explore load more fixed: DB pagination with .range() per page; prestige fallback when artist albums exhausted; removed 5-artist cap
+- Recommendation algorithm roadmap added to README post-launch section
+- Listen Later hero updated to match Rankings style (bg-surface, eyebrow label, tighter typography)
 - Album page: hero overflow fix (dropdown no longer clipped), "In Rankings" now shows rank number (#N)
 - Add to Ranking modal: checkmarks on categories user has already ranked this album in
 

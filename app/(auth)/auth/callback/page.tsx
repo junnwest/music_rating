@@ -13,12 +13,14 @@ function CallbackHandler() {
     const code = searchParams.get('code');
     if (!supabase) { router.replace('/'); return; }
 
+    const next = searchParams.get('next') ?? '/profile';
+
     if (code) {
       supabase.auth.exchangeCodeForSession(code).then(() => {
-        router.replace('/profile');
+        router.replace(next);
       });
     } else {
-      router.replace('/profile');
+      router.replace(next);
     }
   }, []);
 

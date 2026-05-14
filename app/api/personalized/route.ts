@@ -3,6 +3,15 @@ import { createServerClient } from '../../../lib/supabaseServer';
 import { resolveArtistId, searchAlbumsByArtistId, searchAlbumsByArtistName } from '../../../lib/spotify';
 import type { AlbumRelease } from '../../../types';
 
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 const MIN_UNRATED = 5;
 
 export async function GET(req: NextRequest) {
@@ -53,31 +62,33 @@ export async function GET(req: NextRequest) {
           }));
         }
 
-        // ── Supplement with Spotify (always merge to fill gaps) ──────────
-        try {
-          const id = await resolveArtistId(artistName);
-          let spotifyAlbums: AlbumRelease[] = [];
+        // ── Supplement with Spotify only if DB doesn't have enough ──────
+        if (albums.length < 10) {
+          try {
+            const id = await resolveArtistId(artistName);
+            let spotifyAlbums: AlbumRelease[] = [];
 
-          if (id) {
-            spotifyAlbums = await searchAlbumsByArtistId(id, artistName);
-          }
-          if (!id || spotifyAlbums.length === 0) {
-            const fallback = await searchAlbumsByArtistName(artistName);
-            spotifyAlbums = fallback.filter((a) =>
-              a.artist.split(',').some((p) => p.trim().toLowerCase() === nameLower)
-            );
-          }
-
-          const seen = new Set(albums.map((a) => a.id));
-          for (const a of spotifyAlbums) {
-            if (!excludeIds.has(a.id) && !seen.has(a.id)) {
-              seen.add(a.id);
-              albums.push(a);
+            if (id) {
+              spotifyAlbums = await searchAlbumsByArtistId(id, artistName);
             }
-          }
-        } catch {}
+            if (!id || spotifyAlbums.length === 0) {
+              const fallback = await searchAlbumsByArtistName(artistName);
+              spotifyAlbums = fallback.filter((a) =>
+                a.artist.split(',').some((p) => p.trim().toLowerCase() === nameLower)
+              );
+            }
 
-        const filtered = albums.slice(0, 20);
+            const seen = new Set(albums.map((a) => a.id));
+            for (const a of spotifyAlbums) {
+              if (!excludeIds.has(a.id) && !seen.has(a.id)) {
+                seen.add(a.id);
+                albums.push(a);
+              }
+            }
+          } catch {}
+        }
+
+        const filtered = shuffle(albums).slice(0, 20);
         if (filtered.length < MIN_UNRATED) return null;
 
         return {

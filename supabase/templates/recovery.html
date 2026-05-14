@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Reset your password — sillajuku</title>
+</head>
+<body style="margin:0;padding:0;background:#F8F8F6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F8F8F6;padding:48px 20px;">
+    <tr>
+      <td align="center">
+        <table width="480" cellpadding="0" cellspacing="0" style="max-width:480px;width:100%;background:#FFFFFF;border-radius:16px;border:1.5px solid #EBEBEB;">
+
+          <!-- Header -->
+          <tr>
+            <td style="padding:32px 40px 28px;border-bottom:1px solid #EBEBEB;">
+              <span style="font-size:22px;font-weight:800;color:#1A1A18;letter-spacing:-0.6px;">sillajuku</span>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:36px 40px 32px;">
+              <h1 style="margin:0 0 10px;font-size:26px;font-weight:800;color:#1A1A18;letter-spacing:-0.7px;">Reset your password.</h1>
+              <p style="margin:0 0 28px;font-size:14px;color:#8C8C8A;line-height:1.65;">
+                We received a request to reset your password. Click the button below to choose a new one. If you didn't make this request, you can safely ignore this email.
+              </p>
+              <a href="{{ .ConfirmationURL }}"
+                style="display:inline-block;background:#1A1A18;color:#FFFFFF;text-decoration:none;font-size:14px;font-weight:700;padding:14px 28px;border-radius:10px;letter-spacing:-0.1px;">
+                Reset password →
+              </a>
+              <p style="margin:28px 0 0;font-size:12px;color:#B0B0AE;line-height:1.6;">
+                This link expires in 1 hour. Your password will not change until you set a new one.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:20px 40px;border-top:1px solid #EBEBEB;">
+              <p style="margin:0;font-size:11px;color:#C0C0BE;">
+                © sillajuku &nbsp;·&nbsp;
+                <a href="{{ .SiteURL }}" style="color:#C0C0BE;text-decoration:none;">sillajuku.com</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

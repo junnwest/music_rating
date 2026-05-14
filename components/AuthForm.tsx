@@ -1,18 +1,28 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../lib/supabaseClient';
 
 export default function AuthForm() {
   const router = useRouter();
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [username, setUsername] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
+
+  useEffect(() => {
+    if (!awaitingConfirmation || !supabase) return;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        router.push('/onboarding');
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [awaitingConfirmation]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -30,10 +40,26 @@ export default function AuthForm() {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         router.push('/profile');
-      } else {
-        const { error } = await supabase.auth.signUp({ email, password });
+      } else if (mode === 'signup') {
+        const { data: signUpData, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+        });
         if (error) throw error;
+        if (signUpData.user?.identities?.length === 0) {
+          setMessage('An account with this email already exists. Try logging in instead.');
+          setLoading(false);
+          return;
+        }
         setMessage('Check your inbox for a confirmation email.');
+        setAwaitingConfirmation(true);
+      } else {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,
+        });
+        if (error) throw error;
+        setMessage('Check your inbox for a password reset link.');
       }
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Authentication failed');
@@ -54,6 +80,53 @@ export default function AuthForm() {
       setGoogleLoading(false);
     }
   };
+
+  if (mode === 'forgot') {
+    return (
+      <div className="w-[420px]">
+        <h1 className="text-[30px] font-extrabold text-ink mb-1.5" style={{ letterSpacing: '-0.9px' }}>
+          Reset your password.
+        </h1>
+        <p className="text-[14px] text-muted mb-[30px] leading-relaxed">
+          Enter your email and we'll send you a link to set a new password.
+        </p>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-[13px] font-semibold text-ink mb-[7px]">Email</label>
+            <input
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="w-full bg-white border-[1.5px] border-[#EBEBEB] rounded-lg px-[14px] py-3 text-[14px] text-ink placeholder:text-[#C0C0BE] outline-none focus:border-ink transition"
+            />
+          </div>
+
+          {message && (
+            <p className={`text-sm px-4 py-3 rounded-lg ${message.startsWith('Check') ? 'bg-mint-bg text-mint-dark' : 'bg-red-50 text-red-600'}`}>
+              {message}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading || !supabase}
+            className="w-full bg-ink text-white rounded-lg py-[14px] text-[15px] font-bold text-center transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50 mt-2"
+          >
+            {loading ? 'Sending…' : 'Send reset link →'}
+          </button>
+        </form>
+
+        <p className="mt-[22px] text-center text-[13px] text-muted">
+          <button onClick={() => { setMode('login'); setMessage(null); }} className="font-semibold text-ink hover:underline">
+            ← Back to log in
+          </button>
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="w-[420px]">
@@ -89,19 +162,6 @@ export default function AuthForm() {
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-4">
-        {mode === 'signup' && (
-          <div>
-            <label className="block text-[13px] font-semibold text-ink mb-[7px]">Username</label>
-            <input
-              type="text"
-              placeholder="e.g. tonehunter"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full bg-white border-[1.5px] border-[#EBEBEB] rounded-lg px-[14px] py-3 text-[14px] text-ink placeholder:text-[#C0C0BE] outline-none focus:border-ink transition"
-            />
-          </div>
-        )}
-
         <div>
           <label className="block text-[13px] font-semibold text-ink mb-[7px]">Email</label>
           <input
@@ -118,7 +178,11 @@ export default function AuthForm() {
           <div className="flex justify-between mb-[7px]">
             <label className="text-[13px] font-semibold text-ink">Password</label>
             {mode === 'login' && (
-              <button type="button" className="text-[12px] font-medium text-muted hover:text-mid transition">
+              <button
+                type="button"
+                onClick={() => { setMode('forgot'); setMessage(null); }}
+                className="text-[12px] font-medium text-muted hover:text-mid transition"
+              >
                 Forgot password?
               </button>
             )}

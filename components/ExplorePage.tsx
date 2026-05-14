@@ -7,7 +7,7 @@ import type { AlbumRelease } from '../types';
 
 type Status = 'init' | 'guest' | 'ready';
 
-export default function ForYouPage() {
+export default function ExplorePage() {
   const [status, setStatus] = useState<Status>('init');
   const [albums, setAlbums] = useState<AlbumRelease[]>([]);
   const [fetching, setFetching] = useState(false);
@@ -52,7 +52,6 @@ export default function ForYouPage() {
     }
   }, []);
 
-  // Phase 1: resolve user session and kick off first fetch
   useEffect(() => {
     if (!supabase) { setStatus('guest'); return; }
 
@@ -78,7 +77,6 @@ export default function ForYouPage() {
 
       artistsRef.current = [...artistCount.entries()]
         .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
         .map(([name]) => name);
 
       excludeRef.current = (ratings ?? []).map((r) => r.release_id);
@@ -87,7 +85,6 @@ export default function ForYouPage() {
       setStatus('ready');
     })();
   }, [loadMore]);
-
 
   const skeletonGrid = (
     <div className="grid gap-x-[18px] gap-y-8" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(152px, 1fr))' }}>
@@ -108,8 +105,8 @@ export default function ForYouPage() {
           <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.7px' }}>
             Discover
           </p>
-          <h1 className="text-[38px] font-extrabold text-ink leading-[1.06]" style={{ letterSpacing: '-1.2px' }}>
-            For You
+          <h1 className="text-[28px] sm:text-[38px] font-extrabold text-ink leading-[1.06]" style={{ letterSpacing: '-1.2px' }}>
+            Explore
           </h1>
           <p className="text-[15px] text-muted mt-3 max-w-[500px] leading-relaxed">
             {status === 'guest'

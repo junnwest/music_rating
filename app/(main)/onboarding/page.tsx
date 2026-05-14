@@ -258,7 +258,7 @@ function StepGenres({
 const COLS = 7;
 const ROWS = 4;
 const GRID_SIZE = COLS * ROWS;
-const MAX_ALBUMS = 10;
+const MAX_ALBUMS = 6;
 
 function AlbumCell({
   album,
@@ -402,14 +402,14 @@ function StepAlbums({
       <StepDots current={2} total={3} />
       <div className="flex items-end justify-between mb-1">
         <h2 className="text-[26px] font-extrabold text-ink" style={{ letterSpacing: '-0.7px' }}>
-          Albums that shaped you.
+          Your Essentials.
         </h2>
         {selected.length > 0 && (
           <span className="text-[12px] text-muted mb-1">{selected.length}/{MAX_ALBUMS} picked</span>
         )}
       </div>
       <p className="text-[13px] text-muted mb-4">
-        Pick up to 10. These get pinned to your profile — you can swap them anytime.
+        Pick up to 6. These get pinned to your profile — you can swap them anytime.
       </p>
 
       {/* Search */}

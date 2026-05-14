@@ -161,6 +161,7 @@ function SettingsContent() {
                     <LogOut size={14} /> Log out
                   </button>
                 </div>
+
               </Section>
             )}
 

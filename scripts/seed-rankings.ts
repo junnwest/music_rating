@@ -760,7 +760,7 @@ const KPOP: Entry[] = [
   { rank: 19, title: 'FEEL SPECIAL',                           artist: 'TWICE' },
   { rank: 20, title: 'CRUSH',                                  artist: '2NE1' },
   { rank: 21, title: 'Sorry, Sorry',                           artist: 'Super Junior' },
-  { rank: 22, title: 'Querencia',                              artist: 'CHUNGHA' },        // TODO: add spotifyId — fuzzy match fails
+  { rank: 22, title: 'Querencia',                              artist: 'CHUNGHA',          spotifyId: '3ZifpmJjOEkpYCNSIq352p' },
   { rank: 23, title: 'I Never Die',                            artist: '(G)I-DLE' },
   { rank: 24, title: 'Interview',                              artist: 'Eric Nam' },
   { rank: 25, title: 'EXODUS',                                 artist: 'EXO' },

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient';
 import ScrollRow from './ScrollRow';
 import { getCanonSuggestions, toAlbumRelease } from '../lib/canon-suggestions';
+import { useHomeReady } from './HomeReadyContext';
 import type { AlbumRelease } from '../types';
 
 type Status = 'loading' | 'guest' | 'empty' | 'ready';
@@ -39,13 +40,14 @@ export default function PersonalizedFeed() {
   const [sections, setSections] = useState<Section[]>([]);
   const [coldStartAlbums, setColdStartAlbums] = useState<AlbumRelease[]>([]);
   const [coldStartLabel, setColdStartLabel] = useState('');
+  const { setReady } = useHomeReady();
 
   useEffect(() => {
-    if (!supabase) { setStatus('guest'); return; }
+    if (!supabase) { setStatus('guest'); setReady(); return; }
 
     (async () => {
       const { data: { session } } = await supabase!.auth.getSession();
-      if (!session) { setStatus('guest'); return; }
+      if (!session) { setStatus('guest'); setReady(); return; }
 
       setUsername(session.user.email?.split('@')[0] ?? 'there');
 
@@ -75,6 +77,7 @@ export default function PersonalizedFeed() {
           }
         }
         setStatus('empty');
+        setReady();
         return;
       }
 
@@ -94,7 +97,7 @@ export default function PersonalizedFeed() {
         .slice(0, 5)
         .map(([name]) => name);
 
-      if (topArtists.length === 0) { setStatus('empty'); return; }
+      if (topArtists.length === 0) { setStatus('empty'); setReady(); return; }
 
       const params = new URLSearchParams({
         artists: topArtists.join(','),
@@ -105,6 +108,7 @@ export default function PersonalizedFeed() {
       const data = await res.json();
       setSections(data.sections ?? []);
       setStatus('ready');
+      setReady();
     })();
   }, []);
 
@@ -137,6 +141,7 @@ export default function PersonalizedFeed() {
   if (status === 'loading') {
     return (
       <div>
+        {greeting}
         <div className="flex gap-[18px] overflow-hidden">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="flex-shrink-0 w-[140px] md:w-[180px]">

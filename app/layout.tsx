@@ -11,7 +11,20 @@ const jakarta = Plus_Jakarta_Sans({
 
 export const metadata: Metadata = {
   title: 'sillajuku',
-  description: 'Rate, review, and catalog albums.'
+  description: 'Rate albums, write reviews, and discover music you\'ll love.',
+  metadataBase: new URL('https://sillajuku.com'),
+  openGraph: {
+    title: 'sillajuku',
+    description: 'Rate albums, write reviews, and discover music you\'ll love.',
+    url: 'https://sillajuku.com',
+    siteName: 'sillajuku',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'sillajuku',
+    description: 'Rate albums, write reviews, and discover music you\'ll love.',
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

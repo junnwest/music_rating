@@ -48,8 +48,8 @@ export default async function ListDetailPage({ params }: { params: { id: string 
       {/* Header */}
       <div className="bg-surface border-b border-[#EBEBEB]">
         <div className="max-w-[1440px] mx-auto px-5 py-8">
-          <Link href="/lists" className="text-[12px] text-muted hover:text-ink transition mb-3 inline-block">
-            ← Lists
+          <Link href="/explore" className="text-[12px] text-muted hover:text-ink transition mb-3 inline-block">
+            ← Explore
           </Link>
           <h1 className="text-[24px] font-extrabold text-ink" style={{ letterSpacing: '-0.6px' }}>
             {list.title}

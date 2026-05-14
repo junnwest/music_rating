@@ -63,10 +63,17 @@ export default function ListenLaterPage() {
 
   return (
     <div className="flex-1">
-      <div className="border-b border-divider">
-        <div className="max-w-[1440px] mx-auto px-5 py-10 md:py-12">
-          <h1 className="text-[28px] md:text-[34px] font-extrabold text-ink tracking-tight leading-[1.05]">Listen Later</h1>
-          <p className="text-[14px] text-muted mt-2">Albums you've saved to check out later.</p>
+      <div className="bg-surface border-b border-[#EBEBEB]">
+        <div className="max-w-[1440px] mx-auto px-5 py-12">
+          <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.7px' }}>
+            Library
+          </p>
+          <h1 className="text-[28px] sm:text-[38px] font-extrabold text-ink leading-[1.06]" style={{ letterSpacing: '-1.2px' }}>
+            Listen Later
+          </h1>
+          <p className="text-[15px] text-muted mt-3 max-w-[500px] leading-relaxed">
+            Albums you've saved to check out later.
+          </p>
         </div>
       </div>
 

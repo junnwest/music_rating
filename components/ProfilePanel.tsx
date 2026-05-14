@@ -786,7 +786,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                     {lists.map((list) => (
                       <Link
                         key={list.id}
-                        href={`/lists/${list.id}`}
+                        href={`/explore/${list.id}`}
                         className="border border-[#EBEBEB] rounded-[10px] p-4 hover:bg-surface transition block"
                       >
                         <div className="text-[14px] font-bold text-ink truncate">{list.title}</div>

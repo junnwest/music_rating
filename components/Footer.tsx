@@ -32,8 +32,7 @@ export default function Footer({ className }: { className?: string }) {
               <div className="flex flex-col gap-2">
                 <Link href="/" className="text-[13px] text-muted hover:text-ink transition">Home</Link>
                 <Link href="/activity" className="text-[13px] text-muted hover:text-ink transition">Activity</Link>
-                <Link href="/lists" className="text-[13px] text-muted hover:text-ink transition">For You</Link>
-                <Link href="/wrapped" className="text-[13px] text-muted hover:text-ink transition">Wrapped</Link>
+                <Link href="/explore" className="text-[13px] text-muted hover:text-ink transition">Explore</Link>
                 <Link href="/help" className="text-[13px] text-muted hover:text-ink transition">Help & Feedback</Link>
               </div>
             </div>

@@ -13,7 +13,7 @@ interface SidebarProps {
 const navItems = [
   { icon: Trophy, label: 'Ranking', path: '/rankings' },
   { icon: Flame, label: 'Feed', path: '/activity' },
-  { icon: Compass, label: 'Explore', path: '/lists' },
+  { icon: Compass, label: 'Explore', path: '/explore' },
 ];
 
 export default function Sidebar({ open, onClose }: SidebarProps) {

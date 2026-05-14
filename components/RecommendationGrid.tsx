@@ -4,6 +4,15 @@ import { GENRE_CATEGORIES } from '../lib/genre-categories';
 import RecommendationGridClient from './RecommendationGridClient';
 import type { AlbumRelease } from '../types';
 
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 async function fetchFromReleases(
   supabase: NonNullable<ReturnType<typeof createServerClient>>,
   genreFilters: readonly string[],
@@ -17,11 +26,11 @@ async function fetchFromReleases(
     .not('cover_url', 'is', null)
     .order('prestige', { ascending: true, nullsFirst: false })
     .order('release_date', { ascending: false, nullsFirst: false })
-    .limit(40);
+    .limit(80);
 
   if (error || !data) return [];
 
-  return data.map((r: any) => ({
+  return shuffle(data).map((r: any) => ({
     id: r.id,
     title: r.title,
     artist: r.artist,
