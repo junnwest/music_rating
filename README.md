@@ -322,10 +322,13 @@ npm run expand:genre
 
 ### Week 3 — May 24–30: Auth + legal + analytics
 - [ ] KakaoTalk login
-- [ ] Spotify login
+- [x] Spotify login — Supabase OAuth provider enabled; "Continue with Spotify" button added to auth form
 - [ ] Privacy policy + Terms of Service (finalize — fill in real contact emails)
-- [ ] Analytics setup (Posthog or Vercel Analytics)
+- [x] Analytics setup — PostHog (US region, pay-as-you-go free tier); pageview + autocapture wired via `PostHogProvider`; env vars `NEXT_PUBLIC_POSTHOG_KEY` + `NEXT_PUBLIC_POSTHOG_HOST` required in Vercel
 - [ ] Dark mode
+- [x] OAuth buttons redesign — Google, Spotify, KakaoTalk, Apple as square icon buttons in a row; KakaoTalk + Apple show "coming soon" modal
+- [x] Connected accounts — Settings → Account; connect/disconnect Google + Spotify; safeguard requires at least one social account; disconnect confirmation modal
+- [x] Settings change email — collapsed behind button, expands on click
 
 ### Week 4 — May 31–Jun 6: App + translation + store submission
 - [ ] Korean translation (i18n setup with next-intl; language toggle in settings)

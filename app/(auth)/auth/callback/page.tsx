@@ -10,10 +10,21 @@ function CallbackHandler() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    const code = searchParams.get('code');
     if (!supabase) { router.replace('/'); return; }
 
+    const code = searchParams.get('code');
+    const error = searchParams.get('error');
+    const errorCode = searchParams.get('error_code');
+    const errorDescription = searchParams.get('error_description');
     const next = searchParams.get('next') ?? '/profile';
+
+    if (error) {
+      const message = errorCode === 'identity_already_exists'
+        ? 'That account is already linked to a different user.'
+        : errorDescription ?? 'Something went wrong.';
+      router.replace(`${next}?error=${encodeURIComponent(message)}`);
+      return;
+    }
 
     if (code) {
       supabase.auth.exchangeCodeForSession(code).then(() => {
