@@ -9,10 +9,12 @@ export default function AuthForm() {
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   useEffect(() => {
     if (!awaitingConfirmation || !supabase) return;
@@ -23,6 +25,18 @@ export default function AuthForm() {
     });
     return () => subscription.unsubscribe();
   }, [awaitingConfirmation]);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const t = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendCooldown]);
+
+  const handleResend = async () => {
+    if (!supabase || resendCooldown > 0) return;
+    await supabase.auth.resend({ type: 'signup', email });
+    setResendCooldown(60);
+  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -37,14 +51,26 @@ export default function AuthForm() {
 
     try {
       if (mode === 'login') {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        let loginEmail = email.trim();
+        if (!loginEmail.includes('@')) {
+          const res = await fetch(`/api/auth/resolve-username?username=${encodeURIComponent(loginEmail)}`);
+          if (!res.ok) throw new Error('No account found with that username.');
+          const data = await res.json();
+          loginEmail = data.email;
+        }
+        const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password });
         if (error) throw error;
         router.push('/profile');
       } else if (mode === 'signup') {
+        if (password !== confirmPassword) {
+          setMessage('Passwords do not match.');
+          setLoading(false);
+          return;
+        }
         const { data: signUpData, error } = await supabase.auth.signUp({
           email,
           password,
-          options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+          options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/onboarding` },
         });
         if (error) throw error;
         if (signUpData.user?.identities?.length === 0) {
@@ -52,7 +78,6 @@ export default function AuthForm() {
           setLoading(false);
           return;
         }
-        setMessage('Check your inbox for a confirmation email.');
         setAwaitingConfirmation(true);
       } else {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
@@ -80,6 +105,52 @@ export default function AuthForm() {
       setGoogleLoading(false);
     }
   };
+
+  if (awaitingConfirmation) {
+    return (
+      <div className="w-[420px]">
+        <div className="flex flex-col items-center text-center">
+          <div
+            className="w-14 h-14 rounded-2xl flex items-center justify-center mb-6"
+            style={{ background: '#EDFFF9', border: '1.5px solid #3DFFD1' }}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00C2A8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="4" width="20" height="16" rx="2" />
+              <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+            </svg>
+          </div>
+
+          <h1 className="text-[26px] font-extrabold text-ink mb-2" style={{ letterSpacing: '-0.7px' }}>
+            Check your inbox.
+          </h1>
+          <p className="text-[14px] text-muted leading-relaxed mb-1">
+            We sent a confirmation link to
+          </p>
+          <p className="text-[14px] font-semibold text-ink mb-6">{email}</p>
+          <p className="text-[13px] text-muted leading-relaxed mb-8">
+            Click the link in that email to confirm your address and finish setting up your profile. The link expires in 24 hours.
+          </p>
+
+          <button
+            type="button"
+            onClick={handleResend}
+            disabled={resendCooldown > 0}
+            className="w-full bg-ink text-white rounded-lg py-[13px] text-[14px] font-bold transition hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed mb-4"
+          >
+            {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend confirmation email'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setAwaitingConfirmation(false); setMode('signup'); setMessage(null); }}
+            className="text-[13px] text-muted hover:text-ink transition"
+          >
+            ← Wrong email? Go back
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (mode === 'forgot') {
     return (
@@ -135,7 +206,7 @@ export default function AuthForm() {
         {(['login', 'signup'] as const).map((m) => (
           <button
             key={m}
-            onClick={() => { setMode(m); setMessage(null); }}
+            onClick={() => { setMode(m); setMessage(null); setConfirmPassword(''); }}
             className={`flex-1 py-[10px] text-center rounded-[7px] text-[14px] font-semibold transition ${
               mode === m
                 ? 'bg-white border border-[#EBEBEB] text-ink shadow-[0_1px_4px_rgba(0,0,0,0.08)]'
@@ -163,10 +234,12 @@ export default function AuthForm() {
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-[13px] font-semibold text-ink mb-[7px]">Email</label>
+          <label className="block text-[13px] font-semibold text-ink mb-[7px]">
+            {mode === 'login' ? 'Email or username' : 'Email'}
+          </label>
           <input
-            type="email"
-            placeholder="you@example.com"
+            type={mode === 'login' ? 'text' : 'email'}
+            placeholder={mode === 'login' ? 'you@example.com or username' : 'you@example.com'}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
@@ -196,6 +269,20 @@ export default function AuthForm() {
             className="w-full bg-white border-[1.5px] border-[#EBEBEB] rounded-lg px-[14px] py-3 text-[14px] text-ink placeholder:text-[#C0C0BE] outline-none focus:border-ink transition"
           />
         </div>
+
+        {mode === 'signup' && (
+          <div>
+            <label className="block text-[13px] font-semibold text-ink mb-[7px]">Confirm password</label>
+            <input
+              type="password"
+              placeholder="••••••••"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              className="w-full bg-white border-[1.5px] border-[#EBEBEB] rounded-lg px-[14px] py-3 text-[14px] text-ink placeholder:text-[#C0C0BE] outline-none focus:border-ink transition"
+            />
+          </div>
+        )}
 
         {message && (
           <p

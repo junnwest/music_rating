@@ -28,7 +28,7 @@ export default function Privacy() {
     {
       icon: Eye,
       title: "5. Your Rights",
-      body: "You have the right to access, correct, or delete your personal data. Most settings can be managed directly from your profile. For account deletion or data export, contact privacy@sillajuku.app.",
+      body: "You have the right to access, correct, or delete your personal data. Most settings can be managed directly from your profile. For account deletion or data export, contact privacy@sillajuku.com.",
     },
     {
       icon: Cookie,
@@ -43,7 +43,7 @@ export default function Privacy() {
     {
       icon: Mail,
       title: "8. Contact",
-      body: "For privacy questions, contact privacy@sillajuku.app. We typically respond within 24–48 hours.",
+      body: "For privacy questions, contact privacy@sillajuku.com. We typically respond within 24–48 hours.",
     },
   ];
 
@@ -84,7 +84,7 @@ export default function Privacy() {
         {/* Footer CTA */}
         <div className="mt-12 pt-8 border-t border-divider">
           <p className="text-[13px] text-muted">Questions about your data?</p>
-          <a href="mailto:privacy@sillajuku.app" className="inline-flex items-center gap-2 mt-2 text-[13px] font-semibold text-ink border border-divider rounded-lg px-4 py-2 hover:bg-surface transition">
+          <a href="mailto:privacy@sillajuku.com" className="inline-flex items-center gap-2 mt-2 text-[13px] font-semibold text-ink border border-divider rounded-lg px-4 py-2 hover:bg-surface transition">
             <Mail size={14} /> Contact us
           </a>
         </div>

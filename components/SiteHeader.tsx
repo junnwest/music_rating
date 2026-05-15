@@ -148,7 +148,7 @@ export default function SiteHeader({ onMenuClick }: SiteHeaderProps) {
 
       {/* Logo — starts right at the sidebar edge */}
       <Link href="/" className="flex items-center flex-shrink-0" aria-label="Home">
-        <img src="/logo.svg" alt="sillajuku" className="h-[66px] w-auto" />
+        <img src="/logo.svg" alt="sillajuku" className="h-[85px] w-auto" />
       </Link>
 
       {/* Center: Search — absolutely centered, hidden on mobile */}

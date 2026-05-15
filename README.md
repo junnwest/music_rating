@@ -77,7 +77,7 @@ curl -X POST https://your-domain.com/api/admin/seed-rankings \
 - [x] Run all migrations (`supabase db push`) — all 13 tables + RLS policies applied
 - [x] Add jurisdiction to Terms of Service (Republic of Korea)
 - [x] Enable Google OAuth in Supabase Auth dashboard
-- [ ] Replace `privacy@sillajuku.app` and `legal@sillajuku.app` in privacy/terms pages with real email
+- [ ] Replace `privacy@sillajuku.com` and `legal@sillajuku.com` in privacy/terms pages with real email
 - [ ] Enable Supabase Auth email confirmations if desired (Auth → Email Templates)
 
 ### After first deployment
@@ -112,7 +112,7 @@ curl -X POST https://your-domain.com/api/admin/seed-rankings \
 - [ ] Verify Google OAuth works on production
 - [ ] Test rating, review, and list flows end-to-end on production
 - [ ] Confirm homepage genre rows are populated
-- [ ] Replace `privacy@sillajuku.app` and `legal@sillajuku.app` in privacy/terms pages
+- [ ] Replace `privacy@sillajuku.com` and `legal@sillajuku.com` in privacy/terms pages
 
 ### After launch (once real users are voting)
 
@@ -309,11 +309,16 @@ npm run expand:genre
 
 ### Week 2 — May 17–23: Functional gaps
 - [x] Password reset flow
-- [ ] Email verification on signup
-- [ ] Onboarding polish (first-time user experience)
+- [x] Email verification on signup — check-inbox screen, resend button (60s cooldown), correct redirect to /onboarding
+- [x] Onboarding polish (first-time user experience)
 - [x] 404 + 500 error pages (done in Week 1)
-- [ ] **Transactional email setup** — replace Supabase's default sender with a branded address (e.g. `noreply@sillajuku.app`). Recommended service: [Resend](https://resend.com) (free tier: 3k emails/mo). Steps: add domain in Resend → configure SMTP in Supabase Auth dashboard (Auth → Settings → SMTP). Required before public launch so confirmation emails don't land in spam.
-- [x] **Email template design** — `supabase/templates/confirmation.html` and `recovery.html` created. Paste into Supabase dashboard → Auth → Email Templates to apply.
+- [x] **Transactional email setup** — Resend configured with sillajuku.com domain; custom SMTP active in Supabase
+- [x] **Email template design** — confirmation, recovery, change-email templates with logo + mint CTA. Paste into Supabase dashboard → Auth → Email Templates to apply.
+- [x] **Change email** — Settings → Account tab; `supabase.auth.updateUser` flow with confirmation link
+- [x] **Notification read state** — persisted in DB via `notifications_last_seen_at` on profiles; no longer localStorage-only
+- [x] **Username login** — login accepts email or username; resolves via `/api/auth/resolve-username`
+- [x] **Confirm password on signup** — second password field with mismatch validation
+- [x] **Mock notifications removed** — fake seed data stripped from API route and page
 
 ### Week 3 — May 24–30: Auth + legal + analytics
 - [ ] KakaoTalk login

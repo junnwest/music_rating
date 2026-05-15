@@ -27,32 +27,12 @@ const colorMap: Record<NotifType, string> = {
   follow: 'bg-violet-50 text-violet-500 border-violet-100',
 };
 
-const MOCK_NOTIFS: Notification[] = [
-  { id: 'm1', type: 'follow', title: 'hyunwoo followed you', body: '@hyunwoo started following your music taste.', timeAgo: '3 min ago',  read: false, link: '/profile/hyunwoo' },
-  { id: 'm2', type: 'follow', title: 'jiyeon followed you',  body: '@jiyeon started following your music taste.',  timeAgo: '1 hr ago',   read: false, link: '/profile/jiyeon' },
-  { id: 'm3', type: 'follow', title: 'seojun followed you',  body: '@seojun started following your music taste.',  timeAgo: 'Yesterday',  read: true,  link: '/profile/seojun' },
-  { id: 'm4', type: 'follow', title: 'minjae followed you',  body: '@minjae started following your music taste.',  timeAgo: '3 days ago', read: true,  link: '/profile/minjae' },
-  { id: 'm5', type: 'follow', title: 'sora followed you',    body: '@sora started following your music taste.',    timeAgo: '1 week ago', read: true,  link: '/profile/sora' },
-];
 
 export default function NotificationsPage() {
   const [notifs, setNotifs] = useState<Notification[]>([]);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [loading, setLoading] = useState(true);
   const [signedIn, setSignedIn] = useState(false);
-
-  const READ_KEY = 'sillajuku:notif-read';
-
-  const getReadIds = (): Set<string> =>
-    new Set(JSON.parse(localStorage.getItem(READ_KEY) ?? '[]') as string[]);
-
-  const persistRead = (ids: string[]) =>
-    localStorage.setItem(READ_KEY, JSON.stringify(ids));
-
-  const applyReadState = (items: Notification[]): Notification[] => {
-    const read = getReadIds();
-    return items.map(n => ({ ...n, read: n.read || read.has(n.id) }));
-  };
 
   useEffect(() => {
     if (!supabase) { setLoading(false); return; }
@@ -63,8 +43,13 @@ export default function NotificationsPage() {
       fetch(`/api/notifications?userId=${uid}`)
         .then(r => r.json())
         .then(json => {
-          const raw: Notification[] = json.notifications?.length > 0 ? json.notifications : MOCK_NOTIFS;
-          setNotifs(applyReadState(raw));
+          setNotifs(json.notifications ?? []);
+          // Stamp last-seen so future visits treat these as read
+          fetch('/api/notifications', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: uid }),
+          });
         })
         .catch(() => {})
         .finally(() => setLoading(false));
@@ -75,8 +60,6 @@ export default function NotificationsPage() {
   const filtered = filter === 'unread' ? notifs.filter(n => !n.read) : notifs;
 
   const markRead = (id: string) => {
-    const ids = [...getReadIds(), id];
-    persistRead(ids);
     setNotifs(prev => {
       const next = prev.map(n => n.id === id ? { ...n, read: true } : n);
       if (next.every(n => n.read)) window.dispatchEvent(new Event('sillajuku:notifs-read'));
@@ -85,14 +68,11 @@ export default function NotificationsPage() {
   };
 
   const markAllRead = () => {
-    const ids = notifs.map(n => n.id);
-    persistRead([...getReadIds(), ...ids]);
     setNotifs(prev => prev.map(n => ({ ...n, read: true })));
     window.dispatchEvent(new Event('sillajuku:notifs-read'));
   };
 
   const clearAll = () => {
-    persistRead([...getReadIds(), ...notifs.map(n => n.id)]);
     setNotifs([]);
     window.dispatchEvent(new Event('sillajuku:notifs-read'));
   };

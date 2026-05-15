@@ -36,9 +36,13 @@ function SettingsContent() {
   const [displayName, setDisplayName] = useState('');
   const [username, setUsername] = useState('');
   const [bio, setBio] = useState('');
+  const [currentEmail, setCurrentEmail] = useState('');
+  const [newEmail, setNewEmail] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [emailMessage, setEmailMessage] = useState<{ text: string; ok: boolean } | null>(null);
   const [activeGenres, setActiveGenres] = useState<Set<string>>(new Set(['K-R&B', 'K-Indie', 'Hip-Hop']));
   const [ratingDisplay, setRatingDisplay] = useState<'Stars' | 'Decimal'>('Stars');
 
@@ -48,6 +52,7 @@ function SettingsContent() {
       const uid = data.session?.user?.id;
       if (!uid) return;
       setUserId(uid);
+      setCurrentEmail(data.session.user.email ?? '');
       const { data: profile } = await supabase!
         .from('profiles')
         .select('display_name, username, bio')
@@ -90,6 +95,23 @@ function SettingsContent() {
       setTimeout(() => setSaved(false), 2000);
     }
     setSaving(false);
+  };
+
+  const handleEmailChange = async () => {
+    if (!supabase || !newEmail.trim()) return;
+    setEmailSaving(true);
+    setEmailMessage(null);
+    const { error } = await supabase.auth.updateUser(
+      { email: newEmail.trim() },
+      { emailRedirectTo: `${window.location.origin}/auth/callback?next=/settings` },
+    );
+    if (error) {
+      setEmailMessage({ text: error.message, ok: false });
+    } else {
+      setEmailMessage({ text: `Confirmation sent to ${newEmail.trim()}. Click the link in that email to confirm the change.`, ok: true });
+      setNewEmail('');
+    }
+    setEmailSaving(false);
   };
 
   const handleSignOut = async () => {
@@ -159,6 +181,24 @@ function SettingsContent() {
                   </button>
                   <button onClick={handleSignOut} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-divider text-[13px] font-semibold text-muted hover:bg-surface transition">
                     <LogOut size={14} /> Log out
+                  </button>
+                </div>
+
+                <div className="mt-8 pt-6 border-t border-divider">
+                  <h3 className="text-[14px] font-bold text-ink mb-4">Change email</h3>
+                  <p className="text-[12px] text-muted mb-4">Current email: <span className="font-semibold text-ink">{currentEmail}</span></p>
+                  <Field label="New email address" value={newEmail} onChange={setNewEmail} type="email" />
+                  {emailMessage && (
+                    <p className={`text-[12px] mb-3 ${emailMessage.ok ? 'text-mint-dark' : 'text-red-500'}`}>
+                      {emailMessage.text}
+                    </p>
+                  )}
+                  <button
+                    onClick={handleEmailChange}
+                    disabled={emailSaving || !newEmail.trim()}
+                    className="bg-ink text-white rounded-xl px-6 py-2.5 text-[13px] font-bold hover:opacity-80 transition disabled:opacity-50"
+                  >
+                    {emailSaving ? 'Sending…' : 'Change email'}
                   </button>
                 </div>
 

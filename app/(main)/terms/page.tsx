@@ -40,7 +40,7 @@ const sections = [
   {
     icon: Mail,
     title: '8. Contact',
-    body: 'For legal questions, contact legal@sillajuku.app.',
+    body: 'For legal questions, contact legal@sillajuku.com.',
   },
 ];
 
