@@ -52,7 +52,7 @@ function SettingsContent() {
       const uid = data.session?.user?.id;
       if (!uid) return;
       setUserId(uid);
-      setCurrentEmail(data.session.user.email ?? '');
+      setCurrentEmail(data.session?.user?.email ?? '');
       const { data: profile } = await supabase!
         .from('profiles')
         .select('display_name, username, bio')
