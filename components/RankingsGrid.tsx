@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -68,8 +68,8 @@ export default function RankingsGrid({ categories, topAlbumsMap, voteCountMap }:
               onClick={() => setActiveTab(tab)}
               className={`px-4 py-[7px] rounded-full text-[12px] font-semibold transition ${
                 activeTab === tab
-                  ? 'bg-ink text-white'
-                  : 'bg-surface text-muted hover:text-ink border border-[#EBEBEB]'
+                  ? 'bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111]'
+                  : 'bg-surface text-muted hover:text-ink border border-divider'
               }`}
             >
               {tab}
@@ -104,12 +104,12 @@ export default function RankingsGrid({ categories, topAlbumsMap, voteCountMap }:
             return (
               <div
                 key={cat.id}
-                className="flex flex-col border border-[#EBEBEB] rounded-[12px] p-5 transition group relative"
+                className="flex flex-col border border-divider rounded-[12px] p-5 transition group relative"
               >
                 {/* Friends badge */}
                 {friendCount > 0 && (
                   <div className="absolute top-4 right-4">
-                    <span className="text-[10px] font-semibold px-[7px] py-[2px] rounded-full bg-surface border border-[#EBEBEB] text-muted">
+                    <span className="text-[10px] font-semibold px-[7px] py-[2px] rounded-full bg-surface border border-divider text-muted">
                       {friendCount} {friendCount === 1 ? 'friend' : 'friends'}
                     </span>
                   </div>
@@ -124,7 +124,7 @@ export default function RankingsGrid({ categories, topAlbumsMap, voteCountMap }:
                         key={i}
                         src={album.coverUrl}
                         alt=""
-                        className="w-[46px] h-[46px] rounded-[5px] object-cover border border-[#EBEBEB] flex-shrink-0"
+                        className="w-[46px] h-[46px] rounded-[5px] object-cover border border-divider flex-shrink-0"
                       />
                     ) : (
                       <div

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -65,7 +65,7 @@ export default function CreateListSection() {
   }
 
   return (
-    <div className="border border-[#EBEBEB] rounded-xl p-5 bg-surface w-full mt-6">
+    <div className="border border-divider rounded-xl p-5 bg-surface w-full mt-6">
       <h3 className="text-[15px] font-bold text-ink mb-4">Create a new list</h3>
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <div>
@@ -76,7 +76,7 @@ export default function CreateListSection() {
             placeholder="e.g. Albums I Loved This Year"
             maxLength={80}
             required
-            className="w-full text-sm border border-[#EBEBEB] rounded-lg px-3 py-2 bg-white text-ink outline-none focus:border-mint transition"
+            className="w-full text-sm border border-divider rounded-lg px-3 py-2 bg-surface text-ink outline-none focus:border-mint transition"
           />
         </div>
         <div>
@@ -86,7 +86,7 @@ export default function CreateListSection() {
             onChange={(e) => setDescription(e.target.value)}
             placeholder="What's this list about?"
             maxLength={200}
-            className="w-full text-sm border border-[#EBEBEB] rounded-lg px-3 py-2 bg-white text-ink outline-none focus:border-mint transition"
+            className="w-full text-sm border border-divider rounded-lg px-3 py-2 bg-surface text-ink outline-none focus:border-mint transition"
           />
         </div>
         {error && <p className="text-[12px] text-red-500">{error}</p>}

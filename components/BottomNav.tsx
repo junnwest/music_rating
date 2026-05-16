@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -40,7 +40,7 @@ export default function BottomNav() {
 
   return (
     <nav
-      className="xl:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-divider flex"
+      className="xl:hidden fixed bottom-0 left-0 right-0 z-50 bg-page border-t border-divider flex"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
       {items.map(({ icon: Icon, label, path }) => {

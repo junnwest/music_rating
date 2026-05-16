@@ -1,10 +1,11 @@
-'use client';
+﻿'use client';
 
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useState, useEffect, Suspense } from 'react';
+import { useTheme } from 'next-themes';
 import {
   User, Sliders, Bell, Shield, AlertTriangle,
-  LogOut, Trash2, Camera
+  LogOut, Trash2, Camera, Sun, Moon, Monitor
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import UserAvatar from '../../../components/UserAvatar';
@@ -51,6 +52,7 @@ function SettingsContent() {
   const [confirmDisconnect, setConfirmDisconnect] = useState<string | null>(null);
   const [activeGenres, setActiveGenres] = useState<Set<string>>(new Set(['K-R&B', 'K-Indie', 'Hip-Hop']));
   const [ratingDisplay, setRatingDisplay] = useState<'Stars' | 'Decimal'>('Stars');
+  const { theme, setTheme } = useTheme();
 
   const refreshUser = async () => {
     if (!supabase) return;
@@ -221,7 +223,7 @@ function SettingsContent() {
                   <button
                     onClick={handleSave}
                     disabled={saving}
-                    className="bg-ink text-white rounded-xl px-6 py-2.5 text-[13px] font-bold hover:opacity-80 transition disabled:opacity-50"
+                    className="bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-xl px-6 py-2.5 text-[13px] font-bold hover:opacity-80 transition disabled:opacity-50"
                   >
                     {saved ? 'Saved' : saving ? 'Saving…' : 'Save changes'}
                   </button>
@@ -255,7 +257,7 @@ function SettingsContent() {
                       <button
                         onClick={handleEmailChange}
                         disabled={emailSaving || !newEmail.trim()}
-                        className="bg-ink text-white rounded-xl px-6 py-2.5 text-[13px] font-bold hover:opacity-80 transition disabled:opacity-50"
+                        className="bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-xl px-6 py-2.5 text-[13px] font-bold hover:opacity-80 transition disabled:opacity-50"
                       >
                         {emailSaving ? 'Sending…' : 'Send confirmation'}
                       </button>
@@ -280,7 +282,7 @@ function SettingsContent() {
                       const isOnly = socialIdentities.length <= 1 && connected;
                       const loading = identityLoading === provider;
                       return (
-                        <div key={provider} className="flex items-center justify-between py-2.5 px-3 rounded-xl border border-divider bg-white">
+                        <div key={provider} className="flex items-center justify-between py-2.5 px-3 rounded-xl border border-divider bg-page">
                           <div className="flex items-center gap-3">
                             <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${color}`}>
                               <ProviderIcon provider={provider} />
@@ -296,7 +298,7 @@ function SettingsContent() {
                                 onClick={() => !isOnly && setConfirmDisconnect(provider)}
                                 disabled={loading || isOnly}
                                 title={isOnly ? 'Keep at least one social account connected' : undefined}
-                                className="w-[90px] py-1.5 rounded-lg border border-ink bg-white text-[11px] font-semibold text-ink hover:border-red-300 hover:bg-red-50 hover:text-red-500 transition disabled:opacity-40 disabled:cursor-not-allowed text-center"
+                                className="w-[90px] py-1.5 rounded-lg border border-ink bg-page text-[11px] font-semibold text-ink hover:border-red-300 hover:bg-red-50 hover:text-red-500 transition disabled:opacity-40 disabled:cursor-not-allowed text-center"
                               >
                                 {loading ? '…' : 'Connected'}
                               </button>
@@ -304,7 +306,7 @@ function SettingsContent() {
                               <button
                                 onClick={() => handleConnect(provider as 'google' | 'spotify')}
                                 disabled={loading}
-                                className="w-[90px] py-1.5 rounded-lg bg-ink text-white text-[11px] font-semibold hover:opacity-80 transition disabled:opacity-50 text-center"
+                                className="w-[90px] py-1.5 rounded-lg bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] text-[11px] font-semibold hover:opacity-80 transition disabled:opacity-50 text-center"
                               >
                                 {loading ? '…' : 'Connect'}
                               </button>
@@ -324,7 +326,7 @@ function SettingsContent() {
             {/* Disconnect confirmation modal */}
             {confirmDisconnect && (
               <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setConfirmDisconnect(null)}>
-                <div className="bg-white rounded-2xl p-7 max-w-[320px] w-full mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
+                <div className="bg-page rounded-2xl p-7 max-w-[320px] w-full mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
                   <h3 className="text-[15px] font-bold text-ink mb-2">Disconnect {confirmDisconnect.charAt(0).toUpperCase() + confirmDisconnect.slice(1)}?</h3>
                   <p className="text-[13px] text-muted leading-relaxed mb-6">You won't be able to log in with {confirmDisconnect} anymore. Make sure you have another way to access your account.</p>
                   <div className="flex gap-3">
@@ -347,6 +349,25 @@ function SettingsContent() {
 
             {activeTab === 'preferences' && (
               <Section title="Preferences">
+                <div className="mb-5">
+                  <label className="block text-[13px] font-semibold text-ink mb-2">Appearance</label>
+                  <div className="flex gap-2">
+                    {([
+                      { value: 'light', label: 'Light', Icon: Sun },
+                      { value: 'system', label: 'System', Icon: Monitor },
+                      { value: 'dark', label: 'Dark', Icon: Moon },
+                    ] as const).map(({ value, label, Icon }) => (
+                      <button
+                        key={value}
+                        onClick={() => setTheme(value)}
+                        className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12px] font-semibold border transition ${theme === value ? 'border-ink text-ink' : 'border-divider text-muted hover:border-mid'}`}
+                      >
+                        <Icon size={13} strokeWidth={1.8} />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div className="mb-5">
                   <label className="block text-[13px] font-semibold text-ink mb-2">Default region</label>
                   <select className="w-full bg-surface border border-divider rounded-xl px-4 py-2.5 text-[13px] text-ink outline-none cursor-pointer hover:border-mid transition">
@@ -460,7 +481,7 @@ function SettingsContent() {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="border border-divider rounded-2xl p-6 bg-white">
+    <div className="border border-divider rounded-2xl p-6 bg-page">
       <h2 className="text-[16px] font-bold text-ink mb-5">{title}</h2>
       {children}
     </div>

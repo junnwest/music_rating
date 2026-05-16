@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+﻿import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { createServerClient } from '../../../../lib/supabaseServer';
 import { GENRE_CATEGORIES } from '../../../../lib/genre-categories';
@@ -40,9 +40,9 @@ export default async function GenrePage({ params }: Props) {
   }
 
   return (
-    <main className="min-h-screen bg-white">
+    <main className="min-h-screen bg-page">
       {/* Header */}
-      <div className="bg-surface border-b border-[#EBEBEB]">
+      <div className="bg-surface border-b border-divider">
         <div className="max-w-[1440px] mx-auto px-5 py-8">
           <Link href="/" className="text-[12px] text-muted hover:text-mid transition">
             ← Home
@@ -77,10 +77,10 @@ export default async function GenrePage({ params }: Props) {
                       className="absolute inset-0 w-full h-full object-cover"
                     />
                   ) : (
-                    <div className="absolute inset-0 bg-surface border border-[#EBEBEB]" />
+                    <div className="absolute inset-0 bg-surface border border-divider" />
                   )}
                   <div className="absolute inset-0 flex items-end justify-end p-2 opacity-0 group-hover/card:opacity-100 transition-opacity">
-                    <span className="bg-ink text-white rounded-[6px] px-[11px] py-[5px] text-[11px] font-semibold">
+                    <span className="bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-[6px] px-[11px] py-[5px] text-[11px] font-semibold">
                       Rate →
                     </span>
                   </div>

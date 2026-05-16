@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -150,7 +150,7 @@ export default function AuthForm() {
             type="button"
             onClick={handleResend}
             disabled={resendCooldown > 0}
-            className="w-full bg-ink text-white rounded-lg py-[13px] text-[14px] font-bold transition hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed mb-4"
+            className="w-full bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-lg py-[13px] text-[14px] font-bold transition hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed mb-4"
           >
             {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend confirmation email'}
           </button>
@@ -186,7 +186,7 @@ export default function AuthForm() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full bg-white border-[1.5px] border-[#EBEBEB] rounded-lg px-[14px] py-3 text-[14px] text-ink placeholder:text-[#C0C0BE] outline-none focus:border-ink transition"
+              className="w-full bg-surface border-[1.5px] border-divider rounded-lg px-[14px] py-3 text-[14px] text-ink placeholder:text-placeholder outline-none focus:border-ink transition"
             />
           </div>
 
@@ -199,7 +199,7 @@ export default function AuthForm() {
           <button
             type="submit"
             disabled={loading || !supabase}
-            className="w-full bg-ink text-white rounded-lg py-[14px] text-[15px] font-bold text-center transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50 mt-2"
+            className="w-full bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-lg py-[14px] text-[15px] font-bold text-center transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50 mt-2"
           >
             {loading ? 'Sending…' : 'Send reset link →'}
           </button>
@@ -224,7 +224,7 @@ export default function AuthForm() {
             onClick={() => { setMode(m); setMessage(null); setConfirmPassword(''); }}
             className={`flex-1 py-[10px] text-center rounded-[7px] text-[14px] font-semibold transition ${
               mode === m
-                ? 'bg-white border border-[#EBEBEB] text-ink shadow-[0_1px_4px_rgba(0,0,0,0.08)]'
+                ? 'bg-page border border-divider text-ink shadow-[0_1px_4px_rgba(0,0,0,0.08)]'
                 : 'text-muted'
             }`}
           >
@@ -258,7 +258,7 @@ export default function AuthForm() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            className="w-full bg-white border-[1.5px] border-[#EBEBEB] rounded-lg px-[14px] py-3 text-[14px] text-ink placeholder:text-[#C0C0BE] outline-none focus:border-ink transition"
+            className="w-full bg-surface border-[1.5px] border-divider rounded-lg px-[14px] py-3 text-[14px] text-ink placeholder:text-placeholder outline-none focus:border-ink transition"
           />
         </div>
 
@@ -281,7 +281,7 @@ export default function AuthForm() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            className="w-full bg-white border-[1.5px] border-[#EBEBEB] rounded-lg px-[14px] py-3 text-[14px] text-ink placeholder:text-[#C0C0BE] outline-none focus:border-ink transition"
+            className="w-full bg-surface border-[1.5px] border-divider rounded-lg px-[14px] py-3 text-[14px] text-ink placeholder:text-placeholder outline-none focus:border-ink transition"
           />
         </div>
 
@@ -294,7 +294,7 @@ export default function AuthForm() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
-              className="w-full bg-white border-[1.5px] border-[#EBEBEB] rounded-lg px-[14px] py-3 text-[14px] text-ink placeholder:text-[#C0C0BE] outline-none focus:border-ink transition"
+              className="w-full bg-surface border-[1.5px] border-divider rounded-lg px-[14px] py-3 text-[14px] text-ink placeholder:text-placeholder outline-none focus:border-ink transition"
             />
           </div>
         )}
@@ -314,7 +314,7 @@ export default function AuthForm() {
         <button
           type="submit"
           disabled={loading || !supabase}
-          className="w-full bg-ink text-white rounded-lg py-[14px] text-[15px] font-bold text-center transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50 mt-2"
+          className="w-full bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-lg py-[14px] text-[15px] font-bold text-center transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50 mt-2"
         >
           {loading ? 'Working…' : mode === 'login' ? 'Log in →' : 'Create account →'}
         </button>
@@ -335,7 +335,7 @@ export default function AuthForm() {
           onClick={handleGoogle}
           disabled={googleLoading || !supabase}
           title="Continue with Google"
-          className="w-12 h-12 rounded-xl border-[1.5px] border-[#EBEBEB] bg-white flex items-center justify-center hover:bg-surface transition disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-12 h-12 rounded-xl border-[1.5px] border-divider bg-surface flex items-center justify-center hover:bg-surface transition disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -386,11 +386,11 @@ export default function AuthForm() {
       {/* Under construction modal */}
       {underConstruction && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setUnderConstruction(false)}>
-          <div className="bg-white rounded-2xl p-8 max-w-[320px] w-full mx-4 text-center shadow-xl" onClick={e => e.stopPropagation()}>
+          <div className="bg-page rounded-2xl p-8 max-w-[320px] w-full mx-4 text-center shadow-xl" onClick={e => e.stopPropagation()}>
             <p className="text-2xl mb-3">🚧</p>
             <h3 className="text-[16px] font-bold text-ink mb-2">Coming soon</h3>
             <p className="text-[13px] text-muted leading-relaxed mb-5">This login option is under construction. Use email, Google, or Spotify for now.</p>
-            <button onClick={() => setUnderConstruction(false)} className="bg-ink text-white rounded-xl px-6 py-2.5 text-[13px] font-bold hover:opacity-80 transition">
+            <button onClick={() => setUnderConstruction(false)} className="bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-xl px-6 py-2.5 text-[13px] font-bold hover:opacity-80 transition">
               Got it
             </button>
           </div>

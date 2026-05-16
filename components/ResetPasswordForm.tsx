@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -59,7 +59,7 @@ export default function ResetPasswordForm() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            className="w-full bg-white border-[1.5px] border-[#EBEBEB] rounded-lg px-[14px] py-3 text-[14px] text-ink placeholder:text-[#C0C0BE] outline-none focus:border-ink transition"
+            className="w-full bg-surface border-[1.5px] border-divider rounded-lg px-[14px] py-3 text-[14px] text-ink placeholder:text-placeholder outline-none focus:border-ink transition"
           />
         </div>
 
@@ -71,7 +71,7 @@ export default function ResetPasswordForm() {
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
             required
-            className="w-full bg-white border-[1.5px] border-[#EBEBEB] rounded-lg px-[14px] py-3 text-[14px] text-ink placeholder:text-[#C0C0BE] outline-none focus:border-ink transition"
+            className="w-full bg-surface border-[1.5px] border-divider rounded-lg px-[14px] py-3 text-[14px] text-ink placeholder:text-placeholder outline-none focus:border-ink transition"
           />
         </div>
 
@@ -84,7 +84,7 @@ export default function ResetPasswordForm() {
         <button
           type="submit"
           disabled={loading || !supabase}
-          className="w-full bg-ink text-white rounded-lg py-[14px] text-[15px] font-bold text-center transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50 mt-2"
+          className="w-full bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-lg py-[14px] text-[15px] font-bold text-center transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50 mt-2"
         >
           {loading ? 'Saving…' : 'Update password →'}
         </button>

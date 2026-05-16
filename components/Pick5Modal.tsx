@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
@@ -113,7 +113,7 @@ export default function Pick5Modal({ userId, onComplete }: { userId: string; onC
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}>
       <div
-        className="bg-white rounded-[16px] w-full mx-4 flex flex-col"
+        className="bg-page rounded-[16px] w-full mx-4 flex flex-col"
         style={{ maxWidth: 680, maxHeight: '90vh' }}
       >
         {/* Header */}
@@ -147,7 +147,7 @@ export default function Pick5Modal({ userId, onComplete }: { userId: string; onC
             placeholder="Search for an album…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="w-full bg-surface border border-[#EBEBEB] rounded-lg px-4 py-[10px] text-[14px] text-ink placeholder:text-muted outline-none focus:border-ink transition"
+            className="w-full bg-surface border border-divider rounded-lg px-4 py-[10px] text-[14px] text-ink placeholder:text-muted outline-none focus:border-ink transition"
             autoFocus
           />
         </div>
@@ -210,7 +210,7 @@ export default function Pick5Modal({ userId, onComplete }: { userId: string; onC
         </div>
 
         {/* Footer */}
-        <div className="px-7 pt-4 pb-6 flex-shrink-0 border-t border-[#EBEBEB] mt-3">
+        <div className="px-7 pt-4 pb-6 flex-shrink-0 border-t border-divider mt-3">
           {/* Selected tray */}
           <div className="flex items-center gap-3 mb-[14px]">
             {Array.from({ length: MAX }).map((_, i) => {
@@ -238,7 +238,7 @@ export default function Pick5Modal({ userId, onComplete }: { userId: string; onC
           <button
             onClick={handleSave}
             disabled={selected.length < MAX || saving}
-            className="w-full bg-ink text-white rounded-lg py-[13px] text-[14px] font-bold transition hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-full bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-lg py-[13px] text-[14px] font-bold transition hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {saving ? 'Saving…' : 'Start my journey →'}
           </button>

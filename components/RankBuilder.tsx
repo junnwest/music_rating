@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -283,11 +283,11 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
       {/* Header */}
       <header style={{
         position: 'sticky', top: 0, zIndex: 100,
-        background: '#fff', borderBottom: '1px solid #EBEBEB',
+        background: '#fff', borderBottom: '1px solid rgb(var(--color-divider))',
         padding: '0 24px', height: 56,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <button onClick={() => tryNavigate(`/rankings/${slug}`)} style={{ fontSize: 12, color: '#888', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, padding: 0 }}>
+        <button onClick={() => tryNavigate(`/rankings/${slug}`)} style={{ fontSize: 12, color: 'rgb(var(--color-muted))', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, padding: 0 }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M15 18l-6-6 6-6" />
           </svg>
@@ -311,14 +311,14 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
       <div style={{ maxWidth: 1280, margin: '0 auto', display: 'grid', gridTemplateColumns: '1fr 520px', minHeight: 'calc(100vh - 56px)' }}>
 
         {/* LEFT: Builder */}
-        <div style={{ borderRight: '1px solid #EBEBEB', padding: '32px 28px 80px', position: 'relative' }}>
+        <div style={{ borderRight: '1px solid rgb(var(--color-divider))', padding: '32px 28px 80px', position: 'relative' }}>
           <div style={{
             position: 'sticky', top: 56, zIndex: 50,
             background: '#fff', margin: '-32px -28px 24px', padding: '24px 28px 16px',
-            borderBottom: '1px solid #EBEBEB',
+            borderBottom: '1px solid rgb(var(--color-divider))',
           }}>
             <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.8px', lineHeight: 1.05 }}>{categoryTitle}</h1>
-            <p style={{ fontSize: 13, color: '#888', marginTop: 6 }}>Drag albums to rank. Drop between slots to create a new tier.</p>
+            <p style={{ fontSize: 13, color: 'rgb(var(--color-muted))', marginTop: 6 }}>Drag albums to rank. Drop between slots to create a new tier.</p>
           </div>
 
           <div>
@@ -349,7 +349,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
                 </div>
 
                 {/* Tier row */}
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, padding: '14px 0', borderBottom: '1px solid #EBEBEB' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, padding: '14px 0', borderBottom: '1px solid rgb(var(--color-divider))' }}>
                   {/* Rank number */}
                   <div style={{
                     flexShrink: 0, width: 48, textAlign: 'right',
@@ -376,7 +376,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
                   >
                     {tier.length === 0 && (
                       <div style={{
-                        width: '100%', fontSize: 12, color: '#C0C0BE',
+                        width: '100%', fontSize: 12, color: 'rgb(var(--color-placeholder))',
                         padding: '20px 12px', border: '1.5px dashed #EBEBEB',
                         borderRadius: 8, textAlign: 'center', pointerEvents: 'none',
                       }}>
@@ -451,14 +451,14 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
               value={query}
               onChange={e => setQuery(e.target.value)}
               style={{
-                width: '100%', background: '#F7F7F5', border: '1px solid #EBEBEB',
-                borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#111',
+                width: '100%', background: 'rgb(var(--color-surface))', border: '1px solid rgb(var(--color-divider))',
+                borderRadius: 10, padding: '10px 14px', fontSize: 13, color: 'rgb(var(--color-ink))',
                 outline: 'none', transition: 'border-color 0.15s',
               }}
               onFocus={e => (e.target.style.borderColor = '#111')}
               onBlur={e => (e.target.style.borderColor = '#EBEBEB')}
             />
-            {searching && <p style={{ fontSize: 11, color: '#888', marginTop: 6 }}>Searching…</p>}
+            {searching && <p style={{ fontSize: 11, color: 'rgb(var(--color-muted))', marginTop: 6 }}>Searching…</p>}
           </div>
 
           {(filterYear || filterGenre) && (
@@ -469,19 +469,19 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
                 </span>
               )}
               {filterGenre && (
-                <span style={{ fontSize: 10, fontWeight: 700, color: '#444', background: '#F0F0EE', padding: '2px 8px', borderRadius: 4 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: 'rgb(var(--color-mid))', background: 'rgb(var(--color-surface))', padding: '2px 8px', borderRadius: 4 }}>
                   {filterGenre}
                 </span>
               )}
             </div>
           )}
 
-          <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#888', margin: '8px 0 12px' }}>
+          <p style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgb(var(--color-muted))', margin: '8px 0 12px' }}>
             {query.trim() ? 'Results' : 'Suggested'}
           </p>
 
           {(query.trim() ? searchResults.length === 0 && !searching : visible.length === 0) && (
-            <p style={{ fontSize: 12, color: '#C0C0BE', textAlign: 'center', padding: '32px 0' }}>
+            <p style={{ fontSize: 12, color: 'rgb(var(--color-placeholder))', textAlign: 'center', padding: '32px 0' }}>
               {query.trim() ? 'No albums found.' : 'All suggested albums added or dismissed.'}
             </p>
           )}
@@ -542,8 +542,8 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
             onClick={e => e.stopPropagation()}
             style={{ background: '#fff', borderRadius: 16, padding: '32px 28px', maxWidth: 380, width: '100%', boxShadow: '0 24px 64px rgba(0,0,0,0.25)' }}
           >
-            <h2 style={{ fontSize: 18, fontWeight: 800, color: '#111', margin: '0 0 8px' }}>Save changes?</h2>
-            <p style={{ fontSize: 14, color: '#666', lineHeight: 1.55, margin: '0 0 28px' }}>
+            <h2 style={{ fontSize: 18, fontWeight: 800, color: 'rgb(var(--color-ink))', margin: '0 0 8px' }}>Save changes?</h2>
+            <p style={{ fontSize: 14, color: 'rgb(var(--color-muted))', lineHeight: 1.55, margin: '0 0 28px' }}>
               Your ranking has unsaved changes.
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -558,11 +558,11 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
               >{saving ? 'Saving…' : 'Save & Leave'}</button>
               <button
                 onClick={() => { setShowLeaveModal(false); if (pendingHref) router.push(pendingHref); }}
-                style={{ background: '#F7F7F5', color: '#444', border: 'none', borderRadius: 10, padding: '12px 20px', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+                style={{ background: 'rgb(var(--color-surface))', color: 'rgb(var(--color-mid))', border: 'none', borderRadius: 10, padding: '12px 20px', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
               >Leave without saving</button>
               <button
                 onClick={() => setShowLeaveModal(false)}
-                style={{ background: 'none', color: '#999', border: 'none', padding: '8px', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}
+                style={{ background: 'none', color: 'rgb(var(--color-muted))', border: 'none', padding: '8px', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}
               >Stay on page</button>
             </div>
           </div>
@@ -590,23 +590,23 @@ function AlbumCard({ album, onDragStart, onDragEnd, onRemove }: {
       onMouseLeave={() => setHovered(false)}
       style={{ position: 'relative', width: 64, flexShrink: 0, cursor: 'grab', userSelect: 'none', opacity: dragging ? 0.3 : 1, transition: 'opacity 0.15s' }}
     >
-      <div style={{ width: 64, height: 64, borderRadius: 6, overflow: 'hidden', border: '1px solid #EBEBEB', background: coverColor(album.id) }}>
+      <div style={{ width: 64, height: 64, borderRadius: 6, overflow: 'hidden', border: '1px solid rgb(var(--color-divider))', background: coverColor(album.id) }}>
         {album.coverUrl
           ? <img src={album.coverUrl} alt={album.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
           : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff', textTransform: 'uppercase' }}>{album.title.slice(0, 2)}</div>
         }
       </div>
       <div style={{ marginTop: 5 }}>
-        <div style={{ fontSize: 10, fontWeight: 600, color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.2 }}>{album.title}</div>
-        <div style={{ fontSize: 9, color: '#888', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.2, marginTop: 1 }}>{album.artist}</div>
+        <div style={{ fontSize: 10, fontWeight: 600, color: 'rgb(var(--color-ink))', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.2 }}>{album.title}</div>
+        <div style={{ fontSize: 9, color: 'rgb(var(--color-muted))', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.2, marginTop: 1 }}>{album.artist}</div>
       </div>
       <button
         onClick={e => { e.stopPropagation(); onRemove(); }}
         style={{
           position: 'absolute', top: -6, right: -6, zIndex: 10,
           width: 18, height: 18, borderRadius: '50%',
-          background: '#fff', border: '1px solid #EBEBEB',
-          color: '#888', fontSize: 14, lineHeight: 1,
+          background: '#fff', border: '1px solid rgb(var(--color-divider))',
+          color: 'rgb(var(--color-muted))', fontSize: 14, lineHeight: 1,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer', opacity: hovered ? 1 : 0, transition: 'opacity 0.15s',
           padding: 0,
@@ -631,7 +631,7 @@ function SuggestionCard({ album, isAddTarget, ranking, onAdd, onDismiss, onCance
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      <div style={{ position: 'relative', width: '100%', aspectRatio: '1', borderRadius: 6, overflow: 'hidden', background: coverColor(album.id), border: '1px solid #EBEBEB' }}>
+      <div style={{ position: 'relative', width: '100%', aspectRatio: '1', borderRadius: 6, overflow: 'hidden', background: coverColor(album.id), border: '1px solid rgb(var(--color-divider))' }}>
         {album.coverUrl
           ? <img src={album.coverUrl} alt={album.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
           : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff', textTransform: 'uppercase' }}>{album.title.slice(0, 2)}</div>
@@ -647,7 +647,7 @@ function SuggestionCard({ album, isAddTarget, ranking, onAdd, onDismiss, onCance
                 <button
                   key={i}
                   onClick={() => onAddToTier(i)}
-                  style={{ width: 22, height: 22, borderRadius: 4, background: '#fff', border: 'none', fontSize: 9, fontWeight: 700, color: '#111', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  style={{ width: 22, height: 22, borderRadius: 4, background: '#fff', border: 'none', fontSize: 9, fontWeight: 700, color: 'rgb(var(--color-ink))', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >{i + 1}</button>
               ))}
               <button
@@ -658,8 +658,8 @@ function SuggestionCard({ album, isAddTarget, ranking, onAdd, onDismiss, onCance
           </div>
         )}
       </div>
-      <div style={{ fontSize: 10, fontWeight: 600, color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.2 }}>{album.title}</div>
-      <div style={{ fontSize: 9, color: '#888', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.2 }}>{album.artist}</div>
+      <div style={{ fontSize: 10, fontWeight: 600, color: 'rgb(var(--color-ink))', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.2 }}>{album.title}</div>
+      <div style={{ fontSize: 9, color: 'rgb(var(--color-muted))', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.2 }}>{album.artist}</div>
       <div style={{ display: 'flex', gap: 3, marginTop: 1, visibility: isAddTarget ? 'hidden' : 'visible' }}>
         <button
           onClick={onAdd}
@@ -667,7 +667,7 @@ function SuggestionCard({ album, isAddTarget, ranking, onAdd, onDismiss, onCance
         >Add</button>
         <button
           onClick={onDismiss}
-          style={{ flex: 1, fontSize: 9, fontWeight: 600, background: '#F0F0EE', color: '#888', border: 'none', borderRadius: 3, padding: '4px 0', cursor: 'pointer', lineHeight: 1 }}
+          style={{ flex: 1, fontSize: 9, fontWeight: 600, background: 'rgb(var(--color-surface))', color: 'rgb(var(--color-muted))', border: 'none', borderRadius: 3, padding: '4px 0', cursor: 'pointer', lineHeight: 1 }}
         >Skip</button>
       </div>
     </div>
@@ -693,7 +693,7 @@ function SuggestedCard({ album, isAdded, onClick, onDragStart, onDragEnd }: {
       onMouseLeave={() => setHovered(false)}
       style={{ position: 'relative', cursor: isAdded ? 'default' : 'pointer', transform: hovered ? 'translateY(-2px)' : 'none', transition: 'transform 0.15s' }}
     >
-      <div style={{ position: 'relative', width: '100%', aspectRatio: '1', borderRadius: 8, overflow: 'hidden', background: coverColor(album.id), border: '1px solid #EBEBEB', opacity: isAdded ? 0.5 : 1 }}>
+      <div style={{ position: 'relative', width: '100%', aspectRatio: '1', borderRadius: 8, overflow: 'hidden', background: coverColor(album.id), border: '1px solid rgb(var(--color-divider))', opacity: isAdded ? 0.5 : 1 }}>
         {album.coverUrl
           ? <img src={album.coverUrl} alt={album.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
           : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff', textTransform: 'uppercase' }}>{album.title.slice(0, 2)}</div>
@@ -717,8 +717,8 @@ function SuggestedCard({ album, isAdded, onClick, onDragStart, onDragEnd }: {
         </div>
       </div>
       <div style={{ marginTop: 6 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{album.title}</div>
-        <div style={{ fontSize: 10, color: '#888', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 1 }}>{album.artist}</div>
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'rgb(var(--color-ink))', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{album.title}</div>
+        <div style={{ fontSize: 10, color: 'rgb(var(--color-muted))', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 1 }}>{album.artist}</div>
       </div>
     </div>
   );

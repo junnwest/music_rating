@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import Link from 'next/link';
@@ -14,7 +14,7 @@ function Chip({ children, active, onClick }: { children: React.ReactNode; active
       className={`inline-flex items-center px-[14px] py-[10px] rounded-full text-[12px] font-semibold border transition ${
         active
           ? 'bg-mint-dark border-mint-dark text-white'
-          : 'bg-surface border-[#EBEBEB] text-muted hover:text-mid'
+          : 'bg-surface border-divider text-muted hover:text-mid'
       }`}
     >
       {children}
@@ -24,7 +24,7 @@ function Chip({ children, active, onClick }: { children: React.ReactNode; active
 
 function TypePill({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center px-[9px] py-[2px] rounded-full bg-surface border border-[#EBEBEB] text-[12px] font-medium text-muted">
+    <span className="inline-flex items-center px-[9px] py-[2px] rounded-full bg-surface border border-divider text-[12px] font-medium text-muted">
       {children}
     </span>
   );
@@ -100,7 +100,7 @@ export default function DiscographyGrid({ initialReleases, initialNextCursor }: 
                     className="absolute inset-0 w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
                   />
                 ) : (
-                  <div className="absolute inset-0 bg-surface border border-[#EBEBEB]" />
+                  <div className="absolute inset-0 bg-surface border border-divider" />
                 )}
               </div>
               <div className="mt-[9px]">
@@ -120,7 +120,7 @@ export default function DiscographyGrid({ initialReleases, initialNextCursor }: 
           <button
             onClick={loadMore}
             disabled={loading}
-            className="rounded-lg border border-[#EBEBEB] px-6 py-[10px] text-[13px] font-semibold text-ink hover:bg-surface transition disabled:opacity-50 disabled:cursor-wait"
+            className="rounded-lg border border-divider px-6 py-[10px] text-[13px] font-semibold text-ink hover:bg-surface transition disabled:opacity-50 disabled:cursor-wait"
           >
             {loading ? 'Loading…' : 'Load more'}
           </button>

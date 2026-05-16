@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
@@ -111,11 +111,11 @@ export default function SiteHeader({ onMenuClick }: SiteHeaderProps) {
   ];
 
   return (
-    <header className="h-[72px] bg-white border-b border-divider sticky top-0 z-50 flex items-center pr-5">
+    <header className="h-[58px] bg-page border-b border-divider sticky top-0 z-50 flex items-center pr-5">
 
       {/* Mobile search overlay */}
       {mobileSearchOpen && (
-        <div className="md:hidden absolute inset-0 bg-white flex items-center px-4 gap-3 z-50">
+        <div className="md:hidden absolute inset-0 bg-page flex items-center px-4 gap-3 z-50">
           <button onClick={closeMobileSearch} className="p-1 text-muted hover:text-ink transition flex-shrink-0">
             <ArrowLeft size={20} />
           </button>
@@ -148,7 +148,7 @@ export default function SiteHeader({ onMenuClick }: SiteHeaderProps) {
 
       {/* Logo — starts right at the sidebar edge */}
       <Link href="/" className="flex items-center flex-shrink-0" aria-label="Home">
-        <img src="/logo.svg" alt="sillajuku" className="h-[85px] w-auto" />
+        <img src="/logo-text.svg" alt="sillajuku" className="h-[26px] w-auto dark:invert translate-y-[3px]" />
       </Link>
 
       {/* Center: Search — absolutely centered, hidden on mobile */}
@@ -191,7 +191,7 @@ export default function SiteHeader({ onMenuClick }: SiteHeaderProps) {
             )}
 
             {profileOpen && (
-              <div className="absolute right-0 top-[42px] w-[200px] bg-white border border-divider rounded-xl shadow-lg py-2 z-50">
+              <div className="absolute right-0 top-[42px] w-[200px] bg-page border border-divider rounded-xl shadow-lg py-2 z-50">
                 <div className="px-3 py-2 border-b border-divider mb-1">
                   <p className="text-[13px] font-bold text-ink truncate">{displayName}</p>
                   <p className="text-[11px] text-muted truncate">@{username}</p>

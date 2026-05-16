@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -186,7 +186,7 @@ export default function FriendsPage() {
   };
 
   const hero = (
-    <div className="bg-surface border-b border-[#EBEBEB]">
+    <div className="bg-surface border-b border-divider">
       <div className="max-w-[1440px] mx-auto px-5 py-12">
         <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.7px' }}>
           People
@@ -203,7 +203,7 @@ export default function FriendsPage() {
 
   if (loading) {
     return (
-      <div className="bg-white min-h-screen">
+      <div className="bg-page min-h-screen">
         {hero}
         <div className="max-w-[720px] mx-auto px-5 py-10 pb-16 text-center">
           <p className="text-sm text-muted">Loading…</p>
@@ -214,7 +214,7 @@ export default function FriendsPage() {
 
   if (!myId) {
     return (
-      <div className="bg-white min-h-screen">
+      <div className="bg-page min-h-screen">
         {hero}
         <div className="max-w-[720px] mx-auto px-5 py-10 pb-16 text-center">
           <Users size={32} className="text-subtle mx-auto mb-4" />
@@ -222,7 +222,7 @@ export default function FriendsPage() {
           <p className="text-[13px] text-muted mb-6">Follow people and discover who shares your taste.</p>
           <Link
             href="/login"
-            className="bg-ink text-white text-[13px] font-bold px-5 py-2.5 rounded-lg hover:opacity-80 transition inline-block"
+            className="bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] text-[13px] font-bold px-5 py-2.5 rounded-lg hover:opacity-80 transition inline-block"
           >
             Sign In
           </Link>
@@ -232,7 +232,7 @@ export default function FriendsPage() {
   }
 
   return (
-    <div className="bg-white min-h-screen">
+    <div className="bg-page min-h-screen">
       {hero}
 
       <div className="max-w-[720px] mx-auto px-5 py-10 pb-16 w-full">
@@ -259,7 +259,7 @@ export default function FriendsPage() {
           </div>
 
           {searchQuery.trim() && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-divider rounded-xl shadow-lg z-20 overflow-hidden">
+            <div className="absolute top-full left-0 right-0 mt-1 bg-page border border-divider rounded-xl shadow-lg z-20 overflow-hidden">
               {searching ? (
                 <p className="text-[13px] text-muted px-4 py-3">Searching…</p>
               ) : searchResults.length === 0 ? (
@@ -287,7 +287,7 @@ export default function FriendsPage() {
                             className={`flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-bold transition disabled:opacity-50 ${
                               isFollowing
                                 ? 'bg-surface text-ink border border-divider hover:border-red-300 hover:text-red-500'
-                                : 'bg-ink text-white hover:opacity-80'
+                                : 'bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] hover:opacity-80'
                             }`}
                           >
                             {isFollowing ? <><UserCheck size={12} /> Following</> : <><UserPlus size={12} /> Follow</>}
@@ -327,7 +327,7 @@ export default function FriendsPage() {
             return (
               <div
                 key={user.id}
-                className="flex items-start gap-4 border border-divider rounded-xl p-4 bg-white hover:border-mid transition"
+                className="flex items-start gap-4 border border-divider rounded-xl p-4 bg-page hover:border-mid transition"
               >
                 <Link href={`/profile/${user.username ?? user.id}`} className="flex-shrink-0 hover:opacity-80 transition">
                   <UserAvatar size={44} />
@@ -348,7 +348,7 @@ export default function FriendsPage() {
                         className={`flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12px] font-bold transition disabled:opacity-50 ${
                           isFollowing
                             ? 'bg-surface text-ink border border-divider hover:border-red-300 hover:text-red-500'
-                            : 'bg-ink text-white hover:opacity-80'
+                            : 'bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] hover:opacity-80'
                         }`}
                       >
                         {isFollowing ? (

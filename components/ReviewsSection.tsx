@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import { Heart, Globe, Users, Lock, Star, ChevronDown, Check } from 'lucide-react';
@@ -89,7 +89,7 @@ function VisibilitySelect({ value, onChange }: { value: Visibility; onChange: (v
         <ChevronDown size={11} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-1 bg-white border border-divider rounded-xl shadow-lg z-20 py-1 min-w-[130px]">
+        <div className="absolute left-0 top-full mt-1 bg-page border border-divider rounded-xl shadow-lg z-20 py-1 min-w-[130px]">
           {VISIBILITY_OPTIONS.map(({ value: v, label, icon: Icon }) => (
             <button
               key={v}
@@ -206,7 +206,7 @@ export default function ReviewsSection({ releaseId }: { releaseId: string }) {
             onChange={e => setBody(e.target.value)}
             placeholder="Leave a comment…"
             rows={3}
-            className="w-full rounded-[10px] border border-[#EBEBEB] bg-surface px-4 py-3 text-[13px] text-ink placeholder:text-[#C0C0BE] outline-none focus:border-ink transition resize-none"
+            className="w-full rounded-[10px] border border-divider bg-surface px-4 py-3 text-[13px] text-ink placeholder:text-placeholder outline-none focus:border-ink transition resize-none"
           />
           {error && <p className="mt-1 text-[12px] text-red-500">{error}</p>}
           <div className="mt-2 flex items-center gap-2">
@@ -231,7 +231,7 @@ export default function ReviewsSection({ releaseId }: { releaseId: string }) {
           {comments.map(c => {
             const VisIcon = VISIBILITY_OPTIONS.find(o => o.value === c.visibility)?.icon ?? Globe;
             return (
-              <div key={c.id} className="border-b border-[#EBEBEB] pb-5 last:border-0">
+              <div key={c.id} className="border-b border-divider pb-5 last:border-0">
                 <div className="flex items-center gap-2 mb-2">
                   <UserAvatar size={28} />
                   {c.username ? (

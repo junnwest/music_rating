@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+﻿import { notFound } from 'next/navigation';
 import { createServerClient } from '../../../../lib/supabaseServer';
 import RankingVoteWidget, { type LeaderboardEntry } from '../../../../components/RankingVoteWidget';
 import Link from 'next/link';
@@ -142,9 +142,9 @@ export default async function RankingCategoryPage({
     });
 
   return (
-    <div className="bg-white min-h-screen">
+    <div className="bg-page min-h-screen">
       {/* Hero */}
-      <div className="bg-surface border-b border-[#EBEBEB]">
+      <div className="bg-surface border-b border-divider">
         <div className="max-w-[1440px] mx-auto px-5 py-12">
           <Link
             href="/rankings"
@@ -155,12 +155,12 @@ export default async function RankingCategoryPage({
 
           <div className="flex gap-3 flex-wrap mb-3">
             {category.genre && (
-              <span className="inline-flex items-center px-[9px] py-[2px] rounded-full bg-white border border-[#EBEBEB] text-[11px] font-medium text-muted">
+              <span className="inline-flex items-center px-[9px] py-[2px] rounded-full bg-page border border-divider text-[11px] font-medium text-muted">
                 {category.genre}
               </span>
             )}
             {category.year && (
-              <span className="inline-flex items-center px-[9px] py-[2px] rounded-full bg-white border border-[#EBEBEB] text-[11px] font-medium text-muted">
+              <span className="inline-flex items-center px-[9px] py-[2px] rounded-full bg-page border border-divider text-[11px] font-medium text-muted">
                 {category.year}
               </span>
             )}
@@ -187,7 +187,7 @@ export default async function RankingCategoryPage({
             </div>
             <Link
               href={`/rankings/${category.slug}/rank`}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12px] font-semibold text-ink border border-[#EBEBEB] hover:bg-surface transition"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12px] font-semibold text-ink border border-divider hover:bg-surface transition"
             >
               Build your ranking →
             </Link>
@@ -211,7 +211,7 @@ export default async function RankingCategoryPage({
               {currentPage > 1 ? (
                 <Link
                   href={`/rankings/${category.slug}?page=${currentPage - 1}`}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg text-[13px] text-muted hover:text-ink border border-[#EBEBEB] hover:bg-surface transition"
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-[13px] text-muted hover:text-ink border border-divider hover:bg-surface transition"
                 >
                   ←
                 </Link>
@@ -228,8 +228,8 @@ export default async function RankingCategoryPage({
                     href={`/rankings/${category.slug}?page=${p}`}
                     className={`w-8 h-8 flex items-center justify-center rounded-lg text-[12px] font-semibold transition ${
                       p === currentPage
-                        ? 'bg-ink text-white'
-                        : 'text-muted hover:text-ink border border-[#EBEBEB] hover:bg-surface'
+                        ? 'bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111]'
+                        : 'text-muted hover:text-ink border border-divider hover:bg-surface'
                     }`}
                   >
                     {p}
@@ -240,7 +240,7 @@ export default async function RankingCategoryPage({
               {currentPage < totalPages ? (
                 <Link
                   href={`/rankings/${category.slug}?page=${currentPage + 1}`}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg text-[13px] text-muted hover:text-ink border border-[#EBEBEB] hover:bg-surface transition"
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-[13px] text-muted hover:text-ink border border-divider hover:bg-surface transition"
                 >
                   →
                 </Link>
@@ -258,11 +258,11 @@ export default async function RankingCategoryPage({
                 min={1}
                 max={totalPages}
                 defaultValue={currentPage}
-                className="w-14 h-8 px-2 text-[12px] text-ink border border-[#EBEBEB] rounded-lg text-center focus:outline-none focus:border-ink transition"
+                className="w-14 h-8 px-2 text-[12px] text-ink border border-divider rounded-lg text-center focus:outline-none focus:border-ink transition"
               />
               <button
                 type="submit"
-                className="h-8 px-3 text-[12px] font-semibold text-ink border border-[#EBEBEB] rounded-lg hover:bg-surface transition"
+                className="h-8 px-3 text-[12px] font-semibold text-ink border border-divider rounded-lg hover:bg-surface transition"
               >
                 Go
               </button>

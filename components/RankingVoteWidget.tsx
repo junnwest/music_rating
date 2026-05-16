@@ -1,4 +1,4 @@
-export interface LeaderboardEntry {
+﻿export interface LeaderboardEntry {
   rank: number;
   releaseId: string;
   title: string;
@@ -28,7 +28,7 @@ export default function RankingVoteWidget({
   return (
     <div>
       {/* Column headers */}
-      <div className="flex items-center gap-4 px-4 pb-2 mb-1 border-b border-[#EBEBEB]">
+      <div className="flex items-center gap-4 px-4 pb-2 mb-1 border-b border-divider">
         <div className="w-[28px] flex-shrink-0" />
         <div className="w-[48px] flex-shrink-0" />
         <div className="flex-1 min-w-0" />
@@ -56,7 +56,7 @@ export default function RankingVoteWidget({
             </div>
 
             {/* Cover */}
-            <div className="w-[48px] h-[48px] rounded-[6px] overflow-hidden flex-shrink-0 border border-[#EBEBEB] bg-surface">
+            <div className="w-[48px] h-[48px] rounded-[6px] overflow-hidden flex-shrink-0 border border-divider bg-surface">
               {entry.coverUrl ? (
                 <img src={entry.coverUrl} alt={entry.title} className="w-full h-full object-cover" />
               ) : (

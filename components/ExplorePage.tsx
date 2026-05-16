@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -99,8 +99,8 @@ export default function ExplorePage() {
   );
 
   return (
-    <div className="bg-white min-h-screen">
-      <div className="bg-surface border-b border-[#EBEBEB]">
+    <div className="bg-page min-h-screen">
+      <div className="bg-surface border-b border-divider">
         <div className="max-w-[1440px] mx-auto px-5 py-12">
           <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.7px' }}>
             Discover
@@ -156,10 +156,10 @@ export default function ExplorePage() {
                         className="absolute inset-0 w-full h-full object-cover"
                       />
                     ) : (
-                      <div className="absolute inset-0 bg-surface border border-[#EBEBEB]" />
+                      <div className="absolute inset-0 bg-surface border border-divider" />
                     )}
                     <div className="absolute inset-0 flex items-end justify-end p-2 opacity-0 group-hover/card:opacity-100 transition-opacity">
-                      <span className="bg-ink text-white rounded-[6px] px-[11px] py-[5px] text-[11px] font-semibold">Rate →</span>
+                      <span className="bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-[6px] px-[11px] py-[5px] text-[11px] font-semibold">Rate →</span>
                     </div>
                   </div>
                   <div className="mt-[9px]">

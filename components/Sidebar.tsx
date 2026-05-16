@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -36,7 +36,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
       )}
 
       <aside
-        className={`fixed xl:sticky top-[72px] left-0 h-[calc(100vh-72px)] bg-white z-40 overflow-hidden transition-all duration-300 ease-out ${
+        className={`fixed xl:sticky top-[72px] left-0 h-[calc(100vh-72px)] bg-page z-40 overflow-hidden transition-all duration-300 ease-out ${
           open
             ? 'translate-x-0 w-[72px] border-r border-divider'
             : '-translate-x-full w-[72px] xl:translate-x-0 xl:w-0 xl:border-0'

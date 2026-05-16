@@ -1,4 +1,4 @@
-import { unstable_noStore as noStore } from 'next/cache';
+﻿import { unstable_noStore as noStore } from 'next/cache';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createServerClient } from '../../../../lib/supabaseServer';
@@ -44,9 +44,9 @@ export default async function ListDetailPage({ params }: { params: { id: string 
   }));
 
   return (
-    <div className="bg-white min-h-screen">
+    <div className="bg-page min-h-screen">
       {/* Header */}
-      <div className="bg-surface border-b border-[#EBEBEB]">
+      <div className="bg-surface border-b border-divider">
         <div className="max-w-[1440px] mx-auto px-5 py-8">
           <Link href="/explore" className="text-[12px] text-muted hover:text-ink transition mb-3 inline-block">
             ← Explore
@@ -86,7 +86,7 @@ export default async function ListDetailPage({ params }: { params: { id: string 
                       className="absolute inset-0 w-full h-full object-cover"
                     />
                   ) : (
-                    <div className="absolute inset-0 bg-surface border border-[#EBEBEB]" />
+                    <div className="absolute inset-0 bg-surface border border-divider" />
                   )}
                 </div>
                 <div className="mt-[9px]">

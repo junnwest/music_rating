@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -19,12 +19,12 @@ type Contradiction = {
 function ContradictionRow({ c }: { c: Contradiction }) {
   const ratedHigher = c.diff > 0;
   return (
-    <div className="flex gap-4 py-5 border-b border-[#EBEBEB] last:border-0">
+    <div className="flex gap-4 py-5 border-b border-divider last:border-0">
       <Link href={`/album/${c.releaseId}`} className="flex-shrink-0">
         {c.coverUrl ? (
           <img src={c.coverUrl} alt={c.title} className="w-[56px] h-[56px] rounded-[6px] object-cover" />
         ) : (
-          <div className="w-[56px] h-[56px] rounded-[6px] bg-surface border border-[#EBEBEB]" />
+          <div className="w-[56px] h-[56px] rounded-[6px] bg-surface border border-divider" />
         )}
       </Link>
 
@@ -42,7 +42,7 @@ function ContradictionRow({ c }: { c: Contradiction }) {
             You ★{c.myScore}
           </span>
           <span className="text-[11px] text-muted">vs</span>
-          <span className="inline-flex items-center text-[11px] font-bold rounded-[4px] px-[7px] py-[2px] bg-surface border border-[#EBEBEB] text-ink">
+          <span className="inline-flex items-center text-[11px] font-bold rounded-[4px] px-[7px] py-[2px] bg-surface border border-divider text-ink">
             Community ★{c.communityAvg}
           </span>
           <span className="text-[11px] text-muted ml-1">({c.communityCount} ratings)</span>
@@ -82,8 +82,8 @@ export default function ContradictionsPanel() {
   const lower = contradictions.filter((c) => c.diff < 0);
 
   return (
-    <div className="bg-white min-h-screen">
-      <div className="bg-surface border-b border-[#EBEBEB]">
+    <div className="bg-page min-h-screen">
+      <div className="bg-surface border-b border-divider">
         <div className="max-w-[1440px] mx-auto px-5 py-12">
           <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.7px' }}>
             Opinions
@@ -106,7 +106,7 @@ export default function ContradictionsPanel() {
             <p className="text-[13px] text-muted mb-6">Rate albums and see where you diverge from the crowd.</p>
             <Link
               href="/login"
-              className="bg-ink text-white text-[13px] font-bold px-5 py-2.5 rounded-lg hover:opacity-80 transition inline-block"
+              className="bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] text-[13px] font-bold px-5 py-2.5 rounded-lg hover:opacity-80 transition inline-block"
             >
               Sign In
             </Link>

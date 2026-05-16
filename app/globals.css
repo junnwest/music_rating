@@ -4,6 +4,37 @@
 
 :root {
   color-scheme: light;
+  --color-ink:         17 17 17;
+  --color-mid:         68 68 68;
+  --color-muted:       136 136 136;
+  --color-surface:     247 247 245;
+  --color-divider:     235 235 235;
+  --color-placeholder: 192 192 190;
+  --color-subtle:      221 221 216;
+  --color-mint-bg:     237 255 249;
+  --color-mint-dark:   0 69 58;
+  --color-page:        255 255 255;
+}
+
+.dark {
+  color-scheme: dark;
+  --color-ink:         240 240 238;
+  --color-mid:         168 168 166;
+  --color-muted:       104 104 102;
+  --color-surface:     36 36 34;
+  --color-divider:     46 46 44;
+  --color-placeholder: 72 72 70;
+  --color-subtle:      60 60 58;
+  --color-mint-bg:     13 40 32;
+  --color-mint-dark:   61 255 209;
+  --color-page:        25 25 23;
+}
+
+@layer base {
+  html {
+    color: rgb(var(--color-ink));
+    background-color: rgb(var(--color-page));
+  }
 }
 
 html,

@@ -1,4 +1,4 @@
-import { createServerClient } from '../../../lib/supabaseServer';
+﻿import { createServerClient } from '../../../lib/supabaseServer';
 import RankingsGrid from '../../../components/RankingsGrid';
 import FilterBuilder from '../../../components/FilterBuilder';
 
@@ -121,9 +121,9 @@ export default async function RankingsPage() {
   }
 
   return (
-    <div className="bg-white min-h-screen">
+    <div className="bg-page min-h-screen">
       {/* Hero */}
-      <div className="bg-surface border-b border-[#EBEBEB]">
+      <div className="bg-surface border-b border-divider">
         <div className="max-w-[1440px] mx-auto px-5 py-12">
           <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.7px' }}>
             Community

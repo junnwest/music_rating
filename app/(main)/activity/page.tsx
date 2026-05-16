@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -56,8 +56,8 @@ export default function ActivityPage() {
     : 'Recent ratings and comments from the community';
 
   return (
-    <div className="bg-white min-h-screen">
-      <div className="bg-surface border-b border-[#EBEBEB]">
+    <div className="bg-page min-h-screen">
+      <div className="bg-surface border-b border-divider">
         <div className="max-w-[1440px] mx-auto px-5 py-12">
           <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.7px' }}>
             Community
@@ -73,7 +73,7 @@ export default function ActivityPage() {
         {loading ? (
           <div className="flex flex-col">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="flex gap-4 py-5 border-b border-[#EBEBEB]">
+              <div key={i} className="flex gap-4 py-5 border-b border-divider">
                 <div className="w-8 h-8 rounded-full bg-surface animate-pulse flex-shrink-0 mt-0.5" />
                 <div className="flex-1 space-y-2 pt-1">
                   <div className="h-3 bg-surface animate-pulse rounded w-3/4" />
@@ -97,7 +97,7 @@ export default function ActivityPage() {
         ) : (
           <div className="flex flex-col">
             {feed.map((item, i) => (
-              <div key={i} className="flex gap-4 py-5 border-b border-[#EBEBEB] last:border-0">
+              <div key={i} className="flex gap-4 py-5 border-b border-divider last:border-0">
                 {/* Avatar */}
                 <Link href={`/profile/${item.username}`} className="flex-shrink-0 mt-0.5 hover:opacity-80 transition">
                   <UserAvatar size={32} />

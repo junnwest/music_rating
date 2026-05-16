@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
@@ -63,7 +63,7 @@ export default function ListenLaterPage() {
 
   return (
     <div className="flex-1">
-      <div className="bg-surface border-b border-[#EBEBEB]">
+      <div className="bg-surface border-b border-divider">
         <div className="max-w-[1440px] mx-auto px-5 py-12">
           <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.7px' }}>
             Library
@@ -108,7 +108,7 @@ export default function ListenLaterPage() {
                   </Link>
                   <button
                     onClick={() => remove(album.id)}
-                    className="absolute top-2 right-2 w-7 h-7 rounded-full bg-white border border-divider flex items-center justify-center text-muted hover:text-red-500 hover:border-red-300 transition opacity-0 group-hover:opacity-100 shadow-sm"
+                    className="absolute top-2 right-2 w-7 h-7 rounded-full bg-page border border-divider flex items-center justify-center text-muted hover:text-red-500 hover:border-red-300 transition opacity-0 group-hover:opacity-100 shadow-sm"
                     title="Remove"
                   >
                     <X size={14} />

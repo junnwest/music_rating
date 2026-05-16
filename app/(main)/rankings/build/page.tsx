@@ -1,4 +1,4 @@
-import Link from 'next/link';
+﻿import Link from 'next/link';
 import { createServerClient } from '../../../../lib/supabaseServer';
 
 export const revalidate = 60;
@@ -44,7 +44,7 @@ export default async function RankingsBuildPage({
   }
 
   return (
-    <div className="bg-white min-h-screen">
+    <div className="bg-page min-h-screen">
       <div className="bg-surface border-b border-divider">
         <div className="max-w-[1100px] mx-auto px-5 py-12 md:py-16">
           <Link href="/rankings" className="text-[13px] text-muted hover:text-ink transition inline-flex items-center gap-1.5 mb-6">
@@ -52,13 +52,13 @@ export default async function RankingsBuildPage({
           </Link>
           <div className="flex flex-wrap gap-2 mb-4">
             {country !== 'Global' && (
-              <span className="inline-flex items-center px-[9px] py-[2px] rounded-full bg-white border border-divider text-[11px] font-medium text-muted">{country}</span>
+              <span className="inline-flex items-center px-[9px] py-[2px] rounded-full bg-page border border-divider text-[11px] font-medium text-muted">{country}</span>
             )}
             {genre !== 'All Genres' && (
-              <span className="inline-flex items-center px-[9px] py-[2px] rounded-full bg-white border border-divider text-[11px] font-medium text-muted">{genre}</span>
+              <span className="inline-flex items-center px-[9px] py-[2px] rounded-full bg-page border border-divider text-[11px] font-medium text-muted">{genre}</span>
             )}
             {time !== 'All Time' && (
-              <span className="inline-flex items-center px-[9px] py-[2px] rounded-full bg-white border border-divider text-[11px] font-medium text-muted">{time}</span>
+              <span className="inline-flex items-center px-[9px] py-[2px] rounded-full bg-page border border-divider text-[11px] font-medium text-muted">{time}</span>
             )}
           </div>
           <h1 className="text-[36px] md:text-[44px] font-extrabold text-ink tracking-tight leading-[1.05]">
@@ -78,7 +78,7 @@ export default async function RankingsBuildPage({
                 <Link
                   key={cat.id}
                   href={`/rankings/${cat.slug}`}
-                  className="block border border-divider rounded-xl p-4 hover:border-mid hover:shadow-sm transition bg-white group"
+                  className="block border border-divider rounded-xl p-4 hover:border-mid hover:shadow-sm transition bg-page group"
                 >
                   <p className="text-[14px] font-bold text-ink group-hover:text-mid transition-colors">{cat.title}</p>
                   {cat.description && (
@@ -97,7 +97,7 @@ export default async function RankingsBuildPage({
             </p>
             <Link
               href="/rankings"
-              className="bg-ink text-white rounded-xl px-6 py-3 text-[13px] font-bold hover:opacity-80 transition inline-block"
+              className="bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-xl px-6 py-3 text-[13px] font-bold hover:opacity-80 transition inline-block"
             >
               Explore All Rankings
             </Link>

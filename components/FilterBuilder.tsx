@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
@@ -100,7 +100,7 @@ export default function FilterBuilder({
         Browse Rankings
       </h2>
 
-      <div className="border border-divider rounded-2xl p-6 md:p-8 bg-white">
+      <div className="border border-divider rounded-2xl p-6 md:p-8 bg-page">
         {/* Dropdowns */}
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-3 mb-6">
           <div>
@@ -137,7 +137,7 @@ export default function FilterBuilder({
 
         {/* Result */}
         {matchedCategory ? (
-          <div className="border border-[#EBEBEB] rounded-[12px] px-4 py-3 flex items-center gap-4">
+          <div className="border border-divider rounded-[12px] px-4 py-3 flex items-center gap-4">
             {/* Top 5 covers */}
             <div className="flex gap-[4px] flex-shrink-0">
               {Array.from({ length: 5 }).map((_, i) => {
@@ -147,7 +147,7 @@ export default function FilterBuilder({
                     key={i}
                     src={album.coverUrl}
                     alt=""
-                    className="w-[36px] h-[36px] rounded-[4px] object-cover border border-[#EBEBEB] flex-shrink-0"
+                    className="w-[36px] h-[36px] rounded-[4px] object-cover border border-divider flex-shrink-0"
                   />
                 ) : (
                   <div

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
@@ -82,9 +82,9 @@ export default function NotificationsPage() {
   const earlier = filtered.filter(n => !today.includes(n) && !thisWeek.includes(n));
 
   return (
-    <div className="bg-white min-h-screen">
+    <div className="bg-page min-h-screen">
       {/* Hero */}
-      <div className="bg-surface border-b border-[#EBEBEB]">
+      <div className="bg-surface border-b border-divider">
         <div className="max-w-[1440px] mx-auto px-5 py-12">
           <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.7px' }}>
             Activity
@@ -108,7 +108,7 @@ export default function NotificationsPage() {
             <p className="text-[13px] text-muted mt-1 max-w-[260px]">
               Activity on your reviews, rankings, and follows will show up here.
             </p>
-            <Link href="/login" className="mt-6 bg-ink text-white text-[13px] font-bold px-5 py-2.5 rounded-lg hover:opacity-80 transition">
+            <Link href="/login" className="mt-6 bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] text-[13px] font-bold px-5 py-2.5 rounded-lg hover:opacity-80 transition">
               Sign In
             </Link>
           </div>
@@ -121,13 +121,13 @@ export default function NotificationsPage() {
               <div className="flex gap-1">
                 <button
                   onClick={() => setFilter('all')}
-                  className={`px-3 py-1.5 rounded-lg text-[12px] font-semibold transition ${filter === 'all' ? 'bg-ink text-white' : 'text-muted hover:bg-surface'}`}
+                  className={`px-3 py-1.5 rounded-lg text-[12px] font-semibold transition ${filter === 'all' ? 'bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111]' : 'text-muted hover:bg-surface'}`}
                 >
                   All
                 </button>
                 <button
                   onClick={() => setFilter('unread')}
-                  className={`px-3 py-1.5 rounded-lg text-[12px] font-semibold transition ${filter === 'unread' ? 'bg-ink text-white' : 'text-muted hover:bg-surface'}`}
+                  className={`px-3 py-1.5 rounded-lg text-[12px] font-semibold transition ${filter === 'unread' ? 'bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111]' : 'text-muted hover:bg-surface'}`}
                 >
                   Unread {unreadCount > 0 && `(${unreadCount})`}
                 </button>
@@ -190,7 +190,7 @@ function NotifGroup({ title, items, onMarkRead }: {
           const Icon = iconMap[n.type] ?? UserPlus;
           const cardClass = `flex items-start gap-3 rounded-xl border p-3.5 transition ${
             n.read
-              ? 'border-divider bg-white hover:border-mid'
+              ? 'border-divider bg-page hover:border-mid'
               : 'border-mint bg-mint-bg/30 hover:bg-mint-bg/50'
           }`;
 

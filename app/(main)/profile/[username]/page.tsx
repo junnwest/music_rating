@@ -1,4 +1,4 @@
-import { createServerClient } from '../../../../lib/supabaseServer';
+﻿import { createServerClient } from '../../../../lib/supabaseServer';
 import ProfilePanel from '../../../../components/ProfilePanel';
 
 interface Props {
@@ -33,7 +33,7 @@ export default async function UserProfilePage({ params }: Props) {
 
   if (!userId) {
     return (
-      <main className="min-h-screen bg-white flex items-center justify-center">
+      <main className="min-h-screen bg-page flex items-center justify-center">
         <div className="text-center">
           <p className="text-xl font-bold text-ink mb-2">User not found</p>
           <p className="text-sm text-muted">No profile exists for &ldquo;{username}&rdquo;.</p>
@@ -43,7 +43,7 @@ export default async function UserProfilePage({ params }: Props) {
   }
 
   return (
-    <main className="min-h-screen bg-white">
+    <main className="min-h-screen bg-page">
       <ProfilePanel targetUserId={userId} />
     </main>
   );

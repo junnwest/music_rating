@@ -77,7 +77,7 @@ curl -X POST https://your-domain.com/api/admin/seed-rankings \
 - [x] Run all migrations (`supabase db push`) — all 13 tables + RLS policies applied
 - [x] Add jurisdiction to Terms of Service (Republic of Korea)
 - [x] Enable Google OAuth in Supabase Auth dashboard
-- [ ] Replace `privacy@sillajuku.com` and `legal@sillajuku.com` in privacy/terms pages with real email
+- [x] Replace `privacy@sillajuku.com` and `legal@sillajuku.com` in privacy/terms pages with real email
 - [ ] Enable Supabase Auth email confirmations if desired (Auth → Email Templates)
 
 ### After first deployment
@@ -112,7 +112,7 @@ curl -X POST https://your-domain.com/api/admin/seed-rankings \
 - [ ] Verify Google OAuth works on production
 - [ ] Test rating, review, and list flows end-to-end on production
 - [ ] Confirm homepage genre rows are populated
-- [ ] Replace `privacy@sillajuku.com` and `legal@sillajuku.com` in privacy/terms pages
+- [x] Replace `privacy@sillajuku.com` and `legal@sillajuku.com` in privacy/terms pages → `admin@sillajuku.com`
 
 ### After launch (once real users are voting)
 
@@ -323,9 +323,9 @@ npm run expand:genre
 ### Week 3 — May 24–30: Auth + legal + analytics
 - [ ] KakaoTalk login
 - [x] Spotify login — Supabase OAuth provider enabled; "Continue with Spotify" button added to auth form
-- [ ] Privacy policy + Terms of Service (finalize — fill in real contact emails)
+- [x] Privacy policy + Terms of Service (finalize — fill in real contact emails)
 - [x] Analytics setup — PostHog (US region, pay-as-you-go free tier); pageview + autocapture wired via `PostHogProvider`; env vars `NEXT_PUBLIC_POSTHOG_KEY` + `NEXT_PUBLIC_POSTHOG_HOST` required in Vercel
-- [ ] Dark mode
+- [x] Dark mode
 - [x] OAuth buttons redesign — Google, Spotify, KakaoTalk, Apple as square icon buttons in a row; KakaoTalk + Apple show "coming soon" modal
 - [x] Connected accounts — Settings → Account; connect/disconnect Google + Spotify; safeguard requires at least one social account; disconnect confirmation modal
 - [x] Settings change email — collapsed behind button, expands on click
@@ -470,6 +470,12 @@ npm run expand:discography
 - Added K-Pop 30-album dataset to seed script; kpop-all-time seed pending (rate limited)
 - Rankings: pagination (10/page + ellipsis + jump-to-page), silla score → cyan mint, leaderboard rows clickable
 - Rankings page thumbnails: fixed to use real Silla Score formula
+
+**Session summary (2026-05-16):**
+- Dark mode: full implementation — CSS variables (RGB channel values) in `globals.css` + `tailwind.config.ts`, next-themes `ThemeProvider` with system default, Light/System/Dark toggle in Settings
+- Dark mode fixes: 38 `bg-white` → `bg-page`, 21 `bg-ink text-white` buttons inverted (`dark:bg-[#F0F0EE] dark:text-[#111111]`), mint badge text hardcoded `#00453A` (not CSS variable) to stay legible on mint background, `@layer base` html fallback for text color
+- Logo: text-only (`public/logo-text.svg`) on navbar with `dark:invert`; flower mark (`public/logo-flower.svg`) on footer; navbar height reduced to 58px
+- Contact emails: `privacy@sillajuku.com` + `legal@sillajuku.com` → `admin@sillajuku.com`
 
 **Session summary (2026-05-14):**
 - Password reset flow: forgot mode in AuthForm, /auth/callback ?next= param, /reset-password page + ResetPasswordForm

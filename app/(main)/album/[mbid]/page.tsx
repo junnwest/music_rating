@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+﻿import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { getSpotifyAlbum } from '../../../../lib/spotify';
 import { getCachedAlbum, cacheAlbum } from '../../../../lib/dbCache';
@@ -136,7 +136,7 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
   }
 
   return (
-    <div className="bg-white min-h-screen">
+    <div className="bg-page min-h-screen">
 
       {/* ── HERO ─────────────────────────────────────────────── */}
       <div className="relative">
@@ -276,7 +276,7 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
               <Link
                 key={cat.slug}
                 href={`/rankings/${cat.slug}`}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#EBEBEB] text-[12px] font-medium text-ink hover:bg-surface hover:border-ink/20 transition"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-divider text-[12px] font-medium text-ink hover:bg-surface hover:border-ink/20 transition"
               >
                 {cat.title}
                 <span className="text-[#00C2A8] font-semibold">#{cat.rank}</span>
@@ -296,7 +296,7 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
             {album.tracks.map((track) => (
               <div
                 key={track.position}
-                className="flex gap-[14px] py-[10px] border-b border-[#EBEBEB] items-center"
+                className="flex gap-[14px] py-[10px] border-b border-divider items-center"
               >
                 <span className="text-[12px] text-[#DDDDD8] w-[22px] text-right flex-shrink-0 tabular-nums">
                   {String(track.position).padStart(2, '0')}

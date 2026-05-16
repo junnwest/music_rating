@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 import { useState } from 'react';
@@ -104,7 +104,7 @@ export default function HelpPage() {
 
           <div className="flex flex-col gap-2">
             {filteredFaqs.map((faq, i) => (
-              <div key={i} className="border border-divider rounded-xl bg-white overflow-hidden">
+              <div key={i} className="border border-divider rounded-xl bg-page overflow-hidden">
                 <button
                   onClick={() => setOpenFaq(openFaq === i ? null : i)}
                   className="w-full flex items-center justify-between px-4 py-3.5 text-left hover:bg-surface/50 transition"
@@ -157,7 +157,7 @@ export default function HelpPage() {
               </button>
             </div>
           ) : (
-            <div className="border border-divider rounded-2xl p-6 bg-white">
+            <div className="border border-divider rounded-2xl p-6 bg-page">
               <div className="mb-4">
                 <label className="block text-[13px] font-semibold text-ink mb-2">What do you need?</label>
                 <div className="flex flex-wrap gap-2">
@@ -208,7 +208,7 @@ export default function HelpPage() {
                 disabled={!message.trim() || !category}
                 className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-[13px] font-bold transition ${
                   message.trim() && category
-                    ? 'bg-ink text-white hover:opacity-80'
+                    ? 'bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] hover:opacity-80'
                     : 'bg-surface text-subtle border border-divider cursor-not-allowed'
                 }`}
               >

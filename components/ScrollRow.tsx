@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useRef } from 'react';
 import Link from 'next/link';
@@ -38,7 +38,7 @@ export default function ScrollRow({ albums }: { albums: AlbumRelease[] }) {
       {/* Left arrow */}
       <button
         onClick={() => scroll('left')}
-        className="absolute left-0 top-[90px] z-10 -translate-x-1/2 -translate-y-1/2 hidden md:flex h-8 w-8 items-center justify-center rounded-full bg-white border border-[#EBEBEB] shadow-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface"
+        className="absolute left-0 top-[90px] z-10 -translate-x-1/2 -translate-y-1/2 hidden md:flex h-8 w-8 items-center justify-center rounded-full bg-page border border-divider shadow-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface"
         aria-label="Scroll left"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#444444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -62,10 +62,10 @@ export default function ScrollRow({ albums }: { albums: AlbumRelease[] }) {
                     className="absolute inset-0 w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="absolute inset-0 bg-surface border border-[#EBEBEB]" />
+                  <div className="absolute inset-0 bg-surface border border-divider" />
                 )}
                 <div className="absolute inset-0 flex items-end justify-end p-2 opacity-0 group-hover/card:opacity-100 transition-opacity">
-                  <span className="bg-ink text-white rounded-[6px] px-[11px] py-[5px] text-[11px] font-semibold">
+                  <span className="bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-[6px] px-[11px] py-[5px] text-[11px] font-semibold">
                     Rate →
                   </span>
                 </div>
@@ -86,7 +86,7 @@ export default function ScrollRow({ albums }: { albums: AlbumRelease[] }) {
       {/* Right arrow */}
       <button
         onClick={() => scroll('right')}
-        className="absolute right-0 top-[90px] z-10 translate-x-1/2 -translate-y-1/2 hidden md:flex h-8 w-8 items-center justify-center rounded-full bg-white border border-[#EBEBEB] shadow-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface"
+        className="absolute right-0 top-[90px] z-10 translate-x-1/2 -translate-y-1/2 hidden md:flex h-8 w-8 items-center justify-center rounded-full bg-page border border-divider shadow-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface"
         aria-label="Scroll right"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#444444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -42,7 +42,7 @@ interface Props {
 
 function TypePill({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center px-[9px] py-[2px] rounded-full bg-surface border border-[#EBEBEB] text-[11px] font-medium text-muted">
+    <span className="inline-flex items-center px-[9px] py-[2px] rounded-full bg-surface border border-divider text-[11px] font-medium text-muted">
       {children}
     </span>
   );
@@ -478,8 +478,8 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
 
   if (loading) {
     return (
-      <div className="bg-white">
-        <div className="bg-white border-b border-[#EBEBEB]">
+      <div className="bg-page">
+        <div className="bg-page border-b border-divider">
           <div className="max-w-[1440px] mx-auto px-5 pt-9 pb-8 flex gap-6 items-start">
             <div className="w-[82px] h-[82px] rounded-full bg-surface animate-pulse flex-shrink-0" />
             <div className="flex-1 space-y-3 pt-2">
@@ -561,12 +561,12 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
   const topGenres = getTopGenres(ratings ?? []);
 
   return (
-    <div className="bg-white">
+    <div className="bg-page">
       {/* ── HEADER ─────────────────────────────────────────── */}
-      <div className="bg-white">
+      <div className="bg-page">
         <div className="max-w-[1440px] mx-auto px-5 pt-9 pb-4">
           <div
-            className="bg-white border border-[#E8E8E8] rounded-2xl overflow-hidden"
+            className="bg-page border border-divider rounded-2xl overflow-hidden"
             style={{ display: 'grid', gridTemplateColumns: '1fr 1px auto 1px auto' }}
           >
             {/* LEFT: identity */}
@@ -629,8 +629,8 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                   disabled={followLoading}
                   className={`rounded-[9px] px-[18px] py-[9px] text-[13px] font-semibold transition ${
                     isFollowing
-                      ? 'border border-[#EBEBEB] text-ink hover:bg-surface'
-                      : 'bg-ink text-white hover:opacity-80'
+                      ? 'border border-divider text-ink hover:bg-surface'
+                      : 'bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] hover:opacity-80'
                   } disabled:opacity-50`}
                 >
                   {followLoading ? '…' : isFollowing ? 'Following' : 'Follow'}
@@ -648,13 +648,13 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
           {/* LEFT: stats sidebar */}
           <div className="w-full md:w-[220px] flex-shrink-0 flex flex-row md:flex-col gap-4 overflow-x-auto md:overflow-visible pb-2 md:pb-0">
 
-            <div className="bg-white rounded-xl border border-[#EBEBEB] p-4 min-w-[140px] md:min-w-0">
+            <div className="bg-page rounded-xl border border-divider p-4 min-w-[140px] md:min-w-0">
               <p className="text-[11px] font-semibold text-muted uppercase mb-2" style={{ letterSpacing: '0.6px' }}>Avg Score</p>
               <p className="text-[32px] font-extrabold text-ink tracking-tight">{averageRating > 0 ? averageRating.toFixed(1) : '—'}</p>
               <p className="text-[12px] text-muted">out of 5</p>
             </div>
 
-            <div className="bg-white rounded-xl border border-[#EBEBEB] p-4 min-w-[180px] md:min-w-0">
+            <div className="bg-page rounded-xl border border-divider p-4 min-w-[180px] md:min-w-0">
               <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.6px' }}>Analytics</p>
               {tasteDNA.length > 0 && (
                 <div className="flex gap-2 mb-3 flex-wrap">
@@ -662,7 +662,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                     <span
                       key={tag}
                       className="inline-flex items-center px-[10px] py-[3px] rounded-full text-[11px] font-semibold"
-                      style={{ background: '#EDFFF9', border: '1.5px solid #3DFFD1', color: '#00453A' }}
+                      style={{ background: 'rgb(var(--color-mint-bg))', border: '1.5px solid #3DFFD1', color: 'rgb(var(--color-mint-dark))' }}
                     >
                       {tag}
                     </span>
@@ -672,7 +672,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
               <ScoreBar bars={bars} />
             </div>
 
-            <div className="bg-white rounded-xl border border-[#EBEBEB] p-4 min-w-[160px] md:min-w-0">
+            <div className="bg-page rounded-xl border border-divider p-4 min-w-[160px] md:min-w-0">
               <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.6px' }}>Top Genres</p>
               {topGenres.length > 0 ? (
                 <div className="flex flex-col gap-2">
@@ -694,7 +694,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
             </div>
 
             {capsule && (
-              <div className="bg-white rounded-xl border border-[#EBEBEB] p-4 min-w-[180px] md:min-w-0">
+              <div className="bg-page rounded-xl border border-divider p-4 min-w-[180px] md:min-w-0">
                 <p className="text-[11px] font-semibold text-muted uppercase mb-2" style={{ letterSpacing: '0.6px' }}>Monthly Capsule</p>
                 <p className="text-[14px] font-extrabold text-ink mb-3" style={{ letterSpacing: '-0.3px' }}>{capsule.monthLabel}</p>
                 <div className="flex flex-col gap-2">
@@ -712,7 +712,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                     <div className="flex justify-between items-start gap-2">
                       <span className="text-[12px] text-muted flex-shrink-0">Highest</span>
                       <span className="text-[12px] font-semibold text-ink text-right truncate">
-                        {capsule.highest.title}<span style={{ color: '#00453A' }}> — {capsule.highest.score}</span>
+                        {capsule.highest.title}<span style={{ color: 'rgb(var(--color-mint-dark))' }}> — {capsule.highest.score}</span>
                       </span>
                     </div>
                   )}
@@ -727,7 +727,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
             <Essentials userId={effectiveUserId} canEdit={isOwnProfile} />
 
             {/* Tabs + Sort */}
-            <div className="flex items-end justify-between mb-6 border-b border-[#EBEBEB]">
+            <div className="flex items-end justify-between mb-6 border-b border-divider">
               <div className="flex gap-1 overflow-x-auto scrollbar-hide">
                 {TABS.map(tab => (
                   <button
@@ -750,7 +750,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                     {SORT_LABELS[sortOrder]} ↓
                   </button>
                   {showSortMenu && (
-                    <div className="absolute right-0 top-full mt-1 bg-white border border-[#EBEBEB] rounded-[10px] shadow-lg z-20 py-1 min-w-[150px]">
+                    <div className="absolute right-0 top-full mt-1 bg-page border border-divider rounded-[10px] shadow-lg z-20 py-1 min-w-[150px]">
                       {(Object.entries(SORT_LABELS) as [typeof sortOrder, string][]).map(([key, label]) => (
                         <button
                           key={key}
@@ -787,7 +787,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                       <Link
                         key={list.id}
                         href={`/explore/${list.id}`}
-                        className="border border-[#EBEBEB] rounded-[10px] p-4 hover:bg-surface transition block"
+                        className="border border-divider rounded-[10px] p-4 hover:bg-surface transition block"
                       >
                         <div className="text-[14px] font-bold text-ink truncate">{list.title}</div>
                         {list.description && (
@@ -822,7 +822,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                               className="absolute inset-0 w-full h-full object-cover"
                             />
                           ) : (
-                            <div className="absolute inset-0 bg-surface border border-[#EBEBEB]" />
+                            <div className="absolute inset-0 bg-surface border border-divider" />
                           )}
                           {rating.score && (
                             <div
@@ -865,12 +865,12 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
               </p>
               <div className="flex flex-col max-w-[680px]">
                 {collisions.map((c, i) => (
-                  <div key={`${c.releaseId}-${i}`} className="flex gap-4 py-4 border-b border-[#EBEBEB] last:border-0">
+                  <div key={`${c.releaseId}-${i}`} className="flex gap-4 py-4 border-b border-divider last:border-0">
                     <Link href={`/album/${c.releaseId}`} className="flex-shrink-0">
                       {c.coverUrl ? (
                         <img src={c.coverUrl} alt={c.title} className="w-[48px] h-[48px] rounded-[6px] object-cover" />
                       ) : (
-                        <div className="w-[48px] h-[48px] rounded-[6px] bg-surface border border-[#EBEBEB]" />
+                        <div className="w-[48px] h-[48px] rounded-[6px] bg-surface border border-divider" />
                       )}
                     </Link>
                     <div className="flex-1 min-w-0">
@@ -883,7 +883,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                           You ★{c.myScore}
                         </span>
                         <span className="text-[11px] text-muted">vs</span>
-                        <span className="inline-flex items-center text-[11px] font-bold rounded-[4px] px-[7px] py-[2px] bg-surface border border-[#EBEBEB] text-ink">
+                        <span className="inline-flex items-center text-[11px] font-bold rounded-[4px] px-[7px] py-[2px] bg-surface border border-divider text-ink">
                           {c.friendUsername} ★{c.friendScore}
                         </span>
                         <span className="ml-auto text-[11px] font-semibold" style={{ color: c.diff >= 3 ? '#E53E3E' : c.diff >= 2 ? '#DD6B20' : '#718096' }}>
@@ -915,12 +915,12 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                       <p className="text-[13px] font-bold text-ink mb-4">You rated higher</p>
                       <div className="flex flex-col">
                         {higher.map((c, i) => (
-                          <div key={`${c.releaseId}-h-${i}`} className="flex gap-4 py-4 border-b border-[#EBEBEB] last:border-0">
+                          <div key={`${c.releaseId}-h-${i}`} className="flex gap-4 py-4 border-b border-divider last:border-0">
                             <Link href={`/album/${c.releaseId}`} className="flex-shrink-0">
                               {c.coverUrl ? (
                                 <img src={c.coverUrl} alt={c.title} className="w-[48px] h-[48px] rounded-[6px] object-cover" />
                               ) : (
-                                <div className="w-[48px] h-[48px] rounded-[6px] bg-surface border border-[#EBEBEB]" />
+                                <div className="w-[48px] h-[48px] rounded-[6px] bg-surface border border-divider" />
                               )}
                             </Link>
                             <div className="flex-1 min-w-0">
@@ -933,7 +933,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                                   You ★{c.myScore}
                                 </span>
                                 <span className="text-[11px] text-muted">vs</span>
-                                <span className="inline-flex items-center text-[11px] font-bold rounded-[4px] px-[7px] py-[2px] bg-surface border border-[#EBEBEB] text-ink">
+                                <span className="inline-flex items-center text-[11px] font-bold rounded-[4px] px-[7px] py-[2px] bg-surface border border-divider text-ink">
                                   Community ★{c.communityAvg}
                                 </span>
                                 <span className="text-[11px] text-muted">({c.communityCount})</span>
@@ -952,12 +952,12 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                       <p className="text-[13px] font-bold text-ink mb-4">You rated lower</p>
                       <div className="flex flex-col">
                         {lower.map((c, i) => (
-                          <div key={`${c.releaseId}-l-${i}`} className="flex gap-4 py-4 border-b border-[#EBEBEB] last:border-0">
+                          <div key={`${c.releaseId}-l-${i}`} className="flex gap-4 py-4 border-b border-divider last:border-0">
                             <Link href={`/album/${c.releaseId}`} className="flex-shrink-0">
                               {c.coverUrl ? (
                                 <img src={c.coverUrl} alt={c.title} className="w-[48px] h-[48px] rounded-[6px] object-cover" />
                               ) : (
-                                <div className="w-[48px] h-[48px] rounded-[6px] bg-surface border border-[#EBEBEB]" />
+                                <div className="w-[48px] h-[48px] rounded-[6px] bg-surface border border-divider" />
                               )}
                             </Link>
                             <div className="flex-1 min-w-0">
@@ -970,7 +970,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                                   You ★{c.myScore}
                                 </span>
                                 <span className="text-[11px] text-muted">vs</span>
-                                <span className="inline-flex items-center text-[11px] font-bold rounded-[4px] px-[7px] py-[2px] bg-surface border border-[#EBEBEB] text-ink">
+                                <span className="inline-flex items-center text-[11px] font-bold rounded-[4px] px-[7px] py-[2px] bg-surface border border-divider text-ink">
                                   Community ★{c.communityAvg}
                                 </span>
                                 <span className="text-[11px] text-muted">({c.communityCount})</span>
@@ -997,9 +997,9 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
           onClick={e => { if (e.target === e.currentTarget) setFollowModal(null); }}
         >
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[400px] mx-4 overflow-hidden">
+          <div className="bg-page rounded-2xl shadow-2xl w-full max-w-[400px] mx-4 overflow-hidden">
             {/* Header */}
-            <div className="relative flex items-center justify-center px-5 py-4 border-b border-[#EBEBEB]">
+            <div className="relative flex items-center justify-center px-5 py-4 border-b border-divider">
               <p className="text-[14px] font-bold text-ink capitalize">{followModal}</p>
               <button
                 onClick={() => setFollowModal(null)}
@@ -1010,7 +1010,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
             </div>
 
             {/* Search */}
-            <div className="px-4 py-3 border-b border-[#EBEBEB]">
+            <div className="px-4 py-3 border-b border-divider">
               <input
                 value={followModalSearch}
                 onChange={e => setFollowModalSearch(e.target.value)}

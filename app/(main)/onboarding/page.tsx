@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -126,7 +126,7 @@ function StepIdentity({
             onChange={(e) => setDisplayName(e.target.value)}
             placeholder="Your name"
             maxLength={40}
-            className="w-full bg-surface border border-[#EBEBEB] rounded-lg px-4 py-[10px] text-[14px] text-ink placeholder:text-muted outline-none focus:border-ink transition"
+            className="w-full bg-surface border border-divider rounded-lg px-4 py-[10px] text-[14px] text-ink placeholder:text-muted outline-none focus:border-ink transition"
           />
         </div>
 
@@ -141,7 +141,7 @@ function StepIdentity({
               onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
               placeholder="your_handle"
               maxLength={20}
-              className="w-full bg-surface border border-[#EBEBEB] rounded-lg pl-8 pr-4 py-[10px] text-[14px] text-ink placeholder:text-muted outline-none focus:border-ink transition"
+              className="w-full bg-surface border border-divider rounded-lg pl-8 pr-4 py-[10px] text-[14px] text-ink placeholder:text-muted outline-none focus:border-ink transition"
             />
           </div>
           <p className="text-[11px] mt-1.5" style={{ color: usernameColor[usernameStatus] }}>
@@ -159,7 +159,7 @@ function StepIdentity({
             onChange={(e) => setBio(e.target.value.slice(0, 160))}
             placeholder="A sentence about your taste…"
             rows={2}
-            className="w-full bg-surface border border-[#EBEBEB] rounded-lg px-4 py-[10px] text-[14px] text-ink placeholder:text-muted outline-none focus:border-ink transition resize-none"
+            className="w-full bg-surface border border-divider rounded-lg px-4 py-[10px] text-[14px] text-ink placeholder:text-muted outline-none focus:border-ink transition resize-none"
           />
           <p className="text-[11px] text-muted mt-1 text-right">{bio.length}/160</p>
         </div>
@@ -168,7 +168,7 @@ function StepIdentity({
       <button
         onClick={() => onNext({ displayName: displayName.trim(), username: username.toLowerCase().trim(), bio: bio.trim() })}
         disabled={!canProceed}
-        className="mt-8 w-full bg-ink text-white rounded-lg py-[13px] text-[14px] font-bold transition hover:opacity-80 disabled:opacity-35 disabled:cursor-not-allowed"
+        className="mt-8 w-full bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-lg py-[13px] text-[14px] font-bold transition hover:opacity-80 disabled:opacity-35 disabled:cursor-not-allowed"
       >
         Next →
       </button>
@@ -236,14 +236,14 @@ function StepGenres({
       <div className="flex gap-3">
         <button
           onClick={onBack}
-          className="flex-1 border border-[#EBEBEB] text-ink rounded-lg py-[13px] text-[14px] font-semibold hover:bg-surface transition"
+          className="flex-1 border border-divider text-ink rounded-lg py-[13px] text-[14px] font-semibold hover:bg-surface transition"
         >
           ← Back
         </button>
         <button
           onClick={() => onNext([...selected])}
           disabled={selected.size < 3}
-          className="flex-[2] bg-ink text-white rounded-lg py-[13px] text-[14px] font-bold transition hover:opacity-80 disabled:opacity-35 disabled:cursor-not-allowed"
+          className="flex-[2] bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-lg py-[13px] text-[14px] font-bold transition hover:opacity-80 disabled:opacity-35 disabled:cursor-not-allowed"
         >
           Next →
         </button>
@@ -418,7 +418,7 @@ function StepAlbums({
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search for an album…"
-        className="w-full bg-surface border border-[#EBEBEB] rounded-lg px-4 py-[9px] text-[14px] text-ink placeholder:text-muted outline-none focus:border-ink transition mb-4"
+        className="w-full bg-surface border border-divider rounded-lg px-4 py-[9px] text-[14px] text-ink placeholder:text-muted outline-none focus:border-ink transition mb-4"
       />
 
       {/* Fixed grid — no internal scroll */}
@@ -500,17 +500,17 @@ export default function OnboardingPage() {
 
   if (!ready) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
+      <div className="min-h-screen bg-page flex items-center justify-center">
         <p className="text-sm text-muted">Loading…</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4 py-8 gap-4">
+    <div className="min-h-screen bg-page flex flex-col items-center justify-center px-4 py-8 gap-4">
       {/* Card */}
       <div
-        className="bg-white rounded-[20px] border border-[#EBEBEB] shadow-xl w-full flex flex-col p-5 sm:p-10"
+        className="bg-page rounded-[20px] border border-divider shadow-xl w-full flex flex-col p-5 sm:p-10"
         style={{ maxWidth: 860 }}
       >
         {/* Top label */}
@@ -545,14 +545,14 @@ export default function OnboardingPage() {
           <button
             onClick={() => setStep(1)}
             disabled={saving}
-            className="flex-1 bg-white border border-[#EBEBEB] text-ink rounded-lg py-[13px] text-[14px] font-semibold hover:bg-surface transition disabled:opacity-40"
+            className="flex-1 bg-page border border-divider text-ink rounded-lg py-[13px] text-[14px] font-semibold hover:bg-surface transition disabled:opacity-40"
           >
             ← Back
           </button>
           <button
             onClick={() => handleFinish(albumsSelected)}
             disabled={saving}
-            className="flex-[2] bg-ink text-white rounded-lg py-[13px] text-[14px] font-bold transition hover:opacity-80 disabled:opacity-50"
+            className="flex-[2] bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-lg py-[13px] text-[14px] font-bold transition hover:opacity-80 disabled:opacity-50"
           >
             {saving ? 'Saving…' : albumsSelected.length === 0 ? 'Skip & finish →' : 'Finish →'}
           </button>

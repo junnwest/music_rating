@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -288,7 +288,7 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
         <button
           onClick={() => setDropdownOpen(o => !o)}
           className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-[13px] font-bold border transition ${
-            hasAny ? 'bg-mint text-mint-dark border-mint' : 'bg-white border-divider text-ink hover:bg-surface'
+            hasAny ? 'bg-mint text-mint-dark border-mint' : 'bg-page border-divider text-ink hover:bg-surface'
           }`}
         >
           {hasAny ? <Check size={14} /> : <Plus size={14} />}
@@ -297,7 +297,7 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
         </button>
 
         {dropdownOpen && (
-          <div className="absolute top-full right-0 mt-1.5 bg-white border border-divider rounded-xl shadow-lg z-30 min-w-[200px] py-1">
+          <div className="absolute top-full right-0 mt-1.5 bg-page border border-divider rounded-xl shadow-lg z-30 min-w-[200px] py-1">
             <button
               onClick={toggleListenLater}
               className="flex items-center gap-3 px-4 py-2.5 text-[13px] text-ink hover:bg-surface w-full text-left transition"
@@ -344,7 +344,7 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
           onClick={() => setShowPinSwapModal(false)}
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-[420px] mx-4 overflow-hidden"
+            className="bg-page rounded-2xl shadow-2xl w-full max-w-[420px] mx-4 overflow-hidden"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-start justify-between px-5 pt-5 pb-1">
@@ -383,7 +383,7 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
                           onClick={() => requestPin(album.id)}
                           disabled={pinnedLoading}
                           style={{ width: size, height: size }}
-                          className="group/pin flex-shrink-0 relative rounded-[8px] overflow-hidden bg-surface border-2 border-[#EBEBEB] disabled:opacity-50 focus:outline-none"
+                          className="group/pin flex-shrink-0 relative rounded-[8px] overflow-hidden bg-surface border-2 border-divider disabled:opacity-50 focus:outline-none"
                         >
                           {album.coverUrl
                             ? <img src={album.coverUrl} alt={album.title} className="w-full h-full object-cover" draggable={false} />
@@ -413,7 +413,7 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
           onClick={() => setShowPinConfirm(false)}
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-[380px] mx-4 overflow-hidden"
+            className="bg-page rounded-2xl shadow-2xl w-full max-w-[380px] mx-4 overflow-hidden"
             onClick={e => e.stopPropagation()}
           >
             <div className="p-6">
@@ -451,7 +451,7 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
                 <button
                   onClick={() => commitPin(pendingSwapRemoveId)}
                   disabled={pinnedLoading}
-                  className="flex-1 bg-ink text-white rounded-xl py-2.5 text-[13px] font-semibold hover:opacity-80 transition disabled:opacity-50"
+                  className="flex-1 bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-xl py-2.5 text-[13px] font-semibold hover:opacity-80 transition disabled:opacity-50"
                 >
                   {pinnedLoading ? 'Saving…' : 'Confirm & set ★ 5'}
                 </button>
@@ -468,7 +468,7 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
           onClick={() => setShowRankModal(false)}
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-[500px] mx-4 overflow-hidden max-h-[90vh] flex flex-col"
+            className="bg-page rounded-2xl shadow-2xl w-full max-w-[500px] mx-4 overflow-hidden max-h-[90vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}

@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+﻿import { notFound } from 'next/navigation';
 import { getSpotifyArtist, getSpotifyArtistAlbums } from '../../../../lib/spotify';
 import { getCachedArtist, cacheArtist, getArtistReleases } from '../../../../lib/dbCache';
 import DiscographyGrid from '../../../../components/DiscographyGrid';
@@ -37,14 +37,14 @@ export default async function ArtistPage({ params }: { params: { id: string } })
     .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
 
   return (
-    <div className="bg-white min-h-screen">
+    <div className="bg-page min-h-screen">
 
       {/* ── HEADER ────────────────────────────────────────────── */}
       <div className="max-w-[1440px] mx-auto px-5 py-7 sm:py-9 flex gap-5 sm:gap-9 items-center">
 
         {/* Avatar */}
         <div
-          className="w-[72px] h-[72px] sm:w-[96px] sm:h-[96px] rounded-full flex-shrink-0 overflow-hidden border border-[#EBEBEB] flex items-center justify-center font-bold text-mint-dark text-[28px] sm:text-[36px]"
+          className="w-[72px] h-[72px] sm:w-[96px] sm:h-[96px] rounded-full flex-shrink-0 overflow-hidden border border-divider flex items-center justify-center font-bold text-mint-dark text-[28px] sm:text-[36px]"
           style={{ background: '#EDFFF9' }}
         >
           {artist.coverUrl ? (
@@ -85,7 +85,7 @@ export default async function ArtistPage({ params }: { params: { id: string } })
       </div>
 
       {/* Inset divider */}
-      <hr className="border-t border-[#EBEBEB] mx-5" />
+      <hr className="border-t border-divider mx-5" />
 
       {/* ── DISCOGRAPHY ───────────────────────────────────────── */}
       <div className="max-w-[1440px] mx-auto px-5 py-9 pb-14">

@@ -1,8 +1,8 @@
-import ProfilePanel from '../../../components/ProfilePanel';
+﻿import ProfilePanel from '../../../components/ProfilePanel';
 
 export default function ProfilePage() {
   return (
-    <main className="min-h-screen bg-white">
+    <main className="min-h-screen bg-page">
       <ProfilePanel />
     </main>
   );

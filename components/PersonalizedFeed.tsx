@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -202,7 +202,7 @@ export default function PersonalizedFeed() {
             {/* Left arrow */}
             <button
               onClick={() => scrollRecent('left')}
-              className="absolute left-0 top-[90px] z-10 -translate-x-1/2 -translate-y-1/2 hidden md:flex h-8 w-8 items-center justify-center rounded-full bg-white border border-[#EBEBEB] shadow-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface"
+              className="absolute left-0 top-[90px] z-10 -translate-x-1/2 -translate-y-1/2 hidden md:flex h-8 w-8 items-center justify-center rounded-full bg-page border border-divider shadow-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface"
               aria-label="Scroll left"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#444444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -221,7 +221,7 @@ export default function PersonalizedFeed() {
                         {rel.cover_url ? (
                           <img src={rel.cover_url} alt={rel.title} className="absolute inset-0 w-full h-full object-cover" />
                         ) : (
-                          <div className="absolute inset-0 bg-surface border border-[#EBEBEB]" />
+                          <div className="absolute inset-0 bg-surface border border-divider" />
                         )}
                         {r.score && (
                           <div
@@ -245,7 +245,7 @@ export default function PersonalizedFeed() {
             {/* Right arrow */}
             <button
               onClick={() => scrollRecent('right')}
-              className="absolute right-0 top-[90px] z-10 translate-x-1/2 -translate-y-1/2 hidden md:flex h-8 w-8 items-center justify-center rounded-full bg-white border border-[#EBEBEB] shadow-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface"
+              className="absolute right-0 top-[90px] z-10 translate-x-1/2 -translate-y-1/2 hidden md:flex h-8 w-8 items-center justify-center rounded-full bg-page border border-divider shadow-md opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface"
               aria-label="Scroll right"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#444444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

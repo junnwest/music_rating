@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -147,14 +147,14 @@ export default function StarRatingWidget({
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
           onClick={() => setShowLoginPopup(false)}
         >
-          <div className="rounded-2xl bg-white p-8 shadow-xl w-80" onClick={(e) => e.stopPropagation()}>
+          <div className="rounded-2xl bg-page p-8 shadow-xl w-80" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-bold text-ink">Sign in to rate</h2>
             <p className="mt-2 text-sm text-muted">Create an account or sign in to save your ratings.</p>
             <div className="mt-6 flex flex-col gap-3">
               <a href="/login" className="w-full rounded-lg bg-ink px-4 py-2.5 text-center text-sm font-semibold text-white hover:opacity-80 transition">
                 Sign in
               </a>
-              <button onClick={() => setShowLoginPopup(false)} className="w-full rounded-lg border border-[#EBEBEB] px-4 py-2.5 text-sm font-semibold text-mid hover:bg-surface transition">
+              <button onClick={() => setShowLoginPopup(false)} className="w-full rounded-lg border border-divider px-4 py-2.5 text-sm font-semibold text-mid hover:bg-surface transition">
                 Cancel
               </button>
             </div>

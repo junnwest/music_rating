@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -12,7 +12,7 @@ const FILTERS: FilterType[] = ['All', 'Albums', 'EPs', 'Singles', 'Live'];
 
 function TypePill({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center px-[9px] py-[2px] rounded-full bg-surface border border-[#EBEBEB] text-[11px] font-medium text-muted">
+    <span className="inline-flex items-center px-[9px] py-[2px] rounded-full bg-surface border border-divider text-[11px] font-medium text-muted">
       {children}
     </span>
   );
@@ -25,7 +25,7 @@ function Chip({ children, active, onClick }: { children: React.ReactNode; active
       className={`inline-flex items-center px-[14px] py-[6px] rounded-full text-[12px] font-semibold border transition ${
         active
           ? 'bg-ink border-ink text-white'
-          : 'bg-surface border-[#EBEBEB] text-muted hover:text-mid'
+          : 'bg-surface border-divider text-muted hover:text-mid'
       }`}
     >
       {children}
@@ -92,7 +92,7 @@ export default function AlbumSearchForm() {
     <div>
       {/* Filter bar — only shown when there are results */}
       {searched && (
-      <div className="bg-surface border-b border-[#EBEBEB] px-0 py-4">
+      <div className="bg-surface border-b border-divider px-0 py-4">
         <div className="max-w-[1440px] mx-auto px-5">
           {/* Artist match card */}
           {artistMatch && (
@@ -184,7 +184,7 @@ export default function AlbumSearchForm() {
                       className="absolute inset-0 w-full h-full object-cover"
                     />
                   ) : (
-                    <div className="absolute inset-0 bg-surface border border-[#EBEBEB]" />
+                    <div className="absolute inset-0 bg-surface border border-divider" />
                   )}
                 </div>
                 <div className="mt-[9px]">

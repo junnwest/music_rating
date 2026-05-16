@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -197,7 +197,7 @@ export default function Essentials({ userId, canEdit = true }: { userId: string;
   const displayList = search.trim() ? searchResults : ratedList.filter(r => !pinnedIds.has(r.release_id));
 
   return (
-    <div className="mb-4 bg-white border border-[#E8E8E8] rounded-2xl overflow-hidden">
+    <div className="mb-4 bg-page border border-divider rounded-2xl overflow-hidden">
       <div className="flex items-center justify-between px-6 pt-5 pb-4">
         <p className="text-[11px] font-semibold text-muted uppercase" style={{ letterSpacing: '0.6px' }}>Essentials</p>
         {canEdit && (
@@ -236,10 +236,10 @@ export default function Essentials({ userId, canEdit = true }: { userId: string;
             >
               <div
                 className={`w-full aspect-square pin-shine rounded-[8px] overflow-hidden relative bg-surface border-2 transition ${
-                  isDragging ? 'opacity-40 border-[#EBEBEB]'
+                  isDragging ? 'opacity-40 border-divider'
                   : isOver ? 'border-ink scale-[1.04]'
-                  : editing ? 'border-[#EBEBEB] cursor-grab active:cursor-grabbing'
-                  : 'border-[#EBEBEB]'
+                  : editing ? 'border-divider cursor-grab active:cursor-grabbing'
+                  : 'border-divider'
                 }`}
               >
                 {album.releases?.cover_url ? (
@@ -262,7 +262,7 @@ export default function Essentials({ userId, canEdit = true }: { userId: string;
               {canEdit && editing && (
                 <button
                   onClick={e => { e.stopPropagation(); handleUnpin(album.release_id); }}
-                  className="absolute -top-1.5 -right-1.5 w-[18px] h-[18px] rounded-full bg-ink text-white text-[11px] font-bold flex items-center justify-center hover:bg-red-500 transition z-10 leading-none"
+                  className="absolute -top-1.5 -right-1.5 w-[18px] h-[18px] rounded-full bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] text-[11px] font-bold flex items-center justify-center hover:bg-red-500 transition z-10 leading-none"
                 >
                   ×
                 </button>
@@ -292,12 +292,12 @@ export default function Essentials({ userId, canEdit = true }: { userId: string;
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
           onClick={e => { if (e.target === e.currentTarget) { setShowPicker(false); setPendingPin(null); } }}
         >
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[460px] mx-4 overflow-hidden">
+          <div className="bg-page rounded-2xl shadow-2xl w-full max-w-[460px] mx-4 overflow-hidden">
 
             {pendingPin ? (
               <div className="p-6">
                 <div className="flex items-start gap-4 mb-6">
-                  <div className="w-[64px] h-[64px] rounded-[8px] overflow-hidden flex-shrink-0 bg-surface border border-[#EBEBEB]">
+                  <div className="w-[64px] h-[64px] rounded-[8px] overflow-hidden flex-shrink-0 bg-surface border border-divider">
                     {pendingPin.cover_url ? (
                       <img src={pendingPin.cover_url} alt={pendingPin.title} className="w-full h-full object-cover" />
                     ) : (
@@ -323,14 +323,14 @@ export default function Essentials({ userId, canEdit = true }: { userId: string;
                 <div className="flex gap-3">
                   <button
                     onClick={() => setPendingPin(null)}
-                    className="flex-1 border border-[#EBEBEB] rounded-lg py-2.5 text-[13px] font-semibold text-ink hover:bg-surface transition"
+                    className="flex-1 border border-divider rounded-lg py-2.5 text-[13px] font-semibold text-ink hover:bg-surface transition"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={() => commitPin(pendingPin)}
                     disabled={saving}
-                    className="flex-1 bg-ink text-white rounded-lg py-2.5 text-[13px] font-semibold hover:opacity-80 transition disabled:opacity-50"
+                    className="flex-1 bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-lg py-2.5 text-[13px] font-semibold hover:opacity-80 transition disabled:opacity-50"
                   >
                     {saving ? 'Saving…' : 'Confirm & set ★ 5'}
                   </button>
@@ -338,7 +338,7 @@ export default function Essentials({ userId, canEdit = true }: { userId: string;
               </div>
             ) : (
               <>
-                <div className="flex items-center gap-3 px-4 pt-4 pb-3 border-b border-[#EBEBEB]">
+                <div className="flex items-center gap-3 px-4 pt-4 pb-3 border-b border-divider">
                   <input
                     ref={searchRef}
                     value={search}
@@ -364,7 +364,7 @@ export default function Essentials({ userId, canEdit = true }: { userId: string;
                   ) : (
                     displayList.map(r => (
                       <button key={r.release_id} onClick={() => selectAlbum(r)} className="group/pick text-left">
-                        <div className="w-full aspect-square rounded-[6px] overflow-hidden relative bg-surface border border-[#EBEBEB] group-hover/pick:border-mid transition">
+                        <div className="w-full aspect-square rounded-[6px] overflow-hidden relative bg-surface border border-divider group-hover/pick:border-mid transition">
                           {r.cover_url ? (
                             <img src={r.cover_url} alt={r.title} className="w-full h-full object-cover" />
                           ) : (

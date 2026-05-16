@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { Plus_Jakarta_Sans } from 'next/font/google';
 import PostHogProvider from '../components/PostHogProvider';
+import { ThemeProvider } from '../components/ThemeProvider';
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
@@ -30,9 +31,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={jakarta.variable}>
-      <body className="bg-white text-ink font-sans">
-        <PostHogProvider>{children}</PostHogProvider>
+    <html lang="en" className={jakarta.variable} suppressHydrationWarning>
+      <body className="bg-page text-ink font-sans">
+        <ThemeProvider>
+          <PostHogProvider>{children}</PostHogProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

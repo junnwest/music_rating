@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 
@@ -9,7 +9,7 @@ export default function GlobalError({
   reset: () => void;
 }) {
   return (
-    <div className="min-h-screen bg-white flex flex-col items-center justify-center px-5 text-center">
+    <div className="min-h-screen bg-page flex flex-col items-center justify-center px-5 text-center">
       <p className="text-[11px] font-semibold text-muted uppercase mb-4" style={{ letterSpacing: '0.7px' }}>
         500
       </p>
@@ -25,7 +25,7 @@ export default function GlobalError({
       <div className="flex gap-3 mt-8">
         <button
           onClick={reset}
-          className="inline-flex items-center gap-2 bg-ink text-white rounded-xl px-7 py-3 text-[14px] font-semibold hover:opacity-80 transition"
+          className="inline-flex items-center gap-2 bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-xl px-7 py-3 text-[14px] font-semibold hover:opacity-80 transition"
         >
           Try again
         </button>
