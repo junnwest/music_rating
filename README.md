@@ -321,7 +321,7 @@ npm run expand:genre
 - [x] **Mock notifications removed** — fake seed data stripped from API route and page
 
 ### Week 3 — May 24–30: Auth + legal + analytics
-- [ ] KakaoTalk login
+- [ ] KakaoTalk login — blocked: requires 비즈 앱 conversion which needs 사업자 등록번호; moved to post-launch
 - [x] Spotify login — Supabase OAuth provider enabled; "Continue with Spotify" button added to auth form
 - [x] Privacy policy + Terms of Service (finalize — fill in real contact emails)
 - [x] Analytics setup — PostHog (US region, pay-as-you-go free tier); pageview + autocapture wired via `PostHogProvider`; env vars `NEXT_PUBLIC_POSTHOG_KEY` + `NEXT_PUBLIC_POSTHOG_HOST` required in Vercel
@@ -330,7 +330,16 @@ npm run expand:genre
 - [x] Connected accounts — Settings → Account; connect/disconnect Google + Spotify; safeguard requires at least one social account; disconnect confirmation modal
 - [x] Settings change email — collapsed behind button, expands on click
 
-### Week 4 — May 31–Jun 6: App + translation + store submission
+### Week 4 — May 31–Jun 6: Security + app + translation + store submission
+- [ ] **Auth checks on all mutation API routes** — `/api/rankings/vote`, `/api/follow`, `/api/notifications`, `/api/lists`: verify `supabase.auth.getUser()` matches the `userId` in the request body; reject with 403 if not
+- [ ] **Fix email disclosure in `/api/auth/resolve-username`** — route should not expose the email in any response visible to the client beyond what Supabase sign-in needs
+- [ ] **Security headers in `next.config.mjs`** — add `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`, `Strict-Transport-Security`
+- [ ] **Restrict image remote patterns** — replace `hostname: '**'` with explicit whitelist: `i.scdn.co`, `*.scdn.co`, `coverartarchive.org`, Supabase storage bucket
+- [ ] **Rate limiting on sensitive endpoints** — `/api/check-username`, `/api/rankings/vote`, `/api/follow` via `@upstash/ratelimit` + Upstash Redis
+- [ ] **Upstash Redis caching** — cache ranking leaderboards, album avg rating + count, homepage genre rows; invalidate on write
+- [ ] **Add DB indexes** — confirm in Supabase dashboard: `ratings(user_id)`, `ratings(release_id)`, `reviews(user_id)`, `reviews(release_id)`, `user_rankings(category_id)`, `user_ranking_entries(ranking_id)`, `user_ranking_entries(release_id)`, `ranking_seed_entries(category_id)`, `follows(follower_id)`, `follows(following_id)`
+- [ ] **PostgreSQL full-text search index on `releases`** — GIN index on `tsvector(title, artist)` so cached albums are searchable without hitting Spotify
+- [ ] **Confirm `.spotify-tokens.json` not in git history** — `git log --all --full-history -- .spotify-tokens.json`; rotate tokens and use `git filter-repo` if found
 - [ ] Korean translation (i18n setup with next-intl; language toggle in settings)
 - [ ] Capacitor app build (wraps existing Next.js app into native shell)
 - [ ] App Store (iOS) + Play Store (Android) submission
@@ -340,12 +349,24 @@ npm run expand:genre
 - [ ] Create dummy/test account and QA all social flows end-to-end
 - [ ] Production deployment (custom domain, all env vars set, migrations pushed)
 - [ ] Seed all ranking categories with baseline data
+- [ ] **Fix N+1 queries in `/api/reviews/route.ts`** — batch author profile + likes fetches instead of per-review queries
+- [ ] **Replace `releases(*)` wildcard in `ProfilePanel.tsx`** — specify only `id, title, artist, cover_url`
+- [ ] **Add env var validation at startup** — fail fast with clear error if `NEXT_PUBLIC_SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_ANON_KEY` are missing (e.g. `instrumentation.ts`)
+- [ ] **Add `router` to useEffect deps in `AuthForm.tsx`**
+- [ ] **Add error UI to `PersonalizedFeed.tsx`** — show fallback state if recommendations fetch fails instead of silently rendering empty
+- [ ] **Standardize API error response shape** — all routes should return consistent `{ ok: true }` / `{ error: '...' }` shape
+- [ ] **Replace silent `catch {}` blocks with `console.error`** — makes production debugging possible via Vercel logs
 - [ ] Final bug fixes + buffer for App Store review delays
 
 ### Post-launch
+- [ ] **사업자등록 (개인사업자)** — register on 홈택스 (hometax.go.kr); free, ~1-2 days approval; unlocks Kakao 비즈 앱 + covers Korean tax obligations
+- [ ] **KakaoTalk login** — after 사업자등록: convert Kakao app to 비즈 앱, enable `account_email` in 동의항목, set `available: true` in `settings/page.tsx`, replace "coming soon" handler in `AuthForm.tsx` with `supabase.auth.signInWithOAuth({ provider: 'kakao' })`
+- [ ] **US LLC via Stripe Atlas** — once revenue is consistent; ~$500 one-time; gives US entity + Mercury bank account + clean global payment setup; needed for smooth App Store/Play Store payouts at scale
+- [ ] **Apple login** — requires Apple Developer account ($99/yr); wire up `supabase.auth.signInWithOAuth({ provider: 'apple' })` + enable in Supabase dashboard + set `available: true` in settings page; code is already stubbed
 - [ ] Wrapped page — needs months of user data to be meaningful
 - [ ] Remove/reduce seed votes once real community votes overtake the baseline
 - [ ] Re-curate ranking categories (add year-specific categories)
+- [ ] **Typesense for fuzzy search** — layer on top of PostgreSQL for typo-tolerant album/artist search ("taylr swft" → Taylor Swift); syncs from `releases` table; not needed for launch since PostgreSQL full-text handles the common case
 - [ ] **Insights + History page** — dedicated `/profile/[username]/insights` page: rating history timeline, score distribution over time, streak tracking, genre evolution, taste drift vs community, comparison with friends. Replaces the removed sidebar insights card. Needs enough user history to be meaningful (~1–3 months post-launch).
 
 ---
@@ -463,6 +484,14 @@ npm run expand:discography
 - Apply email templates: paste `supabase/templates/confirmation.html` and `recovery.html` into Supabase dashboard → Auth → Email Templates
 
 ---
+
+**Session summary (2026-05-17):**
+- Korean ranking titles: added `rankingTitles` slug-keyed translations to `en.ts` + `ko.ts`; updated all 5 render sites (RankingsGrid, FilterBuilder, ranking detail page, rank builder page, album "In Rankings" chips)
+- Korean copy: 순위 정하기 → 투표하기 / 재투표하기; ranking title format → `[category] 올타임 베스트`
+- Loading UX: installed `nextjs-toploader` (cyan progress bar on navigation); added skeleton loading screens for `/rankings`, `/rankings/[slug]`, `/album/[mbid]`
+- Full-stack audit: security, DB, frontend, API, devops findings documented and integrated into pre-launch weekly roadmap
+- DB architecture decision: keep PostgreSQL, add Upstash Redis caching layer + PostgreSQL full-text search index post-launch Typesense option documented
+- KakaoTalk login: attempted but blocked — requires 비즈 앱 which needs 사업자등록번호; reverted to "coming soon"; post-launch plan: 개인사업자 → Kakao 비즈 앱 → US LLC via Stripe Atlas once revenue is consistent
 
 **Session summary (2026-05-11):**
 - Fixed CASCADE DELETE bug in ranking seed endpoint (upsert instead of delete+insert)

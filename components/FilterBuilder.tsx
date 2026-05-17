@@ -173,7 +173,7 @@ export default function FilterBuilder({
                 className="text-[14px] font-extrabold text-ink truncate"
                 style={{ letterSpacing: '-0.3px' }}
               >
-                {matchedCategory.title}
+                {(() => { const k = `rankingTitles.${matchedCategory.slug}`; const r = t(k); return r === k ? matchedCategory.title : r; })()}
               </div>
             </div>
 

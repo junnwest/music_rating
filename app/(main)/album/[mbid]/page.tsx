@@ -130,7 +130,9 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
 
         const sorted = [...scores.entries()].sort((a, b) => b[1] - a[1]);
         const rankIdx = sorted.findIndex(([id]) => id === album.id);
-        return { slug: cat.slug, title: cat.title, rank: rankIdx + 1 };
+        const titleKey = `rankingTitles.${cat.slug}`;
+        const titleT = t(titleKey);
+        return { slug: cat.slug, title: titleT === titleKey ? cat.title : titleT, rank: rankIdx + 1 };
       }));
 
       rankingMemberships = rankResults.filter(r => r.rank > 0);

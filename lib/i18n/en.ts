@@ -230,6 +230,14 @@ const en = {
     terms: 'Terms of Service',
     copyright: 'All rights reserved.',
   },
+  rankingTitles: {
+    'all-time': 'Greatest Album of All Time',
+    'hiphop-all-time': 'Best Hip-Hop Album of All Time',
+    'kpop-all-time': 'Best K-Pop Album of All Time',
+    'album-2025': 'Best Album of 2025',
+    'korean-all-time': 'Best Korean Album of All Time',
+    'khiphop-all-time': 'Best K-Hip-Hop Album of All Time',
+  },
   settings: {
     title: 'Settings',
     subtitle: 'Manage your account, preferences, and privacy.',

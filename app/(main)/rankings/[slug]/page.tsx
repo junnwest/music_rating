@@ -2,6 +2,7 @@
 import { createServerClient } from '../../../../lib/supabaseServer';
 import RankingVoteWidget, { type LeaderboardEntry } from '../../../../components/RankingVoteWidget';
 import Link from 'next/link';
+import { getServerT } from '../../../../lib/i18n/server';
 
 export const revalidate = 30;
 
@@ -56,6 +57,7 @@ export default async function RankingCategoryPage({
   params: { slug: string };
   searchParams?: { page?: string };
 }) {
+  const t = getServerT();
   const supabase = createServerClient();
   if (!supabase) notFound();
 
@@ -170,7 +172,7 @@ export default async function RankingCategoryPage({
             className="text-[34px] font-extrabold text-ink leading-[1.08]"
             style={{ letterSpacing: '-1px' }}
           >
-            {category.title}
+            {(() => { const k = `rankingTitles.${category.slug}`; const r = t(k); return r === k ? category.title : r; })()}
           </h1>
 
           <div className="flex items-center gap-4 mt-5">

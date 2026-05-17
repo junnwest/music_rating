@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { createServerClient } from '../../../../../lib/supabaseServer';
 import RankBuilder, { type RankedAlbum } from '../../../../../components/RankBuilder';
+import { getServerT } from '../../../../../lib/i18n/server';
 
 export const revalidate = 0;
 
@@ -12,6 +13,7 @@ export default async function RankBuilderPage({
   params: { slug: string };
   searchParams: { album?: string; title?: string; artist?: string; cover?: string };
 }) {
+  const t = getServerT();
   const supabase = createServerClient();
   if (!supabase) notFound();
 
@@ -57,7 +59,7 @@ export default async function RankBuilderPage({
     <div style={{ minHeight: '100vh' }}>
       <RankBuilder
         categoryId={category.id}
-        categoryTitle={category.title}
+        categoryTitle={(() => { const k = `rankingTitles.${category.slug}`; const r = t(k); return r === k ? category.title : r; })()}
         slug={category.slug}
         initialSuggestions={suggestions}
         filterYear={category.year ?? null}

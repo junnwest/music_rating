@@ -146,7 +146,7 @@ export default function RankingsGrid({ categories, topAlbumsMap, voteCountMap }:
                   className="text-[16px] font-extrabold text-ink mb-1 pr-6"
                   style={{ letterSpacing: '-0.4px' }}
                 >
-                  {cat.title}
+                  {(() => { const k = `rankingTitles.${cat.slug}`; const r = t(k); return r === k ? cat.title : r; })()}
                 </div>
 
                 <div className="flex items-center justify-between mt-auto pt-4">

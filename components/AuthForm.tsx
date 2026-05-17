@@ -121,6 +121,7 @@ export default function AuthForm() {
     }
   };
 
+
   if (awaitingConfirmation) {
     return (
       <div className="w-[420px]">
@@ -382,6 +383,8 @@ export default function AuthForm() {
           </svg>
         </button>
       </div>
+
+
 
       {/* Under construction modal */}
       {underConstruction && (

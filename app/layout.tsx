@@ -2,6 +2,7 @@ import './globals.css';
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { Plus_Jakarta_Sans } from 'next/font/google';
+import NextTopLoader from 'nextjs-toploader';
 import PostHogProvider from '../components/PostHogProvider';
 import { ThemeProvider } from '../components/ThemeProvider';
 import { LanguageProvider } from '../lib/i18n';
@@ -34,6 +35,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={jakarta.variable} suppressHydrationWarning>
       <body className="bg-page text-ink font-sans">
+        <NextTopLoader color="#00C2A8" height={2} showSpinner={false} />
         <ThemeProvider>
           <LanguageProvider>
             <PostHogProvider>{children}</PostHogProvider>
