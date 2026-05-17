@@ -1,8 +1,9 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient';
+import { useLanguage } from '../lib/i18n';
 
 interface Category {
   id: string;
@@ -55,6 +56,7 @@ export default function FilterBuilder({
   categories: Category[];
   topAlbumsMap?: Record<string, { coverUrl: string | null }[]>;
 }) {
+  const { t } = useLanguage();
   const [country, setCountry] = useState('Global');
   const [genre, setGenre] = useState('All Genres');
   const [time, setTime] = useState('All Time');
@@ -94,51 +96,59 @@ export default function FilterBuilder({
 
   const hasRanked = matchedCategory ? !!myRankings[matchedCategory.id] : false;
 
+  // Display label: translate 'Global', 'All Genres', 'All Time' — other values stay as-is
+  function countryLabel(c: string) {
+    return c === 'Global' ? t('rankings.global') : c;
+  }
+  function genreLabel(g: string) {
+    return g === 'All Genres' ? t('rankings.allGenres') : g;
+  }
+  function timeLabel(tm: string) {
+    return tm === 'All Time' ? t('rankings.allTime') : tm;
+  }
+
   return (
     <section>
       <h2 className="text-[13px] font-bold text-muted uppercase mb-5" style={{ letterSpacing: '0.7px' }}>
-        Browse Rankings
+        {t('rankings.browse')}
       </h2>
 
       <div className="border border-divider rounded-2xl p-6 md:p-8 bg-page">
-        {/* Dropdowns */}
         <div className="grid gap-4 grid-cols-1 sm:grid-cols-3 mb-6">
           <div>
-            <label className="block text-[12px] font-semibold text-muted uppercase mb-2" style={{ letterSpacing: '0.5px' }}>Country</label>
+            <label className="block text-[12px] font-semibold text-muted uppercase mb-2" style={{ letterSpacing: '0.5px' }}>{t('rankings.country')}</label>
             <select
               value={country}
               onChange={e => handleCountryChange(e.target.value)}
               className="w-full bg-surface border border-divider rounded-xl px-4 py-3 text-[14px] text-ink outline-none cursor-pointer hover:border-mid transition"
             >
-              {filterCountries.map(c => <option key={c} value={c}>{c}</option>)}
+              {filterCountries.map(c => <option key={c} value={c}>{countryLabel(c)}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-[12px] font-semibold text-muted uppercase mb-2" style={{ letterSpacing: '0.5px' }}>Genre</label>
+            <label className="block text-[12px] font-semibold text-muted uppercase mb-2" style={{ letterSpacing: '0.5px' }}>{t('rankings.genre')}</label>
             <select
               value={genre}
               onChange={e => setGenre(e.target.value)}
               className="w-full bg-surface border border-divider rounded-xl px-4 py-3 text-[14px] text-ink outline-none cursor-pointer hover:border-mid transition"
             >
-              {availableGenres.map(g => <option key={g} value={g}>{g}</option>)}
+              {availableGenres.map(g => <option key={g} value={g}>{genreLabel(g)}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-[12px] font-semibold text-muted uppercase mb-2" style={{ letterSpacing: '0.5px' }}>Time</label>
+            <label className="block text-[12px] font-semibold text-muted uppercase mb-2" style={{ letterSpacing: '0.5px' }}>{t('rankings.time')}</label>
             <select
               value={time}
               onChange={e => setTime(e.target.value)}
               className="w-full bg-surface border border-divider rounded-xl px-4 py-3 text-[14px] text-ink outline-none cursor-pointer hover:border-mid transition"
             >
-              {filterTimes.map(t => <option key={t} value={t}>{t}</option>)}
+              {filterTimes.map(tm => <option key={tm} value={tm}>{timeLabel(tm)}</option>)}
             </select>
           </div>
         </div>
 
-        {/* Result */}
         {matchedCategory ? (
           <div className="border border-divider rounded-[12px] px-4 py-3 flex items-center gap-4">
-            {/* Top 5 covers */}
             <div className="flex gap-[4px] flex-shrink-0">
               {Array.from({ length: 5 }).map((_, i) => {
                 const album = (topAlbumsMap[matchedCategory.id] ?? [])[i];
@@ -158,7 +168,6 @@ export default function FilterBuilder({
               })}
             </div>
 
-            {/* Title */}
             <div className="flex-1 min-w-0">
               <div
                 className="text-[14px] font-extrabold text-ink truncate"
@@ -168,25 +177,24 @@ export default function FilterBuilder({
               </div>
             </div>
 
-            {/* Actions */}
             <div className="flex items-center gap-2 flex-shrink-0">
               <Link
                 href={`/rankings/${matchedCategory.slug}`}
                 className="text-[12px] font-medium text-muted hover:text-ink transition"
               >
-                View ranking
+                {t('rankings.viewRanking')}
               </Link>
               <Link
                 href={`/rankings/${matchedCategory.slug}/rank`}
                 className="text-[12px] font-semibold text-ink border border-[#DDDDD8] rounded-lg px-3 py-1.5 hover:bg-surface transition whitespace-nowrap"
               >
-                {hasRanked ? 'Re-rank →' : 'Rank →'}
+                {hasRanked ? t('rankings.reRank') : t('rankings.rank')}
               </Link>
             </div>
           </div>
         ) : (
           <p className="text-[13px] text-muted">
-            No curated ranking for this combination yet.
+            {t('rankings.noCurated')}
           </p>
         )}
       </div>

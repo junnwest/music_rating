@@ -1,9 +1,10 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../../../lib/supabaseClient';
 import UserAvatar from '../../../components/UserAvatar';
+import { useLanguage } from '../../../lib/i18n';
 
 type FeedItem = {
   type: 'rating' | 'review';
@@ -16,10 +17,10 @@ type FeedItem = {
   releaseId: string;
 };
 
-function timeAgo(iso: string): string {
+function timeAgo(iso: string, t: (key: string) => string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60000);
-  if (m < 1) return 'just now';
+  if (m < 1) return t('activity.justNow');
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
@@ -29,6 +30,7 @@ function timeAgo(iso: string): string {
 }
 
 export default function ActivityPage() {
+  const { t } = useLanguage();
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFiltered, setIsFiltered] = useState(false);
@@ -52,18 +54,18 @@ export default function ActivityPage() {
   }, []);
 
   const subtitle = isFiltered
-    ? 'Recent activity from people you follow'
-    : 'Recent ratings and comments from the community';
+    ? t('activity.subtitleFiltered')
+    : t('activity.subtitleAll');
 
   return (
     <div className="bg-page min-h-screen">
       <div className="bg-surface border-b border-divider">
         <div className="max-w-[1440px] mx-auto px-5 py-12">
           <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.7px' }}>
-            Community
+            {t('activity.community')}
           </p>
           <h1 className="text-[28px] sm:text-[38px] font-extrabold text-ink leading-[1.06]" style={{ letterSpacing: '-1.2px' }}>
-            Activity
+            {t('activity.title')}
           </h1>
           <p className="text-[15px] text-muted mt-3 max-w-[500px] leading-relaxed">{subtitle}</p>
         </div>
@@ -86,11 +88,11 @@ export default function ActivityPage() {
         ) : feed.length === 0 ? (
           <div className="py-16 text-center">
             <p className="text-[15px] font-bold text-ink mb-2">
-              {isFiltered ? 'No activity from your follows yet' : 'No activity yet'}
+              {isFiltered ? t('activity.noActivityFollows') : t('activity.noActivity')}
             </p>
             {isFiltered && (
               <p className="text-[13px] text-muted">
-                The people you follow haven&apos;t rated or reviewed anything recently.
+                {t('activity.noActivityFollowsDesc')}
               </p>
             )}
           </div>
@@ -111,7 +113,7 @@ export default function ActivityPage() {
                         <Link href={`/profile/${item.username}`} className="font-semibold text-ink hover:text-mid transition">
                           {item.username}
                         </Link>
-                        <span className="text-muted"> {item.type === 'rating' ? 'rated' : 'commented on'} </span>
+                        <span className="text-muted"> {item.type === 'rating' ? t('activity.rated') : t('activity.commentedOn')} </span>
                         <Link href={`/album/${item.releaseId}`} className="font-semibold text-ink hover:text-mid transition">
                           {item.release?.title ?? '—'}
                         </Link>
@@ -132,7 +134,7 @@ export default function ActivityPage() {
                           &ldquo;{item.body}&rdquo;
                         </p>
                       )}
-                      <p className="text-[11px] text-muted mt-1.5">{timeAgo(item.date)}</p>
+                      <p className="text-[11px] text-muted mt-1.5">{timeAgo(item.date, t)}</p>
                     </div>
 
                     {item.release?.cover_url && (

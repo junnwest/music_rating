@@ -1,8 +1,9 @@
-﻿'use client';
+'use client';
 
 import Link from 'next/link';
 import { useState } from 'react';
 import { Search, ChevronDown, Send, Check, Clock, HelpCircle, ArrowLeft } from 'lucide-react';
+import { useLanguage } from '../../../lib/i18n';
 
 const faqs = [
   {
@@ -39,20 +40,21 @@ const faqs = [
   },
 ];
 
-const categories = [
-  'Report a bug',
-  'Suggest a feature',
-  'Ask a question',
-  'Report content/user',
-];
-
 export default function HelpPage() {
+  const { t } = useLanguage();
   const [search, setSearch] = useState('');
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [category, setCategory] = useState('');
   const [message, setMessage] = useState('');
   const [email, setEmail] = useState('');
   const [submitted, setSubmitted] = useState(false);
+
+  const categories = [
+    t('help.reportBug'),
+    t('help.suggestFeature'),
+    t('help.askQuestion'),
+    t('help.reportContent'),
+  ];
 
   const filteredFaqs = faqs.filter(f =>
     f.q.toLowerCase().includes(search.toLowerCase()) ||
@@ -68,28 +70,26 @@ export default function HelpPage() {
 
   return (
     <div className="flex-1">
-      {/* Header */}
       <div className="border-b border-divider bg-surface">
         <div className="max-w-[720px] mx-auto px-5 py-10 md:py-14">
           <Link href="/" className="inline-flex items-center gap-1.5 text-[12px] text-muted hover:text-ink transition mb-4">
-            <ArrowLeft size={14} /> Back to home
+            <ArrowLeft size={14} /> {t('help.backToHome')}
           </Link>
           <div className="flex items-center gap-3 mb-2">
             <HelpCircle size={28} className="text-ink" strokeWidth={1.8} />
-            <h1 className="text-[28px] md:text-[34px] font-extrabold text-ink tracking-tight">Help & Feedback</h1>
+            <h1 className="text-[28px] md:text-[34px] font-extrabold text-ink tracking-tight">{t('help.title')}</h1>
           </div>
-          <p className="text-[14px] text-muted">Find answers or reach out to us directly.</p>
+          <p className="text-[14px] text-muted">{t('help.subtitle')}</p>
         </div>
       </div>
 
       <div className="max-w-[720px] mx-auto px-5 py-10 pb-20 w-full">
-        {/* FAQ section */}
         <section className="mb-14">
           <h2
             className="text-[13px] font-bold text-muted uppercase mb-5"
             style={{ letterSpacing: '0.7px' }}
           >
-            Quick Help
+            {t('help.quickHelp')}
           </h2>
 
           <div className="bg-surface border border-divider rounded-xl px-4 py-2.5 flex items-center gap-2 mb-6">
@@ -97,7 +97,7 @@ export default function HelpPage() {
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search questions…"
+              placeholder={t('help.searchPlaceholder')}
               className="flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-placeholder"
             />
           </div>
@@ -126,18 +126,17 @@ export default function HelpPage() {
 
           {filteredFaqs.length === 0 && (
             <p className="text-[13px] text-muted text-center py-8">
-              No matching questions. Try another search or send us a message below.
+              {t('help.noMatchingQuestions')}
             </p>
           )}
         </section>
 
-        {/* Contact form */}
         <section className="mb-10">
           <h2
             className="text-[13px] font-bold text-muted uppercase mb-5"
             style={{ letterSpacing: '0.7px' }}
           >
-            Contact Us
+            {t('help.contactUs')}
           </h2>
 
           {submitted ? (
@@ -146,20 +145,20 @@ export default function HelpPage() {
                 <div className="w-8 h-8 rounded-full bg-mint flex items-center justify-center">
                   <Check size={16} className="text-mint-dark" />
                 </div>
-                <p className="text-[15px] font-bold text-mint-dark">We received your message</p>
+                <p className="text-[15px] font-bold text-mint-dark">{t('help.received')}</p>
               </div>
-              <p className="text-[13px] text-mid ml-11">Typical response time: 24–48 hours.</p>
+              <p className="text-[13px] text-mid ml-11">{t('help.responseTime')}</p>
               <button
                 onClick={() => setSubmitted(false)}
                 className="ml-11 mt-3 text-[12px] font-semibold text-muted hover:text-ink transition underline"
               >
-                Send another
+                {t('help.sendAnother')}
               </button>
             </div>
           ) : (
             <div className="border border-divider rounded-2xl p-6 bg-page">
               <div className="mb-4">
-                <label className="block text-[13px] font-semibold text-ink mb-2">What do you need?</label>
+                <label className="block text-[13px] font-semibold text-ink mb-2">{t('help.whatDoYouNeed')}</label>
                 <div className="flex flex-wrap gap-2">
                   {categories.map(c => (
                     <button
@@ -179,26 +178,26 @@ export default function HelpPage() {
 
               <div className="mb-4">
                 <label className="block text-[13px] font-semibold text-ink mb-2">
-                  Message <span className="text-red-500">*</span>
+                  {t('help.messageLabel')} <span className="text-red-500">*</span>
                 </label>
                 <textarea
                   rows={5}
                   value={message}
                   onChange={e => setMessage(e.target.value)}
-                  placeholder="Describe your issue or question…"
+                  placeholder={t('help.messagePlaceholder')}
                   className="w-full bg-surface border border-divider rounded-xl px-4 py-3 text-[13px] text-ink outline-none resize-none hover:border-mid focus:border-ink transition"
                 />
               </div>
 
               <div className="mb-5">
                 <label className="block text-[13px] font-semibold text-ink mb-2">
-                  Email <span className="text-muted font-normal">(optional)</span>
+                  {t('help.emailLabel')} <span className="text-muted font-normal">(optional)</span>
                 </label>
                 <input
                   type="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
-                  placeholder="your@email.com"
+                  placeholder={t('help.emailPlaceholder')}
                   className="w-full bg-surface border border-divider rounded-xl px-4 py-2.5 text-[13px] text-ink outline-none hover:border-mid focus:border-ink transition"
                 />
               </div>
@@ -212,7 +211,7 @@ export default function HelpPage() {
                     : 'bg-surface text-subtle border border-divider cursor-not-allowed'
                 }`}
               >
-                <Send size={14} /> Send
+                <Send size={14} /> {t('help.sendBtn')}
               </button>
             </div>
           )}
@@ -220,7 +219,7 @@ export default function HelpPage() {
 
         <div className="flex items-center gap-2 text-[12px] text-muted">
           <Clock size={14} />
-          <span>We usually respond within 24–48 hours.</span>
+          <span>{t('help.usuallyRespond')}</span>
         </div>
       </div>
     </div>

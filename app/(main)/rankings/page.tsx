@@ -1,6 +1,7 @@
 ﻿import { createServerClient } from '../../../lib/supabaseServer';
 import RankingsGrid from '../../../components/RankingsGrid';
 import FilterBuilder from '../../../components/FilterBuilder';
+import { getServerT } from '../../../lib/i18n/server';
 
 export const revalidate = 60;
 
@@ -34,6 +35,7 @@ function computeSillaScores(
 }
 
 export default async function RankingsPage() {
+  const t = getServerT();
   const supabase = createServerClient();
 
   let categories: { id: string; slug: string; title: string; description: string | null; genre: string | null; year: number | null }[] = [];
@@ -126,16 +128,16 @@ export default async function RankingsPage() {
       <div className="bg-surface border-b border-divider">
         <div className="max-w-[1440px] mx-auto px-5 py-12">
           <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.7px' }}>
-            Community
+            {t('rankings.community')}
           </p>
           <h1
             className="text-[28px] sm:text-[38px] font-extrabold text-ink leading-[1.06]"
             style={{ letterSpacing: '-1.2px' }}
           >
-            Rankings
+            {t('rankings.title')}
           </h1>
           <p className="text-[15px] text-muted mt-3 max-w-[500px] leading-relaxed">
-            Build your personal ranking. See where the community stands.
+            {t('rankings.subtitle')}
           </p>
         </div>
       </div>
@@ -144,10 +146,10 @@ export default async function RankingsPage() {
       <div className="max-w-[1440px] mx-auto px-5 py-10 pb-16 flex flex-col gap-14">
         <section>
           <h2 className="text-[13px] font-bold text-muted uppercase mb-5" style={{ letterSpacing: '0.7px' }}>
-            Most Active Rankings
+            {t('rankings.mostActive')}
           </h2>
           {categories.length === 0 ? (
-            <p className="text-sm text-muted">No ranking categories yet. Run the seed endpoint to get started.</p>
+            <p className="text-sm text-muted">{t('rankings.noCategories')}</p>
           ) : (
             <RankingsGrid
               categories={categories}

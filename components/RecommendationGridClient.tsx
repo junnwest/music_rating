@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient';
 import ScrollRow from './ScrollRow';
+import { useLanguage } from '../lib/i18n';
 import type { AlbumRelease } from '../types';
 
 const VISIBLE_THRESHOLD = 8;
@@ -16,6 +17,7 @@ interface Section {
 }
 
 export default function RecommendationGridClient({ sections }: { sections: Section[] }) {
+  const { t } = useLanguage();
   const [filtered, setFiltered] = useState<Section[]>(sections);
 
   useEffect(() => {
@@ -51,7 +53,7 @@ export default function RecommendationGridClient({ sections }: { sections: Secti
             <div>
               <div className="flex items-baseline gap-2">
                 <div className="text-[17px] font-bold text-ink">{cat.name}</div>
-                <div className="text-[12px] text-muted">{cat.albums.length} albums</div>
+                <div className="text-[12px] text-muted">{cat.albums.length} {t('explore.albums')}</div>
               </div>
               <div className="text-[12px] text-muted mt-0.5">{cat.description}</div>
             </div>
@@ -60,7 +62,7 @@ export default function RecommendationGridClient({ sections }: { sections: Secti
                 href={`/genre/${cat.key}`}
                 className="text-[12px] font-medium text-muted hover:text-mid transition whitespace-nowrap"
               >
-                See all →
+                {t('explore.seeAll')}
               </Link>
             )}
           </div>

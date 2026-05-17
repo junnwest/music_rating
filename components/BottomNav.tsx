@@ -6,18 +6,13 @@ import { useEffect, useState } from 'react';
 import { Home, Search, Flame, Trophy, User } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { useUnreadCount } from '../lib/useUnreadCount';
-
-const staticItems = [
-  { icon: Home,   label: 'Home',     path: '/' },
-  { icon: Search, label: 'Search',   path: '/search' },
-  { icon: Flame,  label: 'Feed',     path: '/activity' },
-  { icon: Trophy, label: 'Rankings', path: '/rankings' },
-];
+import { useLanguage } from '../lib/i18n';
 
 export default function BottomNav() {
   const pathname = usePathname();
   const [profilePath, setProfilePath] = useState('/profile');
   const unreadCount = useUnreadCount();
+  const { t } = useLanguage();
 
   useEffect(() => {
     if (!supabase) return;
@@ -34,8 +29,11 @@ export default function BottomNav() {
   }, []);
 
   const items = [
-    ...staticItems,
-    { icon: User, label: 'Profile', path: profilePath },
+    { icon: Home,   label: t('nav.home'),     path: '/' },
+    { icon: Search, label: t('nav.search'),   path: '/search' },
+    { icon: Flame,  label: t('nav.feed'),     path: '/activity' },
+    { icon: Trophy, label: t('nav.rankings'), path: '/rankings' },
+    { icon: User,   label: t('nav.profile'),  path: profilePath },
   ];
 
   return (

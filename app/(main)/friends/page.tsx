@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Search, UserPlus, UserCheck, Users } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import UserAvatar from '../../../components/UserAvatar';
+import { useLanguage } from '../../../lib/i18n';
 
 interface UserRow {
   id: string;
@@ -37,6 +38,7 @@ function getColor(id: string): string {
 
 export default function FriendsPage() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [myId, setMyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('following');
@@ -76,7 +78,6 @@ export default function FriendsPage() {
     const excludeSet = new Set([uid, ...fIds]);
     const excludeStr = `(${[uid, ...fIds].join(',')})`;
 
-    // Friends of friends: people who follow someone you follow
     let fofIds: string[] = [];
     if (fIds.length > 0) {
       const { data: fofRows } = await supabase
@@ -88,7 +89,6 @@ export default function FriendsPage() {
       fofIds = [...new Set((fofRows ?? []).map((r: any) => r.follower_id as string))].slice(0, 10);
     }
 
-    // Popular: most-followed users (sample the follows table and count)
     const { data: popularRows } = await supabase
       .from('follows')
       .select('following_id')
@@ -174,6 +174,12 @@ export default function FriendsPage() {
     }, 300);
   }, [searchQuery, myId]);
 
+  const tabs: { key: Tab; label: string }[] = [
+    { key: 'following', label: t('friends.following') },
+    { key: 'followers', label: t('friends.followers') },
+    { key: 'discover', label: t('friends.discover') },
+  ];
+
   const displayUsers =
     activeTab === 'following' ? followingUsers :
     activeTab === 'followers' ? followerUsers :
@@ -189,13 +195,13 @@ export default function FriendsPage() {
     <div className="bg-surface border-b border-divider">
       <div className="max-w-[1440px] mx-auto px-5 py-12">
         <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.7px' }}>
-          People
+          {t('friends.people')}
         </p>
         <h1 className="text-[38px] font-extrabold text-ink leading-[1.06]" style={{ letterSpacing: '-1.2px' }}>
-          Friends
+          {t('friends.title')}
         </h1>
         <p className="text-[15px] text-muted mt-3 max-w-[500px] leading-relaxed">
-          Discover people who love the same music you do.
+          {t('friends.subtitle')}
         </p>
       </div>
     </div>
@@ -206,7 +212,7 @@ export default function FriendsPage() {
       <div className="bg-page min-h-screen">
         {hero}
         <div className="max-w-[720px] mx-auto px-5 py-10 pb-16 text-center">
-          <p className="text-sm text-muted">Loading…</p>
+          <p className="text-sm text-muted">{t('friends.loading')}</p>
         </div>
       </div>
     );
@@ -218,13 +224,13 @@ export default function FriendsPage() {
         {hero}
         <div className="max-w-[720px] mx-auto px-5 py-10 pb-16 text-center">
           <Users size={32} className="text-subtle mx-auto mb-4" />
-          <p className="text-[14px] text-ink font-semibold mb-1">Sign in to see your friends</p>
-          <p className="text-[13px] text-muted mb-6">Follow people and discover who shares your taste.</p>
+          <p className="text-[14px] text-ink font-semibold mb-1">{t('friends.signIn')}</p>
+          <p className="text-[13px] text-muted mb-6">{t('friends.signInDesc')}</p>
           <Link
             href="/login"
             className="bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] text-[13px] font-bold px-5 py-2.5 rounded-lg hover:opacity-80 transition inline-block"
           >
-            Sign In
+            {t('friends.signInBtn')}
           </Link>
         </div>
       </div>
@@ -250,7 +256,7 @@ export default function FriendsPage() {
                   setSearchQuery('');
                 }
               }}
-              placeholder="Search people…"
+              placeholder={t('friends.searchPlaceholder')}
               className="flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-placeholder"
             />
             {searchQuery && (
@@ -261,9 +267,9 @@ export default function FriendsPage() {
           {searchQuery.trim() && (
             <div className="absolute top-full left-0 right-0 mt-1 bg-page border border-divider rounded-xl shadow-lg z-20 overflow-hidden">
               {searching ? (
-                <p className="text-[13px] text-muted px-4 py-3">Searching…</p>
+                <p className="text-[13px] text-muted px-4 py-3">{t('friends.searching')}</p>
               ) : searchResults.length === 0 ? (
-                <p className="text-[13px] text-muted px-4 py-3">No users found.</p>
+                <p className="text-[13px] text-muted px-4 py-3">{t('friends.noUsersFound')}</p>
               ) : (
                 <div className="max-h-[360px] overflow-y-auto">
                   {searchResults.map(user => {
@@ -290,7 +296,7 @@ export default function FriendsPage() {
                                 : 'bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] hover:opacity-80'
                             }`}
                           >
-                            {isFollowing ? <><UserCheck size={12} /> Following</> : <><UserPlus size={12} /> Follow</>}
+                            {isFollowing ? <><UserCheck size={12} /> {t('friends.followingBtn')}</> : <><UserPlus size={12} /> {t('friends.followBtn')}</>}
                           </button>
                         )}
                       </div>
@@ -303,15 +309,15 @@ export default function FriendsPage() {
         </div>
 
         <div className="flex gap-1 mb-6 border-b border-divider">
-          {(['following', 'followers', 'discover'] as Tab[]).map(tab => (
+          {tabs.map(({ key, label }) => (
             <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2.5 text-[13px] font-semibold whitespace-nowrap transition-colors capitalize ${
-                activeTab === tab ? 'text-ink border-b-2 border-ink -mb-px' : 'text-muted hover:text-ink'
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={`px-4 py-2.5 text-[13px] font-semibold whitespace-nowrap transition-colors ${
+                activeTab === key ? 'text-ink border-b-2 border-ink -mb-px' : 'text-muted hover:text-ink'
               }`}
             >
-              {tab} <span className="text-[11px] text-muted ml-0.5">{counts[tab]}</span>
+              {label} <span className="text-[11px] text-muted ml-0.5">{counts[key]}</span>
             </button>
           ))}
         </div>
@@ -320,8 +326,6 @@ export default function FriendsPage() {
           {displayUsers.map(user => {
             const name = user.displayName ?? user.username ?? 'Unknown';
             const handle = user.username ? `@${user.username}` : '';
-            const initial = name[0]?.toUpperCase() ?? '?';
-            const color = getColor(user.id);
             const isFollowing = followingIds.has(user.id);
 
             return (
@@ -352,9 +356,9 @@ export default function FriendsPage() {
                         }`}
                       >
                         {isFollowing ? (
-                          <><UserCheck size={14} /> Following</>
+                          <><UserCheck size={14} /> {t('friends.followingBtn')}</>
                         ) : (
-                          <><UserPlus size={14} /> Follow</>
+                          <><UserPlus size={14} /> {t('friends.followBtn')}</>
                         )}
                       </button>
                     )}
@@ -369,10 +373,10 @@ export default function FriendsPage() {
               <Users size={32} className="text-subtle mb-3" />
               <p className="text-[14px] text-muted">
                 {activeTab === 'following'
-                  ? "You're not following anyone yet."
+                  ? t('friends.notFollowingAnyone')
                   : activeTab === 'followers'
-                  ? 'No followers yet.'
-                  : 'No new users to discover yet.'}
+                  ? t('friends.noFollowers')
+                  : t('friends.noDiscover')}
               </p>
             </div>
           )}

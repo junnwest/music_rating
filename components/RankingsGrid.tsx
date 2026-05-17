@@ -1,8 +1,9 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient';
+import { useLanguage } from '../lib/i18n';
 
 interface Category {
   id: string;
@@ -22,6 +23,7 @@ interface Props {
 type FilterTab = 'All' | 'To Vote' | 'Friends Active';
 
 export default function RankingsGrid({ categories, topAlbumsMap, voteCountMap }: Props) {
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<FilterTab>('All');
   const [myRankings, setMyRankings] = useState<Record<string, boolean>>({});
   const [friendVoteCounts, setFriendVoteCounts] = useState<Record<string, number>>({});
@@ -55,25 +57,28 @@ export default function RankingsGrid({ categories, topAlbumsMap, voteCountMap }:
     return categories;
   })();
 
-  const tabs: FilterTab[] = loggedIn ? ['All', 'To Vote', ...(hasFriends ? ['Friends Active' as FilterTab] : [])] : ['All'];
+  const tabs: { key: FilterTab; label: string }[] = [
+    { key: 'All', label: t('rankings.tabAll') },
+    ...(loggedIn ? [{ key: 'To Vote' as FilterTab, label: t('rankings.tabToVote') }] : []),
+    ...(loggedIn && hasFriends ? [{ key: 'Friends Active' as FilterTab, label: t('rankings.tabFriendsActive') }] : []),
+  ];
 
   return (
     <div>
-      {/* Filter tabs — only shown when logged in */}
       {loggedIn && tabs.length > 1 && (
         <div className="flex gap-1 mb-7">
-          {tabs.map((tab) => (
+          {tabs.map(({ key, label }) => (
             <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
+              key={key}
+              onClick={() => setActiveTab(key)}
               className={`px-4 py-[7px] rounded-full text-[12px] font-semibold transition ${
-                activeTab === tab
+                activeTab === key
                   ? 'bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111]'
                   : 'bg-surface text-muted hover:text-ink border border-divider'
               }`}
             >
-              {tab}
-              {tab === 'Friends Active' && (
+              {label}
+              {key === 'Friends Active' && (
                 <span className="ml-1.5 text-[10px] opacity-70">
                   {categories.filter((c) => (friendVoteCounts[c.id] ?? 0) > 0).length}
                 </span>
@@ -87,10 +92,10 @@ export default function RankingsGrid({ categories, topAlbumsMap, voteCountMap }:
         <div className="py-16 text-center">
           <p className="text-sm text-muted">
             {activeTab === 'To Vote'
-              ? "You've voted in every category."
+              ? t('rankings.votedEvery')
               : activeTab === 'Friends Active'
-              ? 'No friends have voted yet.'
-              : 'No ranking categories yet.'}
+              ? t('rankings.noFriendsVoted')
+              : t('rankings.noCategories')}
           </p>
         </div>
       ) : (
@@ -101,21 +106,23 @@ export default function RankingsGrid({ categories, topAlbumsMap, voteCountMap }:
             const hasRanked = !!myRankings[cat.id];
             const friendCount = friendVoteCounts[cat.id] ?? 0;
 
+            const voteLabel = voteCount === 0
+              ? t('rankings.noRankingsYet')
+              : `${voteCount.toLocaleString()} ${voteCount === 1 ? t('rankings.ranking') : t('rankings.rankingPlural')}`;
+
             return (
               <div
                 key={cat.id}
                 className="flex flex-col border border-divider rounded-[12px] p-5 transition group relative"
               >
-                {/* Friends badge */}
                 {friendCount > 0 && (
                   <div className="absolute top-4 right-4">
                     <span className="text-[10px] font-semibold px-[7px] py-[2px] rounded-full bg-surface border border-divider text-muted">
-                      {friendCount} {friendCount === 1 ? 'friend' : 'friends'}
+                      {friendCount} {friendCount === 1 ? t('rankings.friend') : t('rankings.friends')}
                     </span>
                   </div>
                 )}
 
-                {/* Top 5 covers */}
                 <div className="flex gap-[5px] mb-5">
                   {Array.from({ length: 5 }).map((_, i) => {
                     const album = topAlbums[i];
@@ -135,7 +142,6 @@ export default function RankingsGrid({ categories, topAlbumsMap, voteCountMap }:
                   })}
                 </div>
 
-                {/* Title */}
                 <div
                   className="text-[16px] font-extrabold text-ink mb-1 pr-6"
                   style={{ letterSpacing: '-0.4px' }}
@@ -143,23 +149,20 @@ export default function RankingsGrid({ categories, topAlbumsMap, voteCountMap }:
                   {cat.title}
                 </div>
 
-                {/* Footer */}
                 <div className="flex items-center justify-between mt-auto pt-4">
-                  <span className="text-[11px] text-muted">
-                    {voteCount === 0 ? 'No rankings yet' : `${voteCount.toLocaleString()} ${voteCount === 1 ? 'ranking' : 'rankings'}`}
-                  </span>
+                  <span className="text-[11px] text-muted">{voteLabel}</span>
                   <div className="flex items-center gap-2">
                     <Link
                       href={`/rankings/${cat.slug}`}
                       className="text-[12px] font-medium text-muted hover:text-ink transition"
                     >
-                      View ranking
+                      {t('rankings.viewRanking')}
                     </Link>
                     <Link
                       href={`/rankings/${cat.slug}/rank`}
                       className="text-[12px] font-semibold text-ink border border-[#DDDDD8] rounded-lg px-3 py-1.5 hover:bg-surface transition"
                     >
-                      {hasRanked ? 'Re-rank →' : 'Rank →'}
+                      {hasRanked ? t('rankings.reRank') : t('rankings.rank')}
                     </Link>
                   </div>
                 </div>

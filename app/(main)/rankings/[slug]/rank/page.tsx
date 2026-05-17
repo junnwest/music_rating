@@ -54,7 +54,7 @@ export default async function RankBuilderPage({
     : null;
 
   return (
-    <div style={{ background: '#fff', minHeight: '100vh' }}>
+    <div style={{ minHeight: '100vh' }}>
       <RankBuilder
         categoryId={category.id}
         categoryTitle={category.title}

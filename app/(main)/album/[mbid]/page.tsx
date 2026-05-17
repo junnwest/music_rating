@@ -8,6 +8,7 @@ export const revalidate = 60;
 import StarRatingWidget from '../../../../components/StarRatingWidget';
 import ReviewsSection from '../../../../components/ReviewsSection';
 import AlbumActions from '../../../../components/AlbumActions';
+import { getServerT } from '../../../../lib/i18n/server';
 
 function formatDuration(ms: number | null): string {
   if (!ms) return '—';
@@ -53,6 +54,7 @@ function TypePill({ children }: { children: React.ReactNode }) {
 }
 
 export default async function AlbumPage({ params }: { params: { mbid: string } }) {
+  const t = getServerT();
   let album = await getCachedAlbum(params.mbid);
   if (!album) {
     album = await getSpotifyAlbum(params.mbid);
@@ -169,7 +171,7 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
               />
             ) : (
               <div className="w-[160px] h-[160px] sm:w-[228px] sm:h-[228px] rounded-[10px] bg-white/10 flex items-center justify-center text-white/50 text-sm">
-                No cover
+                {t('album.noCover')}
               </div>
             )}
           </div>
@@ -226,17 +228,17 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
                     <span className="text-[22px]">—</span>
                   )}
                 </div>
-                <div className="text-[12px] text-white/50 mt-0.5">avg</div>
+                <div className="text-[12px] text-white/50 mt-0.5">{t('album.avg')}</div>
               </div>
               <div className="w-px bg-white/15 self-stretch" />
               <div>
                 <div className="text-[18px] font-bold text-white">{ratingsCount}</div>
-                <div className="text-[12px] text-white/50 mt-0.5">ratings</div>
+                <div className="text-[12px] text-white/50 mt-0.5">{t('album.ratings')}</div>
               </div>
               <div className="w-px bg-white/15 self-stretch" />
               <div>
                 <div className="text-[18px] font-bold text-white">{reviewsCount}</div>
-                <div className="text-[12px] text-white/50 mt-0.5">comments</div>
+                <div className="text-[12px] text-white/50 mt-0.5">{t('album.comments')}</div>
               </div>
               <div className="ml-auto">
                 <AlbumActions
@@ -270,7 +272,7 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
         <div className="max-w-[1440px] mx-auto px-5 pt-8">
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-[11px] font-semibold text-muted uppercase tracking-wider">
-              In Rankings
+              {t('album.inRankings')}
             </span>
             {rankingMemberships.map((cat) => (
               <Link
@@ -292,7 +294,7 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
         {/* Tracklist */}
         {album.tracks.length > 0 && (
           <div>
-            <h2 className="text-[17px] font-bold text-ink mb-[18px]">Tracklist</h2>
+            <h2 className="text-[17px] font-bold text-ink mb-[18px]">{t('album.tracklist')}</h2>
             {album.tracks.map((track) => (
               <div
                 key={track.position}
@@ -326,7 +328,7 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
       {/* Attribution */}
       <div className="max-w-[1440px] mx-auto px-5 pb-8">
         <p className="text-[11px] text-muted">
-          Data from{' '}
+          {t('album.dataFrom')}{' '}
           {album.spotifyUrl ? (
             <a
               href={album.spotifyUrl}

@@ -1,11 +1,13 @@
 ﻿import { createServerClient } from '../../../../lib/supabaseServer';
 import ProfilePanel from '../../../../components/ProfilePanel';
+import { getServerT } from '../../../../lib/i18n/server';
 
 interface Props {
   params: { username: string };
 }
 
 export default async function UserProfilePage({ params }: Props) {
+  const t = getServerT();
   const username = decodeURIComponent(params.username);
   const supabase = createServerClient();
 
@@ -35,8 +37,8 @@ export default async function UserProfilePage({ params }: Props) {
     return (
       <main className="min-h-screen bg-page flex items-center justify-center">
         <div className="text-center">
-          <p className="text-xl font-bold text-ink mb-2">User not found</p>
-          <p className="text-sm text-muted">No profile exists for &ldquo;{username}&rdquo;.</p>
+          <p className="text-xl font-bold text-ink mb-2">{t('profile.notFound')}</p>
+          <p className="text-sm text-muted">{t('profile.notFoundDesc')} &ldquo;{username}&rdquo;.</p>
         </div>
       </main>
     );

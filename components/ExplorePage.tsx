@@ -1,13 +1,15 @@
-﻿'use client';
+'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient';
+import { useLanguage } from '../lib/i18n';
 import type { AlbumRelease } from '../types';
 
 type Status = 'init' | 'guest' | 'ready';
 
 export default function ExplorePage() {
+  const { t } = useLanguage();
   const [status, setStatus] = useState<Status>('init');
   const [albums, setAlbums] = useState<AlbumRelease[]>([]);
   const [fetching, setFetching] = useState(false);
@@ -103,15 +105,13 @@ export default function ExplorePage() {
       <div className="bg-surface border-b border-divider">
         <div className="max-w-[1440px] mx-auto px-5 py-12">
           <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.7px' }}>
-            Discover
+            {t('explore.discover')}
           </p>
           <h1 className="text-[28px] sm:text-[38px] font-extrabold text-ink leading-[1.06]" style={{ letterSpacing: '-1.2px' }}>
-            Explore
+            {t('explore.title')}
           </h1>
           <p className="text-[15px] text-muted mt-3 max-w-[500px] leading-relaxed">
-            {status === 'guest'
-              ? 'Log in to get personalized album suggestions.'
-              : 'Albums you might love or already know.'}
+            {status === 'guest' ? t('explore.subtitleGuest') : t('explore.subtitleReady')}
           </p>
         </div>
       </div>
@@ -122,21 +122,21 @@ export default function ExplorePage() {
 
         {status === 'guest' && (
           <div className="text-center py-20">
-            <p className="text-[15px] font-semibold text-ink mb-2">Sign in to unlock personalized picks</p>
-            <p className="text-[13px] text-muted mb-6">Rate a few albums and we'll suggest what to listen to next.</p>
+            <p className="text-[15px] font-semibold text-ink mb-2">{t('explore.signInTitle')}</p>
+            <p className="text-[13px] text-muted mb-6">{t('explore.signInDesc')}</p>
             <Link
               href="/login"
               className="inline-block text-[13px] font-semibold text-mint-dark bg-mint-bg border border-mint rounded-lg px-5 py-2.5 hover:opacity-80 transition"
             >
-              Log in
+              {t('explore.signInBtn')}
             </Link>
           </div>
         )}
 
         {status === 'ready' && albums.length === 0 && !fetching && (
           <div className="text-center py-20">
-            <p className="text-[15px] font-semibold text-ink mb-2">Nothing to suggest yet</p>
-            <p className="text-[13px] text-muted">Rate a few more albums and we'll start building your picks.</p>
+            <p className="text-[15px] font-semibold text-ink mb-2">{t('explore.nothingYet')}</p>
+            <p className="text-[13px] text-muted">{t('explore.nothingYetDesc')}</p>
           </div>
         )}
 
@@ -179,7 +179,7 @@ export default function ExplorePage() {
                   disabled={fetching}
                   className="text-[13px] font-semibold text-mint-dark bg-mint-bg border border-mint rounded-lg px-6 py-2.5 hover:opacity-80 transition disabled:opacity-40"
                 >
-                  {fetching ? 'Loading…' : 'Load more'}
+                  {fetching ? t('notifications.loading') : t('explore.loadMore')}
                 </button>
               </div>
             )}

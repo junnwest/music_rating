@@ -9,16 +9,9 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import UserAvatar from '../../../components/UserAvatar';
+import { useLanguage, type Lang } from '../../../lib/i18n';
 
 type TabKey = 'account' | 'preferences' | 'notifications' | 'privacy' | 'danger';
-
-const tabs = [
-  { key: 'account' as TabKey, label: 'Account', icon: User },
-  { key: 'preferences' as TabKey, label: 'Preferences', icon: Sliders },
-  { key: 'notifications' as TabKey, label: 'Notifications', icon: Bell },
-  { key: 'privacy' as TabKey, label: 'Privacy', icon: Shield },
-  { key: 'danger' as TabKey, label: 'Danger Zone', icon: AlertTriangle },
-];
 
 const regions = ['Global', 'Korea', 'Japan', 'United States', 'United Kingdom', 'Philippines', 'Indonesia', 'Thailand', 'Vietnam', 'China'];
 const allGenres = ['K-Pop', 'K-Indie', 'K-R&B', 'K-Rap', 'J-Pop', 'J-Rock', 'City Pop', 'Hip-Hop', 'R&B', 'Rock', 'Electronic', 'Pop', 'Jazz', 'Folk', 'Soul', 'Indie', 'Alternative', 'Metal', 'Classical'];
@@ -53,6 +46,15 @@ function SettingsContent() {
   const [activeGenres, setActiveGenres] = useState<Set<string>>(new Set(['K-R&B', 'K-Indie', 'Hip-Hop']));
   const [ratingDisplay, setRatingDisplay] = useState<'Stars' | 'Decimal'>('Stars');
   const { theme, setTheme } = useTheme();
+  const { lang, setLang, t } = useLanguage();
+
+  const tabs = [
+    { key: 'account' as TabKey,       label: t('settings.tabs.account'),       icon: User },
+    { key: 'preferences' as TabKey,   label: t('settings.tabs.preferences'),   icon: Sliders },
+    { key: 'notifications' as TabKey, label: t('settings.tabs.notifications'), icon: Bell },
+    { key: 'privacy' as TabKey,       label: t('settings.tabs.privacy'),       icon: Shield },
+    { key: 'danger' as TabKey,        label: t('settings.tabs.danger'),        icon: AlertTriangle },
+  ];
 
   const refreshUser = async () => {
     if (!supabase) return;
@@ -182,8 +184,8 @@ function SettingsContent() {
     <div className="flex-1">
       <div className="max-w-[900px] mx-auto px-5 py-10 pb-20 w-full">
         <div className="mb-8">
-          <h1 className="text-[28px] md:text-[32px] font-extrabold text-ink tracking-tight">Settings</h1>
-          <p className="text-[13px] text-muted mt-1">Manage your account, preferences, and privacy.</p>
+          <h1 className="text-[28px] md:text-[32px] font-extrabold text-ink tracking-tight">{t('settings.title')}</h1>
+          <p className="text-[13px] text-muted mt-1">{t('settings.subtitle')}</p>
         </div>
 
         <div className="flex flex-col md:flex-row gap-6 md:gap-8">
@@ -208,16 +210,16 @@ function SettingsContent() {
           {/* Content */}
           <div className="flex-1 min-w-0">
             {activeTab === 'account' && (
-              <Section title="Account">
+              <Section title={t('settings.tabs.account')}>
                 <div className="flex items-center gap-4 mb-6">
                   <UserAvatar size={64} />
                   <button className="flex items-center gap-2 px-4 py-2 rounded-lg border border-divider text-[12px] font-semibold text-muted hover:bg-surface transition">
-                    <Camera size={14} /> Change photo
+                    <Camera size={14} /> {t('settings.account.changePhoto')}
                   </button>
                 </div>
-                <Field label="Display name" value={displayName} onChange={setDisplayName} />
-                <Field label="Username" value={username} onChange={setUsername} hint={username ? `@${username}` : undefined} />
-                <Field label="Bio" value={bio} onChange={setBio} textarea />
+                <Field label={t('settings.account.displayName')} value={displayName} onChange={setDisplayName} />
+                <Field label={t('settings.account.username')} value={username} onChange={setUsername} hint={username ? `@${username}` : undefined} />
+                <Field label={t('settings.account.bio')} value={bio} onChange={setBio} textarea />
                 {error && <p className="text-[12px] text-red-500 mb-3">{error}</p>}
                 <div className="flex gap-3 mt-6">
                   <button
@@ -225,10 +227,10 @@ function SettingsContent() {
                     disabled={saving}
                     className="bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-xl px-6 py-2.5 text-[13px] font-bold hover:opacity-80 transition disabled:opacity-50"
                   >
-                    {saved ? 'Saved' : saving ? 'Saving…' : 'Save changes'}
+                    {saved ? t('settings.account.saved') : saving ? t('settings.account.saving') : t('settings.account.saveChanges')}
                   </button>
                   <button onClick={handleSignOut} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-divider text-[13px] font-semibold text-muted hover:bg-surface transition">
-                    <LogOut size={14} /> Log out
+                    <LogOut size={14} /> {t('nav.logOut')}
                   </button>
                 </div>
 
@@ -236,19 +238,19 @@ function SettingsContent() {
                 <div className="mt-8 pt-6 border-t border-divider">
                   <div className="flex items-center justify-between mb-4">
                     <div>
-                      <h3 className="text-[14px] font-bold text-ink">Email address</h3>
+                      <h3 className="text-[14px] font-bold text-ink">{t('settings.account.emailTitle')}</h3>
                       <p className="text-[12px] text-muted mt-0.5">{currentEmail}</p>
                     </div>
                     <button
                       onClick={() => { setShowEmailChange(v => !v); setEmailMessage(null); setNewEmail(''); }}
                       className="px-4 py-2 rounded-lg border border-divider text-[12px] font-semibold text-muted hover:bg-surface transition"
                     >
-                      {showEmailChange ? 'Cancel' : 'Change email'}
+                      {showEmailChange ? t('settings.account.cancelEmail') : t('settings.account.changeEmail')}
                     </button>
                   </div>
                   {showEmailChange && (
                     <div>
-                      <Field label="New email address" value={newEmail} onChange={setNewEmail} type="email" />
+                      <Field label={t('settings.account.newEmail')} value={newEmail} onChange={setNewEmail} type="email" />
                       {emailMessage && (
                         <p className={`text-[12px] mb-3 ${emailMessage.ok ? 'text-mint-dark' : 'text-red-500'}`}>
                           {emailMessage.text}
@@ -259,7 +261,7 @@ function SettingsContent() {
                         disabled={emailSaving || !newEmail.trim()}
                         className="bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-xl px-6 py-2.5 text-[13px] font-bold hover:opacity-80 transition disabled:opacity-50"
                       >
-                        {emailSaving ? 'Sending…' : 'Send confirmation'}
+                        {emailSaving ? t('settings.account.sending') : t('settings.account.sendConfirmation')}
                       </button>
                     </div>
                   )}
@@ -267,8 +269,8 @@ function SettingsContent() {
 
                 {/* Connected accounts */}
                 <div className="mt-8 pt-6 border-t border-divider">
-                  <h3 className="text-[14px] font-bold text-ink mb-1">Connected accounts</h3>
-                  <p className="text-[12px] text-muted mb-4">Log in with these accounts or disconnect them.</p>
+                  <h3 className="text-[14px] font-bold text-ink mb-1">{t('settings.account.connectedTitle')}</h3>
+                  <p className="text-[12px] text-muted mb-4">{t('settings.account.connectedSubtitle')}</p>
                   {(identityError || urlError) && <p className="text-[12px] text-red-500 mb-3">{identityError ?? urlError}</p>}
                   <div className="flex flex-col gap-3">
                     {[
@@ -289,7 +291,7 @@ function SettingsContent() {
                             </div>
                             <div>
                               <p className="text-[13px] font-semibold text-ink">{label}</p>
-                              <p className="text-[11px] text-muted">{connected ? 'Connected' : available ? 'Not connected' : 'Coming soon'}</p>
+                              <p className="text-[11px] text-muted">{connected ? t('settings.account.connected') : available ? t('settings.account.notConnected') : t('settings.account.comingSoon')}</p>
                             </div>
                           </div>
                           {available ? (
@@ -300,7 +302,7 @@ function SettingsContent() {
                                 title={isOnly ? 'Keep at least one social account connected' : undefined}
                                 className="w-[90px] py-1.5 rounded-lg border border-ink bg-page text-[11px] font-semibold text-ink hover:border-red-300 hover:bg-red-50 hover:text-red-500 transition disabled:opacity-40 disabled:cursor-not-allowed text-center"
                               >
-                                {loading ? '…' : 'Connected'}
+                                {loading ? '…' : t('settings.account.connected')}
                               </button>
                             ) : (
                               <button
@@ -308,11 +310,11 @@ function SettingsContent() {
                                 disabled={loading}
                                 className="w-[90px] py-1.5 rounded-lg bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] text-[11px] font-semibold hover:opacity-80 transition disabled:opacity-50 text-center"
                               >
-                                {loading ? '…' : 'Connect'}
+                                {loading ? '…' : t('settings.account.connect')}
                               </button>
                             )
                           ) : (
-                            <span className="w-[90px] text-center text-[11px] text-subtle font-medium">Soon</span>
+                            <span className="w-[90px] text-center text-[11px] text-subtle font-medium">{t('settings.account.soon')}</span>
                           )}
                         </div>
                       );
@@ -327,20 +329,20 @@ function SettingsContent() {
             {confirmDisconnect && (
               <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setConfirmDisconnect(null)}>
                 <div className="bg-page rounded-2xl p-7 max-w-[320px] w-full mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
-                  <h3 className="text-[15px] font-bold text-ink mb-2">Disconnect {confirmDisconnect.charAt(0).toUpperCase() + confirmDisconnect.slice(1)}?</h3>
-                  <p className="text-[13px] text-muted leading-relaxed mb-6">You won't be able to log in with {confirmDisconnect} anymore. Make sure you have another way to access your account.</p>
+                  <h3 className="text-[15px] font-bold text-ink mb-2">{t('settings.account.disconnectModalTitle')} {confirmDisconnect.charAt(0).toUpperCase() + confirmDisconnect.slice(1)}?</h3>
+                  <p className="text-[13px] text-muted leading-relaxed mb-6">{t('settings.account.disconnectModalDesc').replace('{provider}', confirmDisconnect)}</p>
                   <div className="flex gap-3">
                     <button
                       onClick={() => setConfirmDisconnect(null)}
                       className="flex-1 py-2.5 rounded-xl border border-divider text-[13px] font-semibold text-muted hover:bg-surface transition"
                     >
-                      Cancel
+                      {t('settings.account.cancel')}
                     </button>
                     <button
                       onClick={() => { handleDisconnect(confirmDisconnect); setConfirmDisconnect(null); }}
                       className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-[13px] font-bold hover:bg-red-700 transition"
                     >
-                      Disconnect
+                      {t('settings.account.disconnect')}
                     </button>
                   </div>
                 </div>
@@ -348,14 +350,14 @@ function SettingsContent() {
             )}
 
             {activeTab === 'preferences' && (
-              <Section title="Preferences">
+              <Section title={t('settings.tabs.preferences')}>
                 <div className="mb-5">
-                  <label className="block text-[13px] font-semibold text-ink mb-2">Appearance</label>
+                  <label className="block text-[13px] font-semibold text-ink mb-2">{t('settings.preferences.appearance')}</label>
                   <div className="flex gap-2">
                     {([
-                      { value: 'light', label: 'Light', Icon: Sun },
-                      { value: 'system', label: 'System', Icon: Monitor },
-                      { value: 'dark', label: 'Dark', Icon: Moon },
+                      { value: 'light',  label: t('settings.preferences.light'),  Icon: Sun },
+                      { value: 'system', label: t('settings.preferences.system'), Icon: Monitor },
+                      { value: 'dark',   label: t('settings.preferences.dark'),   Icon: Moon },
                     ] as const).map(({ value, label, Icon }) => (
                       <button
                         key={value}
@@ -369,13 +371,30 @@ function SettingsContent() {
                   </div>
                 </div>
                 <div className="mb-5">
-                  <label className="block text-[13px] font-semibold text-ink mb-2">Default region</label>
+                  <label className="block text-[13px] font-semibold text-ink mb-2">{t('settings.preferences.language')}</label>
+                  <div className="flex gap-2">
+                    {([
+                      { value: 'en', label: 'English' },
+                      { value: 'ko', label: '한국어' },
+                    ] as const).map(({ value, label }) => (
+                      <button
+                        key={value}
+                        onClick={() => setLang(value as Lang)}
+                        className={`px-4 py-2 rounded-lg text-[12px] font-semibold border transition ${lang === value ? 'border-ink text-ink' : 'border-divider text-muted hover:border-mid'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="mb-5">
+                  <label className="block text-[13px] font-semibold text-ink mb-2">{t('settings.preferences.region')}</label>
                   <select className="w-full bg-surface border border-divider rounded-xl px-4 py-2.5 text-[13px] text-ink outline-none cursor-pointer hover:border-mid transition">
                     {regions.map(r => <option key={r}>{r}</option>)}
                   </select>
                 </div>
                 <div className="mb-5">
-                  <label className="block text-[13px] font-semibold text-ink mb-2">Favorite genres</label>
+                  <label className="block text-[13px] font-semibold text-ink mb-2">{t('settings.preferences.genres')}</label>
                   <div className="flex flex-wrap gap-2">
                     {allGenres.map(g => {
                       const on = activeGenres.has(g);
@@ -394,52 +413,52 @@ function SettingsContent() {
                   </div>
                 </div>
                 <div className="mb-5">
-                  <label className="block text-[13px] font-semibold text-ink mb-2">Rating display</label>
+                  <label className="block text-[13px] font-semibold text-ink mb-2">{t('settings.preferences.ratingDisplay')}</label>
                   <div className="flex gap-2">
                     {(['Stars', 'Decimal'] as const).map((opt) => (
                       <button key={opt} onClick={() => setRatingDisplay(opt)} className={`px-4 py-2 rounded-lg text-[12px] font-semibold border transition ${ratingDisplay === opt ? 'border-ink text-ink' : 'border-divider text-muted hover:border-mid'}`}>
-                        {opt}
+                        {opt === 'Stars' ? t('settings.preferences.stars') : t('settings.preferences.decimal')}
                       </button>
                     ))}
                   </div>
                 </div>
                 <div className="mb-5">
-                  <label className="block text-[13px] font-semibold text-ink mb-2">Default comment visibility</label>
+                  <label className="block text-[13px] font-semibold text-ink mb-2">{t('settings.preferences.commentVisibility')}</label>
                   <select className="w-full bg-surface border border-divider rounded-xl px-4 py-2.5 text-[13px] text-ink outline-none cursor-pointer hover:border-mid transition">
-                    {visibilityOptions.map(v => <option key={v}>{v}</option>)}
+                    {[t('settings.visibility.public'), t('settings.visibility.followersOnly'), t('settings.visibility.private')].map(v => <option key={v}>{v}</option>)}
                   </select>
                 </div>
               </Section>
             )}
 
             {activeTab === 'notifications' && (
-              <Section title="Notifications">
-                <Toggle label="Likes on my comments" defaultOn />
-                <Toggle label="Replies to my comments" defaultOn />
-                <Toggle label="New followers" defaultOn />
-                <Toggle label="Ranking updates" defaultOn />
-                <Toggle label="Monthly capsule" />
+              <Section title={t('settings.tabs.notifications')}>
+                <Toggle label={t('settings.notifications.likes')} defaultOn />
+                <Toggle label={t('settings.notifications.replies')} defaultOn />
+                <Toggle label={t('settings.notifications.followers')} defaultOn />
+                <Toggle label={t('settings.notifications.rankingUpdates')} defaultOn />
+                <Toggle label={t('settings.notifications.capsule')} />
               </Section>
             )}
 
             {activeTab === 'privacy' && (
-              <Section title="Privacy">
+              <Section title={t('settings.tabs.privacy')}>
                 <div className="mb-5">
-                  <label className="block text-[13px] font-semibold text-ink mb-2">Profile visibility</label>
+                  <label className="block text-[13px] font-semibold text-ink mb-2">{t('settings.privacy.profileVisibility')}</label>
                   <select className="w-full bg-surface border border-divider rounded-xl px-4 py-2.5 text-[13px] text-ink outline-none cursor-pointer hover:border-mid transition">
-                    {visibilityOptions.map(v => <option key={v}>{v}</option>)}
+                    {[t('settings.visibility.public'), t('settings.visibility.followersOnly'), t('settings.visibility.private')].map(v => <option key={v}>{v}</option>)}
                   </select>
                 </div>
                 <div className="mb-5">
-                  <label className="block text-[13px] font-semibold text-ink mb-2">Catalog visibility</label>
+                  <label className="block text-[13px] font-semibold text-ink mb-2">{t('settings.privacy.catalogVisibility')}</label>
                   <select className="w-full bg-surface border border-divider rounded-xl px-4 py-2.5 text-[13px] text-ink outline-none cursor-pointer hover:border-mid transition">
-                    {visibilityOptions.map(v => <option key={v}>{v}</option>)}
+                    {[t('settings.visibility.public'), t('settings.visibility.followersOnly'), t('settings.visibility.private')].map(v => <option key={v}>{v}</option>)}
                   </select>
                 </div>
                 <div className="mb-5">
-                  <label className="block text-[13px] font-semibold text-ink mb-2">Listen Later visibility</label>
+                  <label className="block text-[13px] font-semibold text-ink mb-2">{t('settings.privacy.listenLaterVisibility')}</label>
                   <select className="w-full bg-surface border border-divider rounded-xl px-4 py-2.5 text-[13px] text-ink outline-none cursor-pointer hover:border-mid transition">
-                    {['Public', 'Private'].map(v => <option key={v}>{v}</option>)}
+                    {[t('settings.visibility.public'), t('settings.visibility.private')].map(v => <option key={v}>{v}</option>)}
                   </select>
                 </div>
               </Section>
@@ -447,26 +466,26 @@ function SettingsContent() {
 
             {activeTab === 'danger' && (
               <div className="border border-red-200 rounded-2xl p-6 bg-red-50/50">
-                <h3 className="text-[15px] font-bold text-red-700 mb-1">Danger Zone</h3>
-                <p className="text-[12px] text-red-600/80 mb-6">These actions are permanent and cannot be undone.</p>
+                <h3 className="text-[15px] font-bold text-red-700 mb-1">{t('settings.danger.title')}</h3>
+                <p className="text-[12px] text-red-600/80 mb-6">{t('settings.danger.subtitle')}</p>
                 <div className="flex flex-col gap-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <p className="text-[13px] font-semibold text-ink">Deactivate account</p>
-                      <p className="text-[12px] text-muted mt-0.5">Temporarily hide your profile. You can reactivate anytime.</p>
+                      <p className="text-[13px] font-semibold text-ink">{t('settings.danger.deactivateTitle')}</p>
+                      <p className="text-[12px] text-muted mt-0.5">{t('settings.danger.deactivateDesc')}</p>
                     </div>
                     <button className="flex-shrink-0 px-4 py-2 rounded-lg border border-red-200 text-[12px] font-semibold text-red-600 hover:bg-red-100 transition">
-                      Deactivate
+                      {t('settings.danger.deactivateBtn')}
                     </button>
                   </div>
                   <div className="border-t border-red-100" />
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <p className="text-[13px] font-semibold text-ink">Delete account</p>
-                      <p className="text-[12px] text-muted mt-0.5">Permanently remove all your data. This cannot be undone.</p>
+                      <p className="text-[13px] font-semibold text-ink">{t('settings.danger.deleteTitle')}</p>
+                      <p className="text-[12px] text-muted mt-0.5">{t('settings.danger.deleteDesc')}</p>
                     </div>
                     <button className="flex-shrink-0 px-4 py-2 rounded-lg bg-red-600 text-[12px] font-semibold text-white hover:bg-red-700 transition flex items-center gap-1.5">
-                      <Trash2 size={13} /> Delete
+                      <Trash2 size={13} /> {t('settings.danger.deleteBtn')}
                     </button>
                   </div>
                 </div>

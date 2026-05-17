@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabaseClient';
 import ScrollRow from './ScrollRow';
 import { getCanonSuggestions, toAlbumRelease } from '../lib/canon-suggestions';
 import { useHomeReady } from './HomeReadyContext';
+import { useLanguage } from '../lib/i18n';
 import type { AlbumRelease } from '../types';
 
 type Status = 'loading' | 'guest' | 'empty' | 'ready';
@@ -26,12 +27,6 @@ interface RatedRelease {
   } | null;
 }
 
-function timeGreeting() {
-  const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 17) return 'Good afternoon';
-  return 'Good evening';
-}
 
 export default function PersonalizedFeed() {
   const [status, setStatus] = useState<Status>('loading');
@@ -41,6 +36,7 @@ export default function PersonalizedFeed() {
   const [coldStartAlbums, setColdStartAlbums] = useState<AlbumRelease[]>([]);
   const [coldStartLabel, setColdStartLabel] = useState('');
   const { setReady } = useHomeReady();
+  const { t } = useLanguage();
 
   useEffect(() => {
     if (!supabase) { setStatus('guest'); setReady(); return; }
@@ -130,10 +126,10 @@ export default function PersonalizedFeed() {
   const greeting = (
     <div className="mb-11">
       <h1 className="text-[30px] font-extrabold text-ink" style={{ letterSpacing: '-1px' }}>
-        Discover your next favorite album.
+        {t('home.discover')}
       </h1>
       <p className="text-sm text-muted mt-1.5">
-        Rate albums, write reviews, and build your music catalog.
+        {t('home.discoverSub')}
       </p>
     </div>
   );
@@ -169,9 +165,9 @@ export default function PersonalizedFeed() {
           <div>
             <div className="flex items-end justify-between mb-[18px]">
               <div>
-                <div className="text-[17px] font-bold text-ink">Start Here</div>
+                <div className="text-[17px] font-bold text-ink">{t('home.startHere')}</div>
                 <div className="text-[12px] text-muted mt-0.5">
-                  {coldStartLabel ? `Canonical picks · ${coldStartLabel}` : 'Canonical picks for serious listeners'}
+                  {coldStartLabel ? `${t('home.canonicalPicks')} · ${coldStartLabel}` : t('home.canonicalPicks')}
                 </div>
               </div>
             </div>
@@ -191,11 +187,11 @@ export default function PersonalizedFeed() {
         <div className="mb-0">
           <div className="flex items-end justify-between mb-[18px]">
             <div>
-              <div className="text-[17px] font-bold text-ink">Recently Rated</div>
-              <div className="text-[12px] text-muted mt-0.5">Your latest listens</div>
+              <div className="text-[17px] font-bold text-ink">{t('home.recentlyRated')}</div>
+              <div className="text-[12px] text-muted mt-0.5">{t('home.latestListens')}</div>
             </div>
             <Link href="/profile" className="text-[12px] font-medium text-muted hover:text-mid transition">
-              See all →
+              {t('home.seeAll')}
             </Link>
           </div>
           <div className="group relative">

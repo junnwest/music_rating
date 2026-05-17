@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -6,9 +6,10 @@ import Link from 'next/link';
 import { Search } from 'lucide-react';
 import type { AlbumRelease } from '../types';
 import type { SpotifyArtist } from '../lib/spotify';
+import { useLanguage } from '../lib/i18n';
 
-type FilterType = 'All' | 'Albums' | 'EPs' | 'Singles' | 'Live';
-const FILTERS: FilterType[] = ['All', 'Albums', 'EPs', 'Singles', 'Live'];
+type FilterKey = 'All' | 'Albums' | 'EPs' | 'Singles' | 'Live';
+const FILTER_KEYS: FilterKey[] = ['All', 'Albums', 'EPs', 'Singles', 'Live'];
 
 function TypePill({ children }: { children: React.ReactNode }) {
   return (
@@ -34,9 +35,10 @@ function Chip({ children, active, onClick }: { children: React.ReactNode; active
 }
 
 export default function AlbumSearchForm() {
+  const { t } = useLanguage();
   const searchParams = useSearchParams();
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<FilterType>('All');
+  const [filter, setFilter] = useState<FilterKey>('All');
   const [releases, setReleases] = useState<AlbumRelease[]>([]);
   const [artistMatch, setArtistMatch] = useState<SpotifyArtist | null>(null);
   const [loading, setLoading] = useState(false);
@@ -79,6 +81,14 @@ export default function AlbumSearchForm() {
     }
   }, [searchParams]);
 
+  const filterLabels: Record<FilterKey, string> = {
+    All: t('search.filterAll'),
+    Albums: t('search.filterAlbums'),
+    EPs: t('search.filterEPs'),
+    Singles: t('search.filterSingles'),
+    Live: t('search.filterLive'),
+  };
+
   const filteredReleases = releases.filter((r) => {
     if (filter === 'All') return true;
     if (filter === 'Albums') return r.releaseType === 'Album';
@@ -120,21 +130,21 @@ export default function AlbumSearchForm() {
                 )}
               </div>
               <div className="ml-3 text-[12px] font-semibold text-mint-dark">
-                View artist page →
+                {t('search.viewArtist')}
               </div>
             </Link>
           )}
 
           {/* Filter chips */}
           <div className="flex gap-2 items-center flex-wrap">
-            {FILTERS.map((f) => (
+            {FILTER_KEYS.map((f) => (
               <Chip key={f} active={filter === f} onClick={() => setFilter(f)}>
-                {f}
+                {filterLabels[f]}
               </Chip>
             ))}
             <div className="flex-1" />
             {!loading && (
-              <span className="text-[12px] text-muted">{filteredReleases.length} results</span>
+              <span className="text-[12px] text-muted">{filteredReleases.length} {t('search.results')}</span>
             )}
           </div>
         </div>
@@ -146,8 +156,8 @@ export default function AlbumSearchForm() {
         {!searched && !loading && (
           <div className="flex flex-col items-center py-24 text-center">
             <Search size={32} className="text-subtle mb-4" />
-            <p className="text-[15px] font-semibold text-ink mb-1">Search for albums and artists</p>
-            <p className="text-[13px] text-muted">Use the search bar above to find something to rate.</p>
+            <p className="text-[15px] font-semibold text-ink mb-1">{t('search.prompt')}</p>
+            <p className="text-[13px] text-muted">{t('search.promptDesc')}</p>
           </div>
         )}
         {loading && (
@@ -167,8 +177,8 @@ export default function AlbumSearchForm() {
         {!loading && searched && filteredReleases.length === 0 && !error && (
           <div className="flex flex-col items-center py-20 text-center">
             <Search size={32} className="text-subtle mb-4" />
-            <p className="text-[15px] font-semibold text-ink mb-1">No results for &ldquo;{query}&rdquo;</p>
-            <p className="text-[13px] text-muted">Try a different spelling or search by artist name.</p>
+            <p className="text-[15px] font-semibold text-ink mb-1">{t('search.noResults')} &ldquo;{query}&rdquo;</p>
+            <p className="text-[13px] text-muted">{t('search.noResultsDesc')}</p>
           </div>
         )}
 

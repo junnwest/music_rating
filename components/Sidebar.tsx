@@ -4,21 +4,23 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 import { Trophy, Flame, Compass } from 'lucide-react';
+import { useLanguage } from '../lib/i18n';
 
 interface SidebarProps {
   open: boolean;
   onClose: () => void;
 }
 
-const navItems = [
-  { icon: Trophy, label: 'Ranking', path: '/rankings' },
-  { icon: Flame, label: 'Feed', path: '/activity' },
-  { icon: Compass, label: 'Explore', path: '/explore' },
-];
-
 export default function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
   const mounted = useRef(false);
+  const { t } = useLanguage();
+
+  const navItems = [
+    { icon: Trophy, label: t('nav.ranking'), path: '/rankings' },
+    { icon: Flame,  label: t('nav.feed'),    path: '/activity' },
+    { icon: Compass, label: t('nav.explore'), path: '/explore' },
+  ];
 
   useEffect(() => {
     if (!mounted.current) { mounted.current = true; return; }

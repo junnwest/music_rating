@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { createServerClient } from '../../../../lib/supabaseServer';
 import { GENRE_CATEGORIES } from '../../../../lib/genre-categories';
 import type { AlbumRelease } from '../../../../types';
+import { getServerT } from '../../../../lib/i18n/server';
 
 interface Props {
   params: { key: string };
@@ -13,6 +14,7 @@ export async function generateStaticParams() {
 }
 
 export default async function GenrePage({ params }: Props) {
+  const t = getServerT();
   const category = GENRE_CATEGORIES.find((c) => c.key === params.key);
   if (!category) notFound();
 
@@ -45,7 +47,7 @@ export default async function GenrePage({ params }: Props) {
       <div className="bg-surface border-b border-divider">
         <div className="max-w-[1440px] mx-auto px-5 py-8">
           <Link href="/" className="text-[12px] text-muted hover:text-mid transition">
-            ← Home
+            {t('genre.backHome')}
           </Link>
           <h1
             className="text-[28px] font-extrabold text-ink mt-3"
@@ -54,7 +56,7 @@ export default async function GenrePage({ params }: Props) {
             {category.name}
           </h1>
           <p className="text-[13px] text-muted mt-1">{category.description}</p>
-          <p className="text-[12px] text-muted mt-2">{albums.length} albums</p>
+          <p className="text-[12px] text-muted mt-2">{albums.length} {t('genre.albums')}</p>
         </div>
       </div>
 

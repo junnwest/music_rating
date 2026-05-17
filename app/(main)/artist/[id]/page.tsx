@@ -2,6 +2,7 @@
 import { getSpotifyArtist, getSpotifyArtistAlbums } from '../../../../lib/spotify';
 import { getCachedArtist, cacheArtist, getArtistReleases } from '../../../../lib/dbCache';
 import DiscographyGrid from '../../../../components/DiscographyGrid';
+import { getServerT } from '../../../../lib/i18n/server';
 
 export const revalidate = 3600;
 
@@ -12,6 +13,7 @@ function formatFollowers(n: number): string {
 }
 
 export default async function ArtistPage({ params }: { params: { id: string } }) {
+  const t = getServerT();
   let artist = await getCachedArtist(params.id);
   if (!artist) {
     artist = await getSpotifyArtist(params.id);
@@ -60,7 +62,7 @@ export default async function ArtistPage({ params }: { params: { id: string } })
             className="text-[12px] font-semibold text-muted uppercase mb-1"
             style={{ letterSpacing: '0.6px' }}
           >
-            Artist
+            {t('artist.artistLabel')}
           </p>
           <h1
             className="text-[24px] sm:text-[32px] font-extrabold text-ink"
@@ -77,7 +79,7 @@ export default async function ArtistPage({ params }: { params: { id: string } })
             {artist.followers > 0 && (
               <div>
                 <div className="text-[16px] font-bold text-ink">{formatFollowers(artist.followers)}</div>
-                <div className="text-[11px] text-muted">Spotify followers</div>
+                <div className="text-[11px] text-muted">{t('artist.spotifyFollowers')}</div>
               </div>
             )}
           </div>
@@ -89,7 +91,7 @@ export default async function ArtistPage({ params }: { params: { id: string } })
 
       {/* ── DISCOGRAPHY ───────────────────────────────────────── */}
       <div className="max-w-[1440px] mx-auto px-5 py-9 pb-14">
-        <h2 className="text-[17px] font-bold text-ink mb-5">Discography</h2>
+        <h2 className="text-[17px] font-bold text-ink mb-5">{t('artist.discography')}</h2>
         <DiscographyGrid initialReleases={deduped} initialNextCursor={nextCursor} />
       </div>
     </div>

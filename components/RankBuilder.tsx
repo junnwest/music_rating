@@ -283,7 +283,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
       {/* Header */}
       <header style={{
         position: 'sticky', top: 0, zIndex: 100,
-        background: '#fff', borderBottom: '1px solid rgb(var(--color-divider))',
+        background: 'rgb(var(--color-page))', borderBottom: '1px solid rgb(var(--color-divider))',
         padding: '0 24px', height: 56,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
@@ -297,7 +297,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
           onClick={save}
           disabled={saving}
           style={{
-            background: '#111', color: '#fff', border: 'none',
+            background: 'rgb(var(--color-ink))', color: 'rgb(var(--color-page))', border: 'none',
             fontSize: 12, fontWeight: 700, letterSpacing: '0.02em',
             padding: '8px 20px', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer',
             opacity: saving ? 0.5 : 1, transition: 'opacity 0.15s',
@@ -314,7 +314,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
         <div style={{ borderRight: '1px solid rgb(var(--color-divider))', padding: '32px 28px 80px', position: 'relative' }}>
           <div style={{
             position: 'sticky', top: 56, zIndex: 50,
-            background: '#fff', margin: '-32px -28px 24px', padding: '24px 28px 16px',
+            background: 'rgb(var(--color-page))', margin: '-32px -28px 24px', padding: '24px 28px 16px',
             borderBottom: '1px solid rgb(var(--color-divider))',
           }}>
             <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.8px', lineHeight: 1.05 }}>{categoryTitle}</h1>
@@ -326,14 +326,14 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
               <div key={tierIdx}>
                 {/* Drop zone above each tier */}
                 <div
-                  onDragOver={e => { e.preventDefault(); setDragTarget({ type: 'zone', index: tierIdx }); }}
+                  onDragOver={e => { if (!draggedRef.current) return; e.preventDefault(); setDragTarget({ type: 'zone', index: tierIdx }); }}
                   onDragLeave={() => setDragTarget(null)}
                   onDrop={e => { e.preventDefault(); handleDrop(tierIdx, 'between'); }}
                   style={{
                     height: dragTarget?.type === 'zone' && dragTarget.index === tierIdx ? 48 : 8,
                     margin: '-4px 0',
                     borderRadius: 4,
-                    background: dragTarget?.type === 'zone' && dragTarget.index === tierIdx ? '#F7F7F5' : 'transparent',
+                    background: dragTarget?.type === 'zone' && dragTarget.index === tierIdx ? 'rgb(var(--color-surface))' : 'transparent',
                     boxShadow: dragTarget?.type === 'zone' && dragTarget.index === tierIdx ? 'inset 0 0 0 2px #3DFFD1' : 'none',
                     transition: 'height 0.15s, background 0.15s',
                     position: 'relative', zIndex: 5,
@@ -354,7 +354,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
                   <div style={{
                     flexShrink: 0, width: 48, textAlign: 'right',
                     fontSize: 32, fontWeight: 800,
-                    color: tier.length === 0 ? '#EBEBEB' : tier.length > 1 ? '#888' : '#444',
+                    color: tier.length === 0 ? 'rgb(var(--color-divider))' : tier.length > 1 ? 'rgb(var(--color-muted))' : 'rgb(var(--color-mid))',
                     lineHeight: 1, paddingTop: 10, userSelect: 'none', fontVariantNumeric: 'tabular-nums',
                   }}>
                     {tierIdx + 1}
@@ -362,14 +362,14 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
 
                   {/* Tier body — drop target */}
                   <div
-                    onDragOver={e => { e.preventDefault(); if (tier.length < MAX_TIER_SIZE) setDragTarget({ type: 'tier', index: tierIdx }); }}
+                    onDragOver={e => { if (!draggedRef.current) return; e.preventDefault(); if (tier.length < MAX_TIER_SIZE) setDragTarget({ type: 'tier', index: tierIdx }); }}
                     onDragLeave={() => setDragTarget(null)}
                     onDrop={e => { e.preventDefault(); handleDrop(tierIdx, 'into'); }}
                     style={{
                       flex: 1, minWidth: 0,
                       display: 'flex', flexWrap: 'wrap', gap: 10,
                       minHeight: 64, padding: 4, borderRadius: 10,
-                      background: dragTarget?.type === 'tier' && dragTarget.index === tierIdx ? '#F7F7F5' : 'transparent',
+                      background: dragTarget?.type === 'tier' && dragTarget.index === tierIdx ? 'rgb(var(--color-surface))' : 'transparent',
                       boxShadow: dragTarget?.type === 'tier' && dragTarget.index === tierIdx ? 'inset 0 0 0 2px #3DFFD1' : 'none',
                       transition: 'background 0.15s, box-shadow 0.15s',
                     }}
@@ -377,7 +377,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
                     {tier.length === 0 && (
                       <div style={{
                         width: '100%', fontSize: 12, color: 'rgb(var(--color-placeholder))',
-                        padding: '20px 12px', border: '1.5px dashed #EBEBEB',
+                        padding: '20px 12px', border: '1.5px dashed rgb(var(--color-divider))',
                         borderRadius: 8, textAlign: 'center', pointerEvents: 'none',
                       }}>
                         Drop album here
@@ -399,13 +399,13 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
 
             {/* Final drop zone */}
             <div
-              onDragOver={e => { e.preventDefault(); setDragTarget({ type: 'zone', index: ranking.length }); }}
+              onDragOver={e => { if (!draggedRef.current) return; e.preventDefault(); setDragTarget({ type: 'zone', index: ranking.length }); }}
               onDragLeave={() => setDragTarget(null)}
               onDrop={e => { e.preventDefault(); handleDrop(ranking.length, 'between'); }}
               style={{
                 height: dragTarget?.type === 'zone' && dragTarget.index === ranking.length ? 48 : 8,
                 borderRadius: 4,
-                background: dragTarget?.type === 'zone' && dragTarget.index === ranking.length ? '#F7F7F5' : 'transparent',
+                background: dragTarget?.type === 'zone' && dragTarget.index === ranking.length ? 'rgb(var(--color-surface))' : 'transparent',
                 boxShadow: dragTarget?.type === 'zone' && dragTarget.index === ranking.length ? 'inset 0 0 0 2px #3DFFD1' : 'none',
                 transition: 'height 0.15s',
                 position: 'relative',
@@ -424,7 +424,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px 0', marginTop: 4 }}>
             <button
               onClick={() => setRanking(prev => [...prev, []])}
-              onDragOver={e => { e.preventDefault(); setDragTarget({ type: 'addTier' }); }}
+              onDragOver={e => { if (!draggedRef.current) return; e.preventDefault(); setDragTarget({ type: 'addTier' }); }}
               onDragLeave={() => setDragTarget(null)}
               onDrop={e => { e.preventDefault(); handleDrop(ranking.length, 'addTier'); }}
               style={{
@@ -442,9 +442,9 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
         </div>
 
         {/* RIGHT: Picker */}
-        <div className="h-[calc(100vh-120px)] xl:h-[calc(100vh-56px)]" style={{ background: '#fff', padding: 24, position: 'sticky', top: 56, overflowY: query.trim() ? 'auto' : 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div className="h-[calc(100vh-120px)] xl:h-[calc(100vh-56px)]" style={{ background: 'rgb(var(--color-page))', padding: 24, position: 'sticky', top: 56, overflowY: query.trim() ? 'auto' : 'hidden', display: 'flex', flexDirection: 'column' }}>
           {/* Search */}
-          <div style={{ position: 'sticky', top: 0, zIndex: 10, background: '#fff', paddingBottom: 16 }}>
+          <div style={{ position: 'sticky', top: 0, zIndex: 10, background: 'rgb(var(--color-page))', paddingBottom: 16 }}>
             <input
               type="text"
               placeholder="Search for an album…"
@@ -514,6 +514,8 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
                   onDismiss={() => setDismissed(prev => new Set([...prev, album.id]))}
                   onCancel={() => setAddTarget(null)}
                   onAddToTier={tierIdx => addToTier(album, tierIdx)}
+                  onDragStart={e => startDrag(e, album, -1)}
+                  onDragEnd={endDrag}
                 />
               ))}
             </div>
@@ -525,7 +527,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
       <div style={{
         position: 'fixed', bottom: 24, left: '50%',
         transform: `translateX(-50%) translateY(${toast.visible ? 0 : 20}px)`,
-        background: '#111', color: '#fff', fontSize: 12, fontWeight: 600,
+        background: 'rgb(var(--color-ink))', color: 'rgb(var(--color-page))', fontSize: 12, fontWeight: 600,
         padding: '10px 24px', borderRadius: 10, zIndex: 200,
         opacity: toast.visible ? 1 : 0, transition: 'all 0.3s', pointerEvents: 'none',
       }}>
@@ -540,7 +542,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
         >
           <div
             onClick={e => e.stopPropagation()}
-            style={{ background: '#fff', borderRadius: 16, padding: '32px 28px', maxWidth: 380, width: '100%', boxShadow: '0 24px 64px rgba(0,0,0,0.25)' }}
+            style={{ background: 'rgb(var(--color-page))', borderRadius: 16, padding: '32px 28px', maxWidth: 380, width: '100%', boxShadow: '0 24px 64px rgba(0,0,0,0.25)' }}
           >
             <h2 style={{ fontSize: 18, fontWeight: 800, color: 'rgb(var(--color-ink))', margin: '0 0 8px' }}>Save changes?</h2>
             <p style={{ fontSize: 14, color: 'rgb(var(--color-muted))', lineHeight: 1.55, margin: '0 0 28px' }}>
@@ -554,7 +556,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
                   setShowLeaveModal(false);
                   if (pendingHref) router.push(pendingHref);
                 }}
-                style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 20px', fontSize: 14, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.5 : 1, transition: 'opacity 0.15s' }}
+                style={{ background: 'rgb(var(--color-ink))', color: 'rgb(var(--color-page))', border: 'none', borderRadius: 10, padding: '12px 20px', fontSize: 14, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.5 : 1, transition: 'opacity 0.15s' }}
               >{saving ? 'Saving…' : 'Save & Leave'}</button>
               <button
                 onClick={() => { setShowLeaveModal(false); if (pendingHref) router.push(pendingHref); }}
@@ -605,7 +607,7 @@ function AlbumCard({ album, onDragStart, onDragEnd, onRemove }: {
         style={{
           position: 'absolute', top: -6, right: -6, zIndex: 10,
           width: 18, height: 18, borderRadius: '50%',
-          background: '#fff', border: '1px solid rgb(var(--color-divider))',
+          background: 'rgb(var(--color-page))', border: '1px solid rgb(var(--color-divider))',
           color: 'rgb(var(--color-muted))', fontSize: 14, lineHeight: 1,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: 'pointer', opacity: hovered ? 1 : 0, transition: 'opacity 0.15s',
@@ -618,7 +620,7 @@ function AlbumCard({ album, onDragStart, onDragEnd, onRemove }: {
   );
 }
 
-function SuggestionCard({ album, isAddTarget, ranking, onAdd, onDismiss, onCancel, onAddToTier }: {
+function SuggestionCard({ album, isAddTarget, ranking, onAdd, onDismiss, onCancel, onAddToTier, onDragStart, onDragEnd }: {
   album: RankedAlbum;
   isAddTarget: boolean;
   ranking: RankedAlbum[][];
@@ -626,12 +628,19 @@ function SuggestionCard({ album, isAddTarget, ranking, onAdd, onDismiss, onCance
   onDismiss: () => void;
   onCancel: () => void;
   onAddToTier: (tierIdx: number) => void;
+  onDragStart: (e: React.DragEvent) => void;
+  onDragEnd: () => void;
 }) {
   const pickable = ranking.map((t, i) => ({ i, len: t.length })).filter(({ len }) => len > 0 && len < MAX_TIER_SIZE);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      <div style={{ position: 'relative', width: '100%', aspectRatio: '1', borderRadius: 6, overflow: 'hidden', background: coverColor(album.id), border: '1px solid rgb(var(--color-divider))' }}>
+      <div
+        draggable
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        style={{ position: 'relative', width: '100%', aspectRatio: '1', borderRadius: 6, overflow: 'hidden', background: coverColor(album.id), border: '1px solid rgb(var(--color-divider))', cursor: 'grab' }}
+      >
         {album.coverUrl
           ? <img src={album.coverUrl} alt={album.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
           : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff', textTransform: 'uppercase' }}>{album.title.slice(0, 2)}</div>
@@ -663,7 +672,7 @@ function SuggestionCard({ album, isAddTarget, ranking, onAdd, onDismiss, onCance
       <div style={{ display: 'flex', gap: 3, marginTop: 1, visibility: isAddTarget ? 'hidden' : 'visible' }}>
         <button
           onClick={onAdd}
-          style={{ flex: 1, fontSize: 9, fontWeight: 700, background: '#111', color: '#fff', border: 'none', borderRadius: 3, padding: '4px 0', cursor: 'pointer', lineHeight: 1 }}
+          style={{ flex: 1, fontSize: 9, fontWeight: 700, background: 'rgb(var(--color-ink))', color: 'rgb(var(--color-page))', border: 'none', borderRadius: 3, padding: '4px 0', cursor: 'pointer', lineHeight: 1 }}
         >Add</button>
         <button
           onClick={onDismiss}
@@ -708,8 +717,8 @@ function SuggestedCard({ album, isAdded, onClick, onDragStart, onDragEnd }: {
         }}>
           <span style={{
             fontSize: 11, fontWeight: 700,
-            background: isAdded ? '#EBEBEB' : '#3DFFD1',
-            color: isAdded ? '#888' : '#00453A',
+            background: isAdded ? 'rgb(var(--color-surface))' : '#3DFFD1',
+            color: isAdded ? 'rgb(var(--color-muted))' : '#00453A',
             padding: '4px 12px', borderRadius: 6,
           }}>
             {isAdded ? 'Added' : 'Add'}

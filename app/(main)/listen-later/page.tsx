@@ -1,9 +1,10 @@
-﻿'use client';
+'use client';
 
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { BookmarkPlus, X } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
+import { useLanguage } from '../../../lib/i18n';
 
 interface SavedAlbum {
   id: string;
@@ -28,6 +29,7 @@ function saveIds(ids: string[]) {
 }
 
 export default function ListenLaterPage() {
+  const { t } = useLanguage();
   const [albums, setAlbums] = useState<SavedAlbum[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -42,7 +44,6 @@ export default function ListenLaterPage() {
       .in('id', ids)
       .then(({ data }) => {
         if (data) {
-          // Preserve saved order
           const map = new Map(data.map((r: any) => [r.id, r]));
           setAlbums(
             ids
@@ -66,13 +67,13 @@ export default function ListenLaterPage() {
       <div className="bg-surface border-b border-divider">
         <div className="max-w-[1440px] mx-auto px-5 py-12">
           <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.7px' }}>
-            Library
+            {t('listenLater.library')}
           </p>
           <h1 className="text-[28px] sm:text-[38px] font-extrabold text-ink leading-[1.06]" style={{ letterSpacing: '-1.2px' }}>
-            Listen Later
+            {t('listenLater.title')}
           </h1>
           <p className="text-[15px] text-muted mt-3 max-w-[500px] leading-relaxed">
-            Albums you've saved to check out later.
+            {t('listenLater.subtitle')}
           </p>
         </div>
       </div>
@@ -80,11 +81,11 @@ export default function ListenLaterPage() {
       <div className="max-w-[1440px] mx-auto px-5 py-8 pb-16 w-full">
         {loading ? (
           <div className="py-24 text-center">
-            <p className="text-[13px] text-muted">Loading saved albums…</p>
+            <p className="text-[13px] text-muted">{t('listenLater.loadingAlbums')}</p>
           </div>
         ) : albums.length > 0 ? (
           <>
-            <p className="text-[13px] text-muted mb-5">{albums.length} album{albums.length !== 1 ? 's' : ''} saved</p>
+            <p className="text-[13px] text-muted mb-5">{albums.length} {t('listenLater.library').toLowerCase()}</p>
             <div
               className="grid gap-4"
               style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}
@@ -120,15 +121,15 @@ export default function ListenLaterPage() {
         ) : (
           <div className="flex flex-col items-center justify-center py-24 text-center">
             <BookmarkPlus size={36} className="text-subtle mb-3" />
-            <p className="text-[15px] font-semibold text-ink">No albums saved yet</p>
+            <p className="text-[15px] font-semibold text-ink">{t('listenLater.noAlbums')}</p>
             <p className="text-[13px] text-muted mt-1 max-w-[300px]">
-              Browse albums and tap "Listen Later" to save them here.
+              {t('listenLater.noAlbumsDesc')}
             </p>
             <Link
               href="/"
               className="mt-4 text-[13px] font-semibold text-ink border border-divider rounded-lg px-5 py-2 hover:bg-surface transition"
             >
-              Discover albums
+              {t('listenLater.discoverAlbums')}
             </Link>
           </div>
         )}

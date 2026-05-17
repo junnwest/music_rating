@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import UserAvatar from './UserAvatar';
 import { useUnreadCount } from '../lib/useUnreadCount';
+import { useLanguage } from '../lib/i18n';
 
 interface SiteHeaderProps {
   onMenuClick?: () => void;
@@ -26,6 +27,7 @@ export default function SiteHeader({ onMenuClick }: SiteHeaderProps) {
   const [profileUsername, setProfileUsername] = useState<string | null>(null);
   const [profileDisplayName, setProfileDisplayName] = useState<string | null>(null);
   const unreadCount = useUnreadCount();
+  const { t } = useLanguage();
   const profileRef = useRef<HTMLDivElement>(null);
 
   const fetchProfile = async (uid: string) => {
@@ -102,12 +104,12 @@ export default function SiteHeader({ onMenuClick }: SiteHeaderProps) {
   const initial = (profileDisplayName ?? profileUsername ?? session?.user?.email ?? '')[0]?.toUpperCase() ?? '';
 
   const menuItems = [
-    { icon: User, label: 'Profile', href: username ? `/profile/${username}` : '/profile' },
-    { icon: Users, label: 'Friends', href: '/friends' },
-    { icon: Bookmark, label: 'Listen Later', href: '/listen-later' },
-    { icon: Bell, label: 'Notifications', href: '/notifications' },
-    { icon: Settings, label: 'Settings', href: '/settings' },
-    { icon: HelpCircle, label: 'Help', href: '/help' },
+    { icon: User,       label: t('nav.profile'),       href: username ? `/profile/${username}` : '/profile', isNotifications: false },
+    { icon: Users,      label: t('nav.friends'),       href: '/friends', isNotifications: false },
+    { icon: Bookmark,   label: t('nav.listenLater'),   href: '/listen-later', isNotifications: false },
+    { icon: Bell,       label: t('nav.notifications'), href: '/notifications', isNotifications: true },
+    { icon: Settings,   label: t('nav.settings'),      href: '/settings', isNotifications: false },
+    { icon: HelpCircle, label: t('nav.help'),          href: '/help', isNotifications: false },
   ];
 
   return (
@@ -125,7 +127,7 @@ export default function SiteHeader({ onMenuClick }: SiteHeaderProps) {
               value={mobileQuery}
               onChange={e => setMobileQuery(e.target.value)}
               onKeyDown={e => { if (e.key === 'Escape') closeMobileSearch(); }}
-              placeholder="Search albums, artists…"
+              placeholder={t('nav.searchPlaceholder')}
               className="w-full bg-transparent text-[14px] text-ink outline-none placeholder:text-placeholder"
             />
           </form>
@@ -161,7 +163,7 @@ export default function SiteHeader({ onMenuClick }: SiteHeaderProps) {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search albums, artists…"
+            placeholder={t('nav.searchPlaceholder')}
             className="flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-placeholder"
           />
         </div>
@@ -197,16 +199,16 @@ export default function SiteHeader({ onMenuClick }: SiteHeaderProps) {
                   <p className="text-[11px] text-muted truncate">@{username}</p>
                 </div>
 
-                {menuItems.map(({ icon: Icon, label, href }) => (
+                {menuItems.map(({ icon: Icon, label, href, isNotifications }) => (
                   <Link
-                    key={label}
+                    key={href}
                     href={href}
                     onClick={() => setProfileOpen(false)}
                     className="flex items-center gap-3 px-3 py-2 text-[13px] text-ink hover:bg-surface transition"
                   >
                     <Icon size={16} strokeWidth={1.8} className="text-muted flex-shrink-0" />
                     <span className="flex-1">{label}</span>
-                    {label === 'Notifications' && unreadCount > 0 && (
+                    {isNotifications && unreadCount > 0 && (
                       <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
                     )}
                   </Link>
@@ -219,7 +221,7 @@ export default function SiteHeader({ onMenuClick }: SiteHeaderProps) {
                     className="flex items-center gap-3 px-3 py-2 text-[13px] text-muted hover:text-red-500 hover:bg-surface w-full text-left transition"
                   >
                     <LogOut size={16} strokeWidth={1.8} className="flex-shrink-0" />
-                    Log out
+                    {t('nav.logOut')}
                   </button>
                 </div>
               </div>
@@ -230,7 +232,7 @@ export default function SiteHeader({ onMenuClick }: SiteHeaderProps) {
             href="/login"
             className="text-[13px] font-semibold text-ink border border-divider rounded-lg px-4 py-2 hover:bg-surface transition"
           >
-            Log in
+            {t('nav.logIn')}
           </Link>
         )}
       </div>
