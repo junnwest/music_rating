@@ -47,7 +47,7 @@ export default async function ArtistPage({ params }: { params: { id: string } })
         {/* Avatar */}
         <div
           className="w-[72px] h-[72px] sm:w-[96px] sm:h-[96px] rounded-full flex-shrink-0 overflow-hidden border border-divider flex items-center justify-center font-bold text-mint-dark text-[28px] sm:text-[36px]"
-          style={{ background: '#EDFFF9' }}
+          style={{ background: '#FEF3DC' }}
         >
           {artist.coverUrl ? (
             <img src={artist.coverUrl} alt={artist.name} className="w-full h-full object-cover" />

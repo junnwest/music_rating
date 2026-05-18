@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabaseClient';
 import type { Session } from '@supabase/supabase-js';
 
 const STAR_PATH = 'M6 1 L7.3 4.1 L10.8 4.1 L8.0 6.2 L9.0 9.5 L6 7.5 L3.0 9.5 L4.0 6.2 L1.2 4.1 L4.7 4.1 Z';
-const MINT = '#3DFFD1';
+const MINT = '#E8A020';
 const EMPTY = '#E5E5E0';
 
 function Star({ n, full, half, size }: { n: number; full: boolean; half: boolean; size: number }) {

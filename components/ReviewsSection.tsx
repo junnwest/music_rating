@@ -34,7 +34,7 @@ function StarDisplay({ score }: { score: number }) {
                 className="absolute inset-0 overflow-hidden"
                 style={{ width: fill === 1 ? '100%' : '50%' }}
               >
-                <Star size={11} strokeWidth={1.5} fill="#00453A" className="text-[#00453A]" />
+                <Star size={11} strokeWidth={1.5} fill="#E8A020" className="text-[#E8A020]" />
               </span>
             )}
           </span>
@@ -225,7 +225,7 @@ export default function ReviewsSection({ releaseId }: { releaseId: string }) {
       {loading ? (
         <p className="text-sm text-muted">Loading…</p>
       ) : comments.length === 0 ? (
-        <p className="text-[13px] text-muted">No comments yet. Be the first to leave one after rating.</p>
+        <p className="text-[13px] text-muted">No comments yet. Rate it first, then share your take.</p>
       ) : (
         <div className="flex flex-col gap-5">
           {comments.map(c => {

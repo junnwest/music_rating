@@ -9,7 +9,7 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        mint:        '#3DFFD1',
+        mint:        '#E8A020',
         'mint-bg':   'rgb(var(--color-mint-bg))',
         'mint-dark': 'rgb(var(--color-mint-dark))',
         ink:         'rgb(var(--color-ink))',

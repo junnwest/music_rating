@@ -120,9 +120,9 @@ export default function ActivityPage() {
                         {item.score && (
                           <span
                             className="inline-flex items-center ml-2 text-[10px] font-bold rounded-[4px] px-[6px] py-[1px] align-middle"
-                            style={{ background: '#3DFFD1', color: '#00453A' }}
+                            style={{ background: '#E8A020', color: '#7A4F0A' }}
                           >
-                            ★ {item.score}
+                            ★ {Number(item.score).toFixed(1)}
                           </span>
                         )}
                       </p>

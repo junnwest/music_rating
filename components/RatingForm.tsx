@@ -133,7 +133,7 @@ export default function RatingForm({ release }: RatingFormProps) {
   if (!session) {
     return (
       <div className="rounded-3xl border border-slate-700 bg-slate-950/80 p-4 text-slate-300">
-        <p className="mb-3 text-sm">Sign in to rate this release and save it to your profile.</p>
+        <p className="mb-3 text-sm">Sign in to rate this and add it to your catalog.</p>
         <a href="/login" className="inline-flex rounded-full border border-brand-500 bg-brand-500/10 px-4 py-2 text-sm font-semibold text-brand-200 hover:bg-brand-500/20">
           Sign in
         </a>
@@ -144,7 +144,7 @@ export default function RatingForm({ release }: RatingFormProps) {
   return (
     <div className="rounded-3xl border border-slate-700 bg-slate-950/80 p-4 text-slate-200">
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="rounded-full bg-slate-900 px-3 py-1 text-xs uppercase tracking-[0.3em] text-brand-300">Rate this release</div>
+        <div className="rounded-full bg-slate-900 px-3 py-1 text-xs uppercase tracking-[0.3em] text-brand-300">Rate this</div>
         {savedRating ? (
           <span className="text-sm text-slate-400">Saved: {savedRating.score}/5 • {savedRating.status}</span>
         ) : (

@@ -37,7 +37,7 @@ function ContradictionRow({ c }: { c: Contradiction }) {
         <div className="flex items-center gap-3 mt-2">
           <span
             className="inline-flex items-center text-[11px] font-bold rounded-[4px] px-[7px] py-[2px]"
-            style={{ background: '#3DFFD1', color: '#00453A' }}
+            style={{ background: '#E8A020', color: '#7A4F0A' }}
           >
             You ★{c.myScore}
           </span>
@@ -103,7 +103,7 @@ export default function ContradictionsPanel() {
         ) : !loggedIn ? (
           <div className="flex flex-col items-center py-20 text-center">
             <p className="text-[14px] font-semibold text-ink mb-1">Sign in to see your contradictions</p>
-            <p className="text-[13px] text-muted mb-6">Rate albums and see where you diverge from the crowd.</p>
+            <p className="text-[13px] text-muted mb-6">Rate more to see where your taste breaks from the crowd.</p>
             <Link
               href="/login"
               className="bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] text-[13px] font-bold px-5 py-2.5 rounded-lg hover:opacity-80 transition inline-block"

@@ -20,7 +20,7 @@ export default function RankingVoteWidget({
   if (leaderboard.length === 0) {
     return (
       <div className="py-16 text-center">
-        <p className="text-[14px] text-muted">No rankings yet. Be the first.</p>
+        <p className="text-[14px] text-muted">No rankings yet. Be the one to start it.</p>
       </div>
     );
   }
@@ -74,11 +74,11 @@ export default function RankingVoteWidget({
             <div className="w-[120px] flex-shrink-0 flex items-center gap-2">
               <div className="flex-1 h-[4px] bg-[#EBEBEB] rounded-full overflow-hidden">
                 <div
-                  className="h-full rounded-full bg-[#00C2A8]"
+                  className="h-full rounded-full bg-[#E8A020]"
                   style={{ width: `${entry.sillaScore}%` }}
                 />
               </div>
-              <span className="text-[12px] font-semibold text-[#00C2A8] tabular-nums w-[36px] text-right">
+              <span className="text-[12px] font-semibold text-[#E8A020] tabular-nums w-[36px] text-right">
                 {entry.sillaScore.toFixed(1)}
               </span>
             </div>

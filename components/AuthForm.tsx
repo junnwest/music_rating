@@ -132,9 +132,9 @@ export default function AuthForm() {
         <div className="flex flex-col items-center text-center">
           <div
             className="w-14 h-14 rounded-2xl flex items-center justify-center mb-6"
-            style={{ background: '#EDFFF9', border: '1.5px solid #3DFFD1' }}
+            style={{ background: '#FEF3DC', border: '1.5px solid #E8A020' }}
           >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00C2A8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#E8A020" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="2" y="4" width="20" height="16" rx="2" />
               <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
             </svg>
@@ -421,18 +421,6 @@ export default function AuthForm() {
         )}
       </p>
 
-      {/* Value prop card */}
-      <div
-        className="mt-[30px] px-4 py-[14px] rounded-[10px]"
-        style={{ background: '#EDFFF9', border: '1.5px solid #3DFFD1' }}
-      >
-        <p className="text-[13px] font-semibold text-mint-dark mb-1">
-          One rating per album. Your taste, tracked.
-        </p>
-        <p className="text-[12px] text-mint-dark leading-[1.55]" style={{ opacity: 0.75 }}>
-          Rate out of 5 stars, write reviews, build your catalog, follow friends.
-        </p>
-      </div>
     </div>
   );
 }

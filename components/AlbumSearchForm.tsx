@@ -109,11 +109,11 @@ export default function AlbumSearchForm() {
             <Link
               href={`/artist/${artistMatch.id}`}
               className="inline-flex items-center gap-[14px] mb-4 px-[18px] py-3 rounded-[10px] hover:opacity-90 transition"
-              style={{ background: '#EDFFF9', border: '1.5px solid #3DFFD1' }}
+              style={{ background: '#FEF3DC', border: '1.5px solid #E8A020' }}
             >
               <div
                 className="w-[42px] h-[42px] rounded-full flex-shrink-0 flex items-center justify-center font-bold text-mint-dark text-[16px] overflow-hidden"
-                style={{ background: '#EDFFF9', border: '2px solid #3DFFD1' }}
+                style={{ background: '#FEF3DC', border: '2px solid #E8A020' }}
               >
                 {artistMatch.coverUrl ? (
                   <img src={artistMatch.coverUrl} alt={artistMatch.name} className="w-full h-full object-cover" />

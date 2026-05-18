@@ -430,7 +430,7 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
                   <p className="text-[12px] text-muted truncate">{albumArtist}</p>
                   {userScore !== null && (
                     <p className="text-[12px] text-muted mt-1">
-                      Current rating: <span className="font-semibold text-ink">★ {userScore}</span>
+                      Current rating: <span className="font-semibold text-ink">★ {Number(userScore).toFixed(1)}</span>
                     </p>
                   )}
                 </div>
@@ -509,10 +509,10 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
                           onClick={() => goToRanking(cat.slug)}
                           className="flex items-center gap-3 w-full text-left px-3 py-2.5 rounded-lg hover:bg-surface transition"
                         >
-                          <Trophy size={13} className={`flex-shrink-0 ${alreadyRanked ? 'text-[#00C2A8]' : 'text-muted'}`} />
+                          <Trophy size={13} className={`flex-shrink-0 ${alreadyRanked ? 'text-[#E8A020]' : 'text-muted'}`} />
                           <span className="flex-1 text-[13px] font-semibold text-ink truncate">{cat.title}</span>
                           {alreadyRanked
-                            ? <Check size={13} className="text-[#00C2A8] flex-shrink-0" />
+                            ? <Check size={13} className="text-[#E8A020] flex-shrink-0" />
                             : <ChevronRight size={13} className="text-muted flex-shrink-0" />}
                         </button>
                       );
@@ -572,7 +572,7 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
                           {matchedCategory.title}
                         </p>
                         {myRankedCategoryIds.has(matchedCategory.id) && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#00C2A8] flex-shrink-0">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#E8A020] flex-shrink-0">
                             <Check size={10} />
                             Ranked
                           </span>

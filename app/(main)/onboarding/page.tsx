@@ -32,7 +32,7 @@ function StepDots({ current, total }: { current: number; total: number }) {
           style={{
             width: i === current ? 20 : 7,
             height: 7,
-            background: i <= current ? '#3DFFD1' : '#EBEBEB',
+            background: i <= current ? '#E8A020' : '#EBEBEB',
           }}
         />
       ))}
@@ -86,7 +86,7 @@ function StepIdentity({
   const usernameColor: Record<typeof usernameStatus, string> = {
     idle: '#A0A09C',
     checking: '#A0A09C',
-    available: '#00B894',
+    available: '#E8A020',
     taken: '#E53E3E',
     invalid: '#E53E3E',
   };
@@ -207,7 +207,7 @@ function StepGenres({
               className="px-[14px] py-[8px] rounded-full text-[13px] font-semibold border transition"
               style={
                 on
-                  ? { background: '#3DFFD1', borderColor: '#3DFFD1', color: '#00453A' }
+                  ? { background: '#E8A020', borderColor: '#E8A020', color: '#7A4F0A' }
                   : { background: 'white', borderColor: '#EBEBEB', color: '#6B6B6B' }
               }
             >
@@ -271,11 +271,11 @@ function AlbumCell({
         {isSelected && (
           <div
             className="absolute inset-0 flex items-center justify-center"
-            style={{ background: 'rgba(61,255,209,0.4)' }}
+            style={{ background: 'rgba(232,160,32,0.2)' }}
           >
-            <div className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: '#3DFFD1' }}>
+            <div className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: '#E8A020' }}>
               <svg width="12" height="9" viewBox="0 0 14 10" fill="none">
-                <path d="M1.5 5L5 8.5L12.5 1" stroke="#00453A" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M1.5 5L5 8.5L12.5 1" stroke="#7A4F0A" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
           </div>

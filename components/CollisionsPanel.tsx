@@ -110,7 +110,7 @@ export default function CollisionsPanel() {
                   <div className="flex items-center gap-3 mt-2">
                     <span
                       className="inline-flex items-center text-[11px] font-bold rounded-[4px] px-[7px] py-[2px]"
-                      style={{ background: '#3DFFD1', color: '#00453A' }}
+                      style={{ background: '#E8A020', color: '#7A4F0A' }}
                     >
                       You ★{c.myScore}
                     </span>

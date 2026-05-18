@@ -1,6 +1,6 @@
 # sillajuku
 
-A music rating and discovery platform for serious listeners. Rate albums, write reviews, and get personalized recommendations.
+Every record you've loved — rated, cataloged, and remembered. A music platform for listeners with taste.
 
 **Stack:** Next.js 14 (App Router) · Supabase (auth + database) · Spotify API · Tailwind CSS
 
@@ -218,7 +218,7 @@ gstack is installed at `~/.claude/skills/gstack`. Skills are available as slash 
 - [x] Best Album of 2025 seed — done
 - [x] Seed script CASCADE DELETE bug fixed — admin endpoint now uses upsert; re-seeding categories no longer wipes existing seed entries
 - [x] Rankings leaderboard pagination — 10 per page, ellipsis page numbers (max 10 visible), jump-to-page input; rank numbers offset correctly per page
-- [x] Silla score color — changed to cyan mint (#00C2A8) across bar and value
+- [x] Silla score color — changed to amber (#E8A020) across bar and value
 - [x] Ranking leaderboard rows — clickable links to album pages
 - [x] Rankings page thumbnails — fixed to use actual Silla Score formula (was using a simplistic rank=1 heuristic); now consistent with leaderboard order
 - [x] Album page "In Rankings" — shows each ranking the album appears in with its Silla-computed rank number (e.g. "Greatest Album of All Time #1") in cyan
@@ -246,13 +246,24 @@ gstack is installed at `~/.claude/skills/gstack`. Skills are available as slash 
 - [x] Search page — mobile header search overlay; landing empty state
 - [x] Activity + Settings — "reviewed/reviews" text updated to "commented/comments"
 
+### Done — branding (2026-05-18)
+- [x] Accent color: cyan/mint (#3DFFD1 / #00C2A8) → amber (#E8A020) across all UI surfaces (buttons, badges, progress bar, overlays, form highlights)
+- [x] Score badges on album thumbnails → blue (#5170ad / #ffffff) to match flower mark
+- [x] Score display: always one decimal place (`toFixed(1)`) — "5" → "5.0"
+- [x] Tagline: "Every record you've loved." — applied to OG image, footer, metadata description, all three language fields
+- [x] Homepage headline: "Your taste documented."
+- [x] Copy/voice audit: 17 strings updated across `en.ts` + 6 hardcoded component strings — tone shifted from generic ("Rate albums, write reviews") to taste-forward and possessive
+- [x] Korean translations (`ko.ts`): all updated strings retranslated to match new voice
+- [x] Flower mark (logo): replaced `public/logo-flower.svg` + `public/logo.svg` (auth page) with Asset 20; deleted outdated Asset 15
+- [x] Auth form: removed value-prop card ("One rating per album. Your taste, tracked.")
+
 ### Done — auth + signup (2026-05-14)
 - [x] Password reset flow — forgot mode in AuthForm → email link → `/auth/callback?next=/reset-password` → `/reset-password` page
 - [x] Auth page redesign — no navbar; logo centered at top of login/reset-password pages
 - [x] Signup: username field removed (collected in onboarding instead)
 - [x] Signup: duplicate email detection — Supabase `identities.length === 0` check → "An account with this email already exists"
 - [x] Signup: cross-tab confirmation — `onAuthStateChange` listener auto-redirects original signup tab to `/onboarding` when user confirms in a separate tab
-- [x] OG / social preview — `app/opengraph-image.tsx` (wordmark + mint accent + star grid); root metadata updated with og + twitter card tags
+- [x] OG / social preview — `app/opengraph-image.tsx` (wordmark + amber accent + star grid); root metadata updated with og + twitter card tags
 
 ### Done — annual
 - [x] Wrapped page — yearly summary: albums rated, top genre, top artist, avg score, active month, best/worst album
@@ -485,7 +496,16 @@ npm run expand:discography
 
 ---
 
-**Session summary (2026-05-18):**
+**Session summary (2026-05-18) — branding:**
+- Brand identity locked: tagline "Every record you've loved.", amber accent (#E8A020), flower mark (Asset 20) as primary visual logo
+- Full cyan/mint purge: replaced all hardcoded hex values (#3DFFD1, #00C2A8, #00B894, #EDFFF9, #00453A) with amber equivalents across 18+ files
+- Score badges on album thumbnails changed to periwinkle blue (#5170ad) to match flower mark; score display standardized to 1 decimal place (toFixed(1))
+- Homepage headline: "Your taste documented."; metadata description: "Every record you've loved."
+- Copy/voice audit: 17 en.ts strings + 6 hardcoded strings rewritten; 9 ko.ts strings retranslated
+- Logo assets: public/logo.svg (auth page) + public/logo-flower.svg (footer) both replaced with Asset 20; Asset 15 deleted
+- Auth form value-prop card removed
+
+**Session summary (2026-05-18) — security:**
 - Security hardening (Week 4): auth checks on all mutation API routes (`/api/follow`, `/api/notifications` PATCH, `/api/lists` POST, `/api/rankings/vote`) via `lib/authGuard.ts` JWT verification; 403 on missing/mismatched token; client-side callers updated to send `Authorization: Bearer <token>`
 - `/api/auth/resolve-username` converted from GET → POST (username no longer in URL/server logs)
 - Security headers in `next.config.mjs`: CSP, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Strict-Transport-Security`, `Referrer-Policy`, `Permissions-Policy`

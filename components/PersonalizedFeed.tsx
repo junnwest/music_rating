@@ -222,9 +222,9 @@ export default function PersonalizedFeed() {
                         {r.score && (
                           <div
                             className="absolute bottom-1.5 right-1.5 text-[10px] font-bold rounded-[4px] px-[6px] py-[2px]"
-                            style={{ background: '#3DFFD1', color: '#00453A' }}
+                            style={{ background: '#5170ad', color: '#ffffff' }}
                           >
-                            ★ {r.score}
+                            ★ {Number(r.score).toFixed(1)}
                           </div>
                         )}
                       </div>

@@ -177,14 +177,14 @@ export default function Pick5Modal({ userId, onComplete }: { userId: string; onC
                       {isSelected && (
                         <div
                           className="absolute inset-0 flex items-center justify-center"
-                          style={{ background: 'rgba(61,255,209,0.35)' }}
+                          style={{ background: 'rgba(232,160,32,0.2)' }}
                         >
                           <div
                             className="w-7 h-7 rounded-full flex items-center justify-center"
-                            style={{ background: '#3DFFD1' }}
+                            style={{ background: '#E8A020' }}
                           >
                             <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
-                              <path d="M1.5 5L5 8.5L12.5 1" stroke="#00453A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                              <path d="M1.5 5L5 8.5L12.5 1" stroke="#7A4F0A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                             </svg>
                           </div>
                         </div>

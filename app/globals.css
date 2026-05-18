@@ -11,8 +11,8 @@
   --color-divider:     235 235 235;
   --color-placeholder: 192 192 190;
   --color-subtle:      221 221 216;
-  --color-mint-bg:     237 255 249;
-  --color-mint-dark:   0 69 58;
+  --color-mint-bg:     254 243 220;
+  --color-mint-dark:   122 79 10;
   --color-page:        255 255 255;
 }
 
@@ -25,8 +25,8 @@
   --color-divider:     46 46 44;
   --color-placeholder: 72 72 70;
   --color-subtle:      60 60 58;
-  --color-mint-bg:     13 40 32;
-  --color-mint-dark:   61 255 209;
+  --color-mint-bg:     41 24 0;
+  --color-mint-dark:   245 192 96;
   --color-page:        25 25 23;
 }
 

@@ -146,8 +146,8 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
       ghostRef.current.style.top = e.clientY - 32 + 'px';
       ghostRef.current.style.background = album.coverUrl ? 'transparent' : coverColor(album.id);
       ghostRef.current.innerHTML = album.coverUrl
-        ? `<img src="${album.coverUrl}" style="width:64px;height:64px;border-radius:6px;object-fit:cover;border:2px solid #3DFFD1;display:block;" />`
-        : `<div style="width:64px;height:64px;border-radius:6px;background:${coverColor(album.id)};border:2px solid #3DFFD1;"></div>`;
+        ? `<img src="${album.coverUrl}" style="width:64px;height:64px;border-radius:6px;object-fit:cover;border:2px solid #E8A020;display:block;" />`
+        : `<div style="width:64px;height:64px;border-radius:6px;background:${coverColor(album.id)};border:2px solid #E8A020;"></div>`;
     }
   }
 
@@ -334,7 +334,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
                     margin: '-4px 0',
                     borderRadius: 4,
                     background: dragTarget?.type === 'zone' && dragTarget.index === tierIdx ? 'rgb(var(--color-surface))' : 'transparent',
-                    boxShadow: dragTarget?.type === 'zone' && dragTarget.index === tierIdx ? 'inset 0 0 0 2px #3DFFD1' : 'none',
+                    boxShadow: dragTarget?.type === 'zone' && dragTarget.index === tierIdx ? 'inset 0 0 0 2px #E8A020' : 'none',
                     transition: 'height 0.15s, background 0.15s',
                     position: 'relative', zIndex: 5,
                     display: 'flex', alignItems: 'center',
@@ -343,7 +343,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
                   {dragTarget?.type === 'zone' && dragTarget.index === tierIdx && (
                     <span style={{
                       position: 'absolute', left: 64, fontSize: 11, fontWeight: 600,
-                      color: '#00453A', background: '#3DFFD1', padding: '2px 10px', borderRadius: 4,
+                      color: '#7A4F0A', background: '#E8A020', padding: '2px 10px', borderRadius: 4,
                     }}>New rank</span>
                   )}
                 </div>
@@ -370,7 +370,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
                       display: 'flex', flexWrap: 'wrap', gap: 10,
                       minHeight: 64, padding: 4, borderRadius: 10,
                       background: dragTarget?.type === 'tier' && dragTarget.index === tierIdx ? 'rgb(var(--color-surface))' : 'transparent',
-                      boxShadow: dragTarget?.type === 'tier' && dragTarget.index === tierIdx ? 'inset 0 0 0 2px #3DFFD1' : 'none',
+                      boxShadow: dragTarget?.type === 'tier' && dragTarget.index === tierIdx ? 'inset 0 0 0 2px #E8A020' : 'none',
                       transition: 'background 0.15s, box-shadow 0.15s',
                     }}
                   >
@@ -406,7 +406,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
                 height: dragTarget?.type === 'zone' && dragTarget.index === ranking.length ? 48 : 8,
                 borderRadius: 4,
                 background: dragTarget?.type === 'zone' && dragTarget.index === ranking.length ? 'rgb(var(--color-surface))' : 'transparent',
-                boxShadow: dragTarget?.type === 'zone' && dragTarget.index === ranking.length ? 'inset 0 0 0 2px #3DFFD1' : 'none',
+                boxShadow: dragTarget?.type === 'zone' && dragTarget.index === ranking.length ? 'inset 0 0 0 2px #E8A020' : 'none',
                 transition: 'height 0.15s',
                 position: 'relative',
               }}
@@ -414,7 +414,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
               {dragTarget?.type === 'zone' && dragTarget.index === ranking.length && (
                 <span style={{
                   position: 'absolute', left: 64, top: '50%', transform: 'translateY(-50%)',
-                  fontSize: 11, fontWeight: 600, color: '#00453A', background: '#3DFFD1', padding: '2px 10px', borderRadius: 4,
+                  fontSize: 11, fontWeight: 600, color: '#7A4F0A', background: '#E8A020', padding: '2px 10px', borderRadius: 4,
                 }}>New rank</span>
               )}
             </div>
@@ -429,9 +429,9 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
               onDrop={e => { e.preventDefault(); handleDrop(ranking.length, 'addTier'); }}
               style={{
                 fontSize: 12, fontWeight: 600,
-                color: dragTarget?.type === 'addTier' ? '#00453A' : '#C0C0BE',
-                background: dragTarget?.type === 'addTier' ? 'rgba(61,255,209,0.08)' : 'none',
-                border: `1.5px dashed ${dragTarget?.type === 'addTier' ? '#3DFFD1' : '#EBEBEB'}`,
+                color: dragTarget?.type === 'addTier' ? '#7A4F0A' : '#C0C0BE',
+                background: dragTarget?.type === 'addTier' ? 'rgba(232,160,32,0.1)' : 'none',
+                border: `1.5px dashed ${dragTarget?.type === 'addTier' ? '#E8A020' : '#EBEBEB'}`,
                 padding: '8px 24px', borderRadius: 8, cursor: 'pointer',
                 transition: 'all 0.15s',
               }}
@@ -464,7 +464,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
           {(filterYear || filterGenre) && (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
               {filterYear && (
-                <span style={{ fontSize: 10, fontWeight: 700, color: '#00453A', background: '#3DFFD1', padding: '2px 8px', borderRadius: 4 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#7A4F0A', background: '#E8A020', padding: '2px 8px', borderRadius: 4 }}>
                   {filterYear} only
                 </span>
               )}
@@ -661,7 +661,7 @@ function SuggestionCard({ album, isAddTarget, ranking, onAdd, onDismiss, onCance
               ))}
               <button
                 onClick={() => onAddToTier(-1)}
-                style={{ width: 22, height: 22, borderRadius: 4, background: '#3DFFD1', border: 'none', fontSize: 13, fontWeight: 700, color: '#00453A', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                style={{ width: 22, height: 22, borderRadius: 4, background: '#E8A020', border: 'none', fontSize: 13, fontWeight: 700, color: '#7A4F0A', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >+</button>
             </div>
           </div>
@@ -717,8 +717,8 @@ function SuggestedCard({ album, isAdded, onClick, onDragStart, onDragEnd }: {
         }}>
           <span style={{
             fontSize: 11, fontWeight: 700,
-            background: isAdded ? 'rgb(var(--color-surface))' : '#3DFFD1',
-            color: isAdded ? 'rgb(var(--color-muted))' : '#00453A',
+            background: isAdded ? 'rgb(var(--color-surface))' : '#E8A020',
+            color: isAdded ? 'rgb(var(--color-muted))' : '#7A4F0A',
             padding: '4px 12px', borderRadius: 6,
           }}>
             {isAdded ? 'Added' : 'Add'}

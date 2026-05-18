@@ -71,7 +71,7 @@ function ScoreBar({ bars }: { bars: number[] }) {
               className="w-full rounded-[2px_2px_0_0]"
               style={{
                 height: `${(h / max) * 72}px`,
-                background: i === modeIdx ? '#3DFFD1' : '#C2EDE8',
+                background: i === modeIdx ? '#E8A020' : '#FDE8B0',
                 minHeight: 2,
               }}
             />
@@ -668,7 +668,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                     <span
                       key={tag}
                       className="inline-flex items-center px-[10px] py-[3px] rounded-full text-[11px] font-semibold"
-                      style={{ background: 'rgb(var(--color-mint-bg))', border: '1.5px solid #3DFFD1', color: 'rgb(var(--color-mint-dark))' }}
+                      style={{ background: 'rgb(var(--color-mint-bg))', border: '1.5px solid #E8A020', color: 'rgb(var(--color-mint-dark))' }}
                     >
                       {tag}
                     </span>
@@ -689,7 +689,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                         <span className="text-[11px] text-muted">{count}</span>
                       </div>
                       <div className="h-[3px] bg-[#EBEBEB] rounded-full overflow-hidden">
-                        <div className="h-full rounded-full" style={{ width: `${(count / topGenres[0].count) * 100}%`, background: '#3DFFD1' }} />
+                        <div className="h-full rounded-full" style={{ width: `${(count / topGenres[0].count) * 100}%`, background: '#E8A020' }} />
                       </div>
                     </div>
                   ))}
@@ -814,7 +814,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
               <div>
                 {filteredRatings.length === 0 ? (
                   <div className="py-16 text-center">
-                    <p className="text-sm text-muted">No ratings yet. Search for albums and rate them.</p>
+                    <p className="text-sm text-muted">No ratings yet. Start with something you love.</p>
                   </div>
                 ) : (
                   <div className="grid gap-[14px]" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))' }}>
@@ -833,9 +833,9 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                           {rating.score && (
                             <div
                               className="absolute bottom-1 right-1 text-[11px] font-bold rounded-[4px] px-[6px] py-[2px]"
-                              style={{ background: '#3DFFD1', color: '#00453A' }}
+                              style={{ background: '#5170ad', color: '#ffffff' }}
                             >
-                              ★ {rating.score}
+                              ★ {Number(rating.score).toFixed(1)}
                             </div>
                           )}
                         </div>
@@ -885,7 +885,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                       </Link>
                       <p className="text-[11px] text-muted mt-0.5 truncate">{c.artist}</p>
                       <div className="flex items-center gap-3 mt-2">
-                        <span className="inline-flex items-center text-[11px] font-bold rounded-[4px] px-[7px] py-[2px]" style={{ background: '#3DFFD1', color: '#00453A' }}>
+                        <span className="inline-flex items-center text-[11px] font-bold rounded-[4px] px-[7px] py-[2px]" style={{ background: '#E8A020', color: '#7A4F0A' }}>
                           You ★{c.myScore}
                         </span>
                         <span className="text-[11px] text-muted">vs</span>
@@ -935,7 +935,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                               </Link>
                               <p className="text-[11px] text-muted mt-0.5 truncate">{c.artist}</p>
                               <div className="flex items-center gap-3 mt-2">
-                                <span className="inline-flex items-center text-[11px] font-bold rounded-[4px] px-[7px] py-[2px]" style={{ background: '#3DFFD1', color: '#00453A' }}>
+                                <span className="inline-flex items-center text-[11px] font-bold rounded-[4px] px-[7px] py-[2px]" style={{ background: '#E8A020', color: '#7A4F0A' }}>
                                   You ★{c.myScore}
                                 </span>
                                 <span className="text-[11px] text-muted">vs</span>
@@ -972,7 +972,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                               </Link>
                               <p className="text-[11px] text-muted mt-0.5 truncate">{c.artist}</p>
                               <div className="flex items-center gap-3 mt-2">
-                                <span className="inline-flex items-center text-[11px] font-bold rounded-[4px] px-[7px] py-[2px]" style={{ background: '#3DFFD1', color: '#00453A' }}>
+                                <span className="inline-flex items-center text-[11px] font-bold rounded-[4px] px-[7px] py-[2px]" style={{ background: '#E8A020', color: '#7A4F0A' }}>
                                   You ★{c.myScore}
                                 </span>
                                 <span className="text-[11px] text-muted">vs</span>

@@ -15,11 +15,11 @@ const jakarta = Plus_Jakarta_Sans({
 
 export const metadata: Metadata = {
   title: 'sillajuku',
-  description: 'Rate albums, write reviews, and discover music you\'ll love.',
+  description: 'Every record you\'ve loved.',
   metadataBase: new URL('https://sillajuku.com'),
   openGraph: {
     title: 'sillajuku',
-    description: 'Rate albums, write reviews, and discover music you\'ll love.',
+    description: 'Every record you\'ve loved.',
     url: 'https://sillajuku.com',
     siteName: 'sillajuku',
     type: 'website',
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'sillajuku',
-    description: 'Rate albums, write reviews, and discover music you\'ll love.',
+    description: 'Every record you\'ve loved.',
   },
 };
 
@@ -35,7 +35,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={jakarta.variable} suppressHydrationWarning>
       <body className="bg-page text-ink font-sans">
-        <NextTopLoader color="#00C2A8" height={2} showSpinner={false} />
+        <NextTopLoader color="#E8A020" height={2} showSpinner={false} />
         <ThemeProvider>
           <LanguageProvider>
             <PostHogProvider>{children}</PostHogProvider>

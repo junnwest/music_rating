@@ -309,7 +309,7 @@ export default function Essentials({ userId, canEdit = true }: { userId: string;
                     <p className="text-[12px] text-muted truncate">{pendingPin.artist}</p>
                     {pendingPin.userScore != null && (
                       <p className="text-[12px] text-muted mt-1">
-                        Current rating: <span className="font-semibold text-ink">★ {pendingPin.userScore}</span>
+                        Current rating: <span className="font-semibold text-ink">★ {Number(pendingPin.userScore).toFixed(1)}</span>
                       </p>
                     )}
                   </div>
@@ -371,8 +371,8 @@ export default function Essentials({ userId, canEdit = true }: { userId: string;
                             <div className="w-full h-full bg-surface" />
                           )}
                           {r.userScore != null && (
-                            <span className="absolute bottom-1 right-1 text-[10px] font-bold rounded-[3px] px-[5px] py-[1px]" style={{ background: '#3DFFD1', color: '#00453A' }}>
-                              ★ {r.userScore}
+                            <span className="absolute bottom-1 right-1 text-[10px] font-bold rounded-[3px] px-[5px] py-[1px]" style={{ background: '#5170ad', color: '#ffffff' }}>
+                              ★ {Number(r.userScore).toFixed(1)}
                             </span>
                           )}
                         </div>

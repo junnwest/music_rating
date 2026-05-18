@@ -1,7 +1,7 @@
 import { ImageResponse } from 'next/og';
 
 export const runtime = 'edge';
-export const alt = 'sillajuku — Rate albums, write reviews, discover music.';
+export const alt = 'sillajuku — Every record you\'ve loved.';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
@@ -29,7 +29,7 @@ export default function OgImage() {
             left: 0,
             right: 0,
             height: 6,
-            background: '#3DFFD1',
+            background: '#E8A020',
             display: 'flex',
           }}
         />
@@ -60,7 +60,7 @@ export default function OgImage() {
             display: 'flex',
           }}
         >
-          Rate albums. Write reviews. Discover music you'll love.
+          Every record you've loved.
         </div>
 
         {/* Star decorations */}
@@ -87,7 +87,7 @@ export default function OgImage() {
                 fontSize: 24,
               }}
             >
-              <span style={{ color: i <= 4 ? '#3DFFD1' : '#C0C0BE' }}>★</span>
+              <span style={{ color: i <= 4 ? '#E8A020' : '#C0C0BE' }}>★</span>
             </div>
           ))}
         </div>
