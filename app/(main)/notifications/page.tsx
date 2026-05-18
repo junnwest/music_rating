@@ -40,6 +40,7 @@ export default function NotificationsPage() {
     if (!supabase) { setLoading(false); return; }
     supabase.auth.getSession().then(({ data }) => {
       const uid = data.session?.user?.id;
+      const token = data.session?.access_token;
       if (!uid) { setLoading(false); return; }
       setSignedIn(true);
       fetch(`/api/notifications?userId=${uid}`)
@@ -48,7 +49,10 @@ export default function NotificationsPage() {
           setNotifs(json.notifications ?? []);
           fetch('/api/notifications', {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
             body: JSON.stringify({ userId: uid }),
           });
         })

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../lib/supabaseServer';
 import { searchSpotifyAlbums } from '../../../../lib/spotify';
+import { getAuthedUserId } from '../../../../lib/authGuard';
 
 export async function POST(req: NextRequest) {
   const supabase = createServerClient();
@@ -12,6 +13,9 @@ export async function POST(req: NextRequest) {
   if (!userId || !categoryId || !releaseId) {
     return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
   }
+
+  const authedId = await getAuthedUserId(req.headers.get('Authorization'));
+  if (!authedId || authedId !== userId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   // Ensure release exists in releases table (insert if missing, ignore duplicate)
   if (releaseTitle && releaseArtist) {
@@ -46,6 +50,9 @@ export async function DELETE(req: NextRequest) {
 
   const { userId, categoryId } = await req.json();
   if (!userId || !categoryId) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
+
+  const authedId = await getAuthedUserId(req.headers.get('Authorization'));
+  if (!authedId || authedId !== userId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   await supabase
     .from('ranking_votes')

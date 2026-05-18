@@ -55,7 +55,11 @@ export default function AuthForm() {
       if (mode === 'login') {
         let loginEmail = email.trim();
         if (!loginEmail.includes('@')) {
-          const res = await fetch(`/api/auth/resolve-username?username=${encodeURIComponent(loginEmail)}`);
+          const res = await fetch('/api/auth/resolve-username', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: loginEmail }),
+          });
           if (!res.ok) throw new Error('No account found with that username.');
           const data = await res.json();
           loginEmail = data.email;

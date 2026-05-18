@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabaseClient';
 export default function CreateListSection() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
   const [username, setUsername] = useState<string>('');
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
@@ -17,10 +18,11 @@ export default function CreateListSection() {
   useEffect(() => {
     if (!supabase) return;
     supabase.auth.getSession().then(({ data }) => {
-      const user = data.session?.user;
-      if (user) {
-        setUserId(user.id);
-        setUsername(user.email?.split('@')[0] ?? 'user');
+      const { session } = data;
+      if (session?.user) {
+        setUserId(session.user.id);
+        setAccessToken(session.access_token);
+        setUsername(session.user.email?.split('@')[0] ?? 'user');
       }
     });
   }, []);
@@ -35,7 +37,10 @@ export default function CreateListSection() {
 
     const res = await fetch('/api/lists', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
       body: JSON.stringify({ title, description, userId, username }),
     });
 

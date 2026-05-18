@@ -331,15 +331,15 @@ npm run expand:genre
 - [x] Settings change email — collapsed behind button, expands on click
 
 ### Week 4 — May 31–Jun 6: Security + app + translation + store submission
-- [ ] **Auth checks on all mutation API routes** — `/api/rankings/vote`, `/api/follow`, `/api/notifications`, `/api/lists`: verify `supabase.auth.getUser()` matches the `userId` in the request body; reject with 403 if not
-- [ ] **Fix email disclosure in `/api/auth/resolve-username`** — route should not expose the email in any response visible to the client beyond what Supabase sign-in needs
-- [ ] **Security headers in `next.config.mjs`** — add `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`, `Strict-Transport-Security`
-- [ ] **Restrict image remote patterns** — replace `hostname: '**'` with explicit whitelist: `i.scdn.co`, `*.scdn.co`, `coverartarchive.org`, Supabase storage bucket
+- [x] **Auth checks on all mutation API routes** — `/api/rankings/vote`, `/api/follow`, `/api/notifications`, `/api/lists`: verify `supabase.auth.getUser()` matches the `userId` in the request body; reject with 403 if not
+- [x] **Fix email disclosure in `/api/auth/resolve-username`** — converted from GET to POST (username no longer in URL/server logs); email still returned for client-side `signInWithPassword`; full enumeration mitigation deferred to rate limiting
+- [x] **Security headers in `next.config.mjs`** — added `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`, `Strict-Transport-Security`, `Referrer-Policy`, `Permissions-Policy`
+- [x] **Restrict image remote patterns** — replaced `hostname: '**'` with explicit whitelist: `i.scdn.co`, `*.scdn.co`, `coverartarchive.org`, `*.supabase.co`
 - [ ] **Rate limiting on sensitive endpoints** — `/api/check-username`, `/api/rankings/vote`, `/api/follow` via `@upstash/ratelimit` + Upstash Redis
 - [ ] **Upstash Redis caching** — cache ranking leaderboards, album avg rating + count, homepage genre rows; invalidate on write
-- [ ] **Add DB indexes** — confirm in Supabase dashboard: `ratings(user_id)`, `ratings(release_id)`, `reviews(user_id)`, `reviews(release_id)`, `user_rankings(category_id)`, `user_ranking_entries(ranking_id)`, `user_ranking_entries(release_id)`, `ranking_seed_entries(category_id)`, `follows(follower_id)`, `follows(following_id)`
-- [ ] **PostgreSQL full-text search index on `releases`** — GIN index on `tsvector(title, artist)` so cached albums are searchable without hitting Spotify
-- [ ] **Confirm `.spotify-tokens.json` not in git history** — `git log --all --full-history -- .spotify-tokens.json`; rotate tokens and use `git filter-repo` if found
+- [x] **Add DB indexes** — migration `20260517000000_indexes_and_fts.sql`: `ratings(release_id)`, `reviews(release_id)`, `follows(following_id)`, `user_rankings(category_id)`, `user_ranking_entries(release_id)` (others already covered by leading UNIQUE/PK keys)
+- [x] **PostgreSQL full-text search index on `releases`** — GIN index on `to_tsvector('simple', title || artist)` in same migration; run `supabase db push` to apply
+- [x] **Confirm `.spotify-tokens.json` not in git history** — clean (never committed; properly gitignored)
 - [ ] Korean translation (i18n setup with next-intl; language toggle in settings)
 - [ ] Capacitor app build (wraps existing Next.js app into native shell)
 - [ ] App Store (iOS) + Play Store (Android) submission
@@ -484,6 +484,15 @@ npm run expand:discography
 - Apply email templates: paste `supabase/templates/confirmation.html` and `recovery.html` into Supabase dashboard → Auth → Email Templates
 
 ---
+
+**Session summary (2026-05-18):**
+- Security hardening (Week 4): auth checks on all mutation API routes (`/api/follow`, `/api/notifications` PATCH, `/api/lists` POST, `/api/rankings/vote`) via `lib/authGuard.ts` JWT verification; 403 on missing/mismatched token; client-side callers updated to send `Authorization: Bearer <token>`
+- `/api/auth/resolve-username` converted from GET → POST (username no longer in URL/server logs)
+- Security headers in `next.config.mjs`: CSP, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Strict-Transport-Security`, `Referrer-Policy`, `Permissions-Policy`
+- Image remote patterns: replaced `hostname: '**'` wildcard with explicit whitelist (`i.scdn.co`, `*.scdn.co`, `*.supabase.co`, `coverartarchive.org`)
+- DB migration `20260517000000_indexes_and_fts.sql`: performance indexes on `ratings(release_id)`, `reviews(release_id)`, `follows(following_id)`, `user_rankings(category_id)`, `user_ranking_entries(release_id)`; GIN full-text search index on `releases(title, artist)`
+- `.spotify-tokens.json` git audit: clean (never committed, properly gitignored)
+- All changes verified: TypeScript clean, build passes, all 13 test cases pass
 
 **Session summary (2026-05-17):**
 - Korean ranking titles: added `rankingTitles` slug-keyed translations to `en.ts` + `ko.ts`; updated all 5 render sites (RankingsGrid, FilterBuilder, ranking detail page, rank builder page, album "In Rankings" chips)

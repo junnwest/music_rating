@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../lib/supabaseServer';
+import { getAuthedUserId } from '../../../lib/authGuard';
 
 export async function POST(req: NextRequest) {
   const supabase = createServerClient();
@@ -8,6 +9,9 @@ export async function POST(req: NextRequest) {
   const { followerId, followingId } = await req.json();
   if (!followerId || !followingId) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
   if (followerId === followingId) return NextResponse.json({ error: 'Cannot follow yourself' }, { status: 400 });
+
+  const authedId = await getAuthedUserId(req.headers.get('Authorization'));
+  if (!authedId || authedId !== followerId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const { error } = await supabase
     .from('follows')
@@ -23,6 +27,9 @@ export async function DELETE(req: NextRequest) {
 
   const { followerId, followingId } = await req.json();
   if (!followerId || !followingId) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
+
+  const authedId = await getAuthedUserId(req.headers.get('Authorization'));
+  if (!authedId || authedId !== followerId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   await supabase
     .from('follows')

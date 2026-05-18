@@ -410,7 +410,10 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
     try {
       await fetch('/api/follow', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
         body: JSON.stringify({ followerId: session.user.id, followingId: targetUserId }),
       });
       setIsFollowing(true);
@@ -426,7 +429,10 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
     try {
       await fetch('/api/follow', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
         body: JSON.stringify({ followerId: session.user.id, followingId: targetUserId }),
       });
       setIsFollowing(false);

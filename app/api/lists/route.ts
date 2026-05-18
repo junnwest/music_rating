@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../lib/supabaseServer';
+import { getAuthedUserId } from '../../../lib/authGuard';
 
 export async function GET() {
   const supabase = createServerClient();
@@ -24,6 +25,9 @@ export async function POST(req: NextRequest) {
   if (!title?.trim() || !userId) {
     return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
   }
+
+  const authedId = await getAuthedUserId(req.headers.get('Authorization'));
+  if (!authedId || authedId !== userId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const { data, error } = await supabase
     .from('lists')

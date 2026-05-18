@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../lib/supabaseServer';
+import { getAuthedUserId } from '../../../lib/authGuard';
 
 function timeAgo(date: Date): string {
   const diff = Math.floor((Date.now() - date.getTime()) / 1000);
@@ -113,6 +114,9 @@ export async function GET(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const { userId } = await req.json();
   if (!userId) return NextResponse.json({ ok: false }, { status: 400 });
+
+  const authedId = await getAuthedUserId(req.headers.get('Authorization'));
+  if (!authedId || authedId !== userId) return NextResponse.json({ ok: false }, { status: 403 });
 
   const supabase = createServerClient();
   if (!supabase) return NextResponse.json({ ok: false }, { status: 500 });

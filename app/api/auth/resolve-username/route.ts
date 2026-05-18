@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../lib/supabaseServer';
 
-export async function GET(req: NextRequest) {
-  const username = req.nextUrl.searchParams.get('username')?.trim().toLowerCase();
+export async function POST(req: NextRequest) {
+  const body = await req.json().catch(() => ({}));
+  const username = (body.username as string | undefined)?.trim().toLowerCase();
   if (!username) return NextResponse.json({ error: 'missing username' }, { status: 400 });
 
   const supabase = createServerClient();
