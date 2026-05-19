@@ -60,13 +60,6 @@ supabase migration new <short_description>
 supabase db push
 ```
 
-### Seeding ranking categories (run once after first push)
-
-```bash
-curl -X POST https://your-domain.com/api/admin/seed-rankings \
-  -H "x-seed-secret: YOUR_SEED_SECRET"
-```
-
 ---
 
 ## Deployment checklist
@@ -77,15 +70,11 @@ curl -X POST https://your-domain.com/api/admin/seed-rankings \
 - [x] Run all migrations (`supabase db push`) — all 13 tables + RLS policies applied
 - [x] Add jurisdiction to Terms of Service (Republic of Korea)
 - [x] Enable Google OAuth in Supabase Auth dashboard
-- [x] Replace `privacy@sillajuku.com` and `legal@sillajuku.com` in privacy/terms pages with real email
+- [x] Replace contact emails in privacy/terms pages → `admin@sillajuku.com`
 - [ ] Enable Supabase Auth email confirmations if desired (Auth → Email Templates)
 
 ### After first deployment
 
-- [ ] **Push the new migration** (`ranking_seed_entries` table):
-  ```bash
-  supabase db push
-  ```
 - [ ] **Seed the ranking categories** (6 curated categories):
   ```bash
   curl -X POST https://your-domain.com/api/admin/seed-rankings \
@@ -96,36 +85,22 @@ curl -X POST https://your-domain.com/api/admin/seed-rankings \
   curl -X POST https://your-domain.com/api/admin/seed-curated \
     -H "x-seed-secret: YOUR_SEED_SECRET"
   ```
-- [ ] **Seed default ranking votes** — fill in `scripts/seed-votes.ts` with albums (Spotify IDs) for each of the 6 categories, then run:
+- [ ] **Seed default ranking votes** — fill in `scripts/seed-votes.ts` with albums, then run:
   ```bash
   SEED_SECRET=your-secret NEXT_PUBLIC_SITE_URL=https://your-domain.com npx ts-node scripts/seed-votes.ts
   ```
 
-### Before public launch
-
-- [ ] **Run music ingestion** — see [Music catalog ingestion](#music-catalog-ingestion) below
-- [ ] **Seed Rolling Stone 500 baseline** into "all-time" ranking category:
-  ```bash
-  $env:SPOTIFY_CLIENT_ID="..."; $env:SPOTIFY_CLIENT_SECRET="..."; $env:NEXT_PUBLIC_SUPABASE_URL="..."; $env:SUPABASE_SERVICE_ROLE_KEY="..."; npx ts-node scripts/seed-rankings.ts --category all-time
-  ```
-  Progress saved to `scripts/seed-rankings-state-all-time.json` — safe to re-run on interruption.
-- [ ] Verify Google OAuth works on production
-- [ ] Test rating, review, and list flows end-to-end on production
-- [ ] Confirm homepage genre rows are populated
-- [x] Replace `privacy@sillajuku.com` and `legal@sillajuku.com` in privacy/terms pages → `admin@sillajuku.com`
-
 ### After launch (once real users are voting)
 
-- [ ] **Remove or reduce seed votes** — once each ranking category has real votes overtaking the seeds, clear seed data so the leaderboard is purely community-driven:
+- [ ] **Remove or reduce seed votes** — once real votes overtake seeds:
   ```bash
   curl -X DELETE https://your-domain.com/api/admin/seed-votes \
     -H "x-seed-secret: YOUR_SEED_SECRET" \
     -H "Content-Type: application/json" \
     -d '{}'
   ```
-  Or clear a single category by passing `{ "categorySlug": "all-time" }` in the body.
-- [ ] **Revisit FilterBuilder genre map** — once you have real user data, check which genres are actually being used and update `genresByCountry` in `components/FilterBuilder.tsx` accordingly. Current map is a one-time editorial judgment, not live data.
-- [ ] **Re-curate ranking categories** — add new year-specific categories (e.g. "Best Album of 2027") by updating `app/api/admin/seed-rankings/route.ts` and re-running the seed endpoint.
+- [ ] **Revisit FilterBuilder genre map** — update `genresByCountry` in `components/FilterBuilder.tsx` based on real usage data.
+- [ ] **Re-curate ranking categories** — add year-specific categories via `app/api/admin/seed-rankings/route.ts`.
 
 ---
 
@@ -133,346 +108,134 @@ curl -X POST https://your-domain.com/api/admin/seed-rankings \
 
 gstack is installed at `~/.claude/skills/gstack`. Skills are available as slash commands in Claude Code.
 
-### By workflow stage
-
 | Stage | Skill | When to use |
 |---|---|---|
-| Planning a feature | `/office-hours` | Before writing any code — 6 forcing questions that reframe the problem |
-| | `/plan-eng-review` | Lock in architecture, data flow, edge cases, test plan |
-| | `/plan-design-review` | Rate each design dimension 0–10, catch assumptions before building |
+| Planning | `/office-hours` | Before writing any code — 6 forcing questions |
+| | `/plan-eng-review` | Lock in architecture, data flow, edge cases |
 | | `/autoplan` | Runs CEO → design → eng review in one shot |
-| Building | `/review` | Pre-merge code review — SQL safety, LLM trust boundaries, structural issues |
-| | `/investigate` | Stuck on a bug — systematic root-cause process, no guessing |
-| UI / design | `/design-review` | Audit live UI, rate dimensions, fix AI slop, before/after screenshots |
-| | `/design-shotgun` | Generate 4–6 design variants, compare, iterate until you like one |
+| Building | `/review` | Pre-merge code review |
+| | `/investigate` | Stuck on a bug — systematic root-cause process |
+| UI / design | `/design-review` | Audit live UI, rate dimensions, fix AI slop |
+| | `/design-shotgun` | Generate 4–6 design variants, compare, iterate |
 | QA | `/qa` | Real browser — clicks through flows, finds bugs, commits fixes |
 | | `/qa-only` | Same as `/qa` but report-only, no code changes |
 | Security | `/cso` | OWASP Top 10 + STRIDE — run before any auth feature ships |
 | Shipping | `/ship` | Sync main, run tests, push, open PR |
 | | `/land-and-deploy` | Merge PR, wait for CI + deploy, verify production |
-| Post-deploy | `/canary` | Watch for console errors, perf regressions, page failures |
-| Debugging | `/browse` | Give Claude a real browser — use instead of any MCP browser tools |
-
-### For this project's remaining roadmap
-
-| Roadmap task | Skills |
-|---|---|
-| Page reviews (artist, profile, activity, settings, rankings, listen-later, collisions, contradictions, wrapped, lists) | `/design-review` then `/qa` |
-| Password reset + email verification (Week 2) | `/plan-eng-review` → build → `/review` → `/cso` |
-| KakaoTalk + Spotify OAuth (Week 3) | `/plan-eng-review` → build → `/cso` |
-| Korean i18n / next-intl (Week 4) | `/office-hours` → `/plan-eng-review` → build → `/review` |
-| Capacitor build (Week 4) | `/office-hours` → `/plan-eng-review` → build |
-| Production deploy + QA (Week 5) | `/qa` → `/ship` → `/land-and-deploy` → `/canary` |
-
----
-
-## Feature tracker
-
-### Done
-- [x] Album search (Spotify)
-- [x] Album detail page (tracklist, community stats, ratings, comments)
-- [x] Artist page with discography
-- [x] Star rating widget (1–5, half-star steps; click same star to clear)
-- [x] Comments (renamed from reviews) — visibility control (public / friends / private), commenter's star rating shown, likes, live username resolution from `profiles`
-- [x] Homepage genre rows (DB-first, Spotify fallback)
-- [x] For You page (personalized album feed)
-- [x] Activity feed — community ratings + comments; filters to followed users when logged in
-- [x] Lists (create, view)
-- [x] Profile page (ratings grid, score distribution, sidebar-left layout; real comment count in stats)
-- [x] Rating Philosophy / Insights (profile sidebar card)
-- [x] Taste DNA badges in profile header (genre + behavior tags)
-- [x] Top Genres (profile sidebar card)
-- [x] Monthly Capsule (profile sidebar card)
-- [x] Avg Score card (profile sidebar)
-- [x] Essentials — 6-album pyramid, pick from rated catalog, drag-to-reorder, swap picker
-- [x] Shelf Creation — Lists tab on profile
-- [x] Onboarding modal — 3-step: profile setup → genres → Essentials (pick up to 6 albums; renamed from "Albums that shaped you" / was 10)
-- [x] DB caching layer — albums + artists saved to Supabase on first visit
-- [x] Genre storage on ratings
-- [x] Add button on album page — dropdown with Listen Later, Essentials (with swap popup + ★5 confirmation), Add to Ranking (popup with Top 6 + Browse filter)
-- [x] Listen Later page (`/listen-later`) — saved albums grid
-- [x] Settings page — 5-tab settings (Account, Preferences, Notifications, Privacy, Danger Zone)
-- [x] Help page — FAQ accordion + contact form
-- [x] Notifications page — real data (new followers + friend ratings via `/api/notifications`)
-- [x] Friends page — real Supabase follows (Following / Followers / Discover tabs)
-- [x] Search page — mobile header transforms to search overlay on icon tap; landing state with no duplicate bar
-
-### Done — social
-- [x] Following system — follow/unfollow, follower/following counts, public `/profile/[username]` pages
-- [x] Friend Taste Collisions — `/collisions`: albums rated ≥1.5★ apart from followed users
-- [x] Taste Contradictions — `/contradictions`: your score vs community avg, split higher/lower
-
-### Done — rankings
-- [x] Community rankings page — leaderboards with seed + real vote merging
-- [x] Individual ranking page — top 10, vote counts, "Build your ranking" button
-- [x] Ranking personalization — filter tabs (All / To Vote / Friends Active); "To Vote" capped at 6, sorted by most active, number badge removed
-- [x] Filter Builder — country-aware genre dropdowns (genres change per country); vote status indicator + Vote/Change Vote button when filter matches a curated category
-- [x] Rank Builder — `/rankings/[slug]/rank`: personal tiered ranking per category, drag-and-drop, ties supported, search panel with suggestions; saves to `user_rankings` + syncs rank-1 pick to community leaderboard
-- [x] Ranking seed infrastructure — `ranking_seed_entries` table for pre-launch default leaderboard data; admin endpoint + `scripts/seed-rankings.ts`
-- [x] 6 curated ranking categories: Greatest Album of All Time · Best Hip-Hop All Time · Best K-Pop All Time · Best Album of 2025 · Best Korean Album All Time · Best K-Hip-Hop All Time
-- [x] Rolling Stone 500 baseline seeds — 467/500 seeded into "all-time"; `seed_votes = 1/rank`; `seed_votes` column migrated from `int` to `numeric(10,4)`
-- [x] Hip-hop seed — 59/63 RS500 hip-hop albums seeded into "hiphop-all-time" (Jay-Z + Fugees not on Spotify)
-- [x] K-Pop seed dataset added — 30 albums in `scripts/seed-rankings.ts`; kpop-all-time seeded (29/30 fuzzy + 1 via spotifyId override for CHUNGHA)
-- [x] Korean all-time seed — done
-- [x] K-Hip-Hop all-time seed — done
-- [x] Best Album of 2025 seed — done
-- [x] Seed script CASCADE DELETE bug fixed — admin endpoint now uses upsert; re-seeding categories no longer wipes existing seed entries
-- [x] Rankings leaderboard pagination — 10 per page, ellipsis page numbers (max 10 visible), jump-to-page input; rank numbers offset correctly per page
-- [x] Silla score color — changed to amber (#E8A020) across bar and value
-- [x] Ranking leaderboard rows — clickable links to album pages
-- [x] Rankings page thumbnails — fixed to use actual Silla Score formula (was using a simplistic rank=1 heuristic); now consistent with leaderboard order
-- [x] Album page "In Rankings" — shows each ranking the album appears in with its Silla-computed rank number (e.g. "Greatest Album of All Time #1") in cyan
-- [x] Add to Ranking modal — shows checkmark on categories user has already ranked this album in; refreshes on every modal open
-- [x] Album page hero overflow fix — `overflow-hidden` moved to inner background layer so Add dropdown is no longer clipped
-
-### Done — profile + settings (2026-05-07)
-- [x] Settings page — username/display name/bio now correctly saved to DB and reflected immediately on profile
-- [x] Profile page — username + bio read from `profiles` table (not derived from email); removed auto-upsert that was overwriting username on every visit
-- [x] Navbar dropdown — username and display name now read from `profiles` table instead of `user_metadata`/email split
-- [x] `[username]/page.tsx` — removed `targetUsername` prop that was overriding the DB-fetched username
-- [x] Homepage — removed "Good morning / Here's what's waiting" greeting for logged-in users
-
-### Done — profile layout (2026-05-08)
-- [x] Essentials — layout changed from pyramid → 2×3 grid → 1×6 horizontal strip; fixed 96px items with `justify-between` spacing so covers span the full section width; "Essentials" label added above strip
-- [x] Monthly Capsule — "Highest" score format changed from mint badge pill to clean text (e.g. "LILAC — 5" with score in dark green)
-- [x] Profile sidebar — Insights card removed; replaced by planned Insights + History page (post-launch, see roadmap)
-
-### Done — UI polish pass (2026-05-08)
-- [x] Album page — "avg/5" → "avg"; oversized dash on no-rating fixed; Add button consolidated into dropdown (Listen Later + Essentials + Add to Ranking); star rating text removed; Add button moved into stats row
-- [x] Comments — renamed from Reviews throughout; visibility dropdown with icons; commenter's star rating shown; comment likes; live username → profile link
-- [x] Essentials (was Pinned Ten) — swap modal with pyramid layout; ★5 confirmation flow matching profile picker; `checkPinned` split into two queries (was broken due to missing FK join)
-- [x] Add to Ranking popup — Top 6 list + Browse Rankings filter (Country / Genre / Time dropdowns)
-- [x] Profile page — real comment count replaces hardcoded "0 reviews"; Essentials component (was PinnedTen)
-- [x] Search page — mobile header search overlay; landing empty state
-- [x] Activity + Settings — "reviewed/reviews" text updated to "commented/comments"
-
-### Done — branding (2026-05-18)
-- [x] Accent color: cyan/mint (#3DFFD1 / #00C2A8) → amber (#E8A020) across all UI surfaces (buttons, badges, progress bar, overlays, form highlights)
-- [x] Score badges on album thumbnails → blue (#5170ad / #ffffff) to match flower mark
-- [x] Score display: always one decimal place (`toFixed(1)`) — "5" → "5.0"
-- [x] Tagline: "Every record you've loved." — applied to OG image, footer, metadata description, all three language fields
-- [x] Homepage headline: "Your taste documented."
-- [x] Copy/voice audit: 17 strings updated across `en.ts` + 6 hardcoded component strings — tone shifted from generic ("Rate albums, write reviews") to taste-forward and possessive
-- [x] Korean translations (`ko.ts`): all updated strings retranslated to match new voice
-- [x] Flower mark (logo): replaced `public/logo-flower.svg` + `public/logo.svg` (auth page) with Asset 20; deleted outdated Asset 15
-- [x] Auth form: removed value-prop card ("One rating per album. Your taste, tracked.")
-
-### Done — auth + signup (2026-05-14)
-- [x] Password reset flow — forgot mode in AuthForm → email link → `/auth/callback?next=/reset-password` → `/reset-password` page
-- [x] Auth page redesign — no navbar; logo centered at top of login/reset-password pages
-- [x] Signup: username field removed (collected in onboarding instead)
-- [x] Signup: duplicate email detection — Supabase `identities.length === 0` check → "An account with this email already exists"
-- [x] Signup: cross-tab confirmation — `onAuthStateChange` listener auto-redirects original signup tab to `/onboarding` when user confirms in a separate tab
-- [x] OG / social preview — `app/opengraph-image.tsx` (wordmark + amber accent + star grid); root metadata updated with og + twitter card tags
-
-### Done — annual
-- [x] Wrapped page — yearly summary: albums rated, top genre, top artist, avg score, active month, best/worst album
-
-### Planned
-- [ ] Music ingestion script (`scripts/ingest-music.ts`) — Korean (full), Japanese (curated ~80 artists), Western essentials (~200 artists); albums/EPs only
+| Post-deploy | `/canary` | Watch for console errors, perf regressions |
+| Debugging | `/browse` | Give Claude a real browser |
 
 ---
 
 ## Pre-launch roadmap
 
-Target: **mid-June 2026** (earlier the better). Wrapped page is the only feature deferred post-launch.
-
----
+Target: **mid-June 2026** (earlier the better).
 
 ### Data collection
 
-**The app caches albums automatically.** Every time a user searches for or rates an album, it's fetched from Spotify and stored in `releases`. The DB grows organically with every user interaction — pre-seeding is not about being exhaustive.
+| Phase | What it does | Status |
+|-------|-------------|--------|
+| Phase 1 — seed catalog | 315 curated Korean/Japanese/Western classics | ✓ done (306/315) |
+| RS500 baseline | Rolling Stone 500 seeds "all-time" ranking | ✓ done (481 seeded) |
+| Phase 2 — discography expansion | All albums from every artist in DB | in progress (76/331 artists) |
+| Phase 3 — related artists | One hop from seeded artists | not started |
+| Phase 4 — genre sweeps | 12 genre tags with popularity threshold | not started |
 
-**Pre-seeding solves cold start only.** Without it, day-one users see an empty homepage, empty rankings, and onboarding with nothing to pick from. The goal is enough content for the first users to have a real experience — not a complete catalog.
-
-| Phase | What it does | Est. albums | Status |
-|-------|-------------|-------------|--------|
-| Phase 1 — seed catalog | 315 curated Korean/Japanese/Western classics | 306 | ✓ done |
-| RS500 baseline | Rolling Stone 500 seeds "all-time" ranking | 481 seeded | ✓ done |
-| Phase 2 — discography expansion | All albums from every artist already in DB | ~2,600 more | in progress (76/331 artists) |
-| Phase 3 — related artists | One hop from seeded artists (Korean ≥5k followers, J ≥20k, Western ≥100k) | ~3,200 more | not started |
-| Phase 4 — genre sweeps | 12 genre tags with popularity threshold | ~800–1,200 more | not started |
-
-**Phase 1 + RS500 (~750 albums) is the hard requirement for launch.** Both are done. Phases 2–4 improve cache warmth and search speed but are not blocking — any album not pre-loaded gets fetched live from Spotify on first visit and cached for all future users. Run them when convenient, not on a strict deadline.
+Phase 1 + RS500 is the hard requirement for launch — both done. Phases 2–4 are not blocking.
 
 ```bash
-# Run once per day until Phase 2 is done (~5 days), then move to Phase 3
-npm run expand:discography
-
-# Phase 3 (run after Phase 2 completes)
-npm run expand:related
-
-# Phase 4 (run after Phase 3 completes)
-npm run expand:genre
+npm run expand:discography   # run once per day (~60 artists/batch)
+npm run expand:related       # after Phase 2 completes
+npm run expand:genre         # after Phase 3 completes
 ```
 
 ---
 
-### Week 1 — May 7–16: UI polish + mobile
-- [x] Mobile responsiveness pass — ScrollRow touch scroll, album/artist/search/rankings/discography/onboarding grids all responsive
-- [x] Loading skeletons — homepage feed, activity feed, profile header + grid
-- [x] Empty states improved — search "no results" with icon + copy; listen later empty state already good
-- [x] 404 + 500 error pages (`app/not-found.tsx`, `app/error.tsx`)
-- [x] Mobile nav UX — bottom tab bar (Home / Search / Feed / Rankings / Profile), hidden at xl where sidebar takes over; iOS safe-area aware
-- [x] Page reviews: main, search, album, notifications, friends
-- [x] Page reviews: profile, rankings, artist, activity, settings
-- [x] Page reviews: listen-later hero updated; collisions/contradictions/wrapped deleted; lists renamed → explore (/explore)
+### Week 4 — May 31–Jun 6: remaining
 
-### Week 2 — May 17–23: Functional gaps
-- [x] Password reset flow
-- [x] Email verification on signup — check-inbox screen, resend button (60s cooldown), correct redirect to /onboarding
-- [x] Onboarding polish (first-time user experience)
-- [x] 404 + 500 error pages (done in Week 1)
-- [x] **Transactional email setup** — Resend configured with sillajuku.com domain; custom SMTP active in Supabase
-- [x] **Email template design** — confirmation, recovery, change-email templates with logo + mint CTA. Paste into Supabase dashboard → Auth → Email Templates to apply.
-- [x] **Change email** — Settings → Account tab; `supabase.auth.updateUser` flow with confirmation link
-- [x] **Notification read state** — persisted in DB via `notifications_last_seen_at` on profiles; no longer localStorage-only
-- [x] **Username login** — login accepts email or username; resolves via `/api/auth/resolve-username`
-- [x] **Confirm password on signup** — second password field with mismatch validation
-- [x] **Mock notifications removed** — fake seed data stripped from API route and page
-
-### Week 3 — May 24–30: Auth + legal + analytics
-- [ ] KakaoTalk login — blocked: requires 비즈 앱 conversion which needs 사업자 등록번호; moved to post-launch
-- [x] Spotify login — Supabase OAuth provider enabled; "Continue with Spotify" button added to auth form
-- [x] Privacy policy + Terms of Service (finalize — fill in real contact emails)
-- [x] Analytics setup — PostHog (US region, pay-as-you-go free tier); pageview + autocapture wired via `PostHogProvider`; env vars `NEXT_PUBLIC_POSTHOG_KEY` + `NEXT_PUBLIC_POSTHOG_HOST` required in Vercel
-- [x] Dark mode
-- [x] OAuth buttons redesign — Google, Spotify, KakaoTalk, Apple as square icon buttons in a row; KakaoTalk + Apple show "coming soon" modal
-- [x] Connected accounts — Settings → Account; connect/disconnect Google + Spotify; safeguard requires at least one social account; disconnect confirmation modal
-- [x] Settings change email — collapsed behind button, expands on click
-
-### Week 4 — May 31–Jun 6: Security + app + translation + store submission
-- [x] **Auth checks on all mutation API routes** — `/api/rankings/vote`, `/api/follow`, `/api/notifications`, `/api/lists`: verify `supabase.auth.getUser()` matches the `userId` in the request body; reject with 403 if not
-- [x] **Fix email disclosure in `/api/auth/resolve-username`** — converted from GET to POST (username no longer in URL/server logs); email still returned for client-side `signInWithPassword`; full enumeration mitigation deferred to rate limiting
-- [x] **Security headers in `next.config.mjs`** — added `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`, `Strict-Transport-Security`, `Referrer-Policy`, `Permissions-Policy`
-- [x] **Restrict image remote patterns** — replaced `hostname: '**'` with explicit whitelist: `i.scdn.co`, `*.scdn.co`, `coverartarchive.org`, `*.supabase.co`
-- [ ] **Rate limiting on sensitive endpoints** — `/api/check-username`, `/api/rankings/vote`, `/api/follow` via `@upstash/ratelimit` + Upstash Redis
-- [ ] **Upstash Redis caching** — cache ranking leaderboards, album avg rating + count, homepage genre rows; invalidate on write
-- [x] **Add DB indexes** — migration `20260517000000_indexes_and_fts.sql`: `ratings(release_id)`, `reviews(release_id)`, `follows(following_id)`, `user_rankings(category_id)`, `user_ranking_entries(release_id)` (others already covered by leading UNIQUE/PK keys)
-- [x] **PostgreSQL full-text search index on `releases`** — GIN index on `to_tsvector('simple', title || artist)` in same migration; run `supabase db push` to apply
-- [x] **Confirm `.spotify-tokens.json` not in git history** — clean (never committed; properly gitignored)
+- [ ] **Rate limiting** — `/api/check-username`, `/api/rankings/vote`, `/api/follow` via `@upstash/ratelimit` + Upstash Redis
+- [ ] **Upstash Redis caching** — ranking leaderboards, album avg rating + count, homepage genre rows; invalidate on write
 - [ ] Korean translation (i18n setup with next-intl; language toggle in settings)
 - [ ] Capacitor app build (wraps existing Next.js app into native shell)
 - [ ] App Store (iOS) + Play Store (Android) submission
   - ⚠️ Apple review takes 1–2 weeks — submit by Jun 1 to hit mid-June
 
 ### Week 5 — Jun 7–14: QA + production deploy
+
 - [ ] Create dummy/test account and QA all social flows end-to-end
 - [ ] Production deployment (custom domain, all env vars set, migrations pushed)
 - [ ] Seed all ranking categories with baseline data
-- [ ] **Fix N+1 queries in `/api/reviews/route.ts`** — batch author profile + likes fetches instead of per-review queries
+- [ ] **Fix N+1 queries in `/api/reviews/route.ts`** — batch author profile + likes fetches
 - [ ] **Replace `releases(*)` wildcard in `ProfilePanel.tsx`** — specify only `id, title, artist, cover_url`
-- [ ] **Add env var validation at startup** — fail fast with clear error if `NEXT_PUBLIC_SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_ANON_KEY` are missing (e.g. `instrumentation.ts`)
+- [ ] **Add env var validation at startup** — fail fast if `NEXT_PUBLIC_SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_ANON_KEY` missing (e.g. `instrumentation.ts`)
 - [ ] **Add `router` to useEffect deps in `AuthForm.tsx`**
-- [ ] **Add error UI to `PersonalizedFeed.tsx`** — show fallback state if recommendations fetch fails instead of silently rendering empty
-- [ ] **Standardize API error response shape** — all routes should return consistent `{ ok: true }` / `{ error: '...' }` shape
-- [ ] **Replace silent `catch {}` blocks with `console.error`** — makes production debugging possible via Vercel logs
+- [ ] **Add error UI to `PersonalizedFeed.tsx`** — fallback state if recommendations fetch fails
+- [ ] **Standardize API error response shape** — consistent `{ ok: true }` / `{ error: '...' }` across all routes
+- [ ] **Replace silent `catch {}` blocks with `console.error`**
+- [ ] **Collect country on onboarding** — add a country field to the onboarding flow (one migration + one step); cannot be backfilled retroactively; needed for demographic data in label/investor pitches
 - [ ] Final bug fixes + buffer for App Store review delays
 
 ### Post-launch
-- [ ] **사업자등록 (개인사업자)** — register on 홈택스 (hometax.go.kr); free, ~1-2 days approval; unlocks Kakao 비즈 앱 + covers Korean tax obligations
-- [ ] **KakaoTalk login** — after 사업자등록: convert Kakao app to 비즈 앱, enable `account_email` in 동의항목, set `available: true` in `settings/page.tsx`, replace "coming soon" handler in `AuthForm.tsx` with `supabase.auth.signInWithOAuth({ provider: 'kakao' })`
-- [ ] **US LLC via Stripe Atlas** — once revenue is consistent; ~$500 one-time; gives US entity + Mercury bank account + clean global payment setup; needed for smooth App Store/Play Store payouts at scale
-- [ ] **Apple login** — requires Apple Developer account ($99/yr); wire up `supabase.auth.signInWithOAuth({ provider: 'apple' })` + enable in Supabase dashboard + set `available: true` in settings page; code is already stubbed
+
+- [ ] **사업자등록 (개인사업자)** — register on 홈택스 (hometax.go.kr); free, ~1-2 days approval; unlocks Kakao 비즈 앱
+- [ ] **KakaoTalk login** — after 사업자등록: convert Kakao app to 비즈 앱, enable `account_email` in 동의항목, set `available: true` in `settings/page.tsx`
+- [ ] **US LLC via Stripe Atlas** — once revenue is consistent; ~$500 one-time; needed for App Store/Play Store payouts at scale
+- [ ] **Apple login** — requires Apple Developer account ($99/yr); code already stubbed, enable in Supabase dashboard
 - [ ] Wrapped page — needs months of user data to be meaningful
 - [ ] Remove/reduce seed votes once real community votes overtake the baseline
-- [ ] Re-curate ranking categories (add year-specific categories)
-- [ ] **Typesense for fuzzy search** — layer on top of PostgreSQL for typo-tolerant album/artist search ("taylr swft" → Taylor Swift); syncs from `releases` table; not needed for launch since PostgreSQL full-text handles the common case
-- [ ] **Insights + History page** — dedicated `/profile/[username]/insights` page: rating history timeline, score distribution over time, streak tracking, genre evolution, taste drift vs community, comparison with friends. Replaces the removed sidebar insights card. Needs enough user history to be meaningful (~1–3 months post-launch).
+- [ ] **Typesense for fuzzy search** — typo-tolerant search on top of PostgreSQL; not needed for launch
+- [ ] **Insights + History page** — `/profile/[username]/insights`: rating timeline, genre evolution, taste drift. Needs ~1–3 months post-launch data.
+- [ ] **Music ingestion script** (`scripts/ingest-music.ts`) — Korean (full), Japanese (curated ~80 artists), Western essentials (~200 artists)
 
 ---
 
 ### Recommendation algorithm roadmap
 
-Current state: genre-based + artist-based pools with random shuffle for variety. This is a presentation trick, not a real recommendation algorithm.
-
-The upgrade path is gated on user volume — collaborative filtering needs rating overlap between users to produce meaningful signal.
+Current: genre-based + artist-based pools with random shuffle. Presentation trick, not a real algorithm.
 
 | Stage | Users | Approach |
 |---|---|---|
-| Now | 0–500 | Genre + artist pools, shuffled. Current implementation. |
-| Phase 1 | 500–5k | **Item-based collaborative filtering in SQL** — for each album the user rated highly, query which other albums were also rated highly by users who rated that album. Computable in Postgres with no ML infra. |
-| Phase 2 | 5k+ | **Matrix factorization via `pgvector`** — store user and album embeddings in Supabase, query nearest neighbors. Or use an external service. |
+| Now | 0–500 | Genre + artist pools, shuffled |
+| Phase 1 | 500–5k | **Item-based collaborative filtering in SQL** — co-rated-highly albums. Computable in Postgres, no ML infra. |
+| Phase 2 | 5k+ | **Matrix factorization via `pgvector`** — user and album embeddings, nearest neighbor queries |
 
-**Why explicit ratings matter:** sillajuku collects star ratings, which are a stronger signal than Spotify's implicit play counts. The cold start problem (needing enough users) is the only blocker — the data quality is already better than most streaming services have.
-
-**Watcha comparison:** Watcha (closest product analogy) uses collaborative filtering on explicit star ratings, which is exactly what Phase 1 would implement here.
-
-**What to build in Phase 1 (once ~500 users):**
-- A SQL query that, given a user's top-rated albums, finds the albums most frequently co-rated-highly by similar users
-- Surface results on the For You page and homepage "More from..." sections
-- Can be computed on-demand per request or cached daily per user in a `recommendations` table
+Phase 1 trigger: once ~500 users, build the SQL co-rating query and surface on the For You page.
 
 ---
 
 ## Music catalog ingestion
 
-Pre-populating the DB is a three-phase process. Each phase builds on the previous one.
-
-### Phase 1 — Seed catalog (315 curated albums)
-
-Source: `research/research1/korean_serious_music_seed_catalog_315.csv`
-Breakdown: 188 Korean (60%) · 82 Western (26%) · 30 Japanese (10%) · 15 Other (5%)
+### Phase 1 — Seed catalog (done: 306/315)
 
 ```bash
 npm run ingest           # full run
-npm run ingest:dry       # preview without DB writes
-npm run ingest:retry     # re-attempt previously not-found entries
+npm run ingest:retry     # re-attempt not-found entries
 ```
 
-State is saved to `scripts/ingest-state.json` after every 10 entries — safe to Ctrl-C and resume.
-
-If an album isn't found with romanized names, add a Korean/native-script override to `scripts/search-overrides.json`:
+For missing albums, add native-script overrides to `scripts/search-overrides.json`:
 ```json
 "Artist Name|Album Name": { "query": "아티스트 앨범명" }
 ```
-Then run `npm run ingest:retry` to re-attempt only the not-found entries.
 
-**Result:** 306/315 found (97%). The remaining 9 are genuinely not on Spotify.
-
-15 entries were reset to `not_found` after a false-positive audit — wrong albums had been matched due to overly lenient artist similarity scoring. The matching logic has since been tightened (`artistSimilarity` Jaccard-only, guard raised to 0.25). Add native-script overrides to `scripts/search-overrides.json` and run `npm run ingest:retry` to recover them. See table of suggested overrides in git history.
-
----
-
-### Phase 2 — Discography expansion
-
-Fetches every album/EP from each artist already in the DB (one-hop, no text matching — no false positive risk).
+### Phase 2 — Discography expansion (in progress: 76/331 artists)
 
 ```bash
 npm run expand:discography
-```
-
-**Spotify daily quota:** The artist-albums endpoint has a ~23-hour daily quota separate from the per-minute rate limit. Run in batches of ~60 artists/day (the default). The script resumes automatically from where it left off.
-
-```bash
-# Override batch size if needed
+# override batch size:
 npx tsx --env-file=.env.local scripts/expand-catalog.ts discography --max-artists=40
 ```
 
-State saved to `scripts/expand-state.json` after every artist. If the quota is hit mid-run, the script stops cleanly and prints the exact wait time.
-
----
+State saved to `scripts/expand-state.json` after every artist. Quota hit = script exits with exact wait time.
 
 ### Phase 3 — Related artist expansion
-
-One hop from all seeded artists, gated by follower count to keep quality high:
-
-| Origin   | Min followers |
-|----------|--------------|
-| Korean   | 5,000        |
-| Japanese | 20,000       |
-| Western  | 100,000      |
-| Other    | 50,000       |
 
 ```bash
 npm run expand:related
 ```
 
----
+Follower gates: Korean ≥5k · Japanese ≥20k · Western ≥100k · Other ≥50k.
 
 ### Phase 4 — Genre sweeps
-
-Spotify genre-tag search across 12 tags (Korean indie, k-rap, city pop, shoegaze, neo-soul, etc.) with a minimum popularity threshold per tag.
 
 ```bash
 npm run expand:genre
@@ -480,98 +243,13 @@ npm run expand:genre
 
 ---
 
-### ⚠️ NEXT SESSION — Do this first
+## Architecture notes
 
-**1. Continue discography expansion** — run once per day:
-```bash
-npm run expand:discography
-```
-~60 artists/batch. Move to `expand:related` once complete.
-
-**2. Week 2 — Remaining:**
-- Email verification on signup (block login if email unconfirmed; handle error gracefully)
-- Onboarding polish
-- Transactional email setup (Resend + Supabase SMTP) — required before launch so emails don't land in spam
-- Apply email templates: paste `supabase/templates/confirmation.html` and `recovery.html` into Supabase dashboard → Auth → Email Templates
-
----
-
-**Session summary (2026-05-18) — branding:**
-- Brand identity locked: tagline "Every record you've loved.", amber accent (#E8A020), flower mark (Asset 20) as primary visual logo
-- Full cyan/mint purge: replaced all hardcoded hex values (#3DFFD1, #00C2A8, #00B894, #EDFFF9, #00453A) with amber equivalents across 18+ files
-- Score badges on album thumbnails changed to periwinkle blue (#5170ad) to match flower mark; score display standardized to 1 decimal place (toFixed(1))
-- Homepage headline: "Your taste documented."; metadata description: "Every record you've loved."
-- Copy/voice audit: 17 en.ts strings + 6 hardcoded strings rewritten; 9 ko.ts strings retranslated
-- Logo assets: public/logo.svg (auth page) + public/logo-flower.svg (footer) both replaced with Asset 20; Asset 15 deleted
-- Auth form value-prop card removed
-
-**Session summary (2026-05-18) — security:**
-- Security hardening (Week 4): auth checks on all mutation API routes (`/api/follow`, `/api/notifications` PATCH, `/api/lists` POST, `/api/rankings/vote`) via `lib/authGuard.ts` JWT verification; 403 on missing/mismatched token; client-side callers updated to send `Authorization: Bearer <token>`
-- `/api/auth/resolve-username` converted from GET → POST (username no longer in URL/server logs)
-- Security headers in `next.config.mjs`: CSP, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Strict-Transport-Security`, `Referrer-Policy`, `Permissions-Policy`
-- Image remote patterns: replaced `hostname: '**'` wildcard with explicit whitelist (`i.scdn.co`, `*.scdn.co`, `*.supabase.co`, `coverartarchive.org`)
-- DB migration `20260517000000_indexes_and_fts.sql`: performance indexes on `ratings(release_id)`, `reviews(release_id)`, `follows(following_id)`, `user_rankings(category_id)`, `user_ranking_entries(release_id)`; GIN full-text search index on `releases(title, artist)`
-- `.spotify-tokens.json` git audit: clean (never committed, properly gitignored)
-- All changes verified: TypeScript clean, build passes, all 13 test cases pass
-
-**Session summary (2026-05-17):**
-- Korean ranking titles: added `rankingTitles` slug-keyed translations to `en.ts` + `ko.ts`; updated all 5 render sites (RankingsGrid, FilterBuilder, ranking detail page, rank builder page, album "In Rankings" chips)
-- Korean copy: 순위 정하기 → 투표하기 / 재투표하기; ranking title format → `[category] 올타임 베스트`
-- Loading UX: installed `nextjs-toploader` (cyan progress bar on navigation); added skeleton loading screens for `/rankings`, `/rankings/[slug]`, `/album/[mbid]`
-- Full-stack audit: security, DB, frontend, API, devops findings documented and integrated into pre-launch weekly roadmap
-- DB architecture decision: keep PostgreSQL, add Upstash Redis caching layer + PostgreSQL full-text search index post-launch Typesense option documented
-- KakaoTalk login: attempted but blocked — requires 비즈 앱 which needs 사업자등록번호; reverted to "coming soon"; post-launch plan: 개인사업자 → Kakao 비즈 앱 → US LLC via Stripe Atlas once revenue is consistent
-
-**Session summary (2026-05-11):**
-- Fixed CASCADE DELETE bug in ranking seed endpoint (upsert instead of delete+insert)
-- Seeded RS500 "all-time" (467/500) and hip-hop subset "hiphop-all-time" (59/63)
-- Added K-Pop 30-album dataset to seed script; kpop-all-time seed pending (rate limited)
-- Rankings: pagination (10/page + ellipsis + jump-to-page), silla score → cyan mint, leaderboard rows clickable
-- Rankings page thumbnails: fixed to use real Silla Score formula
-
-**Session summary (2026-05-16):**
-- Dark mode: full implementation — CSS variables (RGB channel values) in `globals.css` + `tailwind.config.ts`, next-themes `ThemeProvider` with system default, Light/System/Dark toggle in Settings
-- Dark mode fixes: 38 `bg-white` → `bg-page`, 21 `bg-ink text-white` buttons inverted (`dark:bg-[#F0F0EE] dark:text-[#111111]`), mint badge text hardcoded `#00453A` (not CSS variable) to stay legible on mint background, `@layer base` html fallback for text color
-- Logo: text-only (`public/logo-text.svg`) on navbar with `dark:invert`; flower mark (`public/logo-flower.svg`) on footer; navbar height reduced to 58px
-- Contact emails: `privacy@sillajuku.com` + `legal@sillajuku.com` → `admin@sillajuku.com`
-
-**Session summary (2026-05-14):**
-- Password reset flow: forgot mode in AuthForm, /auth/callback ?next= param, /reset-password page + ResetPasswordForm
-- Auth layout: removed header, logo centered at top; login + reset-password pages updated
-- Signup: username field removed, duplicate email detection (identities.length === 0), cross-tab confirmation via onAuthStateChange
-- Onboarding step 3: renamed "Albums that shaped you" → "Your Essentials", MAX_ALBUMS 10 → 6
-- Email templates: supabase/templates/confirmation.html + recovery.html (branded, ready to paste into Supabase dashboard)
-- OG/social preview: app/opengraph-image.tsx + og/twitter metadata in root layout
-- Settings: removed change-password section (social auth is primary path)
-- Homepage: HomeReadyContext + RevealWhenReady for coordinated load (personalized + grid reveal together)
-- Explore page: renamed from ForYou/Lists, removed 5-artist cap, DB range() pagination, prestige fallback
-- Recommendation variety: shuffle on both personalized + recommendations APIs
-
-**Session summary (2026-05-13):**
-- Seeded kpop-all-time (29/30 fuzzy + CHUNGHA Querencia via spotifyId); all 6 ranking categories now seeded
-- Homepage load time: personalized API skips Spotify when DB has ≥10 albums; heading shows immediately; RecommendationGrid hidden until PersonalizedFeed ready then fades in together
-- Recommendation variety: genre rows fetch 80 and shuffle; ForYou community pool top-60 shuffled to 20; per-artist albums shuffled before slice
-- Deleted collisions, contradictions, wrapped pages; renamed lists → explore (/explore); ForYouPage → ExplorePage with "Explore" heading
-- Explore load more fixed: DB pagination with .range() per page; prestige fallback when artist albums exhausted; removed 5-artist cap
-- Recommendation algorithm roadmap added to README post-launch section
-- Listen Later hero updated to match Rankings style (bg-surface, eyebrow label, tighter typography)
-- Album page: hero overflow fix (dropdown no longer clipped), "In Rankings" now shows rank number (#N)
-- Add to Ranking modal: checkmarks on categories user has already ranked this album in
-
----
-
-### Spotify rate limit notes
-
-- **Per-minute limit:** ~100 req/min (client credentials). Script uses 2000ms between calls.
-- **Daily quota:** The `/artists/{id}/albums` endpoint has a hard daily limit. Exceeding it returns `Retry-After: ~82000s` (~23 hours). Run discography in batches of 60 artists/day to stay under it.
-- **The canary check:** Each expand run starts with a `/search` call. If that returns 429, the script exits immediately with the exact wait time before making any real calls.
-- **State files** (`scripts/ingest-state.json`, `scripts/expand-state.json`) track progress across sessions. Never delete them mid-run — they're how the scripts resume.
-
-- **DB-first pattern:** Homepage genre rows served from `curated_releases`. Album and artist data cached to DB on first visit — Spotify only called on cache miss.
-- **Data ingestion:** Four-phase pipeline pre-populates DB — seed catalog (315 albums) → discography expansion → related artists → genre sweeps. See [Music catalog ingestion](#music-catalog-ingestion).
-- **Spotify rate limits:** Client credentials ~100 req/min per-minute; artist-albums endpoint also has a ~23hr daily quota. Script batches at 60 artists/day and exits cleanly on quota hit. DB cache removes the per-minute ceiling for repeat content.
+- **DB-first:** Album and artist data cached to DB on first visit — Spotify only called on cache miss. Spotify integration is metadata only, not content streaming.
+- **Spotify rate limits:** ~100 req/min (client credentials); artist-albums endpoint has a ~23hr daily quota. Scripts batch at 60 artists/day and exit cleanly on quota hit. Never delete state files mid-run (`scripts/ingest-state.json`, `scripts/expand-state.json`).
+- **Supabase region:** Seoul. ~180–220ms latency for Western users — acceptable while Korea-focused; address with read replicas at Western expansion.
 - **Supabase free tier:** 500MB storage (~100,000 albums). Paid tier ($25/mo) gives 8GB.
-- **Service role key** — used server-side only for aggregate queries. Never exposed to client.
+- **Service role key** — server-side only for aggregate queries. Never exposed to client.
 - **In-memory Spotify cache** (`lib/spotify.ts`) — 1hr TTL, resets on server restart.
 - **ISR** — artist album pages revalidate every 3600s.
 - **Migrations** — all schema changes in `supabase/migrations/`, applied with `supabase db push`.
