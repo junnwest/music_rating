@@ -13,3 +13,12 @@ yarn-error.log*
 .vscode
 .gstack/
 .spotify-tokens.json
+
+# Expo
+apps/mobile/.expo
+apps/mobile/dist
+apps/mobile/android
+apps/mobile/ios
+
+# Turbo
+.turbo

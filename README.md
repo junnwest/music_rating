@@ -2,18 +2,22 @@
 
 Every record you've loved — rated, cataloged, and remembered. A music platform for listeners with taste.
 
-**Stack:** Next.js 14 (App Router) · Supabase (auth + database) · Spotify API · Tailwind CSS
+**Stack:** Next.js 14 (App Router) · React Native (Expo SDK 54) · Supabase (auth + database) · Spotify API · Tailwind CSS
+
+**Monorepo:** `apps/web` (Next.js) · `apps/mobile` (Expo) · `packages/shared` (TypeScript types)
 
 ---
 
 ## Local development
+
+### Web
 
 1. Install dependencies:
    ```bash
    npm install
    ```
 
-2. Create `.env.local` with the following keys:
+2. Create `apps/web/.env.local`:
    ```
    NEXT_PUBLIC_SUPABASE_URL=
    NEXT_PUBLIC_SUPABASE_ANON_KEY=
@@ -25,8 +29,27 @@ Every record you've loved — rated, cataloged, and remembered. A music platform
 
 3. Run the dev server:
    ```bash
-   npm run dev
+   npm run dev:web
    ```
+
+### Mobile (React Native / Expo)
+
+1. Install dependencies:
+   ```bash
+   cd apps/mobile && npm install
+   ```
+
+2. Create `apps/mobile/.env` (copy from `.env.example`):
+   ```
+   EXPO_PUBLIC_SUPABASE_URL=
+   EXPO_PUBLIC_SUPABASE_ANON_KEY=
+   ```
+
+3. Start Expo:
+   ```bash
+   cd apps/mobile && npx expo start
+   ```
+   Scan the QR code with the **Expo Go** app on your iPhone (requires Expo Go SDK 54).
 
 ---
 
@@ -156,8 +179,8 @@ npm run expand:genre         # after Phase 3 completes
 - [ ] **Rate limiting** — `/api/check-username`, `/api/rankings/vote`, `/api/follow` via `@upstash/ratelimit` + Upstash Redis
 - [ ] **Upstash Redis caching** — ranking leaderboards, album avg rating + count, homepage genre rows; invalidate on write
 - [ ] Korean translation (i18n setup with next-intl; language toggle in settings)
-- [ ] Capacitor app build (wraps existing Next.js app into native shell)
-- [ ] App Store (iOS) + Play Store (Android) submission
+- [ ] **React Native app** (Expo SDK 54) — home, search, album detail, rating flow, profile screens
+- [ ] EAS build + App Store (iOS) + Play Store (Android) submission
   - ⚠️ Apple review takes 1–2 weeks — submit by Jun 1 to hit mid-June
 
 ### Week 5 — Jun 7–14: QA + production deploy
