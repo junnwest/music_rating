@@ -19,7 +19,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <div className="flex-1 flex flex-col min-w-0">
           <main className="flex-1">{children}</main>
-          <Footer className="hidden xl:block" />
+          <Footer />
         </div>
       </div>
     </div>

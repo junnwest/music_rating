@@ -1,5 +1,5 @@
 ﻿import { createServerClient } from '../../../lib/supabaseServer';
-import RankingsGrid from '../../../components/RankingsGrid';
+import TopRankingsMenu from '../../../components/TopRankingsMenu';
 import FilterBuilder from '../../../components/FilterBuilder';
 import { getServerT } from '../../../lib/i18n/server';
 
@@ -144,20 +144,15 @@ export default async function RankingsPage() {
 
       {/* Content */}
       <div className="max-w-[1440px] mx-auto px-5 py-10 pb-16 flex flex-col gap-14">
-        <section>
-          <h2 className="text-[13px] font-bold text-muted uppercase mb-5" style={{ letterSpacing: '0.7px' }}>
-            {t('rankings.mostActive')}
-          </h2>
-          {categories.length === 0 ? (
-            <p className="text-sm text-muted">{t('rankings.noCategories')}</p>
-          ) : (
-            <RankingsGrid
-              categories={categories}
-              topAlbumsMap={topAlbumsMap}
-              voteCountMap={voteCountMap}
-            />
-          )}
-        </section>
+        {categories.length === 0 ? (
+          <p className="text-sm text-muted">{t('rankings.noCategories')}</p>
+        ) : (
+          <TopRankingsMenu
+            categories={categories}
+            topAlbumsMap={topAlbumsMap}
+            voteCountMap={voteCountMap}
+          />
+        )}
 
         <FilterBuilder categories={categories} topAlbumsMap={topAlbumsMap} />
       </div>

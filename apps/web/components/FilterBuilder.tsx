@@ -193,9 +193,17 @@ export default function FilterBuilder({
             </div>
           </div>
         ) : (
-          <p className="text-[13px] text-muted">
-            {t('rankings.noCurated')}
-          </p>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <p className="text-[13px] text-muted flex-1">
+              {t('rankings.noCurated')}
+            </p>
+            <Link
+              href={`/rankings/new?country=${encodeURIComponent(country)}&genre=${encodeURIComponent(genre)}&time=${encodeURIComponent(time)}`}
+              className="text-[13px] font-semibold text-ink border border-[#DDDDD8] rounded-xl px-4 py-2.5 hover:bg-surface transition whitespace-nowrap self-start sm:self-auto"
+            >
+              {t('rankings.beFirstToVote')}
+            </Link>
+          </div>
         )}
       </div>
     </section>
