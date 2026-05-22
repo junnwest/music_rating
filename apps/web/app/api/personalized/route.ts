@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../lib/supabaseServer';
 import { resolveArtistId, searchAlbumsByArtistId, searchAlbumsByArtistName } from '../../../lib/spotify';
+import { saveBasicReleases } from '../../../lib/dbCache';
 import type { AlbumRelease } from '../../../types';
 
 function shuffle<T>(arr: T[]): T[] {
@@ -43,7 +44,8 @@ export async function GET(req: NextRequest) {
           let query = supabase
             .from('releases')
             .select('id, title, artist, cover_url, release_type, release_date')
-            .ilike('artist', `%${artistName}%`);
+            .ilike('artist', `%${artistName}%`)
+            .not('release_type', 'ilike', 'single');
 
           if (excludeIds.size > 0) {
             query = query.not('id', 'in', `(${[...excludeIds].join(',')})`);
@@ -79,12 +81,16 @@ export async function GET(req: NextRequest) {
             }
 
             const seen = new Set(albums.map((a) => a.id));
+            const newFromSpotify: AlbumRelease[] = [];
             for (const a of spotifyAlbums) {
+              if (a.releaseType === 'Single') continue;
               if (!excludeIds.has(a.id) && !seen.has(a.id)) {
                 seen.add(a.id);
                 albums.push(a);
+                newFromSpotify.push(a);
               }
             }
+            if (newFromSpotify.length > 0) saveBasicReleases(newFromSpotify).catch(() => {});
           } catch (err) {
             console.error('[personalized] Spotify fallback failed:', err);
           }

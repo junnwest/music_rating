@@ -11,6 +11,7 @@ const artistCache = new Map<string, { data: any; expiresAt: number }>();
 const albumsCache = new Map<string, { data: AlbumRelease[]; expiresAt: number }>();
 const recsCache = new Map<string, { data: AlbumRelease[]; expiresAt: number }>();
 const artistIdCache = new Map<string, { id: string | null; expiresAt: number }>();
+const albumDetailCache = new Map<string, { data: SpotifyAlbumDetail; expiresAt: number }>();
 const TTL = 3600 * 1000;
 
 async function getToken(): Promise<string> {
@@ -41,10 +42,19 @@ async function getToken(): Promise<string> {
 async function spotifyFetch(path: string, revalidate?: number): Promise<any> {
   const token = await getToken();
   const url = path.startsWith('https://') ? path : `${API_BASE}${path}`;
-  const res = await fetch(url, {
+  const options: RequestInit & { next?: { revalidate: number } } = {
     headers: { Authorization: `Bearer ${token}` },
-    next: revalidate !== undefined ? { revalidate } : undefined,
-  });
+  };
+  if (revalidate !== undefined) options.next = { revalidate };
+
+  let res = await fetch(url, options);
+
+  if (res.status === 429) {
+    const retryAfter = parseInt(res.headers.get('Retry-After') ?? '2', 10);
+    await new Promise(r => setTimeout(r, (retryAfter + 1) * 1000));
+    res = await fetch(url, { ...options, headers: { Authorization: `Bearer ${await getToken()}` } });
+  }
+
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`Spotify ${res.status}: ${url} — ${body}`);
@@ -75,10 +85,11 @@ function mapAlbum(a: any): AlbumRelease {
 
 // ── Search ────────────────────────────────────────────────────────────────────
 
-export async function searchSpotifyAlbums(query: string, limit = 10): Promise<AlbumRelease[]> {
-  const data = await spotifyFetch(
-    `/search?q=${encodeURIComponent(query)}&type=album&limit=${limit}`
-  );
+export async function searchSpotifyAlbums(query: string, limit = 10, market?: string): Promise<AlbumRelease[]> {
+  const qs = market
+    ? `/search?q=${encodeURIComponent(query)}&type=album&limit=${limit}&market=${market}`
+    : `/search?q=${encodeURIComponent(query)}&type=album&limit=${limit}`;
+  const data = await spotifyFetch(qs);
   return (data.albums?.items ?? [])
     .filter((a: any) => a.album_type !== 'compilation')
     .map(mapAlbum);
@@ -149,8 +160,10 @@ export interface SpotifyAlbumDetail {
 }
 
 export async function getSpotifyAlbum(id: string): Promise<SpotifyAlbumDetail | null> {
+  const hit = albumDetailCache.get(id);
+  if (hit && Date.now() < hit.expiresAt) return hit.data;
   try {
-    const album = await spotifyFetch(`/albums/${id}?market=KR`, 86400);
+    const album = await spotifyFetch(`/albums/${id}`);
 
     // Spotify album genres are often empty — fall back to primary artist genres
     let genres: string[] = album.genres ?? [];
@@ -170,7 +183,7 @@ export async function getSpotifyAlbum(id: string): Promise<SpotifyAlbumDetail | 
       artists: t.artists?.map((a: any) => a.name).join(', ') ?? '',
     }));
 
-    return {
+    const result: SpotifyAlbumDetail = {
       id: album.id,
       title: album.name,
       artist: album.artists?.map((a: any) => a.name).join(', ') ?? 'Unknown artist',
@@ -187,7 +200,11 @@ export async function getSpotifyAlbum(id: string): Promise<SpotifyAlbumDetail | 
       coverUrl: album.images?.[0]?.url ?? null,
       spotifyUrl: album.external_urls?.spotify ?? null,
     };
-  } catch {
+    albumDetailCache.set(id, { data: result, expiresAt: Date.now() + TTL });
+    return result;
+  } catch (err) {
+    console.error('[spotify] getSpotifyAlbum failed for', id, ':', err);
+    if (hit) return hit.data; // return stale on rate-limit / transient error
     return null;
   }
 }
@@ -318,7 +335,7 @@ export async function searchAlbumsByArtistId(artistId: string, _artistName: stri
   try {
     const items: any[] = [];
     let url: string | null =
-      `/artists/${artistId}/albums?include_groups=album,single,ep,compilation&limit=50&market=KR`;
+      `/artists/${artistId}/albums?include_groups=album,ep,compilation&limit=50&market=KR`;
     while (url) {
       const data = await spotifyFetch(url, 3600);
       items.push(...(data.items ?? []));
@@ -360,7 +377,7 @@ export async function getSpotifyRecommendations(query: string): Promise<AlbumRel
       3600
     );
     const results = (data.albums?.items ?? [])
-      .filter((a: any) => a.album_type !== 'compilation')
+      .filter((a: any) => a.album_type !== 'compilation' && a.album_type !== 'single')
       .map(mapAlbum);
     recsCache.set(query, { data: results, expiresAt: Date.now() + TTL });
     return results;

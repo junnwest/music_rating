@@ -1,7 +1,7 @@
 ﻿import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { getSpotifyAlbum } from '../../../../lib/spotify';
-import { getCachedAlbum, cacheAlbum } from '../../../../lib/dbCache';
+import { getCachedAlbum, cacheAlbum, getBasicRelease } from '../../../../lib/dbCache';
 import { createServerClient } from '../../../../lib/supabaseServer';
 
 export const revalidate = 60;
@@ -59,8 +59,16 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
   let album = await getCachedAlbum(params.mbid);
   if (!album) {
     album = await getSpotifyAlbum(params.mbid);
-    if (!album) notFound();
-    cacheAlbum(album); // fire and forget
+    if (album) {
+      cacheAlbum(album); // fire and forget
+    } else {
+      console.error('[album] Spotify returned null for id:', params.mbid);
+      album = await getBasicRelease(params.mbid);
+      if (!album) {
+        console.error('[album] getBasicRelease also null for id:', params.mbid);
+        notFound();
+      }
+    }
   }
 
   // Fetch community stats + ranking memberships

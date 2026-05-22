@@ -6,6 +6,7 @@ export async function GET(request: NextRequest) {
   const query = searchParams.get('query');
   const type = searchParams.get('type') ?? 'releases';
   const year = searchParams.get('year');
+  const market = searchParams.get('market') ?? undefined;
 
   if (!query) {
     return new Response(JSON.stringify({ error: 'Missing query parameter' }), { status: 400 });
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
 
     // Append year filter to Spotify query if provided (Spotify supports year:XXXX natively)
     const spotifyQuery = year ? `${query} year:${year}` : query;
-    let releases = await searchSpotifyAlbums(spotifyQuery);
+    let releases = await searchSpotifyAlbums(spotifyQuery, 10, market);
 
     // Post-filter by year as a belt-and-suspenders check
     if (year) {

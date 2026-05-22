@@ -18,10 +18,11 @@ interface Props {
   initialSuggestions: RankedAlbum[];
   filterYear?: number | null;
   filterGenre?: string | null;
+  filterCountry?: string | null;
   prefillAlbum?: RankedAlbum | null;
 }
 
-const SUGGESTION_COUNT = 12;
+const SUGGESTION_COUNT = 30;
 const MAX_TIER_SIZE = 5;
 
 function coverColor(id: string) {
@@ -36,7 +37,7 @@ type DragTarget =
   | { type: 'addTier' }
   | null;
 
-export default function RankBuilder({ categoryId, categoryTitle, slug, initialSuggestions, filterYear, filterGenre, prefillAlbum }: Props) {
+export default function RankBuilder({ categoryId, categoryTitle, slug, initialSuggestions, filterYear, filterGenre, filterCountry, prefillAlbum }: Props) {
   const router = useRouter();
   const [ranking, setRanking] = useState<RankedAlbum[][]>([[], [], []]);
   const [query, setQuery] = useState('');
@@ -51,7 +52,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
-  const [addTarget, setAddTarget] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; album: RankedAlbum } | null>(null);
 
   const draggedRef = useRef<{ album: RankedAlbum; fromTier: number } | null>(null);
   const ghostRef = useRef<HTMLDivElement>(null);
@@ -107,6 +108,14 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
     return () => document.removeEventListener('dragover', onDragOver);
   }, []);
 
+  // Close context menu on any click outside
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [contextMenu]);
+
   // Search debounce
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -116,6 +125,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
       try {
         const params = new URLSearchParams({ query: query.trim() });
         if (filterYear) params.set('year', String(filterYear));
+        if (filterCountry) params.set('market', filterCountry);
         const res = await fetch(`/api/search?${params}`);
         const json = await res.json();
         setSearchResults((json.releases ?? []).map((r: any) => ({
@@ -216,21 +226,8 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
     });
   }
 
-  function addToTier(album: RankedAlbum, targetIdx: number) {
-    if (targetIdx >= 0 && (ranking[targetIdx]?.length ?? 0) >= MAX_TIER_SIZE) {
-      showToast('Max 5 albums per tier');
-      setAddTarget(null);
-      return;
-    }
-    setRanking(prev => {
-      const next = prev.map(t => [...t]);
-      if (targetIdx >= 0) {
-        next[targetIdx] = [...next[targetIdx], album];
-        return next.filter(t => t.length > 0);
-      }
-      return [...next.filter(t => t.length > 0), [album]];
-    });
-    setAddTarget(null);
+  function dismissAlbum(album: RankedAlbum) {
+    setDismissed(prev => new Set([...prev, album.id]));
   }
 
   // ── Save ──
@@ -444,7 +441,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
         </div>
 
         {/* RIGHT: Picker */}
-        <div className="h-[calc(100vh-120px)] xl:h-[calc(100vh-56px)]" style={{ background: 'rgb(var(--color-page))', padding: 24, position: 'sticky', top: 56, overflowY: query.trim() ? 'auto' : 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div className="h-[calc(100vh-120px)] xl:h-[calc(100vh-56px)]" style={{ background: 'rgb(var(--color-page))', padding: 24, position: 'sticky', top: 56, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
           {/* Search */}
           <div style={{ position: 'sticky', top: 0, zIndex: 10, background: 'rgb(var(--color-page))', paddingBottom: 16 }}>
             <input
@@ -505,17 +502,12 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
               })}
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 8 }}>
               {visible.map(album => (
                 <SuggestionCard
                   key={album.id}
                   album={album}
-                  isAddTarget={addTarget === album.id}
-                  ranking={ranking}
-                  onAdd={() => setAddTarget(album.id)}
-                  onDismiss={() => setDismissed(prev => new Set([...prev, album.id]))}
-                  onCancel={() => setAddTarget(null)}
-                  onAddToTier={tierIdx => addToTier(album, tierIdx)}
+                  onContextMenu={(e, a) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, album: a }); }}
                   onDragStart={e => startDrag(e, album, -1)}
                   onDragEnd={endDrag}
                 />
@@ -535,6 +527,37 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
       }}>
         {toast.msg}
       </div>
+
+      {/* Right-click context menu */}
+      {contextMenu && (
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{
+            position: 'fixed', zIndex: 800,
+            left: contextMenu.x, top: contextMenu.y,
+            background: 'rgb(var(--color-page))', border: '1px solid rgb(var(--color-divider))',
+            borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+            minWidth: 160, overflow: 'hidden',
+          }}
+        >
+          <button
+            onClick={() => { addFromClick(contextMenu.album); setContextMenu(null); }}
+            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', fontSize: 12, fontWeight: 600, color: 'rgb(var(--color-ink))', background: 'none', border: 'none', cursor: 'pointer' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgb(var(--color-surface))')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+          >
+            Add to ranking
+          </button>
+          <button
+            onClick={() => { dismissAlbum(contextMenu.album); setContextMenu(null); }}
+            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', fontSize: 12, fontWeight: 600, color: 'rgb(var(--color-muted))', background: 'none', border: 'none', cursor: 'pointer', borderTop: '1px solid rgb(var(--color-divider))' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgb(var(--color-surface))')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+          >
+            Skip
+          </button>
+        </div>
+      )}
 
       {/* Leave confirmation modal */}
       {showLeaveModal && (
@@ -622,21 +645,17 @@ function AlbumCard({ album, onDragStart, onDragEnd, onRemove }: {
   );
 }
 
-function SuggestionCard({ album, isAddTarget, ranking, onAdd, onDismiss, onCancel, onAddToTier, onDragStart, onDragEnd }: {
+function SuggestionCard({ album, onContextMenu, onDragStart, onDragEnd }: {
   album: RankedAlbum;
-  isAddTarget: boolean;
-  ranking: RankedAlbum[][];
-  onAdd: () => void;
-  onDismiss: () => void;
-  onCancel: () => void;
-  onAddToTier: (tierIdx: number) => void;
+  onContextMenu: (e: React.MouseEvent, album: RankedAlbum) => void;
   onDragStart: (e: React.DragEvent) => void;
   onDragEnd: () => void;
 }) {
-  const pickable = ranking.map((t, i) => ({ i, len: t.length })).filter(({ len }) => len > 0 && len < MAX_TIER_SIZE);
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+    <div
+      style={{ display: 'flex', flexDirection: 'column', gap: 3 }}
+      onContextMenu={e => onContextMenu(e, album)}
+    >
       <div
         draggable
         onDragStart={onDragStart}
@@ -647,40 +666,9 @@ function SuggestionCard({ album, isAddTarget, ranking, onAdd, onDismiss, onCance
           ? <img src={album.coverUrl} alt={album.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
           : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff', textTransform: 'uppercase' }}>{album.title.slice(0, 2)}</div>
         }
-        {isAddTarget && (
-          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.82)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 5, padding: 4 }}>
-            <button
-              onClick={onCancel}
-              style={{ position: 'absolute', top: 3, right: 3, width: 14, height: 14, borderRadius: '50%', background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', fontSize: 9, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, lineHeight: 1 }}
-            >×</button>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, justifyContent: 'center', maxWidth: '100%' }}>
-              {pickable.map(({ i }) => (
-                <button
-                  key={i}
-                  onClick={() => onAddToTier(i)}
-                  style={{ width: 22, height: 22, borderRadius: 4, background: '#fff', border: 'none', fontSize: 9, fontWeight: 700, color: 'rgb(var(--color-ink))', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >{i + 1}</button>
-              ))}
-              <button
-                onClick={() => onAddToTier(-1)}
-                style={{ width: 22, height: 22, borderRadius: 4, background: '#E8A020', border: 'none', fontSize: 13, fontWeight: 700, color: '#7A4F0A', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >+</button>
-            </div>
-          </div>
-        )}
       </div>
       <div style={{ fontSize: 10, fontWeight: 600, color: 'rgb(var(--color-ink))', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.2 }}>{album.title}</div>
       <div style={{ fontSize: 9, color: 'rgb(var(--color-muted))', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.2 }}>{album.artist}</div>
-      <div style={{ display: 'flex', gap: 3, marginTop: 1, visibility: isAddTarget ? 'hidden' : 'visible' }}>
-        <button
-          onClick={onAdd}
-          style={{ flex: 1, fontSize: 9, fontWeight: 700, background: 'rgb(var(--color-ink))', color: 'rgb(var(--color-page))', border: 'none', borderRadius: 3, padding: '4px 0', cursor: 'pointer', lineHeight: 1 }}
-        >Add</button>
-        <button
-          onClick={onDismiss}
-          style={{ flex: 1, fontSize: 9, fontWeight: 600, background: 'rgb(var(--color-surface))', color: 'rgb(var(--color-muted))', border: 'none', borderRadius: 3, padding: '4px 0', cursor: 'pointer', lineHeight: 1 }}
-        >Skip</button>
-      </div>
     </div>
   );
 }

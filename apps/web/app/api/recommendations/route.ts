@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../lib/supabaseServer';
 import { resolveArtistId, searchAlbumsByArtistId, searchAlbumsByArtistName } from '../../../lib/spotify';
+import { saveBasicReleases } from '../../../lib/dbCache';
 import type { AlbumRelease } from '../../../types';
 
 function shuffle<T>(arr: T[]): T[] {
@@ -60,7 +61,8 @@ export async function GET(req: NextRequest) {
         const { data: releases } = await supabase
           .from('releases')
           .select('id, title, artist, cover_url, release_type, release_date')
-          .in('id', topIds);
+          .in('id', topIds)
+          .not('release_type', 'ilike', 'single');
         const releaseMap = new Map((releases ?? []).map((r: any) => [r.id, r]));
         for (const id of topIds) {
           const r = releaseMap.get(id);
@@ -82,7 +84,8 @@ export async function GET(req: NextRequest) {
       .from('releases')
       .select('id, title, artist, cover_url, release_type, release_date')
       .or(orClause)
-      .not('cover_url', 'is', null);
+      .not('cover_url', 'is', null)
+      .not('release_type', 'ilike', 'single');
 
     if (excludeIds.size > 0) {
       query = query.not('id', 'in', `(${[...excludeIds].join(',')})`);
@@ -125,15 +128,18 @@ export async function GET(req: NextRequest) {
           }
         })
       );
+      const spotifyResults: AlbumRelease[] = [];
       for (const list of pages) {
         if (list.length > 0) hasMoreResults = true;
         for (const album of shuffle(list)) {
           if (!seen.has(album.id)) {
             seen.add(album.id);
             albums.push(album);
+            spotifyResults.push(album);
           }
         }
       }
+      if (spotifyResults.length > 0) saveBasicReleases(spotifyResults).catch(() => {});
     }
   }
 
@@ -142,7 +148,8 @@ export async function GET(req: NextRequest) {
     let query = supabase
       .from('releases')
       .select('id, title, artist, cover_url, release_type, release_date')
-      .not('cover_url', 'is', null);
+      .not('cover_url', 'is', null)
+      .not('release_type', 'ilike', 'single');
 
     if (excludeIds.size > 0) {
       query = query.not('id', 'in', `(${[...excludeIds].join(',')})`);

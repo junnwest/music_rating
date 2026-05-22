@@ -74,6 +74,7 @@ export async function getCanonSuggestions(
       .or(orClause)
       .not('cover_url', 'is', null)
       .not('prestige', 'is', null)
+      .not('release_type', 'ilike', 'single')
       .order('prestige', { ascending: true })
       .limit(limit * 4);
     rows = data ?? [];
@@ -87,6 +88,7 @@ export async function getCanonSuggestions(
       .select('id, title, artist, cover_url, release_type, prestige')
       .not('cover_url', 'is', null)
       .not('prestige', 'is', null)
+      .not('release_type', 'ilike', 'single')
       .order('prestige', { ascending: true })
       .limit(limit * 3);
     for (const r of data ?? []) {

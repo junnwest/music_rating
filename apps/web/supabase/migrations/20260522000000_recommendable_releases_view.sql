@@ -4,5 +4,5 @@
 CREATE OR REPLACE VIEW recommendable_releases AS
   SELECT *
   FROM releases
-  WHERE release_type IN ('album', 'ep')
+  WHERE LOWER(release_type) IN ('album', 'ep')
     AND cover_url IS NOT NULL;

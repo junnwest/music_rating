@@ -25,6 +25,8 @@ Every record you've loved — rated, cataloged, and remembered. A music platform
    SPOTIFY_CLIENT_ID=
    SPOTIFY_CLIENT_SECRET=
    SEED_SECRET=pick-any-random-string
+   UPSTASH_REDIS_REST_URL=
+   UPSTASH_REDIS_REST_TOKEN=
    ```
 
 3. Run the dev server:
@@ -316,14 +318,17 @@ npm run expand:genre
 
 ## Architecture notes
 
-- **DB-first:** Album and artist data cached to DB on first visit — Spotify only called on cache miss. Spotify integration is metadata only, not content streaming.
-- **Spotify rate limits:** ~100 req/min (client credentials); artist-albums endpoint has a ~23hr daily quota. Scripts batch at 60 artists/day and exit cleanly on quota hit. Never delete state files mid-run (`scripts/ingest-state.json`, `scripts/expand-state.json`).
+- **DB-first:** Album and artist data cached to DB on first visit — Spotify only called on cache miss. `saveBasicReleases` in the recommendations/personalized routes persists Spotify fallback results so future album page loads skip Spotify entirely. Spotify integration is metadata only, not content streaming.
+- **Spotify rate limits:** Account-wide client-credentials limit; exceeding it triggers `Retry-After` headers of up to 80+ minutes. Scripts batch at 60 artists/day and exit cleanly on quota hit. Never delete state files mid-run (`scripts/ingest-state.json`, `scripts/expand-state.json`). The dev server's in-memory caches reset on every restart — avoid unnecessary restarts during active development to prevent burst API calls.
+- **Spotify 429 handling** (`lib/spotify.ts`) — `spotifyFetch` retries once after `Retry-After + 1s` on a 429. Album page has a three-step fallback: DB cache → Spotify (with retry) → `getBasicRelease` (basic DB row without tracklist).
 - **Supabase region:** Seoul. ~180–220ms latency for Western users — acceptable while Korea-focused; address with read replicas at Western expansion.
 - **Supabase free tier:** 500MB storage (~100,000 albums). Paid tier ($25/mo) gives 8GB.
 - **Service role key** — server-side only for aggregate queries. Never exposed to client.
-- **In-memory Spotify cache** (`lib/spotify.ts`) — 1hr TTL, resets on server restart.
+- **In-memory Spotify cache** (`lib/spotify.ts`) — 1hr TTL, resets on server restart. Covers artists, albums, artist IDs, album detail, and recommendations.
 - **ISR** — artist album pages revalidate every 3600s.
 - **Migrations** — all schema changes in `supabase/migrations/`, applied with `supabase db push`.
-- **`recommendable_releases` view** — both web and mobile query this view instead of `releases` directly; encodes shared eligibility rules (albums + EPs only, must have `cover_url`). Edit the view migration to change recommendation rules across both apps at once.
+- **`recommendable_releases` view** — both web and mobile query this view instead of `releases` directly; encodes shared eligibility rules (albums + EPs only, must have `cover_url`). Uses `LOWER(release_type)` comparison — DB stores `'Album'`/`'EP'` with capital first letter. Edit the view migration to change recommendation rules across both apps at once.
+- **Singles filtering** — enforced at every layer: `recommendable_releases` view, `include_groups=album,ep,compilation` in Spotify artist-albums API calls, `.not('release_type', 'ilike', 'single')` on all DB queries, and post-fetch `releaseType === 'Single'` guards in route handlers.
 - **CSP (`next.config.mjs`)** — includes explicit `wss://*.supabase.co` for Safari (Safari does not automatically allow WebSocket when only `https://` is listed in `connect-src`), `us-assets.i.posthog.com` for PostHog session replay, and `lh3.googleusercontent.com` for Google OAuth avatars.
 - **Server Component error handling** — `RecommendationGrid` wraps Supabase queries in try/catch so a transient network failure (common on mobile) falls through to the Spotify fallback instead of bubbling to the error boundary.
+- **Next.js route groups** — all pages live under `app/(main)/` or `app/(auth)/`. Never create directories directly under `app/` without a route group — empty ghost directories cause "No default component for parallel route" errors.

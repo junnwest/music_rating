@@ -2,6 +2,22 @@ import { createServerClient } from './supabaseServer';
 import type { SpotifyAlbumDetail, SpotifyArtistDetail } from './spotify';
 import type { AlbumRelease } from '../types';
 
+export async function saveBasicReleases(albums: AlbumRelease[]): Promise<void> {
+  const supabase = createServerClient();
+  if (!supabase || albums.length === 0) return;
+  await supabase.from('releases').upsert(
+    albums.map(a => ({
+      id: a.id,
+      title: a.title,
+      artist: a.artist,
+      cover_url: a.coverUrl,
+      release_type: a.releaseType,
+      release_date: a.date,
+    })),
+    { onConflict: 'id', ignoreDuplicates: true }
+  );
+}
+
 const ALBUM_TTL_DAYS = 30;
 const ARTIST_TTL_DAYS = 7;
 
@@ -11,6 +27,35 @@ function isStale(cachedAt: string | null, ttlDays: number): boolean {
 }
 
 // ── Album ─────────────────────────────────────────────────────────────────────
+
+export async function getBasicRelease(id: string): Promise<SpotifyAlbumDetail | null> {
+  const supabase = createServerClient();
+  if (!supabase) return null;
+
+  const { data } = await supabase
+    .from('releases')
+    .select('id, title, artist, artist_id, artists_json, release_date, release_type, label, total_tracks, tracklist, genres, cover_url, spotify_url')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (!data) return null;
+
+  return {
+    id: data.id,
+    title: data.title,
+    artist: data.artist,
+    artistId: data.artist_id ?? null,
+    artists: data.artists_json ?? (data.artist_id ? [{ id: data.artist_id, name: data.artist }] : []),
+    date: data.release_date ?? null,
+    releaseType: data.release_type ?? 'Album',
+    label: data.label ?? null,
+    totalTracks: data.total_tracks ?? 0,
+    tracks: data.tracklist ?? [],
+    genres: data.genres ? data.genres.split(',').map((g: string) => g.trim()).filter(Boolean) : [],
+    coverUrl: data.cover_url ?? null,
+    spotifyUrl: data.spotify_url ?? null,
+  };
+}
 
 export async function getCachedAlbum(id: string): Promise<SpotifyAlbumDetail | null> {
   const supabase = createServerClient();

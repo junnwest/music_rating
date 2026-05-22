@@ -61,7 +61,8 @@ export default async function RecommendationGrid() {
         const { data } = await supabase
           .from('curated_releases')
           .select('release_id, title, artist, cover_url, release_type')
-          .eq('category', cat.key);
+          .eq('category', cat.key)
+          .not('release_type', 'ilike', 'single');
 
         albums = (data ?? []).map((r: any) => ({
           id: r.release_id,

@@ -11,7 +11,7 @@ export default async function RankBuilderPage({
   searchParams,
 }: {
   params: { slug: string };
-  searchParams: { album?: string; title?: string; artist?: string; cover?: string };
+  searchParams: { album?: string; title?: string; artist?: string; cover?: string; market?: string };
 }) {
   const t = getServerT();
   const supabase = createServerClient();
@@ -64,6 +64,7 @@ export default async function RankBuilderPage({
         initialSuggestions={suggestions}
         filterYear={category.year ?? null}
         filterGenre={category.genre ?? null}
+        filterCountry={searchParams.market ?? null}
         prefillAlbum={prefillAlbum}
       />
     </div>

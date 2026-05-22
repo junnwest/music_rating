@@ -1,6 +1,7 @@
 ﻿import { notFound } from 'next/navigation';
 import { createServerClient } from '../../../../lib/supabaseServer';
 import RankingVoteWidget, { type LeaderboardEntry } from '../../../../components/RankingVoteWidget';
+import FilterBuilder from '../../../../components/FilterBuilder';
 import Link from 'next/link';
 import { getServerT } from '../../../../lib/i18n/server';
 import { cacheGet, cacheSet } from '../../../../lib/cache';
@@ -160,18 +161,55 @@ export default async function RankingCategoryPage({
       };
     });
 
+  // Other rankings for navigation + FilterBuilder
+  const { data: otherCats } = await supabase
+    .from('ranking_categories')
+    .select('id, slug, title, description, genre, year')
+    .order('sort_order', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: true })
+    .neq('slug', params.slug)
+    .limit(20);
+
+  // Thumbnails for all rankings (current + others) via seed entries
+  const allCatIds = [category.id, ...(otherCats ?? []).map((c) => c.id)];
+  const topAlbumsMap: Record<string, { coverUrl: string | null }[]> = {};
+  if (allCatIds.length > 0) {
+    const { data: seedRows } = await supabase
+      .from('ranking_seed_entries')
+      .select('category_id, release_id, seed_votes')
+      .in('category_id', allCatIds)
+      .order('seed_votes', { ascending: false });
+
+    const seedByCat = new Map<string, string[]>();
+    for (const s of seedRows ?? []) {
+      if (!seedByCat.has(s.category_id)) seedByCat.set(s.category_id, []);
+      const arr = seedByCat.get(s.category_id)!;
+      if (arr.length < 5) arr.push(s.release_id);
+    }
+
+    const allSeedIds = [...new Set([...seedByCat.values()].flat())];
+    if (allSeedIds.length > 0) {
+      const { data: seedReleases } = await supabase
+        .from('releases')
+        .select('id, cover_url')
+        .in('id', allSeedIds);
+      const coverById = new Map((seedReleases ?? []).map((r) => [r.id, r.cover_url as string | null]));
+      for (const [catId, ids] of seedByCat) {
+        topAlbumsMap[catId] = ids.map((id) => ({ coverUrl: coverById.get(id) ?? null }));
+      }
+    }
+  }
+
+  const allCategories = [
+    { id: category.id, slug: category.slug, title: category.title, description: category.description, genre: category.genre, year: category.year },
+    ...(otherCats ?? []),
+  ];
+
   return (
     <div className="bg-page min-h-screen">
       {/* Hero */}
       <div className="bg-surface border-b border-divider">
         <div className="max-w-[1440px] mx-auto px-5 py-12">
-          <Link
-            href="/rankings"
-            className="text-[12px] font-medium text-muted hover:text-ink transition mb-4 inline-block"
-          >
-            ← Rankings
-          </Link>
-
           <div className="flex gap-3 flex-wrap mb-3">
             {category.genre && (
               <span className="inline-flex items-center px-[9px] py-[2px] rounded-full bg-page border border-divider text-[11px] font-medium text-muted">
@@ -288,6 +326,61 @@ export default async function RankingCategoryPage({
             </form>
           </div>
         )}
+
+        {/* Other Rankings */}
+        {(otherCats ?? []).length > 0 && (
+          <div className="mt-14 pt-10 border-t border-divider">
+            <h2 className="text-[13px] font-bold text-muted uppercase mb-5" style={{ letterSpacing: '0.7px' }}>
+              More Rankings
+            </h2>
+            <div className="flex flex-col gap-2">
+              {(otherCats ?? []).map((cat) => {
+                const thumbs = topAlbumsMap[cat.id] ?? [];
+                return (
+                  <div key={cat.id} className="flex items-center gap-4 px-4 py-3 rounded-xl border border-divider hover:bg-surface transition group">
+                    <div className="flex gap-[4px] flex-shrink-0">
+                      {Array.from({ length: 5 }).map((_, j) => {
+                        const album = thumbs[j];
+                        return album?.coverUrl ? (
+                          <img
+                            key={j}
+                            src={album.coverUrl}
+                            alt=""
+                            className="w-[36px] h-[36px] rounded-[4px] object-cover border border-divider flex-shrink-0"
+                          />
+                        ) : (
+                          <div
+                            key={j}
+                            className="w-[36px] h-[36px] rounded-[4px] border border-dashed border-[#DDDDD8] bg-surface flex-shrink-0"
+                          />
+                        );
+                      })}
+                    </div>
+                    <span className="flex-1 text-[14px] font-semibold text-ink group-hover:text-mint-dark transition truncate">
+                      {cat.title}
+                    </span>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <Link href={`/rankings/${cat.slug}/rank`} className="text-[12px] font-medium text-muted hover:text-ink transition whitespace-nowrap">
+                        Rank →
+                      </Link>
+                      <Link
+                        href={`/rankings/${cat.slug}`}
+                        className="text-[12px] font-semibold text-ink border border-[#DDDDD8] rounded-lg px-3 py-1.5 hover:bg-surface transition whitespace-nowrap"
+                      >
+                        View
+                      </Link>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Browse by filter */}
+        <div className="mt-14">
+          <FilterBuilder categories={allCategories} topAlbumsMap={topAlbumsMap} />
+        </div>
       </div>
     </div>
   );
