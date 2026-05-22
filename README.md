@@ -43,6 +43,8 @@ Every record you've loved — rated, cataloged, and remembered. A music platform
    ```
    EXPO_PUBLIC_SUPABASE_URL=
    EXPO_PUBLIC_SUPABASE_ANON_KEY=
+   # URL of the deployed web app — used to proxy Spotify search and OAuth redirects
+   EXPO_PUBLIC_API_URL=https://sillajuku.com
    ```
 
 3. Start Expo:
@@ -93,7 +95,9 @@ supabase db push
 - [x] Run all migrations (`supabase db push`) — all 13 tables + RLS policies applied
 - [x] Add jurisdiction to Terms of Service (Republic of Korea)
 - [x] Enable Google OAuth in Supabase Auth dashboard
+- [x] Enable Spotify OAuth in Supabase Auth dashboard
 - [x] Replace contact emails in privacy/terms pages → `admin@sillajuku.com`
+- [x] Add `sillajuku://auth/callback` to **Supabase → Authentication → URL Configuration → Redirect URLs** (required for mobile OAuth)
 - [ ] Enable Supabase Auth email confirmations if desired (Auth → Email Templates)
 
 ### After first deployment
@@ -179,7 +183,7 @@ npm run expand:genre         # after Phase 3 completes
 - [ ] **Rate limiting** — `/api/check-username`, `/api/rankings/vote`, `/api/follow` via `@upstash/ratelimit` + Upstash Redis
 - [ ] **Upstash Redis caching** — ranking leaderboards, album avg rating + count, homepage genre rows; invalidate on write
 - [ ] Korean translation (i18n setup with next-intl; language toggle in settings)
-- [ ] **React Native app** (Expo SDK 54) — home, search, album detail, rating flow, profile screens
+- [x] **React Native app** (Expo SDK 54) — core screens built (see Mobile App Status below)
 - [ ] EAS build + App Store (iOS) + Play Store (Android) submission
   - ⚠️ Apple review takes 1–2 weeks — submit by Jun 1 to hit mid-June
 
@@ -266,6 +270,50 @@ npm run expand:genre
 
 ---
 
+## Mobile app status
+
+### Implemented (Expo Go compatible, no dev build required)
+
+| Screen | Status | Notes |
+|--------|--------|-------|
+| Home | ✓ | Genre carousels, "See all" → genre browse, search icon auto-focuses |
+| Search / Explore | ✓ | 3-column grid, community picks, personalized recs, people search, Spotify fallback |
+| Album detail | ✓ | Rating, reviews, tracklist, artist link, inline review modal |
+| Artist page | ✓ | Full discography |
+| Genre browse | ✓ | Infinite scroll, paginated |
+| Rankings list | ✓ | All categories |
+| Rankings leaderboard | ✓ | Silla Score normalized 0–100 |
+| Rankings builder | ✓ | Up/down reorder + tie support (`=` button); drag-and-drop requires dev build |
+| Activity feed | ✓ | Following / everyone toggle |
+| My profile | ✓ | Stats, score distribution, top genres, essentials (pin 6), recent ratings grid (3-col), taste DNA, taste collisions, taste contradictions |
+| Friends | ✓ | Search bar, follow/unfollow, follow-back, suggested accounts |
+| Login | ✓ | Email, Google OAuth, Spotify OAuth; Kakao + Apple stubbed (coming soon) |
+| Onboarding | ✓ | 3-step setup |
+| Settings | ✓ | Basic |
+| Notifications | ✓ | Basic |
+| Listen Later | ✓ | Basic |
+
+### Still missing vs web
+
+- **Other user profiles** (`/profile/[username]`) — needs taste DNA, collisions, contradictions, full ratings grid
+- **Album page** — missing "appears in rankings" section
+- **Home personalized feed** — static genre carousels only; web shows a dynamic personalized feed
+- **Settings** — web has 5 organized tabs (account, preferences, notifications, privacy, danger zone)
+- **Notifications** — web has filters + mark-all-read + clear all
+- **Listen Later** — web has full list management
+- **Help page** — searchable FAQ + contact form
+- **Privacy & Terms** — legal pages
+
+### Architecture notes (mobile)
+
+- **No native modules** — intentionally avoids packages that require a dev build (no `react-native-reanimated`, no `react-native-gesture-handler`). Drag-and-drop rankings will need EAS build when added.
+- **Supabase client** — configured with `AsyncStorage` for session persistence and PKCE OAuth support.
+- **Spotify search** — proxied through the web app (`EXPO_PUBLIC_API_URL/api/search`); mobile has no direct Spotify credentials.
+- **Recommendation pool** — both web and mobile query the `recommendable_releases` view (albums + EPs only, must have cover art). Change the view definition once to affect both apps.
+- **OAuth deep link** — `sillajuku://auth/callback` must be in Supabase Redirect URLs allowlist.
+
+---
+
 ## Architecture notes
 
 - **DB-first:** Album and artist data cached to DB on first visit — Spotify only called on cache miss. Spotify integration is metadata only, not content streaming.
@@ -276,5 +324,6 @@ npm run expand:genre
 - **In-memory Spotify cache** (`lib/spotify.ts`) — 1hr TTL, resets on server restart.
 - **ISR** — artist album pages revalidate every 3600s.
 - **Migrations** — all schema changes in `supabase/migrations/`, applied with `supabase db push`.
+- **`recommendable_releases` view** — both web and mobile query this view instead of `releases` directly; encodes shared eligibility rules (albums + EPs only, must have `cover_url`). Edit the view migration to change recommendation rules across both apps at once.
 - **CSP (`next.config.mjs`)** — includes explicit `wss://*.supabase.co` for Safari (Safari does not automatically allow WebSocket when only `https://` is listed in `connect-src`), `us-assets.i.posthog.com` for PostHog session replay, and `lh3.googleusercontent.com` for Google OAuth avatars.
 - **Server Component error handling** — `RecommendationGrid` wraps Supabase queries in try/catch so a transient network failure (common on mobile) falls through to the Spotify fallback instead of bubbling to the error boundary.
