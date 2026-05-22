@@ -51,19 +51,7 @@ function RootLayoutInner() {
   return (
     <>
       <NavigationGuard />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="album" />
-        <Stack.Screen name="artist" />
-        <Stack.Screen name="profile/[username]" />
-        <Stack.Screen name="rankings/[slug]" />
-        <Stack.Screen name="notifications" />
-        <Stack.Screen name="settings" />
-        <Stack.Screen name="listen-later" />
-        <Stack.Screen name="friends" />
-        <Stack.Screen name="rankings-vote" />
-      </Stack>
+      <Stack screenOptions={{ headerShown: false }} />
     </>
   );
 }

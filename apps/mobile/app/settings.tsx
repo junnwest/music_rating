@@ -48,7 +48,7 @@ export default function SettingsScreen() {
   useEffect(() => {
     AsyncStorage.getItem(DARK_MODE_KEY).then((val) => {
       if (val === 'true') setDarkMode(true);
-    });
+    }).catch(() => {});
     if (user) {
       supabase
         .from('profiles')

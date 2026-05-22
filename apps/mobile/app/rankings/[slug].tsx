@@ -115,11 +115,13 @@ async function fetchLeaderboard(category: Category): Promise<LeaderboardEntry[]>
     releaseMap.set(r.id, { title: r.title, artist: r.artist, cover_url: r.cover_url });
   }
 
+  const maxRawScore = top30.length > 0 ? top30[0][1] : 1;
+
   return top30
-    .map(([release_id, sillaScore]) => {
+    .map(([release_id, rawScore]) => {
       const rel = releaseMap.get(release_id);
       if (!rel) return null;
-      return { release_id, sillaScore, ...rel };
+      return { release_id, sillaScore: (rawScore / maxRawScore) * 100, ...rel };
     })
     .filter(Boolean) as LeaderboardEntry[];
 }
@@ -127,7 +129,7 @@ async function fetchLeaderboard(category: Category): Promise<LeaderboardEntry[]>
 function ScoreBadge({ score }: { score: number }) {
   return (
     <View style={styles.scoreBadge}>
-      <Text style={styles.scoreBadgeText}>{score.toFixed(2)}</Text>
+      <Text style={styles.scoreBadgeText}>{score.toFixed(1)}</Text>
     </View>
   );
 }

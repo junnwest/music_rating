@@ -10,6 +10,7 @@ import {
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 
 const GENRE_CATEGORIES = [
@@ -96,9 +97,9 @@ async function fetchHomeSections(): Promise<Section[]> {
   return results.filter(Boolean) as Section[];
 }
 
-function AlbumCard({ album }: { album: Album }) {
+function AlbumCard({ album, onPress }: { album: Album; onPress: () => void }) {
   return (
-    <Pressable style={({ pressed }) => [styles.albumCard, pressed && styles.albumCardPressed]}>
+    <Pressable style={({ pressed }) => [styles.albumCard, pressed && styles.albumCardPressed]} onPress={onPress}>
       <Image
         source={{ uri: album.coverUrl ?? undefined }}
         style={styles.albumCover}
@@ -111,7 +112,8 @@ function AlbumCard({ album }: { album: Album }) {
   );
 }
 
-function GenreRow({ section }: { section: Section }) {
+function GenreRow({ section, onSeeAll }: { section: Section; onSeeAll: () => void }) {
+  const router = useRouter();
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
@@ -119,7 +121,7 @@ function GenreRow({ section }: { section: Section }) {
           <Text style={styles.sectionTitle}>{section.name}</Text>
           <Text style={styles.sectionDescription}>{section.description}</Text>
         </View>
-        <Pressable>
+        <Pressable onPress={onSeeAll}>
           <Text style={styles.seeAll}>See all</Text>
         </Pressable>
       </View>
@@ -128,7 +130,7 @@ function GenreRow({ section }: { section: Section }) {
         horizontal
         showsHorizontalScrollIndicator={false}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <AlbumCard album={item} />}
+        renderItem={({ item }) => <AlbumCard album={item} onPress={() => router.push(`/album/${item.id}`)} />}
         contentContainerStyle={styles.albumRow}
         ItemSeparatorComponent={() => <View style={{ width: 12 }} />}
       />
@@ -137,6 +139,7 @@ function GenreRow({ section }: { section: Section }) {
 }
 
 export default function HomeScreen() {
+  const router = useRouter();
   const [sections, setSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -149,8 +152,12 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.logo}>sillajuku</Text>
-        <Pressable style={styles.headerIcon}>
+        <Image
+          source={require('../../assets/images/logo-text.png')}
+          style={styles.logo}
+          contentFit="contain"
+        />
+        <Pressable style={styles.headerIcon} onPress={() => router.push({ pathname: '/(tabs)/search', params: { autoFocus: '1' } } as any)}>
           <Ionicons name="search-outline" size={24} color="#1A1A18" />
         </Pressable>
       </View>
@@ -163,7 +170,12 @@ export default function HomeScreen() {
         <FlatList
           data={sections}
           keyExtractor={(item) => item.key}
-          renderItem={({ item }) => <GenreRow section={item} />}
+          renderItem={({ item }) => (
+            <GenreRow
+              section={item}
+              onSeeAll={() => router.push(`/genre/${item.key}` as any)}
+            />
+          )}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         />
@@ -188,10 +200,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8F8F6',
   },
   logo: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#1A1A18',
-    letterSpacing: -1,
+    width: 120,
+    height: 30,
   },
   headerIcon: {
     padding: 4,

@@ -1,0 +1,23 @@
+{
+	"appId": "com.sillajuku.app",
+	"appName": "sillajuku",
+	"webDir": "www",
+	"server": {
+		"url": "https://sillajuku.com",
+		"cleartext": false
+	},
+	"ios": {
+		"scheme": "sillajuku",
+		"contentInset": "automatic",
+		"backgroundColor": "#FAFAF8"
+	},
+	"android": {
+		"backgroundColor": "#FAFAF8",
+		"allowMixedContent": false
+	},
+	"plugins": {
+		"SplashScreen": {
+			"launchShowDuration": 0
+		}
+	}
+}
