@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import SiteHeader from './SiteHeader';
 import Sidebar from './Sidebar';
-import BottomNav from './BottomNav';
 import Footer from './Footer';
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
@@ -19,11 +18,10 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       <div className="flex flex-1">
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <div className="flex-1 flex flex-col min-w-0">
-          <main className="flex-1 pb-[calc(64px+env(safe-area-inset-bottom,0px))] xl:pb-0">{children}</main>
+          <main className="flex-1">{children}</main>
           <Footer className="hidden xl:block" />
         </div>
       </div>
-      <BottomNav />
     </div>
   );
 }
