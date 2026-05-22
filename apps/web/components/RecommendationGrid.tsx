@@ -20,10 +20,9 @@ async function fetchFromReleases(
   const orClause = genreFilters.map((g) => `genres.ilike.%${g}%`).join(',');
 
   const { data, error } = await supabase
-    .from('releases')
+    .from('recommendable_releases')
     .select('id, title, artist, cover_url, release_type')
     .or(orClause)
-    .not('cover_url', 'is', null)
     .order('prestige', { ascending: true, nullsFirst: false })
     .order('release_date', { ascending: false, nullsFirst: false })
     .limit(80);

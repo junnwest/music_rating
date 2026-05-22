@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -25,7 +24,23 @@ type Release = {
   cover_url: string | null;
 };
 
-type RankingItem = Release & { listKey: string };
+type RankingItem = Release & { listKey: string; tiedWithPrev: boolean };
+
+function computeRanks(items: RankingItem[]): number[] {
+  const ranks: number[] = [];
+  let current = 1;
+  for (let i = 0; i < items.length; i++) {
+    if (i > 0 && items[i].tiedWithPrev) {
+      ranks.push(ranks[i - 1]);
+    } else {
+      ranks.push(current);
+    }
+    if (!items[i + 1]?.tiedWithPrev) {
+      current = i + 2;
+    }
+  }
+  return ranks;
+}
 
 async function fetchPoolAlbums(categoryId: string): Promise<Release[]> {
   const { data } = await supabase
@@ -49,10 +64,7 @@ async function fetchPoolAlbums(categoryId: string): Promise<Release[]> {
   );
 }
 
-async function loadExistingRanking(
-  userId: string,
-  categoryId: string,
-): Promise<Release[]> {
+async function loadExistingRanking(userId: string, categoryId: string): Promise<RankingItem[]> {
   const { data: rankingRow } = await supabase
     .from('user_rankings')
     .select('id')
@@ -77,17 +89,22 @@ async function loadExistingRanking(
     .in('id', releaseIds);
 
   const releaseMap = new Map<string, Release>();
-  for (const r of (releases ?? []) as Release[]) {
-    releaseMap.set(r.id, r);
-  }
+  for (const r of (releases ?? []) as Release[]) releaseMap.set(r.id, r);
 
+  let counter = 0;
   return entries
-    .map((e: { release_id: string; rank: number }) => releaseMap.get(e.release_id))
-    .filter(Boolean) as Release[];
+    .map((e: { release_id: string; rank: number }, i: number) => {
+      const rel = releaseMap.get(e.release_id);
+      if (!rel) return null;
+      const prev = entries[i - 1];
+      const tiedWithPrev = i > 0 && prev?.rank === e.rank;
+      return { ...rel, listKey: rel.id + '_' + ++counter, tiedWithPrev };
+    })
+    .filter(Boolean) as RankingItem[];
 }
 
 export default function RankingsVoteScreen() {
-  const { slug, categoryId } = useLocalSearchParams<{ slug: string; categoryId: string }>();
+  const { categoryId } = useLocalSearchParams<{ slug: string; categoryId: string }>();
   const router = useRouter();
   const { user } = useAuth();
 
@@ -101,10 +118,7 @@ export default function RankingsVoteScreen() {
   const counterRef = useRef(0);
 
   useEffect(() => {
-    if (!user || !categoryId) {
-      setLoading(false);
-      return;
-    }
+    if (!user || !categoryId) { setLoading(false); return; }
     async function load() {
       setLoading(true);
       const [poolAlbums, existing] = await Promise.all([
@@ -112,9 +126,7 @@ export default function RankingsVoteScreen() {
         loadExistingRanking(user!.id, categoryId),
       ]);
       setPool(poolAlbums);
-      setRanking(
-        existing.map((r) => ({ ...r, listKey: r.id + '_' + (++counterRef.current) })),
-      );
+      setRanking(existing.map((r) => ({ ...r, listKey: r.id + '_' + ++counterRef.current })));
       setLoading(false);
     }
     load();
@@ -123,9 +135,7 @@ export default function RankingsVoteScreen() {
   const filtered = searchQuery.trim()
     ? pool.filter((r) => {
         const q = searchQuery.toLowerCase();
-        return (
-          r.title.toLowerCase().includes(q) || r.artist.toLowerCase().includes(q)
-        );
+        return r.title.toLowerCase().includes(q) || r.artist.toLowerCase().includes(q);
       })
     : pool;
 
@@ -136,29 +146,53 @@ export default function RankingsVoteScreen() {
     counterRef.current += 1;
     setRanking((prev) => [
       ...prev,
-      { ...release, listKey: release.id + '_' + counterRef.current },
+      { ...release, listKey: release.id + '_' + counterRef.current, tiedWithPrev: false },
     ]);
     setSearchQuery('');
   }
 
   function removeAlbum(listKey: string) {
-    setRanking((prev) => prev.filter((r) => r.listKey !== listKey));
-  }
-
-  function moveUp(index: number) {
-    if (index === 0) return;
     setRanking((prev) => {
+      const idx = prev.findIndex((r) => r.listKey === listKey);
+      if (idx === -1) return prev;
       const next = [...prev];
-      [next[index - 1], next[index]] = [next[index], next[index - 1]];
+      next.splice(idx, 1);
+      // untie the item that followed the removed one if it was tied to it
+      if (next[idx]?.tiedWithPrev && idx === 0) {
+        next[idx] = { ...next[idx], tiedWithPrev: false };
+      }
       return next;
     });
   }
 
-  function moveDown(index: number) {
+  function moveUp(idx: number) {
+    if (idx === 0) return;
     setRanking((prev) => {
-      if (index >= prev.length - 1) return prev;
       const next = [...prev];
-      [next[index], next[index + 1]] = [next[index + 1], next[index]];
+      [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+      // if the moved item was tied, carry the tie status to keep logical order
+      if (next[idx].tiedWithPrev && idx - 1 === 0) {
+        next[idx] = { ...next[idx], tiedWithPrev: false };
+      }
+      return next;
+    });
+  }
+
+  function moveDown(idx: number) {
+    setRanking((prev) => {
+      if (idx >= prev.length - 1) return prev;
+      const next = [...prev];
+      [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+      return next;
+    });
+  }
+
+  function toggleTie(listKey: string) {
+    setRanking((prev) => {
+      const idx = prev.findIndex((r) => r.listKey === listKey);
+      if (idx <= 0) return prev;
+      const next = [...prev];
+      next[idx] = { ...next[idx], tiedWithPrev: !next[idx].tiedWithPrev };
       return next;
     });
   }
@@ -184,19 +218,16 @@ export default function RankingsVoteScreen() {
         return;
       }
 
-      const rankingId = rankingRow.id;
+      await supabase.from('user_ranking_entries').delete().eq('ranking_id', rankingRow.id);
 
-      await supabase.from('user_ranking_entries').delete().eq('ranking_id', rankingId);
-
+      const ranks = computeRanks(ranking);
       const entries = ranking.map((item, idx) => ({
-        ranking_id: rankingId,
+        ranking_id: rankingRow.id,
         release_id: item.id,
-        rank: idx + 1,
+        rank: ranks[idx],
       }));
 
-      const { error: insertErr } = await supabase
-        .from('user_ranking_entries')
-        .insert(entries);
+      const { error: insertErr } = await supabase.from('user_ranking_entries').insert(entries);
 
       if (insertErr) {
         setSaveError('Failed to save entries. Please try again.');
@@ -211,6 +242,8 @@ export default function RankingsVoteScreen() {
       setSaving(false);
     }
   }
+
+  const ranks = computeRanks(ranking);
 
   if (!user) {
     return (
@@ -235,15 +268,12 @@ export default function RankingsVoteScreen() {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={0}
       >
         <View style={styles.header}>
           <Pressable style={styles.backBtn} onPress={() => router.back()}>
             <Ionicons name="arrow-back" size={22} color="#1A1A18" />
           </Pressable>
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            Build Your Ranking
-          </Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>Build Your Ranking</Text>
           <View style={{ width: 36 }} />
         </View>
 
@@ -259,65 +289,88 @@ export default function RankingsVoteScreen() {
             contentContainerStyle={styles.scrollContent}
           >
             <View style={styles.section}>
-              <Text style={styles.sectionLabel}>My Ranking</Text>
+              <View style={styles.sectionLabelRow}>
+                <Text style={styles.sectionLabel}>My Ranking</Text>
+                {ranking.length > 0 && (
+                  <Text style={styles.sectionHint}>↑↓ to reorder · = to tie</Text>
+                )}
+              </View>
+
               {ranking.length === 0 ? (
                 <View style={styles.emptyRanking}>
+                  <Ionicons name="list-outline" size={28} color="#8C8C8A" />
                   <Text style={styles.emptyRankingText}>
                     Search below and add albums to your ranking
                   </Text>
                 </View>
               ) : (
-                ranking.map((item, idx) => (
-                  <View key={item.listKey} style={styles.rankRow}>
-                    <Text style={[styles.rankNum, idx < 3 && styles.rankNumTop]}>
-                      {idx + 1}
-                    </Text>
-                    <Image
-                      source={item.cover_url ? { uri: item.cover_url } : undefined}
-                      style={styles.rankCover}
-                      contentFit="cover"
-                      transition={150}
-                    />
-                    <View style={styles.rankInfo}>
-                      <Text style={styles.rankTitle} numberOfLines={1}>
-                        {item.title}
+                ranking.map((item, idx) => {
+                  const rank = ranks[idx];
+                  const isTop3 = rank <= 3;
+                  const canTie = idx > 0;
+
+                  return (
+                    <View
+                      key={item.listKey}
+                      style={[styles.rankRow, item.tiedWithPrev && styles.rankRowTied]}
+                    >
+                      {item.tiedWithPrev && <View style={styles.tiedConnector} />}
+
+                      <Text style={[styles.rankNum, isTop3 && styles.rankNumTop]}>
+                        {item.tiedWithPrev ? '=' : rank}
                       </Text>
-                      <Text style={styles.rankArtist} numberOfLines={1}>
-                        {item.artist}
-                      </Text>
+
+                      <Image
+                        source={item.cover_url ? { uri: item.cover_url } : undefined}
+                        style={styles.rankCover}
+                        contentFit="cover"
+                        transition={150}
+                      />
+
+                      <View style={styles.rankInfo}>
+                        <Text style={styles.rankTitle} numberOfLines={1}>{item.title}</Text>
+                        <Text style={styles.rankArtist} numberOfLines={1}>{item.artist}</Text>
+                      </View>
+
+                      <View style={styles.rankActions}>
+                        {canTie && (
+                          <Pressable
+                            style={[styles.tieBtn, item.tiedWithPrev && styles.tieBtnActive]}
+                            onPress={() => toggleTie(item.listKey)}
+                            hitSlop={4}
+                          >
+                            <Text style={[styles.tieBtnText, item.tiedWithPrev && styles.tieBtnTextActive]}>=</Text>
+                          </Pressable>
+                        )}
+                        <View style={styles.arrowGroup}>
+                          <Pressable
+                            style={({ pressed }) => [styles.arrowBtn, pressed && { opacity: 0.5 }]}
+                            onPress={() => moveUp(idx)}
+                            disabled={idx === 0}
+                            hitSlop={4}
+                          >
+                            <Ionicons name="chevron-up" size={18} color={idx === 0 ? '#C8C8C6' : '#1A1A18'} />
+                          </Pressable>
+                          <Pressable
+                            style={({ pressed }) => [styles.arrowBtn, pressed && { opacity: 0.5 }]}
+                            onPress={() => moveDown(idx)}
+                            disabled={idx === ranking.length - 1}
+                            hitSlop={4}
+                          >
+                            <Ionicons name="chevron-down" size={18} color={idx === ranking.length - 1 ? '#C8C8C6' : '#1A1A18'} />
+                          </Pressable>
+                        </View>
+                        <Pressable
+                          style={({ pressed }) => [styles.removeBtn, pressed && { opacity: 0.5 }]}
+                          onPress={() => removeAlbum(item.listKey)}
+                          hitSlop={4}
+                        >
+                          <Ionicons name="close-circle-outline" size={20} color="#8C8C8A" />
+                        </Pressable>
+                      </View>
                     </View>
-                    <View style={styles.rankActions}>
-                      <Pressable
-                        style={({ pressed }) => [styles.arrowBtn, pressed && { opacity: 0.5 }]}
-                        onPress={() => moveUp(idx)}
-                        disabled={idx === 0}
-                      >
-                        <Ionicons
-                          name="chevron-up"
-                          size={18}
-                          color={idx === 0 ? '#C8C8C6' : '#1A1A18'}
-                        />
-                      </Pressable>
-                      <Pressable
-                        style={({ pressed }) => [styles.arrowBtn, pressed && { opacity: 0.5 }]}
-                        onPress={() => moveDown(idx)}
-                        disabled={idx === ranking.length - 1}
-                      >
-                        <Ionicons
-                          name="chevron-down"
-                          size={18}
-                          color={idx === ranking.length - 1 ? '#C8C8C6' : '#1A1A18'}
-                        />
-                      </Pressable>
-                      <Pressable
-                        style={({ pressed }) => [styles.removeBtn, pressed && { opacity: 0.5 }]}
-                        onPress={() => removeAlbum(item.listKey)}
-                      >
-                        <Ionicons name="close-circle-outline" size={20} color="#8C8C8A" />
-                      </Pressable>
-                    </View>
-                  </View>
-                ))
+                  );
+                })
               )}
             </View>
 
@@ -358,9 +411,7 @@ export default function RankingsVoteScreen() {
                       <Text style={[styles.poolTitle, isAdded && { color: '#8C8C8A' }]} numberOfLines={1}>
                         {item.title}
                       </Text>
-                      <Text style={styles.poolArtist} numberOfLines={1}>
-                        {item.artist}
-                      </Text>
+                      <Text style={styles.poolArtist} numberOfLines={1}>{item.artist}</Text>
                     </View>
                     {isAdded ? (
                       <Ionicons name="checkmark-circle" size={20} color="#D97706" />
@@ -408,10 +459,7 @@ export default function RankingsVoteScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#F8F8F6',
-  },
+  safeArea: { flex: 1, backgroundColor: '#F8F8F6' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -421,12 +469,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E8E8E6',
     backgroundColor: '#F8F8F6',
   },
-  backBtn: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   headerTitle: {
     flex: 1,
     textAlign: 'center',
@@ -435,22 +478,15 @@ const styles = StyleSheet.create({
     color: '#1A1A18',
     letterSpacing: -0.3,
   },
-  centered: {
-    flex: 1,
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  signInText: { fontSize: 15, color: '#8C8C8A', marginTop: 10 },
+  scrollContent: { paddingBottom: 40 },
+  section: { marginTop: 20, paddingHorizontal: 20 },
+  sectionLabelRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  signInText: {
-    fontSize: 15,
-    color: '#8C8C8A',
-    marginTop: 10,
-  },
-  scrollContent: {
-    paddingBottom: 40,
-  },
-  section: {
-    marginTop: 20,
-    paddingHorizontal: 20,
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
   sectionLabel: {
     fontSize: 13,
@@ -458,8 +494,8 @@ const styles = StyleSheet.create({
     color: '#8C8C8A',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
-    marginBottom: 12,
   },
+  sectionHint: { fontSize: 11, color: '#8C8C8A' },
   emptyRanking: {
     backgroundColor: '#FFFFFF',
     borderRadius: 10,
@@ -468,12 +504,9 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     paddingVertical: 24,
     alignItems: 'center',
+    gap: 8,
   },
-  emptyRankingText: {
-    fontSize: 13,
-    color: '#8C8C8A',
-    textAlign: 'center',
-  },
+  emptyRankingText: { fontSize: 13, color: '#8C8C8A', textAlign: 'center' },
   rankRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -481,9 +514,23 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#E8E8E6',
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 10,
-    marginBottom: 8,
+    marginBottom: 6,
+  },
+  rankRowTied: {
+    borderTopWidth: 0,
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    marginTop: -6,
+  },
+  tiedConnector: {
+    position: 'absolute',
+    left: 28,
+    top: -6,
+    width: 2,
+    height: 6,
+    backgroundColor: '#D97706',
   },
   rankNum: {
     width: 22,
@@ -492,9 +539,7 @@ const styles = StyleSheet.create({
     color: '#8C8C8A',
     textAlign: 'center',
   },
-  rankNumTop: {
-    color: '#D97706',
-  },
+  rankNumTop: { color: '#D97706' },
   rankCover: {
     width: 44,
     height: 44,
@@ -503,38 +548,26 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     marginRight: 10,
   },
-  rankInfo: {
-    flex: 1,
-    marginRight: 6,
-  },
-  rankTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1A1A18',
-    letterSpacing: -0.1,
-  },
-  rankArtist: {
-    fontSize: 12,
-    color: '#8C8C8A',
-    marginTop: 1,
-  },
-  rankActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  arrowBtn: {
-    width: 28,
-    height: 28,
+  rankInfo: { flex: 1, marginRight: 4 },
+  rankTitle: { fontSize: 13, fontWeight: '600', color: '#1A1A18', letterSpacing: -0.1 },
+  rankArtist: { fontSize: 12, color: '#8C8C8A', marginTop: 1 },
+  rankActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  tieBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1.5,
+    borderColor: '#E8E8E6',
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
   },
-  removeBtn: {
-    width: 28,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 2,
-  },
+  tieBtnActive: { borderColor: '#D97706', backgroundColor: '#FEF3DC' },
+  tieBtnText: { fontSize: 13, fontWeight: '700', color: '#8C8C8A' },
+  tieBtnTextActive: { color: '#D97706' },
+  arrowGroup: { flexDirection: 'column' },
+  arrowBtn: { width: 24, height: 22, alignItems: 'center', justifyContent: 'center' },
+  removeBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -546,12 +579,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginBottom: 10,
   },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: '#1A1A18',
-    padding: 0,
-  },
+  searchInput: { flex: 1, fontSize: 14, color: '#1A1A18', padding: 0 },
   poolRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -563,31 +591,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginBottom: 6,
   },
-  poolRowPressed: {
-    backgroundColor: '#FEF3DC',
-  },
-  poolCover: {
-    width: 40,
-    height: 40,
-    borderRadius: 4,
-    backgroundColor: '#E8E8E6',
-    marginRight: 10,
-  },
-  poolInfo: {
-    flex: 1,
-    marginRight: 8,
-  },
-  poolTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1A1A18',
-    letterSpacing: -0.1,
-  },
-  poolArtist: {
-    fontSize: 12,
-    color: '#8C8C8A',
-    marginTop: 1,
-  },
+  poolRowPressed: { backgroundColor: '#FEF3DC' },
+  poolCover: { width: 40, height: 40, borderRadius: 4, backgroundColor: '#E8E8E6', marginRight: 10 },
+  poolInfo: { flex: 1, marginRight: 8 },
+  poolTitle: { fontSize: 13, fontWeight: '600', color: '#1A1A18', letterSpacing: -0.1 },
+  poolArtist: { fontSize: 12, color: '#8C8C8A', marginTop: 1 },
   errorContainer: {
     marginHorizontal: 20,
     marginTop: 12,
@@ -595,10 +603,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
   },
-  errorText: {
-    fontSize: 13,
-    color: '#DC2626',
-  },
+  errorText: { fontSize: 13, color: '#DC2626' },
   successContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -607,13 +612,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#D1FAE5',
     borderRadius: 8,
     padding: 12,
+    gap: 6,
   },
-  successText: {
-    fontSize: 13,
-    color: '#059669',
-    fontWeight: '600',
-    marginLeft: 6,
-  },
+  successText: { fontSize: 13, color: '#059669', fontWeight: '600' },
   saveBtn: {
     marginHorizontal: 20,
     marginTop: 20,
@@ -622,16 +623,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: 'center',
   },
-  saveBtnDisabled: {
-    backgroundColor: '#C8C8C6',
-  },
-  saveBtnPressed: {
-    backgroundColor: '#B45309',
-  },
-  saveBtnText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: -0.2,
-  },
+  saveBtnDisabled: { backgroundColor: '#C8C8C6' },
+  saveBtnPressed: { backgroundColor: '#B45309' },
+  saveBtnText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF', letterSpacing: -0.2 },
 });

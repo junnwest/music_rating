@@ -8,6 +8,10 @@ import {
   Dimensions,
   ActivityIndicator,
   Alert,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -88,6 +92,9 @@ export default function AlbumScreen() {
   const [myRating, setMyRating] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [ratingLoading, setRatingLoading] = useState(false);
+  const [reviewModalVisible, setReviewModalVisible] = useState(false);
+  const [reviewBody, setReviewBody] = useState('');
+  const [reviewLoading, setReviewLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!id) return;
@@ -146,6 +153,35 @@ export default function AlbumScreen() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  async function navigateToArtist() {
+    if (!release) return;
+    const { data } = await supabase
+      .from('artists')
+      .select('id')
+      .ilike('name', release.artist.split(',')[0].trim())
+      .maybeSingle();
+    if (data?.id) {
+      router.push(`/artist/${data.id}`);
+    }
+  }
+
+  async function handleSubmitReview() {
+    if (!user || !reviewBody.trim()) return;
+    setReviewLoading(true);
+    const { error } = await supabase.from('reviews').upsert(
+      { user_id: user.id, release_id: id, body: reviewBody.trim(), visibility: 'public' },
+      { onConflict: 'user_id,release_id' }
+    );
+    setReviewLoading(false);
+    if (error) {
+      Alert.alert('Error', 'Could not save review. Please try again.');
+    } else {
+      setReviewModalVisible(false);
+      setReviewBody('');
+      fetchData();
+    }
+  }
 
   async function handleRate(score: number) {
     if (!user) {
@@ -217,7 +253,9 @@ export default function AlbumScreen() {
           <View style={styles.titleRow}>
             <View style={styles.titleBlock}>
               <Text style={styles.title}>{release.title}</Text>
-              <Text style={styles.artist}>{release.artist}</Text>
+              <Pressable onPress={navigateToArtist} hitSlop={8}>
+                <Text style={[styles.artist, styles.artistLink]}>{release.artist}</Text>
+              </Pressable>
               <View style={styles.metaRow}>
                 {year ? <Text style={styles.year}>{year}</Text> : null}
                 {typeLabel ? (
@@ -263,7 +301,7 @@ export default function AlbumScreen() {
                 Alert.alert('Sign in required', 'Please sign in to write a review.');
                 return;
               }
-              router.push(`/album/${id}/review` as any);
+              setReviewModalVisible(true);
             }}
           >
             <Ionicons name="create-outline" size={16} color="#D97706" />
@@ -324,6 +362,40 @@ export default function AlbumScreen() {
           )}
         </View>
       </ScrollView>
+
+      <Modal visible={reviewModalVisible} animationType="slide" presentationStyle="pageSheet">
+        <SafeAreaView style={styles.modalContainer} edges={['top']}>
+          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+            <View style={styles.modalHeader}>
+              <Pressable onPress={() => { setReviewModalVisible(false); setReviewBody(''); }}>
+                <Text style={styles.modalCancel}>Cancel</Text>
+              </Pressable>
+              <Text style={styles.modalTitle}>Write a Review</Text>
+              <Pressable onPress={handleSubmitReview} disabled={reviewLoading || !reviewBody.trim()}>
+                {reviewLoading ? (
+                  <ActivityIndicator size="small" color="#D97706" />
+                ) : (
+                  <Text style={[styles.modalSave, !reviewBody.trim() && { opacity: 0.4 }]}>Post</Text>
+                )}
+              </Pressable>
+            </View>
+            <View style={styles.modalBody}>
+              <Text style={styles.modalAlbumName} numberOfLines={1}>{release?.title}</Text>
+              <TextInput
+                style={styles.reviewInput}
+                value={reviewBody}
+                onChangeText={setReviewBody}
+                placeholder="Share your thoughts..."
+                placeholderTextColor="#8C8C8A"
+                multiline
+                autoFocus
+                autoCorrect
+                textAlignVertical="top"
+              />
+            </View>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Modal>
     </View>
   );
 }
@@ -399,6 +471,9 @@ const styles = StyleSheet.create({
     color: '#8C8C8A',
     fontWeight: '500',
     marginBottom: 8,
+  },
+  artistLink: {
+    color: '#D97706',
   },
   metaRow: {
     flexDirection: 'row',
@@ -565,5 +640,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#1A1A18',
     lineHeight: 21,
+  },
+  modalContainer: { flex: 1, backgroundColor: '#F8F8F6' },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E8E8E6',
+  },
+  modalTitle: { fontSize: 16, fontWeight: '600', color: '#1A1A18' },
+  modalCancel: { fontSize: 15, color: '#8C8C8A' },
+  modalSave: { fontSize: 15, fontWeight: '600', color: '#D97706' },
+  modalBody: { padding: 20, flex: 1 },
+  modalAlbumName: { fontSize: 13, color: '#8C8C8A', marginBottom: 14, fontWeight: '500' },
+  reviewInput: {
+    flex: 1,
+    fontSize: 15,
+    color: '#1A1A18',
+    lineHeight: 22,
+    minHeight: 160,
+    textAlignVertical: 'top',
   },
 });
