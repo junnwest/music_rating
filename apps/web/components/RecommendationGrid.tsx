@@ -51,7 +51,9 @@ export default async function RecommendationGrid() {
 
     // Primary: query our releases table by genre
     if (supabase) {
-      albums = await fetchFromReleases(supabase, cat.genreFilters);
+      try {
+        albums = await fetchFromReleases(supabase, cat.genreFilters);
+      } catch {}
     }
 
     // Secondary fallback: curated_releases (Spotify-seeded static list)

@@ -276,3 +276,5 @@ npm run expand:genre
 - **In-memory Spotify cache** (`lib/spotify.ts`) — 1hr TTL, resets on server restart.
 - **ISR** — artist album pages revalidate every 3600s.
 - **Migrations** — all schema changes in `supabase/migrations/`, applied with `supabase db push`.
+- **CSP (`next.config.mjs`)** — includes explicit `wss://*.supabase.co` for Safari (Safari does not automatically allow WebSocket when only `https://` is listed in `connect-src`), `us-assets.i.posthog.com` for PostHog session replay, and `lh3.googleusercontent.com` for Google OAuth avatars.
+- **Server Component error handling** — `RecommendationGrid` wraps Supabase queries in try/catch so a transient network failure (common on mobile) falls through to the Spotify fallback instead of bubbling to the error boundary.
