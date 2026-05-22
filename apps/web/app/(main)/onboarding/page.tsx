@@ -40,10 +40,30 @@ function StepDots({ current, total }: { current: number; total: number }) {
   );
 }
 
+const COUNTRIES = [
+  { code: 'KR', label: '🇰🇷 South Korea' },
+  { code: 'JP', label: '🇯🇵 Japan' },
+  { code: 'TW', label: '🇹🇼 Taiwan' },
+  { code: 'HK', label: '🇭🇰 Hong Kong' },
+  { code: 'SG', label: '🇸🇬 Singapore' },
+  { code: 'CN', label: '🇨🇳 China' },
+  { code: 'US', label: '🇺🇸 United States' },
+  { code: 'GB', label: '🇬🇧 United Kingdom' },
+  { code: 'CA', label: '🇨🇦 Canada' },
+  { code: 'AU', label: '🇦🇺 Australia' },
+  { code: 'PH', label: '🇵🇭 Philippines' },
+  { code: 'ID', label: '🇮🇩 Indonesia' },
+  { code: 'TH', label: '🇹🇭 Thailand' },
+  { code: 'VN', label: '🇻🇳 Vietnam' },
+  { code: 'MY', label: '🇲🇾 Malaysia' },
+  { code: 'OTHER', label: '🌍 Other' },
+];
+
 interface IdentityData {
   displayName: string;
   username: string;
   bio: string;
+  country: string;
 }
 
 function StepIdentity({
@@ -57,6 +77,7 @@ function StepIdentity({
   const [displayName, setDisplayName] = useState('');
   const [username, setUsername] = useState(defaultUsername);
   const [bio, setBio] = useState('');
+  const [country, setCountry] = useState('');
   const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -149,10 +170,26 @@ function StepIdentity({
           />
           <p className="text-[11px] text-muted mt-1 text-right">{bio.length}/160</p>
         </div>
+
+        <div>
+          <label className="block text-[12px] font-semibold text-ink mb-1.5">
+            {t('onboarding.country')} <span className="font-normal text-muted">{t('onboarding.optional')}</span>
+          </label>
+          <select
+            value={country}
+            onChange={(e) => setCountry(e.target.value)}
+            className="w-full bg-surface border border-divider rounded-lg px-4 py-[10px] text-[14px] text-ink outline-none focus:border-ink transition appearance-none"
+          >
+            <option value="">{t('onboarding.countryPlaceholder')}</option>
+            {COUNTRIES.map(({ code, label }) => (
+              <option key={code} value={code}>{label}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <button
-        onClick={() => onNext({ displayName: displayName.trim(), username: username.toLowerCase().trim(), bio: bio.trim() })}
+        onClick={() => onNext({ displayName: displayName.trim(), username: username.toLowerCase().trim(), bio: bio.trim(), country })}
         disabled={!canProceed}
         className="mt-8 w-full bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-lg py-[13px] text-[14px] font-bold transition hover:opacity-80 disabled:opacity-35 disabled:cursor-not-allowed"
       >
@@ -359,7 +396,9 @@ function StepAlbums({
             cover_url: r.coverUrl, release_type: r.releaseType ?? 'Album',
           })));
         }
-      } catch {}
+      } catch (err) {
+        console.error('[onboarding] Spotify search fallback failed:', err);
+      }
     }, 350);
   }, [query]);
 
@@ -448,6 +487,7 @@ export default function OnboardingPage() {
         display_name: identity.displayName,
         bio: identity.bio || null,
         preferred_genres: genres.join(','),
+        country: identity.country || null,
       }, { onConflict: 'id' });
 
       if (albums.length > 0) {

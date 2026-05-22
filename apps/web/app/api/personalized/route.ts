@@ -85,7 +85,9 @@ export async function GET(req: NextRequest) {
                 albums.push(a);
               }
             }
-          } catch {}
+          } catch (err) {
+            console.error('[personalized] Spotify fallback failed:', err);
+          }
         }
 
         const filtered = shuffle(albums).slice(0, 20);

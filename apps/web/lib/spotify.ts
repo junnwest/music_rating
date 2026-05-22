@@ -158,7 +158,9 @@ export async function getSpotifyAlbum(id: string): Promise<SpotifyAlbumDetail | 
       try {
         const artist = await spotifyFetch(`/artists/${album.artists[0].id}`, 86400);
         genres = artist.genres ?? [];
-      } catch {}
+      } catch (err) {
+        console.error('[spotify] artist genre fetch failed:', err);
+      }
     }
 
     const tracks = (album.tracks?.items ?? []).map((t: any) => ({

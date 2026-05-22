@@ -59,7 +59,9 @@ export default function Pick5Modal({ userId, onComplete }: { userId: string; onC
             }))
           );
         }
-      } catch {}
+      } catch (err) {
+        console.error('[Pick5Modal] search failed:', err);
+      }
     }, 350);
   }, [query]);
 

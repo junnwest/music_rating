@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../lib/supabaseServer';
+import { rateLimit } from '../../../lib/rateLimit';
 
 export async function GET(req: NextRequest) {
+  const limited = await rateLimit(req, 'check-username', 20, 60);
+  if (limited) return limited;
   const username = req.nextUrl.searchParams.get('username')?.toLowerCase().trim();
   if (!username) return NextResponse.json({ available: false });
 

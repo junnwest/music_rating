@@ -26,7 +26,7 @@ export default function AuthForm() {
       }
     });
     return () => subscription.unsubscribe();
-  }, [awaitingConfirmation]);
+  }, [awaitingConfirmation, router]);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;

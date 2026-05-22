@@ -21,7 +21,9 @@ export function useUnreadCount(): number {
         const json = await res.json();
         const read = readIds();
         setCount((json.notifications ?? []).filter((n: any) => !n.read && !read.has(n.id)).length);
-      } catch {}
+      } catch (err) {
+        console.error('[useUnreadCount] fetch failed:', err);
+      }
     };
 
     supabase.auth.getSession().then(({ data }) => {

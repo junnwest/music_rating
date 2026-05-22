@@ -319,7 +319,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
       supabase.from('profiles').select('display_name, username, bio').eq('id', userId).maybeSingle(),
       supabase
         .from('ratings')
-        .select('id, score, status, note, created_at, release_id, releases(*)')
+        .select('id, score, status, note, created_at, release_id, releases(id, title, artist, cover_url)')
         .eq('user_id', userId)
         .order('created_at', { ascending: false }),
       supabase

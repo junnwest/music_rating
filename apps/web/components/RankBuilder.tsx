@@ -121,7 +121,9 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
         setSearchResults((json.releases ?? []).map((r: any) => ({
           id: r.id, title: r.title, artist: r.artist, coverUrl: r.coverUrl ?? null,
         })));
-      } catch {}
+      } catch (err) {
+        console.error('[RankBuilder] search failed:', err);
+      }
       setSearching(false);
     }, 350);
   }, [query]);

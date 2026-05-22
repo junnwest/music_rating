@@ -3,6 +3,7 @@ import { createServerClient } from '../../../../lib/supabaseServer';
 import RankingVoteWidget, { type LeaderboardEntry } from '../../../../components/RankingVoteWidget';
 import Link from 'next/link';
 import { getServerT } from '../../../../lib/i18n/server';
+import { cacheGet, cacheSet } from '../../../../lib/cache';
 
 export const revalidate = 30;
 
@@ -72,33 +73,49 @@ export default async function RankingCategoryPage({
 
   if (!category) notFound();
 
-  // Fetch user rankings + seed entries in parallel
-  const [{ data: rankings }, { data: seedEntries }] = await Promise.all([
-    supabase.from('user_rankings').select('id').eq('category_id', category.id),
-    supabase.from('ranking_seed_entries').select('release_id, seed_votes').eq('category_id', category.id),
-  ]);
+  type ScoreCache = { totalRankers: number; sortedEntries: [string, number][] };
+  const cacheKey = `sj:ranking:scores:${category.id}`;
+  const CACHE_TTL = 5 * 60; // 5 minutes
 
-  // Fetch all entries for this category's rankings
-  const rankingIds = (rankings ?? []).map(r => r.id);
-  let entries: { ranking_id: string; release_id: string; rank: number }[] = [];
-  if (rankingIds.length > 0) {
-    const { data } = await supabase
-      .from('user_ranking_entries')
-      .select('ranking_id, release_id, rank')
-      .in('ranking_id', rankingIds);
-    entries = data ?? [];
+  let totalRankers: number;
+  let sortedEntries: [string, number][];
+
+  const cached = await cacheGet<ScoreCache>(cacheKey);
+  if (cached) {
+    totalRankers = cached.totalRankers;
+    sortedEntries = cached.sortedEntries;
+  } else {
+    // Fetch user rankings + seed entries in parallel
+    const [{ data: rankings }, { data: seedEntries }] = await Promise.all([
+      supabase.from('user_rankings').select('id').eq('category_id', category.id),
+      supabase.from('ranking_seed_entries').select('release_id, seed_votes').eq('category_id', category.id),
+    ]);
+
+    // Fetch all entries for this category's rankings
+    const rankingIds = (rankings ?? []).map(r => r.id);
+    let entries: { ranking_id: string; release_id: string; rank: number }[] = [];
+    if (rankingIds.length > 0) {
+      const { data } = await supabase
+        .from('user_ranking_entries')
+        .select('ranking_id, release_id, rank')
+        .in('ranking_id', rankingIds);
+      entries = data ?? [];
+    }
+
+    // Silla Scores from real rankings
+    const scores = computeSillaScores(entries);
+
+    // Seed entries contribute rank-1 equivalent (1.0 per seed vote)
+    for (const s of seedEntries ?? []) {
+      scores.set(s.release_id, (scores.get(s.release_id) ?? 0) + s.seed_votes);
+    }
+
+    totalRankers = rankings?.length ?? 0;
+    sortedEntries = [...scores.entries()].sort((a, b) => b[1] - a[1]);
+
+    // Cache in background — don't block the render
+    cacheSet(cacheKey, { totalRankers, sortedEntries }, CACHE_TTL).catch(() => {});
   }
-
-  // Silla Scores from real rankings
-  const scores = computeSillaScores(entries);
-
-  // Seed entries contribute rank-1 equivalent (1.0 per seed vote)
-  for (const s of seedEntries ?? []) {
-    scores.set(s.release_id, (scores.get(s.release_id) ?? 0) + s.seed_votes);
-  }
-
-  const totalRankers = rankings?.length ?? 0;
-  const sortedEntries = [...scores.entries()].sort((a, b) => b[1] - a[1]);
   const totalAlbums = sortedEntries.length;
   const totalPages = Math.ceil(totalAlbums / PAGE_SIZE);
   const currentPage = Math.min(page, totalPages || 1);

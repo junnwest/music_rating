@@ -99,6 +99,8 @@ const en = {
     bio: 'Bio',
     optional: '(optional)',
     bioPlaceholder: 'A sentence about your taste…',
+    country: 'Country',
+    countryPlaceholder: 'Select your country',
     usernameHintIdle: '3–20 characters, letters, numbers, underscores',
     usernameHintChecking: 'Checking availability…',
     usernameHintAvailable: '✓ Available',

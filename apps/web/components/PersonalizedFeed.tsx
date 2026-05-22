@@ -9,7 +9,7 @@ import { useHomeReady } from './HomeReadyContext';
 import { useLanguage } from '../lib/i18n';
 import type { AlbumRelease } from '../types';
 
-type Status = 'loading' | 'guest' | 'empty' | 'ready';
+type Status = 'loading' | 'guest' | 'empty' | 'ready' | 'error';
 
 interface Section {
   title: string;
@@ -100,10 +100,16 @@ export default function PersonalizedFeed() {
         userId: session.user.id,
       });
 
-      const res = await fetch(`/api/personalized?${params}`);
-      const data = await res.json();
-      setSections(data.sections ?? []);
-      setStatus('ready');
+      try {
+        const res = await fetch(`/api/personalized?${params}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        setSections(data.sections ?? []);
+        setStatus('ready');
+      } catch (err) {
+        console.error('[PersonalizedFeed] recommendations fetch failed:', err);
+        setStatus('error');
+      }
       setReady();
     })();
   }, []);
@@ -148,6 +154,17 @@ export default function PersonalizedFeed() {
               </div>
             </div>
           ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (status === 'error') {
+    return (
+      <div>
+        {greeting}
+        <div className="rounded-xl border border-divider bg-surface px-6 py-5 text-[13px] text-muted">
+          Couldn&apos;t load recommendations right now. Refresh the page to try again.
         </div>
       </div>
     );

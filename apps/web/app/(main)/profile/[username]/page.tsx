@@ -29,7 +29,9 @@ export default async function UserProfilePage({ params }: Props) {
         const { data: { users } } = await supabase.auth.admin.listUsers({ perPage: 1000 });
         const match = users.find((u) => u.email?.split('@')[0] === username);
         userId = match?.id ?? null;
-      } catch {}
+      } catch (err) {
+        console.error('[profile] auth.admin.listUsers failed:', err);
+      }
     }
   }
 

@@ -71,14 +71,18 @@ export default async function RecommendationGrid() {
           date: null,
           country: null,
         }));
-      } catch {}
+      } catch (err) {
+        console.error('[RecommendationGrid] DB fetch failed:', err);
+      }
     }
 
     // Final fallback: live Spotify search
     if (albums.length === 0) {
       try {
         albums = await getSpotifyRecommendations(cat.spotifyQuery);
-      } catch {}
+      } catch (err) {
+        console.error('[RecommendationGrid] Spotify fallback failed:', err);
+      }
     }
 
     if (albums.length > 0) {

@@ -101,6 +101,8 @@ const ko: Translations = {
     bio: '자기소개',
     optional: '(선택)',
     bioPlaceholder: '음악 취향을 한 문장으로 소개해보세요…',
+    country: '국가',
+    countryPlaceholder: '국가를 선택하세요',
     usernameHintIdle: '3–20자, 영문 소문자·숫자·밑줄 사용 가능',
     usernameHintChecking: '사용 가능 여부 확인 중…',
     usernameHintAvailable: '✓ 사용 가능',

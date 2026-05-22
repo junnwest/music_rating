@@ -9,6 +9,7 @@ import StarRatingWidget from '../../../../components/StarRatingWidget';
 import ReviewsSection from '../../../../components/ReviewsSection';
 import AlbumActions from '../../../../components/AlbumActions';
 import { getServerT } from '../../../../lib/i18n/server';
+import { cacheGet, cacheSet } from '../../../../lib/cache';
 
 function formatDuration(ms: number | null): string {
   if (!ms) return '—';
@@ -70,17 +71,35 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
 
   const supabase = createServerClient();
   if (supabase) {
-    const [{ data: ratingRows }, { count }, { data: seedEntryRows }, { data: userEntryRows }] = await Promise.all([
-      supabase.from('ratings').select('score').eq('release_id', album.id),
+    // Cache avg rating + count (TTL 5 min; ratings are submitted client-side so we rely on TTL)
+    type StatsCache = { ratingsCount: number; avgScore: number | null };
+    const statsCacheKey = `sj:album-stats:${album.id}`;
+    const cachedStats = await cacheGet<StatsCache>(statsCacheKey);
+
+    if (cachedStats) {
+      ratingsCount = cachedStats.ratingsCount;
+      avgScore = cachedStats.avgScore;
+    }
+
+    const [statsResult, reviewsResult, seedEntryResult, userEntryResult] = await Promise.all([
+      cachedStats
+        ? Promise.resolve({ data: null })
+        : supabase.from('ratings').select('score').eq('release_id', album.id),
       supabase.from('reviews').select('id', { count: 'exact', head: true }).eq('release_id', album.id),
       supabase.from('ranking_seed_entries').select('category_id').eq('release_id', album.id),
       supabase.from('user_ranking_entries').select('ranking_id').eq('release_id', album.id),
     ]);
 
-    if (ratingRows && ratingRows.length > 0) {
+    const { data: ratingRows } = statsResult as { data: { score: number | null }[] | null };
+    const { count } = reviewsResult;
+    const { data: seedEntryRows } = seedEntryResult;
+    const { data: userEntryRows } = userEntryResult;
+
+    if (!cachedStats && ratingRows && ratingRows.length > 0) {
       ratingsCount = ratingRows.length;
       const sum = ratingRows.reduce((s: number, r: { score: number | null }) => s + (r.score ?? 0), 0);
       avgScore = Math.round((sum / ratingsCount) * 10) / 10;
+      cacheSet(statsCacheKey, { ratingsCount, avgScore }, 5 * 60).catch(() => {});
     }
     reviewsCount = count ?? 0;
 
