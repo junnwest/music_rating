@@ -8,53 +8,26 @@ Every record you've loved — rated, cataloged, and remembered. A music platform
 
 ---
 
-## ⚠️ Run at the start of your next session
+## ⚠️ Current state (2026-05-23)
 
-A 2026-05-22 refactor moved Spotify caches from in-memory to Upstash Redis and removed all runtime Spotify fallbacks from the homepage / personalized / recommendations endpoints. Two verifications were deferred because of an active Spotify rate limit at the time of the change. **Do these before any other work.**
+The 2026-05-22 Spotify-quota hardening (Upstash Redis caches, DB-only homepage/personalized/recommendations) is live and verified. The 2026-05-23 session added 404-resilience fixes on top. The deferred next-session work has been re-scoped because **Spotify deprecated two endpoints in late 2024 that several scripts depended on:**
 
-### Step 1 — Wait for the Spotify rate limit to clear
+- `/v1/artists/{id}` no longer returns a useful `genres` field for most artists — returns `[]`
+- `/v1/artists/{id}/related-artists` returns 404 across the board
 
-Quick test: from `apps/web`, run
-```bash
-npm run backfill:genres:dry
-```
-If the canary check prints `OK`, the limit is clear. If it prints `RATE LIMITED` with a Retry-After, wait that long and rerun.
+**Scripts impact:**
+- ❌ `npm run backfill:genres` — broken (artist genres endpoint dead). Don't run.
+- ❌ `npm run expand:related` — broken (related-artists endpoint dead). Don't run.
+- ✅ `npm run expand:discography` — still works (60 artists/day, fetches via `/artists/{id}/albums`)
+- ✅ `npm run expand:genre` — still works (uses `/search?q=genre:"..."`)
 
-### Step 2 — Verify Upstash Redis caching is live (deferred from previous session)
+**Replacement workflow for genre backfill (in lieu of `backfill:genres`):**
+- `apps/web/scripts/genre-overrides.json` has hand-curated genres for 88 high-value albums (all tier-1/tier-2 prestige, curated picks, and rated rows that were missing genres). To apply, run `npx tsx --env-file=.env.local scripts/apply-genre-overrides.ts` from `apps/web`. Dry-run mode supported with `--dry-run`.
+- For the remaining ~3,000 Album+EP rows missing genres, a Last.fm-based rewrite of `backfill:genres` against `artist.getTopTags` / `album.getTopTags` is the planned fix (see the [recommendation algorithm roadmap](#recommendation-algorithm-roadmap)).
 
-1. Start the dev server: `npm run dev:web`
-2. Open an album detail page you have **not** visited before (so it's not yet cached).
-3. Open the Upstash Console → Data Browser for your Redis instance.
-4. Confirm a key like `spotify:album:<id>` appears with JSON content. ✅ = Redis is receiving cache writes.
-5. Restart the dev server (Ctrl+C, `npm run dev:web`).
-6. Reload the same album page.
-7. Watch the dev server terminal — there should be **zero** `[Spotify]` log lines. ✅ = restart no longer costs Spotify calls.
-
-If step 4 shows no new key, the `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` env vars in `apps/web/.env.local` are likely missing or pointing at a different instance.
-
-### Step 3 — Populate the database
-
-Genre data is sparse on existing rows, and Korean Indie / K-R&B / Hip-Hop catalogs are thin. Until these scripts run, the homepage recommendation grid renders with fewer/empty categories (because there is no longer a live-Spotify fallback).
-
-Run in order from `apps/web`:
-
-```bash
-# 1. Fill in missing genres on existing rows (one artist call per artist, batched)
-npm run backfill:genres:dry    # preview first
-npm run backfill:genres        # then run for real
-
-# 2. Bulk-populate the DB with genre-tagged albums by sweep
-npm run expand:genre
-
-# 3. Add related artists from existing seeds (deeper catalog)
-npm run expand:related
-```
-
-Each script saves state and resumes on rerun. If a script hits a rate limit, wait the printed duration and rerun.
-
-### Step 4 — Confirm the homepage is fully DB-served
-
-After step 3 completes, reload the homepage. All 5 genre categories should render with many albums each (not 1–7 like before), and the dev server terminal should show zero `[Spotify]` log lines on a cold load.
+**Verified during 404 hardening (no separate verification step required):**
+- Upstash Redis is receiving cache writes (`spotify:album:*`, `search:albums:*`, `spotify:rate-limited-until`)
+- Dev server restarts no longer cost Spotify calls (caches persist across restarts)
 
 ---
 
@@ -217,15 +190,15 @@ Target: **mid-June 2026** (earlier the better).
 | Phase 1 — seed catalog | 315 curated Korean/Japanese/Western classics | ✓ done (306/315) |
 | RS500 baseline | Rolling Stone 500 seeds "all-time" ranking | ✓ done (481 seeded) |
 | Phase 2 — discography expansion | All albums from every artist in DB | in progress (76/331 artists) |
-| Phase 3 — related artists | One hop from seeded artists | not started |
-| Phase 4 — genre sweeps | 12 genre tags with popularity threshold | not started |
+| Phase 3 — related artists | One hop from seeded artists | ❌ blocked — Spotify deprecated `/artists/{id}/related-artists` in late 2024 |
+| Phase 4 — genre sweeps | 12 genre tags with popularity threshold | available; not yet started |
 
-Phase 1 + RS500 is the hard requirement for launch — both done. Phases 2–4 are not blocking.
+Phase 1 + RS500 is the hard requirement for launch — both done. Phase 2 still works and is the main lever for catalog growth pre-launch. Phase 3 is dead until rewritten against another data source (Last.fm `artist.getSimilar`). Phase 4 still works.
 
 ```bash
-npm run expand:discography   # run once per day (~60 artists/batch)
-npm run expand:related       # after Phase 2 completes
-npm run expand:genre         # after Phase 3 completes
+npm run expand:discography   # run once per day (~60 artists/batch) — WORKS
+npm run expand:genre         # genre-tag sweep, adds tagged albums — WORKS
+# npm run expand:related     # BROKEN — Spotify endpoint deprecated. Don't run.
 ```
 
 ---
@@ -233,8 +206,12 @@ npm run expand:genre         # after Phase 3 completes
 ### Week 4 — May 31–Jun 6: remaining
 
 - [ ] **Rate limiting** — `/api/check-username`, `/api/rankings/vote`, `/api/follow` via `@upstash/ratelimit` + Upstash Redis
+- [ ] **Per-user rate limit on `/api/search`** — added to scope on 2026-05-23 after the search-route audit; caps abuse and protects Spotify quota under burst load
+- [ ] **DB-FTS-first search rewrite** — `/api/search` currently calls Spotify on every uncached query; the GIN FTS index from migration `20260517000000_indexes_and_fts.sql` is built but unused. Rewrite the route to query Postgres FTS first and only fall through to Spotify when DB returns < N results. Self-healing via existing `saveBasicReleases` writeback.
 - [ ] **Upstash Redis caching** — ranking leaderboards, album avg rating + count, homepage genre rows; invalidate on write
+- [ ] **Apply 88-album genre overrides** — `apps/web/scripts/genre-overrides.json` is ready; run `npx tsx --env-file=.env.local scripts/apply-genre-overrides.ts` from `apps/web`. ~10 seconds.
 - [ ] Korean translation (i18n setup with next-intl; language toggle in settings)
+- [x] **404 hardening + Spotify circuit breaker** (2026-05-23) — `/api/search` persists results to `releases`; `lib/spotify.ts` has a Redis circuit breaker that short-circuits all Spotify calls during a 429 window
 - [x] **React Native app** (Expo SDK 54) — core screens built (see Mobile App Status below)
 - [ ] EAS build + App Store (iOS) + Play Store (Android) submission
   - ⚠️ Apple review takes 1–2 weeks — submit by Jun 1 to hit mid-June
@@ -368,9 +345,11 @@ npm run expand:genre
 
 ## Architecture notes
 
-- **DB-first:** Album and artist data cached to DB on first visit — Spotify only called on cache miss. `saveBasicReleases` in the recommendations/personalized routes persists Spotify fallback results so future album page loads skip Spotify entirely. Spotify integration is metadata only, not content streaming.
-- **Spotify rate limits:** Account-wide client-credentials limit; exceeding it triggers `Retry-After` headers of up to 80+ minutes. Scripts batch at 60 artists/day and exit cleanly on quota hit. Never delete state files mid-run (`scripts/ingest-state.json`, `scripts/expand-state.json`). The dev server's in-memory caches reset on every restart — avoid unnecessary restarts during active development to prevent burst API calls.
-- **Spotify 429 handling** (`lib/spotify.ts`) — `spotifyFetch` retries once after `Retry-After + 1s` on a 429. Album page has a three-step fallback: DB cache → Spotify (with retry) → `getBasicRelease` (basic DB row without tracklist).
+- **DB-first:** Album and artist data cached to DB on first visit — Spotify only called on cache miss. `saveBasicReleases` is now called from `/api/search` AND from the recommendations/personalized routes, so any album returned from Spotify (search or fallback) gets persisted, and future `/album/[id]` loads skip Spotify entirely. Spotify integration is metadata only, not content streaming.
+- **Spotify rate limits:** Account-wide client-credentials limit; exceeding it triggers `Retry-After` headers of up to 80+ minutes. Scripts batch at 60 artists/day and exit cleanly on quota hit. Never delete state files mid-run (`scripts/ingest-state.json`, `scripts/expand-state.json`). Restarts no longer cost Spotify calls since the 2026-05-22 Upstash migration.
+- **Spotify circuit breaker** (`lib/spotify.ts`, 2026-05-23) — Redis key `spotify:rate-limited-until` stores a timestamp when Spotify returns a 429. While the key is live, all concurrent `spotifyFetch` calls short-circuit immediately via `SpotifyCircuitOpenError` (~30ms Redis ping) instead of each hitting Spotify and waiting up to `MAX_RETRY_WAIT_SEC = 10` seconds. Breaker auto-clears via TTL matching `Retry-After`.
+- **Spotify endpoint deprecations (late 2024):** `/artists/{id}` no longer returns useful `genres` (mostly `[]`) and `/artists/{id}/related-artists` returns 404. `scripts/backfill-genres.ts` and `expand:related` mode in `scripts/expand-catalog.ts` are therefore dead. Hand-curated overrides for high-value rows: `apps/web/scripts/genre-overrides.json` + `apply-genre-overrides.ts`. Long-tail genre backfill needs a Last.fm rewrite.
+- **Album page fallback chain** — `getCachedAlbum` (DB row with tracklist) → `getSpotifyAlbum` (Spotify, retries once, hits circuit breaker first) → `getBasicRelease` (DB row without tracklist; still renders a usable page) → `notFound()`. The basic-row fallback ensures click-through from search never 404s even during Spotify outages.
 - **Supabase region:** Seoul. ~180–220ms latency for Western users — acceptable while Korea-focused; address with read replicas at Western expansion.
 - **Supabase free tier:** 500MB storage (~100,000 albums). Paid tier ($25/mo) gives 8GB.
 - **Service role key** — server-side only for aggregate queries. Never exposed to client.
@@ -382,3 +361,7 @@ npm run expand:genre
 - **CSP (`next.config.mjs`)** — includes explicit `wss://*.supabase.co` for Safari (Safari does not automatically allow WebSocket when only `https://` is listed in `connect-src`), `us-assets.i.posthog.com` for PostHog session replay, and `lh3.googleusercontent.com` for Google OAuth avatars.
 - **Server Component error handling** — `RecommendationGrid` wraps Supabase queries in try/catch so a transient network failure (common on mobile) falls through to the Spotify fallback instead of bubbling to the error boundary.
 - **Next.js route groups** — all pages live under `app/(main)/` or `app/(auth)/`. Never create directories directly under `app/` without a route group — empty ghost directories cause "No default component for parallel route" errors.
+
+## Known issues
+
+- **`notFound()` returns HTTP 200 instead of 404** on `/album/[mbid]` and `/rankings/[slug]`. The `not-found.tsx` body renders correctly (user sees the friendly "Page not found" page); only the HTTP status code is wrong. Reproduced in both dev and prod with Next.js 14.2.35. Truly nonexistent routes (no `page.tsx` at all) return 404 correctly. Other pages with `notFound()` but without cookie reads (`/artist`, `/genre`, `/explore`) also return 404 correctly. Removing `export const revalidate` and adding `export const dynamic = 'force-dynamic'` did not fix it. Affects SEO and analytics, not user-visible UX. Post-launch fix candidates: (a) Next.js 15/16 upgrade with breaking-change migration, (b) refactor album page to defer all cookie-reading code into a child Server Component that mounts only after `notFound()` check.
