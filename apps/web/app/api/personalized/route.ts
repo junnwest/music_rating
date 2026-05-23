@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../lib/supabaseServer';
-import { resolveArtistId, searchAlbumsByArtistId, searchAlbumsByArtistName } from '../../../lib/spotify';
-import { saveBasicReleases } from '../../../lib/dbCache';
 import type { AlbumRelease } from '../../../types';
 
 function shuffle<T>(arr: T[]): T[] {
@@ -36,7 +34,6 @@ export async function GET(req: NextRequest) {
   const sections = (
     await Promise.all(
       artists.map(async (artistName) => {
-        const nameLower = artistName.toLowerCase();
         let albums: AlbumRelease[] = [];
 
         // ── Primary: query releases already in our DB ─────────────────────
@@ -64,38 +61,8 @@ export async function GET(req: NextRequest) {
           }));
         }
 
-        // ── Supplement with Spotify only if DB doesn't have enough ──────
-        if (albums.length < 10) {
-          try {
-            const id = await resolveArtistId(artistName);
-            let spotifyAlbums: AlbumRelease[] = [];
-
-            if (id) {
-              spotifyAlbums = await searchAlbumsByArtistId(id, artistName);
-            }
-            if (!id || spotifyAlbums.length === 0) {
-              const fallback = await searchAlbumsByArtistName(artistName);
-              spotifyAlbums = fallback.filter((a) =>
-                a.artist.split(',').some((p) => p.trim().toLowerCase() === nameLower)
-              );
-            }
-
-            const seen = new Set(albums.map((a) => a.id));
-            const newFromSpotify: AlbumRelease[] = [];
-            for (const a of spotifyAlbums) {
-              if (a.releaseType === 'Single') continue;
-              if (!excludeIds.has(a.id) && !seen.has(a.id)) {
-                seen.add(a.id);
-                albums.push(a);
-                newFromSpotify.push(a);
-              }
-            }
-            if (newFromSpotify.length > 0) saveBasicReleases(newFromSpotify).catch(() => {});
-          } catch (err) {
-            console.error('[personalized] Spotify fallback failed:', err);
-          }
-        }
-
+        // No runtime Spotify supplement — if the DB lacks the artist's catalog,
+        // populate it via npm run expand:discography / expand:related.
         const filtered = shuffle(albums).slice(0, 20);
         if (filtered.length < MIN_UNRATED) return null;
 

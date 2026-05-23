@@ -1,6 +1,5 @@
 import { createServerClient } from '../lib/supabaseServer';
-import { getSpotifyRecommendations } from '../lib/spotify';
-import { GENRE_CATEGORIES } from '../lib/genre-categories';
+import { getCategoriesForUser } from '../lib/category-resolver';
 import RecommendationGridClient from './RecommendationGridClient';
 import type { AlbumRelease } from '../types';
 
@@ -43,9 +42,21 @@ async function fetchFromReleases(
 export default async function RecommendationGrid() {
   const supabase = createServerClient();
 
+  // Identify the user (if any) so the resolver can personalize the row mix.
+  // Reading auth makes the page dynamic — the ISR cache only applies to anon
+  // visitors, which is the right behavior (logged-in users get tailored rows).
+  let userId: string | null = null;
+  if (supabase) {
+    try {
+      const { data } = await supabase.auth.getUser();
+      userId = data.user?.id ?? null;
+    } catch { /* fall back to anon */ }
+  }
+
+  const categories = await getCategoriesForUser(supabase, userId);
   const sections: { key: string; name: string; description: string; albums: AlbumRelease[] }[] = [];
 
-  for (const cat of GENRE_CATEGORIES) {
+  for (const cat of categories) {
     let albums: AlbumRelease[] = [];
 
     // Primary: query our releases table by genre
@@ -55,7 +66,7 @@ export default async function RecommendationGrid() {
       } catch {}
     }
 
-    // Secondary fallback: curated_releases (Spotify-seeded static list)
+    // Fallback: curated_releases (manually seeded list)
     if (albums.length === 0 && supabase) {
       try {
         const { data } = await supabase
@@ -78,16 +89,11 @@ export default async function RecommendationGrid() {
       }
     }
 
-    // Final fallback: live Spotify search
-    if (albums.length === 0) {
-      try {
-        albums = await getSpotifyRecommendations(cat.spotifyQuery);
-      } catch (err) {
-        console.error('[RecommendationGrid] Spotify fallback failed:', err);
-      }
-    }
-
-    if (albums.length > 0) {
+    // No live-Spotify fallback — if both DB sources are empty, the category is hidden.
+    // Populate the DB via npm run backfill:genres / expand:genre / expand:related.
+    // Threshold: hide rows that can't fill a respectable horizontal scroll — a row
+    // with 1–5 albums looks broken and signals to the user that the DB is incomplete.
+    if (albums.length >= 6) {
       sections.push({ key: cat.key, name: cat.name, description: cat.description, albums });
     }
   }

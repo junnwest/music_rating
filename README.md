@@ -8,6 +8,56 @@ Every record you've loved — rated, cataloged, and remembered. A music platform
 
 ---
 
+## ⚠️ Run at the start of your next session
+
+A 2026-05-22 refactor moved Spotify caches from in-memory to Upstash Redis and removed all runtime Spotify fallbacks from the homepage / personalized / recommendations endpoints. Two verifications were deferred because of an active Spotify rate limit at the time of the change. **Do these before any other work.**
+
+### Step 1 — Wait for the Spotify rate limit to clear
+
+Quick test: from `apps/web`, run
+```bash
+npm run backfill:genres:dry
+```
+If the canary check prints `OK`, the limit is clear. If it prints `RATE LIMITED` with a Retry-After, wait that long and rerun.
+
+### Step 2 — Verify Upstash Redis caching is live (deferred from previous session)
+
+1. Start the dev server: `npm run dev:web`
+2. Open an album detail page you have **not** visited before (so it's not yet cached).
+3. Open the Upstash Console → Data Browser for your Redis instance.
+4. Confirm a key like `spotify:album:<id>` appears with JSON content. ✅ = Redis is receiving cache writes.
+5. Restart the dev server (Ctrl+C, `npm run dev:web`).
+6. Reload the same album page.
+7. Watch the dev server terminal — there should be **zero** `[Spotify]` log lines. ✅ = restart no longer costs Spotify calls.
+
+If step 4 shows no new key, the `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` env vars in `apps/web/.env.local` are likely missing or pointing at a different instance.
+
+### Step 3 — Populate the database
+
+Genre data is sparse on existing rows, and Korean Indie / K-R&B / Hip-Hop catalogs are thin. Until these scripts run, the homepage recommendation grid renders with fewer/empty categories (because there is no longer a live-Spotify fallback).
+
+Run in order from `apps/web`:
+
+```bash
+# 1. Fill in missing genres on existing rows (one artist call per artist, batched)
+npm run backfill:genres:dry    # preview first
+npm run backfill:genres        # then run for real
+
+# 2. Bulk-populate the DB with genre-tagged albums by sweep
+npm run expand:genre
+
+# 3. Add related artists from existing seeds (deeper catalog)
+npm run expand:related
+```
+
+Each script saves state and resumes on rerun. If a script hits a rate limit, wait the printed duration and rerun.
+
+### Step 4 — Confirm the homepage is fully DB-served
+
+After step 3 completes, reload the homepage. All 5 genre categories should render with many albums each (not 1–7 like before), and the dev server terminal should show zero `[Spotify]` log lines on a cold load.
+
+---
+
 ## Local development
 
 ### Web

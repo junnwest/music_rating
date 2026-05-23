@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../lib/supabaseServer';
-import { resolveArtistId, searchAlbumsByArtistId, searchAlbumsByArtistName } from '../../../lib/spotify';
-import { saveBasicReleases } from '../../../lib/dbCache';
 import type { AlbumRelease } from '../../../types';
 
 function shuffle<T>(arr: T[]): T[] {
@@ -105,42 +103,8 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Spotify fallback: only on page 0 when DB has nothing for these artists
-    if (!hasMoreResults && page === 0) {
-      const pages = await Promise.all(
-        artistNames.slice(0, 5).map(async (name) => {
-          const nameLower = name.toLowerCase();
-          try {
-            const id = await resolveArtistId(name);
-            let spotifyAlbums: AlbumRelease[] = [];
-            if (id) {
-              spotifyAlbums = await searchAlbumsByArtistId(id, name);
-            }
-            if (!id || spotifyAlbums.length === 0) {
-              const fallback = await searchAlbumsByArtistName(name);
-              spotifyAlbums = fallback.filter((a) =>
-                a.artist.split(',').some((p) => p.trim().toLowerCase() === nameLower)
-              );
-            }
-            return spotifyAlbums;
-          } catch {
-            return [] as AlbumRelease[];
-          }
-        })
-      );
-      const spotifyResults: AlbumRelease[] = [];
-      for (const list of pages) {
-        if (list.length > 0) hasMoreResults = true;
-        for (const album of shuffle(list)) {
-          if (!seen.has(album.id)) {
-            seen.add(album.id);
-            albums.push(album);
-            spotifyResults.push(album);
-          }
-        }
-      }
-      if (spotifyResults.length > 0) saveBasicReleases(spotifyResults).catch(() => {});
-    }
+    // No runtime Spotify fallback — when artist catalogs are missing from the
+    // DB, the prestige-ordered DB browse below picks up the slack.
   }
 
   // ── Fallback: prestige-ordered DB browse when artist albums exhausted ─────

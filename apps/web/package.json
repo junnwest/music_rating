@@ -14,7 +14,11 @@
     "expand:related": "tsx --env-file=.env.local scripts/expand-catalog.ts related",
     "expand:genre": "tsx --env-file=.env.local scripts/expand-catalog.ts genre",
     "seed:prestige": "tsx --env-file=.env.local scripts/seed-prestige.ts",
-    "seed:prestige:dry": "tsx --env-file=.env.local scripts/seed-prestige.ts --dry-run"
+    "seed:prestige:dry": "tsx --env-file=.env.local scripts/seed-prestige.ts --dry-run",
+    "backfill:genres": "tsx --env-file=.env.local scripts/backfill-genres.ts",
+    "backfill:genres:dry": "tsx --env-file=.env.local scripts/backfill-genres.ts --dry-run",
+    "check:view": "tsx --env-file=.env.local scripts/check-recommendable-view.ts",
+    "check:categories": "tsx --env-file=.env.local scripts/check-category-coverage.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.103.2",

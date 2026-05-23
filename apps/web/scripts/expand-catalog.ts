@@ -45,20 +45,78 @@ const FOLLOWER_GATES: Record<string, number> = {
   other: 50_000,
 };
 
-// Genre sweeps for Phase 3
+// Genre sweeps for Phase 3 / Phase 4. Each sweep walks Spotify search up to
+// 200 albums and saves anything above minPopularity with full genre data.
+//
+// Mix of:
+//   - Korean focus (k-pop, k-r&b, korean indie, etc.) — primary market
+//   - Japanese focus (city pop, j-rock, j-indie) — secondary market
+//   - Global classics across genres — for taste diversity, so users aren't
+//     limited to Korean/Japanese rows on the homepage.
 const GENRE_SWEEPS = [
-  { tag: 'korean indie',    origin: 'korean',   minPopularity: 20 },
-  { tag: 'k-rap',          origin: 'korean',   minPopularity: 20 },
-  { tag: 'korean r&b',     origin: 'korean',   minPopularity: 20 },
-  { tag: 'k-pop',          origin: 'korean',   minPopularity: 35 },
-  { tag: 'city pop',       origin: 'japanese', minPopularity: 25 },
-  { tag: 'j-indie',        origin: 'japanese', minPopularity: 20 },
-  { tag: 'math rock',      origin: 'other',    minPopularity: 20 },
-  { tag: 'post-rock',      origin: 'other',    minPopularity: 20 },
-  { tag: 'neo-soul',       origin: 'western',  minPopularity: 30 },
-  { tag: 'jazz rap',       origin: 'western',  minPopularity: 25 },
-  { tag: 'shoegaze',       origin: 'other',    minPopularity: 20 },
-  { tag: 'dream pop',      origin: 'other',    minPopularity: 20 },
+  // Korean
+  { tag: 'korean indie',     origin: 'korean',   minPopularity: 20 },
+  { tag: 'k-rap',            origin: 'korean',   minPopularity: 20 },
+  { tag: 'korean r&b',       origin: 'korean',   minPopularity: 20 },
+  { tag: 'k-pop',            origin: 'korean',   minPopularity: 35 },
+  { tag: 'korean ballad',    origin: 'korean',   minPopularity: 20 },
+
+  // Japanese
+  { tag: 'city pop',         origin: 'japanese', minPopularity: 25 },
+  { tag: 'j-indie',          origin: 'japanese', minPopularity: 20 },
+  { tag: 'j-rock',           origin: 'japanese', minPopularity: 25 },
+  { tag: 'j-pop',            origin: 'japanese', minPopularity: 30 },
+
+  // Hip-hop / rap (global)
+  { tag: 'hip hop',          origin: 'western',  minPopularity: 40 },
+  { tag: 'rap',              origin: 'western',  minPopularity: 40 },
+  { tag: 'jazz rap',         origin: 'western',  minPopularity: 25 },
+  { tag: 'conscious hip hop', origin: 'western', minPopularity: 25 },
+
+  // R&B / soul / funk
+  { tag: 'neo-soul',         origin: 'western',  minPopularity: 30 },
+  { tag: 'soul',             origin: 'western',  minPopularity: 35 },
+  { tag: 'funk',             origin: 'western',  minPopularity: 30 },
+  { tag: 'r&b',              origin: 'western',  minPopularity: 35 },
+
+  // Indie / alt rock
+  { tag: 'indie rock',       origin: 'other',    minPopularity: 30 },
+  { tag: 'indie pop',        origin: 'other',    minPopularity: 25 },
+  { tag: 'shoegaze',         origin: 'other',    minPopularity: 20 },
+  { tag: 'dream pop',        origin: 'other',    minPopularity: 20 },
+  { tag: 'bedroom pop',      origin: 'other',    minPopularity: 20 },
+  { tag: 'alternative rock', origin: 'western',  minPopularity: 35 },
+  { tag: 'math rock',        origin: 'other',    minPopularity: 20 },
+  { tag: 'post-rock',        origin: 'other',    minPopularity: 20 },
+
+  // Rock canon
+  { tag: 'classic rock',     origin: 'western',  minPopularity: 40 },
+  { tag: 'hard rock',        origin: 'western',  minPopularity: 35 },
+  { tag: 'punk',             origin: 'western',  minPopularity: 30 },
+  { tag: 'metal',            origin: 'western',  minPopularity: 35 },
+
+  // Jazz / classical / acoustic
+  { tag: 'jazz',             origin: 'western',  minPopularity: 35 },
+  { tag: 'jazz fusion',      origin: 'western',  minPopularity: 25 },
+  { tag: 'folk',             origin: 'western',  minPopularity: 30 },
+  { tag: 'singer-songwriter', origin: 'western', minPopularity: 30 },
+  { tag: 'classical',        origin: 'western',  minPopularity: 30 },
+
+  // Electronic
+  { tag: 'electronic',       origin: 'other',    minPopularity: 35 },
+  { tag: 'house',            origin: 'other',    minPopularity: 30 },
+  { tag: 'techno',           origin: 'other',    minPopularity: 30 },
+  { tag: 'ambient',          origin: 'other',    minPopularity: 25 },
+  { tag: 'lo-fi',            origin: 'other',    minPopularity: 25 },
+
+  // Country / Americana
+  { tag: 'country',          origin: 'western',  minPopularity: 35 },
+  { tag: 'americana',        origin: 'western',  minPopularity: 25 },
+
+  // World / Latin / global
+  { tag: 'bossa nova',       origin: 'other',    minPopularity: 25 },
+  { tag: 'latin',            origin: 'other',    minPopularity: 35 },
+  { tag: 'afrobeat',         origin: 'other',    minPopularity: 25 },
 ];
 
 // ── Spotify auth ──────────────────────────────────────────────────────────────
@@ -392,6 +450,14 @@ async function runDiscography(db: ReturnType<typeof getDB>, state: ExpandState) 
       if (candidates.length === 0) {
         process.stdout.write(`no new albums\n`);
       } else {
+        // One artist call to get genres — covers all albums for this artist
+        await sleep(DELAY_MS);
+        let artistGenresCsv = '';
+        try {
+          const artistData = await spotifyGet(`/artists/${artistId}`);
+          artistGenresCsv = (artistData.genres ?? []).join(',');
+        } catch { /* genres stay empty if fetch fails */ }
+
         process.stdout.write(`${candidates.length} new albums\n`);
         for (const album of candidates) {
           const artistName = album.artists?.map((a: any) => a.name).join(', ') ?? '';
@@ -412,6 +478,7 @@ async function runDiscography(db: ReturnType<typeof getDB>, state: ExpandState) 
               total_tracks: album.total_tracks ?? null,
               cover_url: album.images?.[0]?.url ?? null,
               spotify_url: `https://open.spotify.com/album/${album.id}`,
+              genres: artistGenresCsv || null,
               cached_at: new Date().toISOString(),
             }, { onConflict: 'id' });
           }

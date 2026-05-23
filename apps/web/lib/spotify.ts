@@ -1,18 +1,19 @@
 import type { AlbumRelease, ReleaseType } from '../types';
+import { cacheGet, cacheSet } from './cache';
 
 const TOKEN_URL = 'https://accounts.spotify.com/api/token';
 const API_BASE = 'https://api.spotify.com/v1';
 
-// Server-side in-memory token cache
+// Server-side in-memory token cache (short-lived, no value in persisting)
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
-// In-memory cache — survives hot reloads, prevents rate limits in dev
-const artistCache = new Map<string, { data: any; expiresAt: number }>();
-const albumsCache = new Map<string, { data: AlbumRelease[]; expiresAt: number }>();
-const recsCache = new Map<string, { data: AlbumRelease[]; expiresAt: number }>();
-const artistIdCache = new Map<string, { id: string | null; expiresAt: number }>();
-const albumDetailCache = new Map<string, { data: SpotifyAlbumDetail; expiresAt: number }>();
-const TTL = 3600 * 1000;
+// Redis TTLs (seconds). Spotify data changes rarely, so we cache aggressively.
+// The shared dev/prod Spotify quota makes minimizing API calls a hard requirement.
+const TTL_ARTIST     = 30 * 86400; // 30 days — artist details (genres, popularity) shift slowly
+const TTL_ALBUMS     =  7 * 86400; //  7 days — full discography list (new releases appear)
+const TTL_RECS       =  7 * 86400; //  7 days — search-based recommendations
+const TTL_ARTIST_ID  = 90 * 86400; // 90 days — name → ID lookup is effectively permanent
+const TTL_ALBUM      = 30 * 86400; // 30 days — album detail rarely changes after release
 
 async function getToken(): Promise<string> {
   if (cachedToken && Date.now() < cachedToken.expiresAt) return cachedToken.value;
@@ -39,6 +40,11 @@ async function getToken(): Promise<string> {
   return cachedToken.value;
 }
 
+// Maximum seconds we'll wait on a Retry-After before giving up. Anything
+// longer (account-wide cooldowns of minutes/hours) should fail fast so the
+// caller can show an error instead of hanging the request indefinitely.
+const MAX_RETRY_WAIT_SEC = 10;
+
 async function spotifyFetch(path: string, revalidate?: number): Promise<any> {
   const token = await getToken();
   const url = path.startsWith('https://') ? path : `${API_BASE}${path}`;
@@ -51,6 +57,9 @@ async function spotifyFetch(path: string, revalidate?: number): Promise<any> {
 
   if (res.status === 429) {
     const retryAfter = parseInt(res.headers.get('Retry-After') ?? '2', 10);
+    if (retryAfter > MAX_RETRY_WAIT_SEC) {
+      throw new Error(`Spotify 429: rate-limited for ${retryAfter}s — bailing fast (max wait ${MAX_RETRY_WAIT_SEC}s)`);
+    }
     await new Promise(r => setTimeout(r, (retryAfter + 1) * 1000));
     res = await fetch(url, { ...options, headers: { Authorization: `Bearer ${await getToken()}` } });
   }
@@ -160,8 +169,9 @@ export interface SpotifyAlbumDetail {
 }
 
 export async function getSpotifyAlbum(id: string): Promise<SpotifyAlbumDetail | null> {
-  const hit = albumDetailCache.get(id);
-  if (hit && Date.now() < hit.expiresAt) return hit.data;
+  const cacheKey = `spotify:album:${id}`;
+  const cached = await cacheGet<SpotifyAlbumDetail>(cacheKey);
+  if (cached) return cached;
   try {
     const album = await spotifyFetch(`/albums/${id}`);
 
@@ -200,11 +210,10 @@ export async function getSpotifyAlbum(id: string): Promise<SpotifyAlbumDetail | 
       coverUrl: album.images?.[0]?.url ?? null,
       spotifyUrl: album.external_urls?.spotify ?? null,
     };
-    albumDetailCache.set(id, { data: result, expiresAt: Date.now() + TTL });
+    await cacheSet(cacheKey, result, TTL_ALBUM);
     return result;
   } catch (err) {
     console.error('[spotify] getSpotifyAlbum failed for', id, ':', err);
-    if (hit) return hit.data; // return stale on rate-limit / transient error
     return null;
   }
 }
@@ -222,8 +231,9 @@ export interface SpotifyArtistDetail {
 }
 
 export async function getSpotifyArtist(id: string): Promise<SpotifyArtistDetail | null> {
-  const hit = artistCache.get(id);
-  if (hit && Date.now() < hit.expiresAt) return hit.data;
+  const cacheKey = `spotify:artist:${id}`;
+  const cached = await cacheGet<SpotifyArtistDetail>(cacheKey);
+  if (cached) return cached;
   try {
     const a = await spotifyFetch(`/artists/${id}`, 86400);
     const result = {
@@ -235,10 +245,10 @@ export async function getSpotifyArtist(id: string): Promise<SpotifyArtistDetail 
       coverUrl: a.images?.[0]?.url ?? null,
       spotifyUrl: a.external_urls?.spotify ?? null,
     };
-    artistCache.set(id, { data: result, expiresAt: Date.now() + TTL });
+    await cacheSet(cacheKey, result, TTL_ARTIST);
     return result;
   } catch {
-    return hit?.data ?? null;
+    return null;
   }
 }
 
@@ -264,18 +274,18 @@ async function paginateArtistAlbums(startUrl: string, pages = 4): Promise<Artist
 }
 
 export async function getSpotifyArtistAlbums(id: string, artistName?: string): Promise<ArtistAlbumsPage> {
-  const hit = albumsCache.get(id);
-  if (hit && Date.now() < hit.expiresAt) return { releases: hit.data, nextCursor: null };
+  const cacheKey = `spotify:artist-albums:${id}`;
+  const cached = await cacheGet<AlbumRelease[]>(cacheKey);
+  if (cached) return { releases: cached, nextCursor: null };
   try {
     const result = await paginateArtistAlbums(`/artists/${id}/albums`);
     // Only cache when fully loaded (no cursor); partial pages stay uncached
     if (!result.nextCursor) {
-      albumsCache.set(id, { data: result.releases, expiresAt: Date.now() + TTL });
+      await cacheSet(cacheKey, result.releases, TTL_ALBUMS);
     }
     return result;
   } catch (err) {
     console.error(`[Spotify] albums endpoint failed for ${id}:`, (err as Error).message);
-    if (hit) return { releases: hit.data, nextCursor: null };
     // Fallback: search by artist name
     if (artistName) {
       try {
@@ -293,7 +303,7 @@ export async function getSpotifyArtistAlbums(id: string, artistName?: string): P
           .filter((a: any) => a.artists?.some((ar: any) => ar.id === id))
           .map(mapAlbum);
         console.log(`[Spotify] fallback search for "${artistName}" → ${releases.length} releases`);
-        albumsCache.set(id, { data: releases, expiresAt: Date.now() + TTL });
+        await cacheSet(cacheKey, releases, TTL_ALBUMS);
         return { releases, nextCursor: null };
       } catch (err2) {
         console.error(`[Spotify] fallback search also failed:`, (err2 as Error).message);
@@ -304,8 +314,15 @@ export async function getSpotifyArtistAlbums(id: string, artistName?: string): P
 }
 
 export async function fetchMoreArtistAlbums(cursor: string): Promise<ArtistAlbumsPage> {
+  // Cursor URLs are stable for a given (artist, offset, limit) tuple, so the
+  // same cursor always returns the same page — safe to cache aggressively.
+  const cacheKey = `spotify:artist-albums-page:${cursor}`;
+  const cached = await cacheGet<ArtistAlbumsPage>(cacheKey);
+  if (cached) return cached;
   try {
-    return await paginateArtistAlbums(cursor);
+    const result = await paginateArtistAlbums(cursor);
+    await cacheSet(cacheKey, result, TTL_ALBUMS);
+    return result;
   } catch {
     return { releases: [], nextCursor: cursor };
   }
@@ -313,8 +330,9 @@ export async function fetchMoreArtistAlbums(cursor: string): Promise<ArtistAlbum
 
 export async function resolveArtistId(name: string): Promise<string | null> {
   const key = name.toLowerCase();
-  const hit = artistIdCache.get(key);
-  if (hit && Date.now() < hit.expiresAt) return hit.id;
+  const cacheKey = `spotify:artist-id:${key}`;
+  const cached = await cacheGet<{ id: string | null }>(cacheKey);
+  if (cached) return cached.id;
   try {
     const data = await spotifyFetch(
       `/search?q=${encodeURIComponent(name)}&type=artist&limit=5`,
@@ -324,7 +342,7 @@ export async function resolveArtistId(name: string): Promise<string | null> {
     const exact = items.find((a) => a.name.toLowerCase() === key);
     const match = exact ?? items.sort((a, b) => b.popularity - a.popularity)[0];
     const id = match?.id ?? null;
-    artistIdCache.set(key, { id, expiresAt: Date.now() + TTL });
+    await cacheSet(cacheKey, { id }, TTL_ARTIST_ID);
     return id;
   } catch {
     return null;
@@ -369,8 +387,9 @@ export async function searchAlbumsByArtistName(artistName: string): Promise<Albu
 // ── Recommendations ───────────────────────────────────────────────────────────
 
 export async function getSpotifyRecommendations(query: string): Promise<AlbumRelease[]> {
-  const hit = recsCache.get(query);
-  if (hit && Date.now() < hit.expiresAt) return hit.data;
+  const cacheKey = `spotify:recs:${query}`;
+  const cached = await cacheGet<AlbumRelease[]>(cacheKey);
+  if (cached) return cached;
   try {
     const data = await spotifyFetch(
       `/search?q=${encodeURIComponent(query)}&type=album&limit=10`,
@@ -379,11 +398,9 @@ export async function getSpotifyRecommendations(query: string): Promise<AlbumRel
     const results = (data.albums?.items ?? [])
       .filter((a: any) => a.album_type !== 'compilation' && a.album_type !== 'single')
       .map(mapAlbum);
-    recsCache.set(query, { data: results, expiresAt: Date.now() + TTL });
+    await cacheSet(cacheKey, results, TTL_RECS);
     return results;
   } catch (err) {
-    // Return stale data rather than empty on any error (rate limit, etc.)
-    if (hit) return hit.data;
     console.error(`[Spotify] query="${query}" failed:`, err);
     return [];
   }
