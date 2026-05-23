@@ -280,7 +280,7 @@ npm run expand:genre
 |--------|--------|-------|
 | Home | ✓ | Genre carousels, "See all" → genre browse, search icon auto-focuses |
 | Search / Explore | ✓ | 3-column grid, community picks, personalized recs, people search, Spotify fallback |
-| Album detail | ✓ | Rating, reviews, tracklist, artist link, inline review modal |
+| Album detail | ✓ | Rating, reviews, tracklist, artist link, inline review modal, "In Rankings" chips |
 | Artist page | ✓ | Full discography |
 | Genre browse | ✓ | Infinite scroll, paginated |
 | Rankings list | ✓ | All categories |
@@ -291,17 +291,16 @@ npm run expand:genre
 | Friends | ✓ | Search bar, follow/unfollow, follow-back, suggested accounts |
 | Login | ✓ | Email, Google OAuth, Spotify OAuth; Kakao + Apple stubbed (coming soon) |
 | Onboarding | ✓ | 3-step setup |
-| Settings | ✓ | Basic |
-| Notifications | ✓ | Basic |
+| Other user profiles | ✓ | Taste DNA, score distribution, top genres, essentials, recent ratings grid, taste collisions/contradictions |
+| Settings | ✓ | Edit display name, username, bio |
+| Notifications | ✓ | Mark-all-read |
 | Listen Later | ✓ | Basic |
 
 ### Still missing vs web
 
-- **Other user profiles** (`/profile/[username]`) — needs taste DNA, collisions, contradictions, full ratings grid
-- **Album page** — missing "appears in rankings" section
 - **Home personalized feed** — static genre carousels only; web shows a dynamic personalized feed
 - **Settings** — web has 5 organized tabs (account, preferences, notifications, privacy, danger zone)
-- **Notifications** — web has filters + mark-all-read + clear all
+- **Notifications** — web has filters + clear all
 - **Listen Later** — web has full list management
 - **Help page** — searchable FAQ + contact form
 - **Privacy & Terms** — legal pages
@@ -313,6 +312,7 @@ npm run expand:genre
 - **Spotify search** — proxied through the web app (`EXPO_PUBLIC_API_URL/api/search`); mobile has no direct Spotify credentials.
 - **Recommendation pool** — both web and mobile query the `recommendable_releases` view (albums + EPs only, must have cover art). Change the view definition once to affect both apps.
 - **OAuth deep link** — `sillajuku://auth/callback` must be in Supabase Redirect URLs allowlist.
+- **FK schema** — all `user_id` columns reference `profiles(id)` (not `auth.users`), making PostgREST joins traversable within the public schema. Cascade chain: `auth.users` → `profiles` → all dependent tables.
 
 ---
 

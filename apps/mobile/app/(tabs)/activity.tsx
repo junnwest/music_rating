@@ -140,42 +140,32 @@ export default function ActivityScreen() {
 
       const useFilter = user && filter === 'following' && followingIds.length > 0;
 
+      const ratingSelect = 'id, user_id, release_id, score, created_at, releases(id, title, artist, cover_url)';
+      const reviewSelect = 'id, user_id, release_id, body, created_at, releases(id, title, artist, cover_url)';
+
       const [ratingsResult, reviewsResult] = await Promise.all([
         useFilter
-          ? supabase
-              .from('ratings')
-              .select(
-                'id, user_id, release_id, score, created_at, releases(id, title, artist, cover_url), profiles!ratings_user_id_fkey(username, display_name)',
-              )
-              .in('user_id', followingIds)
-              .order('created_at', { ascending: false })
-              .limit(30)
-          : supabase
-              .from('ratings')
-              .select(
-                'id, user_id, release_id, score, created_at, releases(id, title, artist, cover_url), profiles!ratings_user_id_fkey(username, display_name)',
-              )
-              .order('created_at', { ascending: false })
-              .limit(30),
+          ? supabase.from('ratings').select(ratingSelect).in('user_id', followingIds).order('created_at', { ascending: false }).limit(30)
+          : supabase.from('ratings').select(ratingSelect).order('created_at', { ascending: false }).limit(30),
         useFilter
-          ? supabase
-              .from('reviews')
-              .select(
-                'id, user_id, release_id, body, created_at, releases(id, title, artist, cover_url), profiles!reviews_user_id_fkey(username, display_name)',
-              )
-              .in('user_id', followingIds)
-              .order('created_at', { ascending: false })
-              .limit(20)
-          : supabase
-              .from('reviews')
-              .select(
-                'id, user_id, release_id, body, created_at, releases(id, title, artist, cover_url), profiles!reviews_user_id_fkey(username, display_name)',
-              )
-              .order('created_at', { ascending: false })
-              .limit(20),
+          ? supabase.from('reviews').select(reviewSelect).in('user_id', followingIds).order('created_at', { ascending: false }).limit(20)
+          : supabase.from('reviews').select(reviewSelect).order('created_at', { ascending: false }).limit(20),
       ]);
 
-      const ratings: FeedItem[] = (ratingsResult.data ?? []).map((r: any) => ({
+      // Batch-fetch profiles for all unique user_ids
+      const rawRatings = ratingsResult.data ?? [];
+      const rawReviews = reviewsResult.data ?? [];
+      const userIds = [...new Set([...rawRatings, ...rawReviews].map((r: any) => r.user_id))];
+      let profileMap = new Map<string, { username: string; display_name: string | null }>();
+      if (userIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, username, display_name')
+          .in('id', userIds);
+        profileMap = new Map((profiles ?? []).map((p: any) => [p.id, { username: p.username, display_name: p.display_name }]));
+      }
+
+      const ratings: FeedItem[] = rawRatings.map((r: any) => ({
         kind: 'rating' as const,
         id: r.id,
         user_id: r.user_id,
@@ -183,10 +173,10 @@ export default function ActivityScreen() {
         score: r.score,
         created_at: r.created_at,
         release: r.releases ?? null,
-        profile: r.profiles ?? null,
+        profile: profileMap.get(r.user_id) ?? null,
       }));
 
-      const reviews: FeedItem[] = (reviewsResult.data ?? []).map((r: any) => ({
+      const reviews: FeedItem[] = rawReviews.map((r: any) => ({
         kind: 'review' as const,
         id: r.id,
         user_id: r.user_id,
@@ -194,7 +184,7 @@ export default function ActivityScreen() {
         body: r.body,
         created_at: r.created_at,
         release: r.releases ?? null,
-        profile: r.profiles ?? null,
+        profile: profileMap.get(r.user_id) ?? null,
       }));
 
       const merged = [...ratings, ...reviews].sort(

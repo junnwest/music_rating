@@ -321,7 +321,7 @@ export default function SearchScreen() {
       searchSpotify(q),
       supabase
         .from('profiles')
-        .select('id, username, display_name, avatar_url')
+        .select('*')
         .or(`username.ilike.%${q}%,display_name.ilike.%${q}%`)
         .limit(10),
     ]);

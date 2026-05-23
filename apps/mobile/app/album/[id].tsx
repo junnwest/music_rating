@@ -35,6 +35,37 @@ interface Release {
   prestige: number | null;
 }
 
+type RankingMembership = { slug: string; title: string; rank: number };
+
+function computeSillaScores(
+  entries: { ranking_id: string; release_id: string; rank: number }[]
+): Map<string, number> {
+  const byRanking = new Map<string, { release_id: string; rank: number }[]>();
+  for (const e of entries) {
+    if (!byRanking.has(e.ranking_id)) byRanking.set(e.ranking_id, []);
+    byRanking.get(e.ranking_id)!.push(e);
+  }
+  const scores = new Map<string, number>();
+  for (const userEntries of byRanking.values()) {
+    const byRank = new Map<number, string[]>();
+    for (const e of userEntries) {
+      if (!byRank.has(e.rank)) byRank.set(e.rank, []);
+      byRank.get(e.rank)!.push(e.release_id);
+    }
+    let pos = 1;
+    for (const [, albums] of [...byRank.entries()].sort(([a], [b]) => a - b)) {
+      const t = albums.length;
+      const effectivePos = pos + (t - 1) / 2;
+      const score = 1 / effectivePos;
+      for (const releaseId of albums) {
+        scores.set(releaseId, (scores.get(releaseId) ?? 0) + score);
+      }
+      pos += t;
+    }
+  }
+  return scores;
+}
+
 interface ReviewWithProfile {
   id: string;
   user_id: string;
@@ -90,6 +121,7 @@ export default function AlbumScreen() {
   const [ratingCount, setRatingCount] = useState(0);
   const [reviews, setReviews] = useState<ReviewWithProfile[]>([]);
   const [myRating, setMyRating] = useState<number | null>(null);
+  const [rankingMemberships, setRankingMemberships] = useState<RankingMembership[]>([]);
   const [loading, setLoading] = useState(true);
   const [ratingLoading, setRatingLoading] = useState(false);
   const [reviewModalVisible, setReviewModalVisible] = useState(false);
@@ -105,7 +137,7 @@ export default function AlbumScreen() {
       supabase.from('ratings').select('score').eq('release_id', id),
       supabase
         .from('reviews')
-        .select('id, user_id, release_id, body, visibility, created_at, profiles(username, display_name, avatar_url)')
+        .select('id, user_id, release_id, body, visibility, created_at')
         .eq('release_id', id)
         .in('visibility', ['public'])
         .order('created_at', { ascending: false })
@@ -125,27 +157,99 @@ export default function AlbumScreen() {
     }
 
     if (reviewsRes.data) {
-      const reviewData = reviewsRes.data as unknown as ReviewWithProfile[];
+      const rawReviews = reviewsRes.data as any[];
+      const reviewUserIds = [...new Set(rawReviews.map((r) => r.user_id as string))];
 
-      if (ratingsRes.data) {
-        const ratingMap = new Map<string, number>();
-        // we need per-user ratings for reviews; fetch separately
-        const reviewUserIds = reviewData.map((r) => r.user_id);
-        if (reviewUserIds.length > 0) {
-          const { data: reviewRatings } = await supabase
-            .from('ratings')
-            .select('user_id, score')
-            .eq('release_id', id)
-            .in('user_id', reviewUserIds);
-          reviewRatings?.forEach((r: { user_id: string; score: number }) => ratingMap.set(r.user_id, r.score));
-        }
-        setReviews(reviewData.map((r) => ({ ...r, score: ratingMap.get(r.user_id) ?? null })));
-      } else {
-        setReviews(reviewData.map((r) => ({ ...r, score: null })));
-      }
+      let reviewProfileMap = new Map<string, { username: string; display_name: string | null; avatar_url: string | null }>();
+      const ratingMap = new Map<string, number>();
+
+      await Promise.all([
+        reviewUserIds.length > 0
+          ? supabase.from('profiles').select('id, username, display_name, avatar_url').in('id', reviewUserIds).then(({ data }) => {
+              reviewProfileMap = new Map((data ?? []).map((p: any) => [p.id, { username: p.username, display_name: p.display_name, avatar_url: p.avatar_url ?? null }]));
+            })
+          : Promise.resolve(),
+        reviewUserIds.length > 0
+          ? supabase.from('ratings').select('user_id, score').eq('release_id', id).in('user_id', reviewUserIds).then(({ data }) => {
+              (data ?? []).forEach((r: { user_id: string; score: number }) => ratingMap.set(r.user_id, r.score));
+            })
+          : Promise.resolve(),
+      ]);
+
+      const reviewData: ReviewWithProfile[] = rawReviews.map((r) => ({
+        id: r.id,
+        user_id: r.user_id,
+        release_id: r.release_id,
+        body: r.body,
+        visibility: r.visibility,
+        created_at: r.created_at,
+        profiles: reviewProfileMap.get(r.user_id) ?? null,
+        score: ratingMap.get(r.user_id) ?? null,
+      }));
+
+      setReviews(reviewData);
     }
 
     if (myRatingRes.data) setMyRating(myRatingRes.data.score);
+
+    // Fetch ranking memberships
+    const [{ data: seedEntries }, { data: userEntries }] = await Promise.all([
+      supabase.from('ranking_seed_entries').select('category_id').eq('release_id', id),
+      supabase.from('user_ranking_entries').select('ranking_id').eq('release_id', id),
+    ]);
+
+    const seedCatIds = (seedEntries ?? []).map((r: { category_id: string }) => r.category_id);
+    let userCatIds: string[] = [];
+    const userRankingIds = (userEntries ?? []).map((r: { ranking_id: string }) => r.ranking_id);
+    if (userRankingIds.length > 0) {
+      const { data: userRankings } = await supabase
+        .from('user_rankings')
+        .select('category_id')
+        .in('id', userRankingIds);
+      userCatIds = (userRankings ?? []).map((r: { category_id: string }) => r.category_id);
+    }
+    const allCatIds = [...new Set([...seedCatIds, ...userCatIds])];
+
+    if (allCatIds.length > 0) {
+      const { data: cats } = await supabase
+        .from('ranking_categories')
+        .select('id, slug, title')
+        .in('id', allCatIds)
+        .order('sort_order');
+
+      if (cats && cats.length > 0) {
+        const memberships = await Promise.all(
+          cats.map(async (cat: { id: string; slug: string; title: string }) => {
+            const [{ data: allSeeds }, { data: catRankings }] = await Promise.all([
+              supabase.from('ranking_seed_entries').select('release_id, seed_votes').eq('category_id', cat.id),
+              supabase.from('user_rankings').select('id').eq('category_id', cat.id),
+            ]);
+
+            const scoreMap = new Map<string, number>();
+            for (const s of allSeeds ?? []) {
+              scoreMap.set(s.release_id, (scoreMap.get(s.release_id) ?? 0) + s.seed_votes);
+            }
+
+            const catRankingIds = (catRankings ?? []).map((r: { id: string }) => r.id);
+            if (catRankingIds.length > 0) {
+              const { data: entries } = await supabase
+                .from('user_ranking_entries')
+                .select('ranking_id, release_id, rank')
+                .in('ranking_id', catRankingIds);
+              const sillaScores = computeSillaScores(entries ?? []);
+              for (const [releaseId, score] of sillaScores) {
+                scoreMap.set(releaseId, (scoreMap.get(releaseId) ?? 0) + score);
+              }
+            }
+
+            const sorted = [...scoreMap.entries()].sort((a, b) => b[1] - a[1]);
+            const rank = sorted.findIndex(([rid]) => rid === id) + 1;
+            return { slug: cat.slug, title: cat.title, rank };
+          })
+        );
+        setRankingMemberships(memberships.filter((m) => m.rank > 0));
+      }
+    }
 
     setLoading(false);
   }, [id, user]);
@@ -320,6 +424,24 @@ export default function AlbumScreen() {
                   ) : null}
                 </View>
               ))}
+            </View>
+          )}
+
+          {rankingMemberships.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>In Rankings</Text>
+              <View style={styles.rankingChips}>
+                {rankingMemberships.map((m) => (
+                  <Pressable
+                    key={m.slug}
+                    style={({ pressed }) => [styles.rankingChip, pressed && { opacity: 0.7 }]}
+                    onPress={() => router.push(`/rankings/${m.slug}` as any)}
+                  >
+                    <Text style={styles.rankingChipText}>{m.title}</Text>
+                    <Text style={styles.rankingChipRank}>#{m.rank}</Text>
+                  </Pressable>
+                ))}
+              </View>
             </View>
           )}
 
@@ -663,5 +785,39 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     minHeight: 160,
     textAlignVertical: 'top',
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#8C8C8A',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 10,
+  },
+  rankingChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  rankingChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderColor: '#E8E8E6',
+    borderRadius: 100,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#FFFFFF',
+  },
+  rankingChipText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#1A1A18',
+  },
+  rankingChipRank: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#E8A020',
   },
 });

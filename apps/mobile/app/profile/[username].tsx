@@ -39,8 +39,111 @@ type RatingEntry = {
     title: string;
     artist: string;
     cover_url: string | null;
+    genres: string | null;
   } | null;
 };
+
+type PinnedAlbum = {
+  release_id: string;
+  title: string;
+  artist: string;
+  cover_url: string | null;
+};
+
+function getTasteDNA(ratings: RatingEntry[]): string[] {
+  if (ratings.length < 5) return [];
+  const scores = ratings.map((r) => r.score).filter(Boolean);
+  if (scores.length === 0) return [];
+  const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+  const variance = scores.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / scores.length;
+  const sd = Math.sqrt(variance);
+  const fivePct = scores.filter((s) => s === 5).length / scores.length;
+
+  const genreCount = new Map<string, number>();
+  for (const r of ratings) {
+    const g = r.releases?.genres;
+    if (!g) continue;
+    for (const genre of g.split(',')) {
+      const key = genre.trim().toLowerCase();
+      if (key) genreCount.set(key, (genreCount.get(key) ?? 0) + 1);
+    }
+  }
+  const topGenre = [...genreCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+
+  let genreTag = '';
+  if (topGenre.includes('k-pop') || topGenre.includes('korean pop')) genreTag = 'K-Pop devotee';
+  else if (topGenre.includes('k-r&b') || topGenre.includes('korean r&b')) genreTag = 'K-R&B connoisseur';
+  else if (topGenre.includes('k-rap') || topGenre.includes('korean hip')) genreTag = 'K-Rap head';
+  else if (topGenre.includes('r&b') || topGenre.includes('soul')) genreTag = 'R&B connoisseur';
+  else if (topGenre.includes('indie')) genreTag = 'Indie explorer';
+  else if (topGenre.includes('hip hop') || topGenre.includes('hip-hop') || topGenre.includes('rap')) genreTag = 'Hip-hop head';
+  else if (topGenre.includes('ballad')) genreTag = 'Ballad purist';
+  else if (topGenre.includes('jazz')) genreTag = 'Jazz aficionado';
+  else if (topGenre.includes('rock')) genreTag = 'Rock loyalist';
+  else if (topGenre.includes('electronic') || topGenre.includes('synth')) genreTag = 'Electronic wanderer';
+  else if (topGenre.includes('folk') || topGenre.includes('acoustic')) genreTag = 'Folk purist';
+  else if (topGenre.includes('pop')) genreTag = 'Pop enthusiast';
+
+  let behaviorTag = '';
+  if (avg < 2.5) behaviorTag = 'Harsh critic';
+  else if (avg > 4.3) behaviorTag = 'Eternal optimist';
+  else if (fivePct === 0 && scores.length >= 10) behaviorTag = 'Impossible to impress';
+  else if (fivePct > 0.35) behaviorTag = 'Generous soul';
+  else if (sd > 1.4) behaviorTag = 'All or nothing';
+  else if (sd < 0.5 && scores.length >= 10) behaviorTag = 'Measured listener';
+
+  return [genreTag, behaviorTag].filter(Boolean);
+}
+
+function getTopGenres(ratings: RatingEntry[]): { name: string; count: number }[] {
+  const tally = new Map<string, number>();
+  for (const r of ratings) {
+    const g = r.releases?.genres;
+    if (!g) continue;
+    for (const genre of g.split(',')) {
+      const key = genre.trim().toLowerCase();
+      if (key) tally.set(key, (tally.get(key) ?? 0) + 1);
+    }
+  }
+  return [...tally.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([name, count]) => ({
+      name: name.split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+      count,
+    }));
+}
+
+function getScoreBars(ratings: RatingEntry[]): number[] {
+  const buckets = new Array(10).fill(0);
+  for (const r of ratings) {
+    const idx = Math.min(9, Math.max(0, Math.round(r.score * 2) - 1));
+    buckets[idx]++;
+  }
+  return buckets;
+}
+
+function ScoreBar({ bars }: { bars: number[] }) {
+  const max = Math.max(...bars, 1);
+  const maxVal = Math.max(...bars);
+  const modeIdx = maxVal > 0 ? bars.indexOf(maxVal) : -1;
+  return (
+    <View style={{ flexDirection: 'row', gap: 3, height: 72, alignItems: 'flex-end' }}>
+      {bars.map((h, i) => (
+        <View key={i} style={{ flex: 1, alignItems: 'center', justifyContent: 'flex-end' }}>
+          <View
+            style={{
+              width: '100%',
+              height: Math.max(2, (h / max) * 64),
+              backgroundColor: i === modeIdx ? '#D97706' : '#FDE8B0',
+              borderRadius: 2,
+            }}
+          />
+        </View>
+      ))}
+    </View>
+  );
+}
 
 export default function UserProfileScreen() {
   const { username } = useLocalSearchParams<{ username: string }>();
@@ -48,7 +151,9 @@ export default function UserProfileScreen() {
   const router = useRouter();
 
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [ratings, setRatings] = useState<RatingEntry[]>([]);
+  const [recentRatings, setRecentRatings] = useState<RatingEntry[]>([]);
+  const [allRatings, setAllRatings] = useState<RatingEntry[]>([]);
+  const [pinned, setPinned] = useState<PinnedAlbum[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [avgScore, setAvgScore] = useState<number | null>(null);
   const [isFollowing, setIsFollowing] = useState(false);
@@ -74,17 +179,22 @@ export default function UserProfileScreen() {
     const profileData = profileRes.data as Profile;
     setProfile(profileData);
 
-    const [ratingsRes, statsRes, followRes] = await Promise.all([
+    const [recentRes, allScoreRes, pinnedIdsRes, followRes] = await Promise.all([
       supabase
         .from('ratings')
-        .select('score, release_id, created_at, releases(id, title, artist, cover_url)')
+        .select('score, release_id, created_at, releases(id, title, artist, cover_url, genres)')
         .eq('user_id', profileData.id)
         .order('created_at', { ascending: false })
-        .limit(20),
+        .limit(30),
       supabase
         .from('ratings')
-        .select('score', { count: 'exact' })
+        .select('score, release_id, releases(genres)')
         .eq('user_id', profileData.id),
+      supabase
+        .from('pinned_albums')
+        .select('release_id')
+        .eq('user_id', profileData.id)
+        .order('created_at'),
       user
         ? supabase
             .from('follows')
@@ -94,14 +204,36 @@ export default function UserProfileScreen() {
         : Promise.resolve({ data: [] }),
     ]);
 
-    if (ratingsRes.data) setRatings(ratingsRes.data as unknown as RatingEntry[]);
-    if (statsRes.count !== null) {
-      setTotalCount(statsRes.count);
-      if (statsRes.data && statsRes.data.length > 0) {
-        const sum = statsRes.data.reduce((acc: number, r: any) => acc + Number(r.score), 0);
-        setAvgScore(sum / statsRes.data.length);
+    if (recentRes.data) setRecentRatings(recentRes.data as unknown as RatingEntry[]);
+
+    if (allScoreRes.data) {
+      const ratings = allScoreRes.data as unknown as RatingEntry[];
+      setAllRatings(ratings);
+      setTotalCount(ratings.length);
+      if (ratings.length > 0) {
+        const sum = ratings.reduce((a, r) => a + Number(r.score), 0);
+        setAvgScore(Math.round((sum / ratings.length) * 10) / 10);
       }
     }
+
+    if (pinnedIdsRes.data && pinnedIdsRes.data.length > 0) {
+      const pinnedIds = pinnedIdsRes.data.map((p: any) => p.release_id);
+      const { data: pinnedReleases } = await supabase
+        .from('releases')
+        .select('id, title, artist, cover_url')
+        .in('id', pinnedIds);
+      const releaseMap = new Map((pinnedReleases ?? []).map((r: any) => [r.id, r]));
+      setPinned(pinnedIds.map((id: string) => {
+        const rel = releaseMap.get(id);
+        return {
+          release_id: id,
+          title: rel?.title ?? '—',
+          artist: rel?.artist ?? '',
+          cover_url: rel?.cover_url ?? null,
+        };
+      }));
+    }
+
     setIsFollowing((followRes.data?.length ?? 0) > 0);
   }, [username, user]);
 
@@ -170,6 +302,9 @@ export default function UserProfileScreen() {
   const displayName = profile.display_name || profile.username;
   const initial = displayName.charAt(0).toUpperCase();
   const isOwnProfile = user?.id === profile.id;
+  const tasteDNA = getTasteDNA(allRatings);
+  const topGenres = getTopGenres(allRatings);
+  const scoreBars = getScoreBars(allRatings);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -184,13 +319,10 @@ export default function UserProfileScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#D97706"
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#D97706" />
         }
       >
+        {/* Header */}
         <View style={styles.profileSection}>
           {profile.avatar_url ? (
             <Image
@@ -206,9 +338,19 @@ export default function UserProfileScreen() {
           )}
           <Text style={styles.displayName}>{displayName}</Text>
           <Text style={styles.username}>@{profile.username}</Text>
-          {profile.bio ? (
-            <Text style={styles.bio}>{profile.bio}</Text>
-          ) : null}
+          {profile.bio ? <Text style={styles.bio}>{profile.bio}</Text> : null}
+
+          {/* Taste DNA badges */}
+          {tasteDNA.length > 0 && (
+            <View style={styles.dnaRow}>
+              {tasteDNA.map((tag) => (
+                <View key={tag} style={styles.dnaBadge}>
+                  <Text style={styles.dnaBadgeText}>{tag}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
           <View style={styles.statsRow}>
             <Text style={styles.statsText}>
               {totalCount} {totalCount === 1 ? 'rating' : 'ratings'}
@@ -238,42 +380,105 @@ export default function UserProfileScreen() {
           )}
         </View>
 
-        {ratings.length === 0 ? (
-          <View style={styles.emptyGrid}>
-            <Ionicons name="disc-outline" size={40} color="#E8E8E6" />
-            <Text style={styles.emptyText}>No ratings yet</Text>
+        {/* Score distribution */}
+        {totalCount >= 5 && (
+          <View style={styles.card}>
+            <Text style={styles.cardLabel}>Score Distribution</Text>
+            <ScoreBar bars={scoreBars} />
+            <View style={styles.barAxisRow}>
+              {['0.5','1','1.5','2','2.5','3','3.5','4','4.5','5'].map((l) => (
+                <Text key={l} style={styles.barAxisLabel}>{l}</Text>
+              ))}
+            </View>
           </View>
-        ) : (
-          <View style={styles.grid}>
-            {ratings.map((entry) => {
-              const release = entry.releases;
-              if (!release) return null;
-              return (
+        )}
+
+        {/* Essentials */}
+        {pinned.length > 0 && (
+          <View style={styles.card}>
+            <Text style={styles.cardLabel}>Essentials</Text>
+            <View style={styles.essentialsRow}>
+              {pinned.map((p) => (
                 <Pressable
-                  key={`${entry.release_id}-${entry.created_at}`}
-                  style={({ pressed }) => [styles.gridItem, pressed && { opacity: 0.75 }]}
-                  onPress={() => router.push(`/album/${entry.release_id}`)}
+                  key={p.release_id}
+                  style={({ pressed }) => [styles.essentialItem, pressed && { opacity: 0.75 }]}
+                  onPress={() => router.push(`/album/${p.release_id}`)}
                 >
                   <Image
-                    source={{ uri: release.cover_url ?? undefined }}
-                    style={styles.gridCover}
+                    source={{ uri: p.cover_url ?? undefined }}
+                    style={styles.essentialCover}
                     contentFit="cover"
                     transition={150}
                   />
-                  <View style={styles.scoreBadge}>
-                    <Text style={styles.scoreBadgeText}>{Number(entry.score).toFixed(1)}</Text>
-                  </View>
                 </Pressable>
-              );
-            })}
+              ))}
+            </View>
           </View>
         )}
+
+        {/* Top Genres */}
+        {topGenres.length > 0 && (
+          <View style={styles.card}>
+            <Text style={styles.cardLabel}>Top Genres</Text>
+            {topGenres.map(({ name, count }) => (
+              <View key={name} style={styles.genreRow}>
+                <Text style={styles.genreName}>{name}</Text>
+                <View style={styles.genreBarTrack}>
+                  <View
+                    style={[
+                      styles.genreBarFill,
+                      { width: `${(count / topGenres[0].count) * 100}%` },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.genreCount}>{count}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Ratings grid */}
+        <View style={styles.gridSection}>
+          <Text style={styles.gridSectionLabel}>Ratings</Text>
+          {recentRatings.length === 0 ? (
+            <View style={styles.emptyGrid}>
+              <Ionicons name="disc-outline" size={40} color="#E8E8E6" />
+              <Text style={styles.emptyText}>No ratings yet</Text>
+            </View>
+          ) : (
+            <View style={styles.grid}>
+              {recentRatings.map((entry) => {
+                const release = entry.releases;
+                if (!release) return null;
+                return (
+                  <Pressable
+                    key={`${entry.release_id}-${entry.created_at}`}
+                    style={({ pressed }) => [styles.gridItem, pressed && { opacity: 0.75 }]}
+                    onPress={() => router.push(`/album/${entry.release_id}`)}
+                  >
+                    <Image
+                      source={{ uri: release.cover_url ?? undefined }}
+                      style={styles.gridCover}
+                      contentFit="cover"
+                      transition={150}
+                    />
+                    <View style={styles.scoreBadge}>
+                      <Text style={styles.scoreBadgeText}>{Number(entry.score).toFixed(1)}</Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+        </View>
 
         <View style={{ height: 32 }} />
       </ScrollView>
     </SafeAreaView>
   );
 }
+
+const ESSENTIAL_SIZE = (SCREEN_WIDTH - 32 - 5 * 8) / 6;
 
 const styles = StyleSheet.create({
   container: {
@@ -360,6 +565,24 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginBottom: 12,
   },
+  dnaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  dnaBadge: {
+    backgroundColor: '#FEF3DC',
+    borderRadius: 100,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  dnaBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#D97706',
+  },
   statsRow: {
     marginTop: 4,
     marginBottom: 16,
@@ -389,10 +612,91 @@ const styles = StyleSheet.create({
   followBtnTextActive: {
     color: '#FFFFFF',
   },
+  card: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E8E8E6',
+  },
+  cardLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#8C8C8A',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 12,
+  },
+  barAxisRow: {
+    flexDirection: 'row',
+    marginTop: 4,
+  },
+  barAxisLabel: {
+    flex: 1,
+    fontSize: 8,
+    color: '#8C8C8A',
+    textAlign: 'center',
+  },
+  essentialsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  essentialItem: {
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  essentialCover: {
+    width: ESSENTIAL_SIZE,
+    height: ESSENTIAL_SIZE,
+    backgroundColor: '#E8E8E6',
+  },
+  genreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 8,
+  },
+  genreName: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#1A1A18',
+    width: 120,
+  },
+  genreBarTrack: {
+    flex: 1,
+    height: 6,
+    backgroundColor: '#F0F0EE',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  genreBarFill: {
+    height: '100%',
+    backgroundColor: '#E8A020',
+    borderRadius: 3,
+  },
+  genreCount: {
+    fontSize: 12,
+    color: '#8C8C8A',
+    width: 28,
+    textAlign: 'right',
+  },
+  gridSection: {
+    paddingHorizontal: GRID_PADDING,
+    marginBottom: 8,
+  },
+  gridSectionLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#8C8C8A',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 10,
+  },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: GRID_PADDING,
     gap: GRID_GAP,
   },
   gridItem: {

@@ -179,11 +179,11 @@ export default function ProfileScreen() {
   const fetchData = useCallback(async () => {
     if (!user) return;
 
-    const [profileRes, recentRes, allScoreRes, pinnedRes, followsRes] = await Promise.all([
+    const [profileRes, recentRes, allScoreRes, pinnedIdsRes, followsRes] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', user.id).single(),
       supabase.from('ratings').select('score, release_id, created_at, releases(id, title, artist, cover_url, genres)').eq('user_id', user.id).order('created_at', { ascending: false }).limit(30),
       supabase.from('ratings').select('score, release_id, releases(genres)').eq('user_id', user.id),
-      supabase.from('pinned_albums').select('release_id, releases(title, artist, cover_url)').eq('user_id', user.id).order('created_at'),
+      supabase.from('pinned_albums').select('release_id').eq('user_id', user.id).order('created_at'),
       supabase.from('follows').select('following_id').eq('follower_id', user.id),
     ]);
 
@@ -200,13 +200,22 @@ export default function ProfileScreen() {
       }
     }
 
-    if (pinnedRes.data) {
-      setPinned(pinnedRes.data.map((p: any) => ({
-        release_id: p.release_id,
-        title: p.releases?.title ?? '—',
-        artist: p.releases?.artist ?? '',
-        cover_url: p.releases?.cover_url ?? null,
-      })));
+    if (pinnedIdsRes.data && pinnedIdsRes.data.length > 0) {
+      const pinnedIds = pinnedIdsRes.data.map((p: any) => p.release_id);
+      const { data: pinnedReleases } = await supabase
+        .from('releases')
+        .select('id, title, artist, cover_url')
+        .in('id', pinnedIds);
+      const releaseMap = new Map((pinnedReleases ?? []).map((r: any) => [r.id, r]));
+      setPinned(pinnedIds.map((id: string) => {
+        const rel = releaseMap.get(id);
+        return {
+          release_id: id,
+          title: rel?.title ?? '—',
+          artist: rel?.artist ?? '',
+          cover_url: rel?.cover_url ?? null,
+        };
+      }));
     }
 
     // Collisions

@@ -151,32 +151,27 @@ export default function FriendsScreen() {
     if (!user) return;
     setLoading(true);
 
+    // Step 1: get IDs only — avoids broken FK join hint to auth.users
     const [followingResult, followersResult] = await Promise.all([
-      supabase
-        .from('follows')
-        .select('following_id, profiles!follows_following_id_fkey(id, username, display_name, avatar_url)')
-        .eq('follower_id', user.id),
-      supabase
-        .from('follows')
-        .select('follower_id, profiles!follows_follower_id_fkey(id, username, display_name, avatar_url)')
-        .eq('following_id', user.id),
+      supabase.from('follows').select('following_id').eq('follower_id', user.id),
+      supabase.from('follows').select('follower_id').eq('following_id', user.id),
     ]);
 
-    const followingData: FollowingEntry[] = (followingResult.data ?? []).map((row: any) => ({
-      following_id: row.following_id,
-      profile: row.profiles ?? null,
-    }));
+    const followingIds = (followingResult.data ?? []).map((r: any) => r.following_id as string);
+    const followerIds  = (followersResult.data ?? []).map((r: any) => r.follower_id  as string);
 
-    const followingSetLocal = new Set(followingData.map((f) => f.following_id));
+    // Step 2: batch-fetch all relevant profiles in one query
+    const allIds = [...new Set([...followingIds, ...followerIds])];
+    let profileMap = new Map<string, ProfileRow>();
+    if (allIds.length > 0) {
+      const { data: profiles } = await supabase.from('profiles').select('*').in('id', allIds);
+      profileMap = new Map((profiles ?? []).map((p: any) => [p.id, p as ProfileRow]));
+    }
 
-    const followersData: FollowerEntry[] = (followersResult.data ?? []).map((row: any) => ({
-      follower_id: row.follower_id,
-      profile: row.profiles ?? null,
-      isFollowingBack: followingSetLocal.has(row.follower_id),
-    }));
+    const followingSetLocal = new Set(followingIds);
 
-    setFollowing(followingData);
-    setFollowers(followersData);
+    setFollowing(followingIds.map((id) => ({ following_id: id, profile: profileMap.get(id) ?? null })));
+    setFollowers(followerIds.map((id)  => ({ follower_id: id,  profile: profileMap.get(id) ?? null, isFollowingBack: followingSetLocal.has(id) })));
     setLoading(false);
   }, [user]);
 
@@ -207,7 +202,7 @@ export default function FriendsScreen() {
 
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('id, username, display_name, avatar_url')
+        .select('*')
         .in('id', topIds);
 
       if (profiles) {
@@ -240,7 +235,7 @@ export default function FriendsScreen() {
     debounceRef.current = setTimeout(async () => {
       const { data } = await supabase
         .from('profiles')
-        .select('id, username, display_name, avatar_url')
+        .select('*')
         .or(`username.ilike.%${searchQuery}%,display_name.ilike.%${searchQuery}%`)
         .neq('id', user?.id ?? '')
         .limit(20);
@@ -267,7 +262,7 @@ export default function FriendsScreen() {
       setFollowers((prev) => prev.map((f) => f.follower_id === targetId ? { ...f, isFollowingBack: false } : f));
       setFollowing((prev) => prev.filter((f) => f.following_id !== targetId));
     } else {
-      const { data: profileData } = await supabase.from('profiles').select('id, username, display_name, avatar_url').eq('id', targetId).single();
+      const { data: profileData } = await supabase.from('profiles').select('*').eq('id', targetId).single();
       await supabase.from('follows').insert({ follower_id: user.id, following_id: targetId });
       setFollowers((prev) => prev.map((f) => f.follower_id === targetId ? { ...f, isFollowingBack: true } : f));
       if (profileData) {
@@ -282,7 +277,7 @@ export default function FriendsScreen() {
       await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', targetId);
       setFollowing((prev) => prev.filter((f) => f.following_id !== targetId));
     } else {
-      const { data: profileData } = await supabase.from('profiles').select('id, username, display_name, avatar_url').eq('id', targetId).single();
+      const { data: profileData } = await supabase.from('profiles').select('*').eq('id', targetId).single();
       await supabase.from('follows').insert({ follower_id: user.id, following_id: targetId });
       if (profileData) {
         setFollowing((prev) => [...prev, { following_id: targetId, profile: profileData }]);

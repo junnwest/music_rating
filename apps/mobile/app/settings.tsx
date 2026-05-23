@@ -33,6 +33,7 @@ export default function SettingsScreen() {
 
   // Edit profile state
   const [editVisible, setEditVisible] = useState(false);
+  const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [bio, setBio] = useState('');
   const [editLoading, setEditLoading] = useState(false);
@@ -52,11 +53,12 @@ export default function SettingsScreen() {
     if (user) {
       supabase
         .from('profiles')
-        .select('display_name, bio')
+        .select('username, display_name, bio')
         .eq('id', user.id)
         .single()
         .then(({ data }) => {
           if (data) {
+            setUsername(data.username ?? '');
             setDisplayName(data.display_name ?? '');
             setBio(data.bio ?? '');
           }
@@ -86,11 +88,32 @@ export default function SettingsScreen() {
 
   const handleSaveProfile = async () => {
     if (!user) return;
+    const trimmedUsername = username.trim().toLowerCase();
+    if (!trimmedUsername) {
+      setEditMessage('Username is required.');
+      return;
+    }
+    if (!/^[a-z0-9_]{3,20}$/.test(trimmedUsername)) {
+      setEditMessage('Username: 3–20 chars, letters/numbers/underscores only.');
+      return;
+    }
     setEditLoading(true);
     setEditMessage(null);
+
+    // Check username uniqueness (skip if unchanged)
+    const currentRes = await supabase.from('profiles').select('username').eq('id', user.id).single();
+    if (currentRes.data?.username !== trimmedUsername) {
+      const { data: existing } = await supabase.from('profiles').select('id').eq('username', trimmedUsername).maybeSingle();
+      if (existing) {
+        setEditLoading(false);
+        setEditMessage('That username is already taken.');
+        return;
+      }
+    }
+
     const { error } = await supabase
       .from('profiles')
-      .update({ display_name: displayName.trim() || null, bio: bio.trim() || null })
+      .update({ username: trimmedUsername, display_name: displayName.trim() || null, bio: bio.trim() || null })
       .eq('id', user.id);
     setEditLoading(false);
     if (error) {
@@ -231,7 +254,18 @@ export default function SettingsScreen() {
             </Pressable>
           </View>
           <View style={styles.modalBody}>
-            <Text style={styles.fieldLabel}>Display Name</Text>
+            <Text style={styles.fieldLabel}>Username</Text>
+            <TextInput
+              style={styles.textInput}
+              value={username}
+              onChangeText={setUsername}
+              placeholder="username"
+              placeholderTextColor="#8C8C8A"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <Text style={styles.fieldHint}>3–20 chars · letters, numbers, underscores</Text>
+            <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Display Name</Text>
             <TextInput
               style={styles.textInput}
               value={displayName}
@@ -483,6 +517,11 @@ const styles = StyleSheet.create({
     minHeight: 96,
     textAlignVertical: 'top',
     paddingTop: 12,
+  },
+  fieldHint: {
+    fontSize: 11,
+    color: '#8C8C8A',
+    marginTop: 4,
   },
   message: {
     marginTop: 12,

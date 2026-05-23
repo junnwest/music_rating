@@ -69,29 +69,37 @@ export default function NotificationsScreen() {
 
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [markingRead, setMarkingRead] = useState(false);
+
+  const hasUnread = notifications.some((n) => !n.read);
+
+  const fetchNotifications = async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (data) setNotifications(data as NotificationItem[]);
+  };
 
   useEffect(() => {
     if (!user) { setLoading(false); return; }
-
-    const fetchAndMarkRead = async () => {
-      const { data } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (data) setNotifications(data as NotificationItem[]);
-
-      await supabase
-        .from('notifications')
-        .update({ read: true })
-        .eq('user_id', user.id)
-        .eq('read', false);
-    };
-
-    fetchAndMarkRead().finally(() => setLoading(false));
+    fetchNotifications().finally(() => setLoading(false));
   }, [user]);
+
+  const handleMarkAllRead = async () => {
+    if (!user || markingRead) return;
+    setMarkingRead(true);
+    await supabase
+      .from('notifications')
+      .update({ read: true })
+      .eq('user_id', user.id)
+      .eq('read', false);
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    setMarkingRead(false);
+  };
 
   if (!user) {
     return (
@@ -124,7 +132,13 @@ export default function NotificationsScreen() {
           <Ionicons name="chevron-back" size={24} color="#1A1A18" />
         </Pressable>
         <Text style={styles.navTitle}>Notifications</Text>
-        <View style={styles.navRight} />
+        <Pressable
+          style={[styles.markReadBtn, (!hasUnread || markingRead) && { opacity: 0.35 }]}
+          onPress={handleMarkAllRead}
+          disabled={!hasUnread || markingRead}
+        >
+          <Text style={styles.markReadText}>Mark all read</Text>
+        </Pressable>
       </View>
 
       {loading ? (
@@ -197,6 +211,15 @@ const styles = StyleSheet.create({
   },
   navRight: {
     width: 40,
+  },
+  markReadBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  markReadText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#D97706',
   },
   prompt: {
     flex: 1,
