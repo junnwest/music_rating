@@ -45,7 +45,26 @@ async function getToken(): Promise<string> {
 // caller can show an error instead of hanging the request indefinitely.
 const MAX_RETRY_WAIT_SEC = 10;
 
+// Shared circuit-breaker key in Redis. When Spotify returns 429, we set this
+// key to the timestamp at which the rate limit expires. All other Spotify
+// calls short-circuit while the key is live, so a single 429 doesn't cascade
+// into N independent stalls (each waiting MAX_RETRY_WAIT_SEC then throwing).
+const CIRCUIT_BREAKER_KEY = 'spotify:rate-limited-until';
+
+export class SpotifyCircuitOpenError extends Error {
+  constructor(public remainingSec: number) {
+    super(`Spotify circuit breaker open: ${remainingSec}s remaining`);
+  }
+}
+
 async function spotifyFetch(path: string, revalidate?: number): Promise<any> {
+  // Circuit breaker: if a recent call hit 429, fail fast instead of pinging
+  // Spotify (which would also 429 and add ~10s of wait per request).
+  const blockedUntil = await cacheGet<number>(CIRCUIT_BREAKER_KEY);
+  if (blockedUntil && Date.now() < blockedUntil) {
+    throw new SpotifyCircuitOpenError(Math.ceil((blockedUntil - Date.now()) / 1000));
+  }
+
   const token = await getToken();
   const url = path.startsWith('https://') ? path : `${API_BASE}${path}`;
   const options: RequestInit & { next?: { revalidate: number } } = {
@@ -57,6 +76,12 @@ async function spotifyFetch(path: string, revalidate?: number): Promise<any> {
 
   if (res.status === 429) {
     const retryAfter = parseInt(res.headers.get('Retry-After') ?? '2', 10);
+    // Open the circuit breaker for the full Retry-After window so concurrent
+    // requests skip Spotify entirely. TTL on the Redis key matches so the
+    // breaker auto-resets when Spotify is ready again.
+    const until = Date.now() + retryAfter * 1000;
+    cacheSet(CIRCUIT_BREAKER_KEY, until, Math.max(retryAfter, 1)).catch(() => {});
+
     if (retryAfter > MAX_RETRY_WAIT_SEC) {
       throw new Error(`Spotify 429: rate-limited for ${retryAfter}s — bailing fast (max wait ${MAX_RETRY_WAIT_SEC}s)`);
     }

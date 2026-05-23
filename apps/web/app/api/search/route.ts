@@ -1,5 +1,6 @@
 import { searchSpotifyAlbums, searchSpotifyArtists, searchSpotifyTracks } from '../../../lib/spotify';
 import { cacheGet, cacheSet } from '../../../lib/cache';
+import { saveBasicReleases } from '../../../lib/dbCache';
 import type { NextRequest } from 'next/server';
 
 // Cache search responses in Redis so repeated identical queries (across users
@@ -59,6 +60,11 @@ export async function GET(request: NextRequest) {
     if (year) {
       releases = releases.filter(r => !r.date || r.date.startsWith(year));
     }
+
+    // Persist basic rows so /album/[id] click-throughs never 404 when Spotify
+    // is rate-limited (the album page falls through to getBasicRelease). Fire
+    // and forget — don't block the search response.
+    saveBasicReleases(releases).catch(err => console.error('[search] saveBasicReleases failed:', err));
 
     const body = { releases };
     await cacheSet(cacheKey, body, SEARCH_TTL);

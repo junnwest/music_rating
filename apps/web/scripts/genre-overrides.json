@@ -1,0 +1,799 @@
+{
+  "_comment": "Hand-curated genre overrides for high-value releases missing genres. Edit the \"genres\" field as comma-separated tags (use existing DB vocabulary printed by dump-genre-overrides-skeleton.ts). Then run: npx tsx --env-file=.env.local scripts/apply-genre-overrides.ts. Pre-filled by Claude on 2026-05-23 — please review and correct.",
+  "generated_at": "2026-05-23T19:12:45.377Z",
+  "count": 88,
+  "releases": [
+    {
+      "id": "1p12OAWwudgMqfMzjMvl2a",
+      "title": "The Low End Theory",
+      "artist": "A Tribe Called Quest",
+      "release_date": "1991-09-24",
+      "release_type": "Album",
+      "sources": ["tier1", "rated"],
+      "genres": "hip-hop, jazz rap"
+    },
+    {
+      "id": "7dK54iZuOxXFarGhXwEXfF",
+      "title": "Lemonade",
+      "artist": "Beyoncé",
+      "release_date": "2016-04-23",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "R&B, art pop, pop"
+    },
+    {
+      "id": "4WD4pslu83FF6oMa1e19mF",
+      "title": "Blood On The Tracks",
+      "artist": "Bob Dylan",
+      "release_date": "1975-01-17",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "folk rock, singer-songwriter, rock"
+    },
+    {
+      "id": "5W1XY5ucNATjTULERvXx9j",
+      "title": "MAP OF THE SOUL : 7",
+      "artist": "BTS",
+      "release_date": "2020-02-21",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "K-pop, pop"
+    },
+    {
+      "id": "19GaF7MTs4JGqFUdOYpiFr",
+      "title": "Instant Pig",
+      "artist": "Clazziquai",
+      "release_date": "2004-05-14",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "electronic, dance pop, k-indie"
+    },
+    {
+      "id": "0HOb3ypZrAVbuGYLiMhC7z",
+      "title": "Map of the Human Soul",
+      "artist": "Epik High",
+      "release_date": "2003-10-24",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "Korean hip-hop, hip-hop"
+    },
+    {
+      "id": "7GOdEIOvr41lvxDK7bvPrI",
+      "title": "空中キャンプ",
+      "artist": "Fishmans",
+      "release_date": "1996-02-01",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "j-rock, dream pop, dub"
+    },
+    {
+      "id": "0yJ02boB03UsjObzoXJ5O4",
+      "title": "Resurrection - The 3rd Album",
+      "artist": "H.O.T.",
+      "release_date": "1998-09-01",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "K-pop, pop"
+    },
+    {
+      "id": "5JMSzU0FPsOut85jmhHbfw",
+      "title": "22",
+      "artist": "HYUKOH",
+      "release_date": "2015-05-28",
+      "release_type": "EP",
+      "sources": ["tier1"],
+      "genres": "k-indie, indie rock"
+    },
+    {
+      "id": "32LqfffemFhaBX1SVkunIM",
+      "title": "soony re : work - 1",
+      "artist": "Jang Pill Soon",
+      "release_date": "2020-03-31",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "singer-songwriter, k-indie, folk"
+    },
+    {
+      "id": "69CmkikTHkGKdkrUZTtyWl",
+      "title": "The Blueprint (Explicit Version)",
+      "artist": "JAŸ-Z",
+      "release_date": "2001-09-11",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "hip-hop"
+    },
+    {
+      "id": "4smEy1bgg4mrHJFUIJS4wz",
+      "title": "CheongPa Sonata",
+      "artist": "JEONGMILLA",
+      "release_date": "2020-10-22",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "k-indie, singer-songwriter, folk"
+    },
+    {
+      "id": "7Eoz7hJvaX1eFkbpQxC5PA",
+      "title": "A Love Supreme",
+      "artist": "John Coltrane",
+      "release_date": "1965-02",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "jazz"
+    },
+    {
+      "id": "6IHb4jgFpWAOF5kHhMeHzX",
+      "title": "bleu",
+      "artist": "Kang Tygu",
+      "release_date": "2018-01-18",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "k-r&b, Korean hip-hop"
+    },
+    {
+      "id": "3DGQ1iZ9XKUQxAUWjfC34w",
+      "title": "good kid, m.A.A.d city (Deluxe)",
+      "artist": "Kendrick Lamar",
+      "release_date": "2012",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "hip-hop"
+    },
+    {
+      "id": "1LsMHyN5wjayMKBorbR2g5",
+      "title": "범죄와의 전쟁: 나쁜놈들 전성시대 (Original Motion Picture Soundtrack)",
+      "artist": "Kiha & The Faces",
+      "release_date": "2012-01-13",
+      "release_type": "Single",
+      "sources": ["tier1"],
+      "genres": "k-indie, indie rock"
+    },
+    {
+      "id": "6ZAHcbBXArGVBBG3vPKZmi",
+      "title": "mono",
+      "artist": "Kiha & The Faces",
+      "release_date": "2018-11-01",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "k-indie, indie rock"
+    },
+    {
+      "id": "0NX10jUtLhcFRdiVI4bnxl",
+      "title": "... 그리고 김현철",
+      "artist": "Kim Hyun Chul",
+      "release_date": "2002-03-12",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "singer-songwriter, ballad, k-indie"
+    },
+    {
+      "id": "0HHRIVjvBcnTepfeRVgS2f",
+      "title": "Trans-Europe Express (2009 Remaster)",
+      "artist": "Kraftwerk",
+      "release_date": "1977",
+      "release_type": "Compilation",
+      "sources": ["tier1"],
+      "genres": "electronic, synthpop"
+    },
+    {
+      "id": "5EyIDBAqhnlkAHqvPRwdbX",
+      "title": "Led Zeppelin IV (Remaster)",
+      "artist": "Led Zeppelin",
+      "release_date": "1971-11-08",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "rock, heavy metal"
+    },
+    {
+      "id": "1xfxTZoewn33lWaXFOJky2",
+      "title": "Reply 1988 (Original Television Soundtrack), Pt. 2",
+      "artist": "Lee Juck",
+      "release_date": "2015-11-07",
+      "release_type": "Single",
+      "sources": ["tier1"],
+      "genres": "ballad, k-indie"
+    },
+    {
+      "id": "4aKVF4a4wkXMmS3HF4RVMx",
+      "title": "Songs Made of Wood",
+      "artist": "Lee Juck",
+      "release_date": "2007-04-19",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "singer-songwriter, k-indie, folk"
+    },
+    {
+      "id": "25evl4uFTZnYnLcUwrl0Oa",
+      "title": "7th Album",
+      "artist": "Lee So Ra",
+      "release_date": "2008-12-18",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "ballad, singer-songwriter"
+    },
+    {
+      "id": "19bQiwEKhXUBJWY6oV3KZk",
+      "title": "Madvillainy",
+      "artist": "Madvillain, Madlib, MF DOOM",
+      "release_date": "2004-03-24",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "hip-hop, experimental"
+    },
+    {
+      "id": "1BZoqf8Zje5nGdwZhOjAtD",
+      "title": "The Miseducation of Lauryn Hill",
+      "artist": "Ms. Lauryn Hill",
+      "release_date": "1998-08-25",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "neo-soul, R&B, hip-hop"
+    },
+    {
+      "id": "3kEtdS2pH6hKcMU9Wioob1",
+      "title": "Illmatic",
+      "artist": "Nas",
+      "release_date": "1994-04-19",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "hip-hop"
+    },
+    {
+      "id": "22Xw084KwfY5aknot37akT",
+      "title": "Toy",
+      "artist": "Netta",
+      "release_date": "2018-05-24",
+      "release_type": "Single",
+      "sources": ["tier1"],
+      "genres": "pop, dance pop"
+    },
+    {
+      "id": "46aNWYiwQH9OFI2Detz466",
+      "title": "SCHOOL GIRL DISTORTIONAL ADDICT (15TH ANNIVERSARY EDITION)",
+      "artist": "Number Girl",
+      "release_date": "2014-05-21",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "j-rock, noise rock, post-punk"
+    },
+    {
+      "id": "11ScOUVhEgmsqSDhs7Ymt0",
+      "title": "Speakerboxxx/The Love Below",
+      "artist": "Outkast",
+      "release_date": "2003-09-23",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "hip-hop, funk, R&B"
+    },
+    {
+      "id": "7o14zVcXSRk7clV6QCEdOD",
+      "title": "Slanted & Enchanted",
+      "artist": "Pavement",
+      "release_date": "1992-04-20",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "indie rock, alternative rock"
+    },
+    {
+      "id": "6wZ64exaxdBrA0bK1zciva",
+      "title": "Seotaiji and Boys IV",
+      "artist": "Seo Taiji and Boys",
+      "release_date": "1995-10-05",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "K-pop, Korean hip-hop"
+    },
+    {
+      "id": "0ETFjACtuP2ADo6LFhL6HN",
+      "title": "Abbey Road (Remastered)",
+      "artist": "The Beatles",
+      "release_date": "1969-09-26",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "rock, pop rock, psychedelic rock"
+    },
+    {
+      "id": "6FCzvataOZh68j8OKzOt9a",
+      "title": "London Calling (Remastered)",
+      "artist": "The Clash",
+      "release_date": "1979",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "punk rock, post-punk, rock"
+    },
+    {
+      "id": "0A13JySVHzBoRZFk2o89Wl",
+      "title": "Disintegration (2010 Remaster)",
+      "artist": "The Cure",
+      "release_date": "1989-05-02",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "post-punk, alternative rock"
+    },
+    {
+      "id": "2HTbQ0RHwukKVXAlTmCZP2",
+      "title": "Ready to Die (The Remaster)",
+      "artist": "The Notorious B.I.G.",
+      "release_date": "1994-09-13",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "hip-hop"
+    },
+    {
+      "id": "7otEvlhYLzpqiaxq3dT4Lg",
+      "title": "Enter the Wu-Tang (36 Chambers)",
+      "artist": "Wu-Tang Clan",
+      "release_date": "1993-11-09",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "hip-hop"
+    },
+    {
+      "id": "7a9EHrlQGVQsJe590lX4LU",
+      "title": "Bye Bye My Blue",
+      "artist": "Yerin Baek",
+      "release_date": "2016-06-20",
+      "release_type": "Single",
+      "sources": ["tier1"],
+      "genres": "k-indie, indie pop, singer-songwriter"
+    },
+    {
+      "id": "2Kb78rmvg0suvhVPcjBtlm",
+      "title": "사랑하기 때문에",
+      "artist": "Yoo Jae Ha",
+      "release_date": "1987-08-20",
+      "release_type": "Album",
+      "sources": ["tier1", "rated"],
+      "genres": "ballad, singer-songwriter"
+    },
+    {
+      "id": "2sTNUF4zLROU2gCyaTQ524",
+      "title": "황치훈1집",
+      "artist": "황치훈",
+      "release_date": "1988-12-15",
+      "release_type": "Album",
+      "sources": ["tier1"],
+      "genres": "ballad"
+    },
+    {
+      "id": "12ubeUaBlWdb0cWZfmvtj2",
+      "title": "1.0",
+      "artist": "10CM",
+      "release_date": "2011-02-10",
+      "release_type": "Album",
+      "sources": ["tier2"],
+      "genres": "k-indie, indie folk"
+    },
+    {
+      "id": "1eu07xRE0vQfN5et0Y3DAy",
+      "title": "PLAY",
+      "artist": "AKMU",
+      "release_date": "2014-04-07",
+      "release_type": "Album",
+      "sources": ["tier2"],
+      "genres": "K-pop, folk pop, k-indie"
+    },
+    {
+      "id": "5WweZNNNkqPr12Fp7KlBPn",
+      "title": "Lowlife Princess: Noir",
+      "artist": "BIBI",
+      "release_date": "2022-11-17",
+      "release_type": "Album",
+      "sources": ["tier2"],
+      "genres": "k-r&b, alternative pop, R&B"
+    },
+    {
+      "id": "6zzY7J9guQW1XzhMrH3CgJ",
+      "title": "Brown Eyes, Brown Hair",
+      "artist": "Caleb Hearn",
+      "release_date": "2021-02-28",
+      "release_type": "Single",
+      "sources": ["tier2"],
+      "genres": "singer-songwriter, indie pop"
+    },
+    {
+      "id": "4mZgIoGyI813KAjmv7Dbo1",
+      "title": "Point",
+      "artist": "Cornelius",
+      "release_date": "2002-01-22",
+      "release_type": "Album",
+      "sources": ["tier2"],
+      "genres": "electronic, experimental, j-pop"
+    },
+    {
+      "id": "4ySrj1BHhoMUbFFKs2Uhe0",
+      "title": "Enlightened",
+      "artist": "Dynamicduo",
+      "release_date": "2007-05-31",
+      "release_type": "Album",
+      "sources": ["tier2"],
+      "genres": "Korean hip-hop, hip-hop"
+    },
+    {
+      "id": "5OiizE4CuzR6iez0imn8lQ",
+      "title": "Noise on Fire (Remastered)",
+      "artist": "Galaxy Express",
+      "release_date": "2011-11-01",
+      "release_type": "Album",
+      "sources": ["tier2"],
+      "genres": "k-indie, indie rock, rock"
+    },
+    {
+      "id": "03yUw5B1fIbGHBp2FWGQlh",
+      "title": "Chapter 4",
+      "artist": "god",
+      "release_date": "2001-11-15",
+      "release_type": "Album",
+      "sources": ["tier2"],
+      "genres": "K-pop, pop"
+    },
+    {
+      "id": "1fc5CxOrHYlXkymlJce2dY",
+      "title": "KIRARA",
+      "artist": "KIRARA",
+      "release_date": "2025-02-22",
+      "release_type": "Album",
+      "sources": ["tier2"],
+      "genres": "electronic, k-indie"
+    },
+    {
+      "id": "0uTORxit6vxwDoPzedDJuu",
+      "title": "Kirara Anthems vol.3",
+      "artist": "Kirara Records",
+      "release_date": "2016-04-24",
+      "release_type": "Album",
+      "sources": ["tier2"],
+      "genres": "electronic, k-indie"
+    },
+    {
+      "id": "4qQ0t1Feq5AjdT8tw1C73h",
+      "title": "Separation Anxiety",
+      "artist": "NELL",
+      "release_date": "2008-03-21",
+      "release_type": "Album",
+      "sources": ["tier2"],
+      "genres": "k-indie, indie rock, modern rock"
+    },
+    {
+      "id": "041jxPVvoQ99HxDBgBksns",
+      "title": "Tanz Walzer",
+      "artist": "Quruli",
+      "release_date": "2007-06-27",
+      "release_type": "Album",
+      "sources": ["tier2"],
+      "genres": "j-rock, indie rock"
+    },
+    {
+      "id": "4FLvD9YKu7oHMQ5HGFaToH",
+      "title": "Remember - S.E.S. 20th Anniversary Special Album",
+      "artist": "S.E.S.",
+      "release_date": "2017-01-02",
+      "release_type": "Album",
+      "sources": ["tier2"],
+      "genres": "K-pop, pop"
+    },
+    {
+      "id": "3JcNnjMVSKiNpqhErZarW0",
+      "title": "Diamond Life",
+      "artist": "Sade",
+      "release_date": "1984-07-16",
+      "release_type": "Album",
+      "sources": ["tier2"],
+      "genres": "R&B, soul, pop"
+    },
+    {
+      "id": "5pLmzFu2ienSbr1SxBJvwB",
+      "title": "834.194",
+      "artist": "sakanaction",
+      "release_date": "2019-06-19",
+      "release_type": "Album",
+      "sources": ["tier2"],
+      "genres": "j-pop, electronic, j-rock"
+    },
+    {
+      "id": "47zSQLQWjPLmiEbCpOOEJa",
+      "title": "Odd - The 4th Album",
+      "artist": "SHINee",
+      "release_date": "2015-05-18",
+      "release_type": "Album",
+      "sources": ["tier2"],
+      "genres": "K-pop, dance pop"
+    },
+    {
+      "id": "4i21O3uVh5palcfFhCjlT7",
+      "title": "Souvlaki",
+      "artist": "Slowdive",
+      "release_date": "1994-11-05",
+      "release_type": "Album",
+      "sources": ["tier2"],
+      "genres": "shoegaze, dream pop"
+    },
+    {
+      "id": "3WGzru8v6gCskQBlabbqe7",
+      "title": "Magic Carpet Ride (Steir's Mix)",
+      "artist": "Steppenwolf",
+      "release_date": "1999-01-01",
+      "release_type": "Single",
+      "sources": ["tier2"],
+      "genres": "rock, psychedelic rock"
+    },
+    {
+      "id": "22vS4hYOWr9Ds6HtHIdieR",
+      "title": "スリーアウトチェンジ",
+      "artist": "Supercar",
+      "release_date": "1998",
+      "release_type": "Album",
+      "sources": ["tier2"],
+      "genres": "j-rock, shoegaze, indie rock"
+    },
+    {
+      "id": "2pwNkShhY1uip80rLMHUgX",
+      "title": "Boxer",
+      "artist": "The National",
+      "release_date": "2007-05-22",
+      "release_type": "Album",
+      "sources": ["tier2"],
+      "genres": "indie rock, alternative rock"
+    },
+    {
+      "id": "7n8NJkGKAl2np1bXiRn0CY",
+      "title": "Vampire Weekend",
+      "artist": "Vampire Weekend",
+      "release_date": "2008-01-29",
+      "release_type": "Album",
+      "sources": ["tier2"],
+      "genres": "indie rock, indie pop"
+    },
+    {
+      "id": "7wlc3uHwiee43xSpOwFUWa",
+      "title": "Modern Rhymes XX",
+      "artist": "Verbal Jint",
+      "release_date": "2021-08-18",
+      "release_type": "Album",
+      "sources": ["tier2"],
+      "genres": "Korean hip-hop, hip-hop"
+    },
+    {
+      "id": "3hDVmx0bnKZ6wkcZHDo5t9",
+      "title": "안녕? 겨울 Hello, Winter (Winter Korean Acoustic Indie Pop Vibes Vol.2)",
+      "artist": "Amel Music",
+      "release_date": "2025-11-24",
+      "release_type": "Album",
+      "sources": ["curated(korean-indie)"],
+      "genres": "k-indie, indie pop, ballad"
+    },
+    {
+      "id": "5ywBD285eDaFKFg79S1efo",
+      "title": "너는 내게 봄으로 남아서 (Spring Korean Acoustic Indie Pop Vol.1)",
+      "artist": "Amel Music",
+      "release_date": "2026-02-09",
+      "release_type": "Album",
+      "sources": ["curated(korean-indie)"],
+      "genres": "k-indie, indie pop, folk"
+    },
+    {
+      "id": "10K7stsh25qMyADDP3YpJ8",
+      "title": "Korean Indie",
+      "artist": "Ankimo",
+      "release_date": "2022-05-18",
+      "release_type": "Album",
+      "sources": ["curated(korean-indie)"],
+      "genres": "k-indie, indie rock"
+    },
+    {
+      "id": "4SNTdJEmWAbPVmqSApkOAd",
+      "title": "DAWNDIDIDAWN",
+      "artist": "DAWN 던",
+      "release_date": "2020-10-09",
+      "release_type": "EP",
+      "sources": ["curated(korean-indie|korean-rb)"],
+      "genres": "k-r&b, R&B, k-indie"
+    },
+    {
+      "id": "7Jx4yrb93ioommudLfYAx8",
+      "title": "하루살이",
+      "artist": "DEAN",
+      "release_date": "2018-11-09",
+      "release_type": "Single",
+      "sources": ["curated(korean-indie|korean-rb)"],
+      "genres": "k-r&b, R&B"
+    },
+    {
+      "id": "39YkUaoy7BMzsFvGGMwugk",
+      "title": "JANNABI's Small Pieces l",
+      "artist": "JANNABI",
+      "release_date": "2020-11-06",
+      "release_type": "EP",
+      "sources": ["curated(korean-indie)"],
+      "genres": "k-indie, indie rock"
+    },
+    {
+      "id": "6Zn0cmwCiR8nwqRbDlwN7h",
+      "title": "Just Enuf Korean",
+      "artist": "Just Enuf Language Training",
+      "release_date": "2010-05-17",
+      "release_type": "Album",
+      "sources": ["curated(korean-indie)"],
+      "genres": ""
+    },
+    {
+      "id": "4NgXl0FfvHvfsJJbeIHq83",
+      "title": "KOREAN AMERICAN",
+      "artist": "kimj",
+      "release_date": "2025-08-15",
+      "release_type": "Album",
+      "sources": ["curated(korean-rb)"],
+      "genres": "k-r&b, R&B"
+    },
+    {
+      "id": "14JkAa6IiFaOh5s0nMyMU9",
+      "title": "KPop Demon Hunters (Soundtrack from the Netflix Film)",
+      "artist": "KPop Demon Hunters Cast, HUNTR/X, Saja Boys",
+      "release_date": "2025-06-20",
+      "release_type": "Album",
+      "sources": ["curated(k-pop)", "rated"],
+      "genres": "K-pop, pop"
+    },
+    {
+      "id": "51I9Z7aAe3SihvybOkeDta",
+      "title": "Your Idol (from the Netflix film KPop Demon Hunters)",
+      "artist": "KPop Demon Hunters Cast, Saja Boys",
+      "release_date": "2025-06-19",
+      "release_type": "Single",
+      "sources": ["curated(k-pop)"],
+      "genres": "K-pop, pop"
+    },
+    {
+      "id": "6RB63l1Ngjkg5xXSgCS6AP",
+      "title": "WHAT WE DREW 우리가 그려왔던",
+      "artist": "Yaeji",
+      "release_date": "2020-04-02",
+      "release_type": "Album",
+      "sources": ["curated(korean-indie)"],
+      "genres": "electronic, k-indie, dance"
+    },
+    {
+      "id": "2Tl7h4FmXayOKNRLvt2LNV",
+      "title": "Tang-A",
+      "artist": "Bassagong",
+      "release_date": "2018-07-18",
+      "release_type": "Album",
+      "sources": ["rated"],
+      "genres": "k-indie, indie rock"
+    },
+    {
+      "id": "7eaR08LzRS8EOKXBWMzaqV",
+      "title": "2 4 : 2 6",
+      "artist": "Beenzino",
+      "release_date": "2012-07-03",
+      "release_type": "EP",
+      "sources": ["rated"],
+      "genres": "Korean hip-hop, hip-hop"
+    },
+    {
+      "id": "e731d31f-353b-49ca-b85f-6b6492629c82",
+      "title": "We Hate all Kinds of violence...",
+      "artist": "H.O.T.",
+      "release_date": "1996-06-05",
+      "release_type": "Album",
+      "sources": ["rated"],
+      "genres": "K-pop, pop"
+    },
+    {
+      "id": "f16174de-a5e6-4728-9026-2d92889224c9",
+      "title": "J.J.!",
+      "artist": "J.J. Johnson",
+      "release_date": null,
+      "release_type": "Album",
+      "sources": ["rated"],
+      "genres": "jazz"
+    },
+    {
+      "id": "7GtVLBT2Gn1na0QQZ7m5Xe",
+      "title": "SEOULVIBES, PLAYFL",
+      "artist": "KozyPop",
+      "release_date": "2026-04-23",
+      "release_type": "EP",
+      "sources": ["rated"],
+      "genres": ""
+    },
+    {
+      "id": "5tXw2luJlRFJ4vqNZkzS6u",
+      "title": "L&B",
+      "artist": "Leellamarz, YANGHONGWON",
+      "release_date": "2024-02-19",
+      "release_type": "EP",
+      "sources": ["rated"],
+      "genres": "Korean hip-hop, k-r&b"
+    },
+    {
+      "id": "2GxWa8IzXeYkMoXBvbPGwn",
+      "title": "Birthday (Feat. BILL STAX)",
+      "artist": "lobonabeat!",
+      "release_date": "2022-11-11",
+      "release_type": "Single",
+      "sources": ["rated"],
+      "genres": "Korean hip-hop, k-rap"
+    },
+    {
+      "id": "3nmt2d777djkR4GZ52cSi4",
+      "title": "Puffin' Tape 1 (2017)",
+      "artist": "lobonabeat!",
+      "release_date": "2021-07-14",
+      "release_type": "Album",
+      "sources": ["rated"],
+      "genres": "Korean hip-hop, k-rap"
+    },
+    {
+      "id": "45MJvGUTE2xSbFbeAvkFiY",
+      "title": "Trapstar Lifestyle",
+      "artist": "lobonabeat!",
+      "release_date": "2023-03-10",
+      "release_type": "Album",
+      "sources": ["rated"],
+      "genres": "Korean hip-hop, k-rap"
+    },
+    {
+      "id": "4lH36ZOYZO1P82wQbwiqN9",
+      "title": "lobonatune2¡",
+      "artist": "lobonabeat!",
+      "release_date": "2022-01-30",
+      "release_type": "EP",
+      "sources": ["rated"],
+      "genres": "Korean hip-hop, k-rap"
+    },
+    {
+      "id": "6dRPNV7ouIdDn8HSZ2XpUr",
+      "title": "Trapstar Lifestyle (Deluxe)",
+      "artist": "lobonabeat!",
+      "release_date": "2023-05-22",
+      "release_type": "Album",
+      "sources": ["rated"],
+      "genres": "Korean hip-hop, k-rap"
+    },
+    {
+      "id": "5zrusKYKyZQzgKXFjrZb1C",
+      "title": "Skreet Knowledge",
+      "artist": "lobonabeat!, BILL STAX, oygli",
+      "release_date": "2023-12-09",
+      "release_type": "Album",
+      "sources": ["rated"],
+      "genres": "Korean hip-hop, k-rap"
+    },
+    {
+      "id": "5V729UqvhwNOcMejx0m55I",
+      "title": "NewJeans 'Super Shy'",
+      "artist": "NewJeans",
+      "release_date": "2023-07-07",
+      "release_type": "Single",
+      "sources": ["rated"],
+      "genres": "K-pop, pop"
+    },
+    {
+      "id": "2TJE6Xv4CZ5560So8iC48N",
+      "title": "K-FLIP",
+      "artist": "Sik-K, Lil Moshpit",
+      "release_date": "2025-01-08",
+      "release_type": "EP",
+      "sources": ["rated"],
+      "genres": "Korean hip-hop, k-rap"
+    },
+    {
+      "id": "4EPIlAjXbTNQTracKmYnI6",
+      "title": "K-FLIP+",
+      "artist": "Sik-K, Lil Moshpit",
+      "release_date": "2025-03-17",
+      "release_type": "EP",
+      "sources": ["rated"],
+      "genres": "Korean hip-hop, k-rap"
+    },
+    {
+      "id": "55znXAoQQTnD48knM4A5BU",
+      "title": "PUBLIC ENEMIES",
+      "artist": "Sik-K, Lil Moshpit",
+      "release_date": "2026-04-06",
+      "release_type": "Single",
+      "sources": ["rated"],
+      "genres": "Korean hip-hop, k-rap"
+    }
+  ]
+}

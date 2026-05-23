@@ -4,7 +4,19 @@ import { getSpotifyAlbum } from '../../../../lib/spotify';
 import { getCachedAlbum, cacheAlbum, getBasicRelease } from '../../../../lib/dbCache';
 import { createServerClient } from '../../../../lib/supabaseServer';
 
-export const revalidate = 60;
+// KNOWN ISSUE: Next.js 14.2.5 returns HTTP 200 (with the not-found.tsx body)
+// instead of 404 when `notFound()` is called from a page that also reads
+// cookies via createServerClient. Confirmed reproducible in dev AND prod.
+// Tried both removing `revalidate` and adding `dynamic = 'force-dynamic'` —
+// neither helped. Affects: this page and rankings/[slug]/page.tsx (same
+// cookie+notFound pattern). Doesn't affect: artist/[id], genre/[key],
+// explore/[id] (no cookies).
+//
+// User-visible UX is correct (the friendly "Page not found" page renders),
+// so this is an SEO / analytics issue only. Revisit post-launch via either:
+// (a) upgrading Next.js, or (b) refactoring this page so cookie reads happen
+// in a child Server Component that only mounts when album exists.
+
 import StarRatingWidget from '../../../../components/StarRatingWidget';
 import ReviewsSection from '../../../../components/ReviewsSection';
 import AlbumActions from '../../../../components/AlbumActions';
