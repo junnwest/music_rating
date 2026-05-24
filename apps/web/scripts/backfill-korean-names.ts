@@ -2,7 +2,7 @@
  * Backfill Korean names for existing rows in artists and releases tables.
  *
  * Two-phase approach:
- *   Phase 1 — artists.name_ko via MusicBrainz artist aliases (locale: "ko")
+ *   Phase 1 — artists.name_native via MusicBrainz artist aliases (locale: "ko")
  *             Rate limit: 1 req/s. Good coverage for all well-known Korean acts.
  *
  *   Phase 2 — releases.title_ko + releases.artist_ko via iTunes KR store search
@@ -127,7 +127,7 @@ async function itunesGet(url: string, attempt = 0): Promise<any> {
 async function findKoreanReleaseName(
   title: string,
   artist: string
-): Promise<{ titleKo: string; artistKo: string } | null> {
+): Promise<{ titleNative: string; artistNative: string } | null> {
   const term = encodeURIComponent(`${title} ${artist}`);
   const data = await itunesGet(
     `${ITUNES_BASE}/search?term=${term}&entity=album&country=KR&limit=5`
@@ -144,14 +144,14 @@ async function findKoreanReleaseName(
 
   if (!match) return null;
 
-  const titleKo  = match.collectionName ?? '';
-  const artistKo = match.artistName ?? '';
+  const titleNative  = match.collectionName ?? '';
+  const artistNative = match.artistName ?? '';
 
-  if (!hasHangul(titleKo) && !hasHangul(artistKo)) return null;
+  if (!hasHangul(titleNative) && !hasHangul(artistNative)) return null;
 
   return {
-    titleKo:  hasHangul(titleKo)  ? titleKo  : title,
-    artistKo: hasHangul(artistKo) ? artistKo : artist,
+    titleNative:  hasHangul(titleNative)  ? titleNative  : title,
+    artistNative: hasHangul(artistNative) ? artistNative : artist,
   };
 }
 
@@ -167,7 +167,7 @@ function getDB() {
 // ── Phase 1: artists ──────────────────────────────────────────────────────────
 
 async function phase1(db: ReturnType<typeof getDB>, state: State) {
-  console.log('\n  Phase 1 — artists.name_ko via MusicBrainz\n');
+  console.log('\n  Phase 1 — artists.name_native via MusicBrainz\n');
 
   const done = new Set(state.artistsDone);
   let from = 0;
@@ -178,7 +178,7 @@ async function phase1(db: ReturnType<typeof getDB>, state: State) {
     const { data, error } = await db
       .from('artists')
       .select('id, name')
-      .is('name_ko', null)
+      .is('name_native', null)
       .range(from, from + BATCH - 1);
 
     if (error) { console.error('DB error:', error.message); break; }
@@ -193,7 +193,7 @@ async function phase1(db: ReturnType<typeof getDB>, state: State) {
       if (nameKo) {
         process.stdout.write(`→ ${nameKo}\n`);
         if (!DRY_RUN) {
-          await db.from('artists').update({ name_ko: nameKo }).eq('id', row.id);
+          await db.from('artists').update({ name_native: nameKo, native_language: 'ko' }).eq('id', row.id);
         }
         fixed++;
       } else {
@@ -242,11 +242,12 @@ async function phase2(db: ReturnType<typeof getDB>, state: State) {
       const koNames = await findKoreanReleaseName(row.title, row.artist);
 
       if (koNames) {
-        process.stdout.write(`→ ${koNames.titleKo}\n`);
+        process.stdout.write(`→ ${koNames.titleNative}\n`);
         if (!DRY_RUN) {
           await db.from('releases').update({
-            title_ko:  koNames.titleKo,
-            artist_ko: koNames.artistKo,
+            title_native:    koNames.titleNative,
+            artist_native:   koNames.artistNative,
+            native_language: 'ko',
           }).eq('id', row.id);
         }
         fixed++;

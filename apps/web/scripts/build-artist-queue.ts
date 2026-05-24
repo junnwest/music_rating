@@ -133,7 +133,7 @@ async function main() {
 
   const db = getDB();
   const seen = new Set<string>();
-  const toInsert: { name: string; source: string; source_id: string; name_ko: string | null }[] = [];
+  const toInsert: { name: string; source: string; source_id: string; name_native: string | null }[] = [];
 
   for (const category of CATEGORIES) {
     process.stdout.write(`  Fetching: ${category} … `);
@@ -145,8 +145,8 @@ async function main() {
       if (seen.has(name.toLowerCase())) continue;
       seen.add(name.toLowerCase());
       // Fetch Korean name from Wikipedia langlinks (uses page.title before disambiguation strip)
-      const name_ko = await fetchKoreanName(page.title);
-      toInsert.push({ name, source: 'wikipedia', source_id: page.title, name_ko });
+      const name_native = await fetchKoreanName(page.title);
+      toInsert.push({ name, source: 'wikipedia', source_id: page.title, name_native });
       added++;
     }
 
@@ -158,11 +158,11 @@ async function main() {
   if (DRY_RUN) {
     console.log('  [DRY RUN] — no DB writes');
     console.log('\n  Sample (first 20):');
-    toInsert.slice(0, 20).forEach(a => console.log(`    ${a.name}${a.name_ko ? ` (${a.name_ko})` : ''}`));
+    toInsert.slice(0, 20).forEach(a => console.log(`    ${a.name}${a.name_native ? ` (${a.name_native})` : ''}`));
     return;
   }
 
-  // Upsert in batches of 100 — on conflict update name_ko so re-runs backfill Korean names
+  // Upsert in batches of 100 — on conflict update name_native so re-runs backfill Korean names
   const BATCH = 100;
   let inserted = 0;
 

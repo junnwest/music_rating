@@ -6,8 +6,8 @@ export interface AlbumRelease {
   id: string;
   title: string;
   artist: string;
-  titleKo?: string | null;
-  artistKo?: string | null;
+  titleNative?: string | null;
+  artistNative?: string | null;
   date: string | null;
   country: string | null;
   releaseType: ReleaseType;

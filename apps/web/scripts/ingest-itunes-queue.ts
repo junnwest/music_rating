@@ -108,19 +108,19 @@ function hasHangul(s: string): boolean {
   return /[가-힣ᄀ-ᇿ㄰-㆏]/.test(s);
 }
 
-// Fetch Korean names for an artist's albums from the KR iTunes store.
-// Returns a map of collectionId → { titleKo, artistKo } for entries with Hangul.
-async function fetchKoreanNames(artistId: number): Promise<Map<number, { titleKo: string; artistKo: string }>> {
+// Fetch native-language names for an artist's albums from the KR iTunes store.
+// Returns a map of collectionId → { titleNative, artistNative } for entries with Hangul.
+async function fetchKoreanNames(artistId: number): Promise<Map<number, { titleNative: string; artistNative: string }>> {
   const url = `${ITUNES_BASE}/lookup?id=${artistId}&entity=album&limit=200&country=KR`;
   const data = await itunesGet(url);
-  const map = new Map<number, { titleKo: string; artistKo: string }>();
+  const map = new Map<number, { titleNative: string; artistNative: string }>();
   if (!data) return map;
   for (const r of data.results ?? []) {
     if (r.wrapperType !== 'collection' || !r.collectionId) continue;
-    const titleKo = r.collectionName ?? '';
-    const artistKo = r.artistName ?? '';
-    if (hasHangul(titleKo) || hasHangul(artistKo)) {
-      map.set(r.collectionId, { titleKo, artistKo });
+    const titleNative = r.collectionName ?? '';
+    const artistNative = r.artistName ?? '';
+    if (hasHangul(titleNative) || hasHangul(artistNative)) {
+      map.set(r.collectionId, { titleNative, artistNative });
     }
   }
   return map;
@@ -170,7 +170,7 @@ async function upsertRelease(
     await db.from('releases').update({
       itunes_id:        album.collectionId,
       canonical_source: 'itunes',
-      ...(koNames ? { title_ko: koNames.titleKo, artist_ko: koNames.artistKo } : {}),
+      ...(koNames ? { title_native: koNames.titleNative, artist_native: koNames.artistNative, native_language: 'ko' } : {}),
       ...coverUpdate,
     }).eq('id', byTitle.id);
     return 'enriched';
@@ -183,8 +183,9 @@ async function upsertRelease(
     itunes_id:        album.collectionId,
     title:            album.collectionName,
     artist:           album.artistName,
-    title_ko:         koNames?.titleKo ?? null,
-    artist_ko:        koNames?.artistKo ?? null,
+    title_native:         koNames?.titleNative ?? null,
+    artist_native:        koNames?.artistNative ?? null,
+    native_language:      koNames ? 'ko' : null,
     release_date:     date,
     release_type:     rtype,
     cover_url:        cover || null,
