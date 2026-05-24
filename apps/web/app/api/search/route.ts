@@ -2,7 +2,16 @@ import { searchSpotifyAlbums, searchSpotifyArtists, searchSpotifyTracks, Spotify
 import { cacheGet, cacheSet } from '../../../lib/cache';
 import { saveBasicReleases, searchReleases, searchArtistsInDb, searchReleasesInDb } from '../../../lib/dbCache';
 import { rateLimit } from '../../../lib/rateLimit';
+import { createClient } from '@supabase/supabase-js';
 import type { NextRequest } from 'next/server';
+
+async function logSearchMiss(query: string, type: string, dbCount: number): Promise<void> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return;
+  const db = createClient(url, key);
+  await db.from('search_misses').insert({ query, type, db_count: dbCount });
+}
 
 // Cache search responses in Redis so repeated identical queries (across users
 // and across server restarts) don't burn Spotify quota. Search results don't
@@ -85,6 +94,9 @@ export async function GET(request: NextRequest) {
         .catch(() => {});
       return jsonResponse(body);
     }
+
+    // DB insufficient — log miss for nightly ingestion queue
+    logSearchMiss(normalized, 'releases', dbResults.length).catch(() => {});
 
     // DB results insufficient — try Spotify
     const spotifyQuery = year ? `${query} year:${year}` : query;

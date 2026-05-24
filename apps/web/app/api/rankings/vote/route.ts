@@ -24,12 +24,18 @@ export async function POST(req: NextRequest) {
 
   // Ensure release exists in releases table (insert if missing, ignore duplicate)
   if (releaseTitle && releaseArtist) {
+    const RELEASE_TYPE_MAP: Record<string, string> = {
+      album: 'Album', single: 'Single', ep: 'EP', compilation: 'Compilation', live: 'Live',
+    };
+    const normalizedType = releaseType
+      ? (RELEASE_TYPE_MAP[releaseType.toLowerCase()] ?? 'Album')
+      : 'Album';
     await supabase.from('releases').insert({
       id: releaseId,
       title: releaseTitle,
       artist: releaseArtist,
       cover_url: releaseCoverUrl ?? null,
-      release_type: releaseType ?? 'Album',
+      release_type: normalizedType,
     });
     // ignore duplicate key error — release already cached
   }

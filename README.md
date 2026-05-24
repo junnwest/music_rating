@@ -10,45 +10,73 @@ Every record you've loved — rated, cataloged, and remembered. A music platform
 
 ## ⚠️ Current state (2026-05-24)
 
-The 2026-05-22 Spotify-quota hardening (Upstash Redis caches, DB-only homepage/personalized/recommendations) is live and verified. The 2026-05-23 session added 404-resilience fixes. The 2026-05-24 morning session closed the last user-visible failure path: **search now degrades to a DB-backed fallback when Spotify is rate-limited**. The 2026-05-24 evening session began building an **iTunes-first multi-source catalog** to reduce Spotify dependency structurally (not just at runtime). See the [debugging section](#-debugging-spotify-related-production-issues) below for Spotify issues.
+The 2026-05-22 Spotify-quota hardening is live. 2026-05-23 added 404-resilience and Spotify circuit breaker. 2026-05-24 morning closed the last user-visible failure: **search degrades to DB fallback when Spotify is rate-limited**. 2026-05-24 evening made the structural shift: **Spotify API is no longer used for data collection**. A full non-Spotify catalog pipeline (Wikipedia → iTunes queue → Last.fm similar → miss-driven ingestion) was built and is ready to run. See the [debugging section](#-debugging-spotify-related-production-issues) below for Spotify runtime issues.
 
-### Genre backfill — three-tier pipeline (in progress, partially running)
+### ► START HERE — next session checklist
 
-5,318 releases in the DB; only ~329 (6%) had genre data as of session start. The strategy — in order of priority:
+**The iTunes genre backfill (`npm run backfill:genres`) was left running in the background when the session ended (~760/4358 processed).**
 
-| Tier | Script | Status |
-|------|--------|--------|
-| 1 — iTunes | `npm run backfill:genres` | ✅ **Done.** All 4,989 records processed. |
-| 2 — Last.fm | `npm run backfill:genres:lastfm` | **Running** as of session end. Output logged to `/tmp/lastfm-backfill.log`. 4,580 records to process (~20 min). Re-run to resume if interrupted — state saved to `apps/web/scripts/backfill-genres-lastfm-state.json`. |
-| 3 — Hand-curated overrides | `npx tsx --env-file=.env.local scripts/apply-genre-overrides.ts` | Dry-run passed (86 rows ready). **Not yet applied to DB.** Run after Tier 2. |
+#### If the backfill has finished:
 
-### iTunes catalog ingest — partial run, needs reset + resume
+Check: open `apps/web/scripts/backfill-genres-itunes-state.json` and look at the number of IDs in `processedIds`. If it equals 4358 (or close), it's done.
 
-A new script (`apps/web/scripts/ingest-itunes.ts`) ingests full discographies for 126 curated Korean artists directly from iTunes (no Spotify, no rate limits). **Current state is messy** — read carefully before resuming:
-
-- **Artists 1–80**: Ran before the DB schema migration was applied (the `itunes_id` column didn't exist yet), so all inserts failed silently. These artists appear in the state file as "done" but contributed **0 records** to the DB. **Must be reset and re-run.**
-- **Artists 81–95**: Ran after schema was fixed; inserts succeeded normally.
-- **Artists 96–126**: Hit iTunes 429 → 403 (IP block) at artist 96 (Nafla). State file shows these as unprocessed. Wait for IP block to lift (usually 30–60 min), then run `npm run itunes:seed` — it resumes from where it left off.
-
-**To reset and re-run artists 1–80:**
-```bash
-cd apps/web
-# Delete the state file to start fresh (artists 81–95 will re-run but upsert safely — no data loss)
-rm scripts/itunes-state.json
-npm run itunes:seed
+```
+1. npm run enrich:genres:lastfm    ← supplements existing genres with Last.fm tags (merges, not overwrites)
+2. npm run queue:ingest            ← drain the 759 Wikipedia artists through iTunes
+3. npm run queue:discover          ← find similar artists via Last.fm, add to queue
+4. (loop: queue:ingest → queue:discover until queue is empty)
+5. npm run backfill:covers         ← fill any remaining null cover_url
 ```
 
-Alternatively: edit `itunes-state.json` and remove only the first 80 artist IDs from `processedIds` (more surgical but tedious).
+#### If the backfill is still running:
 
-### Scripts impact from Spotify deprecations
-- ❌ `npm run backfill:genres` **now points to the iTunes script** (renamed from old Spotify-based script). Old Spotify backfill is dead — `backfill-genres.ts` still exists but don't use it.
-- ❌ `npm run expand:related` — broken (Spotify deprecated `/artists/{id}/related-artists` in late 2024). Don't run.
-- ✅ `npm run expand:discography` — still works (60 artists/day, fetches via `/artists/{id}/albums`)
-- ✅ `npm run expand:genre` — still works (uses `/search?q=genre:"..."`)
-- ✅ `npm run itunes:seed` — new; builds catalog from iTunes for 126 curated Korean artists
+Leave it running and wait. Do NOT run `queue:ingest` while it's running — both hit the iTunes API and will trigger 403 IP blocks on each other.
+
+You can safely start this in a separate terminal while waiting:
+```
+cd apps/web && npm run enrich:genres:lastfm    ← hits Last.fm, not iTunes — safe to run in parallel
+```
+
+Then once the iTunes backfill finishes, continue with `queue:ingest → queue:discover → backfill:covers`.
+
+#### If the backfill crashed or stalled:
+
+The state file saves every 50 records. Just re-run `npm run backfill:genres` — it resumes from where it left off. If iTunes is 403-blocking on startup, wait 30–60 min and try again.
+
+---
+
+### Genre pipeline — status as of session end
+
+| Step | Script | Status |
+|------|--------|--------|
+| iTunes backfill (Tier 1) | `npm run backfill:genres` | **Running in background** (~760/4358 at session end) |
+| Last.fm fallback (Tier 2) | `npm run backfill:genres:lastfm` | ✅ Done (previous session) |
+| Hand-curated overrides (Tier 3) | `apply-genre-overrides.ts` | ✅ Done (68 applied) |
+| **Last.fm enrichment (supplementary)** | `npm run enrich:genres:lastfm` | **Not yet run** — run after Tier 1 finishes |
+
+`enrich:genres:lastfm` merges Last.fm tags with existing iTunes genres (e.g., iTunes wrote "k-pop", Last.fm adds "r&b" → stored "k-pop,r&b"). It runs on all releases, not just null-genre ones.
+
+### Catalog pipeline — completed setup
+
+- ✅ Migration `20260525000000_catalog_ingestion_queue.sql` applied — `artist_ingestion_queue` and `search_misses` tables exist in prod
+- ✅ Wikipedia queue built — **759 artists** queued and ready for `queue:ingest`
+- ✅ `normalize-releases.ts` run — 135 dates padded, 3,286 genres lowercased, 0 release_types to fix
+
+### Catalog normalization — done
+
+`normalize-releases.ts` fixed three historical inconsistencies across all 5,421 Spotify-sourced rows:
+- Partial `release_date` values (e.g., "2024" → "2024-01-01") — **135 rows fixed**
+- Mixed-case `genres` (e.g., "K-Pop" → "k-pop") — **3,286 rows fixed** (lower than dry run because iTunes backfill was running in parallel and pre-fixed some rows)
+- Lowercase `release_type` values — **0 found** (already correct)
+
+All new write paths (iTunes queue ingest, vote route) enforce these formats at insert time.
+
+### Spotify API — retired from data collection
+
+Spotify is no longer used to collect catalog data. Every data-collection script and npm command that relied on Spotify is either dead or superseded. The web server still uses Spotify at runtime for search fallback and album detail, protected by the circuit breaker. See the [new catalog pipeline](#catalog-pipeline--non-spotify) below.
 
 ### New environment variables (check both devices)
-`LASTFM_API_KEY` was added to `.env.local` on this machine. **Copy it to the other device before running any Last.fm scripts there.** Full list of all required vars is in `apps/web/.env.example`.
+`LASTFM_API_KEY` was added to `.env.local`. **Copy it to the other device before running any Last.fm scripts there.** Full list in `apps/web/.env.example`.
 
 ### Verified during 404 hardening (no separate verification step required)
 - Upstash Redis is receiving cache writes (`spotify:album:*`, `search:albums:*`, `spotify:rate-limited-until`)
@@ -260,16 +288,21 @@ Target: **mid-June 2026** (earlier the better).
 |-------|-------------|--------|
 | Phase 1 — seed catalog | 315 curated Korean/Japanese/Western classics | ✓ done (306/315) |
 | RS500 baseline | Rolling Stone 500 seeds "all-time" ranking | ✓ done (481 seeded) |
-| Phase 2 — discography expansion | All albums from every artist in DB | in progress (76/331 artists) |
-| Phase 3 — related artists | One hop from seeded artists | ❌ blocked — Spotify deprecated `/artists/{id}/related-artists` in late 2024 |
-| Phase 4 — genre sweeps | 12 genre tags with popularity threshold | available; not yet started |
+| Phase 2 — Wikipedia artist queue | ~500+ Korean artists from 19 Wikipedia categories | **Not yet run** — `npm run queue:build` |
+| Phase 3 — iTunes queue ingest | Full discographies for all queued artists (no auth, no rate limits) | **Not yet run** — `npm run queue:ingest` |
+| Phase 4 — Last.fm similar discovery | Finds related artists for everyone in DB | **Not yet run** — `npm run queue:discover` |
+| Phase 5 — miss-driven ingestion | `search_misses` table populated on every cache miss; ingest nightly | Logging active, no ingest job yet |
+| ~~Phase 3 related~~ | ~~Spotify `/artists/{id}/related-artists`~~ | ❌ Dead — Spotify deprecated this endpoint in late 2024 |
+| ~~Discography expansion~~ | ~~Spotify `/artists/{id}/albums`~~ | Superseded by iTunes queue ingest |
 
-Phase 1 + RS500 is the hard requirement for launch — both done. Phase 2 still works and is the main lever for catalog growth pre-launch. Phase 3 is dead until rewritten against another data source (Last.fm `artist.getSimilar`). Phase 4 still works.
-
+**New pipeline run order (loop until queue stable):**
 ```bash
-npm run expand:discography   # run once per day (~60 artists/batch) — WORKS
-npm run expand:genre         # genre-tag sweep, adds tagged albums — WORKS
-# npm run expand:related     # BROKEN — Spotify endpoint deprecated. Don't run.
+cd apps/web
+npm run queue:build      # populate queue from Wikipedia (~500 artists)
+npm run queue:ingest     # drain queue via iTunes (no auth, no rate limits)
+npm run queue:discover   # find similar artists via Last.fm, add to queue
+# repeat queue:ingest → queue:discover until queue is empty
+npm run backfill:covers  # fill any remaining null cover_url (iTunes → Last.fm → MusicBrainz → Spotify)
 ```
 
 ---
@@ -280,10 +313,12 @@ npm run expand:genre         # genre-tag sweep, adds tagged albums — WORKS
 - [ ] **Per-user rate limit on `/api/search`** — added to scope on 2026-05-23 after the search-route audit; caps abuse and protects Spotify quota under burst load
 - [ ] **DB-FTS-first search rewrite** — `/api/search` currently calls Spotify on every uncached query; the GIN FTS index from migration `20260517000000_indexes_and_fts.sql` is built but unused. Rewrite the route to query Postgres FTS first and only fall through to Spotify when DB returns < N results. Self-healing via existing `saveBasicReleases` writeback. (2026-05-24: partial progress — DB fallback now exists for the rate-limited path via `searchReleasesInDb` / `searchArtistsInDb` with pg_trgm indexes, but the happy path still calls Spotify first.)
 - [ ] **Upstash Redis caching** — ranking leaderboards, album avg rating + count, homepage genre rows; invalidate on write
-- [ ] **Apply 88-album genre overrides** — `apps/web/scripts/genre-overrides.json` is ready; run `npx tsx --env-file=.env.local scripts/apply-genre-overrides.ts` from `apps/web`. ~10 seconds.
 - [ ] Korean translation (i18n setup with next-intl; language toggle in settings)
+- [x] **Genre overrides applied** (2026-05-24) — 68 hand-curated overrides applied; `genre-overrides.json` workflow complete
 - [x] **404 hardening + Spotify circuit breaker** (2026-05-23) — `/api/search` persists results to `releases`; `lib/spotify.ts` has a Redis circuit breaker that short-circuits all Spotify calls during a 429 window
 - [x] **Search graceful degradation + script breaker cooperation + 429 instrumentation** (2026-05-24) — `/api/search` returns DB results with `degraded: true` instead of 500 when Spotify is rate-limited; degraded banner in search UI; `lib/spotify.ts` logs `[spotify] 429 path=...` for log-grep diagnosis; all 5 scripts read+publish the shared circuit breaker key via `scripts/spotify-circuit.ts`; debugging runbook in this README
+- [x] **Non-Spotify catalog pipeline** (2026-05-24) — Wikipedia → iTunes queue → Last.fm similar → miss-driven; all scripts built and tested (dry run); new migration `20260525000000_catalog_ingestion_queue.sql` ready to apply
+- [x] **Column consistency guarantee** (2026-05-24) — all 9+ write paths to `releases` audited; all inconsistencies fixed; `normalize-releases.ts` corrected 153 dates + 3,687 genre casings in historical data
 - [x] **React Native app** (Expo SDK 54) — core screens built (see Mobile App Status below)
 - [ ] EAS build + App Store (iOS) + Play Store (Android) submission
   - ⚠️ Apple review takes 1–2 weeks — submit by Jun 1 to hit mid-June
@@ -333,77 +368,119 @@ Phase 1 trigger: once ~500 users, build the SQL co-rating query and surface on t
 
 ## Music catalog ingestion
 
-### iTunes-first pipeline (new as of 2026-05-24)
+### Catalog pipeline — non-Spotify
 
-For Korean artists, prefer iTunes over Spotify — no auth, no rate limits, consistent taxonomy.
+As of 2026-05-24, Spotify is no longer used for data collection. The new pipeline is:
 
-```bash
-# Seed full discographies for 126 curated Korean artists
-npm run itunes:seed
-npm run itunes:seed:dry    # dry run — shows what would be inserted
-
-# Expand a single artist by iTunes artist ID
-npm run itunes:artist -- <itunesArtistId>
+```
+Wikipedia categories → artist_ingestion_queue → iTunes discography ingest
+                                                        ↓
+                                          Last.fm similar discovery → queue (loop)
+                                                        ↓
+                                          search_misses table → nightly ingest job
 ```
 
-State saved to `scripts/itunes-state.json` after every artist. Re-running resumes from where it left off.
+#### Step 1 — Build the Wikipedia artist queue
 
-**⚠️ See "Current state" section above before running** — artists 1–80 need a state reset due to a schema issue during the first run.
-
-### Spotify-based pipeline (original)
-
-#### Phase 1 — Seed catalog (done: 306/315)
+Scrapes 19 Korean music Wikipedia categories (K-pop groups, solo male/female, hip-hop, rock, indie, jazz, trot, electronic, ballad, Korean pop) using the MediaWiki JSON API. Cleans disambiguation suffixes ("IU (singer)" → "IU"). Upserts to `artist_ingestion_queue`.
 
 ```bash
-npm run ingest           # full run
-npm run ingest:retry     # re-attempt not-found entries
+npm run queue:build        # populate queue
+npm run queue:build:dry    # preview (no DB writes)
 ```
 
-For missing albums, add native-script overrides to `scripts/search-overrides.json`:
-```json
-"Artist Name|Album Name": { "query": "아티스트 앨범명" }
-```
+State: table-based (re-run is idempotent — skips artists already in queue). User-Agent: `sillajuku-catalog-builder/1.0`.
 
-#### Phase 2 — Discography expansion (in progress: 76/331 artists)
+#### Step 2 — iTunes queue ingest
+
+For each pending artist in the queue: searches iTunes for the artist ID, fetches their full discography, upserts releases. No auth, no API key, no rate limit beyond iTunes throttling (650ms/req delay with exponential backoff on 429/403).
 
 ```bash
-npm run expand:discography
-# override batch size:
-npx tsx --env-file=.env.local scripts/expand-catalog.ts discography --max-artists=40
+npm run queue:ingest             # drain all pending artists
+npm run queue:ingest:dry         # dry run
+npm run queue:ingest -- --limit=50   # process only 50 artists
 ```
 
-State saved to `scripts/expand-state.json` after every artist. Quota hit = script exits with exact wait time.
+- Deduplicates by `itunes_id` first, then title+artist ilike match
+- Enriched path only backfills `cover_url` if existing record has none (preserves Spotify art)
+- Marks each queue row as `done` / `failed` / `skipped`; re-run to resume
 
-#### Phase 3 — Related artist expansion
+#### Step 3 — Last.fm similar artist discovery
+
+For every artist in the `artists` DB table, calls Last.fm `artist.getSimilar` and adds similar artists to `artist_ingestion_queue` (source: `lastfm_similar`). Then run `queue:ingest` again. Loop until the queue stabilizes.
 
 ```bash
-# ❌ BROKEN — Spotify deprecated this endpoint in late 2024. Do not run.
-# npm run expand:related
+npm run queue:discover        # discover similar artists
+npm run queue:discover:dry    # preview
 ```
 
-#### Phase 4 — Genre sweeps
+Requires `LASTFM_API_KEY` in `.env.local`. State file: `scripts/discover-lastfm-similar-state.json`.
+
+#### Step 4 — Cover art backfill
+
+Finds all releases with `cover_url IS NULL` and runs a 4-tier fallback per release:
+1. iTunes: `artworkUrl600` from search
+2. Last.fm: `album.getInfo` → image[extralarge]
+3. MusicBrainz → Cover Art Archive (1 req/s limit)
+4. Spotify: search per album (last resort; skip with `--skip-spotify`)
 
 ```bash
-npm run expand:genre
+npm run backfill:covers              # full run (all 4 tiers)
+npm run backfill:covers:dry          # preview
+npm run backfill:covers:no-spotify   # skip tier 4 (no Spotify calls)
 ```
 
-### Genre backfill pipeline
+Writes `cover_url` and `cover_source` ('itunes'/'lastfm'/'musicbrainz'/'spotify'). State file: `scripts/backfill-cover-art-state.json`.
 
-Run these in order. Each script resumes from its own state file if interrupted.
+#### Genre pipeline (run after queue ingest)
 
 ```bash
-# Tier 1: iTunes (no auth, fast — ~50 min for 5k releases at 600ms/req)
-npm run backfill:genres           # or --dry-run to preview
+# Tier 1: iTunes backfill (fills null genres from iTunes search — resumable)
+npm run backfill:genres           # or --dry-run
 # State: scripts/backfill-genres-itunes-state.json
 
-# Tier 2: Last.fm fallback (catches artists not on iTunes — e.g. Korean underground)
-# Requires LASTFM_API_KEY in .env.local
-npm run backfill:genres:lastfm    # or --dry-run to preview
+# Tier 2: Last.fm fallback (fills remaining nulls via album.gettoptags)
+npm run backfill:genres:lastfm    # or --dry-run
 # State: scripts/backfill-genres-lastfm-state.json
 
-# Tier 3: Hand-curated overrides (88 high-value rows pre-filled)
+# Tier 3: Hand-curated overrides (68 high-value rows, applied 2026-05-24)
+# Already done. Re-run if you add new overrides to genre-overrides.json:
 npx tsx --env-file=.env.local scripts/apply-genre-overrides.ts
-# or: ... scripts/apply-genre-overrides.ts --dry-run
+
+# Supplementary: Last.fm enrichment — MERGES tags with existing genres (not just fallback)
+# Run on ALL releases (not just null-genre ones). iTunes wrote "k-pop", Last.fm adds "r&b" → "k-pop,r&b"
+npm run enrich:genres:lastfm      # or --dry-run
+# State: scripts/enrich-genres-lastfm-state.json
+```
+
+#### Normalize historical data
+
+Safe to re-run anytime. Fixes partial dates, mixed-case genres, lowercase release_type values.
+
+```bash
+npm run normalize:releases         # fix all inconsistencies
+npm run normalize:releases:dry     # preview only
+```
+
+Last run (2026-05-24): 153 dates fixed, 3,687 genres lowercased, 0 release_types to fix.
+
+### Supabase migration
+
+New migration added this session — must be applied before running queue scripts:
+
+```bash
+supabase db push
+# Creates: artist_ingestion_queue, search_misses tables
+```
+
+### Legacy scripts (Spotify-based — mostly dead)
+
+```bash
+# These still exist but should not be used for data collection:
+npm run ingest              # Spotify seed catalog (original 315-artist list) — still works but burns quota
+npm run expand:discography  # Spotify discography expansion — still works, 60 artists/day
+npm run expand:genre        # Spotify genre sweep — still works
+# npm run expand:related    # ❌ DEAD — Spotify deprecated /artists/{id}/related-artists in late 2024
 ```
 
 ---
