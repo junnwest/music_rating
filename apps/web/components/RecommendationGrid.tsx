@@ -1,4 +1,4 @@
-import { createServerClient } from '../lib/supabaseServer';1
+import { createServerClient } from '../lib/supabaseServer';
 import { getCategoriesForUser } from '../lib/category-resolver';
 import RecommendationGridClient from './RecommendationGridClient';
 import type { AlbumRelease } from '../types';

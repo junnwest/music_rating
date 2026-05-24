@@ -51,6 +51,8 @@ cd apps/web && npm run queue:discover   # find similar artists via Last.fm
 
 Before running `queue:ingest`, re-run `npm run queue:build` once — this adds Korean names (from Wikipedia langlinks) to the 759 existing queue rows that were added before langlink fetching was implemented.
 
+After `queue:ingest` finishes, run `backfill:native:releases` once more. `queue:ingest` sets native names inline only for artists whose queue row already has `name_native`; any queue rows where the langlinks lookup failed will have ingested releases without native names. The second `backfill:native:releases` pass catches those.
+
 #### Step 4 — fill missing cover art
 
 ```bash
