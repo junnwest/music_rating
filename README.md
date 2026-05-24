@@ -18,11 +18,9 @@ The 2026-05-22 Spotify-quota hardening (Upstash Redis caches, DB-only homepage/p
 
 | Tier | Script | Status |
 |------|--------|--------|
-| 1 — iTunes | `npm run backfill:genres` | **Running on this machine as of session end.** ~24 min remaining when session closed (2,550/~4,989 processed). State saved every 50 records to `apps/web/scripts/backfill-genres-itunes-state.json`. Re-run the same command to resume if interrupted. |
-| 2 — Last.fm | `npm run backfill:genres:lastfm` | Script built but **not started yet**. Run only after Tier 1 finishes. Requires `LASTFM_API_KEY` in `.env.local`. |
+| 1 — iTunes | `npm run backfill:genres` | ✅ **Done.** All 4,989 records processed. |
+| 2 — Last.fm | `npm run backfill:genres:lastfm` | **Running** as of session end. Output logged to `/tmp/lastfm-backfill.log`. 4,580 records to process (~20 min). Re-run to resume if interrupted — state saved to `apps/web/scripts/backfill-genres-lastfm-state.json`. |
 | 3 — Hand-curated overrides | `npx tsx --env-file=.env.local scripts/apply-genre-overrides.ts` | Dry-run passed (86 rows ready). **Not yet applied to DB.** Run after Tier 2. |
-
-**⚠️ Run these in order. Do not run Tier 2 or 3 until Tier 1 finishes.** Tier 2 queries the same `genres IS NULL` rows; running it while Tier 1 is still working causes wasted API calls.
 
 ### iTunes catalog ingest — partial run, needs reset + resume
 

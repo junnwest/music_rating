@@ -161,24 +161,19 @@ Historical record of shipped features and session notes. Not needed at conversat
 **► START HERE — run these checks in order at the top of the next session:**
 
 ```
-1. git status
-   → If files still uncommitted: run the git add/commit/push block in item 0 below.
-   → If clean: skip to step 2.
+1. ps aux | grep backfill-genres-lastfm
+   → If still running: wait for it to finish.
+   → If not running: check cat apps/web/scripts/backfill-genres-lastfm-state.json | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d['processedIds']), 'processed')"
+     · If count < ~4500: it crashed — run: cd apps/web && npm run backfill:genres:lastfm  (resumes from state)
+     · If count is ~4500+: Tier 2 done ✓ — proceed to step 2.
 
-2. ps aux | grep backfill-genres-itunes
-   → If still running: wait for it to finish before doing anything else.
-   → If not running: check cat apps/web/scripts/backfill-genres-itunes-state.json | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d['processedIds']), 'processed')"
-     · If count < ~4900: it crashed — run: cd apps/web && npm run backfill:genres  (resumes from state)
-     · If count is ~4900+: Tier 1 done ✓ — proceed to step 3.
+2. Run Tier 3 (overrides): cd apps/web && npx tsx --env-file=.env.local scripts/apply-genre-overrides.ts
 
-3. Run Tier 2 (Last.fm):  cd apps/web && npm run backfill:genres:lastfm
-   Wait for it to finish.
-
-4. Run Tier 3 (overrides): cd apps/web && npx tsx --env-file=.env.local scripts/apply-genre-overrides.ts
-
-5. Reset and re-run iTunes catalog ingest:
+3. Reset and re-run iTunes catalog ingest:
    cd apps/web && rm scripts/itunes-state.json && npm run itunes:seed
 ```
+
+**Tier 1 (iTunes backfill) — ✅ DONE. All 4,989 records processed.**
 
 **0. ⚠️ COMMIT AND PUSH BEFORE SWITCHING DEVICES — several files are uncommitted**
 
@@ -205,16 +200,14 @@ git push
 Do NOT add `apps/web/scripts/backfill-genres-itunes-state.json` or `apps/web/scripts/itunes-state.json` — those are runtime state files, not source code.
 Do NOT add `apps/web/supabase/migrations/20260524000000_multi_source_catalog_schema.sql` — that is the abandoned failed migration, keep it untracked.
 
-**1. iTunes genre backfill (Tier 1) — may still be running**
-- Was running at session end: 2,550 processed out of ~4,989 remaining, ~24 minutes left.
-- Check if the process is still alive: `ps aux | grep backfill-genres-itunes`
-- If it finished: check `apps/web/scripts/backfill-genres-itunes-state.json` — `processedIds` count tells you how many were processed. Check how many are still null in DB.
-- If it crashed (e.g. 403): re-run `npm run backfill:genres` from `apps/web` — it will resume from the state file.
+**1. iTunes genre backfill (Tier 1) — ✅ DONE**
+- All 4,989 records processed successfully (exit code 0).
 
-**2. Last.fm genre backfill (Tier 2) — NOT started**
-- Run only after Tier 1 finishes: `npm run backfill:genres:lastfm`
-- Requires `LASTFM_API_KEY` in `.env.local`. Key is already set on this machine; copy to other device before running there.
-- This catches artists not on iTunes globally (e.g. lobonabeat! — distributes via Melon/Bugs domestically but Last.fm has scrobble data).
+**2. Last.fm genre backfill (Tier 2) — RUNNING as of session end**
+- Started at session end, output logging to `/tmp/lastfm-backfill.log` (4,580 records, ~20 min).
+- Check if still running: `ps aux | grep backfill-genres-lastfm`
+- If crashed: re-run `cd apps/web && npm run backfill:genres:lastfm` — resumes from state file.
+- Quality note: ~50% match rate expected (iTunes got the easy ones). A few false positives with `soundtrack` tag (Joy Division, Talking Heads, Wire — Last.fm users tag weirdly). Fix those individually via genre overrides if needed.
 
 **3. Genre overrides (Tier 3) — NOT applied to DB**
 - `apps/web/scripts/genre-overrides.json` has 86 hand-filled rows (2 intentionally blank). Dry-run previously passed with 0 errors.
