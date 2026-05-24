@@ -104,23 +104,38 @@ async function fetchDiscography(artistId: number): Promise<any[]> {
   );
 }
 
-function hasHangul(s: string): boolean {
-  return /[가-힣ᄀ-ᇿ㄰-㆏]/.test(s);
+// Detects ISO 639-1 language from script. Returns null for Latin/ASCII text.
+function detectLanguage(s: string): string | null {
+  if (/[가-힣ᄀ-ᇿ]/.test(s)) return 'ko';
+  if (/[぀-ゟ゠-ヿ]/.test(s)) return 'ja';
+  if (/[一-鿿]/.test(s)) return 'zh';
+  return null;
 }
 
-// Fetch native-language names for an artist's albums from the KR iTunes store.
-// Returns a map of collectionId → { titleNative, artistNative } for entries with Hangul.
-async function fetchKoreanNames(artistId: number): Promise<Map<number, { titleNative: string; artistNative: string }>> {
-  const url = `${ITUNES_BASE}/lookup?id=${artistId}&entity=album&limit=200&country=KR`;
+function hasNativeScript(s: string): boolean {
+  return detectLanguage(s) !== null;
+}
+
+const LANGUAGE_TO_STORE: Record<string, string> = { ko: 'KR', ja: 'JP', zh: 'TW' };
+
+// Fetch native-language names from the artist's local iTunes store.
+// Only called when we know the artist's language (from name_native in the queue row).
+// Returns a map of collectionId → { titleNative, artistNative, nativeLanguage }.
+async function fetchNativeNames(
+  artistId: number,
+  storeCountry: string,
+): Promise<Map<number, { titleNative: string; artistNative: string; nativeLanguage: string }>> {
+  const url = `${ITUNES_BASE}/lookup?id=${artistId}&entity=album&limit=200&country=${storeCountry}`;
   const data = await itunesGet(url);
-  const map = new Map<number, { titleNative: string; artistNative: string }>();
+  const map = new Map<number, { titleNative: string; artistNative: string; nativeLanguage: string }>();
   if (!data) return map;
   for (const r of data.results ?? []) {
     if (r.wrapperType !== 'collection' || !r.collectionId) continue;
-    const titleNative = r.collectionName ?? '';
+    const titleNative  = r.collectionName ?? '';
     const artistNative = r.artistName ?? '';
-    if (hasHangul(titleNative) || hasHangul(artistNative)) {
-      map.set(r.collectionId, { titleNative, artistNative });
+    const lang = detectLanguage(titleNative) ?? detectLanguage(artistNative);
+    if (lang) {
+      map.set(r.collectionId, { titleNative, artistNative, nativeLanguage: lang });
     }
   }
   return map;
@@ -140,7 +155,7 @@ type DB = ReturnType<typeof getDB>;
 async function upsertRelease(
   db: DB,
   album: any,
-  koNames: { titleKo: string; artistKo: string } | undefined,
+  nativeNames: { titleNative: string; artistNative: string; nativeLanguage: string } | undefined,
 ): Promise<'inserted' | 'enriched' | 'skipped'> {
   // 1. Already have this iTunes ID
   const { data: byItunes } = await db
@@ -170,7 +185,7 @@ async function upsertRelease(
     await db.from('releases').update({
       itunes_id:        album.collectionId,
       canonical_source: 'itunes',
-      ...(koNames ? { title_native: koNames.titleNative, artist_native: koNames.artistNative, native_language: 'ko' } : {}),
+      ...(nativeNames ? { title_native: nativeNames.titleNative, artist_native: nativeNames.artistNative, native_language: nativeNames.nativeLanguage } : {}),
       ...coverUpdate,
     }).eq('id', byTitle.id);
     return 'enriched';
@@ -183,9 +198,9 @@ async function upsertRelease(
     itunes_id:        album.collectionId,
     title:            album.collectionName,
     artist:           album.artistName,
-    title_native:         koNames?.titleNative ?? null,
-    artist_native:        koNames?.artistNative ?? null,
-    native_language:      koNames ? 'ko' : null,
+    title_native:         nativeNames?.titleNative ?? null,
+    artist_native:        nativeNames?.artistNative ?? null,
+    native_language:      nativeNames?.nativeLanguage ?? null,
     release_date:     date,
     release_type:     rtype,
     cover_url:        cover || null,
@@ -209,7 +224,7 @@ async function main() {
   // Pull pending artists from queue
   const { data: queue, error: qErr } = await db
     .from('artist_ingestion_queue')
-    .select('id, name, itunes_artist_id')
+    .select('id, name, itunes_artist_id, name_native')
     .eq('status', 'pending')
     .order('created_at')
     .limit(BATCH_LIMIT);
@@ -261,18 +276,30 @@ async function main() {
         }
       }
 
-      // Fetch discography (default store) + Korean names (KR store)
+      // Fetch discography (default store) + native names (local store if language known)
       const albums = await fetchDiscography(itunesId);
-      const koMap  = await fetchKoreanNames(itunesId);
+      // Only call the local store if we know the artist's language from name_native in queue.
+      // Artists without name_native (added by queue:discover) skip this — backfill:native handles them.
+      const artistLang = row.name_native ? detectLanguage(row.name_native) : null;
+      const storeCountry = artistLang ? LANGUAGE_TO_STORE[artistLang] : null;
+      const nativeMap = storeCountry ? await fetchNativeNames(itunesId, storeCountry) : new Map();
       process.stdout.write(`${albums.length} albums → `);
 
       let ins = 0, enr = 0, skp = 0;
       for (const album of albums) {
-        const koNames = koMap.get(album.collectionId);
-        const result = await upsertRelease(db, album, koNames);
+        const nativeNames = nativeMap.get(album.collectionId);
+        const result = await upsertRelease(db, album, nativeNames);
         if (result === 'inserted') ins++;
         else if (result === 'enriched') enr++;
         else skp++;
+      }
+
+      // Propagate name_native from the queue row to the artists table if set
+      if (row.name_native && artistLang && !DRY_RUN) {
+        await db.from('artists')
+          .update({ name_native: row.name_native, native_language: artistLang })
+          .ilike('name', row.name)
+          .is('name_native', null);
       }
 
       process.stdout.write(`+${ins} new, ~${enr} enriched, ${skp} skipped\n`);

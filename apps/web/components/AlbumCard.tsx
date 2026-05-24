@@ -25,11 +25,11 @@ export default function AlbumCard({ release }: { release: AlbumRelease }) {
       {/* Info */}
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-slate-900 truncate group-hover:text-slate-700">{release.title}</p>
-        {release.titleNative && release.titleNative !== release.title && (
+        {release.titleNative && release.titleNative.toLowerCase() !== release.title.toLowerCase() && (
           <p className="text-xs text-slate-400 truncate">{release.titleNative}</p>
         )}
         <p className="text-xs text-slate-500 truncate">
-          {release.artistNative && release.artistNative !== release.artist
+          {release.artistNative && release.artistNative.toLowerCase() !== release.artist.toLowerCase()
             ? `${release.artistNative} · ${release.artist}`
             : release.artist}
         </p>

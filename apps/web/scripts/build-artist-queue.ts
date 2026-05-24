@@ -90,6 +90,15 @@ async function fetchCategoryMembers(category: string): Promise<WikiPage[]> {
   return members;
 }
 
+// Detects the ISO 639-1 language code from a string's script.
+// Returns null for Latin/ASCII text (no native-script encoding needed).
+function detectLanguage(s: string): string | null {
+  if (/[가-힣ᄀ-ᇿ]/.test(s)) return 'ko'; // Hangul
+  if (/[぀-ゟ゠-ヿ]/.test(s)) return 'ja'; // Hiragana / Katakana
+  if (/[一-鿿]/.test(s)) return 'zh';              // CJK (Chinese)
+  return null;
+}
+
 function cleanTitle(title: string): string {
   // Strip disambiguation suffixes: "IU (singer)" → "IU", "g.o.d (group)" → "g.o.d"
   return title.replace(/\s*\([^)]*\)\s*$/, '').trim();
@@ -144,8 +153,9 @@ async function main() {
       const name = cleanTitle(page.title);
       if (seen.has(name.toLowerCase())) continue;
       seen.add(name.toLowerCase());
-      // Fetch Korean name from Wikipedia langlinks (uses page.title before disambiguation strip)
-      const name_native = await fetchKoreanName(page.title);
+      // Fetch native name from Wikipedia langlinks — only keep if it contains non-Latin script
+      const rawNative = await fetchKoreanName(page.title);
+      const name_native = rawNative && detectLanguage(rawNative) ? rawNative : null;
       toInsert.push({ name, source: 'wikipedia', source_id: page.title, name_native });
       added++;
     }
