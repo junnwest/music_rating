@@ -82,8 +82,14 @@ async function spotifyFetch(path: string, revalidate?: number): Promise<any> {
     const until = Date.now() + retryAfter * 1000;
     cacheSet(CIRCUIT_BREAKER_KEY, until, Math.max(retryAfter, 1)).catch(() => {});
 
+    // High-visibility log so we can identify which endpoint tripped the
+    // cooldown when investigating Vercel logs later.
+    console.error(
+      `[spotify] 429 path=${path} retryAfter=${retryAfter}s untilUtc=${new Date(until).toISOString()}`
+    );
+
     if (retryAfter > MAX_RETRY_WAIT_SEC) {
-      throw new Error(`Spotify 429: rate-limited for ${retryAfter}s — bailing fast (max wait ${MAX_RETRY_WAIT_SEC}s)`);
+      throw new Error(`Spotify 429: path=${path} rate-limited for ${retryAfter}s — bailing fast (max wait ${MAX_RETRY_WAIT_SEC}s)`);
     }
     await new Promise(r => setTimeout(r, (retryAfter + 1) * 1000));
     res = await fetch(url, { ...options, headers: { Authorization: `Bearer ${await getToken()}` } });
