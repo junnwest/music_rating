@@ -144,7 +144,104 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries
 
-**2026-05-24 — search graceful degradation + script circuit-breaker cooperation + 429 instrumentation + runbook:**
+**2026-05-24 (evening) — iTunes-first multi-source catalog + three-tier genre backfill:**
+
+### What was built
+
+- **`apps/web/scripts/ingest-itunes.ts`** — new catalog ingestion script. Pulls full discographies for 126 curated Korean artists directly from the iTunes Search API (no auth, no rate limits). Uses 600ms/req + exponential backoff retry (10s → 20s → 40s → 80s → 120s cap) for both 429 and 403 responses. Deduplicates by `itunes_id` first, then exact title+artist match, then inserts a new row with `id = crypto.randomUUID()`. Noise filter skips sped-up/slowed/karaoke singles with trackCount ≤ 3. State file: `apps/web/scripts/itunes-state.json` (saves after every artist).
+- **`apps/web/scripts/backfill-genres-itunes.ts`** — backfills genre for releases with null/empty genres by searching iTunes for each by "title artist", scoring matches with Jaccard similarity (title 70% + artist 30%, min score 0.55), and writing the mapped genre back. Same 429/403 retry. State file: `apps/web/scripts/backfill-genres-itunes-state.json` (saves every 50 records). `npm run backfill:genres` now points here (renamed from old dead Spotify-based script).
+- **`apps/web/scripts/backfill-genres-lastfm.ts`** — Last.fm fallback genre script. Calls `album.gettoptags`, walks tags by vote count (min 5 votes), maps first recognizable tag to internal taxonomy. 250ms/req (Last.fm is more permissive). Reads `LASTFM_API_KEY` from env (exits with error if missing). State file: `apps/web/scripts/backfill-genres-lastfm-state.json`. `npm run backfill:genres:lastfm` + `:dry` added to `package.json`.
+- **DB migration `20260524000001_add_multi_source_columns.sql`** — additive migration adding `itunes_id bigint UNIQUE`, `canonical_source text`, `cover_source text`, `title_ko text`, `upc text UNIQUE` to `releases`; `itunes_artist_id bigint UNIQUE`, `name_ko text` to `artists`. Applied to prod.
+- **`CLAUDE.md`** — added prominent reminder at the top about keeping `.env.local` in sync across both devices.
+- **`apps/web/.env.example`** — added `LASTFM_API_KEY=your-lastfm-api-key` placeholder.
+- **Merge conflict resolved** — pulled remote changes (from other device, 6 commits ahead); conflict in `apps/web/app/api/search/route.ts`. Kept DB-first releases logic from local + artist/track DB fallback + outer catch-all from remote. Both sides merged cleanly.
+
+### What's incomplete / not yet run — READ BEFORE NEXT SESSION
+
+**► START HERE — run these checks in order at the top of the next session:**
+
+```
+1. git status
+   → If files still uncommitted: run the git add/commit/push block in item 0 below.
+   → If clean: skip to step 2.
+
+2. ps aux | grep backfill-genres-itunes
+   → If still running: wait for it to finish before doing anything else.
+   → If not running: check cat apps/web/scripts/backfill-genres-itunes-state.json | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d['processedIds']), 'processed')"
+     · If count < ~4900: it crashed — run: cd apps/web && npm run backfill:genres  (resumes from state)
+     · If count is ~4900+: Tier 1 done ✓ — proceed to step 3.
+
+3. Run Tier 2 (Last.fm):  cd apps/web && npm run backfill:genres:lastfm
+   Wait for it to finish.
+
+4. Run Tier 3 (overrides): cd apps/web && npx tsx --env-file=.env.local scripts/apply-genre-overrides.ts
+
+5. Reset and re-run iTunes catalog ingest:
+   cd apps/web && rm scripts/itunes-state.json && npm run itunes:seed
+```
+
+**0. ⚠️ COMMIT AND PUSH BEFORE SWITCHING DEVICES — several files are uncommitted**
+
+The following files exist only on this machine and are not yet in git:
+- `apps/web/scripts/backfill-genres-itunes.ts` — the iTunes genre backfill script (currently running!)
+- `apps/web/scripts/backfill-genres-lastfm.ts` — the Last.fm fallback script
+- `apps/web/package.json` — `backfill:genres:lastfm` + `:dry` npm scripts not committed
+- `apps/web/.env.example` — `LASTFM_API_KEY` placeholder not committed
+- `CLAUDE.md` — two-device reminder not committed
+- `README.md` + `SESSIONS.md` — these doc updates not committed
+- `apps/web/scripts/ingest-itunes.ts` — has uncommitted changes (429/403 retry fix added mid-session)
+
+Run this before closing or switching devices:
+```bash
+git add CLAUDE.md README.md SESSIONS.md \
+  apps/web/.env.example \
+  apps/web/package.json \
+  apps/web/scripts/ingest-itunes.ts \
+  apps/web/scripts/backfill-genres-itunes.ts \
+  apps/web/scripts/backfill-genres-lastfm.ts
+git commit -m "feat(catalog): iTunes genre backfill + Last.fm fallback + docs"
+git push
+```
+Do NOT add `apps/web/scripts/backfill-genres-itunes-state.json` or `apps/web/scripts/itunes-state.json` — those are runtime state files, not source code.
+Do NOT add `apps/web/supabase/migrations/20260524000000_multi_source_catalog_schema.sql` — that is the abandoned failed migration, keep it untracked.
+
+**1. iTunes genre backfill (Tier 1) — may still be running**
+- Was running at session end: 2,550 processed out of ~4,989 remaining, ~24 minutes left.
+- Check if the process is still alive: `ps aux | grep backfill-genres-itunes`
+- If it finished: check `apps/web/scripts/backfill-genres-itunes-state.json` — `processedIds` count tells you how many were processed. Check how many are still null in DB.
+- If it crashed (e.g. 403): re-run `npm run backfill:genres` from `apps/web` — it will resume from the state file.
+
+**2. Last.fm genre backfill (Tier 2) — NOT started**
+- Run only after Tier 1 finishes: `npm run backfill:genres:lastfm`
+- Requires `LASTFM_API_KEY` in `.env.local`. Key is already set on this machine; copy to other device before running there.
+- This catches artists not on iTunes globally (e.g. lobonabeat! — distributes via Melon/Bugs domestically but Last.fm has scrobble data).
+
+**3. Genre overrides (Tier 3) — NOT applied to DB**
+- `apps/web/scripts/genre-overrides.json` has 86 hand-filled rows (2 intentionally blank). Dry-run previously passed with 0 errors.
+- Run: `cd apps/web && npx tsx --env-file=.env.local scripts/apply-genre-overrides.ts`
+- Run after Tiers 1 and 2.
+
+**4. iTunes seed ingest — artists 1–80 need to be re-run, artists 96–126 need to resume**
+- **Problem with artists 1–80**: The ingest ran before the DB migration added the `itunes_id` column. Every `upsertAlbum()` call failed silently because the column didn't exist. State file shows these 80 as "done" but they contributed 0 records to the DB.
+- **Fix**: Delete `apps/web/scripts/itunes-state.json` and re-run `npm run itunes:seed`. Artists 81–95 will re-run but their inserts are idempotent (deduplicate on `itunes_id`) so no data loss.
+- **Problem with artists 96–126**: Hit iTunes 429 then 403 (IP block) at artist 96 (Nafla). The IP block is temporary (usually 30–60 min). Once cleared, `npm run itunes:seed` will pick up from Nafla automatically (state file has 95 done).
+- **Summary of correct run order**: (a) wait for IP block to clear, (b) delete `itunes-state.json`, (c) `npm run itunes:seed`.
+
+**5. Local branch needs to be pushed**
+- As of session end, local branch was 2 commits ahead of `origin/main` (the merge commit + our earlier catalog commit). Run `git push` when ready.
+
+### Key technical context for next session
+
+- `genres` column stores a single string tag (e.g. `'k-pop'`, `'hip-hop'`), not an array. The backfill scripts write one genre per release.
+- iTunes 403 is an IP-level block (not auth). It follows repeated 429s. The retry handler in all three scripts covers it with the same exponential backoff. If you get an immediate 403 on startup, just wait 30–60 minutes and try again — don't change anything in the script.
+- The 126-artist seed list covers K-pop gen 1–4, Korean indie, Korean R&B, and Korean hip-hop. Non-Korean artists are not covered by iTunes ingest; they come from the Spotify-based `expand:discography` / `expand:genre` pipeline.
+- The old Spotify `backfill:genres` script (`apps/web/scripts/backfill-genres.ts`) still exists but is dead — `backfill:genres` npm script now points to the iTunes version. Don't confuse them.
+- Last.fm API key is at `.env.local` → `LASTFM_API_KEY`. Shared secret is NOT needed (only the API key is used for read-only tag lookups).
+- The complex DB migration `20260524000000_multi_source_catalog_schema.sql` (PK restructure) was abandoned because it hit a FK constraint (`ratings_release_id_fkey`). It was marked as applied in Supabase migration history to suppress re-runs: `supabase migration repair --status applied 20260524000000`. The simpler additive migration `20260524000001` succeeded instead.
+- **Supabase default row limit is 1,000** — `expand-catalog.ts` logs "X existing releases" using a plain `.select()` which is capped at 1,000 by Supabase. With 5,318 releases in the DB this means expand-catalog consistently under-reports the catalog size. This is cosmetic (the script still works correctly — it only needs the count for logging). The backfill scripts use `.range()` pagination so they fetch all records correctly. No fix applied, just be aware the "existing releases" log line from expand-catalog is wrong.
+- **Total releases in DB**: 5,318 as of session start. Only ~329 (~6%) had genre data. That's the gap the three-tier backfill pipeline is addressing.
+
+**2026-05-24 (morning) — search graceful degradation + script circuit-breaker cooperation + 429 instrumentation + runbook:**
 
 - **Symptom that triggered the session**: `/api/search` returned 500 across the board. Root cause: Spotify circuit breaker open for ~4.7h with `{"error":"Spotify circuit breaker open: 16808s remaining"}`. Confirmed via curl. The fallback chain that exists for album pages didn't exist for search.
 - **DB-backed search fallback (`/api/search`)**

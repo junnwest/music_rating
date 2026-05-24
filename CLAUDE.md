@@ -1,5 +1,7 @@
 # Claude instructions
 
+> **REMINDER (for Jun):** This project is worked on across two devices. After adding any new environment variable to `.env.local`, manually copy it to the other device's `.env.local` as well. Check `.env.example` to see the full list of required variables.
+
 ## Scope of changes
 
 Only make changes to pages, components, or files that the user has explicitly mentioned or assigned. Do not proactively fix, clean up, or modify anything outside the current task scope — even if an issue is noticed while working on something else. If something looks wrong in an unrelated file, point it out in text but do not touch it without being asked.

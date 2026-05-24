@@ -31,8 +31,8 @@ const DRY_RUN   = process.argv.includes('--dry-run');
 const WITH_TRACKS = process.argv.includes('--with-tracks');
 const ARTIST_ARG  = process.argv.find(a => a.startsWith('--artist='))?.split('=').slice(1).join('=');
 
-const DELAY_MS   = 300;   // iTunes has no documented limit; 300ms ≈ 3 req/s, safe
-const TRACK_DELAY_MS = 500;
+const DELAY_MS   = 600;   // 600ms ≈ 1.6 req/s; iTunes 429s at ~3 req/s sustained
+const TRACK_DELAY_MS = 800;
 
 const STATE_PATH = path.resolve('scripts/itunes-state.json');
 
@@ -49,9 +49,17 @@ if (MODE === 'artist' && !ARTIST_ARG) {
 
 const ITUNES_BASE = 'https://itunes.apple.com';
 
-async function itunesGet(url: string): Promise<any> {
+async function itunesGet(url: string, attempt = 0): Promise<any> {
   await sleep(DELAY_MS);
   const res = await fetch(url, { headers: { 'User-Agent': 'sillajuku-catalog-ingest/1.0' } });
+  if (res.status === 429 || res.status === 403) {
+    // 429 = rate limit; 403 = temporary IP block after sustained 429s
+    const wait = Math.min(120000, 10000 * 2 ** attempt);  // 10s, 20s, 40s, 80s, 120s
+    console.log(`\n  [${res.status}] iTunes blocked — waiting ${wait / 1000}s…`);
+    await sleep(wait);
+    if (attempt >= 5) throw new Error(`iTunes ${res.status} after ${attempt + 1} retries: ${url}`);
+    return itunesGet(url, attempt + 1);
+  }
   if (!res.ok) throw new Error(`iTunes ${res.status}: ${url}`);
   return res.json();
 }
@@ -341,13 +349,21 @@ async function processArtist(
   name: string,
   db: ReturnType<typeof getDB> | null,
   stats: { inserted: number; enriched: number; skipped: number },
-): Promise<void> {
+): Promise<'ok' | 'skip' | 'fatal'> {
   process.stdout.write(`  Searching iTunes for "${name}"… `);
 
-  const artist = await searchArtist(name);
+  let artist;
+  try {
+    artist = await searchArtist(name);
+  } catch (err: any) {
+    console.log(`error: ${err.message}`);
+    // Propagate fatal errors (exhausted retries on 429/403) to abort the run
+    if (err.message.includes('retries')) return 'fatal';
+    return 'skip';
+  }
   if (!artist) {
     console.log('not found');
-    return;
+    return 'skip';
   }
   console.log(`found: ${artist.artistName} (id ${artist.artistId})`);
 
@@ -373,8 +389,10 @@ async function processArtist(
       stats[result.action]++;
     } catch (err: any) {
       console.log(`error: ${err.message}`);
+      if (err.message.includes('retries')) return 'fatal';
     }
   }
+  return 'ok';
 }
 
 // ── Modes ─────────────────────────────────────────────────────────────────────
@@ -388,9 +406,13 @@ async function runSeed(db: ReturnType<typeof getDB> | null, state: ItunesState) 
   for (let i = 0; i < todo.length; i++) {
     const name = todo[i];
     console.log(`\n[${i + 1}/${todo.length}] ${name}`);
-    await processArtist(name, db, stats);
-    state.processedArtists.push(name);
-    if (!DRY_RUN && (i + 1) % 5 === 0) saveState(state);
+    const result = await processArtist(name, db, stats);
+    if (result !== 'fatal') state.processedArtists.push(name);
+    if (!DRY_RUN) saveState(state);
+    if (result === 'fatal') {
+      console.log('\n  iTunes blocked after max retries — progress saved, re-run to resume.');
+      break;
+    }
   }
 
   if (!DRY_RUN) saveState(state);
