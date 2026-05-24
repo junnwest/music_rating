@@ -150,7 +150,7 @@ export async function searchArtistsInDb(query: string, limit = 10): Promise<Spot
   const { data } = await supabase
     .from('artists')
     .select('id, name, genres, popularity, cover_url')
-    .or(`name.ilike.${pattern},name_ko.ilike.${pattern}`)
+    .or(`name.ilike.${pattern},name_native.ilike.${pattern}`)
     .order('popularity', { ascending: false })
     .limit(limit);
   if (!data) return [];
