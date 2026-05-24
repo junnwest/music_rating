@@ -37,7 +37,11 @@
     "backfill:covers:dry": "tsx --env-file=.env.local scripts/backfill-cover-art.ts --dry-run",
     "backfill:covers:no-spotify": "tsx --env-file=.env.local scripts/backfill-cover-art.ts --skip-spotify",
     "normalize:releases": "tsx --env-file=.env.local scripts/normalize-releases.ts",
-    "normalize:releases:dry": "tsx --env-file=.env.local scripts/normalize-releases.ts --dry-run"
+    "normalize:releases:dry": "tsx --env-file=.env.local scripts/normalize-releases.ts --dry-run",
+    "backfill:korean": "tsx --env-file=.env.local scripts/backfill-korean-names.ts",
+    "backfill:korean:dry": "tsx --env-file=.env.local scripts/backfill-korean-names.ts --dry-run",
+    "backfill:korean:artists": "tsx --env-file=.env.local scripts/backfill-korean-names.ts --phase=1",
+    "backfill:korean:releases": "tsx --env-file=.env.local scripts/backfill-korean-names.ts --phase=2"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.103.2",

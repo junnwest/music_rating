@@ -124,14 +124,16 @@ export async function searchReleasesInDb(query: string, limit = 10): Promise<Alb
   const pattern = `%${q}%`;
   const { data } = await supabase
     .from('releases')
-    .select('id, title, artist, release_date, release_type, cover_url')
-    .or(`title.ilike.${pattern},artist.ilike.${pattern}`)
+    .select('id, title, artist, title_ko, artist_ko, release_date, release_type, cover_url')
+    .or(`title.ilike.${pattern},artist.ilike.${pattern},title_ko.ilike.${pattern},artist_ko.ilike.${pattern}`)
     .limit(limit);
   if (!data) return [];
   return data.map((r) => ({
     id: r.id,
     title: r.title,
     artist: r.artist,
+    titleKo: r.title_ko ?? null,
+    artistKo: r.artist_ko ?? null,
     date: r.release_date ?? null,
     country: null,
     releaseType: (r.release_type ?? 'Album') as AlbumRelease['releaseType'],
@@ -144,10 +146,11 @@ export async function searchArtistsInDb(query: string, limit = 10): Promise<Spot
   if (!supabase) return [];
   const q = escapeIlike(query.trim());
   if (!q) return [];
+  const pattern = `%${q}%`;
   const { data } = await supabase
     .from('artists')
     .select('id, name, genres, popularity, cover_url')
-    .ilike('name', `%${q}%`)
+    .or(`name.ilike.${pattern},name_ko.ilike.${pattern}`)
     .order('popularity', { ascending: false })
     .limit(limit);
   if (!data) return [];
@@ -193,8 +196,8 @@ export async function searchReleases(query: string, year: string | null): Promis
   try {
     const { data } = await supabase
       .from('releases')
-      .select('id, title, artist, release_date, release_type, cover_url')
-      .or(`title.ilike.%${safe}%,artist.ilike.%${safe}%`)
+      .select('id, title, artist, title_ko, artist_ko, release_date, release_type, cover_url')
+      .or(`title.ilike.%${safe}%,artist.ilike.%${safe}%,title_ko.ilike.%${safe}%,artist_ko.ilike.%${safe}%`)
       .not('release_type', 'ilike', 'single')
       .order('release_date', { ascending: false })
       .limit(15);
@@ -204,6 +207,8 @@ export async function searchReleases(query: string, year: string | null): Promis
       id:          r.id,
       title:       r.title,
       artist:      r.artist,
+      titleKo:     r.title_ko ?? null,
+      artistKo:    r.artist_ko ?? null,
       date:        r.release_date ?? null,
       country:     null,
       releaseType: (r.release_type ?? 'Album') as AlbumRelease['releaseType'],

@@ -25,7 +25,14 @@ export default function AlbumCard({ release }: { release: AlbumRelease }) {
       {/* Info */}
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-slate-900 truncate group-hover:text-slate-700">{release.title}</p>
-        <p className="text-xs text-slate-500 truncate">{release.artist}</p>
+        {release.titleKo && release.titleKo !== release.title && (
+          <p className="text-xs text-slate-400 truncate">{release.titleKo}</p>
+        )}
+        <p className="text-xs text-slate-500 truncate">
+          {release.artistKo && release.artistKo !== release.artist
+            ? `${release.artistKo} · ${release.artist}`
+            : release.artist}
+        </p>
       </div>
 
       {/* Meta */}

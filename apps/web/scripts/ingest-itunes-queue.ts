@@ -104,6 +104,28 @@ async function fetchDiscography(artistId: number): Promise<any[]> {
   );
 }
 
+function hasHangul(s: string): boolean {
+  return /[가-힣ᄀ-ᇿ㄰-㆏]/.test(s);
+}
+
+// Fetch Korean names for an artist's albums from the KR iTunes store.
+// Returns a map of collectionId → { titleKo, artistKo } for entries with Hangul.
+async function fetchKoreanNames(artistId: number): Promise<Map<number, { titleKo: string; artistKo: string }>> {
+  const url = `${ITUNES_BASE}/lookup?id=${artistId}&entity=album&limit=200&country=KR`;
+  const data = await itunesGet(url);
+  const map = new Map<number, { titleKo: string; artistKo: string }>();
+  if (!data) return map;
+  for (const r of data.results ?? []) {
+    if (r.wrapperType !== 'collection' || !r.collectionId) continue;
+    const titleKo = r.collectionName ?? '';
+    const artistKo = r.artistName ?? '';
+    if (hasHangul(titleKo) || hasHangul(artistKo)) {
+      map.set(r.collectionId, { titleKo, artistKo });
+    }
+  }
+  return map;
+}
+
 // ── DB ────────────────────────────────────────────────────────────────────────
 
 function getDB() {
@@ -115,7 +137,11 @@ function getDB() {
 
 type DB = ReturnType<typeof getDB>;
 
-async function upsertRelease(db: DB, album: any): Promise<'inserted' | 'enriched' | 'skipped'> {
+async function upsertRelease(
+  db: DB,
+  album: any,
+  koNames: { titleKo: string; artistKo: string } | undefined,
+): Promise<'inserted' | 'enriched' | 'skipped'> {
   // 1. Already have this iTunes ID
   const { data: byItunes } = await db
     .from('releases').select('id').eq('itunes_id', album.collectionId).maybeSingle();
@@ -138,13 +164,13 @@ async function upsertRelease(db: DB, album: any): Promise<'inserted' | 'enriched
     normalizeStr(byTitle.title) === normalizeStr(album.collectionName) &&
     normalizeStr(byTitle.artist) === normalizeStr(album.artistName)
   ) {
-    // Only backfill cover_url if the existing record has none — don't overwrite Spotify art
     const coverUpdate = cover && !(byTitle as any).cover_url
       ? { cover_url: cover, cover_source: 'itunes' }
       : {};
     await db.from('releases').update({
-      itunes_id: album.collectionId,
+      itunes_id:        album.collectionId,
       canonical_source: 'itunes',
+      ...(koNames ? { title_ko: koNames.titleKo, artist_ko: koNames.artistKo } : {}),
       ...coverUpdate,
     }).eq('id', byTitle.id);
     return 'enriched';
@@ -157,6 +183,8 @@ async function upsertRelease(db: DB, album: any): Promise<'inserted' | 'enriched
     itunes_id:        album.collectionId,
     title:            album.collectionName,
     artist:           album.artistName,
+    title_ko:         koNames?.titleKo ?? null,
+    artist_ko:        koNames?.artistKo ?? null,
     release_date:     date,
     release_type:     rtype,
     cover_url:        cover || null,
@@ -232,13 +260,15 @@ async function main() {
         }
       }
 
-      // Fetch discography
+      // Fetch discography (default store) + Korean names (KR store)
       const albums = await fetchDiscography(itunesId);
+      const koMap  = await fetchKoreanNames(itunesId);
       process.stdout.write(`${albums.length} albums → `);
 
       let ins = 0, enr = 0, skp = 0;
       for (const album of albums) {
-        const result = await upsertRelease(db, album);
+        const koNames = koMap.get(album.collectionId);
+        const result = await upsertRelease(db, album, koNames);
         if (result === 'inserted') ins++;
         else if (result === 'enriched') enr++;
         else skp++;

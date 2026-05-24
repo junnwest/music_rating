@@ -95,6 +95,32 @@ function cleanTitle(title: string): string {
   return title.replace(/\s*\([^)]*\)\s*$/, '').trim();
 }
 
+// Fetch Korean Wikipedia title for an English Wikipedia article.
+// The Korean article title is the artist's Korean name.
+async function fetchKoreanName(pageTitle: string): Promise<string | null> {
+  await sleep(DELAY_MS);
+  const url = new URL('https://en.wikipedia.org/w/api.php');
+  url.searchParams.set('action', 'query');
+  url.searchParams.set('titles', pageTitle);
+  url.searchParams.set('prop', 'langlinks');
+  url.searchParams.set('lllang', 'ko');
+  url.searchParams.set('lllimit', '1');
+  url.searchParams.set('format', 'json');
+  url.searchParams.set('origin', '*');
+
+  try {
+    const res = await fetch(url.toString(), {
+      headers: { 'User-Agent': 'sillajuku-catalog-builder/1.0 (admin@sillajuku.com)' },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const pages = Object.values(data.query?.pages ?? {}) as any[];
+    return pages[0]?.langlinks?.[0]?.['*'] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function getDB() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -107,7 +133,7 @@ async function main() {
 
   const db = getDB();
   const seen = new Set<string>();
-  const toInsert: { name: string; source: string; source_id: string }[] = [];
+  const toInsert: { name: string; source: string; source_id: string; name_ko: string | null }[] = [];
 
   for (const category of CATEGORIES) {
     process.stdout.write(`  Fetching: ${category} … `);
@@ -118,7 +144,9 @@ async function main() {
       const name = cleanTitle(page.title);
       if (seen.has(name.toLowerCase())) continue;
       seen.add(name.toLowerCase());
-      toInsert.push({ name, source: 'wikipedia', source_id: page.title });
+      // Fetch Korean name from Wikipedia langlinks (uses page.title before disambiguation strip)
+      const name_ko = await fetchKoreanName(page.title);
+      toInsert.push({ name, source: 'wikipedia', source_id: page.title, name_ko });
       added++;
     }
 
@@ -130,19 +158,19 @@ async function main() {
   if (DRY_RUN) {
     console.log('  [DRY RUN] — no DB writes');
     console.log('\n  Sample (first 20):');
-    toInsert.slice(0, 20).forEach(a => console.log(`    ${a.name}`));
+    toInsert.slice(0, 20).forEach(a => console.log(`    ${a.name}${a.name_ko ? ` (${a.name_ko})` : ''}`));
     return;
   }
 
-  // Upsert in batches of 100 — conflict on (name, source) = skip existing
+  // Upsert in batches of 100 — on conflict update name_ko so re-runs backfill Korean names
   const BATCH = 100;
-  let inserted = 0, skipped = 0;
+  let inserted = 0;
 
   for (let i = 0; i < toInsert.length; i += BATCH) {
     const batch = toInsert.slice(i, i + BATCH);
-    const { data, error } = await db
+    const { error } = await db
       .from('artist_ingestion_queue')
-      .upsert(batch, { onConflict: 'name,source', ignoreDuplicates: true });
+      .upsert(batch, { onConflict: 'name,source', ignoreDuplicates: false });
 
     if (error) {
       console.error(`  ! Batch ${i / BATCH + 1} error:`, error.message);
