@@ -2,6 +2,16 @@
 
 > **REMINDER (for Jun):** This project is worked on across two devices. After adding any new environment variable to `.env.local`, manually copy it to the other device's `.env.local` as well. Check `.env.example` to see the full list of required variables.
 
+## Keeping the docs current
+
+Update `README.md` and `SESSIONS.md` after every meaningful change — not just at the end of a session. This means:
+- After fixing a bug: update README Known Issues if it was listed there; add a line to the current SESSIONS entry.
+- After running a script: update the status table or checklist in README (e.g., mark a pipeline step as ✅ done).
+- After adding a feature or migration: update the roadmap and the SESSIONS entry.
+- At the end of every session: update the START HERE checklist so the next session knows exactly where to pick up.
+
+The README is the source of truth for project state. SESSIONS.md is the historical record. Both rot fast — keep them accurate in real time, not retroactively.
+
 ## Scope of changes
 
 Only make changes to pages, components, or files that the user has explicitly mentioned or assigned. Do not proactively fix, clean up, or modify anything outside the current task scope — even if an issue is noticed while working on something else. If something looks wrong in an unrelated file, point it out in text but do not touch it without being asked.
