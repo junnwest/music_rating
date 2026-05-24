@@ -12,6 +12,7 @@
 import fs from 'fs';
 import path from 'path';
 import { createClient } from '@supabase/supabase-js';
+import { assertSpotifyCircuitClosed, recordSpotify429 } from './spotify-circuit';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -57,6 +58,10 @@ async function spotifyGet(path: string): Promise<any> {
   });
   if (res.status === 429) {
     const retry = Number(res.headers.get('Retry-After') ?? 5);
+    await recordSpotify429(retry, 'ingest-music');
+    if (retry > 120) {
+      throw new Error(`Spotify 429: rate-limited for ${retry}s — refusing to block; re-run later`);
+    }
     console.log(`  [rate limit] waiting ${retry}s…`);
     await sleep(retry * 1000);
     return spotifyGet(path);
@@ -276,6 +281,8 @@ async function main() {
   if (DRY_RUN) console.log('   [DRY RUN — no DB writes]');
   if (RETRY_MODE) console.log('   [RETRY MODE — only processing previous not_found entries]');
   console.log('');
+
+  await assertSpotifyCircuitClosed();
 
   if (!fs.existsSync(CSV_PATH)) {
     console.error(`CSV not found: ${CSV_PATH}`);

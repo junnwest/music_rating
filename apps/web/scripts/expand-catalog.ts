@@ -17,6 +17,7 @@ import fs from 'fs';
 import http from 'http';
 import path from 'path';
 import { createClient } from '@supabase/supabase-js';
+import { assertSpotifyCircuitClosed, recordSpotify429 } from './spotify-circuit';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -249,6 +250,7 @@ async function spotifyGet(url: string, attempt = 0): Promise<any> {
   if (res.status === 429) {
     const raw = Number(res.headers.get('Retry-After') ?? 5);
     const sec = isNaN(raw) ? 5 : raw;
+    await recordSpotify429(sec, 'expand-catalog');
     // If Spotify wants us to wait more than 2 minutes, or we've retried 3 times, give up
     if (sec > 120 || attempt >= 3) throw new RateLimitError(sec);
     const waitMs = Math.min(sec, 60) * 1000;
@@ -658,6 +660,8 @@ async function main() {
 
   const db = getDB();
   const state = loadState();
+
+  await assertSpotifyCircuitClosed();
 
   // Canary call — fail fast if still rate limited
   try {

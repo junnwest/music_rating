@@ -207,6 +207,7 @@ const ko: Translations = {
     filterEPs: 'EP',
     filterSingles: '싱글',
     filterLive: '라이브',
+    degradedNotice: '캐시된 결과를 표시합니다 — 실시간 검색을 일시적으로 사용할 수 없습니다.',
   },
   explore: {
     discover: '발견',

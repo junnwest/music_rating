@@ -1,6 +1,6 @@
 import { searchSpotifyAlbums, searchSpotifyArtists, searchSpotifyTracks, SpotifyCircuitOpenError } from '../../../lib/spotify';
 import { cacheGet, cacheSet } from '../../../lib/cache';
-import { saveBasicReleases, searchReleases } from '../../../lib/dbCache';
+import { saveBasicReleases, searchReleases, searchArtistsInDb, searchReleasesInDb } from '../../../lib/dbCache';
 import { rateLimit } from '../../../lib/rateLimit';
 import type { NextRequest } from 'next/server';
 
@@ -11,6 +11,10 @@ const SEARCH_TTL = 86400;
 
 function normalizeQuery(q: string): string {
   return q.trim().toLowerCase();
+}
+
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
 }
 
 export async function GET(request: NextRequest) {
@@ -29,70 +33,76 @@ export async function GET(request: NextRequest) {
 
   const normalized = normalizeQuery(query);
 
-  try {
-    if (type === 'artists') {
-      const cacheKey = `search:artists:${normalized}`;
-      const cached = await cacheGet<{ artists: unknown[] }>(cacheKey);
-      if (cached) return new Response(JSON.stringify(cached), { headers: { 'Content-Type': 'application/json' } });
+  if (type === 'artists') {
+    const cacheKey = `search:artists:${normalized}`;
+    const cached = await cacheGet<{ artists: unknown[] }>(cacheKey);
+    if (cached) return jsonResponse(cached);
 
+    try {
       const artists = await searchSpotifyArtists(query);
       const body = { artists };
       await cacheSet(cacheKey, body, SEARCH_TTL);
-      return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
+      return jsonResponse(body);
+    } catch (err) {
+      console.warn('[search] Spotify artist search failed, falling back to DB:', (err as Error).message);
+      const artists = await searchArtistsInDb(query);
+      return jsonResponse({ artists, degraded: true });
     }
-    if (type === 'recordings') {
-      const cacheKey = `search:tracks:${normalized}`;
-      const cached = await cacheGet<{ recordings: unknown[] }>(cacheKey);
-      if (cached) return new Response(JSON.stringify(cached), { headers: { 'Content-Type': 'application/json' } });
+  }
 
+  if (type === 'recordings') {
+    const cacheKey = `search:tracks:${normalized}`;
+    const cached = await cacheGet<{ recordings: unknown[] }>(cacheKey);
+    if (cached) return jsonResponse(cached);
+
+    try {
       const recordings = await searchSpotifyTracks(query);
       const body = { recordings };
       await cacheSet(cacheKey, body, SEARCH_TTL);
-      return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
+      return jsonResponse(body);
+    } catch (err) {
+      console.warn('[search] Spotify track search failed, no DB fallback:', (err as Error).message);
+      return jsonResponse({ recordings: [], degraded: true });
     }
+  }
 
-    // Releases (default) — DB-first, Spotify fallback
-    // DB has a GIN FTS index on (title || artist); hitting it first eliminates
-    // ~85% of search-driven Spotify quota usage at launch traffic levels.
-    const DB_SUFFICIENT = 5;
-    const cacheKey = `search:albums:${normalized}:y=${year ?? ''}:m=${market ?? ''}`;
-    const cached = await cacheGet<{ releases: unknown[] }>(cacheKey);
-    if (cached) return new Response(JSON.stringify(cached), { headers: { 'Content-Type': 'application/json' } });
+  // Releases (default) — DB-first, Spotify fallback
+  const DB_SUFFICIENT = 5;
+  const cacheKey = `search:albums:${normalized}:y=${year ?? ''}:m=${market ?? ''}`;
+  const cached = await cacheGet<{ releases: unknown[] }>(cacheKey);
+  if (cached) return jsonResponse(cached);
 
+  try {
     const dbResults = await searchReleases(query, year ?? null);
 
     if (dbResults.length >= DB_SUFFICIENT) {
       const body = { releases: dbResults };
       await cacheSet(cacheKey, body, SEARCH_TTL);
-      // Refresh DB in the background so future searches improve (ignore errors)
+      // Refresh DB in the background so future searches improve
       const spotifyBg = year ? `${query} year:${year}` : query;
       searchSpotifyAlbums(spotifyBg, 10, market)
         .then(results => saveBasicReleases(results))
-        .catch(() => {});  // fire-and-forget — DB already has good results
-      return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
+        .catch(() => {});
+      return jsonResponse(body);
     }
 
     // DB results insufficient — try Spotify
     const spotifyQuery = year ? `${query} year:${year}` : query;
-    let releases;
-    try {
-      let spotifyResults = await searchSpotifyAlbums(spotifyQuery, 10, market);
-      if (year) spotifyResults = spotifyResults.filter(r => !r.date || r.date.startsWith(year));
-      saveBasicReleases(spotifyResults).catch(() => {});  // persist to DB, fire-and-forget
-      releases = spotifyResults;
-    } catch (err) {
-      if (err instanceof SpotifyCircuitOpenError) {
-        // Spotify quota exhausted — return whatever the DB has (may be sparse/empty)
-        return new Response(JSON.stringify({ releases: dbResults }), { headers: { 'Content-Type': 'application/json' } });
-      }
-      throw err;
-    }
+    let spotifyResults = await searchSpotifyAlbums(spotifyQuery, 10, market);
+    if (year) spotifyResults = spotifyResults.filter(r => !r.date || r.date.startsWith(year));
+    saveBasicReleases(spotifyResults).catch(() => {});
 
-    const body = { releases };
+    const body = { releases: spotifyResults };
     await cacheSet(cacheKey, body, SEARCH_TTL);
-    return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
+    return jsonResponse(body);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Search failed';
-    return new Response(JSON.stringify({ error: message }), { status: 500 });
+    if (err instanceof SpotifyCircuitOpenError) {
+      const dbResults = await searchReleases(query, year ?? null);
+      return jsonResponse({ releases: dbResults });
+    }
+    console.warn('[search] album search failed, falling back to DB:', (err as Error).message);
+    let releases = await searchReleasesInDb(query);
+    if (year) releases = releases.filter(r => !r.date || r.date.startsWith(year));
+    return jsonResponse({ releases, degraded: true });
   }
 }

@@ -205,6 +205,7 @@ const en = {
     filterEPs: 'EPs',
     filterSingles: 'Singles',
     filterLive: 'Live',
+    degradedNotice: 'Showing cached results — live search is temporarily unavailable.',
   },
   explore: {
     discover: 'Discover',

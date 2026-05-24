@@ -13,6 +13,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { assertSpotifyCircuitClosed, recordSpotify429 } from './spotify-circuit';
 
 const DRY_RUN = process.argv.includes('--dry-run');
 const DELAY_MS = 300; // ms between Spotify calls — stays well under rate limit
@@ -60,6 +61,7 @@ async function spotifyGet(path: string, attempt = 0): Promise<any> {
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (res.status === 429) {
     const retry = parseInt(res.headers.get('Retry-After') ?? '5', 10);
+    await recordSpotify429(retry, 'backfill-genres');
     if (retry > 120 || attempt >= 3) throw new RateLimitError(retry);
     console.log(`  [rate limit] waiting ${retry}s…`);
     await sleep(retry * 1000);
@@ -102,6 +104,8 @@ async function getAlbumGenres(albumId: string): Promise<string[]> {
 
 async function main() {
   console.log(`\n🎵  sillajuku genre backfill${DRY_RUN ? ' [DRY RUN]' : ''}\n`);
+
+  await assertSpotifyCircuitClosed();
 
   // Canary — fail fast if Spotify is still rate limited
   try {

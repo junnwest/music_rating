@@ -20,6 +20,7 @@
 import { createClient } from '@supabase/supabase-js';
 import fs from 'fs';
 import path from 'path';
+import { assertSpotifyCircuitClosed, recordSpotify429 } from './spotify-circuit';
 
 const DRY_RUN = process.argv.includes('--dry-run');
 const CATEGORY_SLUG = (() => {
@@ -704,6 +705,7 @@ async function spotifyGet(path: string, attempt = 0): Promise<any> {
   if (res.status === 429) {
     const raw = Number(res.headers.get('Retry-After') ?? 5);
     const sec = isNaN(raw) ? 5 : raw;
+    await recordSpotify429(sec, 'seed-rankings');
     if (sec > 120 || attempt >= 3) throw new RateLimitError(sec);
     console.log(`  [rate limit] waiting ${sec}s… (attempt ${attempt + 1}/3)`);
     await sleep(sec * 1000);
@@ -1026,6 +1028,8 @@ async function main() {
     console.error('Missing NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY');
     process.exit(1);
   }
+
+  await assertSpotifyCircuitClosed();
 
   const db = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
