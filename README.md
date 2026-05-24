@@ -31,6 +31,50 @@ The 2026-05-22 Spotify-quota hardening (Upstash Redis caches, DB-only homepage/p
 
 ---
 
+## 🔧 Debugging Spotify-related production issues
+
+**If you see any of these symptoms in prod, this is almost always Spotify rate-limiting:**
+
+- `/api/search` returns 500 or empty results
+- Album pages show "Spotify returned null" in Vercel logs
+- Search UI shows the amber "Showing cached results" banner
+- Recommendations / explore feels suddenly thinner than usual
+
+### Step 1 — Confirm it's the circuit breaker
+
+```bash
+curl -s "https://www.sillajuku.com/api/search?query=test&type=releases"
+```
+
+If the response is `{"error":"Spotify circuit breaker open: Xs remaining", ...}` OR returns `{ releases: [...], degraded: true }`, then a Spotify 429 has tripped the breaker in Redis. Confirm by checking Upstash → key `spotify:rate-limited-until` (its value is the UTC timestamp in ms when the breaker auto-clears).
+
+### Step 2 — Find what tripped it (THIS IS THE PART PEOPLE FORGET)
+
+**Check Vercel logs** for the path that actually got the 429. Grep filters worth knowing:
+
+| Log filter | What it tells you |
+|------------|-------------------|
+| `[spotify] 429 path=` | The exact Spotify endpoint that tripped the breaker (web server side). Added 2026-05-24. |
+| `[scriptCircuit] published 429 from` | A local script tripped the breaker (not real user traffic). Names the script. |
+| `Spotify circuit breaker open` | Symptom, not cause — these are calls that *got blocked by* the breaker after it was already tripped. Look earlier. |
+| `[search] Spotify ... failed, falling back to DB` | Search degraded to DB fallback. Symptom. |
+
+If the **Vercel free tier** is hiding old logs, just wait for the next 429 — instrumentation now logs the path live, so the next incident is self-diagnosing.
+
+### Step 3 — Common root causes
+
+1. **A script bypassing the web server** — `backfill-genres`, `expand-catalog`, `ingest-music`, `seed-prestige`, `seed-rankings` all use the same Spotify credentials. As of 2026-05-24 they refuse to start when the breaker is open and publish their own 429s to the same Redis key, but check the script logs.
+2. **Cold-cache traffic burst** — server restart wipes the in-memory token cache and a surge of recommendation grid loads can burn quota fast. The Upstash Redis cache (added 2026-05-22) reduces this risk significantly.
+3. **A long-running personalized/recommendations call** — heavy fan-out to many Spotify endpoints from a single page load.
+
+### Step 4 — Recovery options
+
+- **Wait it out** — the breaker TTL matches Spotify's `Retry-After`, so it auto-clears. Production already degrades gracefully (search → DB fallback, albums → basic-row fallback, banner shown to users).
+- **Manually clear** — `DEL spotify:rate-limited-until` in Upstash. Only useful if you believe the breaker tripped on a transient blip — if Spotify is genuinely in cooldown, the next API call just re-trips it.
+- **Do NOT run scripts during a cooldown** — they now refuse to start, but if you bypass that check you'll prolong the outage.
+
+---
+
 ## Local development
 
 ### Web
