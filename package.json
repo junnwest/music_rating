@@ -11,6 +11,7 @@
     "dev:mobile": "cd apps/mobile && npx expo start"
   },
   "devDependencies": {
+    "supabase": "^2.101.0",
     "turbo": "^2.0.0"
   }
 }

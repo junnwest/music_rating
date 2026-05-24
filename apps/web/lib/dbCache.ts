@@ -135,6 +135,37 @@ export async function getArtistReleases(artistId: string): Promise<AlbumRelease[
   }));
 }
 
+// ── Search ────────────────────────────────────────────────────────────────────
+
+export async function searchReleases(query: string, year: string | null): Promise<AlbumRelease[]> {
+  const supabase = createServerClient();
+  if (!supabase) return [];
+  // Strip characters that break PostgREST's or() filter parser
+  const safe = query.replace(/[%_,()]/g, ' ').trim();
+  try {
+    const { data } = await supabase
+      .from('releases')
+      .select('id, title, artist, release_date, release_type, cover_url')
+      .or(`title.ilike.%${safe}%,artist.ilike.%${safe}%`)
+      .not('release_type', 'ilike', 'single')
+      .order('release_date', { ascending: false })
+      .limit(15);
+    if (!data) return [];
+    const rows = year ? data.filter(r => (r.release_date ?? '').startsWith(year)) : data;
+    return rows.slice(0, 10).map(r => ({
+      id:          r.id,
+      title:       r.title,
+      artist:      r.artist,
+      date:        r.release_date ?? null,
+      country:     null,
+      releaseType: (r.release_type ?? 'Album') as AlbumRelease['releaseType'],
+      coverUrl:    r.cover_url ?? null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 // ── Artist ────────────────────────────────────────────────────────────────────
 
 export async function getCachedArtist(id: string): Promise<SpotifyArtistDetail | null> {

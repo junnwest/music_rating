@@ -18,7 +18,11 @@
     "backfill:genres": "tsx --env-file=.env.local scripts/backfill-genres.ts",
     "backfill:genres:dry": "tsx --env-file=.env.local scripts/backfill-genres.ts --dry-run",
     "check:view": "tsx --env-file=.env.local scripts/check-recommendable-view.ts",
-    "check:categories": "tsx --env-file=.env.local scripts/check-category-coverage.ts"
+    "check:categories": "tsx --env-file=.env.local scripts/check-category-coverage.ts",
+    "itunes:seed": "tsx --env-file=.env.local scripts/ingest-itunes.ts seed",
+    "itunes:seed:dry": "tsx --env-file=.env.local scripts/ingest-itunes.ts seed --dry-run",
+    "itunes:discography": "tsx --env-file=.env.local scripts/ingest-itunes.ts discography",
+    "itunes:artist": "tsx --env-file=.env.local scripts/ingest-itunes.ts artist"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.103.2",

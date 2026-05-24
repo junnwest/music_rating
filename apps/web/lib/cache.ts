@@ -6,7 +6,10 @@ function getRedis(): Redis | null {
   if (_redis) return _redis;
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
+  if (!url || !token) {
+    console.warn('[cache] UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN not set — caching and circuit breaker are disabled');
+    return null;
+  }
   _redis = new Redis({ url, token });
   return _redis;
 }
