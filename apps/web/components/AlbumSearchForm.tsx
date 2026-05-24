@@ -44,6 +44,7 @@ export default function AlbumSearchForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
+  const [degraded, setDegraded] = useState(false);
 
   async function runSearch(q: string) {
     if (!q.trim()) return;
@@ -52,6 +53,7 @@ export default function AlbumSearchForm() {
     setSearched(true);
     setReleases([]);
     setArtistMatch(null);
+    setDegraded(false);
 
     try {
       const [relRes, artRes] = await Promise.all([
@@ -66,6 +68,8 @@ export default function AlbumSearchForm() {
 
       const artists: SpotifyArtist[] = artData.artists ?? [];
       if (artists.length > 0) setArtistMatch(artists[0]);
+
+      setDegraded(Boolean(relData.degraded || artData.degraded));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Search failed');
     } finally {
@@ -153,6 +157,15 @@ export default function AlbumSearchForm() {
 
       {/* Results */}
       <div className="max-w-[1440px] mx-auto px-5 py-9 pb-14">
+        {degraded && !loading && (
+          <div
+            className="mb-5 px-4 py-3 rounded-[8px] text-[13px] font-medium text-ink"
+            style={{ background: '#FEF3DC', border: '1px solid #E8A020' }}
+            role="status"
+          >
+            {t('search.degradedNotice')}
+          </div>
+        )}
         {!searched && !loading && (
           <div className="flex flex-col items-center py-24 text-center">
             <Search size={32} className="text-subtle mb-4" />

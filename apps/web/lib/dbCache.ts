@@ -1,6 +1,10 @@
 import { createServerClient } from './supabaseServer';
-import type { SpotifyAlbumDetail, SpotifyArtistDetail } from './spotify';
+import type { SpotifyAlbumDetail, SpotifyArtist, SpotifyArtistDetail } from './spotify';
 import type { AlbumRelease } from '../types';
+
+function escapeIlike(s: string): string {
+  return s.replace(/[\\%_,]/g, (m) => '\\' + m);
+}
 
 export async function saveBasicReleases(albums: AlbumRelease[]): Promise<void> {
   const supabase = createServerClient();
@@ -110,6 +114,50 @@ export async function cacheAlbum(album: SpotifyAlbumDetail): Promise<void> {
     },
     { onConflict: 'id' }
   );
+}
+
+export async function searchReleasesInDb(query: string, limit = 10): Promise<AlbumRelease[]> {
+  const supabase = createServerClient();
+  if (!supabase) return [];
+  const q = escapeIlike(query.trim());
+  if (!q) return [];
+  const pattern = `%${q}%`;
+  const { data } = await supabase
+    .from('releases')
+    .select('id, title, artist, release_date, release_type, cover_url')
+    .or(`title.ilike.${pattern},artist.ilike.${pattern}`)
+    .limit(limit);
+  if (!data) return [];
+  return data.map((r) => ({
+    id: r.id,
+    title: r.title,
+    artist: r.artist,
+    date: r.release_date ?? null,
+    country: null,
+    releaseType: (r.release_type ?? 'Album') as AlbumRelease['releaseType'],
+    coverUrl: r.cover_url ?? null,
+  }));
+}
+
+export async function searchArtistsInDb(query: string, limit = 10): Promise<SpotifyArtist[]> {
+  const supabase = createServerClient();
+  if (!supabase) return [];
+  const q = escapeIlike(query.trim());
+  if (!q) return [];
+  const { data } = await supabase
+    .from('artists')
+    .select('id, name, genres, popularity, cover_url')
+    .ilike('name', `%${q}%`)
+    .order('popularity', { ascending: false })
+    .limit(limit);
+  if (!data) return [];
+  return data.map((a) => ({
+    id: a.id,
+    name: a.name,
+    genres: a.genres ? a.genres.split(',').map((g: string) => g.trim()).filter(Boolean) : [],
+    popularity: a.popularity ?? 0,
+    coverUrl: a.cover_url ?? null,
+  }));
 }
 
 export async function getArtistReleases(artistId: string): Promise<AlbumRelease[]> {
