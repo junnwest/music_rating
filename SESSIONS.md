@@ -144,6 +144,66 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries
 
+**2026-05-24 (night) — Multilingual catalog: native name pipeline + deployment fix:**
+
+### Decision: language-agnostic native name schema
+
+User identified the database was English-only: Korean artists and albums have Korean names that Korean users will search for, but the DB only stored the Latin/romanized versions. Solution chosen: add a small set of language-agnostic columns — `title_native`, `artist_native`, `native_language` (ISO 639-1 code: `'ko'`/`'ja'`/`'zh'`) to `releases`; `name_native`, `native_language` to `artists` — rather than per-language columns like `title_ko`. Language is detected from Unicode character ranges (Hangul / Hiragana-Katakana / CJK), never hardcoded. Adding support for a new language only requires sourcing artists in that language — no schema changes.
+
+### New migrations applied to prod
+
+- **`20260525000002_native_language_columns.sql`** — drops intermediate `_ko` columns (from a discarded design attempt), adds `title_native`, `artist_native`, `native_language` to `releases`; `name_native`, `native_language` to `artists`; renames `name_ko` → `name_native` in `artist_ingestion_queue`; creates pg_trgm GIN indexes on all four native columns.
+- **`20260525000003_native_language_constraint.sql`** — adds `CHECK (native_language IS NULL OR native_language ~ '^[a-z]{2}$')` to both tables.
+
+### New script: backfill-native-names.ts
+
+Two-phase pipeline for fixing existing DB rows:
+
+**Phase 1 (artists)** — queries MusicBrainz `artist.search` for every `artists` row with `name_native IS NULL`. Finds any CJK-script alias (locale: ko/ja/zh). Exact-match only — never falls back to `artists[0]` to avoid wrong-artist results. Capped retry: 5 attempts, exponential backoff (5000ms × 2^n, cap 30s). Rate: 1 req/s (1100ms delay).
+
+**Phase 2 (releases)** — for every `releases` row with `title_native IS NULL` from a known Asian artist (one whose `native_language` was set by phase 1), calls the iTunes local store for that country (KR/JP/TW). Loads all known-Asian artists into memory maps first; Western releases are skipped with zero API calls. Rate: 650ms/req.
+
+Both phases are resumable — state checkpointed every 20 records to `scripts/backfill-native-names-state.json`.
+
+npm scripts added: `backfill:native`, `backfill:native:dry`, `backfill:native:artists`, `backfill:native:releases`.
+
+### Files updated for native name display and search
+
+- **`apps/web/types/index.ts`** — added `titleNative?: string | null` and `artistNative?: string | null` to `AlbumRelease`.
+- **`apps/web/components/AlbumCard.tsx`** — shows native title below English title (when different, case-insensitive comparison). Shows `artistNative · artist` format when native artist name differs.
+- **`apps/web/lib/dbCache.ts`** — `searchReleasesInDb` and `searchReleases` query `title_native` and `artist_native` via `.or()` alongside the English columns; map to `titleNative`/`artistNative` in the return. `searchArtistsInDb` queries `name_native` alongside `name`.
+- **`apps/web/scripts/build-artist-queue.ts`** — added `fetchKoreanName()` (Wikipedia langlinks API); guards with `detectLanguage()` before writing `name_native` (prevents Latin-script strings from landing in the column). `ignoreDuplicates: false` on upsert so re-runs backfill `name_native` on existing rows.
+- **`apps/web/scripts/ingest-itunes-queue.ts`** — added `fetchNativeNames(artistId, storeCountry)` which fetches the local-store iTunes discography; only called when `row.name_native` is set (skips doubled API call for unknown-language artists). After processing, propagates `name_native` to the `artists` table via `ilike` match.
+
+### 9 critical issues found and fixed (during self-review)
+
+1. `build-artist-queue.ts` wrote Latin-script Wikipedia article titles as `name_native` → fixed with `detectLanguage()` guard
+2. `ingest-itunes-queue.ts` doubled iTunes API calls unconditionally → fixed: skip local store call when language unknown
+3. MusicBrainz search fell back to first result for wrong artists → fixed: exact normalized name match only, return null otherwise
+4. MusicBrainz retry was infinite (no cap) → fixed: 5-attempt cap with exponential backoff
+5. `AlbumCard.tsx` comparison was case-sensitive (`===`) → fixed with `.toLowerCase()` on both sides
+6. `queue:ingest` never wrote `name_native` back to the `artists` table → fixed: propagates after processing each queue row
+7. 759 existing queue rows were added without `name_native` (langlink fetching wasn't in queue:build yet) → operational fix: re-run `queue:build` once before `queue:ingest`
+8. Phase 2 queried iTunes for all releases including Western acts → fixed: pre-loads Asian artist set into memory, skips non-Asian releases before any API calls
+9. No DB constraint on `native_language` values → fixed: migration 000003 with regex CHECK
+
+### Deployment failure found and fixed
+
+Vercel build failed because `apps/web/lib/dbCache.ts:153` still referenced the dropped `name_ko` column in `searchArtistsInDb()`:
+```typescript
+.or(`name.ilike.${pattern},name_ko.ilike.${pattern}`)  // ← wrong
+```
+Fixed to `name_native`. Committed as `6bda114`. Build should now pass cleanly.
+
+### Status at session end
+
+- ✅ Migrations 000002 and 000003 applied to prod
+- ✅ `backfill-native-names.ts` built and ready to run
+- ✅ Deployment fix committed and pushed (6bda114)
+- ⬜ `backfill:native` — not yet run; this is the first thing to do next session (see README START HERE → Step 2)
+
+---
+
 **2026-05-24 (late evening) — Non-Spotify catalog pipeline + column consistency guarantee:**
 
 ### Decision: retire Spotify from data collection

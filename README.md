@@ -10,38 +10,52 @@ Every record you've loved — rated, cataloged, and remembered. A music platform
 
 ## ⚠️ Current state (2026-05-24)
 
-The 2026-05-22 Spotify-quota hardening is live. 2026-05-23 added 404-resilience and Spotify circuit breaker. 2026-05-24 morning closed the last user-visible failure: **search degrades to DB fallback when Spotify is rate-limited**. 2026-05-24 evening made the structural shift: **Spotify API is no longer used for data collection**. A full non-Spotify catalog pipeline (Wikipedia → iTunes queue → Last.fm similar → miss-driven ingestion) was built and is ready to run. See the [debugging section](#-debugging-spotify-related-production-issues) below for Spotify runtime issues.
+The 2026-05-22 Spotify-quota hardening is live. 2026-05-23 added 404-resilience and Spotify circuit breaker. 2026-05-24 morning closed the last user-visible failure: **search degrades to DB fallback when Spotify is rate-limited**. 2026-05-24 evening made the structural shift: **Spotify API is no longer used for data collection**. A full non-Spotify catalog pipeline (Wikipedia → iTunes queue → Last.fm similar → miss-driven ingestion) was built and is ready to run. 2026-05-24 night added **multilingual catalog support**: `title_native`, `artist_native`, `native_language` columns across the DB schema (language-agnostic ISO 639-1 design, not Korean-specific); a two-phase backfill pipeline (MusicBrainz for artists, iTunes local stores for releases); and native-name-aware search and display. See the [debugging section](#-debugging-spotify-related-production-issues) below for Spotify runtime issues.
 
 ### ► START HERE — next session checklist
 
-**The iTunes genre backfill (`npm run backfill:genres`) was left running in the background when the session ended (~760/4358 processed).**
+**The iTunes genre backfill (`npm run backfill:genres`) was left running in the background when the 2026-05-24 evening session ended (~760/4358 processed). Check its status first.**
 
-#### If the backfill has finished:
+#### Step 0 — check the genre backfill
 
-Check: open `apps/web/scripts/backfill-genres-itunes-state.json` and look at the number of IDs in `processedIds`. If it equals 4358 (or close), it's done.
+Open `apps/web/scripts/backfill-genres-itunes-state.json` and count the IDs in `processedIds`.
 
-```
-1. npm run enrich:genres:lastfm    ← supplements existing genres with Last.fm tags (merges, not overwrites)
-2. npm run queue:ingest            ← drain the 759 Wikipedia artists through iTunes
-3. npm run queue:discover          ← find similar artists via Last.fm, add to queue
-4. (loop: queue:ingest → queue:discover until queue is empty)
-5. npm run backfill:covers         ← fill any remaining null cover_url
-```
+- **~4358 or more → done.** Proceed to Step 1.
+- **Still running** → wait. Do NOT run `queue:ingest` in parallel (both hit iTunes and trigger 403 IP blocks). You can run `enrich:genres:lastfm` safely in a separate terminal (it hits Last.fm, not iTunes).
+- **Crashed / stalled** → re-run `npm run backfill:genres`. It resumes from the state file. If you get an immediate 403, wait 30–60 min and try again.
 
-#### If the backfill is still running:
+#### Step 1 — supplement genres with Last.fm
 
-Leave it running and wait. Do NOT run `queue:ingest` while it's running — both hit the iTunes API and will trigger 403 IP blocks on each other.
-
-You can safely start this in a separate terminal while waiting:
-```
-cd apps/web && npm run enrich:genres:lastfm    ← hits Last.fm, not iTunes — safe to run in parallel
+```bash
+cd apps/web && npm run enrich:genres:lastfm
 ```
 
-Then once the iTunes backfill finishes, continue with `queue:ingest → queue:discover → backfill:covers`.
+Merges Last.fm tags with existing iTunes genres (e.g., iTunes wrote "k-pop", Last.fm adds "r&b" → stored "k-pop,r&b"). Safe to run at any point after Step 0 finishes.
 
-#### If the backfill crashed or stalled:
+#### Step 2 — fix native names on existing DB rows
 
-The state file saves every 50 records. Just re-run `npm run backfill:genres` — it resumes from where it left off. If iTunes is 403-blocking on startup, wait 30–60 min and try again.
+```bash
+cd apps/web && npm run backfill:native:artists   # phase 1: MusicBrainz aliases — ~1100ms/artist
+cd apps/web && npm run backfill:native:releases  # phase 2: iTunes local stores — ~650ms/release
+```
+
+Phase 1 must finish before phase 2. Both are resumable (state saved every 20 records to `scripts/backfill-native-names-state.json`). Run in a standalone terminal (not VS Code) so they survive if you close the editor. Phase 2 only hits the iTunes API for known Asian artists — Western releases are skipped with no API calls.
+
+#### Step 3 — ingest the Wikipedia artist queue
+
+```bash
+cd apps/web && npm run queue:ingest     # drain 759 queued artists through iTunes
+cd apps/web && npm run queue:discover   # find similar artists via Last.fm
+# repeat queue:ingest → queue:discover until queue is empty
+```
+
+Before running `queue:ingest`, re-run `npm run queue:build` once — this adds Korean names (from Wikipedia langlinks) to the 759 existing queue rows that were added before langlink fetching was implemented.
+
+#### Step 4 — fill missing cover art
+
+```bash
+cd apps/web && npm run backfill:covers
+```
 
 ---
 
@@ -59,8 +73,11 @@ The state file saves every 50 records. Just re-run `npm run backfill:genres` —
 ### Catalog pipeline — completed setup
 
 - ✅ Migration `20260525000000_catalog_ingestion_queue.sql` applied — `artist_ingestion_queue` and `search_misses` tables exist in prod
-- ✅ Wikipedia queue built — **759 artists** queued and ready for `queue:ingest`
+- ✅ Migration `20260525000002_native_language_columns.sql` applied — `title_native`, `artist_native`, `native_language` on `releases`; `name_native`, `native_language` on `artists`; trigram indexes on all native columns
+- ✅ Migration `20260525000003_native_language_constraint.sql` applied — CHECK constraint: `native_language ~ '^[a-z]{2}$'`
+- ✅ Wikipedia queue built — **759 artists** queued and ready for `queue:ingest` (re-run `queue:build` once before `queue:ingest` to backfill `name_native` on existing rows)
 - ✅ `normalize-releases.ts` run — 135 dates padded, 3,286 genres lowercased, 0 release_types to fix
+- ⬜ `backfill:native` — not yet run; fixes existing DB rows with native names (see START HERE → Step 2)
 
 ### Catalog normalization — done
 
@@ -288,9 +305,10 @@ Target: **mid-June 2026** (earlier the better).
 |-------|-------------|--------|
 | Phase 1 — seed catalog | 315 curated Korean/Japanese/Western classics | ✓ done (306/315) |
 | RS500 baseline | Rolling Stone 500 seeds "all-time" ranking | ✓ done (481 seeded) |
-| Phase 2 — Wikipedia artist queue | ~500+ Korean artists from 19 Wikipedia categories | **Not yet run** — `npm run queue:build` |
+| Phase 2 — Wikipedia artist queue | ~759 Korean artists from 19 Wikipedia categories | ✓ done — 759 artists queued (re-run `queue:build` once to backfill `name_native`) |
 | Phase 3 — iTunes queue ingest | Full discographies for all queued artists (no auth, no rate limits) | **Not yet run** — `npm run queue:ingest` |
 | Phase 4 — Last.fm similar discovery | Finds related artists for everyone in DB | **Not yet run** — `npm run queue:discover` |
+| Phase 4b — Native name backfill | MusicBrainz (artists) + iTunes local store (releases) for `name_native`/`title_native` | **Not yet run** — `npm run backfill:native` |
 | Phase 5 — miss-driven ingestion | `search_misses` table populated on every cache miss; ingest nightly | Logging active, no ingest job yet |
 | ~~Phase 3 related~~ | ~~Spotify `/artists/{id}/related-artists`~~ | ❌ Dead — Spotify deprecated this endpoint in late 2024 |
 | ~~Discography expansion~~ | ~~Spotify `/artists/{id}/albums`~~ | Superseded by iTunes queue ingest |
@@ -298,11 +316,12 @@ Target: **mid-June 2026** (earlier the better).
 **New pipeline run order (loop until queue stable):**
 ```bash
 cd apps/web
-npm run queue:build      # populate queue from Wikipedia (~500 artists)
-npm run queue:ingest     # drain queue via iTunes (no auth, no rate limits)
-npm run queue:discover   # find similar artists via Last.fm, add to queue
+npm run queue:build          # re-run once to backfill name_native on existing 759 rows
+npm run queue:ingest         # drain queue via iTunes (no auth, no rate limits)
+npm run queue:discover       # find similar artists via Last.fm, add to queue
 # repeat queue:ingest → queue:discover until queue is empty
-npm run backfill:covers  # fill any remaining null cover_url (iTunes → Last.fm → MusicBrainz → Spotify)
+npm run backfill:native      # fill native names for existing artists + releases
+npm run backfill:covers      # fill any remaining null cover_url (iTunes → Last.fm → MusicBrainz → Spotify)
 ```
 
 ---
@@ -313,11 +332,12 @@ npm run backfill:covers  # fill any remaining null cover_url (iTunes → Last.fm
 - [ ] **Per-user rate limit on `/api/search`** — added to scope on 2026-05-23 after the search-route audit; caps abuse and protects Spotify quota under burst load
 - [ ] **DB-FTS-first search rewrite** — `/api/search` currently calls Spotify on every uncached query; the GIN FTS index from migration `20260517000000_indexes_and_fts.sql` is built but unused. Rewrite the route to query Postgres FTS first and only fall through to Spotify when DB returns < N results. Self-healing via existing `saveBasicReleases` writeback. (2026-05-24: partial progress — DB fallback now exists for the rate-limited path via `searchReleasesInDb` / `searchArtistsInDb` with pg_trgm indexes, but the happy path still calls Spotify first.)
 - [ ] **Upstash Redis caching** — ranking leaderboards, album avg rating + count, homepage genre rows; invalidate on write
-- [ ] Korean translation (i18n setup with next-intl; language toggle in settings)
+- [ ] Korean i18n (next-intl; language toggle in settings) — DB schema is ready (`native_language` columns), UI display in AlbumCard is done; remaining work is route-level i18n and language toggle
 - [x] **Genre overrides applied** (2026-05-24) — 68 hand-curated overrides applied; `genre-overrides.json` workflow complete
 - [x] **404 hardening + Spotify circuit breaker** (2026-05-23) — `/api/search` persists results to `releases`; `lib/spotify.ts` has a Redis circuit breaker that short-circuits all Spotify calls during a 429 window
 - [x] **Search graceful degradation + script breaker cooperation + 429 instrumentation** (2026-05-24) — `/api/search` returns DB results with `degraded: true` instead of 500 when Spotify is rate-limited; degraded banner in search UI; `lib/spotify.ts` logs `[spotify] 429 path=...` for log-grep diagnosis; all 5 scripts read+publish the shared circuit breaker key via `scripts/spotify-circuit.ts`; debugging runbook in this README
-- [x] **Non-Spotify catalog pipeline** (2026-05-24) — Wikipedia → iTunes queue → Last.fm similar → miss-driven; all scripts built and tested (dry run); new migration `20260525000000_catalog_ingestion_queue.sql` ready to apply
+- [x] **Non-Spotify catalog pipeline** (2026-05-24) — Wikipedia → iTunes queue → Last.fm similar → miss-driven; all scripts built and tested (dry run); migrations applied
+- [x] **Multilingual catalog** (2026-05-24) — `title_native`/`artist_native`/`native_language` columns on releases; `name_native`/`native_language` on artists; language-agnostic ISO 639-1 design; `detectLanguage()` from Unicode ranges; search queries native columns; `AlbumCard` displays native names; `backfill-native-names.ts` two-phase pipeline for existing rows; `build-artist-queue` + `ingest-itunes-queue` enriched for new ingestion
 - [x] **Column consistency guarantee** (2026-05-24) — all 9+ write paths to `releases` audited; all inconsistencies fixed; `normalize-releases.ts` corrected 153 dates + 3,687 genre casings in historical data
 - [x] **React Native app** (Expo SDK 54) — core screens built (see Mobile App Status below)
 - [ ] EAS build + App Store (iOS) + Play Store (Android) submission
@@ -416,7 +436,23 @@ npm run queue:discover:dry    # preview
 
 Requires `LASTFM_API_KEY` in `.env.local`. State file: `scripts/discover-lastfm-similar-state.json`.
 
-#### Step 4 — Cover art backfill
+#### Step 4b — Native name backfill (existing DB rows)
+
+Fills `name_native` / `native_language` on artists and `title_native` / `artist_native` / `native_language` on releases for rows that already exist. Language-agnostic: covers Korean, Japanese, Chinese, and any future CJK language automatically.
+
+- **Phase 1** (artists) — MusicBrainz artist aliases. Finds any CJK-script alias for each artist with `name_native IS NULL`. Rate: 1 req/s. Safe on MusicBrainz's free tier. Exact-match only (no wrong-artist fallback).
+- **Phase 2** (releases) — iTunes local store. For each artist whose language was set by phase 1, fetches their discography from the local country store (KR / JP / TW). Only runs on releases from known Asian artists — Western releases are skipped with zero API calls.
+
+```bash
+npm run backfill:native:artists   # phase 1 only
+npm run backfill:native:releases  # phase 2 only (requires phase 1 first)
+npm run backfill:native           # both phases back-to-back
+npm run backfill:native:dry       # preview, no DB writes
+```
+
+State saved every 20 records to `scripts/backfill-native-names-state.json`. Safe to Ctrl+C and resume anytime.
+
+#### Step 5 — Cover art backfill
 
 Finds all releases with `cover_url IS NULL` and runs a 4-tier fallback per release:
 1. iTunes: `artworkUrl600` from search
@@ -464,14 +500,12 @@ npm run normalize:releases:dry     # preview only
 
 Last run (2026-05-24): 153 dates fixed, 3,687 genres lowercased, 0 release_types to fix.
 
-### Supabase migration
+### Supabase migrations applied (2026-05-24 sessions)
 
-New migration added this session — must be applied before running queue scripts:
-
-```bash
-supabase db push
-# Creates: artist_ingestion_queue, search_misses tables
-```
+All applied to prod via `supabase db push`:
+- `20260525000000_catalog_ingestion_queue.sql` — creates `artist_ingestion_queue`, `search_misses` tables
+- `20260525000002_native_language_columns.sql` — adds `title_native`, `artist_native`, `native_language` to `releases`; `name_native`, `native_language` to `artists`; trigram indexes
+- `20260525000003_native_language_constraint.sql` — CHECK constraint `native_language ~ '^[a-z]{2}$'`
 
 ### Legacy scripts (Spotify-based — mostly dead)
 
@@ -545,6 +579,7 @@ npm run expand:genre        # Spotify genre sweep — still works
 - **ISR** — artist album pages revalidate every 3600s.
 - **Migrations** — all schema changes in `supabase/migrations/`, applied with `supabase db push`.
 - **`recommendable_releases` view** — both web and mobile query this view instead of `releases` directly; encodes shared eligibility rules (albums + EPs only, must have `cover_url`). Uses `LOWER(release_type)` comparison — DB stores `'Album'`/`'EP'` with capital first letter. Edit the view migration to change recommendation rules across both apps at once.
+- **Native language schema** — `releases` stores `title_native`, `artist_native`, `native_language` (ISO 639-1: `'ko'`, `'ja'`, `'zh'`) alongside English `title`/`artist`. `artists` stores `name_native` and `native_language`. Language is derived from Unicode character ranges (Hangul / Hiragana-Katakana / CJK unified ideographs) — never hardcoded per language. Search queries both romanized and native columns (`name.ilike OR name_native.ilike`). `AlbumCard` shows native names when they differ from the English name (case-insensitive comparison). Adding support for a new language only requires adding artists to the Wikipedia queue — no schema changes needed.
 - **Singles filtering** — enforced at every layer: `recommendable_releases` view, `include_groups=album,ep,compilation` in Spotify artist-albums API calls, `.not('release_type', 'ilike', 'single')` on all DB queries, and post-fetch `releaseType === 'Single'` guards in route handlers.
 - **CSP (`next.config.mjs`)** — includes explicit `wss://*.supabase.co` for Safari (Safari does not automatically allow WebSocket when only `https://` is listed in `connect-src`), `us-assets.i.posthog.com` for PostHog session replay, and `lh3.googleusercontent.com` for Google OAuth avatars.
 - **Server Component error handling** — `RecommendationGrid` wraps Supabase queries in try/catch so a transient network failure (common on mobile) falls through to the Spotify fallback instead of bubbling to the error boundary.
