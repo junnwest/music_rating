@@ -436,7 +436,7 @@ Requires `LASTFM_API_KEY` in `.env.local`. State file: `scripts/discover-lastfm-
 
 Fills `name_native` / `native_language` on artists and `title_native` / `artist_native` / `native_language` on releases for rows that already exist. Language-agnostic: covers Korean, Japanese, Chinese, and any future CJK language automatically.
 
-- **Phase 1** (artists) — MusicBrainz artist aliases. Finds any CJK-script alias for each artist with `name_native IS NULL`. Rate: 1 req/s. Safe on MusicBrainz's free tier. Exact-match only (no wrong-artist fallback).
+- **Phase 1** (artists) — Wikipedia langlinks. For each artist, looks up the English Wikipedia article and picks the first non-Latin-script language title. Priority: ko → ja → zh → any other detected script (Arabic, Thai, Devanagari, Cyrillic, Hebrew, Greek). ~2 requests per artist, 350ms delay each. Much better coverage than MusicBrainz.
 - **Phase 2** (releases) — iTunes local store. For each artist whose language was set by phase 1, fetches their discography from the local country store (KR / JP / TW). Only runs on releases from known Asian artists — Western releases are skipped with zero API calls.
 
 ```bash
