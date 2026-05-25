@@ -85,6 +85,31 @@ async function mbGet(path: string, attempt = 0): Promise<any> {
   return res.json();
 }
 
+// Countries whose artists can legitimately have CJK native names.
+// Western artists get Japanese/Chinese transliteration aliases in MusicBrainz from fan edits —
+// we don't want those. If the artist's country is absent we let it through (unknown origin).
+const CJK_COUNTRIES = new Set(['KR', 'JP', 'CN', 'TW', 'HK', 'SG', 'MO']);
+
+// Prefer aliases with an explicit locale over script-detected ones; prefer ko > ja > zh.
+const LOCALE_PRIORITY = ['ko', 'ja', 'zh'];
+
+function pickAlias(aliases: any[]): { nameNative: string; nativeLanguage: string } | null {
+  // 1. Explicit locale match in priority order
+  for (const locale of LOCALE_PRIORITY) {
+    const a = (aliases ?? []).find(
+      (a: any) => a.locale === locale && hasNativeScript(a.name ?? ''),
+    );
+    if (a) return { nameNative: a.name, nativeLanguage: locale };
+  }
+  // 2. Script detection fallback for aliases without locale metadata
+  for (const a of aliases ?? []) {
+    if (!hasNativeScript(a.name ?? '')) continue;
+    const lang = detectLanguage(a.name);
+    if (lang) return { nameNative: a.name, nativeLanguage: lang };
+  }
+  return null;
+}
+
 async function findNativeArtistName(
   name: string,
 ): Promise<{ nameNative: string; nativeLanguage: string } | null> {
@@ -94,18 +119,26 @@ async function findNativeArtistName(
   if (!data?.artists?.length) return null;
 
   const normName = normalizeStr(name);
-  // Only use an exact name match — never fall back to artists[0], which could be a wrong artist
-  const artist = data.artists.find((a: any) => normalizeStr(a.name) === normName);
+
+  // 1. Exact canonical name match
+  let artist = data.artists.find((a: any) => normalizeStr(a.name) === normName);
+
+  // 2. Alias match — catches reversed name order (e.g. "Yerin Baek" stored as "Baek Yerin")
+  if (!artist) {
+    artist = data.artists.find(
+      (a: any) =>
+        (a.score ?? 0) >= 85 &&
+        (a.aliases ?? []).some(
+          (alias: any) => normalizeStr(alias.name ?? '') === normName,
+        ),
+    );
+  }
+
   if (!artist) return null;
 
-  const pickAlias = (aliases: any[]): { nameNative: string; nativeLanguage: string } | null => {
-    for (const a of aliases ?? []) {
-      if (!hasNativeScript(a.name ?? '')) continue;
-      const lang = detectLanguage(a.name);
-      if (lang) return { nameNative: a.name, nativeLanguage: lang };
-    }
-    return null;
-  };
+  // Country filter: skip non-CJK artists (Western acts have fan-added JP/ZH transliteration aliases)
+  const country: string | undefined = artist.country;
+  if (country && !CJK_COUNTRIES.has(country)) return null;
 
   const fromSearch = pickAlias(artist.aliases);
   if (fromSearch) return fromSearch;
