@@ -104,18 +104,21 @@ async function getLanglinks(pageTitle: string): Promise<{ lang: string; title: s
   return (pages[0]?.langlinks ?? []).map((l: any) => ({ lang: l.lang, title: l['*'] }));
 }
 
+// Strip Wikipedia disambiguation suffixes: "이적 (가수)" → "이적", "JT (曖昧さ回避)" → "JT"
+function stripDisambig(title: string): string {
+  return title.replace(/\s*\([^)]+\)\s*$/, '').trim();
+}
+
 function pickLanglink(
   links: { lang: string; title: string }[],
 ): { nameNative: string; nativeLanguage: string } | null {
-  // Priority languages first
+  // Only accept languages in LANG_PRIORITY — no fallback to arbitrary scripts.
+  // Extend LANG_PRIORITY when adding new markets.
   for (const lang of LANG_PRIORITY) {
-    const link = links.find(l => l.lang === lang && hasNativeScript(l.title));
-    if (link) return { nameNative: link.title, nativeLanguage: lang };
-  }
-  // Any other non-Latin script
-  for (const link of links) {
-    const detected = detectLanguage(link.title);
-    if (detected) return { nameNative: link.title, nativeLanguage: detected };
+    const link = links.find(l => l.lang === lang);
+    if (!link) continue;
+    const name = stripDisambig(link.title);
+    if (hasNativeScript(name)) return { nameNative: name, nativeLanguage: lang };
   }
   return null;
 }
@@ -153,8 +156,12 @@ async function findNativeArtistName(
   if (!results.length) return null;
 
   const normName = normalizeStr(name);
-  // Prefer exact title match; fall back to first result
-  const hit = results.find(r => normalizeStr(r.title) === normName) ?? results[0];
+  // Prefer result whose title (with disambiguation suffix stripped) matches our name.
+  // e.g. searching "Netta" → prefer "Netta (singer)" over "Netta (genus of ducks)"
+  const hit =
+    results.find(r => normalizeStr(r.title) === normName) ??
+    results.find(r => normalizeStr(stripDisambig(r.title)) === normName) ??
+    results[0];
 
   const links = await getLanglinks(hit.title);
   return pickLanglink(links);
