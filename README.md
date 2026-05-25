@@ -8,13 +8,13 @@ Every record you've loved — rated, cataloged, and remembered. A music platform
 
 ---
 
-## ⚠️ Current state (2026-05-24)
+## ⚠️ Current state (2026-05-25)
 
-The 2026-05-22 Spotify-quota hardening is live. 2026-05-23 added 404-resilience and Spotify circuit breaker. 2026-05-24 morning closed the last user-visible failure: **search degrades to DB fallback when Spotify is rate-limited**. 2026-05-24 evening made the structural shift: **Spotify API is no longer used for data collection**. A full non-Spotify catalog pipeline (Wikipedia → iTunes queue → Last.fm similar → miss-driven ingestion) was built and is ready to run. 2026-05-24 night added **multilingual catalog support**: `title_native`, `artist_native`, `native_language` columns across the DB schema (language-agnostic ISO 639-1 design, not Korean-specific); a two-phase backfill pipeline (MusicBrainz for artists, iTunes local stores for releases); and native-name-aware search and display. See the [debugging section](#-debugging-spotify-related-production-issues) below for Spotify runtime issues.
+The 2026-05-22 Spotify-quota hardening is live. 2026-05-23 added 404-resilience and Spotify circuit breaker. 2026-05-24 morning closed the last user-visible failure: **search degrades to DB fallback when Spotify is rate-limited**. 2026-05-24 evening made the structural shift: **Spotify API is no longer used for data collection**. A full non-Spotify catalog pipeline (Wikipedia → iTunes queue → Last.fm similar → miss-driven ingestion) was built and is ready to run. 2026-05-24 night added **multilingual catalog support**: language-agnostic `_native` columns + two-phase backfill pipeline. 2026-05-25 early morning completed **Phase 1 of the native name backfill** (Wikipedia langlinks): ~247 of ~536 artists now have `name_native` set. The iTunes genre backfill (`backfill:genres`) is running overnight (~1493/4358 when session ended). See the [debugging section](#-debugging-spotify-related-production-issues) below for Spotify runtime issues.
 
 ### ► START HERE — next session checklist
 
-**The iTunes genre backfill (`npm run backfill:genres`) was left running in the background when the 2026-05-24 evening session ended (~760/4358 processed). Check its status first.**
+**The iTunes genre backfill (`npm run backfill:genres`) was left running overnight (~1493/4358 when session ended ~3:35 AM 2026-05-25). Check its status first.**
 
 #### Step 0 — check the genre backfill
 
@@ -26,14 +26,15 @@ Open `apps/web/scripts/backfill-genres-itunes-state.json` and count the IDs in `
 
 #### ~~Step 1 — supplement genres with Last.fm~~ ✅ Done (1,587 enriched)
 
-#### Step 2 — fix native names on existing DB rows
+#### Step 2 — run native name backfill Phase 2 (releases)
+
+Phase 1 (artists via Wikipedia) is ✅ done — ~247 of ~536 artists have `name_native`. Once the genre backfill finishes, run Phase 2:
 
 ```bash
-cd apps/web && npm run backfill:native:artists   # phase 1: MusicBrainz aliases — ~1100ms/artist
-cd apps/web && npm run backfill:native:releases  # phase 2: iTunes local stores — ~650ms/release
+cd apps/web && npm run backfill:native:releases  # iTunes local stores — ~650ms/release
 ```
 
-Phase 1 must finish before phase 2. Both are resumable (state saved every 20 records to `scripts/backfill-native-names-state.json`). Run in a standalone terminal (not VS Code) so they survive if you close the editor. Phase 2 only hits the iTunes API for known Asian artists — Western releases are skipped with no API calls.
+Phase 2 only hits the iTunes API for known Asian artists — Western releases are skipped with no API calls. Do NOT run simultaneously with `backfill:genres` (both hit iTunes).
 
 #### Step 3 — ingest the Wikipedia artist queue
 
@@ -59,7 +60,7 @@ cd apps/web && npm run backfill:covers
 
 | Step | Script | Status |
 |------|--------|--------|
-| iTunes backfill (Tier 1) | `npm run backfill:genres` | **Running in background** (~760/4358 at session end) |
+| iTunes backfill (Tier 1) | `npm run backfill:genres` | **Running overnight** (~1493/4358 at session end ~3:35 AM 2026-05-25; heavy 403 throttling) |
 | Last.fm fallback (Tier 2) | `npm run backfill:genres:lastfm` | ✅ Done (previous session) |
 | Hand-curated overrides (Tier 3) | `apply-genre-overrides.ts` | ✅ Done (68 applied) |
 | **Last.fm enrichment (supplementary)** | `npm run enrich:genres:lastfm` | ✅ Done — 1,587 enriched, 137 already covered, 3,716 no Last.fm match |
@@ -304,7 +305,7 @@ Target: **mid-June 2026** (earlier the better).
 | Phase 2 — Wikipedia artist queue | ~759 Korean artists from 19 Wikipedia categories | ✓ done — 759 artists queued (re-run `queue:build` once to backfill `name_native`) |
 | Phase 3 — iTunes queue ingest | Full discographies for all queued artists (no auth, no rate limits) | **Not yet run** — `npm run queue:ingest` |
 | Phase 4 — Last.fm similar discovery | Finds related artists for everyone in DB | **Not yet run** — `npm run queue:discover` |
-| Phase 4b — Native name backfill | MusicBrainz (artists) + iTunes local store (releases) for `name_native`/`title_native` | **Not yet run** — `npm run backfill:native` |
+| Phase 4b — Native name backfill | Wikipedia langlinks (artists) + iTunes local store (releases) for `name_native`/`title_native` | **Phase 1 ✅ done** (~247/536 artists); Phase 2 pending (run after genre backfill finishes) — `npm run backfill:native:releases` |
 | Phase 5 — miss-driven ingestion | `search_misses` table populated on every cache miss; ingest nightly | Logging active, no ingest job yet |
 | ~~Phase 3 related~~ | ~~Spotify `/artists/{id}/related-artists`~~ | ❌ Dead — Spotify deprecated this endpoint in late 2024 |
 | ~~Discography expansion~~ | ~~Spotify `/artists/{id}/albums`~~ | Superseded by iTunes queue ingest |

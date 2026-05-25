@@ -93,17 +93,6 @@ async function wikiGet(params: Record<string, string>): Promise<any> {
   return res.json();
 }
 
-async function getLanglinks(pageTitle: string): Promise<{ lang: string; title: string }[]> {
-  const data = await wikiGet({
-    action: 'query',
-    titles: pageTitle,
-    prop: 'langlinks',
-    lllimit: '500',
-  });
-  const pages = Object.values(data?.query?.pages ?? {}) as any[];
-  return (pages[0]?.langlinks ?? []).map((l: any) => ({ lang: l.lang, title: l['*'] }));
-}
-
 // Strip Wikipedia disambiguation suffixes: "이적 (가수)" → "이적", "JT (曖昧さ回避)" → "JT"
 function stripDisambig(title: string): string {
   return title.replace(/\s*\([^)]+\)\s*$/, '').trim();
@@ -123,48 +112,98 @@ function pickLanglink(
   return null;
 }
 
+// Wikipedia category patterns. No \b word boundaries — plurals ("singers", "bands",
+// "groups") must match. "concept" omitted intentionally (matches "concept albums").
+const MUSIC_CATEGORY_RE = /singer|rapper|band|group|musician|hip.?hop|k.?pop|j.?pop|vocalist|duo|trio|quartet|discograph|album|song/i;
+const FALSE_POSITIVE_CATEGORY_RE = /buddh|religion|hindu|virtue|plant|species|genus|food|dish|cuisine|writing.?system|alphabet|calligraph|numeral|\byear\b|century/i;
+
+function categoriesAreMusicArtist(cats: string[]): boolean | null {
+  if (!cats.length) return null; // unknown
+  const catStr = cats.join(' ');
+  if (MUSIC_CATEGORY_RE.test(catStr)) return true;
+  if (FALSE_POSITIVE_CATEGORY_RE.test(catStr)) return false;
+  return null; // ambiguous
+}
+
 async function findNativeArtistName(
   name: string,
 ): Promise<{ nameNative: string; nativeLanguage: string } | null> {
-  // Step 1: try a direct title lookup (fast path for artists whose DB name matches Wikipedia title)
+  // Step 1: direct title lookup — fetch langlinks + categories in one request.
   const directData = await wikiGet({
     action: 'query',
     titles: name,
-    prop: 'langlinks',
+    prop: 'langlinks|categories',
     lllimit: '500',
+    cllimit: '50',
   });
   const directPages = Object.values(directData?.query?.pages ?? {}) as any[];
   const directPage  = directPages[0];
 
   if (directPage && !directPage.missing) {
     const links = (directPage.langlinks ?? []).map((l: any) => ({ lang: l.lang, title: l['*'] }));
+    const cats  = (directPage.categories ?? []).map((c: any) => (c.title as string).replace(/^Category:/, ''));
     const result = pickLanglink(links);
-    if (result) return result;
-    // Page exists but has no non-Latin langlinks — this is a Western artist, stop here
-    return null;
+
+    const isDisambig = /disambigu/i.test(cats.join(' '));
+
+    if (result) {
+      const isMusic = categoriesAreMusicArtist(cats);
+      if (isMusic === true && !isDisambig) return result; // confirmed music article
+      if (isMusic === false) return null;                 // confirmed non-music concept
+      // ambiguous OR disambiguation page → fall through to music-biased search
+    }
+
+    // No LANG_PRIORITY result. Return null (Western artist) only when the page has
+    // langlinks AND is not a disambiguation page. Disambiguation pages with langlinks
+    // (IU, EXO, SHINee…) must fall through so we can find the specific artist article.
+    if (links.length > 0 && !isDisambig) return null;
   }
 
-  // Step 2: article not found by exact title — search Wikipedia
+  // Step 2: article missing OR disambiguation page (no langlinks) → search Wikipedia.
+  // Bias the query toward music articles so "Nirvana" → "Nirvana (band)" not "열반 concept".
   const searchData = await wikiGet({
     action: 'query',
     list: 'search',
-    srsearch: name,
-    srlimit: '3',
+    srsearch: `${name} singer OR band OR musician OR rapper`,
+    srlimit: '5',
     srnamespace: '0',
   });
   const results: any[] = searchData?.query?.search ?? [];
   if (!results.length) return null;
 
-  const normName = normalizeStr(name);
-  // Prefer result whose title (with disambiguation suffix stripped) matches our name.
-  // e.g. searching "Netta" → prefer "Netta (singer)" over "Netta (genus of ducks)"
+  const normName        = normalizeStr(name);
+  const normNameNoSpace = normName.replace(/\s/g, '');
+
+  // Require the search result title to match our artist name (with or without spaces).
+  // "BIGBANG" → matches "Big Bang (South Korean band)" via no-space comparison.
+  // No results[0] fallback — a wrong first result is worse than no match.
   const hit =
     results.find(r => normalizeStr(r.title) === normName) ??
     results.find(r => normalizeStr(stripDisambig(r.title)) === normName) ??
-    results[0];
+    results.find(r => normalizeStr(stripDisambig(r.title)).replace(/\s/g, '') === normNameNoSpace) ??
+    results.find(r => normalizeStr(r.title).replace(/\s/g, '') === normNameNoSpace);
 
-  const links = await getLanglinks(hit.title);
-  return pickLanglink(links);
+  if (!hit) return null;
+
+  // Fetch langlinks + categories for the found article in one request.
+  const hitData = await wikiGet({
+    action: 'query',
+    titles: hit.title,
+    prop: 'langlinks|categories',
+    lllimit: '500',
+    cllimit: '50',
+  });
+  const hitPages = Object.values(hitData?.query?.pages ?? {}) as any[];
+  const hitPage  = hitPages[0];
+  if (!hitPage) return null;
+
+  const hitLinks = (hitPage.langlinks ?? []).map((l: any) => ({ lang: l.lang, title: l['*'] }));
+  const hitCats  = (hitPage.categories ?? []).map((c: any) => (c.title as string).replace(/^Category:/, ''));
+
+  const isMusic = categoriesAreMusicArtist(hitCats);
+  if (isMusic === false) return null;
+
+  return pickLanglink(hitLinks);
 }
 
 // ── iTunes local store ────────────────────────────────────────────────────────
