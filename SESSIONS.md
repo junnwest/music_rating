@@ -200,7 +200,8 @@ Fixed to `name_native`. Committed as `6bda114`. Build should now pass cleanly.
 - ✅ Migrations 000002 and 000003 applied to prod
 - ✅ `backfill-native-names.ts` built and ready to run
 - ✅ Deployment fix committed and pushed (6bda114)
-- ⬜ `backfill:native` — not yet run; this is the first thing to do next session (see README START HERE → Step 2)
+- ✅ `enrich:genres:lastfm` — completed. 1,587 enriched, 137 already covered, 3,716 no Last.fm match
+- ⬜ `backfill:native` — not yet run (waiting for iTunes genre backfill to finish first)
 
 ---
 

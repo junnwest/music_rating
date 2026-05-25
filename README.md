@@ -24,13 +24,7 @@ Open `apps/web/scripts/backfill-genres-itunes-state.json` and count the IDs in `
 - **Still running** → wait. Do NOT run `queue:ingest` in parallel (both hit iTunes and trigger 403 IP blocks). You can run `enrich:genres:lastfm` safely in a separate terminal (it hits Last.fm, not iTunes).
 - **Crashed / stalled** → re-run `npm run backfill:genres`. It resumes from the state file. If you get an immediate 403, wait 30–60 min and try again.
 
-#### Step 1 — supplement genres with Last.fm
-
-```bash
-cd apps/web && npm run enrich:genres:lastfm
-```
-
-Merges Last.fm tags with existing iTunes genres (e.g., iTunes wrote "k-pop", Last.fm adds "r&b" → stored "k-pop,r&b"). Safe to run at any point after Step 0 finishes.
+#### ~~Step 1 — supplement genres with Last.fm~~ ✅ Done (1,587 enriched)
 
 #### Step 2 — fix native names on existing DB rows
 
@@ -68,7 +62,7 @@ cd apps/web && npm run backfill:covers
 | iTunes backfill (Tier 1) | `npm run backfill:genres` | **Running in background** (~760/4358 at session end) |
 | Last.fm fallback (Tier 2) | `npm run backfill:genres:lastfm` | ✅ Done (previous session) |
 | Hand-curated overrides (Tier 3) | `apply-genre-overrides.ts` | ✅ Done (68 applied) |
-| **Last.fm enrichment (supplementary)** | `npm run enrich:genres:lastfm` | **Not yet run** — run after Tier 1 finishes |
+| **Last.fm enrichment (supplementary)** | `npm run enrich:genres:lastfm` | ✅ Done — 1,587 enriched, 137 already covered, 3,716 no Last.fm match |
 
 `enrich:genres:lastfm` merges Last.fm tags with existing iTunes genres (e.g., iTunes wrote "k-pop", Last.fm adds "r&b" → stored "k-pop,r&b"). It runs on all releases, not just null-genre ones.
 
