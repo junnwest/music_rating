@@ -1,10 +1,13 @@
 /**
  * Backfill native-language names for existing rows in artists and releases tables.
- * Language-agnostic: works for Korean (ko), Japanese (ja), Chinese (zh), etc.
+ * Language-agnostic: works for any non-Latin script (Korean, Japanese, Chinese,
+ * Arabic, Thai, Hindi, Cyrillic, Hebrew, Greek, etc.).
  *
- * Phase 1 — artists.name_native + artists.native_language via MusicBrainz artist aliases.
- *   Searches for aliases with any CJK locale (ko, ja, zh, etc.).
- *   Rate limit: 1 req/s. Good coverage for all well-known Asian acts.
+ * Phase 1 — artists.name_native + artists.native_language via Wikipedia langlinks.
+ *   For each artist, looks up the English Wikipedia article, fetches all language links,
+ *   and picks the first non-Latin-script title. Priority: ko > ja > zh > any other detected script.
+ *   Rate limit: ~2 requests per artist (search + langlinks), 350ms delay each.
+ *   Much better coverage than MusicBrainz for non-Western artists.
  *
  * Phase 2 — releases.title_native + releases.artist_native + releases.native_language
  *   via iTunes local-store search. Only processes releases from artists whose
@@ -31,12 +34,16 @@ const RUN_P1    = !PHASE_ARG || PHASE_ARG === '1';
 const RUN_P2    = !PHASE_ARG || PHASE_ARG === '2';
 
 const STATE_FILE  = 'scripts/backfill-native-names-state.json';
-const MB_BASE     = 'https://musicbrainz.org/ws/2';
+const WIKI_BASE   = 'https://en.wikipedia.org/w/api.php';
 const ITUNES_BASE = 'https://itunes.apple.com';
-const MB_DELAY    = 1100;
+const WIKI_DELAY  = 350;  // two calls per artist → ~700ms effective
 const IT_DELAY    = 650;
 
+// iTunes store per language — extend as new markets are added
 const LANGUAGE_TO_STORE: Record<string, string> = { ko: 'KR', ja: 'JP', zh: 'TW' };
+
+// Language priority when multiple non-Latin scripts exist for one artist
+const LANG_PRIORITY = ['ko', 'ja', 'zh'];
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -52,9 +59,15 @@ function saveState(s: State) { writeFileSync(STATE_FILE, JSON.stringify(s)); }
 // ── Language helpers ──────────────────────────────────────────────────────────
 
 function detectLanguage(s: string): string | null {
-  if (/[가-힣ᄀ-ᇿ]/.test(s)) return 'ko';
-  if (/[぀-ゟ゠-ヿ]/.test(s)) return 'ja';
-  if (/[一-鿿]/.test(s)) return 'zh';
+  if (/[가-힣ᄀ-ᇿ]/.test(s))         return 'ko'; // Hangul
+  if (/[぀-ゟ゠-ヿ]/.test(s))         return 'ja'; // Hiragana / Katakana (uniquely Japanese)
+  if (/[一-鿿]/.test(s))              return 'zh'; // CJK unified (ja already caught above)
+  if (/[؀-ۿ]/.test(s))      return 'ar'; // Arabic
+  if (/[ऀ-ॿ]/.test(s))      return 'hi'; // Devanagari (Hindi, etc.)
+  if (/[฀-๿]/.test(s))      return 'th'; // Thai
+  if (/[Ѐ-ӿ]/.test(s))      return 'ru'; // Cyrillic (Russian, Ukrainian, etc.)
+  if (/[֐-׿]/.test(s))      return 'he'; // Hebrew
+  if (/[Ͱ-Ͽ]/.test(s))      return 'el'; // Greek
   return null;
 }
 
@@ -66,46 +79,43 @@ function normalizeStr(s: string): string {
 
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
-// ── MusicBrainz ───────────────────────────────────────────────────────────────
+// ── Wikipedia ─────────────────────────────────────────────────────────────────
 
-async function mbGet(path: string, attempt = 0): Promise<any> {
-  await sleep(MB_DELAY);
-  const res = await fetch(`${MB_BASE}${path}`, {
-    headers: {
-      'User-Agent': 'sillajuku-catalog-builder/1.0 (admin@sillajuku.com)',
-      'Accept': 'application/json',
-    },
+async function wikiGet(params: Record<string, string>): Promise<any> {
+  await sleep(WIKI_DELAY);
+  const url = new URL(WIKI_BASE);
+  Object.entries({ ...params, format: 'json', origin: '*' })
+    .forEach(([k, v]) => url.searchParams.set(k, v));
+  const res = await fetch(url.toString(), {
+    headers: { 'User-Agent': 'sillajuku-catalog-builder/1.0 (admin@sillajuku.com)' },
   });
-  if ((res.status === 503 || res.status === 429) && attempt < 5) {
-    const wait = Math.min(30000, 5000 * 2 ** attempt);
-    await sleep(wait);
-    return mbGet(path, attempt + 1);
-  }
   if (!res.ok) return null;
   return res.json();
 }
 
-// Countries whose artists can legitimately have CJK native names.
-// Western artists get Japanese/Chinese transliteration aliases in MusicBrainz from fan edits —
-// we don't want those. If the artist's country is absent we let it through (unknown origin).
-const CJK_COUNTRIES = new Set(['KR', 'JP', 'CN', 'TW', 'HK', 'SG', 'MO']);
+async function getLanglinks(pageTitle: string): Promise<{ lang: string; title: string }[]> {
+  const data = await wikiGet({
+    action: 'query',
+    titles: pageTitle,
+    prop: 'langlinks',
+    lllimit: '500',
+  });
+  const pages = Object.values(data?.query?.pages ?? {}) as any[];
+  return (pages[0]?.langlinks ?? []).map((l: any) => ({ lang: l.lang, title: l['*'] }));
+}
 
-// Prefer aliases with an explicit locale over script-detected ones; prefer ko > ja > zh.
-const LOCALE_PRIORITY = ['ko', 'ja', 'zh'];
-
-function pickAlias(aliases: any[]): { nameNative: string; nativeLanguage: string } | null {
-  // 1. Explicit locale match in priority order
-  for (const locale of LOCALE_PRIORITY) {
-    const a = (aliases ?? []).find(
-      (a: any) => a.locale === locale && hasNativeScript(a.name ?? ''),
-    );
-    if (a) return { nameNative: a.name, nativeLanguage: locale };
+function pickLanglink(
+  links: { lang: string; title: string }[],
+): { nameNative: string; nativeLanguage: string } | null {
+  // Priority languages first
+  for (const lang of LANG_PRIORITY) {
+    const link = links.find(l => l.lang === lang && hasNativeScript(l.title));
+    if (link) return { nameNative: link.title, nativeLanguage: lang };
   }
-  // 2. Script detection fallback for aliases without locale metadata
-  for (const a of aliases ?? []) {
-    if (!hasNativeScript(a.name ?? '')) continue;
-    const lang = detectLanguage(a.name);
-    if (lang) return { nameNative: a.name, nativeLanguage: lang };
+  // Any other non-Latin script
+  for (const link of links) {
+    const detected = detectLanguage(link.title);
+    if (detected) return { nameNative: link.title, nativeLanguage: detected };
   }
   return null;
 }
@@ -113,38 +123,41 @@ function pickAlias(aliases: any[]): { nameNative: string; nativeLanguage: string
 async function findNativeArtistName(
   name: string,
 ): Promise<{ nameNative: string; nativeLanguage: string } | null> {
-  const data = await mbGet(
-    `/artist?query=artist:"${encodeURIComponent(name)}"&limit=5&fmt=json`,
-  );
-  if (!data?.artists?.length) return null;
+  // Step 1: try a direct title lookup (fast path for artists whose DB name matches Wikipedia title)
+  const directData = await wikiGet({
+    action: 'query',
+    titles: name,
+    prop: 'langlinks',
+    lllimit: '500',
+  });
+  const directPages = Object.values(directData?.query?.pages ?? {}) as any[];
+  const directPage  = directPages[0];
 
-  const normName = normalizeStr(name);
-
-  // 1. Exact canonical name match
-  let artist = data.artists.find((a: any) => normalizeStr(a.name) === normName);
-
-  // 2. Alias match — catches reversed name order (e.g. "Yerin Baek" stored as "Baek Yerin")
-  if (!artist) {
-    artist = data.artists.find(
-      (a: any) =>
-        (a.score ?? 0) >= 85 &&
-        (a.aliases ?? []).some(
-          (alias: any) => normalizeStr(alias.name ?? '') === normName,
-        ),
-    );
+  if (directPage && !directPage.missing) {
+    const links = (directPage.langlinks ?? []).map((l: any) => ({ lang: l.lang, title: l['*'] }));
+    const result = pickLanglink(links);
+    if (result) return result;
+    // Page exists but has no non-Latin langlinks — this is a Western artist, stop here
+    return null;
   }
 
-  if (!artist) return null;
+  // Step 2: article not found by exact title — search Wikipedia
+  const searchData = await wikiGet({
+    action: 'query',
+    list: 'search',
+    srsearch: name,
+    srlimit: '3',
+    srnamespace: '0',
+  });
+  const results: any[] = searchData?.query?.search ?? [];
+  if (!results.length) return null;
 
-  // Country filter: skip non-CJK artists (Western acts have fan-added JP/ZH transliteration aliases)
-  const country: string | undefined = artist.country;
-  if (country && !CJK_COUNTRIES.has(country)) return null;
+  const normName = normalizeStr(name);
+  // Prefer exact title match; fall back to first result
+  const hit = results.find(r => normalizeStr(r.title) === normName) ?? results[0];
 
-  const fromSearch = pickAlias(artist.aliases);
-  if (fromSearch) return fromSearch;
-
-  const full = await mbGet(`/artist/${artist.id}?inc=aliases&fmt=json`);
-  return pickAlias(full?.aliases);
+  const links = await getLanglinks(hit.title);
+  return pickLanglink(links);
 }
 
 // ── iTunes local store ────────────────────────────────────────────────────────
@@ -206,7 +219,7 @@ function getDB() {
 // ── Phase 1: artists ──────────────────────────────────────────────────────────
 
 async function phase1(db: ReturnType<typeof getDB>, state: State) {
-  console.log('\n  Phase 1 — artists.name_native via MusicBrainz (any CJK language)\n');
+  console.log('\n  Phase 1 — artists.name_native via Wikipedia langlinks\n');
 
   const done = new Set(state.artistsDone);
   let from = 0;
@@ -259,22 +272,21 @@ async function phase1(db: ReturnType<typeof getDB>, state: State) {
 
 async function phase2(db: ReturnType<typeof getDB>, state: State) {
   console.log('\n  Phase 2 — releases native names via iTunes local store\n');
-  console.log('  Only processes releases from known Asian artists (skips Western releases).\n');
+  console.log('  Only processes releases from known non-Latin-script artists.\n');
 
   const done = new Set(state.releasesDone);
 
-  // Build a lookup of known Asian artists from phase 1 results
-  const { data: asianArtists } = await db
+  const { data: nativeArtists } = await db
     .from('artists').select('id, name, native_language')
     .not('native_language', 'is', null);
 
-  if (!asianArtists?.length) {
+  if (!nativeArtists?.length) {
     console.log('  No artists with native_language found. Run phase 1 first.\n');
     return;
   }
 
-  const langById   = new Map(asianArtists.map(a => [a.id,               a.native_language as string]));
-  const langByName = new Map(asianArtists.map(a => [a.name.toLowerCase(), a.native_language as string]));
+  const langById   = new Map(nativeArtists.map(a => [a.id,                a.native_language as string]));
+  const langByName = new Map(nativeArtists.map(a => [a.name.toLowerCase(), a.native_language as string]));
 
   let from = 0;
   const BATCH = 500;
