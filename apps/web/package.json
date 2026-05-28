@@ -41,7 +41,9 @@
     "backfill:native": "tsx --env-file=.env.local scripts/backfill-native-names.ts",
     "backfill:native:dry": "tsx --env-file=.env.local scripts/backfill-native-names.ts --dry-run",
     "backfill:native:artists": "tsx --env-file=.env.local scripts/backfill-native-names.ts --phase=1",
-    "backfill:native:releases": "tsx --env-file=.env.local scripts/backfill-native-names.ts --phase=2"
+    "backfill:native:releases": "tsx --env-file=.env.local scripts/backfill-native-names.ts --phase=2",
+    "backfill:embeddings": "tsx --env-file=.env.local scripts/backfill-embeddings.ts",
+    "backfill:embeddings:dry": "tsx --env-file=.env.local scripts/backfill-embeddings.ts --dry-run"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.103.2",

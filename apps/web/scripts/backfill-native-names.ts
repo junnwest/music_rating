@@ -37,7 +37,7 @@ const STATE_FILE  = 'scripts/backfill-native-names-state.json';
 const WIKI_BASE   = 'https://en.wikipedia.org/w/api.php';
 const ITUNES_BASE = 'https://itunes.apple.com';
 const WIKI_DELAY  = 350;  // two calls per artist → ~700ms effective
-const IT_DELAY    = 650;
+const IT_DELAY    = 2000; // 650ms caused constant 403 bans; 2s avoids triggering the rate limit
 
 // iTunes store per language — extend as new markets are added
 const LANGUAGE_TO_STORE: Record<string, string> = { ko: 'KR', ja: 'JP', zh: 'TW' };
@@ -212,7 +212,7 @@ async function itunesGet(url: string, attempt = 0): Promise<any> {
   await sleep(IT_DELAY);
   const res = await fetch(url, { headers: { 'User-Agent': 'sillajuku-backfill/1.0' } });
   if (res.status === 429 || res.status === 403) {
-    const wait = Math.min(120000, 10000 * 2 ** attempt);
+    const wait = Math.min(300000, 30000 * 2 ** attempt);
     process.stdout.write(`\n  [${res.status}] iTunes blocked — waiting ${wait / 1000}s… `);
     await sleep(wait);
     if (attempt >= 5) return null;
@@ -222,35 +222,15 @@ async function itunesGet(url: string, attempt = 0): Promise<any> {
   return res.json();
 }
 
-async function findNativeReleaseName(
-  title: string,
-  artist: string,
-  storeCountry: string,
-): Promise<{ titleNative: string; artistNative: string; nativeLanguage: string } | null> {
-  const term = encodeURIComponent(`${title} ${artist}`);
+// Fetches all albums for one artist from the given iTunes store.
+// Returns the raw iTunes results array, or null if the request failed (should retry).
+async function fetchArtistAlbums(nativeName: string, storeCountry: string): Promise<any[] | null> {
+  const term = encodeURIComponent(nativeName);
   const data = await itunesGet(
-    `${ITUNES_BASE}/search?term=${term}&entity=album&country=${storeCountry}&limit=5`,
+    `${ITUNES_BASE}/search?term=${term}&entity=album&country=${storeCountry}&limit=200`,
   );
-  if (!data?.results?.length) return null;
-
-  const normTitle  = normalizeStr(title);
-  const normArtist = normalizeStr(artist);
-  const match = data.results.find((r: any) =>
-    r.wrapperType === 'collection' &&
-    (normalizeStr(r.collectionName) === normTitle || normalizeStr(r.artistName) === normArtist),
-  );
-  if (!match) return null;
-
-  const titleNative  = match.collectionName ?? '';
-  const artistNative = match.artistName ?? '';
-  const lang = detectLanguage(titleNative) ?? detectLanguage(artistNative);
-  if (!lang) return null;
-
-  return {
-    titleNative:    hasNativeScript(titleNative)  ? titleNative  : title,
-    artistNative:   hasNativeScript(artistNative) ? artistNative : artist,
-    nativeLanguage: lang,
-  };
+  if (data === null) return null; // network/rate-limit failure — caller should not mark as done
+  return data.results ?? [];
 }
 
 // ── DB ────────────────────────────────────────────────────────────────────────
@@ -318,80 +298,175 @@ async function phase1(db: ReturnType<typeof getDB>, state: State) {
 
 async function phase2(db: ReturnType<typeof getDB>, state: State) {
   console.log('\n  Phase 2 — releases native names via iTunes local store\n');
-  console.log('  Only processes releases from known non-Latin-script artists.\n');
+  console.log('  Strategy: one search per artist (native name), match releases by release date.\n');
 
   const done = new Set(state.releasesDone);
 
+  // Only process artists that have both a native name AND a supported store language
   const { data: nativeArtists } = await db
-    .from('artists').select('id, name, native_language')
-    .not('native_language', 'is', null);
+    .from('artists').select('id, name, name_native, native_language')
+    .not('native_language', 'is', null)
+    .not('name_native', 'is', null);
 
   if (!nativeArtists?.length) {
     console.log('  No artists with native_language found. Run phase 1 first.\n');
     return;
   }
 
-  const langById   = new Map(nativeArtists.map(a => [a.id,                a.native_language as string]));
-  const langByName = new Map(nativeArtists.map(a => [a.name.toLowerCase(), a.native_language as string]));
+  // Load all qualifying releases (with release_date for date-based matching)
+  const artistIds = nativeArtists.map((a: any) => a.id as string);
+  const allReleases: any[] = [];
+  {
+    let from = 0;
+    const BATCH = 1000;
+    while (true) {
+      const { data, error } = await db
+        .from('releases').select('id, title, artist, artist_id, release_date')
+        .is('title_native', null)
+        .not('release_type', 'ilike', 'single')
+        .in('artist_id', artistIds)
+        .range(from, from + BATCH - 1);
+      if (error) { console.error('DB error:', error.message); break; }
+      if (!data?.length) break;
+      allReleases.push(...data);
+      if (data.length < BATCH) break;
+      from += BATCH;
+    }
+  }
 
-  let from = 0;
-  const BATCH = 500;
-  let fixed = 0, skipped = 0, notFound = 0;
+  if (!allReleases.length) {
+    console.log('  No unprocessed releases found.\n');
+    return;
+  }
 
-  while (true) {
-    const { data, error } = await db
-      .from('releases').select('id, title, artist, artist_id')
-      .is('title_native', null)
-      .not('release_type', 'ilike', 'single')
-      .range(from, from + BATCH - 1);
+  // Group releases by artist_id
+  const releasesByArtist = new Map<string, any[]>();
+  for (const rel of allReleases) {
+    if (!rel.artist_id) continue;
+    const bucket = releasesByArtist.get(rel.artist_id) ?? [];
+    bucket.push(rel);
+    releasesByArtist.set(rel.artist_id, bucket);
+  }
 
-    if (error) { console.error('DB error:', error.message); break; }
-    if (!data || data.length === 0) break;
+  const noArtistId = allReleases.filter((r: any) => !r.artist_id).length;
+  console.log(
+    `  ${nativeArtists.length} artists, ${allReleases.length} releases` +
+    (noArtistId ? ` (${noArtistId} without artist_id — skipped)` : '') +
+    `\n`,
+  );
 
-    for (const row of data) {
-      if (done.has(row.id)) { skipped++; continue; }
+  let fixed = 0, notFound = 0, skipped = 0;
 
-      const lang =
-        (row.artist_id ? langById.get(row.artist_id) : undefined) ??
-        langByName.get(row.artist.toLowerCase());
+  for (const artist of nativeArtists) {
+    const releases = releasesByArtist.get(artist.id);
+    if (!releases?.length) continue;
 
-      if (!lang || !LANGUAGE_TO_STORE[lang]) {
-        skipped++;
-        done.add(row.id);
+    const lang         = artist.native_language as string;
+    const storeCountry = LANGUAGE_TO_STORE[lang];
+    if (!storeCountry) {
+      for (const rel of releases) done.add(rel.id);
+      skipped += releases.length;
+      continue;
+    }
+
+    const pending = releases.filter((r: any) => !done.has(r.id));
+    if (!pending.length) { skipped += releases.length; continue; }
+
+    const nativeName = (artist.name_native as string).trim();
+    process.stdout.write(`\n  [${artist.name}] ${nativeName} — ${pending.length} releases\n`);
+
+    // One iTunes search per artist by native name (not English title)
+    const itunesResults = await fetchArtistAlbums(nativeName, storeCountry);
+
+    if (itunesResults === null) {
+      // Request failed after all retries — do NOT mark releases as done so they retry
+      process.stdout.write(`    iTunes unreachable — releases will retry on next run\n`);
+      continue;
+    }
+
+    if (!itunesResults.length) {
+      process.stdout.write(`    no iTunes results for "${nativeName}"\n`);
+      for (const rel of pending) { done.add(rel.id); notFound++; }
+      state.releasesDone = [...done];
+      saveState(state);
+      continue;
+    }
+
+    // Keep only collections where artistName matches either the native name or the English name.
+    // Many globally-known artists (BIGBANG, BTS, etc.) are indexed in iTunes with their Latin
+    // artist name even in the KR/JP store, so "빅뱅" search returns artistName="BIGBANG".
+    // Normalize by stripping spaces/hyphens/dots so "E-Sens" matches "E SENS".
+    const normArtistLatin = (s: string) => s.toLowerCase().replace(/[\s\-_.]/g, '');
+    const artistNameNorm  = normArtistLatin(artist.name);
+    const exactAlbums = itunesResults.filter(
+      (r: any) =>
+        r.wrapperType === 'collection' &&
+        (r.artistName?.trim() === nativeName ||
+         normArtistLatin(r.artistName ?? '') === artistNameNorm),
+    );
+
+    // Build a date → album lookup (YYYY-MM-DD → first iTunes album on that date)
+    const dateMap = new Map<string, any>();
+    for (const album of exactAlbums) {
+      const date = (album.releaseDate as string | undefined)?.slice(0, 10);
+      if (date && !dateMap.has(date)) dateMap.set(date, album);
+    }
+
+    process.stdout.write(
+      `    ${exactAlbums.length} exact-artist albums, ${dateMap.size} unique dates\n`,
+    );
+
+    for (const rel of pending) {
+      const relDate = (rel.release_date as string | undefined)?.slice(0, 10);
+      process.stdout.write(`    ${rel.title.slice(0, 35).padEnd(37)} `);
+
+      if (!relDate) {
+        process.stdout.write('no release_date — skip\n');
+        done.add(rel.id);
+        notFound++;
         continue;
       }
 
-      process.stdout.write(
-        `  [release] ${row.artist.slice(0, 18).padEnd(20)} — ${row.title.slice(0, 28).padEnd(30)} `,
-      );
-      const result = await findNativeReleaseName(row.title, row.artist, LANGUAGE_TO_STORE[lang]);
-
-      if (result) {
-        process.stdout.write(`→ ${result.titleNative} (${result.nativeLanguage})\n`);
-        if (!DRY_RUN) {
-          await db.from('releases').update({
-            title_native:    result.titleNative,
-            artist_native:   result.artistNative,
-            native_language: result.nativeLanguage,
-          }).eq('id', row.id);
-        }
-        fixed++;
-      } else {
-        process.stdout.write('no match\n');
+      const match = dateMap.get(relDate);
+      if (!match) {
+        process.stdout.write(`no date match (${relDate})\n`);
+        done.add(rel.id);
         notFound++;
+        continue;
       }
 
-      done.add(row.id);
-      state.releasesDone = [...done];
-      if ((fixed + notFound) % 20 === 0) saveState(state);
+      const titleNative  = match.collectionName as string;
+      const artistNative = match.artistName     as string;
+      const titleLang    = detectLanguage(titleNative);
+
+      if (!titleLang) {
+        // iTunes returned an English-only title — nothing to localize
+        process.stdout.write(`date match but no native script: "${titleNative}"\n`);
+        done.add(rel.id);
+        notFound++;
+        continue;
+      }
+
+      process.stdout.write(`→ ${titleNative} (${titleLang})\n`);
+      if (!DRY_RUN) {
+        await db.from('releases').update({
+          title_native:    titleNative,
+          artist_native:   artistNative,
+          native_language: titleLang,
+        }).eq('id', rel.id);
+      }
+      fixed++;
+      done.add(rel.id);
     }
 
-    if (data.length < BATCH) break;
-    from += BATCH;
+    state.releasesDone = [...done];
+    saveState(state);
   }
 
   saveState(state);
-  console.log(`\n  Releases: ${fixed} native names found, ${notFound} no match, ${skipped} skipped (Western/unknown)\n`);
+  console.log(
+    `\n  Releases: ${fixed} native names found, ${notFound} no match, ${skipped} skipped\n`,
+  );
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 ﻿import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { getSpotifyAlbum } from '../../../../lib/spotify';
-import { getCachedAlbum, cacheAlbum, getBasicRelease } from '../../../../lib/dbCache';
+import { getCachedAlbum, cacheAlbum, getBasicRelease, isUUID } from '../../../../lib/dbCache';
 import { createServerClient } from '../../../../lib/supabaseServer';
 
 // KNOWN ISSUE: Next.js 14.2.5 returns HTTP 200 (with the not-found.tsx body)
@@ -70,12 +70,24 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
   const t = getServerT();
   let album = await getCachedAlbum(params.mbid);
   if (!album) {
-    album = await getSpotifyAlbum(params.mbid);
-    if (album) {
-      cacheAlbum(album); // fire and forget
-    } else {
+    // Not fully cached — find the Spotify ID to enrich from Spotify.
+    // params.mbid may be a UUID, a Spotify ID, or an iTunes collection ID.
+    const basic = await getBasicRelease(params.mbid);
+    const spotifyId = basic?.spotifyId
+      ?? (isUUID(params.mbid) || /^\d+$/.test(params.mbid) ? null : params.mbid);
+
+    if (spotifyId) {
+      const fetched = await getSpotifyAlbum(spotifyId);
+      if (fetched) {
+        const uuid = await cacheAlbum(fetched);
+        // Use the DB-assigned UUID so ratings/reviews queries match release_id
+        album = { ...fetched, id: uuid ?? basic?.id ?? fetched.id };
+      }
+    }
+
+    if (!album) {
       console.error('[album] Spotify returned null for id:', params.mbid);
-      album = await getBasicRelease(params.mbid);
+      album = basic;
       if (!album) {
         console.error('[album] getBasicRelease also null for id:', params.mbid);
         notFound();

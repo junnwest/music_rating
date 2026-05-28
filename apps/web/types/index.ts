@@ -4,6 +4,8 @@ export type RatingStatus = 'Listened' | 'Listening' | 'WantToListen' | 'ReListen
 
 export interface AlbumRelease {
   id: string;
+  spotifyId?: string | null;
+  itunesId?: number | null;
   title: string;
   artist: string;
   titleNative?: string | null;

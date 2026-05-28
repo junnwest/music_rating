@@ -1,6 +1,7 @@
 import { searchSpotifyAlbums, searchSpotifyArtists, searchSpotifyTracks, SpotifyCircuitOpenError } from '../../../lib/spotify';
+import { searchItunesAlbums, searchItunesArtists } from '../../../lib/itunes';
 import { cacheGet, cacheSet } from '../../../lib/cache';
-import { saveBasicReleases, searchReleases, searchArtistsInDb, searchReleasesInDb } from '../../../lib/dbCache';
+import { saveBasicReleases, saveItunesReleases, searchReleases, searchArtistsInDb, searchReleasesInDb } from '../../../lib/dbCache';
 import { rateLimit } from '../../../lib/rateLimit';
 import { createClient } from '@supabase/supabase-js';
 import type { NextRequest } from 'next/server';
@@ -53,9 +54,14 @@ export async function GET(request: NextRequest) {
       await cacheSet(cacheKey, body, SEARCH_TTL);
       return jsonResponse(body);
     } catch (err) {
-      console.warn('[search] Spotify artist search failed, falling back to DB:', (err as Error).message);
-      const artists = await searchArtistsInDb(query);
-      return jsonResponse({ artists, degraded: true });
+      console.warn('[search] Spotify artist search failed, trying iTunes:', (err as Error).message);
+      try {
+        const artists = await searchItunesArtists(query);
+        return jsonResponse({ artists });
+      } catch {
+        const artists = await searchArtistsInDb(query);
+        return jsonResponse({ artists, degraded: true });
+      }
     }
   }
 
@@ -98,17 +104,32 @@ export async function GET(request: NextRequest) {
     // DB insufficient — log miss for nightly ingestion queue
     logSearchMiss(normalized, 'releases', dbResults.length).catch(() => {});
 
-    // DB results insufficient — try Spotify
+    // DB results insufficient — try Spotify, then iTunes
     const spotifyQuery = year ? `${query} year:${year}` : query;
-    let spotifyResults = await searchSpotifyAlbums(spotifyQuery, 10, market);
-    if (year) spotifyResults = spotifyResults.filter(r => !r.date || r.date.startsWith(year));
-    saveBasicReleases(spotifyResults).catch(() => {});
+    let results: Awaited<ReturnType<typeof searchSpotifyAlbums>>;
+    try {
+      results = await searchSpotifyAlbums(spotifyQuery, 10, market);
+      if (year) results = results.filter(r => !r.date || r.date.startsWith(year));
+      saveBasicReleases(results).catch(() => {});
+    } catch (spotifyErr) {
+      console.warn('[search] Spotify album search failed, trying iTunes:', (spotifyErr as Error).message);
+      results = await searchItunesAlbums(query, 10);
+      if (year) results = results.filter(r => !r.date || r.date.startsWith(year));
+      saveItunesReleases(results).catch(() => {});
+    }
 
-    const body = { releases: spotifyResults };
+    const body = { releases: results };
     await cacheSet(cacheKey, body, SEARCH_TTL);
     return jsonResponse(body);
   } catch (err) {
     if (err instanceof SpotifyCircuitOpenError) {
+      // Circuit open — try iTunes before degrading to DB-only
+      try {
+        const results = await searchItunesAlbums(query, 10);
+        const filtered = year ? results.filter(r => !r.date || r.date.startsWith(year)) : results;
+        saveItunesReleases(filtered).catch(() => {});
+        return jsonResponse({ releases: filtered });
+      } catch { /* fall through to DB */ }
       const dbResults = await searchReleases(query, year ?? null);
       return jsonResponse({ releases: dbResults });
     }

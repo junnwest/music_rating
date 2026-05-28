@@ -114,6 +114,7 @@ function mapAlbum(a: any): AlbumRelease {
   if (releaseType === 'Single' && (a.total_tracks ?? 0) >= 4) releaseType = 'EP';
   return {
     id: a.id,
+    spotifyId: a.id,
     title: a.name,
     artist: a.artists?.map((ar: any) => ar.name).join(', ') ?? 'Unknown artist',
     date: a.release_date ?? null,
@@ -185,6 +186,7 @@ export async function searchSpotifyTracks(query: string, limit = 10): Promise<Sp
 
 export interface SpotifyAlbumDetail {
   id: string;
+  spotifyId?: string | null;
   title: string;
   artist: string;
   artistId: string | null;
@@ -226,6 +228,7 @@ export async function getSpotifyAlbum(id: string): Promise<SpotifyAlbumDetail | 
 
     const result: SpotifyAlbumDetail = {
       id: album.id,
+      spotifyId: album.id,
       title: album.name,
       artist: album.artists?.map((a: any) => a.name).join(', ') ?? 'Unknown artist',
       artistId: album.artists?.[0]?.id ?? null,

@@ -66,9 +66,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Max 5 albums per tier' }, { status: 400 });
   }
 
-  // Upsert releases
+  // Upsert releases (UUID guard: id column is uuid type; skip any non-UUID IDs)
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const releases = entries
-    .filter((e) => e.title && e.artist)
+    .filter((e) => e.title && e.artist && UUID_RE.test(e.releaseId))
     .map((e) => ({ id: e.releaseId, title: e.title, artist: e.artist, cover_url: e.coverUrl ?? null, release_type: 'Album' }));
   if (releases.length) {
     await supabase.from('releases').upsert(releases, { onConflict: 'id' });

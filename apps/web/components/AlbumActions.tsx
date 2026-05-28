@@ -144,10 +144,18 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
 
   const ensureRelease = async () => {
     if (!supabase) return;
-    await supabase.from('releases').upsert(
-      { id: albumId, title: albumTitle, artist: albumArtist, cover_url: coverUrl ?? null },
-      { onConflict: 'id', ignoreDuplicates: true }
-    );
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(albumId);
+    if (isUUID) {
+      await supabase.from('releases').upsert(
+        { id: albumId, title: albumTitle, artist: albumArtist, cover_url: coverUrl ?? null },
+        { onConflict: 'id', ignoreDuplicates: true }
+      );
+    } else {
+      await supabase.from('releases').upsert(
+        { spotify_id: albumId, title: albumTitle, artist: albumArtist, cover_url: coverUrl ?? null, canonical_source: 'spotify' },
+        { onConflict: 'spotify_id', ignoreDuplicates: true }
+      );
+    }
   };
 
   const requestPin = (removeId?: string) => {
@@ -165,10 +173,6 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
     if (!userId || !supabase) return;
     setPinnedLoading(true);
     await ensureRelease();
-    await supabase.from('releases').upsert(
-      { id: albumId, title: albumTitle, artist: albumArtist, cover_url: coverUrl ?? null },
-      { onConflict: 'id', ignoreDuplicates: true }
-    );
     await supabase.from('ratings').upsert(
       { user_id: userId, release_id: albumId, score: 5, status: 'Listened' },
       { onConflict: 'user_id,release_id' }
