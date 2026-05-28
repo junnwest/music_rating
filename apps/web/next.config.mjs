@@ -10,7 +10,7 @@ const securityHeaders = [
       "default-src 'self'",
       "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://us-assets.i.posthog.com",
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: https://i.scdn.co https://*.scdn.co https://*.supabase.co https://coverartarchive.org https://lh3.googleusercontent.com",
+      "img-src 'self' data: https://i.scdn.co https://*.scdn.co https://*.supabase.co https://coverartarchive.org https://lh3.googleusercontent.com https://*.mzstatic.com",
       "font-src 'self' data:",
       "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://us.i.posthog.com https://us-assets.i.posthog.com https://app.posthog.com",
       "frame-ancestors 'none'",
@@ -30,6 +30,7 @@ const nextConfig = {
       { protocol: 'https', hostname: '*.scdn.co' },
       { protocol: 'https', hostname: '*.supabase.co' },
       { protocol: 'https', hostname: 'coverartarchive.org' },
+      { protocol: 'https', hostname: '*.mzstatic.com' },
     ],
   },
 };
