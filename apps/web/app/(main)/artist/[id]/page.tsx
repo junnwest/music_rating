@@ -29,7 +29,7 @@ export default async function ArtistPage({ params }: { params: { id: string } })
   // DB-first: if we already have releases for this artist, skip Spotify entirely.
   // Only call Spotify when the DB has nothing for this artist — typical case for
   // a freshly-clicked Spotify-only artist that hasn't been ingested yet.
-  const dbReleases = await getArtistReleases(params.id);
+  const dbReleases = await getArtistReleases(params.id, artist.name);
   let rawReleases: typeof dbReleases;
   let nextCursor: string | null = null;
   if (dbReleases.length > 0) {

@@ -7,6 +7,37 @@ import { useLanguage } from '../lib/i18n';
 import InlineStarRating from './InlineStarRating';
 import type { AlbumRelease } from '../types';
 
+const LL_KEY = 'sillajuku:listen-later';
+
+function BookmarkButton({ albumId }: { albumId: string }) {
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    const ids = JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[];
+    setSaved(ids.includes(albumId));
+  }, [albumId]);
+
+  const toggle = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const ids = JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[];
+    const next = ids.includes(albumId) ? ids.filter(id => id !== albumId) : [...ids, albumId];
+    localStorage.setItem(LL_KEY, JSON.stringify(next));
+    setSaved(!saved);
+  };
+
+  return (
+    <button
+      onClick={toggle}
+      title={saved ? 'Remove from Listen Later' : 'Save to Listen Later'}
+      className={`transition flex-shrink-0 ${saved ? 'text-[#E8A020]' : 'text-muted hover:text-ink'}`}
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
+        <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+      </svg>
+    </button>
+  );
+}
+
 type Status = 'init' | 'guest' | 'ready';
 
 export default function ExplorePage() {
@@ -168,7 +199,7 @@ export default function ExplorePage() {
                       <div className="text-[12px] text-muted mt-0.5 truncate">{album.artist}</div>
                     </div>
                   </Link>
-                  <div className="mt-1.5">
+                  <div className="mt-1.5 flex items-center gap-2">
                     <InlineStarRating
                       releaseId={album.id}
                       releaseTitle={album.title}
@@ -179,6 +210,7 @@ export default function ExplorePage() {
                       coverUrl={album.coverUrl ?? null}
                       size={16}
                     />
+                    <BookmarkButton albumId={album.id} />
                   </div>
                 </div>
               ))}

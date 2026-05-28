@@ -54,6 +54,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
   const [pendingHref, setPendingHref] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; album: RankedAlbum } | null>(null);
+  const [autoPopulating, setAutoPopulating] = useState(false);
 
   const draggedRef = useRef<{ album: RankedAlbum; fromTier: number } | null>(null);
   const ghostRef = useRef<HTMLDivElement>(null);
@@ -231,6 +232,59 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
     setDismissed(prev => new Set([...prev, album.id]));
   }
 
+  // ── Auto-populate from ratings ──
+  // Maps score bands to tier index: 5→0, 4-4.5→1, 3-3.5→2, 2-2.5→3, 0.5-1.5→4
+  async function autoPopulate() {
+    if (!userId || !supabase) { showToast('Sign in to use this feature'); return; }
+    setAutoPopulating(true);
+    try {
+      const { data } = await supabase
+        .from('ratings')
+        .select('release_id, score, releases(id, title, artist, cover_url, release_date, release_type)')
+        .eq('user_id', userId)
+        .not('score', 'is', null)
+        .order('score', { ascending: false });
+
+      if (!data || data.length === 0) { showToast('No ratings found'); setAutoPopulating(false); return; }
+
+      // Filter by category constraints if set
+      let filtered = data.filter((r: any) => r.releases).map((r: any) => ({
+        album: { id: r.releases.id, title: r.releases.title, artist: r.releases.artist, coverUrl: r.releases.cover_url } as RankedAlbum,
+        score: r.score as number,
+        date: r.releases.release_date as string | null,
+        type: r.releases.release_type as string | null,
+      }));
+
+      if (filterYear) filtered = filtered.filter(r => r.date?.startsWith(String(filterYear)));
+      if (filterGenre && filterGenre !== 'All Genres') {
+        // loose filter: just use whatever we have (genre data not on rating rows)
+      }
+
+      if (filtered.length === 0) { showToast('No matching rated albums for this category'); setAutoPopulating(false); return; }
+
+      // Build tiers by score band
+      const tierMap = new Map<number, RankedAlbum[]>();
+      for (const { album, score } of filtered) {
+        const tierIdx = score >= 5 ? 0 : score >= 4 ? 1 : score >= 3 ? 2 : score >= 2 ? 3 : 4;
+        if (!tierMap.has(tierIdx)) tierMap.set(tierIdx, []);
+        const tier = tierMap.get(tierIdx)!;
+        if (tier.length < MAX_TIER_SIZE) tier.push(album);
+      }
+
+      // Build dense tiers (skip empty bands)
+      const newTiers: RankedAlbum[][] = [];
+      for (let i = 0; i <= 4; i++) {
+        if (tierMap.has(i)) newTiers.push(tierMap.get(i)!);
+      }
+
+      setRanking(newTiers.length > 0 ? newTiers : [[], [], []]);
+      showToast(`Loaded ${filtered.length > 25 ? '25' : filtered.length} rated albums into tiers`);
+    } catch {
+      showToast('Failed to load ratings');
+    }
+    setAutoPopulating(false);
+  }
+
   // ── Save ──
   async function save() {
     if (!userId) { showToast('Sign in to save your ranking'); return; }
@@ -293,18 +347,36 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
           </svg>
           Rankings
         </button>
-        <button
-          onClick={save}
-          disabled={saving}
-          style={{
-            background: 'rgb(var(--color-ink))', color: 'rgb(var(--color-page))', border: 'none',
-            fontSize: 12, fontWeight: 700, letterSpacing: '0.02em',
-            padding: '8px 20px', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer',
-            opacity: saving ? 0.5 : 1, transition: 'opacity 0.15s',
-          }}
-        >
-          {saving ? 'Saving…' : 'Save Ranking'}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {userId && (
+            <button
+              onClick={autoPopulate}
+              disabled={autoPopulating}
+              title="Auto-fill tiers from your rated albums"
+              style={{
+                background: 'rgb(var(--color-surface))', color: 'rgb(var(--color-muted))',
+                border: '1px solid rgb(var(--color-divider))',
+                fontSize: 11, fontWeight: 600,
+                padding: '7px 14px', borderRadius: 8, cursor: autoPopulating ? 'not-allowed' : 'pointer',
+                opacity: autoPopulating ? 0.5 : 1, transition: 'opacity 0.15s',
+              }}
+            >
+              {autoPopulating ? 'Loading…' : '★ Fill from ratings'}
+            </button>
+          )}
+          <button
+            onClick={save}
+            disabled={saving}
+            style={{
+              background: 'rgb(var(--color-ink))', color: 'rgb(var(--color-page))', border: 'none',
+              fontSize: 12, fontWeight: 700, letterSpacing: '0.02em',
+              padding: '8px 20px', borderRadius: 8, cursor: saving ? 'not-allowed' : 'pointer',
+              opacity: saving ? 0.5 : 1, transition: 'opacity 0.15s',
+            }}
+          >
+            {saving ? 'Saving…' : 'Save Ranking'}
+          </button>
+        </div>
       </header>
 
       {/* Body */}

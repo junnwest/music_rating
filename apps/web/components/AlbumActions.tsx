@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, ChevronRight, Plus, Bookmark, Pin, Trophy, BookmarkCheck, X } from 'lucide-react';
+import { Check, ChevronRight, Plus, Bookmark, Pin, Trophy, BookmarkCheck, X, List } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 
 const LL_KEY = 'sillajuku:listen-later';
@@ -84,6 +84,10 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
   const [showPinConfirm, setShowPinConfirm] = useState(false);
   const [pendingSwapRemoveId, setPendingSwapRemoveId] = useState<string | null>(null);
   const [showRankModal, setShowRankModal] = useState(false);
+  const [showListModal, setShowListModal] = useState(false);
+  const [userLists, setUserLists] = useState<{ id: string; title: string }[]>([]);
+  const [loadingLists, setLoadingLists] = useState(false);
+  const [addedToListIds, setAddedToListIds] = useState<Set<string>>(new Set());
 
   // ranking filter state
   const [categories, setCategories] = useState<RankingCategory[]>([]);
@@ -263,6 +267,49 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
     }
   };
 
+  const openListModal = async () => {
+    setDropdownOpen(false);
+    setShowListModal(true);
+    if (userLists.length === 0 && !loadingLists && supabase && userId) {
+      setLoadingLists(true);
+      const { data } = await supabase
+        .from('lists')
+        .select('id, title')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+      setUserLists(data ?? []);
+      // Check which lists already contain this album
+      if (data && data.length > 0) {
+        const listIds = data.map((l: any) => l.id);
+        const { data: items } = await supabase
+          .from('list_items')
+          .select('list_id')
+          .eq('release_id', albumId)
+          .in('list_id', listIds);
+        setAddedToListIds(new Set((items ?? []).map((i: any) => i.list_id)));
+      }
+      setLoadingLists(false);
+    }
+  };
+
+  const addToList = async (listId: string) => {
+    if (!userId || !supabase) return;
+    if (addedToListIds.has(listId)) {
+      // Remove from list
+      await supabase.from('list_items').delete()
+        .eq('list_id', listId).eq('release_id', albumId);
+      setAddedToListIds(prev => { const s = new Set(prev); s.delete(listId); return s; });
+    } else {
+      // Ensure release exists first
+      await ensureRelease();
+      await supabase.from('list_items').upsert(
+        { list_id: listId, release_id: albumId },
+        { onConflict: 'list_id,release_id', ignoreDuplicates: true }
+      );
+      setAddedToListIds(prev => new Set([...prev, listId]));
+    }
+  };
+
   const goToRanking = (slug: string) => {
     const params = new URLSearchParams({ album: albumId, title: albumTitle, artist: albumArtist });
     if (coverUrl) params.set('cover', coverUrl);
@@ -324,6 +371,17 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
                   : pinnedFull
                   ? <ChevronRight size={13} className="text-muted" />
                   : null}
+              </button>
+            )}
+
+            {userId && (
+              <button
+                onClick={openListModal}
+                className="flex items-center gap-3 px-4 py-2.5 text-[13px] text-ink hover:bg-surface w-full text-left transition"
+              >
+                <List size={15} className="text-muted" />
+                <span className="flex-1">Add to List</span>
+                <ChevronRight size={13} className="text-muted" />
               </button>
             )}
 
@@ -460,6 +518,55 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
                   {pinnedLoading ? 'Saving…' : 'Confirm & set ★ 5'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add to List modal ──────────────────────────────────── */}
+      {showListModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={() => setShowListModal(false)}
+        >
+          <div
+            className="bg-page rounded-2xl shadow-2xl w-full max-w-[400px] mx-4 overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-divider">
+              <div>
+                <p className="text-[15px] font-bold text-ink">Add to List</p>
+                <p className="text-[12px] text-muted mt-0.5 truncate max-w-[280px]">{albumTitle}</p>
+              </div>
+              <button onClick={() => setShowListModal(false)} className="text-muted hover:text-ink transition p-1">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-4 max-h-[60vh] overflow-y-auto">
+              {loadingLists ? (
+                <div className="flex flex-col gap-2">
+                  {[1,2,3].map(i => <div key={i} className="h-10 rounded-lg bg-surface animate-pulse" />)}
+                </div>
+              ) : userLists.length === 0 ? (
+                <p className="text-[13px] text-muted text-center py-8">No lists yet. Create one from your profile.</p>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  {userLists.map(list => {
+                    const added = addedToListIds.has(list.id);
+                    return (
+                      <button
+                        key={list.id}
+                        onClick={() => addToList(list.id)}
+                        className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg hover:bg-surface transition text-left"
+                      >
+                        <List size={14} className={added ? 'text-mint-dark' : 'text-muted'} />
+                        <span className="flex-1 text-[13px] font-semibold text-ink truncate">{list.title}</span>
+                        {added && <Check size={13} className="text-mint-dark flex-shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>

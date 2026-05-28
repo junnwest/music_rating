@@ -187,15 +187,27 @@ export async function searchArtistsInDb(query: string, limit = 10): Promise<Spot
   }));
 }
 
-export async function getArtistReleases(artistId: string): Promise<AlbumRelease[]> {
+export async function getArtistReleases(artistId: string, artistName?: string): Promise<AlbumRelease[]> {
   const supabase = createServerClient();
   if (!supabase) return [];
 
-  const { data } = await supabase
+  let { data } = await supabase
     .from('releases')
     .select('id, title, artist, release_date, release_type, cover_url')
     .eq('artist_id', artistId)
+    .not('release_type', 'ilike', 'single')
     .order('release_date', { ascending: false });
+
+  // Fallback: search by artist name when ID is numeric (iTunes ID) or yielded no results
+  if ((!data || data.length === 0) && artistName) {
+    const { data: byName } = await supabase
+      .from('releases')
+      .select('id, title, artist, release_date, release_type, cover_url')
+      .ilike('artist', artistName)
+      .not('release_type', 'ilike', 'single')
+      .order('release_date', { ascending: false });
+    data = byName;
+  }
 
   if (!data) return [];
 
@@ -280,11 +292,12 @@ export async function getCachedArtist(id: string): Promise<SpotifyArtistDetail |
   const supabase = createServerClient();
   if (!supabase) return null;
 
-  const { data } = await supabase
-    .from('artists')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle();
+  // Try by Spotify ID first; fall back to iTunes artist ID for numeric IDs
+  const isNumeric = /^\d+$/.test(id);
+  const query = isNumeric
+    ? supabase.from('artists').select('*').eq('itunes_artist_id', parseInt(id, 10)).maybeSingle()
+    : supabase.from('artists').select('*').eq('id', id).maybeSingle();
+  const { data } = await query;
 
   if (!data || isStale(data.cached_at, ARTIST_TTL_DAYS)) return null;
 
@@ -303,11 +316,11 @@ export async function getArtistFromDb(id: string): Promise<SpotifyArtistDetail |
   const supabase = createServerClient();
   if (!supabase) return null;
 
-  const { data } = await supabase
-    .from('artists')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle();
+  const isNumeric = /^\d+$/.test(id);
+  const query = isNumeric
+    ? supabase.from('artists').select('*').eq('itunes_artist_id', parseInt(id, 10)).maybeSingle()
+    : supabase.from('artists').select('*').eq('id', id).maybeSingle();
+  const { data } = await query;
 
   if (!data) return null;
 
