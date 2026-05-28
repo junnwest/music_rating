@@ -112,17 +112,24 @@ async function main() {
 
   const db = getDB();
 
-  // Load all releases without embeddings
-  const { data: releases, error } = await db
-    .from('releases')
-    .select('id, title, artist, title_native, artist_native, genres')
-    .is('embedding', null)
-    .not('release_type', 'ilike', 'single')
-    .order('ratings_count', { ascending: false })
-    .limit(10000); // Supabase default cap is 1000; explicit limit covers full catalog
+  // Paginate through all releases — PostgREST caps a single response at 1000 rows
+  const PAGE = 1000;
+  const releases: { id: string; title: string; artist: string; title_native: string | null; artist_native: string | null; genres: string | null }[] = [];
+  for (let page = 0; ; page++) {
+    const { data, error } = await db
+      .from('releases')
+      .select('id, title, artist, title_native, artist_native, genres')
+      .is('embedding', null)
+      .not('release_type', 'ilike', 'single')
+      .order('ratings_count', { ascending: false })
+      .range(page * PAGE, (page + 1) * PAGE - 1);
+    if (error) { console.error('DB fetch error:', error.message); process.exit(1); }
+    if (!data?.length) break;
+    releases.push(...data);
+    if (data.length < PAGE) break;
+  }
 
-  if (error) { console.error('DB fetch error:', error.message); process.exit(1); }
-  if (!releases?.length) {
+  if (!releases.length) {
     console.log('  All releases already have embeddings. Nothing to do.\n');
     return;
   }
