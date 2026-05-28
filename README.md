@@ -8,9 +8,9 @@ Every record you've loved — rated, cataloged, and remembered. A music platform
 
 ---
 
-## ⚠️ Current state (2026-05-27)
+## ⚠️ Current state (2026-05-28)
 
-The 2026-05-22 Spotify-quota hardening is live. 2026-05-23 added 404-resilience and Spotify circuit breaker. 2026-05-24 morning closed the last user-visible failure: **search degrades to DB fallback when Spotify is rate-limited**. 2026-05-24 evening made the structural shift: **Spotify API is no longer used for data collection**. A full non-Spotify catalog pipeline (Wikipedia → iTunes queue → Last.fm similar → miss-driven ingestion) was built and is ready to run. 2026-05-24 night added **multilingual catalog support**: language-agnostic `_native` columns + two-phase backfill pipeline. 2026-05-25 early morning completed **Phase 1 of the native name backfill** (Wikipedia langlinks): ~247 of ~536 artists now have `name_native` set. **iTunes genre backfill (`backfill:genres`) is now complete** — 2,864 releases matched (66%), 1,494 no match. 2026-05-27 completed the **UUID migration**: `releases.id` is now a source-agnostic UUID; `spotify_id` and `itunes_id` are the source-specific lookup columns. iTunes search results are now saved to DB as first-class releases. 2026-05-27 added **multi-signal search**: pg_trgm fuzzy matching, full-text `ts_rank`, popularity signal (`ratings_count` + live trigger), and a scored `search_releases` SQL function — migration `20260527000002_search_improvements.sql` must be run in the Supabase SQL editor. See the [debugging section](#-debugging-spotify-related-production-issues) below for Spotify runtime issues.
+The 2026-05-22 Spotify-quota hardening is live. 2026-05-23 added 404-resilience and Spotify circuit breaker. 2026-05-24 morning closed the last user-visible failure: **search degrades to DB fallback when Spotify is rate-limited**. 2026-05-24 evening made the structural shift: **Spotify API is no longer used for data collection**. A full non-Spotify catalog pipeline (Wikipedia → iTunes queue → Last.fm similar → miss-driven ingestion) was built and is ready to run. 2026-05-24 night added **multilingual catalog support**: language-agnostic `_native` columns + two-phase backfill pipeline. 2026-05-25 early morning completed **Phase 1 of the native name backfill** (Wikipedia langlinks): ~247 of ~536 artists now have `name_native` set. **iTunes genre backfill (`backfill:genres`) is now complete** — 2,864 releases matched (66%), 1,494 no match. 2026-05-27 completed the **UUID migration**: `releases.id` is now a source-agnostic UUID; `spotify_id` and `itunes_id` are the source-specific lookup columns. iTunes search results are now saved to DB as first-class releases. 2026-05-27 added **multi-signal search**: pg_trgm fuzzy matching, full-text `ts_rank`, popularity signal (`ratings_count` + live trigger), and a scored `search_releases` SQL function. 2026-05-28 added **semantic search**: Jina v3 embeddings (`vector(1024)`), HNSW index, hybrid `search_releases()` RPC — lexical + cosine similarity. All three migrations applied to prod. `backfill:embeddings` in progress (1,000/8,729 embedded so far). `queue:ingest` in progress (760 Korean artists). See the [debugging section](#-debugging-spotify-related-production-issues) below for Spotify runtime issues.
 
 ### ► START HERE — next session checklist
 
@@ -22,35 +22,33 @@ The 2026-05-22 Spotify-quota hardening is live. 2026-05-23 added 404-resilience 
 
 `releases.id` is now a UUID. `spotify_id` and `itunes_id` are the source-specific lookup columns. All dependent tables (`ratings`, `reviews`, `rating_history`, `list_items`, `pinned_albums`, `ranking_votes`, `ranking_seed_entries`, `user_ranking_entries`, `curated_releases`) have been migrated. iTunes search results are now saved to DB on every fallback search. **Deploy the current code before running any backfill scripts.**
 
-#### Step 2 — run native name backfill Phase 2 (releases)
+#### ~~Step 2 — run native name backfill Phase 2 (releases)~~ ✅ Done (2026-05-28)
 
-Phase 1 (artists via Wikipedia) is ✅ done — ~247 of ~536 artists have `name_native`. Once the genre backfill finishes, run Phase 2:
+Phase 1 (artists via Wikipedia) ✅ done — ~247 of ~536 artists have `name_native`. Phase 2 (releases via iTunes local stores) ✅ done — many K-pop/Korean indie releases legitimately have no native-script title on iTunes; those were skipped correctly.
 
-```bash
-cd apps/web && npm run backfill:native:releases  # iTunes local stores — ~650ms/release
-```
-
-Phase 2 only hits the iTunes API for known Asian artists — Western releases are skipped with no API calls. Do NOT run simultaneously with `backfill:genres` (both hit iTunes).
-
-~~Run `fix-native-names.sql` in Supabase SQL editor~~ ✅ Done (2026-05-27) — 13 artist corrections applied (2 Korean, 11 Japanese).
+~~Run `fix-native-names.sql` in Supabase SQL editor~~ ✅ Done (2026-05-27) — 13 artist corrections applied (2 Korean, 11 Japanese). Owen native name corrected (오언 → 오왼).
 
 #### Step 3 — ingest the Wikipedia artist queue
 
 ~~Re-run `npm run queue:build` once~~ ✅ Done (2026-05-27) — 760 artists queued with Korean names backfilled onto existing rows.
 
+`queue:ingest` is **currently running** (760 Korean artists). After it finishes:
+
 ```bash
-cd apps/web && npm run queue:ingest     # drain 760 queued artists through iTunes
-cd apps/web && npm run queue:discover   # find similar artists via Last.fm
+cd apps/web && npm run backfill:genres           # genres for newly ingested releases
+cd apps/web && npm run backfill:native:releases  # native names for new releases
+cd apps/web && npm run backfill:embeddings       # embed new releases
+cd apps/web && npm run queue:discover            # find similar artists via Last.fm
 # repeat queue:ingest → queue:discover until queue is empty
 ```
 
-After `queue:ingest` finishes, run `backfill:native:releases` once more. `queue:ingest` sets native names inline only for artists whose queue row already has `name_native`; any queue rows where the langlinks lookup failed will have ingested releases without native names. The second `backfill:native:releases` pass catches those.
+#### ~~Step 4 — fill missing cover art~~ ✅ Done (2026-05-28)
 
-#### Step 4 — fill missing cover art
+15 releases filled (all via iTunes). No remaining gaps.
 
-```bash
-cd apps/web && npm run backfill:covers
-```
+#### ~~Step 5 — semantic search embeddings~~ ✅ Done (2026-05-28)
+
+5,359 releases embedded (all non-singles in DB). Run `backfill:embeddings` once more after `queue:ingest` finishes to embed newly ingested releases. `JINA_API_KEY` must be set in Vercel environment variables for hybrid search to work in production.
 
 ---
 
@@ -72,7 +70,11 @@ cd apps/web && npm run backfill:covers
 - ✅ Migration `20260525000003_native_language_constraint.sql` applied — CHECK constraint: `native_language ~ '^[a-z]{2}$'`
 - ✅ Wikipedia queue built — **760 artists** queued; `name_native` backfilled onto all rows (2026-05-27 re-run)
 - ✅ `normalize-releases.ts` run — 135 dates padded, 3,286 genres lowercased, 0 release_types to fix
-- ⬜ `backfill:native` — not yet run; fixes existing DB rows with native names (see START HERE → Step 2)
+- ✅ `backfill:native:artists` (Phase 1) — ~247/536 artists have `name_native`
+- ✅ `backfill:native:releases` (Phase 2) — run 2026-05-28; many skipped (English-titled releases on iTunes KR store)
+- ✅ `backfill:covers` — run 2026-05-28; 15 releases filled, 0 remaining
+- 🔄 `queue:ingest` — running (760 Korean artists)
+- ✅ `backfill:embeddings` — 5,359/8,729 embedded (remaining are singles, excluded; run again after queue:ingest finishes to catch newly ingested releases)
 
 ### Catalog normalization — done
 
