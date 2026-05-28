@@ -1,5 +1,5 @@
 import { searchSpotifyAlbums, searchSpotifyArtists, searchSpotifyTracks, SpotifyCircuitOpenError } from '../../../lib/spotify';
-import { searchItunesAlbums, searchItunesArtists } from '../../../lib/itunes';
+import { searchItunesAlbums } from '../../../lib/itunes';
 import { cacheGet, cacheSet } from '../../../lib/cache';
 import { saveBasicReleases, saveItunesReleases, searchReleases, searchArtistsInDb, searchReleasesInDb } from '../../../lib/dbCache';
 import { rateLimit } from '../../../lib/rateLimit';
@@ -54,14 +54,9 @@ export async function GET(request: NextRequest) {
       await cacheSet(cacheKey, body, SEARCH_TTL);
       return jsonResponse(body);
     } catch (err) {
-      console.warn('[search] Spotify artist search failed, trying iTunes:', (err as Error).message);
-      try {
-        const artists = await searchItunesArtists(query);
-        return jsonResponse({ artists });
-      } catch {
-        const artists = await searchArtistsInDb(query);
-        return jsonResponse({ artists, degraded: true });
-      }
+      console.warn('[search] Spotify artist search failed, falling back to DB:', (err as Error).message);
+      const artists = await searchArtistsInDb(query);
+      return jsonResponse({ artists, degraded: true });
     }
   }
 
