@@ -56,15 +56,15 @@ export default function TrackStarRating({ releaseId, trackPosition, trackTitle }
 
   useEffect(() => {
     if (!session || !supabase) return;
-    supabase
-      .from('track_ratings')
-      .select('score')
-      .eq('release_id', releaseId)
-      .eq('track_position', trackPosition)
-      .eq('user_id', session.user.id)
-      .maybeSingle()
-      .then(({ data }) => { if (data) setSavedScore(data.score); })
-      .catch(() => {});
+    Promise.resolve(
+      supabase
+        .from('track_ratings')
+        .select('score')
+        .eq('release_id', releaseId)
+        .eq('track_position', trackPosition)
+        .eq('user_id', session.user.id)
+        .maybeSingle()
+    ).then(({ data }) => { if (data) setSavedScore(data.score); }).catch(() => {});
   }, [session, releaseId, trackPosition]);
 
   const handleRate = async (star: number) => {

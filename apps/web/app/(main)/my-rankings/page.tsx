@@ -104,14 +104,14 @@ export default function MyRankingsPage() {
           .eq('user_id', session.user.id)
           .not('score', 'is', null)
           .order('score', { ascending: false }),
-        supabase
-          .from('track_ratings')
-          .select('release_id, track_position, track_title, score')
-          .eq('user_id', session.user.id)
-          .not('score', 'is', null)
-          .order('score', { ascending: false })
-          .then(r => r)
-          .catch(() => ({ data: null, error: { message: 'table missing' } })),
+        Promise.resolve(
+          supabase
+            .from('track_ratings')
+            .select('release_id, track_position, track_title, score')
+            .eq('user_id', session.user.id)
+            .not('score', 'is', null)
+            .order('score', { ascending: false })
+        ).catch(() => ({ data: null, error: { message: 'table missing' } })),
       ]);
 
       const data = ratingsRes.data;
