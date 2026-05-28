@@ -26,12 +26,19 @@ export default async function ArtistPage({ params }: { params: { id: string } })
       if (!artist) notFound();
     }
   }
-  const { releases: spotifyReleases, nextCursor } = await getSpotifyArtistAlbums(params.id, artist.name);
-
-  // If Spotify returned nothing (rate limit or network failure), fall back to the DB
-  const rawReleases = spotifyReleases.length > 0
-    ? spotifyReleases
-    : await getArtistReleases(params.id);
+  // DB-first: if we already have releases for this artist, skip Spotify entirely.
+  // Only call Spotify when the DB has nothing for this artist — typical case for
+  // a freshly-clicked Spotify-only artist that hasn't been ingested yet.
+  const dbReleases = await getArtistReleases(params.id);
+  let rawReleases: typeof dbReleases;
+  let nextCursor: string | null = null;
+  if (dbReleases.length > 0) {
+    rawReleases = dbReleases;
+  } else {
+    const fromSpotify = await getSpotifyArtistAlbums(params.id, artist.name);
+    rawReleases = fromSpotify.releases;
+    nextCursor = fromSpotify.nextCursor;
+  }
 
   // Deduplicate by title+type, then sort newest first
   const seen = new Set<string>();

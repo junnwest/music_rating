@@ -70,26 +70,27 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
   const t = getServerT();
   let album = await getCachedAlbum(params.mbid);
   if (!album) {
-    // Not fully cached — find the Spotify ID to enrich from Spotify.
-    // params.mbid may be a UUID, a Spotify ID, or an iTunes collection ID.
+    // DB-first: render from the basic row when present (cover, title, artist,
+    // type, genres, date). Tracklist is the only thing missing — page already
+    // hides the tracklist section when tracks is empty. Skipping Spotify here
+    // is what keeps album page renders from burning quota during cooldowns.
     const basic = await getBasicRelease(params.mbid);
-    const spotifyId = basic?.spotifyId
-      ?? (isUUID(params.mbid) || /^\d+$/.test(params.mbid) ? null : params.mbid);
-
-    if (spotifyId) {
-      const fetched = await getSpotifyAlbum(spotifyId);
-      if (fetched) {
-        const uuid = await cacheAlbum(fetched);
-        // Use the DB-assigned UUID so ratings/reviews queries match release_id
-        album = { ...fetched, id: uuid ?? basic?.id ?? fetched.id };
-      }
-    }
-
-    if (!album) {
-      console.error('[album] Spotify returned null for id:', params.mbid);
+    if (basic) {
       album = basic;
+    } else {
+      // Genuinely not in DB — last-resort Spotify lookup so deep-links to
+      // unseen Spotify IDs still resolve. iTunes/UUID-shaped IDs can't be
+      // looked up via Spotify, so they go straight to 404.
+      const spotifyId = isUUID(params.mbid) || /^\d+$/.test(params.mbid) ? null : params.mbid;
+      if (spotifyId) {
+        const fetched = await getSpotifyAlbum(spotifyId);
+        if (fetched) {
+          const uuid = await cacheAlbum(fetched);
+          album = { ...fetched, id: uuid ?? fetched.id };
+        }
+      }
       if (!album) {
-        console.error('[album] getBasicRelease also null for id:', params.mbid);
+        console.error('[album] no DB row or Spotify result for id:', params.mbid);
         notFound();
       }
     }
