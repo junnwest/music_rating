@@ -2,7 +2,7 @@
 CREATE TABLE IF NOT EXISTS track_ratings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  release_id text NOT NULL REFERENCES releases(id) ON DELETE CASCADE,
+  release_id uuid NOT NULL REFERENCES releases(id) ON DELETE CASCADE,
   track_position int NOT NULL,
   track_title text NOT NULL,
   score numeric(3,1) CHECK (score BETWEEN 0.5 AND 5.0),
