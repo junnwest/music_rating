@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../lib/supabaseClient';
+import InlineStarRating from './InlineStarRating';
 
 export interface RankedAlbum {
   id: string;
@@ -718,6 +719,18 @@ function SuggestedCard({ album, isAdded, onClick, onDragStart, onDragEnd }: {
       <div style={{ marginTop: 6 }}>
         <div style={{ fontSize: 11, fontWeight: 600, color: 'rgb(var(--color-ink))', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{album.title}</div>
         <div style={{ fontSize: 10, color: 'rgb(var(--color-muted))', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 1 }}>{album.artist}</div>
+        <div style={{ marginTop: 4 }} onClick={e => e.stopPropagation()}>
+          <InlineStarRating
+            releaseId={album.id}
+            releaseTitle={album.title}
+            releaseArtist={album.artist}
+            releaseDate={null}
+            releaseCountry={null}
+            releaseType="Album"
+            coverUrl={album.coverUrl}
+            size={12}
+          />
+        </div>
       </div>
     </div>
   );

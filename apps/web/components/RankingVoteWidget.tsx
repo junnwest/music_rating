@@ -1,4 +1,6 @@
-﻿export interface LeaderboardEntry {
+﻿'use client';
+
+export interface LeaderboardEntry {
   rank: number;
   releaseId: string;
   title: string;
@@ -9,6 +11,7 @@
 }
 
 import Link from 'next/link';
+import InlineStarRating from './InlineStarRating';
 
 export default function RankingVoteWidget({
   leaderboard,
@@ -32,6 +35,9 @@ export default function RankingVoteWidget({
         <div className="w-[28px] flex-shrink-0" />
         <div className="w-[48px] flex-shrink-0" />
         <div className="flex-1 min-w-0" />
+        <div className="hidden sm:block w-[100px] flex-shrink-0 text-right text-[10px] font-semibold text-muted uppercase tracking-wider">
+          Your Rating
+        </div>
         <div className="w-[120px] flex-shrink-0 text-right text-[10px] font-semibold text-muted uppercase tracking-wider">
           Silla Score
         </div>
@@ -42,9 +48,8 @@ export default function RankingVoteWidget({
 
       <div className="flex flex-col gap-[2px]">
         {leaderboard.map((entry) => (
-          <Link
+          <div
             key={entry.releaseId}
-            href={`/album/${entry.releaseId}`}
             className="flex items-center gap-4 rounded-[10px] px-4 py-3 hover:bg-surface transition"
           >
             {/* Rank */}
@@ -56,18 +61,32 @@ export default function RankingVoteWidget({
             </div>
 
             {/* Cover */}
-            <div className="w-[48px] h-[48px] rounded-[6px] overflow-hidden flex-shrink-0 border border-divider bg-surface">
+            <Link href={`/album/${entry.releaseId}`} className="w-[48px] h-[48px] rounded-[6px] overflow-hidden flex-shrink-0 border border-divider bg-surface">
               {entry.coverUrl ? (
                 <img src={entry.coverUrl} alt={entry.title} className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full bg-surface" />
               )}
-            </div>
+            </Link>
 
             {/* Title + artist */}
-            <div className="flex-1 min-w-0">
+            <Link href={`/album/${entry.releaseId}`} className="flex-1 min-w-0">
               <div className="text-[13px] font-bold text-ink truncate">{entry.title}</div>
               <div className="text-[11px] text-muted truncate">{entry.artist}</div>
+            </Link>
+
+            {/* Your Rating — inline stars */}
+            <div className="hidden sm:block w-[100px] flex-shrink-0">
+              <InlineStarRating
+                releaseId={entry.releaseId}
+                releaseTitle={entry.title}
+                releaseArtist={entry.artist}
+                releaseDate={null}
+                releaseCountry={null}
+                releaseType="Album"
+                coverUrl={entry.coverUrl}
+                size={14}
+              />
             </div>
 
             {/* Silla Score — bar + value */}
@@ -93,7 +112,7 @@ export default function RankingVoteWidget({
                 <span className="text-[12px] text-muted">—</span>
               )}
             </div>
-          </Link>
+          </div>
         ))}
       </div>
     </div>

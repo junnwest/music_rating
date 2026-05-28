@@ -20,6 +20,8 @@ import { createServerClient } from '../../../../lib/supabaseServer';
 import StarRatingWidget from '../../../../components/StarRatingWidget';
 import ReviewsSection from '../../../../components/ReviewsSection';
 import AlbumActions from '../../../../components/AlbumActions';
+import { StreamingButtons, TrackStreamingButtons } from '../../../../components/YouTubeMusicButton';
+import TrackStarRating from '../../../../components/TrackStarRating';
 import { getServerT } from '../../../../lib/i18n/server';
 import { cacheGet, cacheSet } from '../../../../lib/cache';
 
@@ -294,7 +296,8 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
                 <div className="text-[18px] font-bold text-white">{reviewsCount}</div>
                 <div className="text-[12px] text-white/50 mt-0.5">{t('album.comments')}</div>
               </div>
-              <div className="ml-auto">
+              <div className="ml-auto flex items-center gap-3">
+                <StreamingButtons artist={album.artist} album={album.title} spotifyUrl={album.spotifyUrl} />
                 <AlbumActions
                   albumId={album.id}
                   albumTitle={album.title}
@@ -365,6 +368,8 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
                     {track.artists}
                   </span>
                 )}
+                <TrackStarRating releaseId={album.id} trackPosition={track.position} trackTitle={track.title} />
+                <TrackStreamingButtons artist={track.artists || album.artist} track={track.title} />
                 <span className="text-[12px] text-muted flex-shrink-0 tabular-nums">
                   {formatDuration(track.durationMs)}
                 </span>

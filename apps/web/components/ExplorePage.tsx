@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient';
 import { useLanguage } from '../lib/i18n';
+import InlineStarRating from './InlineStarRating';
 import type { AlbumRelease } from '../types';
 
 type Status = 'init' | 'guest' | 'ready';
@@ -147,28 +148,39 @@ export default function ExplorePage() {
               style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(152px, 1fr))' }}
             >
               {albums.map((album) => (
-                <Link key={album.id} href={`/album/${album.id}`} className="block min-w-0 group/card">
-                  <div className="relative overflow-hidden rounded-[7px]" style={{ aspectRatio: '1 / 1' }}>
-                    {album.coverUrl ? (
-                      <img
-                        src={album.coverUrl}
-                        alt={album.title}
-                        className="absolute inset-0 w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 bg-surface border border-divider" />
-                    )}
-                    <div className="absolute inset-0 flex items-end justify-end p-2 opacity-0 group-hover/card:opacity-100 transition-opacity">
-                      <span className="bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-[6px] px-[11px] py-[5px] text-[11px] font-semibold">Rate →</span>
+                <div key={album.id} className="min-w-0 group/card">
+                  <Link href={`/album/${album.id}`} className="block">
+                    <div className="relative overflow-hidden rounded-[7px]" style={{ aspectRatio: '1 / 1' }}>
+                      {album.coverUrl ? (
+                        <img
+                          src={album.coverUrl}
+                          alt={album.title}
+                          className="absolute inset-0 w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="absolute inset-0 bg-surface border border-divider" />
+                      )}
                     </div>
-                  </div>
-                  <div className="mt-[9px]">
-                    <div className="text-[13px] font-semibold text-ink truncate leading-snug group-hover/card:text-mint-dark transition">
-                      {album.title}
+                    <div className="mt-[9px]">
+                      <div className="text-[13px] font-semibold text-ink truncate leading-snug group-hover/card:text-mint-dark transition">
+                        {album.title}
+                      </div>
+                      <div className="text-[12px] text-muted mt-0.5 truncate">{album.artist}</div>
                     </div>
-                    <div className="text-[12px] text-muted mt-0.5 truncate">{album.artist}</div>
+                  </Link>
+                  <div className="mt-1.5">
+                    <InlineStarRating
+                      releaseId={album.id}
+                      releaseTitle={album.title}
+                      releaseArtist={album.artist}
+                      releaseDate={album.date}
+                      releaseCountry={album.country}
+                      releaseType={album.releaseType}
+                      coverUrl={album.coverUrl ?? null}
+                      size={16}
+                    />
                   </div>
-                </Link>
+                </div>
               ))}
             </div>
 
