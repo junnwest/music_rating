@@ -35,6 +35,10 @@ Historical record of shipped features and session notes. Not needed at conversat
 - [x] Notifications page — real data (new followers + friend ratings via `/api/notifications`)
 - [x] Friends page — real Supabase follows (Following / Followers / Discover tabs)
 - [x] Search page — mobile header transforms to search overlay on icon tap; landing state with no duplicate bar
+- [x] Streaming buttons (Spotify / YouTube Music / Tidal) — album hero + per-track; uses stored spotifyUrl when available
+- [x] Track star ratings — inline 14px star widget per track; writes to `track_ratings` table (migration in `supabase/migrations/20260526000000_track_ratings.sql` — apply manually)
+- [x] Inline star ratings — compact widget on Explore cards, rankings leaderboard ("Your Rating" column), ranking builder suggestions
+- [x] My Rankings (`/my-rankings`) — dashboard with ranking cards (All, Albums, EPs, Songs, per-genre) + "Recommended for You"; detail pages at `/my-rankings/[slug]`
 
 ### Social
 
@@ -143,6 +147,22 @@ Historical record of shipped features and session notes. Not needed at conversat
 ---
 
 ## Session summaries
+
+**2026-05-28 (later) — Streaming buttons, inline ratings, My Rankings, song ratings:**
+
+### What was built
+
+- **Streaming buttons (web)** — `YouTubeMusicButton.tsx` expanded to export `StreamingButtons` (album hero: Spotify / YouTube Music / Tidal icon row) and `TrackStreamingButtons` (per-track compact icons). Spotify uses the stored `spotifyUrl` when available; YouTube Music and Tidal always use search URLs.
+- **Track star ratings** — new `TrackStarRating.tsx` component (14px stars, half-star, save/clear). Writes to `track_ratings` table. Added inline to each tracklist row on the album page. New migration `supabase/migrations/20260526000000_track_ratings.sql` — **apply manually via Supabase SQL editor** (table not yet created in prod).
+- **Inline star rating** — new `InlineStarRating.tsx` component. Used in: Explore page (below each card, replacing "Rate →" overlay), Rankings leaderboard (new "Your Rating" column, hidden on mobile), Ranking builder (below each search-result suggestion card). Stops click propagation so it doesn't interfere with parent links.
+- **My Rankings dashboard** (`/my-rankings`) — auto-generates ranking cards from user's ratings: All Rated, Albums, EPs, Songs (from `track_ratings`), plus per-genre sections (genres with ≥3 rated items). Each card shows top-5 preview + total count, clickable to full detail page. "Recommended for You" section at bottom: unrated albums in user's top-rated genres (score ≥ 3.5).
+- **My Rankings detail page** (`/my-rankings/[slug]`) — full-page sorted list for each slug (`all`, `albums`, `eps`, `songs`, genre slugs). Back button to dashboard.
+- **Sidebar** — added "My List" nav item with `ListOrdered` icon linking to `/my-rankings`.
+
+### Pending
+- `track_ratings` table must be created in prod. SQL is in `supabase/migrations/20260526000000_track_ratings.sql`. Paste into Supabase dashboard → SQL Editor → Run. Until then, song ratings save silently fail.
+
+---
 
 **2026-05-27 — UUID migration + iTunes fallback persistence:**
 
