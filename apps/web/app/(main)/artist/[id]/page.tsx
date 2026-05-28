@@ -1,6 +1,6 @@
 ﻿import { notFound } from 'next/navigation';
 import { getSpotifyArtist, getSpotifyArtistAlbums } from '../../../../lib/spotify';
-import { getCachedArtist, cacheArtist, getArtistReleases } from '../../../../lib/dbCache';
+import { getCachedArtist, getArtistFromDb, cacheArtist, getArtistReleases } from '../../../../lib/dbCache';
 import DiscographyGrid from '../../../../components/DiscographyGrid';
 import { getServerT } from '../../../../lib/i18n/server';
 
@@ -16,9 +16,15 @@ export default async function ArtistPage({ params }: { params: { id: string } })
   const t = getServerT();
   let artist = await getCachedArtist(params.id);
   if (!artist) {
-    artist = await getSpotifyArtist(params.id);
-    if (!artist) notFound();
-    cacheArtist(artist); // fire and forget
+    const spotifyArtist = await getSpotifyArtist(params.id);
+    if (spotifyArtist) {
+      artist = spotifyArtist;
+      cacheArtist(artist); // fire and forget
+    } else {
+      // Spotify unavailable — render from stale DB data rather than 404
+      artist = await getArtistFromDb(params.id);
+      if (!artist) notFound();
+    }
   }
   const { releases: spotifyReleases, nextCursor } = await getSpotifyArtistAlbums(params.id, artist.name);
 

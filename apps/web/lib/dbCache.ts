@@ -299,6 +299,29 @@ export async function getCachedArtist(id: string): Promise<SpotifyArtistDetail |
   };
 }
 
+export async function getArtistFromDb(id: string): Promise<SpotifyArtistDetail | null> {
+  const supabase = createServerClient();
+  if (!supabase) return null;
+
+  const { data } = await supabase
+    .from('artists')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (!data) return null;
+
+  return {
+    id: data.id,
+    name: data.name,
+    genres: data.genres ? data.genres.split(',').map((g: string) => g.trim()).filter(Boolean) : [],
+    followers: data.followers ?? 0,
+    popularity: data.popularity ?? 0,
+    coverUrl: data.cover_url ?? null,
+    spotifyUrl: data.spotify_url ?? null,
+  };
+}
+
 export async function cacheArtist(artist: SpotifyArtistDetail): Promise<void> {
   const supabase = createServerClient();
   if (!supabase) return;
