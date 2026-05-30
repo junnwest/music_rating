@@ -162,12 +162,24 @@ async function upsertRelease(
     .from('releases').select('id').eq('itunes_id', album.collectionId).maybeSingle();
   if (byItunes) return 'skipped';
 
-  // 2. Existing record with same title+artist (Spotify-sourced) — enrich it
-  const { data: byTitle } = await db
-    .from('releases').select('id, title, artist, cover_url')
+  // 2. Existing record with same title+artist (Spotify-sourced) — enrich it.
+  // Two passes: first match by English artist name, then by artist_native.
+  // This catches cross-language-name duplicates like "Yerin Baek" (Spotify) vs
+  // "백예린" (iTunes) where the title matches but the artist name script differs.
+  let { data: byTitle } = await db
+    .from('releases').select('id, title, artist, artist_native, cover_url')
     .ilike('title', album.collectionName)
     .ilike('artist', album.artistName)
     .maybeSingle();
+
+  if (!byTitle) {
+    const { data: byNative } = await db
+      .from('releases').select('id, title, artist, artist_native, cover_url')
+      .ilike('title', album.collectionName)
+      .ilike('artist_native', album.artistName)
+      .maybeSingle();
+    byTitle = byNative;
+  }
 
   const cover  = artworkUrl(album.artworkUrl100 ?? '');
   const genre  = mapGenre(album.primaryGenreName ?? '');
@@ -177,7 +189,10 @@ async function upsertRelease(
   if (
     byTitle &&
     normalizeStr(byTitle.title) === normalizeStr(album.collectionName) &&
-    normalizeStr(byTitle.artist) === normalizeStr(album.artistName)
+    (
+      normalizeStr(byTitle.artist) === normalizeStr(album.artistName) ||
+      (byTitle.artist_native && normalizeStr(byTitle.artist_native) === normalizeStr(album.artistName))
+    )
   ) {
     const coverUpdate = cover && !(byTitle as any).cover_url
       ? { cover_url: cover, cover_source: 'itunes' }
