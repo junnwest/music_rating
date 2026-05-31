@@ -166,7 +166,7 @@ function collapseOverlappingGroups(groups: Release[][]): Release[][] {
 
 // HIGH = safe to auto-merge. LOW = needs manual review (different editions,
 // sequels, or reissues that share a normalized title but are genuinely separate).
-function groupConfidence(group: Release[]): 'high' | 'low' {
+function groupConfidence(group: Release[]): 'high' | 'low' | 'skip' {
   const tracks  = group.map(r => r.total_tracks).filter((t): t is number => t != null);
   const dates   = group.map(r => r.release_date).filter((d): d is string => d != null);
 
@@ -374,8 +374,10 @@ async function main() {
   for (let gi = 0; gi < groups.length; gi++) {
     const group = groups[gi];
     const hasSkippedId = group.some(r => SKIP_IDS.has(r.id));
-    const confidence = hasSkippedId ? 'low' : groupConfidence(group);
-    const label = confidence === 'low' ? ' [LOW CONFIDENCE — SKIPPED]' : '';
+    const confidence = hasSkippedId ? 'skip' : groupConfidence(group);
+    const label = confidence === 'skip' ? ' [SKIP — hardcoded exclusion]'
+                : confidence === 'low'  ? ' [LOW CONFIDENCE — SKIPPED]'
+                : '';
     console.log(`  ── Group ${gi + 1}/${groups.length}${label} ${'─'.repeat(Math.max(0, 20 - label.length))}`);
 
     // Score each release
@@ -396,6 +398,11 @@ async function main() {
       console.log(`         type=${r.release_type ?? '?'}  date=${r.release_date ?? '?'}  tracks=${r.total_tracks ?? '?'}`);
       console.log(`         spotify=${r.spotify_id ?? 'null'}  itunes=${r.itunes_id ?? 'null'}`);
       console.log(`         score=${score} (user=${userScore}, meta=${metaScore})`);
+    }
+
+    if (confidence === 'skip') {
+      console.log(`         → permanently excluded via SKIP_IDS\n`);
+      continue;
     }
 
     if (confidence === 'low' && !FIX_LOW) {
