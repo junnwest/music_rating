@@ -171,14 +171,30 @@ export async function searchArtistsInDb(query: string, limit = 10): Promise<Spot
   const q = escapeIlike(query.trim());
   if (!q) return [];
   const pattern = `%${q}%`;
+  // Over-fetch so we can re-rank in JS with exact/prefix bonuses before returning.
+  // Popularity alone would surface "Iuiu Hq" over "IU" for a 2-letter query.
   const { data } = await supabase
     .from('artists')
-    .select('id, name, genres, popularity, cover_url')
+    .select('id, name, name_native, genres, popularity, cover_url')
     .or(`name.ilike.${pattern},name_native.ilike.${pattern}`)
     .order('popularity', { ascending: false })
-    .limit(limit);
+    .limit(limit * 4);
   if (!data) return [];
-  return data.map((a) => ({
+
+  const qLower = query.trim().toLowerCase();
+  const ranked = data
+    .map((a) => {
+      const nameLower   = (a.name        ?? '').toLowerCase();
+      const nativeLower = (a.name_native ?? '').toLowerCase();
+      let bonus = 0;
+      if (nameLower === qLower || nativeLower === qLower)           bonus = 1_000_000; // exact
+      else if (nameLower.startsWith(qLower) || nativeLower.startsWith(qLower)) bonus = 100_000; // prefix
+      return { ...a, _score: (a.popularity ?? 0) + bonus };
+    })
+    .sort((a, b) => b._score - a._score)
+    .slice(0, limit);
+
+  return ranked.map((a) => ({
     id: a.id,
     name: a.name,
     genres: a.genres ? a.genres.split(',').map((g: string) => g.trim()).filter(Boolean) : [],
