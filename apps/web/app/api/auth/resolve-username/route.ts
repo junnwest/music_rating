@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../lib/supabaseServer';
+import { rateLimit } from '../../../../lib/rateLimit';
 
 export async function POST(req: NextRequest) {
+  const limited = await rateLimit(req, 'resolve-username', 10, 60);
+  if (limited) return limited;
+
   const body = await req.json().catch(() => ({}));
   const username = (body.username as string | undefined)?.trim().toLowerCase();
   if (!username) return NextResponse.json({ error: 'missing username' }, { status: 400 });

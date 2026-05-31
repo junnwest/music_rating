@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../lib/supabaseServer';
 import { getAuthedUserId } from '../../../lib/authGuard';
+import { rateLimit } from '../../../lib/rateLimit';
 
 export async function GET() {
   const supabase = createServerClient();
@@ -16,6 +17,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const limited = await rateLimit(req, 'lists', 10, 60);
+  if (limited) return limited;
+
   const supabase = createServerClient();
   if (!supabase) return NextResponse.json({ error: 'Unavailable' }, { status: 503 });
 

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../../lib/supabaseServer';
+import { rateLimit } from '../../../../../lib/rateLimit';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const limited = await rateLimit(req, 'list-items', 30, 60);
+  if (limited) return limited;
+
   const supabase = createServerClient();
   if (!supabase) return NextResponse.json({ error: 'Unavailable' }, { status: 503 });
 
@@ -34,6 +38,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  const limited = await rateLimit(req, 'list-items', 30, 60);
+  if (limited) return limited;
+
   const supabase = createServerClient();
   if (!supabase) return NextResponse.json({ error: 'Unavailable' }, { status: 503 });
 

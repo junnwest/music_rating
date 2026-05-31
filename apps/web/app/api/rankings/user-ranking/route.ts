@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../lib/supabaseServer';
+import { rateLimit } from '../../../../lib/rateLimit';
 
 export async function GET(req: NextRequest) {
   const categoryId = req.nextUrl.searchParams.get('categoryId');
@@ -51,6 +52,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const limited = await rateLimit(req, 'user-ranking', 20, 60);
+  if (limited) return limited;
+
   const supabase = createServerClient();
   if (!supabase) return NextResponse.json({ error: 'DB unavailable' }, { status: 503 });
 
