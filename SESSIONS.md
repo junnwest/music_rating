@@ -148,6 +148,27 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries
 
+**2026-05-31 — Dedup pipeline, catalog integrity, ingest plan:**
+
+- **`track_ratings` migration applied to prod** — ran safe idempotent SQL (DROP POLICY IF EXISTS before recreating) to fix partial-apply error from previous session.
+- **Merged genre state files** — local device had 550 new processed IDs from a partial `backfill:genres` run; remote had 5,745; merged union (5,928) committed and pushed.
+- **Pulled new features from other device** — streaming buttons, track ratings, inline star ratings, My Rankings dashboard (`/my-rankings` + `/my-rankings/[slug]`), Sidebar "My List" nav link.
+- **`dedup:releases` script** (`scripts/find-duplicate-releases.ts`) — detects duplicate albums ingested from Spotify + iTunes with mismatched artist names or punctuation variants. Groups by normalized title+artist and artist_id+title; collapses overlapping groups; scores by user data then metadata richness; safely remaps all FK references (ratings, reviews, list_items, pinned_albums, ranking_votes, ranking_seed_entries, user_ranking_entries, curated_releases, track_ratings, rating_history) before deleting. HIGH/LOW confidence split based on track count spread and date gap.
+- **`check:completeness` script** (`scripts/check-artist-completeness.ts`) — for each artist with `itunes_artist_id`, fetches iTunes discography and checks which `itunes_id`s are absent. Re-queues incomplete artists in `artist_ingestion_queue`.
+- **`ingest-itunes-queue.ts` prevention fix** — `upsertRelease` now checks `artist_native` as a fallback when the English artist name doesn't match (e.g. "Yerin Baek" vs "백예린"), preventing future cross-language-name duplicates.
+- **Dedup run** — `dedup:releases:fix`: 70 high-confidence groups merged. `dedup:releases:fix-all`: 27 low-confidence groups also merged. ~97 duplicate releases removed total. No user data lost (all score=0). Some false positives were caught in the low-confidence run (MOTOMAMI vs MOTOMAMI+, MAYHEM standard vs deluxe, LOONA [#] vs [+ +], etc.) — these will be recovered via `check:completeness` + `queue:ingest` for iTunes-sourced releases.
+- **`queue:discover` run 1** — 89 artists processed (708 already done), 1,721 similar artists queued via Last.fm. Total queue pending: 8,968.
+- **`backfill:genres`** — still running as of session end.
+
+### Pending pipeline (run in order after `backfill:genres` finishes):
+1. `npm run backfill:native:releases`
+2. `npm run check:completeness`
+3. `npm run queue:ingest` (overnight — 8,968 artists)
+4. `npm run queue:discover` → `npm run queue:ingest` (repeat until stable)
+5. `npm run backfill:embeddings` (once ingest loop is stable)
+
+---
+
 **2026-05-28 (later) — Streaming buttons, inline ratings, My Rankings, song ratings:**
 
 ### What was built

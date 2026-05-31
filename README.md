@@ -14,36 +14,29 @@ The 2026-05-22 Spotify-quota hardening is live. 2026-05-23 added 404-resilience 
 
 ### ► START HERE — next session checklist
 
-#### ~~Step 0 — check the genre backfill~~ ✅ Done (2,864 matched, 66% match rate)
+#### `backfill:genres` — 🔄 still running (resume if stopped)
 
-#### ~~Step 1 — supplement genres with Last.fm~~ ✅ Done (1,587 enriched)
+```bash
+cd apps/web && npm run backfill:genres
+```
 
-#### ~~Step 0 — UUID migration~~ ✅ Done (2026-05-27)
+When it finishes, run the following **in order**. Do not skip steps or run iTunes scripts in parallel.
 
-`releases.id` is now a UUID. `spotify_id` and `itunes_id` are the source-specific lookup columns. All dependent tables (`ratings`, `reviews`, `rating_history`, `list_items`, `pinned_albums`, `ranking_votes`, `ranking_seed_entries`, `user_ranking_entries`, `curated_releases`) have been migrated. iTunes search results are now saved to DB on every fallback search. **Deploy the current code before running any backfill scripts.**
+#### After `backfill:genres` finishes — run in order:
 
-#### ~~Step 2 — run native name backfill Phase 2 (releases)~~ ✅ Done (2026-05-28)
+| Step | Command | Notes |
+|------|---------|-------|
+| 1 | `npm run backfill:native:releases` | iTunes — fills native titles on new releases |
+| 2 | `npm run check:completeness` | iTunes — re-queues artists with incomplete discographies |
+| 3 | `npm run queue:ingest` | iTunes — drains 8,968 pending artists (overnight) |
+| 4 | `npm run queue:discover` | Last.fm — finds similar artists from newly added ones |
+| 5 | `npm run queue:ingest` | iTunes — drain again after discover adds more |
+| — | repeat discover → ingest | until queue stabilises (few new artists added) |
+| 6 | `npm run backfill:embeddings` | Jina — embed everything at once **after** ingest is stable |
 
-Phase 1 (artists via Wikipedia) ✅ done — ~247 of ~536 artists have `name_native`. Phase 2 (releases via iTunes local stores) ✅ done — many K-pop/Korean indie releases legitimately have no native-script title on iTunes; those were skipped correctly.
+**Do not run `backfill:embeddings` until the discover → ingest loop is stable** — you'd just have to run it again.
 
-~~Run `fix-native-names.sql` in Supabase SQL editor~~ ✅ Done (2026-05-27) — 13 artist corrections applied (2 Korean, 11 Japanese). Owen native name corrected (오언 → 오왼).
-
-#### ~~Step 3 — ingest the Wikipedia artist queue~~ ✅ Done (2026-05-28)
-
-`queue:ingest` completed: **4,568 releases inserted, 251 enriched, 149 skipped, 12 artists with no iTunes match, 0 failed**. Catalog grew by ~4,800 rows.
-
-Run `fix-native-names-english-stage.sql` in Supabase SQL editor if not already (sets Korean names for IU, IVE, NewJeans, aespa, BLACKPINK, EXO, TWICE, and ~40 more K-pop acts with English-only stage names).
-
-#### Step 3b — backfill the new releases (in progress 2026-05-28 evening)
-
-| Script | Status |
-|--------|--------|
-| `npm run backfill:genres` | 🔄 running — drains the 1,624 null-genre rows from the new iTunes ingest |
-| `npm run backfill:embeddings` | ✅ Done — 3,854 embedded, 0 failed; full catalog total ~9,213 |
-| `npm run backfill:native:releases` | ⬜ next — hold until `backfill:genres` finishes (both hit iTunes) |
-| `npm run queue:discover` | ⬜ after — adds Last.fm similar artists to the queue, then loop |
-
-`backfill:embeddings` uses Jina (different API) so it runs safely in parallel with the iTunes-based `backfill:genres`. Do **not** start `backfill:native:releases` until `backfill:genres` is done — they'll compete for the same iTunes rate-limit budget.
+`queue:discover` (Last.fm) and `backfill:embeddings` (Jina) are safe to run in parallel with each other but **not** with any iTunes script.
 
 #### ~~Step 4 — fill missing cover art~~ ✅ Done (2026-05-28)
 
@@ -78,8 +71,14 @@ Run `fix-native-names-english-stage.sql` in Supabase SQL editor if not already (
 - ✅ `backfill:covers` — run 2026-05-28; 15 releases filled, 0 remaining
 - ✅ `queue:ingest` — done 2026-05-28: 4,568 inserted, 251 enriched, 149 skipped, 12 no-match, 0 failed
 - ✅ Ghost-row cleanup (2026-05-28) — 13 legacy `releases` rows with `title="Unknown"` AND `artist="Unknown"` deleted; all orphaned (0 ratings/reviews/pins/ranking entries). Source: legacy ingest path no longer present in current code; nothing in the live codebase writes literal `"Unknown"`/`"Unknown"`.
-- 🔄 `backfill:genres` — running 2026-05-28 evening (1,624 null-genre rows from new iTunes ingest)
-- ✅ `backfill:embeddings` (re-run) — done 2026-05-28 evening: 3,854 embedded, 0 failed; full catalog total ~9,213
+- 🔄 `backfill:genres` — still running (2026-05-31); draining null-genre rows from queue:ingest additions
+- ✅ `dedup:releases` — done 2026-05-31: 70 high-confidence + 27 low-confidence groups merged; ~97 duplicate releases removed
+- ✅ `queue:discover` (run 1) — done 2026-05-31: 1,721 similar artists queued via Last.fm; total queue pending: 8,968
+- ⬜ `backfill:native:releases` — after `backfill:genres` finishes
+- ⬜ `check:completeness` — after `backfill:native:releases`
+- ⬜ `queue:ingest` (run 2) — drain 8,968 pending artists (overnight)
+- ⬜ `queue:discover` (run 2) — after run-2 ingest finishes
+- ⬜ `backfill:embeddings` — after discover/ingest loop stabilises
 
 ### Catalog normalization — done
 
