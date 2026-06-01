@@ -323,7 +323,7 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
   const goToRanking = (slug: string) => {
     const params = new URLSearchParams({ album: albumId, title: albumTitle, artist: albumArtist });
     if (coverUrl) params.set('cover', coverUrl);
-    router.push(`/rankings/${slug}/rank?${params}`);
+    router.push(`/leaderboard/${slug}/rank?${params}`);
     setShowRankModal(false);
   };
 

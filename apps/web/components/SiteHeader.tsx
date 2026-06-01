@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '../lib/supabaseClient';
 import type { Session } from '@supabase/supabase-js';
 import {
-  Search, Menu, User, Bookmark, Bell, Users,
+  Search, Menu, User, Bookmark, Bell,
   Settings, LogOut, HelpCircle, ArrowLeft
 } from 'lucide-react';
 import UserAvatar from './UserAvatar';
@@ -105,7 +105,6 @@ export default function SiteHeader({ onMenuClick }: SiteHeaderProps) {
 
   const menuItems = [
     { icon: User,       label: t('nav.profile'),       href: username ? `/profile/${username}` : '/profile', isNotifications: false },
-    { icon: Users,      label: t('nav.friends'),       href: '/friends', isNotifications: false },
     { icon: Bookmark,   label: t('nav.listenLater'),   href: '/listen-later', isNotifications: false },
     { icon: Bell,       label: t('nav.notifications'), href: '/notifications', isNotifications: true },
     { icon: Settings,   label: t('nav.settings'),      href: '/settings', isNotifications: false },

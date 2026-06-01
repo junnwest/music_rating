@@ -153,13 +153,13 @@ export default function RankingsGrid({ categories, topAlbumsMap, voteCountMap }:
                   <span className="text-[11px] text-muted">{voteLabel}</span>
                   <div className="flex items-center gap-2">
                     <Link
-                      href={`/rankings/${cat.slug}`}
+                      href={`/leaderboard/${cat.slug}`}
                       className="text-[12px] font-medium text-muted hover:text-ink transition"
                     >
                       {t('rankings.viewRanking')}
                     </Link>
                     <Link
-                      href={`/rankings/${cat.slug}/rank`}
+                      href={`/leaderboard/${cat.slug}/rank`}
                       className="text-[12px] font-semibold text-ink border border-[#DDDDD8] rounded-lg px-3 py-1.5 hover:bg-surface transition"
                     >
                       {hasRanked ? t('rankings.reRank') : t('rankings.rank')}

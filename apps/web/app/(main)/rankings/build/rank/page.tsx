@@ -58,7 +58,7 @@ export default async function BuildRankPage({
   const marketSuffix = market ? `?market=${market}` : '';
 
   if (existing) {
-    redirect(`/rankings/${existing.slug}/rank${marketSuffix}`);
+    redirect(`/leaderboard/${existing.slug}/rank${marketSuffix}`);
   }
 
   // Create the category
@@ -80,5 +80,5 @@ export default async function BuildRankPage({
     .single();
 
   // If insert failed (e.g. race condition), fall back to the slug
-  redirect(`/rankings/${created?.slug ?? slug}/rank${marketSuffix}`);
+  redirect(`/leaderboard/${created?.slug ?? slug}/rank${marketSuffix}`);
 }

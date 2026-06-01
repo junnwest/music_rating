@@ -14,9 +14,9 @@ Features shipped as of this session: preferred streaming platform (album/track b
 
 ### ► START HERE — next session checklist
 
-#### DB migrations — apply to production (5 pending)
+#### DB migrations — apply to production (6 pending)
 
-All 5 migrations below must be run via `supabase db push` (or pasted into the Supabase SQL editor if db push is blocked by the timestamp-collision history).
+All migrations below must be run via `supabase db push` (or pasted into the Supabase SQL editor if db push is blocked by the timestamp-collision history).
 
 | File | What it adds |
 |------|-------------|
@@ -25,6 +25,7 @@ All 5 migrations below must be run via `supabase db push` (or pasted into the Su
 | `20260601000001_spotify_connections.sql` | `spotify_connections` table (Spotify OAuth tokens) |
 | `20260601000002_adventurousness.sql` | `recommendation_adventurousness` on profiles (default 50) |
 | `20260601000003_silla_score_fn.sql` | `get_calibrated_bayesian_scores(uuid[])` Postgres function |
+| `20260601000010_accomplishments.sql` | `accomplishment_definitions` + `user_accomplishments` tables + RLS + 5 seed badges |
 
 #### Spotify playlist export — configure before use
 
@@ -522,9 +523,9 @@ npm run expand:genre        # Spotify genre sweep — still works
 | Album detail | ✓ | Rating, reviews, tracklist, artist link, inline review modal, "In Rankings" chips |
 | Artist page | ✓ | Full discography |
 | Genre browse | ✓ | Infinite scroll, paginated |
-| Rankings list | ✓ | All categories |
-| Rankings leaderboard | ✓ | Silla Score normalized 0–100 |
-| Rankings builder | ✓ | Up/down reorder + tie support (`=` button); drag-and-drop requires dev build |
+| Leaderboard list | ✓ | All categories (route: `/leaderboard`) |
+| Leaderboard page | ✓ | Silla Score normalized 0–100 (route: `/leaderboard/[slug]`) |
+| Tierlist builder | ✓ | Numbered tiers + tie support; drag-and-drop (route: `/leaderboard/[slug]/rank`) |
 | Activity feed | ✓ | Following / everyone toggle |
 | My profile | ✓ | Stats, score distribution, top genres, essentials (pin 6), recent ratings grid (3-col), taste DNA, taste collisions, taste contradictions |
 | Friends | ✓ | Search bar, follow/unfollow, follow-back, suggested accounts |

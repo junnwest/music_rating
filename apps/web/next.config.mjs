@@ -21,6 +21,15 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
+  async redirects() {
+    return [
+      { source: '/rankings', destination: '/leaderboard', permanent: true },
+      { source: '/rankings/build', destination: '/leaderboard/build', permanent: true },
+      { source: '/rankings/build/rank', destination: '/leaderboard/build', permanent: true },
+      { source: '/rankings/:slug/rank', destination: '/leaderboard/:slug/rank', permanent: true },
+      { source: '/rankings/:slug', destination: '/leaderboard/:slug', permanent: true },
+    ];
+  },
   async headers() {
     return [{ source: '/(.*)', headers: securityHeaders }];
   },

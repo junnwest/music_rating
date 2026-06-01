@@ -1,11 +1,14 @@
 ﻿'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Heart, Globe, Users, Lock, Star, ChevronDown, Check } from 'lucide-react';
+import { Heart, Globe, Users, Lock, Star, ChevronDown, Check, ArrowUpDown } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient';
 import type { Session } from '@supabase/supabase-js';
 import UserAvatar from './UserAvatar';
+
+type SortOrder = 'newest' | 'oldest' | 'most-liked';
+type FilterMode = 'all' | 'public' | 'friends';
 
 type Visibility = 'public' | 'friends' | 'private';
 
@@ -116,6 +119,8 @@ export default function ReviewsSection({ releaseId }: { releaseId: string }) {
   const [visibility, setVisibility] = useState<Visibility>('public');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
+  const [filterMode, setFilterMode] = useState<FilterMode>('all');
 
   useEffect(() => {
     if (supabase) {
@@ -190,6 +195,17 @@ export default function ReviewsSection({ releaseId }: { releaseId: string }) {
     }
   };
 
+  // Sort + filter derived list
+  const displayedComments = (() => {
+    let list = [...comments];
+    if (filterMode === 'public') list = list.filter(c => c.visibility === 'public');
+    else if (filterMode === 'friends') list = list.filter(c => c.visibility === 'friends' || c.visibility === 'public');
+    if (sortOrder === 'newest') list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    else if (sortOrder === 'oldest') list.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    else if (sortOrder === 'most-liked') list.sort((a, b) => b.likeCount - a.likeCount);
+    return list;
+  })();
+
   return (
     <div>
       <h2 className="text-[17px] font-bold text-ink mb-[18px]">
@@ -222,13 +238,41 @@ export default function ReviewsSection({ releaseId }: { releaseId: string }) {
         </form>
       )}
 
+      {!loading && comments.length > 1 && (
+        <div className="flex items-center gap-2 mb-5 flex-wrap">
+          <ArrowUpDown size={13} className="text-muted flex-shrink-0" />
+          <div className="flex gap-1">
+            {(['newest', 'oldest', 'most-liked'] as SortOrder[]).map(s => (
+              <button
+                key={s}
+                onClick={() => setSortOrder(s)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${sortOrder === s ? 'bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111]' : 'text-muted hover:bg-surface border border-divider'}`}
+              >
+                {s === 'newest' ? 'Newest' : s === 'oldest' ? 'Oldest' : 'Most liked'}
+              </button>
+            ))}
+          </div>
+          <div className="ml-auto flex gap-1">
+            {(['all', 'public', 'friends'] as FilterMode[]).map(f => (
+              <button
+                key={f}
+                onClick={() => setFilterMode(f)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${filterMode === f ? 'bg-surface text-ink border border-ink/20' : 'text-muted hover:bg-surface border border-divider'}`}
+              >
+                {f === 'all' ? 'All' : f === 'public' ? 'Public' : 'Friends'}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <p className="text-sm text-muted">Loading…</p>
-      ) : comments.length === 0 ? (
-        <p className="text-[13px] text-muted">No comments yet. Rate it first, then share your take.</p>
+      ) : displayedComments.length === 0 ? (
+        <p className="text-[13px] text-muted">{comments.length === 0 ? 'No comments yet. Rate it first, then share your take.' : 'No comments match this filter.'}</p>
       ) : (
         <div className="flex flex-col gap-5">
-          {comments.map(c => {
+          {displayedComments.map(c => {
             const VisIcon = VISIBILITY_OPTIONS.find(o => o.value === c.visibility)?.icon ?? Globe;
             return (
               <div key={c.id} className="border-b border-divider pb-5 last:border-0">

@@ -284,6 +284,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
   const [followModalUsers, setFollowModalUsers] = useState<{ id: string; username: string; display_name: string | null }[]>([]);
   const [followModalLoading, setFollowModalLoading] = useState(false);
   const [followModalSearch, setFollowModalSearch] = useState('');
+  const [badges, setBadges] = useState<{ definition_id: string; earned_at: string; accomplishment_definitions: { title: string; description: string; icon: string } }[]>([]);
 
   const ratingsCount = ratings?.length ?? 0;
   const averageRating =
@@ -400,6 +401,12 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
         .then((json) => setContradictions(json.contradictions ?? []))
         .catch(() => {});
     }
+
+    // Fetch badges (public — shown on any profile)
+    fetch(`/api/accomplishments?userId=${userId}`)
+      .then((r) => r.json())
+      .then((json) => setBadges(json.accomplishments ?? []))
+      .catch(() => {});
 
     setLoading(false);
   };
@@ -722,6 +729,23 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                       </span>
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+            {badges.length > 0 && (
+              <div className="bg-page rounded-xl border border-divider p-4 min-w-[160px] md:min-w-0">
+                <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.6px' }}>Badges</p>
+                <div className="flex flex-wrap gap-2">
+                  {badges.map(b => (
+                    <div
+                      key={b.definition_id}
+                      title={`${b.accomplishment_definitions.title} — ${b.accomplishment_definitions.description}`}
+                      className="flex flex-col items-center gap-1 cursor-default"
+                    >
+                      <span className="text-[24px] leading-none">{b.accomplishment_definitions.icon}</span>
+                      <span className="text-[9px] font-semibold text-muted text-center leading-tight max-w-[48px] truncate">{b.accomplishment_definitions.title}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

@@ -365,7 +365,7 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
             {rankingMemberships.map((cat) => (
               <Link
                 key={cat.slug}
-                href={`/rankings/${cat.slug}`}
+                href={`/leaderboard/${cat.slug}`}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-divider text-[12px] font-medium text-ink hover:bg-surface hover:border-ink/20 transition"
               >
                 {cat.title}

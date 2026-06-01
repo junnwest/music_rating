@@ -152,6 +152,19 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries
 
+**2026-05-31 — Leaderboard rename, Tierlist builder, Social tab, Comment sort/filter, Accomplishment badges:**
+
+- **Rankings → Leaderboard**: renamed the community ranking feature to "Leaderboard" across all user-facing labels, routes, and components. New routes: `/leaderboard`, `/leaderboard/[slug]`, `/leaderboard/[slug]/rank`, `/leaderboard/build`. Old `/rankings/*` routes redirect 301 → `/leaderboard/*` via `next.config.mjs`. Updated: `Sidebar.tsx`, `BottomNav.tsx`, `FilterBuilder.tsx`, `TopRankingsMenu.tsx`, `RankingsGrid.tsx`, `AlbumActions.tsx`, `album/[mbid]/page.tsx`, i18n `en.ts` + `ko.ts`.
+- **Tierlist builder**: personal ranking builder ("Make Your Own Ranking") renamed to "Tierlist". `RankBuilder.tsx` updated: back link → "Leaderboard", save button → "Save Tierlist", toasts + modal copy updated. Numbered ordering UI (1, 2, 3…) and tie support unchanged. Route `/leaderboard/[slug]/rank`.
+- **My Tierlists**: `/my-rankings` page title + back button updated to "My Tierlists". Sidebar label updated from "My List" → "My Tierlists". Route kept as `/my-rankings`.
+- **Friends → top-level nav**: Friends link moved from `SiteHeader` profile dropdown to `Sidebar` as a dedicated tab (Users icon). Sidebar now has 5 nav items: Leaderboard, My Tierlists, Feed, Friends, Explore. Friends removed from dropdown to avoid duplication.
+- **Comment sort/filter**: `ReviewsSection.tsx` gains sort controls (Newest / Oldest / Most liked) and filter controls (All / Public / Friends-only) shown when there's >1 comment. Sort/filter are purely client-side — no new fetch calls.
+- **Accomplishment badges**: migration `20260601000010_accomplishments.sql` adds `accomplishment_definitions` + `user_accomplishments` tables with RLS. Seeded 5 badge definitions: First 10 (10 ratings), Fifty Deep (50), Century Club (100), Audiophile (500), Full Sweep (rated every album in a leaderboard). `lib/accomplishments.ts` — `checkAndAwardRatingMilestones()` + `checkLeaderboardCompletion()`. `GET /api/accomplishments` — public fetch for a user's badges. `POST /api/accomplishments` — awards milestones after rating. Notifications page updated to handle `badge` type with Trophy icon. ProfilePanel fetches + renders a Badges card in the left sidebar (emoji + label, tooltip on hover). **Migration must be applied**: `supabase db push` or paste into SQL editor.
+
+---
+
+
+
 **2026-06-01 — Silla Score recompute + Discovery slider + recommendation buckets:**
 
 - **Silla Score recomputed**: formula now combines calibrated Bayesian star ratings (55%) + normalized tierlist-position score (45%). Per-user calibration: z-score against each user's mean and volatility (std dev), clamped to ±2.5σ, mapped back to [0.5, 5]. Bayesian damping: `(v/(v+10))*R_calibrated + (10/(v+10))*C_global` pulls low-rating-count albums toward the global mean. Rankings + album-page rank display both use the new formula. `rankings/[slug]/page.tsx` cache key bumped to `v2` to force recomputation.

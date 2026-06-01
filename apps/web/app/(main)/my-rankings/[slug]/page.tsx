@@ -135,7 +135,7 @@ export default function MyRankingDetailPage() {
       <div className="max-w-[900px] mx-auto px-5 py-8">
         <button onClick={() => router.push('/my-rankings')} className="flex items-center gap-1 text-[13px] text-muted hover:text-ink transition mb-4">
           <ChevronLeft size={16} />
-          My Rankings
+          My Tierlists
         </button>
 
         <h1 className="text-[24px] font-extrabold text-ink mb-1" style={{ letterSpacing: '-0.5px' }}>

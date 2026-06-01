@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef } from 'react';
-import { Trophy, Flame, Compass, ListOrdered } from 'lucide-react';
+import { Trophy, Flame, Compass, ListOrdered, Users } from 'lucide-react';
 import { useLanguage } from '../lib/i18n';
 
 interface SidebarProps {
@@ -17,10 +17,11 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
   const { t } = useLanguage();
 
   const navItems = [
-    { icon: Trophy, label: t('nav.ranking'), path: '/rankings' },
-    { icon: ListOrdered, label: 'My List', path: '/my-rankings' },
-    { icon: Flame,  label: t('nav.feed'),    path: '/activity' },
-    { icon: Compass, label: t('nav.explore'), path: '/explore' },
+    { icon: Trophy,      label: t('nav.leaderboard'), path: '/leaderboard' },
+    { icon: ListOrdered, label: t('nav.tierlists'),   path: '/my-rankings' },
+    { icon: Flame,       label: t('nav.feed'),         path: '/activity' },
+    { icon: Users,       label: t('nav.friends'),      path: '/friends' },
+    { icon: Compass,     label: t('nav.explore'),      path: '/explore' },
   ];
 
   useEffect(() => {
