@@ -37,6 +37,7 @@ Historical record of shipped features and session notes. Not needed at conversat
 - [x] Search page — mobile header transforms to search overlay on icon tap; landing state with no duplicate bar
 - [x] Streaming buttons (Spotify / YouTube Music / Tidal) — album hero + per-track; uses stored spotifyUrl when available
 - [x] Preferred streaming platform — `preferred_streaming_platform` column on profiles (migration `20260531000000`); set in onboarding step 3 (4-step flow) and Settings → Preferences; album + track buttons filter to the single preferred platform when set, fall back to all three otherwise
+- [x] Custom playlists + right panel — persistent right-side playlist panel (desktop 260px, mobile overlay); uses existing `lists`/`list_items` tables; CRUD (create, rename, delete); "Add to [active list]" in AlbumActions dropdown + `QuickAddButton` on every track row; Spotify OAuth connect + playlist export; YouTube Music limitation surfaced in UI; Copy tracklist; migrations `20260601000000` (position + UPDATE policy) and `20260601000001` (spotify_connections)
 - [x] Track star ratings — inline 14px star widget per track; writes to `track_ratings` table (migration in `supabase/migrations/20260526000000_track_ratings.sql` — apply manually)
 - [x] Inline star ratings — compact widget on Explore cards, rankings leaderboard ("Your Rating" column), ranking builder suggestions
 - [x] My Rankings (`/my-rankings`) — dashboard with ranking cards (All, Albums, EPs, Songs, per-genre) + "Recommended for You"; detail pages at `/my-rankings/[slug]`
@@ -148,6 +149,18 @@ Historical record of shipped features and session notes. Not needed at conversat
 ---
 
 ## Session summaries
+
+**2026-06-01 — Custom playlists + right panel + Spotify export:**
+
+- **`PlaylistContext`** — React context (`PlaylistProvider`) wrapping the full layout; exposes `activeListId`, `activeListName`, `playlists`, `addToActive`, `panelOpen/setPanelOpen`. Provides global "add to current list" without prop drilling.
+- **`PlaylistPanel`** — persistent right-side `<aside>` (260px, sticky on XL+, overlay on mobile). List selector dropdown (Listen Later + custom playlists); create/rename/delete for custom playlists; per-album remove button; Export modal.
+- **Export modal** — three options: Copy tracklist (clipboard), Export to Spotify (OAuth flow + API), YouTube Music (explicit "no write API" notice + copy fallback).
+- **Spotify OAuth** — `POST /api/spotify/auth` returns authorize URL with `playlist-modify-public/private` scope; `GET /api/spotify/callback` exchanges code + stores tokens in new `spotify_connections` table; `POST /api/spotify/export` searches Spotify for each album's tracks, creates playlist, adds up to 30 tracks (3 per album, 10 albums).
+- **Quick-add** — `AlbumActions` dropdown gains "Add to [active list]" item (shows checkmark for 1.5s); `QuickAddButton` client component on every track row (shows `+`/`✓`).
+- **Migrations** — `20260601000000` (position column on list_items + UPDATE RLS policy for lists rename); `20260601000001` (spotify_connections table with RLS).
+- **`SPOTIFY_REDIRECT_URI`** added to `.env.example`. Add to `.env.local` on both devices and to Vercel env vars. Must also be registered in Spotify Dashboard → Redirect URIs.
+
+---
 
 **2026-05-31 — Dedup pipeline, catalog integrity, ingest plan:**
 

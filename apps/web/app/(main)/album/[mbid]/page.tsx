@@ -22,6 +22,7 @@ import ReviewsSection from '../../../../components/ReviewsSection';
 import AlbumActions from '../../../../components/AlbumActions';
 import { StreamingButtons, TrackStreamingButtons } from '../../../../components/YouTubeMusicButton';
 import TrackStarRating from '../../../../components/TrackStarRating';
+import QuickAddButton from '../../../../components/QuickAddButton';
 import { getServerT } from '../../../../lib/i18n/server';
 import { cacheGet, cacheSet } from '../../../../lib/cache';
 
@@ -381,6 +382,7 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
                 )}
                 <TrackStarRating releaseId={album.id} trackPosition={track.position} trackTitle={track.title} />
                 <TrackStreamingButtons artist={track.artists || album.artist} track={track.title} preferred={preferredPlatform} />
+                <QuickAddButton albumId={album.id} albumTitle={album.title} albumArtist={album.artist} coverUrl={album.coverUrl} />
                 <span className="text-[12px] text-muted flex-shrink-0 tabular-nums">
                   {formatDuration(track.durationMs)}
                 </span>

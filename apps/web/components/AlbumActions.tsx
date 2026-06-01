@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, ChevronRight, Plus, Bookmark, Pin, Trophy, BookmarkCheck, X, List } from 'lucide-react';
+import { Check, ChevronRight, Plus, Bookmark, Pin, Trophy, BookmarkCheck, X, List, ListPlus } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
+import { usePlaylist } from './PlaylistContext';
 
 const LL_KEY = 'sillajuku:listen-later';
 const PINNED_MAX = 6;
@@ -72,6 +73,8 @@ interface RankingCategory {
 
 export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUrl }: Props) {
   const router = useRouter();
+  const { activeListId, activeListName, addToActive } = usePlaylist();
+  const [quickAdded, setQuickAdded] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [pinned, setPinned] = useState(false);
   const [pinnedFull, setPinnedFull] = useState(false);
@@ -223,6 +226,13 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
     }
   };
 
+  const handleQuickAdd = async () => {
+    setDropdownOpen(false);
+    await addToActive(albumId, albumTitle, albumArtist, coverUrl);
+    setQuickAdded(true);
+    setTimeout(() => setQuickAdded(false), 1500);
+  };
+
   const toggleListenLater = () => {
     const saved = JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[];
     const next = saved.includes(albumId) ? saved.filter(id => id !== albumId) : [...saved, albumId];
@@ -349,6 +359,19 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
 
         {dropdownOpen && (
           <div className="absolute top-full right-0 mt-1.5 bg-page border border-divider rounded-xl shadow-lg z-30 min-w-[200px] py-1">
+            {userId && (
+              <button
+                onClick={() => void handleQuickAdd()}
+                className="flex items-center gap-3 px-4 py-2.5 text-[13px] text-ink hover:bg-surface w-full text-left transition"
+              >
+                {quickAdded
+                  ? <Check size={15} className="text-mint-dark" />
+                  : <ListPlus size={15} className="text-muted" />}
+                <span className="flex-1 truncate">
+                  {quickAdded ? 'Added!' : `Add to ${activeListName}`}
+                </span>
+              </button>
+            )}
             <button
               onClick={toggleListenLater}
               className="flex items-center gap-3 px-4 py-2.5 text-[13px] text-ink hover:bg-surface w-full text-left transition"
