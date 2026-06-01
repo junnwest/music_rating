@@ -30,7 +30,8 @@ function SpotifyIcon({ size = 16, className = '' }: { size?: number; className?:
 export default function PlaylistPanel() {
   const {
     userId, playlists, activeListId, activeListName,
-    setActiveListId, refreshPlaylists, panelOpen, setPanelOpen, panelRefreshKey,
+    setActiveListId, refreshPlaylists, removeFromActive,
+    panelOpen, setPanelOpen, panelRefreshKey,
   } = usePlaylist();
 
   const [albums, setAlbums] = useState<Album[]>([]);
@@ -123,14 +124,7 @@ export default function PlaylistPanel() {
   }, []);
 
   const removeAlbum = async (releaseId: string) => {
-    if (activeListId == null) {
-      const saved = JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[];
-      localStorage.setItem(LL_KEY, JSON.stringify(saved.filter((id) => id !== releaseId)));
-    } else {
-      if (!supabase) return;
-      await supabase.from('list_items').delete()
-        .eq('list_id', activeListId).eq('release_id', releaseId);
-    }
+    await removeFromActive(releaseId);
     setAlbums((prev) => prev.filter((a) => a.id !== releaseId));
   };
 
@@ -316,6 +310,17 @@ export default function PlaylistPanel() {
               </div>
             )}
           </div>
+
+          {/* Link to full playlist page */}
+          {activeListId && (
+            <Link
+              href={`/playlist/${activeListId}`}
+              className="p-1.5 rounded-lg text-muted hover:text-ink hover:bg-surface transition flex-shrink-0"
+              title="Open full playlist"
+            >
+              <ExternalLink size={14} />
+            </Link>
+          )}
 
           {/* Rename / delete for custom playlists */}
           {activeListId && (

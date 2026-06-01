@@ -7,6 +7,7 @@ import { Search } from 'lucide-react';
 import type { AlbumRelease } from '../types';
 import type { SpotifyArtist } from '../lib/spotify';
 import { useLanguage } from '../lib/i18n';
+import QuickAddButton from './QuickAddButton';
 
 type FilterKey = 'All' | 'Albums' | 'EPs' | 'Singles' | 'Live';
 const FILTER_KEYS: FilterKey[] = ['All', 'Albums', 'EPs', 'Singles', 'Live'];
@@ -201,7 +202,7 @@ export default function AlbumSearchForm() {
         {filteredReleases.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-[22px]">
             {filteredReleases.map((release) => (
-              <Link key={release.id} href={`/album/${release.id}`} className="block min-w-0">
+              <Link key={release.id} href={`/album/${release.id}`} className="block min-w-0 group">
                 <div className="relative overflow-hidden rounded-[7px]" style={{ aspectRatio: '1 / 1' }}>
                   {release.coverUrl ? (
                     <img
@@ -212,6 +213,15 @@ export default function AlbumSearchForm() {
                   ) : (
                     <div className="absolute inset-0 bg-surface border border-divider" />
                   )}
+                  <div className="absolute top-[6px] right-[6px]">
+                    <QuickAddButton
+                      albumId={release.id}
+                      albumTitle={release.title}
+                      albumArtist={release.artist}
+                      coverUrl={release.coverUrl}
+                      overlay
+                    />
+                  </div>
                 </div>
                 <div className="mt-[9px]">
                   <div className="text-[13px] font-semibold text-ink truncate">{release.title}</div>

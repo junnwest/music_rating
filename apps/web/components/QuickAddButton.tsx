@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Plus, Check } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Plus, Check, X, Bookmark } from 'lucide-react';
 import { usePlaylist } from './PlaylistContext';
 
 interface Props {
@@ -11,32 +11,139 @@ interface Props {
   coverUrl?: string | null;
   trackTitle?: string;
   trackPosition?: number;
+  /** Renders as a circular badge overlaid on an album cover */
+  overlay?: boolean;
 }
 
-export default function QuickAddButton({ albumId, albumTitle, albumArtist, coverUrl, trackTitle, trackPosition }: Props) {
-  const { addToActive, activeListName, userId } = usePlaylist();
-  const [state, setState] = useState<'idle' | 'added' | 'exists'>('idle');
+export default function QuickAddButton({
+  albumId, albumTitle, albumArtist, coverUrl,
+  trackTitle, trackPosition, overlay = false,
+}: Props) {
+  const {
+    addToActive, removeFromActive, activeListName,
+    activeListId, activeReleaseIds, userId,
+  } = usePlaylist();
+
+  // Tracks the brief "just added" ✓ flash before settling into the ✗ state
+  const [justAdded, setJustAdded] = useState(false);
+
+  // Reset the flash whenever the user switches which playlist is active
+  useEffect(() => { setJustAdded(false); }, [activeListId]);
 
   if (!userId) return null;
 
-  const handleAdd = async () => {
-    if (state !== 'idle') return;
-    const result = await addToActive(albumId, albumTitle, albumArtist, coverUrl, trackTitle, trackPosition);
-    setState(result.alreadyAdded ? 'exists' : 'added');
-    setTimeout(() => setState('idle'), 1500);
+  const isLL = activeListId == null;
+  const isInList = activeReleaseIds.has(albumId);
+
+  const handleAdd = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    await addToActive(albumId, albumTitle, albumArtist, coverUrl, trackTitle, trackPosition);
+    setJustAdded(true);
+    setTimeout(() => setJustAdded(false), 700);
   };
 
+  const handleRemove = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    await removeFromActive(albumId);
+  };
+
+  // ── Overlay style (album card corner badge) ────────────────────────────────
+  if (overlay) {
+    if (isLL) {
+      return (
+        <button
+          onClick={isInList ? handleRemove : handleAdd}
+          title={isInList ? 'Remove from Listen Later' : 'Save to Listen Later'}
+          className={`w-7 h-7 rounded-full flex items-center justify-center transition backdrop-blur-sm ${
+            isInList
+              ? 'bg-[#E8A020] text-white shadow-sm'
+              : 'bg-black/40 text-white/80 hover:bg-black/60'
+          }`}
+        >
+          <Bookmark
+            size={13}
+            fill={isInList ? 'currentColor' : 'none'}
+            stroke="currentColor"
+            strokeWidth={2.2}
+          />
+        </button>
+      );
+    }
+
+    if (justAdded) {
+      return (
+        <span className="w-7 h-7 rounded-full flex items-center justify-center bg-[#E8A020] text-white backdrop-blur-sm shadow-sm pointer-events-none">
+          <Check size={13} />
+        </span>
+      );
+    }
+    if (isInList) {
+      return (
+        <button
+          onClick={handleRemove}
+          title={`Remove from ${activeListName}`}
+          className="w-7 h-7 rounded-full flex items-center justify-center bg-black/50 text-white/80 hover:bg-red-500 hover:text-white transition backdrop-blur-sm"
+        >
+          <X size={13} />
+        </button>
+      );
+    }
+    return (
+      <button
+        onClick={handleAdd}
+        title={`Add to ${activeListName}`}
+        className="w-7 h-7 rounded-full flex items-center justify-center bg-black/40 text-white/80 hover:bg-black/60 transition backdrop-blur-sm"
+      >
+        <Plus size={13} />
+      </button>
+    );
+  }
+
+  // ── Inline style (tracklist row) ───────────────────────────────────────────
+  if (isLL) {
+    return (
+      <button
+        onClick={isInList ? handleRemove : handleAdd}
+        title={isInList ? 'Remove from Listen Later' : 'Save to Listen Later'}
+        className={`flex-shrink-0 p-0.5 transition ${isInList ? 'text-[#E8A020]' : 'text-muted hover:text-ink'}`}
+      >
+        <Bookmark
+          size={13}
+          fill={isInList ? 'currentColor' : 'none'}
+          stroke="currentColor"
+          strokeWidth={2.2}
+        />
+      </button>
+    );
+  }
+
+  if (justAdded) {
+    return (
+      <span className="flex-shrink-0 p-0.5 text-[#E8A020] pointer-events-none">
+        <Check size={13} />
+      </span>
+    );
+  }
+  if (isInList) {
+    return (
+      <button
+        onClick={handleRemove}
+        title={`Remove from ${activeListName}`}
+        className="flex-shrink-0 p-0.5 transition text-muted hover:text-red-500"
+      >
+        <X size={13} />
+      </button>
+    );
+  }
   return (
     <button
-      onClick={() => void handleAdd()}
+      onClick={handleAdd}
       title={`Add to ${activeListName}`}
-      className={`flex-shrink-0 p-0.5 transition ${
-        state === 'idle'
-          ? 'text-muted hover:text-ink'
-          : 'text-mint-dark'
-      }`}
+      className="flex-shrink-0 p-0.5 transition text-muted hover:text-ink"
     >
-      {state === 'idle' ? <Plus size={13} /> : <Check size={13} />}
+      <Plus size={13} />
     </button>
   );
 }

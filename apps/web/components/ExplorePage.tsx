@@ -5,9 +5,10 @@ import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient';
 import { useLanguage } from '../lib/i18n';
 import InlineStarRating from './InlineStarRating';
+import QuickAddButton from './QuickAddButton';
 import type { AlbumRelease } from '../types';
 
-// ── Filter configuration ──────────────────────────────────────────────────────
+// ── Filter configuration (BookmarkButton removed — using QuickAddButton) ─────
 const TYPE_OPTIONS = [
   { label: 'All', value: '' },
   { label: 'Albums', value: 'Album' },
@@ -40,54 +41,6 @@ const GENRE_OPTIONS = [
   { label: 'Folk', value: 'folk' },
 ] as const;
 
-const LL_KEY = 'sillajuku:listen-later';
-
-function BookmarkButton({ albumId, overlay = false }: { albumId: string; overlay?: boolean }) {
-  const [saved, setSaved] = useState(false);
-  useEffect(() => {
-    const ids = JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[];
-    setSaved(ids.includes(albumId));
-  }, [albumId]);
-
-  const toggle = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const ids = JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[];
-    const next = ids.includes(albumId) ? ids.filter(id => id !== albumId) : [...ids, albumId];
-    localStorage.setItem(LL_KEY, JSON.stringify(next));
-    setSaved(!saved);
-  };
-
-  if (overlay) {
-    return (
-      <button
-        onClick={toggle}
-        title={saved ? 'Remove from Listen Later' : 'Save to Listen Later'}
-        className={`w-7 h-7 rounded-full flex items-center justify-center transition backdrop-blur-sm ${
-          saved
-            ? 'bg-[#E8A020] text-white shadow-sm'
-            : 'bg-black/40 text-white/80 hover:bg-black/60'
-        }`}
-      >
-        <svg width="13" height="13" viewBox="0 0 24 24" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2.2">
-          <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-        </svg>
-      </button>
-    );
-  }
-
-  return (
-    <button
-      onClick={toggle}
-      title={saved ? 'Remove from Listen Later' : 'Save to Listen Later'}
-      className={`transition flex-shrink-0 ${saved ? 'text-[#E8A020]' : 'text-muted hover:text-ink'}`}
-    >
-      <svg width="14" height="14" viewBox="0 0 24 24" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
-        <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-      </svg>
-    </button>
-  );
-}
 
 type Status = 'init' | 'guest' | 'ready';
 
@@ -388,9 +341,14 @@ export default function ExplorePage() {
                       ) : (
                         <div className="absolute inset-0 bg-surface border border-divider" />
                       )}
-                      {/* Bookmark overlay — top-right corner of cover */}
-                      <div className="absolute top-[6px] right-[6px]" onClick={e => e.preventDefault()}>
-                        <BookmarkButton albumId={album.id} overlay />
+                      <div className="absolute top-[6px] right-[6px]">
+                        <QuickAddButton
+                          albumId={album.id}
+                          albumTitle={album.title}
+                          albumArtist={album.artist}
+                          coverUrl={album.coverUrl ?? null}
+                          overlay
+                        />
                       </div>
                     </div>
                     <div className="mt-[9px]">

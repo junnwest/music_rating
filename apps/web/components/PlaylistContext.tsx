@@ -18,11 +18,14 @@ interface PlaylistContextType {
     releaseId: string, title: string, artist: string, coverUrl?: string | null,
     trackTitle?: string, trackPosition?: number
   ) => Promise<{ alreadyAdded?: boolean }>;
+  removeFromActive: (releaseId: string) => Promise<void>;
   refreshPlaylists: () => Promise<void>;
   panelOpen: boolean;
   setPanelOpen: (open: boolean) => void;
-  /** Increments each time an item is successfully added — panels watch this to reload instantly */
+  /** Increments each time an item is successfully added/removed — panels watch this to reload */
   panelRefreshKey: number;
+  /** Set of release IDs currently in the active list — live-updated for instant button feedback */
+  activeReleaseIds: Set<string>;
 }
 
 const PlaylistContext = createContext<PlaylistContextType | null>(null);
@@ -56,6 +59,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
   const [activeListId, setActiveListId] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelRefreshKey, setPanelRefreshKey] = useState(0);
+  const [activeReleaseIds, setActiveReleaseIds] = useState<Set<string>>(new Set());
 
   const activeListName =
     activeListId == null
@@ -84,6 +88,23 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Reload which release IDs are in the active list whenever it changes or items are added/removed
+  useEffect(() => {
+    if (activeListId == null) {
+      const ids = JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[];
+      setActiveReleaseIds(new Set(ids));
+      return;
+    }
+    if (!supabase || !userId) return;
+    supabase
+      .from('list_items')
+      .select('release_id')
+      .eq('list_id', activeListId)
+      .then(({ data }) => {
+        setActiveReleaseIds(new Set((data ?? []).map((item: any) => item.release_id)));
+      });
+  }, [activeListId, userId, panelRefreshKey]);
+
   const addToActive = useCallback(async (
     releaseId: string,
     title: string,
@@ -96,6 +117,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
       const saved = JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[];
       if (saved.includes(releaseId)) return { alreadyAdded: true };
       localStorage.setItem(LL_KEY, JSON.stringify([...saved, releaseId]));
+      setActiveReleaseIds(prev => new Set([...prev, releaseId]));
       setPanelRefreshKey((k) => k + 1);
       return {};
     }
@@ -112,16 +134,34 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
         },
         { onConflict: 'list_id,release_id' },
       );
+    setActiveReleaseIds(prev => new Set([...prev, releaseId]));
     setPanelRefreshKey((k) => k + 1);
     return {};
   }, [activeListId, userId]);
+
+  const removeFromActive = useCallback(async (releaseId: string) => {
+    if (activeListId == null) {
+      const saved = JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[];
+      localStorage.setItem(LL_KEY, JSON.stringify(saved.filter(id => id !== releaseId)));
+    } else {
+      if (!supabase) return;
+      await supabase.from('list_items').delete()
+        .eq('list_id', activeListId).eq('release_id', releaseId);
+    }
+    setActiveReleaseIds(prev => {
+      const next = new Set(prev);
+      next.delete(releaseId);
+      return next;
+    });
+    setPanelRefreshKey((k) => k + 1);
+  }, [activeListId]);
 
   return (
     <PlaylistContext.Provider
       value={{
         userId, playlists, activeListId, activeListName,
-        setActiveListId, addToActive, refreshPlaylists: fetchPlaylists,
-        panelOpen, setPanelOpen, panelRefreshKey,
+        setActiveListId, addToActive, removeFromActive, refreshPlaylists: fetchPlaylists,
+        panelOpen, setPanelOpen, panelRefreshKey, activeReleaseIds,
       }}
     >
       {children}

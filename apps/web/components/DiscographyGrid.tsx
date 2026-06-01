@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import type { AlbumRelease } from '../types';
+import QuickAddButton from './QuickAddButton';
 
 type FilterType = 'All' | 'Albums' | 'EPs' | 'Singles';
 const FILTERS: FilterType[] = ['All', 'Albums', 'EPs', 'Singles'];
@@ -115,6 +116,15 @@ export default function DiscographyGrid({ initialReleases, initialNextCursor, st
                       ★ {releaseStats.avgScore.toFixed(1)}
                     </div>
                   )}
+                  <div className="absolute top-[6px] right-[6px]">
+                    <QuickAddButton
+                      albumId={release.id}
+                      albumTitle={release.title}
+                      albumArtist={release.artist}
+                      coverUrl={release.coverUrl}
+                      overlay
+                    />
+                  </div>
                 </div>
                 <div className="mt-[9px]">
                   <div className="text-[13px] font-semibold text-ink truncate group-hover:text-mint-dark transition-colors">{release.title}</div>
