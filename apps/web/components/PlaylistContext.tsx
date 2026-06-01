@@ -15,7 +15,8 @@ interface PlaylistContextType {
   activeListName: string;
   setActiveListId: (id: string | null) => void;
   addToActive: (
-    releaseId: string, title: string, artist: string, coverUrl?: string | null
+    releaseId: string, title: string, artist: string, coverUrl?: string | null,
+    trackTitle?: string, trackPosition?: number
   ) => Promise<{ alreadyAdded?: boolean }>;
   refreshPlaylists: () => Promise<void>;
   panelOpen: boolean;
@@ -88,6 +89,8 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
     title: string,
     artist: string,
     coverUrl?: string | null,
+    trackTitle?: string,
+    trackPosition?: number,
   ): Promise<{ alreadyAdded?: boolean }> => {
     if (activeListId == null) {
       const saved = JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[];
@@ -100,7 +103,15 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
     await ensureRelease(supabase, releaseId, title, artist, coverUrl);
     await supabase
       .from('list_items')
-      .upsert({ list_id: activeListId, release_id: releaseId }, { onConflict: 'list_id,release_id', ignoreDuplicates: true });
+      .upsert(
+        {
+          list_id: activeListId,
+          release_id: releaseId,
+          track_title: trackTitle ?? null,
+          track_position: trackPosition ?? null,
+        },
+        { onConflict: 'list_id,release_id' },
+      );
     setPanelRefreshKey((k) => k + 1);
     return {};
   }, [activeListId, userId]);

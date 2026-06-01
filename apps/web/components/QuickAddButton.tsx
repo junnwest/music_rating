@@ -9,9 +9,11 @@ interface Props {
   albumTitle: string;
   albumArtist: string;
   coverUrl?: string | null;
+  trackTitle?: string;
+  trackPosition?: number;
 }
 
-export default function QuickAddButton({ albumId, albumTitle, albumArtist, coverUrl }: Props) {
+export default function QuickAddButton({ albumId, albumTitle, albumArtist, coverUrl, trackTitle, trackPosition }: Props) {
   const { addToActive, activeListName, userId } = usePlaylist();
   const [state, setState] = useState<'idle' | 'added' | 'exists'>('idle');
 
@@ -19,7 +21,7 @@ export default function QuickAddButton({ albumId, albumTitle, albumArtist, cover
 
   const handleAdd = async () => {
     if (state !== 'idle') return;
-    const result = await addToActive(albumId, albumTitle, albumArtist, coverUrl);
+    const result = await addToActive(albumId, albumTitle, albumArtist, coverUrl, trackTitle, trackPosition);
     setState(result.alreadyAdded ? 'exists' : 'added');
     setTimeout(() => setState('idle'), 1500);
   };

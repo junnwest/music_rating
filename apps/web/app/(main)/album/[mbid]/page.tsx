@@ -401,7 +401,7 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
                 )}
                 <TrackStarRating releaseId={album.id} trackPosition={track.position} trackTitle={track.title} />
                 <TrackStreamingButtons artist={track.artists || album.artist} track={track.title} preferred={preferredPlatform} />
-                <QuickAddButton albumId={album.id} albumTitle={album.title} albumArtist={album.artist} coverUrl={album.coverUrl} />
+                <QuickAddButton albumId={album.id} albumTitle={album.title} albumArtist={album.artist} coverUrl={album.coverUrl} trackTitle={track.title} trackPosition={track.position} />
                 <span className="text-[12px] text-muted flex-shrink-0 tabular-nums">
                   {formatDuration(track.durationMs)}
                 </span>

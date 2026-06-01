@@ -16,6 +16,7 @@ interface Album {
   title: string;
   artist: string;
   coverUrl: string | null;
+  trackTitle?: string | null;
 }
 
 function SpotifyIcon({ size = 16, className = '' }: { size?: number; className?: string }) {
@@ -79,7 +80,7 @@ export default function PlaylistPanel() {
       if (!supabase) { setLoading(false); return; }
       const { data } = await supabase
         .from('list_items')
-        .select('release_id, added_at, releases(id, title, artist, cover_url)')
+        .select('release_id, added_at, track_title, releases(id, title, artist, cover_url)')
         .eq('list_id', activeListId)
         .order('added_at', { ascending: false });
       if (data) {
@@ -91,6 +92,7 @@ export default function PlaylistPanel() {
               title: item.releases.title,
               artist: item.releases.artist,
               coverUrl: item.releases.cover_url ?? null,
+              trackTitle: item.track_title ?? null,
             })),
         );
       }
@@ -402,8 +404,12 @@ export default function PlaylistPanel() {
                       )}
                     </div>
                     <div className="min-w-0">
-                      <p className="text-[12px] font-semibold text-ink truncate leading-tight">{album.title}</p>
-                      <p className="text-[11px] text-muted truncate">{album.artist}</p>
+                      <p className="text-[12px] font-semibold text-ink truncate leading-tight">
+                        {album.trackTitle ?? album.title}
+                      </p>
+                      <p className="text-[11px] text-muted truncate">
+                        {album.trackTitle ? `${album.title} · ${album.artist}` : album.artist}
+                      </p>
                     </div>
                   </Link>
                   <button

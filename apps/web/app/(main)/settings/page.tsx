@@ -178,12 +178,12 @@ function SettingsContent() {
 
   const handlePlatformChange = async (platform: string | null) => {
     if (!supabase || !userId) return;
-    setPreferredPlatform(platform);
     setPlatformSaving(true);
-    await supabase
+    const { error } = await supabase
       .from('profiles')
       .update({ preferred_streaming_platform: platform })
       .eq('id', userId);
+    if (!error) setPreferredPlatform(platform);
     setPlatformSaving(false);
   };
 
