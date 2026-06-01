@@ -75,7 +75,8 @@ export default async function RankingCategoryPage({
   if (!category) notFound();
 
   type ScoreCache = { totalRankers: number; sortedEntries: [string, number][] };
-  const cacheKey = `sj:ranking:scores:${category.id}`;
+  // v2: cache key bumped because score range changed (combined Bayesian + ranking → [0,1])
+  const cacheKey = `sj:ranking:scores:v2:${category.id}`;
   const CACHE_TTL = 5 * 60; // 5 minutes
 
   let totalRankers: number;
@@ -103,16 +104,36 @@ export default async function RankingCategoryPage({
       entries = data ?? [];
     }
 
-    // Silla Scores from real rankings
-    const scores = computeSillaScores(entries);
+    // Raw Silla Scores from tierlist positions (1/effectivePos per user ranking)
+    const rawRankScores = computeSillaScores(entries);
 
     // Seed entries contribute rank-1 equivalent (1.0 per seed vote)
     for (const s of seedEntries ?? []) {
-      scores.set(s.release_id, (scores.get(s.release_id) ?? 0) + s.seed_votes);
+      rawRankScores.set(s.release_id, (rawRankScores.get(s.release_id) ?? 0) + s.seed_votes);
+    }
+
+    // Combine with Bayesian-damped calibrated star ratings
+    const releaseIds = [...rawRankScores.keys()];
+    const { data: bayesianRows } = await supabase.rpc('get_calibrated_bayesian_scores', {
+      release_ids: releaseIds,
+    });
+    const bayesianMap = new Map<string, number>(
+      (bayesianRows ?? []).map((r: any) => [r.release_id as string, r.bayesian_score as number]),
+    );
+
+    const maxRaw = Math.max(...rawRankScores.values(), 1);
+    const PRIOR = 2.75; // Bayesian fallback for unrated releases
+
+    const combined = new Map<string, number>();
+    for (const id of releaseIds) {
+      const rankScore = (rawRankScores.get(id) ?? 0) / maxRaw;            // [0, 1]
+      const bayes    = bayesianMap.get(id) ?? PRIOR;
+      const ratingScore = Math.max(0, Math.min(1, (bayes - 0.5) / 4.5)); // [0, 1]
+      combined.set(id, 0.55 * ratingScore + 0.45 * rankScore);
     }
 
     totalRankers = rankings?.length ?? 0;
-    sortedEntries = [...scores.entries()].sort((a, b) => b[1] - a[1]);
+    sortedEntries = [...combined.entries()].sort((a, b) => b[1] - a[1]);
 
     // Cache in background — don't block the render
     cacheSet(cacheKey, { totalRankers, sortedEntries }, CACHE_TTL).catch(() => {});

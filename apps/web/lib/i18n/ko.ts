@@ -302,6 +302,10 @@ const ko: Translations = {
       commentVisibility: '댓글 기본 공개 설정',
       streamingPlatform: '선호 스트리밍 플랫폼',
       streamingNone: '없음 (전체 표시)',
+      discovery: '발견',
+      discoveryConservative: '취향 중심',
+      discoveryBalanced: '균형',
+      discoveryAdventurous: '탐험적',
     },
     notifications: {
       likes: '내 댓글에 좋아요',

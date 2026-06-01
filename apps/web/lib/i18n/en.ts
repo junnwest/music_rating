@@ -300,6 +300,10 @@ const en = {
       commentVisibility: 'Default comment visibility',
       streamingPlatform: 'Preferred streaming platform',
       streamingNone: 'None (show all)',
+      discovery: 'Discovery',
+      discoveryConservative: 'Conservative',
+      discoveryBalanced: 'Balanced',
+      discoveryAdventurous: 'Adventurous',
     },
     notifications: {
       likes: 'Likes on my comments',

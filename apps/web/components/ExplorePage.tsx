@@ -51,7 +51,10 @@ export default function ExplorePage() {
   const fetchingRef = useRef(false);
   const seenRef = useRef(new Set<string>());
   const artistsRef = useRef<string[]>([]);
+  const genresRef = useRef<string[]>([]);
   const excludeRef = useRef<string[]>([]);
+  const adventurousnessRef = useRef<number>(50);
+  const userIdRef = useRef<string>('');
   const [hasMore, setHasMore] = useState(true);
 
   const loadMore = useCallback(async () => {
@@ -62,8 +65,11 @@ export default function ExplorePage() {
     try {
       const params = new URLSearchParams({
         artists: artistsRef.current.join(','),
+        genres: genresRef.current.join(','),
         excludeIds: excludeRef.current.join(','),
         page: String(pageRef.current),
+        adventurousness: String(adventurousnessRef.current),
+        userId: userIdRef.current,
       });
       const res = await fetch(`/api/recommendations?${params}`);
       const data = await res.json();
@@ -93,19 +99,42 @@ export default function ExplorePage() {
       const { data: { session } } = await supabase!.auth.getSession();
       if (!session) { setStatus('guest'); return; }
 
-      const { data: ratings } = await supabase!
-        .from('ratings')
-        .select('release_id, releases(artist)')
-        .eq('user_id', session.user.id)
-        .order('created_at', { ascending: false })
-        .limit(50);
+      userIdRef.current = session.user.id;
+
+      // Fetch user's recent ratings + profile in parallel
+      const [ratingsResult, profileResult] = await Promise.all([
+        supabase!
+          .from('ratings')
+          .select('release_id, score, releases(artist, genres)')
+          .eq('user_id', session.user.id)
+          .order('created_at', { ascending: false })
+          .limit(100),
+        supabase!
+          .from('profiles')
+          .select('recommendation_adventurousness')
+          .eq('id', session.user.id)
+          .maybeSingle(),
+      ]);
+
+      const ratings = ratingsResult.data ?? [];
+      adventurousnessRef.current = profileResult.data?.recommendation_adventurousness ?? 50;
 
       const artistCount = new Map<string, number>();
-      for (const r of ratings ?? []) {
-        const artist = (r.releases as any)?.artist;
+      const genreCount  = new Map<string, number>();
+      for (const r of ratings) {
+        const artist = (r.releases as any)?.artist as string | undefined;
         if (artist) {
           const primary = artist.split(',')[0].trim();
           artistCount.set(primary, (artistCount.get(primary) ?? 0) + 1);
+        }
+        // Only count genres from albums the user liked (≥3★)
+        if ((r.score ?? 0) >= 3) {
+          const genres = (r.releases as any)?.genres as string | undefined;
+          if (genres) {
+            for (const g of genres.split(',').map((s: string) => s.trim()).filter(Boolean)) {
+              genreCount.set(g, (genreCount.get(g) ?? 0) + 1);
+            }
+          }
         }
       }
 
@@ -113,7 +142,12 @@ export default function ExplorePage() {
         .sort((a, b) => b[1] - a[1])
         .map(([name]) => name);
 
-      excludeRef.current = (ratings ?? []).map((r) => r.release_id);
+      genresRef.current = [...genreCount.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8)
+        .map(([g]) => g);
+
+      excludeRef.current = ratings.map((r) => r.release_id);
 
       await loadMore();
       setStatus('ready');

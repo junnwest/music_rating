@@ -169,7 +169,8 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
         .in('id', allCatIds)
         .order('sort_order');
 
-      // For each category, compute this album's rank
+      // For each category, compute this album's rank using the combined Silla Score
+      const PRIOR = 2.75;
       const catList = cats ?? [];
       const rankResults = await Promise.all(catList.map(async (cat) => {
         const [{ data: allSeedEntries }, { data: catRankings }] = await Promise.all([
@@ -177,9 +178,9 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
           supabase!.from('user_rankings').select('id').eq('category_id', cat.id),
         ]);
 
-        const scores = new Map<string, number>();
+        const rawScores = new Map<string, number>();
         for (const s of allSeedEntries ?? []) {
-          scores.set(s.release_id, (scores.get(s.release_id) ?? 0) + s.seed_votes);
+          rawScores.set(s.release_id, (rawScores.get(s.release_id) ?? 0) + s.seed_votes);
         }
 
         const catRankingIds = (catRankings ?? []).map(r => r.id);
@@ -190,11 +191,29 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
             .in('ranking_id', catRankingIds);
           const sillaScores = computeSillaScores(entries ?? []);
           for (const [releaseId, score] of sillaScores) {
-            scores.set(releaseId, (scores.get(releaseId) ?? 0) + score);
+            rawScores.set(releaseId, (rawScores.get(releaseId) ?? 0) + score);
           }
         }
 
-        const sorted = [...scores.entries()].sort((a, b) => b[1] - a[1]);
+        // Enrich with Bayesian-damped calibrated ratings
+        const releaseIds = [...rawScores.keys()];
+        const { data: bayesianRows } = await supabase!.rpc('get_calibrated_bayesian_scores', {
+          release_ids: releaseIds,
+        });
+        const bayesianMap = new Map<string, number>(
+          (bayesianRows ?? []).map((r: any) => [r.release_id as string, r.bayesian_score as number]),
+        );
+        const maxRaw = Math.max(...rawScores.values(), 1);
+
+        const sorted = releaseIds
+          .map(id => {
+            const rankScore   = (rawScores.get(id) ?? 0) / maxRaw;
+            const bayes       = bayesianMap.get(id) ?? PRIOR;
+            const ratingScore = Math.max(0, Math.min(1, (bayes - 0.5) / 4.5));
+            return [id, 0.55 * ratingScore + 0.45 * rankScore] as [string, number];
+          })
+          .sort((a, b) => b[1] - a[1]);
+
         const rankIdx = sorted.findIndex(([id]) => id === album.id);
         const titleKey = `rankingTitles.${cat.slug}`;
         const titleT = t(titleKey);

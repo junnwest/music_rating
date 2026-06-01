@@ -47,6 +47,8 @@ function SettingsContent() {
   const [ratingDisplay, setRatingDisplay] = useState<'Stars' | 'Decimal'>('Stars');
   const [preferredPlatform, setPreferredPlatform] = useState<string | null>(null);
   const [platformSaving, setPlatformSaving] = useState(false);
+  const [adventurousness, setAdventurousness] = useState(50);
+  const [adventurousnessSaving, setAdventurousnessSaving] = useState(false);
   const { theme, setTheme } = useTheme();
   const { lang, setLang, t } = useLanguage();
 
@@ -67,7 +69,7 @@ function SettingsContent() {
     setIdentities((user.identities ?? []).map((i: any) => ({ provider: i.provider, id: i.id })));
     const { data: profile } = await supabase
       .from('profiles')
-      .select('display_name, username, bio, preferred_streaming_platform')
+      .select('display_name, username, bio, preferred_streaming_platform, recommendation_adventurousness')
       .eq('id', user.id)
       .maybeSingle();
     if (profile) {
@@ -75,6 +77,7 @@ function SettingsContent() {
       setUsername(profile.username ?? user.email?.split('@')[0] ?? '');
       setBio(profile.bio ?? '');
       setPreferredPlatform(profile.preferred_streaming_platform ?? null);
+      setAdventurousness(profile.recommendation_adventurousness ?? 50);
     } else {
       setUsername(user.email?.split('@')[0] ?? '');
     }
@@ -182,6 +185,16 @@ function SettingsContent() {
       .update({ preferred_streaming_platform: platform })
       .eq('id', userId);
     setPlatformSaving(false);
+  };
+
+  const handleAdventurousnessSave = async (value: number) => {
+    if (!supabase || !userId) return;
+    setAdventurousnessSaving(true);
+    await supabase
+      .from('profiles')
+      .update({ recommendation_adventurousness: value })
+      .eq('id', userId);
+    setAdventurousnessSaving(false);
   };
 
   const toggleGenre = (g: string) => {
@@ -467,6 +480,36 @@ function SettingsContent() {
                     >
                       {t('settings.preferences.streamingNone')}
                     </button>
+                  </div>
+                </div>
+                <div className="mb-5">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-[13px] font-semibold text-ink">
+                      {t('settings.preferences.discovery')}
+                      {adventurousnessSaving && <span className="ml-2 text-[11px] font-normal text-muted">Saving…</span>}
+                    </label>
+                    <span className="text-[11px] text-muted">
+                      {adventurousness < 33
+                        ? t('settings.preferences.discoveryConservative')
+                        : adventurousness < 67
+                        ? t('settings.preferences.discoveryBalanced')
+                        : t('settings.preferences.discoveryAdventurous')}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={adventurousness}
+                    onChange={(e) => setAdventurousness(Number(e.target.value))}
+                    onMouseUp={(e) => void handleAdventurousnessSave(Number((e.target as HTMLInputElement).value))}
+                    onTouchEnd={(e) => void handleAdventurousnessSave(Number((e.target as HTMLInputElement).value))}
+                    className="w-full h-1.5 rounded-full cursor-pointer accent-ink"
+                  />
+                  <div className="flex justify-between mt-1.5">
+                    <span className="text-[11px] text-muted">{t('settings.preferences.discoveryConservative')}</span>
+                    <span className="text-[11px] text-muted">{t('settings.preferences.discoveryAdventurous')}</span>
                   </div>
                 </div>
               </Section>

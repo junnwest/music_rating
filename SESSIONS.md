@@ -38,6 +38,8 @@ Historical record of shipped features and session notes. Not needed at conversat
 - [x] Streaming buttons (Spotify / YouTube Music / Tidal) — album hero + per-track; uses stored spotifyUrl when available
 - [x] Preferred streaming platform — `preferred_streaming_platform` column on profiles (migration `20260531000000`); set in onboarding step 3 (4-step flow) and Settings → Preferences; album + track buttons filter to the single preferred platform when set, fall back to all three otherwise
 - [x] Custom playlists + right panel — persistent right-side playlist panel (desktop 260px, mobile overlay); uses existing `lists`/`list_items` tables; CRUD (create, rename, delete); "Add to [active list]" in AlbumActions dropdown + `QuickAddButton` on every track row; Spotify OAuth connect + playlist export; YouTube Music limitation surfaced in UI; Copy tracklist; migrations `20260601000000` (position + UPDATE policy) and `20260601000001` (spotify_connections)
+- [x] Silla Score recomputed — Bayesian-damped calibrated star ratings (55%) + normalized tierlist-position score (45%); Postgres function `get_calibrated_bayesian_scores`; migrations `20260601000002` + `20260601000003`
+- [x] Discovery/Adventurousness slider — Settings → Preferences slider (0–100, default 50); `recommendation_adventurousness` column on profiles; shifts For You mix between in-taste / adjacent / discovery buckets
 - [x] Track star ratings — inline 14px star widget per track; writes to `track_ratings` table (migration in `supabase/migrations/20260526000000_track_ratings.sql` — apply manually)
 - [x] Inline star ratings — compact widget on Explore cards, rankings leaderboard ("Your Rating" column), ranking builder suggestions
 - [x] My Rankings (`/my-rankings`) — dashboard with ranking cards (All, Albums, EPs, Songs, per-genre) + "Recommended for You"; detail pages at `/my-rankings/[slug]`
@@ -149,6 +151,17 @@ Historical record of shipped features and session notes. Not needed at conversat
 ---
 
 ## Session summaries
+
+**2026-06-01 — Silla Score recompute + Discovery slider + recommendation buckets:**
+
+- **Silla Score recomputed**: formula now combines calibrated Bayesian star ratings (55%) + normalized tierlist-position score (45%). Per-user calibration: z-score against each user's mean and volatility (std dev), clamped to ±2.5σ, mapped back to [0.5, 5]. Bayesian damping: `(v/(v+10))*R_calibrated + (10/(v+10))*C_global` pulls low-rating-count albums toward the global mean. Rankings + album-page rank display both use the new formula. `rankings/[slug]/page.tsx` cache key bumped to `v2` to force recomputation.
+- **Postgres function** `get_calibrated_bayesian_scores(release_ids uuid[])` (migration `20260601000003`) — efficient SQL computation, called server-side via `supabase.rpc()`.
+- **`recommendation_adventurousness` column** on `profiles` (migration `20260601000002`) — smallint 0–100, default 50.
+- **Discovery slider** in Settings → Preferences: "Conservative ↔ Adventurous" range input, auto-saves on release, labelled with three thresholds (Conservative / Balanced / Adventurous). Reads/writes `recommendation_adventurousness`.
+- **Three-bucket recommendations** in `/api/recommendations`: proportions interpolated from adventurousness — Conservative (0): 90/8/2%, Default (50): 70/20/10%, Adventurous (100): 45/30/25%. In-taste = artist-matching, Adjacent = genre-matching (not artist-matching), Discovery = community-loved (ratings_count DESC) preferring outside-taste artists. Albums from artists the user rated ≤2★ are excluded from in-taste + adjacent buckets.
+- **ExplorePage** now fetches genres from liked (≥3★) rated albums, `recommendation_adventurousness` from profile, and user ID — all passed to the recommendations API.
+
+---
 
 **2026-06-01 — Custom playlists + right panel + Spotify export:**
 
