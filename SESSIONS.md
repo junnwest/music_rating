@@ -36,6 +36,7 @@ Historical record of shipped features and session notes. Not needed at conversat
 - [x] Friends page — real Supabase follows (Following / Followers / Discover tabs)
 - [x] Search page — mobile header transforms to search overlay on icon tap; landing state with no duplicate bar
 - [x] Streaming buttons (Spotify / YouTube Music / Tidal) — album hero + per-track; uses stored spotifyUrl when available
+- [x] Preferred streaming platform — `preferred_streaming_platform` column on profiles (migration `20260531000000`); set in onboarding step 3 (4-step flow) and Settings → Preferences; album + track buttons filter to the single preferred platform when set, fall back to all three otherwise
 - [x] Track star ratings — inline 14px star widget per track; writes to `track_ratings` table (migration in `supabase/migrations/20260526000000_track_ratings.sql` — apply manually)
 - [x] Inline star ratings — compact widget on Explore cards, rankings leaderboard ("Your Rating" column), ranking builder suggestions
 - [x] My Rankings (`/my-rankings`) — dashboard with ranking cards (All, Albums, EPs, Songs, per-genre) + "Recommended for You"; detail pages at `/my-rankings/[slug]`
@@ -166,6 +167,15 @@ Historical record of shipped features and session notes. Not needed at conversat
 3. `npm run queue:ingest` (overnight — 8,968 artists)
 4. `npm run queue:discover` → `npm run queue:ingest` (repeat until stable)
 5. `npm run backfill:embeddings` (once ingest loop is stable)
+
+---
+
+**2026-05-31 — Preferred streaming platform:**
+
+- **Migration** `20260531000000_profiles_streaming_platform.sql` — adds `preferred_streaming_platform text CHECK IN ('spotify','youtube_music','tidal')` to `profiles` (nullable). Run `supabase db push`.
+- **Onboarding** — expanded from 3-step to 4-step flow; new step 3 ("Where do you listen?") lets users pick Spotify, YouTube Music, Tidal, or None. `StepDots` total updated to 4. Platform saved in the final profiles upsert.
+- **Settings → Preferences** — "Preferred streaming platform" control; auto-saves on click (optimistic update, no separate save button).
+- **Album page** — server component now reads `preferred_streaming_platform` from `profiles` for the authenticated user and passes it as `preferred` prop to `StreamingButtons` (album hero) and `TrackStreamingButtons` (per-track row). When set, only that platform's button renders.
 
 ---
 

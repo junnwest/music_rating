@@ -118,6 +118,10 @@ const en = {
     finish: 'Finish →',
     savingBtn: 'Saving…',
     loading: 'Loading…',
+    streamingTitle: 'Where do you listen?',
+    streamingDesc: 'We\'ll show only your platform\'s play button on every album.',
+    streamingNone: 'No preference',
+    streamingNoneDesc: 'Show all three buttons',
   },
   help: {
     backToHome: 'Back to home',
@@ -294,6 +298,8 @@ const en = {
       stars: 'Stars',
       decimal: 'Decimal',
       commentVisibility: 'Default comment visibility',
+      streamingPlatform: 'Preferred streaming platform',
+      streamingNone: 'None (show all)',
     },
     notifications: {
       likes: 'Likes on my comments',

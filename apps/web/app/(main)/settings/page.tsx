@@ -45,6 +45,8 @@ function SettingsContent() {
   const [confirmDisconnect, setConfirmDisconnect] = useState<string | null>(null);
   const [activeGenres, setActiveGenres] = useState<Set<string>>(new Set(['K-R&B', 'K-Indie', 'Hip-Hop']));
   const [ratingDisplay, setRatingDisplay] = useState<'Stars' | 'Decimal'>('Stars');
+  const [preferredPlatform, setPreferredPlatform] = useState<string | null>(null);
+  const [platformSaving, setPlatformSaving] = useState(false);
   const { theme, setTheme } = useTheme();
   const { lang, setLang, t } = useLanguage();
 
@@ -65,13 +67,14 @@ function SettingsContent() {
     setIdentities((user.identities ?? []).map((i: any) => ({ provider: i.provider, id: i.id })));
     const { data: profile } = await supabase
       .from('profiles')
-      .select('display_name, username, bio')
+      .select('display_name, username, bio, preferred_streaming_platform')
       .eq('id', user.id)
       .maybeSingle();
     if (profile) {
       setDisplayName(profile.display_name ?? '');
       setUsername(profile.username ?? user.email?.split('@')[0] ?? '');
       setBio(profile.bio ?? '');
+      setPreferredPlatform(profile.preferred_streaming_platform ?? null);
     } else {
       setUsername(user.email?.split('@')[0] ?? '');
     }
@@ -168,6 +171,17 @@ function SettingsContent() {
     if (!supabase) return;
     await supabase.auth.signOut();
     router.push('/login');
+  };
+
+  const handlePlatformChange = async (platform: string | null) => {
+    if (!supabase || !userId) return;
+    setPreferredPlatform(platform);
+    setPlatformSaving(true);
+    await supabase
+      .from('profiles')
+      .update({ preferred_streaming_platform: platform })
+      .eq('id', userId);
+    setPlatformSaving(false);
   };
 
   const toggleGenre = (g: string) => {
@@ -427,6 +441,33 @@ function SettingsContent() {
                   <select className="w-full bg-surface border border-divider rounded-xl px-4 py-2.5 text-[13px] text-ink outline-none cursor-pointer hover:border-mid transition">
                     {[t('settings.visibility.public'), t('settings.visibility.followersOnly'), t('settings.visibility.private')].map(v => <option key={v}>{v}</option>)}
                   </select>
+                </div>
+                <div className="mb-5">
+                  <label className="block text-[13px] font-semibold text-ink mb-2">
+                    {t('settings.preferences.streamingPlatform')}
+                    {platformSaving && <span className="ml-2 text-[11px] font-normal text-muted">Saving…</span>}
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { id: 'spotify', label: 'Spotify' },
+                      { id: 'youtube_music', label: 'YouTube Music' },
+                      { id: 'tidal', label: 'Tidal' },
+                    ].map(({ id, label }) => (
+                      <button
+                        key={id}
+                        onClick={() => handlePlatformChange(preferredPlatform === id ? null : id)}
+                        className={`px-4 py-2 rounded-lg text-[12px] font-semibold border transition ${preferredPlatform === id ? 'border-ink text-ink' : 'border-divider text-muted hover:border-mid'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => handlePlatformChange(null)}
+                      className={`px-4 py-2 rounded-lg text-[12px] font-semibold border transition ${preferredPlatform === null ? 'border-ink text-ink' : 'border-divider text-muted hover:border-mid'}`}
+                    >
+                      {t('settings.preferences.streamingNone')}
+                    </button>
+                  </div>
                 </div>
               </Section>
             )}

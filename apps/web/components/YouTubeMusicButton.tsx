@@ -62,21 +62,27 @@ export function StreamingButtons({
   artist,
   album,
   spotifyUrl,
+  preferred,
 }: {
   artist: string;
   album: string;
   spotifyUrl?: string | null;
+  preferred?: string | null;
 }) {
   const query = `${artist} ${album}`;
   const ytUrl = buildSearchUrl('https://music.youtube.com/search?q=', query);
   const tidalUrl = buildSearchUrl('https://listen.tidal.com/search?q=', query);
   const spUrl = spotifyUrl || buildSearchUrl('https://open.spotify.com/search/', query);
 
+  const showSpotify = !preferred || preferred === 'spotify';
+  const showYT = !preferred || preferred === 'youtube_music';
+  const showTidal = !preferred || preferred === 'tidal';
+
   return (
     <div className="inline-flex items-center gap-1.5">
-      <StreamingLink href={spUrl} icon={<SpotifyIcon />} label="Play on Spotify" />
-      <StreamingLink href={ytUrl} icon={<YTMusicIcon />} label="Play on YouTube Music" />
-      <StreamingLink href={tidalUrl} icon={<TidalIcon />} label="Play on Tidal" />
+      {showSpotify && <StreamingLink href={spUrl} icon={<SpotifyIcon />} label="Play on Spotify" />}
+      {showYT && <StreamingLink href={ytUrl} icon={<YTMusicIcon />} label="Play on YouTube Music" />}
+      {showTidal && <StreamingLink href={tidalUrl} icon={<TidalIcon />} label="Play on Tidal" />}
     </div>
   );
 }
@@ -108,20 +114,26 @@ function TrackLink({
 export function TrackStreamingButtons({
   artist,
   track,
+  preferred,
 }: {
   artist: string;
   track: string;
+  preferred?: string | null;
 }) {
   const query = `${artist} ${track}`;
   const spUrl = buildSearchUrl('https://open.spotify.com/search/', query);
   const ytUrl = buildSearchUrl('https://music.youtube.com/search?q=', query);
   const tidalUrl = buildSearchUrl('https://listen.tidal.com/search?q=', query);
 
+  const showSpotify = !preferred || preferred === 'spotify';
+  const showYT = !preferred || preferred === 'youtube_music';
+  const showTidal = !preferred || preferred === 'tidal';
+
   return (
     <span className="inline-flex items-center gap-1">
-      <TrackLink href={spUrl} icon={<SpotifyIcon size={13} />} label="Spotify" />
-      <TrackLink href={ytUrl} icon={<YTMusicIcon size={13} />} label="YouTube Music" />
-      <TrackLink href={tidalUrl} icon={<TidalIcon size={13} />} label="Tidal" />
+      {showSpotify && <TrackLink href={spUrl} icon={<SpotifyIcon size={13} />} label="Spotify" />}
+      {showYT && <TrackLink href={ytUrl} icon={<YTMusicIcon size={13} />} label="YouTube Music" />}
+      {showTidal && <TrackLink href={tidalUrl} icon={<TidalIcon size={13} />} label="Tidal" />}
     </span>
   );
 }

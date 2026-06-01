@@ -103,9 +103,20 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
   let avgScore: number | null = null;
   let reviewsCount = 0;
   let rankingMemberships: { slug: string; title: string; rank: number }[] = [];
+  let preferredPlatform: string | null = null;
 
   const supabase = createServerClient();
   if (supabase) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: profileRow } = await supabase
+        .from('profiles')
+        .select('preferred_streaming_platform')
+        .eq('id', user.id)
+        .maybeSingle();
+      preferredPlatform = profileRow?.preferred_streaming_platform ?? null;
+    }
+
     // Cache avg rating + count (TTL 5 min; ratings are submitted client-side so we rely on TTL)
     type StatsCache = { ratingsCount: number; avgScore: number | null };
     const statsCacheKey = `sj:album-stats:${album.id}`;
@@ -297,7 +308,7 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
                 <div className="text-[12px] text-white/50 mt-0.5">{t('album.comments')}</div>
               </div>
               <div className="ml-auto flex items-center gap-3">
-                <StreamingButtons artist={album.artist} album={album.title} spotifyUrl={album.spotifyUrl} />
+                <StreamingButtons artist={album.artist} album={album.title} spotifyUrl={album.spotifyUrl} preferred={preferredPlatform} />
                 <AlbumActions
                   albumId={album.id}
                   albumTitle={album.title}
@@ -369,7 +380,7 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
                   </span>
                 )}
                 <TrackStarRating releaseId={album.id} trackPosition={track.position} trackTitle={track.title} />
-                <TrackStreamingButtons artist={track.artists || album.artist} track={track.title} />
+                <TrackStreamingButtons artist={track.artists || album.artist} track={track.title} preferred={preferredPlatform} />
                 <span className="text-[12px] text-muted flex-shrink-0 tabular-nums">
                   {formatDuration(track.durationMs)}
                 </span>
