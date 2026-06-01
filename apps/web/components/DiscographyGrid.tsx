@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState } from 'react';
 import Link from 'next/link';
@@ -6,6 +6,11 @@ import type { AlbumRelease } from '../types';
 
 type FilterType = 'All' | 'Albums' | 'EPs' | 'Singles';
 const FILTERS: FilterType[] = ['All', 'Albums', 'EPs', 'Singles'];
+
+export interface ReleaseStats {
+  avgScore: number | null;
+  count: number;
+}
 
 function Chip({ children, active, onClick }: { children: React.ReactNode; active: boolean; onClick: () => void }) {
   return (
@@ -33,9 +38,10 @@ function TypePill({ children }: { children: React.ReactNode }) {
 interface Props {
   initialReleases: AlbumRelease[];
   initialNextCursor: string | null;
+  stats?: Record<string, ReleaseStats>;
 }
 
-export default function DiscographyGrid({ initialReleases, initialNextCursor }: Props) {
+export default function DiscographyGrid({ initialReleases, initialNextCursor, stats }: Props) {
   const [releases, setReleases] = useState<AlbumRelease[]>(initialReleases);
   const [nextCursor, setNextCursor] = useState<string | null>(initialNextCursor);
   const [loading, setLoading] = useState(false);
@@ -90,28 +96,41 @@ export default function DiscographyGrid({ initialReleases, initialNextCursor }: 
         </p>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-[22px]">
-          {filtered.map((release) => (
-            <Link key={release.id} href={`/album/${release.id}`} className="block min-w-0 group">
-              <div className="relative overflow-hidden rounded-[7px]" style={{ aspectRatio: '1 / 1' }}>
-                {release.coverUrl ? (
-                  <img
-                    src={release.coverUrl}
-                    alt={release.title}
-                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
-                  />
-                ) : (
-                  <div className="absolute inset-0 bg-surface border border-divider" />
-                )}
-              </div>
-              <div className="mt-[9px]">
-                <div className="text-[13px] font-semibold text-ink truncate group-hover:text-mint-dark transition-colors">{release.title}</div>
-                <div className="text-[12px] text-muted mt-0.5">{release.date?.slice(0, 4) ?? '—'}</div>
-                <div className="mt-[5px]">
-                  <TypePill>{release.releaseType}</TypePill>
+          {filtered.map((release) => {
+            const releaseStats = stats?.[release.id];
+            return (
+              <Link key={release.id} href={`/album/${release.id}`} className="block min-w-0 group">
+                <div className="relative overflow-hidden rounded-[7px]" style={{ aspectRatio: '1 / 1' }}>
+                  {release.coverUrl ? (
+                    <img
+                      src={release.coverUrl}
+                      alt={release.title}
+                      className="absolute inset-0 w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 bg-surface border border-divider" />
+                  )}
+                  {releaseStats?.avgScore && (
+                    <div className="absolute bottom-2 right-2 px-[7px] py-[3px] rounded-[5px] bg-black/60 backdrop-blur-sm text-[11px] font-bold text-white">
+                      ★ {releaseStats.avgScore.toFixed(1)}
+                    </div>
+                  )}
                 </div>
-              </div>
-            </Link>
-          ))}
+                <div className="mt-[9px]">
+                  <div className="text-[13px] font-semibold text-ink truncate group-hover:text-mint-dark transition-colors">{release.title}</div>
+                  <div className="text-[12px] text-muted mt-0.5 flex items-center gap-1.5">
+                    <span>{release.date?.slice(0, 4) ?? '—'}</span>
+                    {releaseStats && releaseStats.count > 0 && (
+                      <span className="text-subtle">· {releaseStats.count}</span>
+                    )}
+                  </div>
+                  <div className="mt-[5px]">
+                    <TypePill>{release.releaseType}</TypePill>
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       )}
 

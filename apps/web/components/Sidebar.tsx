@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef } from 'react';
-import { Trophy, Flame, Compass, ListOrdered, Users } from 'lucide-react';
+import { Trophy, Flame, Compass, ListOrdered, Users, Settings } from 'lucide-react';
 import { useLanguage } from '../lib/i18n';
 
 interface SidebarProps {
@@ -66,6 +66,20 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
               );
             })}
           </nav>
+          {/* Settings — pinned to bottom */}
+          <div className="w-full px-2">
+            <Link
+              href="/settings"
+              className={`flex flex-col items-center justify-center gap-[2px] aspect-square rounded-xl transition ${
+                pathname.startsWith('/settings')
+                  ? 'bg-mint-bg text-mint-dark'
+                  : 'text-muted hover:bg-surface hover:text-ink'
+              }`}
+            >
+              <Settings size={22} strokeWidth={pathname.startsWith('/settings') ? 2.2 : 1.8} />
+              <span className="text-[9px] font-semibold leading-tight">{t('nav.settings')}</span>
+            </Link>
+          </div>
         </div>
       </aside>
     </>

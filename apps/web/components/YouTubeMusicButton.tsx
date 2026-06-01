@@ -1,5 +1,8 @@
 'use client';
 
+import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabaseClient';
+
 function buildSearchUrl(base: string, query: string): string {
   return `${base}${encodeURIComponent(query)}`;
 }
@@ -32,6 +35,29 @@ function TidalIcon({ size = 16 }: { size?: number }) {
   );
 }
 
+// Reads the current user's preferred_streaming_platform from Supabase client-side.
+// Returns undefined while loading (so we don't flash an incorrect state).
+function usePreferredPlatform(serverHint: string | null | undefined) {
+  const [preferred, setPreferred] = useState<string | null | undefined>(serverHint);
+
+  useEffect(() => {
+    if (!supabase) return;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) { setPreferred(null); return; }
+      supabase!
+        .from('profiles')
+        .select('preferred_streaming_platform')
+        .eq('id', session.user.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          setPreferred(data?.preferred_streaming_platform ?? null);
+        });
+    });
+  }, []);
+
+  return preferred;
+}
+
 // ── Album-level buttons ──────────────────────────────────────────────────────
 
 function StreamingLink({
@@ -62,13 +88,26 @@ export function StreamingButtons({
   artist,
   album,
   spotifyUrl,
-  preferred,
+  preferred: serverHint,
 }: {
   artist: string;
   album: string;
   spotifyUrl?: string | null;
   preferred?: string | null;
 }) {
+  const preferred = usePreferredPlatform(serverHint);
+
+  // Show all buttons while preference is still loading to avoid flicker
+  if (preferred === undefined) {
+    return (
+      <div className="inline-flex items-center gap-1.5">
+        <StreamingLink href="#" icon={<SpotifyIcon />} label="Play on Spotify" />
+        <StreamingLink href="#" icon={<YTMusicIcon />} label="Play on YouTube Music" />
+        <StreamingLink href="#" icon={<TidalIcon />} label="Play on Tidal" />
+      </div>
+    );
+  }
+
   const query = `${artist} ${album}`;
   const ytUrl = buildSearchUrl('https://music.youtube.com/search?q=', query);
   const tidalUrl = buildSearchUrl('https://listen.tidal.com/search?q=', query);
@@ -114,12 +153,14 @@ function TrackLink({
 export function TrackStreamingButtons({
   artist,
   track,
-  preferred,
+  preferred: serverHint,
 }: {
   artist: string;
   track: string;
   preferred?: string | null;
 }) {
+  const preferred = usePreferredPlatform(serverHint);
+
   const query = `${artist} ${track}`;
   const spUrl = buildSearchUrl('https://open.spotify.com/search/', query);
   const ytUrl = buildSearchUrl('https://music.youtube.com/search?q=', query);

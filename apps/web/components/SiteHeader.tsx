@@ -175,6 +175,16 @@ export default function SiteHeader({ onMenuClick }: SiteHeaderProps) {
           <Search size={20} />
         </button>
 
+        {/* Notification bell */}
+        {session?.user && (
+          <Link href="/notifications" className="relative p-1 text-muted hover:text-ink transition" aria-label={t('nav.notifications')}>
+            <Bell size={20} />
+            {unreadCount > 0 && (
+              <span className="absolute top-0 right-0 w-2 h-2 rounded-full bg-red-500 border border-page pointer-events-none" />
+            )}
+          </Link>
+        )}
+
         {/* Profile avatar / auth */}
         {session?.user ? (
           <div ref={profileRef} className="relative">
@@ -187,9 +197,6 @@ export default function SiteHeader({ onMenuClick }: SiteHeaderProps) {
             >
               <UserAvatar size={34} />
             </button>
-            {unreadCount > 0 && (
-              <span className="absolute top-0 right-0 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-white pointer-events-none z-10" />
-            )}
 
             {profileOpen && (
               <div className="absolute right-0 top-[42px] w-[200px] bg-page border border-divider rounded-xl shadow-lg py-2 z-50">

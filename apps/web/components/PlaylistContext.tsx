@@ -20,6 +20,8 @@ interface PlaylistContextType {
   refreshPlaylists: () => Promise<void>;
   panelOpen: boolean;
   setPanelOpen: (open: boolean) => void;
+  /** Increments each time an item is successfully added — panels watch this to reload instantly */
+  panelRefreshKey: number;
 }
 
 const PlaylistContext = createContext<PlaylistContextType | null>(null);
@@ -52,6 +54,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [activeListId, setActiveListId] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [panelRefreshKey, setPanelRefreshKey] = useState(0);
 
   const activeListName =
     activeListId == null
@@ -90,6 +93,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
       const saved = JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[];
       if (saved.includes(releaseId)) return { alreadyAdded: true };
       localStorage.setItem(LL_KEY, JSON.stringify([...saved, releaseId]));
+      setPanelRefreshKey((k) => k + 1);
       return {};
     }
     if (!supabase || !userId) return {};
@@ -97,6 +101,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
     await supabase
       .from('list_items')
       .upsert({ list_id: activeListId, release_id: releaseId }, { onConflict: 'list_id,release_id', ignoreDuplicates: true });
+    setPanelRefreshKey((k) => k + 1);
     return {};
   }, [activeListId, userId]);
 
@@ -105,7 +110,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
       value={{
         userId, playlists, activeListId, activeListName,
         setActiveListId, addToActive, refreshPlaylists: fetchPlaylists,
-        panelOpen, setPanelOpen,
+        panelOpen, setPanelOpen, panelRefreshKey,
       }}
     >
       {children}

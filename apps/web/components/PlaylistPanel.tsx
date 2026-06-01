@@ -29,11 +29,12 @@ function SpotifyIcon({ size = 16, className = '' }: { size?: number; className?:
 export default function PlaylistPanel() {
   const {
     userId, playlists, activeListId, activeListName,
-    setActiveListId, refreshPlaylists, panelOpen, setPanelOpen,
+    setActiveListId, refreshPlaylists, panelOpen, setPanelOpen, panelRefreshKey,
   } = usePlaylist();
 
   const [albums, setAlbums] = useState<Album[]>([]);
   const [loading, setLoading] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [showSelector, setShowSelector] = useState(false);
   const [showCreateInput, setShowCreateInput] = useState(false);
   const [newListName, setNewListName] = useState('');
@@ -50,10 +51,12 @@ export default function PlaylistPanel() {
   const selectorRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
+  // Reset "has loaded" when switching lists so skeleton shows on first switch
+  useEffect(() => { setHasLoaded(false); }, [activeListId]);
+
   const loadAlbums = useCallback(async () => {
     if (!panelOpen) return;
     setLoading(true);
-    setAlbums([]);
 
     if (activeListId == null) {
       const ids = JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[];
@@ -92,10 +95,11 @@ export default function PlaylistPanel() {
         );
       }
     }
+    setHasLoaded(true);
     setLoading(false);
   }, [activeListId, panelOpen]);
 
-  useEffect(() => { void loadAlbums(); }, [loadAlbums]);
+  useEffect(() => { void loadAlbums(); }, [loadAlbums, panelRefreshKey]);
 
   useEffect(() => {
     if (!userId || !supabase) return;
@@ -371,7 +375,7 @@ export default function PlaylistPanel() {
 
         {/* ── Body ── */}
         <div className="flex-1 overflow-y-auto">
-          {loading ? (
+          {loading && !hasLoaded ? (
             <div className="flex flex-col gap-2 px-3 py-3">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="h-12 rounded-lg bg-surface animate-pulse" />

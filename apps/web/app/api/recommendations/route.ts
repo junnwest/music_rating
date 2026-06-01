@@ -47,6 +47,10 @@ export async function GET(req: NextRequest) {
   const page              = parseInt(searchParams.get('page')   ?? '0', 10);
   const adventurousness   = parseInt(searchParams.get('adventurousness') ?? '50', 10);
   const userId            = searchParams.get('userId')          ?? '';
+  // Active browse filters — when set, constrain ALL buckets to these values
+  const filterGenre  = searchParams.get('filterGenre')  ?? '';
+  const filterType   = searchParams.get('filterType')   ?? '';  // 'Album' | 'EP' | ''
+  const filterDecade = searchParams.get('filterDecade') ?? '';  // e.g. '1990' → 1990–1999
 
   const artistNames = artistsParam.split(',').filter(Boolean);
   const genreNames  = genresParam.split(',').filter(Boolean);
@@ -56,6 +60,18 @@ export async function GET(req: NextRequest) {
   const supabase = createServerClient();
 
   const { inTaste: inTasteN, adjacent: adjacentN, discovery: discoveryN } = bucketSizes(adventurousness, PAGE_SIZE);
+
+  // Helper: apply active browse filters to any query builder
+  function applyBrowseFilters<T>(q: T): T {
+    let query = q as any;
+    if (filterGenre)  query = query.ilike('genres', `%${filterGenre}%`);
+    if (filterType)   query = query.eq('release_type', filterType);
+    if (filterDecade) {
+      const yr = parseInt(filterDecade, 10);
+      query = query.gte('release_date', `${yr}-01-01`).lte('release_date', `${yr + 9}-12-31`);
+    }
+    return query as T;
+  }
 
   // ── Artists the user rated ≤2★ (excluded from in-taste + adjacent buckets) ─
   const negativeArtists = new Set<string>();
@@ -83,6 +99,7 @@ export async function GET(req: NextRequest) {
       .not('cover_url', 'is', null)
       .not('release_type', 'ilike', 'single');
 
+    q = applyBrowseFilters(q);
     if (excludeIds.size > 0) q = q.not('id', 'in', `(${[...excludeIds].join(',')})`);
 
     const { data: rows } = await q
@@ -109,6 +126,7 @@ export async function GET(req: NextRequest) {
       .not('cover_url', 'is', null)
       .not('release_type', 'ilike', 'single');
 
+    q = applyBrowseFilters(q);
     if (excludeIds.size > 0) q = q.not('id', 'in', `(${[...excludeIds].join(',')})`);
 
     const { data: rows } = await q
@@ -134,6 +152,7 @@ export async function GET(req: NextRequest) {
       .not('release_type', 'ilike', 'single')
       .gt('ratings_count', 0);
 
+    q = applyBrowseFilters(q);
     if (excludeIds.size > 0) q = q.not('id', 'in', `(${[...excludeIds].join(',')})`);
 
     const { data: rows } = await q
@@ -162,6 +181,7 @@ export async function GET(req: NextRequest) {
       .not('cover_url', 'is', null)
       .not('release_type', 'ilike', 'single');
 
+    q = applyBrowseFilters(q);
     const seenIds = [...seen];
     if (seenIds.length > 0) q = q.not('id', 'in', `(${seenIds.join(',')})`);
 

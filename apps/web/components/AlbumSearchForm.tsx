@@ -125,17 +125,20 @@ export default function AlbumSearchForm() {
                   artistMatch.name[0].toUpperCase()
                 )}
               </div>
-              <div>
+              <div className="flex-1 min-w-0">
                 <div className="text-[14px] font-bold text-ink">{artistMatch.name}</div>
                 {artistMatch.genres.length > 0 && (
-                  <div className="text-[12px] text-muted mt-0.5">
+                  <div className="text-[12px] text-muted mt-0.5 truncate">
                     {artistMatch.genres.slice(0, 3).join(', ')}
                   </div>
                 )}
               </div>
-              <div className="ml-3 text-[12px] font-semibold text-mint-dark">
+              <span
+                className="ml-2 flex-shrink-0 px-3 py-[6px] rounded-[7px] text-[12px] font-semibold text-white"
+                style={{ background: '#E8A020' }}
+              >
                 {t('search.viewArtist')}
-              </div>
+              </span>
             </Link>
           )}
 

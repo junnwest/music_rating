@@ -209,6 +209,21 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-05-31 — UI polish + artist page redesign + fixes:**
+
+- **Explore filters** — genre/type/decade filter bar added to Explore page. Filters are passed to `/api/recommendations` as `filterGenre`, `filterType`, `filterDecade` and applied to all three recommendation buckets + the prestige fallback. Ships: Release Type chips (All/Albums/EPs), Decade dropdown (2020s–1970s), Genre dropdown (14 broad genres). Country + language skipped (no reliable DB backing).
+- **Bookmark overlay on Explore cards** — bookmark icon moved from below-card row to a circular amber/glass overlay pinned to top-right corner of album cover. Overlays on hover, fills amber when saved.
+- **Bookmark + Quick-Add on home page cards** — `ScrollRow.tsx` updated: bookmark and add-to-playlist ("+") circular overlays appear on card hover, both pinned to top-right of cover image. Same change applied to PersonalizedFeed recently-rated cards.
+- **Notification bell in nav** — dedicated `<Bell>` icon button added to the top-right of `SiteHeader`; shows red dot badge when there are unread notifications. Old dot-on-avatar removed.
+- **View Artist Page button on search** — restyled from plain `text-mint-dark` text to a solid amber `#E8A020` pill button inside the artist match card.
+- **Artist page redesign** — full visual overhaul: blurred-cover hero (like album page), circular artist avatar, native name below main name (when different), genre pills, stats row (followers / avg rating / total community ratings / release count breakdown). "Top Rated" section (≥2 ratings, rank badge + score badge overlay). Discography section uses upgraded `DiscographyGrid` that shows avg ★ score overlay on each card when rating data is available.
+- **DiscographyGrid ratings** — accepts optional `stats: Record<string, ReleaseStats>` prop (avgScore + count per releaseId); shows amber `★ X.X` overlay on card thumbnails and ratings count below year.
+- **Preferred streaming platform fix** — root cause: `createServerClient` uses the service-role key (no cookies), so `getUser()` always returned null on the album page and `preferredPlatform` was never set. Fix: `YouTubeMusicButton.tsx` now has `'use client'` and reads the preference from `supabaseClient` in a `useEffect`, overriding whatever the server passed. Both `StreamingButtons` and `TrackStreamingButtons` now always show the correct platform for the logged-in user.
+- **Playlist panel instant refresh** — `PlaylistContext` now exposes `panelRefreshKey` (increments on every successful `addToActive`). `PlaylistPanel` watches this key and reloads its album list immediately when an item is added, without clearing existing content (skeleton only shown on initial/list-switch load).
+- **Settings in Sidebar** — `Settings` icon link pinned to bottom of the sidebar column (below main nav items).
+
+---
+
 **2026-05-31 — Preferred streaming platform:**
 
 - **Migration** `20260531000000_profiles_streaming_platform.sql` — adds `preferred_streaming_platform text CHECK IN ('spotify','youtube_music','tidal')` to `profiles` (nullable). Run `supabase db push`.
