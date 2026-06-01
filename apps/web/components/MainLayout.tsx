@@ -5,6 +5,7 @@ import SiteHeader from './SiteHeader';
 import Sidebar from './Sidebar';
 import Footer from './Footer';
 import { PlaylistProvider } from './PlaylistContext';
+import { StreamingPlatformProvider } from './StreamingPlatformContext';
 import PlaylistPanel from './PlaylistPanel';
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
@@ -15,18 +16,20 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   }, []);
 
   return (
-    <PlaylistProvider>
-      <div className="flex flex-col min-h-screen">
-        <SiteHeader onMenuClick={() => setSidebarOpen((o) => !o)} />
-        <div className="flex flex-1 min-h-0">
-          <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-          <div className="flex-1 flex flex-col min-w-0">
-            <main className="flex-1">{children}</main>
-            <Footer />
+    <StreamingPlatformProvider>
+      <PlaylistProvider>
+        <div className="flex flex-col min-h-screen">
+          <SiteHeader onMenuClick={() => setSidebarOpen((o) => !o)} />
+          <div className="flex flex-1 min-h-0">
+            <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+            <div className="flex-1 flex flex-col min-w-0">
+              <main className="flex-1">{children}</main>
+              <Footer />
+            </div>
+            <PlaylistPanel />
           </div>
-          <PlaylistPanel />
         </div>
-      </div>
-    </PlaylistProvider>
+      </PlaylistProvider>
+    </StreamingPlatformProvider>
   );
 }

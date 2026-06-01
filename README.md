@@ -14,19 +14,21 @@ Features shipped as of this session: Daily Question (daily album-pick prompt + s
 
 ### ► START HERE — next session checklist
 
-#### DB migrations — apply to production (6 pending)
+#### DB migrations — production status (verified against prod 2026-06-01 via Management API)
 
-All migrations below must be run via `supabase db push` (or pasted into the Supabase SQL editor if db push is blocked by the timestamp-collision history).
+Run pending migrations via `supabase db push` (or paste into the Supabase SQL editor if db push is blocked by the timestamp-collision history). Status below was confirmed by querying `information_schema` / `pg_proc` directly.
 
-| File | What it adds |
-|------|-------------|
-| `20260531000001_daily_questions.sql` | `daily_questions` + `daily_answers` tables + RLS + 30 seeded questions |
-| `20260531000003_profiles_streaming_platform.sql` | `preferred_streaming_platform` on profiles (renamed from `20260531000000` to fix collision) |
-| `20260601000000_list_panel_updates.sql` | `position` col on `list_items`; UPDATE RLS policy on `lists` |
-| `20260601000001_spotify_connections.sql` | `spotify_connections` table (Spotify OAuth tokens) |
-| `20260601000002_adventurousness.sql` | `recommendation_adventurousness` on profiles (default 50) |
-| `20260601000003_silla_score_fn.sql` | `get_calibrated_bayesian_scores(uuid[])` Postgres function |
-| `20260601000010_accomplishments.sql` | `accomplishment_definitions` + `user_accomplishments` tables + RLS + 5 seed badges |
+| File | What it adds | Prod |
+|------|-------------|------|
+| `20260531000001_daily_questions.sql` | `daily_questions` + `daily_answers` tables + RLS + 30 seeded questions | ✅ applied |
+| `20260531000003_profiles_streaming_platform.sql` | `preferred_streaming_platform` on profiles | ✅ applied 2026-06-01 |
+| `20260601000000_list_panel_updates.sql` | `position` col on `list_items`; UPDATE RLS policy on `lists` | ✅ applied 2026-06-01 |
+| `20260601000001_spotify_connections.sql` | `spotify_connections` table (Spotify OAuth tokens) | ✅ applied 2026-06-01 |
+| `20260601000002_adventurousness.sql` | `recommendation_adventurousness` on profiles (default 50) | ✅ applied 2026-06-01 |
+| `20260601000010_accomplishments.sql` | `accomplishment_definitions` + `user_accomplishments` tables + RLS + 5 seed badges | ✅ applied |
+| `20260601000011_silla_score_tuning.sql` | Silla Score fix: drops + recreates `get_calibrated_bayesian_scores` (damping m=10→3, now 3-col) and adds `get_silla_rating_scores(uuid[], text, int)` | ✅ applied 2026-06-01 |
+
+Also applied to prod (lives in root `supabase/migrations/`, not `apps/web/`): `20260601000002_list_item_tracks.sql` (✅ `list_item_tracks` table). The conflicting `20260601000001_silla_score_fn.sql` in that folder was **deleted** (superseded 2-col duplicate).
 
 #### Spotify playlist export — configure before use
 

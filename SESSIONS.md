@@ -177,6 +177,37 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+
+
+**2026-06-01 — Silla Score fix (ratings now actually move the leaderboard):**
+
+Diagnosed why ratings had no visible effect on rankings and fixed it end-to-end. Root causes:
+- **Bayesian damping far too strong** for the early-stage dataset. `m=10` pseudo-votes pulled nearly every album to the global mean, so `ratingScore` ≈ 0.5 for *everything* and the 55% rating half carried no ordering signal. → Reduced to `m=3`.
+- **Seed votes drowned out real tier-lists.** Seeds (large vote counts) were summed into the same raw pool as user tier-list contributions (≤1.0 each), then normalized by the max — so genuine tier-lists became a rounding error. → Tier-lists and seeds are now each normalized to [0,1] *separately*, then blended `0.7·tierlist + 0.3·seed` within the 45% rank half, so real tier-lists outweigh pre-launch seed priors.
+- **Rated-but-not-tier-listed albums could never appear.** Candidate set was tier-list ∪ seed only. → New RPC `get_silla_rating_scores(release_ids, p_genre, p_year)` also pulls in any rated release matching the category's genre/year, so a highly-rated album can climb a leaderboard on its own.
+- **Conflicting duplicate migration removed**: deleted misplaced `supabase/migrations/20260601000001_silla_score_fn.sql` (2-col return) that conflicted with the deployed 3-col `apps/web/.../20260601000003`.
+- **Cache lag**: score recompute TTL cut from 5 min → 60 s so rating changes surface quickly.
+
+Implementation: extracted shared math to `apps/web/lib/sillaScore.ts` (`computeTierlistScores`, `combineSillaScores`) — kills the triplicated `computeSillaScores` that had drifted between `leaderboard/[slug]`, `rankings/[slug]`, and `album/[mbid]`. All three now use the identical blend, so an album's "#N in category" on its page matches the leaderboard exactly. Cache key bumped `v2`→`v3`. Migration `20260601000011_silla_score_tuning.sql` re-tunes `get_calibrated_bayesian_scores` to m=3 + adds `get_silla_rating_scores`.
+
+---
+
+
+
+**2026-06-01 — Prod migration apply + Streaming Platform rebuild:**
+
+- **Applied to prod** (via Supabase Management API, `.env.local` + management token restored on this device): `20260531000003_profiles_streaming_platform.sql` (the missing `preferred_streaming_platform` column — root cause of the save bug) and `20260601000011_silla_score_tuning.sql`. The latter needed a `DROP FUNCTION` first: prod actually shipped the **2-col** `get_calibrated_bayesian_scores(release_id, bayesian_score numeric)` from the root-dir `0001` file (committed in `4ff39a3`), never the 3-col `apps/web/.../0003`. Verified post-apply: both functions present with 3-col `(release_id, bayesian_score float8, rating_count bigint)` signatures; spot-checked scores now spread 3.40–4.03 across 2–3-rating albums (m=10 had pinned them all near the mean). **Silla Score fix is now live in prod.**
+- **Then applied the remaining 3** at the user's request: `20260601000000_list_panel_updates` (`list_items.position` + `lists` UPDATE policy), `20260601000001_spotify_connections`, `20260601000002_adventurousness`. Prod is now fully in sync with the migration history — all verified present.
+
+**Preferred Streaming Platform — near-complete rebuild.** The feature didn't save (column missing in prod → every UPDATE errored, preference stayed null → "all 3 icons shown for every choice"). Beyond applying the column:
+- **Root cause of the design smell**: `usePreferredPlatform` ran a Supabase query on *every* `StreamingButtons`/`TrackStreamingButtons` mount (N+1 — an album page with 15 tracks fired 15+ identical queries) and ignored the server hint; the album page's server-side fetch was dead code (`getUser()` on the service-role client has no session → always null).
+- **New `components/StreamingPlatformContext.tsx`** — fetches the preference **once** per session, re-loads on `onAuthStateChange`, and exposes `savePreferred()` with optimistic update + rollback-on-error. Mounted in `MainLayout` above `PlaylistProvider`.
+- `YouTubeMusicButton.tsx` — both button components now read `useStreamingPlatform()` (zero per-button queries) via a shared `visibility()` helper. `preferred` props removed.
+- `album/[mbid]/page.tsx` — deleted the dead server-side `preferredPlatform` fetch + props.
+- `settings/page.tsx` — platform selector now drives the context (`savePreferred`), so a change reflects on album/track pages instantly without reload; added a save-error message, a buttons-disabled-while-saving state, and a helper line ("All services shown" / "Only your chosen service shown").
+
+---
+
 **2026-06-01 — Custom playlists + right panel + Spotify export:**
 
 - **`PlaylistContext`** — React context (`PlaylistProvider`) wrapping the full layout; exposes `activeListId`, `activeListName`, `playlists`, `addToActive`, `panelOpen/setPanelOpen`. Provides global "add to current list" without prop drilling.

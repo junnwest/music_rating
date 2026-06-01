@@ -5,39 +5,9 @@ import FilterBuilder from '../../../../components/FilterBuilder';
 import Link from 'next/link';
 import { getServerT } from '../../../../lib/i18n/server';
 import { cacheGet, cacheSet } from '../../../../lib/cache';
+import { computeTierlistScores, combineSillaScores } from '../../../../lib/sillaScore';
 
 export const revalidate = 30;
-
-function computeSillaScores(
-  entries: { ranking_id: string; release_id: string; rank: number }[]
-): Map<string, number> {
-  const byRanking = new Map<string, { release_id: string; rank: number }[]>();
-  for (const e of entries) {
-    if (!byRanking.has(e.ranking_id)) byRanking.set(e.ranking_id, []);
-    byRanking.get(e.ranking_id)!.push(e);
-  }
-
-  const scores = new Map<string, number>();
-  for (const userEntries of byRanking.values()) {
-    const byRank = new Map<number, string[]>();
-    for (const e of userEntries) {
-      if (!byRank.has(e.rank)) byRank.set(e.rank, []);
-      byRank.get(e.rank)!.push(e.release_id);
-    }
-
-    let pos = 1;
-    for (const [, albums] of [...byRank.entries()].sort(([a], [b]) => a - b)) {
-      const t = albums.length;
-      const effectivePos = pos + (t - 1) / 2;
-      const score = 1 / effectivePos;
-      for (const releaseId of albums) {
-        scores.set(releaseId, (scores.get(releaseId) ?? 0) + score);
-      }
-      pos += t;
-    }
-  }
-  return scores;
-}
 
 const PAGE_SIZE = 10;
 
@@ -75,9 +45,9 @@ export default async function RankingCategoryPage({
   if (!category) notFound();
 
   type ScoreCache = { totalRankers: number; sortedEntries: [string, number][] };
-  // v2: cache key bumped because score range changed (combined Bayesian + ranking → [0,1])
-  const cacheKey = `sj:ranking:scores:v2:${category.id}`;
-  const CACHE_TTL = 5 * 60; // 5 minutes
+  // v3: rating-led blend (m=3 damping, seeds tamed, rated-only albums surfaced)
+  const cacheKey = `sj:ranking:scores:v3:${category.id}`;
+  const CACHE_TTL = 60; // 1 minute — keep rating changes visible quickly
 
   let totalRankers: number;
   let sortedEntries: [string, number][];
@@ -104,33 +74,25 @@ export default async function RankingCategoryPage({
       entries = data ?? [];
     }
 
-    // Raw Silla Scores from tierlist positions (1/effectivePos per user ranking)
-    const rawRankScores = computeSillaScores(entries);
+    // Tier-list position scores + seed votes, kept on separate scales
+    const tierlistRaw = computeTierlistScores(entries);
+    const seedRaw = new Map<string, number>(
+      (seedEntries ?? []).map((s: any) => [s.release_id as string, Number(s.seed_votes)]),
+    );
 
-    // Seed entries contribute rank-1 equivalent (1.0 per seed vote)
-    for (const s of seedEntries ?? []) {
-      rawRankScores.set(s.release_id, (rawRankScores.get(s.release_id) ?? 0) + s.seed_votes);
-    }
-
-    // Combine with Bayesian-damped calibrated star ratings
-    const releaseIds = [...rawRankScores.keys()];
-    const { data: bayesianRows } = await supabase.rpc('get_calibrated_bayesian_scores', {
-      release_ids: releaseIds,
+    // Candidate releases; the RPC also surfaces rated albums matching genre/year
+    const seedIds = [...new Set([...tierlistRaw.keys(), ...seedRaw.keys()])];
+    const { data: bayesianRows } = await supabase.rpc('get_silla_rating_scores', {
+      release_ids: seedIds,
+      p_genre: category.genre ?? null,
+      p_year: category.year ?? null,
     });
     const bayesianMap = new Map<string, number>(
       (bayesianRows ?? []).map((r: any) => [r.release_id as string, r.bayesian_score as number]),
     );
 
-    const maxRaw = Math.max(...rawRankScores.values(), 1);
-    const PRIOR = 2.75; // Bayesian fallback for unrated releases
-
-    const combined = new Map<string, number>();
-    for (const id of releaseIds) {
-      const rankScore = (rawRankScores.get(id) ?? 0) / maxRaw;            // [0, 1]
-      const bayes    = bayesianMap.get(id) ?? PRIOR;
-      const ratingScore = Math.max(0, Math.min(1, (bayes - 0.5) / 4.5)); // [0, 1]
-      combined.set(id, 0.55 * ratingScore + 0.45 * rankScore);
-    }
+    const candidateIds = [...new Set([...seedIds, ...bayesianMap.keys()])];
+    const combined = combineSillaScores({ candidateIds, tierlistRaw, seedRaw, bayesianMap });
 
     totalRankers = rankings?.length ?? 0;
     sortedEntries = [...combined.entries()].sort((a, b) => b[1] - a[1]);

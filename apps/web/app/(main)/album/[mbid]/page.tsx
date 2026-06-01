@@ -25,40 +25,12 @@ import TrackStarRating from '../../../../components/TrackStarRating';
 import QuickAddButton from '../../../../components/QuickAddButton';
 import { getServerT } from '../../../../lib/i18n/server';
 import { cacheGet, cacheSet } from '../../../../lib/cache';
+import { computeTierlistScores, combineSillaScores } from '../../../../lib/sillaScore';
 
 function formatDuration(ms: number | null): string {
   if (!ms) return '—';
   const s = Math.floor(ms / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-}
-
-function computeSillaScores(
-  entries: { ranking_id: string; release_id: string; rank: number }[]
-): Map<string, number> {
-  const byRanking = new Map<string, { release_id: string; rank: number }[]>();
-  for (const e of entries) {
-    if (!byRanking.has(e.ranking_id)) byRanking.set(e.ranking_id, []);
-    byRanking.get(e.ranking_id)!.push(e);
-  }
-  const scores = new Map<string, number>();
-  for (const userEntries of byRanking.values()) {
-    const byRank = new Map<number, string[]>();
-    for (const e of userEntries) {
-      if (!byRank.has(e.rank)) byRank.set(e.rank, []);
-      byRank.get(e.rank)!.push(e.release_id);
-    }
-    let pos = 1;
-    for (const [, albums] of [...byRank.entries()].sort(([a], [b]) => a - b)) {
-      const t = albums.length;
-      const effectivePos = pos + (t - 1) / 2;
-      const score = 1 / effectivePos;
-      for (const releaseId of albums) {
-        scores.set(releaseId, (scores.get(releaseId) ?? 0) + score);
-      }
-      pos += t;
-    }
-  }
-  return scores;
 }
 
 function TypePill({ children }: { children: React.ReactNode }) {
@@ -104,20 +76,9 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
   let avgScore: number | null = null;
   let reviewsCount = 0;
   let rankingMemberships: { slug: string; title: string; rank: number }[] = [];
-  let preferredPlatform: string | null = null;
 
   const supabase = createServerClient();
   if (supabase) {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data: profileRow } = await supabase
-        .from('profiles')
-        .select('preferred_streaming_platform')
-        .eq('id', user.id)
-        .maybeSingle();
-      preferredPlatform = profileRow?.preferred_streaming_platform ?? null;
-    }
-
     // Cache avg rating + count (TTL 5 min; ratings are submitted client-side so we rely on TTL)
     type StatsCache = { ratingsCount: number; avgScore: number | null };
     const statsCacheKey = `sj:album-stats:${album.id}`;
@@ -165,12 +126,12 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
     if (allCatIds.length > 0) {
       const { data: cats } = await supabase
         .from('ranking_categories')
-        .select('id, slug, title')
+        .select('id, slug, title, genre, year')
         .in('id', allCatIds)
         .order('sort_order');
 
-      // For each category, compute this album's rank using the combined Silla Score
-      const PRIOR = 2.75;
+      // For each category, compute this album's rank using the combined Silla Score.
+      // Mirrors the leaderboard exactly (shared lib/sillaScore helpers).
       const catList = cats ?? [];
       const rankResults = await Promise.all(catList.map(async (cat) => {
         const [{ data: allSeedEntries }, { data: catRankings }] = await Promise.all([
@@ -178,41 +139,34 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
           supabase!.from('user_rankings').select('id').eq('category_id', cat.id),
         ]);
 
-        const rawScores = new Map<string, number>();
-        for (const s of allSeedEntries ?? []) {
-          rawScores.set(s.release_id, (rawScores.get(s.release_id) ?? 0) + s.seed_votes);
-        }
+        const seedRaw = new Map<string, number>(
+          (allSeedEntries ?? []).map((s: any) => [s.release_id as string, Number(s.seed_votes)]),
+        );
 
+        let tierlistRaw = new Map<string, number>();
         const catRankingIds = (catRankings ?? []).map(r => r.id);
         if (catRankingIds.length > 0) {
           const { data: entries } = await supabase!
             .from('user_ranking_entries')
             .select('ranking_id, release_id, rank')
             .in('ranking_id', catRankingIds);
-          const sillaScores = computeSillaScores(entries ?? []);
-          for (const [releaseId, score] of sillaScores) {
-            rawScores.set(releaseId, (rawScores.get(releaseId) ?? 0) + score);
-          }
+          tierlistRaw = computeTierlistScores(entries ?? []);
         }
 
-        // Enrich with Bayesian-damped calibrated ratings
-        const releaseIds = [...rawScores.keys()];
-        const { data: bayesianRows } = await supabase!.rpc('get_calibrated_bayesian_scores', {
-          release_ids: releaseIds,
+        // Bayesian-damped calibrated ratings, including rated albums matching genre/year
+        const seedIds = [...new Set([...tierlistRaw.keys(), ...seedRaw.keys()])];
+        const { data: bayesianRows } = await supabase!.rpc('get_silla_rating_scores', {
+          release_ids: seedIds,
+          p_genre: cat.genre ?? null,
+          p_year: cat.year ?? null,
         });
         const bayesianMap = new Map<string, number>(
           (bayesianRows ?? []).map((r: any) => [r.release_id as string, r.bayesian_score as number]),
         );
-        const maxRaw = Math.max(...rawScores.values(), 1);
 
-        const sorted = releaseIds
-          .map(id => {
-            const rankScore   = (rawScores.get(id) ?? 0) / maxRaw;
-            const bayes       = bayesianMap.get(id) ?? PRIOR;
-            const ratingScore = Math.max(0, Math.min(1, (bayes - 0.5) / 4.5));
-            return [id, 0.55 * ratingScore + 0.45 * rankScore] as [string, number];
-          })
-          .sort((a, b) => b[1] - a[1]);
+        const candidateIds = [...new Set([...seedIds, ...bayesianMap.keys()])];
+        const combined = combineSillaScores({ candidateIds, tierlistRaw, seedRaw, bayesianMap });
+        const sorted = [...combined.entries()].sort((a, b) => b[1] - a[1]);
 
         const rankIdx = sorted.findIndex(([id]) => id === album.id);
         const titleKey = `rankingTitles.${cat.slug}`;
@@ -328,7 +282,7 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
                 <div className="text-[12px] text-white/50 mt-0.5">{t('album.comments')}</div>
               </div>
               <div className="ml-auto flex items-center gap-3">
-                <StreamingButtons artist={album.artist} album={album.title} spotifyUrl={album.spotifyUrl} preferred={preferredPlatform} />
+                <StreamingButtons artist={album.artist} album={album.title} spotifyUrl={album.spotifyUrl} />
                 <AlbumActions
                   albumId={album.id}
                   albumTitle={album.title}
@@ -400,7 +354,7 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
                   </span>
                 )}
                 <TrackStarRating releaseId={album.id} trackPosition={track.position} trackTitle={track.title} />
-                <TrackStreamingButtons artist={track.artists || album.artist} track={track.title} preferred={preferredPlatform} />
+                <TrackStreamingButtons artist={track.artists || album.artist} track={track.title} />
                 <QuickAddButton albumId={album.id} albumTitle={album.title} albumArtist={album.artist} coverUrl={album.coverUrl} trackTitle={track.title} trackPosition={track.position} />
                 <span className="text-[12px] text-muted flex-shrink-0 tabular-nums">
                   {formatDuration(track.durationMs)}
