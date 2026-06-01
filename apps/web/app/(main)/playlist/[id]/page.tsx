@@ -9,17 +9,23 @@ import InlineStarRating from '../../../../components/InlineStarRating';
 
 type SortKey = 'date_added' | 'title' | 'artist' | 'rating';
 
+interface TrackSub {
+  trackId: string;
+  title: string;
+  position: number | null;
+}
+
 interface PlaylistItem {
   itemId: string;
   releaseId: string;
   title: string;
   artist: string;
   coverUrl: string | null;
-  trackTitle: string | null;
   addedAt: string;
   releaseType: string;
   releaseDate: string | null;
   userRating: number | null;
+  tracks: TrackSub[];
 }
 
 const SORTS: { key: SortKey; label: string }[] = [
@@ -50,7 +56,7 @@ export default function PlaylistPage() {
       supabase.from('lists').select('title').eq('id', listId).maybeSingle(),
       supabase
         .from('list_items')
-        .select('id, release_id, added_at, track_title, releases(id, title, artist, cover_url, release_type, release_date)')
+        .select('id, release_id, added_at, releases(id, title, artist, cover_url, release_type, release_date), list_item_tracks(id, track_title, track_position)')
         .eq('list_id', listId)
         .order('added_at', { ascending: false }),
     ]);
@@ -77,11 +83,13 @@ export default function PlaylistPage() {
         title:       r.releases.title,
         artist:      r.releases.artist,
         coverUrl:    r.releases.cover_url ?? null,
-        trackTitle:  r.track_title ?? null,
         addedAt:     r.added_at,
         releaseType: r.releases.release_type ?? 'Album',
         releaseDate: r.releases.release_date ?? null,
         userRating:  ratingMap.get(r.releases.id) ?? null,
+        tracks: ((r.list_item_tracks ?? []) as any[])
+          .sort((a, b) => (a.track_position ?? 0) - (b.track_position ?? 0))
+          .map((t) => ({ trackId: t.id, title: t.track_title, position: t.track_position ?? null })),
       }))
     );
     setLoading(false);
@@ -94,6 +102,17 @@ export default function PlaylistPage() {
     await supabase.from('list_items').delete()
       .eq('list_id', listId).eq('release_id', releaseId);
     setItems(prev => prev.filter(i => i.releaseId !== releaseId));
+  };
+
+  const removeTrack = async (itemId: string, position: number | null) => {
+    if (!supabase || position == null) return;
+    await supabase.from('list_item_tracks').delete()
+      .eq('list_item_id', itemId).eq('track_position', position);
+    setItems(prev => prev.map(i =>
+      i.itemId === itemId
+        ? { ...i, tracks: i.tracks.filter(t => t.position !== position) }
+        : i
+    ));
   };
 
   const sorted = [...items].sort((a, b) => {
@@ -157,6 +176,7 @@ export default function PlaylistPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-[20px]">
             {sorted.map((item) => (
               <div key={item.itemId} className="min-w-0 group/card">
+                {/* Album cover + remove */}
                 <div className="relative">
                   <Link href={`/album/${item.releaseId}`} className="block">
                     <div
@@ -176,22 +196,20 @@ export default function PlaylistPage() {
                   </Link>
                   <button
                     onClick={() => void removeItem(item.releaseId)}
-                    title="Remove from playlist"
+                    title="Remove album"
                     className="absolute top-[6px] right-[6px] w-7 h-7 rounded-full bg-black/40 text-white/80 hover:bg-red-500 hover:text-white flex items-center justify-center transition backdrop-blur-sm opacity-0 group-hover/card:opacity-100"
                   >
                     <X size={13} />
                   </button>
                 </div>
 
+                {/* Album info */}
                 <div className="mt-[9px]">
-                  <div className="text-[13px] font-semibold text-ink truncate leading-snug">
-                    {item.trackTitle ?? item.title}
-                  </div>
-                  <div className="text-[11px] text-muted mt-0.5 truncate">
-                    {item.trackTitle ? `${item.title} · ${item.artist}` : item.artist}
-                  </div>
+                  <div className="text-[13px] font-semibold text-ink truncate leading-snug">{item.title}</div>
+                  <div className="text-[11px] text-muted mt-0.5 truncate">{item.artist}</div>
                 </div>
 
+                {/* Rating */}
                 {userId && (
                   <div className="mt-1.5">
                     <InlineStarRating
@@ -204,6 +222,27 @@ export default function PlaylistPage() {
                       coverUrl={item.coverUrl}
                       size={14}
                     />
+                  </div>
+                )}
+
+                {/* Track sub-items */}
+                {item.tracks.length > 0 && (
+                  <div className="mt-2 border-t border-divider pt-1.5 space-y-0.5">
+                    {item.tracks.map((track) => (
+                      <div key={track.trackId} className="flex items-center gap-1.5 group/track">
+                        <span className="text-[10px] text-[#AAAAAA] w-5 text-right flex-shrink-0 tabular-nums">
+                          {track.position ?? '–'}
+                        </span>
+                        <span className="text-[11px] text-muted flex-1 truncate">{track.title}</span>
+                        <button
+                          onClick={() => void removeTrack(item.itemId, track.position)}
+                          title="Remove track"
+                          className="flex-shrink-0 text-[#CCCCCC] hover:text-red-400 transition opacity-0 group-hover/track:opacity-100"
+                        >
+                          <X size={10} />
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

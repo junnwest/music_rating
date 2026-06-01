@@ -11,12 +11,19 @@ import { usePlaylist } from './PlaylistContext';
 
 const LL_KEY = 'sillajuku:listen-later';
 
+interface TrackItem {
+  trackId: string;
+  title: string;
+  position: number | null;
+}
+
 interface Album {
   id: string;
+  listItemId: string;
   title: string;
   artist: string;
   coverUrl: string | null;
-  trackTitle?: string | null;
+  tracks: TrackItem[];
 }
 
 function SpotifyIcon({ size = 16, className = '' }: { size?: number; className?: string }) {
@@ -30,7 +37,7 @@ function SpotifyIcon({ size = 16, className = '' }: { size?: number; className?:
 export default function PlaylistPanel() {
   const {
     userId, playlists, activeListId, activeListName,
-    setActiveListId, refreshPlaylists, removeFromActive,
+    setActiveListId, refreshPlaylists, removeFromActive, removeTrackFromActive,
     panelOpen, setPanelOpen, panelRefreshKey,
   } = usePlaylist();
 
@@ -74,14 +81,14 @@ export default function PlaylistPanel() {
           ids
             .map((id) => map.get(id))
             .filter(Boolean)
-            .map((r: any) => ({ id: r.id, title: r.title, artist: r.artist, coverUrl: r.cover_url ?? null })),
+            .map((r: any) => ({ id: r.id, listItemId: '', title: r.title, artist: r.artist, coverUrl: r.cover_url ?? null, tracks: [] })),
         );
       }
     } else {
       if (!supabase) { setLoading(false); return; }
       const { data } = await supabase
         .from('list_items')
-        .select('release_id, added_at, track_title, releases(id, title, artist, cover_url)')
+        .select('id, release_id, added_at, releases(id, title, artist, cover_url), list_item_tracks(id, track_title, track_position)')
         .eq('list_id', activeListId)
         .order('added_at', { ascending: false });
       if (data) {
@@ -90,10 +97,13 @@ export default function PlaylistPanel() {
             .filter((item) => item.releases)
             .map((item) => ({
               id: item.releases.id,
+              listItemId: item.id,
               title: item.releases.title,
               artist: item.releases.artist,
               coverUrl: item.releases.cover_url ?? null,
-              trackTitle: item.track_title ?? null,
+              tracks: ((item.list_item_tracks ?? []) as any[])
+                .sort((a, b) => (a.track_position ?? 0) - (b.track_position ?? 0))
+                .map((t) => ({ trackId: t.id, title: t.track_title, position: t.track_position ?? null })),
             })),
         );
       }
@@ -126,6 +136,16 @@ export default function PlaylistPanel() {
   const removeAlbum = async (releaseId: string) => {
     await removeFromActive(releaseId);
     setAlbums((prev) => prev.filter((a) => a.id !== releaseId));
+  };
+
+  const removeTrack = async (albumId: string, position: number | null) => {
+    if (position == null) return;
+    await removeTrackFromActive(albumId, position);
+    setAlbums((prev) => prev.map((a) =>
+      a.id === albumId
+        ? { ...a, tracks: a.tracks.filter((t) => t.position !== position) }
+        : a
+    ));
   };
 
   const createList = async () => {
@@ -399,31 +419,51 @@ export default function PlaylistPanel() {
           ) : (
             <div className="flex flex-col py-1">
               {albums.map((album) => (
-                <div key={album.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-surface group transition">
-                  <Link href={`/album/${album.id}`} className="flex items-center gap-2.5 flex-1 min-w-0">
-                    <div className="w-10 h-10 rounded-md overflow-hidden bg-surface border border-divider flex-shrink-0">
-                      {album.coverUrl ? (
-                        <img src={album.coverUrl} alt={album.title} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full bg-[#DDDDD8]" />
-                      )}
+                <div key={album.id} className="group/album">
+                  {/* Album row */}
+                  <div className="flex items-center gap-2.5 px-3 py-2 hover:bg-surface transition">
+                    <Link href={`/album/${album.id}`} className="flex items-center gap-2.5 flex-1 min-w-0">
+                      <div className="w-10 h-10 rounded-md overflow-hidden bg-surface border border-divider flex-shrink-0">
+                        {album.coverUrl ? (
+                          <img src={album.coverUrl} alt={album.title} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full bg-[#DDDDD8]" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[12px] font-semibold text-ink truncate leading-tight">{album.title}</p>
+                        <p className="text-[11px] text-muted truncate">{album.artist}</p>
+                      </div>
+                    </Link>
+                    <button
+                      onClick={() => void removeAlbum(album.id)}
+                      title="Remove album"
+                      className="flex-shrink-0 p-1 text-muted hover:text-red-500 transition opacity-0 group-hover/album:opacity-100"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+
+                  {/* Track sub-items */}
+                  {album.tracks.length > 0 && (
+                    <div className="pl-[52px] pr-3 pb-1">
+                      {album.tracks.map((track) => (
+                        <div key={track.trackId} className="flex items-center gap-1.5 py-[3px] group/track">
+                          <span className="text-[10px] text-[#AAAAAA] flex-shrink-0 tabular-nums w-4 text-right">
+                            {track.position ?? '–'}
+                          </span>
+                          <span className="text-[11px] text-muted flex-1 truncate">{track.title}</span>
+                          <button
+                            onClick={() => void removeTrack(album.id, track.position)}
+                            title="Remove track"
+                            className="flex-shrink-0 text-[#CCCCCC] hover:text-red-400 transition opacity-0 group-hover/track:opacity-100"
+                          >
+                            <X size={10} />
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-[12px] font-semibold text-ink truncate leading-tight">
-                        {album.trackTitle ?? album.title}
-                      </p>
-                      <p className="text-[11px] text-muted truncate">
-                        {album.trackTitle ? `${album.title} · ${album.artist}` : album.artist}
-                      </p>
-                    </div>
-                  </Link>
-                  <button
-                    onClick={() => void removeAlbum(album.id)}
-                    title="Remove"
-                    className="flex-shrink-0 p-1 text-muted hover:text-red-500 transition opacity-0 group-hover:opacity-100"
-                  >
-                    <X size={13} />
-                  </button>
+                  )}
                 </div>
               ))}
             </div>

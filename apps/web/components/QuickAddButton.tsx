@@ -20,11 +20,10 @@ export default function QuickAddButton({
   trackTitle, trackPosition, overlay = false,
 }: Props) {
   const {
-    addToActive, removeFromActive, activeListName,
-    activeListId, activeReleaseIds, userId,
+    addToActive, removeFromActive, removeTrackFromActive,
+    activeListName, activeListId, activeReleaseIds, activeTrackKeys, userId,
   } = usePlaylist();
 
-  // Tracks the brief "just added" ✓ flash before settling into the ✗ state
   const [justAdded, setJustAdded] = useState(false);
 
   // Reset the flash whenever the user switches which playlist is active
@@ -32,21 +31,37 @@ export default function QuickAddButton({
 
   if (!userId) return null;
 
-  const isLL = activeListId == null;
-  const isInList = activeReleaseIds.has(albumId);
+  const isLL    = activeListId == null;
+  const isTrack = trackPosition != null;
+
+  // Live membership — track-level buttons check activeTrackKeys; album-level check activeReleaseIds
+  const isInList = isTrack && !isLL
+    ? activeTrackKeys.has(`${albumId}::${trackPosition}`)
+    : activeReleaseIds.has(albumId);
 
   const handleAdd = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    await addToActive(albumId, albumTitle, albumArtist, coverUrl, trackTitle, trackPosition);
-    setJustAdded(true);
-    setTimeout(() => setJustAdded(false), 700);
+    // LL never stores track sub-items — treat as album add
+    if (isLL && isTrack) {
+      await addToActive(albumId, albumTitle, albumArtist, coverUrl);
+    } else {
+      await addToActive(albumId, albumTitle, albumArtist, coverUrl, trackTitle, trackPosition);
+    }
+    if (!isLL) {
+      setJustAdded(true);
+      setTimeout(() => setJustAdded(false), 700);
+    }
   };
 
   const handleRemove = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    await removeFromActive(albumId);
+    if (isTrack && !isLL && trackPosition != null) {
+      await removeTrackFromActive(albumId, trackPosition);
+    } else {
+      await removeFromActive(albumId);
+    }
   };
 
   // ── Overlay style (album card corner badge) ────────────────────────────────
@@ -71,7 +86,6 @@ export default function QuickAddButton({
         </button>
       );
     }
-
     if (justAdded) {
       return (
         <span className="w-7 h-7 rounded-full flex items-center justify-center bg-[#E8A020] text-white backdrop-blur-sm shadow-sm pointer-events-none">
@@ -140,7 +154,7 @@ export default function QuickAddButton({
   return (
     <button
       onClick={handleAdd}
-      title={`Add to ${activeListName}`}
+      title={isTrack ? `Add track to ${activeListName}` : `Add to ${activeListName}`}
       className="flex-shrink-0 p-0.5 transition text-muted hover:text-ink"
     >
       <Plus size={13} />
