@@ -8,9 +8,9 @@ Every record you've loved — rated, cataloged, and remembered. A music platform
 
 ---
 
-## ⚠️ Current state (2026-06-01)
+## ⚠️ Current state (2026-05-31)
 
-Features shipped as of this session: preferred streaming platform (album/track buttons filter to chosen platform), custom playlist panel (right-side drawer, CRUD, Spotify export), Bayesian Silla Score (calibrated star ratings + tierlist position), and Discovery/Adventurousness slider (recommendation mix control). See SESSIONS.md for details.
+Features shipped as of this session: Daily Question (daily album-pick prompt + shareable 1080×1920 / 1080×1080 card export via `/api/daily-question/card`), preferred streaming platform, custom playlist panel, Bayesian Silla Score, and Discovery/Adventurousness slider. See SESSIONS.md for details.
 
 ### ► START HERE — next session checklist
 
@@ -20,6 +20,7 @@ All migrations below must be run via `supabase db push` (or pasted into the Supa
 
 | File | What it adds |
 |------|-------------|
+| `20260531000001_daily_questions.sql` | `daily_questions` + `daily_answers` tables + RLS + 30 seeded questions |
 | `20260531000003_profiles_streaming_platform.sql` | `preferred_streaming_platform` on profiles (renamed from `20260531000000` to fix collision) |
 | `20260601000000_list_panel_updates.sql` | `position` col on `list_items`; UPDATE RLS policy on `lists` |
 | `20260601000001_spotify_connections.sql` | `spotify_connections` table (Spotify OAuth tokens) |

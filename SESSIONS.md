@@ -43,6 +43,7 @@ Historical record of shipped features and session notes. Not needed at conversat
 - [x] Track star ratings — inline 14px star widget per track; writes to `track_ratings` table (migration in `supabase/migrations/20260526000000_track_ratings.sql` — apply manually)
 - [x] Inline star ratings — compact widget on Explore cards, rankings leaderboard ("Your Rating" column), ranking builder suggestions
 - [x] My Rankings (`/my-rankings`) — dashboard with ranking cards (All, Albums, EPs, Songs, per-genre) + "Recommended for You"; detail pages at `/my-rankings/[slug]`
+- [x] Daily Question — one question per day surfaced at the top of the homepage; user picks an album from the catalog to answer; answer saved to `daily_answers` table; exports a 1080×1920 (story) or 1080×1080 (square) PNG card via `GET /api/daily-question/card` (Next.js edge ImageResponse, no extra packages); migration `20260531000001_daily_questions.sql` seeds 30 questions through 2026-06-29
 
 ### Social
 
