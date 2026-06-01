@@ -11,7 +11,7 @@ export interface Playlist {
 interface PlaylistContextType {
   userId: string | null;
   playlists: Playlist[];
-  activeListId: string | null; // null = Listen Later
+  activeListId: string | null;
   activeListName: string;
   setActiveListId: (id: string | null) => void;
   addToActive: (
@@ -24,15 +24,30 @@ interface PlaylistContextType {
   panelOpen: boolean;
   setPanelOpen: (open: boolean) => void;
   panelRefreshKey: number;
-  /** Set of release IDs in the active list — for album-level button state */
   activeReleaseIds: Set<string>;
-  /** Set of "albumId::trackPosition" keys — for track-level button state */
   activeTrackKeys: Set<string>;
 }
 
 const PlaylistContext = createContext<PlaylistContextType | null>(null);
 
-const LL_KEY = 'sillajuku:listen-later';
+// localStorage keys
+const LL_KEY        = 'sillajuku:listen-later';
+const LL_TRACKS_KEY = 'sillajuku:listen-later-tracks'; // albumId → {title, position}[]
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+function llAlbums(): string[] {
+  try { return JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[]; }
+  catch { return []; }
+}
+function llTracks(): Record<string, { title: string; position: number }[]> {
+  try { return JSON.parse(localStorage.getItem(LL_TRACKS_KEY) ?? '{}'); }
+  catch { return {}; }
+}
+function saveLLAlbums(ids: string[]) { localStorage.setItem(LL_KEY, JSON.stringify(ids)); }
+function saveLLTracks(map: Record<string, { title: string; position: number }[]>) {
+  localStorage.setItem(LL_TRACKS_KEY, JSON.stringify(map));
+}
 
 async function ensureRelease(
   sb: NonNullable<typeof supabase>,
@@ -54,6 +69,8 @@ async function ensureRelease(
     );
   }
 }
+
+// ── Provider ─────────────────────────────────────────────────────────────────
 
 export function PlaylistProvider({ children }: { children: ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
@@ -91,12 +108,17 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Reload album IDs + track keys whenever the active list or its contents change
+  // Reload membership sets whenever the active list or contents change
   useEffect(() => {
     if (activeListId == null) {
-      const ids = JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[];
-      setActiveReleaseIds(new Set(ids));
-      setActiveTrackKeys(new Set());
+      // Listen Later — read both album array and tracks map from localStorage
+      setActiveReleaseIds(new Set(llAlbums()));
+      const tracksMap = llTracks();
+      const keys = new Set<string>();
+      for (const [albumId, tracks] of Object.entries(tracksMap)) {
+        for (const t of tracks) keys.add(`${albumId}::${t.position}`);
+      }
+      setActiveTrackKeys(keys);
       return;
     }
     if (!supabase || !userId) return;
@@ -106,16 +128,13 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
       .select('id, release_id')
       .eq('list_id', activeListId)
       .then(async ({ data: items }) => {
-        const releaseIds = (items ?? []).map((i: any) => i.release_id as string);
-        setActiveReleaseIds(new Set(releaseIds));
-
+        setActiveReleaseIds(new Set((items ?? []).map((i: any) => i.release_id as string)));
         if (!items || items.length === 0) { setActiveTrackKeys(new Set()); return; }
 
         const itemIds = items.map((i: any) => i.id as string);
         const listItemToRelease = new Map<string, string>(
           items.map((i: any) => [i.id as string, i.release_id as string])
         );
-
         const { data: tracks } = await supabase!
           .from('list_item_tracks')
           .select('list_item_id, track_position')
@@ -141,108 +160,119 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
   ): Promise<{ alreadyAdded?: boolean }> => {
     const isTrack = trackTitle != null && trackPosition != null;
 
-    // Listen Later: album-level only (no track sub-items)
+    // ── Listen Later ──────────────────────────────────────────────────────────
     if (activeListId == null) {
-      const saved = JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[];
-      if (saved.includes(releaseId)) return { alreadyAdded: true };
-      localStorage.setItem(LL_KEY, JSON.stringify([...saved, releaseId]));
-      setActiveReleaseIds(prev => new Set([...prev, releaseId]));
-      setPanelRefreshKey((k) => k + 1);
+      const albums = llAlbums();
+      const tracksMap = llTracks();
+
+      if (isTrack) {
+        // Add album if not already present
+        if (!albums.includes(releaseId)) {
+          saveLLAlbums([...albums, releaseId]);
+          setActiveReleaseIds(prev => new Set([...prev, releaseId]));
+        }
+        // Add track if not already present
+        const existing = tracksMap[releaseId] ?? [];
+        if (!existing.some(t => t.position === trackPosition)) {
+          tracksMap[releaseId] = [...existing, { title: trackTitle!, position: trackPosition! }];
+          saveLLTracks(tracksMap);
+          setActiveTrackKeys(prev => new Set([...prev, `${releaseId}::${trackPosition}`]));
+          setPanelRefreshKey(k => k + 1);
+        }
+      } else {
+        // Album-level add
+        if (albums.includes(releaseId)) return { alreadyAdded: true };
+        saveLLAlbums([...albums, releaseId]);
+        setActiveReleaseIds(prev => new Set([...prev, releaseId]));
+        setPanelRefreshKey(k => k + 1);
+      }
       return {};
     }
 
+    // ── Custom playlist ───────────────────────────────────────────────────────
     if (!supabase || !userId) return {};
 
     await ensureRelease(supabase, releaseId, title, artist, coverUrl);
 
     if (isTrack) {
-      // 1. Ensure the album entry exists in list_items
+      // Ensure album entry exists in list_items, then add track to list_item_tracks
       await supabase.from('list_items')
         .upsert(
           { list_id: activeListId, release_id: releaseId },
           { onConflict: 'list_id,release_id', ignoreDuplicates: true },
         );
-
-      // 2. Fetch the list_item id
       const { data: listItem } = await supabase.from('list_items')
         .select('id')
         .eq('list_id', activeListId)
         .eq('release_id', releaseId)
         .maybeSingle();
-
       if (listItem) {
-        // 3. Add the track as a sub-item
         await supabase.from('list_item_tracks')
           .upsert(
             { list_item_id: listItem.id, track_title: trackTitle, track_position: trackPosition },
             { onConflict: 'list_item_id,track_position', ignoreDuplicates: true },
           );
-
         setActiveReleaseIds(prev => new Set([...prev, releaseId]));
         setActiveTrackKeys(prev => new Set([...prev, `${releaseId}::${trackPosition}`]));
-        setPanelRefreshKey((k) => k + 1);
+        setPanelRefreshKey(k => k + 1);
       }
     } else {
-      // Album-level add
       await supabase.from('list_items')
         .upsert(
           { list_id: activeListId, release_id: releaseId },
           { onConflict: 'list_id,release_id', ignoreDuplicates: true },
         );
       setActiveReleaseIds(prev => new Set([...prev, releaseId]));
-      setPanelRefreshKey((k) => k + 1);
+      setPanelRefreshKey(k => k + 1);
     }
-
     return {};
   }, [activeListId, userId]);
 
   const removeFromActive = useCallback(async (releaseId: string) => {
     if (activeListId == null) {
-      const saved = JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[];
-      localStorage.setItem(LL_KEY, JSON.stringify(saved.filter(id => id !== releaseId)));
+      saveLLAlbums(llAlbums().filter(id => id !== releaseId));
+      const tracksMap = llTracks();
+      delete tracksMap[releaseId];
+      saveLLTracks(tracksMap);
     } else {
       if (!supabase) return;
-      // Cascade deletes list_item_tracks rows automatically
       await supabase.from('list_items').delete()
         .eq('list_id', activeListId).eq('release_id', releaseId);
     }
-    setActiveReleaseIds(prev => {
-      const next = new Set(prev);
-      next.delete(releaseId);
-      return next;
-    });
+    setActiveReleaseIds(prev => { const n = new Set(prev); n.delete(releaseId); return n; });
     setActiveTrackKeys(prev => {
-      const next = new Set(prev);
+      const n = new Set(prev);
       const prefix = `${releaseId}::`;
-      for (const key of [...next]) {
-        if (key.startsWith(prefix)) next.delete(key);
-      }
-      return next;
+      for (const k of [...n]) if (k.startsWith(prefix)) n.delete(k);
+      return n;
     });
-    setPanelRefreshKey((k) => k + 1);
+    setPanelRefreshKey(k => k + 1);
   }, [activeListId]);
 
   const removeTrackFromActive = useCallback(async (albumId: string, trackPosition: number) => {
-    if (!supabase || activeListId == null) return;
-
-    const { data: listItem } = await supabase.from('list_items')
-      .select('id')
-      .eq('list_id', activeListId)
-      .eq('release_id', albumId)
-      .maybeSingle();
-
-    if (listItem) {
-      await supabase.from('list_item_tracks').delete()
-        .eq('list_item_id', listItem.id)
-        .eq('track_position', trackPosition);
+    if (activeListId == null) {
+      // Remove from localStorage tracks map
+      const tracksMap = llTracks();
+      if (tracksMap[albumId]) {
+        tracksMap[albumId] = tracksMap[albumId].filter(t => t.position !== trackPosition);
+        if (tracksMap[albumId].length === 0) delete tracksMap[albumId];
+        saveLLTracks(tracksMap);
+      }
+    } else {
+      if (!supabase) return;
+      const { data: listItem } = await supabase.from('list_items')
+        .select('id')
+        .eq('list_id', activeListId)
+        .eq('release_id', albumId)
+        .maybeSingle();
+      if (listItem) {
+        await supabase.from('list_item_tracks').delete()
+          .eq('list_item_id', listItem.id)
+          .eq('track_position', trackPosition);
+      }
     }
-
-    setActiveTrackKeys(prev => {
-      const next = new Set(prev);
-      next.delete(`${albumId}::${trackPosition}`);
-      return next;
-    });
-    setPanelRefreshKey((k) => k + 1);
+    setActiveTrackKeys(prev => { const n = new Set(prev); n.delete(`${albumId}::${trackPosition}`); return n; });
+    setPanelRefreshKey(k => k + 1);
   }, [activeListId]);
 
   return (

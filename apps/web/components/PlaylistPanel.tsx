@@ -9,7 +9,8 @@ import {
 import { supabase } from '../lib/supabaseClient';
 import { usePlaylist } from './PlaylistContext';
 
-const LL_KEY = 'sillajuku:listen-later';
+const LL_KEY        = 'sillajuku:listen-later';
+const LL_TRACKS_KEY = 'sillajuku:listen-later-tracks';
 
 interface TrackItem {
   trackId: string;
@@ -71,6 +72,8 @@ export default function PlaylistPanel() {
       const ids = JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[];
       if (ids.length === 0) { setLoading(false); return; }
       if (!supabase) { setLoading(false); return; }
+      const tracksMap: Record<string, { title: string; position: number }[]> =
+        JSON.parse(localStorage.getItem(LL_TRACKS_KEY) ?? '{}');
       const { data } = await supabase
         .from('releases')
         .select('id, title, artist, cover_url')
@@ -81,7 +84,16 @@ export default function PlaylistPanel() {
           ids
             .map((id) => map.get(id))
             .filter(Boolean)
-            .map((r: any) => ({ id: r.id, listItemId: '', title: r.title, artist: r.artist, coverUrl: r.cover_url ?? null, tracks: [] })),
+            .map((r: any) => ({
+              id: r.id,
+              listItemId: '',
+              title: r.title,
+              artist: r.artist,
+              coverUrl: r.cover_url ?? null,
+              tracks: (tracksMap[r.id] ?? [])
+                .sort((a, b) => a.position - b.position)
+                .map(t => ({ trackId: `${r.id}::${t.position}`, title: t.title, position: t.position })),
+            }))
         );
       }
     } else {

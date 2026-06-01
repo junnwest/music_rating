@@ -11,7 +11,6 @@ interface Props {
   coverUrl?: string | null;
   trackTitle?: string;
   trackPosition?: number;
-  /** Renders as a circular badge overlaid on an album cover */
   overlay?: boolean;
 }
 
@@ -26,7 +25,6 @@ export default function QuickAddButton({
 
   const [justAdded, setJustAdded] = useState(false);
 
-  // Reset the flash whenever the user switches which playlist is active
   useEffect(() => { setJustAdded(false); }, [activeListId]);
 
   if (!userId) return null;
@@ -34,21 +32,19 @@ export default function QuickAddButton({
   const isLL    = activeListId == null;
   const isTrack = trackPosition != null;
 
-  // Live membership — track-level buttons check activeTrackKeys; album-level check activeReleaseIds
-  const isInList = isTrack && !isLL
+  // Track buttons always check activeTrackKeys (specific track membership).
+  // Album buttons check activeReleaseIds.
+  const isInList = isTrack
     ? activeTrackKeys.has(`${albumId}::${trackPosition}`)
     : activeReleaseIds.has(albumId);
 
   const handleAdd = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    // LL never stores track sub-items — treat as album add
-    if (isLL && isTrack) {
-      await addToActive(albumId, albumTitle, albumArtist, coverUrl);
-    } else {
-      await addToActive(albumId, albumTitle, albumArtist, coverUrl, trackTitle, trackPosition);
-    }
-    if (!isLL) {
+    // Always pass track params — context handles LL vs custom separately
+    await addToActive(albumId, albumTitle, albumArtist, coverUrl, trackTitle, trackPosition);
+    // Show ✓ flash for all adds (LL album-toggle handled below via isInList state change)
+    if (isTrack || !isLL) {
       setJustAdded(true);
       setTimeout(() => setJustAdded(false), 700);
     }
@@ -57,15 +53,16 @@ export default function QuickAddButton({
   const handleRemove = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (isTrack && !isLL && trackPosition != null) {
+    if (isTrack && trackPosition != null) {
       await removeTrackFromActive(albumId, trackPosition);
     } else {
       await removeFromActive(albumId);
     }
   };
 
-  // ── Overlay style (album card corner badge) ────────────────────────────────
+  // ── Overlay (album card corner badge) ─────────────────────────────────────
   if (overlay) {
+    // LL overlay: bookmark toggle — album level only (no tracks on covers)
     if (isLL) {
       return (
         <button
@@ -86,6 +83,7 @@ export default function QuickAddButton({
         </button>
       );
     }
+    // Custom playlist overlay
     if (justAdded) {
       return (
         <span className="w-7 h-7 rounded-full flex items-center justify-center bg-[#E8A020] text-white backdrop-blur-sm shadow-sm pointer-events-none">
@@ -115,24 +113,9 @@ export default function QuickAddButton({
     );
   }
 
-  // ── Inline style (tracklist row) ───────────────────────────────────────────
-  if (isLL) {
-    return (
-      <button
-        onClick={isInList ? handleRemove : handleAdd}
-        title={isInList ? 'Remove from Listen Later' : 'Save to Listen Later'}
-        className={`flex-shrink-0 p-0.5 transition ${isInList ? 'text-[#E8A020]' : 'text-muted hover:text-ink'}`}
-      >
-        <Bookmark
-          size={13}
-          fill={isInList ? 'currentColor' : 'none'}
-          stroke="currentColor"
-          strokeWidth={2.2}
-        />
-      </button>
-    );
-  }
-
+  // ── Inline (tracklist row) ─────────────────────────────────────────────────
+  // Inline buttons NEVER use the bookmark icon — they always use + / ✓ / ✗.
+  // For LL + album-level inline (unlikely in practice), same treatment.
   if (justAdded) {
     return (
       <span className="flex-shrink-0 p-0.5 text-[#E8A020] pointer-events-none">
@@ -144,7 +127,7 @@ export default function QuickAddButton({
     return (
       <button
         onClick={handleRemove}
-        title={`Remove from ${activeListName}`}
+        title={isTrack ? `Remove track from ${activeListName}` : `Remove from ${activeListName}`}
         className="flex-shrink-0 p-0.5 transition text-muted hover:text-red-500"
       >
         <X size={13} />
