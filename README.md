@@ -8,9 +8,9 @@ Every record you've loved — rated, cataloged, and remembered. A music platform
 
 ---
 
-## ⚠️ Current state (2026-05-31)
+## ⚠️ Current state (2026-06-08)
 
-Features shipped as of this session: Daily Question (daily album-pick prompt + shareable 1080×1920 / 1080×1080 card export via `/api/daily-question/card`), preferred streaming platform, custom playlist panel, Bayesian Silla Score, and Discovery/Adventurousness slider. See SESSIONS.md for details.
+Features shipped as of this session: Daily Question (daily album-pick prompt + shareable 1080×1920 / 1080×1080 card export via `/api/daily-question/card`), preferred streaming platform, **Collections** (custom playlists, renamed) with a foldable right-side panel and a per-add destination picker ("Added to … / Change to"), Bayesian Silla Score, and Discovery/Adventurousness slider. See SESSIONS.md for details.
 
 ### ► START HERE — next session checklist
 

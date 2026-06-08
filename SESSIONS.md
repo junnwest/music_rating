@@ -38,6 +38,7 @@ Historical record of shipped features and session notes. Not needed at conversat
 - [x] Streaming buttons (Spotify / YouTube Music / Tidal) — album hero + per-track; uses stored spotifyUrl when available
 - [x] Preferred streaming platform — `preferred_streaming_platform` column on profiles (migration `20260531000000`); set in onboarding step 3 (4-step flow) and Settings → Preferences; album + track buttons filter to the single preferred platform when set, fall back to all three otherwise
 - [x] Custom playlists + right panel — persistent right-side playlist panel (desktop 260px, mobile overlay); uses existing `lists`/`list_items` tables; CRUD (create, rename, delete); "Add to [active list]" in AlbumActions dropdown + `QuickAddButton` on every track row; Spotify OAuth connect + playlist export; YouTube Music limitation surfaced in UI; Copy tracklist; migrations `20260601000000` (position + UPDATE policy) and `20260601000001` (spotify_connections)
+- [x] Collections (2026-06-08) — playlists renamed to "Collections" (user-facing); route `/collection/[id]`; right panel foldable on all breakpoints (fold button + floating reopen); per-add destination picker (`CollectionPickerPopover`) confirms "Added to {collection}" and offers "Change to →" to re-route an item to any other collection
 - [x] Silla Score recomputed — Bayesian-damped calibrated star ratings (55%) + normalized tierlist-position score (45%); Postgres function `get_calibrated_bayesian_scores`; migrations `20260601000002` + `20260601000003`
 - [x] Discovery/Adventurousness slider — Settings → Preferences slider (0–100, default 50); `recommendation_adventurousness` column on profiles; shifts For You mix between in-taste / adjacent / discovery buckets
 - [x] Track star ratings — inline 14px star widget per track; writes to `track_ratings` table (migration in `supabase/migrations/20260526000000_track_ratings.sql` — apply manually)
@@ -152,6 +153,15 @@ Historical record of shipped features and session notes. Not needed at conversat
 ---
 
 ## Session summaries
+
+**2026-06-08 — Playlists → Collections rename, foldable panel, per-add destination picker:**
+
+- **Playlists → Collections**: renamed the custom-playlist feature to "Collections" across user-facing labels. Updated `PlaylistPanel.tsx` ("New collection", "Collection name…", "Open full collection", "Collection options", "Delete this collection?"), `AlbumActions.tsx` ("Add to collection" menu item + modal title + empty state), the per-list page default title/empty state. Route moved `/playlist/[id]` → `/collection/[id]` (only linker was the panel's external-link button). Internal component/type names (`PlaylistContext`, `PlaylistPanel`, `usePlaylist`, `PlaylistItem`) kept as-is to limit churn — purely user-facing rename.
+- **Foldable Collections panel**: the right-side panel can now be collapsed on every breakpoint (was mobile-only). Header gets a `PanelRightClose` fold button; when collapsed a floating round button (bottom-right, all breakpoints) reopens it. On desktop, collapsing frees the 260px column so content reflows wider.
+- **Per-add destination picker**: new `CollectionPickerPopover.tsx` (portaled to `document.body`, fixed-positioned so it escapes card `overflow-hidden`). After tapping "+" on any album/track, items still go to the **open** collection by default, then a popover confirms "Added to {collection}" and offers "Change to →" to re-route the item to any other collection (move = remove from previous dest + add to target). Wired into `QuickAddButton` (inline + overlay), `ScrollRow`'s `QuickAdd`, and `PersonalizedFeed`'s `QuickAddOverlay`.
+- **PlaylistContext** refactor: existing `addToActive` / `removeFromActive` / `removeTrackFromActive` now delegate to generic `addItemTo(listId, …)` / `removeItemFrom(listId, releaseId, trackPosition?)` (null listId = Listen Later). Active membership sets (`activeReleaseIds` / `activeTrackKeys`) + panel refresh only update when the affected collection is the open one. Added `nameForList(listId)` helper. No schema changes.
+
+---
 
 **2026-05-31 — Leaderboard rename, Tierlist builder, Social tab, Comment sort/filter, Accomplishment badges:**
 

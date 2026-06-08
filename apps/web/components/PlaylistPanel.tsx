@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import {
   X, Plus, ChevronDown, Trash2, Edit2, Check,
-  Share2, Clipboard, ExternalLink, Music2, ListMusic,
+  Share2, Clipboard, ExternalLink, Music2, ListMusic, PanelRightClose,
 } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { usePlaylist } from './PlaylistContext';
@@ -240,13 +240,13 @@ export default function PlaylistPanel() {
     if (url) window.location.href = url;
   };
 
-  // Closed on mobile — show floating toggle button
+  // Collapsed — show a floating button to reopen the panel (all breakpoints)
   if (!panelOpen) {
     return (
       <button
         onClick={() => setPanelOpen(true)}
-        title="Open playlist panel"
-        className="fixed right-4 bottom-6 z-30 xl:hidden bg-page border border-divider rounded-full w-10 h-10 flex items-center justify-center shadow-md text-muted hover:text-ink transition"
+        title="Open collections"
+        className="fixed right-4 bottom-6 z-30 bg-page border border-divider rounded-full w-10 h-10 flex items-center justify-center shadow-md text-muted hover:text-ink transition"
       >
         <ListMusic size={18} />
       </button>
@@ -318,7 +318,7 @@ export default function PlaylistPanel() {
                         if (e.key === 'Enter') void createList();
                         if (e.key === 'Escape') setShowCreateInput(false);
                       }}
-                      placeholder="Playlist name…"
+                      placeholder="Collection name…"
                       autoFocus
                       className="flex-1 text-[12px] bg-surface rounded-lg px-2 py-1.5 border border-divider outline-none text-ink min-w-0"
                     />
@@ -336,7 +336,7 @@ export default function PlaylistPanel() {
                     className="flex items-center gap-2 w-full px-3 py-2.5 text-[13px] text-muted hover:bg-surface hover:text-ink transition"
                   >
                     <Plus size={13} />
-                    New playlist
+                    New collection
                   </button>
                 )}
               </div>
@@ -346,9 +346,9 @@ export default function PlaylistPanel() {
           {/* Link to full playlist page */}
           {activeListId && (
             <Link
-              href={`/playlist/${activeListId}`}
+              href={`/collection/${activeListId}`}
               className="p-1.5 rounded-lg text-muted hover:text-ink hover:bg-surface transition flex-shrink-0"
-              title="Open full playlist"
+              title="Open full collection"
             >
               <ExternalLink size={14} />
             </Link>
@@ -366,7 +366,7 @@ export default function PlaylistPanel() {
                   }
                 }}
                 className="p-1.5 rounded-lg text-muted hover:text-ink hover:bg-surface transition"
-                title="Playlist options"
+                title="Collection options"
               >
                 <Edit2 size={14} />
               </button>
@@ -392,23 +392,24 @@ export default function PlaylistPanel() {
                   </div>
                   <div className="mx-3 border-t border-divider mb-1" />
                   <button
-                    onClick={() => { if (window.confirm('Delete this playlist?')) void deleteList(); }}
+                    onClick={() => { if (window.confirm('Delete this collection?')) void deleteList(); }}
                     className="flex items-center gap-2 w-full px-3 py-2 text-[13px] text-red-500 hover:bg-surface transition"
                   >
                     <Trash2 size={13} />
-                    Delete playlist
+                    Delete collection
                   </button>
                 </div>
               )}
             </div>
           )}
 
-          {/* Close on mobile */}
+          {/* Collapse / fold panel (all breakpoints) */}
           <button
             onClick={() => setPanelOpen(false)}
-            className="p-1.5 rounded-lg text-muted hover:text-ink hover:bg-surface transition xl:hidden flex-shrink-0"
+            title="Hide collections"
+            className="p-1.5 rounded-lg text-muted hover:text-ink hover:bg-surface transition flex-shrink-0"
           >
-            <X size={16} />
+            <PanelRightClose size={16} />
           </button>
         </div>
 

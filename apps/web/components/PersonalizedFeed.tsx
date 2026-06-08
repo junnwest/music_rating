@@ -9,6 +9,7 @@ import { useHomeReady } from './HomeReadyContext';
 import { useLanguage } from '../lib/i18n';
 import type { AlbumRelease } from '../types';
 import { usePlaylist } from './PlaylistContext';
+import CollectionPickerPopover from './CollectionPickerPopover';
 
 const LL_KEY = 'sillajuku:listen-later';
 
@@ -42,33 +43,45 @@ function BookmarkOverlay({ albumId }: { albumId: string }) {
 }
 
 function QuickAddOverlay({ releaseId, title, artist, coverUrl }: { releaseId: string; title: string; artist: string; coverUrl: string | null }) {
-  const { addToActive, activeListName, userId } = usePlaylist();
-  const [state, setState] = useState<'idle' | 'added' | 'exists'>('idle');
+  const { addToActive, activeListName, activeListId, userId } = usePlaylist();
+  const [added, setAdded] = useState(false);
+  const [picker, setPicker] = useState<{ rect: DOMRect; dest: string | null } | null>(null);
   if (!userId) return null;
   const handleAdd = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (state !== 'idle') return;
-    const result = await addToActive(releaseId, title, artist, coverUrl);
-    setState(result.alreadyAdded ? 'exists' : 'added');
-    setTimeout(() => setState('idle'), 1500);
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    await addToActive(releaseId, title, artist, coverUrl);
+    setAdded(true);
+    setPicker({ rect, dest: activeListId });
   };
   return (
-    <button
-      onClick={(e) => void handleAdd(e)}
-      title={`Add to ${activeListName}`}
-      className={`w-7 h-7 rounded-full flex items-center justify-center transition backdrop-blur-sm ${
-        state === 'idle' ? 'bg-black/40 text-white/80 hover:bg-black/60' : 'bg-[#E8A020] text-white shadow-sm'
-      }`}
-    >
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-        {state === 'idle' ? (
-          <><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></>
-        ) : (
-          <polyline points="20 6 9 17 4 12" />
-        )}
-      </svg>
-    </button>
+    <>
+      <button
+        onClick={(e) => void handleAdd(e)}
+        title={`Add to ${activeListName}`}
+        className={`w-7 h-7 rounded-full flex items-center justify-center transition backdrop-blur-sm ${
+          added ? 'bg-[#E8A020] text-white shadow-sm' : 'bg-black/40 text-white/80 hover:bg-black/60'
+        }`}
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+          {added ? (
+            <polyline points="20 6 9 17 4 12" />
+          ) : (
+            <><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></>
+          )}
+        </svg>
+      </button>
+      {picker && (
+        <CollectionPickerPopover
+          item={{ releaseId, title, artist, coverUrl }}
+          anchorRect={picker.rect}
+          dest={picker.dest}
+          onDestChange={(dest) => setPicker((p) => (p ? { ...p, dest } : p))}
+          onClose={() => { setPicker(null); setAdded(false); }}
+        />
+      )}
+    </>
   );
 }
 

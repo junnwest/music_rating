@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Plus, Check, X, Bookmark } from 'lucide-react';
+import { useState } from 'react';
+import { Plus, X, Bookmark } from 'lucide-react';
 import { usePlaylist } from './PlaylistContext';
+import CollectionPickerPopover from './CollectionPickerPopover';
 
 interface Props {
   albumId: string;
@@ -23,9 +24,8 @@ export default function QuickAddButton({
     activeListName, activeListId, activeReleaseIds, activeTrackKeys, userId,
   } = usePlaylist();
 
-  const [justAdded, setJustAdded] = useState(false);
-
-  useEffect(() => { setJustAdded(false); }, [activeListId]);
+  // After an add, anchor the "Added to … / Change to" picker to the trigger.
+  const [picker, setPicker] = useState<{ rect: DOMRect; dest: string | null } | null>(null);
 
   if (!userId) return null;
 
@@ -41,14 +41,22 @@ export default function QuickAddButton({
   const handleAdd = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     // Always pass track params — context handles LL vs custom separately
     await addToActive(albumId, albumTitle, albumArtist, coverUrl, trackTitle, trackPosition);
-    // Show ✓ flash for all adds (LL album-toggle handled below via isInList state change)
-    if (isTrack || !isLL) {
-      setJustAdded(true);
-      setTimeout(() => setJustAdded(false), 700);
-    }
+    // Open the destination picker, defaulting to the open collection.
+    setPicker({ rect, dest: activeListId });
   };
+
+  const pickerEl = picker && (
+    <CollectionPickerPopover
+      item={{ releaseId: albumId, title: albumTitle, artist: albumArtist, coverUrl, trackTitle, trackPosition }}
+      anchorRect={picker.rect}
+      dest={picker.dest}
+      onDestChange={(dest) => setPicker((p) => (p ? { ...p, dest } : p))}
+      onClose={() => setPicker(null)}
+    />
+  );
 
   const handleRemove = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -61,10 +69,11 @@ export default function QuickAddButton({
   };
 
   // ── Overlay (album card corner badge) ─────────────────────────────────────
+  let trigger: React.ReactNode;
   if (overlay) {
-    // LL overlay: bookmark toggle — album level only (no tracks on covers)
     if (isLL) {
-      return (
+      // LL overlay: bookmark toggle — album level only (no tracks on covers)
+      trigger = (
         <button
           onClick={isInList ? handleRemove : handleAdd}
           title={isInList ? 'Remove from Listen Later' : 'Save to Listen Later'}
@@ -82,17 +91,8 @@ export default function QuickAddButton({
           />
         </button>
       );
-    }
-    // Custom playlist overlay
-    if (justAdded) {
-      return (
-        <span className="w-7 h-7 rounded-full flex items-center justify-center bg-[#E8A020] text-white backdrop-blur-sm shadow-sm pointer-events-none">
-          <Check size={13} />
-        </span>
-      );
-    }
-    if (isInList) {
-      return (
+    } else if (isInList) {
+      trigger = (
         <button
           onClick={handleRemove}
           title={`Remove from ${activeListName}`}
@@ -101,30 +101,20 @@ export default function QuickAddButton({
           <X size={13} />
         </button>
       );
+    } else {
+      trigger = (
+        <button
+          onClick={handleAdd}
+          title={`Add to ${activeListName}`}
+          className="w-7 h-7 rounded-full flex items-center justify-center bg-black/40 text-white/80 hover:bg-black/60 transition backdrop-blur-sm"
+        >
+          <Plus size={13} />
+        </button>
+      );
     }
-    return (
-      <button
-        onClick={handleAdd}
-        title={`Add to ${activeListName}`}
-        className="w-7 h-7 rounded-full flex items-center justify-center bg-black/40 text-white/80 hover:bg-black/60 transition backdrop-blur-sm"
-      >
-        <Plus size={13} />
-      </button>
-    );
-  }
-
-  // ── Inline (tracklist row) ─────────────────────────────────────────────────
-  // Inline buttons NEVER use the bookmark icon — they always use + / ✓ / ✗.
-  // For LL + album-level inline (unlikely in practice), same treatment.
-  if (justAdded) {
-    return (
-      <span className="flex-shrink-0 p-0.5 text-[#E8A020] pointer-events-none">
-        <Check size={13} />
-      </span>
-    );
-  }
-  if (isInList) {
-    return (
+  } else if (isInList) {
+    // ── Inline (tracklist row): always + / ✗, never the bookmark icon ─────────
+    trigger = (
       <button
         onClick={handleRemove}
         title={isTrack ? `Remove track from ${activeListName}` : `Remove from ${activeListName}`}
@@ -133,14 +123,22 @@ export default function QuickAddButton({
         <X size={13} />
       </button>
     );
+  } else {
+    trigger = (
+      <button
+        onClick={handleAdd}
+        title={isTrack ? `Add track to ${activeListName}` : `Add to ${activeListName}`}
+        className="flex-shrink-0 p-0.5 transition text-muted hover:text-ink"
+      >
+        <Plus size={13} />
+      </button>
+    );
   }
+
   return (
-    <button
-      onClick={handleAdd}
-      title={isTrack ? `Add track to ${activeListName}` : `Add to ${activeListName}`}
-      className="flex-shrink-0 p-0.5 transition text-muted hover:text-ink"
-    >
-      <Plus size={13} />
-    </button>
+    <>
+      {trigger}
+      {pickerEl}
+    </>
   );
 }
