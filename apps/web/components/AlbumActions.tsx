@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Check, ChevronRight, Plus, Bookmark, Pin, Trophy, BookmarkCheck, X, List, ListPlus } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { usePlaylist } from './PlaylistContext';
+import CollectionPickerPopover from './CollectionPickerPopover';
 
 const LL_KEY = 'sillajuku:listen-later';
 const PINNED_MAX = 6;
@@ -75,6 +76,7 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
   const router = useRouter();
   const { activeListId, activeListName, addToActive } = usePlaylist();
   const [quickAdded, setQuickAdded] = useState(false);
+  const [picker, setPicker] = useState<{ rect: DOMRect; dest: string | null } | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [pinned, setPinned] = useState(false);
   const [pinnedFull, setPinnedFull] = useState(false);
@@ -226,11 +228,14 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
     }
   };
 
-  const handleQuickAdd = async () => {
+  const handleQuickAdd = async (e: React.MouseEvent) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     setDropdownOpen(false);
     await addToActive(albumId, albumTitle, albumArtist, coverUrl);
     setQuickAdded(true);
     setTimeout(() => setQuickAdded(false), 1500);
+    // Confirm + offer "Change to" another collection.
+    setPicker({ rect, dest: activeListId });
   };
 
   const toggleListenLater = () => {
@@ -361,7 +366,7 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
           <div className="absolute top-full right-0 mt-1.5 bg-page border border-divider rounded-xl shadow-lg z-30 min-w-[200px] py-1">
             {userId && (
               <button
-                onClick={() => void handleQuickAdd()}
+                onClick={(e) => void handleQuickAdd(e)}
                 className="flex items-center gap-3 px-4 py-2.5 text-[13px] text-ink hover:bg-surface w-full text-left transition"
               >
                 {quickAdded
@@ -730,6 +735,16 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
             </div>
           </div>
         </div>
+      )}
+
+      {picker && (
+        <CollectionPickerPopover
+          item={{ releaseId: albumId, title: albumTitle, artist: albumArtist, coverUrl }}
+          anchorRect={picker.rect}
+          dest={picker.dest}
+          onDestChange={(dest) => setPicker((p) => (p ? { ...p, dest } : p))}
+          onClose={() => setPicker(null)}
+        />
       )}
     </>
   );
