@@ -403,7 +403,7 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
                 className="flex items-center gap-3 px-4 py-2.5 text-[13px] text-ink hover:bg-surface w-full text-left transition"
               >
                 <List size={15} className="text-muted" />
-                <span className="flex-1">Add to List</span>
+                <span className="flex-1">Add to collection</span>
                 <ChevronRight size={13} className="text-muted" />
               </button>
             )}
@@ -558,7 +558,7 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
           >
             <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-divider">
               <div>
-                <p className="text-[15px] font-bold text-ink">Add to List</p>
+                <p className="text-[15px] font-bold text-ink">Add to collection</p>
                 <p className="text-[12px] text-muted mt-0.5 truncate max-w-[280px]">{albumTitle}</p>
               </div>
               <button onClick={() => setShowListModal(false)} className="text-muted hover:text-ink transition p-1">
@@ -571,7 +571,7 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
                   {[1,2,3].map(i => <div key={i} className="h-10 rounded-lg bg-surface animate-pulse" />)}
                 </div>
               ) : userLists.length === 0 ? (
-                <p className="text-[13px] text-muted text-center py-8">No lists yet. Create one from your profile.</p>
+                <p className="text-[13px] text-muted text-center py-8">No collections yet. Create one from the collections panel.</p>
               ) : (
                 <div className="flex flex-col gap-1">
                   {userLists.map(list => {

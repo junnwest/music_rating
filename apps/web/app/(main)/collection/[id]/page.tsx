@@ -38,7 +38,7 @@ const SORTS: { key: SortKey; label: string }[] = [
 export default function PlaylistPage() {
   const { id: listId } = useParams() as { id: string };
 
-  const [listTitle, setListTitle] = useState('Playlist');
+  const [listTitle, setListTitle] = useState('Collection');
   const [items, setItems] = useState<PlaylistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [sort, setSort] = useState<SortKey>('date_added');
@@ -169,7 +169,7 @@ export default function PlaylistPage() {
           </div>
         ) : sorted.length === 0 ? (
           <div className="text-center py-20">
-            <p className="text-[15px] font-semibold text-ink mb-1">This playlist is empty</p>
+            <p className="text-[15px] font-semibold text-ink mb-1">This collection is empty</p>
             <p className="text-[13px] text-muted">Use the + button on any album card to add items.</p>
           </div>
         ) : (
