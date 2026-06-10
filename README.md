@@ -8,35 +8,45 @@ Every record you've loved — rated, cataloged, and remembered. A music platform
 
 ---
 
-## ⚠️ Current state (2026-05-28)
+## ⚠️ Current state (2026-06-10, embeddings nearly done)
 
-The 2026-05-22 Spotify-quota hardening is live. 2026-05-23 added 404-resilience and Spotify circuit breaker. 2026-05-24 morning closed the last user-visible failure: **search degrades to DB fallback when Spotify is rate-limited**. 2026-05-24 evening made the structural shift: **Spotify API is no longer used for data collection**. A full non-Spotify catalog pipeline (Wikipedia → iTunes queue → Last.fm similar → miss-driven ingestion) was built and is ready to run. 2026-05-24 night added **multilingual catalog support**: language-agnostic `_native` columns + two-phase backfill pipeline. 2026-05-25 early morning completed **Phase 1 of the native name backfill** (Wikipedia langlinks): ~247 of ~536 artists now have `name_native` set. **iTunes genre backfill (`backfill:genres`) is now complete** — 2,864 releases matched (66%), 1,494 no match. 2026-05-27 completed the **UUID migration**: `releases.id` is now a source-agnostic UUID; `spotify_id` and `itunes_id` are the source-specific lookup columns. iTunes search results are now saved to DB as first-class releases. 2026-05-27 added **multi-signal search**: pg_trgm fuzzy matching, full-text `ts_rank`, popularity signal (`ratings_count` + live trigger), and a scored `search_releases` SQL function. 2026-05-28 added **semantic search**: Jina v3 embeddings (`vector(1024)`), HNSW index, hybrid `search_releases()` RPC — lexical + cosine similarity — 5,359 releases embedded. 2026-05-28 fixed: Apple CDN images (mzstatic.com) added to CSP; artist pages no longer 404 when Spotify is unavailable; iTunes artist IDs removed from search fallback. **`queue:ingest` complete: 4,568 inserted, 251 enriched, 149 skipped, 12 no-match, 0 failed.** 2026-05-28 evening: **album + artist detail pages are now DB-first** — Spotify is only called for genuinely-unknown deep-link IDs, eliminating the per-visitor Spotify cost. 2026-05-28 (later): added **multi-service streaming buttons** (Spotify / YouTube Music / Tidal) on album pages and per-track; **inline star ratings** on Explore cards, ranking leaderboards, and ranking builder suggestions; **individual track ratings** (new `track_ratings` table — migration at `supabase/migrations/20260526000000_track_ratings.sql`, apply via Supabase SQL editor); **My Rankings** dashboard at `/my-rankings` with grid of ranking cards (All, Albums, EPs, Songs, per-genre), clickable to full detail pages, plus "Recommended for You" section. See the [debugging section](#-debugging-spotify-related-production-issues) below for Spotify runtime issues.
+The 2026-05-22 Spotify-quota hardening is live. 2026-05-23 added 404-resilience and Spotify circuit breaker. 2026-05-24 morning closed the last user-visible failure: **search degrades to DB fallback when Spotify is rate-limited**. 2026-05-24 evening made the structural shift: **Spotify API is no longer used for data collection**. A full non-Spotify catalog pipeline (Wikipedia → iTunes queue → Last.fm similar → miss-driven ingestion) was built and is ready to run. 2026-05-24 night added **multilingual catalog support**: language-agnostic `_native` columns + two-phase backfill pipeline. 2026-05-25 early morning completed **Phase 1 of the native name backfill** (Wikipedia langlinks): ~247 of ~536 artists now have `name_native` set. **iTunes genre backfill (`backfill:genres`) is now complete** — 2,864 releases matched (66%), 1,494 no match. 2026-05-27 completed the **UUID migration**: `releases.id` is now a source-agnostic UUID; `spotify_id` and `itunes_id` are the source-specific lookup columns. iTunes search results are now saved to DB as first-class releases. 2026-05-27 added **multi-signal search**: pg_trgm fuzzy matching, full-text `ts_rank`, popularity signal (`ratings_count` + live trigger), and a scored `search_releases` SQL function. 2026-05-28 added **semantic search**: Jina v3 embeddings (`vector(1024)`), HNSW index, hybrid `search_releases()` RPC — lexical + cosine similarity — 5,359 releases embedded. 2026-05-28 fixed: Apple CDN images (mzstatic.com) added to CSP; artist pages no longer 404 when Spotify is unavailable; iTunes artist IDs removed from search fallback. **`queue:ingest` complete: 4,568 inserted, 251 enriched, 149 skipped, 12 no-match, 0 failed.** 2026-05-28 evening: **album + artist detail pages are now DB-first** — Spotify is only called for genuinely-unknown deep-link IDs, eliminating the per-visitor Spotify cost. 2026-05-28 (later): added **multi-service streaming buttons** (Spotify / YouTube Music / Tidal) on album pages and per-track; **inline star ratings** on Explore cards, ranking leaderboards, and ranking builder suggestions; **individual track ratings** (new `track_ratings` table — migration `20260526000000_track_ratings.sql`, applied to prod 2026-05-31); **My Rankings** dashboard at `/my-rankings` with grid of ranking cards (All, Albums, EPs, Songs, per-genre), clickable to full detail pages, plus "Recommended for You" section. See the [debugging section](#-debugging-spotify-related-production-issues) below for Spotify runtime issues. 2026-05-31 morning: **search quality fixes** — cross-language artist lookup (LEFT JOIN `artists` so searching "IU" finds releases stored as "아이유" via `artist_id`; migration `20260531000000_search_artist_crosslang.sql`); semantic candidate flood removed (cosine similarity now only boosts lexically-matched candidates, not all 9,200 embedded releases); exact/prefix artist name priority over DB popularity score in `searchReleasesInDb` (over-fetch 4×, +1M bonus exact, +100K prefix — prevents "Iuiu Hq" outranking "IU"); `word_similarity` threshold raised 0.3 → 0.5 (migration `20260531000002_search_wordsim_05.sql` — eliminates false positives like "Pink Ocean" for "Frank Ocean"). 2026-05-31: **rate limiting added** to 5 remaining mutation routes — `auth/resolve-username` POST (10/60s), `lists` POST (10/60s), `lists/[id]/items` POST+DELETE (30/60s), `rankings/user-ranking` POST (20/60s) — all via sliding window using existing `lib/rateLimit.ts` + Upstash Redis. **`backfill:genres` (second pass) complete (2026-06-01)** — processed 703 null-genre releases from queue:ingest additions: 310 matched (44%), 393 no match. **`queue:ingest` run 2 complete (2026-06-03)** — 9 batches, ~289k new releases; final catalog **299,468 releases** (294,586 iTunes, 944 Spotify, 3,938 legacy). Post-ingest pipeline work: collab artist cleanup (`cleanup-collab-artists.ts` — 303 queue entries + 2 artists deleted); `isCollaborationArtist()` filter added to `discover-lastfm-similar.ts` and `ingest-itunes-queue.ts`; `sanity-check.ts` (`npm run sanity`) built. **Dedup incident (2026-06-03):** `dedup:releases:fix` ran with a pagination bug (no `ORDER BY` → page overlaps → self-matches → 93 releases incorrectly deleted); `find-duplicate-releases.ts` fixed (added `.order('id')`, fixed `norm()` Unicode regex, added K-FLIP+ skip IDs); recovery scripts built (`requeue-affected.ts`, `insert-missing-artists.ts`). Artist discography pages now merge FK-linked + name-contains releases so collab releases appear on both artists' pages (`dbCache.ts` `getArtistReleases`). **2026-06-09/10: `backfill:embeddings` nearly complete** — dry-run confirmed 93,090 remaining; two resumed runs embedded ~93k rows (66 failures remain); one more run will finish; HNSW index rebuild (step 14) still pending.
 
 ### ► START HERE — next session checklist
 
-#### `backfill:genres` — 🔄 still running (resume if stopped)
+#### ~~`queue:ingest` run 2~~ ✅ Done (2026-06-03) — 299,468 releases total
 
-```bash
-cd apps/web && npm run backfill:genres
-```
-
-When it finishes, run the following **in order**. Do not skip steps or run iTunes scripts in parallel.
-
-#### After `backfill:genres` finishes — run in order:
+**Post-ingest steps — run in order:**
 
 | Step | Command | Notes |
 |------|---------|-------|
-| 1 | `npm run backfill:native:releases` | iTunes — fills native titles on new releases |
-| 2 | `npm run check:completeness` | iTunes — re-queues artists with incomplete discographies |
-| 3 | `npm run queue:ingest` | iTunes — drains 8,968 pending artists (overnight) |
-| 4 | `npm run queue:discover` | Last.fm — finds similar artists from newly added ones |
-| 5 | `npm run queue:ingest` | iTunes — drain again after discover adds more |
-| — | repeat discover → ingest | until queue stabilises (few new artists added) |
-| 6 | `npm run backfill:embeddings` | Jina — embed everything at once **after** ingest is stable |
+| 1 | ~~Apply `20260601000000_fix_partial_dates.sql`~~ ✅ done | Padded partial dates |
+| 2 | ~~Fix stuck queue entry~~ ✅ done | Reset 1 `processing` → `done` |
+| 3 | ~~Recovery ingest~~ ✅ done (2026-06-04) | 0 data loss confirmed — 0 new, 100 enriched, 819 skipped |
+| 4 | ~~`dedup:releases:fix` + `fix-all`~~ ✅ done (2026-06-04) | ~127 total groups merged; 2 false positives (LOONA EPs, Mars EP vs Album) added to SKIP_IDS |
+| 5 | ~~`npm run check:completeness`~~ ✅ done (2026-06-04) | 5,569 complete, 2,428 incomplete (6,937 missing re-queued), 549 no iTunes |
+| 6 | ~~`npm run queue:ingest`~~ ✅ done (runs 3+4, 2026-06-04) | Run 3: 335 ins / Run 4: 126 ins — converged |
+| 7 | ~~`npm run queue:discover`~~ ✅ done (run 2, 2026-06-04) | 2,143 queued, 10 no match, 1,381 pending |
+| 8 | ~~`npm run queue:ingest`~~ ✅ done (run 5, 2026-06-04) | 33,331 inserted, 2,581 enriched, 31 no match |
+| 9 | ~~`npm run queue:discover`~~ ✅ done (run 3, 2026-06-04) | All 917 DB artists already covered; 381 pending |
+| 10 | ~~`npm run queue:ingest`~~ ✅ done (run 6, 2026-06-04) | 13,730 inserted, 1,299 enriched, 8 no match |
+| 11 | ~~`npm run queue:discover`~~ ✅ done (run 4, 2026-06-04) | Queue empty — loop stable |
+| 12 | ~~`npm run enrich:genres:lastfm`~~ ✅ done (2026-06-07) | 15,460 enriched, 5,511 covered, 325,979 no Last.fm match |
+| 13 | `npm run backfill:embeddings` 🔄 almost done (2026-06-10) | 66 rows still failing — **run once more to finish**, then proceed to step 14 |
+| 14 | Rebuild HNSW index in Supabase SQL editor 🔲 after step 13 | Run after backfill finishes — see SQL below |
 
-**Do not run `backfill:embeddings` until the discover → ingest loop is stable** — you'd just have to run it again.
+**Step 14 SQL — run in Supabase SQL editor once `backfill:embeddings` completes:**
+```sql
+CREATE INDEX idx_releases_embedding_hnsw
+  ON releases USING hnsw (embedding vector_cosine_ops)
+  WITH (m = 16, ef_construction = 64);
+```
+Also drop the temporary backfill-helper index (no longer needed after backfill):
+```sql
+DROP INDEX IF EXISTS idx_releases_embeddable;
+```
 
-`queue:discover` (Last.fm) and `backfill:embeddings` (Jina) are safe to run in parallel with each other but **not** with any iTunes script.
+`queue:discover` and `backfill:embeddings` are safe to run in parallel with each other but **not** with any iTunes script.
 
 #### ~~Step 4 — fill missing cover art~~ ✅ Done (2026-05-28)
 
@@ -55,9 +65,9 @@ When it finishes, run the following **in order**. Do not skip steps or run iTune
 | iTunes backfill (Tier 1) | `npm run backfill:genres` | ✅ Done — 2,864 matched (66%), 1,494 no match |
 | Last.fm fallback (Tier 2) | `npm run backfill:genres:lastfm` | ✅ Done (previous session) |
 | Hand-curated overrides (Tier 3) | `apply-genre-overrides.ts` | ✅ Done (68 applied) |
-| **Last.fm enrichment (supplementary)** | `npm run enrich:genres:lastfm` | ✅ Done — 1,587 enriched, 137 already covered, 3,716 no Last.fm match |
+| **Last.fm enrichment (supplementary)** | `npm run enrich:genres:lastfm` | ✅ Done (2026-06-07) — 15,460 enriched, 5,511 covered, 325,979 no Last.fm match |
 
-`enrich:genres:lastfm` merges Last.fm tags with existing iTunes genres (e.g., iTunes wrote "k-pop", Last.fm adds "r&b" → stored "k-pop,r&b"). It runs on all releases, not just null-genre ones.
+`enrich:genres:lastfm` merges Last.fm tags with existing iTunes genres (e.g., iTunes wrote "k-pop", Last.fm adds "r&b" → stored "k-pop,r&b"). 325,979 releases had no Last.fm match — primarily obscure/non-English catalog iTunes doesn't tag well. Genre coverage is now at its practical ceiling without a manual curation pass.
 
 ### Catalog pipeline — completed setup
 
@@ -71,14 +81,20 @@ When it finishes, run the following **in order**. Do not skip steps or run iTune
 - ✅ `backfill:covers` — run 2026-05-28; 15 releases filled, 0 remaining
 - ✅ `queue:ingest` — done 2026-05-28: 4,568 inserted, 251 enriched, 149 skipped, 12 no-match, 0 failed
 - ✅ Ghost-row cleanup (2026-05-28) — 13 legacy `releases` rows with `title="Unknown"` AND `artist="Unknown"` deleted; all orphaned (0 ratings/reviews/pins/ranking entries). Source: legacy ingest path no longer present in current code; nothing in the live codebase writes literal `"Unknown"`/`"Unknown"`.
-- 🔄 `backfill:genres` — still running (2026-05-31); draining null-genre rows from queue:ingest additions
+- ✅ `backfill:genres` (second pass) — done 2026-06-01: 310 matched (44%), 393 no match; draining null-genre rows from queue:ingest additions
 - ✅ `dedup:releases` — done 2026-05-31: 70 high-confidence + 27 low-confidence groups merged; ~97 duplicate releases removed
 - ✅ `queue:discover` (run 1) — done 2026-05-31: 1,721 similar artists queued via Last.fm; total queue pending: 8,968
-- ⬜ `backfill:native:releases` — after `backfill:genres` finishes
-- ⬜ `check:completeness` — after `backfill:native:releases`
-- ⬜ `queue:ingest` (run 2) — drain 8,968 pending artists (overnight)
-- ⬜ `queue:discover` (run 2) — after run-2 ingest finishes
-- ⬜ `backfill:embeddings` — after discover/ingest loop stabilises
+- ✅ `backfill:native:releases` (second pass) — done 2026-06-01: 6 native names found, 250 no match, 583 skipped; most K-pop/J-pop releases have English titles even in local stores
+- ✅ `check:completeness` — done 2026-06-01: 533 complete, 120 incomplete (264 missing releases re-queued), 87 no iTunes presence; also fixed bug (was querying `artists` table instead of `artist_ingestion_queue`)
+- ✅ `queue:ingest` (run 2) — **complete (2026-06-03)**: 9 batches, ~289k new releases inserted; final catalog **299,468 releases** (294,586 iTunes-sourced, 944 Spotify-sourced, 3,938 legacy); 0 duplicate itunes_ids, 0 missing covers, 100% release_type coverage
+- ✅ Collab artist cleanup (2026-06-03) — `cleanup-collab-artists.ts` run: 303 queue entries + 2 artists deleted; `isCollaborationArtist()` filter added to `discover-lastfm-similar.ts` + `ingest-itunes-queue.ts`
+- ✅ Dedup bug recovery (2026-06-04) — `dedup:releases:fix` ran without `ORDER BY`; 93 self-matches caused releases to be "deleted". `requeue-affected.ts` run → `queue:ingest` confirmed **0 data loss** (0 new, 100 enriched, 819 skipped). `find-duplicate-releases.ts` fixed (`.order('id')`, Unicode `norm()`, K-FLIP+ skip IDs).
+- ✅ Recovery ingest (2026-06-04) — 0 data loss confirmed
+- ✅ `dedup:releases:fix` + `fix-all` (2026-06-04) — ~127 groups merged; LOONA EPs + Mars EP/Album added to SKIP_IDS
+- ✅ `check:completeness` run 2 (2026-06-04) — 5,569 complete, 2,428 incomplete, 549 no iTunes; 6,937 releases re-queued
+- ✅ discover → ingest loop **stable** (2026-06-04) — runs 3–6 complete; ~347k+ releases total (299k + 33k + 14k + misc)
+- ✅ `enrich:genres:lastfm` (2026-06-07) — 15,460 enriched; 325,979 no Last.fm match (practical ceiling reached)
+- 🔄 `backfill:embeddings` — ~93k embedded (2026-06-10); 66 failures — one more run, then rebuild HNSW index (step 14)
 
 ### Catalog normalization — done
 
@@ -94,7 +110,7 @@ All new write paths (iTunes queue ingest, vote route) enforce these formats at i
 Spotify is no longer used to collect catalog data. Every data-collection script and npm command that relied on Spotify is either dead or superseded. The web server still uses Spotify at runtime for search fallback and album detail, protected by the circuit breaker. See the [new catalog pipeline](#catalog-pipeline--non-spotify) below.
 
 ### New environment variables (check both devices)
-`LASTFM_API_KEY` was added to `.env.local`. **Copy it to the other device before running any Last.fm scripts there.** Full list in `apps/web/.env.example`.
+`LASTFM_API_KEY` and `JINA_API_KEY` were added to `.env.local`. **Copy both to the other device.** `JINA_API_KEY` must also be set in Vercel environment variables for hybrid search to work in production. Full list in `apps/web/.env.example`.
 
 ### Verified during 404 hardening (no separate verification step required)
 - Upstash Redis is receiving cache writes (`spotify:album:*`, `search:albums:*`, `spotify:rate-limited-until`)
@@ -166,6 +182,7 @@ If the **Vercel free tier** is hiding old logs, just wait for the next 429 — i
    UPSTASH_REDIS_REST_URL=
    UPSTASH_REDIS_REST_TOKEN=
    LASTFM_API_KEY=           # needed for backfill:genres:lastfm
+   JINA_API_KEY=             # needed for backfill:embeddings and live hybrid search
    ```
    ⚠️ **Two-device reminder:** if you add a new env var on one machine, copy it to the other manually. `.env.local` is gitignored and never synced.
 
@@ -306,30 +323,28 @@ Target: **mid-June 2026** (earlier the better).
 |-------|-------------|--------|
 | Phase 1 — seed catalog | 315 curated Korean/Japanese/Western classics | ✓ done (306/315) |
 | RS500 baseline | Rolling Stone 500 seeds "all-time" ranking | ✓ done (481 seeded) |
-| Phase 2 — Wikipedia artist queue | ~759 Korean artists from 19 Wikipedia categories | ✓ done — 759 artists queued (re-run `queue:build` once to backfill `name_native`) |
-| Phase 3 — iTunes queue ingest | Full discographies for all queued artists (no auth, no rate limits) | **Not yet run** — `npm run queue:ingest` |
-| Phase 4 — Last.fm similar discovery | Finds related artists for everyone in DB | **Not yet run** — `npm run queue:discover` |
-| Phase 4b — Native name backfill | Wikipedia langlinks (artists) + iTunes local store (releases) for `name_native`/`title_native` | **Phase 1 ✅ done** (~247/536 artists); Phase 2 pending (run after genre backfill finishes) — `npm run backfill:native:releases` |
+| Phase 2 — Wikipedia artist queue | ~759 Korean artists from 19 Wikipedia categories | ✓ done — 759 artists queued |
+| Phase 3 — iTunes queue ingest | Full discographies for all queued artists | ✓ done — **299,468 releases** (run 1: 4,568; run 2: ~289k) |
+| Phase 4 — Last.fm similar discovery | Finds related artists for everyone in DB | run 1 ✅ done (1,721 queued); run 2 pending after recovery ingest |
+| Phase 4b — Native name backfill | Wikipedia langlinks (artists) + iTunes local store (releases) | ✓ done — ~247/536 artists; releases pass 2 done (low yield: K-pop uses English titles) |
 | Phase 5 — miss-driven ingestion | `search_misses` table populated on every cache miss; ingest nightly | Logging active, no ingest job yet |
 | ~~Phase 3 related~~ | ~~Spotify `/artists/{id}/related-artists`~~ | ❌ Dead — Spotify deprecated this endpoint in late 2024 |
 | ~~Discography expansion~~ | ~~Spotify `/artists/{id}/albums`~~ | Superseded by iTunes queue ingest |
 
-**New pipeline run order (loop until queue stable):**
-```bash
-cd apps/web
-npm run queue:build          # re-run once to backfill name_native on existing 759 rows
-npm run queue:ingest         # drain queue via iTunes (no auth, no rate limits)
-npm run queue:discover       # find similar artists via Last.fm, add to queue
-# repeat queue:ingest → queue:discover until queue is empty
-npm run backfill:native      # fill native names for existing artists + releases
-npm run backfill:covers      # fill any remaining null cover_url (iTunes → Last.fm → MusicBrainz → Spotify)
-```
+**Current pipeline status (as of 2026-06-04):**
+- `queue:build` ✅ done (759 artists)
+- `queue:ingest` ✅ done × 2 runs (299,468 releases total)
+- `queue:discover` ✅ run 1 done (1,721 queued); run 2 pending after recovery ingest
+- `backfill:native` ✅ done (artists phase 1; releases pass 2 low yield)
+- `backfill:covers` ✅ done (0 remaining null covers)
+
+See START HERE checklist above for the remaining post-ingest steps.
 
 ---
 
 ### Week 4 — May 31–Jun 6: remaining
 
-- [ ] **Rate limiting** — `/api/check-username`, `/api/rankings/vote`, `/api/follow` via `@upstash/ratelimit` + Upstash Redis
+- [x] **Rate limiting** (2026-05-31) — `auth/resolve-username` POST (10/60s), `lists` POST (10/60s), `lists/[id]/items` POST+DELETE (30/60s), `rankings/user-ranking` POST (20/60s) via sliding window + Upstash Redis. `/api/rankings/vote` and `/api/follow` still pending.
 - [ ] **Per-user rate limit on `/api/search`** — added to scope on 2026-05-23 after the search-route audit; caps abuse and protects Spotify quota under burst load
 - [ ] **DB-FTS-first search rewrite** — `/api/search` currently calls Spotify on every uncached query; the GIN FTS index from migration `20260517000000_indexes_and_fts.sql` is built but unused. Rewrite the route to query Postgres FTS first and only fall through to Spotify when DB returns < N results. Self-healing via existing `saveBasicReleases` writeback. (2026-05-24: partial progress — DB fallback now exists for the rate-limited path via `searchReleasesInDb` / `searchArtistsInDb` with pg_trgm indexes, but the happy path still calls Spotify first.)
 - [ ] **Upstash Redis caching** — ranking leaderboards, album avg rating + count, homepage genre rows; invalidate on write
@@ -342,7 +357,7 @@ npm run backfill:covers      # fill any remaining null cover_url (iTunes → Las
 - [x] **Column consistency guarantee** (2026-05-24) — all 9+ write paths to `releases` audited; all inconsistencies fixed; `normalize-releases.ts` corrected 153 dates + 3,687 genre casings in historical data
 - [x] **React Native app** (Expo SDK 54) — core screens built (see Mobile App Status below)
 - [ ] EAS build + App Store (iOS) + Play Store (Android) submission
-  - ⚠️ Apple review takes 1–2 weeks — submit by Jun 1 to hit mid-June
+  - ⚠️ Apple review takes 1–2 weeks — submit ASAP; Jun 1 deadline passed, mid-June launch at risk
 
 ### Week 5 — Jun 7–14: QA + production deploy
 
@@ -501,12 +516,56 @@ npm run normalize:releases:dry     # preview only
 
 Last run (2026-05-24): 153 dates fixed, 3,687 genres lowercased, 0 release_types to fix.
 
-### Supabase migrations applied (2026-05-24 sessions)
+#### Pipeline integrity utilities (added 2026-06-03)
 
-All applied to prod via `supabase db push`:
+```bash
+# Sanity check — verifies data integrity at every pipeline stage
+npm run sanity
+# (no state file; always runs a full check)
+
+# Collab artist cleanup — removes Last.fm collab nodes from queue + artists table
+npm run cleanup:collabs              # dry run (default)
+npm run cleanup:collabs:fix          # apply changes
+# 303 queue entries + 2 artist rows deleted on first run
+
+# Fix collab artist_id — for releases like "Sik-K & Lil Moshpit" with null artist_id,
+# finds the primary artist (before & or ,) and sets artist_id on the release
+npm run fix:collab-artist-ids        # dry run
+npm run fix:collab-artist-ids:fix    # apply
+
+# Requeue accidentally-deleted releases (dedup bug 2026-06-03)
+npx tsx --env-file=.env.local scripts/requeue-affected.ts
+# then: npm run queue:ingest
+
+# Check a specific release in the DB by title keyword
+npx tsx --env-file=.env.local scripts/check-release.ts "Album Title"
+```
+
+#### Dedup scripts
+
+```bash
+# Find + fix duplicate releases (Spotify+iTunes cross-source duplicates)
+npm run dedup:releases          # dry run — shows groups
+npm run dedup:releases:fix      # merge high-confidence groups (safe)
+npm run dedup:releases:fix-all  # also merge low-confidence groups (check output first)
+```
+
+**⚠️ Dedup bug (2026-06-03):** The first run of `dedup:releases:fix` post-ingest-run-2 had a pagination bug — `loadAllReleases` fetched without `ORDER BY`, causing Supabase to return overlapping pages. A release seen on two different pages appeared as a "duplicate of itself" and was deleted. 93 releases were incorrectly deleted. Fixed by adding `.order('id')` to the query. `norm()` was also fixed to use `\p{L}\p{N}` (Unicode `u` flag) so Cyrillic/Arabic releases don't all collapse to identical normalized strings. Re-run `requeue-affected.ts` + `queue:ingest` to recover the deleted releases.
+
+### Supabase migrations applied
+
+All applied to prod via `supabase db push`. Notable recent migrations:
 - `20260525000000_catalog_ingestion_queue.sql` — creates `artist_ingestion_queue`, `search_misses` tables
+- `20260525000001_korean_name_columns.sql` — intermediate `_ko` columns (superseded by 000002; kept in history)
 - `20260525000002_native_language_columns.sql` — adds `title_native`, `artist_native`, `native_language` to `releases`; `name_native`, `native_language` to `artists`; trigram indexes
 - `20260525000003_native_language_constraint.sql` — CHECK constraint `native_language ~ '^[a-z]{2}$'`
+- `20260526000000_track_ratings.sql` — `track_ratings` table with RLS; applied 2026-05-31
+- `20260527000001_releases_uuid_pk.sql` — UUID PK migration; `spotify_id` column added
+- `20260527000002_search_improvements.sql` — `ratings_count`, pg_trgm, `search_releases()` RPC
+- `20260527000003_pgvector_embeddings.sql` — `embedding vector(1024)`, HNSW index, hybrid `search_releases()`
+- `20260531000000_search_artist_crosslang.sql` — cross-language artist JOIN in `search_releases()`
+- `20260531000001/000002_search_wordsim_*.sql` — word_similarity threshold 0.3 → 0.4 → 0.5
+- `20260601000000_fix_partial_dates.sql` — pads "2020" dates to "2020-01-01" — applied 2026-06-04
 
 ### Legacy scripts (Spotify-based — mostly dead)
 
@@ -573,7 +632,7 @@ npm run expand:genre        # Spotify genre sweep — still works
 - **Search degrades to DB on Spotify failure** (`/api/search`, 2026-05-24) — when any Spotify call throws (circuit open, 429, network error), the route returns `{ releases | artists, degraded: true }` from `searchReleasesInDb` / `searchArtistsInDb` (ilike against `releases.title` ∪ `releases.artist` and `artists.name`, backed by pg_trgm GIN indexes from migration `20260524000000_search_trigram_indexes.sql`). `AlbumSearchForm` shows an amber banner when `degraded: true`. Tracks return empty array (no local `tracks` table).
 - **Spotify endpoint deprecations (late 2024):** `/artists/{id}` no longer returns useful `genres` (mostly `[]`) and `/artists/{id}/related-artists` returns 404. `scripts/backfill-genres.ts` and `expand:related` mode in `scripts/expand-catalog.ts` are therefore dead. Hand-curated overrides for high-value rows: `apps/web/scripts/genre-overrides.json` + `apply-genre-overrides.ts`. Long-tail genre backfill needs a Last.fm rewrite.
 - **Album page fallback chain** (2026-05-28: now DB-first) — `getCachedAlbum` (DB row with tracklist) → `getBasicRelease` (DB row without tracklist; still renders a usable page) → `getSpotifyAlbum` (only for genuinely unknown Spotify-ID deep-links) → `notFound()`. Spotify is no longer called when a basic DB row exists — eliminates the per-visitor Spotify cost. Tracklists only appear on Spotify-cached albums; iTunes-sourced rows render without a tracklist section.
-- **Artist page discography** (2026-05-28: now DB-first) — `getArtistReleases` (DB query on `releases.artist_id`) is tried first. `getSpotifyArtistAlbums` only runs when the DB has zero releases for that artist (typical case: freshly-clicked Spotify-only artist not yet ingested). With 4,568 newly-ingested iTunes releases, most Korean artists hit the DB path and skip Spotify entirely.
+- **Artist page discography** (2026-05-28: DB-first; 2026-06-03: merged collab lookup) — `getArtistReleases` always runs two queries: FK-based (`artist_id = X`) and name-contains (`artist ILIKE '%name%'`), then deduplicates and merges. This means collaborative releases ("Sik-K & Lil Moshpit") appear on both artists' discography pages. `getSpotifyArtistAlbums` only runs when the merged result is empty — typical for freshly-clicked Spotify-only artists not yet ingested.
 - **Supabase region:** Seoul. ~180–220ms latency for Western users — acceptable while Korea-focused; address with read replicas at Western expansion.
 - **Supabase free tier:** 500MB storage (~100,000 albums). Paid tier ($25/mo) gives 8GB.
 - **Service role key** — server-side only for aggregate queries. Never exposed to client.

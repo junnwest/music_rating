@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Finds duplicate releases caused by the same album being ingested from both
  * Spotify and iTunes with mismatched artist names (e.g. "Yerin Baek" vs "백예린").
  *
@@ -42,6 +42,24 @@ const SKIP_IDS = new Set([
   '997ad16f-4066-4082-acf4-1489e50712a9',
   // Hokey Pokey (Richard & Linda Thompson) — 1975 original album (not the 2004 compilation)
   '8d3aeb70-0f16-4596-b96c-84434680aca6',
+  // K-FLIP+ (Sik-K & Lil Moshpit) — deluxe of K-FLIP; "+" stripped by norm() causes false match
+  '274d9b4a-112a-4fcb-93d8-511218b35368',
+  'f5e45ca3-ed19-4299-9e12-1a1754bd17ef',
+  // "Miles Tones" (1980) vs "Milestones" (1958) — completely different Miles Davis albums;
+  // norm() strips the space so both become "milestones"
+  '5c971ac2-5d0f-451b-bfd6-b12de27457cc',
+  'd3d1aab5-2ad4-4f18-bc8c-bd791a5853e5',
+  // "1945 해방" — Drunken Tiger (solo, 2016) vs Drunken Tiger & YDG (collab, 2005)
+  '5dd175e9-9930-429d-af95-365ea8a97775',
+  'a56718b8-0c39-47bb-9d75-1a00ff040203',
+  // LOONA "[#] - EP" (2020-02-05) vs "[+ +] - EP" (2018-08-20) — different EPs;
+  // norm() strips all brackets/symbols leaving "ep" = "ep"
+  '3b7060c6-cf76-4d71-b4f9-135d55bf3bb6',
+  'fe5f5a7e-e5fd-4aaa-a8cd-8ab00233f0a5',
+  // Mars "Rehearsal Tapes and Alt-Takes NYC 1976-1978" (6-track EP) vs
+  // "Rehearsal Tapes and Alt - Takes Nyc 1976 - 1978" (41-track Album) — different releases
+  '4acf9ab8-dc90-490a-9850-d664f461961f',
+  '9f4e06ea-e1da-4602-add6-6369c3b25f86',
 ]);
 
 function getDB() {
@@ -52,13 +70,14 @@ function getDB() {
 }
 type DB = ReturnType<typeof getDB>;
 
-// Strips everything except alphanumerics and CJK script chars, then lowercases.
-// "Our Love is Great" and "Our love is great" → "ourloveis great" (same)
-// "우리의 사랑은 위대해" stays as-is (Korean chars kept)
+// Strips punctuation and whitespace but preserves all Unicode scripts
+// (CJK, Cyrillic, Arabic, Devanagari, Hebrew, Thai, Greek, etc.).
+// Without this, Cyrillic-titled releases like "Душа - EP" and "Сон - EP"
+// both stripped to "ep" and appear as false duplicates.
 function norm(s: string): string {
   return s
     .toLowerCase()
-    .replace(/[^a-z0-9가-힣ぁ-ん゛-゜ァ-ヺー一-鿿]/g, '')
+    .replace(/[^\p{L}\p{N}]/gu, '') // strip non-letter/non-digit in any script
     .trim();
 }
 
@@ -89,6 +108,7 @@ async function loadAllReleases(db: DB): Promise<Release[]> {
       .from('releases')
       .select('id, title, artist, title_native, artist_native, release_type, release_date, total_tracks, spotify_id, itunes_id, cover_url, genres, tracklist, artist_id')
       .not('release_type', 'ilike', 'single')
+      .order('id')
       .range(from, from + 999);
     if (error) throw new Error(error.message);
     if (!data || data.length === 0) break;

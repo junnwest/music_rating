@@ -32,6 +32,42 @@ if (!LASTFM_KEY) {
   process.exit(1);
 }
 
+// Legitimate acts whose name contains & but are real single entities, not collabs.
+const LEGIT_COMPOUND_ACTS = new Set([
+  // Classic rock / pop / soul bands
+  'hall & oates', 'simon & garfunkel', 'sly & the family stone',
+  'earth, wind & fire', 'crosby, stills, nash & young', 'crosby, stills & nash',
+  'toots & the maytals', 'all natural lemon & lime flavors',
+  // Hip-hop duos
+  'eric b. & rakim', 'pete rock & c.l. smooth',
+  // Electronic groups
+  'above & beyond', 'pig&dan',
+  // K-pop groups / sub-units with & in official name
+  'ampers&one', '15&', 'gd & top', 'h&d',
+  'irene & seulgi', 'red velvet – irene & seulgi', 'red velvet - irene & seulgi',
+  'moonbin & sanha', 'super junior-d&e', 'jinjin & rocky',
+  'longguo & shihyun', 'soohyun & hoon',
+  // Korean bands with & in name
+  'kiha & the faces', 'shin jung hyun & yup juns',
+  // Folk duos
+  'richard & linda thompson',
+]);
+
+// Returns true for collaboration entries like "Coldplay & BTS", "Drake feat. 21 Savage".
+// These are Last.fm collaboration nodes, not real standalone artist entities.
+// Comma is intentionally NOT used as a separator — too many false positives
+// (Tyler, The Creator / Black Country, New Road / Car, The Garden).
+function isCollaborationArtist(name: string): boolean {
+  if (LEGIT_COMPOUND_ACTS.has(name.toLowerCase())) return false;
+  // feat. / ft. / featuring → always a feature credit
+  if (/\bfeat\.?\b|\bft\.?\b|\bfeaturing\b/i.test(name)) return true;
+  // Any & → collab unless whitelisted above
+  if (/&/.test(name)) return true;
+  // " + " separator → collab (rare in band names, common in collab credits)
+  if (/\s\+\s/.test(name)) return true;
+  return false;
+}
+
 // ── Last.fm API ───────────────────────────────────────────────────────────────
 
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
@@ -140,12 +176,15 @@ async function main() {
       noMatch++;
     } else {
       let queued = 0;
-      const toInsert = similar.slice(0, MAX_SIMILAR).map(s => ({
-        name:      s.name,
-        source:    'lastfm_similar',
-        source_id: s.mbid || null,
-        status:    'pending',
-      }));
+      const toInsert = similar
+        .slice(0, MAX_SIMILAR)
+        .filter(s => !isCollaborationArtist(s.name))
+        .map(s => ({
+          name:      s.name,
+          source:    'lastfm_similar',
+          source_id: s.mbid || null,
+          status:    'pending',
+        }));
 
       if (!DRY_RUN) {
         const { error: upsertErr } = await db

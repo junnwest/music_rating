@@ -80,12 +80,15 @@ function getDB() {
 type DB = ReturnType<typeof getDB>;
 
 async function getAllArtists(db: DB) {
+  // Query artist_ingestion_queue rather than the artists table — the queue is where
+  // itunes_artist_id is resolved and stored; the artists table column was never populated.
   const all: any[] = [];
   let from = 0;
   while (true) {
     const { data, error } = await db
-      .from('artists')
+      .from('artist_ingestion_queue')
       .select('id, name, itunes_artist_id, name_native')
+      .eq('status', 'done')
       .not('itunes_artist_id', 'is', null)
       .order('name')
       .range(from, from + 999);

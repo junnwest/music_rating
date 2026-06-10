@@ -106,51 +106,50 @@ function getDB() {
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
+type ReleaseRow = {
+  id: string;
+  title: string;
+  artist: string;
+  title_native: string | null;
+  artist_native: string | null;
+  genres: string | null;
+};
+
 async function main() {
   console.log(`\n  sillajuku embedding backfill — Jina v3${DRY_RUN ? ' [DRY RUN]' : ''}`);
   console.log(`  batch size : ${BATCH_SIZE}\n`);
 
   const db = getDB();
 
-  // Paginate through all releases — PostgREST caps a single response at 1000 rows
-  const PAGE = 1000;
-  const releases: { id: string; title: string; artist: string; title_native: string | null; artist_native: string | null; genres: string | null }[] = [];
-  for (let page = 0; ; page++) {
+  // Process page-by-page to avoid loading all ~338k rows into memory at once.
+  // ORDER BY id uses the PK index — fast even on large tables.
+  // ORDER BY ratings_count across 338k rows with embedding IS NULL timed out.
+  const PAGE = BATCH_SIZE;
+  let done = 0, failed = 0, total = 0;
+  let page = 0;
+
+  for (;;) {
     const { data, error } = await db
       .from('releases')
       .select('id, title, artist, title_native, artist_native, genres')
       .is('embedding', null)
-      .not('release_type', 'ilike', 'single')
-      .order('ratings_count', { ascending: false })
+      .neq('release_type', 'Single')
+      .order('id')
       .range(page * PAGE, (page + 1) * PAGE - 1);
+
     if (error) { console.error('DB fetch error:', error.message); process.exit(1); }
     if (!data?.length) break;
-    releases.push(...data);
-    if (data.length < PAGE) break;
-  }
 
-  if (!releases.length) {
-    console.log('  All releases already have embeddings. Nothing to do.\n');
-    return;
-  }
-
-  console.log(`  Releases to embed : ${releases.length}`);
-  console.log(`  Estimated tokens  : ~${Math.round(releases.length * 25 / 1000)}K`);
-  console.log(`  Estimated cost    : ~$${(releases.length * 25 * 0.02 / 1_000_000).toFixed(4)}\n`);
-
-  let done = 0, failed = 0;
-
-  for (let i = 0; i < releases.length; i += BATCH_SIZE) {
-    const batch = releases.slice(i, i + BATCH_SIZE);
+    const batch = data as ReleaseRow[];
+    total += batch.length;
     const texts = batch.map(buildPassageText);
 
-    process.stdout.write(
-      `  [${i + 1}–${Math.min(i + BATCH_SIZE, releases.length)}/${releases.length}] embedding… `
-    );
+    process.stdout.write(`  [page ${page + 1}, +${batch.length} | done ${done}] embedding… `);
 
     if (DRY_RUN) {
       console.log(`(dry run) text[0]: "${texts[0].slice(0, 60)}…"`);
       done += batch.length;
+      page++;
       continue;
     }
 
@@ -158,22 +157,17 @@ async function main() {
     if (!embeddings) {
       console.log('FAILED (API error) — will retry on next run');
       failed += batch.length;
+      page++;
       continue;
     }
 
-    // Write embeddings back to DB
-    const updates = batch.map((r, idx) => ({
-      id:        r.id,
-      embedding: JSON.stringify(embeddings[idx]),  // pgvector accepts JSON array string
-    }));
-
-    for (const { id, embedding } of updates) {
+    for (let idx = 0; idx < batch.length; idx++) {
       const { error: upErr } = await db
         .from('releases')
-        .update({ embedding: embedding as any })
-        .eq('id', id);
+        .update({ embedding: JSON.stringify(embeddings[idx]) as any })
+        .eq('id', batch[idx].id);
       if (upErr) {
-        process.stdout.write(`\n  DB update error for ${id}: ${upErr.message}\n`);
+        process.stdout.write(`\n  DB update error for ${batch[idx].id}: ${upErr.message}\n`);
         failed++;
       } else {
         done++;
@@ -181,6 +175,15 @@ async function main() {
     }
 
     console.log(`done (+${batch.length})`);
+
+    // After writing, re-query from page 0 each time — rows with embedding set
+    // will be excluded by .is('embedding', null), so the next page 0 is always fresh.
+    // (Don't increment page — the window shifts naturally as rows are embedded.)
+  }
+
+  if (total === 0) {
+    console.log('  All releases already have embeddings. Nothing to do.\n');
+    return;
   }
 
   console.log(`

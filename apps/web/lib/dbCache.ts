@@ -207,27 +207,33 @@ export async function getArtistReleases(artistId: string, artistName?: string): 
   const supabase = createServerClient();
   if (!supabase) return [];
 
-  let { data } = await supabase
-    .from('releases')
-    .select('id, title, artist, release_date, release_type, cover_url')
+  const select = 'id, title, artist, release_date, release_type, cover_url';
+  const baseQuery = () =>
+    supabase.from('releases').select(select).not('release_type', 'ilike', 'single');
+
+  // Primary: releases explicitly linked to this artist via FK
+  const { data: byId } = await baseQuery()
     .eq('artist_id', artistId)
-    .not('release_type', 'ilike', 'single')
     .order('release_date', { ascending: false });
 
-  // Fallback: search by artist name when ID is numeric (iTunes ID) or yielded no results
-  if ((!data || data.length === 0) && artistName) {
-    const { data: byName } = await supabase
-      .from('releases')
-      .select('id, title, artist, release_date, release_type, cover_url')
-      .ilike('artist', artistName)
-      .not('release_type', 'ilike', 'single')
-      .order('release_date', { ascending: false });
-    data = byName;
+  // Secondary: releases where the artist name appears anywhere in the artist field.
+  // Uses %name% so collaborative releases ("Sik-K & Lil Moshpit") appear on both
+  // Sik-K's and Lil Moshpit's discography pages.
+  const byNameData = artistName
+    ? (await baseQuery()
+        .ilike('artist', `%${artistName}%`)
+        .order('release_date', { ascending: false })).data
+    : null;
+
+  // Merge and deduplicate by id
+  const seen = new Set<string>();
+  const merged: typeof byId = [];
+  for (const r of [...(byId ?? []), ...(byNameData ?? [])]) {
+    if (!seen.has(r.id)) { seen.add(r.id); merged.push(r); }
   }
+  merged.sort((a, b) => (b.release_date ?? '').localeCompare(a.release_date ?? ''));
 
-  if (!data) return [];
-
-  return data.map((r) => ({
+  return merged.map((r) => ({
     id: r.id,
     title: r.title,
     artist: r.artist,

@@ -52,6 +52,28 @@ function normalizeStr(s: string): string {
 
 const NOISE_RE = /\b(sped[- ]up|slowed|instrumental|karaoke|off[- ]vocal|mr\.?|inst\.?)\b/i;
 
+const LEGIT_COMPOUND_ACTS = new Set([
+  'hall & oates', 'simon & garfunkel', 'sly & the family stone',
+  'earth, wind & fire', 'crosby, stills, nash & young', 'crosby, stills & nash',
+  'toots & the maytals', 'all natural lemon & lime flavors',
+  'eric b. & rakim', 'pete rock & c.l. smooth',
+  'above & beyond', 'pig&dan',
+  'ampers&one', '15&', 'gd & top', 'h&d',
+  'irene & seulgi', 'red velvet – irene & seulgi', 'red velvet - irene & seulgi',
+  'moonbin & sanha', 'super junior-d&e', 'jinjin & rocky',
+  'longguo & shihyun', 'soohyun & hoon',
+  'kiha & the faces', 'shin jung hyun & yup juns',
+  'richard & linda thompson',
+]);
+
+function isCollaborationArtist(name: string): boolean {
+  if (LEGIT_COMPOUND_ACTS.has(name.toLowerCase())) return false;
+  if (/\bfeat\.?\b|\bft\.?\b|\bfeaturing\b/i.test(name)) return true;
+  if (/&/.test(name)) return true;
+  if (/\s\+\s/.test(name)) return true;
+  return false;
+}
+
 function artworkUrl(url: string): string {
   return url.replace('100x100', '600x600').replace('100bb', '600bb');
 }
@@ -157,10 +179,12 @@ async function upsertRelease(
   album: any,
   nativeNames: { titleNative: string; artistNative: string; nativeLanguage: string } | undefined,
 ): Promise<'inserted' | 'enriched' | 'skipped'> {
-  // 1. Already have this iTunes ID
-  const { data: byItunes } = await db
-    .from('releases').select('id').eq('itunes_id', album.collectionId).maybeSingle();
-  if (byItunes) return 'skipped';
+  // 1. Already have this iTunes ID.
+  // Use .limit(1) not .maybeSingle() — maybeSingle() returns null data (not the row)
+  // when >1 rows match, causing the duplicate check to silently pass and insert again.
+  const { data: byItunesRows } = await db
+    .from('releases').select('id').eq('itunes_id', album.collectionId).limit(1);
+  if (byItunesRows && byItunesRows.length > 0) return 'skipped';
 
   // 2. Existing record with same title+artist (Spotify-sourced) — enrich it.
   // Two passes: first match by English artist name, then by artist_native.
@@ -258,6 +282,19 @@ async function main() {
     const row = queue[i];
     process.stdout.write(`  [${i + 1}/${queue.length}] ${row.name.padEnd(35)} `);
 
+    // Skip collaboration entries (e.g. "Coldplay & BTS", "Drake feat. 21 Savage").
+    // These are Last.fm collab nodes, not real standalone artist entities.
+    if (isCollaborationArtist(row.name)) {
+      process.stdout.write('collab — skipped\n');
+      if (!DRY_RUN) {
+        await db.from('artist_ingestion_queue')
+          .update({ status: 'skipped', processed_at: new Date().toISOString() })
+          .eq('id', row.id);
+      }
+      totalSkipped++;
+      continue;
+    }
+
     // Mark as processing
     if (!DRY_RUN) {
       await db.from('artist_ingestion_queue')
@@ -309,12 +346,19 @@ async function main() {
         else skp++;
       }
 
-      // Propagate name_native from the queue row to the artists table if set
-      if (row.name_native && artistLang && !DRY_RUN) {
+      // Propagate itunes_artist_id + name_native from the queue row to the artists table.
+      // The artists table has an itunes_artist_id column that check:completeness reads;
+      // it is never populated otherwise because resolution happens only in the queue flow.
+      if (!DRY_RUN) {
+        const artistUpdate: Record<string, any> = { itunes_artist_id: itunesId };
+        if (row.name_native && artistLang) {
+          artistUpdate.name_native     = row.name_native;
+          artistUpdate.native_language = artistLang;
+        }
         await db.from('artists')
-          .update({ name_native: row.name_native, native_language: artistLang })
+          .update(artistUpdate)
           .ilike('name', row.name)
-          .is('name_native', null);
+          .is('itunes_artist_id', null);
       }
 
       process.stdout.write(`+${ins} new, ~${enr} enriched, ${skp} skipped\n`);

@@ -39,6 +39,10 @@ Historical record of shipped features and session notes. Not needed at conversat
 - [x] Track star ratings — inline 14px star widget per track; writes to `track_ratings` table (migration in `supabase/migrations/20260526000000_track_ratings.sql` — apply manually)
 - [x] Inline star ratings — compact widget on Explore cards, rankings leaderboard ("Your Rating" column), ranking builder suggestions
 - [x] My Rankings (`/my-rankings`) — dashboard with ranking cards (All, Albums, EPs, Songs, per-genre) + "Recommended for You"; detail pages at `/my-rankings/[slug]`
+- [x] Add to List modal — AlbumActions dropdown opens user's playlists with toggle membership (add/remove album from any list inline)
+- [x] Listen Later bookmark button — inline on each Explore card next to the star rating widget
+- [x] Activity page two-column layout — RecommendedFeed sidebar (sticky, lg+ screens) alongside the feed
+- [x] RankBuilder auto-populate — fills tiers from user's rated albums by score band (5★→T1, 4–4.5★→T2, 3–3.5★→T3, 2–2.5★→T4); respects filterYear
 
 ### Social
 
@@ -148,6 +152,79 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries
 
+**2026-06-09/10 — `backfill:embeddings` resumed + nearly complete:**
+
+- **Found backfill incomplete** — overnight run was interrupted by computer shutdown. Dry-run confirmed 93,090 releases still needed embeddings at session start.
+- **First resume run** — 2,048 rows embedded before hitting a Supabase statement timeout (`canceling statement due to statement timeout`). Script is resumable; re-ran immediately.
+- **Second resume run** — 92,151 embedded, 66 failed. One Jina API batch failed early (page counter incremented to 2, skipping those 64 rows + 2 DB update errors = 66 total). Those 66 rows still have `embedding IS NULL`.
+- **Next session:** run `npm run backfill:embeddings` once more (should finish in under a minute — only 66 rows), then rebuild the HNSW index in Supabase SQL editor (step 14 SQL is in the README START HERE checklist).
+
+---
+
+**2026-06-04/07 — post-ingest pipeline: discover → ingest loop + genre enrichment:**
+
+- **discover → ingest loop complete** — 4 discover runs + 6 ingest runs; catalog grew from 299k → ~347k releases. Final cycle: run 4 discover (0 new, queue empty), confirming stability.
+  - Ingest run 3: 335 inserted / Run 4: 126 (converged) / Run 5: 33,331 (from 1,381 discovered artists) / Run 6: 13,730 (381 remaining)
+  - Discover run 2: 2,143 queued from 122 artists / Run 3: 0 new (all 917 done, 381 pending) / Run 4: 0 new, queue empty
+- **`enrich:genres:lastfm` complete (2026-06-07)** — 15,460 releases enriched with Last.fm tags; 5,511 already fully covered; 325,979 had no Last.fm match (practical ceiling — obscure/non-English catalog). Genre coverage is now stable.
+- **Next session:** `npm run backfill:embeddings` — Jina v3 embeddings on the full ~347k catalog for hybrid semantic search.
+
+---
+
+**2026-06-03/04 — queue:ingest run 2 completion + post-ingest fixes + dedup bug recovery:**
+
+- **`queue:ingest` run 2 complete** — all 9 batches done. Final catalog: **299,468 releases** (294,586 iTunes, 944 Spotify, 3,938 legacy); 0 missing covers; 0 duplicate itunes_ids; 1,013 null genres; 1 stuck `processing` entry.
+- **Sanity check script** — `sanity-check.ts` created (`npm run sanity`): verifies required fields, release type distribution, date formats, genre coverage, native names, duplicate itunes_ids, queue state, artist coverage, and cover URL validity.
+- **Collab artist cleanup** — `cleanup-collab-artists.ts` created (`npm run cleanup:collabs`). Deletes Last.fm collab nodes ("Drake feat. 21 Savage", "Coldplay & BTS") from `artist_ingestion_queue` and `artists`. Whitelist of 24 legitimate `&` acts maintained. Run result: **303 queue entries deleted, 2 artists table entries deleted**. Same `isCollaborationArtist()` filter added to `discover-lastfm-similar.ts` and `ingest-itunes-queue.ts` so future runs don't re-queue collabs.
+- **`ingest-itunes-queue.ts` fix: `itunes_artist_id` propagation** — was only propagating `name_native` back to `artists` table; now also writes `itunes_artist_id`. `check:completeness` reads `artist_ingestion_queue` IDs, but the `artists.itunes_artist_id` column was always null. Fixed.
+- **`ingest-itunes-queue.ts` fix: `.maybeSingle()` → `.limit(1)`** — `maybeSingle()` returns null data (not the row) when >1 rows match, causing the duplicate check to silently pass and insert again. Fixed to `.limit(1)`.
+- **Buggy dedup run + recovery** — `dedup:releases:fix` was run post-ingest but `loadAllReleases` paginated without `ORDER BY`. Supabase's default sort is non-deterministic: pages can overlap, so the same release appeared twice in different fetches. `findGroups()` saw a release paired with itself → treated as a duplicate pair → `mergeAndDelete()` deleted the actual release. **93 releases self-matched and "deleted" across groups 1–93.** Recovery scripts built and run:
+  - `requeue-affected.ts` — re-queued 18 entries (SF9 and Na Hoon-a had two queue rows each with different capitalisation).
+  - `insert-missing-artists.ts` — adds KozyPop, Lee Seung Hwan, Moon Hee Jun directly to queue (original Spotify-sourced artists with no queue entries).
+  - `find-and-requeue.ts` — one-shot utility used during investigation to reset specific artists.
+  - **Recovery ingest result (2026-06-04): 0 new, 100 enriched, 819 skipped — confirmed 0 data loss.** The buggy dedup merged each release with *itself*, so the kept row was the same `itunes_id`; ingest correctly skips it as already present. The 100 enrichments (74 for Eminem) recovered missing metadata on releases that were left with incomplete data after the self-merge.
+- **`find-duplicate-releases.ts` bug fixes**:
+  - Added `.order('id')` to the pagination query — eliminates the overlap that caused self-matches.
+  - Fixed `norm()` to use `\p{L}\p{N}` (Unicode-aware flag `u`) instead of explicitly listing character ranges. Without this, Cyrillic-titled releases like "Душа - EP" and "Сон - EP" both stripped to `"ep"` and triggered false matches.
+  - Added K-FLIP+ (`274d9b4a…` / `f5e45ca3…`) to `SKIP_IDS` — the `+` in the title is stripped by `norm()`, causing it to match K-FLIP standard edition.
+- **`fix-collab-artist-id.ts`** — new script (`npm run fix:collab-artist-ids`) for collab releases (e.g. "Sik-K & Lil Moshpit") with null `artist_id`. Finds the primary artist (name before `&`/`,`), looks it up in the `artists` table, and sets `artist_id` on the release.
+- **`check-release.ts`** — lightweight lookup utility: `npx tsx --env-file=.env.local scripts/check-release.ts "term"` prints id, type, date, tracks, spotify_id, itunes_id for matching releases. Used for investigation during the dedup incident.
+- **`dbCache.ts` `getArtistReleases`** — previously: FK lookup, fall back to name-exact when empty. Now: always run both FK lookup and `%name%` ilike, merge+deduplicate by id, sort by release_date desc. Effect: collaborative releases like "Sik-K & Lil Moshpit" now appear on **both** artists' discography pages.
+- **New npm scripts** — `sanity`, `cleanup:collabs`, `cleanup:collabs:fix`, `fix:collab-artist-ids`, `fix:collab-artist-ids:fix`.
+- **Migration `20260601000000_fix_partial_dates.sql`** — created (pads year-only dates "2020" → "2020-01-01"); **not yet applied**. Apply via Supabase SQL editor.
+
+### Post-ingest-run-2 progress (2026-06-04):
+1. ✅ `20260601000000_fix_partial_dates.sql` applied via Supabase SQL editor
+2. ✅ Stuck queue entry reset (`status='done'`)
+3. ✅ Recovery ingest: 0 new, 100 enriched, 819 skipped — 0 data loss
+4. ✅ `dedup:releases:fix` re-run: **16 high-confidence merged, 112 low-confidence skipped**
+5. ✅ `dedup:releases:fix-all`: **~111 more groups merged**. Miles Tones/Milestones and 1945 해방 correctly excluded via SKIP_IDS. Two false positives merged before SKIP_IDS were added: LOONA [#] vs [+ +] (different EPs, both normalize to "ep"); Mars EP (6 tracks) vs Album (41 tracks). Both user=0, no user data lost. Both added to SKIP_IDS for future runs.
+5. ✅ `check:completeness` (post-run-2): 5,569 complete, 2,428 incomplete, 549 no iTunes — **6,937 missing releases re-queued**
+6. ✅ `queue:ingest` (runs 3+4) — converged (2026-06-04): run 3: 335 ins / run 4: 126 ins — queue stable
+7. ✅ `queue:discover` (run 2, 2026-06-04) — 122 artists processed, 2,143 queued, 10 no match, 1,381 pending
+8. ✅ `queue:ingest` (run 5, 2026-06-04) — **33,331 inserted**, 2,581 enriched, 2,999 skipped, 31 no match, 0 failed
+9. ✅ `queue:discover` (run 3, 2026-06-04) — 0 new (all 917 DB artists already done); 381 still pending in queue
+10. ✅ `queue:ingest` (run 6, 2026-06-04) — **13,730 inserted**, 1,299 enriched, 1,400 skipped, 8 no match, 0 failed
+11. ✅ `queue:discover` (run 4, 2026-06-04) — 0 new; queue empty (pending: 0) — **loop stable**
+12. ✅ `enrich:genres:lastfm` (2026-06-07) — **15,460 enriched**, 5,511 already covered, 325,979 no Last.fm match — genre coverage at practical ceiling
+13. 🔲 `backfill:embeddings` — final pipeline step (next session)
+8. ⬜ repeat discover → ingest until queue stable
+9. ⬜ `enrich:genres:lastfm` — recover null genres
+10. ⬜ `backfill:embeddings` — final step
+
+---
+
+**2026-05-31 (later, session crashed) — Search quality fixes + rate limiting:**
+
+- **Cross-language artist lookup** — `search_releases()` SQL function now LEFT JOINs `artists` table so a query like "IU" matches releases stored as "아이유" via `artist_id`. Previously those releases were invisible to search. Migration: `20260531000000_search_artist_crosslang.sql`.
+- **Semantic candidate flood removed** — removed `(query_embedding IS NOT NULL AND embedding IS NOT NULL)` from the WHERE clause so the cosine similarity term only boosts scores for lexically-matched candidates, not all 9,200 embedded releases. Prevents semantic noise flooding results on every query.
+- **Exact/prefix artist priority over popularity** — `searchReleasesInDb` in `lib/dbCache.ts` now over-fetches 4× candidates, applies +1,000,000 bonus for exact artist name match and +100,000 for prefix match, then slices to `limit`. Prevents high-DB-popularity artifacts like "Iuiu Hq" from outranking "IU".
+- **`word_similarity` threshold raised 0.3 → 0.5** — two-step raise via migrations `20260531000001` → `20260531000002_search_wordsim_05.sql`. Eliminates fuzzy false positives ("Pink Ocean" for "Frank Ocean" at 0.42, "Vault" for "Vaundy" at 0.43) without regressing typo tolerance on longer strings (Blakpink, Kendrik Lamar, Newjeans unaffected).
+- **Rate limiting on 5 remaining mutation routes** — `auth/resolve-username` POST (10 req/60s, username enumeration risk), `lists` POST (10/60s), `lists/[id]/items` POST (30/60s), `lists/[id]/items` DELETE (30/60s), `rankings/user-ranking` POST (20/60s). All use sliding window via `lib/rateLimit.ts` + Upstash Redis; gracefully skip if Redis is unconfigured.
+- **`backfill:genres` (second pass)** — ran 351 more releases (5,357 → 5,708 processed IDs) before VSCode crashed. Still incomplete; resume with `npm run backfill:genres`.
+
+---
+
 **2026-05-31 — Dedup pipeline, catalog integrity, ingest plan:**
 
 - **`track_ratings` migration applied to prod** — ran safe idempotent SQL (DROP POLICY IF EXISTS before recreating) to fix partial-apply error from previous session.
@@ -158,14 +235,19 @@ Historical record of shipped features and session notes. Not needed at conversat
 - **`ingest-itunes-queue.ts` prevention fix** — `upsertRelease` now checks `artist_native` as a fallback when the English artist name doesn't match (e.g. "Yerin Baek" vs "백예린"), preventing future cross-language-name duplicates.
 - **Dedup run** — `dedup:releases:fix`: 70 high-confidence groups merged. `dedup:releases:fix-all`: 27 low-confidence groups also merged. ~97 duplicate releases removed total. No user data lost (all score=0). Some false positives were caught in the low-confidence run (MOTOMAMI vs MOTOMAMI+, MAYHEM standard vs deluxe, LOONA [#] vs [+ +], etc.) — these will be recovered via `check:completeness` + `queue:ingest` for iTunes-sourced releases.
 - **`queue:discover` run 1** — 89 artists processed (708 already done), 1,721 similar artists queued via Last.fm. Total queue pending: 8,968.
-- **`backfill:genres`** — still running as of session end.
+- **`backfill:genres`** — still running as of session end (5,357 → 5,708 processed IDs before VSCode crash; resumed and completed 2026-06-01: 703 total null-genre releases processed, 310 matched (44%), 393 no match).
 
-### Pending pipeline (run in order after `backfill:genres` finishes):
-1. `npm run backfill:native:releases`
-2. `npm run check:completeness`
-3. `npm run queue:ingest` (overnight — 8,968 artists)
-4. `npm run queue:discover` → `npm run queue:ingest` (repeat until stable)
-5. `npm run backfill:embeddings` (once ingest loop is stable)
+### Pipeline progress (2026-06-01 continued):
+- **`backfill:native:releases` (second pass) complete** — 6 native names found (all Haruomi Hosono Japanese titles), 250 no match, 583 skipped. Low yield confirmed: K-pop/J-pop releases use English titles in local iTunes stores.
+- **`check:completeness` bug fixed + run** — script was querying `artists.itunes_artist_id` (always null) instead of `artist_ingestion_queue` where the resolved IDs actually live. Fixed both the query source and `ingest-itunes-queue.ts` to write `itunes_artist_id` back to `artists` going forward. Results: **533 complete, 120 incomplete (264 missing releases re-queued), 87 no iTunes presence**.
+- **`queue:ingest` run 2 batch 1 complete** — +32,956 inserted, 2,097 enriched, 4,600 skipped, 13 no-match, 0 failed. Catalog grew from ~10k → ~64k releases.
+- **`queue:ingest` run 2 batch 2 complete** — +37,598 inserted, 3,695 enriched, 4,184 skipped, 14 no-match, 0 failed. Catalog ~101k+ releases. ~6,800 artists still pending.
+- **`queue:ingest` run 2 batch 3 complete** — +29,594 inserted, 2,371 enriched, 4,344 skipped, 25 no-match, 0 failed. Catalog ~110k+ releases. ~5,800 artists still pending.
+- **`queue:ingest` run 2 complete (2026-06-03)** — all 9 batches done. Final sanity check: **299,468 releases** (294,586 iTunes, 944 Spotify, 3,938 legacy); 0 missing covers; 0 duplicate itunes_ids (`.limit(1)` fix confirmed working); 1,013 null genres (iTunes missing `primaryGenreName`); 1 stuck `processing` queue entry (needs manual reset); bad date "2020" still present (migration `20260601000000_fix_partial_dates.sql` not yet applied).
+- **`queue:ingest` run 2 batch 5 complete** — +25,962 inserted, 2,278 enriched, 2,423 skipped, 11 no-match, 0 failed. Catalog ~165k+ releases. ~3,800 artists still pending. (Skip count drop vs prior batches: collab cleanup removed 303 queue entries.)
+- **`queue:ingest` run 2 batch 4 complete** — +29,120 inserted, 2,586 enriched, 4,189 skipped, 31 no-match, 0 failed. Catalog ~139k+ releases. ~4,800 artists still pending.
+- **Collab artist fix** — added `isCollaborationArtist()` filter to `discover-lastfm-similar.ts` and `ingest-itunes-queue.ts`; `cleanup-collab-artists.ts` script created and run: 303 collab queue entries deleted, 2 artists table entries deleted. Whitelist of 24 legitimate `&` acts maintained across all 3 scripts.
+- **Sanity checks** — `npm run sanity` script created. Findings: no null titles/artists/types, 0 missing covers, 98% genre coverage, 1 bad date ("2020" — migration `20260601000000_fix_partial_dates.sql` created, apply post-ingest), 4 duplicate itunes_ids (root cause fixed: `.maybeSingle()` → `.limit(1)` in `upsertRelease`; run `dedup:releases:fix` post-ingest), 987 null genres (iTunes missing `primaryGenreName` — fix with `enrich:genres:lastfm` post-ingest), singles (64% of catalog) already excluded from `recommendable_releases` view.
 
 ---
 
@@ -180,8 +262,14 @@ Historical record of shipped features and session notes. Not needed at conversat
 - **My Rankings detail page** (`/my-rankings/[slug]`) — full-page sorted list for each slug (`all`, `albums`, `eps`, `songs`, genre slugs). Back button to dashboard.
 - **Sidebar** — added "My List" nav item with `ListOrdered` icon linking to `/my-rankings`.
 
-### Pending
-- `track_ratings` table must be created in prod. SQL is in `supabase/migrations/20260526000000_track_ratings.sql`. Paste into Supabase dashboard → SQL Editor → Run. Until then, song ratings save silently fail.
+### Also shipped in this session (committed after docs update, not previously recorded)
+
+- **Add to List modal** — `AlbumActions` dropdown now opens a modal showing the user's lists with checkmarks; clicking toggles the album in/out of that list inline.
+- **Listen Later bookmark** — `ExplorePage` cards gained an inline `BookmarkButton` (Listen Later) alongside the star widget; no need to open the album page to save for later.
+- **Activity page two-column layout** — page body becomes a two-column grid on `lg+` screens: feed on the left, `RecommendedFeed` sidebar (sticky) on the right.
+- **RankBuilder auto-populate** — "Auto-fill" button fills tiers from user's rated catalog by score band (5★→T1, 4–4.5★→T2, 3–3.5★→T3, 2–2.5★→T4), respecting the active `filterYear`. Saves time when building a year ranking.
+- **Fix: Supabase PromiseLike** — wrapped `PromiseLike` returns from Supabase in `Promise.resolve()` before chaining `.catch()` — was causing a build-time type error in strict mode.
+- **`dbCache.ts` iTunes artist ID resolution** — `getCachedArtist` / `getArtistFromDb` now resolve numeric iTunes artist IDs via the `itunes_artist_id` column; artist pages no longer 404 when the URL contains a numeric ID from iTunes search.
 
 ---
 
