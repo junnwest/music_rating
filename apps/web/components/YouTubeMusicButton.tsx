@@ -1,7 +1,21 @@
 'use client';
 
+import { useStreamingPlatform, type StreamingPlatform } from './StreamingPlatformContext';
+
 function buildSearchUrl(base: string, query: string): string {
   return `${base}${encodeURIComponent(query)}`;
+}
+
+// Which of the three icons to show, given the user's preference.
+// No preference (null) → show all three. A preference → show only that one.
+// `undefined` (still loading) is treated as "show all" to avoid a flash of one icon.
+function visibility(preferred: StreamingPlatform | null | undefined) {
+  const all = preferred == null;
+  return {
+    showSpotify: all || preferred === 'spotify',
+    showYT: all || preferred === 'youtube_music',
+    showTidal: all || preferred === 'tidal',
+  };
 }
 
 // ── Icons ────────────────────────────────────────────────────────────────────
@@ -67,6 +81,9 @@ export function StreamingButtons({
   album: string;
   spotifyUrl?: string | null;
 }) {
+  const { preferred } = useStreamingPlatform();
+  const { showSpotify, showYT, showTidal } = visibility(preferred);
+
   const query = `${artist} ${album}`;
   const ytUrl = buildSearchUrl('https://music.youtube.com/search?q=', query);
   const tidalUrl = buildSearchUrl('https://listen.tidal.com/search?q=', query);
@@ -74,9 +91,9 @@ export function StreamingButtons({
 
   return (
     <div className="inline-flex items-center gap-1.5">
-      <StreamingLink href={spUrl} icon={<SpotifyIcon />} label="Play on Spotify" />
-      <StreamingLink href={ytUrl} icon={<YTMusicIcon />} label="Play on YouTube Music" />
-      <StreamingLink href={tidalUrl} icon={<TidalIcon />} label="Play on Tidal" />
+      {showSpotify && <StreamingLink href={spUrl} icon={<SpotifyIcon />} label="Play on Spotify" />}
+      {showYT && <StreamingLink href={ytUrl} icon={<YTMusicIcon />} label="Play on YouTube Music" />}
+      {showTidal && <StreamingLink href={tidalUrl} icon={<TidalIcon />} label="Play on Tidal" />}
     </div>
   );
 }
@@ -112,6 +129,9 @@ export function TrackStreamingButtons({
   artist: string;
   track: string;
 }) {
+  const { preferred } = useStreamingPlatform();
+  const { showSpotify, showYT, showTidal } = visibility(preferred);
+
   const query = `${artist} ${track}`;
   const spUrl = buildSearchUrl('https://open.spotify.com/search/', query);
   const ytUrl = buildSearchUrl('https://music.youtube.com/search?q=', query);
@@ -119,9 +139,9 @@ export function TrackStreamingButtons({
 
   return (
     <span className="inline-flex items-center gap-1">
-      <TrackLink href={spUrl} icon={<SpotifyIcon size={13} />} label="Spotify" />
-      <TrackLink href={ytUrl} icon={<YTMusicIcon size={13} />} label="YouTube Music" />
-      <TrackLink href={tidalUrl} icon={<TidalIcon size={13} />} label="Tidal" />
+      {showSpotify && <TrackLink href={spUrl} icon={<SpotifyIcon size={13} />} label="Spotify" />}
+      {showYT && <TrackLink href={ytUrl} icon={<YTMusicIcon size={13} />} label="YouTube Music" />}
+      {showTidal && <TrackLink href={tidalUrl} icon={<TidalIcon size={13} />} label="Tidal" />}
     </span>
   );
 }

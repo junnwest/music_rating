@@ -107,6 +107,39 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Badge / accomplishment notifications (unnotified ones)
+  const { data: badgeRows } = await supabase
+    .from('user_accomplishments')
+    .select('definition_id, earned_at, notified, accomplishment_definitions(title, description, icon)')
+    .eq('user_id', userId)
+    .order('earned_at', { ascending: false })
+    .limit(20);
+
+  for (const row of badgeRows ?? []) {
+    const def = row.accomplishment_definitions as any;
+    if (!def) continue;
+    notifications.push({
+      id: `badge-${row.definition_id}`,
+      type: 'badge',
+      title: `Badge unlocked: ${def.title}`,
+      body: def.description,
+      timeAgo: timeAgo(new Date(row.earned_at)),
+      read: row.notified || isRead(row.earned_at),
+    });
+  }
+
+  // Sort all notifications newest first
+  notifications.sort((a, b) => {
+    const aId = a.id as string;
+    const bId = b.id as string;
+    const aTime = aId.startsWith('badge-') ? (badgeRows ?? []).find((r: any) => `badge-${r.definition_id}` === aId)?.earned_at :
+                  aId.startsWith('follow-') ? (followerRes.data ?? []).find((r: any) => `follow-${r.follower_id}` === aId)?.created_at : null;
+    const bTime = bId.startsWith('badge-') ? (badgeRows ?? []).find((r: any) => `badge-${r.definition_id}` === bId)?.earned_at :
+                  bId.startsWith('follow-') ? (followerRes.data ?? []).find((r: any) => `follow-${r.follower_id}` === bId)?.created_at : null;
+    if (!aTime || !bTime) return 0;
+    return new Date(bTime).getTime() - new Date(aTime).getTime();
+  });
+
   return NextResponse.json({ notifications });
 }
 

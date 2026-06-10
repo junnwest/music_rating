@@ -287,7 +287,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
 
   // ── Save ──
   async function save() {
-    if (!userId) { showToast('Sign in to save your ranking'); return; }
+    if (!userId) { showToast('Sign in to save your tierlist'); return; }
     setSaving(true);
     const entries = ranking.flatMap((tier, i) =>
       tier.map(a => ({ releaseId: a.id, rank: i + 1, title: a.title, artist: a.artist, coverUrl: a.coverUrl }))
@@ -300,7 +300,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
       });
       if (res.ok) {
         setSavedRanking(ranking.map(t => [...t]));
-        showToast('Ranking saved');
+        showToast('Tierlist saved');
         router.refresh();
       } else {
         showToast('Failed to save');
@@ -341,11 +341,11 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
         padding: '0 24px', height: 56,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <button onClick={() => tryNavigate(`/rankings/${slug}`)} style={{ fontSize: 12, color: 'rgb(var(--color-muted))', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, padding: 0 }}>
+        <button onClick={() => tryNavigate(`/leaderboard/${slug}`)} style={{ fontSize: 12, color: 'rgb(var(--color-muted))', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, padding: 0 }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M15 18l-6-6 6-6" />
           </svg>
-          Rankings
+          Leaderboard
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {userId && (
@@ -374,7 +374,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
               opacity: saving ? 0.5 : 1, transition: 'opacity 0.15s',
             }}
           >
-            {saving ? 'Saving…' : 'Save Ranking'}
+            {saving ? 'Saving…' : 'Save Tierlist'}
           </button>
         </div>
       </header>
@@ -619,7 +619,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
             onMouseEnter={e => (e.currentTarget.style.background = 'rgb(var(--color-surface))')}
             onMouseLeave={e => (e.currentTarget.style.background = 'none')}
           >
-            Add to ranking
+            Add to tierlist
           </button>
           <button
             onClick={() => { dismissAlbum(contextMenu.album); setContextMenu(null); }}
@@ -644,7 +644,7 @@ export default function RankBuilder({ categoryId, categoryTitle, slug, initialSu
           >
             <h2 style={{ fontSize: 18, fontWeight: 800, color: 'rgb(var(--color-ink))', margin: '0 0 8px' }}>Save changes?</h2>
             <p style={{ fontSize: 14, color: 'rgb(var(--color-muted))', lineHeight: 1.55, margin: '0 0 28px' }}>
-              Your ranking has unsaved changes.
+              Your tierlist has unsaved changes.
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <button

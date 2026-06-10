@@ -32,7 +32,7 @@ export default function BottomNav() {
     { icon: Home,   label: t('nav.home'),     path: '/' },
     { icon: Search, label: t('nav.search'),   path: '/search' },
     { icon: Flame,  label: t('nav.feed'),     path: '/activity' },
-    { icon: Trophy, label: t('nav.rankings'), path: '/rankings' },
+    { icon: Trophy, label: t('nav.leaderboard'), path: '/leaderboard' },
     { icon: User,   label: t('nav.profile'),  path: profilePath },
   ];
 

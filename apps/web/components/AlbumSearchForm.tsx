@@ -7,6 +7,7 @@ import { Search } from 'lucide-react';
 import type { AlbumRelease } from '../types';
 import type { SpotifyArtist } from '../lib/spotify';
 import { useLanguage } from '../lib/i18n';
+import QuickAddButton from './QuickAddButton';
 
 type FilterKey = 'All' | 'Albums' | 'EPs' | 'Singles' | 'Live';
 const FILTER_KEYS: FilterKey[] = ['All', 'Albums', 'EPs', 'Singles', 'Live'];
@@ -125,17 +126,20 @@ export default function AlbumSearchForm() {
                   artistMatch.name[0].toUpperCase()
                 )}
               </div>
-              <div>
+              <div className="flex-1 min-w-0">
                 <div className="text-[14px] font-bold text-ink">{artistMatch.name}</div>
                 {artistMatch.genres.length > 0 && (
-                  <div className="text-[12px] text-muted mt-0.5">
+                  <div className="text-[12px] text-muted mt-0.5 truncate">
                     {artistMatch.genres.slice(0, 3).join(', ')}
                   </div>
                 )}
               </div>
-              <div className="ml-3 text-[12px] font-semibold text-mint-dark">
+              <span
+                className="ml-2 flex-shrink-0 px-3 py-[6px] rounded-[7px] text-[12px] font-semibold text-white"
+                style={{ background: '#E8A020' }}
+              >
                 {t('search.viewArtist')}
-              </div>
+              </span>
             </Link>
           )}
 
@@ -198,7 +202,7 @@ export default function AlbumSearchForm() {
         {filteredReleases.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-[22px]">
             {filteredReleases.map((release) => (
-              <Link key={release.id} href={`/album/${release.id}`} className="block min-w-0">
+              <Link key={release.id} href={`/album/${release.id}`} className="block min-w-0 group">
                 <div className="relative overflow-hidden rounded-[7px]" style={{ aspectRatio: '1 / 1' }}>
                   {release.coverUrl ? (
                     <img
@@ -209,6 +213,15 @@ export default function AlbumSearchForm() {
                   ) : (
                     <div className="absolute inset-0 bg-surface border border-divider" />
                   )}
+                  <div className="absolute top-[6px] right-[6px]">
+                    <QuickAddButton
+                      albumId={release.id}
+                      albumTitle={release.title}
+                      albumArtist={release.artist}
+                      coverUrl={release.coverUrl}
+                      overlay
+                    />
+                  </div>
                 </div>
                 <div className="mt-[9px]">
                   <div className="text-[13px] font-semibold text-ink truncate">{release.title}</div>

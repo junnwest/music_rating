@@ -59,6 +59,8 @@ const COUNTRIES = [
   { code: 'OTHER', label: '🌍 Other' },
 ];
 
+type StreamingPlatform = 'spotify' | 'youtube_music' | 'tidal' | null;
+
 interface IdentityData {
   displayName: string;
   username: string;
@@ -119,7 +121,7 @@ function StepIdentity({
 
   return (
     <div>
-      <StepDots current={0} total={3} />
+      <StepDots current={0} total={4} />
       <h2 className="text-[26px] font-extrabold text-ink mb-1" style={{ letterSpacing: '-0.7px' }}>
         {t('onboarding.setupProfile')}
       </h2>
@@ -226,7 +228,7 @@ function StepGenres({
 
   return (
     <div>
-      <StepDots current={1} total={3} />
+      <StepDots current={1} total={4} />
       <h2 className="text-[26px] font-extrabold text-ink mb-1" style={{ letterSpacing: '-0.7px' }}>
         {t('onboarding.whatDoYouListen')}
       </h2>
@@ -267,6 +269,129 @@ function StepGenres({
           onClick={() => onNext([...selected])}
           disabled={selected.size < 3}
           className="flex-[2] bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-lg py-[13px] text-[14px] font-bold transition hover:opacity-80 disabled:opacity-35 disabled:cursor-not-allowed"
+        >
+          {t('onboarding.nextBtn')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const STREAMING_PLATFORMS = [
+  {
+    id: 'spotify' as const,
+    label: 'Spotify',
+    color: '#1DB954',
+    icon: (
+      <svg width={28} height={28} viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
+      </svg>
+    ),
+  },
+  {
+    id: 'youtube_music' as const,
+    label: 'YouTube Music',
+    color: '#FF0000',
+    icon: (
+      <svg width={28} height={28} viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
+        <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.5" />
+        <polygon points="10.5,9.5 15.5,12 10.5,14.5" fill="currentColor" />
+      </svg>
+    ),
+  },
+  {
+    id: 'tidal' as const,
+    label: 'Tidal',
+    color: '#000000',
+    icon: (
+      <svg width={28} height={28} viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 4.5l-4 4-4-4 4-4 4 4zm0 7l-4 4-4-4 4-4 4 4zm7-7l-4 4-4-4 4-4 4 4zm0 0l4 4-4 4-4-4 4-4z" />
+      </svg>
+    ),
+  },
+];
+
+function StepStreaming({
+  value,
+  onChange,
+  onNext,
+  onBack,
+}: {
+  value: StreamingPlatform;
+  onChange: (v: StreamingPlatform) => void;
+  onNext: () => void;
+  onBack: () => void;
+}) {
+  const { t } = useLanguage();
+  return (
+    <div>
+      <StepDots current={2} total={4} />
+      <h2 className="text-[26px] font-extrabold text-ink mb-1" style={{ letterSpacing: '-0.7px' }}>
+        {t('onboarding.streamingTitle')}
+      </h2>
+      <p className="text-[13px] text-muted mb-8">{t('onboarding.streamingDesc')}</p>
+
+      <div className="flex flex-col gap-3 mb-8">
+        {STREAMING_PLATFORMS.map((p) => {
+          const selected = value === p.id;
+          return (
+            <button
+              key={p.id}
+              onClick={() => onChange(selected ? null : p.id)}
+              className="flex items-center gap-4 px-5 py-4 rounded-xl border-2 text-left transition"
+              style={
+                selected
+                  ? { borderColor: '#E8A020', background: 'rgba(232,160,32,0.07)' }
+                  : { borderColor: '#EBEBEB', background: 'transparent' }
+              }
+            >
+              <span style={{ color: selected ? p.color : '#A0A09C' }}>{p.icon}</span>
+              <span className="text-[15px] font-semibold text-ink">{p.label}</span>
+              {selected && (
+                <span className="ml-auto text-[#E8A020]">
+                  <svg width={18} height={18} viewBox="0 0 18 18" fill="none">
+                    <circle cx="9" cy="9" r="9" fill="#E8A020" />
+                    <path d="M5 9l3 3 5-5" stroke="#7A4F0A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </span>
+              )}
+            </button>
+          );
+        })}
+
+        <button
+          onClick={() => onChange(null)}
+          className="flex items-center gap-4 px-5 py-4 rounded-xl border-2 text-left transition"
+          style={
+            value === null
+              ? { borderColor: '#E8A020', background: 'rgba(232,160,32,0.07)' }
+              : { borderColor: '#EBEBEB', background: 'transparent' }
+          }
+        >
+          <span className="text-[15px] font-semibold text-ink">{t('onboarding.streamingNone')}</span>
+          <span className="text-[12px] text-muted ml-1">— {t('onboarding.streamingNoneDesc')}</span>
+          {value === null && (
+            <span className="ml-auto text-[#E8A020]">
+              <svg width={18} height={18} viewBox="0 0 18 18" fill="none">
+                <circle cx="9" cy="9" r="9" fill="#E8A020" />
+                <path d="M5 9l3 3 5-5" stroke="#7A4F0A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
+          )}
+        </button>
+      </div>
+
+      <div className="flex gap-3">
+        <button
+          onClick={onBack}
+          className="flex-1 border border-divider text-ink rounded-lg py-[13px] text-[14px] font-semibold hover:bg-surface transition"
+        >
+          {t('onboarding.backBtn')}
+        </button>
+        <button
+          onClick={onNext}
+          className="flex-[2] bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-lg py-[13px] text-[14px] font-bold transition hover:opacity-80"
         >
           {t('onboarding.nextBtn')}
         </button>
@@ -416,7 +541,7 @@ function StepAlbums({
 
   return (
     <div>
-      <StepDots current={2} total={3} />
+      <StepDots current={3} total={4} />
       <div className="flex items-end justify-between mb-1">
         <h2 className="text-[26px] font-extrabold text-ink" style={{ letterSpacing: '-0.7px' }}>
           {t('onboarding.yourEssentials')}
@@ -458,6 +583,7 @@ export default function OnboardingPage() {
   const [step, setStep] = useState(0);
   const [identity, setIdentity] = useState<IdentityData | null>(null);
   const [genres, setGenres] = useState<string[]>([]);
+  const [streamingPlatform, setStreamingPlatform] = useState<StreamingPlatform>(null);
   const [albumsSelected, setAlbumsSelected] = useState<PickAlbum[]>([]);
   const [saving, setSaving] = useState(false);
   const [defaultUsername, setDefaultUsername] = useState('');
@@ -488,6 +614,7 @@ export default function OnboardingPage() {
         bio: identity.bio || null,
         preferred_genres: genres.join(','),
         country: identity.country || null,
+        preferred_streaming_platform: streamingPlatform,
       }, { onConflict: 'id' });
 
       if (albums.length > 0) {
@@ -539,7 +666,15 @@ export default function OnboardingPage() {
             onBack={() => setStep(0)}
           />
         )}
-        {step === 2 && identity && (
+        {step === 2 && (
+          <StepStreaming
+            value={streamingPlatform}
+            onChange={setStreamingPlatform}
+            onNext={() => setStep(3)}
+            onBack={() => setStep(1)}
+          />
+        )}
+        {step === 3 && identity && (
           <StepAlbums
             genres={genres}
             selected={albumsSelected}
@@ -548,10 +683,10 @@ export default function OnboardingPage() {
         )}
       </div>
 
-      {step === 2 && identity && (
+      {step === 3 && identity && (
         <div className="flex gap-3 w-full" style={{ maxWidth: 860 }}>
           <button
-            onClick={() => setStep(1)}
+            onClick={() => setStep(2)}
             disabled={saving}
             className="flex-1 bg-page border border-divider text-ink rounded-lg py-[13px] text-[14px] font-semibold hover:bg-surface transition disabled:opacity-40"
           >

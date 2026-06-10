@@ -85,7 +85,7 @@ export default function TopRankingsMenu({ categories, topAlbumsMap, voteCountMap
                 })}
               </div>
 
-              <Link href={`/rankings/${cat.slug}`} className="flex-1 min-w-0">
+              <Link href={`/leaderboard/${cat.slug}`} className="flex-1 min-w-0">
                 <span className="text-[14px] font-semibold text-ink truncate block group-hover:text-mint-dark transition">
                   {rowTitle(cat)}
                 </span>
@@ -97,13 +97,13 @@ export default function TopRankingsMenu({ categories, topAlbumsMap, voteCountMap
 
               <div className="flex items-center gap-2 flex-shrink-0">
                 <Link
-                  href={`/rankings/${cat.slug}/rank`}
+                  href={`/leaderboard/${cat.slug}/rank`}
                   className="text-[12px] font-medium text-muted hover:text-ink transition whitespace-nowrap"
                 >
                   {t('rankings.rank')}
                 </Link>
                 <Link
-                  href={`/rankings/${cat.slug}`}
+                  href={`/leaderboard/${cat.slug}`}
                   className="text-[12px] font-semibold text-ink border border-[#DDDDD8] rounded-lg px-3 py-1.5 hover:bg-surface transition whitespace-nowrap"
                 >
                   {t('rankings.viewRanking')}

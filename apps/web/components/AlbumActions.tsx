@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, ChevronRight, Plus, Bookmark, Pin, Trophy, BookmarkCheck, X, List } from 'lucide-react';
+import { Check, ChevronRight, Plus, Bookmark, Pin, Trophy, BookmarkCheck, X, List, ListPlus } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
+import { usePlaylist } from './PlaylistContext';
+import CollectionPickerPopover from './CollectionPickerPopover';
 
 const LL_KEY = 'sillajuku:listen-later';
 const PINNED_MAX = 6;
@@ -72,6 +74,9 @@ interface RankingCategory {
 
 export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUrl }: Props) {
   const router = useRouter();
+  const { activeListId, activeListName, addToActive } = usePlaylist();
+  const [quickAdded, setQuickAdded] = useState(false);
+  const [picker, setPicker] = useState<{ rect: DOMRect; dest: string | null } | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [pinned, setPinned] = useState(false);
   const [pinnedFull, setPinnedFull] = useState(false);
@@ -223,6 +228,16 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
     }
   };
 
+  const handleQuickAdd = async (e: React.MouseEvent) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setDropdownOpen(false);
+    await addToActive(albumId, albumTitle, albumArtist, coverUrl);
+    setQuickAdded(true);
+    setTimeout(() => setQuickAdded(false), 1500);
+    // Confirm + offer "Change to" another collection.
+    setPicker({ rect, dest: activeListId });
+  };
+
   const toggleListenLater = () => {
     const saved = JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[];
     const next = saved.includes(albumId) ? saved.filter(id => id !== albumId) : [...saved, albumId];
@@ -313,7 +328,7 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
   const goToRanking = (slug: string) => {
     const params = new URLSearchParams({ album: albumId, title: albumTitle, artist: albumArtist });
     if (coverUrl) params.set('cover', coverUrl);
-    router.push(`/rankings/${slug}/rank?${params}`);
+    router.push(`/leaderboard/${slug}/rank?${params}`);
     setShowRankModal(false);
   };
 
@@ -349,6 +364,19 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
 
         {dropdownOpen && (
           <div className="absolute top-full right-0 mt-1.5 bg-page border border-divider rounded-xl shadow-lg z-30 min-w-[200px] py-1">
+            {userId && (
+              <button
+                onClick={(e) => void handleQuickAdd(e)}
+                className="flex items-center gap-3 px-4 py-2.5 text-[13px] text-ink hover:bg-surface w-full text-left transition"
+              >
+                {quickAdded
+                  ? <Check size={15} className="text-mint-dark" />
+                  : <ListPlus size={15} className="text-muted" />}
+                <span className="flex-1 truncate">
+                  {quickAdded ? 'Added!' : `Add to ${activeListName}`}
+                </span>
+              </button>
+            )}
             <button
               onClick={toggleListenLater}
               className="flex items-center gap-3 px-4 py-2.5 text-[13px] text-ink hover:bg-surface w-full text-left transition"
@@ -380,7 +408,7 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
                 className="flex items-center gap-3 px-4 py-2.5 text-[13px] text-ink hover:bg-surface w-full text-left transition"
               >
                 <List size={15} className="text-muted" />
-                <span className="flex-1">Add to List</span>
+                <span className="flex-1">Add to collection</span>
                 <ChevronRight size={13} className="text-muted" />
               </button>
             )}
@@ -535,7 +563,7 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
           >
             <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-divider">
               <div>
-                <p className="text-[15px] font-bold text-ink">Add to List</p>
+                <p className="text-[15px] font-bold text-ink">Add to collection</p>
                 <p className="text-[12px] text-muted mt-0.5 truncate max-w-[280px]">{albumTitle}</p>
               </div>
               <button onClick={() => setShowListModal(false)} className="text-muted hover:text-ink transition p-1">
@@ -548,7 +576,7 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
                   {[1,2,3].map(i => <div key={i} className="h-10 rounded-lg bg-surface animate-pulse" />)}
                 </div>
               ) : userLists.length === 0 ? (
-                <p className="text-[13px] text-muted text-center py-8">No lists yet. Create one from your profile.</p>
+                <p className="text-[13px] text-muted text-center py-8">No collections yet. Create one from the collections panel.</p>
               ) : (
                 <div className="flex flex-col gap-1">
                   {userLists.map(list => {
@@ -707,6 +735,16 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
             </div>
           </div>
         </div>
+      )}
+
+      {picker && (
+        <CollectionPickerPopover
+          item={{ releaseId: albumId, title: albumTitle, artist: albumArtist, coverUrl }}
+          anchorRect={picker.rect}
+          dest={picker.dest}
+          onDestChange={(dest) => setPicker((p) => (p ? { ...p, dest } : p))}
+          onClose={() => setPicker(null)}
+        />
       )}
     </>
   );

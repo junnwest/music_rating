@@ -179,13 +179,13 @@ export default function FilterBuilder({
 
             <div className="flex items-center gap-2 flex-shrink-0">
               <Link
-                href={`/rankings/${matchedCategory.slug}/rank`}
+                href={`/leaderboard/${matchedCategory.slug}/rank`}
                 className="text-[12px] font-medium text-muted hover:text-ink transition whitespace-nowrap"
               >
                 {hasRanked ? t('rankings.reRank') : t('rankings.rank')}
               </Link>
               <Link
-                href={`/rankings/${matchedCategory.slug}`}
+                href={`/leaderboard/${matchedCategory.slug}`}
                 className="text-[12px] font-semibold text-ink border border-[#DDDDD8] rounded-lg px-3 py-1.5 hover:bg-surface transition whitespace-nowrap"
               >
                 {t('rankings.viewRanking')}
@@ -198,7 +198,7 @@ export default function FilterBuilder({
               {t('rankings.noCurated')}
             </p>
             <Link
-              href={`/rankings/build/rank?country=${encodeURIComponent(country)}&genre=${encodeURIComponent(genre)}&time=${encodeURIComponent(time)}`}
+              href={`/leaderboard/build?country=${encodeURIComponent(country)}&genre=${encodeURIComponent(genre)}&time=${encodeURIComponent(time)}`}
               className="text-[13px] font-semibold text-ink border border-[#DDDDD8] rounded-xl px-4 py-2.5 hover:bg-surface transition whitespace-nowrap self-start sm:self-auto"
             >
               {t('rankings.beFirstToVote')}

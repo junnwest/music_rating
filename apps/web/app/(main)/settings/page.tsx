@@ -10,6 +10,7 @@ import {
 import { supabase } from '../../../lib/supabaseClient';
 import UserAvatar from '../../../components/UserAvatar';
 import { useLanguage, type Lang } from '../../../lib/i18n';
+import { useStreamingPlatform, type StreamingPlatform } from '../../../components/StreamingPlatformContext';
 
 type TabKey = 'account' | 'preferences' | 'notifications' | 'privacy' | 'danger';
 
@@ -45,6 +46,11 @@ function SettingsContent() {
   const [confirmDisconnect, setConfirmDisconnect] = useState<string | null>(null);
   const [activeGenres, setActiveGenres] = useState<Set<string>>(new Set(['K-R&B', 'K-Indie', 'Hip-Hop']));
   const [ratingDisplay, setRatingDisplay] = useState<'Stars' | 'Decimal'>('Stars');
+  const { preferred: preferredPlatform, savePreferred } = useStreamingPlatform();
+  const [platformSaving, setPlatformSaving] = useState(false);
+  const [platformError, setPlatformError] = useState<string | null>(null);
+  const [adventurousness, setAdventurousness] = useState(50);
+  const [adventurousnessSaving, setAdventurousnessSaving] = useState(false);
   const { theme, setTheme } = useTheme();
   const { lang, setLang, t } = useLanguage();
 
@@ -65,13 +71,14 @@ function SettingsContent() {
     setIdentities((user.identities ?? []).map((i: any) => ({ provider: i.provider, id: i.id })));
     const { data: profile } = await supabase
       .from('profiles')
-      .select('display_name, username, bio')
+      .select('display_name, username, bio, recommendation_adventurousness')
       .eq('id', user.id)
       .maybeSingle();
     if (profile) {
       setDisplayName(profile.display_name ?? '');
       setUsername(profile.username ?? user.email?.split('@')[0] ?? '');
       setBio(profile.bio ?? '');
+      setAdventurousness(profile.recommendation_adventurousness ?? 50);
     } else {
       setUsername(user.email?.split('@')[0] ?? '');
     }
@@ -168,6 +175,24 @@ function SettingsContent() {
     if (!supabase) return;
     await supabase.auth.signOut();
     router.push('/login');
+  };
+
+  const handlePlatformChange = async (platform: StreamingPlatform | null) => {
+    setPlatformError(null);
+    setPlatformSaving(true);
+    const { error } = await savePreferred(platform);
+    if (error) setPlatformError(error);
+    setPlatformSaving(false);
+  };
+
+  const handleAdventurousnessSave = async (value: number) => {
+    if (!supabase || !userId) return;
+    setAdventurousnessSaving(true);
+    await supabase
+      .from('profiles')
+      .update({ recommendation_adventurousness: value })
+      .eq('id', userId);
+    setAdventurousnessSaving(false);
   };
 
   const toggleGenre = (g: string) => {
@@ -427,6 +452,71 @@ function SettingsContent() {
                   <select className="w-full bg-surface border border-divider rounded-xl px-4 py-2.5 text-[13px] text-ink outline-none cursor-pointer hover:border-mid transition">
                     {[t('settings.visibility.public'), t('settings.visibility.followersOnly'), t('settings.visibility.private')].map(v => <option key={v}>{v}</option>)}
                   </select>
+                </div>
+                <div className="mb-5">
+                  <label className="block text-[13px] font-semibold text-ink mb-2">
+                    {t('settings.preferences.streamingPlatform')}
+                    {platformSaving && <span className="ml-2 text-[11px] font-normal text-muted">Saving…</span>}
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {([
+                      { id: 'spotify', label: 'Spotify' },
+                      { id: 'youtube_music', label: 'YouTube Music' },
+                      { id: 'tidal', label: 'Tidal' },
+                    ] as const).map(({ id, label }) => (
+                      <button
+                        key={id}
+                        disabled={platformSaving}
+                        onClick={() => handlePlatformChange(preferredPlatform === id ? null : id)}
+                        className={`px-4 py-2 rounded-lg text-[12px] font-semibold border transition disabled:opacity-60 ${preferredPlatform === id ? 'border-ink text-ink' : 'border-divider text-muted hover:border-mid'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                    <button
+                      disabled={platformSaving}
+                      onClick={() => handlePlatformChange(null)}
+                      className={`px-4 py-2 rounded-lg text-[12px] font-semibold border transition disabled:opacity-60 ${preferredPlatform == null ? 'border-ink text-ink' : 'border-divider text-muted hover:border-mid'}`}
+                    >
+                      {t('settings.preferences.streamingNone')}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-muted mt-2">
+                    {preferredPlatform == null
+                      ? 'All services are shown on album and track pages.'
+                      : 'Only your chosen service is shown on album and track pages.'}
+                  </p>
+                  {platformError && <p className="text-[11px] text-red-500 mt-1">{platformError}</p>}
+                </div>
+                <div className="mb-5">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-[13px] font-semibold text-ink">
+                      {t('settings.preferences.discovery')}
+                      {adventurousnessSaving && <span className="ml-2 text-[11px] font-normal text-muted">Saving…</span>}
+                    </label>
+                    <span className="text-[11px] text-muted">
+                      {adventurousness < 33
+                        ? t('settings.preferences.discoveryConservative')
+                        : adventurousness < 67
+                        ? t('settings.preferences.discoveryBalanced')
+                        : t('settings.preferences.discoveryAdventurous')}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={adventurousness}
+                    onChange={(e) => setAdventurousness(Number(e.target.value))}
+                    onMouseUp={(e) => void handleAdventurousnessSave(Number((e.target as HTMLInputElement).value))}
+                    onTouchEnd={(e) => void handleAdventurousnessSave(Number((e.target as HTMLInputElement).value))}
+                    className="w-full h-1.5 rounded-full cursor-pointer accent-ink"
+                  />
+                  <div className="flex justify-between mt-1.5">
+                    <span className="text-[11px] text-muted">{t('settings.preferences.discoveryConservative')}</span>
+                    <span className="text-[11px] text-muted">{t('settings.preferences.discoveryAdventurous')}</span>
+                  </div>
                 </div>
               </Section>
             )}

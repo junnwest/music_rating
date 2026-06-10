@@ -3,12 +3,12 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import {
-  UserPlus, Check, Trash2, Bell, type LucideIcon
+  UserPlus, Check, Trash2, Bell, Star, Trophy, type LucideIcon
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
 
-type NotifType = 'follow';
+type NotifType = 'follow' | 'rate' | 'badge';
 
 interface Notification {
   id: string;
@@ -22,10 +22,14 @@ interface Notification {
 
 const iconMap: Record<NotifType, LucideIcon> = {
   follow: UserPlus,
+  rate: Star,
+  badge: Trophy,
 };
 
 const colorMap: Record<NotifType, string> = {
   follow: 'bg-violet-50 text-violet-500 border-violet-100',
+  rate: 'bg-amber-50 text-amber-500 border-amber-100',
+  badge: 'bg-yellow-50 text-yellow-600 border-yellow-100',
 };
 
 

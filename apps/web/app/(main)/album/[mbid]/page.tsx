@@ -22,42 +22,15 @@ import ReviewsSection from '../../../../components/ReviewsSection';
 import AlbumActions from '../../../../components/AlbumActions';
 import { StreamingButtons, TrackStreamingButtons } from '../../../../components/YouTubeMusicButton';
 import TrackStarRating from '../../../../components/TrackStarRating';
+import QuickAddButton from '../../../../components/QuickAddButton';
 import { getServerT } from '../../../../lib/i18n/server';
 import { cacheGet, cacheSet } from '../../../../lib/cache';
+import { computeTierlistScores, combineSillaScores } from '../../../../lib/sillaScore';
 
 function formatDuration(ms: number | null): string {
   if (!ms) return '—';
   const s = Math.floor(ms / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-}
-
-function computeSillaScores(
-  entries: { ranking_id: string; release_id: string; rank: number }[]
-): Map<string, number> {
-  const byRanking = new Map<string, { release_id: string; rank: number }[]>();
-  for (const e of entries) {
-    if (!byRanking.has(e.ranking_id)) byRanking.set(e.ranking_id, []);
-    byRanking.get(e.ranking_id)!.push(e);
-  }
-  const scores = new Map<string, number>();
-  for (const userEntries of byRanking.values()) {
-    const byRank = new Map<number, string[]>();
-    for (const e of userEntries) {
-      if (!byRank.has(e.rank)) byRank.set(e.rank, []);
-      byRank.get(e.rank)!.push(e.release_id);
-    }
-    let pos = 1;
-    for (const [, albums] of [...byRank.entries()].sort(([a], [b]) => a - b)) {
-      const t = albums.length;
-      const effectivePos = pos + (t - 1) / 2;
-      const score = 1 / effectivePos;
-      for (const releaseId of albums) {
-        scores.set(releaseId, (scores.get(releaseId) ?? 0) + score);
-      }
-      pos += t;
-    }
-  }
-  return scores;
 }
 
 function TypePill({ children }: { children: React.ReactNode }) {
@@ -153,11 +126,12 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
     if (allCatIds.length > 0) {
       const { data: cats } = await supabase
         .from('ranking_categories')
-        .select('id, slug, title')
+        .select('id, slug, title, genre, year')
         .in('id', allCatIds)
         .order('sort_order');
 
-      // For each category, compute this album's rank
+      // For each category, compute this album's rank using the combined Silla Score.
+      // Mirrors the leaderboard exactly (shared lib/sillaScore helpers).
       const catList = cats ?? [];
       const rankResults = await Promise.all(catList.map(async (cat) => {
         const [{ data: allSeedEntries }, { data: catRankings }] = await Promise.all([
@@ -165,24 +139,35 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
           supabase!.from('user_rankings').select('id').eq('category_id', cat.id),
         ]);
 
-        const scores = new Map<string, number>();
-        for (const s of allSeedEntries ?? []) {
-          scores.set(s.release_id, (scores.get(s.release_id) ?? 0) + s.seed_votes);
-        }
+        const seedRaw = new Map<string, number>(
+          (allSeedEntries ?? []).map((s: any) => [s.release_id as string, Number(s.seed_votes)]),
+        );
 
+        let tierlistRaw = new Map<string, number>();
         const catRankingIds = (catRankings ?? []).map(r => r.id);
         if (catRankingIds.length > 0) {
           const { data: entries } = await supabase!
             .from('user_ranking_entries')
             .select('ranking_id, release_id, rank')
             .in('ranking_id', catRankingIds);
-          const sillaScores = computeSillaScores(entries ?? []);
-          for (const [releaseId, score] of sillaScores) {
-            scores.set(releaseId, (scores.get(releaseId) ?? 0) + score);
-          }
+          tierlistRaw = computeTierlistScores(entries ?? []);
         }
 
-        const sorted = [...scores.entries()].sort((a, b) => b[1] - a[1]);
+        // Bayesian-damped calibrated ratings, including rated albums matching genre/year
+        const seedIds = [...new Set([...tierlistRaw.keys(), ...seedRaw.keys()])];
+        const { data: bayesianRows } = await supabase!.rpc('get_silla_rating_scores', {
+          release_ids: seedIds,
+          p_genre: cat.genre ?? null,
+          p_year: cat.year ?? null,
+        });
+        const bayesianMap = new Map<string, number>(
+          (bayesianRows ?? []).map((r: any) => [r.release_id as string, r.bayesian_score as number]),
+        );
+
+        const candidateIds = [...new Set([...seedIds, ...bayesianMap.keys()])];
+        const combined = combineSillaScores({ candidateIds, tierlistRaw, seedRaw, bayesianMap });
+        const sorted = [...combined.entries()].sort((a, b) => b[1] - a[1]);
+
         const rankIdx = sorted.findIndex(([id]) => id === album.id);
         const titleKey = `rankingTitles.${cat.slug}`;
         const titleT = t(titleKey);
@@ -334,7 +319,7 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
             {rankingMemberships.map((cat) => (
               <Link
                 key={cat.slug}
-                href={`/rankings/${cat.slug}`}
+                href={`/leaderboard/${cat.slug}`}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-divider text-[12px] font-medium text-ink hover:bg-surface hover:border-ink/20 transition"
               >
                 {cat.title}
@@ -370,6 +355,7 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
                 )}
                 <TrackStarRating releaseId={album.id} trackPosition={track.position} trackTitle={track.title} />
                 <TrackStreamingButtons artist={track.artists || album.artist} track={track.title} />
+                <QuickAddButton albumId={album.id} albumTitle={album.title} albumArtist={album.artist} coverUrl={album.coverUrl} trackTitle={track.title} trackPosition={track.position} />
                 <span className="text-[12px] text-muted flex-shrink-0 tabular-nums">
                   {formatDuration(track.durationMs)}
                 </span>

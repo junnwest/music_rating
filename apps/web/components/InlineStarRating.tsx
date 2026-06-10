@@ -98,9 +98,10 @@ export default function InlineStarRating({
       { id: releaseId, title: releaseTitle, artist: releaseArtist, release_date: releaseDate, country: releaseCountry, release_type: releaseType, cover_url: coverUrl },
       { onConflict: 'id' }
     );
-    const { error } = await supabase.from('ratings').upsert(
-      { user_id: session.user.id, release_id: releaseId, score: star, status: 'Listened' },
-      { onConflict: 'user_id,release_id' }
+    await supabase.from('ratings').delete()
+      .eq('user_id', session.user.id).eq('release_id', releaseId);
+    const { error } = await supabase.from('ratings').insert(
+      { user_id: session.user.id, release_id: releaseId, score: star, status: 'Listened' }
     );
     if (!error) setSavedScore(star);
     setSaving(false);

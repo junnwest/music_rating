@@ -282,7 +282,7 @@ export default function MyRankingsPage() {
     return (
       <div className="bg-page min-h-screen flex flex-col items-center justify-center gap-3 px-5">
         <p className="text-[15px] text-muted">No ratings yet.</p>
-        <p className="text-[13px] text-muted">Rate some albums to see your personal rankings here.</p>
+        <p className="text-[13px] text-muted">Rate some albums to build your personal tierlists here.</p>
       </div>
     );
   }
@@ -291,7 +291,7 @@ export default function MyRankingsPage() {
     <div className="bg-page min-h-screen">
       <div className="max-w-[1100px] mx-auto px-5 py-8">
         <h1 className="text-[24px] font-extrabold text-ink mb-1" style={{ letterSpacing: '-0.5px' }}>
-          My Rankings
+          My Tierlists
         </h1>
         <p className="text-[13px] text-muted mb-8">
           {items.length} releases · {tracks.length} songs rated

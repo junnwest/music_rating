@@ -5,38 +5,42 @@ import Link from 'next/link';
 import { supabase } from '../lib/supabaseClient';
 import { useLanguage } from '../lib/i18n';
 import InlineStarRating from './InlineStarRating';
+import QuickAddButton from './QuickAddButton';
 import type { AlbumRelease } from '../types';
 
-const LL_KEY = 'sillajuku:listen-later';
+// ── Filter configuration (BookmarkButton removed — using QuickAddButton) ─────
+const TYPE_OPTIONS = [
+  { label: 'All', value: '' },
+  { label: 'Albums', value: 'Album' },
+  { label: 'EPs', value: 'EP' },
+] as const;
 
-function BookmarkButton({ albumId }: { albumId: string }) {
-  const [saved, setSaved] = useState(false);
-  useEffect(() => {
-    const ids = JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[];
-    setSaved(ids.includes(albumId));
-  }, [albumId]);
+const DECADE_OPTIONS = [
+  { label: 'Any decade', value: '' },
+  { label: '2020s', value: '2020' },
+  { label: '2010s', value: '2010' },
+  { label: '2000s', value: '2000' },
+  { label: '1990s', value: '1990' },
+  { label: '1980s', value: '1980' },
+  { label: '1970s', value: '1970' },
+] as const;
 
-  const toggle = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const ids = JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[];
-    const next = ids.includes(albumId) ? ids.filter(id => id !== albumId) : [...ids, albumId];
-    localStorage.setItem(LL_KEY, JSON.stringify(next));
-    setSaved(!saved);
-  };
+const GENRE_OPTIONS = [
+  { label: 'Any genre', value: '' },
+  { label: 'Hip-hop', value: 'hip hop' },
+  { label: 'R&B', value: 'r&b' },
+  { label: 'Pop', value: 'pop' },
+  { label: 'Rock', value: 'rock' },
+  { label: 'Electronic', value: 'electronic' },
+  { label: 'Jazz', value: 'jazz' },
+  { label: 'K-pop', value: 'k-pop' },
+  { label: 'Soul', value: 'soul' },
+  { label: 'Indie', value: 'indie' },
+  { label: 'Classical', value: 'classical' },
+  { label: 'Metal', value: 'metal' },
+  { label: 'Folk', value: 'folk' },
+] as const;
 
-  return (
-    <button
-      onClick={toggle}
-      title={saved ? 'Remove from Listen Later' : 'Save to Listen Later'}
-      className={`transition flex-shrink-0 ${saved ? 'text-[#E8A020]' : 'text-muted hover:text-ink'}`}
-    >
-      <svg width="14" height="14" viewBox="0 0 24 24" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
-        <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-      </svg>
-    </button>
-  );
-}
 
 type Status = 'init' | 'guest' | 'ready';
 
@@ -46,12 +50,24 @@ export default function ExplorePage() {
   const [albums, setAlbums] = useState<AlbumRelease[]>([]);
   const [fetching, setFetching] = useState(false);
 
+  // Active filter state (for rendering)
+  const [filterType, setFilterType] = useState('');
+  const [filterDecade, setFilterDecade] = useState('');
+  const [filterGenre, setFilterGenre] = useState('');
+
   const pageRef = useRef(0);
   const hasMoreRef = useRef(true);
   const fetchingRef = useRef(false);
   const seenRef = useRef(new Set<string>());
   const artistsRef = useRef<string[]>([]);
+  const genresRef = useRef<string[]>([]);
   const excludeRef = useRef<string[]>([]);
+  const adventurousnessRef = useRef<number>(50);
+  const userIdRef = useRef<string>('');
+  // Filter refs — updated in sync with state, readable inside loadMore
+  const filterTypeRef = useRef('');
+  const filterDecadeRef = useRef('');
+  const filterGenreRef = useRef('');
   const [hasMore, setHasMore] = useState(true);
 
   const loadMore = useCallback(async () => {
@@ -62,8 +78,14 @@ export default function ExplorePage() {
     try {
       const params = new URLSearchParams({
         artists: artistsRef.current.join(','),
+        genres: genresRef.current.join(','),
         excludeIds: excludeRef.current.join(','),
         page: String(pageRef.current),
+        adventurousness: String(adventurousnessRef.current),
+        userId: userIdRef.current,
+        filterType: filterTypeRef.current,
+        filterDecade: filterDecadeRef.current,
+        filterGenre: filterGenreRef.current,
       });
       const res = await fetch(`/api/recommendations?${params}`);
       const data = await res.json();
@@ -93,19 +115,42 @@ export default function ExplorePage() {
       const { data: { session } } = await supabase!.auth.getSession();
       if (!session) { setStatus('guest'); return; }
 
-      const { data: ratings } = await supabase!
-        .from('ratings')
-        .select('release_id, releases(artist)')
-        .eq('user_id', session.user.id)
-        .order('created_at', { ascending: false })
-        .limit(50);
+      userIdRef.current = session.user.id;
+
+      // Fetch user's recent ratings + profile in parallel
+      const [ratingsResult, profileResult] = await Promise.all([
+        supabase!
+          .from('ratings')
+          .select('release_id, score, releases(artist, genres)')
+          .eq('user_id', session.user.id)
+          .order('created_at', { ascending: false })
+          .limit(100),
+        supabase!
+          .from('profiles')
+          .select('recommendation_adventurousness')
+          .eq('id', session.user.id)
+          .maybeSingle(),
+      ]);
+
+      const ratings = ratingsResult.data ?? [];
+      adventurousnessRef.current = profileResult.data?.recommendation_adventurousness ?? 50;
 
       const artistCount = new Map<string, number>();
-      for (const r of ratings ?? []) {
-        const artist = (r.releases as any)?.artist;
+      const genreCount  = new Map<string, number>();
+      for (const r of ratings) {
+        const artist = (r.releases as any)?.artist as string | undefined;
         if (artist) {
           const primary = artist.split(',')[0].trim();
           artistCount.set(primary, (artistCount.get(primary) ?? 0) + 1);
+        }
+        // Only count genres from albums the user liked (≥3★)
+        if ((r.score ?? 0) >= 3) {
+          const genres = (r.releases as any)?.genres as string | undefined;
+          if (genres) {
+            for (const g of genres.split(',').map((s: string) => s.trim()).filter(Boolean)) {
+              genreCount.set(g, (genreCount.get(g) ?? 0) + 1);
+            }
+          }
         }
       }
 
@@ -113,12 +158,46 @@ export default function ExplorePage() {
         .sort((a, b) => b[1] - a[1])
         .map(([name]) => name);
 
-      excludeRef.current = (ratings ?? []).map((r) => r.release_id);
+      genresRef.current = [...genreCount.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8)
+        .map(([g]) => g);
+
+      excludeRef.current = ratings.map((r) => r.release_id);
 
       await loadMore();
       setStatus('ready');
     })();
   }, [loadMore]);
+
+  // Reset results and refetch when a filter changes
+  const applyFilter = (genre: string, type: string, decade: string) => {
+    filterGenreRef.current = genre;
+    filterTypeRef.current = type;
+    filterDecadeRef.current = decade;
+    pageRef.current = 0;
+    hasMoreRef.current = true;
+    fetchingRef.current = false;
+    seenRef.current = new Set();
+    setAlbums([]);
+    setHasMore(true);
+    loadMore();
+  };
+
+  const handleFilterType = (val: string) => {
+    setFilterType(val);
+    applyFilter(filterGenreRef.current, val, filterDecadeRef.current);
+  };
+  const handleFilterDecade = (val: string) => {
+    setFilterDecade(val);
+    applyFilter(filterGenreRef.current, filterTypeRef.current, val);
+  };
+  const handleFilterGenre = (val: string) => {
+    setFilterGenre(val);
+    applyFilter(val, filterTypeRef.current, filterDecadeRef.current);
+  };
+
+  const hasActiveFilters = filterType !== '' || filterDecade !== '' || filterGenre !== '';
 
   const skeletonGrid = (
     <div className="grid gap-x-[18px] gap-y-8" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(152px, 1fr))' }}>
@@ -148,6 +227,73 @@ export default function ExplorePage() {
         </div>
       </div>
 
+      {/* Filter bar — only shown when logged in */}
+      {status === 'ready' && (
+        <div className="border-b border-divider bg-page">
+          <div className="max-w-[1440px] mx-auto px-5 py-3 flex flex-wrap items-center gap-3">
+            {/* Type filter chips */}
+            <div className="flex items-center gap-1.5">
+              {TYPE_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => handleFilterType(opt.value)}
+                  className={`px-3 py-[5px] rounded-full text-[12px] font-semibold border transition ${
+                    filterType === opt.value
+                      ? 'bg-ink border-ink text-white'
+                      : 'bg-surface border-divider text-muted hover:text-ink'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="w-px h-4 bg-divider" />
+
+            {/* Decade select */}
+            <select
+              value={filterDecade}
+              onChange={e => handleFilterDecade(e.target.value)}
+              className={`text-[12px] font-medium border rounded-full px-3 py-[5px] bg-surface outline-none cursor-pointer transition ${
+                filterDecade ? 'border-ink text-ink' : 'border-divider text-muted'
+              }`}
+            >
+              {DECADE_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+
+            {/* Genre select */}
+            <select
+              value={filterGenre}
+              onChange={e => handleFilterGenre(e.target.value)}
+              className={`text-[12px] font-medium border rounded-full px-3 py-[5px] bg-surface outline-none cursor-pointer transition ${
+                filterGenre ? 'border-ink text-ink' : 'border-divider text-muted'
+              }`}
+            >
+              {GENRE_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+
+            {/* Clear filters */}
+            {hasActiveFilters && (
+              <button
+                onClick={() => {
+                  setFilterType('');
+                  setFilterDecade('');
+                  setFilterGenre('');
+                  applyFilter('', '', '');
+                }}
+                className="text-[12px] text-muted hover:text-ink transition underline"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="max-w-[1440px] mx-auto px-5 py-10 pb-16">
 
         {status === 'init' && skeletonGrid}
@@ -167,8 +313,12 @@ export default function ExplorePage() {
 
         {status === 'ready' && albums.length === 0 && !fetching && (
           <div className="text-center py-20">
-            <p className="text-[15px] font-semibold text-ink mb-2">{t('explore.nothingYet')}</p>
-            <p className="text-[13px] text-muted">{t('explore.nothingYetDesc')}</p>
+            <p className="text-[15px] font-semibold text-ink mb-2">
+              {hasActiveFilters ? 'No results for this filter combination' : t('explore.nothingYet')}
+            </p>
+            <p className="text-[13px] text-muted">
+              {hasActiveFilters ? 'Try adjusting your filters above.' : t('explore.nothingYetDesc')}
+            </p>
           </div>
         )}
 
@@ -191,6 +341,15 @@ export default function ExplorePage() {
                       ) : (
                         <div className="absolute inset-0 bg-surface border border-divider" />
                       )}
+                      <div className="absolute top-[6px] right-[6px]">
+                        <QuickAddButton
+                          albumId={album.id}
+                          albumTitle={album.title}
+                          albumArtist={album.artist}
+                          coverUrl={album.coverUrl ?? null}
+                          overlay
+                        />
+                      </div>
                     </div>
                     <div className="mt-[9px]">
                       <div className="text-[13px] font-semibold text-ink truncate leading-snug group-hover/card:text-mint-dark transition">
@@ -199,7 +358,7 @@ export default function ExplorePage() {
                       <div className="text-[12px] text-muted mt-0.5 truncate">{album.artist}</div>
                     </div>
                   </Link>
-                  <div className="mt-1.5 flex items-center gap-2">
+                  <div className="mt-1.5">
                     <InlineStarRating
                       releaseId={album.id}
                       releaseTitle={album.title}
@@ -210,7 +369,6 @@ export default function ExplorePage() {
                       coverUrl={album.coverUrl ?? null}
                       size={16}
                     />
-                    <BookmarkButton albumId={album.id} />
                   </div>
                 </div>
               ))}
