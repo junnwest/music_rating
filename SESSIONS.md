@@ -154,12 +154,14 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries
 
-**2026-06-09/10 — `backfill:embeddings` resumed + nearly complete:**
+**2026-06-09/10 — `backfill:embeddings` complete + HNSW index rebuilt:**
 
 - **Found backfill incomplete** — overnight run was interrupted by computer shutdown. Dry-run confirmed 93,090 releases still needed embeddings at session start.
 - **First resume run** — 2,048 rows embedded before hitting a Supabase statement timeout (`canceling statement due to statement timeout`). Script is resumable; re-ran immediately.
-- **Second resume run** — 92,151 embedded, 66 failed. One Jina API batch failed early (page counter incremented to 2, skipping those rows + 2 DB update errors = 66 total). Those 66 rows still have `embedding IS NULL`.
-- **Next session:** run `npm run backfill:embeddings` once more (should finish in under a minute — only 66 rows), then rebuild the HNSW index in Supabase SQL editor (SQL in README catalog pipeline section).
+- **Second resume run** — 92,151 embedded, 66 failed. One Jina API batch failed early (page counter incremented to 2, skipping those rows + 2 DB update errors = 66 total).
+- **Final cleanup run** — 64 rows embedded, 0 failed. All releases now have Jina v3 embeddings. Catalog pipeline fully complete.
+- **HNSW index rebuilt** — `CREATE INDEX idx_releases_embedding_hnsw ... USING hnsw (vector_cosine_ops)` + `DROP INDEX idx_releases_embeddable` applied in Supabase SQL editor.
+- **Catalog pipeline status: 100% done.** Deploy to Vercel to activate hybrid semantic search in production.
 
 ---
 

@@ -10,7 +10,7 @@ Every record you've loved — rated, cataloged, and remembered. A music platform
 
 ## ⚠️ Current state (2026-06-10)
 
-Features shipped as of 2026-06-08: Daily Question (daily album-pick prompt + shareable 1080×1920 / 1080×1080 card export via `/api/daily-question/card`), preferred streaming platform, **Collections** (custom playlists, renamed) with a foldable right-side panel and a per-add destination picker ("Added to … / Change to"), Bayesian Silla Score, and Discovery/Adventurousness slider. See SESSIONS.md for details. **2026-06-09/10:** `backfill:embeddings` nearly complete — 93,090 remaining confirmed; ~93k embedded across two resumed runs, 66 failures still pending one more run; HNSW index rebuild (below) still pending.
+Features shipped as of 2026-06-08: Daily Question (daily album-pick prompt + shareable 1080×1920 / 1080×1080 card export via `/api/daily-question/card`), preferred streaming platform, **Collections** (custom playlists, renamed) with a foldable right-side panel and a per-add destination picker ("Added to … / Change to"), Bayesian Silla Score, and Discovery/Adventurousness slider. See SESSIONS.md for details. **2026-06-10:** `backfill:embeddings` ✅ complete — all ~347k non-single releases now have Jina v3 embeddings; HNSW index rebuilt. Hybrid semantic search is ready — deploy to Vercel to activate.
 
 ### ► START HERE — next session checklist
 
@@ -35,9 +35,9 @@ Also applied to prod (lives in root `supabase/migrations/`, not `apps/web/`): `2
 1. In Spotify developer dashboard → add redirect URI: `https://sillajuku.com/api/spotify/callback`
 2. Add `SPOTIFY_REDIRECT_URI=https://sillajuku.com/api/spotify/callback` to Vercel env vars **and** to `.env.local` on both devices
 
-#### Catalog pipeline — status (2026-06-10)
+#### Catalog pipeline — ✅ Complete (2026-06-10)
 
-All pipeline steps complete except the final embeddings cleanup:
+All pipeline steps done. **Next action: deploy to Vercel** to activate hybrid semantic search in production.
 
 | Step | Command | Status |
 |------|---------|--------|
@@ -47,16 +47,8 @@ All pipeline steps complete except the final embeddings cleanup:
 | queue:ingest (runs 1–6) | `npm run queue:ingest` | ✅ done — ~347k releases |
 | queue:discover (runs 1–4) | `npm run queue:discover` | ✅ done — queue stable |
 | enrich:genres:lastfm | `npm run enrich:genres:lastfm` | ✅ done (2026-06-07) — 15,460 enriched |
-| **backfill:embeddings** | `npm run backfill:embeddings` | 🔄 **66 rows remaining — run once more** |
-| Rebuild HNSW index | Supabase SQL editor | 🔲 after backfill finishes |
-
-**HNSW rebuild SQL (run in Supabase SQL editor after backfill finishes):**
-```sql
-CREATE INDEX idx_releases_embedding_hnsw
-  ON releases USING hnsw (embedding vector_cosine_ops)
-  WITH (m = 16, ef_construction = 64);
-DROP INDEX IF EXISTS idx_releases_embeddable;
-```
+| backfill:embeddings | `npm run backfill:embeddings` | ✅ done (2026-06-10) — all ~347k releases embedded |
+| Rebuild HNSW index | Supabase SQL editor | ✅ done (2026-06-10) |
 
 #### Catalog pipeline — completed steps (historical)
 
