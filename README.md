@@ -10,7 +10,7 @@ Every record you've loved — rated, cataloged, and remembered. A music platform
 
 ## ⚠️ Current state (2026-06-10)
 
-Features shipped as of 2026-06-08: Daily Question (daily album-pick prompt + shareable 1080×1920 / 1080×1080 card export via `/api/daily-question/card`), preferred streaming platform, **Collections** (custom playlists, renamed) with a foldable right-side panel and a per-add destination picker ("Added to … / Change to"), Bayesian Silla Score, and Discovery/Adventurousness slider. See SESSIONS.md for details. **2026-06-10:** `backfill:embeddings` ✅ complete — all ~347k non-single releases now have Jina v3 embeddings; HNSW index rebuilt. Hybrid semantic search is ready — deploy to Vercel to activate.
+Features shipped as of 2026-06-08: Daily Question (daily album-pick prompt + shareable 1080×1920 / 1080×1080 card export via `/api/daily-question/card`), preferred streaming platform, **Collections** (custom playlists, renamed) with a foldable right-side panel and a per-add destination picker ("Added to … / Change to"), Bayesian Silla Score, and Discovery/Adventurousness slider. See SESSIONS.md for details. **2026-06-10:** `backfill:embeddings` ✅ complete — all ~347k non-single releases now have Jina v3 embeddings. HNSW index creation ⏳ pending (timed out in Supabase SQL editor — run via psql direct with `SET statement_timeout = 0` next session). Deploy to Vercel after index is built to activate hybrid semantic search.
 
 ### ► START HERE — next session checklist
 
@@ -48,7 +48,7 @@ All pipeline steps done. **Next action: deploy to Vercel** to activate hybrid se
 | queue:discover (runs 1–4) | `npm run queue:discover` | ✅ done — queue stable |
 | enrich:genres:lastfm | `npm run enrich:genres:lastfm` | ✅ done (2026-06-07) — 15,460 enriched |
 | backfill:embeddings | `npm run backfill:embeddings` | ✅ done (2026-06-10) — all ~347k releases embedded |
-| Rebuild HNSW index | Supabase SQL editor | ✅ done (2026-06-10) |
+| Rebuild HNSW index | psql direct (port 5432) | ⏳ pending — timed out in SQL editor |
 
 #### Catalog pipeline — completed steps (historical)
 
