@@ -36,13 +36,15 @@ Historical record of shipped features and session notes. Not needed at conversat
 - [x] Friends page — real Supabase follows (Following / Followers / Discover tabs)
 - [x] Search page — mobile header transforms to search overlay on icon tap; landing state with no duplicate bar
 - [x] Streaming buttons (Spotify / YouTube Music / Tidal) — album hero + per-track; uses stored spotifyUrl when available
+- [x] Preferred streaming platform — `preferred_streaming_platform` column on profiles (migration `20260531000000`); set in onboarding step 3 (4-step flow) and Settings → Preferences; album + track buttons filter to the single preferred platform when set, fall back to all three otherwise
+- [x] Custom playlists + right panel — persistent right-side playlist panel (desktop 260px, mobile overlay); uses existing `lists`/`list_items` tables; CRUD (create, rename, delete); "Add to [active list]" in AlbumActions dropdown + `QuickAddButton` on every track row; Spotify OAuth connect + playlist export; YouTube Music limitation surfaced in UI; Copy tracklist; migrations `20260601000000` (position + UPDATE policy) and `20260601000001` (spotify_connections)
+- [x] Collections (2026-06-08) — playlists renamed to "Collections" (user-facing); route `/collection/[id]`; right panel foldable on all breakpoints (fold button + floating reopen); per-add destination picker (`CollectionPickerPopover`) confirms "Added to {collection}" and offers "Change to →" to re-route an item to any other collection
+- [x] Silla Score recomputed — Bayesian-damped calibrated star ratings (55%) + normalized tierlist-position score (45%); Postgres function `get_calibrated_bayesian_scores`; migrations `20260601000002` + `20260601000003`
+- [x] Discovery/Adventurousness slider — Settings → Preferences slider (0–100, default 50); `recommendation_adventurousness` column on profiles; shifts For You mix between in-taste / adjacent / discovery buckets
 - [x] Track star ratings — inline 14px star widget per track; writes to `track_ratings` table (migration in `supabase/migrations/20260526000000_track_ratings.sql` — apply manually)
 - [x] Inline star ratings — compact widget on Explore cards, rankings leaderboard ("Your Rating" column), ranking builder suggestions
 - [x] My Rankings (`/my-rankings`) — dashboard with ranking cards (All, Albums, EPs, Songs, per-genre) + "Recommended for You"; detail pages at `/my-rankings/[slug]`
-- [x] Add to List modal — AlbumActions dropdown opens user's playlists with toggle membership (add/remove album from any list inline)
-- [x] Listen Later bookmark button — inline on each Explore card next to the star rating widget
-- [x] Activity page two-column layout — RecommendedFeed sidebar (sticky, lg+ screens) alongside the feed
-- [x] RankBuilder auto-populate — fills tiers from user's rated albums by score band (5★→T1, 4–4.5★→T2, 3–3.5★→T3, 2–2.5★→T4); respects filterYear
+- [x] Daily Question — one question per day surfaced at the top of the homepage; user picks an album from the catalog to answer; answer saved to `daily_answers` table; exports a 1080×1920 (story) or 1080×1080 (square) PNG card via `GET /api/daily-question/card` (Next.js edge ImageResponse, no extra packages); migration `20260531000001_daily_questions.sql` seeds 30 questions through 2026-06-29
 
 ### Social
 
@@ -156,72 +158,84 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 - **Found backfill incomplete** — overnight run was interrupted by computer shutdown. Dry-run confirmed 93,090 releases still needed embeddings at session start.
 - **First resume run** — 2,048 rows embedded before hitting a Supabase statement timeout (`canceling statement due to statement timeout`). Script is resumable; re-ran immediately.
-- **Second resume run** — 92,151 embedded, 66 failed. One Jina API batch failed early (page counter incremented to 2, skipping those 64 rows + 2 DB update errors = 66 total). Those 66 rows still have `embedding IS NULL`.
-- **Next session:** run `npm run backfill:embeddings` once more (should finish in under a minute — only 66 rows), then rebuild the HNSW index in Supabase SQL editor (step 14 SQL is in the README START HERE checklist).
+- **Second resume run** — 92,151 embedded, 66 failed. One Jina API batch failed early (page counter incremented to 2, skipping those rows + 2 DB update errors = 66 total). Those 66 rows still have `embedding IS NULL`.
+- **Next session:** run `npm run backfill:embeddings` once more (should finish in under a minute — only 66 rows), then rebuild the HNSW index in Supabase SQL editor (SQL in README catalog pipeline section).
 
 ---
 
-**2026-06-04/07 — post-ingest pipeline: discover → ingest loop + genre enrichment:**
+**2026-06-08 — Playlists → Collections rename, foldable panel, per-add destination picker:**
 
-- **discover → ingest loop complete** — 4 discover runs + 6 ingest runs; catalog grew from 299k → ~347k releases. Final cycle: run 4 discover (0 new, queue empty), confirming stability.
-  - Ingest run 3: 335 inserted / Run 4: 126 (converged) / Run 5: 33,331 (from 1,381 discovered artists) / Run 6: 13,730 (381 remaining)
-  - Discover run 2: 2,143 queued from 122 artists / Run 3: 0 new (all 917 done, 381 pending) / Run 4: 0 new, queue empty
-- **`enrich:genres:lastfm` complete (2026-06-07)** — 15,460 releases enriched with Last.fm tags; 5,511 already fully covered; 325,979 had no Last.fm match (practical ceiling — obscure/non-English catalog). Genre coverage is now stable.
-- **Next session:** `npm run backfill:embeddings` — Jina v3 embeddings on the full ~347k catalog for hybrid semantic search.
-
----
-
-**2026-06-03/04 — queue:ingest run 2 completion + post-ingest fixes + dedup bug recovery:**
-
-- **`queue:ingest` run 2 complete** — all 9 batches done. Final catalog: **299,468 releases** (294,586 iTunes, 944 Spotify, 3,938 legacy); 0 missing covers; 0 duplicate itunes_ids; 1,013 null genres; 1 stuck `processing` entry.
-- **Sanity check script** — `sanity-check.ts` created (`npm run sanity`): verifies required fields, release type distribution, date formats, genre coverage, native names, duplicate itunes_ids, queue state, artist coverage, and cover URL validity.
-- **Collab artist cleanup** — `cleanup-collab-artists.ts` created (`npm run cleanup:collabs`). Deletes Last.fm collab nodes ("Drake feat. 21 Savage", "Coldplay & BTS") from `artist_ingestion_queue` and `artists`. Whitelist of 24 legitimate `&` acts maintained. Run result: **303 queue entries deleted, 2 artists table entries deleted**. Same `isCollaborationArtist()` filter added to `discover-lastfm-similar.ts` and `ingest-itunes-queue.ts` so future runs don't re-queue collabs.
-- **`ingest-itunes-queue.ts` fix: `itunes_artist_id` propagation** — was only propagating `name_native` back to `artists` table; now also writes `itunes_artist_id`. `check:completeness` reads `artist_ingestion_queue` IDs, but the `artists.itunes_artist_id` column was always null. Fixed.
-- **`ingest-itunes-queue.ts` fix: `.maybeSingle()` → `.limit(1)`** — `maybeSingle()` returns null data (not the row) when >1 rows match, causing the duplicate check to silently pass and insert again. Fixed to `.limit(1)`.
-- **Buggy dedup run + recovery** — `dedup:releases:fix` was run post-ingest but `loadAllReleases` paginated without `ORDER BY`. Supabase's default sort is non-deterministic: pages can overlap, so the same release appeared twice in different fetches. `findGroups()` saw a release paired with itself → treated as a duplicate pair → `mergeAndDelete()` deleted the actual release. **93 releases self-matched and "deleted" across groups 1–93.** Recovery scripts built and run:
-  - `requeue-affected.ts` — re-queued 18 entries (SF9 and Na Hoon-a had two queue rows each with different capitalisation).
-  - `insert-missing-artists.ts` — adds KozyPop, Lee Seung Hwan, Moon Hee Jun directly to queue (original Spotify-sourced artists with no queue entries).
-  - `find-and-requeue.ts` — one-shot utility used during investigation to reset specific artists.
-  - **Recovery ingest result (2026-06-04): 0 new, 100 enriched, 819 skipped — confirmed 0 data loss.** The buggy dedup merged each release with *itself*, so the kept row was the same `itunes_id`; ingest correctly skips it as already present. The 100 enrichments (74 for Eminem) recovered missing metadata on releases that were left with incomplete data after the self-merge.
-- **`find-duplicate-releases.ts` bug fixes**:
-  - Added `.order('id')` to the pagination query — eliminates the overlap that caused self-matches.
-  - Fixed `norm()` to use `\p{L}\p{N}` (Unicode-aware flag `u`) instead of explicitly listing character ranges. Without this, Cyrillic-titled releases like "Душа - EP" and "Сон - EP" both stripped to `"ep"` and triggered false matches.
-  - Added K-FLIP+ (`274d9b4a…` / `f5e45ca3…`) to `SKIP_IDS` — the `+` in the title is stripped by `norm()`, causing it to match K-FLIP standard edition.
-- **`fix-collab-artist-id.ts`** — new script (`npm run fix:collab-artist-ids`) for collab releases (e.g. "Sik-K & Lil Moshpit") with null `artist_id`. Finds the primary artist (name before `&`/`,`), looks it up in the `artists` table, and sets `artist_id` on the release.
-- **`check-release.ts`** — lightweight lookup utility: `npx tsx --env-file=.env.local scripts/check-release.ts "term"` prints id, type, date, tracks, spotify_id, itunes_id for matching releases. Used for investigation during the dedup incident.
-- **`dbCache.ts` `getArtistReleases`** — previously: FK lookup, fall back to name-exact when empty. Now: always run both FK lookup and `%name%` ilike, merge+deduplicate by id, sort by release_date desc. Effect: collaborative releases like "Sik-K & Lil Moshpit" now appear on **both** artists' discography pages.
-- **New npm scripts** — `sanity`, `cleanup:collabs`, `cleanup:collabs:fix`, `fix:collab-artist-ids`, `fix:collab-artist-ids:fix`.
-- **Migration `20260601000000_fix_partial_dates.sql`** — created (pads year-only dates "2020" → "2020-01-01"); **not yet applied**. Apply via Supabase SQL editor.
-
-### Post-ingest-run-2 progress (2026-06-04):
-1. ✅ `20260601000000_fix_partial_dates.sql` applied via Supabase SQL editor
-2. ✅ Stuck queue entry reset (`status='done'`)
-3. ✅ Recovery ingest: 0 new, 100 enriched, 819 skipped — 0 data loss
-4. ✅ `dedup:releases:fix` re-run: **16 high-confidence merged, 112 low-confidence skipped**
-5. ✅ `dedup:releases:fix-all`: **~111 more groups merged**. Miles Tones/Milestones and 1945 해방 correctly excluded via SKIP_IDS. Two false positives merged before SKIP_IDS were added: LOONA [#] vs [+ +] (different EPs, both normalize to "ep"); Mars EP (6 tracks) vs Album (41 tracks). Both user=0, no user data lost. Both added to SKIP_IDS for future runs.
-5. ✅ `check:completeness` (post-run-2): 5,569 complete, 2,428 incomplete, 549 no iTunes — **6,937 missing releases re-queued**
-6. ✅ `queue:ingest` (runs 3+4) — converged (2026-06-04): run 3: 335 ins / run 4: 126 ins — queue stable
-7. ✅ `queue:discover` (run 2, 2026-06-04) — 122 artists processed, 2,143 queued, 10 no match, 1,381 pending
-8. ✅ `queue:ingest` (run 5, 2026-06-04) — **33,331 inserted**, 2,581 enriched, 2,999 skipped, 31 no match, 0 failed
-9. ✅ `queue:discover` (run 3, 2026-06-04) — 0 new (all 917 DB artists already done); 381 still pending in queue
-10. ✅ `queue:ingest` (run 6, 2026-06-04) — **13,730 inserted**, 1,299 enriched, 1,400 skipped, 8 no match, 0 failed
-11. ✅ `queue:discover` (run 4, 2026-06-04) — 0 new; queue empty (pending: 0) — **loop stable**
-12. ✅ `enrich:genres:lastfm` (2026-06-07) — **15,460 enriched**, 5,511 already covered, 325,979 no Last.fm match — genre coverage at practical ceiling
-13. 🔲 `backfill:embeddings` — final pipeline step (next session)
-8. ⬜ repeat discover → ingest until queue stable
-9. ⬜ `enrich:genres:lastfm` — recover null genres
-10. ⬜ `backfill:embeddings` — final step
+- **Playlists → Collections**: renamed the custom-playlist feature to "Collections" across user-facing labels. Updated `PlaylistPanel.tsx` ("New collection", "Collection name…", "Open full collection", "Collection options", "Delete this collection?"), `AlbumActions.tsx` ("Add to collection" menu item + modal title + empty state), the per-list page default title/empty state. Route moved `/playlist/[id]` → `/collection/[id]` (only linker was the panel's external-link button). Internal component/type names (`PlaylistContext`, `PlaylistPanel`, `usePlaylist`, `PlaylistItem`) kept as-is to limit churn — purely user-facing rename.
+- **Foldable Collections panel**: the right-side panel can now be collapsed on every breakpoint (was mobile-only). Header gets a `PanelRightClose` fold button; when collapsed a floating round button (bottom-right, all breakpoints) reopens it. On desktop, collapsing frees the 260px column so content reflows wider.
+- **Per-add destination picker**: new `CollectionPickerPopover.tsx` (portaled to `document.body`, fixed-positioned so it escapes card `overflow-hidden`). After tapping "+" on any album/track, items still go to the **open** collection by default, then a popover confirms "Added to {collection}" and offers "Change to →" to re-route the item to any other collection (move = remove from previous dest + add to target). Wired into `QuickAddButton` (inline + overlay), `ScrollRow`'s `QuickAdd`, and `PersonalizedFeed`'s `QuickAddOverlay`.
+- **PlaylistContext** refactor: existing `addToActive` / `removeFromActive` / `removeTrackFromActive` now delegate to generic `addItemTo(listId, …)` / `removeItemFrom(listId, releaseId, trackPosition?)` (null listId = Listen Later). Active membership sets (`activeReleaseIds` / `activeTrackKeys`) + panel refresh only update when the affected collection is the open one. Added `nameForList(listId)` helper. No schema changes.
 
 ---
 
-**2026-05-31 (later, session crashed) — Search quality fixes + rate limiting:**
+**2026-05-31 — Leaderboard rename, Tierlist builder, Social tab, Comment sort/filter, Accomplishment badges:**
 
-- **Cross-language artist lookup** — `search_releases()` SQL function now LEFT JOINs `artists` table so a query like "IU" matches releases stored as "아이유" via `artist_id`. Previously those releases were invisible to search. Migration: `20260531000000_search_artist_crosslang.sql`.
-- **Semantic candidate flood removed** — removed `(query_embedding IS NOT NULL AND embedding IS NOT NULL)` from the WHERE clause so the cosine similarity term only boosts scores for lexically-matched candidates, not all 9,200 embedded releases. Prevents semantic noise flooding results on every query.
-- **Exact/prefix artist priority over popularity** — `searchReleasesInDb` in `lib/dbCache.ts` now over-fetches 4× candidates, applies +1,000,000 bonus for exact artist name match and +100,000 for prefix match, then slices to `limit`. Prevents high-DB-popularity artifacts like "Iuiu Hq" from outranking "IU".
-- **`word_similarity` threshold raised 0.3 → 0.5** — two-step raise via migrations `20260531000001` → `20260531000002_search_wordsim_05.sql`. Eliminates fuzzy false positives ("Pink Ocean" for "Frank Ocean" at 0.42, "Vault" for "Vaundy" at 0.43) without regressing typo tolerance on longer strings (Blakpink, Kendrik Lamar, Newjeans unaffected).
-- **Rate limiting on 5 remaining mutation routes** — `auth/resolve-username` POST (10 req/60s, username enumeration risk), `lists` POST (10/60s), `lists/[id]/items` POST (30/60s), `lists/[id]/items` DELETE (30/60s), `rankings/user-ranking` POST (20/60s). All use sliding window via `lib/rateLimit.ts` + Upstash Redis; gracefully skip if Redis is unconfigured.
-- **`backfill:genres` (second pass)** — ran 351 more releases (5,357 → 5,708 processed IDs) before VSCode crashed. Still incomplete; resume with `npm run backfill:genres`.
+- **Rankings → Leaderboard**: renamed the community ranking feature to "Leaderboard" across all user-facing labels, routes, and components. New routes: `/leaderboard`, `/leaderboard/[slug]`, `/leaderboard/[slug]/rank`, `/leaderboard/build`. Old `/rankings/*` routes redirect 301 → `/leaderboard/*` via `next.config.mjs`. Updated: `Sidebar.tsx`, `BottomNav.tsx`, `FilterBuilder.tsx`, `TopRankingsMenu.tsx`, `RankingsGrid.tsx`, `AlbumActions.tsx`, `album/[mbid]/page.tsx`, i18n `en.ts` + `ko.ts`.
+- **Tierlist builder**: personal ranking builder ("Make Your Own Ranking") renamed to "Tierlist". `RankBuilder.tsx` updated: back link → "Leaderboard", save button → "Save Tierlist", toasts + modal copy updated. Numbered ordering UI (1, 2, 3…) and tie support unchanged. Route `/leaderboard/[slug]/rank`.
+- **My Tierlists**: `/my-rankings` page title + back button updated to "My Tierlists". Sidebar label updated from "My List" → "My Tierlists". Route kept as `/my-rankings`.
+- **Friends → top-level nav**: Friends link moved from `SiteHeader` profile dropdown to `Sidebar` as a dedicated tab (Users icon). Sidebar now has 5 nav items: Leaderboard, My Tierlists, Feed, Friends, Explore. Friends removed from dropdown to avoid duplication.
+- **Comment sort/filter**: `ReviewsSection.tsx` gains sort controls (Newest / Oldest / Most liked) and filter controls (All / Public / Friends-only) shown when there's >1 comment. Sort/filter are purely client-side — no new fetch calls.
+- **Accomplishment badges**: migration `20260601000010_accomplishments.sql` adds `accomplishment_definitions` + `user_accomplishments` tables with RLS. Seeded 5 badge definitions: First 10 (10 ratings), Fifty Deep (50), Century Club (100), Audiophile (500), Full Sweep (rated every album in a leaderboard). `lib/accomplishments.ts` — `checkAndAwardRatingMilestones()` + `checkLeaderboardCompletion()`. `GET /api/accomplishments` — public fetch for a user's badges. `POST /api/accomplishments` — awards milestones after rating. Notifications page updated to handle `badge` type with Trophy icon. ProfilePanel fetches + renders a Badges card in the left sidebar (emoji + label, tooltip on hover). **Migration must be applied**: `supabase db push` or paste into SQL editor.
+
+---
+
+
+
+**2026-06-01 — Silla Score recompute + Discovery slider + recommendation buckets:**
+
+- **Silla Score recomputed**: formula now combines calibrated Bayesian star ratings (55%) + normalized tierlist-position score (45%). Per-user calibration: z-score against each user's mean and volatility (std dev), clamped to ±2.5σ, mapped back to [0.5, 5]. Bayesian damping: `(v/(v+10))*R_calibrated + (10/(v+10))*C_global` pulls low-rating-count albums toward the global mean. Rankings + album-page rank display both use the new formula. `rankings/[slug]/page.tsx` cache key bumped to `v2` to force recomputation.
+- **Postgres function** `get_calibrated_bayesian_scores(release_ids uuid[])` (migration `20260601000003`) — efficient SQL computation, called server-side via `supabase.rpc()`.
+- **`recommendation_adventurousness` column** on `profiles` (migration `20260601000002`) — smallint 0–100, default 50.
+- **Discovery slider** in Settings → Preferences: "Conservative ↔ Adventurous" range input, auto-saves on release, labelled with three thresholds (Conservative / Balanced / Adventurous). Reads/writes `recommendation_adventurousness`.
+- **Three-bucket recommendations** in `/api/recommendations`: proportions interpolated from adventurousness — Conservative (0): 90/8/2%, Default (50): 70/20/10%, Adventurous (100): 45/30/25%. In-taste = artist-matching, Adjacent = genre-matching (not artist-matching), Discovery = community-loved (ratings_count DESC) preferring outside-taste artists. Albums from artists the user rated ≤2★ are excluded from in-taste + adjacent buckets.
+- **ExplorePage** now fetches genres from liked (≥3★) rated albums, `recommendation_adventurousness` from profile, and user ID — all passed to the recommendations API.
+
+---
+
+
+
+**2026-06-01 — Silla Score fix (ratings now actually move the leaderboard):**
+
+Diagnosed why ratings had no visible effect on rankings and fixed it end-to-end. Root causes:
+- **Bayesian damping far too strong** for the early-stage dataset. `m=10` pseudo-votes pulled nearly every album to the global mean, so `ratingScore` ≈ 0.5 for *everything* and the 55% rating half carried no ordering signal. → Reduced to `m=3`.
+- **Seed votes drowned out real tier-lists.** Seeds (large vote counts) were summed into the same raw pool as user tier-list contributions (≤1.0 each), then normalized by the max — so genuine tier-lists became a rounding error. → Tier-lists and seeds are now each normalized to [0,1] *separately*, then blended `0.7·tierlist + 0.3·seed` within the 45% rank half, so real tier-lists outweigh pre-launch seed priors.
+- **Rated-but-not-tier-listed albums could never appear.** Candidate set was tier-list ∪ seed only. → New RPC `get_silla_rating_scores(release_ids, p_genre, p_year)` also pulls in any rated release matching the category's genre/year, so a highly-rated album can climb a leaderboard on its own.
+- **Conflicting duplicate migration removed**: deleted misplaced `supabase/migrations/20260601000001_silla_score_fn.sql` (2-col return) that conflicted with the deployed 3-col `apps/web/.../20260601000003`.
+- **Cache lag**: score recompute TTL cut from 5 min → 60 s so rating changes surface quickly.
+
+Implementation: extracted shared math to `apps/web/lib/sillaScore.ts` (`computeTierlistScores`, `combineSillaScores`) — kills the triplicated `computeSillaScores` that had drifted between `leaderboard/[slug]`, `rankings/[slug]`, and `album/[mbid]`. All three now use the identical blend, so an album's "#N in category" on its page matches the leaderboard exactly. Cache key bumped `v2`→`v3`. Migration `20260601000011_silla_score_tuning.sql` re-tunes `get_calibrated_bayesian_scores` to m=3 + adds `get_silla_rating_scores`.
+
+---
+
+
+
+**2026-06-01 — Prod migration apply + Streaming Platform rebuild:**
+
+- **Applied to prod** (via Supabase Management API, `.env.local` + management token restored on this device): `20260531000003_profiles_streaming_platform.sql` (the missing `preferred_streaming_platform` column — root cause of the save bug) and `20260601000011_silla_score_tuning.sql`. The latter needed a `DROP FUNCTION` first: prod actually shipped the **2-col** `get_calibrated_bayesian_scores(release_id, bayesian_score numeric)` from the root-dir `0001` file (committed in `4ff39a3`), never the 3-col `apps/web/.../0003`. Verified post-apply: both functions present with 3-col `(release_id, bayesian_score float8, rating_count bigint)` signatures; spot-checked scores now spread 3.40–4.03 across 2–3-rating albums (m=10 had pinned them all near the mean). **Silla Score fix is now live in prod.**
+- **Then applied the remaining 3** at the user's request: `20260601000000_list_panel_updates` (`list_items.position` + `lists` UPDATE policy), `20260601000001_spotify_connections`, `20260601000002_adventurousness`. Prod is now fully in sync with the migration history — all verified present.
+
+**Preferred Streaming Platform — near-complete rebuild.** The feature didn't save (column missing in prod → every UPDATE errored, preference stayed null → "all 3 icons shown for every choice"). Beyond applying the column:
+- **Root cause of the design smell**: `usePreferredPlatform` ran a Supabase query on *every* `StreamingButtons`/`TrackStreamingButtons` mount (N+1 — an album page with 15 tracks fired 15+ identical queries) and ignored the server hint; the album page's server-side fetch was dead code (`getUser()` on the service-role client has no session → always null).
+- **New `components/StreamingPlatformContext.tsx`** — fetches the preference **once** per session, re-loads on `onAuthStateChange`, and exposes `savePreferred()` with optimistic update + rollback-on-error. Mounted in `MainLayout` above `PlaylistProvider`.
+- `YouTubeMusicButton.tsx` — both button components now read `useStreamingPlatform()` (zero per-button queries) via a shared `visibility()` helper. `preferred` props removed.
+- `album/[mbid]/page.tsx` — deleted the dead server-side `preferredPlatform` fetch + props.
+- `settings/page.tsx` — platform selector now drives the context (`savePreferred`), so a change reflects on album/track pages instantly without reload; added a save-error message, a buttons-disabled-while-saving state, and a helper line ("All services shown" / "Only your chosen service shown").
+
+---
+
+**2026-06-01 — Custom playlists + right panel + Spotify export:**
+
+- **`PlaylistContext`** — React context (`PlaylistProvider`) wrapping the full layout; exposes `activeListId`, `activeListName`, `playlists`, `addToActive`, `panelOpen/setPanelOpen`. Provides global "add to current list" without prop drilling.
+- **`PlaylistPanel`** — persistent right-side `<aside>` (260px, sticky on XL+, overlay on mobile). List selector dropdown (Listen Later + custom playlists); create/rename/delete for custom playlists; per-album remove button; Export modal.
+- **Export modal** — three options: Copy tracklist (clipboard), Export to Spotify (OAuth flow + API), YouTube Music (explicit "no write API" notice + copy fallback).
+- **Spotify OAuth** — `POST /api/spotify/auth` returns authorize URL with `playlist-modify-public/private` scope; `GET /api/spotify/callback` exchanges code + stores tokens in new `spotify_connections` table; `POST /api/spotify/export` searches Spotify for each album's tracks, creates playlist, adds up to 30 tracks (3 per album, 10 albums).
+- **Quick-add** — `AlbumActions` dropdown gains "Add to [active list]" item (shows checkmark for 1.5s); `QuickAddButton` client component on every track row (shows `+`/`✓`).
+- **Migrations** — `20260601000000` (position column on list_items + UPDATE RLS policy for lists rename); `20260601000001` (spotify_connections table with RLS).
+- **`SPOTIFY_REDIRECT_URI`** added to `.env.example`. Add to `.env.local` on both devices and to Vercel env vars. Must also be registered in Spotify Dashboard → Redirect URIs.
 
 ---
 
@@ -235,19 +249,38 @@ Historical record of shipped features and session notes. Not needed at conversat
 - **`ingest-itunes-queue.ts` prevention fix** — `upsertRelease` now checks `artist_native` as a fallback when the English artist name doesn't match (e.g. "Yerin Baek" vs "백예린"), preventing future cross-language-name duplicates.
 - **Dedup run** — `dedup:releases:fix`: 70 high-confidence groups merged. `dedup:releases:fix-all`: 27 low-confidence groups also merged. ~97 duplicate releases removed total. No user data lost (all score=0). Some false positives were caught in the low-confidence run (MOTOMAMI vs MOTOMAMI+, MAYHEM standard vs deluxe, LOONA [#] vs [+ +], etc.) — these will be recovered via `check:completeness` + `queue:ingest` for iTunes-sourced releases.
 - **`queue:discover` run 1** — 89 artists processed (708 already done), 1,721 similar artists queued via Last.fm. Total queue pending: 8,968.
-- **`backfill:genres`** — still running as of session end (5,357 → 5,708 processed IDs before VSCode crash; resumed and completed 2026-06-01: 703 total null-genre releases processed, 310 matched (44%), 393 no match).
+- **`backfill:genres`** — still running as of session end.
 
-### Pipeline progress (2026-06-01 continued):
-- **`backfill:native:releases` (second pass) complete** — 6 native names found (all Haruomi Hosono Japanese titles), 250 no match, 583 skipped. Low yield confirmed: K-pop/J-pop releases use English titles in local iTunes stores.
-- **`check:completeness` bug fixed + run** — script was querying `artists.itunes_artist_id` (always null) instead of `artist_ingestion_queue` where the resolved IDs actually live. Fixed both the query source and `ingest-itunes-queue.ts` to write `itunes_artist_id` back to `artists` going forward. Results: **533 complete, 120 incomplete (264 missing releases re-queued), 87 no iTunes presence**.
-- **`queue:ingest` run 2 batch 1 complete** — +32,956 inserted, 2,097 enriched, 4,600 skipped, 13 no-match, 0 failed. Catalog grew from ~10k → ~64k releases.
-- **`queue:ingest` run 2 batch 2 complete** — +37,598 inserted, 3,695 enriched, 4,184 skipped, 14 no-match, 0 failed. Catalog ~101k+ releases. ~6,800 artists still pending.
-- **`queue:ingest` run 2 batch 3 complete** — +29,594 inserted, 2,371 enriched, 4,344 skipped, 25 no-match, 0 failed. Catalog ~110k+ releases. ~5,800 artists still pending.
-- **`queue:ingest` run 2 complete (2026-06-03)** — all 9 batches done. Final sanity check: **299,468 releases** (294,586 iTunes, 944 Spotify, 3,938 legacy); 0 missing covers; 0 duplicate itunes_ids (`.limit(1)` fix confirmed working); 1,013 null genres (iTunes missing `primaryGenreName`); 1 stuck `processing` queue entry (needs manual reset); bad date "2020" still present (migration `20260601000000_fix_partial_dates.sql` not yet applied).
-- **`queue:ingest` run 2 batch 5 complete** — +25,962 inserted, 2,278 enriched, 2,423 skipped, 11 no-match, 0 failed. Catalog ~165k+ releases. ~3,800 artists still pending. (Skip count drop vs prior batches: collab cleanup removed 303 queue entries.)
-- **`queue:ingest` run 2 batch 4 complete** — +29,120 inserted, 2,586 enriched, 4,189 skipped, 31 no-match, 0 failed. Catalog ~139k+ releases. ~4,800 artists still pending.
-- **Collab artist fix** — added `isCollaborationArtist()` filter to `discover-lastfm-similar.ts` and `ingest-itunes-queue.ts`; `cleanup-collab-artists.ts` script created and run: 303 collab queue entries deleted, 2 artists table entries deleted. Whitelist of 24 legitimate `&` acts maintained across all 3 scripts.
-- **Sanity checks** — `npm run sanity` script created. Findings: no null titles/artists/types, 0 missing covers, 98% genre coverage, 1 bad date ("2020" — migration `20260601000000_fix_partial_dates.sql` created, apply post-ingest), 4 duplicate itunes_ids (root cause fixed: `.maybeSingle()` → `.limit(1)` in `upsertRelease`; run `dedup:releases:fix` post-ingest), 987 null genres (iTunes missing `primaryGenreName` — fix with `enrich:genres:lastfm` post-ingest), singles (64% of catalog) already excluded from `recommendable_releases` view.
+### Pending pipeline (run in order after `backfill:genres` finishes):
+1. `npm run backfill:native:releases`
+2. `npm run check:completeness`
+3. `npm run queue:ingest` (overnight — 8,968 artists)
+4. `npm run queue:discover` → `npm run queue:ingest` (repeat until stable)
+5. `npm run backfill:embeddings` (once ingest loop is stable)
+
+---
+
+**2026-05-31 — UI polish + artist page redesign + fixes:**
+
+- **Explore filters** — genre/type/decade filter bar added to Explore page. Filters are passed to `/api/recommendations` as `filterGenre`, `filterType`, `filterDecade` and applied to all three recommendation buckets + the prestige fallback. Ships: Release Type chips (All/Albums/EPs), Decade dropdown (2020s–1970s), Genre dropdown (14 broad genres). Country + language skipped (no reliable DB backing).
+- **Bookmark overlay on Explore cards** — bookmark icon moved from below-card row to a circular amber/glass overlay pinned to top-right corner of album cover. Overlays on hover, fills amber when saved.
+- **Bookmark + Quick-Add on home page cards** — `ScrollRow.tsx` updated: bookmark and add-to-playlist ("+") circular overlays appear on card hover, both pinned to top-right of cover image. Same change applied to PersonalizedFeed recently-rated cards.
+- **Notification bell in nav** — dedicated `<Bell>` icon button added to the top-right of `SiteHeader`; shows red dot badge when there are unread notifications. Old dot-on-avatar removed.
+- **View Artist Page button on search** — restyled from plain `text-mint-dark` text to a solid amber `#E8A020` pill button inside the artist match card.
+- **Artist page redesign** — full visual overhaul: blurred-cover hero (like album page), circular artist avatar, native name below main name (when different), genre pills, stats row (followers / avg rating / total community ratings / release count breakdown). "Top Rated" section (≥2 ratings, rank badge + score badge overlay). Discography section uses upgraded `DiscographyGrid` that shows avg ★ score overlay on each card when rating data is available.
+- **DiscographyGrid ratings** — accepts optional `stats: Record<string, ReleaseStats>` prop (avgScore + count per releaseId); shows amber `★ X.X` overlay on card thumbnails and ratings count below year.
+- **Preferred streaming platform fix** — root cause: `createServerClient` uses the service-role key (no cookies), so `getUser()` always returned null on the album page and `preferredPlatform` was never set. Fix: `YouTubeMusicButton.tsx` now has `'use client'` and reads the preference from `supabaseClient` in a `useEffect`, overriding whatever the server passed. Both `StreamingButtons` and `TrackStreamingButtons` now always show the correct platform for the logged-in user.
+- **Playlist panel instant refresh** — `PlaylistContext` now exposes `panelRefreshKey` (increments on every successful `addToActive`). `PlaylistPanel` watches this key and reloads its album list immediately when an item is added, without clearing existing content (skeleton only shown on initial/list-switch load).
+- **Settings in Sidebar** — `Settings` icon link pinned to bottom of the sidebar column (below main nav items).
+
+---
+
+**2026-05-31 — Preferred streaming platform:**
+
+- **Migration** `20260531000000_profiles_streaming_platform.sql` — adds `preferred_streaming_platform text CHECK IN ('spotify','youtube_music','tidal')` to `profiles` (nullable). Run `supabase db push`.
+- **Onboarding** — expanded from 3-step to 4-step flow; new step 3 ("Where do you listen?") lets users pick Spotify, YouTube Music, Tidal, or None. `StepDots` total updated to 4. Platform saved in the final profiles upsert.
+- **Settings → Preferences** — "Preferred streaming platform" control; auto-saves on click (optimistic update, no separate save button).
+- **Album page** — server component now reads `preferred_streaming_platform` from `profiles` for the authenticated user and passes it as `preferred` prop to `StreamingButtons` (album hero) and `TrackStreamingButtons` (per-track row). When set, only that platform's button renders.
 
 ---
 
@@ -262,14 +295,8 @@ Historical record of shipped features and session notes. Not needed at conversat
 - **My Rankings detail page** (`/my-rankings/[slug]`) — full-page sorted list for each slug (`all`, `albums`, `eps`, `songs`, genre slugs). Back button to dashboard.
 - **Sidebar** — added "My List" nav item with `ListOrdered` icon linking to `/my-rankings`.
 
-### Also shipped in this session (committed after docs update, not previously recorded)
-
-- **Add to List modal** — `AlbumActions` dropdown now opens a modal showing the user's lists with checkmarks; clicking toggles the album in/out of that list inline.
-- **Listen Later bookmark** — `ExplorePage` cards gained an inline `BookmarkButton` (Listen Later) alongside the star widget; no need to open the album page to save for later.
-- **Activity page two-column layout** — page body becomes a two-column grid on `lg+` screens: feed on the left, `RecommendedFeed` sidebar (sticky) on the right.
-- **RankBuilder auto-populate** — "Auto-fill" button fills tiers from user's rated catalog by score band (5★→T1, 4–4.5★→T2, 3–3.5★→T3, 2–2.5★→T4), respecting the active `filterYear`. Saves time when building a year ranking.
-- **Fix: Supabase PromiseLike** — wrapped `PromiseLike` returns from Supabase in `Promise.resolve()` before chaining `.catch()` — was causing a build-time type error in strict mode.
-- **`dbCache.ts` iTunes artist ID resolution** — `getCachedArtist` / `getArtistFromDb` now resolve numeric iTunes artist IDs via the `itunes_artist_id` column; artist pages no longer 404 when the URL contains a numeric ID from iTunes search.
+### Pending
+- `track_ratings` table must be created in prod. SQL is in `supabase/migrations/20260526000000_track_ratings.sql`. Paste into Supabase dashboard → SQL Editor → Run. Until then, song ratings save silently fail.
 
 ---
 
