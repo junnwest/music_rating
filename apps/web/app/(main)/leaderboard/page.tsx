@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createServerClient } from '../../../lib/supabaseServer';
 
-export const revalidate = 60;
+export const dynamic = 'force-dynamic';
 
 export default async function LeaderboardPage() {
   const supabase = createServerClient();

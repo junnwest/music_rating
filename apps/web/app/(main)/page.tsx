@@ -4,10 +4,6 @@ import { HomeReadyProvider } from '../../components/HomeReadyContext';
 import RevealWhenReady from '../../components/RevealWhenReady';
 import DailyQuestion from '../../components/DailyQuestion';
 
-// Cache the rendered homepage for 1 hour. The recommendation grid + its
-// underlying DB queries only run once per hour regardless of traffic.
-export const revalidate = 3600;
-
 export default function HomePage() {
   return (
     <HomeReadyProvider>
