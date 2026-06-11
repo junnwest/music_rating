@@ -154,6 +154,21 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries
 
+**2026-06-11 — Performance overhaul + live search dropdown:**
+
+- **Homepage blank-screen fix** — added `<Suspense fallback={null}>` around `<RecommendationGrid />` in `app/(main)/page.tsx`. Without it, Next.js blocked the full page response on slow DB queries, leaving users staring at a blank page for minutes as the database grew to ~347k rows.
+- **GIN trigram index on `releases.genres`** — migration `20260611000000_genres_trgm_index.sql`, applied via Supabase SQL Editor with `SET maintenance_work_mem = '64MB'`. `RecommendationGrid` uses `ILIKE '%genre%'` (substring match) which requires a trigram index. Without it, every category row was firing a full sequential scan, exhausting Supabase's Disk IO Budget and throttling disk to 5 MB/s. Required upgrading to **Supabase Pro** — the free tier's IO budget was too depleted to build the index (connection timeout every attempt). Once Pro was active, the index built successfully.
+- **`get_user_id_by_email_prefix` SQL function** — migration `20260611000001_user_id_by_email_prefix_fn.sql`, applied via Supabase SQL Editor. Profile page (`app/(main)/profile/[username]/page.tsx`) was calling `auth.admin.listUsers({ perPage: 1000 })` to find one user by their email prefix — fetching up to 1,000 rows to match one. Replaced with a targeted `SECURITY DEFINER` function querying `auth.users` directly.
+- **Album page ranking badge Redis cache** — `album/[mbid]/page.tsx` now caches the "In Rankings" computation under `sj:album-rankings:{id}` with a 5-minute TTL. Pre-cache: 10–15 queries per page load. Post-cache: single ~30ms Redis ping on hit.
+- **`category-resolver.ts` query cap** — added `.limit(500)` to the ratings query (was unbounded — on a large dataset this could pull tens of thousands of rows per homepage load).
+- **`canon-suggestions.ts` over-fetch reduction** — reduced both fetch multipliers from 4×/3× to 2×.
+- **`SearchBar` component** (`apps/web/components/SearchBar.tsx`) — new standalone search bar component replacing the inline desktop `<form>` in `SiteHeader.tsx`. Features: 300ms debounce, 2-character minimum before firing, live dropdown with Artists section (circular avatar) + Albums section (square cover art) + "See all results" link, keyboard navigation (↑/↓/Enter/Escape), click-outside close, loading spinner while fetching.
+- **`/api/search/suggest` endpoint** (`apps/web/app/api/search/suggest/route.ts`) — dedicated lightweight suggest endpoint. No Jina embedding, no Spotify/iTunes fallback. Prefix match (`q%`) instead of substring (`%q%`) — hits B-tree indexes rather than requiring a trigram scan. Both artist and release queries share a single DB connection. Orders releases by `prestige` (has partial index) instead of `ratings_count` (no index). 10-minute Redis cache under `sj:suggest:{query}`. Server-side 2-character minimum. Dropdown response is now near-instant after the first query (cached).
+- **Root cause of initial ~10s dropdown latency**: `searchReleasesInDb` was calling `searchReleases` → `embedQuery` → external Jina API call on every cache miss. Fixed by bypassing the full search pipeline entirely.
+- **Root cause of subsequent ~2s dropdown latency**: (1) `searchArtistsInDb` used `%q%` leading wildcard (no index on short queries), (2) two separate `createServerClient()` calls, (3) `ratings_count` column has no index so ORDER BY was expensive. Fixed by prefix match, shared connection, and `prestige` ordering.
+
+---
+
 **2026-06-09/10 — `backfill:embeddings` complete + HNSW index rebuilt:**
 
 - **Found backfill incomplete** — overnight run was interrupted by computer shutdown. Dry-run confirmed 93,090 releases still needed embeddings at session start.

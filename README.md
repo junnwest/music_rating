@@ -8,9 +8,9 @@ Every record you've loved — rated, cataloged, and remembered. A music platform
 
 ---
 
-## ⚠️ Current state (2026-06-10)
+## ⚠️ Current state (2026-06-11)
 
-Features shipped as of 2026-06-08: Daily Question (daily album-pick prompt + shareable 1080×1920 / 1080×1080 card export via `/api/daily-question/card`), preferred streaming platform, **Collections** (custom playlists, renamed) with a foldable right-side panel and a per-add destination picker ("Added to … / Change to"), Bayesian Silla Score, and Discovery/Adventurousness slider. See SESSIONS.md for details. **2026-06-10:** `backfill:embeddings` ✅ complete — all ~347k non-single releases now have Jina v3 embeddings. HNSW index creation ⏳ pending (timed out in Supabase SQL editor — run via psql direct with `SET statement_timeout = 0` next session). Deploy to Vercel after index is built to activate hybrid semantic search.
+Features shipped as of 2026-06-08: Daily Question, preferred streaming platform, **Collections** (custom playlists, renamed) with foldable panel and per-add destination picker, Bayesian Silla Score, Discovery/Adventurousness slider. See SESSIONS.md for details. **2026-06-10:** `backfill:embeddings` ✅ complete — all ~347k non-single releases have Jina v3 embeddings. HNSW index ✅ rebuilt (2026-06-09). Hybrid semantic search ready — deploy to Vercel to activate. **2026-06-11:** Performance overhaul — homepage blank-screen fix (Suspense streaming), GIN trigram index on `releases.genres` (eliminates IO-exhausting full-table scans; required **Supabase Pro** upgrade to build — free tier Disk IO Budget was exhausted), Redis caching on album page ranking badges (5-min TTL, 10–15 queries → 1 cache hit), profile page `auth.admin.listUsers(1000)` → targeted SQL function, query limits on category-resolver and canon-suggestions. New live search dropdown: `SearchBar` component + `/api/search/suggest` endpoint (prefix match, no Jina, 10-min Redis cache) — near-instant after first query.
 
 ### ► START HERE — next session checklist
 
@@ -20,6 +20,8 @@ Run pending migrations via `supabase db push` (or paste into the Supabase SQL ed
 
 | File | What it adds | Prod |
 |------|-------------|------|
+| `20260611000001_user_id_by_email_prefix_fn.sql` | `get_user_id_by_email_prefix` SECURITY DEFINER SQL function — replaces `auth.admin.listUsers(1000)` on profile page | ✅ applied (SQL editor) |
+| `20260611000000_genres_trgm_index.sql` | GIN trigram index on `releases.genres` — eliminates full-table ILIKE scans | ✅ applied (SQL editor, Supabase Pro) |
 | `20260531000001_daily_questions.sql` | `daily_questions` + `daily_answers` tables + RLS + 30 seeded questions | ✅ applied |
 | `20260531000003_profiles_streaming_platform.sql` | `preferred_streaming_platform` on profiles | ✅ applied 2026-06-01 |
 | `20260601000000_list_panel_updates.sql` | `position` col on `list_items`; UPDATE RLS policy on `lists` | ✅ applied 2026-06-01 |
@@ -37,7 +39,7 @@ Also applied to prod (lives in root `supabase/migrations/`, not `apps/web/`): `2
 
 #### Catalog pipeline — ✅ Complete (2026-06-10)
 
-All pipeline steps done. **Next action: deploy to Vercel** to activate hybrid semantic search in production.
+All pipeline steps done including HNSW index rebuild (2026-06-09). **Next action: deploy to Vercel** to activate hybrid semantic search in production.
 
 | Step | Command | Status |
 |------|---------|--------|
@@ -48,7 +50,7 @@ All pipeline steps done. **Next action: deploy to Vercel** to activate hybrid se
 | queue:discover (runs 1–4) | `npm run queue:discover` | ✅ done — queue stable |
 | enrich:genres:lastfm | `npm run enrich:genres:lastfm` | ✅ done (2026-06-07) — 15,460 enriched |
 | backfill:embeddings | `npm run backfill:embeddings` | ✅ done (2026-06-10) — all ~347k releases embedded |
-| Rebuild HNSW index | psql direct (port 5432) | ⏳ pending — timed out in SQL editor |
+| Rebuild HNSW index | psql direct (port 5432) | ✅ done (2026-06-09, Supabase SQL editor) |
 
 #### Catalog pipeline — completed steps (historical)
 
@@ -569,6 +571,11 @@ npm run expand:genre        # Spotify genre sweep — still works
 - **Singles filtering** — enforced at every layer: `recommendable_releases` view, `include_groups=album,ep,compilation` in Spotify artist-albums API calls, `.not('release_type', 'ilike', 'single')` on all DB queries, and post-fetch `releaseType === 'Single'` guards in route handlers.
 - **CSP (`next.config.mjs`)** — includes explicit `wss://*.supabase.co` for Safari (Safari does not automatically allow WebSocket when only `https://` is listed in `connect-src`), `us-assets.i.posthog.com` for PostHog session replay, and `lh3.googleusercontent.com` for Google OAuth avatars.
 - **Server Component error handling** — `RecommendationGrid` wraps Supabase queries in try/catch so a transient network failure (common on mobile) falls through to the Spotify fallback instead of bubbling to the error boundary.
+- **Homepage Suspense streaming** (2026-06-11) — `<RecommendationGrid />` is wrapped in `<Suspense fallback={null}>` so the page shell (header, nav) streams to the browser immediately. Without this, Next.js blocked the entire page response on DB queries that could take seconds. `<RevealWhenReady>` still coordinates the fade-in.
+- **`releases.genres` GIN trigram index** (2026-06-11) — migration `20260611000000_genres_trgm_index.sql`. `RecommendationGrid` uses `ILIKE '%genre%'` (substring match) which requires a trigram index; without it every category fires a full sequential scan across ~347k rows. These scans were exhausting Supabase's Disk IO Budget and throttling disk throughput to 5 MB/s. Building the index required upgrading to Supabase Pro.
+- **Album page ranking badge cache** (2026-06-11) — `album/[mbid]/page.tsx` caches the "In Rankings" badge computation in Redis (`sj:album-rankings:{id}`, 5-min TTL). Pre-cache this was 10–15 queries per page load; post-cache it is a single ~30ms Redis ping on cache hit.
+- **Live search suggest endpoint** (2026-06-11) — `/api/search/suggest` is a dedicated lightweight endpoint that bypasses Jina embedding, Spotify, and iTunes entirely. Uses prefix match (`q%` instead of `%q%`) which hits B-tree indexes and is near-instant. Both artist and release queries share a single DB connection. Results cached in Redis (`sj:suggest:{query}`, 10-min TTL). Component: `SearchBar.tsx` — 300ms debounce, 2-char minimum, keyboard nav, loading spinner.
+- **Profile page user lookup** (2026-06-11) — replaced `auth.admin.listUsers({ perPage: 1000 })` with a targeted `SECURITY DEFINER` RPC `get_user_id_by_email_prefix` (migration `20260611000001`). Was fetching up to 1,000 users to match one username.
 - **Next.js route groups** — all pages live under `app/(main)/` or `app/(auth)/`. Never create directories directly under `app/` without a route group — empty ghost directories cause "No default component for parallel route" errors.
 
 ## Known issues

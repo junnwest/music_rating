@@ -12,6 +12,7 @@ import {
 import UserAvatar from './UserAvatar';
 import { useUnreadCount } from '../lib/useUnreadCount';
 import { useLanguage } from '../lib/i18n';
+import SearchBar from './SearchBar';
 
 interface SiteHeaderProps {
   onMenuClick?: () => void;
@@ -20,7 +21,7 @@ interface SiteHeaderProps {
 export default function SiteHeader({ onMenuClick }: SiteHeaderProps) {
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
-  const [query, setQuery] = useState('');
+
   const [profileOpen, setProfileOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [mobileQuery, setMobileQuery] = useState('');
@@ -72,13 +73,6 @@ export default function SiteHeader({ onMenuClick }: SiteHeaderProps) {
     if (profileOpen) document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [profileOpen]);
-
-  const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!query.trim()) return;
-    router.push(`/search?query=${encodeURIComponent(query.trim())}`);
-    setQuery('');
-  };
 
   const handleMobileSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -153,20 +147,9 @@ export default function SiteHeader({ onMenuClick }: SiteHeaderProps) {
       </Link>
 
       {/* Center: Search — absolutely centered, hidden on mobile */}
-      <form
-        onSubmit={handleSearch}
-        className="hidden md:flex absolute left-1/2 -translate-x-1/2 w-full max-w-[560px] px-4"
-      >
-        <div className="bg-surface border border-divider rounded-xl px-4 py-2 flex items-center gap-2 w-full hover:border-mid transition">
-          <Search size={15} className="text-muted flex-shrink-0" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t('nav.searchPlaceholder')}
-            className="flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-placeholder"
-          />
-        </div>
-      </form>
+      <div className="hidden md:block absolute left-1/2 -translate-x-1/2 w-full max-w-[560px] px-4">
+        <SearchBar placeholder={t('nav.searchPlaceholder')} />
+      </div>
 
       {/* Right side */}
       <div className="ml-auto flex items-center gap-3 flex-shrink-0">
