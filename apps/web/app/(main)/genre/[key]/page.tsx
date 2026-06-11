@@ -5,12 +5,10 @@ import { GENRE_CATEGORIES } from '../../../../lib/genre-categories';
 import type { AlbumRelease } from '../../../../types';
 import { getServerT } from '../../../../lib/i18n/server';
 
+export const dynamic = 'force-dynamic';
+
 interface Props {
   params: { key: string };
-}
-
-export async function generateStaticParams() {
-  return GENRE_CATEGORIES.map((c) => ({ key: c.key }));
 }
 
 export default async function GenrePage({ params }: Props) {
@@ -28,7 +26,8 @@ export default async function GenrePage({ params }: Props) {
       .select('id, title, artist, cover_url, release_type, release_date')
       .or(orClause)
       .not('cover_url', 'is', null)
-      .order('release_date', { ascending: false });
+      .order('release_date', { ascending: false })
+      .limit(300);
 
     albums = (data ?? []).map((r: any) => ({
       id: r.id,
