@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import PersonalizedFeed from '../../components/PersonalizedFeed';
 import RecommendationGrid from '../../components/RecommendationGrid';
 import { HomeReadyProvider } from '../../components/HomeReadyContext';
