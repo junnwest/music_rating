@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic';
 
+import { Suspense } from 'react';
 import PersonalizedFeed from '../../components/PersonalizedFeed';
 import RecommendationGrid from '../../components/RecommendationGrid';
 import { HomeReadyProvider } from '../../components/HomeReadyContext';
@@ -15,7 +16,9 @@ export default function HomePage() {
           <PersonalizedFeed />
         </div>
         <RevealWhenReady>
-          <RecommendationGrid />
+          <Suspense fallback={null}>
+            <RecommendationGrid />
+          </Suspense>
         </RevealWhenReady>
       </div>
     </HomeReadyProvider>

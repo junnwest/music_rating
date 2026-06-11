@@ -23,14 +23,14 @@ export default async function UserProfilePage({ params }: Props) {
 
     userId = profile?.id ?? null;
 
-    // Fallback: scan auth.users by email prefix (covers users who haven't visited their profile yet)
+    // Fallback: targeted auth.users lookup by email prefix via SQL function.
+    // Avoids fetching all users — queries auth.users with an indexed email filter.
     if (!userId) {
       try {
-        const { data: { users } } = await supabase.auth.admin.listUsers({ perPage: 1000 });
-        const match = users.find((u) => u.email?.split('@')[0] === username);
-        userId = match?.id ?? null;
+        const { data: uid } = await (supabase as any).rpc('get_user_id_by_email_prefix', { email_prefix: username });
+        userId = uid ?? null;
       } catch (err) {
-        console.error('[profile] auth.admin.listUsers failed:', err);
+        console.error('[profile] get_user_id_by_email_prefix failed:', err);
       }
     }
   }

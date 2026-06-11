@@ -76,7 +76,7 @@ export async function getCanonSuggestions(
       .not('prestige', 'is', null)
       .not('release_type', 'ilike', 'single')
       .order('prestige', { ascending: true })
-      .limit(limit * 4);
+      .limit(limit * 2);
     rows = data ?? [];
   }
 
@@ -90,7 +90,7 @@ export async function getCanonSuggestions(
       .not('prestige', 'is', null)
       .not('release_type', 'ilike', 'single')
       .order('prestige', { ascending: true })
-      .limit(limit * 3);
+      .limit(limit * 2);
     for (const r of data ?? []) {
       if (!seen.has(r.id)) { rows.push(r); seen.add(r.id); }
     }

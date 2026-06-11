@@ -42,7 +42,7 @@ async function loadUserSignals(
 
   const [{ data: profile }, { data: ratings }] = await Promise.all([
     supabase.from('profiles').select('preferred_genres').eq('id', userId).maybeSingle(),
-    supabase.from('ratings').select('release_id, score').eq('user_id', userId).gte('score', 3.5),
+    supabase.from('ratings').select('release_id, score').eq('user_id', userId).gte('score', 3.5).limit(500),
   ]);
 
   if (profile?.preferred_genres) {

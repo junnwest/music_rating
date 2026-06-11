@@ -124,57 +124,66 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
     }
     const allCatIds = [...new Set([...seedCatIds, ...userCatIds])];
     if (allCatIds.length > 0) {
-      const { data: cats } = await supabase
-        .from('ranking_categories')
-        .select('id, slug, title, genre, year')
-        .in('id', allCatIds)
-        .order('sort_order');
+      type RankingsCache = { slug: string; title: string; rank: number }[];
+      const rankingsCacheKey = `sj:album-rankings:${album.id}`;
+      const cachedRankings = await cacheGet<RankingsCache>(rankingsCacheKey);
 
-      // For each category, compute this album's rank using the combined Silla Score.
-      // Mirrors the leaderboard exactly (shared lib/sillaScore helpers).
-      const catList = cats ?? [];
-      const rankResults = await Promise.all(catList.map(async (cat) => {
-        const [{ data: allSeedEntries }, { data: catRankings }] = await Promise.all([
-          supabase!.from('ranking_seed_entries').select('release_id, seed_votes').eq('category_id', cat.id),
-          supabase!.from('user_rankings').select('id').eq('category_id', cat.id),
-        ]);
+      if (cachedRankings) {
+        rankingMemberships = cachedRankings;
+      } else {
+        const { data: cats } = await supabase
+          .from('ranking_categories')
+          .select('id, slug, title, genre, year')
+          .in('id', allCatIds)
+          .order('sort_order');
 
-        const seedRaw = new Map<string, number>(
-          (allSeedEntries ?? []).map((s: any) => [s.release_id as string, Number(s.seed_votes)]),
-        );
+        // For each category, compute this album's rank using the combined Silla Score.
+        // Mirrors the leaderboard exactly (shared lib/sillaScore helpers).
+        const catList = cats ?? [];
+        const rankResults = await Promise.all(catList.map(async (cat) => {
+          const [{ data: allSeedEntries }, { data: catRankings }] = await Promise.all([
+            supabase!.from('ranking_seed_entries').select('release_id, seed_votes').eq('category_id', cat.id),
+            supabase!.from('user_rankings').select('id').eq('category_id', cat.id),
+          ]);
 
-        let tierlistRaw = new Map<string, number>();
-        const catRankingIds = (catRankings ?? []).map(r => r.id);
-        if (catRankingIds.length > 0) {
-          const { data: entries } = await supabase!
-            .from('user_ranking_entries')
-            .select('ranking_id, release_id, rank')
-            .in('ranking_id', catRankingIds);
-          tierlistRaw = computeTierlistScores(entries ?? []);
-        }
+          const seedRaw = new Map<string, number>(
+            (allSeedEntries ?? []).map((s: any) => [s.release_id as string, Number(s.seed_votes)]),
+          );
 
-        // Bayesian-damped calibrated ratings, including rated albums matching genre/year
-        const seedIds = [...new Set([...tierlistRaw.keys(), ...seedRaw.keys()])];
-        const { data: bayesianRows } = await supabase!.rpc('get_silla_rating_scores', {
-          release_ids: seedIds,
-          p_genre: cat.genre ?? null,
-          p_year: cat.year ?? null,
-        });
-        const bayesianMap = new Map<string, number>(
-          (bayesianRows ?? []).map((r: any) => [r.release_id as string, r.bayesian_score as number]),
-        );
+          let tierlistRaw = new Map<string, number>();
+          const catRankingIds = (catRankings ?? []).map(r => r.id);
+          if (catRankingIds.length > 0) {
+            const { data: entries } = await supabase!
+              .from('user_ranking_entries')
+              .select('ranking_id, release_id, rank')
+              .in('ranking_id', catRankingIds);
+            tierlistRaw = computeTierlistScores(entries ?? []);
+          }
 
-        const candidateIds = [...new Set([...seedIds, ...bayesianMap.keys()])];
-        const combined = combineSillaScores({ candidateIds, tierlistRaw, seedRaw, bayesianMap });
-        const sorted = [...combined.entries()].sort((a, b) => b[1] - a[1]);
+          // Bayesian-damped calibrated ratings, including rated albums matching genre/year
+          const seedIds = [...new Set([...tierlistRaw.keys(), ...seedRaw.keys()])];
+          const { data: bayesianRows } = await supabase!.rpc('get_silla_rating_scores', {
+            release_ids: seedIds,
+            p_genre: cat.genre ?? null,
+            p_year: cat.year ?? null,
+          });
+          const bayesianMap = new Map<string, number>(
+            (bayesianRows ?? []).map((r: any) => [r.release_id as string, r.bayesian_score as number]),
+          );
 
-        const rankIdx = sorted.findIndex(([id]) => id === album.id);
-        const titleKey = `rankingTitles.${cat.slug}`;
-        const titleT = t(titleKey);
-        return { slug: cat.slug, title: titleT === titleKey ? cat.title : titleT, rank: rankIdx + 1 };
-      }));
+          const candidateIds = [...new Set([...seedIds, ...bayesianMap.keys()])];
+          const combined = combineSillaScores({ candidateIds, tierlistRaw, seedRaw, bayesianMap });
+          const sorted = [...combined.entries()].sort((a, b) => b[1] - a[1]);
 
-      rankingMemberships = rankResults.filter(r => r.rank > 0);
+          const rankIdx = sorted.findIndex(([id]) => id === album.id);
+          const titleKey = `rankingTitles.${cat.slug}`;
+          const titleT = t(titleKey);
+          return { slug: cat.slug, title: titleT === titleKey ? cat.title : titleT, rank: rankIdx + 1 };
+        }));
+
+        rankingMemberships = rankResults.filter(r => r.rank > 0);
+        cacheSet(rankingsCacheKey, rankingMemberships, 5 * 60).catch(() => {});
+      }
     }
   }
 
