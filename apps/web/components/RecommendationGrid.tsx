@@ -56,43 +56,43 @@ export default async function RecommendationGrid() {
   const categories = await getCategoriesForUser(supabase, userId);
   const sections: { key: string; name: string; description: string; albums: AlbumRelease[] }[] = [];
 
-  for (const cat of categories) {
-    let albums: AlbumRelease[] = [];
+  const albumsPerCat = await Promise.all(
+    categories.map(async (cat) => {
+      let albums: AlbumRelease[] = [];
 
-    // Primary: query our releases table by genre
-    if (supabase) {
-      try {
-        albums = await fetchFromReleases(supabase, cat.genreFilters);
-      } catch {}
-    }
-
-    // Fallback: curated_releases (manually seeded list)
-    if (albums.length === 0 && supabase) {
-      try {
-        const { data } = await supabase
-          .from('curated_releases')
-          .select('release_id, title, artist, cover_url, release_type')
-          .eq('category', cat.key)
-          .not('release_type', 'ilike', 'single');
-
-        albums = (data ?? []).map((r: any) => ({
-          id: r.release_id,
-          title: r.title,
-          artist: r.artist,
-          coverUrl: r.cover_url ?? null,
-          releaseType: (r.release_type as AlbumRelease['releaseType']) ?? 'Album',
-          date: null,
-          country: null,
-        }));
-      } catch (err) {
-        console.error('[RecommendationGrid] DB fetch failed:', err);
+      if (supabase) {
+        try {
+          albums = await fetchFromReleases(supabase, cat.genreFilters);
+        } catch {}
       }
-    }
 
-    // No live-Spotify fallback — if both DB sources are empty, the category is hidden.
-    // Populate the DB via npm run backfill:genres / expand:genre / expand:related.
-    // Threshold: hide rows that can't fill a respectable horizontal scroll — a row
-    // with 1–5 albums looks broken and signals to the user that the DB is incomplete.
+      if (albums.length === 0 && supabase) {
+        try {
+          const { data } = await supabase
+            .from('curated_releases')
+            .select('release_id, title, artist, cover_url, release_type')
+            .eq('category', cat.key)
+            .not('release_type', 'ilike', 'single');
+
+          albums = (data ?? []).map((r: any) => ({
+            id: r.release_id,
+            title: r.title,
+            artist: r.artist,
+            coverUrl: r.cover_url ?? null,
+            releaseType: (r.release_type as AlbumRelease['releaseType']) ?? 'Album',
+            date: null,
+            country: null,
+          }));
+        } catch (err) {
+          console.error('[RecommendationGrid] DB fetch failed:', err);
+        }
+      }
+
+      return { cat, albums };
+    }),
+  );
+
+  for (const { cat, albums } of albumsPerCat) {
     if (albums.length >= 6) {
       sections.push({ key: cat.key, name: cat.name, description: cat.description, albums });
     }

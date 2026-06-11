@@ -40,25 +40,16 @@ async function loadUserSignals(
     ratedGenreTokens: new Map(),
   };
 
-  // Onboarding preferences
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('preferred_genres')
-    .eq('id', userId)
-    .maybeSingle();
+  const [{ data: profile }, { data: ratings }] = await Promise.all([
+    supabase.from('profiles').select('preferred_genres').eq('id', userId).maybeSingle(),
+    supabase.from('ratings').select('release_id, score').eq('user_id', userId).gte('score', 3.5),
+  ]);
 
   if (profile?.preferred_genres) {
     for (const g of profile.preferred_genres.split(',').map((s: string) => s.trim()).filter(Boolean)) {
       signals.preferredGenres.add(g);
     }
   }
-
-  // Rated albums >= 3.5 — pull their genres for revealed preference
-  const { data: ratings } = await supabase
-    .from('ratings')
-    .select('release_id, score')
-    .eq('user_id', userId)
-    .gte('score', 3.5);
 
   const highRatedIds = (ratings ?? []).map((r: any) => r.release_id);
   if (highRatedIds.length > 0) {
