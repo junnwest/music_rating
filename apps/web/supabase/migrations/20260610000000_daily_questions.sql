@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS public.daily_questions (
 );
 
 ALTER TABLE public.daily_questions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "daily_questions_select" ON public.daily_questions;
 CREATE POLICY "daily_questions_select" ON public.daily_questions FOR SELECT USING (true);
 
 -- daily_answers: one answer per user per question (upserted by answer route)
@@ -21,6 +22,9 @@ CREATE TABLE IF NOT EXISTS public.daily_answers (
 );
 
 ALTER TABLE public.daily_answers ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "daily_answers_select_own" ON public.daily_answers;
+DROP POLICY IF EXISTS "daily_answers_insert_own" ON public.daily_answers;
+DROP POLICY IF EXISTS "daily_answers_update_own" ON public.daily_answers;
 CREATE POLICY "daily_answers_select_own" ON public.daily_answers FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "daily_answers_insert_own" ON public.daily_answers FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "daily_answers_update_own" ON public.daily_answers FOR UPDATE USING (auth.uid() = user_id);
