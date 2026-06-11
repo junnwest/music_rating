@@ -21,6 +21,10 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
+  webpack: (config) => {
+    config.cache = false;
+    return config;
+  },
   async redirects() {
     return [
       { source: '/rankings', destination: '/leaderboard', permanent: true },
