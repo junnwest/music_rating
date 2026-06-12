@@ -8,15 +8,17 @@ Every record you've loved — rated, cataloged, and remembered. A music platform
 
 ---
 
-## ⚠️ Current state (2026-06-11)
+## ⚠️ Current state (2026-06-12)
 
 Features shipped as of 2026-06-08: Daily Question, preferred streaming platform, **Collections** (custom playlists, renamed) with foldable panel and per-add destination picker, Bayesian Silla Score, Discovery/Adventurousness slider. See SESSIONS.md for details. **2026-06-10:** `backfill:embeddings` ✅ complete — all ~347k non-single releases have Jina v3 embeddings. HNSW index ✅ rebuilt (2026-06-09). Hybrid semantic search ready — deploy to Vercel to activate. **2026-06-11:** Performance overhaul — homepage blank-screen fix (Suspense streaming), GIN trigram index on `releases.genres` (eliminates IO-exhausting full-table scans; required **Supabase Pro** upgrade to build — free tier Disk IO Budget was exhausted), Redis caching on album page ranking badges (5-min TTL, 10–15 queries → 1 cache hit), profile page `auth.admin.listUsers(1000)` → targeted SQL function, query limits on category-resolver and canon-suggestions. New live search dropdown: `SearchBar` component + `/api/search/suggest` endpoint (prefix match, no Jina, 10-min Redis cache) — near-instant after first query.
 
 ### ► START HERE — next session checklist
 
-#### DB migrations — production status (verified against prod 2026-06-01 via Management API)
+**Priority for next session:** Deploy to Vercel (all performance fixes and the live search dropdown are committed and ready). Then QA the site end-to-end.
 
-Run pending migrations via `supabase db push` (or paste into the Supabase SQL editor if db push is blocked by the timestamp-collision history). Status below was confirmed by querying `information_schema` / `pg_proc` directly.
+#### DB migrations — production status (verified against prod 2026-06-11 via SQL editor)
+
+All migrations applied. Nothing pending. If `supabase db push` is blocked by timestamp-collision history, paste into the Supabase SQL editor instead.
 
 | File | What it adds | Prod |
 |------|-------------|------|
