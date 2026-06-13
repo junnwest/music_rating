@@ -4,6 +4,18 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+## Session summaries (prepended — newest first)
+
+**2026-06-12 — Pre-launch checklist pass:**
+
+- **All commits already deployed** — confirmed no unpushed commits; Vercel is live and up to date with main.
+- **Spotify playlist export configured** — added `https://sillajuku.com/api/spotify/callback` to Spotify developer dashboard redirect URIs; added `SPOTIFY_REDIRECT_URI` to Vercel env vars; added `http://localhost:3000/api/spotify/callback` to `.env.local`. Note: playlist export uses user-authenticated OAuth (Authorization Code flow), not client credentials — it does not share quota with the circuit-breaker-protected Spotify calls and cannot cause app-wide rate limiting.
+- **Country collection** — already fully implemented (was done in a prior session); `COUNTRIES` array, dropdown in Step 1 of onboarding, and `country` upsert in `handleFinish` all in place. `20260521000000_profiles_country.sql` migration applied. Nothing to do.
+- **Supabase email confirmations** — verified SMTP configured via Resend (`noreply@sillajuku.com`, sender name "sillajuku", host `smtp.resend.com`). Confirm sign-up toggle enabled.
+- **Post-deploy seeds**: Ranking categories seeded (`POST /api/admin/seed-rankings` → `{"ok":true,"seeded":6}`). Homepage genre rows seed skipped — `curated_releases` is only a fallback; with 347k releases, `RecommendationGrid` always uses the primary DB path. Seed-votes skipped — leaderboards already have baseline data via `ranking_seed_entries` (RS500, K-Pop, Hip-Hop, Korean, K-Hip-Hop, Best 2025).
+
+---
+
 ## Shipped features
 
 ### Core

@@ -14,7 +14,7 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
-**Priority for next session:** Deploy to Vercel (all performance fixes and the live search dropdown are committed and ready). Then QA the site end-to-end.
+**Priority for next session:** Run post-deploy seeds (ranking categories, homepage genre rows, seed votes). Then QA the site end-to-end.
 
 #### DB migrations — production status (verified against prod 2026-06-11 via SQL editor)
 
@@ -34,10 +34,10 @@ All migrations applied. Nothing pending. If `supabase db push` is blocked by tim
 
 Also applied to prod (lives in root `supabase/migrations/`, not `apps/web/`): `20260601000002_list_item_tracks.sql` (✅ `list_item_tracks` table). The conflicting `20260601000001_silla_score_fn.sql` in that folder was **deleted** (superseded 2-col duplicate).
 
-#### Spotify playlist export — configure before use
+#### Spotify playlist export — ✅ configured (2026-06-12)
 
-1. In Spotify developer dashboard → add redirect URI: `https://sillajuku.com/api/spotify/callback`
-2. Add `SPOTIFY_REDIRECT_URI=https://sillajuku.com/api/spotify/callback` to Vercel env vars **and** to `.env.local` on both devices
+- ✅ Redirect URI `https://sillajuku.com/api/spotify/callback` added in Spotify developer dashboard
+- ✅ `SPOTIFY_REDIRECT_URI` added to Vercel env vars and `.env.local` (localhost value on dev machines)
 
 #### Catalog pipeline — ✅ Complete (2026-06-10)
 
@@ -228,7 +228,7 @@ supabase db push
 - [x] Enable Spotify OAuth in Supabase Auth dashboard
 - [x] Replace contact emails in privacy/terms pages → `admin@sillajuku.com`
 - [x] Add `sillajuku://auth/callback` to **Supabase → Authentication → URL Configuration → Redirect URLs** (required for mobile OAuth)
-- [ ] Enable Supabase Auth email confirmations if desired (Auth → Email Templates)
+- [x] Enable Supabase Auth email confirmations (Auth → Email Templates) — ✅ confirmed on 2026-06-12; sender: noreply@sillajuku.com via Resend SMTP
 
 ### After first deployment
 
@@ -237,15 +237,8 @@ supabase db push
   curl -X POST https://your-domain.com/api/admin/seed-rankings \
     -H "x-seed-secret: YOUR_SEED_SECRET"
   ```
-- [ ] **Seed the homepage genre rows:**
-  ```bash
-  curl -X POST https://your-domain.com/api/admin/seed-curated \
-    -H "x-seed-secret: YOUR_SEED_SECRET"
-  ```
-- [ ] **Seed default ranking votes** — fill in `scripts/seed-votes.ts` with albums, then run:
-  ```bash
-  SEED_SECRET=your-secret NEXT_PUBLIC_SITE_URL=https://your-domain.com npx ts-node scripts/seed-votes.ts
-  ```
+- [x] **Seed the homepage genre rows:** ~~not needed~~ — `curated_releases` is only a fallback; with 347k releases in the DB, `RecommendationGrid` always uses the primary `recommendable_releases` path and never falls through to this table.
+- [x] **Seed default ranking votes** — skipped; all 6 leaderboard categories already have baseline data via `ranking_seed_entries` (RS500 467 albums, K-Pop 29, Hip-Hop 59, Korean all-time, K-Hip-Hop, Best 2025). `scripts/seed-votes.ts` is an unfilled template and not needed.
 
 ### After launch (once real users are voting)
 
@@ -335,17 +328,16 @@ npm run backfill:covers      # fill any remaining null cover_url (iTunes → Las
 ### Week 5 — Jun 7–14: QA + production deploy
 
 - [ ] Create dummy/test account and QA all social flows end-to-end
-- [ ] Production deployment (custom domain, all env vars set, migrations pushed)
-- [ ] Seed all ranking categories with baseline data
-- [ ] **Fix N+1 queries in `/api/reviews/route.ts`** — batch author profile + likes fetches
-- [ ] **Replace `releases(*)` wildcard in `ProfilePanel.tsx`** — specify only `id, title, artist, cover_url`
-- [ ] **Add env var validation at startup** — fail fast if `NEXT_PUBLIC_SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_ANON_KEY` missing (e.g. `instrumentation.ts`)
-- [ ] **Add `router` to useEffect deps in `AuthForm.tsx`**
-- [ ] **Add error UI to `PersonalizedFeed.tsx`** — fallback state if recommendations fetch fails
-- [ ] **Standardize API error response shape** — consistent `{ ok: true }` / `{ error: '...' }` across all routes
-- [ ] **Replace silent `catch {}` blocks with `console.error`**
-- [ ] **Collect country on onboarding** — add a country field to the onboarding flow (one migration + one step); cannot be backfilled retroactively; needed for demographic data in label/investor pitches
-- [ ] Final bug fixes + buffer for App Store review delays
+- [x] Production deployment (custom domain, all env vars set, migrations pushed) — live at sillajuku.com
+- [x] Seed all ranking categories with baseline data — ✅ 2026-06-12
+- [x] **Fix N+1 queries in `/api/reviews/route.ts`** — batched via `Promise.all` (already done)
+- [x] **Replace `releases(*)` wildcard in `ProfilePanel.tsx`** — specifies `id, title, artist, cover_url` (already done)
+- [x] **Add env var validation at startup** — `instrumentation.ts` fails fast on missing Supabase keys (already done)
+- [x] **Add `router` to useEffect deps in `AuthForm.tsx`** — `[awaitingConfirmation, router]` (already done)
+- [x] **Add error UI to `PersonalizedFeed.tsx`** — `'error'` status + fallback render (already done)
+- [x] **Replace silent `catch {}` blocks with `console.error`** — one intentional silent catch remains in `RecommendationGrid.tsx` (DB fallback path)
+- [x] **Collect country on onboarding** — `COUNTRIES` dropdown in Step 1, `country` column on profiles, migration `20260521000000_profiles_country.sql` (already done)
+- [ ] Final QA pass end-to-end on production
 
 ### Post-launch
 
