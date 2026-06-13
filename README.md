@@ -288,9 +288,9 @@ Target: **mid-June 2026** (earlier the better).
 | Phase 1 — seed catalog | 315 curated Korean/Japanese/Western classics | ✓ done (306/315) |
 | RS500 baseline | Rolling Stone 500 seeds "all-time" ranking | ✓ done (481 seeded) |
 | Phase 2 — Wikipedia artist queue | ~759 Korean artists from 19 Wikipedia categories | ✓ done — 759 artists queued (re-run `queue:build` once to backfill `name_native`) |
-| Phase 3 — iTunes queue ingest | Full discographies for all queued artists (no auth, no rate limits) | **Not yet run** — `npm run queue:ingest` |
-| Phase 4 — Last.fm similar discovery | Finds related artists for everyone in DB | **Not yet run** — `npm run queue:discover` |
-| Phase 4b — Native name backfill | Wikipedia langlinks (artists) + iTunes local store (releases) for `name_native`/`title_native` | **Phase 1 ✅ done** (~247/536 artists); Phase 2 pending (run after genre backfill finishes) — `npm run backfill:native:releases` |
+| Phase 3 — iTunes queue ingest | Full discographies for all queued artists (no auth, no rate limits) | ✅ done — ~347k releases (runs 1–6 complete) |
+| Phase 4 — Last.fm similar discovery | Finds related artists for everyone in DB | ✅ done — queue stable (runs 1–4 complete) |
+| Phase 4b — Native name backfill | Wikipedia langlinks (artists) + iTunes local store (releases) for `name_native`/`title_native` | ✅ done — Phase 1 ~247/536 artists; Phase 2 done 2026-06-01 |
 | Phase 5 — miss-driven ingestion | `search_misses` table populated on every cache miss; ingest nightly | Logging active, no ingest job yet |
 | ~~Phase 3 related~~ | ~~Spotify `/artists/{id}/related-artists`~~ | ❌ Dead — Spotify deprecated this endpoint in late 2024 |
 | ~~Discography expansion~~ | ~~Spotify `/artists/{id}/albums`~~ | Superseded by iTunes queue ingest |
@@ -310,10 +310,10 @@ npm run backfill:covers      # fill any remaining null cover_url (iTunes → Las
 
 ### Week 4 — May 31–Jun 6: remaining
 
-- [ ] **Rate limiting** — `/api/check-username`, `/api/rankings/vote`, `/api/follow` via `@upstash/ratelimit` + Upstash Redis
-- [ ] **Per-user rate limit on `/api/search`** — added to scope on 2026-05-23 after the search-route audit; caps abuse and protects Spotify quota under burst load
-- [ ] **DB-FTS-first search rewrite** — `/api/search` currently calls Spotify on every uncached query; the GIN FTS index from migration `20260517000000_indexes_and_fts.sql` is built but unused. Rewrite the route to query Postgres FTS first and only fall through to Spotify when DB returns < N results. Self-healing via existing `saveBasicReleases` writeback. (2026-05-24: partial progress — DB fallback now exists for the rate-limited path via `searchReleasesInDb` / `searchArtistsInDb` with pg_trgm indexes, but the happy path still calls Spotify first.)
-- [ ] **Upstash Redis caching** — ranking leaderboards, album avg rating + count, homepage genre rows; invalidate on write
+- [x] **Rate limiting** — `/api/check-username` (20/min), `/api/rankings/vote` (30/min), `/api/follow` (10/min), `/api/search` (30/min) + more via `lib/rateLimit.ts` + Upstash Redis
+- [x] **Per-user rate limit on `/api/search`** — 30 req/min sliding window via shared `rateLimit` helper
+- [ ] **DB-FTS-first search rewrite** — happy path still calls Spotify first; DB fallback only triggers on Spotify failure. GIN FTS + trigram indexes built and used by fallback path but not the happy path.
+- [x] **Upstash Redis caching** — ranking leaderboard scores (`sj:ranking:scores:v3:*`), album avg rating + count (`sj:album-stats:*`), album ranking badges (`sj:album-rankings:*`), search suggest (`sj:suggest:*`) all cached with appropriate TTLs
 - [ ] Korean i18n (next-intl; language toggle in settings) — DB schema is ready (`native_language` columns), UI display in AlbumCard is done; remaining work is route-level i18n and language toggle
 - [x] **Genre overrides applied** (2026-05-24) — 68 hand-curated overrides applied; `genre-overrides.json` workflow complete
 - [x] **404 hardening + Spotify circuit breaker** (2026-05-23) — `/api/search` persists results to `releases`; `lib/spotify.ts` has a Redis circuit breaker that short-circuits all Spotify calls during a 429 window
