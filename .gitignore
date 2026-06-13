@@ -22,3 +22,6 @@ apps/mobile/ios
 
 # Turbo
 .turbo
+
+# TypeScript incremental build cache
+*.tsbuildinfo
