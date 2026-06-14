@@ -135,17 +135,24 @@ export default function FriendsPage() {
     setActionLoading(targetId);
     const isCurrentlyFollowing = followingIds.has(targetId);
     try {
-      await fetch('/api/follow', {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/follow', {
         method: isCurrentlyFollowing ? 'DELETE' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
         body: JSON.stringify({ followerId: myId, followingId: targetId }),
       });
-      setFollowingIds(prev => {
-        const next = new Set(prev);
-        if (isCurrentlyFollowing) next.delete(targetId);
-        else next.add(targetId);
-        return next;
-      });
+      if (res.ok) {
+        setFollowingIds(prev => {
+          const next = new Set(prev);
+          if (isCurrentlyFollowing) next.delete(targetId);
+          else next.add(targetId);
+          return next;
+        });
+        if (myId) await loadFriends(myId);
+      }
     } finally {
       setActionLoading(null);
     }

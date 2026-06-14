@@ -6,6 +6,38 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-14 — QA pass #1 (test account junn223+qa@gmail.com, local dev port 3001):**
+
+Found and fixed 2 bugs during end-to-end QA (plus 2 from previous session carried forward):
+
+- **ISSUE-002** (prior session) — `archive.org` added to CSP `img-src` and Next.js `remotePatterns` so Last.fm cover art loads without CSP violations.
+- **ISSUE-003** (prior session) — `/settings` now redirects unauthenticated users to `/login` via middleware (`apps/web/middleware.ts`).
+- **ISSUE-005** — `ensureRelease` in `AlbumActions.tsx` and `PlaylistContext.tsx` missing `release_type: 'Album'` in upsert payload. Production `releases.release_type` is `NOT NULL` without a default; PostgreSQL evaluates NOT NULL before conflict resolution so even `ON CONFLICT DO NOTHING` returned error 23502. Fix: supply `release_type: 'Album'` in both UUID and Spotify-ID branches of both files.
+- **ISSUE-006** — `toggleFollow` in `friends/page.tsx` called `/api/follow` without `Authorization: Bearer` header; every follow/unfollow returned 403 Forbidden. Fix: fetch `session.access_token` before the request and include it in headers. Also: state update now only fires on 2xx response; `loadFriends(myId)` re-runs after success to refresh tab counts and list immediately.
+
+QA results — all flows verified on local dev (same prod Supabase DB):
+- ✅ Signup → email confirmation → onboarding (display name, username, genres, Essentials)
+- ✅ Profile page — avg 4.0, 1 rating, Essentials from onboarding, LILAC in rated grid, Monthly Capsule June 2026
+- ✅ Add album to custom collection (LILAC → "My K-Pop Picks") — persists after page reload (ISSUE-005 fix)
+- ✅ Collections sidebar — switches between Listen Later and custom collections correctly
+- ✅ Follow user (junnwest) — "Following 1" tab updates immediately, user card appears (ISSUE-006 fix)
+- ✅ Activity feed (`/activity`) — junnwest's ratings appear after follow
+- ✅ Notifications — 15 unread from junnwest's ratings; "Mark all read" clears badge and shows "All caught up"
+- ✅ Settings → Account: display name save (button shows "Saved"), email visible
+- ✅ Settings → Preferences: streaming platform toggle (Spotify → YouTube Music), Discovery/Adventurousness slider moves to 75
+- ✅ Log out → `/settings` redirects to `/login` → log back in with username `junn223qa` (not email)
+
+Local commits to push (5 total):
+- `ae6f228` fix(qa): ISSUE-002 — add archive.org to CSP img-src and remotePatterns
+- `233375a` fix(qa): ISSUE-003 — redirect unauthenticated users from /settings to /login
+- `c6fc6fb` fix(listen-later): scope localStorage keys per user ID
+- `b95dab9` fix(qa): ISSUE-005 — supply release_type in ensureRelease upsert
+- next commit: fix(qa): ISSUE-006 — send Authorization header in toggleFollow
+
+**Next action:** `git push origin main` → Vercel auto-deploys → verify follow flow on sillajuku.com.
+
+---
+
 **2026-06-13 — DB-FTS-first search + pre-launch audit:**
 
 - **Pre-launch audit** — cross-checked task list against README. Confirmed done: rate limiting (all mutation routes + `/api/search`), Upstash Redis caching (leaderboard scores, album stats, ranking badges, search suggest), all seeds, all migrations. `JINA_API_KEY` confirmed in Vercel env — hybrid semantic search is active in prod.

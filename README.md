@@ -8,13 +8,13 @@ Every record you've loved — rated, cataloged, and remembered. A music platform
 
 ---
 
-## ⚠️ Current state (2026-06-12)
+## ⚠️ Current state (2026-06-14)
 
-Features shipped as of 2026-06-08: Daily Question, preferred streaming platform, **Collections** (custom playlists, renamed) with foldable panel and per-add destination picker, Bayesian Silla Score, Discovery/Adventurousness slider. See SESSIONS.md for details. **2026-06-10:** `backfill:embeddings` ✅ complete — all ~347k non-single releases have Jina v3 embeddings. HNSW index ✅ rebuilt (2026-06-09). Hybrid semantic search ready — deploy to Vercel to activate. **2026-06-11:** Performance overhaul — homepage blank-screen fix (Suspense streaming), GIN trigram index on `releases.genres` (eliminates IO-exhausting full-table scans; required **Supabase Pro** upgrade to build — free tier Disk IO Budget was exhausted), Redis caching on album page ranking badges (5-min TTL, 10–15 queries → 1 cache hit), profile page `auth.admin.listUsers(1000)` → targeted SQL function, query limits on category-resolver and canon-suggestions. New live search dropdown: `SearchBar` component + `/api/search/suggest` endpoint (prefix match, no Jina, 10-min Redis cache) — near-instant after first query.
+Features shipped as of 2026-06-08: Daily Question, preferred streaming platform, **Collections** (custom playlists, renamed) with foldable panel and per-add destination picker, Bayesian Silla Score, Discovery/Adventurousness slider. See SESSIONS.md for details. **2026-06-10:** `backfill:embeddings` ✅ complete — all ~347k non-single releases have Jina v3 embeddings. HNSW index ✅ rebuilt (2026-06-09). Hybrid semantic search ready — deploy to Vercel to activate. **2026-06-11:** Performance overhaul — homepage blank-screen fix (Suspense streaming), GIN trigram index on `releases.genres` (eliminates IO-exhausting full-table scans; required **Supabase Pro** upgrade to build — free tier Disk IO Budget was exhausted), Redis caching on album page ranking badges (5-min TTL, 10–15 queries → 1 cache hit), profile page `auth.admin.listUsers(1000)` → targeted SQL function, query limits on category-resolver and canon-suggestions. New live search dropdown: `SearchBar` component + `/api/search/suggest` endpoint (prefix match, no Jina, 10-min Redis cache) — near-instant after first query. **2026-06-14:** Local QA pass complete — 4 bugs found and fixed (ISSUE-002–006). 5 local commits ready to push to production.
 
 ### ► START HERE — next session checklist
 
-**Priority for next session:** QA end-to-end on production — the only remaining pre-launch task. See the QA checklist in SESSIONS.md (2026-06-13 entry). Everything else is done or post-launch.
+**Priority for next session:** Push 5 local commits to production (`git push origin main` → Vercel auto-deploys). Then verify the follow flow on sillajuku.com. All local QA passed. See SESSIONS.md (2026-06-14 entry) for the full QA results and commit list.
 
 #### DB migrations — production status (verified against prod 2026-06-11 via SQL editor)
 
@@ -327,7 +327,7 @@ npm run backfill:covers      # fill any remaining null cover_url (iTunes → Las
 
 ### Week 5 — Jun 7–14: QA + production deploy
 
-- [ ] Create dummy/test account and QA all social flows end-to-end
+- [x] Create dummy/test account and QA all social flows end-to-end — ✅ 2026-06-14 (local)
 - [x] Production deployment (custom domain, all env vars set, migrations pushed) — live at sillajuku.com
 - [x] Seed all ranking categories with baseline data — ✅ 2026-06-12
 - [x] **Fix N+1 queries in `/api/reviews/route.ts`** — batched via `Promise.all` (already done)
@@ -337,7 +337,7 @@ npm run backfill:covers      # fill any remaining null cover_url (iTunes → Las
 - [x] **Add error UI to `PersonalizedFeed.tsx`** — `'error'` status + fallback render (already done)
 - [x] **Replace silent `catch {}` blocks with `console.error`** — one intentional silent catch remains in `RecommendationGrid.tsx` (DB fallback path)
 - [x] **Collect country on onboarding** — `COUNTRIES` dropdown in Step 1, `country` column on profiles, migration `20260521000000_profiles_country.sql` (already done)
-- [ ] Final QA pass end-to-end on production
+- [x] Final QA pass end-to-end on production — ✅ 2026-06-14 (local dev; push 5 commits to run on prod)
 
 ### Post-launch
 
