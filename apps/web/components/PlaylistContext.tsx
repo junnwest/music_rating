@@ -39,23 +39,22 @@ interface PlaylistContextType {
 
 const PlaylistContext = createContext<PlaylistContextType | null>(null);
 
-// localStorage keys
-const LL_KEY        = 'sillajuku:listen-later';
-const LL_TRACKS_KEY = 'sillajuku:listen-later-tracks'; // albumId → {title, position}[]
-
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-function llAlbums(): string[] {
-  try { return JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[]; }
+function llKey(uid: string | null)       { return uid ? `sillajuku:listen-later:${uid}`        : 'sillajuku:listen-later'; }
+function llTracksKey(uid: string | null) { return uid ? `sillajuku:listen-later-tracks:${uid}` : 'sillajuku:listen-later-tracks'; }
+
+function llAlbums(uid: string | null): string[] {
+  try { return JSON.parse(localStorage.getItem(llKey(uid)) ?? '[]') as string[]; }
   catch { return []; }
 }
-function llTracks(): Record<string, { title: string; position: number }[]> {
-  try { return JSON.parse(localStorage.getItem(LL_TRACKS_KEY) ?? '{}'); }
+function llTracks(uid: string | null): Record<string, { title: string; position: number }[]> {
+  try { return JSON.parse(localStorage.getItem(llTracksKey(uid)) ?? '{}'); }
   catch { return {}; }
 }
-function saveLLAlbums(ids: string[]) { localStorage.setItem(LL_KEY, JSON.stringify(ids)); }
-function saveLLTracks(map: Record<string, { title: string; position: number }[]>) {
-  localStorage.setItem(LL_TRACKS_KEY, JSON.stringify(map));
+function saveLLAlbums(uid: string | null, ids: string[]) { localStorage.setItem(llKey(uid), JSON.stringify(ids)); }
+function saveLLTracks(uid: string | null, map: Record<string, { title: string; position: number }[]>) {
+  localStorage.setItem(llTracksKey(uid), JSON.stringify(map));
 }
 
 async function ensureRelease(
@@ -126,8 +125,8 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (activeListId == null) {
       // Listen Later — read both album array and tracks map from localStorage
-      setActiveReleaseIds(new Set(llAlbums()));
-      const tracksMap = llTracks();
+      setActiveReleaseIds(new Set(llAlbums(userId)));
+      const tracksMap = llTracks(userId);
       const keys = new Set<string>();
       for (const [albumId, tracks] of Object.entries(tracksMap)) {
         for (const t of tracks) keys.add(`${albumId}::${t.position}`);
@@ -162,7 +161,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
           )
         );
       });
-  }, [activeListId, userId, panelRefreshKey]);
+  }, [activeListId, userId, panelRefreshKey]); // userId here ensures LL re-reads scoped key on login/logout
 
   // Add to an arbitrary collection (null = Listen Later). Active membership sets
   // and the panel refresh only update when the affected collection is the open one.
@@ -180,20 +179,20 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
 
     // ── Listen Later ──────────────────────────────────────────────────────────
     if (listId == null) {
-      const albums = llAlbums();
-      const tracksMap = llTracks();
+      const albums = llAlbums(userId);
+      const tracksMap = llTracks(userId);
 
       if (isTrack) {
         // Add album if not already present
         if (!albums.includes(releaseId)) {
-          saveLLAlbums([...albums, releaseId]);
+          saveLLAlbums(userId, [...albums, releaseId]);
           if (isActive) setActiveReleaseIds(prev => new Set([...prev, releaseId]));
         }
         // Add track if not already present
         const existing = tracksMap[releaseId] ?? [];
         if (!existing.some(t => t.position === trackPosition)) {
           tracksMap[releaseId] = [...existing, { title: trackTitle!, position: trackPosition! }];
-          saveLLTracks(tracksMap);
+          saveLLTracks(userId, tracksMap);
           if (isActive) {
             setActiveTrackKeys(prev => new Set([...prev, `${releaseId}::${trackPosition}`]));
             setPanelRefreshKey(k => k + 1);
@@ -202,7 +201,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
       } else {
         // Album-level add
         if (albums.includes(releaseId)) return { alreadyAdded: true };
-        saveLLAlbums([...albums, releaseId]);
+        saveLLAlbums(userId, [...albums, releaseId]);
         if (isActive) {
           setActiveReleaseIds(prev => new Set([...prev, releaseId]));
           setPanelRefreshKey(k => k + 1);
@@ -264,17 +263,17 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
     const isTrack = trackPosition != null;
 
     if (listId == null) {
-      const tracksMap = llTracks();
+      const tracksMap = llTracks(userId);
       if (isTrack) {
         if (tracksMap[releaseId]) {
           tracksMap[releaseId] = tracksMap[releaseId].filter(t => t.position !== trackPosition);
           if (tracksMap[releaseId].length === 0) delete tracksMap[releaseId];
-          saveLLTracks(tracksMap);
+          saveLLTracks(userId, tracksMap);
         }
       } else {
-        saveLLAlbums(llAlbums().filter(id => id !== releaseId));
+        saveLLAlbums(userId, llAlbums(userId).filter(id => id !== releaseId));
         delete tracksMap[releaseId];
-        saveLLTracks(tracksMap);
+        saveLLTracks(userId, tracksMap);
       }
     } else {
       if (!supabase) return;
@@ -308,7 +307,7 @@ export function PlaylistProvider({ children }: { children: ReactNode }) {
       });
     }
     setPanelRefreshKey(k => k + 1);
-  }, [activeListId]);
+  }, [activeListId, userId]);
 
   // Active-collection convenience wrappers (preserve existing call sites)
   const addToActive = useCallback((

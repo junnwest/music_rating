@@ -13,28 +13,28 @@ interface SavedAlbum {
   coverUrl: string | null;
 }
 
-const STORAGE_KEY = 'sillajuku:listen-later';
-
-function loadIds(): string[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]');
-  } catch {
-    return [];
-  }
-}
-
-function saveIds(ids: string[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
+function llKey(uid: string | null) {
+  return uid ? `sillajuku:listen-later:${uid}` : 'sillajuku:listen-later';
 }
 
 export default function ListenLaterPage() {
   const { t } = useLanguage();
+  const [userId, setUserId] = useState<string | null | undefined>(undefined);
   const [albums, setAlbums] = useState<SavedAlbum[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const ids = loadIds();
+    if (!supabase) { setUserId(null); return; }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUserId(session?.user?.id ?? null);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (userId === undefined) return; // auth not resolved yet
+    const key = llKey(userId);
+    let ids: string[] = [];
+    try { ids = JSON.parse(localStorage.getItem(key) ?? '[]'); } catch { ids = []; }
     if (ids.length === 0) { setLoading(false); return; }
     if (!supabase) { setLoading(false); return; }
 
@@ -54,12 +54,12 @@ export default function ListenLaterPage() {
         }
         setLoading(false);
       });
-  }, []);
+  }, [userId]);
 
   const remove = (id: string) => {
     const next = albums.filter(a => a.id !== id);
     setAlbums(next);
-    saveIds(next.map(a => a.id));
+    localStorage.setItem(llKey(userId ?? null), JSON.stringify(next.map(a => a.id)));
   };
 
   return (

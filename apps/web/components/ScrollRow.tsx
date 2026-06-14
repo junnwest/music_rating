@@ -10,22 +10,23 @@ const CARD_WIDTH = 180;
 const CARD_GAP = 18;
 const SCROLL_CARDS = 4;
 const SCROLL_PX = (CARD_WIDTH + CARD_GAP) * SCROLL_CARDS;
-const LL_KEY = 'sillajuku:listen-later';
-
 function BookmarkOverlay({ albumId }: { albumId: string }) {
+  const { userId } = usePlaylist();
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    const ids = JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[];
+    const key = userId ? `sillajuku:listen-later:${userId}` : 'sillajuku:listen-later';
+    const ids = JSON.parse(localStorage.getItem(key) ?? '[]') as string[];
     setSaved(ids.includes(albumId));
-  }, [albumId]);
+  }, [albumId, userId]);
 
   const toggle = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const ids = JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[];
+    const key = userId ? `sillajuku:listen-later:${userId}` : 'sillajuku:listen-later';
+    const ids = JSON.parse(localStorage.getItem(key) ?? '[]') as string[];
     const next = ids.includes(albumId) ? ids.filter((id) => id !== albumId) : [...ids, albumId];
-    localStorage.setItem(LL_KEY, JSON.stringify(next));
+    localStorage.setItem(key, JSON.stringify(next));
     setSaved(!saved);
   };
 

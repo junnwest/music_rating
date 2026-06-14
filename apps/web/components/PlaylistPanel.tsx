@@ -9,8 +9,6 @@ import {
 import { supabase } from '../lib/supabaseClient';
 import { usePlaylist } from './PlaylistContext';
 
-const LL_KEY        = 'sillajuku:listen-later';
-const LL_TRACKS_KEY = 'sillajuku:listen-later-tracks';
 
 interface TrackItem {
   trackId: string;
@@ -69,11 +67,13 @@ export default function PlaylistPanel() {
     setLoading(true);
 
     if (activeListId == null) {
-      const ids = JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[];
+      const llK = userId ? `sillajuku:listen-later:${userId}` : 'sillajuku:listen-later';
+      const llTracksK = userId ? `sillajuku:listen-later-tracks:${userId}` : 'sillajuku:listen-later-tracks';
+      const ids = JSON.parse(localStorage.getItem(llK) ?? '[]') as string[];
       if (ids.length === 0) { setLoading(false); return; }
       if (!supabase) { setLoading(false); return; }
       const tracksMap: Record<string, { title: string; position: number }[]> =
-        JSON.parse(localStorage.getItem(LL_TRACKS_KEY) ?? '{}');
+        JSON.parse(localStorage.getItem(llTracksK) ?? '{}');
       const { data } = await supabase
         .from('releases')
         .select('id, title, artist, cover_url')
@@ -122,7 +122,7 @@ export default function PlaylistPanel() {
     }
     setHasLoaded(true);
     setLoading(false);
-  }, [activeListId, panelOpen]);
+  }, [activeListId, panelOpen, userId]);
 
   useEffect(() => { void loadAlbums(); }, [loadAlbums, panelRefreshKey]);
 

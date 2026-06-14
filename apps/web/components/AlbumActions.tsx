@@ -7,7 +7,6 @@ import { supabase } from '../lib/supabaseClient';
 import { usePlaylist } from './PlaylistContext';
 import CollectionPickerPopover from './CollectionPickerPopover';
 
-const LL_KEY = 'sillajuku:listen-later';
 const PINNED_MAX = 6;
 const PIN_ROWS = [[0], [1, 2], [3, 4, 5]];
 const PIN_SIZES = [108, 92, 80];
@@ -105,12 +104,17 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const saved = JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[];
-    setListenLater(saved.includes(albumId));
-    if (!supabase) return;
+    if (!supabase) {
+      const saved = JSON.parse(localStorage.getItem('sillajuku:listen-later') ?? '[]') as string[];
+      setListenLater(saved.includes(albumId));
+      return;
+    }
     supabase.auth.getSession().then(({ data }) => {
       const uid = data.session?.user?.id ?? null;
       setUserId(uid);
+      const llK = uid ? `sillajuku:listen-later:${uid}` : 'sillajuku:listen-later';
+      const saved = JSON.parse(localStorage.getItem(llK) ?? '[]') as string[];
+      setListenLater(saved.includes(albumId));
       if (uid) {
         checkPinned(uid);
         supabase!.from('ratings').select('score').eq('user_id', uid).eq('release_id', albumId).maybeSingle()
@@ -239,9 +243,10 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
   };
 
   const toggleListenLater = () => {
-    const saved = JSON.parse(localStorage.getItem(LL_KEY) ?? '[]') as string[];
+    const llK = userId ? `sillajuku:listen-later:${userId}` : 'sillajuku:listen-later';
+    const saved = JSON.parse(localStorage.getItem(llK) ?? '[]') as string[];
     const next = saved.includes(albumId) ? saved.filter(id => id !== albumId) : [...saved, albumId];
-    localStorage.setItem(LL_KEY, JSON.stringify(next));
+    localStorage.setItem(llK, JSON.stringify(next));
     setListenLater(!listenLater);
     setDropdownOpen(false);
   };
