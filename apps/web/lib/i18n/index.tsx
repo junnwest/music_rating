@@ -27,6 +27,10 @@ const LanguageContext = createContext<LanguageContextValue>({
   t: (key) => key,
 });
 
+function browserLang(): Lang {
+  return navigator.language.startsWith('ko') ? 'ko' : 'en';
+}
+
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>('en');
 
@@ -35,6 +39,12 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     if (stored === 'en' || stored === 'ko') {
       setLangState(stored);
       document.cookie = `sj-lang=${stored}; path=/; max-age=31536000; SameSite=Lax`;
+    } else {
+      // No explicit preference — follow the browser's language.
+      // Don't write to localStorage so future browser-language changes are respected.
+      const detected = browserLang();
+      setLangState(detected);
+      document.cookie = `sj-lang=${detected}; path=/; max-age=31536000; SameSite=Lax`;
     }
   }, []);
 
