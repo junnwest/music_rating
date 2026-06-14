@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
-export type StreamingPlatform = 'spotify' | 'youtube_music' | 'tidal';
+export type StreamingPlatform = 'spotify' | 'youtube_music' | 'tidal' | 'apple_music';
 
 interface StreamingPlatformContextType {
   /** The user's chosen platform, or null for "show all". `undefined` while loading. */
@@ -16,7 +16,7 @@ interface StreamingPlatformContextType {
 
 const StreamingPlatformContext = createContext<StreamingPlatformContextType | null>(null);
 
-const VALID: StreamingPlatform[] = ['spotify', 'youtube_music', 'tidal'];
+const VALID: StreamingPlatform[] = ['spotify', 'youtube_music', 'tidal', 'apple_music'];
 function normalize(v: unknown): StreamingPlatform | null {
   return VALID.includes(v as StreamingPlatform) ? (v as StreamingPlatform) : null;
 }

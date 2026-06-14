@@ -6,7 +6,7 @@ import { supabase } from '../../../lib/supabaseClient';
 import { getCanonSuggestions } from '../../../lib/canon-suggestions';
 import { useLanguage } from '../../../lib/i18n';
 
-const GENRES = [
+const FALLBACK_GENRES = [
   'K-Pop', 'K-Indie', 'K-R&B', 'K-Rap', 'Korean Ballad', 'Korean Folk',
   'J-Pop', 'J-Rock', 'City Pop',
   'Indie Rock', 'Alternative', 'Post-Rock', 'Shoegaze',
@@ -59,7 +59,7 @@ const COUNTRIES = [
   { code: 'OTHER', label: '🌍 Other' },
 ];
 
-type StreamingPlatform = 'spotify' | 'youtube_music' | 'tidal' | null;
+type StreamingPlatform = 'spotify' | 'youtube_music' | 'tidal' | 'apple_music' | null;
 
 interface IdentityData {
   displayName: string;
@@ -210,6 +210,16 @@ function StepGenres({
 }) {
   const { t } = useLanguage();
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [genres, setGenres] = useState<string[]>([]);
+  const [loadingGenres, setLoadingGenres] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/genres/top')
+      .then((r) => r.json())
+      .then(({ genres: g }) => setGenres(Array.isArray(g) ? g : FALLBACK_GENRES))
+      .catch(() => setGenres(FALLBACK_GENRES))
+      .finally(() => setLoadingGenres(false));
+  }, []);
 
   const toggle = (g: string) => {
     setSelected((prev) => {
@@ -237,23 +247,27 @@ function StepGenres({
       </p>
 
       <div className="flex flex-wrap gap-2 mb-8">
-        {GENRES.map((g) => {
-          const on = selected.has(g);
-          return (
-            <button
-              key={g}
-              onClick={() => toggle(g)}
-              className="px-[14px] py-[8px] rounded-full text-[13px] font-semibold border transition"
-              style={
-                on
-                  ? { background: '#E8A020', borderColor: '#E8A020', color: '#7A4F0A' }
-                  : { background: 'white', borderColor: '#EBEBEB', color: '#6B6B6B' }
-              }
-            >
-              {g}
-            </button>
-          );
-        })}
+        {loadingGenres ? (
+          <p className="text-[13px] text-muted">{t('onboarding.loading')}</p>
+        ) : (
+          genres.map((g) => {
+            const on = selected.has(g);
+            return (
+              <button
+                key={g}
+                onClick={() => toggle(g)}
+                className="px-[14px] py-[8px] rounded-full text-[13px] font-semibold border transition"
+                style={
+                  on
+                    ? { background: '#E8A020', borderColor: '#E8A020', color: '#7A4F0A' }
+                    : { background: 'white', borderColor: '#EBEBEB', color: '#6B6B6B' }
+                }
+              >
+                {g}
+              </button>
+            );
+          })
+        )}
       </div>
 
       <p className="text-[12px] text-muted mb-6">{selectionHint}</p>
@@ -307,6 +321,16 @@ const STREAMING_PLATFORMS = [
     icon: (
       <svg width={28} height={28} viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 4.5l-4 4-4-4 4-4 4 4zm0 7l-4 4-4-4 4-4 4 4zm7-7l-4 4-4-4 4-4 4 4zm0 0l4 4-4 4-4-4 4-4z" />
+      </svg>
+    ),
+  },
+  {
+    id: 'apple_music' as const,
+    label: 'Apple Music',
+    color: '#FC3C44',
+    icon: (
+      <svg width={28} height={28} viewBox="0 0 24 24" fill="currentColor">
+        <path d="M9 3v11.5a2.5 2.5 0 102.5 2.5V9l7-1.5V5L9 3z" />
       </svg>
     ),
   },
@@ -474,6 +498,8 @@ function StepAlbums({
 
   useEffect(() => { loadDefaults(); }, []);
 
+  const TYPE_ORDER: Record<string, number> = { album: 0, ep: 1, single: 2 };
+
   const loadDefaults = async () => {
     if (!supabase) return;
     const canon = await getCanonSuggestions(supabase, genres, GRID_SIZE * 2);
@@ -485,11 +511,16 @@ function StepAlbums({
       .from('releases')
       .select('id, title, artist, cover_url, release_type')
       .not('cover_url', 'is', null)
-      .limit(GRID_SIZE * 2);
+      .limit(GRID_SIZE * 4);
     const seen = new Set(canon.map(r => r.id));
     const extra = (data ?? [])
       .filter((r: any) => !seen.has(r.id))
-      .map((r: any) => ({ id: r.id, title: r.title, artist: r.artist, cover_url: r.cover_url, release_type: r.release_type ?? 'Album' }));
+      .map((r: any) => ({ id: r.id, title: r.title, artist: r.artist, cover_url: r.cover_url, release_type: r.release_type ?? 'Album' }))
+      .sort((a: any, b: any) => {
+        const aOrd = TYPE_ORDER[a.release_type?.toLowerCase()] ?? 3;
+        const bOrd = TYPE_ORDER[b.release_type?.toLowerCase()] ?? 3;
+        return aOrd - bOrd;
+      });
     setPool([...canon, ...extra].slice(0, GRID_SIZE * 2));
   };
 

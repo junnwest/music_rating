@@ -124,7 +124,7 @@ const en = {
     streamingTitle: 'Where do you listen?',
     streamingDesc: 'We\'ll show only your platform\'s play button on every album.',
     streamingNone: 'No preference',
-    streamingNoneDesc: 'Show all three buttons',
+    streamingNoneDesc: 'Show all buttons',
   },
   help: {
     backToHome: 'Back to home',

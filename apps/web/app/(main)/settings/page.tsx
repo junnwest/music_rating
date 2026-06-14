@@ -463,6 +463,7 @@ function SettingsContent() {
                       { id: 'spotify', label: 'Spotify' },
                       { id: 'youtube_music', label: 'YouTube Music' },
                       { id: 'tidal', label: 'Tidal' },
+                      { id: 'apple_music', label: 'Apple Music' },
                     ] as const).map(({ id, label }) => (
                       <button
                         key={id}

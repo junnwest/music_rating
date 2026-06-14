@@ -126,7 +126,7 @@ const ko: Translations = {
     streamingTitle: '어디서 음악을 들으시나요?',
     streamingDesc: '앨범마다 선택한 플랫폼의 재생 버튼만 표시됩니다.',
     streamingNone: '선호 없음',
-    streamingNoneDesc: '세 가지 버튼 모두 표시',
+    streamingNoneDesc: '모든 버튼 표시',
   },
   help: {
     backToHome: '홈으로 돌아가기',
