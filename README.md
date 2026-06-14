@@ -14,7 +14,7 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
-**Priority for next session:** Run post-deploy seeds (ranking categories, homepage genre rows, seed votes). Then QA the site end-to-end.
+**Priority for next session:** QA end-to-end on production — the only remaining pre-launch task. See the QA checklist in SESSIONS.md (2026-06-13 entry). Everything else is done or post-launch.
 
 #### DB migrations — production status (verified against prod 2026-06-11 via SQL editor)
 
@@ -312,7 +312,7 @@ npm run backfill:covers      # fill any remaining null cover_url (iTunes → Las
 
 - [x] **Rate limiting** — `/api/check-username` (20/min), `/api/rankings/vote` (30/min), `/api/follow` (10/min), `/api/search` (30/min) + more via `lib/rateLimit.ts` + Upstash Redis
 - [x] **Per-user rate limit on `/api/search`** — 30 req/min sliding window via shared `rateLimit` helper
-- [ ] **DB-FTS-first search rewrite** — happy path still calls Spotify first; DB fallback only triggers on Spotify failure. GIN FTS + trigram indexes built and used by fallback path but not the happy path.
+- [x] **DB-FTS-first search rewrite** — artist search now tries DB first (≥5 results = skip Spotify); releases path was already DB-first; removed background Spotify refresh on successful DB hits
 - [x] **Upstash Redis caching** — ranking leaderboard scores (`sj:ranking:scores:v3:*`), album avg rating + count (`sj:album-stats:*`), album ranking badges (`sj:album-rankings:*`), search suggest (`sj:suggest:*`) all cached with appropriate TTLs
 - [ ] Korean i18n (next-intl; language toggle in settings) — DB schema is ready (`native_language` columns), UI display in AlbumCard is done; remaining work is route-level i18n and language toggle
 - [x] **Genre overrides applied** (2026-05-24) — 68 hand-curated overrides applied; `genre-overrides.json` workflow complete

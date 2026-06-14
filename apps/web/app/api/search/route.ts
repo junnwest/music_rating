@@ -48,6 +48,13 @@ export async function GET(request: NextRequest) {
     const cached = await cacheGet<{ artists: unknown[] }>(cacheKey);
     if (cached) return jsonResponse(cached);
 
+    const dbArtists = await searchArtistsInDb(query);
+    if (dbArtists.length >= 5) {
+      const body = { artists: dbArtists };
+      await cacheSet(cacheKey, body, SEARCH_TTL);
+      return jsonResponse(body);
+    }
+
     try {
       const artists = await searchSpotifyArtists(query);
       const body = { artists };
@@ -55,8 +62,7 @@ export async function GET(request: NextRequest) {
       return jsonResponse(body);
     } catch (err) {
       console.warn('[search] Spotify artist search failed, falling back to DB:', (err as Error).message);
-      const artists = await searchArtistsInDb(query);
-      return jsonResponse({ artists, degraded: true });
+      return jsonResponse({ artists: dbArtists, degraded: dbArtists.length === 0 });
     }
   }
 
@@ -88,11 +94,6 @@ export async function GET(request: NextRequest) {
     if (dbResults.length >= DB_SUFFICIENT) {
       const body = { releases: dbResults };
       await cacheSet(cacheKey, body, SEARCH_TTL);
-      // Refresh DB in the background so future searches improve
-      const spotifyBg = year ? `${query} year:${year}` : query;
-      searchSpotifyAlbums(spotifyBg, 10, market)
-        .then(results => saveBasicReleases(results))
-        .catch(() => {});
       return jsonResponse(body);
     }
 

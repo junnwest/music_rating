@@ -6,6 +6,28 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-13 — DB-FTS-first search + pre-launch audit:**
+
+- **Pre-launch audit** — cross-checked task list against README. Confirmed done: rate limiting (all mutation routes + `/api/search`), Upstash Redis caching (leaderboard scores, album stats, ranking badges, search suggest), all seeds, all migrations. `JINA_API_KEY` confirmed in Vercel env — hybrid semantic search is active in prod.
+- **DB-FTS-first search** (`apps/web/app/api/search/route.ts`) — two fixes: (1) artist search now tries `searchArtistsInDb` first; only calls Spotify when DB returns < 5 results (was always Spotify-first on cache miss); (2) removed background Spotify refresh that fired on every successful DB hit for releases — with 347k releases and a stable catalog this was burning quota for no benefit. Spotify for releases is now only called when DB returns < 5 results.
+- **Pre-launch status: one task remaining** — QA end-to-end on production (create test account, walk the full signup → onboarding → rate → rank → follow → feed → notifications flow).
+
+**QA checklist for next session** (run on sillajuku.com in incognito):
+- [ ] Signup → email confirmation (check noreply@sillajuku.com arrives, sender name = "sillajuku")
+- [ ] Onboarding — display name, username, country, genres, streaming platform, Essentials
+- [ ] Homepage — genre rows load, search dropdown works, daily question appears
+- [ ] Album page — rate, comment, streaming buttons, "In Rankings" chips
+- [ ] Search — Korean artist by English name, by Korean name (e.g. IU / 아이유), album search
+- [ ] Leaderboard — categories load, open one, build a tierlist, save it, verify vote reflected
+- [ ] Add to Ranking from album page — checkmark appears on selected category
+- [ ] Collections panel — create collection, add album, confirm it appears
+- [ ] Profile page — stats, Essentials strip, rated grid, Taste DNA badges
+- [ ] Follow another user → check feed shows their activity → check notification appears + clears
+- [ ] Settings — edit display name, change streaming platform, move Adventurousness slider
+- [ ] Log out → try accessing /settings → confirm redirect → log back in with username
+
+---
+
 **2026-06-12 — Pre-launch checklist pass:**
 
 - **All commits already deployed** — confirmed no unpushed commits; Vercel is live and up to date with main.
