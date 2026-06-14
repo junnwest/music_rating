@@ -67,12 +67,12 @@ async function ensureRelease(
   const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(releaseId);
   if (isUUID) {
     await sb.from('releases').upsert(
-      { id: releaseId, title, artist, cover_url: coverUrl ?? null },
+      { id: releaseId, title, artist, cover_url: coverUrl ?? null, release_type: 'Album' },
       { onConflict: 'id', ignoreDuplicates: true },
     );
   } else {
     await sb.from('releases').upsert(
-      { spotify_id: releaseId, title, artist, cover_url: coverUrl ?? null, canonical_source: 'spotify' },
+      { spotify_id: releaseId, title, artist, cover_url: coverUrl ?? null, release_type: 'Album', canonical_source: 'spotify' },
       { onConflict: 'spotify_id', ignoreDuplicates: true },
     );
   }

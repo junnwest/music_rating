@@ -160,12 +160,12 @@ export default function AlbumActions({ albumId, albumTitle, albumArtist, coverUr
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(albumId);
     if (isUUID) {
       await supabase.from('releases').upsert(
-        { id: albumId, title: albumTitle, artist: albumArtist, cover_url: coverUrl ?? null },
+        { id: albumId, title: albumTitle, artist: albumArtist, cover_url: coverUrl ?? null, release_type: 'Album' },
         { onConflict: 'id', ignoreDuplicates: true }
       );
     } else {
       await supabase.from('releases').upsert(
-        { spotify_id: albumId, title: albumTitle, artist: albumArtist, cover_url: coverUrl ?? null, canonical_source: 'spotify' },
+        { spotify_id: albumId, title: albumTitle, artist: albumArtist, cover_url: coverUrl ?? null, release_type: 'Album', canonical_source: 'spotify' },
         { onConflict: 'spotify_id', ignoreDuplicates: true }
       );
     }
