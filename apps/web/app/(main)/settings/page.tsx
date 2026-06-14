@@ -65,7 +65,7 @@ function SettingsContent() {
   const refreshUser = async () => {
     if (!supabase) return;
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) { router.replace('/login'); return; }
     setUserId(user.id);
     setCurrentEmail(user.email ?? '');
     setIdentities((user.identities ?? []).map((i: any) => ({ provider: i.provider, id: i.id })));
