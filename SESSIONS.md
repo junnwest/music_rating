@@ -6,6 +6,20 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-14 (session 2) — Logo, language detection, onboarding improvements:**
+
+- **Logo swap** — replaced `public/logo-flower.svg`, `public/logo.svg`, and `apps/mobile/assets/images/logo-flower.png` with Asset 21 (transparent background). Dark mode white-box issue resolved.
+- **Browser language detection** — two-layer fix: `lib/i18n/server.ts` reads `Accept-Language` header for SSR (zero flash for Korean users); `lib/i18n/index.tsx` reads `navigator.language` on mount for client. Auto-detected language is NOT written to `localStorage` so future browser-language changes are respected; only explicit Settings picks persist.
+- **Onboarding: sidebar/footer/listen-later hidden** — `MainLayout.tsx` uses `usePathname()` to detect `/onboarding` and hides `<Sidebar>`, `<PlaylistPanel>`, `<Footer>`. `SiteHeader.tsx` gains `isOnboarding` prop: logo rendered as `<span>` (non-clickable), hamburger hidden. Users cannot navigate away mid-flow.
+- **Onboarding: genre pills from DB** — new `GET /api/genres/top` route counts how many releases match each genre label via `GENRE_KEYWORD_MAP` and returns them sorted most→least frequent. `StepGenres` fetches on mount, falls back to hardcoded list on error.
+- **Onboarding: Apple Music added** (step 3) — new streaming platform option across: `StreamingPlatformContext.tsx` (type + VALID), `YouTubeMusicButton.tsx` (icon + visibility + search URL `music.apple.com/search?term=`), `settings/page.tsx`, `onboarding/page.tsx`. **Requires DB migration `20260615000000_add_apple_music_platform.sql`** — drops + recreates the CHECK constraint on `profiles.preferred_streaming_platform` to include `apple_music`. Apply via Supabase SQL editor before deploying.
+- **Onboarding: Essentials step Albums > EPs > Singles** — `StepAlbums.loadDefaults` now fetches 4× the grid size and sorts by release_type (album=0, ep=1, single=2) before slicing. Canon suggestions already excluded singles; this applies to the fallback pool.
+- **i18n**: Updated `streamingNoneDesc` in en.ts ("Show all three buttons" → "Show all buttons") and ko.ts ("세 가지 버튼 모두 표시" → "모든 버튼 표시").
+
+**Pushed:** All commits pushed to `main` at end of session — Vercel auto-deploy triggered. **Pending:** Apply migration `20260615000000_add_apple_music_platform.sql` via Supabase SQL editor before testing Apple Music preference in prod.
+
+---
+
 **2026-06-14 — QA pass #1 (test account junn223+qa@gmail.com, local dev port 3001):**
 
 Found and fixed 2 bugs during end-to-end QA (plus 2 from previous session carried forward):
