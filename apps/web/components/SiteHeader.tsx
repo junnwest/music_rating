@@ -16,9 +16,10 @@ import SearchBar from './SearchBar';
 
 interface SiteHeaderProps {
   onMenuClick?: () => void;
+  isOnboarding?: boolean;
 }
 
-export default function SiteHeader({ onMenuClick }: SiteHeaderProps) {
+export default function SiteHeader({ onMenuClick, isOnboarding }: SiteHeaderProps) {
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
 
@@ -130,21 +131,29 @@ export default function SiteHeader({ onMenuClick }: SiteHeaderProps) {
         </div>
       )}
 
-      {/* Hamburger — centered within the 72px sidebar column */}
+      {/* Hamburger — centered within the 72px sidebar column; hidden during onboarding */}
       <div className="w-[72px] flex-shrink-0 flex justify-center">
-        <button
-          className="p-1 text-ink hover:text-mid transition"
-          onClick={onMenuClick}
-          aria-label="Toggle menu"
-        >
-          <Menu size={22} />
-        </button>
+        {!isOnboarding && (
+          <button
+            className="p-1 text-ink hover:text-mid transition"
+            onClick={onMenuClick}
+            aria-label="Toggle menu"
+          >
+            <Menu size={22} />
+          </button>
+        )}
       </div>
 
-      {/* Logo — starts right at the sidebar edge */}
-      <Link href="/" className="flex items-center flex-shrink-0" aria-label="Home">
-        <img src="/logo-text.svg" alt="sillajuku" className="h-[26px] w-auto dark:invert translate-y-[3px]" />
-      </Link>
+      {/* Logo — non-clickable during onboarding so users can't navigate away */}
+      {isOnboarding ? (
+        <span className="flex items-center flex-shrink-0">
+          <img src="/logo-text.svg" alt="sillajuku" className="h-[26px] w-auto dark:invert translate-y-[3px]" />
+        </span>
+      ) : (
+        <Link href="/" className="flex items-center flex-shrink-0" aria-label="Home">
+          <img src="/logo-text.svg" alt="sillajuku" className="h-[26px] w-auto dark:invert translate-y-[3px]" />
+        </Link>
+      )}
 
       {/* Center: Search — absolutely centered, hidden on mobile */}
       <div className="hidden md:block absolute left-1/2 -translate-x-1/2 w-full max-w-[560px] px-4">
