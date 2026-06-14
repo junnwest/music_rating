@@ -25,3 +25,5 @@ apps/mobile/ios
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+.vercel
