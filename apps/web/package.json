@@ -53,7 +53,17 @@
     "backfill:native:artists": "tsx --env-file=.env.local scripts/backfill-native-names.ts --phase=1",
     "backfill:native:releases": "tsx --env-file=.env.local scripts/backfill-native-names.ts --phase=2",
     "backfill:embeddings": "tsx --env-file=.env.local scripts/backfill-embeddings.ts",
-    "backfill:embeddings:dry": "tsx --env-file=.env.local scripts/backfill-embeddings.ts --dry-run"
+    "backfill:embeddings:dry": "tsx --env-file=.env.local scripts/backfill-embeddings.ts --dry-run",
+    "backfill:tracklists": "tsx --env-file=.env.local scripts/backfill-tracklists.ts",
+    "backfill:tracklists:dry": "tsx --env-file=.env.local scripts/backfill-tracklists.ts --dry-run",
+    "catalog:status": "tsx --env-file=.env.local scripts/catalog-status.ts",
+    "analyze:coverage": "tsx --env-file=.env.local scripts/analyze-coverage.ts",
+    "analyze:coverage:albums": "tsx --env-file=.env.local scripts/analyze-coverage.ts --albums-only",
+    "queue:build:global": "tsx --env-file=.env.local scripts/build-global-queue.ts",
+    "queue:build:global:dry": "tsx --env-file=.env.local scripts/build-global-queue.ts --dry-run",
+    "queue:discover:global": "tsx --env-file=.env.local scripts/discover-global.ts",
+    "queue:discover:global:dry": "tsx --env-file=.env.local scripts/discover-global.ts --dry-run",
+    "queue:ingest:albums": "tsx --env-file=.env.local scripts/ingest-itunes-queue.ts --skip-singles --with-tracks"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.103.2",

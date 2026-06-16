@@ -19,6 +19,15 @@
 import { createClient } from '@supabase/supabase-js';
 
 const DRY_RUN   = process.argv.includes('--dry-run');
+// Fetch each album's tracklist (one extra iTunes lookup per album). Off by
+// default to keep the discover→ingest loop fast; the backfill:tracklists script
+// fills tracklists for existing rows. Use --with-tracks to populate at ingest.
+const WITH_TRACKS = process.argv.includes('--with-tracks');
+// Skip Single-type releases entirely. Singles are 66% of the catalog and are
+// excluded from recommendations/leaderboards anyway, so for deliberate
+// expansion runs this keeps new data album/EP-focused and improves the
+// album:single composition ratio over time.
+const SKIP_SINGLES = process.argv.includes('--skip-singles');
 const LIMIT_ARG = process.argv.find(a => a.startsWith('--limit='));
 const BATCH_LIMIT = LIMIT_ARG ? parseInt(LIMIT_ARG.split('=')[1]) : 9999;
 const DELAY_MS  = 650;   // stay comfortably below iTunes 429 threshold
@@ -113,6 +122,29 @@ async function findItunesArtistId(name: string): Promise<{ id: number; canonical
     results.find(r => r.wrapperType === 'artist');
   if (!match) return null;
   return { id: match.artistId, canonicalName: match.artistName };
+}
+
+type Track = { position: number; title: string; durationMs: number | null; artists: string };
+
+// Look up a collection's songs and map them to the album page's tracklist shape.
+// Multi-disc albums repeat track numbers per disc, so fall back to a sequential
+// running position to keep keys unique.
+async function fetchTracks(collectionId: number): Promise<Track[]> {
+  const data = await itunesGet(`${ITUNES_BASE}/lookup?id=${collectionId}&entity=song&limit=300`);
+  const songs: any[] = (data?.results ?? []).filter(
+    (r: any) => r.wrapperType === 'track' && r.kind === 'song' && r.trackName,
+  );
+  if (songs.length === 0) return [];
+  songs.sort((a, b) =>
+    ((a.discNumber ?? 1) - (b.discNumber ?? 1)) || ((a.trackNumber ?? 0) - (b.trackNumber ?? 0)),
+  );
+  const multiDisc = new Set(songs.map(s => s.discNumber ?? 1)).size > 1;
+  return songs.map((s, i) => ({
+    position:   multiDisc ? i + 1 : (s.trackNumber ?? i + 1),
+    title:      s.trackName,
+    durationMs: s.trackTimeMillis ?? null,
+    artists:    s.artistName ?? '',
+  }));
 }
 
 async function fetchDiscography(artistId: number): Promise<any[]> {
@@ -210,6 +242,8 @@ async function upsertRelease(
   const rtype  = releaseType(album.trackCount ?? 0, album.collectionName);
   const date   = album.releaseDate?.slice(0, 10) ?? null;
 
+  if (SKIP_SINGLES && rtype === 'Single') return 'skipped';
+
   if (
     byTitle &&
     normalizeStr(byTitle.title) === normalizeStr(album.collectionName) &&
@@ -232,6 +266,7 @@ async function upsertRelease(
 
   // 3. New record
   if (DRY_RUN) return 'inserted';
+  const tracklist = WITH_TRACKS ? await fetchTracks(album.collectionId) : [];
   const { error } = await db.from('releases').insert({
     id:               crypto.randomUUID(),
     itunes_id:        album.collectionId,
@@ -247,6 +282,7 @@ async function upsertRelease(
     genres:           genre || null,
     canonical_source: 'itunes',
     total_tracks:     album.trackCount ?? null,
+    tracklist:        tracklist.length > 0 ? tracklist : null,
     cached_at:        new Date().toISOString(),
   });
   if (error) throw new Error(error.message);

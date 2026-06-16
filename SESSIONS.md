@@ -6,6 +6,39 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-14 (session 3) — Tracklist backfill + storage analysis + catalog expansion plan:**
+
+*Tracklist backfill (album pages missing tracklists):*
+- **Root cause** — the album page hides its tracklist section when `tracklist` is empty ([album/[mbid]/page.tsx:346](apps/web/app/(main)/album/[mbid]/page.tsx#L346)). The `tracklist` column is only ever written by `cacheAlbum()` (full Spotify album detail). The catalog is overwhelmingly iTunes-sourced, and `ingest-itunes-queue.ts` wrote only `total_tracks` (count), never the track list — so ~115.6k non-single rows had `tracklist = null` and rendered without tracks. The DB-first album page (2026-05-28) also stopped calling Spotify when any DB row exists, so visits no longer backfilled them.
+- **`scripts/backfill-tracklists.ts`** (new) — fills `tracklist` from iTunes (`lookup?entity=song` by stored `itunes_id`; search fallback resolves + persists `itunes_id`). Maps to the page's render shape, handles multi-disc albums, sets `total_tracks` when null. Resumable, `--dry-run`/`--limit`/`--include-singles`/`--skip-search`. Singles skipped by default. iTunes-only. npm: `backfill:tracklists[:dry]`.
+- **`ingest-itunes-queue.ts`** — added `--with-tracks` (off by default) to populate tracklists inline on future ingests.
+- **Verified** — dry + real `--limit=3` runs succeeded (31/10/52 tracks via `itunes_id`). Fixed a state-file bug (dry runs were persisting processed IDs); cleared the polluted state file.
+
+*Storage analysis (Supabase Pro, 8 GB disk):*
+- Disk breakdown 2026-06-14: **database 0.90 GB · WAL 0.56 GB · system 0.16 GB · available 6.21 GB** (used ~1.62 GB of 8). `measure-storage.ts` (new, read-only) estimates: 118,672 embeddings ≈ 486 MB + HNSW; tracklists after full backfill ≈ +0.3 GB.
+- **Decision: stay on Pro.** Downgrading to Free is impossible — DB (1.62 GB) is 3.2× the Free 500 MB cap → project would go read-only; also Free auto-pauses after 7 days and lacks the IO budget for the trigram/HNSW indexes.
+
+*Coverage analysis + catalog expansion plan:*
+- **`scripts/analyze-coverage.ts`** (new, read-only) — genre-token / native-language / decade / culture-probe breakdown. `--albums-only` restricts to the recommendable set.
+- **Key finding:** catalog is NOT Korean-dominated — Last.fm "similar" snowball drifted to Western electronic/hip-hop. In the recommendable set (110,728 albums+EPs): electronic 15.4%, hip-hop 12.3%, **k-pop only 5.9% (Korea ~8–11% overall)**. Asian-neighbour gaps are severe: **SE Asia 4 albums, China 393, India 63, Japan ~2,823**. Genre mix is otherwise healthy; pre-2000 depth ~19% is fine.
+- **[CATALOG_EXPANSION_PLAN.md](CATALOG_EXPANSION_PLAN.md)** (new) — target composition (region + genre) for the recommendable set, storage projection vs 8 GB (lands ~2.4–4 GB, comfortable), and ordered run commands. Do NOT re-run the blanket `queue:discover` (re-inflates electronic/hip-hop).
+- **Positioning clarified by user:** the platform's end goal is a **global** community, so Korean dominance is NOT required. Korea at ~8–11% is fine; target held at ~12%. A Korean depth pass is **optional**, not a blocker. Plan + README updated to reflect this (earlier draft had flagged Korea as a required fix).
+- **`scripts/build-global-queue.ts`** (new) — region-grouped Wikipedia seed (Japan / Greater China / SE Asia / South Asia / Western canon / Africa / Europe-world), source-tagged `wikipedia_<region>`, native-name detection extended to ko/ja/zh/th/hi/ar. Japan dry-run confirmed working (idol groups 312, etc.).
+- **`scripts/discover-global.ts`** (new) — Last.fm discovery **scoped to global-seed artists only** (MAX_SIMILAR=10), so growth stays inside each culture instead of drifting Western.
+- **`ingest-itunes-queue.ts`** — added `--skip-singles` (composition lever). npm: `queue:ingest:albums` = `--skip-singles --with-tracks`.
+- **`scripts/catalog-status.ts`** (new) — live dashboard (`npm run catalog:status`): queue by status + per-region (source) with releases-added, artists in catalog, releases by type, and releases by native_language / region / genre family. Count-only queries so it's fast at ~350k rows. Use it to watch the expansion and verify region targets.
+- New npm scripts: `catalog:status`, `analyze:coverage[:albums]`, `queue:build:global[:dry]`, `queue:discover:global[:dry]`, `queue:ingest:albums`.
+- **Concurrency rule:** iTunes jobs (`backfill:tracklists`, `queue:ingest:albums`) must not run simultaneously; `queue:build:global` (Wikipedia) and `queue:discover:global` (Last.fm) are safe alongside either.
+
+*Execution progress (ran 2026-06-14→15):*
+- `queue:build:global` — first run yielded only 1,106 (Wikipedia throttled categories mid-run); **re-run recovered 5,898 seed artists** across all regions (japan 2,048, western_canon 1,702, europe_world 611, south_asia 596, greater_china 392, sea 300, africa 249). The persistent `0 pages` categories are non-existent Wikipedia category names, not throttling.
+- `queue:discover:global` — scoped fan-out from the 5,898 seeds: queued ~39k similar (attempted), queue peaked ~30,751 pending. **One controlled pass only** — blanket discover deliberately not used.
+- `queue:ingest:albums` — draining the queue in batches. So far ~14,400 new albums/EPs inserted (8,512 + 5,927). **Diminishing returns observed** — skip ratio rose from ~1.5:1 to ~4:1 (22,435 skipped vs 5,927 inserted last batch) as the queue saturates. Stop discovery; finish draining then move to enrichment.
+- **Positioning clarified by user (see below):** global, not Korea-dominant.
+- **Next:** finish the in-flight `queue:ingest:albums` + `backfill:tracklists`; then enrichment backfills (genres → native → covers → embeddings, then rebuild HNSW index); then `analyze:coverage:albums` + `catalog:status` to diff against the plan's §5c region/genre targets.
+
+---
+
 **2026-06-14 (session 2) — Logo, language detection, onboarding improvements:**
 
 - **Logo swap** — replaced `public/logo-flower.svg`, `public/logo.svg`, and `apps/mobile/assets/images/logo-flower.png` with Asset 21 (transparent background). Dark mode white-box issue resolved.

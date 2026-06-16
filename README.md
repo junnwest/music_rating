@@ -14,7 +14,13 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
-**Priority for next session:** (1) **Apply DB migration** `20260615000000_add_apple_music_platform.sql` to production via Supabase SQL editor (drops + recreates the streaming platform CHECK constraint to include `apple_music`) — do this before testing Apple Music in settings/onboarding. (2) Verify end-to-end on sillajuku.com: follow flow, onboarding (sidebar hidden, genre pills sorted, Apple Music option), logo in email. See SESSIONS.md (2026-06-14 session 2) for full change list.
+**Priority for next session:** (1) **Apply DB migration** `20260615000000_add_apple_music_platform.sql` to production via Supabase SQL editor (drops + recreates the streaming platform CHECK constraint to include `apple_music`) — do this before testing Apple Music in settings/onboarding. (2) Verify end-to-end on sillajuku.com: follow flow, onboarding (sidebar hidden, genre pills sorted, Apple Music option), logo in email. See SESSIONS.md (2026-06-14 session 2) for full change list. (3) **Catalog expansion — in progress** (see [CATALOG_EXPANSION_PLAN.md](CATALOG_EXPANSION_PLAN.md)). Global seed (`queue:build:global`, 5,898 artists) + controlled discovery (`queue:discover:global`) are **done**; `queue:ingest:albums` + `backfill:tracklists` are **draining now** (~14.4k new albums/EPs in, skip ratio rising → saturation). **Next:** finish those two iTunes runs, then the enrichment backfills (`backfill:genres` → `:lastfm` → `enrich:genres:lastfm` → `backfill:native` → `backfill:covers` → `backfill:embeddings`, then rebuild the HNSW index), then `npm run analyze:coverage:albums` + `npm run catalog:status` to diff against the plan's §5c targets. Do **not** re-run discovery (saturated). Korea ~8–11% is fine — global positioning, no forced Korean dominance.
+
+#### Catalog composition + storage (analyzed 2026-06-14 session 3)
+
+- **Disk:** Supabase Pro, 8 GB. Used ~1.62 GB (database 0.90 · WAL 0.56 · system 0.16); 6.21 GB free. The full expansion is projected to land ~2.4–4 GB total — comfortably within budget. Do not downgrade to Free (DB is 3.2× the 500 MB Free cap → read-only).
+- **Composition (recommendable set, 110,728 albums+EPs):** electronic 15.4% · hip-hop 12.3% · rock 10.8% · pop 7.6% · k-pop 5.9%. The Last.fm "similar" snowball drifted the catalog to Western electronic/hip-hop; Asian neighbours are nearly absent (SE Asia 4 albums, China 393, India 63, Japan ~2,823) — that's the gap the expansion fills. Korea is ~8–11%; since the platform targets a **global** community this is acceptable (no forced Korean dominance). Full target proportions + run order live in [CATALOG_EXPANSION_PLAN.md](CATALOG_EXPANSION_PLAN.md).
+- **Tooling:** `catalog:status` (live dashboard — queue/artists/releases by type/region/genre), `analyze:coverage[:albums]` (coverage report), `measure-storage.ts` (storage estimate), `queue:build:global` + `queue:discover:global` + `queue:ingest:albums` (deliberate expansion).
 
 #### DB migrations — production status (verified against prod 2026-06-11 via SQL editor)
 
@@ -450,6 +456,20 @@ npm run backfill:covers:no-spotify   # skip tier 4 (no Spotify calls)
 
 Writes `cover_url` and `cover_source` ('itunes'/'lastfm'/'musicbrainz'/'spotify'). State file: `scripts/backfill-cover-art-state.json`.
 
+#### Step 6 — Tracklist backfill
+
+The iTunes queue ingest stores only `total_tracks` (the count), never the track list, so iTunes-sourced album pages render without a tracklist section. This backfill fills the `tracklist` column from iTunes. Per release: look up songs by stored `itunes_id` (1 call); if absent, search iTunes by title+artist to resolve the collection, then look up songs (and persist the resolved `itunes_id`). Writes tracks in the album page's render shape (`{ position, title, durationMs, artists }[]`) and sets `total_tracks` when null. No auth, no key — only iTunes throttling (650ms/req + backoff).
+
+```bash
+npm run backfill:tracklists              # full run (resumable)
+npm run backfill:tracklists:dry          # preview, no DB writes
+npx tsx --env-file=.env.local scripts/backfill-tracklists.ts --limit=500       # batch
+npx tsx --env-file=.env.local scripts/backfill-tracklists.ts --include-singles # singles too
+npx tsx --env-file=.env.local scripts/backfill-tracklists.ts --skip-search     # itunes_id only
+```
+
+Singles skipped by default. State file: `scripts/backfill-tracklists-state.json`. ~115.6k non-single rows missing a tracklist as of 2026-06-14 (≈21h at 650ms/call — run in batches or overnight). Future ingests can populate tracklists inline with `npm run queue:ingest -- --with-tracks` (off by default to keep the discover→ingest loop fast).
+
 #### Genre pipeline (run after queue ingest)
 
 ```bash
@@ -553,7 +573,7 @@ npm run expand:genre        # Spotify genre sweep — still works
 - **Scripts cooperate with the circuit breaker** (`scripts/spotify-circuit.ts`, 2026-05-24) — The five scripts that hit Spotify directly (`backfill-genres`, `expand-catalog`, `ingest-music`, `seed-prestige`, `seed-rankings`) share Spotify credentials with the web server, so a script burst can trigger an account-wide 429 that breaks production. They now (a) refuse to start when the prod breaker is open via `assertSpotifyCircuitClosed()`, and (b) publish their own 429s to the same Redis key via `recordSpotify429(retryAfterSec, source)` so the web app stops hammering Spotify too.
 - **Search degrades to DB on Spotify failure** (`/api/search`, 2026-05-24) — when any Spotify call throws (circuit open, 429, network error), the route returns `{ releases | artists, degraded: true }` from `searchReleasesInDb` / `searchArtistsInDb` (ilike against `releases.title` ∪ `releases.artist` and `artists.name`, backed by pg_trgm GIN indexes from migration `20260524000000_search_trigram_indexes.sql`). `AlbumSearchForm` shows an amber banner when `degraded: true`. Tracks return empty array (no local `tracks` table).
 - **Spotify endpoint deprecations (late 2024):** `/artists/{id}` no longer returns useful `genres` (mostly `[]`) and `/artists/{id}/related-artists` returns 404. `scripts/backfill-genres.ts` and `expand:related` mode in `scripts/expand-catalog.ts` are therefore dead. Hand-curated overrides for high-value rows: `apps/web/scripts/genre-overrides.json` + `apply-genre-overrides.ts`. Long-tail genre backfill needs a Last.fm rewrite.
-- **Album page fallback chain** (2026-05-28: now DB-first) — `getCachedAlbum` (DB row with tracklist) → `getBasicRelease` (DB row without tracklist; still renders a usable page) → `getSpotifyAlbum` (only for genuinely unknown Spotify-ID deep-links) → `notFound()`. Spotify is no longer called when a basic DB row exists — eliminates the per-visitor Spotify cost. Tracklists only appear on Spotify-cached albums; iTunes-sourced rows render without a tracklist section.
+- **Album page fallback chain** (2026-05-28: now DB-first) — `getCachedAlbum` (DB row with tracklist) → `getBasicRelease` (DB row without tracklist; still renders a usable page) → `getSpotifyAlbum` (only for genuinely unknown Spotify-ID deep-links) → `notFound()`. Spotify is no longer called when a basic DB row exists — eliminates the per-visitor Spotify cost. Tracklists historically only appeared on Spotify-cached albums; iTunes-sourced rows rendered without a tracklist section. **2026-06-14:** `backfill:tracklists` (iTunes `lookup?entity=song`) fills the `tracklist` column for iTunes-sourced rows — see the catalog pipeline section. The album page already renders whatever's in `tracklist` (and hides the section when empty), so no page changes were needed.
 - **Artist page discography** (2026-05-28: now DB-first) — `getArtistReleases` (DB query on `releases.artist_id`) is tried first. `getSpotifyArtistAlbums` only runs when the DB has zero releases for that artist (typical case: freshly-clicked Spotify-only artist not yet ingested). With 4,568 newly-ingested iTunes releases, most Korean artists hit the DB path and skip Spotify entirely.
 - **Supabase region:** Seoul. ~180–220ms latency for Western users — acceptable while Korea-focused; address with read replicas at Western expansion.
 - **Supabase free tier:** 500MB storage (~100,000 albums). Paid tier ($25/mo) gives 8GB.
