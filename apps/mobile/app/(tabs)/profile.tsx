@@ -18,6 +18,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { useLanguage } from '@/lib/i18n';
+import { ScreenHeader } from '@/components/ScreenHeader';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const GRID_PADDING = 16;
@@ -159,6 +161,7 @@ function SectionTitle({ title }: { title: string }) {
 export default function ProfileScreen() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const { t } = useLanguage();
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [allRatings, setAllRatings] = useState<RatingEntry[]>([]);
@@ -305,10 +308,10 @@ export default function ProfileScreen() {
       <SafeAreaView style={s.container} edges={['top']}>
         <View style={s.signInPrompt}>
           <Ionicons name="person-circle-outline" size={72} color="#E8E8E6" />
-          <Text style={s.signInTitle}>Sign in to see your profile</Text>
-          <Text style={s.signInSub}>Rate albums and track your music taste.</Text>
+          <Text style={s.signInTitle}>{t('profile.signInTitle')}</Text>
+          <Text style={s.signInSub}>{t('profile.signInSub')}</Text>
           <Pressable style={({ pressed }) => [s.signInBtn, pressed && { opacity: 0.8 }]} onPress={() => router.push('/(auth)/login')}>
-            <Text style={s.signInBtnText}>Sign In</Text>
+            <Text style={s.signInBtnText}>{t('profile.signInBtn')}</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -327,20 +330,22 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={s.container} edges={['top']}>
       {/* Header */}
-      <View style={s.header}>
-        <Text style={s.headerTitle}>Profile</Text>
-        <View style={s.headerIcons}>
-          <Pressable style={s.headerIconBtn} onPress={() => router.push('/friends')}>
-            <Ionicons name="people-outline" size={24} color="#1A1A18" />
-          </Pressable>
-          <Pressable style={s.headerIconBtn} onPress={() => router.push('/notifications')}>
-            <Ionicons name="notifications-outline" size={24} color="#1A1A18" />
-          </Pressable>
-          <Pressable style={s.headerIconBtn} onPress={() => router.push('/settings')}>
-            <Ionicons name="settings-outline" size={24} color="#1A1A18" />
-          </Pressable>
-        </View>
-      </View>
+      <ScreenHeader
+        title={t('profile.title')}
+        right={
+          <View style={s.headerIcons}>
+            <Pressable style={s.headerIconBtn} onPress={() => router.push('/friends')}>
+              <Ionicons name="people-outline" size={24} color="#1A1A18" />
+            </Pressable>
+            <Pressable style={s.headerIconBtn} onPress={() => router.push('/notifications')}>
+              <Ionicons name="notifications-outline" size={24} color="#1A1A18" />
+            </Pressable>
+            <Pressable style={s.headerIconBtn} onPress={() => router.push('/settings')}>
+              <Ionicons name="settings-outline" size={24} color="#1A1A18" />
+            </Pressable>
+          </View>
+        }
+      />
 
       {loading ? (
         <ActivityIndicator size="large" color="#D97706" style={{ marginTop: 60 }} />
@@ -359,8 +364,8 @@ export default function ProfileScreen() {
             {profile?.bio ? <Text style={s.bio}>{profile.bio}</Text> : null}
             <View style={s.statsRow}>
               <Text style={s.statsText}>
-                {totalCount} {totalCount === 1 ? 'rating' : 'ratings'}
-                {avgScore !== null ? `  ·  ★ ${avgScore.toFixed(1)} avg` : ''}
+                {totalCount} {t(totalCount === 1 ? 'profile.rating' : 'profile.ratings')}
+                {avgScore !== null ? `  ·  ★ ${avgScore.toFixed(1)} ${t('profile.avg')}` : ''}
               </Text>
             </View>
             {tasteDNA.length > 0 && (
@@ -377,7 +382,7 @@ export default function ProfileScreen() {
           {/* Score Distribution */}
           {totalCount >= 3 && (
             <View style={s.section}>
-              <SectionTitle title="Score Distribution" />
+              <SectionTitle title={t('profile.scoreDistribution')} />
               <ScoreBar bars={bars} />
               <View style={s.scoreLabels}>
                 <Text style={s.scoreLabel}>0.5</Text>
@@ -389,7 +394,7 @@ export default function ProfileScreen() {
           {/* Top Genres */}
           {topGenres.length > 0 && (
             <View style={s.section}>
-              <SectionTitle title="Top Genres" />
+              <SectionTitle title={t('profile.topGenres')} />
               <View style={s.genreList}>
                 {topGenres.map(({ name, count }) => (
                   <View key={name} style={s.genreRow}>
@@ -404,7 +409,7 @@ export default function ProfileScreen() {
           {/* Essentials */}
           <View style={s.section}>
             <View style={s.sectionHeaderRow}>
-              <SectionTitle title="Essentials" />
+              <SectionTitle title={t('profile.essentials')} />
               {pinned.length < 6 && (
                 <Pressable onPress={() => setPickerVisible(true)}>
                   <Ionicons name="add-circle-outline" size={20} color="#D97706" />
@@ -414,7 +419,7 @@ export default function ProfileScreen() {
             {pinned.length === 0 ? (
               <Pressable style={s.essentialsEmpty} onPress={() => setPickerVisible(true)}>
                 <Ionicons name="add-outline" size={24} color="#8C8C8A" />
-                <Text style={s.essentialsEmptyText}>Pin up to 6 defining albums</Text>
+                <Text style={s.essentialsEmptyText}>{t('profile.essentialsEmpty')}</Text>
               </Pressable>
             ) : (
               <View style={s.essentialsGrid}>
@@ -431,11 +436,11 @@ export default function ProfileScreen() {
 
           {/* Ratings Grid */}
           <View style={s.section}>
-            <SectionTitle title="Recent Ratings" />
+            <SectionTitle title={t('profile.recentRatings')} />
             {recentRatings.length === 0 ? (
               <View style={s.emptyGrid}>
                 <Ionicons name="disc-outline" size={40} color="#E8E8E6" />
-                <Text style={s.emptyText}>No ratings yet</Text>
+                <Text style={s.emptyText}>{t('profile.noRatings')}</Text>
               </View>
             ) : (
               <View style={s.grid}>
@@ -456,15 +461,15 @@ export default function ProfileScreen() {
           {/* Taste Collisions */}
           {collisions.length > 0 && (
             <View style={s.section}>
-              <SectionTitle title="Taste Collisions" />
-              <Text style={s.sectionSubtitle}>Albums where you and a friend rated very differently</Text>
+              <SectionTitle title={t('profile.tasteCollisions')} />
+              <Text style={s.sectionSubtitle}>{t('profile.tasteCollisionsSub')}</Text>
               {collisions.map((c) => (
                 <Pressable key={`${c.releaseId}-${c.friendUsername}`} style={s.conflictRow} onPress={() => router.push(`/album/${c.releaseId}`)}>
                   <Image source={{ uri: c.coverUrl ?? undefined }} style={s.conflictCover} contentFit="cover" />
                   <View style={s.conflictInfo}>
                     <Text style={s.conflictTitle} numberOfLines={1}>{c.title}</Text>
                     <Text style={s.conflictArtist} numberOfLines={1}>{c.artist}</Text>
-                    <Text style={s.conflictScores}>You ★{c.myScore}  ·  @{c.friendUsername} ★{c.friendScore}</Text>
+                    <Text style={s.conflictScores}>{t('profile.you')} ★{c.myScore}  ·  @{c.friendUsername} ★{c.friendScore}</Text>
                   </View>
                   <View style={[s.diffBadge, { backgroundColor: '#FEF3DC' }]}>
                     <Text style={[s.diffBadgeText, { color: '#92400E' }]}>Δ{c.diff.toFixed(1)}</Text>
@@ -477,15 +482,15 @@ export default function ProfileScreen() {
           {/* Taste Contradictions */}
           {contradictions.length > 0 && (
             <View style={s.section}>
-              <SectionTitle title="Taste Contradictions" />
-              <Text style={s.sectionSubtitle}>Your ratings vs. the community average</Text>
+              <SectionTitle title={t('profile.tasteContradictions')} />
+              <Text style={s.sectionSubtitle}>{t('profile.tasteContradictionsSub')}</Text>
               {contradictions.map((c) => (
                 <Pressable key={c.releaseId} style={s.conflictRow} onPress={() => router.push(`/album/${c.releaseId}`)}>
                   <Image source={{ uri: c.coverUrl ?? undefined }} style={s.conflictCover} contentFit="cover" />
                   <View style={s.conflictInfo}>
                     <Text style={s.conflictTitle} numberOfLines={1}>{c.title}</Text>
                     <Text style={s.conflictArtist} numberOfLines={1}>{c.artist}</Text>
-                    <Text style={s.conflictScores}>You ★{c.myScore}  ·  Community ★{c.communityAvg}</Text>
+                    <Text style={s.conflictScores}>{t('profile.you')} ★{c.myScore}  ·  {t('profile.community')} ★{c.communityAvg}</Text>
                   </View>
                   <View style={[s.diffBadge, { backgroundColor: c.diff > 0 ? '#DCFCE7' : '#FEE2E2' }]}>
                     <Text style={[s.diffBadgeText, { color: c.diff > 0 ? '#166534' : '#991B1B' }]}>{c.diff > 0 ? '+' : ''}{c.diff.toFixed(1)}</Text>
@@ -503,14 +508,14 @@ export default function ProfileScreen() {
       <Modal visible={pickerVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setPickerVisible(false)}>
         <View style={s.modal}>
           <View style={s.modalHeader}>
-            <Text style={s.modalTitle}>Add Essential</Text>
+            <Text style={s.modalTitle}>{t('profile.addEssential')}</Text>
             <Pressable onPress={() => { setPickerVisible(false); setPickerQuery(''); }}>
               <Ionicons name="close" size={24} color="#1A1A18" />
             </Pressable>
           </View>
           <View style={s.modalSearch}>
             <Ionicons name="search-outline" size={16} color="#8C8C8A" />
-            <TextInput style={s.modalSearchInput} placeholder="Search your rated albums…" placeholderTextColor="#8C8C8A" value={pickerQuery} onChangeText={setPickerQuery} autoFocus />
+            <TextInput style={s.modalSearchInput} placeholder={t('profile.searchRated')} placeholderTextColor="#8C8C8A" value={pickerQuery} onChangeText={setPickerQuery} autoFocus />
           </View>
           <FlatList
             data={pickerQuery.trim() ? pickerResults : recentRatings}
@@ -539,8 +544,6 @@ export default function ProfileScreen() {
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8F8F6' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#E8E8E6', backgroundColor: '#F8F8F6' },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: '#1A1A18', letterSpacing: -0.5 },
   headerIcons: { flexDirection: 'row', gap: 4 },
   headerIconBtn: { padding: 6 },
   signInPrompt: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, gap: 12 },

@@ -19,6 +19,8 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { searchSpotify } from '@/lib/api';
+import { useLanguage } from '@/lib/i18n';
+import { ScreenHeader } from '@/components/ScreenHeader';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_GAP = 8;
@@ -27,10 +29,10 @@ const CARD_WIDTH = (SCREEN_WIDTH - CARD_PADDING * 2 - CARD_GAP * 2) / 3;
 const PAGE_SIZE = 20;
 
 const FILTERS = [
-  { label: 'All', value: null },
-  { label: 'Albums', value: 'album' },
-  { label: 'EPs', value: 'ep' },
-  { label: 'Singles', value: 'single' },
+  { key: 'search.filterAll', value: null },
+  { key: 'search.filterAlbums', value: 'album' },
+  { key: 'search.filterEPs', value: 'ep' },
+  { key: 'search.filterSingles', value: 'single' },
 ] as const;
 
 type FilterValue = 'album' | 'ep' | 'single' | null;
@@ -115,6 +117,7 @@ function SectionLabel({ title, subtitle }: { title: string; subtitle?: string })
 export default function SearchScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const { t } = useLanguage();
   const { autoFocus } = useLocalSearchParams<{ autoFocus?: string }>();
   const inputRef = useRef<TextInput>(null);
 
@@ -376,8 +379,8 @@ export default function SearchScreen() {
         {communityAlbums.length > 0 && (
           <>
             <SectionLabel
-              title="Community Picks"
-              subtitle="Most-rated albums you haven't heard yet"
+              title={t('search.communityPicks')}
+              subtitle={t('search.communityPicksSub')}
             />
             <View style={styles.grid}>
               {communityAlbums.map((item) => (
@@ -394,11 +397,11 @@ export default function SearchScreen() {
         {exploreAlbums.length > 0 && (
           <>
             <SectionLabel
-              title={exploreArtistsRef.current.length > 0 ? 'Recommended for You' : 'Browse Music'}
+              title={exploreArtistsRef.current.length > 0 ? t('search.recommended') : t('search.browse')}
               subtitle={
                 exploreArtistsRef.current.length > 0
-                  ? 'Based on artists you love'
-                  : 'Discover new albums'
+                  ? t('search.recommendedSub')
+                  : t('search.browseSub')
               }
             />
             <View style={styles.grid}>
@@ -416,8 +419,8 @@ export default function SearchScreen() {
         {exploreAlbums.length === 0 && communityAlbums.length === 0 && (
           <View style={styles.emptyState}>
             <Ionicons name="musical-notes-outline" size={56} color="#8C8C8A" />
-            <Text style={styles.emptyTitle}>No recommendations yet</Text>
-            <Text style={styles.emptySubtitle}>Rate some albums to get personalized picks</Text>
+            <Text style={styles.emptyTitle}>{t('search.noRecs')}</Text>
+            <Text style={styles.emptySubtitle}>{t('search.noRecsSub')}</Text>
           </View>
         )}
 
@@ -430,7 +433,7 @@ export default function SearchScreen() {
             {exploreLoadingMore ? (
               <ActivityIndicator size="small" color="#D97706" />
             ) : (
-              <Text style={styles.loadMoreText}>Load more</Text>
+              <Text style={styles.loadMoreText}>{t('search.loadMore')}</Text>
             )}
           </Pressable>
         )}
@@ -455,7 +458,7 @@ export default function SearchScreen() {
       return (
         <View style={styles.emptyState}>
           <Ionicons name="search-outline" size={56} color="#8C8C8A" />
-          <Text style={styles.emptyTitle}>No results for "{query}"</Text>
+          <Text style={styles.emptyTitle}>{t('search.noResults')} "{query}"</Text>
         </View>
       );
     }
@@ -464,7 +467,7 @@ export default function SearchScreen() {
       <>
         {peopleResults.length > 0 && (
           <>
-            <SectionLabel title="People" />
+            <SectionLabel title={t('search.people')} />
             <View style={styles.peopleList}>
               {peopleResults.map((person) => (
                 <Pressable
@@ -492,7 +495,7 @@ export default function SearchScreen() {
 
         {filtered.length > 0 && (
           <>
-            {peopleResults.length > 0 && <SectionLabel title="Albums & Music" />}
+            {peopleResults.length > 0 && <SectionLabel title={t('search.albumsAndMusic')} />}
             <FlatList
               data={filtered}
               keyExtractor={(item) => item.id}
@@ -517,16 +520,14 @@ export default function SearchScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Search</Text>
-        </View>
+        <ScreenHeader title={t('search.title')} borderless />
 
         <View style={styles.searchContainer}>
           <Ionicons name="search-outline" size={18} color="#8C8C8A" style={styles.searchIcon} />
           <TextInput
             ref={inputRef}
             style={styles.searchInput}
-            placeholder="Albums, artists, people..."
+            placeholder={t('search.placeholder')}
             placeholderTextColor="#8C8C8A"
             value={query}
             onChangeText={setQuery}
@@ -551,12 +552,12 @@ export default function SearchScreen() {
             const active = activeFilter === f.value;
             return (
               <Pressable
-                key={f.label}
+                key={f.key}
                 style={[styles.pill, active && styles.pillActive]}
                 onPress={() => setActiveFilter(f.value)}
               >
                 <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                  {f.label}
+                  {t(f.key)}
                 </Text>
               </Pressable>
             );
@@ -576,16 +577,6 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
-  },
-  header: {
-    paddingHorizontal: CARD_PADDING,
-    paddingTop: 8,
-    paddingBottom: 12,
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#1A1A18',
   },
   searchContainer: {
     flexDirection: 'row',

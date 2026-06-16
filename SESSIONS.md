@@ -6,6 +6,29 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-16 — Mobile app: Expo bring-up on Windows + i18n + design-pass start:**
+
+*Expo Go bring-up (Windows):*
+- **Dependency skew fixed** — `apps/mobile/package.json` had `expo-font`, `expo-linking`, `expo-secure-store` pinned to **SDK 56** versions (`^56.x`) inside an **SDK 54** project (someone ran `npm install <pkg>@latest` instead of `expo install`). Corrected to SDK-54 versions (`expo-font@~14.0.12`, `expo-linking@~8.0.12`, `expo-secure-store@~15.0.8`); pinned `react-native@0.81.4` (was `^0.81.5`, floated to 0.81.6 which demands `react@^19.1.4`). `expo` bumped `~54.0.35`. Installs now resolve; the missing `expo-font` plugin that blocked `expo start` is fixed.
+- **Connectivity** — iPhone↔PC timeout was the **Wi-Fi network profile set to Public** (Windows blocks inbound to Node on Public); switching to Private + existing Node firewall rules fixed LAN. Also: the "unverified app" Expo-account prompt blocks the dev server until answered (choose *Proceed anonymously*). Note `EXPO_PUBLIC_API_URL` unset in `apps/mobile/.env` → Spotify-powered mobile search disabled until set.
+- **Monorepo install caveat** — `npx expo install --fix` fails on an unrelated `@radix-ui` peer conflict bleeding in from `apps/web`; install expo packages directly with `--legacy-peer-deps` and the SDK-54 version. (`apps/mobile` is standalone — not in the root `workspaces` array.)
+
+*Design pass — 4 changes (user-requested):*
+- **i18n / device language** (new `apps/mobile/lib/i18n/`) — `en.ts`/`ko.ts` dicts + `LanguageProvider` using `expo-localization` `getLocales()` to follow the **phone's language** (Korean device → Korean UI; manual override persisted to AsyncStorage for a future settings toggle). Wired into root `_layout`, the tab bar, login, and all 5 tab screens. `expo-localization@17.0.9` installed + added to `app.json` plugins. **Partial by design** — only UI chrome is translated; deeper strings (home genre-category names, relative timestamps) still English, to be done in the per-page pass.
+- **Login** ([(auth)/login.tsx](apps/mobile/app/(auth)/login.tsx)) — now **non-scrollable** (centered flex, keyboard still shifts), swapped wordmark → **flower mark** (`logo.png`), all strings localized.
+- **Home** ([(tabs)/index.tsx](apps/mobile/app/(tabs)/index.tsx)) — top navbar (logo + search icon) **removed entirely**.
+- **Unified headers** (new [components/ScreenHeader.tsx](apps/mobile/components/ScreenHeader.tsx)) — one title style (26px / 800 / -0.6) now used by Activity, Rankings, Search, Profile (were 24/800, 28/700, 20/700). `borderless` variant for Search.
+
+*Design tooling explored:*
+- Built `apps/mobile/design-board.html` (all screens as phone frames on one canvas) to get a Figma-style glance view. **Verdict: an HTML recreation can't match native iOS** (frame size, SF vs Segoe font, spacing) — looked "off" vs real app. **Decision: use a board made of real screenshots** instead (pixel-accurate) for the page-by-page design pass. Board file is a throwaway/scratch artifact (left untracked).
+
+*Known issues opened this session:*
+- **Login logo still shows a white box** — `logo.png` has a solid white background (not transparent), visible against the cream `#F8F8F6`. Needs a transparent/background-knocked-out version. (The "background-removed logo" request is not fully satisfied yet.)
+- **Theme colors are hardcoded inline** across all 17 mobile screens (no theme module; `constants/Colors.ts` is only the Expo light/dark stub). Core palette: `#F8F8F6` cream bg · `#1A1A18` ink · `#8C8C8A` muted · `#E8E8E6` border · `#FFFFFF` surface · `#D97706` amber accent (+ `#FEF3DC`/`#FDE8B0` tints). Extraction into design tokens proposed, not yet done.
+
+*Catalog (continuation):*
+- `backfill:tracklists` **✅ full run complete** — 115,604 rows → 107,778 filled (106,652 via `itunes_id`, 1,126 via search), 7,826 no-match (**93% coverage**). README table + Step 6 updated.
+
 **2026-06-14 (session 3) — Tracklist backfill + storage analysis + catalog expansion plan:**
 
 *Tracklist backfill (album pages missing tracklists):*
@@ -34,8 +57,9 @@ Historical record of shipped features and session notes. Not needed at conversat
 - `queue:build:global` — first run yielded only 1,106 (Wikipedia throttled categories mid-run); **re-run recovered 5,898 seed artists** across all regions (japan 2,048, western_canon 1,702, europe_world 611, south_asia 596, greater_china 392, sea 300, africa 249). The persistent `0 pages` categories are non-existent Wikipedia category names, not throttling.
 - `queue:discover:global` — scoped fan-out from the 5,898 seeds: queued ~39k similar (attempted), queue peaked ~30,751 pending. **One controlled pass only** — blanket discover deliberately not used.
 - `queue:ingest:albums` — draining the queue in batches. So far ~14,400 new albums/EPs inserted (8,512 + 5,927). **Diminishing returns observed** — skip ratio rose from ~1.5:1 to ~4:1 (22,435 skipped vs 5,927 inserted last batch) as the queue saturates. Stop discovery; finish draining then move to enrichment.
+- `backfill:tracklists` — **✅ full run complete 2026-06-16:** 115,604 non-single rows processed → 107,778 filled (106,652 via `itunes_id`, 1,126 via search), 7,826 no tracks found (**93% coverage**). Remaining misses are releases with no resolvable iTunes match (long-tail / non-iTunes catalog).
 - **Positioning clarified by user (see below):** global, not Korea-dominant.
-- **Next:** finish the in-flight `queue:ingest:albums` + `backfill:tracklists`; then enrichment backfills (genres → native → covers → embeddings, then rebuild HNSW index); then `analyze:coverage:albums` + `catalog:status` to diff against the plan's §5c region/genre targets.
+- **Next:** finish the in-flight `queue:ingest:albums`; then enrichment backfills (genres → native → covers → embeddings, then rebuild HNSW index); then `analyze:coverage:albums` + `catalog:status` to diff against the plan's §5c region/genre targets.
 
 ---
 

@@ -12,6 +12,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
+import { useLanguage } from '@/lib/i18n';
+import { ScreenHeader } from '@/components/ScreenHeader';
 
 type ReleaseRow = {
   id: string;
@@ -131,6 +133,7 @@ function CoverStrip({ covers }: { covers: (string | null)[] }) {
 }
 
 function CategoryCard({ category, onPress }: { category: Category; onPress: () => void }) {
+  const { t } = useLanguage();
   const subtitle = category.description ?? (category.genre ? category.genre : null);
 
   return (
@@ -149,7 +152,7 @@ function CategoryCard({ category, onPress }: { category: Category; onPress: () =
           </Text>
         ) : null}
         {category.rankerCount > 0 && (
-          <Text style={styles.cardMeta}>{category.rankerCount} ranker{category.rankerCount !== 1 ? 's' : ''}</Text>
+          <Text style={styles.cardMeta}>{category.rankerCount} {t(category.rankerCount === 1 ? 'rankings.ranker' : 'rankings.rankers')}</Text>
         )}
       </View>
       <Ionicons name="chevron-forward" size={18} color="#8C8C8A" />
@@ -159,6 +162,7 @@ function CategoryCard({ category, onPress }: { category: Category; onPress: () =
 
 export default function RankingsScreen() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -170,9 +174,7 @@ export default function RankingsScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Rankings</Text>
-      </View>
+      <ScreenHeader title={t('rankings.title')} />
       {loading ? (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color="#D97706" />
@@ -180,7 +182,7 @@ export default function RankingsScreen() {
       ) : categories.length === 0 ? (
         <View style={styles.centered}>
           <Ionicons name="trophy-outline" size={40} color="#8C8C8A" />
-          <Text style={styles.emptyText}>No rankings yet</Text>
+          <Text style={styles.emptyText}>{t('rankings.empty')}</Text>
         </View>
       ) : (
         <FlatList
@@ -205,19 +207,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#F8F8F6',
-  },
-  header: {
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E8E8E6',
-    backgroundColor: '#F8F8F6',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#1A1A18',
-    letterSpacing: -1,
   },
   centered: {
     flex: 1,

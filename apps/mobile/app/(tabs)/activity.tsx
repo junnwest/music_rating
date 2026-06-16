@@ -12,6 +12,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { useLanguage } from '@/lib/i18n';
+import { ScreenHeader } from '@/components/ScreenHeader';
 
 type Profile = {
   username: string;
@@ -68,6 +70,7 @@ function AvatarCircle({ username }: { username: string }) {
 
 function FeedCard({ item }: { item: FeedItem }) {
   const router = useRouter();
+  const { t } = useLanguage();
   const username = item.profile?.username ?? 'unknown';
   const displayName = item.profile?.display_name ?? username;
   const releaseTitle = item.release?.title ?? 'Unknown Album';
@@ -87,7 +90,7 @@ function FeedCard({ item }: { item: FeedItem }) {
             <Text style={styles.cardUsername}>{displayName}</Text>
           </Pressable>
           <Text style={styles.cardAction}>
-            {' '}{item.kind === 'rating' ? 'rated' : 'reviewed'}
+            {' '}{item.kind === 'rating' ? t('activity.rated') : t('activity.reviewed')}
           </Text>
         </View>
         <Pressable onPress={() => router.push('/album/' + releaseId)}>
@@ -121,6 +124,7 @@ type FilterMode = 'following' | 'everyone';
 
 export default function ActivityScreen() {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterMode>('following');
@@ -201,33 +205,35 @@ export default function ActivityScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Activity</Text>
-        {user && (
-          <View style={styles.filterPill}>
-            <Pressable
-              style={[styles.filterOption, filter === 'following' && styles.filterOptionActive]}
-              onPress={() => setFilter('following')}
-            >
-              <Text
-                style={[styles.filterOptionText, filter === 'following' && styles.filterOptionTextActive]}
+      <ScreenHeader
+        title={t('activity.title')}
+        right={
+          user ? (
+            <View style={styles.filterPill}>
+              <Pressable
+                style={[styles.filterOption, filter === 'following' && styles.filterOptionActive]}
+                onPress={() => setFilter('following')}
               >
-                Following
-              </Text>
-            </Pressable>
-            <Pressable
-              style={[styles.filterOption, filter === 'everyone' && styles.filterOptionActive]}
-              onPress={() => setFilter('everyone')}
-            >
-              <Text
-                style={[styles.filterOptionText, filter === 'everyone' && styles.filterOptionTextActive]}
+                <Text
+                  style={[styles.filterOptionText, filter === 'following' && styles.filterOptionTextActive]}
+                >
+                  {t('activity.following')}
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.filterOption, filter === 'everyone' && styles.filterOptionActive]}
+                onPress={() => setFilter('everyone')}
               >
-                Everyone
-              </Text>
-            </Pressable>
-          </View>
-        )}
-      </View>
+                <Text
+                  style={[styles.filterOptionText, filter === 'everyone' && styles.filterOptionTextActive]}
+                >
+                  {t('activity.everyone')}
+                </Text>
+              </Pressable>
+            </View>
+          ) : undefined
+        }
+      />
 
       {loading ? (
         <View style={styles.centered}>
@@ -237,8 +243,8 @@ export default function ActivityScreen() {
         <View style={styles.centered}>
           <Text style={styles.emptyText}>
             {user && filter === 'following'
-              ? 'Follow people to see their activity here'
-              : 'No activity yet'}
+              ? t('activity.emptyFollowing')
+              : t('activity.empty')}
           </Text>
         </View>
       ) : (
@@ -259,22 +265,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#F8F8F6',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E8E8E6',
-    backgroundColor: '#F8F8F6',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#1A1A18',
-    letterSpacing: -1,
   },
   filterPill: {
     flexDirection: 'row',

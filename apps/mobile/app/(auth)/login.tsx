@@ -6,16 +6,16 @@ import {
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import Svg, { Path, Rect } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '@/lib/supabase';
+import { useLanguage } from '@/lib/i18n';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -24,6 +24,7 @@ type OAuthProvider = 'google' | 'spotify';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -42,11 +43,11 @@ export default function LoginScreen() {
   async function handleSubmit() {
     setMessage(null);
     if (!email.trim() || !password) {
-      setMessage({ text: 'Please enter your email and password.', isError: true });
+      setMessage({ text: t('login.enterCredentials'), isError: true });
       return;
     }
     if (mode === 'signup' && password !== confirmPassword) {
-      setMessage({ text: 'Passwords do not match.', isError: true });
+      setMessage({ text: t('login.passwordsNoMatch'), isError: true });
       return;
     }
 
@@ -64,7 +65,7 @@ export default function LoginScreen() {
         if (error) {
           setMessage({ text: error.message, isError: true });
         } else {
-          setMessage({ text: 'Check your email for a confirmation link.', isError: false });
+          setMessage({ text: t('login.checkEmail'), isError: false });
         }
       }
     } finally {
@@ -115,7 +116,7 @@ export default function LoginScreen() {
         // NavigationGuard in _layout.tsx redirects once session updates
       }
     } catch (err) {
-      setMessage({ text: err instanceof Error ? err.message : 'Sign in failed', isError: true });
+      setMessage({ text: err instanceof Error ? err.message : t('login.signInFailed'), isError: true });
     } finally {
       setOauthLoading(null);
     }
@@ -126,19 +127,15 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F8F8F6' }}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView
-          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 48 }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
+        <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 24 }}>
           {/* Logo */}
           <Image
-            source={require('../../assets/images/logo-text.png')}
-            style={{ width: 160, height: 46, alignSelf: 'center', marginBottom: 8 }}
+            source={require('../../assets/images/logo.png')}
+            style={{ width: 96, height: 96, alignSelf: 'center', marginBottom: 12 }}
             contentFit="contain"
           />
           <Text style={{ fontSize: 15, color: '#8C8C8A', textAlign: 'center', marginBottom: 40 }}>
-            Rate music. Share taste.
+            {t('login.tagline')}
           </Text>
 
           {/* Mode switcher */}
@@ -156,7 +153,7 @@ export default function LoginScreen() {
                 }}
               >
                 <Text style={{ fontSize: 14, fontWeight: '600', color: mode === m ? '#FFFFFF' : '#8C8C8A' }}>
-                  {m === 'login' ? 'Log In' : 'Sign Up'}
+                  {m === 'login' ? t('login.logInTab') : t('login.signUpTab')}
                 </Text>
               </Pressable>
             ))}
@@ -165,7 +162,7 @@ export default function LoginScreen() {
           {/* Email */}
           <TextInput
             style={inputStyle}
-            placeholder="Email"
+            placeholder={t('login.email')}
             placeholderTextColor="#8C8C8A"
             value={email}
             onChangeText={setEmail}
@@ -177,7 +174,7 @@ export default function LoginScreen() {
           {/* Password */}
           <TextInput
             style={inputStyle}
-            placeholder="Password"
+            placeholder={t('login.password')}
             placeholderTextColor="#8C8C8A"
             value={password}
             onChangeText={setPassword}
@@ -190,7 +187,7 @@ export default function LoginScreen() {
           {mode === 'signup' && (
             <TextInput
               style={inputStyle}
-              placeholder="Confirm Password"
+              placeholder={t('login.confirmPassword')}
               placeholderTextColor="#8C8C8A"
               value={confirmPassword}
               onChangeText={setConfirmPassword}
@@ -224,7 +221,7 @@ export default function LoginScreen() {
               <ActivityIndicator color="#FFFFFF" />
             ) : (
               <Text style={{ fontSize: 15, fontWeight: '700', color: '#FFFFFF' }}>
-                {mode === 'login' ? 'Log In' : 'Create Account'}
+                {mode === 'login' ? t('login.logIn') : t('login.createAccount')}
               </Text>
             )}
           </Pressable>
@@ -232,7 +229,7 @@ export default function LoginScreen() {
           {/* Divider */}
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
             <View style={{ flex: 1, height: 1, backgroundColor: '#E8E8E6' }} />
-            <Text style={{ marginHorizontal: 12, fontSize: 13, color: '#8C8C8A' }}>or continue with</Text>
+            <Text style={{ marginHorizontal: 12, fontSize: 13, color: '#8C8C8A' }}>{t('login.orContinue')}</Text>
             <View style={{ flex: 1, height: 1, backgroundColor: '#E8E8E6' }} />
           </View>
 
@@ -316,7 +313,7 @@ export default function LoginScreen() {
               <AppleIcon />
             </Pressable>
           </View>
-        </ScrollView>
+        </View>
       </KeyboardAvoidingView>
 
       {/* Coming soon modal */}
@@ -330,9 +327,9 @@ export default function LoginScreen() {
             onPress={() => {}}
           >
             <Text style={{ fontSize: 32, marginBottom: 12 }}>🚧</Text>
-            <Text style={{ fontSize: 17, fontWeight: '700', color: '#1A1A18', marginBottom: 8 }}>Coming soon</Text>
+            <Text style={{ fontSize: 17, fontWeight: '700', color: '#1A1A18', marginBottom: 8 }}>{t('login.comingSoonTitle')}</Text>
             <Text style={{ fontSize: 13, color: '#8C8C8A', textAlign: 'center', lineHeight: 18, marginBottom: 20 }}>
-              This login option is under construction. Use email, Google, or Spotify for now.
+              {t('login.comingSoonDesc')}
             </Text>
             <Pressable
               onPress={() => setComingSoon(false)}
@@ -344,7 +341,7 @@ export default function LoginScreen() {
                 opacity: pressed ? 0.8 : 1,
               })}
             >
-              <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>Got it</Text>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>{t('login.gotIt')}</Text>
             </Pressable>
           </Pressable>
         </Pressable>

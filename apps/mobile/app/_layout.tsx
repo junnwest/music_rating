@@ -4,6 +4,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { LanguageProvider } from '@/lib/i18n';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -59,9 +60,11 @@ function RootLayoutInner() {
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
-      <AuthProvider>
-        <RootLayoutInner />
-      </AuthProvider>
+      <LanguageProvider>
+        <AuthProvider>
+          <RootLayoutInner />
+        </AuthProvider>
+      </LanguageProvider>
     </SafeAreaProvider>
   );
 }

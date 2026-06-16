@@ -9,9 +9,9 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
+import { useLanguage } from '@/lib/i18n';
 
 const GENRE_CATEGORIES = [
   {
@@ -114,6 +114,7 @@ function AlbumCard({ album, onPress }: { album: Album; onPress: () => void }) {
 
 function GenreRow({ section, onSeeAll }: { section: Section; onSeeAll: () => void }) {
   const router = useRouter();
+  const { t } = useLanguage();
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
@@ -122,7 +123,7 @@ function GenreRow({ section, onSeeAll }: { section: Section; onSeeAll: () => voi
           <Text style={styles.sectionDescription}>{section.description}</Text>
         </View>
         <Pressable onPress={onSeeAll}>
-          <Text style={styles.seeAll}>See all</Text>
+          <Text style={styles.seeAll}>{t('home.seeAll')}</Text>
         </Pressable>
       </View>
       <FlatList
@@ -151,17 +152,6 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <View style={styles.header}>
-        <Image
-          source={require('../../assets/images/logo-text.png')}
-          style={styles.logo}
-          contentFit="contain"
-        />
-        <Pressable style={styles.headerIcon} onPress={() => router.push({ pathname: '/(tabs)/search', params: { autoFocus: '1' } } as any)}>
-          <Ionicons name="search-outline" size={24} color="#1A1A18" />
-        </Pressable>
-      </View>
-
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#D97706" />
@@ -188,23 +178,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#F8F8F6',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E8E8E6',
-    backgroundColor: '#F8F8F6',
-  },
-  logo: {
-    width: 120,
-    height: 30,
-  },
-  headerIcon: {
-    padding: 4,
   },
   loadingContainer: {
     flex: 1,
