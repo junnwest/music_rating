@@ -57,13 +57,15 @@ export async function POST(req: NextRequest) {
   );
 
   // Upsert both ratings rows (omitting `score` preserves any existing star score
-  // on update and leaves it null on insert).
+  // on update and leaves it null on insert). `status` is NOT NULL in prod and
+  // Postgres evaluates it on the proposed insert tuple before ON CONFLICT
+  // resolution, so it must be supplied even when the row already exists.
   const { error: upsertError } = await supabase
     .from('ratings')
     .upsert(
       [
-        { user_id: userId, release_id: winnerId, elo_score: result.winner.score, elo_games: result.winner.games },
-        { user_id: userId, release_id: loserId, elo_score: result.loser.score, elo_games: result.loser.games },
+        { user_id: userId, release_id: winnerId, elo_score: result.winner.score, elo_games: result.winner.games, status: 'Listened' },
+        { user_id: userId, release_id: loserId, elo_score: result.loser.score, elo_games: result.loser.games, status: 'Listened' },
       ],
       { onConflict: 'user_id,release_id' },
     );
