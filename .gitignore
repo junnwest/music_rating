@@ -27,3 +27,9 @@ apps/mobile/ios
 *.tsbuildinfo
 
 .vercel
+
+# Catalog script run-state (per-machine progress; already-tracked ones kept as-is)
+apps/web/scripts/*-state.json
+
+# Tooling scratch
+.understand-anything/
