@@ -8,30 +8,32 @@ Every record you've loved — rated, cataloged, and remembered. A music platform
 
 ---
 
-## ⚠️ Current state (2026-06-17)
+## ⚠️ Current state (2026-06-18)
 
 Features shipped as of 2026-06-08: Daily Question, preferred streaming platform, **Collections** (custom playlists, renamed) with foldable panel and per-add destination picker, Bayesian Silla Score, Discovery/Adventurousness slider. See SESSIONS.md for details. **2026-06-10:** `backfill:embeddings` ✅ complete — all ~347k non-single releases have Jina v3 embeddings. HNSW index ✅ rebuilt (2026-06-09). Hybrid semantic search ready — deploy to Vercel to activate. **2026-06-11:** Performance overhaul — homepage blank-screen fix (Suspense streaming), GIN trigram index on `releases.genres` (eliminates IO-exhausting full-table scans; required **Supabase Pro** upgrade to build — free tier Disk IO Budget was exhausted), Redis caching on album page ranking badges (5-min TTL, 10–15 queries → 1 cache hit), profile page `auth.admin.listUsers(1000)` → targeted SQL function, query limits on category-resolver and canon-suggestions. New live search dropdown: `SearchBar` component + `/api/search/suggest` endpoint (prefix match, no Jina, 10-min Redis cache) — near-instant after first query. **2026-06-14:** Local QA pass complete — 4 bugs found and fixed (ISSUE-002–006). Logo updated to transparent background. Browser language detection added (Accept-Language header + navigator.language). Onboarding improved: sidebar/footer/listen-later hidden, logo non-clickable, genre pills sorted by DB frequency, Apple Music added as streaming option (requires migration `20260615000000`), essentials prioritize Albums > EPs > Singles. **2026-06-16 (mobile):** Expo app brought up on Windows/Expo Go (fixed an SDK-56-vs-54 dependency skew in `apps/mobile/package.json`). Mobile design pass started — device-language i18n (`apps/mobile/lib/i18n/`, follows the phone's language, en/ko), login redesign (non-scroll + flower-mark logo), home navbar removed, unified `ScreenHeader` across the four tab screens. `backfill:tracklists` ✅ complete (107,778 / 115,604 = 93%). See SESSIONS.md (2026-06-16) for details + known issues. **2026-06-17 (architecture pivot):** React Native (`apps/mobile`) retired and deleted. iOS app rebuilding from scratch in Swift/SwiftUI (`apps/ios/` — Mac session). New feature decisions: OAuth-only login (Spotify recommended, Apple, Google — no email/password), simplified onboarding (name + username + rating mode + notifications; Google adds genre step), Essentials feature removed from entire app, Instinct rating mode added (pairwise comparison / Elo). See `WEB_PARITY.md` for full spec of changes to mirror on web. Two parallel tracks: Mac builds iOS app; Windows builds Elo system, DB migrations, `/api/rate/compare` endpoint, removes essentials from web, updates Spotify OAuth scopes.
 
 ### ► START HERE — next session checklist
 
-**Two parallel tracks (2026-06-17):**
+> **Build note (Mac):** Always build from **Xcode GUI (Cmd+B)**, not `xcodebuild` CLI — the CLI has an Xcode 26 SPM dependency-ordering bug. Project: `apps/ios/sillajuku.xcodeproj`. Destination: iPhone 17 simulator (iOS 26.5). Stop the simulator (Cmd+.) when not testing — 8 GB RAM is tight with VSCode open.
 
-**Mac — iOS Swift app (`apps/ios/`):**
-1. ✅ Create new Xcode project (`apps/ios/`) — bundle ID `com.sillajuku.app`, Supabase Swift SDK added via SPM
-2. ✅ Auth flow written — Spotify OAuth (recommended) + Apple Sign In (stubbed) + Google OAuth via `supabase.auth.signInWithOAuth`
-3. ✅ Onboarding written — profile step (name + username + availability check) → rating mode picker → [genre step for Google] → notifications
-4. ✅ `sillajuku://auth/callback` URL scheme registered in Info.plist; `supabase.auth.authStateChanges` wired in `RootView`
-5. ✅ Main tab scaffold (5 tabs, all placeholder views) — Home, Search, Rankings, Activity, Profile
-6. ✅ **BUILD SUCCEEDED** — Cmd+B passes clean in Xcode. App runs on iPhone 17 simulator (iOS 26.5 runtime installed after freeing ~10 GB of cache). Fixed: `import Observation` added to `AppState` + `AuthViewModel`; `import Supabase` added to `StepProfile`; Debug signing disabled for simulator builds.
-7. **Next (Mac):** Replace `Image(systemName: "music.note.list")` placeholder in `AuthView.swift` with the flower logo asset. Then build out each main tab screen (Home, Search, Rankings, Activity, Profile).
-8. **Next (Mac):** Integrate MusicKit (Apple login) + Spotify `user-top-read` sync (Spotify login) — see `WEB_PARITY.md` §3
+**Priority order: Windows DB migrations first (they unblock iOS end-to-end), then Mac tab screens.**
 
-**Windows — backend + web prep (`apps/web/`):**
-1. **DB migrations** — `rating_mode` on profiles, `elo_score`/`elo_games` on ratings, `pairwise_comparisons` table (SQL in `WEB_PARITY.md` §4)
+**Windows — backend + web prep (`apps/web/`) — do first:**
+1. ⚠️ **DB migrations (blocking iOS onboarding)** — `rating_mode` on profiles, `elo_score`/`elo_games` on ratings, `pairwise_comparisons` table. SQL in `WEB_PARITY.md` §4. Until these run, the onboarding `StepRatingMode` upsert will fail in prod.
 2. **Elo algorithm** — `apps/web/lib/elo.ts` (shared math for pairwise comparison score updates)
 3. **`/api/rate/compare` endpoint** — processes `{ winnerId, loserId }`, updates Elo scores, logs comparison
 4. **Remove essentials from web** — profile page strip, `AlbumActions` dropdown entry, onboarding `StepAlbums`
 5. **Spotify OAuth scopes** — add `user-top-read` + `user-read-recently-played` to the Supabase Spotify provider config
+
+**Mac — iOS Swift app (`apps/ios/`) — scaffolding done, build next:**
+1. ✅ Xcode project — bundle ID `com.sillajuku.app`, Supabase Swift SDK 2.48.0 via SPM, URL scheme `sillajuku://`, Debug signing disabled
+2. ✅ Auth flow — Spotify (recommended) + Apple (stubbed) + Google via `supabase.auth.signInWithOAuth`; auth state observer in `RootView`
+3. ✅ Onboarding — profile step + rating mode picker + [genre step for Google] + notifications
+4. ✅ Main tab scaffold — 5 tabs, all placeholder `Text()` views
+5. ✅ BUILD SUCCEEDED — runs on iPhone 17 simulator (iOS 26.5)
+6. **Next:** Replace `Image(systemName: "music.note.list")` placeholder in [Auth/AuthView.swift](apps/ios/sillajuku/sillajuku/Auth/AuthView.swift) with flower logo asset (`Image("logo-flower")` from Assets.xcassets)
+7. **Next:** Build out tab screens — Home (genre carousels from DB), Search, Rankings, Activity, Profile — see `WEB_PARITY.md` for spec
+8. **Later:** MusicKit integration (Apple login) + Spotify `user-top-read` sync (Spotify login) — see `WEB_PARITY.md` §3
 
 **Catalog expansion (ongoing — Windows):** `queue:ingest:albums` draining (~14.4k new albums in, skip ratio rising). When done: enrichment backfills in order — `backfill:genres` → `backfill:genres:lastfm` → `enrich:genres:lastfm` → `backfill:native` → `backfill:covers` → `backfill:embeddings` → rebuild HNSW index → `npm run analyze:coverage:albums` + `catalog:status`. Do **not** re-run discovery (saturated).
 
@@ -47,6 +49,7 @@ All migrations applied. Nothing pending. If `supabase db push` is blocked by tim
 
 | File | What it adds | Prod |
 |------|-------------|------|
+| *(not yet written)* | `rating_mode` TEXT on `profiles` (default `'manual'`); `elo_score` + `elo_games` on `ratings`; `pairwise_comparisons` table — **required for iOS onboarding to work** | ⏳ pending — write + apply (SQL in `WEB_PARITY.md` §4) |
 | `20260615000000_add_apple_music_platform.sql` | Extends `preferred_streaming_platform` CHECK constraint to include `apple_music` | ⏳ pending — run via SQL editor |
 | `20260611000001_user_id_by_email_prefix_fn.sql` | `get_user_id_by_email_prefix` SECURITY DEFINER SQL function — replaces `auth.admin.listUsers(1000)` on profile page | ✅ applied (SQL editor) |
 | `20260611000000_genres_trgm_index.sql` | GIN trigram index on `releases.genres` — eliminates full-table ILIKE scans | ✅ applied (SQL editor, Supabase Pro) |
