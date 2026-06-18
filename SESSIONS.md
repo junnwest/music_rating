@@ -6,6 +6,10 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-18 — Vercel build fix (deleted one-off script):**
+
+The deployment for commit `e0d04e0` failed at `next build` (Vercel log truncated after `npm install`; reproduced locally). Root cause: `apps/web/scripts/reset-processing.ts` — the one-off utility from the 2026-06-20 entry that reset 2 stuck `processing` queue artists — was committed to the repo and contained an invalid Supabase call: `.update({ status: 'pending' }).eq('status', 'processing').select('*', { count: 'exact', head: true })`. That `.select(columns, options)` overload isn't valid after an update builder, so Next.js type-checking (which covers all `.ts` files, scripts included) failed the build. The script had already served its purpose, so deleted it (SESSIONS noted it was "safe to delete after use"). Clean `next build` now passes. Committed as `66f0480` (not yet pushed).
+
 **2026-06-20 — Tracklist gap diagnosis + backfill-tracklists improvement:**
 
 `backfill:tracks` finished overnight: 126,634 releases → 1,546,647 rows in `tracks` table.
