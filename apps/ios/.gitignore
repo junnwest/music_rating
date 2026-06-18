@@ -1,0 +1,15 @@
+# Xcode build artifacts
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Swift Package Manager resolved artifacts (keep Package.resolved)
+.build/
+
+# Xcode user-specific files
+*.xcscmblueprint
+*.xccheckout
+
+# macOS
+.DS_Store
