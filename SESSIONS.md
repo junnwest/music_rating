@@ -6,6 +6,26 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-17 (session 2) — iOS pivot + feature design:**
+
+*Architecture decision:*
+- **React Native retired** — `apps/mobile/` deleted. Decision driven by: MusicKit requires dev builds in RN anyway (losing Expo Go benefit), app is iPhone-first, SwiftUI + native MusicKit is the correct long-term foundation for a premium music app.
+- **Swift/SwiftUI chosen** for the iOS app (`apps/ios/`). Development on Mac. Xcode Previews replace Expo Go for live UI iteration.
+
+*Feature decisions made:*
+- **OAuth-only login** — email/password removed. Three providers: Spotify (recommended — gives `user-top-read` taste data), Apple (gives MusicKit heavy rotation + library), Google (no music data). KakaoTalk remains "coming soon".
+- **Simplified onboarding** — name + username only (no bio, country, streaming platform, genre pills by default). Google login adds a genre preferences step since Google provides no music data to infer taste from. All providers get: rating mode step + notifications step.
+- **Essentials removed from entire app** — onboarding step gone, profile page strip gone, album page "Add to Essentials" gone. `pinned_albums` table stays but is no longer read/written.
+- **Instinct rating mode** (new) — pairwise comparison / Elo system. User picks Manual (star ratings, unchanged) or Instinct (comparative judgement — "which do you prefer?") during onboarding. Instinct replaces star input on album pages with derived Elo score. Dedicated comparison session UI. Switching modes resets scores (warning dialog). DB: `rating_mode` on profiles, `elo_score`/`elo_games` on ratings, `pairwise_comparisons` table.
+- **Music data sync** — Spotify login: pull `user-top-artists` (medium + long term) after OAuth to seed taste profile. Apple login: pull heavy rotation + library via MusicKit. Both are ongoing (re-sync on app open), not one-time.
+
+*Artifacts created:*
+- `WEB_PARITY.md` — full spec of all changes to mirror on web in a follow-up session (auth, onboarding, essentials removal, Instinct mode, login redesign, data sync, i18n strings).
+
+*Parallel work plan:*
+- **Mac:** build Swift iOS app from scratch (`apps/ios/`).
+- **Windows (no clash):** DB migrations, Elo algorithm (`apps/web/lib/elo.ts`), `/api/rate/compare` API endpoint, remove essentials from web, update Spotify OAuth scopes.
+
 **2026-06-17 — queue:ingest pagination fix:**
 
 - **`ingest-itunes-queue.ts` pagination** — script was silently capped at 1000 artists per run due to Supabase PostgREST's default max-rows limit. Added a `while` loop that re-fetches the next 1000 `pending` rows after each page is processed (safe because processed rows are immediately marked `done`/`skipped`/`failed`, so re-querying always returns fresh work). A single `npm run queue:ingest:albums` now drains the entire queue. `--limit=N` still works as a total cap across all pages.

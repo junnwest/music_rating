@@ -2,21 +2,37 @@
 
 Every record you've loved — rated, cataloged, and remembered. A music platform for listeners with taste.
 
-**Stack:** Next.js 14 (App Router) · React Native (Expo SDK 54) · Supabase (auth + database) · Spotify API · Tailwind CSS
+**Stack:** Next.js 14 (App Router) · Swift/SwiftUI (iOS) · Supabase (auth + database) · Spotify API · Tailwind CSS
 
-**Monorepo:** `apps/web` (Next.js) · `apps/mobile` (Expo) · `packages/shared` (TypeScript types)
+**Monorepo:** `apps/web` (Next.js) · `apps/ios` (Swift — in progress) · `packages/shared` (TypeScript types)
 
 ---
 
-## ⚠️ Current state (2026-06-16)
+## ⚠️ Current state (2026-06-17)
 
-Features shipped as of 2026-06-08: Daily Question, preferred streaming platform, **Collections** (custom playlists, renamed) with foldable panel and per-add destination picker, Bayesian Silla Score, Discovery/Adventurousness slider. See SESSIONS.md for details. **2026-06-10:** `backfill:embeddings` ✅ complete — all ~347k non-single releases have Jina v3 embeddings. HNSW index ✅ rebuilt (2026-06-09). Hybrid semantic search ready — deploy to Vercel to activate. **2026-06-11:** Performance overhaul — homepage blank-screen fix (Suspense streaming), GIN trigram index on `releases.genres` (eliminates IO-exhausting full-table scans; required **Supabase Pro** upgrade to build — free tier Disk IO Budget was exhausted), Redis caching on album page ranking badges (5-min TTL, 10–15 queries → 1 cache hit), profile page `auth.admin.listUsers(1000)` → targeted SQL function, query limits on category-resolver and canon-suggestions. New live search dropdown: `SearchBar` component + `/api/search/suggest` endpoint (prefix match, no Jina, 10-min Redis cache) — near-instant after first query. **2026-06-14:** Local QA pass complete — 4 bugs found and fixed (ISSUE-002–006). Logo updated to transparent background. Browser language detection added (Accept-Language header + navigator.language). Onboarding improved: sidebar/footer/listen-later hidden, logo non-clickable, genre pills sorted by DB frequency, Apple Music added as streaming option (requires migration `20260615000000`), essentials prioritize Albums > EPs > Singles. **2026-06-16 (mobile):** Expo app brought up on Windows/Expo Go (fixed an SDK-56-vs-54 dependency skew in `apps/mobile/package.json`). Mobile design pass started — device-language i18n (`apps/mobile/lib/i18n/`, follows the phone's language, en/ko), login redesign (non-scroll + flower-mark logo), home navbar removed, unified `ScreenHeader` across the four tab screens. `backfill:tracklists` ✅ complete (107,778 / 115,604 = 93%). See SESSIONS.md (2026-06-16) for details + known issues.
+Features shipped as of 2026-06-08: Daily Question, preferred streaming platform, **Collections** (custom playlists, renamed) with foldable panel and per-add destination picker, Bayesian Silla Score, Discovery/Adventurousness slider. See SESSIONS.md for details. **2026-06-10:** `backfill:embeddings` ✅ complete — all ~347k non-single releases have Jina v3 embeddings. HNSW index ✅ rebuilt (2026-06-09). Hybrid semantic search ready — deploy to Vercel to activate. **2026-06-11:** Performance overhaul — homepage blank-screen fix (Suspense streaming), GIN trigram index on `releases.genres` (eliminates IO-exhausting full-table scans; required **Supabase Pro** upgrade to build — free tier Disk IO Budget was exhausted), Redis caching on album page ranking badges (5-min TTL, 10–15 queries → 1 cache hit), profile page `auth.admin.listUsers(1000)` → targeted SQL function, query limits on category-resolver and canon-suggestions. New live search dropdown: `SearchBar` component + `/api/search/suggest` endpoint (prefix match, no Jina, 10-min Redis cache) — near-instant after first query. **2026-06-14:** Local QA pass complete — 4 bugs found and fixed (ISSUE-002–006). Logo updated to transparent background. Browser language detection added (Accept-Language header + navigator.language). Onboarding improved: sidebar/footer/listen-later hidden, logo non-clickable, genre pills sorted by DB frequency, Apple Music added as streaming option (requires migration `20260615000000`), essentials prioritize Albums > EPs > Singles. **2026-06-16 (mobile):** Expo app brought up on Windows/Expo Go (fixed an SDK-56-vs-54 dependency skew in `apps/mobile/package.json`). Mobile design pass started — device-language i18n (`apps/mobile/lib/i18n/`, follows the phone's language, en/ko), login redesign (non-scroll + flower-mark logo), home navbar removed, unified `ScreenHeader` across the four tab screens. `backfill:tracklists` ✅ complete (107,778 / 115,604 = 93%). See SESSIONS.md (2026-06-16) for details + known issues. **2026-06-17 (architecture pivot):** React Native (`apps/mobile`) retired and deleted. iOS app rebuilding from scratch in Swift/SwiftUI (`apps/ios/` — Mac session). New feature decisions: OAuth-only login (Spotify recommended, Apple, Google — no email/password), simplified onboarding (name + username + rating mode + notifications; Google adds genre step), Essentials feature removed from entire app, Instinct rating mode added (pairwise comparison / Elo). See `WEB_PARITY.md` for full spec of changes to mirror on web. Two parallel tracks: Mac builds iOS app; Windows builds Elo system, DB migrations, `/api/rate/compare` endpoint, removes essentials from web, updates Spotify OAuth scopes.
 
 ### ► START HERE — next session checklist
 
-**Mobile (2026-06-16):** (a) **Login logo still shows a white box** — `apps/mobile/assets/images/logo.png` has a solid white background; needs a transparent version to sit cleanly on the cream bg. (b) i18n is **chrome-only** — deeper strings (home genre names, relative timestamps) still English. (c) Theme colors are hardcoded inline across all screens — design-token extraction proposed (`#F8F8F6`/`#1A1A18`/`#8C8C8A`/`#E8E8E6`/`#FFFFFF`/`#D97706` core). (d) Design method: use a **real-screenshot board** for the page-by-page pass (HTML recreation was too inaccurate vs native iOS). (e) When testing on Expo Go: set Wi-Fi profile to **Private**, and answer the "unverified app" prompt with *Proceed anonymously*.
+**Two parallel tracks (2026-06-17):**
 
-**Priority for next session:** (1) **Apply DB migration** `20260615000000_add_apple_music_platform.sql` to production via Supabase SQL editor (drops + recreates the streaming platform CHECK constraint to include `apple_music`) — do this before testing Apple Music in settings/onboarding. (2) Verify end-to-end on sillajuku.com: follow flow, onboarding (sidebar hidden, genre pills sorted, Apple Music option), logo in email. See SESSIONS.md (2026-06-14 session 2) for full change list. (3) **Catalog expansion — in progress** (see [CATALOG_EXPANSION_PLAN.md](CATALOG_EXPANSION_PLAN.md)). Global seed (`queue:build:global`, 5,898 artists) + controlled discovery (`queue:discover:global`) are **done**; `backfill:tracklists` is **✅ done** (107,778/115,604 = 93%); `queue:ingest:albums` is **draining now** (~14.4k new albums/EPs in, skip ratio rising → saturation). **Next:** finish that iTunes run, then the enrichment backfills (`backfill:genres` → `:lastfm` → `enrich:genres:lastfm` → `backfill:native` → `backfill:covers` → `backfill:embeddings`, then rebuild the HNSW index), then `npm run analyze:coverage:albums` + `npm run catalog:status` to diff against the plan's §5c targets. Do **not** re-run discovery (saturated). Korea ~8–11% is fine — global positioning, no forced Korean dominance.
+**Mac — iOS Swift app (`apps/ios/`):**
+1. Create new Xcode project (`apps/ios/`) — SwiftUI, iOS 16+, bundle ID `com.sillajuku.app`
+2. Add Supabase Swift SDK (`supabase-swift`) via Swift Package Manager
+3. Build auth flow: Spotify OAuth (recommended) + Apple Sign In + Google OAuth, all via Supabase
+4. Build onboarding: profile setup (name + username) → rating mode picker → [genre step for Google] → notifications placeholder
+5. Build main tabs: Home (genre carousels from DB), Search, Rankings, Activity, Profile
+6. Integrate MusicKit for Apple login users; Spotify `user-top-read` for Spotify login users
+7. See `WEB_PARITY.md` for full feature spec
+
+**Windows — backend + web prep (`apps/web/`):**
+1. **DB migrations** — `rating_mode` on profiles, `elo_score`/`elo_games` on ratings, `pairwise_comparisons` table (SQL in `WEB_PARITY.md` §4)
+2. **Elo algorithm** — `apps/web/lib/elo.ts` (shared math for pairwise comparison score updates)
+3. **`/api/rate/compare` endpoint** — processes `{ winnerId, loserId }`, updates Elo scores, logs comparison
+4. **Remove essentials from web** — profile page strip, `AlbumActions` dropdown entry, onboarding `StepAlbums`
+5. **Spotify OAuth scopes** — add `user-top-read` + `user-read-recently-played` to the Supabase Spotify provider config
+
+**Catalog expansion (ongoing — Windows):** `queue:ingest:albums` draining (~14.4k new albums in, skip ratio rising). When done: enrichment backfills in order — `backfill:genres` → `backfill:genres:lastfm` → `enrich:genres:lastfm` → `backfill:native` → `backfill:covers` → `backfill:embeddings` → rebuild HNSW index → `npm run analyze:coverage:albums` + `catalog:status`. Do **not** re-run discovery (saturated).
 
 #### Catalog composition + storage (analyzed 2026-06-14 session 3)
 
@@ -525,9 +541,11 @@ npm run expand:genre        # Spotify genre sweep — still works
 
 ---
 
-## Mobile app status
+## Mobile app status (iOS Swift — in progress)
 
-### Implemented (Expo Go compatible, no dev build required)
+> **2026-06-17:** React Native (`apps/mobile`) retired. Rebuilding as native Swift/SwiftUI in `apps/ios/`. See `WEB_PARITY.md` for the full feature spec and `SESSIONS.md` (2026-06-17) for the decision rationale.
+
+### Target screens (Swift rebuild)
 
 | Screen | Status | Notes |
 |--------|--------|-------|
