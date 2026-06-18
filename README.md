@@ -22,8 +22,9 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 3. ✅ Onboarding written — profile step (name + username + availability check) → rating mode picker → [genre step for Google] → notifications
 4. ✅ `sillajuku://auth/callback` URL scheme registered in Info.plist; `supabase.auth.authStateChanges` wired in `RootView`
 5. ✅ Main tab scaffold (5 tabs, all placeholder views) — Home, Search, Rankings, Activity, Profile
-6. **Next (Mac):** Open Xcode, press Cmd+B to verify the build (xcodebuild CLI has an Xcode 26 SPM ordering bug — GUI build works). Then: replace `Image(systemName: "music.note.list")` in `AuthView` with the flower logo asset; build each main tab screen.
-7. **Next (Mac):** Integrate MusicKit (Apple login) + Spotify `user-top-read` sync (Spotify login) — see `WEB_PARITY.md` §3
+6. ✅ **BUILD SUCCEEDED** — Cmd+B passes clean in Xcode. App runs on iPhone 17 simulator (iOS 26.5 runtime installed after freeing ~10 GB of cache). Fixed: `import Observation` added to `AppState` + `AuthViewModel`; `import Supabase` added to `StepProfile`; Debug signing disabled for simulator builds.
+7. **Next (Mac):** Replace `Image(systemName: "music.note.list")` placeholder in `AuthView.swift` with the flower logo asset. Then build out each main tab screen (Home, Search, Rankings, Activity, Profile).
+8. **Next (Mac):** Integrate MusicKit (Apple login) + Spotify `user-top-read` sync (Spotify login) — see `WEB_PARITY.md` §3
 
 **Windows — backend + web prep (`apps/web/`):**
 1. **DB migrations** — `rating_mode` on profiles, `elo_score`/`elo_games` on ratings, `pairwise_comparisons` table (SQL in `WEB_PARITY.md` §4)

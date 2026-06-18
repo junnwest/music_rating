@@ -17,13 +17,15 @@ Historical record of shipped features and session notes. Not needed at conversat
 - **`@Observable` macro** throughout; `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` set project-wide.
 
 *Build status:*
-- Xcode's own indexer compiled all Supabase modules successfully (`Clocks.swiftmodule`, `IssueReporting.swiftmodule`, `Auth.swiftmodule`, etc. present in `Index.noindex/`).
-- Our 14 Swift files have **zero compiler errors**.
-- `xcodebuild` CLI fails with an Xcode 26 SPM dependency-ordering bug (`swift-clocks` is scheduled before `ConcurrencyExtras`/`IssueReporting` in CLI builds only). **Workaround: use Cmd+B in Xcode GUI.**
+- **BUILD SUCCEEDED** — Cmd+B passes clean in Xcode GUI. App runs in iPhone 17 simulator (iOS 26.5).
+- Three import fixes needed after first build: `import Observation` added to `AppState.swift` and `AuthViewModel.swift` (`@Observable` macro is not re-exported by `Supabase` or `Foundation`); `import Supabase` added to `StepProfile.swift`.
+- `xcodebuild` CLI still fails with an Xcode 26 SPM dependency-ordering bug (`swift-clocks` scheduled before its deps). Build from Xcode GUI only.
+- Debug code signing disabled in pbxproj (`CODE_SIGNING_REQUIRED = NO`, `CODE_SIGNING_ALLOWED = NO`) — not needed for simulator builds.
 
 *Setup notes (non-obvious):*
 - Xcode 26 auto-syncs files from disk via `PBXFileSystemSynchronizedRootGroup` — no pbxproj edits needed for new `.swift` files.
-- iOS 26.5 simulator runtime (8.49 GB) was not downloaded due to disk space. GUI build with "My Mac (Designed for iPhone)" as destination works without it once Cmd+B succeeds.
+- iOS 26.5 simulator runtime (8.49 GB) required downloading — freed ~10 GB first by deleting `~/Library/Caches/com.google.SoftwareUpdate` (5.5 GB), `~/Library/Caches/Google` (2.9 GB), `~/Library/Caches/com.microsoft.VSCode.ShipIt` (1.1 GB), and Xcode DerivedData (1.0 GB). All are safe auto-regenerated caches.
+- 8 GB RAM is tight for Xcode + iOS 26.5 simulator + VSCode simultaneously. Stop the simulator (Cmd+.) when not actively testing.
 
 **2026-06-17 (session 2) — iOS pivot + feature design:**
 
