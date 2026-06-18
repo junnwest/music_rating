@@ -6,6 +6,25 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-17 (session 3) — iOS app scaffolded (auth + onboarding + tabs):**
+
+*What was built:*
+- **Xcode project** at `apps/ios/` — bundle ID `com.sillajuku.app`, Supabase Swift SDK 2.48.0 added via SPM, URL scheme `sillajuku://` registered in Info.plist.
+- **14 Swift source files** across `Auth/`, `Onboarding/`, `Main/`, `Models/`, plus `Config.swift`, `SupabaseClient.swift`, `Theme.swift`, `AppState.swift`, `sillajukuApp.swift`.
+- **Auth flow** — `AuthView` + `AuthViewModel`: Spotify (recommended badge), Apple (disabled/coming soon), Google; all call `supabase.auth.signInWithOAuth`. `RootView` observes `supabase.auth.authStateChanges` and routes to auth / onboarding / main.
+- **Onboarding** — `OnboardingView` with animated capsule progress: `StepProfile` (display name + username with debounced availability check), `StepGenre` (Google-only — flow layout pills, fetches from `/api/genres/top`), `StepRatingMode` (Manual vs Instinct cards), `StepNotifications` (UNUserNotificationCenter).
+- **Main tabs** — 5-tab scaffold with placeholder views.
+- **`@Observable` macro** throughout; `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` set project-wide.
+
+*Build status:*
+- Xcode's own indexer compiled all Supabase modules successfully (`Clocks.swiftmodule`, `IssueReporting.swiftmodule`, `Auth.swiftmodule`, etc. present in `Index.noindex/`).
+- Our 14 Swift files have **zero compiler errors**.
+- `xcodebuild` CLI fails with an Xcode 26 SPM dependency-ordering bug (`swift-clocks` is scheduled before `ConcurrencyExtras`/`IssueReporting` in CLI builds only). **Workaround: use Cmd+B in Xcode GUI.**
+
+*Setup notes (non-obvious):*
+- Xcode 26 auto-syncs files from disk via `PBXFileSystemSynchronizedRootGroup` — no pbxproj edits needed for new `.swift` files.
+- iOS 26.5 simulator runtime (8.49 GB) was not downloaded due to disk space. GUI build with "My Mac (Designed for iPhone)" as destination works without it once Cmd+B succeeds.
+
 **2026-06-17 (session 2) — iOS pivot + feature design:**
 
 *Architecture decision:*

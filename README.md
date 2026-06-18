@@ -17,13 +17,13 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 **Two parallel tracks (2026-06-17):**
 
 **Mac — iOS Swift app (`apps/ios/`):**
-1. Create new Xcode project (`apps/ios/`) — SwiftUI, iOS 16+, bundle ID `com.sillajuku.app`
-2. Add Supabase Swift SDK (`supabase-swift`) via Swift Package Manager
-3. Build auth flow: Spotify OAuth (recommended) + Apple Sign In + Google OAuth, all via Supabase
-4. Build onboarding: profile setup (name + username) → rating mode picker → [genre step for Google] → notifications placeholder
-5. Build main tabs: Home (genre carousels from DB), Search, Rankings, Activity, Profile
-6. Integrate MusicKit for Apple login users; Spotify `user-top-read` for Spotify login users
-7. See `WEB_PARITY.md` for full feature spec
+1. ✅ Create new Xcode project (`apps/ios/`) — bundle ID `com.sillajuku.app`, Supabase Swift SDK added via SPM
+2. ✅ Auth flow written — Spotify OAuth (recommended) + Apple Sign In (stubbed) + Google OAuth via `supabase.auth.signInWithOAuth`
+3. ✅ Onboarding written — profile step (name + username + availability check) → rating mode picker → [genre step for Google] → notifications
+4. ✅ `sillajuku://auth/callback` URL scheme registered in Info.plist; `supabase.auth.authStateChanges` wired in `RootView`
+5. ✅ Main tab scaffold (5 tabs, all placeholder views) — Home, Search, Rankings, Activity, Profile
+6. **Next (Mac):** Open Xcode, press Cmd+B to verify the build (xcodebuild CLI has an Xcode 26 SPM ordering bug — GUI build works). Then: replace `Image(systemName: "music.note.list")` in `AuthView` with the flower logo asset; build each main tab screen.
+7. **Next (Mac):** Integrate MusicKit (Apple login) + Spotify `user-top-read` sync (Spotify login) — see `WEB_PARITY.md` §3
 
 **Windows — backend + web prep (`apps/web/`):**
 1. **DB migrations** — `rating_mode` on profiles, `elo_score`/`elo_games` on ratings, `pairwise_comparisons` table (SQL in `WEB_PARITY.md` §4)

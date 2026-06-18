@@ -1,0 +1,86 @@
+{
+  "" : {
+    "const-values" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/sillajuku-primary.swiftconstvalues",
+    "dependencies" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/sillajuku-primary.d",
+    "diagnostics" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/sillajuku-primary.dia",
+    "emit-module-dependencies" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/sillajuku-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/sillajuku-primary-emit-module.dia",
+    "pch" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/sillajuku-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/sillajuku-primary.swiftdeps"
+  },
+  "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "index-unit-output-path" : "/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/GeneratedAssetSymbols.bc",
+    "object" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/GeneratedAssetSymbols.o"
+  },
+  "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/sillajuku/sillajuku/AppState.swift" : {
+    "index-unit-output-path" : "/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/AppState.o",
+    "llvm-bc" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/AppState.bc",
+    "object" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/AppState.o"
+  },
+  "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/sillajuku/sillajuku/Auth/AuthView.swift" : {
+    "index-unit-output-path" : "/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/AuthView.o",
+    "llvm-bc" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/AuthView.bc",
+    "object" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/AuthView.o"
+  },
+  "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/sillajuku/sillajuku/Auth/AuthViewModel.swift" : {
+    "index-unit-output-path" : "/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/AuthViewModel.o",
+    "llvm-bc" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/AuthViewModel.bc",
+    "object" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/AuthViewModel.o"
+  },
+  "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/sillajuku/sillajuku/Config.swift" : {
+    "index-unit-output-path" : "/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/Config.o",
+    "llvm-bc" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/Config.bc",
+    "object" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/Config.o"
+  },
+  "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/sillajuku/sillajuku/Main/MainTabView.swift" : {
+    "index-unit-output-path" : "/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/MainTabView.o",
+    "llvm-bc" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/MainTabView.bc",
+    "object" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/MainTabView.o"
+  },
+  "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/sillajuku/sillajuku/Models/Profile.swift" : {
+    "index-unit-output-path" : "/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/Profile.o",
+    "llvm-bc" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/Profile.bc",
+    "object" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/Profile.o"
+  },
+  "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/sillajuku/sillajuku/Onboarding/OnboardingView.swift" : {
+    "index-unit-output-path" : "/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/OnboardingView.o",
+    "llvm-bc" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/OnboardingView.bc",
+    "object" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/OnboardingView.o"
+  },
+  "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/sillajuku/sillajuku/Onboarding/StepGenre.swift" : {
+    "index-unit-output-path" : "/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/StepGenre.o",
+    "llvm-bc" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/StepGenre.bc",
+    "object" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/StepGenre.o"
+  },
+  "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/sillajuku/sillajuku/Onboarding/StepNotifications.swift" : {
+    "index-unit-output-path" : "/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/StepNotifications.o",
+    "llvm-bc" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/StepNotifications.bc",
+    "object" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/StepNotifications.o"
+  },
+  "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/sillajuku/sillajuku/Onboarding/StepProfile.swift" : {
+    "index-unit-output-path" : "/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/StepProfile.o",
+    "llvm-bc" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/StepProfile.bc",
+    "object" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/StepProfile.o"
+  },
+  "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/sillajuku/sillajuku/Onboarding/StepRatingMode.swift" : {
+    "index-unit-output-path" : "/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/StepRatingMode.o",
+    "llvm-bc" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/StepRatingMode.bc",
+    "object" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/StepRatingMode.o"
+  },
+  "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/sillajuku/sillajuku/SupabaseClient.swift" : {
+    "index-unit-output-path" : "/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/SupabaseClient.o",
+    "llvm-bc" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/SupabaseClient.bc",
+    "object" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/SupabaseClient.o"
+  },
+  "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/sillajuku/sillajuku/Theme.swift" : {
+    "index-unit-output-path" : "/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/Theme.o",
+    "llvm-bc" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/Theme.bc",
+    "object" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/Theme.o"
+  },
+  "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/sillajuku/sillajuku/sillajukuApp.swift" : {
+    "index-unit-output-path" : "/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/sillajukuApp.o",
+    "llvm-bc" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/sillajukuApp.bc",
+    "object" : "/Users/jun-seoyang/Desktop/Grind/Coding/Projects/music_rating/apps/ios/build/sillajuku.build/Release-iphoneos/sillajuku.build/Objects-normal/arm64/sillajukuApp.o"
+  }
+}

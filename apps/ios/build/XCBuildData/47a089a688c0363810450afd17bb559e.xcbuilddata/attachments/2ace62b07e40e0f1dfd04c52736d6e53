@@ -1,0 +1,61 @@
+{
+  "" : {
+    "const-values" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgREST-primary.swiftconstvalues",
+    "dependencies" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgREST-primary.d",
+    "diagnostics" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgREST-primary.dia",
+    "emit-module-dependencies" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgREST-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgREST-primary-emit-module.dia",
+    "pch" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgREST-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgREST-primary.swiftdeps"
+  },
+  "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/Sources/PostgREST/Defaults.swift" : {
+    "index-unit-output-path" : "/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/Defaults.o",
+    "llvm-bc" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/Defaults.bc",
+    "object" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/Defaults.o"
+  },
+  "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/Sources/PostgREST/Deprecated.swift" : {
+    "index-unit-output-path" : "/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/Deprecated.o",
+    "llvm-bc" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/Deprecated.bc",
+    "object" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/Deprecated.o"
+  },
+  "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/Sources/PostgREST/Exports.swift" : {
+    "index-unit-output-path" : "/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/Exports.o",
+    "llvm-bc" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/Exports.bc",
+    "object" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/Exports.o"
+  },
+  "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/Sources/PostgREST/PostgrestBuilder.swift" : {
+    "index-unit-output-path" : "/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgrestBuilder.o",
+    "llvm-bc" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgrestBuilder.bc",
+    "object" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgrestBuilder.o"
+  },
+  "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/Sources/PostgREST/PostgrestClient.swift" : {
+    "index-unit-output-path" : "/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgrestClient.o",
+    "llvm-bc" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgrestClient.bc",
+    "object" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgrestClient.o"
+  },
+  "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/Sources/PostgREST/PostgrestFilterBuilder.swift" : {
+    "index-unit-output-path" : "/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgrestFilterBuilder.o",
+    "llvm-bc" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgrestFilterBuilder.bc",
+    "object" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgrestFilterBuilder.o"
+  },
+  "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/Sources/PostgREST/PostgrestFilterValue.swift" : {
+    "index-unit-output-path" : "/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgrestFilterValue.o",
+    "llvm-bc" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgrestFilterValue.bc",
+    "object" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgrestFilterValue.o"
+  },
+  "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/Sources/PostgREST/PostgrestQueryBuilder.swift" : {
+    "index-unit-output-path" : "/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgrestQueryBuilder.o",
+    "llvm-bc" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgrestQueryBuilder.bc",
+    "object" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgrestQueryBuilder.o"
+  },
+  "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/Sources/PostgREST/PostgrestTransformBuilder.swift" : {
+    "index-unit-output-path" : "/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgrestTransformBuilder.o",
+    "llvm-bc" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgrestTransformBuilder.bc",
+    "object" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/PostgrestTransformBuilder.o"
+  },
+  "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/Sources/PostgREST/Types.swift" : {
+    "index-unit-output-path" : "/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/Types.o",
+    "llvm-bc" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/Types.bc",
+    "object" : "/Users/jun-seoyang/Library/Developer/Xcode/DerivedData/sillajuku-gmarnvmocndrshaytpjwmtduhlws/SourcePackages/checkouts/supabase-swift/build/Supabase.build/Release/PostgREST.build/Objects-normal/arm64/Types.o"
+  }
+}
