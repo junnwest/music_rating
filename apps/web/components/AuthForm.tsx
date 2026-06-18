@@ -117,7 +117,12 @@ export default function AuthForm() {
     setSpotifyLoading(true);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'spotify',
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+        // user-read-email keeps Supabase able to read the account email;
+        // user-top-read + user-read-recently-played seed the taste profile.
+        scopes: 'user-read-email user-top-read user-read-recently-played',
+      },
     });
     if (error) {
       setMessage(error.message);

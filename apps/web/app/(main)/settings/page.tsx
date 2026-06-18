@@ -4,7 +4,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useState, useEffect, Suspense } from 'react';
 import { useTheme } from 'next-themes';
 import {
-  User, Sliders, Bell, Shield, AlertTriangle,
+  User, Sliders, Bell, Shield,
   LogOut, Trash2, Camera, Sun, Moon, Monitor
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
@@ -22,7 +22,7 @@ function SettingsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const urlTab = searchParams.get('tab') as TabKey | null;
-  const validTabs: TabKey[] = ['account', 'preferences', 'notifications', 'privacy', 'danger'];
+  const validTabs: TabKey[] = ['account', 'preferences', 'notifications', 'privacy'];
   const [activeTab, setActiveTab] = useState<TabKey>(
     urlTab && validTabs.includes(urlTab) ? urlTab : 'account'
   );
@@ -46,6 +46,14 @@ function SettingsContent() {
   const [confirmDisconnect, setConfirmDisconnect] = useState<string | null>(null);
   const [activeGenres, setActiveGenres] = useState<Set<string>>(new Set(['K-R&B', 'K-Indie', 'Hip-Hop']));
   const [ratingDisplay, setRatingDisplay] = useState<'Stars' | 'Decimal'>('Stars');
+  const [manualRatingStep, setManualRatingStep] = useState(0.5);
+  const [ratingStepSaving, setRatingStepSaving] = useState(false);
+  const [ratingMode, setRatingMode] = useState<'manual' | 'instinct'>('manual');
+  const [ratingModeSaving, setRatingModeSaving] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const { preferred: preferredPlatform, savePreferred } = useStreamingPlatform();
   const [platformSaving, setPlatformSaving] = useState(false);
   const [platformError, setPlatformError] = useState<string | null>(null);
@@ -59,7 +67,6 @@ function SettingsContent() {
     { key: 'preferences' as TabKey,   label: t('settings.tabs.preferences'),   icon: Sliders },
     { key: 'notifications' as TabKey, label: t('settings.tabs.notifications'), icon: Bell },
     { key: 'privacy' as TabKey,       label: t('settings.tabs.privacy'),       icon: Shield },
-    { key: 'danger' as TabKey,        label: t('settings.tabs.danger'),        icon: AlertTriangle },
   ];
 
   const refreshUser = async () => {
@@ -71,7 +78,7 @@ function SettingsContent() {
     setIdentities((user.identities ?? []).map((i: any) => ({ provider: i.provider, id: i.id })));
     const { data: profile } = await supabase
       .from('profiles')
-      .select('display_name, username, bio, recommendation_adventurousness')
+      .select('display_name, username, bio, recommendation_adventurousness, manual_rating_step, rating_mode')
       .eq('id', user.id)
       .maybeSingle();
     if (profile) {
@@ -79,6 +86,8 @@ function SettingsContent() {
       setUsername(profile.username ?? user.email?.split('@')[0] ?? '');
       setBio(profile.bio ?? '');
       setAdventurousness(profile.recommendation_adventurousness ?? 50);
+      if (profile.manual_rating_step) setManualRatingStep(Number(profile.manual_rating_step));
+      if (profile.rating_mode === 'instinct' || profile.rating_mode === 'manual') setRatingMode(profile.rating_mode);
     } else {
       setUsername(user.email?.split('@')[0] ?? '');
     }
@@ -177,6 +186,26 @@ function SettingsContent() {
     router.push('/login');
   };
 
+  const handleDeleteAccount = async () => {
+    if (!supabase) return;
+    setDeleting(true);
+    setDeleteError(null);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { setDeleteError('Not signed in.'); setDeleting(false); return; }
+    const res = await fetch('/api/account/delete', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    if (!res.ok) {
+      const { error } = await res.json().catch(() => ({ error: 'Failed to delete account.' }));
+      setDeleteError(error ?? 'Failed to delete account.');
+      setDeleting(false);
+      return;
+    }
+    await supabase.auth.signOut();
+    router.push('/');
+  };
+
   const handlePlatformChange = async (platform: StreamingPlatform | null) => {
     setPlatformError(null);
     setPlatformSaving(true);
@@ -195,6 +224,28 @@ function SettingsContent() {
     setAdventurousnessSaving(false);
   };
 
+  const handleRatingStepSave = async (value: number) => {
+    if (!supabase || !userId) return;
+    setManualRatingStep(value);
+    setRatingStepSaving(true);
+    await supabase
+      .from('profiles')
+      .update({ manual_rating_step: value })
+      .eq('id', userId);
+    setRatingStepSaving(false);
+  };
+
+  const handleRatingModeSave = async (value: 'manual' | 'instinct') => {
+    if (!supabase || !userId) return;
+    setRatingMode(value);
+    setRatingModeSaving(true);
+    await supabase
+      .from('profiles')
+      .update({ rating_mode: value })
+      .eq('id', userId);
+    setRatingModeSaving(false);
+  };
+
   const toggleGenre = (g: string) => {
     setActiveGenres(prev => {
       const next = new Set(prev);
@@ -204,6 +255,37 @@ function SettingsContent() {
   };
 
   const avatarInitial = (displayName || username || '?')[0].toUpperCase();
+
+  const scrollToSection = (key: TabKey) => {
+    setActiveTab(key);
+    document.getElementById(`section-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  // Scroll to the deep-linked section on mount (?tab=danger), and keep the left
+  // nav highlight in sync with scroll position via an IntersectionObserver.
+  useEffect(() => {
+    if (urlTab && validTabs.includes(urlTab)) {
+      document.getElementById(`section-${urlTab}`)?.scrollIntoView({ block: 'start' });
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((e) => e.isIntersecting);
+        if (visible.length === 0) return;
+        const topmost = visible.reduce((a, b) =>
+          a.boundingClientRect.top < b.boundingClientRect.top ? a : b,
+        );
+        const id = topmost.target.id.replace('section-', '') as TabKey;
+        if (validTabs.includes(id)) setActiveTab(id);
+      },
+      { rootMargin: '-20% 0px -70% 0px' },
+    );
+    validTabs.forEach((key) => {
+      const el = document.getElementById(`section-${key}`);
+      if (el) observer.observe(el);
+    });
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="flex-1">
@@ -215,11 +297,11 @@ function SettingsContent() {
 
         <div className="flex flex-col md:flex-row gap-6 md:gap-8">
           {/* Tab nav */}
-          <nav className="md:w-[180px] flex-shrink-0 flex md:flex-col gap-1 overflow-x-auto md:overflow-visible scrollbar-hide pb-1 md:pb-0">
+          <nav className="md:w-[180px] flex-shrink-0 flex md:flex-col gap-1 overflow-x-auto md:overflow-visible scrollbar-hide pb-1 md:pb-0 md:sticky md:top-20 md:self-start">
             {tabs.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
-                onClick={() => setActiveTab(key)}
+                onClick={() => scrollToSection(key)}
                 className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px] font-semibold whitespace-nowrap transition md:w-full ${
                   activeTab === key
                     ? 'bg-mint-bg text-mint-dark'
@@ -233,8 +315,8 @@ function SettingsContent() {
           </nav>
 
           {/* Content */}
-          <div className="flex-1 min-w-0">
-            {activeTab === 'account' && (
+          <div className="flex-1 min-w-0 flex flex-col gap-6">
+            <section id="section-account" className="scroll-mt-24">
               <Section title={t('settings.tabs.account')}>
                 <div className="flex items-center gap-4 mb-6">
                   <UserAvatar size={64} />
@@ -253,9 +335,6 @@ function SettingsContent() {
                     className="bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-xl px-6 py-2.5 text-[13px] font-bold hover:opacity-80 transition disabled:opacity-50"
                   >
                     {saved ? t('settings.account.saved') : saving ? t('settings.account.saving') : t('settings.account.saveChanges')}
-                  </button>
-                  <button onClick={handleSignOut} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-divider text-[13px] font-semibold text-muted hover:bg-surface transition">
-                    <LogOut size={14} /> {t('nav.logOut')}
                   </button>
                 </div>
 
@@ -348,7 +427,6 @@ function SettingsContent() {
                 </div>
 
               </Section>
-            )}
 
             {/* Disconnect confirmation modal */}
             {confirmDisconnect && (
@@ -374,7 +452,8 @@ function SettingsContent() {
               </div>
             )}
 
-            {activeTab === 'preferences' && (
+            </section>
+            <section id="section-preferences" className="scroll-mt-24">
               <Section title={t('settings.tabs.preferences')}>
                 <div className="mb-5">
                   <label className="block text-[13px] font-semibold text-ink mb-2">{t('settings.preferences.appearance')}</label>
@@ -448,6 +527,60 @@ function SettingsContent() {
                   </div>
                 </div>
                 <div className="mb-5">
+                  <label className="block text-[13px] font-semibold text-ink mb-2">
+                    {t('settings.preferences.ratingMode')}
+                    {ratingModeSaving && <span className="ml-2 text-[11px] font-normal text-muted">Saving…</span>}
+                  </label>
+                  <div className="flex gap-2">
+                    {([
+                      { value: 'manual', label: t('settings.preferences.ratingModeManual') },
+                      { value: 'instinct', label: t('settings.preferences.ratingModeInstinct') },
+                    ] as const).map(({ value, label }) => (
+                      <button
+                        key={value}
+                        disabled={ratingModeSaving}
+                        onClick={() => handleRatingModeSave(value)}
+                        className={`px-4 py-2 rounded-lg text-[12px] font-semibold border transition disabled:opacity-60 ${ratingMode === value ? 'border-ink text-ink' : 'border-divider text-muted hover:border-mid'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-muted mt-2">
+                    {ratingMode === 'instinct'
+                      ? t('settings.preferences.ratingModeInstinctNote')
+                      : t('settings.preferences.ratingModeManualNote')}
+                  </p>
+                </div>
+                {ratingMode === 'manual' && (
+                  <div className="mb-5">
+                    <label className="block text-[13px] font-semibold text-ink mb-2">
+                      {t('settings.preferences.ratingPrecision')}
+                      {ratingStepSaving && <span className="ml-2 text-[11px] font-normal text-muted">Saving…</span>}
+                    </label>
+                    <div className="flex gap-2">
+                      {([
+                        { value: 0.5, label: t('settings.preferences.ratingPrecisionHalf') },
+                        { value: 0.1, label: t('settings.preferences.ratingPrecisionTenth') },
+                      ] as const).map(({ value, label }) => (
+                        <button
+                          key={value}
+                          disabled={ratingStepSaving}
+                          onClick={() => handleRatingStepSave(value)}
+                          className={`px-4 py-2 rounded-lg text-[12px] font-semibold border transition disabled:opacity-60 ${manualRatingStep === value ? 'border-ink text-ink' : 'border-divider text-muted hover:border-mid'}`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-muted mt-2">
+                      {manualRatingStep === 0.1
+                        ? t('settings.preferences.ratingPrecisionTenthNote')
+                        : t('settings.preferences.ratingPrecisionHalfNote')}
+                    </p>
+                  </div>
+                )}
+                <div className="mb-5">
                   <label className="block text-[13px] font-semibold text-ink mb-2">{t('settings.preferences.commentVisibility')}</label>
                   <select className="w-full bg-surface border border-divider rounded-xl px-4 py-2.5 text-[13px] text-ink outline-none cursor-pointer hover:border-mid transition">
                     {[t('settings.visibility.public'), t('settings.visibility.followersOnly'), t('settings.visibility.private')].map(v => <option key={v}>{v}</option>)}
@@ -520,9 +653,9 @@ function SettingsContent() {
                   </div>
                 </div>
               </Section>
-            )}
 
-            {activeTab === 'notifications' && (
+            </section>
+            <section id="section-notifications" className="scroll-mt-24">
               <Section title={t('settings.tabs.notifications')}>
                 <Toggle label={t('settings.notifications.likes')} defaultOn />
                 <Toggle label={t('settings.notifications.replies')} defaultOn />
@@ -530,9 +663,9 @@ function SettingsContent() {
                 <Toggle label={t('settings.notifications.rankingUpdates')} defaultOn />
                 <Toggle label={t('settings.notifications.capsule')} />
               </Section>
-            )}
 
-            {activeTab === 'privacy' && (
+            </section>
+            <section id="section-privacy" className="scroll-mt-24">
               <Section title={t('settings.tabs.privacy')}>
                 <div className="mb-5">
                   <label className="block text-[13px] font-semibold text-ink mb-2">{t('settings.privacy.profileVisibility')}</label>
@@ -553,30 +686,75 @@ function SettingsContent() {
                   </select>
                 </div>
               </Section>
-            )}
 
-            {activeTab === 'danger' && (
-              <div className="border border-red-200 rounded-2xl p-6 bg-red-50/50">
-                <h3 className="text-[15px] font-bold text-red-700 mb-1">{t('settings.danger.title')}</h3>
-                <p className="text-[12px] text-red-600/80 mb-6">{t('settings.danger.subtitle')}</p>
+            </section>
+            <section className="scroll-mt-24">
+              <div className="border border-red-200 dark:border-red-900/50 rounded-2xl p-6 bg-red-50/50 dark:bg-red-950/20">
                 <div className="flex flex-col gap-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <p className="text-[13px] font-semibold text-ink">{t('settings.danger.deactivateTitle')}</p>
-                      <p className="text-[12px] text-muted mt-0.5">{t('settings.danger.deactivateDesc')}</p>
+                      <p className="text-[13px] font-semibold text-ink">{t('nav.logOut')}</p>
+                      <p className="text-[12px] text-muted mt-0.5">{t('settings.danger.logOutDesc')}</p>
                     </div>
-                    <button className="flex-shrink-0 px-4 py-2 rounded-lg border border-red-200 text-[12px] font-semibold text-red-600 hover:bg-red-100 transition">
-                      {t('settings.danger.deactivateBtn')}
+                    <button
+                      onClick={handleSignOut}
+                      className="flex-shrink-0 px-4 py-2 rounded-lg border border-red-200 dark:border-red-900/50 text-[12px] font-semibold text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-950/40 transition flex items-center gap-1.5"
+                    >
+                      <LogOut size={13} /> {t('nav.logOut')}
                     </button>
                   </div>
-                  <div className="border-t border-red-100" />
+                  <div className="border-t border-red-100 dark:border-red-900/40" />
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="text-[13px] font-semibold text-ink">{t('settings.danger.deleteTitle')}</p>
                       <p className="text-[12px] text-muted mt-0.5">{t('settings.danger.deleteDesc')}</p>
                     </div>
-                    <button className="flex-shrink-0 px-4 py-2 rounded-lg bg-red-600 text-[12px] font-semibold text-white hover:bg-red-700 transition flex items-center gap-1.5">
+                    <button
+                      onClick={() => { setDeleteConfirm(''); setDeleteError(null); setShowDeleteModal(true); }}
+                      className="flex-shrink-0 px-4 py-2 rounded-lg bg-red-600 text-[12px] font-semibold text-white hover:bg-red-700 transition flex items-center gap-1.5"
+                    >
                       <Trash2 size={13} /> {t('settings.danger.deleteBtn')}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* Delete account confirmation modal */}
+            {showDeleteModal && (
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+                onClick={() => { if (!deleting) setShowDeleteModal(false); }}
+              >
+                <div className="rounded-2xl bg-page p-6 shadow-xl w-[360px] mx-4" onClick={(e) => e.stopPropagation()}>
+                  <h2 className="text-[15px] font-bold text-ink">{t('settings.danger.deleteTitle')}</h2>
+                  <p className="mt-2 text-[13px] text-muted leading-relaxed">{t('settings.danger.deleteDesc')}</p>
+                  <p className="mt-4 text-[12px] font-semibold text-ink">
+                    {t('settings.danger.deleteConfirm')} <span className="text-red-600">{username}</span>
+                  </p>
+                  <input
+                    type="text"
+                    value={deleteConfirm}
+                    onChange={(e) => setDeleteConfirm(e.target.value)}
+                    placeholder={username}
+                    autoFocus
+                    className="mt-2 w-full bg-surface border border-divider rounded-lg px-3 py-2 text-[13px] text-ink outline-none focus:border-ink transition"
+                  />
+                  {deleteError && <p className="mt-2 text-[12px] text-red-500">{deleteError}</p>}
+                  <div className="mt-5 flex gap-3">
+                    <button
+                      onClick={() => setShowDeleteModal(false)}
+                      disabled={deleting}
+                      className="flex-1 rounded-xl border border-divider px-4 py-2.5 text-[13px] font-semibold text-ink hover:bg-surface transition disabled:opacity-50"
+                    >
+                      {t('settings.account.cancel')}
+                    </button>
+                    <button
+                      onClick={handleDeleteAccount}
+                      disabled={deleting || !username || deleteConfirm !== username}
+                      className="flex-1 rounded-xl bg-red-600 px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-red-700 transition disabled:opacity-40"
+                    >
+                      {deleting ? t('settings.danger.deleting') : t('settings.danger.deleteConfirmBtn')}
                     </button>
                   </div>
                 </div>

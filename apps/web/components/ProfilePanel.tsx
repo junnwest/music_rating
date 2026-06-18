@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Settings as SettingsIcon } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
-import Essentials from './Essentials';
 import UserAvatar from './UserAvatar';
 import CreateListSection from './CreateListSection';
 import type { Session } from '@supabase/supabase-js';
@@ -753,9 +752,6 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
 
           {/* RIGHT: catalog */}
           <div className="flex-1 min-w-0">
-            {/* Essentials */}
-            <Essentials userId={effectiveUserId} canEdit={isOwnProfile} />
-
             {/* Tabs + Sort */}
             <div className="flex items-end justify-between mb-6 border-b border-divider">
               <div className="flex gap-1 overflow-x-auto scrollbar-hide">

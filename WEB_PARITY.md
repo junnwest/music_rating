@@ -65,17 +65,21 @@ Feature removed entirely. Not shown in onboarding, not shown on profiles.
 ## 4. Rating mode — Manual vs Instinct
 
 **What changed on iOS:**
-Two rating modes. User picks during onboarding. Can change in Settings (with a warning that switching resets scores).
+Two rating modes. User picks during onboarding. Can change in Settings.
 
 ### Manual mode
-- Standard half-star rating (0.5–5.0), same as current web behavior.
-- No changes to existing rating UI for Manual users.
+- Standard half-star rating (0.5–5.0) by default.
+- **Optional 0.1 precision** (decided 2026-06-17): a Settings toggle switches Manual input from the half-star widget to a **slider** that captures 0.1 steps (0.0–5.0). Half-star stays the default. `ratings.score` is already `numeric(3,1)` so no schema change is needed for the value; only the user's chosen granularity needs storing.
 
-### Instinct mode
-- **No star input on album pages.** Album page shows the user's current derived score and rank but has no interactive rating widget.
-- **Pairwise comparison session** — a dedicated in-app screen ("Rate" tab or floating entry point) that shows two albums from the user's library and asks "which do you prefer?" Feeds an Elo algorithm that derives scores behind the scenes.
+### Instinct mode (algorithm decided 2026-06-17 — Beli/Podiums model)
+- **No star input on album pages.** Album page shows the user's current derived score (0.0–5.0, 0.1 steps) and rank, no interactive widget.
+- **Gut-check bucket first.** When adding a new album the user picks one of **three** buckets — **bad / neutral / good** (three, not five, to suit a 5-point scale). The bucket is a **soft seed**, not a hard band: it only sets the album's starting Elo (`seedElo` in `lib/elo.ts`: bad 1400 / neutral 1500 / good 1600) so the first comparisons start near its likely spot.
+- **Pairwise comparison session** — one album is the one being rated, the other is a previously-rated album. "Which do you prefer?" nudges both albums' Elo (`updateElo`). The number of questions scales with how many albums the user has rated, **capped at 3**. Per-album flow mirrors Podiums: bucket → (optional) add to a collection / comment → comparisons → done.
+- **One global ranked list per user.** Elo is only the ordering engine; there are **no sealed tiers**, so an album can cross former bucket lines freely (a "bad"-seeded album that keeps winning rises above "neutral" ones — no contradiction to resolve).
+- **Displayed score = rank position, interpolated.** `scoreFromRank` / `deriveInstinctScores` map an album's position in the single ranked list to 0.0–5.0 (top ≈ 5.0, bottom ≈ 0.0). Fully relative, like Beli.
+- **Scores hidden until the user has rated at least 5 albums** (`INSTINCT_REVEAL_THRESHOLD` in `lib/elo.ts` — the bucket gut-check carries the first few).
 - Both modes output a visible score on album pages and profile.
-- Switching modes resets scores (confirmation dialog required).
+- **Switching modes keeps scores** (no reset). Manual `score` and Instinct `elo_score`/`elo_games` are stored independently, so toggling back and forth is non-destructive.
 
 **DB changes required (new migration):**
 ```sql
@@ -105,7 +109,7 @@ CREATE POLICY "Users manage own comparisons"
 - Album page: if `rating_mode === 'instinct'`, hide the `StarRating` widget and show derived score + rank only.
 - Add a "Rate" entry point somewhere in the main nav (sidebar or dedicated page) that launches the pairwise comparison session for Instinct users.
 - Pairwise comparison session page (`/rate` or `/compare`): fetch two uncompared albums from user's rated set, display covers side by side, handle pick → POST to `/api/rate/compare` → update Elo scores → show next pair.
-- Settings → Preferences: add rating mode toggle with reset warning modal.
+- Settings → Preferences: add rating mode toggle (no reset — scores are kept). Also add the Manual **0.1-precision** toggle (half-star ↔ slider).
 - `/api/rate/compare` endpoint: receives `{ winnerId, loserId }`, updates Elo scores for both releases in `ratings`, logs to `pairwise_comparisons`.
 
 ---
@@ -155,7 +159,10 @@ New strings added on iOS that need corresponding entries in `apps/web/lib/i18n/e
 - `onboarding.allowNotifications` — "Allow Notifications"
 - `onboarding.skipForNow` — "Skip for now"
 - `settings.ratingMode` — "Rating Mode"
-- `settings.ratingModeResetWarning` — "Switching modes will reset all your scores. This cannot be undone."
+- `settings.ratingModeNote` — "Your scores are kept when you switch modes."
+- `settings.manualPrecision` — "Half-star or 0.1 precision"
+- `onboarding.bucketBad` / `onboarding.bucketNeutral` / `onboarding.bucketGood` — "Bad" / "Neutral" / "Good" (Instinct gut-check)
+- `rate.whichPrefer` — "Which do you prefer?"
 - `album.instinctScore` — "Instinct Score"
 - `album.noRatingInstinct` — "Rate this album in a comparison session"
 

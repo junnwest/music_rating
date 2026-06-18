@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../../lib/supabaseClient';
-import { getCanonSuggestions } from '../../../lib/canon-suggestions';
 import { useLanguage } from '../../../lib/i18n';
 
 const FALLBACK_GENRES = [
@@ -13,14 +12,6 @@ const FALLBACK_GENRES = [
   'Hip-Hop', 'R&B & Soul', 'Jazz',
   'Folk', 'Electronic', 'Ambient', 'Classical', 'Pop',
 ];
-
-interface PickAlbum {
-  id: string;
-  title: string;
-  artist: string;
-  cover_url: string | null;
-  release_type: string;
-}
 
 function StepDots({ current, total }: { current: number; total: number }) {
   return (
@@ -121,7 +112,7 @@ function StepIdentity({
 
   return (
     <div>
-      <StepDots current={0} total={4} />
+      <StepDots current={0} total={3} />
       <h2 className="text-[26px] font-extrabold text-ink mb-1" style={{ letterSpacing: '-0.7px' }}>
         {t('onboarding.setupProfile')}
       </h2>
@@ -238,7 +229,7 @@ function StepGenres({
 
   return (
     <div>
-      <StepDots current={1} total={4} />
+      <StepDots current={1} total={3} />
       <h2 className="text-[26px] font-extrabold text-ink mb-1" style={{ letterSpacing: '-0.7px' }}>
         {t('onboarding.whatDoYouListen')}
       </h2>
@@ -341,16 +332,20 @@ function StepStreaming({
   onChange,
   onNext,
   onBack,
+  nextLabel,
+  nextDisabled,
 }: {
   value: StreamingPlatform;
   onChange: (v: StreamingPlatform) => void;
   onNext: () => void;
   onBack: () => void;
+  nextLabel?: string;
+  nextDisabled?: boolean;
 }) {
   const { t } = useLanguage();
   return (
     <div>
-      <StepDots current={2} total={4} />
+      <StepDots current={2} total={3} />
       <h2 className="text-[26px] font-extrabold text-ink mb-1" style={{ letterSpacing: '-0.7px' }}>
         {t('onboarding.streamingTitle')}
       </h2>
@@ -415,194 +410,11 @@ function StepStreaming({
         </button>
         <button
           onClick={onNext}
-          className="flex-[2] bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-lg py-[13px] text-[14px] font-bold transition hover:opacity-80"
+          disabled={nextDisabled}
+          className="flex-[2] bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-lg py-[13px] text-[14px] font-bold transition hover:opacity-80 disabled:opacity-50"
         >
-          {t('onboarding.nextBtn')}
+          {nextLabel ?? t('onboarding.nextBtn')}
         </button>
-      </div>
-    </div>
-  );
-}
-
-const COLS = 7;
-const ROWS = 4;
-const GRID_SIZE = COLS * ROWS;
-const MAX_ALBUMS = 6;
-
-function AlbumCell({
-  album,
-  isSelected,
-  disabled,
-  onToggle,
-}: {
-  album: PickAlbum;
-  isSelected: boolean;
-  disabled: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      onClick={onToggle}
-      disabled={disabled}
-      className={`group/cell block w-full text-left ${disabled ? 'opacity-30 cursor-not-allowed' : ''}`}
-    >
-      <div className="relative w-full aspect-square rounded-[7px] overflow-hidden bg-surface">
-        {album.cover_url && (
-          <img
-            src={album.cover_url}
-            alt={album.title}
-            className="absolute inset-0 w-full h-full object-cover"
-          />
-        )}
-        {isSelected && (
-          <div
-            className="absolute inset-0 flex items-center justify-center"
-            style={{ background: 'rgba(232,160,32,0.2)' }}
-          >
-            <div className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: '#E8A020' }}>
-              <svg width="12" height="9" viewBox="0 0 14 10" fill="none">
-                <path d="M1.5 5L5 8.5L12.5 1" stroke="#7A4F0A" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-          </div>
-        )}
-        {!isSelected && !disabled && (
-          <div
-            className="absolute inset-0 opacity-0 group-hover/cell:opacity-100 transition flex items-center justify-center"
-            style={{ background: 'rgba(0,0,0,0.14)' }}
-          >
-            <div className="w-6 h-6 rounded-full border-2 border-white" />
-          </div>
-        )}
-      </div>
-      <p className="mt-[5px] text-[11px] font-semibold text-ink truncate leading-tight">{album.title}</p>
-      <p className="text-[10px] text-muted truncate">{album.artist}</p>
-    </button>
-  );
-}
-
-
-function StepAlbums({
-  genres,
-  selected,
-  onSelectionChange,
-}: {
-  genres: string[];
-  selected: PickAlbum[];
-  onSelectionChange: (albums: PickAlbum[]) => void;
-}) {
-  const { t } = useLanguage();
-  const [query, setQuery] = useState('');
-  const [pool, setPool] = useState<PickAlbum[]>([]);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => { loadDefaults(); }, []);
-
-  const TYPE_ORDER: Record<string, number> = { album: 0, ep: 1, single: 2 };
-
-  const loadDefaults = async () => {
-    if (!supabase) return;
-    const canon = await getCanonSuggestions(supabase, genres, GRID_SIZE * 2);
-    if (canon.length >= GRID_SIZE) {
-      setPool(canon);
-      return;
-    }
-    const { data } = await supabase
-      .from('releases')
-      .select('id, title, artist, cover_url, release_type')
-      .not('cover_url', 'is', null)
-      .limit(GRID_SIZE * 4);
-    const seen = new Set(canon.map(r => r.id));
-    const extra = (data ?? [])
-      .filter((r: any) => !seen.has(r.id))
-      .map((r: any) => ({ id: r.id, title: r.title, artist: r.artist, cover_url: r.cover_url, release_type: r.release_type ?? 'Album' }))
-      .sort((a: any, b: any) => {
-        const aOrd = TYPE_ORDER[a.release_type?.toLowerCase()] ?? 3;
-        const bOrd = TYPE_ORDER[b.release_type?.toLowerCase()] ?? 3;
-        return aOrd - bOrd;
-      });
-    setPool([...canon, ...extra].slice(0, GRID_SIZE * 2));
-  };
-
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!query.trim()) { loadDefaults(); return; }
-    debounceRef.current = setTimeout(async () => {
-      if (!supabase) return;
-      const q = query.trim();
-      const { data } = await supabase
-        .from('releases')
-        .select('id, title, artist, cover_url, release_type')
-        .or(`title.ilike.%${q}%,artist.ilike.%${q}%`)
-        .not('cover_url', 'is', null)
-        .limit(GRID_SIZE);
-      if (data && data.length > 0) {
-        setPool(data.map((r: any) => ({
-          id: r.id, title: r.title, artist: r.artist,
-          cover_url: r.cover_url, release_type: r.release_type ?? 'Album',
-        })));
-        return;
-      }
-      try {
-        const res = await fetch(`/api/search?query=${encodeURIComponent(q)}`);
-        const json = await res.json();
-        if (json.releases) {
-          setPool(json.releases.slice(0, GRID_SIZE).map((r: any) => ({
-            id: r.id, title: r.title, artist: r.artist,
-            cover_url: r.coverUrl, release_type: r.releaseType ?? 'Album',
-          })));
-        }
-      } catch (err) {
-        console.error('[onboarding] Spotify search fallback failed:', err);
-      }
-    }, 350);
-  }, [query]);
-
-  const toggle = (album: PickAlbum) => {
-    if (selected.find((s) => s.id === album.id)) {
-      onSelectionChange(selected.filter((s) => s.id !== album.id));
-    } else if (selected.length < MAX_ALBUMS) {
-      onSelectionChange([...selected, album]);
-    }
-  };
-
-  const selectedIds = new Set(selected.map((s) => s.id));
-  const poolFiltered = pool.filter((a) => !selectedIds.has(a.id));
-  const displayed = [...selected, ...poolFiltered].slice(0, GRID_SIZE);
-
-  return (
-    <div>
-      <StepDots current={3} total={4} />
-      <div className="flex items-end justify-between mb-1">
-        <h2 className="text-[26px] font-extrabold text-ink" style={{ letterSpacing: '-0.7px' }}>
-          {t('onboarding.yourEssentials')}
-        </h2>
-        {selected.length > 0 && (
-          <span className="text-[12px] text-muted mb-1">{selected.length}/{MAX_ALBUMS} picked</span>
-        )}
-      </div>
-      <p className="text-[13px] text-muted mb-4">
-        {t('onboarding.essentialsDesc')}
-      </p>
-
-      <input
-        type="text"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder={t('onboarding.searchAlbum')}
-        className="w-full bg-surface border border-divider rounded-lg px-4 py-[9px] text-[14px] text-ink placeholder:text-muted outline-none focus:border-ink transition mb-4"
-      />
-
-      <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-7 gap-[10px]">
-        {displayed.map((album) => (
-          <AlbumCell
-            key={album.id}
-            album={album}
-            isSelected={selectedIds.has(album.id)}
-            disabled={!selectedIds.has(album.id) && selected.length >= MAX_ALBUMS}
-            onToggle={() => toggle(album)}
-          />
-        ))}
       </div>
     </div>
   );
@@ -615,7 +427,6 @@ export default function OnboardingPage() {
   const [identity, setIdentity] = useState<IdentityData | null>(null);
   const [genres, setGenres] = useState<string[]>([]);
   const [streamingPlatform, setStreamingPlatform] = useState<StreamingPlatform>(null);
-  const [albumsSelected, setAlbumsSelected] = useState<PickAlbum[]>([]);
   const [saving, setSaving] = useState(false);
   const [defaultUsername, setDefaultUsername] = useState('');
   const [ready, setReady] = useState(false);
@@ -631,7 +442,7 @@ export default function OnboardingPage() {
     });
   }, []);
 
-  const handleFinish = async (albums: PickAlbum[]) => {
+  const handleFinish = async () => {
     if (!supabase || !identity) return;
     setSaving(true);
     try {
@@ -647,17 +458,6 @@ export default function OnboardingPage() {
         country: identity.country || null,
         preferred_streaming_platform: streamingPlatform,
       }, { onConflict: 'id' });
-
-      if (albums.length > 0) {
-        await supabase.from('releases').upsert(
-          albums.map((a) => ({ id: a.id, title: a.title, artist: a.artist, cover_url: a.cover_url, release_type: a.release_type })),
-          { onConflict: 'id', ignoreDuplicates: true }
-        );
-        await supabase.from('pinned_albums').upsert(
-          albums.map((a) => ({ user_id: user.id, release_id: a.id })),
-          { onConflict: 'user_id,release_id', ignoreDuplicates: true }
-        );
-      }
 
       await supabase.auth.updateUser({ data: { onboarding_completed: true } });
       router.replace(`/profile/${identity.username}`);
@@ -701,37 +501,13 @@ export default function OnboardingPage() {
           <StepStreaming
             value={streamingPlatform}
             onChange={setStreamingPlatform}
-            onNext={() => setStep(3)}
+            onNext={() => void handleFinish()}
             onBack={() => setStep(1)}
-          />
-        )}
-        {step === 3 && identity && (
-          <StepAlbums
-            genres={genres}
-            selected={albumsSelected}
-            onSelectionChange={setAlbumsSelected}
+            nextLabel={saving ? t('onboarding.savingBtn') : t('onboarding.finish')}
+            nextDisabled={saving}
           />
         )}
       </div>
-
-      {step === 3 && identity && (
-        <div className="flex gap-3 w-full" style={{ maxWidth: 860 }}>
-          <button
-            onClick={() => setStep(2)}
-            disabled={saving}
-            className="flex-1 bg-page border border-divider text-ink rounded-lg py-[13px] text-[14px] font-semibold hover:bg-surface transition disabled:opacity-40"
-          >
-            {t('onboarding.backBtn')}
-          </button>
-          <button
-            onClick={() => handleFinish(albumsSelected)}
-            disabled={saving}
-            className="flex-[2] bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] rounded-lg py-[13px] text-[14px] font-bold transition hover:opacity-80 disabled:opacity-50"
-          >
-            {saving ? t('onboarding.savingBtn') : albumsSelected.length === 0 ? t('onboarding.skipFinish') : t('onboarding.finish')}
-          </button>
-        </div>
-      )}
     </div>
   );
 }
