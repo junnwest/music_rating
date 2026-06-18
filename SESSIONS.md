@@ -6,6 +6,10 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-17 — queue:ingest pagination fix:**
+
+- **`ingest-itunes-queue.ts` pagination** — script was silently capped at 1000 artists per run due to Supabase PostgREST's default max-rows limit. Added a `while` loop that re-fetches the next 1000 `pending` rows after each page is processed (safe because processed rows are immediately marked `done`/`skipped`/`failed`, so re-querying always returns fresh work). A single `npm run queue:ingest:albums` now drains the entire queue. `--limit=N` still works as a total cap across all pages.
+
 **2026-06-16 — Mobile app: Expo bring-up on Windows + i18n + design-pass start:**
 
 *Expo Go bring-up (Windows):*

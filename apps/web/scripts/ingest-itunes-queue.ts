@@ -291,31 +291,41 @@ async function upsertRelease(
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+const PAGE_SIZE = 1000; // Supabase PostgREST max rows per request
+
 async function main() {
   console.log(`\n  sillajuku iTunes queue ingest${DRY_RUN ? ' [DRY RUN]' : ''}\n`);
 
   const db = getDB();
 
-  // Pull pending artists from queue
-  const { data: queue, error: qErr } = await db
-    .from('artist_ingestion_queue')
-    .select('id, name, itunes_artist_id, name_native')
-    .eq('status', 'pending')
-    .order('created_at')
-    .limit(BATCH_LIMIT);
-
-  if (qErr) { console.error('Queue fetch error:', qErr.message); process.exit(1); }
-  if (!queue || queue.length === 0) {
-    console.log('  No pending artists in queue. Run npm run queue:build first.');
-    return;
-  }
-
-  console.log(`  Pending artists : ${queue.length}${BATCH_LIMIT < 9999 ? ` (limited to ${BATCH_LIMIT})` : ''}\n`);
-
   let totalInserted = 0, totalEnriched = 0, totalSkipped = 0, artistsFailed = 0, artistsNoMatch = 0;
+  let totalProcessed = 0;
+  let pageNum = 0;
+
+  while (totalProcessed < BATCH_LIMIT) {
+    const fetchSize = Math.min(PAGE_SIZE, BATCH_LIMIT - totalProcessed);
+
+    // Pull next page of pending artists (previously-processed rows are now done/skipped/failed,
+    // so re-querying always returns the next unprocessed batch).
+    const { data: queue, error: qErr } = await db
+      .from('artist_ingestion_queue')
+      .select('id, name, itunes_artist_id, name_native')
+      .eq('status', 'pending')
+      .order('created_at')
+      .limit(fetchSize);
+
+    if (qErr) { console.error('Queue fetch error:', qErr.message); process.exit(1); }
+    if (!queue || queue.length === 0) {
+      if (pageNum === 0) console.log('  No pending artists in queue. Run npm run queue:build first.');
+      break;
+    }
+
+    pageNum++;
+    console.log(`  Page ${pageNum} — ${queue.length} pending artists (${totalProcessed} processed so far)${BATCH_LIMIT < 9999 ? ` / limit ${BATCH_LIMIT}` : ''}\n`);
 
   for (let i = 0; i < queue.length; i++) {
     const row = queue[i];
+    totalProcessed++;
     process.stdout.write(`  [${i + 1}/${queue.length}] ${row.name.padEnd(35)} `);
 
     // Skip collaboration entries (e.g. "Coldplay & BTS", "Drake feat. 21 Savage").
@@ -422,6 +432,8 @@ async function main() {
       artistsFailed++;
     }
   }
+
+  } // end while (pagination loop)
 
   console.log(`
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -415,6 +415,7 @@ npm run queue:ingest -- --limit=50   # process only 50 artists
 - Deduplicates by `itunes_id` first, then title+artist ilike match
 - Enriched path only backfills `cover_url` if existing record has none (preserves Spotify art)
 - Marks each queue row as `done` / `failed` / `skipped`; re-run to resume
+- Paginates automatically (1000 artists/page) — a single run drains the entire queue; `--limit=N` caps total across all pages
 
 #### Step 3 — Last.fm similar artist discovery
 
