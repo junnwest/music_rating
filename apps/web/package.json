@@ -56,6 +56,8 @@
     "backfill:embeddings:dry": "tsx --env-file=.env.local scripts/backfill-embeddings.ts --dry-run",
     "backfill:tracklists": "tsx --env-file=.env.local scripts/backfill-tracklists.ts",
     "backfill:tracklists:dry": "tsx --env-file=.env.local scripts/backfill-tracklists.ts --dry-run",
+    "backfill:tracks": "tsx --env-file=.env.local scripts/backfill-tracks.ts",
+    "backfill:tracks:dry": "tsx --env-file=.env.local scripts/backfill-tracks.ts --dry-run",
     "catalog:status": "tsx --env-file=.env.local scripts/catalog-status.ts",
     "analyze:coverage": "tsx --env-file=.env.local scripts/analyze-coverage.ts",
     "analyze:coverage:albums": "tsx --env-file=.env.local scripts/analyze-coverage.ts --albums-only",

@@ -45,11 +45,13 @@ iv. (expansion — see "Additional changes" below)
   - ⚠️ Implementation note: today singles are **hard-excluded** from home/explore (`recommendable_releases` view = albums + EPs only). This decision means **relaxing that hard exclusion into a soft ranking penalty** — a real change to that view + the recommendation queries.
 - **Cross-release song unification:** keep **per-release** songs for v1 (same song on a single + album + comp = separate songs). Unify later (hard dedup).
 
-**Still open:**
-1. **Song identity — the foundational fork (decide first next session).**
-   - (a) **Create a `tracks`/`songs` table** with stable UUIDs (migrate from `releases.tracklist` JSONB; future ingests write track rows). Cleaner for pages, search, aggregation, leaderboards. Big migration (millions of rows). *Recommended — "first-class" songs really want real IDs.*
-   - (b) **Keep (release_id + position)** as identity (URL `/song/[releaseId]/[position]`; reuse `track_ratings`). No big migration, but messier for search/aggregation.
-2. **Song page URL scheme** — follows from #1 (`/song/[trackId]` vs `/song/[releaseId]/[position]`).
+**Resolved (2026-06-18, cont.):**
+- **Song identity: a real `tracks` table** (stable UUIDs). Built:
+  - Migration `apps/web/supabase/migrations/20260618000000_tracks_table.sql` — `tracks(id, release_id→releases, position, title, duration_ms, artists)`, UNIQUE(release_id, position), RLS (public read), index on release_id. (GIN trigram on `title` deferred until song search is built.)
+  - Backfill `apps/web/scripts/backfill-tracks.ts` (`npm run backfill:tracks` / `:dry`) — populates `tracks` from `releases.tracklist` JSONB. Resumable (state file + keyset pagination), idempotent (upsert on release_id,position). ~107k releases → ~1.3M rows, **run overnight**. Dry-run verified (50 releases → ~609 rows).
+- **Song page URL scheme: `/song/[trackId]`** (uses the new UUID).
+
+**Still open:** none blocking — proceed to song pages / ratings next session.
 
 ---
 
