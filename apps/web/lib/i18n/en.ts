@@ -313,7 +313,7 @@ const en = {
       ratingModeManualNote: 'Rate albums directly with stars. Your scores are kept when you switch.',
       ratingModeInstinctNote: 'Rate by comparing two albums at a time. Your existing ratings carry over as a starting point and gradually adjust as you compare.',
       importTitle: 'Use your existing ratings?',
-      importDesc: "We'll turn your {count} star ratings into a starting ranking. As you compare albums, your scores will gradually shift to reflect your real preferences.",
+      importDesc: "We'll turn your existing star ratings ({count}) into a starting ranking. As you compare albums, your scores will gradually shift to reflect your real preferences.",
       importUse: 'Use my ratings',
       importBusy: 'Importing…',
       importFresh: 'Start fresh',
