@@ -8,31 +8,31 @@ Every record you've loved — rated, cataloged, and remembered. A music platform
 
 ---
 
-## ⚠️ Current state (2026-06-17)
+## ⚠️ Current state (2026-06-18)
 
 Features shipped as of 2026-06-08: Daily Question, preferred streaming platform, **Collections** (custom playlists, renamed) with foldable panel and per-add destination picker, Bayesian Silla Score, Discovery/Adventurousness slider. See SESSIONS.md for details. **2026-06-10:** `backfill:embeddings` ✅ complete — all ~347k non-single releases have Jina v3 embeddings. HNSW index ✅ rebuilt (2026-06-09). Hybrid semantic search ready — deploy to Vercel to activate. **2026-06-11:** Performance overhaul — homepage blank-screen fix (Suspense streaming), GIN trigram index on `releases.genres` (eliminates IO-exhausting full-table scans; required **Supabase Pro** upgrade to build — free tier Disk IO Budget was exhausted), Redis caching on album page ranking badges (5-min TTL, 10–15 queries → 1 cache hit), profile page `auth.admin.listUsers(1000)` → targeted SQL function, query limits on category-resolver and canon-suggestions. New live search dropdown: `SearchBar` component + `/api/search/suggest` endpoint (prefix match, no Jina, 10-min Redis cache) — near-instant after first query. **2026-06-14:** Local QA pass complete — 4 bugs found and fixed (ISSUE-002–006). Logo updated to transparent background. Browser language detection added (Accept-Language header + navigator.language). Onboarding improved: sidebar/footer/listen-later hidden, logo non-clickable, genre pills sorted by DB frequency, Apple Music added as streaming option (requires migration `20260615000000`), essentials prioritize Albums > EPs > Singles. **2026-06-16 (mobile):** Expo app brought up on Windows/Expo Go (fixed an SDK-56-vs-54 dependency skew in `apps/mobile/package.json`). Mobile design pass started — device-language i18n (`apps/mobile/lib/i18n/`, follows the phone's language, en/ko), login redesign (non-scroll + flower-mark logo), home navbar removed, unified `ScreenHeader` across the four tab screens. `backfill:tracklists` ✅ complete (107,778 / 115,604 = 93%). See SESSIONS.md (2026-06-16) for details + known issues. **2026-06-17 (architecture pivot):** React Native (`apps/mobile`) retired and deleted. iOS app rebuilding from scratch in Swift/SwiftUI (`apps/ios/` — Mac session). New feature decisions: OAuth-only login (Spotify recommended, Apple, Google — no email/password), simplified onboarding (name + username + rating mode + notifications; Google adds genre step), Essentials feature removed from entire app, Instinct rating mode added (pairwise comparison / Elo). See `WEB_PARITY.md` for full spec of changes to mirror on web. Two parallel tracks: Mac builds iOS app; Windows builds Elo system, DB migrations, `/api/rate/compare` endpoint, removes essentials from web, updates Spotify OAuth scopes. **2026-06-17 (session 3, Windows):** all 5 web-prep tasks built — Instinct migration (`20260617000000`, ⏳ apply via SQL editor), `lib/elo.ts`, `/api/rate/compare`, essentials removed (ProfilePanel + AlbumActions + onboarding `StepAlbums`; `Essentials.tsx`/`Pick5Modal.tsx` deleted; `pinned_albums` left unused), Spotify login scopes (`user-top-read` + `user-read-recently-played`). Typecheck clean. Remaining web parity (onboarding rewrite, Instinct album-page UI, `/rate` session, settings toggle, i18n) still open — see START HERE.
 
 ### ► START HERE — next session checklist
 
-**Two parallel tracks (2026-06-17):**
+> **Build note (Mac):** Always build from **Xcode GUI (Cmd+B)**, not `xcodebuild` CLI — the CLI has an Xcode 26 SPM dependency-ordering bug. Project: `apps/ios/sillajuku.xcodeproj`. Destination: iPhone 17 simulator (iOS 26.5). Stop the simulator (Cmd+.) when not testing — 8 GB RAM is tight with VSCode open.
 
-**Mac — iOS Swift app (`apps/ios/`):**
-1. Create new Xcode project (`apps/ios/`) — SwiftUI, iOS 16+, bundle ID `com.sillajuku.app`
-2. Add Supabase Swift SDK (`supabase-swift`) via Swift Package Manager
-3. Build auth flow: Spotify OAuth (recommended) + Apple Sign In + Google OAuth, all via Supabase
-4. Build onboarding: profile setup (name + username) → rating mode picker → [genre step for Google] → notifications placeholder
-5. Build main tabs: Home (genre carousels from DB), Search, Rankings, Activity, Profile
-6. Integrate MusicKit for Apple login users; Spotify `user-top-read` for Spotify login users
-7. See `WEB_PARITY.md` for full feature spec
+**Priority order: Windows DB migrations first (they unblock iOS end-to-end), then Mac tab screens.**
 
-**Windows — backend + web prep (`apps/web/`):** ✅ all 5 built 2026-06-17 (session 3)
-1. ✅ **DB migrations** — `apps/web/supabase/migrations/20260617000000_instinct_rating_mode.sql` (`rating_mode` on profiles, `elo_score`/`elo_games` on ratings, `pairwise_comparisons` table). ✅ **Applied to prod 2026-06-17** via Supabase SQL editor.
-2. ✅ **Elo algorithm** — `apps/web/lib/elo.ts` (pure shared math: `updateElo`, `expectedScore`, `kFactor`, `eloToStars`; mirror in Swift)
-3. ✅ **`/api/rate/compare` endpoint** — `apps/web/app/api/rate/compare/route.ts`; auth from Bearer token, instinct-mode check, upserts Elo to `ratings`, logs `pairwise_comparisons`
-4. ✅ **Remove essentials from web** — ProfilePanel strip, `AlbumActions` dropdown entry + swap/confirm modals, onboarding `StepAlbums` (now 3-step: identity → genres → streaming); `Essentials.tsx` + `Pick5Modal.tsx` deleted. `pinned_albums` table left intact but no longer read/written.
-5. ✅ **Spotify OAuth scopes** — `AuthForm.tsx` Spotify sign-in now requests `user-read-email user-top-read user-read-recently-played`. ⏳ Also verify/add these in the Supabase dashboard Spotify provider config.
+**Windows — backend + web prep (`apps/web/`):** ✅ Instinct rating mode shipped end-to-end (2026-06-17/18). All three migrations applied to prod (see table below).
+- ✅ Elo math (`lib/elo.ts`) + `/api/rate/compare`; essentials removed; Spotify OAuth scopes added.
+- ✅ Album page **Add/Save** redesign (`AddModal` popup); Settings Manual/Instinct selector + 0.1 precision + single scrollable page; hard delete-account (`/api/account/delete`).
+- ⏳ **Owed:** Korean i18n for the Add modal (English-only now); verify Spotify provider scopes in the Supabase dashboard; verify `20260617000001` applied; Instinct scores feeding profile/Silla stats.
+- ▶ **Next (decided): build the `tracks` table** (songs as first-class) — full design + open URL-scheme detail in **[SONGS_PLAN.md](SONGS_PLAN.md)**. A backfill script populates `tracks` from `releases.tracklist` JSONB (long-running — run overnight).
 
-> **Note (out of scope for session 3):** the full WEB_PARITY §2 onboarding rewrite (StepRatingMode, StepNotifications, Google-only genre step, country/streaming removal) and the new i18n strings (§7) were **not** done — only `StepAlbums` was removed per the assigned task list. Album-page Instinct UI, the `/rate` comparison session page, and the Settings rating-mode toggle are also still pending.
+**Mac — iOS Swift app (`apps/ios/`) — scaffolding done, build next:**
+1. ✅ Xcode project — bundle ID `com.sillajuku.app`, Supabase Swift SDK 2.48.0 via SPM, URL scheme `sillajuku://`, Debug signing disabled
+2. ✅ Auth flow — Spotify (recommended) + Apple (stubbed) + Google via `supabase.auth.signInWithOAuth`; auth state observer in `RootView`
+3. ✅ Onboarding — profile step + rating mode picker + [genre step for Google] + notifications
+4. ✅ Main tab scaffold — 5 tabs, all placeholder `Text()` views
+5. ✅ BUILD SUCCEEDED — runs on iPhone 17 simulator (iOS 26.5)
+6. **Next:** Replace `Image(systemName: "music.note.list")` placeholder in [Auth/AuthView.swift](apps/ios/sillajuku/sillajuku/Auth/AuthView.swift) with flower logo asset (`Image("logo-flower")` from Assets.xcassets)
+7. **Next:** Build out tab screens — Home (genre carousels from DB), Search, Rankings, Activity, Profile — see `WEB_PARITY.md` for spec
+8. **Later:** MusicKit integration (Apple login) + Spotify `user-top-read` sync (Spotify login) — see `WEB_PARITY.md` §3
 
 **Catalog expansion (ongoing — Windows):** `queue:ingest:albums` draining (~14.4k new albums in, skip ratio rising). When done: enrichment backfills in order — `backfill:genres` → `backfill:genres:lastfm` → `enrich:genres:lastfm` → `backfill:native` → `backfill:covers` → `backfill:embeddings` → rebuild HNSW index → `npm run analyze:coverage:albums` + `catalog:status`. Do **not** re-run discovery (saturated).
 
@@ -48,7 +48,8 @@ All migrations applied. Nothing pending. If `supabase db push` is blocked by tim
 
 | File | What it adds | Prod |
 |------|-------------|------|
-| `20260617000001_manual_rating_step.sql` | `manual_rating_step` on profiles (0.5 default / 0.1) — Manual rating precision toggle | ⏳ pending — run via SQL editor |
+| `20260617000002_ratings_score_nullable.sql` | Drops NOT NULL on `ratings.score` (Instinct rows store `elo_score`, no star score) | ✅ applied 2026-06-18 (SQL editor) |
+| `20260617000001_manual_rating_step.sql` | `manual_rating_step` on profiles (0.5 default / 0.1) — Manual rating precision toggle | ⚠️ verify applied (SQL editor) |
 | `20260617000000_instinct_rating_mode.sql` | `rating_mode` on profiles, `elo_score`/`elo_games` on ratings, `pairwise_comparisons` table + RLS (Instinct mode) | ✅ applied 2026-06-17 (SQL editor) |
 | `20260615000000_add_apple_music_platform.sql` | Extends `preferred_streaming_platform` CHECK constraint to include `apple_music` | ⏳ pending — run via SQL editor |
 | `20260611000001_user_id_by_email_prefix_fn.sql` | `get_user_id_by_email_prefix` SECURITY DEFINER SQL function — replaces `auth.admin.listUsers(1000)` on profile page | ✅ applied (SQL editor) |

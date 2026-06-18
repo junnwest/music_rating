@@ -50,6 +50,27 @@ Researched how Beli/Podiums turn pairwise comparisons into a score (avoided gues
 
 **Out of scope (still pending web parity):** full onboarding rewrite (StepRatingMode, StepNotifications, Google-only genre step, remove country/streaming), album-page Instinct UI (hide StarRating, show derived score), `/rate` comparison session page, Settings rating-mode toggle + reset-warning modal, login redesign (§5), email/password removal + Apple button (§1), Spotify/Apple taste sync in onboarding finish (§6), and new i18n strings (§7).
 
+**2026-06-17 (session 3) — iOS app scaffolded (auth + onboarding + tabs):**
+
+*What was built:*
+- **Xcode project** at `apps/ios/` — bundle ID `com.sillajuku.app`, Supabase Swift SDK 2.48.0 added via SPM, URL scheme `sillajuku://` registered in Info.plist.
+- **14 Swift source files** across `Auth/`, `Onboarding/`, `Main/`, `Models/`, plus `Config.swift`, `SupabaseClient.swift`, `Theme.swift`, `AppState.swift`, `sillajukuApp.swift`.
+- **Auth flow** — `AuthView` + `AuthViewModel`: Spotify (recommended badge), Apple (disabled/coming soon), Google; all call `supabase.auth.signInWithOAuth`. `RootView` observes `supabase.auth.authStateChanges` and routes to auth / onboarding / main.
+- **Onboarding** — `OnboardingView` with animated capsule progress: `StepProfile` (display name + username with debounced availability check), `StepGenre` (Google-only — flow layout pills, fetches from `/api/genres/top`), `StepRatingMode` (Manual vs Instinct cards), `StepNotifications` (UNUserNotificationCenter).
+- **Main tabs** — 5-tab scaffold with placeholder views.
+- **`@Observable` macro** throughout; `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` set project-wide.
+
+*Build status:*
+- **BUILD SUCCEEDED** — Cmd+B passes clean in Xcode GUI. App runs in iPhone 17 simulator (iOS 26.5).
+- Three import fixes needed after first build: `import Observation` added to `AppState.swift` and `AuthViewModel.swift` (`@Observable` macro is not re-exported by `Supabase` or `Foundation`); `import Supabase` added to `StepProfile.swift`.
+- `xcodebuild` CLI still fails with an Xcode 26 SPM dependency-ordering bug (`swift-clocks` scheduled before its deps). Build from Xcode GUI only.
+- Debug code signing disabled in pbxproj (`CODE_SIGNING_REQUIRED = NO`, `CODE_SIGNING_ALLOWED = NO`) — not needed for simulator builds.
+
+*Setup notes (non-obvious):*
+- Xcode 26 auto-syncs files from disk via `PBXFileSystemSynchronizedRootGroup` — no pbxproj edits needed for new `.swift` files.
+- iOS 26.5 simulator runtime (8.49 GB) required downloading — freed ~10 GB first by deleting `~/Library/Caches/com.google.SoftwareUpdate` (5.5 GB), `~/Library/Caches/Google` (2.9 GB), `~/Library/Caches/com.microsoft.VSCode.ShipIt` (1.1 GB), and Xcode DerivedData (1.0 GB). All are safe auto-regenerated caches.
+- 8 GB RAM is tight for Xcode + iOS 26.5 simulator + VSCode simultaneously. Stop the simulator (Cmd+.) when not actively testing.
+
 **2026-06-17 (session 2) — iOS pivot + feature design:**
 
 *Architecture decision:*
