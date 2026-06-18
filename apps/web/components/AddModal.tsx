@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { X, Bookmark, BookmarkCheck, Check } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { usePlaylist } from './PlaylistContext';
-import { seedElo, scoreFromRank, deriveInstinctScores, INSTINCT_REVEAL_THRESHOLD, type Sentiment } from '../lib/elo';
+import { seedElo, deriveInstinctScores, INSTINCT_REVEAL_THRESHOLD, type Sentiment } from '../lib/elo';
 
 // NOTE: English-only copy for now (flow still settling); i18n pass to follow.
 

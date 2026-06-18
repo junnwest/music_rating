@@ -116,33 +116,64 @@ export const SCORE_MIN = 0.0;
 export const SCORE_MAX = 5.0;
 
 /**
- * Derive the displayed 0.0–5.0 score from an album's position in the user's
- * single ranked list (best → worst), rounded to 0.1.
- *
- * `rankFromTop`: 0 = the user's #1 (highest Elo); `total - 1` = their lowest.
- * Pure relative interpolation — top of list → 5.0, bottom → 0.0. With 0 or 1
- * items there is no relative position, so it returns the midpoint 2.5.
+ * Spread (in Elo points) of the display S-curve. Larger = flatter (a score
+ * moves less per Elo point). 250 makes the sentiment seeds land at fixed,
+ * absolute display anchors: bad 1400 → ~1.4, neutral 1500 → 2.5, good 1600 → ~3.6.
  */
-export function scoreFromRank(rankFromTop: number, total: number): number {
-  if (total <= 1) return 2.5;
-  const frac = (total - 1 - rankFromTop) / (total - 1); // 1 at top → 0 at bottom
-  const score = SCORE_MIN + frac * (SCORE_MAX - SCORE_MIN);
-  return Math.round(score * 10) / 10;
+export const SCORE_SPREAD = 250;
+
+/**
+ * Map an Elo rating to the displayed 0.0–5.0 score via a logistic (S-curve)
+ * centered on DEFAULT_ELO.
+ *
+ * This is ABSOLUTE, not a relative rank interpolation: the bad/neutral/good
+ * seed (and imported star ratings via `starToElo`) anchor a release to a score
+ * region, and comparisons move it continuously from there. So a library of only
+ * loved albums clusters high instead of being smeared down to 0.0, and the
+ * gut-check answer genuinely shapes the score. The curve compresses at the
+ * extremes, so 0.0 / 5.0 must be *earned* through comparisons, not handed out by
+ * a seed. Elo is still one global list, so a release can cross former bucket
+ * lines freely (soft seeds, not sealed tiers).
+ */
+export function eloToScore(elo: number): number {
+  const raw = SCORE_MAX / (1 + Math.pow(10, (DEFAULT_ELO - elo) / SCORE_SPREAD));
+  const clamped = Math.min(SCORE_MAX, Math.max(SCORE_MIN, raw));
+  return Math.round(clamped * 10) / 10;
+}
+
+/** Star anchors for importing Manual ratings onto the Elo scale. */
+export const STAR_NEUTRAL = 2.5; // a 2.5★ rating imports to DEFAULT_ELO (display 2.5)
+export const ELO_PER_STAR = 80; // each star above/below STAR_NEUTRAL shifts the seed Elo
+
+/**
+ * Map an existing 0.5–5.0 star rating to a seed Elo, used when a user switches
+ * Manual → Instinct and imports their star ratings. Linear in star value and
+ * deliberately compressed (5★ → ~1700 → display ~4.3, 0.5★ → ~1340 → ~0.9): the
+ * import is faithful to the old stars on day one but leaves headroom so the
+ * extremes are still earned by comparisons rather than imported outright.
+ */
+export function starToElo(score: number): number {
+  return Math.round(DEFAULT_ELO + (score - STAR_NEUTRAL) * ELO_PER_STAR);
 }
 
 /**
+ * "Games" credited to an imported star rating so it immediately uses the slow,
+ * stable K-factor (K_STABLE) instead of the fast provisional one. Imported
+ * scores should drift *gradually* — roughly a 1-point drop over ~15–20 lost
+ * comparisons — rather than lurch after a single pick. Brand-new Instinct
+ * ratings keep 0 games so they place quickly (K_PROVISIONAL). See `kFactor`.
+ */
+export const IMPORT_GAMES = ESTABLISHED_GAMES; // 30 → K_STABLE (16)
+
+/**
  * Convenience for read paths: given the user's rated albums with their Elo,
- * return a map of release id → derived 0.0–5.0 display score by rank.
- * Sorted by Elo descending; ties resolve by input order.
+ * return a map of release id → derived 0.0–5.0 display score. Each score is the
+ * album's own absolute `eloToScore` (independent of the others' positions).
  */
 export function deriveInstinctScores(
   items: { id: string; elo: number }[],
 ): Record<string, number> {
-  const sorted = [...items].sort((a, b) => b.elo - a.elo);
-  const total = sorted.length;
   const out: Record<string, number> = {};
-  sorted.forEach((item, i) => {
-    out[item.id] = scoreFromRank(i, total);
-  });
+  for (const item of items) out[item.id] = eloToScore(item.elo);
   return out;
 }

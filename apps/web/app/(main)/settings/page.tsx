@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import UserAvatar from '../../../components/UserAvatar';
+import InstinctImportModal from '../../../components/InstinctImportModal';
 import { useLanguage, type Lang } from '../../../lib/i18n';
 import { useStreamingPlatform, type StreamingPlatform } from '../../../components/StreamingPlatformContext';
 
@@ -50,6 +51,10 @@ function SettingsContent() {
   const [ratingStepSaving, setRatingStepSaving] = useState(false);
   const [ratingMode, setRatingMode] = useState<'manual' | 'instinct'>('manual');
   const [ratingModeSaving, setRatingModeSaving] = useState(false);
+  const [importCount, setImportCount] = useState(0);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -235,7 +240,7 @@ function SettingsContent() {
     setRatingStepSaving(false);
   };
 
-  const handleRatingModeSave = async (value: 'manual' | 'instinct') => {
+  const writeRatingMode = async (value: 'manual' | 'instinct') => {
     if (!supabase || !userId) return;
     setRatingMode(value);
     setRatingModeSaving(true);
@@ -244,6 +249,56 @@ function SettingsContent() {
       .update({ rating_mode: value })
       .eq('id', userId);
     setRatingModeSaving(false);
+  };
+
+  const handleRatingModeSave = async (value: 'manual' | 'instinct') => {
+    if (!supabase || !userId || value === ratingMode) return;
+
+    // Switching Manual → Instinct: offer to import existing star ratings as Elo
+    // seeds. Only ask if there's anything to import (star score, no Elo yet).
+    if (value === 'instinct') {
+      const { count } = await supabase
+        .from('ratings')
+        .select('release_id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .not('score', 'is', null)
+        .is('elo_score', null);
+      if (count && count > 0) {
+        setImportCount(count);
+        setImportError(null);
+        setShowImportModal(true);
+        return; // defer the rating_mode write until the user chooses
+      }
+    }
+
+    await writeRatingMode(value);
+  };
+
+  // Import modal — "Use my ratings": flip to Instinct, then seed Elo from stars.
+  const handleImportUse = async () => {
+    if (!supabase || !userId) return;
+    setImportBusy(true);
+    setImportError(null);
+    await writeRatingMode('instinct');
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    const res = await fetch('/api/rate/seed-from-manual', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token ?? ''}` },
+    });
+    setImportBusy(false);
+    if (!res.ok) {
+      const { error: e } = await res.json().catch(() => ({ error: 'Import failed.' }));
+      setImportError(e ?? 'Import failed.');
+      return;
+    }
+    setShowImportModal(false);
+  };
+
+  // Import modal — "Start fresh": flip to Instinct without seeding.
+  const handleImportFresh = async () => {
+    setShowImportModal(false);
+    await writeRatingMode('instinct');
   };
 
   const toggleGenre = (g: string) => {
@@ -763,6 +818,17 @@ function SettingsContent() {
           </div>
         </div>
       </div>
+
+      {showImportModal && (
+        <InstinctImportModal
+          count={importCount}
+          busy={importBusy}
+          error={importError}
+          onUse={handleImportUse}
+          onFresh={handleImportFresh}
+          onCancel={() => { if (!importBusy) setShowImportModal(false); }}
+        />
+      )}
     </div>
   );
 }

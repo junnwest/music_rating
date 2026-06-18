@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, Pencil } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
-import { scoreFromRank, INSTINCT_REVEAL_THRESHOLD } from '../lib/elo';
+import { eloToScore, INSTINCT_REVEAL_THRESHOLD } from '../lib/elo';
 import AddModal from './AddModal';
 import type { Session } from '@supabase/supabase-js';
 
@@ -81,7 +81,7 @@ export default function StarRatingWidget({
       setInstinctTotal(items.length);
       setInstinctRated(idx >= 0);
       setInstinctRank(idx >= 0 ? idx + 1 : null);
-      setInstinctScore(idx >= 0 ? scoreFromRank(idx, items.length) : null);
+      setInstinctScore(idx >= 0 ? eloToScore(sorted[idx].elo) : null);
     } else {
       const { data } = await supabase
         .from('ratings').select('score').eq('user_id', session.user.id).eq('release_id', releaseId).maybeSingle();
