@@ -22,7 +22,7 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 - ✅ Elo math (`lib/elo.ts`) + `/api/rate/compare`; essentials removed; Spotify OAuth scopes added.
 - ✅ Album page **Add/Save** redesign (`AddModal` popup); Settings Manual/Instinct selector + 0.1 precision + single scrollable page; hard delete-account (`/api/account/delete`).
 - ⏳ **Owed:** Korean i18n for the Add modal (English-only now); verify Spotify provider scopes in the Supabase dashboard; Instinct scores feeding profile/Silla stats.
-- ▶ **Songs as first-class (in progress):** `tracks` table created + applied (`20260618000000`); `npm run backfill:tracks` populating from `releases.tracklist` (run overnight, then one cleanup re-run to catch releases added behind the cursor). Next: song detail pages → song ratings → home/feed/search song sections. Full plan in **[SONGS_PLAN.md](SONGS_PLAN.md)**.
+- ▶ **Songs as first-class (in progress):** `tracks` table created + applied (`20260618000000`); `npm run backfill:tracks` ✅ complete (126,634 releases → 1,546,647 tracks). **Tracklist gap fixed:** 56,976 non-singles (30%) had null tracklist due to iTunes throttling during ingest + regional store mismatches (zh/ja/ko). `backfill-tracklists.ts` improved — regional store fallback (KR/JP/TW/CN/HK/IN/ID/TH/VN) + always retries releases that have `itunes_id` regardless of state file. ⏳ `backfill:tracklists` + `backfill:embeddings` running in parallel now. After both finish: `npm run backfill:tracks` (re-populate tracks table with newly-filled tracklists), then `npm run queue:ingest:albums` (21,254 artists still pending). Then: song detail pages → song ratings → home/feed/search song sections. Full plan in **[SONGS_PLAN.md](SONGS_PLAN.md)**.
 
 **Mac — iOS Swift app (`apps/ios/`) — scaffolding done, build next:**
 1. ✅ Xcode project — bundle ID `com.sillajuku.app`, Supabase Swift SDK 2.48.0 via SPM, URL scheme `sillajuku://`, Debug signing disabled
@@ -34,7 +34,7 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 7. **Next:** Build out tab screens — Home (genre carousels from DB), Search, Rankings, Activity, Profile — see `WEB_PARITY.md` for spec
 8. **Later:** MusicKit integration (Apple login) + Spotify `user-top-read` sync (Spotify login) — see `WEB_PARITY.md` §3
 
-**Catalog expansion (ongoing — Windows):** `queue:ingest:albums` draining (~14.4k new albums in, skip ratio rising). When done: enrichment backfills in order — `backfill:genres` → `backfill:genres:lastfm` → `enrich:genres:lastfm` → `backfill:native` → `backfill:covers` → `backfill:embeddings` → rebuild HNSW index → `npm run analyze:coverage:albums` + `catalog:status`. Do **not** re-run discovery (saturated).
+**Catalog expansion (ongoing — Windows):** `queue:ingest:albums` paused (killed to run tracklist fix; 21,254 artists still pending — restart with `npm run queue:ingest:albums` after `backfill:tracklists` + `backfill:embeddings` finish). Current catalog: 418,514 releases (127k albums, 49k EPs, 230k singles). When ingest finishes: enrichment backfills in order — `backfill:genres` → `backfill:genres:lastfm` → `enrich:genres:lastfm` → `backfill:native` → `backfill:covers` → rebuild HNSW index → `npm run analyze:coverage:albums` + `catalog:status`. Do **not** re-run discovery (saturated).
 
 #### Catalog composition + storage (analyzed 2026-06-14 session 3)
 

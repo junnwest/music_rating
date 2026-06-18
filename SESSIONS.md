@@ -6,6 +6,27 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-20 — Tracklist gap diagnosis + backfill-tracklists improvement:**
+
+`backfill:tracks` finished overnight: 126,634 releases → 1,546,647 rows in `tracks` table.
+
+Investigated why many album pages still had no tracklist. Ran a DB diagnostic — actual numbers:
+- 188,351 total non-singles (was 115,604 when backfill:tracklists ran — 73k new releases added by global expansion)
+- 56,976 (30.2%) had null tracklist
+- 56,450 of those (99.1%) **already had `itunes_id`** — IDs were good, lookups failed
+
+Root causes:
+1. **iTunes throttling during ingest**: 56k × extra `fetchTracks` call during the 2-day ingest run → 429/timeout → `null` → tracklist stored as null. These all have itunes_id and will succeed on a calm standalone re-run.
+2. **Regional store mismatch**: zh (378), ja (549), ko (73) albums region-locked to non-US iTunes stores. US-only lookup returns 0 songs silently.
+3. **State file permanently blocked retries**: the old script added any "no tracks" ID to the state file. IDs enriched with `itunes_id` after the original run were still skipped on re-runs.
+
+**`backfill-tracklists.ts` improved:**
+- Regional store fallback: after US iTunes returns 0 songs, tries KR/JP/TW/CN/HK/IN/ID/TH/VN stores based on `native_language`.
+- Always retries releases that have `itunes_id` regardless of state file — previously-failed id-based lookups now re-run every time.
+- State file only records no-`itunes_id` search attempts (to avoid redundant re-searching).
+
+**Action taken:** killed `queue:ingest:albums` (21,254 artists still pending; 2 stuck-as-processing artists reset to pending via `scripts/reset-processing.ts`). Running `backfill:tracklists` + `backfill:embeddings` in parallel (~10–12h + ~8h). After both finish: `npm run backfill:tracks` (re-populate tracks table), then `npm run queue:ingest:albums` to resume. Note: `scripts/reset-processing.ts` is a one-off utility — safe to delete after use.
+
 **2026-06-17 (session 3) — Web parity: Instinct mode backend + essentials removal (Windows track):**
 
 Built all 5 Windows web-prep tasks from `WEB_PARITY.md` (the iOS app is being built in parallel on Mac — `apps/ios/` untouched):

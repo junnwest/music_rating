@@ -10,9 +10,18 @@
  *
  * Per release:
  *   1. If the row has an `itunes_id`, look up its songs directly (1 call).
+ *      Falls back to regional iTunes stores when US returns empty (KR/JP/TW/IN).
  *   2. Otherwise, search iTunes by title+artist to resolve the collection, then
  *      look up its songs (2 calls). Disable with --skip-search.
+ *      Regional store search tried as fallback based on `native_language`.
  *   3. Write the mapped tracklist (and `total_tracks` if it was null).
+ *
+ * State file behaviour:
+ *   - Releases without a tracklist that have `itunes_id` are ALWAYS retried,
+ *     even if they are in the state file — the itunes_id may have been set by
+ *     a later ingest enrichment pass, making a previously-failed lookup succeed.
+ *   - Releases without `itunes_id` that are already in the state file are
+ *     skipped (search already attempted and failed).
  *
  * No Spotify. No auth. No API key. Only iTunes throttling (650ms/req + backoff).
  *
@@ -40,6 +49,22 @@ const STATE_PATH      = path.resolve('scripts/backfill-tracklists-state.json');
 
 const ITUNES_BASE  = 'https://itunes.apple.com';
 const ITUNES_DELAY = 650;  // stay comfortably below iTunes 429 threshold
+
+// Regional store fallback order per native_language ISO code.
+// iTunes collection IDs are global, but the song-lookup endpoint requires the
+// album to be available in the queried store. Many Asian artists are only in
+// their regional store, not the US store.
+const LANG_TO_STORES: Record<string, string[]> = {
+  ko: ['KR'],
+  ja: ['JP'],
+  zh: ['TW', 'CN', 'HK'],
+  hi: ['IN'],
+  te: ['IN'],
+  ta: ['IN'],
+  id: ['ID'],
+  th: ['TH'],
+  vi: ['VN'],
+};
 
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -88,10 +113,33 @@ function mapTracks(results: any[]): Track[] {
   }));
 }
 
-// Resolve an iTunes collection ID for a release lacking one, via search.
-async function findCollectionId(title: string, artist: string): Promise<number | null> {
+// Look up all songs on a collection in a specific store (defaults to US).
+async function fetchTracksInStore(collectionId: number, country?: string): Promise<Track[]> {
+  const countryParam = country ? `&country=${country}` : '';
+  const data = await itunesGet(`${ITUNES_BASE}/lookup?id=${collectionId}&entity=song&limit=300${countryParam}`);
+  if (!data) return [];
+  return mapTracks(data.results ?? []);
+}
+
+// Try US store first, then regional stores based on native_language.
+async function fetchTracksWithFallback(collectionId: number, nativeLang: string | null): Promise<{ tracks: Track[]; store: string }> {
+  const tracks = await fetchTracksInStore(collectionId);
+  if (tracks.length > 0) return { tracks, store: 'US' };
+
+  const stores = nativeLang ? (LANG_TO_STORES[nativeLang] ?? []) : [];
+  for (const store of stores) {
+    const regional = await fetchTracksInStore(collectionId, store);
+    if (regional.length > 0) return { tracks: regional, store };
+  }
+
+  return { tracks: [], store: '' };
+}
+
+// Search for a collection ID in a specific store (defaults to US).
+async function findCollectionIdInStore(title: string, artist: string, country?: string): Promise<number | null> {
+  const countryParam = country ? `&country=${country}` : '';
   const term = encodeURIComponent(`${title} ${artist}`);
-  const data = await itunesGet(`${ITUNES_BASE}/search?term=${term}&entity=album&limit=5`);
+  const data = await itunesGet(`${ITUNES_BASE}/search?term=${term}&entity=album&limit=5${countryParam}`);
   if (!data) return null;
   const results: any[] = data.results ?? [];
   const normTitle  = normalizeStr(title);
@@ -106,11 +154,18 @@ async function findCollectionId(title: string, artist: string): Promise<number |
   return match?.collectionId ?? null;
 }
 
-// Look up all songs on a collection.
-async function fetchTracks(collectionId: number): Promise<Track[]> {
-  const data = await itunesGet(`${ITUNES_BASE}/lookup?id=${collectionId}&entity=song&limit=300`);
-  if (!data) return [];
-  return mapTracks(data.results ?? []);
+// Try US store search first, then regional stores based on native_language.
+async function findCollectionIdWithFallback(title: string, artist: string, nativeLang: string | null): Promise<{ id: number; store: string } | null> {
+  const id = await findCollectionIdInStore(title, artist);
+  if (id) return { id, store: 'US' };
+
+  const stores = nativeLang ? (LANG_TO_STORES[nativeLang] ?? []) : [];
+  for (const store of stores) {
+    const regionalId = await findCollectionIdInStore(title, artist, store);
+    if (regionalId) return { id: regionalId, store };
+  }
+
+  return null;
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -142,20 +197,27 @@ function getDB() {
 
 async function main() {
   console.log(`\n  sillajuku tracklist backfill${DRY_RUN ? ' [DRY RUN]' : ''}`);
-  console.log(`  Source: iTunes${SKIP_SEARCH ? ' (itunes_id only)' : ' (itunes_id → search fallback)'}` +
+  console.log(`  Source: iTunes (US + regional fallback)${SKIP_SEARCH ? ', itunes_id only' : ''}` +
     `${INCLUDE_SINGLES ? '' : ', singles skipped'}\n`);
 
   const db    = getDB();
   const state = loadState();
 
-  // Fetch all releases missing a tracklist. `tracklist IS NULL` covers rows that
-  // never had one; rows with an empty-array tracklist are filtered in-loop.
-  const missing: { id: string; title: string; artist: string; itunes_id: number | null; release_type: string | null; total_tracks: number | null; tracklist: any }[] = [];
+  // Fetch all releases missing a tracklist.
+  const missing: {
+    id: string;
+    title: string;
+    artist: string;
+    itunes_id: number | null;
+    release_type: string | null;
+    total_tracks: number | null;
+    native_language: string | null;
+  }[] = [];
   let from = 0;
   while (true) {
     let q = db
       .from('releases')
-      .select('id, title, artist, itunes_id, release_type, total_tracks, tracklist')
+      .select('id, title, artist, itunes_id, release_type, total_tracks, native_language')
       .is('tracklist', null);
     if (!INCLUDE_SINGLES) q = q.not('release_type', 'ilike', 'single');
     const { data, error } = await q.range(from, from + 499);
@@ -166,44 +228,56 @@ async function main() {
     from += 500;
   }
 
-  let todo = missing.filter(r => !state.processedIds.has(r.id));
-  if (BATCH_LIMIT !== Infinity) todo = todo.slice(0, BATCH_LIMIT);
+  // Always retry releases that have itunes_id even if previously processed —
+  // the itunes_id may have been set by a later enrichment pass, so the lookup
+  // that previously failed with "no tracks" may now succeed.
+  const todo = missing.filter(r =>
+    r.itunes_id !== null || !state.processedIds.has(r.id)
+  );
+  const cappedTodo = BATCH_LIMIT !== Infinity ? todo.slice(0, BATCH_LIMIT) : todo;
 
+  const skipped = missing.length - todo.length;
   console.log(`  Missing tracklist : ${missing.length}`);
-  console.log(`  Already processed : ${missing.length - missing.filter(r => !state.processedIds.has(r.id)).length}`);
-  console.log(`  This run          : ${todo.length}\n`);
+  console.log(`  Skipped (no id, already tried) : ${skipped}`);
+  console.log(`  This run          : ${cappedTodo.length}\n`);
 
-  const counts = { byId: 0, bySearch: 0, none: 0 };
+  const counts = { byId: 0, bySearch: 0, none: 0, regionalFallback: 0 };
 
-  for (let i = 0; i < todo.length; i++) {
-    const r = todo[i];
-    process.stdout.write(`  [${i + 1}/${todo.length}] ${r.artist.slice(0, 22).padEnd(22)} — ${r.title.slice(0, 28).padEnd(28)} `);
+  for (let i = 0; i < cappedTodo.length; i++) {
+    const r = cappedTodo[i];
+    process.stdout.write(`  [${i + 1}/${cappedTodo.length}] ${r.artist.slice(0, 22).padEnd(22)} — ${r.title.slice(0, 28).padEnd(28)} `);
 
     let tracks: Track[] = [];
     let via: 'byId' | 'bySearch' | null = null;
+    let store = '';
 
     if (r.itunes_id) {
-      tracks = await fetchTracks(r.itunes_id);
+      const result = await fetchTracksWithFallback(r.itunes_id, r.native_language);
+      tracks = result.tracks;
+      store  = result.store;
       if (tracks.length > 0) via = 'byId';
     }
 
     if (tracks.length === 0 && !SKIP_SEARCH) {
-      const collectionId = await findCollectionId(r.title, r.artist);
-      if (collectionId) {
-        tracks = await fetchTracks(collectionId);
+      const found = await findCollectionIdWithFallback(r.title, r.artist, r.native_language);
+      if (found) {
+        const result = await fetchTracksWithFallback(found.id, r.native_language);
+        tracks = result.tracks;
+        store  = result.store || found.store;
         if (tracks.length > 0) {
           via = 'bySearch';
-          // Persist the resolved iTunes ID so future lookups skip the search.
           if (!DRY_RUN && !r.itunes_id) {
-            await db.from('releases').update({ itunes_id: collectionId }).eq('id', r.id);
+            await db.from('releases').update({ itunes_id: found.id }).eq('id', r.id);
           }
         }
       }
     }
 
     if (tracks.length > 0 && via) {
-      counts[via]++;
-      process.stdout.write(`✓ ${tracks.length} tracks (${via === 'byId' ? 'id' : 'search'})\n`);
+      const isRegional = store !== 'US' && store !== '';
+      if (isRegional) counts.regionalFallback++;
+      if (via === 'byId') counts.byId++; else counts.bySearch++;
+      process.stdout.write(`✓ ${tracks.length} tracks (${via === 'byId' ? 'id' : 'search'}${isRegional ? ` ${store}` : ''})\n`);
       if (!DRY_RUN) {
         const update: Record<string, any> = { tracklist: tracks };
         if (r.total_tracks == null) update.total_tracks = tracks.length;
@@ -214,7 +288,9 @@ async function main() {
       process.stdout.write('no tracks\n');
     }
 
-    state.processedIds.add(r.id);
+    // Only add to state when we have no itunes_id (search-only path) so that
+    // id-based lookups are always retried on the next run.
+    if (!r.itunes_id) state.processedIds.add(r.id);
     if (!DRY_RUN && (i + 1) % 50 === 0) saveState(state);
   }
 
@@ -222,9 +298,10 @@ async function main() {
 
   console.log(`
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Filled via itunes_id : ${counts.byId}
-  Filled via search    : ${counts.bySearch}
-  No tracks found      : ${counts.none}
+  Filled via itunes_id   : ${counts.byId}
+  Filled via search      : ${counts.bySearch}
+    of which regional    : ${counts.regionalFallback}
+  No tracks found        : ${counts.none}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 `);
 }
