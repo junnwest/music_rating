@@ -21,8 +21,8 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 **Windows — backend + web prep (`apps/web/`):** ✅ Instinct rating mode shipped end-to-end (2026-06-17/18). All three migrations applied to prod (see table below).
 - ✅ Elo math (`lib/elo.ts`) + `/api/rate/compare`; essentials removed; Spotify OAuth scopes added.
 - ✅ Album page **Add/Save** redesign (`AddModal` popup); Settings Manual/Instinct selector + 0.1 precision + single scrollable page; hard delete-account (`/api/account/delete`).
-- ⏳ **Owed:** Korean i18n for the Add modal (English-only now); verify Spotify provider scopes in the Supabase dashboard; verify `20260617000001` applied; Instinct scores feeding profile/Silla stats.
-- ▶ **Next (decided): build the `tracks` table** (songs as first-class) — full design + open URL-scheme detail in **[SONGS_PLAN.md](SONGS_PLAN.md)**. A backfill script populates `tracks` from `releases.tracklist` JSONB (long-running — run overnight).
+- ⏳ **Owed:** Korean i18n for the Add modal (English-only now); verify Spotify provider scopes in the Supabase dashboard; Instinct scores feeding profile/Silla stats.
+- ▶ **Songs as first-class (in progress):** `tracks` table created + applied (`20260618000000`); `npm run backfill:tracks` populating from `releases.tracklist` (run overnight, then one cleanup re-run to catch releases added behind the cursor). Next: song detail pages → song ratings → home/feed/search song sections. Full plan in **[SONGS_PLAN.md](SONGS_PLAN.md)**.
 
 **Mac — iOS Swift app (`apps/ios/`) — scaffolding done, build next:**
 1. ✅ Xcode project — bundle ID `com.sillajuku.app`, Supabase Swift SDK 2.48.0 via SPM, URL scheme `sillajuku://`, Debug signing disabled
@@ -48,8 +48,9 @@ All migrations applied. Nothing pending. If `supabase db push` is blocked by tim
 
 | File | What it adds | Prod |
 |------|-------------|------|
+| `20260618000000_tracks_table.sql` | `tracks` table (songs as first-class) — populated by `npm run backfill:tracks` | ✅ applied 2026-06-18 (SQL editor) |
 | `20260617000002_ratings_score_nullable.sql` | Drops NOT NULL on `ratings.score` (Instinct rows store `elo_score`, no star score) | ✅ applied 2026-06-18 (SQL editor) |
-| `20260617000001_manual_rating_step.sql` | `manual_rating_step` on profiles (0.5 default / 0.1) — Manual rating precision toggle | ⚠️ verify applied (SQL editor) |
+| `20260617000001_manual_rating_step.sql` | `manual_rating_step` on profiles (0.5 default / 0.1) — Manual rating precision toggle | ✅ applied 2026-06-18 (SQL editor) |
 | `20260617000000_instinct_rating_mode.sql` | `rating_mode` on profiles, `elo_score`/`elo_games` on ratings, `pairwise_comparisons` table + RLS (Instinct mode) | ✅ applied 2026-06-17 (SQL editor) |
 | `20260615000000_add_apple_music_platform.sql` | Extends `preferred_streaming_platform` CHECK constraint to include `apple_music` | ⏳ pending — run via SQL editor |
 | `20260611000001_user_id_by_email_prefix_fn.sql` | `get_user_id_by_email_prefix` SECURITY DEFINER SQL function — replaces `auth.admin.listUsers(1000)` on profile page | ✅ applied (SQL editor) |
