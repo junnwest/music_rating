@@ -4,6 +4,7 @@ import { createServerClient } from '../../../../lib/supabaseServer';
 import { isUUID } from '../../../../lib/dbCache';
 import { TrackStreamingButtons } from '../../../../components/YouTubeMusicButton';
 import StarRatingWidget from '../../../../components/StarRatingWidget';
+import QuickAddButton from '../../../../components/QuickAddButton';
 
 function formatDuration(ms: number | null): string {
   if (!ms) return '';
@@ -94,8 +95,16 @@ export default async function SongPage({ params }: { params: { trackId: string }
         </div>
       </div>
 
-      {/* Streaming */}
-      <div className="mt-6">
+      {/* Save + streaming */}
+      <div className="mt-6 flex items-center gap-3">
+        <QuickAddButton
+          albumId={track.release_id}
+          albumTitle={release?.title ?? track.title}
+          albumArtist={artistName}
+          coverUrl={cover}
+          trackTitle={track.title}
+          trackPosition={track.position}
+        />
         <TrackStreamingButtons artist={artistName} track={track.title} />
       </div>
 

@@ -59,6 +59,7 @@ export default function StarRatingWidget({ target, compact = false }: { target: 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
+  const [compactRated, setCompactRated] = useState(false);
 
   useEffect(() => {
     if (!supabase) return;
@@ -67,6 +68,18 @@ export default function StarRatingWidget({ target, compact = false }: { target: 
 
   const refresh = useCallback(async () => {
     if (!session || !supabase) return;
+
+    // Compact (tracklist rows): one cheap per-row lookup — just "is this item
+    // rated?" (manual score OR instinct elo). No profile fetch, no global ranked
+    // list — those would be N+1 across every row. Score/rank live on the detail page.
+    if (compact) {
+      let q = supabase.from(isSong ? 'track_ratings' : 'ratings').select('score, elo_score').eq('user_id', session.user.id).eq('release_id', releaseId);
+      if (isSong) q = q.eq('track_position', position!);
+      const { data } = await q.maybeSingle();
+      setCompactRated(!!data && (data.score != null || data.elo_score != null));
+      return;
+    }
+
     const { data: profile } = await supabase
       .from('profiles').select('rating_mode').eq('id', session.user.id).maybeSingle();
     const mode = profile?.rating_mode === 'instinct' ? 'instinct' : 'manual';
@@ -92,7 +105,7 @@ export default function StarRatingWidget({ target, compact = false }: { target: 
       const { data } = await q.maybeSingle();
       setManualScore(data?.score != null ? Number(data.score) : null);
     }
-  }, [session, selfKey]);
+  }, [session, selfKey, compact]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
@@ -124,24 +137,18 @@ export default function StarRatingWidget({ target, compact = false }: { target: 
   const hasRating = ratingMode === 'instinct' ? instinctRated : manualScore !== null;
   const revealed = instinctTotal >= INSTINCT_REVEAL_THRESHOLD && instinctScore !== null;
 
-  // ── Compact (tracklist row): score chip + Add/Re-rank, no delete ────────────
+  // ── Compact (tracklist row): a single Add/Re-rank affordance, no delete.
+  // Score/rank are shown on the song's own page, not in the row. ───────────────
   if (compact) {
     return (
-      <div className="relative flex items-center gap-2 flex-shrink-0">
-        {hasRating && ratingMode === 'manual' && manualScore !== null && (
-          <span className="text-[12px] font-bold text-[#E8A020] tabular-nums">{manualScore.toFixed(1)}</span>
-        )}
-        {hasRating && ratingMode === 'instinct' && (
-          revealed
-            ? <span className="text-[12px] font-bold text-[#E8A020] tabular-nums">{instinctScore!.toFixed(1)}</span>
-            : <span className="text-[10px] text-muted">rated</span>
-        )}
+      <div className="relative flex items-center flex-shrink-0">
         <button
-          onClick={() => openModal(hasRating ? 'rerank' : 'add')}
-          aria-label={hasRating ? 'Re-rank' : 'Add rating'}
-          className="inline-flex items-center justify-center p-1 rounded-md text-muted hover:text-ink transition"
+          onClick={() => openModal(compactRated ? 'rerank' : 'add')}
+          aria-label={compactRated ? 'Re-rank' : 'Add rating'}
+          title={compactRated ? 'Re-rank' : 'Rate'}
+          className={`inline-flex items-center justify-center p-1 rounded-md transition ${compactRated ? 'text-[#E8A020] hover:opacity-80' : 'text-muted hover:text-ink'}`}
         >
-          {hasRating ? <RefreshCw size={13} /> : <Plus size={14} />}
+          {compactRated ? <RefreshCw size={13} /> : <Plus size={14} />}
         </button>
 
         {open && <AddModal target={target} mode={modalMode} onClose={() => setOpen(false)} onSaved={() => void refresh()} />}
