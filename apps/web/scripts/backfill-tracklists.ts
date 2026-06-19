@@ -48,17 +48,17 @@ const BATCH_LIMIT     = LIMIT_ARG ? parseInt(LIMIT_ARG.split('=')[1]) : Infinity
 const STATE_PATH      = path.resolve('scripts/backfill-tracklists-state.json');
 
 const ITUNES_BASE  = 'https://itunes.apple.com';
-// 650ms (~92 req/min) throttled hard on the full ~30k-lookup run — a large
-// fraction got 429'd, exhausted retries, and were wrongly recorded as "no
-// tracks". Slowed to ~1.0–1.5s/req with jitter so a single calm pass fills
-// nearly everything without re-tripping the limiter. (Probed ids all return
-// songs fine; the gap was throttling, not missing data.)
-const ITUNES_DELAY = 1000; // base; jitter added per request in itunesGet()
+// Modest delay + the 429 backoff below is enough; the main cause of the "no
+// tracks" gap was NOT throttling — it was region mismatch. The song-lookup
+// endpoint requires the album to be available in the QUERIED store, and a huge
+// share of releases (Brazilian, Japanese, German, French…) simply aren't in the
+// US store, so a US-only lookup returned nothing. Fixed by trying a broad
+// storefront rotation below (FALLBACK_STORES).
+const ITUNES_DELAY = 800; // base; jitter added per request in itunesGet()
 
-// Regional store fallback order per native_language ISO code.
-// iTunes collection IDs are global, but the song-lookup endpoint requires the
-// album to be available in the queried store. Many Asian artists are only in
-// their regional store, not the US store.
+// iTunes collection IDs are global, but song-lookup requires the album to be in
+// the queried store. native_language biases the most-likely stores to the front
+// so the common case hits early.
 const LANG_TO_STORES: Record<string, string[]> = {
   ko: ['KR'],
   ja: ['JP'],
@@ -70,6 +70,29 @@ const LANG_TO_STORES: Record<string, string[]> = {
   th: ['TH'],
   vi: ['VN'],
 };
+
+// Broad storefront rotation, tried (after US + any native_language stores) when
+// a lookup/search comes up empty — stop at the first store that returns songs.
+// Probing showed many region-locked albums resolve in ANY non-US store while a
+// few need a specific one (e.g., a German album only in MX), so we sweep all
+// real markets ordered by size. Coverage over speed (per the near-100% goal).
+const FALLBACK_STORES = [
+  'GB', 'DE', 'JP', 'FR', 'BR', 'CA', 'AU', 'MX', 'IT', 'ES', 'KR', 'NL',
+  'RU', 'IN', 'SE', 'TR', 'PL', 'ID', 'TH', 'VN', 'PH', 'TW', 'HK', 'CN',
+  'AR', 'CL', 'CO', 'PT', 'BE', 'CH', 'AT', 'IE', 'NZ', 'ZA', 'NG', 'SA',
+  'AE', 'EG', 'GR', 'NO', 'DK', 'FI', 'MY', 'SG',
+];
+
+// US is tried separately first; this returns the de-duped fallback order.
+function orderedStores(nativeLang: string | null): string[] {
+  const front = nativeLang ? (LANG_TO_STORES[nativeLang] ?? []) : [];
+  const seen = new Set<string>(['US']);
+  const out: string[] = [];
+  for (const s of [...front, ...FALLBACK_STORES]) {
+    if (!seen.has(s)) { seen.add(s); out.push(s); }
+  }
+  return out;
+}
 
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -126,13 +149,12 @@ async function fetchTracksInStore(collectionId: number, country?: string): Promi
   return mapTracks(data.results ?? []);
 }
 
-// Try US store first, then regional stores based on native_language.
+// Try US store first, then sweep the full storefront rotation. Stop at first hit.
 async function fetchTracksWithFallback(collectionId: number, nativeLang: string | null): Promise<{ tracks: Track[]; store: string }> {
   const tracks = await fetchTracksInStore(collectionId);
   if (tracks.length > 0) return { tracks, store: 'US' };
 
-  const stores = nativeLang ? (LANG_TO_STORES[nativeLang] ?? []) : [];
-  for (const store of stores) {
+  for (const store of orderedStores(nativeLang)) {
     const regional = await fetchTracksInStore(collectionId, store);
     if (regional.length > 0) return { tracks: regional, store };
   }
@@ -159,13 +181,12 @@ async function findCollectionIdInStore(title: string, artist: string, country?: 
   return match?.collectionId ?? null;
 }
 
-// Try US store search first, then regional stores based on native_language.
+// Try US store search first, then sweep the full storefront rotation.
 async function findCollectionIdWithFallback(title: string, artist: string, nativeLang: string | null): Promise<{ id: number; store: string } | null> {
   const id = await findCollectionIdInStore(title, artist);
   if (id) return { id, store: 'US' };
 
-  const stores = nativeLang ? (LANG_TO_STORES[nativeLang] ?? []) : [];
-  for (const store of stores) {
+  for (const store of orderedStores(nativeLang)) {
     const regionalId = await findCollectionIdInStore(title, artist, store);
     if (regionalId) return { id: regionalId, store };
   }
