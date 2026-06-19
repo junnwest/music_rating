@@ -368,6 +368,8 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
                       {track.title}
                     </span>
                   )}
+                  <TrackStreamingButtons artist={track.artists || album.artist} track={track.title} />
+                  <QuickAddButton saveIcon albumId={album.id} albumTitle={album.title} albumArtist={album.artist} coverUrl={album.coverUrl} trackTitle={track.title} trackPosition={track.position} />
                   {trackId && (
                     <StarRatingWidget
                       compact
@@ -382,8 +384,6 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
                       }}
                     />
                   )}
-                  <TrackStreamingButtons artist={track.artists || album.artist} track={track.title} />
-                  <QuickAddButton albumId={album.id} albumTitle={album.title} albumArtist={album.artist} coverUrl={album.coverUrl} trackTitle={track.title} trackPosition={track.position} />
                 </div>
               );
             })}

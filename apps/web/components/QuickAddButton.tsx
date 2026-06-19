@@ -13,11 +13,13 @@ interface Props {
   trackTitle?: string;
   trackPosition?: number;
   overlay?: boolean;
+  /** Inline (non-overlay): render a bookmark "save" icon instead of a plus. */
+  saveIcon?: boolean;
 }
 
 export default function QuickAddButton({
   albumId, albumTitle, albumArtist, coverUrl,
-  trackTitle, trackPosition, overlay = false,
+  trackTitle, trackPosition, overlay = false, saveIcon = false,
 }: Props) {
   const {
     addToActive, removeFromActive, removeTrackFromActive,
@@ -127,10 +129,10 @@ export default function QuickAddButton({
     trigger = (
       <button
         onClick={handleAdd}
-        title={isTrack ? `Add track to ${activeListName}` : `Add to ${activeListName}`}
+        title={isTrack ? `Save track to ${activeListName}` : `Save to ${activeListName}`}
         className="flex-shrink-0 p-0.5 transition text-muted hover:text-ink"
       >
-        <Plus size={13} />
+        {saveIcon ? <Bookmark size={13} /> : <Plus size={13} />}
       </button>
     );
   }

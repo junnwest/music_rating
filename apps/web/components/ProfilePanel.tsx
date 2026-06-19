@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Settings as SettingsIcon } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
+import { eloToScore } from '../lib/elo';
 import UserAvatar from './UserAvatar';
 import CreateListSection from './CreateListSection';
 import type { Session } from '@supabase/supabase-js';
@@ -319,7 +320,7 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
       supabase.from('profiles').select('display_name, username, bio').eq('id', userId).maybeSingle(),
       supabase
         .from('ratings')
-        .select('id, score, status, note, created_at, release_id, releases(id, title, artist, cover_url)')
+        .select('id, score, elo_score, status, note, created_at, release_id, releases(id, title, artist, cover_url)')
         .eq('user_id', userId)
         .order('created_at', { ascending: false }),
       supabase
@@ -350,7 +351,13 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
     if (prof?.bio) setBioText(prof.bio);
 
     setLists(listsRes.data ?? []);
-    setRatings(ratingsRes.data ?? []);
+    // Effective score: Manual rows use `score`; Instinct rows have no star score,
+    // so derive a display score from `elo_score` (eloToScore is absolute). This
+    // makes the rated-grid label + avg/distribution/capsule work for both modes.
+    setRatings((ratingsRes.data ?? []).map((r: any) => ({
+      ...r,
+      score: r.score != null ? r.score : (r.elo_score != null ? eloToScore(Number(r.elo_score)) : null),
+    })));
     setFollowerCount(followersRes.count ?? 0);
     setFollowingCount(followingRes.count ?? 0);
     setCommentCount(commentsRes.count ?? 0);

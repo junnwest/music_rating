@@ -98,6 +98,7 @@ export default async function SongPage({ params }: { params: { trackId: string }
       {/* Save + streaming */}
       <div className="mt-6 flex items-center gap-3">
         <QuickAddButton
+          saveIcon
           albumId={track.release_id}
           albumTitle={release?.title ?? track.title}
           albumArtist={artistName}

@@ -6,6 +6,14 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-19 — Instinct/songs QA feedback round:**
+
+From a live prod smoke test:
+- **Profile rated grid showed no label for Instinct ratings** (it rendered off `ratings.score`, null for Instinct). Fixed in `ProfilePanel`: query now selects `elo_score`, and ratings are mapped to an effective `score = score ?? eloToScore(elo_score)` (eloToScore is absolute, no ranking needed) — so the grid label, average, distribution, and capsule all work for Instinct. Leaderboard Silla scoring still Manual-only (separate, owed).
+- **Tracklist had two "+" buttons** (rate + save, both plus icons). `QuickAddButton` gained a `saveIcon` prop (bookmark instead of plus); album tracklist reordered so Save (bookmark) precedes the rating **+** which is now rightmost; song-page Save also uses the bookmark.
+- **Import modal copy** softened (was too technical): "Bring your ratings with you? … we'll use them as your starting point … fine-tune to match your taste." Now mentions albums **and** songs (import covers both). en + ko.
+- **Known/not-code:** the `track_pairwise_comparisons` "not found in schema cache" error during song comparisons is a Supabase **PostgREST schema-cache** staleness after creating the table via SQL editor — fix with `notify pgrst, 'reload schema';` (or Dashboard → Settings → API → reload). Song Instinct drift is blocked until that's reloaded.
+
 **2026-06-18 — Song ratings: Add = rate, full Manual + Instinct parity (SONGS_PLAN step 4):**
 
 Corrected my earlier read: per the Add/Save pivot, **Add = rate**, and `QuickAddButton` (collections) = **Save**. So song rating got the full album-parity flow.
