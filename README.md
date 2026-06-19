@@ -21,8 +21,9 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 **Windows — backend + web prep (`apps/web/`):** ✅ Instinct rating mode shipped end-to-end (2026-06-17/18). All three migrations applied to prod (see table below).
 - ✅ Elo math (`lib/elo.ts`) + `/api/rate/compare`; essentials removed; Spotify OAuth scopes added.
 - ✅ Album page **Add/Save** redesign (`AddModal` popup); Settings Manual/Instinct selector + 0.1 precision + single scrollable page; hard delete-account (`/api/account/delete`).
-- ⏳ **Owed:** Korean i18n for the Add modal (English-only now); verify Spotify provider scopes in the Supabase dashboard; Instinct scores feeding profile/Silla stats.
-- ▶ **Songs as first-class (in progress):** `tracks` table created + applied (`20260618000000`); `npm run backfill:tracks` ✅ complete (126,634 releases → 1,546,647 tracks). **Tracklist gap fixed:** 56,976 non-singles (30%) had null tracklist due to iTunes throttling during ingest + regional store mismatches (zh/ja/ko). `backfill-tracklists.ts` improved — regional store fallback (KR/JP/TW/CN/HK/IN/ID/TH/VN) + always retries releases that have `itunes_id` regardless of state file. ⏳ `backfill:tracklists` + `backfill:embeddings` running in parallel now. After both finish: `npm run backfill:tracks` (re-populate tracks table with newly-filled tracklists), then `npm run queue:ingest:albums` (21,254 artists still pending). Then: song detail pages → song ratings → home/feed/search song sections. Full plan in **[SONGS_PLAN.md](SONGS_PLAN.md)**.
+- ✅ **Instinct scoring reworked + Manual→Instinct import (2026-06-18):** display score is now an absolute sentiment-anchored Elo curve (`eloToScore`, replaces rank interpolation) so a loved library clusters high instead of smearing 0–5. Switching Manual→Instinct offers to import existing star ratings as Elo seeds (`starToElo` via `/api/rate/seed-from-manual`); imported rows drift *gradually* (K=16 via `IMPORT_GAMES=30`), fresh ratings place fast (K=40). `InstinctImportModal` (Use / Start fresh), en+ko i18n. ⏳ **Not yet smoke-tested in the live app.**
+- ⏳ **Owed:** Korean i18n for the Add modal (English-only now); verify Spotify provider scopes in the Supabase dashboard; Instinct scores feeding profile/Silla stats; mirror `eloToScore`/`starToElo`/`IMPORT_GAMES` into the Swift `elo.ts` for iOS parity.
+- ▶ **Songs as first-class (in progress):** `tracks` table created + applied (`20260618000000`); `npm run backfill:tracks` ✅ complete (126,634 releases → 1,546,647 tracks). **Tracklist gap fixed:** 56,976 non-singles (30%) had null tracklist due to iTunes throttling during ingest + regional store mismatches (zh/ja/ko). `backfill-tracklists.ts` improved — regional store fallback (KR/JP/TW/CN/HK/IN/ID/TH/VN) + always retries releases that have `itunes_id` regardless of state file. ✅ `backfill:tracklists` + `backfill:embeddings` both finished (embeddings re-run: 69,795 embedded, 0 failed). ▶ `npm run backfill:tracks` re-running now (repopulating the tracks table with the newly-filled tracklists). After it finishes: `npm run queue:ingest:albums` (21,254 artists still pending), then **rebuild the HNSW index** so the 69,795 new embeddings become searchable (they're inserted but not yet indexed). Then: song detail pages → song ratings → home/feed/search song sections. Full plan in **[SONGS_PLAN.md](SONGS_PLAN.md)**.
 
 **Mac — iOS Swift app (`apps/ios/`) — scaffolding done, build next:**
 1. ✅ Xcode project — bundle ID `com.sillajuku.app`, Supabase Swift SDK 2.48.0 via SPM, URL scheme `sillajuku://`, Debug signing disabled
@@ -34,7 +35,7 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 7. **Next:** Build out tab screens — Home (genre carousels from DB), Search, Rankings, Activity, Profile — see `WEB_PARITY.md` for spec
 8. **Later:** MusicKit integration (Apple login) + Spotify `user-top-read` sync (Spotify login) — see `WEB_PARITY.md` §3
 
-**Catalog expansion (ongoing — Windows):** `queue:ingest:albums` paused (killed to run tracklist fix; 21,254 artists still pending — restart with `npm run queue:ingest:albums` after `backfill:tracklists` + `backfill:embeddings` finish). Current catalog: 418,514 releases (127k albums, 49k EPs, 230k singles). When ingest finishes: enrichment backfills in order — `backfill:genres` → `backfill:genres:lastfm` → `enrich:genres:lastfm` → `backfill:native` → `backfill:covers` → rebuild HNSW index → `npm run analyze:coverage:albums` + `catalog:status`. Do **not** re-run discovery (saturated).
+**Catalog expansion (ongoing — Windows):** `queue:ingest:albums` paused (killed to run tracklist fix; 21,254 artists still pending — restart with `npm run queue:ingest:albums` after `backfill:tracks` finishes; `backfill:tracklists` + `backfill:embeddings` are ✅ done). Current catalog: 418,514 releases (127k albums, 49k EPs, 230k singles). When ingest finishes: enrichment backfills in order — `backfill:genres` → `backfill:genres:lastfm` → `enrich:genres:lastfm` → `backfill:native` → `backfill:covers` → rebuild HNSW index → `npm run analyze:coverage:albums` + `catalog:status`. Do **not** re-run discovery (saturated).
 
 #### Catalog composition + storage (analyzed 2026-06-14 session 3)
 
@@ -83,8 +84,8 @@ All pipeline steps done including HNSW index rebuild (2026-06-09). **Next action
 | queue:ingest (runs 1–6) | `npm run queue:ingest` | ✅ done — ~347k releases |
 | queue:discover (runs 1–4) | `npm run queue:discover` | ✅ done — queue stable |
 | enrich:genres:lastfm | `npm run enrich:genres:lastfm` | ✅ done (2026-06-07) — 15,460 enriched |
-| backfill:embeddings | `npm run backfill:embeddings` | ✅ done (2026-06-10) — all ~347k releases embedded |
-| Rebuild HNSW index | psql direct (port 5432) | ✅ done (2026-06-09, Supabase SQL editor) |
+| backfill:embeddings | `npm run backfill:embeddings` | ✅ done (2026-06-10); re-run 2026-06-18 for expansion releases — +69,795 embedded, 0 failed |
+| Rebuild HNSW index | psql direct (port 5432) | ✅ done (2026-06-09); ⏳ **rebuild owed** — the 69,795 new embeddings (2026-06-18) aren't indexed yet |
 | backfill:tracklists | `npm run backfill:tracklists` | ✅ done (2026-06-16) — 107,778 filled (106,652 via itunes_id, 1,126 via search), 7,826 no tracks (93% coverage) |
 
 #### Catalog pipeline — completed steps (historical)

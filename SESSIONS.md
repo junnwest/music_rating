@@ -6,6 +6,8 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-18 — Catalog jobs progress:** `backfill:embeddings` re-run finished (69,795 embedded, 0 failed) and `backfill:tracklists` is done; `backfill:tracks` is re-running now to repopulate the tracks table with the newly-filled tracklists. After it finishes: `queue:ingest:albums` (21,254 artists pending), then **rebuild the HNSW index** — the 69,795 new vectors are inserted but not yet indexed, so hybrid search won't surface them until the rebuild.
+
 **2026-06-18 — Instinct: absolute (sentiment-anchored) scores + Manual→Instinct import:**
 
 Two coordinated changes to Instinct mode, decided with the user.
