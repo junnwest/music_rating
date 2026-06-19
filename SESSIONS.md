@@ -6,6 +6,16 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-18 — Song ratings: Add = rate, full Manual + Instinct parity (SONGS_PLAN step 4):**
+
+Corrected my earlier read: per the Add/Save pivot, **Add = rate**, and `QuickAddButton` (collections) = **Save**. So song rating got the full album-parity flow.
+- **Migration `20260618000002_song_ratings.sql`** (⏳ apply via SQL editor): `track_ratings.elo_score`/`elo_games` (mirrors `ratings`) + new `track_pairwise_comparisons` table + RLS. Per-type Instinct — songs compare only with songs. (`track_ratings.score` was already nullable; the table has no `status` column, so song upserts don't set one.)
+- **`/api/rate/compare-song`** — mirror of `/api/rate/compare` but track-keyed (`{winner,loser}` = `{releaseId, position, title}`); passes `track_title` on the upsert (NOT NULL, checked pre-ON-CONFLICT).
+- **`AddModal` + `StarRatingWidget` generalized** to a `RateTarget` discriminated union (`album` | `song`). They branch storage (`ratings`/`pairwise_comparisons` vs `track_ratings`/`track_pairwise_comparisons`), opponent pool, compare endpoint, and final-score derivation by kind. Same Manual + Instinct flow, same `eloToScore`/`starToElo` math. Album reveal (lists+comment) is album-only; songs skip it (song comments not built).
+- **Song page** now uses `StarRatingWidget` (song mode) — Add/Re-rank/Delete + score, replacing the interim `TrackStarRating`. **Album tracklist rows** use a new **compact** `StarRatingWidget` variant (Add/Re-rank + tiny score, no delete — delete lives on the song page) next to Save (`QuickAddButton`).
+- ⚠️ **Gap flagged:** `/api/rate/seed-from-manual` (Manual→Instinct import) only seeds albums (`ratings`), not songs (`track_ratings`) — extend it as a follow-up. `TrackStarRating.tsx` is now unused (left in place).
+- tsc + next build clean (`/song/[trackId]`, `/api/rate/compare-song` generate). ⏳ Not yet smoke-tested live.
+
 **2026-06-18 — Album page polish + song pages v1 (SONGS_PLAN steps 2–3):**
 
 - **Dark-mode fix:** the comments **Post** button (`ReviewsSection`) used `bg-ink text-white` with no dark override → light-on-white in dark mode. Added the standard `dark:bg-[#F0F0EE] dark:text-[#111111]`.

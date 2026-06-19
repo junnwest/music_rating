@@ -305,14 +305,16 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
             {/* User rating */}
             <div className="mt-[22px]">
               <StarRatingWidget
-                releaseId={album.id}
-                releaseTitle={album.title}
-                releaseArtist={album.artist}
-                releaseDate={album.date}
-                releaseCountry={null}
-                releaseType={album.releaseType}
-                coverUrl={album.coverUrl}
-                genres={album.genres}
+                target={{
+                  kind: 'album',
+                  id: album.id,
+                  title: album.title,
+                  artist: album.artist,
+                  coverUrl: album.coverUrl,
+                  date: album.date,
+                  releaseType: album.releaseType,
+                  genres: album.genres,
+                }}
               />
             </div>
           </div>
@@ -365,6 +367,20 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
                     <span className="text-[14px] font-medium text-ink flex-1 truncate">
                       {track.title}
                     </span>
+                  )}
+                  {trackId && (
+                    <StarRatingWidget
+                      compact
+                      target={{
+                        kind: 'song',
+                        trackId,
+                        releaseId: album.id,
+                        position: track.position,
+                        title: track.title,
+                        artist: track.artists || album.artist,
+                        coverUrl: album.coverUrl,
+                      }}
+                    />
                   )}
                   <TrackStreamingButtons artist={track.artists || album.artist} track={track.title} />
                   <QuickAddButton albumId={album.id} albumTitle={album.title} albumArtist={album.artist} coverUrl={album.coverUrl} trackTitle={track.title} trackPosition={track.position} />

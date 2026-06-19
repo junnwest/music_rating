@@ -49,6 +49,7 @@ All migrations applied. Nothing pending. If `supabase db push` is blocked by tim
 
 | File | What it adds | Prod |
 |------|-------------|------|
+| `20260618000002_song_ratings.sql` | `track_ratings.elo_score`/`elo_games` (Instinct for songs) + `track_pairwise_comparisons` table + RLS (song-vs-song comparisons) | ⏳ pending — run via SQL editor |
 | `20260618000001_ratings_status_default.sql` | Documents legacy `ratings.status` (prod-only) + adds `DEFAULT 'Listened'` so upserts that omit it stop failing with 23502 (fixes Instinct comparison) | ⏳ pending — run via SQL editor |
 | `20260618000000_tracks_table.sql` | `tracks` table (songs as first-class) — populated by `npm run backfill:tracks` | ✅ applied 2026-06-18 (SQL editor) |
 | `20260617000002_ratings_score_nullable.sql` | Drops NOT NULL on `ratings.score` (Instinct rows store `elo_score`, no star score) | ✅ applied 2026-06-18 (SQL editor) |

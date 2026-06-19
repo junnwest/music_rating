@@ -9,16 +9,17 @@ import { seedElo, deriveInstinctScores, INSTINCT_REVEAL_THRESHOLD, type Sentimen
 
 // NOTE: English-only copy for now (flow still settling); i18n pass to follow.
 
-interface AlbumInfo {
-  id: string;
-  title: string;
-  artist: string;
-  coverUrl: string | null;
-  date: string | null;
-  releaseType: string;
-  genres?: string[];
-}
-interface RankedAlbum { id: string; elo: number; title: string; artist: string; coverUrl: string | null; }
+/**
+ * What's being rated. Albums write to `ratings` / `pairwise_comparisons`; songs
+ * write to `track_ratings` / `track_pairwise_comparisons` (per-type Instinct —
+ * songs only ever compare against other songs). The Manual + Instinct flow and
+ * the Elo math are identical for both.
+ */
+export type RateTarget =
+  | { kind: 'album'; id: string; title: string; artist: string; coverUrl: string | null; date: string | null; releaseType: string; genres?: string[] }
+  | { kind: 'song'; trackId: string; releaseId: string; position: number; title: string; artist: string; coverUrl: string | null };
+
+interface RankedItem { id: string; releaseId: string; position: number | null; elo: number; title: string; artist: string; coverUrl: string | null; }
 
 const BUCKETS: { key: Sentiment; label: string; hint: string }[] = [
   { key: 'bad', label: 'Bad', hint: 'Not for me' },
@@ -29,17 +30,23 @@ const MAX_COMPARISONS = 3;
 const STAR_PATH = 'M6 1 L7.3 4.1 L10.8 4.1 L8.0 6.2 L9.0 9.5 L6 7.5 L3.0 9.5 L4.0 6.2 L1.2 4.1 L4.7 4.1 Z';
 const MINT = '#E8A020';
 
-function MiniCover({ album, size = 56 }: { album: { title: string; coverUrl: string | null }; size?: number }) {
+function MiniCover({ item, size = 56 }: { item: { title: string; coverUrl: string | null }; size?: number }) {
   return (
     <div style={{ width: size, height: size }} className="rounded-lg overflow-hidden bg-surface flex-shrink-0">
-      {album.coverUrl ? <img src={album.coverUrl} alt={album.title} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-surface" />}
+      {item.coverUrl ? <img src={item.coverUrl} alt={item.title} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-surface" />}
     </div>
   );
 }
 
-export default function AddModal({ album, onClose, onSaved, mode = 'add' }: { album: AlbumInfo; onClose: () => void; onSaved?: () => void; mode?: 'add' | 'rerank' }) {
+export default function AddModal({ target, onClose, onSaved, mode = 'add' }: { target: RateTarget; onClose: () => void; onSaved?: () => void; mode?: 'add' | 'rerank' }) {
   const router = useRouter();
   const { playlists, addItemTo, removeItemFrom } = usePlaylist();
+
+  const isSong = target.kind === 'song';
+  const releaseId = target.kind === 'album' ? target.id : target.releaseId;
+  const position = target.kind === 'song' ? target.position : null;
+  // Stable key for the rated item (album = release id; song = release:position).
+  const selfKey = isSong ? `${releaseId}:${position}` : releaseId;
 
   const [uid, setUid] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -58,13 +65,13 @@ export default function AddModal({ album, onClose, onSaved, mode = 'add' }: { al
   const [sliderValue, setSliderValue] = useState(3.0);
 
   // Instinct
-  const [opponents, setOpponents] = useState<RankedAlbum[]>([]);
+  const [opponents, setOpponents] = useState<RankedItem[]>([]);
   const search = useRef({ lo: 0, hi: 0, left: 0 });
   const [, setRound] = useState(0);
   const [finalScore, setFinalScore] = useState<number | null>(null);
   const [totalRated, setTotalRated] = useState(0);
 
-  // Reveal: lists + comment
+  // Reveal: lists + comment (album only)
   const [addedLists, setAddedLists] = useState<Set<string>>(new Set()); // 'LL' or collection id
   const [comment, setComment] = useState('');
   const [commentPosted, setCommentPosted] = useState(false);
@@ -78,34 +85,54 @@ export default function AddModal({ album, onClose, onSaved, mode = 'add' }: { al
       setToken(session.access_token);
       const { data: profile } = await supabase
         .from('profiles').select('rating_mode, manual_rating_step').eq('id', session.user.id).maybeSingle();
-      const mode = profile?.rating_mode === 'instinct' ? 'instinct' : 'manual';
-      setRatingMode(mode);
+      const m = profile?.rating_mode === 'instinct' ? 'instinct' : 'manual';
+      setRatingMode(m);
       if (profile?.manual_rating_step) setRatingStep(Number(profile.manual_rating_step));
 
-      if (mode === 'instinct') {
-        const { data: rows } = await supabase
-          .from('ratings')
-          .select('release_id, elo_score, releases(id, title, artist, cover_url)')
-          .eq('user_id', session.user.id)
-          .not('elo_score', 'is', null);
-        const ranked: RankedAlbum[] = (rows ?? [])
-          .map((r: any) => ({ id: r.release_id, elo: Number(r.elo_score), title: r.releases?.title ?? '', artist: r.releases?.artist ?? '', coverUrl: r.releases?.cover_url ?? null }))
-          .filter((r) => r.id !== album.id)
-          .sort((a, b) => b.elo - a.elo);
-        setOpponents(ranked);
+      if (m === 'instinct') {
+        if (isSong) {
+          const { data: rows } = await supabase
+            .from('track_ratings')
+            .select('release_id, track_position, track_title, elo_score, releases(artist, cover_url)')
+            .eq('user_id', session.user.id)
+            .not('elo_score', 'is', null);
+          const ranked: RankedItem[] = (rows ?? [])
+            .map((r: any) => ({ id: `${r.release_id}:${r.track_position}`, releaseId: r.release_id, position: r.track_position, elo: Number(r.elo_score), title: r.track_title ?? '', artist: r.releases?.artist ?? '', coverUrl: r.releases?.cover_url ?? null }))
+            .filter((r) => r.id !== selfKey)
+            .sort((a, b) => b.elo - a.elo);
+          setOpponents(ranked);
+        } else {
+          const { data: rows } = await supabase
+            .from('ratings')
+            .select('release_id, elo_score, releases(id, title, artist, cover_url)')
+            .eq('user_id', session.user.id)
+            .not('elo_score', 'is', null);
+          const ranked: RankedItem[] = (rows ?? [])
+            .map((r: any) => ({ id: r.release_id, releaseId: r.release_id, position: null, elo: Number(r.elo_score), title: r.releases?.title ?? '', artist: r.releases?.artist ?? '', coverUrl: r.releases?.cover_url ?? null }))
+            .filter((r) => r.id !== selfKey)
+            .sort((a, b) => b.elo - a.elo);
+          setOpponents(ranked);
+        }
       } else {
-        const { data: r } = await supabase.from('ratings').select('score').eq('user_id', session.user.id).eq('release_id', album.id).maybeSingle();
-        if (r?.score != null) { setManualValue(Number(r.score)); setSliderValue(Number(r.score)); }
+        if (isSong) {
+          const { data: r } = await supabase.from('track_ratings').select('score').eq('user_id', session.user.id).eq('release_id', releaseId).eq('track_position', position!).maybeSingle();
+          if (r?.score != null) { setManualValue(Number(r.score)); setSliderValue(Number(r.score)); }
+        } else {
+          const { data: r } = await supabase.from('ratings').select('score').eq('user_id', session.user.id).eq('release_id', releaseId).maybeSingle();
+          if (r?.score != null) { setManualValue(Number(r.score)); setSliderValue(Number(r.score)); }
+        }
       }
       setLoading(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [album.id]);
+  }, [selfKey]);
 
+  // Albums: make sure the release row exists before writing a rating to it.
+  // Songs already have their parent release + tracks row (we arrived via them).
   const ensureReleaseRow = async () => {
-    if (!supabase) return;
+    if (!supabase || target.kind !== 'album') return;
     await supabase.from('releases').upsert(
-      { id: album.id, title: album.title, artist: album.artist, release_date: album.date, release_type: album.releaseType, cover_url: album.coverUrl, genres: album.genres?.join(',') ?? null },
+      { id: target.id, title: target.title, artist: target.artist, release_date: target.date, release_type: target.releaseType, cover_url: target.coverUrl, genres: target.genres?.join(',') ?? null },
       { onConflict: 'id', ignoreDuplicates: true },
     );
   };
@@ -115,8 +142,16 @@ export default function AddModal({ album, onClose, onSaved, mode = 'add' }: { al
     if (!uid || !supabase) return;
     setSaving(true); setError(null);
     await ensureReleaseRow();
-    await supabase.from('ratings').delete().eq('user_id', uid).eq('release_id', album.id);
-    const { error: e } = await supabase.from('ratings').insert({ user_id: uid, release_id: album.id, score: value, status: 'Listened' });
+    let e;
+    if (isSong) {
+      ({ error: e } = await supabase.from('track_ratings').upsert(
+        { user_id: uid, release_id: releaseId, track_position: position!, track_title: target.title, score: value },
+        { onConflict: 'user_id,release_id,track_position' },
+      ));
+    } else {
+      await supabase.from('ratings').delete().eq('user_id', uid).eq('release_id', releaseId);
+      ({ error: e } = await supabase.from('ratings').insert({ user_id: uid, release_id: releaseId, score: value, status: 'Listened' }));
+    }
     setSaving(false);
     if (e) { setError(e.message); return; }
     setManualValue(value);
@@ -129,10 +164,18 @@ export default function AddModal({ album, onClose, onSaved, mode = 'add' }: { al
     if (!uid || !supabase) return;
     setSaving(true); setError(null);
     await ensureReleaseRow();
-    const { error: e } = await supabase.from('ratings').upsert(
-      { user_id: uid, release_id: album.id, elo_score: seedElo(bucket), elo_games: 0, status: 'Listened' },
-      { onConflict: 'user_id,release_id' },
-    );
+    let e;
+    if (isSong) {
+      ({ error: e } = await supabase.from('track_ratings').upsert(
+        { user_id: uid, release_id: releaseId, track_position: position!, track_title: target.title, elo_score: seedElo(bucket), elo_games: 0 },
+        { onConflict: 'user_id,release_id,track_position' },
+      ));
+    } else {
+      ({ error: e } = await supabase.from('ratings').upsert(
+        { user_id: uid, release_id: releaseId, elo_score: seedElo(bucket), elo_games: 0, status: 'Listened' },
+        { onConflict: 'user_id,release_id' },
+      ));
+    }
     setSaving(false);
     if (e) { setError(e.message); return; }
     setRated(true);
@@ -149,8 +192,7 @@ export default function AddModal({ album, onClose, onSaved, mode = 'add' }: { al
   };
 
   // Re-rank (Instinct): the rating already exists, so skip the gut-check bucket
-  // (no reseed — preserves the album's current Elo + games) and go straight into
-  // comparisons against the existing ranked list.
+  // (no reseed — preserves current Elo + games) and go straight into comparisons.
   useEffect(() => {
     if (mode !== 'rerank' || loading || ratingMode !== 'instinct' || phase !== 'rate') return;
     setRated(true);
@@ -165,11 +207,24 @@ export default function AddModal({ album, onClose, onSaved, mode = 'add' }: { al
     const opponent = opponents[mid];
     if (!opponent) { void finish(); return; }
     setSaving(true); setError(null);
-    const res = await fetch('/api/rate/compare', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ winnerId: targetWins ? album.id : opponent.id, loserId: targetWins ? opponent.id : album.id }),
-    });
+
+    let res: Response;
+    if (isSong) {
+      const me = { releaseId, position: position!, title: target.title };
+      const opp = { releaseId: opponent.releaseId, position: opponent.position!, title: opponent.title };
+      res = await fetch('/api/rate/compare-song', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ winner: targetWins ? me : opp, loser: targetWins ? opp : me }),
+      });
+    } else {
+      res = await fetch('/api/rate/compare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ winnerId: targetWins ? releaseId : opponent.releaseId, loserId: targetWins ? opponent.releaseId : releaseId }),
+      });
+    }
+
     setSaving(false);
     if (!res.ok) { const { error: e } = await res.json().catch(() => ({ error: 'Comparison failed.' })); setError(e ?? 'Comparison failed.'); return; }
     if (targetWins) search.current.hi = mid; else search.current.lo = mid + 1;
@@ -180,40 +235,47 @@ export default function AddModal({ album, onClose, onSaved, mode = 'add' }: { al
 
   const finish = async () => {
     if (supabase && uid) {
-      const { data: rows } = await supabase.from('ratings').select('release_id, elo_score').eq('user_id', uid).not('elo_score', 'is', null);
-      const items = (rows ?? []).map((r: any) => ({ id: r.release_id, elo: Number(r.elo_score) }));
+      let items: { id: string; elo: number }[] = [];
+      if (isSong) {
+        const { data: rows } = await supabase.from('track_ratings').select('release_id, track_position, elo_score').eq('user_id', uid).not('elo_score', 'is', null);
+        items = (rows ?? []).map((r: any) => ({ id: `${r.release_id}:${r.track_position}`, elo: Number(r.elo_score) }));
+      } else {
+        const { data: rows } = await supabase.from('ratings').select('release_id, elo_score').eq('user_id', uid).not('elo_score', 'is', null);
+        items = (rows ?? []).map((r: any) => ({ id: r.release_id, elo: Number(r.elo_score) }));
+      }
       setTotalRated(items.length);
-      setFinalScore(deriveInstinctScores(items)[album.id] ?? null);
+      setFinalScore(deriveInstinctScores(items)[selfKey] ?? null);
     }
     onSaved?.();
     setPhase('done');
   };
 
-  // ── Reveal helpers: lists + comment ─────────────────────────────────────────
+  // ── Reveal helpers: lists + comment (album only) ────────────────────────────
   const toggleList = async (key: string, listId: string | null) => {
+    if (target.kind !== 'album') return;
     const isAdded = addedLists.has(key);
     if (isAdded) {
-      await removeItemFrom(listId, album.id);
+      await removeItemFrom(listId, target.id);
       setAddedLists((s) => { const n = new Set(s); n.delete(key); return n; });
     } else {
-      await addItemTo(listId, album.id, album.title, album.artist, album.coverUrl);
+      await addItemTo(listId, target.id, target.title, target.artist, target.coverUrl);
       setAddedLists((s) => new Set(s).add(key));
     }
   };
 
   const postComment = async () => {
-    if (!uid || !supabase || !comment.trim()) return;
+    if (!uid || !supabase || !comment.trim() || target.kind !== 'album') return;
     setSaving(true); setError(null);
     const { data: profile } = await supabase.from('profiles').select('username').eq('id', uid).maybeSingle();
     const username = profile?.username ?? 'user';
-    const { error: e } = await supabase.from('reviews').insert({ release_id: album.id, user_id: uid, username, body: comment.trim(), visibility: 'public' });
+    const { error: e } = await supabase.from('reviews').insert({ release_id: target.id, user_id: uid, username, body: comment.trim(), visibility: 'public' });
     setSaving(false);
     if (e) { setError(e.message); return; }
     setComment(''); setCommentPosted(true);
   };
 
   // ── Render ──────────────────────────────────────────────────────────────────
-  const Reveal = (
+  const Reveal = target.kind === 'album' && (
     <div className="mt-6 border-t border-divider pt-5 space-y-5">
       <div>
         <p className="text-[12px] font-semibold text-ink mb-2">Add to a list</p>
@@ -253,10 +315,10 @@ export default function AddModal({ album, onClose, onSaved, mode = 'add' }: { al
       <div className="bg-page rounded-2xl shadow-2xl w-full max-w-[460px] max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between p-5 pb-3">
           <div className="flex items-center gap-3 min-w-0">
-            <MiniCover album={album} />
+            <MiniCover item={target} />
             <div className="min-w-0">
-              <p className="text-[14px] font-bold text-ink truncate">{album.title}</p>
-              <p className="text-[12px] text-muted truncate">{album.artist}</p>
+              <p className="text-[14px] font-bold text-ink truncate">{target.title}</p>
+              <p className="text-[12px] text-muted truncate">{target.artist}</p>
             </div>
           </div>
           <button onClick={onClose} className="text-muted hover:text-ink transition p-1 flex-shrink-0"><X size={18} /></button>
@@ -285,12 +347,12 @@ export default function AddModal({ album, onClose, onSaved, mode = 'add' }: { al
                   <p className="text-[15px] font-bold text-ink text-center mb-1">Which do you prefer?</p>
                   <p className="text-[12px] text-muted text-center mb-6">Tap the one you like more.</p>
                   <div className="flex items-stretch justify-center gap-3">
-                    {[{ a: album, win: true }, { a: opponent, win: false }].map(({ a, win }, i) => (
+                    {[{ a: { title: target.title, coverUrl: target.coverUrl, artist: target.artist }, win: true }, { a: opponent, win: false }].map(({ a, win }, i) => (
                       <div key={i} className="contents">
                         {i === 1 && <div className="flex items-center text-[11px] font-bold text-muted">vs</div>}
                         <button onClick={() => handlePick(win)} disabled={saving}
                           className="flex flex-col items-center gap-2 w-full max-w-[160px] rounded-xl border border-divider bg-page p-3 hover:border-ink transition disabled:opacity-60 disabled:cursor-wait">
-                          <MiniCover album={a} size={120} />
+                          <MiniCover item={a} size={120} />
                           <div className="text-center w-full min-w-0">
                             <p className="text-[12px] font-bold text-ink truncate">{a.title}</p>
                             <p className="text-[11px] text-muted truncate">{a.artist}</p>

@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { createServerClient } from '../../../../lib/supabaseServer';
 import { isUUID } from '../../../../lib/dbCache';
 import { TrackStreamingButtons } from '../../../../components/YouTubeMusicButton';
-import TrackStarRating from '../../../../components/TrackStarRating';
+import StarRatingWidget from '../../../../components/StarRatingWidget';
 
 function formatDuration(ms: number | null): string {
   if (!ms) return '';
@@ -12,10 +12,9 @@ function formatDuration(ms: number | null): string {
 }
 
 // Song detail page. Songs are rows in the `tracks` table (see SONGS_PLAN.md);
-// metadata (cover, parent artist) comes from the parent release.
-// NOTE (v1): rating here uses the existing Manual `track_ratings` widget. The
-// full Add-modal + Instinct-for-songs flow (parity with albums) is the next
-// SONGS_PLAN step and will replace this widget.
+// metadata (cover, parent artist) comes from the parent release. Rating uses the
+// shared StarRatingWidget in song mode (Add = rate, Manual + Instinct, song-vs-song
+// comparisons) — full parity with albums.
 export default async function SongPage({ params }: { params: { trackId: string } }) {
   if (!isUUID(params.trackId)) notFound();
 
@@ -75,7 +74,17 @@ export default async function SongPage({ params }: { params: { trackId: string }
 
       {/* Rating + stats */}
       <div className="mt-7 flex flex-wrap items-center gap-x-6 gap-y-3">
-        <TrackStarRating releaseId={track.release_id} trackPosition={track.position} trackTitle={track.title} />
+        <StarRatingWidget
+          target={{
+            kind: 'song',
+            trackId: track.id,
+            releaseId: track.release_id,
+            position: track.position,
+            title: track.title,
+            artist: artistName,
+            coverUrl: cover,
+          }}
+        />
         <div className="text-[13px] text-muted">
           {ratingsCount > 0 ? (
             <span><span className="font-bold text-ink tabular-nums">{avgScore?.toFixed(1)}</span> avg · {ratingsCount} {ratingsCount === 1 ? 'rating' : 'ratings'}</span>
