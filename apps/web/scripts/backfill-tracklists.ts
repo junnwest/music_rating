@@ -48,7 +48,12 @@ const BATCH_LIMIT     = LIMIT_ARG ? parseInt(LIMIT_ARG.split('=')[1]) : Infinity
 const STATE_PATH      = path.resolve('scripts/backfill-tracklists-state.json');
 
 const ITUNES_BASE  = 'https://itunes.apple.com';
-const ITUNES_DELAY = 650;  // stay comfortably below iTunes 429 threshold
+// 650ms (~92 req/min) throttled hard on the full ~30k-lookup run — a large
+// fraction got 429'd, exhausted retries, and were wrongly recorded as "no
+// tracks". Slowed to ~1.0–1.5s/req with jitter so a single calm pass fills
+// nearly everything without re-tripping the limiter. (Probed ids all return
+// songs fine; the gap was throttling, not missing data.)
+const ITUNES_DELAY = 1000; // base; jitter added per request in itunesGet()
 
 // Regional store fallback order per native_language ISO code.
 // iTunes collection IDs are global, but the song-lookup endpoint requires the
@@ -71,7 +76,7 @@ function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 // ── iTunes ────────────────────────────────────────────────────────────────────
 
 async function itunesGet(url: string, attempt = 0): Promise<any> {
-  await sleep(ITUNES_DELAY);
+  await sleep(ITUNES_DELAY + Math.floor(Math.random() * 500)); // jitter avoids lockstep bursts
   try {
     const res = await fetch(url, { headers: { 'User-Agent': 'sillajuku-tracklist-backfill/1.0' } });
     if (res.status === 429 || res.status === 403) {
