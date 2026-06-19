@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Plus, Pencil } from 'lucide-react';
+import { Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { eloToScore, INSTINCT_REVEAL_THRESHOLD } from '../lib/elo';
 import AddModal from './AddModal';
@@ -58,6 +58,9 @@ export default function StarRatingWidget({
   const [instinctTotal, setInstinctTotal] = useState(0);
   const [instinctRated, setInstinctRated] = useState(false);
   const [open, setOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<'add' | 'rerank'>('add');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
 
   useEffect(() => {
@@ -96,7 +99,25 @@ export default function StarRatingWidget({
     coverUrl: coverUrl ?? null, date: releaseDate, releaseType, genres,
   };
 
-  const openModal = () => { if (session) setOpen(true); else setShowLogin(true); };
+  const openModal = (m: 'add' | 'rerank') => {
+    if (!session) { setShowLogin(true); return; }
+    setModalMode(m);
+    setOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (!session || !supabase) return;
+    setDeleting(true);
+    await supabase.from('ratings').delete().eq('user_id', session.user.id).eq('release_id', releaseId);
+    // Hygiene: drop this album's comparison rows. Other albums keep the Elo they
+    // already earned from those comparisons (not recomputed).
+    await supabase.from('pairwise_comparisons').delete()
+      .eq('user_id', session.user.id)
+      .or(`winner_release_id.eq.${releaseId},loser_release_id.eq.${releaseId}`);
+    setDeleting(false);
+    setConfirmDelete(false);
+    await refresh();
+  };
 
   const hasRating = ratingMode === 'instinct' ? instinctRated : manualScore !== null;
 
@@ -123,15 +144,53 @@ export default function StarRatingWidget({
         )
       )}
 
-      {/* Add / Edit button */}
-      <button
-        onClick={openModal}
-        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] text-[13px] font-bold hover:opacity-80 transition"
-      >
-        {hasRating ? <><Pencil size={13} /> Edit</> : <><Plus size={14} /> Add</>}
-      </button>
+      {/* Actions: Re-rank + Delete when rated, Add when not */}
+      {hasRating ? (
+        confirmDelete ? (
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] text-muted">Delete rating?</span>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-[12px] font-bold hover:bg-red-700 transition disabled:opacity-50"
+            >
+              {deleting ? 'Deleting…' : 'Delete'}
+            </button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              disabled={deleting}
+              className="px-3 py-1.5 rounded-lg border border-divider text-[12px] font-semibold text-ink hover:bg-surface transition disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => openModal('rerank')}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] text-[13px] font-bold hover:opacity-80 transition"
+            >
+              <RefreshCw size={13} /> Re-rank
+            </button>
+            <button
+              onClick={() => setConfirmDelete(true)}
+              aria-label="Delete rating"
+              className="inline-flex items-center justify-center p-2 rounded-lg border border-divider text-muted hover:text-red-600 hover:border-red-300 transition"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        )
+      ) : (
+        <button
+          onClick={() => openModal('add')}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] text-[13px] font-bold hover:opacity-80 transition"
+        >
+          <Plus size={14} /> Add
+        </button>
+      )}
 
-      {open && <AddModal album={albumInfo} onClose={() => setOpen(false)} onSaved={() => void refresh()} />}
+      {open && <AddModal album={albumInfo} mode={modalMode} onClose={() => setOpen(false)} onSaved={() => void refresh()} />}
 
       {showLogin && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowLogin(false)}>

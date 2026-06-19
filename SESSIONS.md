@@ -8,6 +8,10 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 **2026-06-18 — Catalog jobs progress:** `backfill:embeddings` re-run finished (69,795 embedded, 0 failed) and `backfill:tracklists` is done; `backfill:tracks` is re-running now to repopulate the tracks table with the newly-filled tracklists. After it finishes: `queue:ingest:albums` (21,254 artists pending), then **rebuild the HNSW index** — the 69,795 new vectors are inserted but not yet indexed, so hybrid search won't surface them until the rebuild.
 
+**2026-06-18 — Instinct: rated-album actions (Re-rank / Delete):**
+
+Decided to keep it to two actions, not Podiums' three — in our Elo model "edit the bucket (nudge)" and "re-rank (compare)" both just move the same number, so a separate Edit is redundant and was the source of the "what's the difference?" confusion. So: **Re-rank** + **Delete** on a rated album, **Add** when unrated; "Edit" reserved for editing comments (separate concern). `AddModal` gained a `mode: 'add' | 'rerank'` prop — in `rerank` + Instinct it skips the gut bucket entirely (no reseed) and jumps straight into comparisons against the existing ranked list, so the album's current Elo + `elo_games` are preserved. **This fixes the prior bug** where the lone "Edit" button re-seeded Elo with `elo_games = 0` and silently wiped comparison history. Manual `rerank` just reopens the star input. Delete (`StarRatingWidget`, client/RLS) removes the `ratings` row + this album's `pairwise_comparisons` rows; other albums keep the Elo already earned (not recomputed). Labels hardcoded English (these widgets aren't i18n'd yet). tsc + next build clean.
+
 **2026-06-18 — Instinct: absolute (sentiment-anchored) scores + Manual→Instinct import:**
 
 Two coordinated changes to Instinct mode, decided with the user.

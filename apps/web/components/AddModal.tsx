@@ -37,7 +37,7 @@ function MiniCover({ album, size = 56 }: { album: { title: string; coverUrl: str
   );
 }
 
-export default function AddModal({ album, onClose, onSaved }: { album: AlbumInfo; onClose: () => void; onSaved?: () => void }) {
+export default function AddModal({ album, onClose, onSaved, mode = 'add' }: { album: AlbumInfo; onClose: () => void; onSaved?: () => void; mode?: 'add' | 'rerank' }) {
   const router = useRouter();
   const { playlists, addItemTo, removeItemFrom } = usePlaylist();
 
@@ -147,6 +147,16 @@ export default function AddModal({ album, onClose, onSaved }: { album: AlbumInfo
     setRound((r) => r + 1);
     setPhase('comparing');
   };
+
+  // Re-rank (Instinct): the rating already exists, so skip the gut-check bucket
+  // (no reseed — preserves the album's current Elo + games) and go straight into
+  // comparisons against the existing ranked list.
+  useEffect(() => {
+    if (mode !== 'rerank' || loading || ratingMode !== 'instinct' || phase !== 'rate') return;
+    setRated(true);
+    beginCompare();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, loading, ratingMode, phase]);
 
   const handlePick = async (targetWins: boolean) => {
     if (!token) return;
