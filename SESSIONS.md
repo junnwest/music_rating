@@ -6,6 +6,14 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-18 — Album page polish + song pages v1 (SONGS_PLAN steps 2–3):**
+
+- **Dark-mode fix:** the comments **Post** button (`ReviewsSection`) used `bg-ink text-white` with no dark override → light-on-white in dark mode. Added the standard `dark:bg-[#F0F0EE] dark:text-[#111111]`.
+- **Tracklist cleanup** (`album/[mbid]/page.tsx`), per user: removed the track **duration**, the inline **5-star** widget (`TrackStarRating`), and the mid-row **featuring-artist** label. Kept per-track streaming + the collection add (`QuickAddButton`). Removed now-unused `formatDuration` + `TrackStarRating` import.
+- **Tracklist titles are now clickable → `/song/[trackId]`.** The album page fetches a position→track-UUID map from the `tracks` table (folded into the existing parallel stats query, UUID-guarded) and links each title when a song row exists.
+- **New song page** `app/(main)/song/[trackId]/page.tsx` (route `ƒ /song/[trackId]`): cover (parent release), title, artist(s), duration, streaming (`TrackStreamingButtons`), community stats, and "appears on" → album. **Rating is interim Manual `TrackStarRating`** (existing `track_ratings`) — the Add-modal + Instinct-for-songs parity is SONGS_PLAN **step 4** (needs song rating columns + a song comparisons discriminator) and will replace it.
+- **Heads-up surfaced to user:** the per-track "add" button adds to a **collection**, it does *not* rate — so the user's "add now means rate the song" premise doesn't hold yet; song rating lives on the song page until step 4. tsc + next build clean (`/song/[trackId]` generates).
+
 **2026-06-18 — Catalog jobs progress:** `backfill:embeddings` re-run finished (69,795 embedded, 0 failed) and `backfill:tracklists` is done; `backfill:tracks` is re-running now to repopulate the tracks table with the newly-filled tracklists. After it finishes: `queue:ingest:albums` (21,254 artists pending), then **rebuild the HNSW index** — the 69,795 new vectors are inserted but not yet indexed, so hybrid search won't surface them until the rebuild.
 
 **2026-06-18 — Instinct: rated-album actions (Re-rank / Delete):**

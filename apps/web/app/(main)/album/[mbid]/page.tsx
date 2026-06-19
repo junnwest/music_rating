@@ -21,17 +21,10 @@ import StarRatingWidget from '../../../../components/StarRatingWidget';
 import ReviewsSection from '../../../../components/ReviewsSection';
 import AlbumActions from '../../../../components/AlbumActions';
 import { StreamingButtons, TrackStreamingButtons } from '../../../../components/YouTubeMusicButton';
-import TrackStarRating from '../../../../components/TrackStarRating';
 import QuickAddButton from '../../../../components/QuickAddButton';
 import { getServerT } from '../../../../lib/i18n/server';
 import { cacheGet, cacheSet } from '../../../../lib/cache';
 import { computeTierlistScores, combineSillaScores } from '../../../../lib/sillaScore';
-
-function formatDuration(ms: number | null): string {
-  if (!ms) return '—';
-  const s = Math.floor(ms / 1000);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-}
 
 function TypePill({ children }: { children: React.ReactNode }) {
   return (
@@ -76,6 +69,9 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
   let avgScore: number | null = null;
   let reviewsCount = 0;
   let rankingMemberships: { slug: string; title: string; rank: number }[] = [];
+  // position → track UUID (from the `tracks` table) so tracklist titles can link
+  // to /song/[trackId]. Absent for albums not yet in the tracks table.
+  const trackIdByPosition: Record<number, string> = {};
 
   const supabase = createServerClient();
   if (supabase) {
@@ -89,19 +85,24 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
       avgScore = cachedStats.avgScore;
     }
 
-    const [statsResult, reviewsResult, seedEntryResult, userEntryResult] = await Promise.all([
+    const [statsResult, reviewsResult, seedEntryResult, userEntryResult, tracksResult] = await Promise.all([
       cachedStats
         ? Promise.resolve({ data: null })
         : supabase.from('ratings').select('score').eq('release_id', album.id),
       supabase.from('reviews').select('id', { count: 'exact', head: true }).eq('release_id', album.id),
       supabase.from('ranking_seed_entries').select('category_id').eq('release_id', album.id),
       supabase.from('user_ranking_entries').select('ranking_id').eq('release_id', album.id),
+      isUUID(album.id)
+        ? supabase.from('tracks').select('id, position').eq('release_id', album.id)
+        : Promise.resolve({ data: [] }),
     ]);
 
     const { data: ratingRows } = statsResult as { data: { score: number | null }[] | null };
     const { count } = reviewsResult;
     const { data: seedEntryRows } = seedEntryResult;
     const { data: userEntryRows } = userEntryResult;
+    const { data: trackRows } = tracksResult as { data: { id: string; position: number }[] | null };
+    for (const tr of trackRows ?? []) trackIdByPosition[tr.position] = tr.id;
 
     if (!cachedStats && ratingRows && ratingRows.length > 0) {
       ratingsCount = ratingRows.length;
@@ -346,30 +347,30 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
         {album.tracks.length > 0 && (
           <div>
             <h2 className="text-[17px] font-bold text-ink mb-[18px]">{t('album.tracklist')}</h2>
-            {album.tracks.map((track) => (
-              <div
-                key={track.position}
-                className="flex gap-[14px] py-[10px] border-b border-divider items-center"
-              >
-                <span className="text-[12px] text-[#DDDDD8] w-[22px] text-right flex-shrink-0 tabular-nums">
-                  {String(track.position).padStart(2, '0')}
-                </span>
-                <span className="text-[14px] font-medium text-ink flex-1 truncate">
-                  {track.title}
-                </span>
-                {track.artists !== album.artist && (
-                  <span className="text-[11px] text-muted truncate max-w-[120px]">
-                    {track.artists}
+            {album.tracks.map((track) => {
+              const trackId = trackIdByPosition[track.position];
+              return (
+                <div
+                  key={track.position}
+                  className="flex gap-[14px] py-[10px] border-b border-divider items-center"
+                >
+                  <span className="text-[12px] text-[#DDDDD8] w-[22px] text-right flex-shrink-0 tabular-nums">
+                    {String(track.position).padStart(2, '0')}
                   </span>
-                )}
-                <TrackStarRating releaseId={album.id} trackPosition={track.position} trackTitle={track.title} />
-                <TrackStreamingButtons artist={track.artists || album.artist} track={track.title} />
-                <QuickAddButton albumId={album.id} albumTitle={album.title} albumArtist={album.artist} coverUrl={album.coverUrl} trackTitle={track.title} trackPosition={track.position} />
-                <span className="text-[12px] text-muted flex-shrink-0 tabular-nums">
-                  {formatDuration(track.durationMs)}
-                </span>
-              </div>
-            ))}
+                  {trackId ? (
+                    <Link href={`/song/${trackId}`} className="text-[14px] font-medium text-ink flex-1 truncate hover:text-mid transition">
+                      {track.title}
+                    </Link>
+                  ) : (
+                    <span className="text-[14px] font-medium text-ink flex-1 truncate">
+                      {track.title}
+                    </span>
+                  )}
+                  <TrackStreamingButtons artist={track.artists || album.artist} track={track.title} />
+                  <QuickAddButton albumId={album.id} albumTitle={album.title} albumArtist={album.artist} coverUrl={album.coverUrl} trackTitle={track.title} trackPosition={track.position} />
+                </div>
+              );
+            })}
           </div>
         )}
 

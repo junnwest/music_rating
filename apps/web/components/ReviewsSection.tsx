@@ -230,7 +230,7 @@ export default function ReviewsSection({ releaseId }: { releaseId: string }) {
             <button
               type="submit"
               disabled={submitting || !body.trim()}
-              className="ml-auto rounded-lg bg-ink px-5 py-[7px] text-[13px] font-semibold text-white hover:opacity-80 transition disabled:opacity-40"
+              className="ml-auto rounded-lg bg-ink px-5 py-[7px] text-[13px] font-semibold text-white dark:bg-[#F0F0EE] dark:text-[#111111] hover:opacity-80 transition disabled:opacity-40"
             >
               {submitting ? 'Posting…' : 'Post'}
             </button>

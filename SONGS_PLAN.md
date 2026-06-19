@@ -57,10 +57,10 @@ iv. (expansion — see "Additional changes" below)
 
 ## Suggested phased build order (once decisions are locked)
 
-1. Migration: `tracks` table (or chosen identity) + song rating columns; backfill from `tracklist` JSONB.
-2. Song detail page + routing.
-3. Album page tracklist: clickable titles + per-row quick "add" (AddModal song mode).
-4. `AddModal` song mode + song Instinct (separate ranked list).
+1. ✅ Migration: `tracks` table + backfill from `tracklist` JSONB (done; ~1.5M rows). Song rating columns NOT yet added.
+2. ✅ Song detail page + routing — `/song/[trackId]` (`app/(main)/song/[trackId]/page.tsx`). v1: cover (from parent release), title, artist(s), duration, streaming, community stats, "appears on" → album. **Rating is interim Manual `TrackStarRating`** (writes existing `track_ratings`); replace with the Add/Instinct flow in step 4.
+3. ✅ Album page tracklist cleanup (2026-06-18): titles now link to `/song/[trackId]` (album page fetches the position→track-UUID map from `tracks`). Removed per user: track duration, the inline 5-star widget, and the mid-row featuring-artist label. Kept the collection "add" (`QuickAddButton`) + per-track streaming. ⚠️ Note: that per-row add button adds to a **collection**, it does not rate — song rating lives on the song page.
+4. `AddModal` song mode + song Instinct (separate ranked list) — **NEXT.** Needs song rating storage (extend `track_ratings` with `elo_score`/`elo_games` or a parallel table) + a song `pairwise_comparisons` discriminator. This replaces the interim Manual widget on the song page and is what makes the per-track/song "add = rate" vision real.
 5. Home Songs section; search Songs section.
 6. Feed song template; profile song section.
 7. Song leaderboards (score-driven).
