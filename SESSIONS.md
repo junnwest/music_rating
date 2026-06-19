@@ -115,6 +115,48 @@ Researched how Beli/Podiums turn pairwise comparisons into a score (avoided gues
 
 **Out of scope (still pending web parity):** full onboarding rewrite (StepRatingMode, StepNotifications, Google-only genre step, remove country/streaming), album-page Instinct UI (hide StarRating, show derived score), `/rate` comparison session page, Settings rating-mode toggle + reset-warning modal, login redesign (§5), email/password removal + Apple button (§1), Spotify/Apple taste sync in onboarding finish (§6), and new i18n strings (§7).
 
+---
+
+**2026-06-18 (iOS session 3) — UI polish, onboarding redesign, dark mode:**
+
+*Auth screen (`AuthView.swift`):*
+- Added two oversized decorative background flowers via `GeometryReader` + `.ignoresSafeArea()` — top-right (140% of screen width, positioned down/right so it's cut at physical edges) and bottom-left (100% of screen width), both at `opacity(0.09)`. Used `.ignoresSafeArea()` on the `GeometryReader` rather than `.clipped()` so flowers extend to the physical screen edges rather than the safe area boundary.
+- Legal text ("By continuing…") moved into a separate `ZStack` layer (`VStack { Spacer(); Text(legalText) }`) so it's always pinned to bottom, independent of the main content VStack.
+- Slogan changed to `Color.sjInk.opacity(0.6)` (strong adaptive gray).
+- Main layout: three-Spacer system (top `Spacer()` · middle `Spacer().frame(maxHeight: 40)` · bottom `Spacer()`) keeps logo and slogan positioned independently of dropdown expansion.
+- Added `#Preview("Light")` and `#Preview("Dark")` macros.
+
+*Onboarding (4 redesigned screens):*
+- **`OnboardingView.swift`**: `enum Step { case name, username, ratingMode, notifications }` (genre step removed); `loadProviderName()` reads `full_name`/`name` from `supabase.auth.currentUser?.userMetadata` and writes directly to `data.displayName` on appear.
+- **`StepName` (`StepProfile.swift`)**: single `TextField` with `@FocusState`, `.onAppear { isFocused = true }`, `.submitLabel(.next)`. Name field pre-filled with OAuth provider name. Background `Color.sjSurface`, text `Color.sjInk`.
+- **`StepUsername` (`StepGenre.swift`)**: single username `TextField` with `@FocusState`, auto-focus on appear, username availability check. Background `Color.sjSurface`, text `Color.sjInk`.
+- **`StepRatingMode.swift`**: title "Select a rating style." / subtitle "You can change this later." / "Normal" mode (was "Manual"). Card backgrounds `Color.sjSurface` when unselected.
+- **`StepNotifications.swift`**: title "Turn on notifications." left-aligned, no bell icon, matches other step style.
+
+*Tab bar restructure (`MainTabView.swift`):*
+- All 5 ViewModels hoisted to `MainTabView` as `@State` — prevents views from recreating their ViewModel on every tab switch.
+- `hasLoaded: Bool` guard added to each ViewModel's `load()` — first call fetches, subsequent calls skip.
+- Tab order: Home · Rankings · Add (was Search) · Feed (was Activity) · Profile.
+- `AppLoadingView` shown while `homeVM.isLoading` — flower (64pt) + wordmark (22pt) + `ProgressView` tinted `Color.sjMuted`. Replaces previous in-`HomeView` spinner.
+- Removed `.navigationTitle("sillajuku")` from `HomeView`.
+- `ActivityView` navigation title → "Feed"; tab labeled "Add" (was "Search").
+
+*Dark mode:*
+- 5 adaptive color assets added to `Assets.xcassets`: `sjCream` (light `#F8F8F6` / dark `#111110`), `sjInk` (light `#1A1A18` / dark `#F0F0EE`), `sjMuted` (light `#8C8C8A` / dark `#999997`), `sjBorder` (light `#E8E8E6` / dark `#2C2C2A`), `sjSurface` (light `#FFFFFF` / dark `#1E1E1D`).
+- `Theme.swift` simplified: removed adaptive color declarations — Xcode 15+ auto-generates `Color.sjCream` etc. from `.colorset` assets (manual declarations caused "Invalid redeclaration" build errors). Only `sjAmber` and `sjSpotifyGreen` remain explicit.
+- `sillajukuApp.swift`: `@AppStorage("appearanceMode")` + `private var colorScheme: ColorScheme?` + `.preferredColorScheme(colorScheme)` on `WindowGroup` root.
+- `ProfileView.swift`: Appearance submenu in `···` menu — System / Light / Dark options with checkmarks.
+- All `Color.white` → `Color.sjSurface` across all views.
+
+*Build fixes:*
+- `OnboardingView.finish()` — removed stale `providerName` reference ("Cannot find 'providerName' in scope").
+- "Invalid redeclaration" of `sjCream`/`sjInk`/`sjMuted`/`sjBorder`/`sjSurface` — fixed by removing duplicate declarations from `Theme.swift`.
+
+*Known issues / pending:*
+- DB migrations for `rating_mode`, `elo_score`/`elo_games`, `pairwise_comparisons` still pending (Windows).
+- `checkOnboarded` returns false for existing Spotify users → routes to onboarding on relaunch. Root cause: missing profile row or null `username` in `profiles` table. Needs investigation (profiles table RLS policies).
+- Pull-to-refresh not yet wired — `hasLoaded` guard blocks re-fetch; needs a `reset()` + pull gesture.
+
 **2026-06-17 (session 3) — iOS app scaffolded (auth + onboarding + tabs):**
 
 *What was built:*

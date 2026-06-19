@@ -2,53 +2,107 @@ import SwiftUI
 
 struct AuthView: View {
     @State private var viewModel = AuthViewModel()
+    @State private var showMoreOptions = false
 
     var body: some View {
         ZStack {
             Color.sjCream.ignoresSafeArea()
 
+            // Decorative flowers — ignoresSafeArea so geo covers full screen,
+            // no .clipped() needed (physical screen edges handle it)
+            GeometryReader { geo in
+                // Top-right flower
+                let topFlowerSize = geo.size.width * 1.4
+                Image("logo-flower")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: topFlowerSize)
+                    .opacity(0.09)
+                    .position(x: geo.size.width * 0.82, y: geo.size.width * 0.22 + topFlowerSize * 0.5 - geo.size.width * 0.3)
+
+                // Bottom-left flower
+                Image("logo-flower")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: geo.size.width)
+                    .opacity(0.09)
+                    .position(x: geo.size.width * 0.18, y: geo.size.height - geo.size.width * 0.22)
+            }
+            .ignoresSafeArea()
+
+            // Main content
             VStack(spacing: 0) {
                 Spacer()
 
-                // Logo + tagline
-                VStack(spacing: 14) {
-                    // TODO: replace with Image("logo-flower") once asset is added to Assets.xcassets
-                    Image(systemName: "music.note.list")
-                        .font(.system(size: 56))
-                        .foregroundStyle(Color.sjInk)
+                // Flower + wordmark
+                VStack(spacing: 8) {
+                    Image("logo-flower")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 108, height: 108)
 
-                    Text("sillajuku")
-                        .font(.system(size: 34, weight: .bold))
-                        .foregroundStyle(Color.sjInk)
-
-                    Text("Every record you've loved.")
-                        .font(.system(size: 16))
-                        .foregroundStyle(Color.sjMuted)
+                    Image("logo-text")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(height: 38)
+                        .colorMultiply(Color.sjInk)
                 }
 
-                Spacer()
+                // Small capped gap
+                Spacer().frame(maxHeight: 40)
+
+                // Tagline
+                Text("Every Record You've Loved.")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(Color.sjInk.opacity(0.6))
+                    .padding(.bottom, 18)
+                    .padding(.horizontal, 24)
 
                 // Auth buttons
                 VStack(spacing: 12) {
                     SpotifyAuthButton(isLoading: viewModel.isLoading) {
                         Task { await viewModel.signInWithSpotify() }
                     }
-                    AppleAuthButton {
-                        Task { await viewModel.signInWithApple() }
+
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showMoreOptions.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text("More options")
+                                .font(.system(size: 14))
+                                .foregroundStyle(Color.sjMuted)
+                            Image(systemName: showMoreOptions ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Color.sjMuted)
+                        }
                     }
-                    GoogleAuthButton(isLoading: viewModel.isLoading) {
-                        Task { await viewModel.signInWithGoogle() }
+
+                    if showMoreOptions {
+                        AppleAuthButton {
+                            Task { await viewModel.signInWithApple() }
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+
+                        GoogleAuthButton(isLoading: viewModel.isLoading) {
+                            Task { await viewModel.signInWithGoogle() }
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
                 .padding(.horizontal, 24)
 
-                Text("By continuing, you agree to our Terms and Privacy Policy.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.sjMuted)
+                Spacer()
+            }
+
+            // Legal text — always pinned to bottom, outside the flow
+            VStack {
+                Spacer()
+                Text(legalText)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
-                    .padding(.top, 20)
-                    .padding(.bottom, 48)
+                    .padding(.bottom, 32)
             }
         }
         .alert("Sign-in failed", isPresented: Binding(
@@ -60,9 +114,31 @@ struct AuthView: View {
             Text(viewModel.errorMessage ?? "")
         }
     }
+
+    private var legalText: AttributedString {
+        var base = AttributedString("By continuing, you agree to our\n")
+        base.font = .system(size: 12)
+        base.foregroundColor = Color.sjMuted
+
+        var terms = AttributedString("Terms")
+        terms.font = .system(size: 12, weight: .bold)
+        terms.foregroundColor = Color.sjMuted
+        terms.link = URL(string: "https://sillajuku.com/terms")
+
+        var sep = AttributedString(" and ")
+        sep.font = .system(size: 12)
+        sep.foregroundColor = Color.sjMuted
+
+        var privacy = AttributedString("Privacy Policy")
+        privacy.font = .system(size: 12, weight: .bold)
+        privacy.foregroundColor = Color.sjMuted
+        privacy.link = URL(string: "https://sillajuku.com/privacy")
+
+        return base + terms + sep + privacy
+    }
 }
 
-// MARK: - Button components
+// MARK: - Spotify button
 
 private struct SpotifyAuthButton: View {
     let isLoading: Bool
@@ -71,34 +147,27 @@ private struct SpotifyAuthButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                Image(systemName: "music.note")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 24)
+                Image("icon-spotify")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 24, height: 24)
 
                 Text("Continue with Spotify")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white)
-
-                Spacer()
-
-                Text("Recommended")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(Color.sjSpotifyGreen)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(.white.opacity(0.9))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .lineLimit(1)
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 16)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .center)
             .background(isLoading ? Color.sjSpotifyGreen.opacity(0.6) : Color.sjSpotifyGreen)
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
         .disabled(isLoading)
     }
 }
+
+// MARK: - Apple button
 
 private struct AppleAuthButton: View {
     let action: () -> Void
@@ -108,18 +177,16 @@ private struct AppleAuthButton: View {
             HStack(spacing: 12) {
                 Image(systemName: "apple.logo")
                     .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(.white.opacity(0.4))
                     .frame(width: 24)
 
                 Text("Continue with Apple")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.45))
-
-                Spacer()
+                    .foregroundStyle(.white.opacity(0.4))
 
                 Text("Coming soon")
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.35))
+                    .foregroundStyle(.white.opacity(0.3))
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
                     .background(.white.opacity(0.08))
@@ -127,13 +194,15 @@ private struct AppleAuthButton: View {
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 16)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .center)
             .background(Color.sjInk.opacity(0.35))
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
         .disabled(true)
     }
 }
+
+// MARK: - Google button
 
 private struct GoogleAuthButton: View {
     let isLoading: Bool
@@ -142,20 +211,18 @@ private struct GoogleAuthButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                Text("G")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(Color(red: 0.263, green: 0.522, blue: 0.957))
-                    .frame(width: 24)
+                Image("icon-google")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 24, height: 24)
 
                 Text("Continue with Google")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color.sjInk)
-
-                Spacer()
+                    .foregroundStyle(Color(red: 0.1, green: 0.1, blue: 0.1))
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 16)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .center)
             .background(.white)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(
@@ -167,6 +234,5 @@ private struct GoogleAuthButton: View {
     }
 }
 
-#Preview {
-    AuthView()
-}
+#Preview("Light") { AuthView() }
+#Preview("Dark") { AuthView().preferredColorScheme(.dark) }

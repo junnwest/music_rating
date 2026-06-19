@@ -4,14 +4,24 @@ import Supabase
 @main
 struct sillajukuApp: App {
     @State private var appState = AppState()
+    @AppStorage("appearanceMode") private var appearanceMode = "system"
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(appState)
+                .preferredColorScheme(colorScheme)
                 .onOpenURL { url in
                     Task { try? await supabase.auth.session(from: url) }
                 }
+        }
+    }
+
+    private var colorScheme: ColorScheme? {
+        switch appearanceMode {
+        case "light": return .light
+        case "dark":  return .dark
+        default:      return nil  // system
         }
     }
 }

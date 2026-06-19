@@ -9,10 +9,10 @@ struct StepRatingMode: View {
             Spacer().frame(height: 110)
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("How do you rate music?")
+                Text("Select a rating style.")
                     .font(.system(size: 28, weight: .bold))
                     .foregroundStyle(Color.sjInk)
-                Text("You can change this anytime in Settings.")
+                Text("You can change this later.")
                     .font(.system(size: 16))
                     .foregroundStyle(Color.sjMuted)
             }
@@ -21,7 +21,7 @@ struct StepRatingMode: View {
 
             VStack(spacing: 12) {
                 RatingModeCard(
-                    title: "Manual",
+                    title: "Normal",
                     description: "Assign a star rating to each album you listen to.",
                     icon: "star.fill",
                     isSelected: data.ratingMode == "manual"
@@ -86,7 +86,7 @@ private struct RatingModeCard: View {
             }
             .padding(18)
             .frame(maxWidth: .infinity)
-            .background(isSelected ? Color.sjInk : Color.white)
+            .background(isSelected ? Color.sjInk : Color.sjSurface)
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .overlay(
                 RoundedRectangle(cornerRadius: 14)

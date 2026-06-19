@@ -8,15 +8,8 @@ struct OnboardingView: View {
     @State private var isSaving = false
     @Environment(AppState.self) private var appState
 
-    enum Step { case profile, genre, ratingMode, notifications }
-
-    var steps: [Step] {
-        var result: [Step] = [.profile]
-        if provider == "google" { result.append(.genre) }
-        result.append(.ratingMode)
-        result.append(.notifications)
-        return result
-    }
+    enum Step { case name, username, ratingMode, notifications }
+    let steps: [Step] = [.name, .username, .ratingMode, .notifications]
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -36,10 +29,10 @@ struct OnboardingView: View {
             // Step content
             Group {
                 switch steps[stepIndex] {
-                case .profile:
-                    StepProfile(data: $data, onNext: advance)
-                case .genre:
-                    StepGenre(data: $data, onNext: advance)
+                case .name:
+                    StepName(data: $data, onNext: advance)
+                case .username:
+                    StepUsername(data: $data, onNext: advance)
                 case .ratingMode:
                     StepRatingMode(data: $data, onNext: advance)
                 case .notifications:
@@ -51,6 +44,17 @@ struct OnboardingView: View {
                 removal: .move(edge: .leading).combined(with: .opacity)
             ))
             .id(stepIndex)
+        }
+        .onAppear { loadProviderName() }
+    }
+
+    private func loadProviderName() {
+        guard let meta = supabase.auth.currentUser?.userMetadata else { return }
+        for key in ["full_name", "name"] {
+            if let json = meta[key], case .string(let value) = json, !value.isEmpty {
+                data.displayName = value
+                return
+            }
         }
     }
 
@@ -64,9 +68,9 @@ struct OnboardingView: View {
         isSaving = true
         defer { isSaving = false }
         do {
-            let displayName = data.displayName.isEmpty
-                ? (user.email?.components(separatedBy: "@").first ?? "")
-                : data.displayName
+            let typed = data.displayName.trimmingCharacters(in: .whitespaces)
+            let displayName = !typed.isEmpty ? typed
+                : (user.email?.components(separatedBy: "@").first ?? "")
             let insert = ProfileInsert(
                 id: user.id,
                 displayName: displayName,

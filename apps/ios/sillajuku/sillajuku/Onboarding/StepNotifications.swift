@@ -6,25 +6,20 @@ struct StepNotifications: View {
     let onFinish: () async -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            Spacer()
+        VStack(alignment: .leading, spacing: 0) {
+            Spacer().frame(height: 110)
 
-            VStack(spacing: 20) {
-                Image(systemName: "bell.badge.fill")
-                    .font(.system(size: 64))
-                    .foregroundStyle(Color.sjAmber)
-
-                VStack(spacing: 10) {
-                    Text("Stay in the loop")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(Color.sjInk)
-                    Text("Get notified when friends rate albums, follow you, or comment.")
-                        .font(.system(size: 16))
-                        .foregroundStyle(Color.sjMuted)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 36)
-                }
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Turn on notifications.")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(Color.sjInk)
+                Text("Get notified when friends rate albums, follow you, or comment.")
+                    .font(.system(size: 16))
+                    .foregroundStyle(Color.sjMuted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
 
             Spacer()
 
