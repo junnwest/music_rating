@@ -255,16 +255,20 @@ function SettingsContent() {
     if (!supabase || !userId || value === ratingMode) return;
 
     // Switching Manual → Instinct: offer to import existing star ratings as Elo
-    // seeds. Only ask if there's anything to import (star score, no Elo yet).
+    // seeds (albums + songs). Only ask if there's anything to import (star score,
+    // no Elo yet).
     if (value === 'instinct') {
-      const { count } = await supabase
-        .from('ratings')
-        .select('release_id', { count: 'exact', head: true })
-        .eq('user_id', userId)
-        .not('score', 'is', null)
-        .is('elo_score', null);
-      if (count && count > 0) {
-        setImportCount(count);
+      const [albumCountRes, songCountRes] = await Promise.all([
+        supabase.from('ratings')
+          .select('release_id', { count: 'exact', head: true })
+          .eq('user_id', userId).not('score', 'is', null).is('elo_score', null),
+        supabase.from('track_ratings')
+          .select('release_id', { count: 'exact', head: true })
+          .eq('user_id', userId).not('score', 'is', null).is('elo_score', null),
+      ]);
+      const total = (albumCountRes.count ?? 0) + (songCountRes.count ?? 0);
+      if (total > 0) {
+        setImportCount(total);
         setImportError(null);
         setShowImportModal(true);
         return; // defer the rating_mode write until the user chooses

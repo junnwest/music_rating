@@ -38,18 +38,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not in Instinct rating mode' }, { status: 400 });
   }
 
-  // Pull the importable rows (star score set, no Elo yet) and seed them.
-  const { data: rows, error: fetchError } = await supabase
-    .from('ratings')
-    .select('release_id, score')
-    .eq('user_id', userId)
-    .not('score', 'is', null)
-    .is('elo_score', null);
+  // Pull the importable rows (star score set, no Elo yet) for albums AND songs.
+  const [albumRes, songRes] = await Promise.all([
+    supabase.from('ratings')
+      .select('release_id, score')
+      .eq('user_id', userId).not('score', 'is', null).is('elo_score', null),
+    supabase.from('track_ratings')
+      .select('release_id, track_position, track_title, score')
+      .eq('user_id', userId).not('score', 'is', null).is('elo_score', null),
+  ]);
 
-  if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
-  if (!rows || rows.length === 0) return NextResponse.json({ ok: true, seeded: 0 });
+  if (albumRes.error) return NextResponse.json({ error: albumRes.error.message }, { status: 500 });
+  if (songRes.error) return NextResponse.json({ error: songRes.error.message }, { status: 500 });
 
-  const updates = rows.map((r) => ({
+  // Albums → ratings (keyed by user_id,release_id; `status` is NOT NULL).
+  const albumUpdates = (albumRes.data ?? []).map((r) => ({
     user_id: userId,
     release_id: r.release_id,
     elo_score: starToElo(Number(r.score)),
@@ -57,11 +60,30 @@ export async function POST(req: NextRequest) {
     status: 'Listened',
   }));
 
-  const { error: upsertError } = await supabase
-    .from('ratings')
-    .upsert(updates, { onConflict: 'user_id,release_id' });
+  // Songs → track_ratings (keyed by user_id,release_id,track_position; track_title
+  // is NOT NULL and is checked on the proposed insert tuple before ON CONFLICT).
+  const songUpdates = (songRes.data ?? []).map((r) => ({
+    user_id: userId,
+    release_id: r.release_id,
+    track_position: r.track_position,
+    track_title: r.track_title,
+    elo_score: starToElo(Number(r.score)),
+    elo_games: IMPORT_GAMES,
+  }));
 
-  if (upsertError) return NextResponse.json({ error: upsertError.message }, { status: 500 });
+  if (albumUpdates.length > 0) {
+    const { error } = await supabase.from('ratings').upsert(albumUpdates, { onConflict: 'user_id,release_id' });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  if (songUpdates.length > 0) {
+    const { error } = await supabase.from('track_ratings').upsert(songUpdates, { onConflict: 'user_id,release_id,track_position' });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
-  return NextResponse.json({ ok: true, seeded: updates.length });
+  return NextResponse.json({
+    ok: true,
+    seeded: albumUpdates.length + songUpdates.length,
+    seededAlbums: albumUpdates.length,
+    seededSongs: songUpdates.length,
+  });
 }
