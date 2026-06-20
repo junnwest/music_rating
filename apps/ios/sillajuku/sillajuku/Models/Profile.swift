@@ -5,12 +5,16 @@ struct Profile: Codable, Identifiable {
     var displayName: String?
     var username: String?
     var ratingMode: String?
+    var bio: String?
+    var avatarUrl: String?
 
     enum CodingKeys: String, CodingKey {
         case id
         case displayName = "display_name"
         case username
         case ratingMode = "rating_mode"
+        case bio
+        case avatarUrl = "avatar_url"
     }
 }
 

@@ -65,7 +65,7 @@ struct StepUsername: View {
             Button(action: onNext) {
                 Text("Continue")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.sjCream)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
                     .background(canContinue ? Color.sjInk : Color.sjBorder)

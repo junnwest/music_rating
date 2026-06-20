@@ -43,9 +43,10 @@ struct AuthView: View {
 
                     Image("logo-text")
                         .resizable()
+                        .renderingMode(.template)
                         .scaledToFit()
                         .frame(height: 38)
-                        .colorMultiply(Color.sjInk)
+                        .foregroundStyle(Color.sjInk)
                 }
 
                 // Small capped gap

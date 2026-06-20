@@ -29,11 +29,11 @@ struct StepNotifications: View {
                         if isSaving {
                             ProgressView()
                                 .scaleEffect(0.8)
-                                .tint(.white)
+                                .tint(Color.sjCream)
                         }
                         Text(isSaving ? "Saving…" : "Allow Notifications")
                             .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(Color.sjCream)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)

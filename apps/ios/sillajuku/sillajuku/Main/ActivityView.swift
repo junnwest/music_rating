@@ -149,9 +149,16 @@ private struct ActivityRow: View {
                     Text("·")
                         .font(.system(size: 12))
                         .foregroundStyle(Color.sjMuted)
-                    Text(scoreText)
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color.sjMuted)
+                    HStack(spacing: 2) {
+                        Image("icon-flower")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 10, height: 10)
+                        Text(scoreFormatted)
+                            .font(.system(size: 12))
+                    }
+                    .foregroundStyle(Color.sjAmber)
                     Text("·")
                         .font(.system(size: 12))
                         .foregroundStyle(Color.sjMuted)
@@ -166,11 +173,10 @@ private struct ActivityRow: View {
         .padding(.vertical, 10)
     }
 
-    private var scoreText: String {
+    private var scoreFormatted: String {
         let v = item.score
-        let formatted = v.truncatingRemainder(dividingBy: 1) == 0
+        return v.truncatingRemainder(dividingBy: 1) == 0
             ? "\(Int(v))" : String(format: "%.1f", v)
-        return "★ \(formatted)"
     }
 }
 

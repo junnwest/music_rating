@@ -36,7 +36,7 @@ class AlbumDetailViewModel {
         }
 
         struct SimpleRating: Decodable {
-            let score: Double
+            let score: Double?   // nullable — instinct-mode entries have no score
             let userId: UUID
             enum CodingKeys: String, CodingKey {
                 case score
@@ -52,9 +52,8 @@ class AlbumDetailViewModel {
             .value) ?? []
 
         communityCount = allRatings.count
-        if !allRatings.isEmpty {
-            communityAvg = allRatings.map(\.score).reduce(0, +) / Double(allRatings.count)
-        }
+        let scored = allRatings.compactMap(\.score)
+        communityAvg = scored.isEmpty ? nil : scored.reduce(0, +) / Double(scored.count)
 
         if let userId = supabase.auth.currentUser?.id {
             userScore = allRatings.first(where: { $0.userId == userId })?.score
@@ -69,27 +68,7 @@ class AlbumDetailViewModel {
         defer { isSaving = false }
 
         let oldScore = userScore
-        userScore = score
-
-        // Optimistic community stats update
-        if let old = oldScore {
-            if let new = score {
-                let total = (communityAvg ?? 0) * Double(communityCount)
-                communityAvg = (total - old + new) / Double(communityCount)
-            } else {
-                communityCount -= 1
-                if communityCount > 0 {
-                    let total = (communityAvg ?? 0) * Double(communityCount + 1)
-                    communityAvg = (total - old) / Double(communityCount)
-                } else {
-                    communityAvg = nil
-                }
-            }
-        } else if let new = score {
-            let total = (communityAvg ?? 0) * Double(communityCount)
-            communityCount += 1
-            communityAvg = (total + new) / Double(communityCount)
-        }
+        userScore = score   // optimistic: show the new score immediately
 
         do {
             if let score {
@@ -116,9 +95,27 @@ class AlbumDetailViewModel {
                     .eq("release_id", value: releaseId)
                     .execute()
             }
+            // Reload accurate community stats from DB after a successful write
+            await reloadCommunityStats(releaseId: releaseId, currentUserId: userId)
         } catch {
-            userScore = oldScore
+            userScore = oldScore   // full rollback
         }
+    }
+
+    private func reloadCommunityStats(releaseId: UUID, currentUserId: UUID) async {
+        struct SimpleRating: Decodable {
+            let score: Double?
+            let userId: UUID
+            enum CodingKeys: String, CodingKey { case score; case userId = "user_id" }
+        }
+        let rows: [SimpleRating] = (try? await supabase
+            .from("ratings").select("score, user_id")
+            .eq("release_id", value: releaseId).execute().value) ?? []
+
+        communityCount = rows.count
+        let scored = rows.compactMap(\.score)
+        communityAvg = scored.isEmpty ? nil : scored.reduce(0, +) / Double(scored.count)
+        userScore = rows.first(where: { $0.userId == currentUserId })?.score
     }
 }
 
@@ -257,8 +254,11 @@ struct AlbumDetailView: View {
         HStack(spacing: 12) {
             if let avg = viewModel.communityAvg {
                 HStack(spacing: 4) {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 13))
+                    Image("icon-flower")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 13, height: 13)
                         .foregroundStyle(Color.sjAmber)
                     Text(String(format: "%.1f", avg))
                         .font(.system(size: 15, weight: .semibold))

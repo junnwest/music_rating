@@ -1,8 +1,18 @@
 import SwiftUI
 import Supabase
 
+final class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        supportedInterfaceOrientationsFor window: UIWindow?
+    ) -> UIInterfaceOrientationMask {
+        .portrait
+    }
+}
+
 @main
 struct sillajukuApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var appState = AppState()
     @AppStorage("appearanceMode") private var appearanceMode = "system"
 
@@ -69,7 +79,7 @@ struct RootView: View {
         do {
             let profile: Profile = try await supabase
                 .from("profiles")
-                .select("username")
+                .select("id, username")
                 .eq("id", value: userId)
                 .single()
                 .execute()

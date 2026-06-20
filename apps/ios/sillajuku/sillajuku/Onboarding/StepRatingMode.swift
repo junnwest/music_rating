@@ -41,7 +41,7 @@ struct StepRatingMode: View {
             Button(action: onNext) {
                 Text("Continue")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.sjCream)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
                     .background(Color.sjInk)
@@ -65,16 +65,16 @@ private struct RatingModeCard: View {
             HStack(spacing: 16) {
                 Image(systemName: icon)
                     .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(isSelected ? .white : Color.sjMuted)
+                    .foregroundStyle(isSelected ? Color.sjCream : Color.sjMuted)
                     .frame(width: 36)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(isSelected ? .white : Color.sjInk)
+                        .foregroundStyle(isSelected ? Color.sjCream : Color.sjInk)
                     Text(description)
                         .font(.system(size: 13))
-                        .foregroundStyle(isSelected ? .white.opacity(0.75) : Color.sjMuted)
+                        .foregroundStyle(isSelected ? Color.sjCream.opacity(0.75) : Color.sjMuted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -82,7 +82,7 @@ private struct RatingModeCard: View {
 
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 20))
-                    .foregroundStyle(isSelected ? .white : Color.sjBorder)
+                    .foregroundStyle(isSelected ? Color.sjCream : Color.sjBorder)
             }
             .padding(18)
             .frame(maxWidth: .infinity)

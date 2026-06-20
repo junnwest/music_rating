@@ -6,6 +6,58 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-20 — iOS session 5: Notifications, Mixes, PTR, logo, critical feed bug fix:**
+
+- **Notification bell** (`HomeView.swift`): amber bell icon in the floating header's trailing slot; red dot overlay when `viewModel.hasUnreadNotifications = true`. Tapping pushes `NotificationsView` via `NavigationStack` (right-to-left slide) — NOT a sheet. `HomeViewModel.refreshNotificationBadge()` queries unread count on load + PTR. `markAllRead()` writes `profiles.notifications_last_seen_at`.
+- **NotificationsView inner NavigationStack removed**: changing from sheet to push nav caused a double navigation bar. Fixed by making the view a plain `Group` with `.navigationTitle` / `.navigationBarTitleDisplayMode` applied directly, relying on the parent's `NavigationStack`.
+- **Comment system fixed** (`CommentSheetView.swift`): `sendComment()` had a silent `guard let userId = currentUserId else { return }` — no user feedback on failure. Added `errorMessage: String?` state + red error banner displayed above the input bar. `catch { errorMessage = error.localizedDescription }` now surfaces Supabase errors.
+- **Pull-to-refresh positioning**: PTR native spinner now appears beneath the "Explore / Following" tabs, not above them. Fix: `.contentMargins(.top, 90, for: .scrollContent)` on the `ScrollView`; spacer inside `feedList` reduced from 54→0 pt. `refreshExplore()` rewritten to be silent — no clearing of items or loading state, so existing cards stay visible while the spinner turns.
+- **App icon**: 1024×1024 light `AppIcon.png` (white `#FFFFFF` bg, amber `#E8A020` flower) and dark `AppIcon-dark.png` (ink `#1A1A1A` bg, cream `#F5F0E8` flower) generated with ImageMagick. `AppIcon.appiconset/Contents.json` updated to reference both (universal light, dark luminosity appearance, tinted appearance).
+- **Feed card share → URL**: changed `ShareLink(item: String)` to `ShareLink(item: URL(string: "https://sillajuku.com/r/\(item.id)")!)` — URL type unlocks more share-sheet targets. Instagram still cannot appear (its extension only handles photos/videos, never URLs).
+- **Save button rename**: feed card context menu entry "Save to library" → "Save".
+- **Mixes feature** (`MixLibraryView.swift`, new file):
+  - Models: `Mix: Codable, Identifiable, Hashable` (id, userId, name, isPublic, isDefault, createdAt); `MixItem`; `MixRelease` (with `asRelease` computed property).
+  - `MixLibraryView`: loads user's mixes + per-mix item counts; "Listen Later" first (clock icon), custom mixes below (music.note.list icon); public badge; "+ Create a Mix" button.
+  - `MixDetailView`: list of mix items, swipe-to-delete via `onDelete`, Edit button for name.
+  - `CreateMixView`: Form with `TextField` (name) + `Toggle` (isPublic); POSTs to `mixes` table.
+  - `MixPickerView`: half-sheet multi-select; pre-selects mixes already containing the release; saves/removes on confirm.
+  - `FeedCard` changes: `@State private var userMixCount: Int?` loaded via `.task`; Save button: immediate save if only Listen Later, shows `MixPickerView` if custom mixes exist; `CardSheet` enum gained `.mixPicker` case.
+  - `ProfileView.listsPlaceholder`: replaced "Lists coming soon" with `MixLibraryView(userId: profile.id)`; added `navigationDestination(for: Mix.self) { MixDetailView(mix: $0) }`.
+  - Migration `20260620000001_mixes.sql`: `mixes` + `mix_items` tables, RLS (owner can manage; public mixes readable by all), `CREATE UNIQUE INDEX WHERE is_default = true` (one default per user), `_create_default_mix()` SECURITY DEFINER trigger on profiles INSERT, backfill INSERT for existing users.
+- **Critical bug: feed showing "No ratings yet" after Mixes migration** — all 90 ratings were still in the DB (confirmed via REST API). Root cause: migration `000005_fix_social_fks` retargeted `rating_likes.user_id → profiles(id)`, creating a second indirect path from `ratings → profiles` (direct via `ratings.user_id`, and through `rating_likes`). PostgREST returned `PGRST201: ambiguous relationship`; Swift `try?` swallowed it → `nil → []` → empty feed. Fix: explicit FK hints on all three affected queries:
+  - `HomeView.feedSelect`: `profiles!ratings_user_id_fkey(username, display_name)`
+  - `HomeView` likers query: `profiles!rating_likes_user_id_fkey(username, display_name)`
+  - `CommentSheetView`: `profiles!rating_comments_user_id_fkey(username, display_name)`
+  - FK hint only guides PostgREST routing — JSON response key stays `profiles`, no Swift `CodingKeys` changes needed.
+- **Migrations applied this session**: `20260619000005_fix_social_fks.sql` ✅, `20260619000003_saved_releases.sql` ✅, `20260620000001_mixes.sql` ✅.
+- **Migrations still pending**: `20260619000001_profiles_avatar.sql` (avatar_url on profiles), `20260619000004_notifications.sql` (notifications table).
+
+---
+
+**2026-06-19 — iOS session 4: Home feed + Add discovery:**
+
+- **Home tab → social feed** (`HomeView.swift` full rewrite):
+  - `FeedTab` enum: `.explore` / `.following`; swipeable via `TabView(.page)`
+  - Explore: all recent album ratings globally, newest first (limit 60)
+  - Following: two-step query — get `following_id`s from `follows` table, then filter ratings by those user IDs
+  - `FeedCard`: compact row — album art 58×58, title/artist, avatar initial, username, relative time, amber score badge
+  - Logo in navigation bar principal position (adaptive dark mode); no genre sections
+  - `HomeViewModel` still exposes `isLoading` so `MainTabView`'s splash screen continues to work
+
+- **Add tab → discovery + dual-section search** (`SearchView.swift` full rewrite):
+  - Empty query: shows "For You" (personalized) and "Popular" sections, each divided into **Albums** (horizontal scroll) and **Songs** (vertical list) subsections
+  - "For You" personalization: pulls user's top-rated artists from `ratings`, finds matching releases in `recommendable_releases`, then loads tracks from those albums
+  - "Popular": top `recommendable_releases` by prestige; tracks from the top 5 albums
+  - Active search: **Albums** (3-col grid from `recommendable_releases`) + **Songs** (list from `tracks` join `releases` via `ilike`)
+  - `SongRow`: cover art 44×44, track title, album · artist
+  - `DiscoveryAlbumCard`: 128×128 card for horizontal scroll
+
+**2026-06-19 — DB migrations applied:**
+
+All 3 pending migrations applied to prod via SQL editor: `20260615000000_add_apple_music_platform.sql`, `20260618000001_ratings_status_default.sql`, `20260618000002_song_ratings.sql`. PostgREST schema cache reloaded (`notify pgrst, 'reload schema'`) — unblocks song Instinct comparisons (`track_pairwise_comparisons`). All migrations are now ✅.
+
+---
+
 **2026-06-19 — Instinct/songs QA feedback round:**
 
 From a live prod smoke test:
