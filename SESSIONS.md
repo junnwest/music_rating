@@ -30,7 +30,7 @@ Historical record of shipped features and session notes. Not needed at conversat
   - `CommentSheetView`: `profiles!rating_comments_user_id_fkey(username, display_name)`
   - FK hint only guides PostgREST routing — JSON response key stays `profiles`, no Swift `CodingKeys` changes needed.
 - **Migrations applied this session**: `20260619000005_fix_social_fks.sql` ✅, `20260619000003_saved_releases.sql` ✅, `20260620000001_mixes.sql` ✅.
-- **Migrations still pending**: `20260619000001_profiles_avatar.sql` (avatar_url on profiles), `20260619000004_notifications.sql` (notifications table).
+- **All migrations applied**: `20260619000001_profiles_avatar.sql` ✅, `20260619000004_notifications.sql` ✅ (applied 2026-06-20). No pending migrations.
 
 ---
 
