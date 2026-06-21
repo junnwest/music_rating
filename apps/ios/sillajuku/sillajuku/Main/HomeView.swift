@@ -289,17 +289,15 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .top) {
-                feedContent
-                floatingHeader
-            }
-            // ignoresSafeArea fills cream behind the glass tab bar so there's no naked white block
-            .background(Color.sjCream.ignoresSafeArea())
-            .navigationBarHidden(true)
+            feedContent
+                .overlay(alignment: .top) { floatingHeader }
+                .background(Color.sjCream.ignoresSafeArea())
+                .navigationBarHidden(true)
             .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
             .navigationDestination(for: UserProfileDestination.self) { dest in
                 UserProfileView(userId: dest.userId, initialHandle: dest.handle)
             }
+            .navigationDestination(for: FindPeopleDestination.self) { _ in FindPeopleView() }
             .navigationDestination(isPresented: $showNotifications) {
                 NotificationsView()
                     .onDisappear { Task { await viewModel.refreshNotificationBadge() } }
@@ -320,15 +318,35 @@ struct HomeView: View {
                 feedTabButton(.explore,   label: "Explore")
                 feedTabButton(.following, label: "Following")
             }
-            // Bell pinned to the right
+            // Bell pinned to trailing edge; explicit frame ensures ZStack fills screen width
             HStack {
-                Spacer()
+                Spacer(minLength: 0)
                 bellButton
                     .padding(.trailing, 16)
             }
         }
+        .frame(maxWidth: .infinity)
         .padding(.top, 12)
         .padding(.bottom, 10)
+        .contentShape(Rectangle())
+    }
+
+    private var followingFeedFooter: some View {
+        VStack(spacing: 10) {
+            Divider()
+            Text("Follow more people to keep your feed fresh.")
+                .font(.system(size: 13))
+                .foregroundStyle(Color.sjMuted)
+                .multilineTextAlignment(.center)
+            NavigationLink(value: FindPeopleDestination()) {
+                Text("Find people to follow")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.sjAmber)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 16)
     }
 
     private var bellButton: some View {
@@ -417,6 +435,9 @@ struct HomeView: View {
                                 onOwnProfileTap: onOwnProfileTap
                             )
                         }
+                        if !isExplore {
+                            followingFeedFooter
+                        }
                     }
                     .padding(.horizontal, 16)
                     // Extra space so the last card is fully above the glass tab bar
@@ -432,6 +453,167 @@ struct HomeView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Find people
+
+struct FindPeopleDestination: Hashable {}
+
+struct FindPeopleView: View {
+    @State private var suggestions: [SuggestedUser] = []
+    @State private var isLoading = true
+    @State private var followedIds: Set<UUID> = []
+
+    struct SuggestedUser: Identifiable {
+        let id: UUID
+        let username: String?
+        let displayName: String?
+        let avatarUrl: String?
+        let ratingCount: Int
+    }
+
+    var body: some View {
+        Group {
+            if isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if suggestions.isEmpty {
+                VStack(spacing: 14) {
+                    Image(systemName: "person.2")
+                        .font(.system(size: 44)).foregroundStyle(Color.sjBorder)
+                    Text("No suggestions right now.")
+                        .font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List(suggestions) { user in
+                    SuggestedUserRow(
+                        user: user,
+                        isFollowed: followedIds.contains(user.id),
+                        onToggle: { await toggleFollow(user) }
+                    )
+                    .listRowBackground(Color.sjSurface)
+                    .listRowSeparatorTint(Color.sjBorder.opacity(0.5))
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+            }
+        }
+        .background(Color.sjCream.ignoresSafeArea())
+        .navigationTitle("Find People")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await load() }
+    }
+
+    private func load() async {
+        guard let me = supabase.auth.currentUser?.id else { isLoading = false; return }
+
+        struct Row: Codable {
+            let id: UUID
+            let username: String?
+            let displayName: String?
+            let avatarUrl: String?
+            let ratingCount: Int
+            enum CodingKeys: String, CodingKey {
+                case id, username
+                case displayName = "display_name"
+                case avatarUrl   = "avatar_url"
+                case ratingCount = "rating_count"
+            }
+        }
+
+        struct FollowRow: Codable {
+            let followingId: UUID
+            enum CodingKeys: String, CodingKey { case followingId = "following_id" }
+        }
+
+        async let rowsTask: [Row] = (try? await supabase
+            .rpc("get_suggested_users", params: ["p_user_id": me.uuidString])
+            .execute().value) ?? []
+
+        async let followingTask: [FollowRow] = (try? await supabase
+            .from("follows").select("following_id").eq("follower_id", value: me).execute().value) ?? []
+
+        let (rows, following) = await (rowsTask, followingTask)
+        followedIds = Set(following.map(\.followingId))
+        suggestions = rows.map {
+            SuggestedUser(id: $0.id, username: $0.username, displayName: $0.displayName,
+                          avatarUrl: $0.avatarUrl, ratingCount: $0.ratingCount)
+        }
+        isLoading = false
+    }
+
+    private func toggleFollow(_ user: SuggestedUser) async {
+        guard let me = supabase.auth.currentUser?.id else { return }
+        struct Payload: Encodable { let followerId, followingId: UUID
+            enum CodingKeys: String, CodingKey { case followerId = "follower_id"; case followingId = "following_id" }
+        }
+        if followedIds.contains(user.id) {
+            followedIds.remove(user.id)
+            _ = try? await supabase.from("follows")
+                .delete().eq("follower_id", value: me).eq("following_id", value: user.id).execute()
+        } else {
+            followedIds.insert(user.id)
+            _ = try? await supabase.from("follows")
+                .insert(Payload(followerId: me, followingId: user.id)).execute()
+        }
+    }
+}
+
+private struct SuggestedUserRow: View {
+    let user: FindPeopleView.SuggestedUser
+    let isFollowed: Bool
+    let onToggle: () async -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Group {
+                if let url = user.avatarUrl.flatMap(URL.init) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let img): img.resizable().scaledToFill()
+                        default: Color.sjBorder
+                        }
+                    }
+                } else {
+                    Image(systemName: "person.circle.fill")
+                        .resizable().scaledToFit()
+                        .foregroundStyle(Color(uiColor: .systemGray3))
+                }
+            }
+            .frame(width: 44, height: 44).clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(user.displayName ?? user.username ?? "User")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.sjInk)
+                if let u = user.username {
+                    Text("@\(u)")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.sjMuted)
+                }
+                Text("\(user.ratingCount) ratings")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.sjMuted)
+            }
+
+            Spacer()
+
+            Button {
+                Task { await onToggle() }
+            } label: {
+                Text(isFollowed ? "Following" : "Follow")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(isFollowed ? Color.sjMuted : Color.sjCream)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                    .background(isFollowed ? Color.sjBorder.opacity(0.4) : Color.sjAmber)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.vertical, 6)
     }
 }
 

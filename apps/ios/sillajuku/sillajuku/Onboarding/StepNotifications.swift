@@ -56,7 +56,7 @@ struct StepNotifications: View {
     }
 
     private func requestAndFinish() async {
-        try? await UNUserNotificationCenter.current()
+        _ = try? await UNUserNotificationCenter.current()
             .requestAuthorization(options: [.alert, .badge, .sound])
         await onFinish()
     }

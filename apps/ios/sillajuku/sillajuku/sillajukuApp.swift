@@ -1,5 +1,6 @@
 import SwiftUI
 import Supabase
+import UserNotifications
 
 final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(
@@ -7,6 +8,43 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         supportedInterfaceOrientationsFor window: UIWindow?
     ) -> UIInterfaceOrientationMask {
         .portrait
+    }
+
+    func application(
+        _ application: UIApplication,
+        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+    ) {
+        let token = deviceToken.map { String(format: "%02x", $0) }.joined()
+        Task { await PushTokenService.save(token: token) }
+    }
+
+    func application(
+        _ application: UIApplication,
+        didFailToRegisterForRemoteNotificationsWithError error: Error
+    ) {
+        // Simulator will always fail — safe to ignore
+    }
+}
+
+// MARK: - Push token persistence
+
+enum PushTokenService {
+    static func requestPermissionAndRegister() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
+            guard granted else { return }
+            DispatchQueue.main.async {
+                UIApplication.shared.registerForRemoteNotifications()
+            }
+        }
+    }
+
+    static func save(token: String) async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        _ = try? await supabase
+            .from("profiles")
+            .update(["push_token": token])
+            .eq("id", value: userId)
+            .execute()
     }
 }
 
@@ -50,6 +88,7 @@ struct RootView: View {
                 OnboardingView(provider: provider)
             case .authenticated:
                 MainTabView()
+                    .task { PushTokenService.requestPermissionAndRegister() }
             }
         }
         .task { await observeAuth() }

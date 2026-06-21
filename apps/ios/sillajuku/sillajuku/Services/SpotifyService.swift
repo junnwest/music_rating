@@ -26,7 +26,7 @@ struct SpotifyRecentlyPlayedResponse: Codable {
 }
 
 struct SpotifyPlayItem: Codable {
-    let track: SpotifyTrack
+    let track: SpotifyTrack?   // nil for podcast episodes
     let playedAt: String
 
     enum CodingKeys: String, CodingKey {
@@ -38,7 +38,7 @@ struct SpotifyPlayItem: Codable {
 struct SpotifyTrack: Codable {
     let name: String
     let artists: [SpotifyTrackArtist]
-    let album: SpotifyAlbum
+    let album: SpotifyAlbum?   // nil for podcast episodes — those are skipped
 
     struct SpotifyTrackArtist: Codable { let name: String }
 
@@ -78,8 +78,13 @@ enum SpotifyService {
     }()
 
     // Returns nil if the user didn't log in with Spotify or the token is missing.
+    // Caches the most-recently-seen token so Supabase session refreshes don't erase it.
     static func providerToken() async -> String? {
-        try? await supabase.auth.session.providerToken
+        if let token = try? await supabase.auth.session.providerToken {
+            UserDefaults.standard.set(token, forKey: "sj_spotify_provider_token")
+            return token
+        }
+        return UserDefaults.standard.string(forKey: "sj_spotify_provider_token")
     }
 
     static func topArtists(token: String, limit: Int = 10) async -> [SpotifyArtistDisplay] {
@@ -101,16 +106,16 @@ enum SpotifyService {
         guard let (data, _) = try? await URLSession.shared.data(for: req),
               let response = try? decoder.decode(SpotifyRecentlyPlayedResponse.self, from: data) else { return [] }
 
-        // Deduplicate albums by id, preserving order (most recent first)
+        // Deduplicate albums by id, preserving order (most recent first); skip podcasts (nil track or nil album)
         var seen = Set<String>()
         var albums: [SpotifyAlbumDisplay] = []
         for item in response.items {
-            let album = item.track.album
+            guard let track = item.track, let album = track.album else { continue }
             if seen.insert(album.id).inserted {
                 albums.append(SpotifyAlbumDisplay(
                     id: album.id,
                     name: album.name,
-                    artistName: album.artists.first?.name ?? item.track.artists.first?.name ?? "",
+                    artistName: album.artists.first?.name ?? track.artists.first?.name ?? "",
                     imageUrl: album.imageUrl
                 ))
             }

@@ -6,7 +6,7 @@ import Supabase
 
 struct UserRating: Codable, Identifiable {
     let id: UUID
-    let score: Double
+    let score: Double?
     let releases: ReleaseRef
 
     enum CodingKeys: String, CodingKey {
@@ -54,6 +54,21 @@ enum ProfileTab: CaseIterable {
     }
 }
 
+// MARK: - Follow model
+
+struct FollowProfile: Codable, Identifiable {
+    let id: UUID
+    let username: String?
+    let displayName: String?
+    let avatarUrl: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, username
+        case displayName = "display_name"
+        case avatarUrl   = "avatar_url"
+    }
+}
+
 // MARK: - ViewModel
 
 @Observable
@@ -65,8 +80,9 @@ class ProfileViewModel {
 
     var totalRatings: Int { ratings.count }
     var avgScore: Double {
-        guard !ratings.isEmpty else { return 0 }
-        return ratings.map(\.score).reduce(0, +) / Double(ratings.count)
+        let scored = ratings.compactMap(\.score)
+        guard !scored.isEmpty else { return 0 }
+        return scored.reduce(0, +) / Double(scored.count)
     }
 
     var followingCount = 0
@@ -80,7 +96,7 @@ class ProfileViewModel {
 
         profile = try? await supabase
             .from("profiles")
-            .select("id, display_name, username, rating_mode, bio, avatar_url")
+            .select("id, display_name, username, rating_mode, manual_rating_step, bio, avatar_url")
             .eq("id", value: user.id)
             .single()
             .execute()
@@ -94,6 +110,17 @@ class ProfileViewModel {
             .limit(60)
             .execute()
             .value) ?? []
+
+        if let r = try? await supabase.from("follows")
+            .select("*", head: true, count: .exact)
+            .eq("follower_id", value: user.id).execute() {
+            followingCount = r.count ?? 0
+        }
+        if let r = try? await supabase.from("follows")
+            .select("*", head: true, count: .exact)
+            .eq("following_id", value: user.id).execute() {
+            followerCount = r.count ?? 0
+        }
 
         isLoading = false
     }
@@ -110,16 +137,23 @@ class ProfileViewModel {
 
 // MARK: - View
 
+enum RatingSortOrder: String, CaseIterable {
+    case recent     = "Recent"
+    case topRated   = "Top Rated"
+    case bottomRated = "Bottom Rated"
+    case alphabetical = "A–Z"
+}
+
 struct ProfileView: View {
     var viewModel: ProfileViewModel
     @State private var activeTab: ProfileTab = .rated
-    @State private var showSettings = false
-    @State private var showEditProfile = false
-    @State private var showShareSheet = false
-
-    private let columns = [GridItem(.flexible(), spacing: 2),
-                            GridItem(.flexible(), spacing: 2),
-                            GridItem(.flexible(), spacing: 2)]
+    @State private var showSettings       = false
+    @State private var showEditProfile    = false
+    @State private var showShareSheet     = false
+    @State private var showFollowModal    = false
+    @State private var followModalInitTab: FollowMode = .following
+    @State private var mixLibVM           = MixLibraryViewModel()
+    @State private var ratingSortOrder: RatingSortOrder = .recent
 
     var body: some View {
         NavigationStack {
@@ -132,18 +166,7 @@ struct ProfileView: View {
                 }
             }
             .background(Color.sjCream.ignoresSafeArea())
-            .navigationTitle(viewModel.profile.flatMap { $0.username }.map { "@\($0)" } ?? "Profile")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showSettings = true
-                    } label: {
-                        Image(systemName: "gearshape")
-                            .foregroundStyle(Color.sjInk)
-                    }
-                }
-            }
+            .navigationBarHidden(true)
             .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
             .navigationDestination(for: Mix.self) { MixDetailView(mix: $0) }
             .sheet(isPresented: $showSettings) {
@@ -156,6 +179,11 @@ struct ProfileView: View {
             }
             .sheet(isPresented: $showShareSheet) {
                 ShareSheet(url: profileURL, username: viewModel.profile?.username ?? "sillajuku")
+            }
+            .sheet(isPresented: $showFollowModal) {
+                if let id = viewModel.profile?.id {
+                    FollowListModal(userId: id, initialTab: followModalInitTab)
+                }
             }
         }
         .task { await viewModel.load() }
@@ -171,23 +199,52 @@ struct ProfileView: View {
 
     private var profileContent: some View {
         VStack(spacing: 0) {
+            customNavBar
             headerRow
             nameRow
             actionButtons
             tabBar
 
-            // Swipeable content — each page scrolls independently
             TabView(selection: $activeTab) {
-                ScrollView(showsIndicators: false) { ratedGrid }
-                    .tag(ProfileTab.rated)
-                ScrollView(showsIndicators: false) { listsPlaceholder }
-                    .tag(ProfileTab.lists)
-                ScrollView(showsIndicators: false) { statsContent }
-                    .tag(ProfileTab.stats)
+                ScrollView(showsIndicators: false) {
+                    ratedGrid.padding(.bottom, 32)
+                }
+                .tag(ProfileTab.rated)
+
+                ScrollView(showsIndicators: false) {
+                    listsPlaceholder.padding(.bottom, 32)
+                }
+                .tag(ProfileTab.lists)
+
+                ScrollView(showsIndicators: false) {
+                    statsContent.padding(.bottom, 32)
+                }
+                .tag(ProfileTab.stats)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
-            .animation(.easeInOut(duration: 0.18), value: activeTab)
+            .frame(maxHeight: .infinity)
         }
+    }
+
+    private var customNavBar: some View {
+        ZStack {
+            Text(viewModel.profile.flatMap { $0.username }.map { "@\($0)" } ?? "Profile")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color.sjInk)
+                .frame(maxWidth: .infinity, alignment: .center)
+
+            HStack {
+                Spacer()
+                Button { showSettings = true } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Color.sjInk)
+                }
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
     }
 
     // MARK: - Header row
@@ -199,8 +256,20 @@ struct ProfileView: View {
 
             HStack(spacing: 0) {
                 ProfileStatCell(value: "\(viewModel.totalRatings)", label: "Rated")
-                ProfileStatCell(value: "\(viewModel.followingCount)", label: "Following")
-                ProfileStatCell(value: "\(viewModel.followerCount)",  label: "Followers")
+                Button {
+                    followModalInitTab = .following
+                    showFollowModal = true
+                } label: {
+                    ProfileStatCell(value: "\(viewModel.followingCount)", label: "Following")
+                }
+                .buttonStyle(.plain)
+                Button {
+                    followModalInitTab = .followers
+                    showFollowModal = true
+                } label: {
+                    ProfileStatCell(value: "\(viewModel.followerCount)", label: "Followers")
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 18)
@@ -294,6 +363,15 @@ struct ProfileView: View {
 
     // MARK: - Tab content
 
+    private var sortedRatings: [UserRating] {
+        switch ratingSortOrder {
+        case .recent:      return viewModel.ratings
+        case .topRated:    return viewModel.ratings.sorted { ($0.score ?? 0) > ($1.score ?? 0) }
+        case .bottomRated: return viewModel.ratings.sorted { ($0.score ?? 0) < ($1.score ?? 0) }
+        case .alphabetical: return viewModel.ratings.sorted { $0.releases.title < $1.releases.title }
+        }
+    }
+
     @ViewBuilder
     private var ratedGrid: some View {
         if viewModel.ratings.isEmpty {
@@ -308,22 +386,49 @@ struct ProfileView: View {
             .frame(maxWidth: .infinity)
             .padding(.top, 60)
         } else {
-            LazyVGrid(columns: columns, spacing: 2) {
-                ForEach(viewModel.ratings) { rating in
+            LazyVStack(spacing: 0) {
+                HStack {
+                    Text("\(viewModel.ratings.count) ratings")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.sjMuted)
+                    Spacer()
+                    Menu {
+                        ForEach(RatingSortOrder.allCases, id: \.self) { order in
+                            Button {
+                                ratingSortOrder = order
+                            } label: {
+                                Label(order.rawValue,
+                                      systemImage: ratingSortOrder == order ? "checkmark" : "")
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "line.3.horizontal.decrease")
+                            Text(ratingSortOrder.rawValue)
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.sjAmber)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+
+                ForEach(sortedRatings) { rating in
                     NavigationLink(value: rating.releases.asRelease) {
-                        RatingGridCell(rating: rating)
+                        RatingListRow(rating: rating)
                     }
                     .buttonStyle(.plain)
+                    Divider().padding(.leading, 70)
                 }
             }
-            .padding(.top, 2)
+            .padding(.top, 4)
         }
     }
 
     @ViewBuilder
     private var listsPlaceholder: some View {
         if let profile = viewModel.profile {
-            MixLibraryView(userId: profile.id)
+            MixLibraryView(userId: profile.id, viewModel: mixLibVM)
         }
     }
 
@@ -457,17 +562,16 @@ private struct StatsCard: View {
     }
 }
 
-struct RatingGridCell: View {
+struct RatingListRow: View {
     let rating: UserRating
 
-    private var scoreLabel: String {
-        let v = rating.score
-        return v.truncatingRemainder(dividingBy: 1) == 0
-            ? "\(Int(v))" : String(format: "%.1f", v)
+    private var scoreText: String {
+        guard let v = rating.score else { return "—" }
+        return v.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(v))" : String(format: "%.1f", v)
     }
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
+        HStack(spacing: 12) {
             AsyncImage(url: URL(string: rating.releases.coverUrl ?? "")) { phase in
                 switch phase {
                 case .success(let image):
@@ -476,19 +580,211 @@ struct RatingGridCell: View {
                     Color.sjBorder
                 }
             }
-            .frame(maxWidth: .infinity)
-            .aspectRatio(1, contentMode: .fit)
+            .frame(width: 46, height: 46)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
 
-            Text(scoreLabel)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 3)
-                .background(.black.opacity(0.55))
-                .clipShape(RoundedRectangle(cornerRadius: 3))
-                .padding(5)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(rating.releases.title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.sjInk)
+                    .lineLimit(1)
+                Text(rating.releases.artist)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.sjMuted)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if rating.score != nil {
+                HStack(spacing: 4) {
+                    Image("icon-flower")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 11, height: 11)
+                        .foregroundStyle(Color.sjBlue)
+                    Text(scoreText)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Color.sjBlue)
+                }
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(Color.sjBlue.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            } else {
+                Image("icon-flower")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 11, height: 11)
+                    .foregroundStyle(Color.sjMuted)
+            }
         }
-        .clipped()
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
+    }
+}
+
+// MARK: - Follow list sheet (combined with swipeable tabs)
+
+enum FollowMode { case following, followers }
+
+struct FollowListModal: View {
+    let userId: UUID
+    let initialTab: FollowMode
+
+    @State private var activeTab: FollowMode
+    @State private var following: [FollowProfile] = []
+    @State private var followers: [FollowProfile] = []
+    @State private var isLoading = true
+
+    init(userId: UUID, initialTab: FollowMode) {
+        self.userId = userId
+        self.initialTab = initialTab
+        _activeTab = State(initialValue: initialTab)
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // Segmented tab bar
+                HStack(spacing: 0) {
+                    tabBtn("Following", tab: .following)
+                    tabBtn("Followers", tab: .followers)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
+
+                Divider()
+
+                if isLoading {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    TabView(selection: $activeTab) {
+                        profileList(following, empty: "Not following anyone yet")
+                            .tag(FollowMode.following)
+                        profileList(followers, empty: "No followers yet")
+                            .tag(FollowMode.followers)
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    .animation(.easeInOut(duration: 0.2), value: activeTab)
+                }
+            }
+            .background(Color.sjCream.ignoresSafeArea())
+            .navigationTitle(activeTab == .following ? "Following" : "Followers")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .task { await loadBoth() }
+    }
+
+    @ViewBuilder
+    private func profileList(_ profiles: [FollowProfile], empty: String) -> some View {
+        if profiles.isEmpty {
+            VStack(spacing: 12) {
+                Image(systemName: "person.2")
+                    .font(.system(size: 36))
+                    .foregroundStyle(Color.sjMuted)
+                Text(empty)
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color.sjMuted)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            List(profiles) { profile in
+                FollowProfileRow(profile: profile)
+                    .listRowBackground(Color.sjSurface)
+                    .listRowSeparatorTint(Color.sjBorder.opacity(0.5))
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+        }
+    }
+
+    private func tabBtn(_ label: String, tab: FollowMode) -> some View {
+        Button { withAnimation { activeTab = tab } } label: {
+            VStack(spacing: 0) {
+                Text(label)
+                    .font(.system(size: 14, weight: activeTab == tab ? .semibold : .regular))
+                    .foregroundStyle(activeTab == tab ? Color.sjInk : Color.sjMuted)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                Rectangle()
+                    .fill(activeTab == tab ? Color.sjBlue : Color.clear)
+                    .frame(height: 2)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func loadBoth() async {
+        isLoading = true
+        async let f = loadList(mode: .following)
+        async let r = loadList(mode: .followers)
+        following = await f
+        followers = await r
+        isLoading = false
+    }
+
+    private func loadList(mode: FollowMode) async -> [FollowProfile] {
+        struct FollowRow: Codable {
+            let followingId: UUID?
+            let followerId: UUID?
+            enum CodingKeys: String, CodingKey {
+                case followingId = "following_id"
+                case followerId  = "follower_id"
+            }
+        }
+        let col    = mode == .following ? "following_id" : "follower_id"
+        let filter = mode == .following ? "follower_id"  : "following_id"
+        let rows: [FollowRow] = (try? await supabase
+            .from("follows").select(col).eq(filter, value: userId).execute().value) ?? []
+        let ids = rows.compactMap { mode == .following ? $0.followingId : $0.followerId }
+        guard !ids.isEmpty else { return [] }
+        return (try? await supabase
+            .from("profiles")
+            .select("id, username, display_name, avatar_url")
+            .in("id", values: ids.map(\.uuidString))
+            .execute().value) ?? []
+    }
+}
+
+private struct FollowProfileRow: View {
+    let profile: FollowProfile
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Group {
+                if let url = profile.avatarUrl.flatMap(URL.init) {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let img): img.resizable().scaledToFill()
+                        default: Color.sjBorder
+                        }
+                    }
+                } else {
+                    Image(systemName: "person.circle.fill")
+                        .resizable()
+                        .scaledToFit()
+                        .foregroundStyle(Color(uiColor: .systemGray3))
+                }
+            }
+            .frame(width: 40, height: 40)
+            .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                if let name = profile.displayName, !name.isEmpty {
+                    Text(name)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.sjInk)
+                }
+                if let username = profile.username {
+                    Text("@\(username)")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.sjMuted)
+                }
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 
