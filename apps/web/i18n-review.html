@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Korean i18n review — AddModal + Song UI</title>
+<style>
+  :root { --bg:#F8F8F6; --ink:#1A1A18; --muted:#8C8C8A; --border:#E4E4E0; --surface:#fff; --amber:#E8A020; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:-apple-system,Segoe UI,Roboto,'Malgun Gothic',sans-serif; }
+  .wrap { max-width:1040px; margin:0 auto; padding:32px 24px 80px; }
+  h1 { font-size:24px; font-weight:800; margin:0 0 4px; }
+  p.sub { color:var(--muted); font-size:13px; margin:0 0 24px; }
+  .bar { position:sticky; top:0; background:var(--bg); padding:12px 0; border-bottom:1px solid var(--border); display:flex; gap:12px; align-items:center; z-index:5; }
+  button { font:inherit; font-weight:700; font-size:13px; border:none; border-radius:10px; padding:9px 16px; cursor:pointer; background:var(--ink); color:#fff; }
+  button.ghost { background:transparent; color:var(--ink); border:1px solid var(--border); }
+  .msg { color:var(--amber); font-size:12px; font-weight:700; }
+  h2 { font-size:15px; font-weight:800; margin:30px 0 10px; }
+  table { width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+  th, td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--border); vertical-align:top; font-size:13px; }
+  th { background:#F1F1EE; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+  tr:last-child td { border-bottom:none; }
+  td.ctx { color:var(--muted); font-size:11px; white-space:nowrap; }
+  td.en { font-weight:600; width:34%; }
+  td.ko { width:42%; }
+  textarea { width:100%; min-height:34px; resize:vertical; font:inherit; font-size:13px; padding:7px 9px; border:1px solid var(--border); border-radius:8px; background:#fff; color:var(--ink); }
+  textarea:focus { outline:none; border-color:var(--ink); }
+  code { background:#EFEFEC; padding:1px 5px; border-radius:5px; font-size:11px; }
+  .note { font-size:11px; color:var(--muted); margin-top:3px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Korean i18n review</h1>
+  <p class="sub">Proposed Korean for the hardcoded English in the rate flow (<code>AddModal</code>), the rating control (<code>StarRatingWidget</code>), and the song page. Edit any Korean cell, then click <b>Copy edited translations</b> and paste it back to me — I'll wire them in. <code>{n}</code> / <code>{rank}</code> / <code>{total}</code> are runtime values; keep them in your translation.</p>
+
+  <div class="bar">
+    <button onclick="copyAll()">Copy edited translations</button>
+    <button class="ghost" onclick="location.reload()">Reset edits</button>
+    <span class="msg" id="msg"></span>
+  </div>
+
+  <div id="tables"></div>
+</div>
+
+<script>
+const DATA = [
+  { group: "AddModal — rate flow", rows: [
+    ["bucket bad (single line, hint removed)", "Bad", "별로"],
+    ["bucket neutral (single line, hint removed)", "Neutral", "보통"],
+    ["bucket good (single line, hint removed)", "Good", "좋아요"],
+    ["instinct heading", "First impression?", "첫인상은?"],
+    ["instinct subheading", "How did it hit you?", "느낌이 어땠나요?"],
+    ["manual heading", "Your rating", "내 평가"],
+    ["manual saved", "Saved: {n}", "저장됨: {n}"],
+    ["loading", "Loading…", "불러오는 중…"],
+    ["compare heading", "Which do you prefer?", "어느 쪽이 더 좋나요?"],
+    ["compare subheading", "Tap the one you like more.", "더 좋은 쪽을 선택하세요."],
+    ["compare vs", "vs", "vs"],
+    ["compare finishing", "Finishing…", "마무리하는 중…"],
+    ["done title", "Done!", "완료!"],
+    ["done score prefix", "Your score:", "내 점수:"],
+    ["done need more", "Rate {n} more to reveal your scores.", "점수를 보려면 {n}개 더 평가하세요."],
+    ["done close btn", "Close", "닫기"],
+    ["reveal lists heading", "Add to a list", "리스트에 추가"],
+    ["reveal Listen Later", "Listen Later", "나중에 듣기"],
+    ["reveal comment heading", "Leave a comment", "코멘트 남기기"],
+    ["reveal comment placeholder", "Share a thought (optional)…", "생각을 자유롭게 남겨보세요 (선택)…"],
+    ["reveal post btn", "Post comment", "코멘트 등록"],
+    ["reveal comment posted", "Comment posted", "코멘트가 등록되었어요"],
+    ["footer btn (instinct)", "Continue to comparisons", "비교 계속하기"],
+    ["footer btn (no opponents)", "Finish", "완료"],
+    ["footer btn (manual)", "Done", "완료"],
+  ]},
+  { group: "StarRatingWidget — rating control", rows: [
+    ["add button (= rate)", "Add", "평가"],
+    ["re-rank button", "Re-rank", "다시 평가"],
+    ["instinct rank label", "#{rank} of {total}", "전체 {total}개 중 {rank}위"],
+    ["instinct not-yet-revealed", "Rated · scores reveal after {n} more", "평가 완료 · {n}개 더 평가하면 점수 공개"],
+    ["delete confirm prompt", "Delete rating?", "평가를 삭제할까요?"],
+    ["delete button", "Delete", "삭제"],
+    ["deleting", "Deleting…", "삭제 중…"],
+    ["cancel", "Cancel", "취소"],
+    ["login title", "Sign in to rate", "평가하려면 로그인하세요"],
+    ["login body", "Create an account or sign in to save your ratings.", "평가를 저장하려면 계정을 만들거나 로그인하세요."],
+    ["login button", "Sign in", "로그인"],
+  ]},
+  { group: "Song page", rows: [
+    ["type label", "Song", "곡"],
+    ["stats avg word", "avg", "평균"],
+    ["stats count", "{n} ratings", "평가 {n}개"],
+    ["stats none", "No ratings yet", "아직 평가가 없어요"],
+    ["appears on heading", "Appears on", "수록 앨범"],
+  ]},
+];
+
+const el = document.getElementById('tables');
+DATA.forEach((sec, gi) => {
+  const h = document.createElement('h2'); h.textContent = sec.group; el.appendChild(h);
+  const t = document.createElement('table');
+  t.innerHTML = '<thead><tr><th>Where</th><th>English</th><th>Korean (editable)</th></tr></thead>';
+  const tb = document.createElement('tbody');
+  sec.rows.forEach((r, ri) => {
+    const tr = document.createElement('tr');
+    const ctx = document.createElement('td'); ctx.className='ctx'; ctx.textContent = r[0];
+    const en = document.createElement('td'); en.className='en'; en.textContent = r[1];
+    const ko = document.createElement('td'); ko.className='ko';
+    const ta = document.createElement('textarea'); ta.value = r[2]; ta.dataset.g = gi; ta.dataset.r = ri;
+    ko.appendChild(ta);
+    tr.append(ctx, en, ko); tb.appendChild(tr);
+  });
+  t.appendChild(tb); el.appendChild(t);
+});
+
+function copyAll() {
+  const out = [];
+  DATA.forEach((sec, gi) => {
+    const grp = { group: sec.group, strings: [] };
+    sec.rows.forEach((r, ri) => {
+      const ta = document.querySelector(`textarea[data-g="${gi}"][data-r="${ri}"]`);
+      grp.strings.push({ where: r[0], en: r[1], ko: ta.value });
+    });
+    out.push(grp);
+  });
+  const text = JSON.stringify(out, null, 2);
+  navigator.clipboard.writeText(text).then(() => {
+    document.getElementById('msg').textContent = 'Copied! Paste it back in chat.';
+    setTimeout(() => document.getElementById('msg').textContent = '', 4000);
+  }, () => {
+    // fallback
+    const w = window.open('', '_blank'); w.document.write('<pre>'+text.replace(/</g,'&lt;')+'</pre>');
+  });
+}
+</script>
+</body>
+</html>
