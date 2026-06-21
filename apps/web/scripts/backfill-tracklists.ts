@@ -71,17 +71,17 @@ const LANG_TO_STORES: Record<string, string[]> = {
   vi: ['VN'],
 };
 
-// Broad storefront rotation, tried (after US + any native_language stores) when
-// a lookup/search comes up empty — stop at the first store that returns songs.
-// Probing showed many region-locked albums resolve in ANY non-US store while a
-// few need a specific one (e.g., a German album only in MX), so we sweep all
-// real markets ordered by size. Coverage over speed (per the near-100% goal).
-const FALLBACK_STORES = [
-  'GB', 'DE', 'JP', 'FR', 'BR', 'CA', 'AU', 'MX', 'IT', 'ES', 'KR', 'NL',
-  'RU', 'IN', 'SE', 'TR', 'PL', 'ID', 'TH', 'VN', 'PH', 'TW', 'HK', 'CN',
-  'AR', 'CL', 'CO', 'PT', 'BE', 'CH', 'AT', 'IE', 'NZ', 'ZA', 'NG', 'SA',
-  'AE', 'EG', 'GR', 'NO', 'DK', 'FI', 'MY', 'SG',
-];
+// LEAN storefront fallback (after US + any native_language stores), stop at the
+// first store that returns songs.
+//
+// A wide ~44-store sweep was tried and FAILED: it multiplied request volume per
+// miss, tripped iTunes' IP-level 403 block, and collapsed yield. Probing showed
+// GB is a near-universal non-US fallback (returned tracks for albums that were
+// US:0 across Brazilian/European/etc. catalogs), so a tiny list catches the large
+// majority while keeping volume low enough to avoid the block. Rare single-store-
+// only oddballs (e.g. a German album only in MX) are an accepted residual —
+// brute-forcing them gets the whole run blocked, which yields far less overall.
+const FALLBACK_STORES = ['GB', 'JP', 'KR', 'DE', 'BR'];
 
 // US is tried separately first; this returns the de-duped fallback order.
 function orderedStores(nativeLang: string | null): string[] {
@@ -98,17 +98,33 @@ function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
 // ── iTunes ────────────────────────────────────────────────────────────────────
 
+// Circuit breaker: sustained 403s mean iTunes has blocked this IP — no per-request
+// tuning helps once that happens, so abort the run (progress is saved per release)
+// and let the user resume after a cooldown. A real response resets the counter.
+let consecutive403 = 0;
+const ABORT_AFTER_403 = 15;
+
 async function itunesGet(url: string, attempt = 0): Promise<any> {
   await sleep(ITUNES_DELAY + Math.floor(Math.random() * 500)); // jitter avoids lockstep bursts
   try {
     const res = await fetch(url, { headers: { 'User-Agent': 'sillajuku-tracklist-backfill/1.0' } });
     if (res.status === 429 || res.status === 403) {
-      const wait = Math.min(120000, 10000 * 2 ** attempt);
-      process.stdout.write(`[iTunes ${res.status} wait ${wait / 1000}s] `);
-      await sleep(wait);
-      return attempt < 5 ? itunesGet(url, attempt + 1) : null;
+      if (attempt < 3) {
+        const wait = Math.min(60000, 10000 * 2 ** attempt);
+        process.stdout.write(`[iTunes ${res.status} wait ${wait / 1000}s] `);
+        await sleep(wait);
+        return itunesGet(url, attempt + 1);
+      }
+      // Retries exhausted on this request — likely an IP-level block, not a miss.
+      consecutive403++;
+      if (consecutive403 >= ABORT_AFTER_403) {
+        console.error(`\n\n  iTunes is rate-limiting this IP (${consecutive403} requests blocked in a row).\n  Stopping — progress is saved per release. Wait a few hours, then re-run.\n`);
+        process.exit(1);
+      }
+      return null;
     }
     if (!res.ok) return null;
+    consecutive403 = 0; // a real response clears the block counter
     return await res.json();
   } catch { return null; }
 }
