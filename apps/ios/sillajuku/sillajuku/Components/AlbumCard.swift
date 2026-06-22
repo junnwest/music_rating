@@ -3,6 +3,7 @@ import SwiftUI
 struct AlbumCard: View {
     let release: Release
     var onAdd: (() -> Void)? = nil
+    var isRated: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -23,7 +24,19 @@ struct AlbumCard: View {
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                if let onAdd {
+                if isRated {
+                    ZStack {
+                        Circle()
+                            .fill(Color.sjBlue)
+                            .frame(width: 28, height: 28)
+                            .shadow(color: .black.opacity(0.15), radius: 4, y: 1)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                    .allowsHitTesting(false)
+                    .padding(6)
+                } else if let onAdd {
                     Button(action: onAdd) {
                         ZStack {
                             Circle()

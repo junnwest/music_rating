@@ -100,6 +100,14 @@ struct RootView: View {
                 appState.authState = .unauthenticated
                 continue
             }
+            // Capture the Spotify provider token the moment it arrives —
+            // before any subsequent session refresh drops it from the session object.
+            if let token = session.providerToken {
+                UserDefaults.standard.set(token, forKey: "sj_spotify_provider_token")
+            }
+            if let refresh = session.providerRefreshToken {
+                UserDefaults.standard.set(refresh, forKey: "sj_spotify_provider_refresh_token")
+            }
             let onboarded = await checkOnboarded(userId: session.user.id)
             if onboarded {
                 appState.authState = .authenticated

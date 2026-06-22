@@ -6,6 +6,23 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-22 — iOS session 12: Profile swipe fix, Add tab checkmarks, suggestions fix, Spotify permanence:**
+
+- **Profile subtab swipe fixed properly:** Moved the entire header (`customNavBar`, `headerRow`, `nameRow`, `actionButtons`, `tabBar`) outside `TabView` into a fixed `VStack`. Each of the three subtabs (Rated, Lists, Stats) now has its own `ScrollView` inside the `TabView(.page)`. Only content swipes — the header stays fixed. Prior implementation had header inside tab pages causing the whole screen to slide.
+- **Add tab — rated items show checkmark instead of hiding:** Added `isRated: Bool = false` parameter to `AlbumCard`, `DiscoveryAlbumCard`, and `SongRow`. When `isRated = true`, a blue filled checkmark circle overlays the cover art. `.allowsHitTesting(false)` on the checkmark lets taps fall through to the underlying `NavigationLink` (navigates to album detail). All `.filter { !ratedReleaseIds.contains(...) }` calls removed — rated items stay visible in discovery and search results.
+- **Add tab suggestions fix:** `loadPersonalized()` rewrote from fragile OR filter (`artist.ilike.ARTIST1,artist.ilike.ARTIST2,...`) to `.in("artist", values: seeds)` SDK-native call. The OR filter was silently broken — `%` wildcards in `.ilike` got URL-encoded to `%25` by the Supabase Swift SDK, matching nothing. `.in()` uses exact match and handles encoding correctly. Limits bumped: 200 rated releases seed, 50 max seeds, 60 albums, 40 songs.
+- **"See all" rollback:** Removed 4-item cap on songs in discovery sections. `DiscoverySongList` struct, `DiscoverySongListView`, and related `navigationDestination` removed. Songs show all items inline.
+- **Spotify permanence — root cause and fix:**
+  - **Root cause confirmed:** `supabase.auth.refreshSession()` NEVER returns `providerToken`. Proven by reading `AuthClient.swift:876` — `providerToken` is only set in the OAuth callback URL parser (`params["provider_token"]`). The `validToken()` slow path that called `refreshSession()` always returned `nil` and was silently broken.
+  - **`validToken()` simplified** to a fast path only: check UserDefaults cache, validate liveness with a `/me` ping, return `nil` if unavailable. No `refreshSession()` fallback.
+  - **3-layer `loadSpotify()`:** Layer 1 — UserDefaults (instant, device-local); Layer 2 — Supabase `profiles` DB (persistent, survives reinstalls and device switches); Layer 3 — live Spotify API (when token valid, writes back to both Layer 1 and Layer 2). After one successful fetch, data is permanent in the DB regardless of token expiry.
+  - **New `SpotifyService` methods:** `saveArtistsToDB`, `saveRecentlyPlayedToDB`, `loadArtistsFromDB`, `loadRecentlyPlayedFromDB` — each uses `Encodable` structs for type-safe Supabase updates and `Decodable` row structs for reads.
+  - **Migration `20260622000001_spotify_data_cache.sql`:** Adds `spotify_artists jsonb`, `spotify_recently_played jsonb`, `spotify_data_updated_at timestamptz` to `profiles` table. ⏳ Apply via SQL editor before testing.
+  - **Stale reference fix:** `filteredSongs.last?.id` → `searchVM.songResults.last?.id` after removing the rated-filter variable.
+- **Build:** `** BUILD SUCCEEDED **` — clean compile.
+
+---
+
 **2026-06-21 — iOS session 11: Profile swipe, Add tab For You fix, album page posts + mixes:**
 
 - **Profile subtabs — native swipe (Charts-style):** Replaced `DragGesture` hack with `TabView(selection: $activeTab).tabViewStyle(.page(indexDisplayMode: .never))` — same pattern as Charts Albums/Songs. Header (avatar, stats, action buttons, tab bar) is now a fixed `VStack` above the TabView; each tab (Rated, Lists, Stats) has its own `ScrollView`. `MixLibraryView` (Lists tab) also wrapped in `ScrollView` since it used the outer scroll. Native iOS momentum, rubber-banding, and swipe-settle animation are included automatically.

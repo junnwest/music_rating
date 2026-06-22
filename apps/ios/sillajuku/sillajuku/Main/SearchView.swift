@@ -42,6 +42,8 @@ class DiscoveryViewModel {
     var popularSongs:  [SongResult] = []
 
     var isLoading = true
+    var needsSpotifyReconnect = false  // no cached data AND token is gone
+    var isReconnectingSpotify = false
     private var hasLoaded = false
 
     func load() async {
@@ -57,11 +59,68 @@ class DiscoveryViewModel {
     }
 
     private func loadSpotify() async {
-        guard let token = await SpotifyService.providerToken() else { return }
+        // Layer 1: UserDefaults (instant, device-local)
+        if spotifyArtists.isEmpty { spotifyArtists = SpotifyService.loadCachedArtists() }
+        if recentlyPlayed.isEmpty { recentlyPlayed  = SpotifyService.loadCachedRecentlyPlayed() }
 
-        spotifyArtists = await SpotifyService.topArtists(token: token, limit: 10)
-        recentlyPlayed = await SpotifyService.recentlyPlayed(token: token, limit: 50)
+        // Layer 2: Supabase DB (persistent across reinstalls and devices)
+        if spotifyArtists.isEmpty {
+            let dbArtists = await SpotifyService.loadArtistsFromDB()
+            if !dbArtists.isEmpty {
+                spotifyArtists = dbArtists
+                SpotifyService.saveArtists(dbArtists)  // backfill local cache
+            }
+        }
+        if recentlyPlayed.isEmpty {
+            let dbRecent = await SpotifyService.loadRecentlyPlayedFromDB()
+            if !dbRecent.isEmpty {
+                recentlyPlayed = dbRecent
+                SpotifyService.saveRecentlyPlayed(dbRecent)
+            }
+        }
+
         hasSpotifyData = !spotifyArtists.isEmpty || !recentlyPlayed.isEmpty
+
+        // Layer 3: Live Spotify API (when token is valid — refreshes both caches)
+        guard let token = await SpotifyService.validToken() else {
+            needsSpotifyReconnect = !hasSpotifyData
+            return
+        }
+        needsSpotifyReconnect = false
+
+        let fresh = await SpotifyService.topArtists(token: token, limit: 10)
+        if !fresh.isEmpty {
+            spotifyArtists = fresh
+            SpotifyService.saveArtists(fresh)
+            await SpotifyService.saveArtistsToDB(fresh)
+        }
+
+        let recent = await SpotifyService.recentlyPlayed(token: token, limit: 50)
+        if !recent.isEmpty {
+            recentlyPlayed = recent
+            SpotifyService.saveRecentlyPlayed(recent)
+            await SpotifyService.saveRecentlyPlayedToDB(recent)
+        }
+
+        hasSpotifyData = !spotifyArtists.isEmpty || !recentlyPlayed.isEmpty
+    }
+
+    // Opens Spotify OAuth to get a fresh provider token.
+    // After the user returns from the browser, call refreshSpotifyIfNeeded().
+    func reconnectSpotify() async {
+        isReconnectingSpotify = true
+        defer { isReconnectingSpotify = false }
+        try? await supabase.auth.linkIdentity(
+            provider: .spotify,
+            scopes: "user-top-read user-read-recently-played",
+            redirectTo: Config.oauthRedirectURL
+        )
+    }
+
+    // Called when app returns to foreground — picks up the new token if OAuth completed.
+    func refreshSpotifyIfNeeded() async {
+        guard needsSpotifyReconnect || !hasSpotifyData else { return }
+        await loadSpotify()
     }
 
     private func loadPopular() async {
@@ -91,55 +150,55 @@ class DiscoveryViewModel {
     private func loadPersonalized() async {
         guard let userId = supabase.auth.currentUser?.id else { return }
 
-        // Step 1: user's rated release IDs (avoid join to prevent decode failures)
-        struct RatingRef: Codable {
-            let releaseId: UUID
-            enum CodingKeys: String, CodingKey { case releaseId = "release_id" }
+        var dbArtists = Set<String>()
+
+        // Primary seeds: exact artist names from the user's own ratings.
+        // These come from the releases table itself so they always match DB values.
+        struct RatedRelease: Codable {
+            let releases: ArtistOnly
+            struct ArtistOnly: Codable { let artist: String }
         }
-        let ratingRefs: [RatingRef] = (try? await supabase
+        let ratedReleases: [RatedRelease] = (try? await supabase
             .from("ratings")
-            .select("release_id")
+            .select("releases(artist)")
             .eq("user_id", value: userId)
-            .limit(50)
+            .limit(200)
             .execute()
             .value) ?? []
-        guard !ratingRefs.isEmpty else { return }
+        ratedReleases.forEach { dbArtists.insert($0.releases.artist) }
 
-        // Step 2: artists for those releases (separate query, optional artist field)
-        struct RelArtist: Codable { let artist: String? }
-        let relArtists: [RelArtist] = (try? await supabase
-            .from("releases")
-            .select("artist")
-            .in("id", values: ratingRefs.map(\.releaseId.uuidString))
-            .execute()
-            .value) ?? []
+        // Supplement with Spotify artists when available.
+        for a in spotifyArtists { dbArtists.insert(a.name) }
+        for a in recentlyPlayed  { dbArtists.insert(a.artistName) }
 
-        let topArtists = Array(Set(relArtists.compactMap(\.artist))).prefix(8)
-        guard !topArtists.isEmpty else { return }
+        guard !dbArtists.isEmpty else { return }
 
-        // Step 3: albums by those exact artists (in() = no URL-encoded wildcard issues)
+        // Use .in() instead of a hand-rolled OR filter string.
+        // .in() is handled natively by the SDK (no URL-encoding pitfalls).
+        let seeds = Array(dbArtists.prefix(50))
+
         let albums: [Release] = (try? await supabase
             .from("releases")
             .select("id, title, artist, cover_url, title_native, artist_native")
             .not("cover_url", operator: .is, value: AnyJSON.null)
             .in("release_type", values: ["album", "Album", "ep", "EP"])
-            .in("artist", values: Array(topArtists))
+            .in("artist", values: seeds)
             .order("prestige", ascending: false, nullsFirst: false)
-            .limit(50)
+            .limit(60)
             .execute()
             .value) ?? []
 
         personalizedAlbums = albums
         hasPersonalized = !albums.isEmpty
 
-        let ids = albums.prefix(8).map(\.id.uuidString)
+        let ids = albums.prefix(10).map(\.id.uuidString)
         guard !ids.isEmpty else { return }
         personalizedSongs = (try? await supabase
             .from("tracks")
             .select("id, title, artists, releases(id, title, artist, cover_url)")
             .in("release_id", values: ids)
             .order("position")
-            .limit(30)
+            .limit(40)
             .execute()
             .value) ?? []
     }
@@ -194,6 +253,7 @@ struct SearchView: View {
     @State private var instinctSheetRelease: Release?
     @State private var userRatingMode = "manual"
     @State private var ratedReleaseIds: Set<UUID> = []
+    @Environment(\.scenePhase) private var scenePhase
 
     private let threeColumns = [GridItem(.flexible(), spacing: 12),
                                 GridItem(.flexible(), spacing: 12),
@@ -222,7 +282,6 @@ struct SearchView: View {
             .navigationTitle("Add")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
-            .navigationDestination(for: DiscoverySongList.self) { DiscoverySongListView(item: $0) }
             .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
             .sheet(item: $ratingSheetRelease) { release in
                 NavigationStack {
@@ -240,6 +299,12 @@ struct SearchView: View {
             await withTaskGroup(of: Void.self) { g in
                 g.addTask { await loadUserRatingMode() }
                 g.addTask { await loadRatedReleaseIds() }
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // When the user returns from the Spotify OAuth browser, retry Spotify load
+            if phase == .active {
+                Task { await discoveryVM.refreshSpotifyIfNeeded() }
             }
         }
     }
@@ -347,17 +412,20 @@ struct SearchView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         } else {
-            let filteredAlbums = searchVM.albumResults.filter { !ratedReleaseIds.contains($0.id) }
-            let filteredSongs  = searchVM.songResults.filter  { !ratedReleaseIds.contains($0.releases.id) }
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     // ── Albums ────────────────────────────────
-                    if !filteredAlbums.isEmpty {
+                    if !searchVM.albumResults.isEmpty {
                         sectionLabel("Albums")
                         LazyVGrid(columns: threeColumns, spacing: 14) {
-                            ForEach(filteredAlbums) { release in
+                            ForEach(searchVM.albumResults) { release in
+                                let rated = ratedReleaseIds.contains(release.id)
                                 NavigationLink(value: release) {
-                                    AlbumCard(release: release, onAdd: { addRelease(release) })
+                                    AlbumCard(
+                                        release: release,
+                                        onAdd: rated ? nil : { addRelease(release) },
+                                        isRated: rated
+                                    )
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -367,16 +435,21 @@ struct SearchView: View {
                     }
 
                     // ── Songs ─────────────────────────────────
-                    if !filteredSongs.isEmpty {
+                    if !searchVM.songResults.isEmpty {
                         sectionLabel("Songs")
                         VStack(spacing: 0) {
-                            ForEach(filteredSongs) { song in
+                            ForEach(searchVM.songResults) { song in
                                 let pr = songParentRelease(song)
+                                let rated = ratedReleaseIds.contains(song.releases.id)
                                 NavigationLink(value: pr) {
-                                    SongRow(song: song, onAdd: { addRelease(pr) })
+                                    SongRow(
+                                        song: song,
+                                        onAdd: rated ? nil : { addRelease(pr) },
+                                        isRated: rated
+                                    )
                                 }
                                 .buttonStyle(.plain)
-                                if song.id != filteredSongs.last?.id {
+                                if song.id != searchVM.songResults.last?.id {
                                     Divider().padding(.leading, 72)
                                 }
                             }
@@ -400,6 +473,11 @@ struct SearchView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
 
+                    // ── Spotify: reconnect prompt (only when no cached data) ──
+                    if discoveryVM.needsSpotifyReconnect {
+                        spotifyReconnectBanner
+                    }
+
                     // ── Spotify: Your Top Artists ─────────────
                     if !discoveryVM.spotifyArtists.isEmpty {
                         discoverySectionTitle("Your Top Artists")
@@ -415,43 +493,32 @@ struct SearchView: View {
                     }
 
                     // ── For You (DB-based) ────────────────────
-                    let forYouAlbums = discoveryVM.personalizedAlbums.filter { !ratedReleaseIds.contains($0.id) }
-                    let forYouSongs  = discoveryVM.personalizedSongs.filter  { !ratedReleaseIds.contains($0.releases.id) }
                     if discoveryVM.hasPersonalized {
                         discoverySectionTitle("For You")
 
-                        if !forYouAlbums.isEmpty {
+                        if !discoveryVM.personalizedAlbums.isEmpty {
                             discoverySubheader("Albums")
-                            albumScroll(forYouAlbums)
+                            albumScroll(discoveryVM.personalizedAlbums)
                         }
-                        if !forYouSongs.isEmpty {
-                            songSectionHeader("Songs", songs: forYouSongs)
-                            songList(Array(forYouSongs.prefix(4)))
-                        }
-                        if forYouAlbums.isEmpty && forYouSongs.isEmpty {
-                            Text("You've rated everything we'd recommend — keep exploring below.")
-                                .font(.system(size: 13))
-                                .foregroundStyle(Color.sjMuted)
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 12)
+                        if !discoveryVM.personalizedSongs.isEmpty {
+                            discoverySubheader("Songs")
+                            songList(discoveryVM.personalizedSongs)
                         }
 
                         Spacer().frame(height: 28)
                     }
 
                     // ── Popular ───────────────────────────────
-                    let popAlbums = discoveryVM.popularAlbums.filter { !ratedReleaseIds.contains($0.id) }
-                    let popSongs  = discoveryVM.popularSongs.filter  { !ratedReleaseIds.contains($0.releases.id) }
-                    if !popAlbums.isEmpty || !popSongs.isEmpty {
+                    if !discoveryVM.popularAlbums.isEmpty || !discoveryVM.popularSongs.isEmpty {
                         discoverySectionTitle("Popular")
                     }
-                    if !popAlbums.isEmpty {
+                    if !discoveryVM.popularAlbums.isEmpty {
                         discoverySubheader("Albums")
-                        albumScroll(popAlbums)
+                        albumScroll(discoveryVM.popularAlbums)
                     }
-                    if !popSongs.isEmpty {
-                        songSectionHeader("Songs", songs: popSongs)
-                        songList(Array(popSongs.prefix(4)))
+                    if !discoveryVM.popularSongs.isEmpty {
+                        discoverySubheader("Songs")
+                        songList(discoveryVM.popularSongs)
                     }
 
                     Spacer().frame(height: 36)
@@ -459,6 +526,47 @@ struct SearchView: View {
                 .padding(.top, 4)
             }
         }
+    }
+
+    // MARK: - Spotify reconnect banner
+
+    private var spotifyReconnectBanner: some View {
+        HStack(spacing: 12) {
+            Image("icon-spotify")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 20, height: 20)
+                .opacity(0.7)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Connect Spotify")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.sjInk)
+                Text("Link your account to see personalized suggestions")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.sjMuted)
+            }
+            Spacer()
+            Button {
+                Task { await discoveryVM.reconnectSpotify() }
+            } label: {
+                if discoveryVM.isReconnectingSpotify {
+                    ProgressView().tint(Color.sjSpotifyGreen)
+                } else {
+                    Text("Reconnect")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.sjSpotifyGreen)
+                        .clipShape(Capsule())
+                }
+            }
+            .disabled(discoveryVM.isReconnectingSpotify)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color.sjInk.opacity(0.05))
+        .padding(.top, 8)
     }
 
     // MARK: - Helpers
@@ -481,25 +589,6 @@ struct SearchView: View {
             .padding(.bottom, 2)
     }
 
-    private func songSectionHeader(_ title: String, songs: [SongResult]) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(title.uppercased())
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Color.sjMuted)
-                .tracking(1)
-            Spacer()
-            if songs.count > 4 {
-                NavigationLink(value: DiscoverySongList(title: title, songs: songs)) {
-                    Text("See all")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.sjAmber)
-                }
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 14)
-        .padding(.bottom, 8)
-    }
 
     private func discoverySubheader(_ text: String) -> some View {
         Text(text.uppercased())
@@ -593,27 +682,15 @@ struct SearchView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 12) {
                 ForEach(albums) { release in
-                    ZStack(alignment: .bottomTrailing) {
-                        NavigationLink(value: release) {
-                            DiscoveryAlbumCard(release: release)
-                        }
-                        .buttonStyle(.plain)
-
-                        Button { addRelease(release) } label: {
-                            ZStack {
-                                Circle()
-                                    .fill(.white)
-                                    .frame(width: 28, height: 28)
-                                    .shadow(color: .black.opacity(0.15), radius: 4, y: 1)
-                                Image(systemName: "plus")
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundStyle(Color.sjBlue)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.bottom, 34)
-                        .padding(.trailing, 4)
+                    let rated = ratedReleaseIds.contains(release.id)
+                    NavigationLink(value: release) {
+                        DiscoveryAlbumCard(
+                            release: release,
+                            onAdd: rated ? nil : { addRelease(release) },
+                            isRated: rated
+                        )
                     }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 16)
@@ -624,8 +701,13 @@ struct SearchView: View {
         VStack(spacing: 0) {
             ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
                 let pr = songParentRelease(song)
+                let rated = ratedReleaseIds.contains(song.releases.id)
                 NavigationLink(value: pr) {
-                    SongRow(song: song, onAdd: { addRelease(pr) })
+                    SongRow(
+                        song: song,
+                        onAdd: rated ? nil : { addRelease(pr) },
+                        isRated: rated
+                    )
                 }
                 .buttonStyle(.plain)
                 if index < songs.count - 1 {
@@ -642,17 +724,49 @@ struct SearchView: View {
 
 private struct DiscoveryAlbumCard: View {
     let release: Release
+    var onAdd: (() -> Void)? = nil
+    var isRated: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            AsyncImage(url: URL(string: release.coverUrl ?? "")) { phase in
-                switch phase {
-                case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
-                default: Color.sjBorder
+            ZStack(alignment: .bottomTrailing) {
+                AsyncImage(url: URL(string: release.coverUrl ?? "")) { phase in
+                    switch phase {
+                    case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
+                    default: Color.sjBorder
+                    }
+                }
+                .frame(width: 128, height: 128)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                if isRated {
+                    ZStack {
+                        Circle()
+                            .fill(Color.sjBlue)
+                            .frame(width: 28, height: 28)
+                            .shadow(color: .black.opacity(0.15), radius: 4, y: 1)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                    .allowsHitTesting(false)
+                    .padding(6)
+                } else if let onAdd {
+                    Button(action: onAdd) {
+                        ZStack {
+                            Circle()
+                                .fill(.white)
+                                .frame(width: 28, height: 28)
+                                .shadow(color: .black.opacity(0.15), radius: 4, y: 1)
+                            Image(systemName: "plus")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(Color.sjBlue)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .padding(6)
                 }
             }
-            .frame(width: 128, height: 128)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
 
             Text(release.title)
                 .font(.system(size: 13, weight: .semibold))
@@ -674,6 +788,7 @@ private struct DiscoveryAlbumCard: View {
 struct SongRow: View {
     let song: SongResult
     var onAdd: (() -> Void)? = nil
+    var isRated: Bool = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -699,7 +814,17 @@ struct SongRow: View {
 
             Spacer()
 
-            if let onAdd {
+            if isRated {
+                ZStack {
+                    Circle()
+                        .fill(Color.sjBlue)
+                        .frame(width: 30, height: 30)
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+                .allowsHitTesting(false)
+            } else if let onAdd {
                 Button(action: onAdd) {
                     ZStack {
                         Circle()
@@ -831,46 +956,6 @@ private struct ArtistReleaseRow: View {
     }
 }
 
-// MARK: - Full song list (navigation destination)
-
-struct DiscoverySongList: Hashable {
-    let title: String
-    let songs: [SongResult]
-
-    func hash(into hasher: inout Hasher) { hasher.combine(title) }
-    static func == (lhs: Self, rhs: Self) -> Bool { lhs.title == rhs.title }
-}
-
-private struct DiscoverySongListView: View {
-    let item: DiscoverySongList
-
-    var body: some View {
-        ScrollView(showsIndicators: false) {
-            LazyVStack(spacing: 0) {
-                ForEach(Array(item.songs.enumerated()), id: \.element.id) { index, song in
-                    let pr = Release(
-                        id: song.releases.id, title: song.releases.title,
-                        artist: song.releases.artist, coverUrl: song.releases.coverUrl,
-                        releaseType: nil, releaseDate: nil,
-                        titleNative: nil, artistNative: nil,
-                        tracklist: nil, totalTracks: nil
-                    )
-                    NavigationLink(value: pr) {
-                        SongRow(song: song)
-                    }
-                    .buttonStyle(.plain)
-                    if index < item.songs.count - 1 {
-                        Divider().padding(.leading, 72)
-                    }
-                }
-            }
-        }
-        .background(Color.sjCream.ignoresSafeArea())
-        .navigationTitle(item.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
-    }
-}
 
 #Preview {
     SearchView(discoveryVM: DiscoveryViewModel())
