@@ -10,7 +10,7 @@ The name comes from *sillage* and *juke*. Just as a perfume becomes something un
 
 Core insight: mass trend culture in Korea creates a counter-current of people who actively cultivate personal taste. sillajuku is built for that counter-current.
 
-Web app live at sillajuku.com. iOS app in development via Capacitor. Launch target: mid-2026.
+Web app live at sillajuku.com. iOS app in development as a native Swift/SwiftUI app (`apps/ios/`). Launch target: mid-2026.
 
 ### What it does
 
@@ -160,7 +160,7 @@ This data layer has long-term commercial value: licensing taste signals to strea
 
 ## Technical
 
-**Stack:** Next.js 14 (App Router) · Supabase (auth + Postgres, Seoul region) · Spotify API · Tailwind CSS · PostHog
+**Stack:** Next.js 14 (App Router, web) · Swift/SwiftUI (native iOS) · Supabase (auth + Postgres, Seoul region) · Spotify API · Tailwind CSS · PostHog
 
 **Spotify dependency** is metadata only — not content streaming. Risk is real but manageable. Every album passing through the platform gets stored locally in Supabase, reducing dependency over time. MusicBrainz and Last.fm serve as fallback layers. Reduce Spotify dependency before due diligence becomes relevant.
 
@@ -184,7 +184,7 @@ This data layer has long-term commercial value: licensing taste signals to strea
 | Rating history schema | ✓ done |
 | Rate limiting (Upstash Redis) | in progress |
 | Korean i18n (next-intl) | in progress |
-| Capacitor iOS/Android build | not started |
+| Native iOS (Swift/SwiftUI) build | in progress |
 | App Store / Play Store submission | not started — submit by Jun 1 for mid-June review |
 | Pre-launch catalog seeding (Phase 2–4) | in progress |
 | Production QA | not started |
