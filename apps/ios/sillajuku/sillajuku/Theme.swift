@@ -8,3 +8,14 @@ extension Color {
     static let sjAmber        = sjBlue   // alias — theme color is now blue
     static let sjSpotifyGreen = Color(red: 0.114, green: 0.722, blue: 0.333) // #1DB954
 }
+
+extension String {
+    // Returns a downscaled URL for thumbnails (≤128pt).
+    // iTunes stores images at 600×600; replacing the size token cuts download size ~4×.
+    // Spotify CDN (i.scdn.co) doesn't support URL-based resizing — those remain as-is.
+    var thumbnailUrl: String {
+        self
+            .replacingOccurrences(of: "600x600bb", with: "300x300bb")
+            .replacingOccurrences(of: "1200x1200bb", with: "300x300bb")
+    }
+}

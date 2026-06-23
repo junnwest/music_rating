@@ -6,6 +6,45 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-23 — iOS session 13: Rating modal redesign, explore ranking, Add tab overhaul, artist page, image perf:**
+
+- **Rating modal redesign (M4 / I2 / I3):**
+  - `ManualRatingSheet` rewritten: removed `NavigationStack`, added drag handle + ✕ close button, replaced `StarRatingView` with `Slider(value:in:step:)` at 0.5 increments, large score label ("3.5 / 5"), `sensoryFeedback(.selection)` haptic on slider change. `.presentationDetents([.medium])`.
+  - `InstinctRatingView` redesigned: removed `NavigationStack`, added `.presentationDetents([.medium])`. Bucket view (I2): compact 56×56 cover, divider, "HOW WAS IT?", 3 emoji tiles in HStack (😞 BAD / 😐 MEH / 🙂 GOOD). Compare view (I3): full-width cover with `LinearGradient` overlay + album info, progress dots, "Is X better or worse?" question, Better/Worse buttons. Done view: cover with ✓ checkmark badge + score badge.
+  - Added `emoji` property to `InstinctBucket` enum.
+
+- **Instinct score never written to DB (bug fix):** `finalize()` was only setting `finalScore` locally — `score` column in `ratings` was never persisted, so home feed always showed the lock icon. Added `writeScore(userId:releaseId:score:)` helper. `finalize()` now calls it after computing `Elo.toScore(newElo)`. `vote()` also writes opponent scores when the user has ≥ 5 albums rated.
+
+- **Spotify reconnect (bug fix):** Banner didn't disappear after OAuth because `linkIdentity` was the wrong API — it calls `/user/identities/authorize` which returns an error when Spotify is already the primary provider, and `try?` swallowed it silently. Switched to `signInWithOAuth(provider:redirectTo:scopes:)`. Added `NotificationCenter` notification (`sjSpotifyTokenRefreshed`) posted from `observeAuth()` when `providerToken` arrives; `SearchView.onReceive` triggers `refreshSpotifyIfNeeded()`.
+
+- **Explore feed wipe on pull-to-refresh (bug fix):** `(try? ...) ?? []` couldn't distinguish a network failure from a legitimately empty feed. On any fetch error, `exploreItems` was cleared to `[]`. Rewrote `refreshExplore()` with a `guard let` pattern — only replaces content when the query succeeds.
+
+- **Home > Explore ranking algorithm:** Client-side re-ranking of a 150-post pool (up from 60). `loadPersonalization()` runs before explore loads — fetches `followingIds: Set<UUID>` and `likedArtists: Set<String>` (artists user rated ≥ 4.0) in parallel. `ranked(_ items:)` scores each post: following boost (+8), artist taste match (+5), log-scaled likes (×5) and comments (×3), prestige ÷ 2000, recency bonus (+3/+1.5/+0.5 for <12h/<3d/<2wk). Top 60 surfaced. `prestige` added to `FeedRelease` struct and `feedSelect`.
+
+- **Add tab — session checkmarks:** `sessionRatedIds: Set<UUID>` tracks releases tapped in the current session. `ratedReleaseIds` (DB-loaded at launch) hides pre-rated items. Session-rated items stay visible with a ✓ badge. No periodic refresh — app launch is the reset point.
+
+- **Add tab — song list truncation:** Discovery song sections (For You, Popular) now show 5 rows max. "See all N songs" button in amber expands inline. Each section has its own expansion state.
+
+- **Add tab — suggestion algorithm improvements:**
+  - New **"From Your Taste"** section (above "For You"): albums by artists the user has rated ≥ 4.0 stars, sorted by prestige. Loaded in parallel with other discovery sections. Hidden if user has no 4+ ratings.
+  - New **"Trending"** section (after "Popular"): top albums by rating count in the last 30 days. Fetches last 500 ratings, counts by release, surfaces most-rated albums/EPs (singles excluded). Top 25 shown.
+  - `loadTasteAlbums()` and `loadTrending()` added to `DiscoveryViewModel`. All four loaders now run in `withTaskGroup`.
+  - Album fetches in `SearchViewModel.search()` parallelised with `async let`.
+
+- **Artist search results:** When searching, a new "Artists" section appears at the top of results (before Albums). Derived from album results client-side — zero extra DB query. Relevance: artist name contains the query = high priority; appears 3+ times = secondary threshold. Up to 4 artists shown as rows (initial-letter circle, name, release count, chevron) navigating to the A2 artist page.
+
+- **Artist page redesign (A2 — Editorial List):** Complete rewrite. No hero image. Large typographic name ("28pt heavy"). Stats row: community avg / total ratings / release count. Amber "You" chip showing count + your avg (only appears when you've rated something). Tab row: Albums · Community · Fans (Community/Fans stubbed). Album rows: 44×44 cover, title, type + year, community score dot (amber) or + ring (unrated). `ArtistReleaseRow` accepts `communityScore` and `userScore`. `ArtistDestination.imageUrl` removed. `load()` fetches all ratings for the artist's releases in one `IN` query, computes community avgs and user's own scores client-side simultaneously.
+
+- **Image loading performance:**
+  - Root cause: all `cover_url` values are iTunes 600×600px images (or Spotify 640×640px), displayed at ≤128pt. `AsyncImage` uses `URLSession.shared` with a 4MB memory / 20MB disk default cache — enough for ~8 full-size images before eviction.
+  - `URLCache.shared` set to 50MB memory + 300MB disk in `AppDelegate.application(_:didFinishLaunchingWithOptions:)`.
+  - `String.thumbnailUrl` computed property (in `Theme.swift`) replaces `600x600bb` → `300x300bb` in iTunes URLs — ~4× smaller download, still sharp at 128pt @3x. Spotify CDN doesn't support URL resizing so those remain as-is.
+  - Applied `.thumbnailUrl` to every thumbnail-size `AsyncImage` in `SearchView` (discovery cards, song rows, Spotify artist/album scrolls, artist page rows) and `HomeView` feed thumbnails.
+
+- **Build:** `** BUILD SUCCEEDED **` — clean compile.
+
+---
+
 **2026-06-22 — iOS session 12: Profile swipe fix, Add tab checkmarks, suggestions fix, Spotify permanence:**
 
 - **Profile subtab swipe fixed properly:** Moved the entire header (`customNavBar`, `headerRow`, `nameRow`, `actionButtons`, `tabBar`) outside `TabView` into a fixed `VStack`. Each of the three subtabs (Rated, Lists, Stats) now has its own `ScrollView` inside the `TabView(.page)`. Only content swipes — the header stays fixed. Prior implementation had header inside tab pages causing the whole screen to slide.

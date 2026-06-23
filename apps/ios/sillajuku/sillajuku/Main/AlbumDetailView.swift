@@ -267,104 +267,126 @@ struct ManualRatingSheet: View {
     @Binding var existingScore: Double?
     let onSave: (Double?) -> Void
 
-    @State private var draftScore: Double?
+    @State private var draftScore: Double
     @Environment(\.dismiss) private var dismiss
 
     init(release: Release, existingScore: Binding<Double?>, onSave: @escaping (Double?) -> Void) {
-        self.release     = release
+        self.release        = release
         self._existingScore = existingScore
-        self.onSave      = onSave
-        self._draftScore = State(initialValue: existingScore.wrappedValue)
+        self.onSave         = onSave
+        self._draftScore    = State(initialValue: existingScore.wrappedValue ?? 2.5)
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 28) {
-                // Compact header
-                HStack(spacing: 14) {
+        ZStack(alignment: .topTrailing) {
+            VStack(spacing: 0) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color.sjBorder)
+                    .frame(width: 36, height: 4)
+                    .padding(.top, 10)
+                    .frame(maxWidth: .infinity)
+
+                VStack(spacing: 0) {
                     AsyncImage(url: URL(string: release.coverUrl ?? "")) { phase in
                         switch phase {
                         case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
-                        default: Color.sjBorder
+                        default:
+                            Color.sjBorder.overlay(
+                                Image(systemName: "music.note").foregroundStyle(Color.sjMuted)
+                            )
                         }
                     }
-                    .frame(width: 56, height: 56)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .frame(width: 72, height: 72)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .padding(.top, 20)
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(release.displayTitle)
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(Color.sjInk)
-                            .lineLimit(1)
-                        Text(release.displayArtist)
+                    Text(release.displayTitle)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(Color.sjInk)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .padding(.horizontal, 40)
+                        .padding(.top, 10)
+
+                    Text(release.displayArtist)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.sjMuted)
+                        .padding(.top, 3)
+
+                    Text(scoreLabel)
+                        .font(.system(size: 32, weight: .bold))
+                        .foregroundStyle(Color.sjBlue)
+                        .monospacedDigit()
+                        .padding(.top, 18)
+
+                    Slider(value: $draftScore, in: 0.5...5.0, step: 0.5)
+                        .tint(Color.sjBlue)
+                        .padding(.horizontal, 24)
+                        .padding(.top, 10)
+                        .sensoryFeedback(.selection, trigger: draftScore)
+
+                    HStack {
+                        Text("0.5")
+                        Spacer()
+                        Text("5.0")
+                    }
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color.sjMuted)
+                    .padding(.horizontal, 26)
+                    .padding(.top, 2)
+
+                    Spacer()
+
+                    VStack(spacing: 10) {
+                        Button {
+                            onSave(draftScore)
+                            dismiss()
+                        } label: {
+                            Text("Save Rating")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Color.sjBlue)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+
+                        if existingScore != nil {
+                            Button("Remove Rating") {
+                                onSave(nil)
+                                dismiss()
+                            }
                             .font(.system(size: 13))
                             .foregroundStyle(Color.sjMuted)
-                            .lineLimit(1)
-                    }
-                    Spacer()
-                }
-                .padding(.top, 8)
-
-                Divider()
-
-                // Star picker
-                VStack(spacing: 10) {
-                    StarRatingView(score: draftScore, interactive: true, onRate: { draftScore = $0 })
-
-                    if let s = draftScore {
-                        Text(s.truncatingRemainder(dividingBy: 1) == 0
-                             ? "\(Int(s)) / 5"
-                             : String(format: "%.1f / 5", s))
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Color.sjAmber)
-                    } else {
-                        Text("Tap a star to rate")
-                            .font(.system(size: 14))
-                            .foregroundStyle(Color.sjMuted)
-                    }
-                }
-
-                Spacer()
-
-                // Actions
-                VStack(spacing: 12) {
-                    Button {
-                        onSave(draftScore)
-                        dismiss()
-                    } label: {
-                        Text(draftScore == nil ? "Rate" : "Save Rating")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(draftScore != nil ? Color.sjBlue : Color.sjBorder)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
-                    .disabled(draftScore == nil)
-
-                    if existingScore != nil {
-                        Button("Remove Rating") {
-                            onSave(nil)
-                            dismiss()
                         }
-                        .font(.system(size: 14))
-                        .foregroundStyle(Color.sjMuted)
                     }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 28)
                 }
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 24)
             .background(Color.sjCream.ignoresSafeArea())
-            .navigationTitle("Your Rating")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
+
+            Button { dismiss() } label: {
+                ZStack {
+                    Circle()
+                        .fill(Color.sjBorder)
+                        .frame(width: 28, height: 28)
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(Color.sjMuted)
                 }
             }
+            .padding(.top, 14)
+            .padding(.trailing, 14)
         }
         .presentationDetents([.medium])
+        .presentationDragIndicator(.hidden)
+    }
+
+    private var scoreLabel: String {
+        draftScore.truncatingRemainder(dividingBy: 1) == 0
+            ? "\(Int(draftScore)) / 5"
+            : String(format: "%.1f / 5", draftScore)
     }
 }
 

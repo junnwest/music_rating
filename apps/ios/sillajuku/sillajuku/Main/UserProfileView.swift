@@ -13,6 +13,8 @@ struct UserProfileView: View {
     let userId: UUID
     let initialHandle: String
 
+    // MARK: Local models
+
     private struct OtherProfile: Codable {
         let id: UUID
         let username: String?
@@ -36,16 +38,94 @@ struct UserProfileView: View {
         }
     }
 
+    private struct SongRating: Identifiable {
+        let releaseId: UUID
+        let position: Int
+        let score: Double?
+        let trackTitle: String?
+        let release: FeedRelease
+        var id: String { "\(releaseId.uuidString)-\(position)" }
+    }
+
+    private enum RatedItem: Identifiable {
+        case album(ProfileRating)
+        case song(SongRating)
+
+        var id: String {
+            switch self {
+            case .album(let r): return "a-\(r.id.uuidString)"
+            case .song(let s):  return "s-\(s.id)"
+            }
+        }
+        var score: Double? {
+            switch self { case .album(let r): return r.score; case .song(let s): return s.score }
+        }
+        var displayTitle: String {
+            switch self {
+            case .album(let r): return r.releases.title
+            case .song(let s):  return s.trackTitle ?? "Track \(s.position)"
+            }
+        }
+        var artistLine: String {
+            switch self {
+            case .album(let r): return "\(r.releases.typeLabel) · \(r.releases.artist)"
+            case .song(let s):  return "\(s.release.title) · \(s.release.artist)"
+            }
+        }
+        var coverUrl: String? {
+            switch self {
+            case .album(let r): return r.releases.coverUrl
+            case .song(let s):  return s.release.coverUrl
+            }
+        }
+        var asRelease: Release {
+            switch self {
+            case .album(let r): return r.releases.asRelease
+            case .song(let s):  return s.release.asRelease
+            }
+        }
+        var isSong: Bool { if case .song = self { return true }; return false }
+    }
+
+    // MARK: State
+
     @State private var profile: OtherProfile?
     @State private var ratings: [ProfileRating] = []
-    @State private var ratingCount   = 0
-    @State private var followerCount = 0
+    @State private var songRatings: [SongRating] = []
+    @State private var ratingCount    = 0
+    @State private var followerCount  = 0
     @State private var followingCount = 0
-    @State private var isFollowing   = false
-    @State private var isLoading     = true
+    @State private var isFollowing    = false
+    @State private var isLoading      = true
     @State private var isTogglingFollow = false
 
+    @State private var ratingSortOrder:  RatingSortOrder  = .recent
+    @State private var ratingTypeFilter: RatingTypeFilter = .all
+    @State private var showFollowModal     = false
+    @State private var followModalInitTab: FollowMode = .followers
+
     private var currentUserId: UUID? { supabase.auth.currentUser?.id }
+
+    // MARK: Filtered + sorted items
+
+    private var filteredItems: [RatedItem] {
+        let albums = ratings.map { RatedItem.album($0) }
+        let songs  = songRatings.map { RatedItem.song($0) }
+        let base: [RatedItem]
+        switch ratingTypeFilter {
+        case .all:    base = albums + songs
+        case .albums: base = albums
+        case .songs:  base = songs
+        }
+        switch ratingSortOrder {
+        case .recent:       return base
+        case .topRated:     return base.sorted { ($0.score ?? 0) > ($1.score ?? 0) }
+        case .bottomRated:  return base.sorted { ($0.score ?? 0) < ($1.score ?? 0) }
+        case .alphabetical: return base.sorted { $0.displayTitle < $1.displayTitle }
+        }
+    }
+
+    // MARK: Body
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -58,6 +138,9 @@ struct UserProfileView: View {
         .background(Color.sjCream.ignoresSafeArea())
         .navigationTitle("@\(profile?.handle ?? initialHandle)")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showFollowModal) {
+            FollowListModal(userId: userId, initialTab: followModalInitTab)
+        }
         .task { await loadAll() }
     }
 
@@ -101,8 +184,22 @@ struct UserProfileView: View {
     private var statsRow: some View {
         HStack(spacing: 24) {
             statCell(value: ratingCount, label: "Ratings")
-            statCell(value: followerCount, label: "Followers")
-            statCell(value: followingCount, label: "Following")
+
+            Button {
+                followModalInitTab = .followers
+                showFollowModal = true
+            } label: {
+                statCell(value: followerCount, label: "Followers")
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                followModalInitTab = .following
+                showFollowModal = true
+            } label: {
+                statCell(value: followingCount, label: "Following")
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -137,13 +234,13 @@ struct UserProfileView: View {
         .animation(.easeInOut(duration: 0.15), value: isFollowing)
     }
 
-    // MARK: Ratings
+    // MARK: Ratings section
 
     @ViewBuilder
     private var ratingsSection: some View {
         if isLoading {
             ProgressView().padding(.top, 40)
-        } else if ratings.isEmpty {
+        } else if ratings.isEmpty && songRatings.isEmpty {
             VStack(spacing: 12) {
                 Image(systemName: "music.note.list")
                     .font(.system(size: 40))
@@ -154,35 +251,91 @@ struct UserProfileView: View {
             }
             .padding(.top, 48)
         } else {
+            let items = filteredItems
             LazyVStack(spacing: 0) {
-                ForEach(ratings) { rating in
-                    NavigationLink(value: rating.releases.asRelease) {
-                        ProfileRatingRow(rating: rating)
+                // Filter tabs + sort row
+                HStack(spacing: 4) {
+                    ForEach(RatingTypeFilter.allCases, id: \.self) { filter in
+                        Button { ratingTypeFilter = filter } label: {
+                            Text(filter.rawValue)
+                                .font(.system(size: 12,
+                                              weight: ratingTypeFilter == filter ? .semibold : .regular))
+                                .foregroundStyle(ratingTypeFilter == filter ? Color.sjBlue : Color.sjMuted)
+                                .padding(.horizontal, 12).padding(.vertical, 6)
+                                .background(ratingTypeFilter == filter
+                                            ? Color.sjBlue.opacity(0.1) : Color.clear)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
-                    Divider().padding(.leading, 74)
+                    Spacer()
+                    Menu {
+                        ForEach(RatingSortOrder.allCases, id: \.self) { order in
+                            Button { ratingSortOrder = order } label: {
+                                Label(order.rawValue,
+                                      systemImage: ratingSortOrder == order ? "checkmark" : "")
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "line.3.horizontal.decrease")
+                            Text(ratingSortOrder.rawValue)
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.sjAmber)
+                    }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 10)
+
+                if items.isEmpty {
+                    VStack(spacing: 10) {
+                        Image(systemName: ratingTypeFilter == .songs ? "music.note" : "square.grid.2x2")
+                            .font(.system(size: 28)).foregroundStyle(Color.sjMuted)
+                        Text("No \(ratingTypeFilter.rawValue.lowercased()) rated yet")
+                            .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                    }
+                    .frame(maxWidth: .infinity).padding(.top, 40)
+                } else {
+                    ForEach(items) { item in
+                        NavigationLink(value: item.asRelease) {
+                            UserRatedItemRow(
+                                coverUrl: item.coverUrl,
+                                title: item.displayTitle,
+                                artistLine: item.artistLine,
+                                score: item.score,
+                                isSong: item.isSong
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        Divider().padding(.leading, 74)
+                    }
                 }
             }
             .padding(.top, 4)
         }
     }
 
-    // MARK: Data
+    // MARK: Data loading
 
     private func loadAll() async {
         isLoading = true
-        async let profileFetch: OtherProfile? = loadProfile()
-        async let ratingsFetch: [ProfileRating] = loadRatings()
-        async let countsFetch: (Int, Int, Int, Bool) = loadCounts()
 
-        let (p, r, (rc, fwer, fwing, following)) = await (profileFetch, ratingsFetch, countsFetch)
-        profile = p
-        ratings = r
-        ratingCount = rc
+        async let profileFetch: OtherProfile?         = loadProfile()
+        async let ratingsFetch: [ProfileRating]       = loadRatings()
+        async let countsFetch: (Int, Int, Int, Bool)  = loadCounts()
+        async let songFetch: [SongRating]             = loadSongRatings()
+
+        let (p, r, (rc, fwer, fwing, following), songs) =
+            await (profileFetch, ratingsFetch, countsFetch, songFetch)
+
+        profile       = p
+        ratings       = r
+        songRatings   = songs
+        ratingCount   = rc + songs.count
         followerCount = fwer
         followingCount = fwing
-        isFollowing = following
-        isLoading = false
+        isFollowing   = following
+        isLoading     = false
     }
 
     private func loadProfile() async -> OtherProfile? {
@@ -201,18 +354,69 @@ struct UserProfileView: View {
             .select("id, score, created_at, releases(id, title, artist, cover_url, release_type)")
             .eq("user_id", value: userId)
             .order("created_at", ascending: false)
-            .limit(30)
+            .limit(60)
             .execute()
             .value) ?? []
     }
 
+    private func loadSongRatings() async -> [SongRating] {
+        struct SongRatingRaw: Codable {
+            let releaseId: UUID
+            let position: Int?
+            let score: Double?
+            let releases: FeedRelease
+            enum CodingKeys: String, CodingKey {
+                case score, releases, position
+                case releaseId = "release_id"
+            }
+        }
+        let raw: [SongRatingRaw] = (try? await supabase
+            .from("track_ratings")
+            .select("release_id, position, score, releases(id, title, artist, cover_url, release_type)")
+            .eq("user_id", value: userId)
+            .limit(60)
+            .execute()
+            .value) ?? []
+
+        guard !raw.isEmpty else { return [] }
+
+        struct TrackTitle: Codable {
+            let releaseId: UUID; let position: Int?; let title: String?
+            enum CodingKeys: String, CodingKey {
+                case title, position; case releaseId = "release_id"
+            }
+        }
+        let releaseIds = Array(Set(raw.map { $0.releaseId.uuidString }))
+        let titles: [TrackTitle] = (try? await supabase
+            .from("tracks")
+            .select("release_id, position, title")
+            .in("release_id", values: releaseIds)
+            .execute()
+            .value) ?? []
+
+        let titleMap = Dictionary(uniqueKeysWithValues: titles.compactMap { t -> (String, String)? in
+            guard let pos = t.position, let title = t.title else { return nil }
+            return ("\(t.releaseId.uuidString)-\(pos)", title)
+        })
+
+        return raw.map { r in
+            SongRating(
+                releaseId: r.releaseId,
+                position: r.position ?? 0,
+                score: r.score,
+                trackTitle: titleMap["\(r.releaseId.uuidString)-\(r.position ?? 0)"],
+                release: r.releases
+            )
+        }
+    }
+
     private func loadCounts() async -> (Int, Int, Int, Bool) {
-        async let ratingsResp  = supabase.from("ratings").select("*", count: .exact).eq("user_id", value: userId).execute()
+        async let ratingsResp   = supabase.from("ratings").select("*", count: .exact).eq("user_id", value: userId).execute()
         async let followersResp = supabase.from("follows").select("*", count: .exact).eq("following_id", value: userId).execute()
         async let followingResp = supabase.from("follows").select("*", count: .exact).eq("follower_id", value: userId).execute()
 
-        let rc   = (try? await ratingsResp)?.count  ?? 0
-        let fwer = (try? await followersResp)?.count ?? 0
+        let rc    = (try? await ratingsResp)?.count  ?? 0
+        let fwer  = (try? await followersResp)?.count ?? 0
         let fwing = (try? await followingResp)?.count ?? 0
 
         var following = false
@@ -221,7 +425,6 @@ struct UserProfileView: View {
                 .eq("follower_id", value: cid).eq("following_id", value: userId).execute()
             following = (chk?.count ?? 0) > 0
         }
-
         return (rc, fwer, fwing, following)
     }
 
@@ -229,7 +432,6 @@ struct UserProfileView: View {
         guard let cid = currentUserId else { return }
         isTogglingFollow = true
         defer { isTogglingFollow = false }
-
         do {
             if isFollowing {
                 try await supabase.from("follows").delete()
@@ -255,14 +457,18 @@ struct UserProfileView: View {
     }
 }
 
-// MARK: - Profile rating row
+// MARK: - Unified rated item row
 
-private struct ProfileRatingRow: View {
-    let rating: UserProfileView.ProfileRating
+private struct UserRatedItemRow: View {
+    let coverUrl: String?
+    let title: String
+    let artistLine: String
+    let score: Double?
+    var isSong: Bool = false
 
     var body: some View {
         HStack(spacing: 12) {
-            AsyncImage(url: URL(string: rating.releases.coverUrl ?? "")) { phase in
+            AsyncImage(url: URL(string: coverUrl ?? "")) { phase in
                 switch phase {
                 case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
                 default: Color.sjBorder
@@ -272,11 +478,21 @@ private struct ProfileRatingRow: View {
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(rating.releases.title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.sjInk)
-                    .lineLimit(1)
-                Text("\(rating.releases.typeLabel) · \(rating.releases.artist)")
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.sjInk)
+                        .lineLimit(1)
+                    if isSong {
+                        Text("Song")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color.sjAmber)
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(Color.sjAmber.opacity(0.12))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
+                }
+                Text(artistLine)
                     .font(.system(size: 12))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
@@ -290,19 +506,19 @@ private struct ProfileRatingRow: View {
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(Color.sjBorder)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 16).padding(.vertical, 12)
         .contentShape(Rectangle())
     }
 
     @ViewBuilder
     private var scoreChip: some View {
-        if let score = rating.score {
+        if let score {
             HStack(spacing: 3) {
                 Image("icon-flower")
                     .renderingMode(.template).resizable().scaledToFit()
                     .frame(width: 10, height: 10).foregroundStyle(Color.sjAmber)
-                Text(scoreLabel(score))
+                Text(score.truncatingRemainder(dividingBy: 1) == 0
+                     ? String(Int(score)) : String(format: "%.1f", score))
                     .font(.system(size: 12, weight: .bold)).foregroundStyle(Color.sjAmber)
             }
             .padding(.horizontal, 7).padding(.vertical, 3)
@@ -320,9 +536,5 @@ private struct ProfileRatingRow: View {
             .background(Color.sjMuted.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 6))
         }
-    }
-
-    private func scoreLabel(_ s: Double) -> String {
-        s.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(s)) : String(format: "%.1f", s)
     }
 }

@@ -76,7 +76,7 @@ private struct AppLoadingView: View {
                 Image("logo-flower")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 130, height: 130)
+                    .frame(width: 152, height: 152)
                     .scaleEffect(breathing ? 1.04 : 1.0)
                     .opacity(breathing ? 0.88 : 1.0)
                     .animation(.easeInOut(duration: 3).repeatForever(autoreverses: true), value: breathing)

@@ -39,7 +39,7 @@ struct AuthView: View {
                     Image("logo-flower")
                         .resizable()
                         .scaledToFit()
-                        .frame(width: 108, height: 108)
+                        .frame(width: 128, height: 128)
 
                     Image("logo-text")
                         .resizable()

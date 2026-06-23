@@ -25,9 +25,10 @@ struct FeedRelease: Codable, Identifiable {
     let artist: String
     let coverUrl: String?
     let releaseType: String?
+    let prestige: Int?
 
     enum CodingKeys: String, CodingKey {
-        case id, title, artist
+        case id, title, artist, prestige
         case coverUrl    = "cover_url"
         case releaseType = "release_type"
     }
@@ -75,14 +76,68 @@ class HomeViewModel {
     private var hasLoadedFollowing = false
 
     private static let feedSelect =
-        "id, user_id, score, created_at, releases(id, title, artist, cover_url, release_type), profiles!ratings_user_id_fkey(username, display_name)"
+        "id, user_id, score, created_at, releases(id, title, artist, cover_url, release_type, prestige), profiles!ratings_user_id_fkey(username, display_name)"
+
+    // Personalization signals (populated before explore loads)
+    private var followingIds:  Set<UUID>   = []
+    private var likedArtists:  Set<String> = []
 
     var currentUserId: UUID? { supabase.auth.currentUser?.id }
 
     func load() async {
-        await loadExplore()
-        await loadFollowing()
-        await refreshNotificationBadge()
+        await loadPersonalization()   // must run before explore so ranking has signals
+        await withTaskGroup(of: Void.self) { g in
+            g.addTask { await self.loadExplore() }
+            g.addTask { await self.loadFollowing() }
+            g.addTask { await self.refreshNotificationBadge() }
+        }
+    }
+
+    private func loadPersonalization() async {
+        guard let userId = currentUserId else { return }
+        async let followsTask: [UUID] = {
+            struct Row: Codable {
+                let followingId: UUID
+                enum CodingKeys: String, CodingKey { case followingId = "following_id" }
+            }
+            let rows: [Row] = (try? await supabase
+                .from("follows").select("following_id")
+                .eq("follower_id", value: userId).execute().value) ?? []
+            return rows.map(\.followingId)
+        }()
+        async let artistsTask: [String] = {
+            struct R: Codable {
+                let releases: AR
+                struct AR: Codable { let artist: String }
+            }
+            let rows: [R] = (try? await supabase
+                .from("ratings").select("releases(artist)")
+                .eq("user_id", value: userId).gte("score", value: 4.0)
+                .execute().value) ?? []
+            return rows.map(\.releases.artist)
+        }()
+        let (ids, artists) = await (followsTask, artistsTask)
+        followingIds = Set(ids)
+        likedArtists = Set(artists)
+    }
+
+    private func ranked(_ items: [FeedItem]) -> [FeedItem] {
+        items
+            .map { item -> (FeedItem, Double) in
+                var s = 0.0
+                if followingIds.contains(item.userId)      { s += 8 }
+                if likedArtists.contains(item.releases.artist) { s += 5 }
+                s += log(Double((likeCounts[item.id]    ?? 0) + 1)) * 5
+                s += log(Double((commentCounts[item.id] ?? 0) + 1)) * 3
+                s += Double(item.releases.prestige ?? 0) / 2000.0
+                let ageHours = -item.createdAt.timeIntervalSinceNow / 3600
+                if ageHours < 12       { s += 3 }
+                else if ageHours < 72  { s += 1.5 }
+                else if ageHours < 336 { s += 0.5 }
+                return (item, s)
+            }
+            .sorted { $0.1 > $1.1 }
+            .map(\.0)
     }
 
     func refreshNotificationBadge() async {
@@ -112,19 +167,17 @@ class HomeViewModel {
     }
 
     func refreshExplore() async {
-        // Pull-to-refresh: reload silently — keep existing content visible,
-        // no loading state, only the native PTR spinner shows.
-        let items: [FeedItem] = (try? await supabase
+        guard let pool: [FeedItem] = try? await supabase
             .from("ratings").select(Self.feedSelect)
-            .order("created_at", ascending: false).limit(60)
-            .execute().value) ?? []
-        exploreItems = items
-        hasLoadedExplore = true
+            .order("created_at", ascending: false).limit(150)
+            .execute().value else { return }
         likedRatingIds = []
         savedReleaseIds = []
         likeCounts = [:]
         commentCounts = [:]
-        await loadSocialData(for: items)
+        await loadSocialData(for: pool)
+        exploreItems = Array(ranked(pool).prefix(60))
+        hasLoadedExplore = true
         await refreshNotificationBadge()
     }
 
@@ -132,13 +185,13 @@ class HomeViewModel {
         guard !hasLoadedExplore else { return }
         hasLoadedExplore = true
         isLoadingExplore = true
-        let items: [FeedItem] = (try? await supabase
+        let pool: [FeedItem] = (try? await supabase
             .from("ratings").select(Self.feedSelect)
-            .order("created_at", ascending: false).limit(60)
+            .order("created_at", ascending: false).limit(150)
             .execute().value) ?? []
-        exploreItems = items
+        await loadSocialData(for: pool)
+        exploreItems = Array(ranked(pool).prefix(60))
         isLoadingExplore = false
-        await loadSocialData(for: items)
     }
 
     func loadFollowing() async {
@@ -332,20 +385,15 @@ struct HomeView: View {
     }
 
     private var followingFeedFooter: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
             Divider()
             Text("Follow more people to keep your feed fresh.")
                 .font(.system(size: 13))
                 .foregroundStyle(Color.sjMuted)
                 .multilineTextAlignment(.center)
-            NavigationLink(value: FindPeopleDestination()) {
-                Text("Find people to follow")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.sjAmber)
-            }
-            .buttonStyle(.plain)
+            FindPeopleLinkButton()
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, 16)
         .padding(.vertical, 16)
     }
 
@@ -784,7 +832,7 @@ private struct FeedCard: View {
     private var albumSection: some View {
         NavigationLink(value: item.releases.asRelease) {
             HStack(spacing: 13) {
-                AsyncImage(url: URL(string: item.releases.coverUrl ?? "")) { phase in
+                AsyncImage(url: URL(string: item.releases.coverUrl?.thumbnailUrl ?? "")) { phase in
                     switch phase {
                     case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
                     default: Color.sjBorder
@@ -952,6 +1000,27 @@ struct LikersSheetView: View {
             .from("rating_likes").select("profiles!rating_likes_user_id_fkey(username, display_name)")
             .eq("rating_id", value: ratingId).execute().value) ?? []
         isLoading = false
+    }
+}
+
+// MARK: - Shared Find People button
+
+struct FindPeopleLinkButton: View {
+    var body: some View {
+        NavigationLink(value: FindPeopleDestination()) {
+            HStack(spacing: 8) {
+                Image(systemName: "person.badge.plus")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("Find people to follow")
+                    .font(.system(size: 14, weight: .semibold))
+            }
+            .foregroundStyle(Color.sjBlue)
+            .frame(maxWidth: .infinity)
+            .frame(height: 44)
+            .background(Color.sjBlue.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
     }
 }
 

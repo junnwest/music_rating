@@ -2,7 +2,25 @@ import SwiftUI
 import Supabase
 import UserNotifications
 
+extension Notification.Name {
+    static let sjSpotifyTokenRefreshed = Notification.Name("sjSpotifyTokenRefreshed")
+}
+
 final class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+    ) -> Bool {
+        // Default URLCache is 4 MB memory / 20 MB disk — not enough for an image-heavy tab.
+        // 50 MB memory holds ~400 thumbnails at 300px; 300 MB disk survives app restarts.
+        URLCache.shared = URLCache(
+            memoryCapacity: 50 * 1024 * 1024,
+            diskCapacity:  300 * 1024 * 1024,
+            directory: nil
+        )
+        return true
+    }
+
     func application(
         _ application: UIApplication,
         supportedInterfaceOrientationsFor window: UIWindow?
@@ -104,6 +122,7 @@ struct RootView: View {
             // before any subsequent session refresh drops it from the session object.
             if let token = session.providerToken {
                 UserDefaults.standard.set(token, forKey: "sj_spotify_provider_token")
+                NotificationCenter.default.post(name: .sjSpotifyTokenRefreshed, object: nil)
             }
             if let refresh = session.providerRefreshToken {
                 UserDefaults.standard.set(refresh, forKey: "sj_spotify_provider_refresh_token")
