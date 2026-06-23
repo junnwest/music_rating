@@ -64,30 +64,75 @@ struct MixRelease: Codable, Identifiable {
     }
 }
 
+// MARK: - Mix Library ViewModel (lives in ProfileView, survives tab switches)
+
+@Observable
+final class MixLibraryViewModel {
+    var mixes: [Mix] = []
+    var itemCounts: [UUID: Int] = [:]
+    var isLoading = true
+    private var hasLoaded = false
+
+    func load(userId: UUID) async {
+        guard !hasLoaded else { return }
+        hasLoaded = true
+        isLoading = true
+        let loaded: [Mix] = (try? await supabase
+            .from("mixes")
+            .select("*")
+            .eq("user_id", value: userId)
+            .order("is_default", ascending: false)
+            .order("created_at", ascending: true)
+            .execute()
+            .value) ?? []
+        mixes = loaded
+
+        struct CountRow: Decodable {
+            let mixId: UUID
+            enum CodingKeys: String, CodingKey { case mixId = "mix_id" }
+        }
+        let mixIds = loaded.map(\.id.uuidString)
+        if !mixIds.isEmpty,
+           let rows: [CountRow] = try? await supabase
+            .from("mix_items")
+            .select("mix_id")
+            .in("mix_id", values: mixIds)
+            .execute()
+            .value {
+            var counts: [UUID: Int] = [:]
+            for r in rows { counts[r.mixId, default: 0] += 1 }
+            itemCounts = counts
+        }
+        isLoading = false
+    }
+
+    func reload(userId: UUID) async {
+        hasLoaded = false
+        await load(userId: userId)
+    }
+}
+
 // MARK: - Mix Library (profile bookmarks tab content)
 
 struct MixLibraryView: View {
     let userId: UUID
-
-    @State private var mixes: [Mix] = []
-    @State private var itemCounts: [UUID: Int] = [:]
-    @State private var isLoading = true
+    var viewModel: MixLibraryViewModel
     @State private var showCreate = false
 
     var body: some View {
         Group {
-            if isLoading {
+            if viewModel.isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity)
                     .padding(.top, 60)
-            } else if mixes.isEmpty {
+            } else if viewModel.mixes.isEmpty {
                 emptyState
             } else {
                 mixList
             }
         }
-        .task { await load() }
-        .sheet(isPresented: $showCreate, onDismiss: { Task { await load() } }) {
+        .task { await viewModel.load(userId: userId) }
+        .sheet(isPresented: $showCreate, onDismiss: { Task { await viewModel.reload(userId: userId) } }) {
             CreateMixView()
         }
     }
@@ -104,13 +149,12 @@ struct MixLibraryView: View {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Color.sjAmber)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 60)
+        .frame(maxWidth: .infinity, alignment: .top)
+        .padding(.top, 24)
     }
 
     private var mixList: some View {
         LazyVStack(spacing: 0, pinnedViews: []) {
-            // Create button row
             Button {
                 showCreate = true
             } label: {
@@ -130,47 +174,14 @@ struct MixLibraryView: View {
 
             Divider()
 
-            ForEach(mixes) { mix in
+            ForEach(viewModel.mixes) { mix in
                 NavigationLink(value: mix) {
-                    MixRow(mix: mix, count: itemCounts[mix.id] ?? 0)
+                    MixRow(mix: mix, count: viewModel.itemCounts[mix.id] ?? 0)
                 }
                 .buttonStyle(.plain)
                 Divider().padding(.leading, 18)
             }
         }
-    }
-
-    private func load() async {
-        isLoading = true
-        let loaded: [Mix] = (try? await supabase
-            .from("mixes")
-            .select("*")
-            .eq("user_id", value: userId)
-            .order("is_default", ascending: false)
-            .order("created_at", ascending: true)
-            .execute()
-            .value) ?? []
-        mixes = loaded
-
-        // Fetch item counts for all mixes in one query
-        struct CountRow: Decodable {
-            let mixId: UUID
-            enum CodingKeys: String, CodingKey { case mixId = "mix_id" }
-        }
-        let mixIds = loaded.map(\.id.uuidString)
-        if !mixIds.isEmpty,
-           let rows: [CountRow] = try? await supabase
-            .from("mix_items")
-            .select("mix_id")
-            .in("mix_id", values: mixIds)
-            .execute()
-            .value {
-            var counts: [UUID: Int] = [:]
-            for r in rows { counts[r.mixId, default: 0] += 1 }
-            itemCounts = counts
-        }
-
-        isLoading = false
     }
 }
 
@@ -300,7 +311,7 @@ struct MixDetailView: View {
         items.remove(atOffsets: offsets)
         Task {
             for item in toDelete {
-                try? await supabase
+                _ = try? await supabase
                     .from("mix_items")
                     .delete()
                     .eq("id", value: item.id)
@@ -556,7 +567,7 @@ struct MixPickerView: View {
             enum CodingKeys: String, CodingKey { case mixId = "mix_id"; case releaseId = "release_id" }
         }
         for mixId in selectedIds {
-            try? await supabase
+            _ = try? await supabase
                 .from("mix_items")
                 .upsert(Payload(mixId: mixId, releaseId: releaseId), onConflict: "mix_id,release_id")
                 .execute()
@@ -564,7 +575,7 @@ struct MixPickerView: View {
         // Remove from mixes that were deselected
         let deselected = Set(mixes.map(\.id)).subtracting(selectedIds)
         for mixId in deselected {
-            try? await supabase
+            _ = try? await supabase
                 .from("mix_items")
                 .delete()
                 .eq("mix_id", value: mixId)

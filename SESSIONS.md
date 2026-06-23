@@ -6,6 +6,33 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-22 — iOS session 12: Profile swipe fix, Add tab checkmarks, suggestions fix, Spotify permanence:**
+
+- **Profile subtab swipe fixed properly:** Moved the entire header (`customNavBar`, `headerRow`, `nameRow`, `actionButtons`, `tabBar`) outside `TabView` into a fixed `VStack`. Each of the three subtabs (Rated, Lists, Stats) now has its own `ScrollView` inside the `TabView(.page)`. Only content swipes — the header stays fixed. Prior implementation had header inside tab pages causing the whole screen to slide.
+- **Add tab — rated items show checkmark instead of hiding:** Added `isRated: Bool = false` parameter to `AlbumCard`, `DiscoveryAlbumCard`, and `SongRow`. When `isRated = true`, a blue filled checkmark circle overlays the cover art. `.allowsHitTesting(false)` on the checkmark lets taps fall through to the underlying `NavigationLink` (navigates to album detail). All `.filter { !ratedReleaseIds.contains(...) }` calls removed — rated items stay visible in discovery and search results.
+- **Add tab suggestions fix:** `loadPersonalized()` rewrote from fragile OR filter (`artist.ilike.ARTIST1,artist.ilike.ARTIST2,...`) to `.in("artist", values: seeds)` SDK-native call. The OR filter was silently broken — `%` wildcards in `.ilike` got URL-encoded to `%25` by the Supabase Swift SDK, matching nothing. `.in()` uses exact match and handles encoding correctly. Limits bumped: 200 rated releases seed, 50 max seeds, 60 albums, 40 songs.
+- **"See all" rollback:** Removed 4-item cap on songs in discovery sections. `DiscoverySongList` struct, `DiscoverySongListView`, and related `navigationDestination` removed. Songs show all items inline.
+- **Spotify permanence — root cause and fix:**
+  - **Root cause confirmed:** `supabase.auth.refreshSession()` NEVER returns `providerToken`. Proven by reading `AuthClient.swift:876` — `providerToken` is only set in the OAuth callback URL parser (`params["provider_token"]`). The `validToken()` slow path that called `refreshSession()` always returned `nil` and was silently broken.
+  - **`validToken()` simplified** to a fast path only: check UserDefaults cache, validate liveness with a `/me` ping, return `nil` if unavailable. No `refreshSession()` fallback.
+  - **3-layer `loadSpotify()`:** Layer 1 — UserDefaults (instant, device-local); Layer 2 — Supabase `profiles` DB (persistent, survives reinstalls and device switches); Layer 3 — live Spotify API (when token valid, writes back to both Layer 1 and Layer 2). After one successful fetch, data is permanent in the DB regardless of token expiry.
+  - **New `SpotifyService` methods:** `saveArtistsToDB`, `saveRecentlyPlayedToDB`, `loadArtistsFromDB`, `loadRecentlyPlayedFromDB` — each uses `Encodable` structs for type-safe Supabase updates and `Decodable` row structs for reads.
+  - **Migration `20260622000001_spotify_data_cache.sql`:** Adds `spotify_artists jsonb`, `spotify_recently_played jsonb`, `spotify_data_updated_at timestamptz` to `profiles` table. ⏳ Apply via SQL editor before testing.
+  - **Stale reference fix:** `filteredSongs.last?.id` → `searchVM.songResults.last?.id` after removing the rated-filter variable.
+- **Build:** `** BUILD SUCCEEDED **` — clean compile.
+
+---
+
+**2026-06-21 — iOS session 11: Profile swipe, Add tab For You fix, album page posts + mixes:**
+
+- **Profile subtabs — native swipe (Charts-style):** Replaced `DragGesture` hack with `TabView(selection: $activeTab).tabViewStyle(.page(indexDisplayMode: .never))` — same pattern as Charts Albums/Songs. Header (avatar, stats, action buttons, tab bar) is now a fixed `VStack` above the TabView; each tab (Rated, Lists, Stats) has its own `ScrollView`. `MixLibraryView` (Lists tab) also wrapped in `ScrollView` since it used the outer scroll. Native iOS momentum, rubber-banding, and swipe-settle animation are included automatically.
+- **Add tab "For You" section was always empty** (root cause found): `loadPersonalized()` used `ilike.%ARTIST%` in a PostgREST `.or()` filter — the `%` characters were URL-encoded by the SDK to `%25`, so no albums matched. Rewrote to a two-step query: (1) fetch `release_id`s from `ratings` (no join, no decode failures); (2) fetch `artist` from `releases` for those IDs; (3) lookup albums with `.in("artist", values: topArtists)` (exact match, no wildcards). Also fixed `ArtistRef` struct (non-optional fields caused silent full-array decode failure on any NULL artist). Bumped all limits: popular 20→50, personalized 20→50, top artists 5→8.
+- **Add tab: `withTaskGroup` parallelism removed from DiscoveryViewModel.load()** — child tasks in a task group run off the main actor; `@Observable` mutations from those contexts may not trigger SwiftUI view refreshes. Reverted to sequential `await` calls (same as before session 8 change).
+- **Album/song page — Ratings & Reviews:** New section below tracklist shows all ratings on that release from all users. Each row: avatar initial circle, username handle, relative date ("2h ago"), and a score badge (star badge for manual, arrow badge for Elo). Loads `ratings` joined to `profiles`, ordered by `created_at` DESC, limit 20.
+- **Album/song page — In Public Mixes:** New section shows public mixes that include this release. Two-step query: `mix_items` for `release_id` → `mixes` filtered by `is_public = true` joined to `profiles` for author handle. Displayed as a list row (music.note.list icon, mix name, author handle, chevron), limit 10.
+
+---
+
 **2026-06-21 — Web (Windows): i18n review prep, Vercel CPU fix, tracklist-gap 403 saga:**
 
 - **Vercel free-tier "Fluid Active CPU" hit 75%** pre-launch (auto-pause at 100%). Investigated: the heavy public pages server-render on every request (`/album/[mbid]` ~418k, `/song/[trackId]` ~1.9M new this week, plus `force-dynamic` home/genre/rankings), with **no robots.txt** → an open crawl of ~2.3M uncached dynamic URLs was burning CPU for no users. ISR rejected (pages are dynamic via the `getServerT()` cookie/accept-language read, AND ISR can't help a one-time unique-URL crawl). Fix: added `apps/web/app/robots.ts` → `Disallow: /` (commit `7b0bd93`). RELAX AT LAUNCH. Don't upgrade to Pro unless the dashboard shows real user traffic.
@@ -15,6 +42,81 @@ Historical record of shipped features and session notes. Not needed at conversat
   - Final fix (commit `19c452d`): **lean fallback** `['GB','JP','KR','DE','BR']` (GB is a near-universal non-US fallback) + a **consecutive-403 circuit breaker** that aborts the run after 15 straight blocks (progress saved per release; resume after cooldown). Retries 5→4, wait cap 120s→60s.
   - **Action for next session:** wait ~1–2h for the iTunes IP block to clear, then `npm run backfill:tracklists` (lean), check the gap count, repeat across sessions; then `backfill:tracks --reset`; then `queue:ingest:albums` + HNSW rebuild. Note `backfill:tracks --reset` already ran this session (161,747 releases → ~1.95M track rows).
 - Also this session (earlier, already shipped): Manual→Instinct import extended to songs; profile shows Instinct ratings via effective `score ?? eloToScore`; tracklist Save = bookmark icon, rating Add = rightmost.
+
+---
+
+**2026-06-21 — iOS session 10: Add-tab filtering, mode-aware album page, manual rating sheet:**
+
+- **Add tab hides rated content:** `SearchView` loads `ratedReleaseIds: Set<UUID>` from `ratings` on appear. `addRelease()` inserts to the set immediately so the item vanishes on tap. All discovery sections (For You albums/songs, Popular albums/songs) and search result albums/songs are filtered through this set before rendering.
+- **AlbumDetailView — mode-aware rating section:** Removed interactive stars + misleading hint from the main page. The rating section now reads `ratingMode` from the user's profile (loaded in parallel with other data). Manual mode, unrated: "Rate this Album" button → `ManualRatingSheet`. Manual mode, rated: read-only star display + score badge + "Edit" button → reopens sheet. Instinct mode, unrated: "Add to Rankings" button → `InstinctRatingView` sheet. Instinct mode, rated: Elo-derived score badge + "Re-rank" button.
+- **ManualRatingSheet:** New half-screen sheet with compact album header, interactive star picker, live score display (e.g. "3.5 / 5"), "Save Rating" button, and "Remove Rating" option when editing. Stars are only interactive inside this sheet, not on the main page.
+- **`onRated` callbacks:** Both `InstinctRatingView` and `AlbumDetailView` accept `onRated: ((UUID) -> Void)?` that propagates back to `SearchView` to keep `ratedReleaseIds` consistent.
+- **`AlbumDetailViewModel` parallelised:** `loadTracklist`, `loadRatings`, and `loadRatingMode` now run concurrently via `async let`.
+
+---
+
+**2026-06-21 — iOS session 9: Instinct rating pipeline + song navigation:**
+
+- **Instinct rating flow implemented** (`InstinctRatingView.swift`): Full pairwise comparison pipeline matching the web app. Phase 1 (bucket) → Phase 2 (comparisons) → Phase 3 (done). Binary search on Elo-ranked opponents (ceil(log2(n+1)) rounds, capped at 3). Elo math mirrors `lib/elo.ts` exactly: `expectedScore`, `kFactor` (40/24/16 schedule), `update`, `eloToScore` (logistic S-curve centred at 1500). DB: upserts `ratings.elo_score`/`elo_games`, inserts to `pairwise_comparisons`. Score only revealed after ≥ 5 albums rated. Album art loads async; cancel button always visible.
+- **Instinct routing in Add tab:** `SearchView` loads `userRatingMode` from `profiles.rating_mode` on first appear. `addRelease()` helper routes to `InstinctRatingView` sheet (instinct) or `AlbumDetailView` sheet (manual). All `+` buttons (search grid, discovery scroll, discovery song list) use this helper.
+- **Song rows now navigable:** All `SongRow` instances in search results, discovery song lists, and `DiscoverySongListView` are wrapped in `NavigationLink(value: parentRelease)` → pushes `AlbumDetailView`. The `+` button inside the row still works independently for quick-rate.
+- **`songParentRelease(_:)` helper** extracted to avoid constructing Release inline in multiple ForEach bodies.
+
+---
+
+**2026-06-21 — iOS session 8: Swipe fix, design revamp, Add + button, Spotify token, genre pills:**
+
+- **Profile subtab swipe fixed:** Moved `DragGesture` from the content `Group` inside the `ScrollView` to the outer `ScrollView` itself using `.simultaneousGesture` — the ScrollView's own gesture was swallowing the horizontal drag before. `minimumDistance` 40→20, directional guard `abs(width) > abs(height) * 1.5`.
+- **Album/song page — Option C (Compact Header):** `AlbumDetailView` fully redesigned. Full-width square cover replaced with an 88×88pt rounded cover left-aligned in a side-by-side header; title/artist/type+year tags on the right. Rating section: uppercase "Your Rating" label, interactive stars, hint text, then community stat boxes (avg with flower icon + count). Tracklist: uppercase section label, `Divider` at `.leading: 56` to align with track titles, `TrackRow` padding moved inside the row. `StarRatingView` got a `starSize` default parameter for future flexibility.
+- **Add + button on albums/songs:** `AlbumCard` now accepts `onAdd: (() -> Void)? = nil` and shows a white-circle plus button overlaid at bottom-right of the cover when non-nil. `SongRow` got the same `onAdd` parameter with a blue-tinted circle button at the trailing edge. `SearchView` exposes `@State var ratingSheetRelease: Release?` and passes `onAdd` closures throughout search results, discovery albumScroll, and discovery songList — tapping opens a `.sheet` with `AlbumDetailView`.
+- **Spotify token persistence:** `SpotifyService.providerToken()` now saves the token to `UserDefaults("sj_spotify_provider_token")` when a live token is available, and falls back to the cached value after a Supabase session refresh clears the provider token. `DiscoveryViewModel.load()` also retries the Spotify load on subsequent calls if `hasSpotifyData` is still false.
+- **Genre pills enlarged:** Icon 16→22pt, text 11→13pt, padding 14/12→18/16, minWidth 72→96px, corner radius 12→14.
+
+---
+
+**2026-06-21 — iOS session 7: Polish pass, blue theme, artist page, Find People:**
+
+- **Bell button fixed:** `floatingHeader` switched from ZStack sibling to `.overlay()` on `feedContent`; inner ZStack gained `.frame(maxWidth: .infinity)` + `.contentShape(Rectangle())` — the page-style TabView was swallowing the tap before.
+- **iOS push notifications:** `UNUserNotificationCenter.requestAuthorization` fires once at login (`sillajukuApp.swift`); `AppDelegate.didRegisterForRemoteNotificationsWithDeviceToken` saves APNs token to `profiles.push_token` via `PushTokenService`. Migration `20260621000002_push_token.sql` adds the column. Delivery still requires a paid Apple Developer account + APNs key (in progress).
+- **Theme color — amber → blue:** Added `sjBlue = #2979B7` (derived from logo-flower halftone dominant hue); `sjAmber` aliased to `sjBlue` in `Theme.swift` so all 62 usages (tint, badges, tab underline, loading dots, score badges) flip in one change.
+- **Profile tab overhaul:**
+  - Username centered (ZStack overlay pattern instead of HStack).
+  - Tab bar no longer sticky — scrolls with page (removed `pinnedViews: [.sectionHeaders]` + `Section`).
+  - Rating score display changed from "number / max" to flower-icon badge (same design as home feed `scoreView`).
+  - Sort/filter button on Rated list: `RatingSortOrder` enum (Recent / Top Rated / Bottom Rated / A–Z) + `Menu` in header row.
+  - Rating scale: reads `manual_rating_step` from DB — `0.5` → "/ 5", `0.1` → "/ 10" (was checking wrong field `ratingMode`). `Profile` model now includes `ratingStep: Double?`.
+  - Swipeable subtabs: `DragGesture` on the content area cycles tabs on horizontal swipe (replaced broken `TabView(.page)` which collapsed to zero height inside `ScrollView`).
+  - Following / Followers: merged into one `FollowListModal` sheet with tab underline switcher + horizontal swipe (page `TabView`); both lists load in parallel at open; single `showFollowModal` boolean with `followModalInitTab` initial selection.
+  - Mix subtab empty state: top-aligned with `padding(.top, 24)` (was vertically centred with `Spacer`).
+- **Charts tab:** Removed Top Rated section from Albums tab (belongs in Profile > Stats). Trending row thumbnails enlarged 38→52px, fonts bumped to match.
+- **Artist page:** Tapping any Spotify artist circle in Add tab pushes `ArtistPageView` — hero image header, then scrollable list of their releases from the `releases` table (queried by `artist ILIKE`). `ArtistDestination: Hashable` registered as navigationDestination in `SearchView`. `ArtistReleaseRow` component (cover 52×52, title, type label, chevron, taps to `AlbumDetailView`).
+- **Add tab keyboard:** Tapping empty space outside the search field dismisses the keyboard (`UIResponder.resignFirstResponder` via `.onTapGesture` on the VStack background).
+- **Home > Following footer:** After the last feed card, a divider + "Follow more people to keep your feed fresh." nudge + "Find people to follow" `NavigationLink`. Footer only appears in Following tab, not Explore.
+- **Find People page:** `FindPeopleView` — active users sorted by rating count, excluding already-followed users and self. Follow/unfollow inline (optimistic UI, writes to `follows` table). Backed by `get_suggested_users(p_user_id uuid)` RPC + migration `20260621000003_suggested_users.sql`. Applied via Supabase SQL editor.
+- **Migrations applied this session:** `20260621000002_push_token.sql` ✅, `20260621000003_suggested_users.sql` ✅ (both run via SQL editor).
+
+---
+
+**2026-06-20 — iOS session 6: Charts tab (data insight hub):**
+
+- **Tab renamed:** "Rankings" → **"Charts"** (trophy icon kept). `MainTabView.swift`: `rankingsVM` → `chartsVM`, `RankingsViewModel` → `ChartsViewModel`, `RankingsView` → `ChartsView`.
+- **`RankingsView.swift` fully rewritten** — all types, ViewModels, and sub-views live in this one file to avoid touching the `.xcodeproj`. Key types:
+  - `ChartsPulse`, `ChartEntry`, `ChartGenre` (6 static genres with SF Symbol names), `TrendingMode`, `ChartDetailType`
+  - `ChartsViewModel` — `@Observable`, loads 5 data feeds in parallel via `withTaskGroup`, `hasLoaded` guard prevents re-fetch on tab switch
+- **Hub view (`ChartsView`):**
+  - `PulseCard` — dark card with 3 amber stats: total ratings, community avg, today count
+  - `TrendingCard` — Global / For You inline toggle; "For You" fetches user's top 3 genres via `get_user_top_genres` RPC then calls `get_charts_trending_for_genres`; falls back to global if no rating history or RPC unavailable
+  - `ChartHorizSection` — horizontal scroll row with album cards (rank badge + score badge) for Top Rated and Most Rated; tapping "See all" → `ChartDetailView`
+  - `GenreScrollSection` — 6 genre pills with SF Symbol icons; tapping → `GenreDetailView`
+  - `InsightCardRow` — Hidden Gems (diamond.fill) + Controversial (bolt.fill) side-by-side cards → `ChartDetailView`
+  - `YearScrollSection` — decade cards (2025, 2024, 2010s, 2000s, 1990s) → `ChartDetailView(.bestOfYear(...))`
+- **`ChartDetailView`** — drill-down list for any `ChartDetailType`; top 3 entries rendered in `PodiumRow` (#1 center/tallest, #2 left, #3 right); remaining entries in `RankedListRow` (rank number, cover, title/artist, score/count/week-count depending on type)
+- **`GenreDetailView`** — genre-scoped ranked list with 4 sort chips: Top Rated / Most Rated / Trending / Gems; sort change re-fetches from appropriate RPC; `PodiumRow` suppressed for Trending mode
+- **Migration `20260620000002_charts_rpcs.sql`** (⏳ apply in SQL editor): 8 SECURITY DEFINER SQL functions — `get_charts_pulse`, `get_charts_top_rated` (optional `p_genre`/`p_year_start`/`p_year_end` filters), `get_charts_most_rated` (same filters), `get_charts_trending`, `get_charts_trending_for_genres(p_genres text[])`, `get_user_top_genres(p_user_id uuid)`, `get_charts_hidden_gems` (avg ≥ 4.0, 3–9 ratings), `get_charts_controversial` (STDDEV DESC, min 5 ratings)
+- **No emojis anywhere** — all genre icons are SF Symbols (`music.note.list`, `mic.fill`, `guitars.fill`, `waveform`, `leaf.fill`, `heart.fill`)
+- **Graceful degradation** — every `rpc()` call uses `try?`; the Charts hub shows empty sections rather than crashing if the migration hasn't been applied yet
+
+---
 
 **2026-06-20 — iOS session 5: Notifications, Mixes, PTR, logo, critical feed bug fix:**
 

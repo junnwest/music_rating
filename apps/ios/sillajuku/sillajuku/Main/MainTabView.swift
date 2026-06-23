@@ -3,9 +3,10 @@ import SwiftUI
 enum AppTab: Hashable { case home, rankings, add, taste, profile }
 
 struct MainTabView: View {
-    @State private var homeVM     = HomeViewModel()
-    @State private var rankingsVM = RankingsViewModel()
-    @State private var profileVM  = ProfileViewModel()
+    @State private var homeVM      = HomeViewModel()
+    @State private var chartsVM    = ChartsViewModel()
+    @State private var profileVM   = ProfileViewModel()
+    @State private var discoveryVM = DiscoveryViewModel()
 
     @State private var selectedTab: AppTab = .home
     @State private var homeScrollTrigger   = UUID()
@@ -25,7 +26,7 @@ struct MainTabView: View {
 
     var body: some View {
         Group {
-            if homeVM.isLoading {
+            if homeVM.isLoading || chartsVM.isLoading || discoveryVM.isLoading {
                 AppLoadingView()
             } else {
                 TabView(selection: tabSelection) {
@@ -36,11 +37,11 @@ struct MainTabView: View {
                             onOwnProfileTap: { selectedTab = .profile }
                         )
                     }
-                    Tab("Rankings", systemImage: "trophy.fill", value: AppTab.rankings) {
-                        RankingsView(viewModel: rankingsVM)
+                    Tab("Charts", systemImage: "trophy.fill", value: AppTab.rankings) {
+                        ChartsView(viewModel: chartsVM)
                     }
                     Tab("Add", systemImage: "plus", value: AppTab.add) {
-                        SearchView()
+                        SearchView(discoveryVM: discoveryVM)
                     }
                     Tab("Taste", systemImage: "sparkles", value: AppTab.taste) {
                         TasteView()
@@ -52,26 +53,11 @@ struct MainTabView: View {
                 .tint(Color.sjAmber)
             }
         }
-        .task { await homeVM.load() }
-    }
-}
-
-// MARK: - Taste placeholder
-
-struct TasteView: View {
-    var body: some View {
-        ZStack {
-            Color.sjCream.ignoresSafeArea()
-            VStack(spacing: 12) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 44))
-                    .foregroundStyle(Color.sjAmber)
-                Text("Taste")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundStyle(Color.sjInk)
-                Text("Coming soon")
-                    .font(.system(size: 15))
-                    .foregroundStyle(Color.sjMuted)
+        .task {
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await self.homeVM.load() }
+                group.addTask { await self.chartsVM.load() }
+                group.addTask { await self.discoveryVM.load() }
             }
         }
     }

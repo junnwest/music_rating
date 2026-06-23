@@ -129,7 +129,7 @@ struct NotificationsView: View {
                 case notificationsLastSeenAt = "notifications_last_seen_at"
             }
         }
-        try? await supabase
+        _ = try? await supabase
             .from("profiles")
             .update(Patch(notificationsLastSeenAt: Date()))
             .eq("id", value: userId)

@@ -2,6 +2,40 @@ import SwiftUI
 import Observation
 import Supabase
 
+// MARK: - Models
+
+struct AlbumPost: Codable, Identifiable {
+    let id: UUID
+    let userId: UUID
+    let score: Double?
+    let eloScore: Double?
+    let createdAt: Date
+    let profiles: PostProfile?
+
+    struct PostProfile: Codable {
+        let username: String?
+        let displayName: String?
+        let avatarUrl: String?
+        enum CodingKeys: String, CodingKey {
+            case username; case displayName = "display_name"; case avatarUrl = "avatar_url"
+        }
+        var handle: String { username.map { "@\($0)" } ?? displayName ?? "someone" }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id; case score; case profiles
+        case userId    = "user_id"
+        case eloScore  = "elo_score"
+        case createdAt = "created_at"
+    }
+}
+
+struct AlbumPublicMix: Identifiable {
+    let id: UUID
+    let name: String
+    let authorHandle: String
+}
+
 // MARK: - ViewModel
 
 @Observable
@@ -10,56 +44,75 @@ class AlbumDetailViewModel {
     var communityAvg: Double?
     var communityCount: Int = 0
     var userScore: Double?
+    var userEloScore: Double?
+    var ratingMode = "manual"
+    var posts: [AlbumPost] = []
+    var publicMixes: [AlbumPublicMix] = []
     var isLoading = true
     var isSaving = false
+
+    var isRated: Bool { userScore != nil || userEloScore != nil }
 
     func load(releaseId: UUID) async {
         isLoading = true
 
+        async let tracklistTask: Void = loadTracklist(releaseId: releaseId)
+        async let ratingsTask: Void  = loadRatings(releaseId: releaseId)
+        async let modeTask: Void     = loadRatingMode()
+        async let postsTask: Void    = loadPosts(releaseId: releaseId)
+        async let mixesTask: Void    = loadPublicMixes(releaseId: releaseId)
+        _ = await (tracklistTask, ratingsTask, modeTask, postsTask, mixesTask)
+
+        isLoading = false
+    }
+
+    private func loadTracklist(releaseId: UUID) async {
         struct ReleaseFull: Decodable {
             let tracklist: [TrackItem]?
-            let totalTracks: Int?
-            enum CodingKeys: String, CodingKey {
-                case tracklist
-                case totalTracks = "total_tracks"
-            }
+            enum CodingKeys: String, CodingKey { case tracklist }
         }
-
         if let full: ReleaseFull = try? await supabase
-            .from("releases")
-            .select("tracklist, total_tracks")
-            .eq("id", value: releaseId)
-            .single()
-            .execute()
-            .value {
+            .from("releases").select("tracklist")
+            .eq("id", value: releaseId).single().execute().value {
             tracklist = full.tracklist ?? []
         }
+    }
 
-        struct SimpleRating: Decodable {
-            let score: Double?   // nullable — instinct-mode entries have no score
+    func loadRatings(releaseId: UUID) async {
+        struct Row: Decodable {
+            let score: Double?
+            let eloScore: Double?
             let userId: UUID
             enum CodingKeys: String, CodingKey {
-                case score
-                case userId = "user_id"
+                case score; case eloScore = "elo_score"; case userId = "user_id"
             }
         }
+        let rows: [Row] = (try? await supabase
+            .from("ratings").select("score, elo_score, user_id")
+            .eq("release_id", value: releaseId).execute().value) ?? []
 
-        let allRatings: [SimpleRating] = (try? await supabase
-            .from("ratings")
-            .select("score, user_id")
-            .eq("release_id", value: releaseId)
-            .execute()
-            .value) ?? []
-
-        communityCount = allRatings.count
-        let scored = allRatings.compactMap(\.score)
+        communityCount = rows.count
+        let scored = rows.compactMap(\.score)
         communityAvg = scored.isEmpty ? nil : scored.reduce(0, +) / Double(scored.count)
 
         if let userId = supabase.auth.currentUser?.id {
-            userScore = allRatings.first(where: { $0.userId == userId })?.score
+            let mine = rows.first(where: { $0.userId == userId })
+            userScore    = mine?.score
+            userEloScore = mine?.eloScore
         }
+    }
 
-        isLoading = false
+    private func loadRatingMode() async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        struct P: Decodable {
+            let ratingMode: String?
+            enum CodingKeys: String, CodingKey { case ratingMode = "rating_mode" }
+        }
+        if let p: P = try? await supabase
+            .from("profiles").select("rating_mode")
+            .eq("id", value: userId).single().execute().value {
+            ratingMode = p.ratingMode ?? "manual"
+        }
     }
 
     func setRating(releaseId: UUID, score: Double?) async {
@@ -67,83 +120,126 @@ class AlbumDetailViewModel {
         isSaving = true
         defer { isSaving = false }
 
-        let oldScore = userScore
-        userScore = score   // optimistic: show the new score immediately
+        let old = userScore
+        userScore = score
 
         do {
             if let score {
-                struct RatingUpsert: Encodable {
-                    let userId: UUID
-                    let releaseId: UUID
-                    let score: Double
+                struct Upsert: Encodable {
+                    let userId: UUID; let releaseId: UUID; let score: Double
                     enum CodingKeys: String, CodingKey {
-                        case userId = "user_id"
-                        case releaseId = "release_id"
-                        case score
+                        case userId = "user_id"; case releaseId = "release_id"; case score
                     }
                 }
                 try await supabase.from("ratings")
-                    .upsert(
-                        RatingUpsert(userId: userId, releaseId: releaseId, score: score),
-                        onConflict: "user_id,release_id"
-                    )
+                    .upsert(Upsert(userId: userId, releaseId: releaseId, score: score),
+                            onConflict: "user_id,release_id")
                     .execute()
             } else {
                 try await supabase.from("ratings")
-                    .delete()
-                    .eq("user_id", value: userId)
-                    .eq("release_id", value: releaseId)
+                    .delete().eq("user_id", value: userId).eq("release_id", value: releaseId)
                     .execute()
+                userEloScore = nil
             }
-            // Reload accurate community stats from DB after a successful write
             await reloadCommunityStats(releaseId: releaseId, currentUserId: userId)
         } catch {
-            userScore = oldScore   // full rollback
+            userScore = old
         }
     }
 
     private func reloadCommunityStats(releaseId: UUID, currentUserId: UUID) async {
-        struct SimpleRating: Decodable {
-            let score: Double?
-            let userId: UUID
+        struct Row: Decodable {
+            let score: Double?; let userId: UUID
             enum CodingKeys: String, CodingKey { case score; case userId = "user_id" }
         }
-        let rows: [SimpleRating] = (try? await supabase
+        let rows: [Row] = (try? await supabase
             .from("ratings").select("score, user_id")
             .eq("release_id", value: releaseId).execute().value) ?? []
-
         communityCount = rows.count
         let scored = rows.compactMap(\.score)
         communityAvg = scored.isEmpty ? nil : scored.reduce(0, +) / Double(scored.count)
         userScore = rows.first(where: { $0.userId == currentUserId })?.score
     }
+
+    private func loadPosts(releaseId: UUID) async {
+        posts = (try? await supabase
+            .from("ratings")
+            .select("id, score, elo_score, created_at, user_id, profiles(username, display_name, avatar_url)")
+            .eq("release_id", value: releaseId)
+            .order("created_at", ascending: false)
+            .limit(20)
+            .execute()
+            .value) ?? []
+    }
+
+    private func loadPublicMixes(releaseId: UUID) async {
+        struct MixItemRef: Codable {
+            let mixId: UUID
+            enum CodingKeys: String, CodingKey { case mixId = "mix_id" }
+        }
+        let refs: [MixItemRef] = (try? await supabase
+            .from("mix_items")
+            .select("mix_id")
+            .eq("release_id", value: releaseId)
+            .limit(50)
+            .execute()
+            .value) ?? []
+
+        let mixIds = Array(Set(refs.map(\.mixId.uuidString)))
+        guard !mixIds.isEmpty else { return }
+
+        struct MixRow: Codable, Identifiable {
+            let id: UUID
+            let name: String
+            let profiles: MixProfile?
+            struct MixProfile: Codable {
+                let username: String?
+                let displayName: String?
+                enum CodingKeys: String, CodingKey {
+                    case username; case displayName = "display_name"
+                }
+            }
+        }
+        let rows: [MixRow] = (try? await supabase
+            .from("mixes")
+            .select("id, name, profiles(username, display_name)")
+            .in("id", values: mixIds)
+            .eq("is_public", value: true)
+            .limit(10)
+            .execute()
+            .value) ?? []
+
+        publicMixes = rows.map { row in
+            let handle = row.profiles.flatMap { $0.username.map { "@\($0)" } ?? $0.displayName } ?? "someone"
+            return AlbumPublicMix(id: row.id, name: row.name, authorHandle: handle)
+        }
+    }
 }
 
-// MARK: - Star Rating View
+// MARK: - Star Rating View (display-only from outside; interactive inside ManualRatingSheet)
 
 struct StarRatingView: View {
     let score: Double?
     let interactive: Bool
     let onRate: (Double?) -> Void
+    var starSize: CGFloat = 34
 
     var body: some View {
         HStack(spacing: 2) {
             ForEach(1...5, id: \.self) { star in
                 ZStack {
                     Image(systemName: symbolName(for: star))
-                        .font(.system(size: 34))
+                        .font(.system(size: starSize))
                         .foregroundStyle(Color.sjAmber)
 
                     if interactive {
                         HStack(spacing: 0) {
-                            Color.clear
-                                .contentShape(Rectangle())
+                            Color.clear.contentShape(Rectangle())
                                 .onTapGesture {
                                     let half = Double(star) - 0.5
                                     onRate(score == half ? nil : half)
                                 }
-                            Color.clear
-                                .contentShape(Rectangle())
+                            Color.clear.contentShape(Rectangle())
                                 .onTapGesture {
                                     let full = Double(star)
                                     onRate(score == full ? nil : full)
@@ -151,16 +247,124 @@ struct StarRatingView: View {
                         }
                     }
                 }
-                .frame(width: 48, height: 48)
+                .frame(width: starSize + 14, height: starSize + 14)
             }
         }
     }
 
     private func symbolName(for star: Int) -> String {
         guard let s = score else { return "star" }
-        if Double(star) <= s { return "star.fill" }
-        if Double(star) - 0.5 <= s { return "star.leadinghalf.filled" }
+        if Double(star) <= s            { return "star.fill" }
+        if Double(star) - 0.5 <= s     { return "star.leadinghalf.filled" }
         return "star"
+    }
+}
+
+// MARK: - Manual Rating Sheet
+
+struct ManualRatingSheet: View {
+    let release: Release
+    @Binding var existingScore: Double?
+    let onSave: (Double?) -> Void
+
+    @State private var draftScore: Double?
+    @Environment(\.dismiss) private var dismiss
+
+    init(release: Release, existingScore: Binding<Double?>, onSave: @escaping (Double?) -> Void) {
+        self.release     = release
+        self._existingScore = existingScore
+        self.onSave      = onSave
+        self._draftScore = State(initialValue: existingScore.wrappedValue)
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 28) {
+                // Compact header
+                HStack(spacing: 14) {
+                    AsyncImage(url: URL(string: release.coverUrl ?? "")) { phase in
+                        switch phase {
+                        case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
+                        default: Color.sjBorder
+                        }
+                    }
+                    .frame(width: 56, height: 56)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(release.displayTitle)
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(Color.sjInk)
+                            .lineLimit(1)
+                        Text(release.displayArtist)
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color.sjMuted)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                }
+                .padding(.top, 8)
+
+                Divider()
+
+                // Star picker
+                VStack(spacing: 10) {
+                    StarRatingView(score: draftScore, interactive: true, onRate: { draftScore = $0 })
+
+                    if let s = draftScore {
+                        Text(s.truncatingRemainder(dividingBy: 1) == 0
+                             ? "\(Int(s)) / 5"
+                             : String(format: "%.1f / 5", s))
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color.sjAmber)
+                    } else {
+                        Text("Tap a star to rate")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Color.sjMuted)
+                    }
+                }
+
+                Spacer()
+
+                // Actions
+                VStack(spacing: 12) {
+                    Button {
+                        onSave(draftScore)
+                        dismiss()
+                    } label: {
+                        Text(draftScore == nil ? "Rate" : "Save Rating")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(draftScore != nil ? Color.sjBlue : Color.sjBorder)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    .disabled(draftScore == nil)
+
+                    if existingScore != nil {
+                        Button("Remove Rating") {
+                            onSave(nil)
+                            dismiss()
+                        }
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.sjMuted)
+                    }
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
+            .background(Color.sjCream.ignoresSafeArea())
+            .navigationTitle("Your Rating")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundStyle(Color.sjMuted)
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }
 
@@ -168,7 +372,11 @@ struct StarRatingView: View {
 
 struct AlbumDetailView: View {
     let release: Release
+    var onRated: ((UUID) -> Void)? = nil
+
     @State private var viewModel = AlbumDetailViewModel()
+    @State private var showManualSheet = false
+    @State private var showInstinctSheet = false
 
     private var releaseYear: String {
         guard let d = release.releaseDate, d.count >= 4 else { return "" }
@@ -176,147 +384,398 @@ struct AlbumDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
+        ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                coverSection
-                VStack(alignment: .leading, spacing: 20) {
-                    infoSection
-                    Divider()
-                    statsSection
-                    Divider()
-                    ratingSection
-                    if !viewModel.tracklist.isEmpty {
-                        Divider()
-                        tracklistSection
-                    }
+                compactHeader
+                Divider().padding(.horizontal, 20)
+                ratingSection
+                if !viewModel.tracklist.isEmpty {
+                    Divider().padding(.horizontal, 20)
+                    tracklistSection
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 20)
+                if !viewModel.posts.isEmpty {
+                    Divider().padding(.horizontal, 20)
+                    postsSection
+                }
+                if !viewModel.publicMixes.isEmpty {
+                    Divider().padding(.horizontal, 20)
+                    mixesSection
+                }
             }
         }
         .background(Color.sjCream.ignoresSafeArea())
         .navigationTitle(release.displayTitle)
         .navigationBarTitleDisplayMode(.inline)
         .task { await viewModel.load(releaseId: release.id) }
-    }
-
-    // MARK: Cover
-
-    private var coverSection: some View {
-        AsyncImage(url: URL(string: release.coverUrl ?? "")) { phase in
-            switch phase {
-            case .success(let image):
-                image.resizable().aspectRatio(contentMode: .fill)
-            default:
-                ZStack {
-                    Color.sjBorder
-                    Image(systemName: "music.note")
-                        .font(.system(size: 60))
-                        .foregroundStyle(Color.sjMuted)
+        .sheet(isPresented: $showManualSheet) {
+            ManualRatingSheet(
+                release: release,
+                existingScore: $viewModel.userScore
+            ) { score in
+                Task {
+                    await viewModel.setRating(releaseId: release.id, score: score)
+                    if score != nil { onRated?(release.id) }
                 }
             }
         }
-        .aspectRatio(1, contentMode: .fit)
-    }
-
-    // MARK: Info
-
-    private var infoSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(release.displayTitle)
-                .font(.system(size: 24, weight: .bold))
-                .foregroundStyle(Color.sjInk)
-            Text(release.displayArtist)
-                .font(.system(size: 17))
-                .foregroundStyle(Color.sjMuted)
-            HStack(spacing: 8) {
-                if let type = release.releaseType {
-                    Text(type)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Color.sjAmber)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.sjAmber.opacity(0.12))
-                        .clipShape(Capsule())
-                }
-                if !releaseYear.isEmpty {
-                    Text(releaseYear)
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color.sjMuted)
-                }
+        .sheet(isPresented: $showInstinctSheet) {
+            InstinctRatingView(release: release) { id in
+                onRated?(id)
+                viewModel.userEloScore = 1  // non-nil sentinel so isRated becomes true
+                Task { await viewModel.loadAfterInstinct(releaseId: release.id) }
             }
         }
     }
 
-    // MARK: Community Stats
+    // MARK: Compact header
 
-    private var statsSection: some View {
-        HStack(spacing: 12) {
-            if let avg = viewModel.communityAvg {
-                HStack(spacing: 4) {
-                    Image("icon-flower")
-                        .renderingMode(.template)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 13, height: 13)
-                        .foregroundStyle(Color.sjAmber)
-                    Text(String(format: "%.1f", avg))
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Color.sjInk)
+    private var compactHeader: some View {
+        HStack(alignment: .top, spacing: 14) {
+            AsyncImage(url: URL(string: release.coverUrl ?? "")) { phase in
+                switch phase {
+                case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
+                default:
+                    ZStack {
+                        Color.sjBorder
+                        Image(systemName: "music.note").font(.system(size: 24)).foregroundStyle(Color.sjMuted)
+                    }
                 }
             }
-            Text(viewModel.communityCount > 0
-                 ? "\(viewModel.communityCount) rating\(viewModel.communityCount == 1 ? "" : "s")"
-                 : "No ratings yet")
-                .font(.system(size: 14))
-                .foregroundStyle(Color.sjMuted)
+            .frame(width: 88, height: 88)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(release.displayTitle)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(Color.sjInk)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(release.displayArtist)
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color.sjMuted)
+                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    if let type = release.releaseType {
+                        Text(type.capitalized)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Color.sjBlue)
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(Color.sjBlue.opacity(0.1)).clipShape(Capsule())
+                    }
+                    if !releaseYear.isEmpty {
+                        Text(releaseYear)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Color.sjMuted)
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(Color.sjMuted.opacity(0.1)).clipShape(Capsule())
+                    }
+                }
+                .padding(.top, 2)
+            }
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 18)
     }
 
-    // MARK: User Rating
+    // MARK: Rating section (mode-aware)
 
     private var ratingSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Your Rating")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.sjInk)
-                if viewModel.isSaving {
-                    ProgressView().scaleEffect(0.7).padding(.leading, 4)
-                }
-                Spacer()
-                if let score = viewModel.userScore {
-                    Text(score.truncatingRemainder(dividingBy: 1) == 0
-                         ? "\(Int(score))" : String(format: "%.1f", score))
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.sjAmber)
-                }
-            }
-            StarRatingView(score: viewModel.userScore, interactive: true) { newScore in
-                Task { await viewModel.setRating(releaseId: release.id, score: newScore) }
-            }
-            Text("Tap left half of a star for a half-rating. Tap again to clear.")
-                .font(.system(size: 11))
+        VStack(alignment: .leading, spacing: 16) {
+            Text(viewModel.ratingMode == "instinct" ? "Your Instinct Ranking" : "Your Rating")
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Color.sjMuted)
+                .textCase(.uppercase)
+                .tracking(0.6)
+
+            if viewModel.ratingMode == "instinct" {
+                instinctRatingBody
+            } else {
+                manualRatingBody
+            }
+
+            if viewModel.communityCount > 0 {
+                HStack(spacing: 10) {
+                    if let avg = viewModel.communityAvg {
+                        communityStatBox(value: String(format: "%.1f", avg),
+                                         label: "Community Avg", showIcon: true)
+                    }
+                    communityStatBox(value: "\(viewModel.communityCount)",
+                                     label: "Ratings", showIcon: false)
+                }
+            }
         }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 18)
+    }
+
+    // Manual mode rating body
+    private var manualRatingBody: some View {
+        Group {
+            if let score = viewModel.userScore {
+                // Already rated
+                HStack(spacing: 12) {
+                    StarRatingView(score: score, interactive: false, onRate: { _ in }, starSize: 22)
+
+                    HStack(spacing: 4) {
+                        Image("icon-flower")
+                            .renderingMode(.template).resizable().scaledToFit()
+                            .frame(width: 12, height: 12).foregroundStyle(Color.sjBlue)
+                        Text(score.truncatingRemainder(dividingBy: 1) == 0
+                             ? "\(Int(score))" : String(format: "%.1f", score))
+                            .font(.system(size: 14, weight: .bold)).foregroundStyle(Color.sjBlue)
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(Color.sjBlue.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                    Spacer()
+
+                    Button("Edit") { showManualSheet = true }
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.sjBlue)
+                }
+            } else {
+                // Not yet rated
+                Button { showManualSheet = true } label: {
+                    Label("Rate this Album", systemImage: "plus")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 13)
+                        .background(Color.sjBlue)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // Instinct mode rating body
+    private var instinctRatingBody: some View {
+        Group {
+            if let elo = viewModel.userEloScore {
+                let score = instinctEloToScore(elo)
+                HStack(spacing: 12) {
+                    HStack(spacing: 4) {
+                        Image("icon-flower")
+                            .renderingMode(.template).resizable().scaledToFit()
+                            .frame(width: 14, height: 14).foregroundStyle(Color.sjBlue)
+                        Text(String(format: "%.1f", score))
+                            .font(.system(size: 18, weight: .bold)).foregroundStyle(Color.sjBlue)
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(Color.sjBlue.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                    Text("Instinct Score")
+                        .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+
+                    Spacer()
+
+                    Button("Re-rank") { showInstinctSheet = true }
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.sjBlue)
+                }
+            } else {
+                Button { showInstinctSheet = true } label: {
+                    Label("Add to Rankings", systemImage: "arrow.up.arrow.down")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 13)
+                        .background(Color.sjBlue)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func instinctEloToScore(_ elo: Double) -> Double {
+        let raw = 5.0 / (1.0 + pow(10.0, (1500.0 - elo) / 250.0))
+        return (raw * 10).rounded() / 10.0
+    }
+
+    private func communityStatBox(value: String, label: String, showIcon: Bool) -> some View {
+        HStack(spacing: 6) {
+            if showIcon {
+                Image("icon-flower")
+                    .renderingMode(.template).resizable().scaledToFit()
+                    .frame(width: 12, height: 12).foregroundStyle(Color.sjBlue)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(value)
+                    .font(.system(size: 16, weight: .bold)).foregroundStyle(Color.sjInk)
+                Text(label)
+                    .font(.system(size: 10)).foregroundStyle(Color.sjMuted)
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .background(Color.sjSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.sjBorder, lineWidth: 1))
     }
 
     // MARK: Tracklist
 
     private var tracklistSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Tracklist")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color.sjInk)
-            VStack(spacing: 0) {
-                ForEach(Array(viewModel.tracklist.enumerated()), id: \.offset) { i, track in
-                    TrackRow(track: track)
-                    if i < viewModel.tracklist.count - 1 {
-                        Divider().padding(.leading, 36)
-                    }
+        VStack(alignment: .leading, spacing: 0) {
+            sectionLabel("Tracklist")
+
+            ForEach(Array(viewModel.tracklist.enumerated()), id: \.offset) { i, track in
+                TrackRow(track: track)
+                if i < viewModel.tracklist.count - 1 {
+                    Divider().padding(.leading, 56)
                 }
             }
         }
+        .padding(.bottom, 20)
+    }
+
+    // MARK: Posts
+
+    private var postsSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionLabel("Ratings & Reviews")
+
+            ForEach(Array(viewModel.posts.enumerated()), id: \.element.id) { i, post in
+                PostRow(post: post)
+                if i < viewModel.posts.count - 1 {
+                    Divider().padding(.leading, 52)
+                }
+            }
+        }
+        .padding(.bottom, 20)
+    }
+
+    // MARK: Public Mixes
+
+    private var mixesSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionLabel("In Public Mixes")
+
+            ForEach(Array(viewModel.publicMixes.enumerated()), id: \.element.id) { i, mix in
+                HStack(spacing: 12) {
+                    Image(systemName: "music.note.list")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Color.sjBlue)
+                        .frame(width: 32)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(mix.name)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(Color.sjInk)
+                            .lineLimit(1)
+                        Text(mix.authorHandle)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.sjMuted)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.sjMuted)
+                }
+                .padding(.vertical, 11)
+                .padding(.horizontal, 20)
+                if i < viewModel.publicMixes.count - 1 {
+                    Divider().padding(.leading, 52)
+                }
+            }
+        }
+        .padding(.bottom, 20)
+    }
+
+    // MARK: Helpers
+
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(Color.sjMuted)
+            .textCase(.uppercase)
+            .tracking(0.6)
+            .padding(.horizontal, 20)
+            .padding(.top, 18)
+            .padding(.bottom, 12)
+    }
+}
+
+// MARK: - Reload after instinct rating
+
+extension AlbumDetailViewModel {
+    func loadAfterInstinct(releaseId: UUID) async {
+        await loadRatings(releaseId: releaseId)
+    }
+}
+
+// MARK: - Post Row
+
+private struct PostRow: View {
+    let post: AlbumPost
+
+    private var relativeDate: String {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
+        return f.localizedString(for: post.createdAt, relativeTo: Date())
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Avatar placeholder
+            Circle()
+                .fill(Color.sjBorder)
+                .frame(width: 32, height: 32)
+                .overlay(
+                    Text(String((post.profiles?.handle ?? "?").prefix(1)).uppercased())
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.sjMuted)
+                )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(post.profiles?.handle ?? "someone")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.sjInk)
+                Text(relativeDate)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.sjMuted)
+            }
+
+            Spacer()
+
+            if let score = post.score {
+                scoreBadge(score, isElo: false)
+            } else if let elo = post.eloScore {
+                scoreBadge(eloToDisplay(elo), isElo: true)
+            }
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 20)
+    }
+
+    private func scoreBadge(_ value: Double, isElo: Bool) -> some View {
+        HStack(spacing: 3) {
+            if isElo {
+                Image(systemName: "arrow.up.arrow.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Color.sjBlue)
+            } else {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(Color.sjAmber)
+            }
+            Text(value.truncatingRemainder(dividingBy: 1) == 0
+                 ? "\(Int(value))" : String(format: "%.1f", value))
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(isElo ? Color.sjBlue : Color.sjAmber)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background((isElo ? Color.sjBlue : Color.sjAmber).opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func eloToDisplay(_ elo: Double) -> Double {
+        let raw = 5.0 / (1.0 + pow(10.0, (1500.0 - elo) / 250.0))
+        return (raw * 10).rounded() / 10.0
     }
 }
 
@@ -327,28 +786,24 @@ private struct TrackRow: View {
 
     private var formattedDuration: String {
         guard let ms = track.durationMs, ms > 0 else { return "" }
-        let totalSeconds = ms / 1000
-        return String(format: "%d:%02d", totalSeconds / 60, totalSeconds % 60)
+        let s = ms / 1000
+        return String(format: "%d:%02d", s / 60, s % 60)
     }
 
     var body: some View {
         HStack(spacing: 12) {
             Text("\(track.position)")
-                .font(.system(size: 13))
-                .foregroundStyle(Color.sjMuted)
+                .font(.system(size: 13)).foregroundStyle(Color.sjMuted)
                 .frame(width: 24, alignment: .trailing)
             Text(track.title)
-                .font(.system(size: 14))
-                .foregroundStyle(Color.sjInk)
-                .lineLimit(1)
+                .font(.system(size: 14)).foregroundStyle(Color.sjInk).lineLimit(1)
             Spacer()
             if !formattedDuration.isEmpty {
                 Text(formattedDuration)
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color.sjMuted)
+                    .font(.system(size: 13)).foregroundStyle(Color.sjMuted)
             }
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, 11).padding(.horizontal, 20)
     }
 }
 
