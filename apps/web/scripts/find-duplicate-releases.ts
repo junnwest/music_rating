@@ -96,25 +96,27 @@ interface Release {
   itunes_id: number | null;
   cover_url: string | null;
   genres: string | null;
-  tracklist: any;
   artist_id: string | null;
+  // tracklist excluded from bulk load (large JSONB — fetched per-pair in mergeAndDelete)
 }
 
 async function loadAllReleases(db: DB): Promise<Release[]> {
   const all: Release[] = [];
-  let from = 0;
+  // Cursor-based pagination — avoids OFFSET which slows down on large tables
+  let lastId = '00000000-0000-0000-0000-000000000000';
   while (true) {
     const { data, error } = await db
       .from('releases')
-      .select('id, title, artist, title_native, artist_native, release_type, release_date, total_tracks, spotify_id, itunes_id, cover_url, genres, tracklist, artist_id')
+      .select('id, title, artist, title_native, artist_native, release_type, release_date, total_tracks, spotify_id, itunes_id, cover_url, genres, artist_id')
       .not('release_type', 'ilike', 'single')
+      .gt('id', lastId)
       .order('id')
-      .range(from, from + 999);
+      .limit(1000);
     if (error) throw new Error(error.message);
     if (!data || data.length === 0) break;
     all.push(...(data as Release[]));
     if (data.length < 1000) break;
-    from += 1000;
+    lastId = data[data.length - 1].id;
   }
   return all;
 }
@@ -234,7 +236,7 @@ function metadataScore(r: Release): number {
   let s = 0;
   if (r.spotify_id && r.itunes_id) s += 40;
   else if (r.itunes_id) s += 20;
-  if (r.tracklist && Array.isArray(r.tracklist) && r.tracklist.length > 0) s += 10;
+  if (r.total_tracks != null && r.total_tracks > 0) s += 10; // proxy for has tracklist
   if (r.genres) s += 5;
   if (r.cover_url) s += 3;
   return s;
@@ -357,8 +359,15 @@ async function mergeAndDelete(db: DB, keeper: Release, dup: Release) {
   if (!keeper.genres && dup.genres)                patch.genres = dup.genres;
   if (!keeper.title_native && dup.title_native)    patch.title_native = dup.title_native;
   if (!keeper.artist_native && dup.artist_native)  patch.artist_native = dup.artist_native;
-  if (!keeper.tracklist && dup.tracklist)          patch.tracklist = dup.tracklist;
   if (!keeper.artist_id && dup.artist_id)          patch.artist_id = dup.artist_id;
+
+  // Fetch tracklist separately (too large to include in bulk load)
+  if (!keeper.total_tracks) {
+    const { data: tl } = await db
+      .from('releases').select('tracklist').eq('id', dup.id).single();
+    if (tl?.tracklist) patch.tracklist = tl.tracklist;
+  }
+
   if (Object.keys(patch).length > 0) {
     await db.from('releases').update(patch).eq('id', keeper.id);
   }

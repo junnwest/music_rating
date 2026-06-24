@@ -51,15 +51,17 @@ struct ReleaseRef: Codable, Identifiable {
     let title: String
     let artist: String
     let coverUrl: String?
+    let releaseType: String?
 
     enum CodingKeys: String, CodingKey {
         case id, title, artist
-        case coverUrl = "cover_url"
+        case coverUrl    = "cover_url"
+        case releaseType = "release_type"
     }
 
     var asRelease: Release {
         Release(id: id, title: title, artist: artist, coverUrl: coverUrl,
-                releaseType: nil, releaseDate: nil, titleNative: nil, artistNative: nil,
+                releaseType: releaseType, releaseDate: nil, titleNative: nil, artistNative: nil,
                 tracklist: nil, totalTracks: nil)
     }
 }
@@ -168,7 +170,7 @@ class ProfileViewModel {
 
         ratings = (try? await supabase
             .from("ratings")
-            .select("id, score, elo_score, releases(id, title, artist, cover_url)")
+            .select("id, score, elo_score, releases(id, title, artist, cover_url, release_type)")
             .eq("user_id", value: user.id)
             .order("created_at", ascending: false)
             .limit(60)
@@ -310,6 +312,12 @@ enum ProfileRatedItem: Identifiable {
         }
     }
     var isSong: Bool { if case .song = self { return true }; return false }
+    var releaseType: String? {
+        switch self {
+        case .album(let r): return r.releases.releaseType
+        case .song: return nil
+        }
+    }
 }
 
 struct ProfileView: View {
@@ -640,7 +648,8 @@ struct ProfileView: View {
                                 score: item.score,
                                 eloScore: item.eloScore,
                                 instinctCount: viewModel.instinctAlbumCount,
-                                isSong: item.isSong
+                                isSong: item.isSong,
+                                releaseType: item.releaseType
                             )
                         }
                         .buttonStyle(.plain)
@@ -921,6 +930,7 @@ struct RatingListRow: View {
     let eloScore: Double?
     let instinctCount: Int
     var isSong: Bool = false
+    var releaseType: String? = nil
 
     // Score to display: manual score > elo-derived (only if threshold met) > nil
     private var displayScore: Double? {
@@ -964,6 +974,13 @@ struct RatingListRow: View {
                             .foregroundStyle(Color.sjAmber)
                             .padding(.horizontal, 5).padding(.vertical, 2)
                             .background(Color.sjAmber.opacity(0.12))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                    } else if let rt = releaseType {
+                        Text(rt.capitalized)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color.sjBlue)
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(Color.sjBlue.opacity(0.1))
                             .clipShape(RoundedRectangle(cornerRadius: 4))
                     }
                 }

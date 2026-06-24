@@ -410,7 +410,9 @@ struct SearchView: View {
                 .presentationDetents([.large])
             }
             .sheet(item: $instinctSheetRelease) { release in
-                InstinctRatingView(release: release) { id in ratedReleaseIds.insert(id) }
+                InstinctRatingView(release: release, onRated: { id in
+                    ratedReleaseIds.insert(id)
+                }, onDone: { instinctSheetRelease = nil })
             }
         }
         .task {
@@ -876,7 +878,8 @@ struct SearchView: View {
                     let checked = sessionRatedIds.contains(release.id)
                     NavigationLink(value: release) {
                         DiscoveryAlbumCard(release: release,
-                                           onAdd: checked ? nil : { addRelease(release) })
+                                           onAdd: checked ? nil : { addRelease(release) },
+                                           isRated: checked)
                     }
                     .buttonStyle(.plain)
                 }
@@ -897,7 +900,7 @@ struct SearchView: View {
                 let pr = songParentRelease(song)
                 let checked = sessionRatedIds.contains(pr.id)
                 NavigationLink(value: pr) {
-                    SongRow(song: song, onAdd: checked ? nil : { addRelease(pr) })
+                    SongRow(song: song, onAdd: checked ? nil : { addRelease(pr) }, isRated: checked)
                 }
                 .buttonStyle(.plain)
                 if index < shown.count - 1 || hasMore {
@@ -1207,14 +1210,20 @@ private struct ArtistPageView: View {
 
     private func load() async {
         let escaped = artist.name.replacingOccurrences(of: "'", with: "''")
-        let loaded: [Release] = (try? await supabase
+        var loaded: [Release] = (try? await supabase
             .from("releases")
             .select("id, title, artist, cover_url, release_type, release_date, title_native, artist_native")
-            .ilike("artist", value: "%\(escaped)%")
+            .ilike("artist", value: escaped)
             .order("release_date", ascending: false, nullsFirst: false)
             .limit(60)
             .execute()
             .value) ?? []
+
+        // DB has no results for this artist — fall back to the web search API.
+        // The web endpoint saves Spotify results to DB so UUIDs are valid for rating.
+        if loaded.isEmpty {
+            loaded = await fetchFromWebSearch()
+        }
         releases = loaded
 
         // Load all ratings for these releases in one query
@@ -1256,6 +1265,20 @@ private struct ArtistPageView: View {
         let allScores  = rows.compactMap(\.score)
         communityAvg   = allScores.isEmpty ? nil : allScores.reduce(0, +) / Double(allScores.count)
         isLoading      = false
+    }
+
+    private func fetchFromWebSearch() async -> [Release] {
+        var comps = URLComponents(url: Config.webBaseURL.appendingPathComponent("api/search"),
+                                  resolvingAgainstBaseURL: false)!
+        comps.queryItems = [
+            URLQueryItem(name: "query", value: artist.name),
+            URLQueryItem(name: "type",  value: "releases")
+        ]
+        guard let url = comps.url,
+              let (data, _) = try? await URLSession.shared.data(from: url) else { return [] }
+        struct SearchResponse: Decodable { let releases: [Release] }
+        guard let resp = try? JSONDecoder().decode(SearchResponse.self, from: data) else { return [] }
+        return resp.releases.filter { $0.artist.lowercased() == artist.name.lowercased() }
     }
 }
 

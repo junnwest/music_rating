@@ -36,11 +36,38 @@ struct AlbumPublicMix: Identifiable {
     let authorHandle: String
 }
 
+// MARK: - Track entry (loaded from `tracks` table with stable UUID)
+
+struct TrackEntry: Codable, Identifiable {
+    let trackId: UUID?
+    let position: Int
+    let title: String
+    let durationMs: Int?
+    let artists: String?
+
+    var id: String { trackId?.uuidString ?? "\(position)" }
+
+    enum CodingKeys: String, CodingKey {
+        case trackId = "id"
+        case position, title, artists
+        case durationMs = "duration_ms"
+    }
+
+    // Fallback: build from JSONB TrackItem (no UUID)
+    static func from(_ item: TrackItem) -> TrackEntry {
+        TrackEntry(trackId: nil, position: item.position, title: item.title,
+                   durationMs: item.durationMs,
+                   artists: item.artists?.joined(separator: ", "))
+    }
+}
+
 // MARK: - ViewModel
 
 @Observable
 class AlbumDetailViewModel {
     var tracklist: [TrackItem] = []
+    var tracks: [TrackEntry] = []
+    var trackRatings: [Int: Double] = [:]   // keyed by track_position
     var communityAvg: Double?
     var communityCount: Int = 0
     var userScore: Double?
@@ -56,14 +83,92 @@ class AlbumDetailViewModel {
     func load(releaseId: UUID) async {
         isLoading = true
 
-        async let tracklistTask: Void = loadTracklist(releaseId: releaseId)
-        async let ratingsTask: Void  = loadRatings(releaseId: releaseId)
-        async let modeTask: Void     = loadRatingMode()
-        async let postsTask: Void    = loadPosts(releaseId: releaseId)
-        async let mixesTask: Void    = loadPublicMixes(releaseId: releaseId)
-        _ = await (tracklistTask, ratingsTask, modeTask, postsTask, mixesTask)
+        async let tracksTask: Void       = loadTracks(releaseId: releaseId)
+        async let trackRatingsTask: Void = loadTrackRatings(releaseId: releaseId)
+        async let ratingsTask: Void      = loadRatings(releaseId: releaseId)
+        async let modeTask: Void         = loadRatingMode()
+        async let postsTask: Void        = loadPosts(releaseId: releaseId)
+        async let mixesTask: Void        = loadPublicMixes(releaseId: releaseId)
+        _ = await (tracksTask, trackRatingsTask, ratingsTask, modeTask, postsTask, mixesTask)
 
         isLoading = false
+    }
+
+    private func loadTracks(releaseId: UUID) async {
+        let loaded: [TrackEntry] = (try? await supabase
+            .from("tracks")
+            .select("id, position, title, duration_ms, artists")
+            .eq("release_id", value: releaseId)
+            .order("position")
+            .execute()
+            .value) ?? []
+
+        if !loaded.isEmpty {
+            tracks = loaded
+        } else {
+            // Fallback to JSONB tracklist when `tracks` table has no rows for this release
+            struct ReleaseFull: Decodable {
+                let tracklist: [TrackItem]?
+                enum CodingKeys: String, CodingKey { case tracklist }
+            }
+            if let full: ReleaseFull = try? await supabase
+                .from("releases").select("tracklist")
+                .eq("id", value: releaseId).single().execute().value {
+                tracklist = full.tracklist ?? []
+                tracks = tracklist.map { TrackEntry.from($0) }
+            }
+        }
+    }
+
+    private func loadTrackRatings(releaseId: UUID) async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        struct TR: Decodable {
+            let position: Int
+            let score: Double?
+            enum CodingKeys: String, CodingKey {
+                case score
+                case position = "track_position"
+            }
+        }
+        let rows: [TR] = (try? await supabase
+            .from("track_ratings")
+            .select("track_position, score")
+            .eq("release_id", value: releaseId)
+            .eq("user_id", value: userId)
+            .execute()
+            .value) ?? []
+        trackRatings = Dictionary(uniqueKeysWithValues: rows.compactMap { r in
+            guard let s = r.score else { return nil }
+            return (r.position, s)
+        })
+    }
+
+    func rateTrack(releaseId: UUID, position: Int, title: String, score: Double?) async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        if let score {
+            struct Row: Encodable {
+                let userId: UUID; let releaseId: UUID
+                let position: Int; let title: String; let score: Double
+                enum CodingKeys: String, CodingKey {
+                    case userId = "user_id"; case releaseId = "release_id"
+                    case position = "track_position"; case title = "track_title"; case score
+                }
+            }
+            try? await supabase.from("track_ratings")
+                .upsert(Row(userId: userId, releaseId: releaseId,
+                            position: position, title: title, score: score),
+                        onConflict: "user_id,release_id,track_position")
+                .execute()
+            trackRatings[position] = score
+        } else {
+            try? await supabase.from("track_ratings")
+                .delete()
+                .eq("user_id", value: userId)
+                .eq("release_id", value: releaseId)
+                .eq("track_position", value: position)
+                .execute()
+            trackRatings.removeValue(forKey: position)
+        }
     }
 
     private func loadTracklist(releaseId: UUID) async {
@@ -296,33 +401,33 @@ struct ManualRatingSheet: View {
                             )
                         }
                     }
-                    .frame(width: 72, height: 72)
+                    .frame(width: 64, height: 64)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .padding(.top, 20)
+                    .padding(.top, 14)
 
                     Text(release.displayTitle)
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(Color.sjInk)
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
                         .padding(.horizontal, 40)
-                        .padding(.top, 10)
+                        .padding(.top, 8)
 
                     Text(release.displayArtist)
-                        .font(.system(size: 13))
+                        .font(.system(size: 12))
                         .foregroundStyle(Color.sjMuted)
-                        .padding(.top, 3)
+                        .padding(.top, 2)
 
                     Text(scoreLabel)
                         .font(.system(size: 32, weight: .bold))
                         .foregroundStyle(Color.sjBlue)
                         .monospacedDigit()
-                        .padding(.top, 18)
+                        .padding(.top, 12)
 
                     Slider(value: $draftScore, in: 0.5...5.0, step: 0.5)
                         .tint(Color.sjBlue)
                         .padding(.horizontal, 24)
-                        .padding(.top, 10)
+                        .padding(.top, 8)
                         .sensoryFeedback(.selection, trigger: draftScore)
 
                     HStack {
@@ -334,8 +439,6 @@ struct ManualRatingSheet: View {
                     .foregroundStyle(Color.sjMuted)
                     .padding(.horizontal, 26)
                     .padding(.top, 2)
-
-                    Spacer()
 
                     VStack(spacing: 10) {
                         Button {
@@ -399,6 +502,7 @@ struct AlbumDetailView: View {
     @State private var viewModel = AlbumDetailViewModel()
     @State private var showManualSheet = false
     @State private var showInstinctSheet = false
+    @State private var trackRatingTarget: TrackEntry? = nil
 
     private var releaseYear: String {
         guard let d = release.releaseDate, d.count >= 4 else { return "" }
@@ -411,7 +515,7 @@ struct AlbumDetailView: View {
                 compactHeader
                 Divider().padding(.horizontal, 20)
                 ratingSection
-                if !viewModel.tracklist.isEmpty {
+                if !viewModel.tracks.isEmpty {
                     Divider().padding(.horizontal, 20)
                     tracklistSection
                 }
@@ -441,10 +545,21 @@ struct AlbumDetailView: View {
             }
         }
         .sheet(isPresented: $showInstinctSheet) {
-            InstinctRatingView(release: release) { id in
+            InstinctRatingView(release: release, onRated: { id in
                 onRated?(id)
                 viewModel.userEloScore = 1  // non-nil sentinel so isRated becomes true
                 Task { await viewModel.loadAfterInstinct(releaseId: release.id) }
+            }, onDone: { showInstinctSheet = false })
+        }
+        .sheet(item: $trackRatingTarget) { track in
+            TrackRatingSheet(
+                track: track,
+                release: release,
+                existingScore: viewModel.trackRatings[track.position]
+            ) { t, score in
+                Task { await viewModel.rateTrack(releaseId: release.id,
+                                                  position: t.position,
+                                                  title: t.title, score: score) }
             }
         }
     }
@@ -645,9 +760,13 @@ struct AlbumDetailView: View {
         VStack(alignment: .leading, spacing: 0) {
             sectionLabel("Tracklist")
 
-            ForEach(Array(viewModel.tracklist.enumerated()), id: \.offset) { i, track in
-                TrackRow(track: track)
-                if i < viewModel.tracklist.count - 1 {
+            ForEach(Array(viewModel.tracks.enumerated()), id: \.element.id) { i, track in
+                TrackRow(
+                    track: track,
+                    existingScore: viewModel.trackRatings[track.position],
+                    onAdd: track.trackId != nil ? { trackRatingTarget = track } : nil
+                )
+                if i < viewModel.tracks.count - 1 {
                     Divider().padding(.leading, 56)
                 }
             }
@@ -804,7 +923,9 @@ private struct PostRow: View {
 // MARK: - Track Row
 
 private struct TrackRow: View {
-    let track: TrackItem
+    let track: TrackEntry
+    var existingScore: Double? = nil
+    var onAdd: (() -> Void)? = nil
 
     private var formattedDuration: String {
         guard let ms = track.durationMs, ms > 0 else { return "" }
@@ -812,8 +933,12 @@ private struct TrackRow: View {
         return String(format: "%d:%02d", s / 60, s % 60)
     }
 
+    private func scoreLabel(_ s: Double) -> String {
+        s.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(s))" : String(format: "%.1f", s)
+    }
+
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Text("\(track.position)")
                 .font(.system(size: 13)).foregroundStyle(Color.sjMuted)
                 .frame(width: 24, alignment: .trailing)
@@ -822,10 +947,107 @@ private struct TrackRow: View {
             Spacer()
             if !formattedDuration.isEmpty {
                 Text(formattedDuration)
-                    .font(.system(size: 13)).foregroundStyle(Color.sjMuted)
+                    .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+            }
+            if let score = existingScore {
+                Text(scoreLabel(score))
+                    .font(.system(size: 11, weight: .bold)).foregroundStyle(Color.sjBlue)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Color.sjBlue.opacity(0.1)).clipShape(RoundedRectangle(cornerRadius: 4))
+            } else if let onAdd {
+                Button(action: onAdd) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 11, weight: .bold)).foregroundStyle(Color.sjBlue)
+                        .frame(width: 26, height: 26)
+                        .background(Color.sjBlue.opacity(0.1)).clipShape(Circle())
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(.vertical, 11).padding(.horizontal, 20)
+    }
+}
+
+// MARK: - Track Rating Sheet
+
+private struct TrackRatingSheet: View {
+    let track: TrackEntry
+    let release: Release
+    let existingScore: Double?
+    let onSave: (TrackEntry, Double?) -> Void
+
+    @State private var draftScore: Double
+    @Environment(\.dismiss) private var dismiss
+
+    init(track: TrackEntry, release: Release, existingScore: Double?,
+         onSave: @escaping (TrackEntry, Double?) -> Void) {
+        self.track = track
+        self.release = release
+        self.existingScore = existingScore
+        self.onSave = onSave
+        self._draftScore = State(initialValue: existingScore ?? 2.5)
+    }
+
+    private var scoreLabel: String {
+        draftScore.truncatingRemainder(dividingBy: 1) == 0
+            ? "\(Int(draftScore)) / 5"
+            : String(format: "%.1f / 5", draftScore)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            RoundedRectangle(cornerRadius: 2).fill(Color.sjBorder)
+                .frame(width: 36, height: 4).padding(.top, 10).frame(maxWidth: .infinity)
+
+            AsyncImage(url: URL(string: release.coverUrl ?? "")) { phase in
+                switch phase {
+                case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
+                default: Color.sjBorder.overlay(Image(systemName: "music.note").foregroundStyle(Color.sjMuted))
+                }
+            }
+            .frame(width: 56, height: 56)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .padding(.top, 16)
+
+            Text(track.title)
+                .font(.system(size: 15, weight: .bold)).foregroundStyle(Color.sjInk)
+                .multilineTextAlignment(.center).lineLimit(2)
+                .padding(.horizontal, 32).padding(.top, 8)
+            Text(release.displayArtist)
+                .font(.system(size: 12)).foregroundStyle(Color.sjMuted).padding(.top, 2)
+
+            Text(scoreLabel)
+                .font(.system(size: 30, weight: .bold)).foregroundStyle(Color.sjBlue)
+                .monospacedDigit().padding(.top, 12)
+
+            Slider(value: $draftScore, in: 0.5...5.0, step: 0.5)
+                .tint(Color.sjBlue)
+                .padding(.horizontal, 24).padding(.top, 8)
+                .sensoryFeedback(.selection, trigger: draftScore)
+            HStack { Text("0.5"); Spacer(); Text("5.0") }
+                .font(.system(size: 10)).foregroundStyle(Color.sjMuted)
+                .padding(.horizontal, 26).padding(.top, 2)
+
+            VStack(spacing: 10) {
+                Button {
+                    onSave(track, draftScore)
+                    dismiss()
+                } label: {
+                    Text("Save Rating")
+                        .font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity).padding(.vertical, 14)
+                        .background(Color.sjBlue).clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                if existingScore != nil {
+                    Button("Remove Rating") { onSave(track, nil); dismiss() }
+                        .font(.system(size: 13)).foregroundStyle(Color.sjMuted)
+                }
+            }
+            .padding(.horizontal, 24).padding(.top, 16).padding(.bottom, 24)
+        }
+        .background(Color.sjCream.ignoresSafeArea())
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
     }
 }
 

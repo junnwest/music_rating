@@ -273,8 +273,18 @@ private class InstinctRatingViewModel {
 struct InstinctRatingView: View {
     let release: Release
     var onRated: ((UUID) -> Void)? = nil
+    var onDone: (() -> Void)? = nil
     @State private var vm = InstinctRatingViewModel()
     @Environment(\.dismiss) private var dismiss
+
+    private func close() {
+        // Use parent binding when available — calling both simultaneously can cancel the animation
+        if let onDone {
+            onDone()
+        } else {
+            dismiss()
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -293,34 +303,35 @@ struct InstinctRatingView: View {
         }
     }
 
-    // MARK: Phase 1 — Bucket (I2: centered album + 3 emoji tiles)
+    // MARK: Phase 1 — Bucket
 
     private var bucketView: some View {
         VStack(spacing: 0) {
-            VStack(spacing: 6) {
+            HStack(spacing: 12) {
                 AsyncImage(url: URL(string: release.coverUrl ?? "")) { phase in
                     switch phase {
                     case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
                     default: Color.sjBorder
                     }
                 }
-                .frame(width: 56, height: 56)
+                .frame(width: 52, height: 52)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                Text(release.displayTitle)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(Color.sjInk)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-
-                Text(release.displayArtist)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.sjMuted)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(release.displayTitle)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.sjInk)
+                        .lineLimit(2)
+                    Text(release.displayArtist)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.sjMuted)
+                }
+                Spacer()
             }
-            .padding(.top, 14)
-            .padding(.horizontal, 32)
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
 
-            Divider().padding(.vertical, 12)
+            Divider().padding(.vertical, 14)
 
             Text("How was it?")
                 .font(.system(size: 11, weight: .semibold))
@@ -337,9 +348,10 @@ struct InstinctRatingView: View {
                             onRated?(release.id)
                         }
                     } label: {
-                        VStack(spacing: 5) {
-                            Text(bucket.emoji)
-                                .font(.system(size: 24))
+                        VStack(spacing: 6) {
+                            Image(systemName: bucket.icon)
+                                .font(.system(size: 20))
+                                .foregroundStyle(bucket.color)
                             Text(bucket.label.uppercased())
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(bucket.color)
@@ -355,12 +367,11 @@ struct InstinctRatingView: View {
                 }
             }
             .padding(.horizontal, 20)
-
-            Spacer()
+            .padding(.bottom, 24)
         }
     }
 
-    // MARK: Phase 2 — Compare (I3: full-width opponent banner + Better/Worse)
+    // MARK: Phase 2 — Compare (I2: side-by-side cards)
 
     private var comparingView: some View {
         VStack(spacing: 0) {
@@ -378,74 +389,112 @@ struct InstinctRatingView: View {
             }
 
             if let opp = vm.currentOpponent {
-                ZStack(alignment: .bottomLeading) {
-                    AsyncImage(url: URL(string: opp.release.coverUrl ?? "")) { phase in
-                        switch phase {
-                        case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
-                        default: Color.sjBorder
+                Text("Which do you prefer?")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color.sjInk)
+                    .padding(.bottom, 12)
+
+                HStack(alignment: .top, spacing: 10) {
+                    // ── New album card ──
+                    VStack(spacing: 6) {
+                        AsyncImage(url: URL(string: release.coverUrl ?? "")) { phase in
+                            switch phase {
+                            case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
+                            default: Color.sjBorder
+                            }
                         }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 148)
-                    .clipped()
+                        .frame(width: 74, height: 74)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                    LinearGradient(
-                        colors: [.clear, .black.opacity(0.62)],
-                        startPoint: .top, endPoint: .bottom
-                    )
+                        Text(release.displayTitle)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Color.sjInk)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(opp.release.displayTitle)
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(.white)
+                        Text(release.displayArtist)
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color.sjMuted)
                             .lineLimit(1)
-                        Text(opp.release.displayArtist)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.white.opacity(0.7))
-                    }
-                    .padding(12)
-                }
 
-                VStack(spacing: 10) {
-                    Text("Is \"\(release.displayTitle)\" better or worse?")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.sjInk)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                        .padding(.horizontal, 20)
-                        .padding(.top, 12)
+                        Text("NEW")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(Color.sjBlue)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(Color.sjBlue.opacity(0.12))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
 
-                    HStack(spacing: 10) {
+                        Spacer(minLength: 0)
+
                         Button {
                             Task { await vm.vote(newAlbumWon: true) }
                         } label: {
-                            Label("Better", systemImage: "arrow.up")
-                                .font(.system(size: 14, weight: .semibold))
+                            Text("Select")
+                                .font(.system(size: 11, weight: .bold))
                                 .foregroundStyle(.white)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
+                                .padding(.vertical, 7)
                                 .background(Color.sjBlue)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .clipShape(RoundedRectangle(cornerRadius: 7))
                         }
                         .buttonStyle(.plain)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.sjBlue.opacity(0.06))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.sjBlue, lineWidth: 1.5))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                    // ── Opponent card ──
+                    VStack(spacing: 6) {
+                        AsyncImage(url: URL(string: opp.release.coverUrl ?? "")) { phase in
+                            switch phase {
+                            case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
+                            default: Color.sjBorder
+                            }
+                        }
+                        .frame(width: 74, height: 74)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                        Text(opp.release.displayTitle)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Color.sjInk)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Text(opp.release.displayArtist)
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color.sjMuted)
+                            .lineLimit(1)
+
+                        // Spacer to align with NEW badge on the other card
+                        Color.clear.frame(height: 17)
+
+                        Spacer(minLength: 0)
 
                         Button {
                             Task { await vm.vote(newAlbumWon: false) }
                         } label: {
-                            Label("Worse", systemImage: "arrow.down")
-                                .font(.system(size: 14, weight: .semibold))
+                            Text("Select")
+                                .font(.system(size: 11, weight: .bold))
                                 .foregroundStyle(.white)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
+                                .padding(.vertical, 7)
                                 .background(Color.sjInk)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .clipShape(RoundedRectangle(cornerRadius: 7))
                         }
                         .buttonStyle(.plain)
                     }
-                    .padding(.horizontal, 20)
+                    .padding(10)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.sjSurface)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.sjBorder, lineWidth: 1.5))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
-
-                Spacer()
+                .padding(.horizontal, 20)
+                .padding(.bottom, 20)
             }
         }
     }
@@ -527,7 +576,7 @@ struct InstinctRatingView: View {
                 .padding(.top, 16)
             }
 
-            Button("Done") { dismiss() }
+            Button("Done") { close() }
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
@@ -536,8 +585,7 @@ struct InstinctRatingView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .padding(.horizontal, 24)
                 .padding(.top, 20)
-
-            Spacer()
+                .padding(.bottom, 24)
         }
     }
 }

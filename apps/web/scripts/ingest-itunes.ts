@@ -10,8 +10,12 @@
  *   npx tsx --env-file=.env.local scripts/ingest-itunes.ts seed
  *   npx tsx --env-file=.env.local scripts/ingest-itunes.ts discography
  *   npx tsx --env-file=.env.local scripts/ingest-itunes.ts artist --artist="IU"
+ *   npx tsx --env-file=.env.local scripts/ingest-itunes.ts artist --itunes-id=1052669308
  *   Add --dry-run to preview without writing to DB.
  *   Add --with-tracks to also fetch tracklists (3× slower, costs more API calls).
+ *
+ * Use --itunes-id instead of --artist for non-English artists where name search
+ * is unreliable (e.g. 드레스, 周杰倫). Get the ID from the audit-catalog test set.
  *
  * Deduplication logic (no Spotify needed):
  *   1. itunes_id already in DB → skip
@@ -27,9 +31,13 @@ import { createClient } from '@supabase/supabase-js';
 
 const MODE = process.argv.find(a => ['seed', 'discography', 'artist'].includes(a)) as
   'seed' | 'discography' | 'artist' | undefined;
-const DRY_RUN   = process.argv.includes('--dry-run');
+const DRY_RUN     = process.argv.includes('--dry-run');
 const WITH_TRACKS = process.argv.includes('--with-tracks');
 const ARTIST_ARG  = process.argv.find(a => a.startsWith('--artist='))?.split('=').slice(1).join('=');
+const ITUNES_ID_ARG = (() => {
+  const raw = process.argv.find(a => a.startsWith('--itunes-id='))?.split('=')[1];
+  return raw ? parseInt(raw, 10) : undefined;
+})();
 
 const DELAY_MS   = 600;   // 600ms ≈ 1.6 req/s; iTunes 429s at ~3 req/s sustained
 const TRACK_DELAY_MS = 800;
@@ -40,8 +48,8 @@ if (!MODE) {
   console.error('Usage: ingest-itunes.ts <seed|discography|artist> [--dry-run] [--with-tracks] [--artist=NAME]');
   process.exit(1);
 }
-if (MODE === 'artist' && !ARTIST_ARG) {
-  console.error('--artist=NAME required in artist mode');
+if (MODE === 'artist' && !ARTIST_ARG && !ITUNES_ID_ARG) {
+  console.error('--artist=NAME or --itunes-id=NUMBER required in artist mode');
   process.exit(1);
 }
 
@@ -292,51 +300,111 @@ async function upsertAlbum(
 
 // ── Seed artist list ──────────────────────────────────────────────────────────
 
-// Curated list of Korean artists across genres.
+// Curated list of artists across markets and genres.
 // Add more artists here; the script will skip ones already processed.
+// NOTE: For non-English artists where name search is unreliable, use
+//       `itunes:artist --itunes-id=NUMBER` instead of adding to this list.
 const SEED_ARTISTS = [
-  // K-pop 4th gen
+  // ── Korean: K-pop 4th gen ─────────────────────────────────────────────────
   'aespa', 'NewJeans', 'IVE', 'LE SSERAFIM', 'NMIXX', 'Kep1er', 'ILLIT',
   'ENHYPEN', 'TXT', 'Stray Kids', 'ATEEZ', 'MONSTA X', 'The Boyz', 'ONEUS',
-  'SEVENTEEN', 'NCT 127', 'NCT Dream', 'WayV', 'aespa',
+  'SEVENTEEN', 'NCT 127', 'NCT Dream', 'WayV',
 
-  // K-pop 3rd gen
+  // ── Korean: K-pop 3rd gen ─────────────────────────────────────────────────
   'BTS', 'BLACKPINK', 'EXO', 'Red Velvet', 'TWICE', 'MAMAMOO', 'ITZY',
   '(G)I-DLE', 'OH MY GIRL', 'ASTRO', 'PENTAGON', 'Dreamcatcher', 'Weki Meki',
 
-  // K-pop 2nd gen
+  // ── Korean: K-pop 2nd gen ─────────────────────────────────────────────────
   'Girls Generation', 'SHINee', 'Super Junior', 'BIGBANG', '2NE1', 'INFINITE',
   'B2ST', 'f(x)', 'Miss A', 'T-ara', 'After School', 'SISTAR', 'A Pink',
   'BEAST', 'Block B', 'Teen Top', 'VIXX',
 
-  // K-pop 1st gen / classic
+  // ── Korean: K-pop 1st gen / classic ──────────────────────────────────────
   'H.O.T', 'god', 'Shinhwa', 'S.E.S.', 'Fin.K.L', 'Baby V.O.X',
   'Seo Taiji and Boys',
 
-  // Solo pop / R&B / ballad
+  // ── Korean: Solo pop / R&B / ballad ──────────────────────────────────────
   'IU', 'Taeyeon', 'Taeyang', 'G-Dragon', 'CL', 'Lee Hi', 'Heize',
   'Suzy', 'Baekhyun', 'Chanyeol', 'Sehun', 'Kai',
 
-  // Korean R&B / Soul
+  // ── Korean: R&B / Soul ────────────────────────────────────────────────────
   'Dean', 'Crush', 'Zion.T', 'GRAY', 'Colde', 'offonoff', 'pH-1',
   'MISO', 'SOLE', 'BIBI', 'Primary', 'Loco', 'Simon Dominic',
   'Hoody', 'Sik-K', 'Woo', 'PENOMECO',
 
-  // Korean hip-hop
+  // ── Korean: Hip-hop ───────────────────────────────────────────────────────
   'Epik High', 'Dynamic Duo', 'Dok2', 'The Quiett', 'Beenzino',
   'Lil Boi', 'Jay Park', 'Swings', 'Hash Swan', 'Changmo',
-  'Nafla', 'Loco',
+  'Nafla',
 
-  // Korean indie / alternative
+  // ── Korean: Indie / alternative ───────────────────────────────────────────
   'Hyukoh', 'Jannabi', 'Nell', 'The Rose', 'DAY6', 'N.Flying',
   'Silica Gel', 'Sunwoo Jung-a', 'Leenalchi', 'Adoy', 'Cifika',
-  'Glen Check', 'Se So Neon', 'HONNE', 'LUCY', 'Sultan of the Disco',
-  'Guckkasten', '술탄 오브 더 디스코',
+  'Glen Check', 'Se So Neon', 'LUCY', 'Sultan of the Disco',
+  'Guckkasten',
 
-  // Older Korean artists
+  // ── Korean: Older artists ─────────────────────────────────────────────────
   'Kim Kwang Seok', 'Lee Juck', 'Shin Hae Chul', 'Lee Seung Hwan',
   'Kim Gun Mo', 'Cho Yong Pil', 'Na Hoon A', 'Lim Chang Jung',
   'Park Hyo Shin', 'Song Chang Shik', 'Lee Moon Sae',
+
+  // ── Japanese ──────────────────────────────────────────────────────────────
+  'YOASOBI', 'Hikaru Utada', 'Kenshi Yonezu', 'Aimyon', 'Official HIGE DANdism',
+  'King Gnu', 'Fujii Kaze', 'Mrs. GREEN APPLE', 'Vaundy', 'Eve',
+  'Yorushika', 'Hoshino Gen', 'RADWIMPS', 'Bump of Chicken',
+  'Spitz', 'Shiina Ringo', 'Ado', 'imase',
+
+  // ── Western: Pop ──────────────────────────────────────────────────────────
+  'Taylor Swift', 'Adele', 'Beyoncé', 'Dua Lipa', 'Ariana Grande',
+  'Ed Sheeran', 'Harry Styles', 'Olivia Rodrigo', 'Billie Eilish',
+  'Sabrina Carpenter', 'Chappell Roan', 'Charli XCX', 'P!nk',
+  'Katy Perry', 'Lady Gaga', 'Miley Cyrus', 'Selena Gomez',
+  'Post Malone', 'The Weeknd',
+
+  // ── Western: Hip-hop / R&B ────────────────────────────────────────────────
+  'Drake', 'Kendrick Lamar', 'J. Cole', 'Travis Scott', 'Tyler, the Creator',
+  'SZA', 'Frank Ocean', 'Childish Gambino', '21 Savage', 'Lil Baby',
+  'Gunna', 'Future', 'Metro Boomin', 'Nicki Minaj', 'Cardi B',
+  'Megan Thee Stallion', 'Doja Cat', 'Roddy Ricch',
+
+  // ── Western: Rock / Alternative / Indie ──────────────────────────────────
+  'Radiohead', 'Arctic Monkeys', 'Tame Impala', 'Beach House', 'Bon Iver',
+  'The National', 'Phoebe Bridgers', 'Japanese Breakfast', 'boygenius',
+  'Vampire Weekend', 'Fleet Foxes', 'Sufjan Stevens', 'Big Thief',
+  'Mitski', 'Soccer Mommy', 'Snail Mail', 'Lucy Dacus',
+
+  // ── Western: Electronic ───────────────────────────────────────────────────
+  'Four Tet', 'Fred again..', 'Floating Points', 'Jamie xx',
+  'Daft Punk', 'Justice', 'Air', 'Moderat', 'Jon Hopkins',
+  'Aphex Twin', 'Boards of Canada', 'James Blake',
+
+  // ── Western: Classic / Legacy ─────────────────────────────────────────────
+  'The Beatles', 'Prince', 'Björk', 'Radiohead',
+  'David Bowie', 'Bob Dylan', 'Bruce Springsteen', 'Neil Young',
+
+  // ── Jazz ──────────────────────────────────────────────────────────────────
+  'Miles Davis', 'John Coltrane', 'Bill Evans', 'Charlie Parker',
+  'Dave Brubeck', 'Thelonious Monk', 'Herbie Hancock', 'Wayne Shorter',
+  'Art Blakey', 'Wes Montgomery', 'Chet Baker',
+
+  // ── Latin ─────────────────────────────────────────────────────────────────
+  'Bad Bunny', 'J Balvin', 'Ozuna', 'Rauw Alejandro', 'Karol G',
+  'ROSALÍA', 'Maluma', 'Anuel AA', 'Jhay Cortez', 'Myke Towers',
+  'Sech', 'Farruko', 'Peso Pluma', 'Fuerza Regida', 'Natanael Cano',
+  'Nicki Nicole', 'Bizarrap', 'Anitta',
+
+  // ── Afrobeats / African ───────────────────────────────────────────────────
+  'Burna Boy', 'Wizkid', 'Davido', 'Asake', 'Rema', 'Black Coffee',
+  'Fireboy DML', 'CKay', 'Omah Lay', 'Ayra Starr', 'Tems',
+  'Kizz Daniel', 'Olamide', 'Yemi Alade', 'Tiwa Savage',
+
+  // ── French-language ───────────────────────────────────────────────────────
+  'Stromae', 'Aya Nakamura', 'PNL', 'Angèle', 'Damso',
+  'Ninho', 'Nekfeu', 'Orelsan', 'SCH', 'Hamza', 'Jul',
+
+  // ── Indian ────────────────────────────────────────────────────────────────
+  'Arijit Singh', 'A.R. Rahman', 'Shreya Ghoshal', 'Atif Aslam',
+  'Jubin Nautiyal', 'Diljit Dosanjh', 'Neha Kakkar',
 ];
 
 // ── Core processing ───────────────────────────────────────────────────────────
@@ -349,25 +417,32 @@ async function processArtist(
   name: string,
   db: ReturnType<typeof getDB> | null,
   stats: { inserted: number; enriched: number; skipped: number },
+  knownItunesId?: number,
 ): Promise<'ok' | 'skip' | 'fatal'> {
-  process.stdout.write(`  Searching iTunes for "${name}"… `);
+  let artistId: number;
 
-  let artist;
-  try {
-    artist = await searchArtist(name);
-  } catch (err: any) {
-    console.log(`error: ${err.message}`);
-    // Propagate fatal errors (exhausted retries on 429/403) to abort the run
-    if (err.message.includes('retries')) return 'fatal';
-    return 'skip';
+  if (knownItunesId) {
+    console.log(`  Using iTunes ID ${knownItunesId} for "${name}"`);
+    artistId = knownItunesId;
+  } else {
+    process.stdout.write(`  Searching iTunes for "${name}"… `);
+    let artist;
+    try {
+      artist = await searchArtist(name);
+    } catch (err: any) {
+      console.log(`error: ${err.message}`);
+      if (err.message.includes('retries')) return 'fatal';
+      return 'skip';
+    }
+    if (!artist) {
+      console.log('not found');
+      return 'skip';
+    }
+    console.log(`found: ${artist.artistName} (id ${artist.artistId})`);
+    artistId = artist.artistId;
   }
-  if (!artist) {
-    console.log('not found');
-    return 'skip';
-  }
-  console.log(`found: ${artist.artistName} (id ${artist.artistId})`);
 
-  const albums = await fetchDiscography(artist.artistId);
+  const albums = await fetchDiscography(artistId);
   console.log(`    ${albums.length} albums in iTunes discography`);
 
   for (const album of albums) {
@@ -425,18 +500,36 @@ async function runDiscography(db: ReturnType<typeof getDB> | null, state: Itunes
     process.exit(1);
   }
 
-  const { data: artists } = await db.from('artists').select('name, spotify_artist_id').order('name');
-  const list = (artists ?? []).map((a: any) => a.name as string);
-  const todo = list.filter((a: string) => !state.processedArtists.includes(a));
+  const { data: artists } = await db
+    .from('artists')
+    .select('id, name, itunes_artist_id')
+    .order('name');
+  const list = (artists ?? []) as { id: string; name: string; itunes_artist_id: number | null }[];
+  const todo = list.filter(a => !state.processedArtists.includes(a.name));
   console.log(`   DB artists: ${list.length} | Remaining: ${todo.length}\n`);
 
   const stats = { inserted: 0, enriched: 0, skipped: 0 };
 
   for (let i = 0; i < todo.length; i++) {
-    const name = todo[i];
-    console.log(`\n[${i + 1}/${todo.length}] ${name}`);
-    await processArtist(name, db, stats);
-    state.processedArtists.push(name);
+    const artist = todo[i];
+    console.log(`\n[${i + 1}/${todo.length}] ${artist.name}${artist.itunes_artist_id ? ` (iTunes ID: ${artist.itunes_artist_id})` : ''}`);
+
+    const result = await processArtist(artist.name, db, stats, artist.itunes_artist_id ?? undefined);
+
+    // Store the iTunes artist ID back if we found it via name search
+    if (result === 'ok' && !artist.itunes_artist_id) {
+      // processArtist logged the found artist ID — re-search briefly to capture it
+      // (searchArtist is cheap and already rate-limited inside processArtist)
+      const found = await searchArtist(artist.name);
+      if (found) {
+        await db.from('artists')
+          .update({ itunes_artist_id: found.artistId })
+          .eq('id', artist.id)
+          .is('itunes_artist_id', null); // only write if still null (avoid race)
+      }
+    }
+
+    state.processedArtists.push(artist.name);
     if ((i + 1) % 5 === 0) saveState(state);
   }
 
@@ -445,9 +538,10 @@ async function runDiscography(db: ReturnType<typeof getDB> | null, state: Itunes
 }
 
 async function runArtist(db: ReturnType<typeof getDB> | null, _state: ItunesState) {
-  console.log(`   Artist: ${ARTIST_ARG}\n`);
+  const label = ARTIST_ARG ?? `iTunes ID ${ITUNES_ID_ARG}`;
+  console.log(`   Artist: ${label}\n`);
   const stats = { inserted: 0, enriched: 0, skipped: 0 };
-  await processArtist(ARTIST_ARG!, db, stats);
+  await processArtist(ARTIST_ARG ?? '', db, stats, ITUNES_ID_ARG);
   return stats;
 }
 
