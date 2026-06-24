@@ -33,3 +33,4 @@ apps/web/scripts/*-state.json
 
 # Tooling scratch
 .understand-anything/
+backups/

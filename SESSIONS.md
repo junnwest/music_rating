@@ -6,6 +6,58 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-24 — DB renovation: architecture design, migration written, backups saved:**
+
+- **Root cause identified:** `artists` table had only 1,533 rows vs ~418k releases — 98% of releases had `null artist_id`. Supabase 1000-row default limit was silently capping backfill queries. Fixed `backfill-itunes-artist-ids.ts` with `while(true)` pagination using `.range(from, from + 999)`.
+
+- **Architecture decision — full DB rebuild (pre-launch window):** Only ~98 ratings from friends/bots. Three structural problems warranted a full rebuild: (1) artist identity fragmentation ("드레스" vs "dress" as separate rows), (2) no `release_groups` entity means every album edition creates permanent dedup debt, (3) song ratings keyed on `(release_id, track_position)` break with every remaster.
+
+- **New tables created (in migration):**
+  - `artist_aliases` — `UNIQUE(alias)` ensures every name variant resolves to exactly one artist entity
+  - `artist_external_ids` — `PRIMARY KEY(source, external_id)` allows N iTunes IDs per artist (split catalog support)
+  - `release_groups` — the album/EP/single as a concept; users rate this, not specific pressings
+  - `recordings` — stable audio entity with ISRC; `track_ratings` keys on uuid not position
+  - `release_tracks` — maps recording → release → disc_number + position
+
+- **Changed tables:**
+  - `artists`: text PK (was Spotify ID) → uuid PK; added disambiguation, country, ingest_priority (hot/active/known/dormant), last_ingested_at, next_check_at
+  - `releases`: added release_group_id FK, is_canonical bool, region
+  - `ratings`: release_id → release_group_id (with new UNIQUE constraint)
+  - `track_ratings`: (release_id, track_position, track_title) → recording_id
+  - `pairwise_comparisons`: winner/loser_release_id → winner_id/loser_id → release_groups
+  - `track_pairwise_comparisons`: winner/loser_(release_id+position) → winner_id/loser_id → recordings
+  - All user-content tables (reviews, list_items, mix_items, saved_releases, pinned_albums, ranking_votes, curated_releases): release_id → release_group_id
+
+- **Dropped (to rebuild post-migration):** `recommendable_releases` view; all Charts RPCs (`get_charts_top_rated`, `get_charts_most_rated`, `get_charts_trending`, `get_charts_trending_for_genres`, `get_user_top_genres`, `get_charts_hidden_gems`, `get_charts_controversial`); `get_user_genre_standings`; `get_calibrated_bayesian_scores`. `record_rating_change` trigger rebuilt in the migration with correct column name.
+
+- **Sustainability pipeline designed:** `ingest_priority` tiers — hot (daily re-check), active (weekly), known (monthly), dormant (quarterly). `next_check_at` column drives a scheduled Edge Function. iTunes chart polling for 15 markets: US, UK, KR, JP, BR, MX, FR, DE, IN, NG, ZA, AU, CA, ES, TW.
+
+- **Backups exported before truncation:**
+  - `backups/ratings_pre_renovation_20260624.csv` — 98 rows from 7 users (gitignored)
+  - `backups/track_ratings_pre_renovation_20260624.csv` — 20 rows (gitignored)
+  - `.gitignore` updated with `backups/` entry
+
+- **Migration file:** `apps/web/supabase/migrations/20260624000001_db_renovation.sql` — written, ⏳ **NOT YET RUN**. Run in Supabase SQL editor on Windows next session.
+
+---
+
+**2026-06-24 — iOS session 14: Rating modal polish, artist page fix, dedup script fix, macOS update:**
+
+- **Charts RPCs confirmed applied:** `20260620000002_charts_rpcs.sql` + `20260620000003_charts_song_rpcs.sql` both applied 2026-06-24 (SQL editor). README updated.
+
+- **Artist page query fixed (`SearchView.swift`):** `.ilike("artist", value: "%\(escaped)%")` (substring match) → `.ilike("artist", value: escaped)` (exact case-insensitive match). Was causing artist pages to show releases from artists whose name merely *contained* the search term (e.g. "Dress" page showed Eyedress, Dresscodes, etc.).
+
+- **Instinct rating modal — three changes:**
+  - **Bucket view (phase 1):** Replaced centered cover+title stack with compact side-by-side row (cover left, title/artist right). Replaced emoji tiles (😞/😐/🙂) with SF Symbol icons (`hand.thumbsdown` / `minus.circle` / `hand.thumbsup`). Removed trailing `Spacer()` — sheet now fits content tightly.
+  - **Compare view (phase 2):** Full rewrite to I2 layout — "Which do you prefer?" header, two equal-width side-by-side cards. New album card: blue border + `sjBlue.opacity(0.06)` bg + "NEW" badge + blue Select button. Opponent card: gray border + `sjSurface` bg + ink Select button. `Color.clear.frame(height:17)` aligns the Select buttons across both cards. Removed the old full-bleed cover banner + Better/Worse approach.
+  - **Done button dismiss fixed:** `@Environment(\.dismiss)` is unreliable when InstinctRatingView is nested inside a sheet that itself is inside a NavigationStack (the AlbumDetailView path). Added `onDone: (() -> Void)? = nil` parameter + `close()` helper that calls `onDone?()` then `dismiss()`. Callers updated: `AlbumDetailView` passes `onDone: { showInstinctSheet = false }`, `SearchView` passes `onDone: { instinctSheetRelease = nil }`. Belt-and-suspenders: explicit parent binding clear + environment dismiss.
+
+- **`dedup:releases` script fixed (`find-duplicate-releases.ts`):** Bulk load was hitting a Supabase statement timeout because it selected `tracklist` (large JSONB) for all ~418k releases. Fix: removed `tracklist` from the select entirely; `metadataScore` now uses `total_tracks != null` as a proxy; `mergeAndDelete` fetches tracklist in a targeted single-row query only when keeper has no tracks. Script is ready to run — do it after macOS update.
+
+- **macOS update pending:** Mac is on 26.2, iPhone is on iOS 26.5 — Xcode lacks iOS 26.5 device support files, which is why iPhone didn't appear as a build destination. Update via System Settings → General → Software Update. After restart see the START HERE note.
+
+---
+
 **2026-06-23 — iOS session 13: Rating modal redesign, explore ranking, Add tab overhaul, artist page, image perf:**
 
 - **Rating modal redesign (M4 / I2 / I3):**
