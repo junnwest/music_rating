@@ -71,6 +71,7 @@ class HomeViewModel {
     var likeCounts:            [UUID: Int] = [:]
     var commentCounts:         [UUID: Int] = [:]
     var hasUnreadNotifications: Bool       = false
+    var blockedUserIds:         Set<UUID>  = []
 
     private var hasLoadedExplore   = false
     private var hasLoadedFollowing = false
@@ -116,9 +117,36 @@ class HomeViewModel {
                 .execute().value) ?? []
             return rows.map(\.releases.artist)
         }()
-        let (ids, artists) = await (followsTask, artistsTask)
-        followingIds = Set(ids)
-        likedArtists = Set(artists)
+        async let blockedTask: [UUID] = {
+            struct Row: Codable {
+                let blockedId: UUID
+                enum CodingKeys: String, CodingKey { case blockedId = "blocked_id" }
+            }
+            let rows: [Row] = (try? await supabase
+                .from("blocked_users").select("blocked_id")
+                .eq("blocker_id", value: userId).execute().value) ?? []
+            return rows.map(\.blockedId)
+        }()
+        let (ids, artists, blocked) = await (followsTask, artistsTask, blockedTask)
+        followingIds  = Set(ids)
+        likedArtists  = Set(artists)
+        blockedUserIds = Set(blocked)
+    }
+
+    func blockUser(userId: UUID) async {
+        guard let me = currentUserId, userId != me else { return }
+        blockedUserIds.insert(userId)
+        exploreItems.removeAll   { $0.userId == userId }
+        followingItems.removeAll { $0.userId == userId }
+        struct Payload: Encodable {
+            let blockerId: UUID; let blockedId: UUID
+            enum CodingKeys: String, CodingKey {
+                case blockerId = "blocker_id"; case blockedId = "blocked_id"
+            }
+        }
+        _ = try? await supabase.from("blocked_users")
+            .insert(Payload(blockerId: me, blockedId: userId))
+            .execute()
     }
 
     private func ranked(_ items: [FeedItem]) -> [FeedItem] {
@@ -175,8 +203,9 @@ class HomeViewModel {
         savedReleaseIds = []
         likeCounts = [:]
         commentCounts = [:]
-        await loadSocialData(for: pool)
-        exploreItems = Array(ranked(pool).prefix(60))
+        let filtered = pool.filter { !blockedUserIds.contains($0.userId) }
+        await loadSocialData(for: filtered)
+        exploreItems = Array(ranked(filtered).prefix(60))
         hasLoadedExplore = true
         await refreshNotificationBadge()
     }
@@ -189,8 +218,9 @@ class HomeViewModel {
             .from("ratings").select(Self.feedSelect)
             .order("created_at", ascending: false).limit(150)
             .execute().value) ?? []
-        await loadSocialData(for: pool)
-        exploreItems = Array(ranked(pool).prefix(60))
+        let filtered = pool.filter { !blockedUserIds.contains($0.userId) }
+        await loadSocialData(for: filtered)
+        exploreItems = Array(ranked(filtered).prefix(60))
         isLoadingExplore = false
     }
 
@@ -214,9 +244,10 @@ class HomeViewModel {
             .from("ratings").select(Self.feedSelect)
             .in("user_id", values: ids)
             .order("created_at", ascending: false).limit(60).execute().value) ?? []
-        followingItems = items
+        let filtered = items.filter { !blockedUserIds.contains($0.userId) }
+        followingItems = filtered
         isLoadingFollowing = false
-        await loadSocialData(for: items)
+        await loadSocialData(for: filtered)
     }
 
     private func loadSocialData(for items: [FeedItem]) async {
@@ -480,6 +511,7 @@ struct HomeView: View {
                                 commentsCount: viewModel.commentCounts[item.id] ?? 0,
                                 onLike: { await viewModel.toggleLike(for: item) },
                                 onSave: { await viewModel.toggleSave(for: item) },
+                                onBlock: { await viewModel.blockUser(userId: item.userId) },
                                 onOwnProfileTap: onOwnProfileTap
                             )
                         }
@@ -668,7 +700,7 @@ private struct SuggestedUserRow: View {
 // MARK: - Feed card
 
 private enum CardSheet: Identifiable {
-    case comments, likers, addRating, mixPicker
+    case comments, likers, addRating, mixPicker, report
     var id: Self { self }
 }
 
@@ -681,9 +713,11 @@ private struct FeedCard: View {
     let commentsCount: Int
     let onLike: () async -> Void
     let onSave: () async -> Void
+    let onBlock: () async -> Void
     let onOwnProfileTap: () -> Void
 
     @State private var activeSheet: CardSheet?
+    @State private var showBlockConfirm = false
     @State private var userMixCount: Int? = nil  // nil = not loaded yet
 
     private var isOwnPost: Bool {
@@ -717,7 +751,21 @@ private struct FeedCard: View {
                 MixPickerView(releaseId: item.releases.id, releaseTitle: item.releases.title)
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
+            case .report:
+                ReportSheet(reportedUserId: item.userId, ratingId: item.id)
+                    .presentationDetents([.medium])
+                    .presentationDragIndicator(.visible)
             }
+        }
+        .confirmationDialog(
+            "Block this user?",
+            isPresented: $showBlockConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Block", role: .destructive) { Task { await onBlock() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Their posts won't appear in your feed.")
         }
         .task {
             // Preload mix count so Save knows whether to show picker or save immediately
@@ -774,8 +822,8 @@ private struct FeedCard: View {
                 }
                 if !isOwnPost {
                     Divider()
-                    Button(role: .destructive) { } label: { Label("Report", systemImage: "flag") }
-                    Button(role: .destructive) { } label: { Label("Block this user", systemImage: "hand.raised") }
+                    Button(role: .destructive) { activeSheet = .report } label: { Label("Report", systemImage: "flag") }
+                    Button(role: .destructive) { showBlockConfirm = true } label: { Label("Block this user", systemImage: "hand.raised") }
                 }
             } label: {
                 Image(systemName: "ellipsis")
@@ -1021,6 +1069,131 @@ struct FindPeopleLinkButton: View {
             .clipShape(RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Report Sheet
+
+private struct ReportSheet: View {
+    let reportedUserId: UUID
+    let ratingId: UUID
+    @Environment(\.dismiss) private var dismiss
+    @State private var submitted = false
+    @State private var isSubmitting = false
+    @State private var errorMessage: String?
+
+    private let reasons = ["Spam", "Inappropriate Content", "Harassment", "Other"]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Report Post")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Color.sjInk)
+                Spacer()
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Color.sjMuted)
+                        .frame(width: 30, height: 30)
+                        .background(Color.sjBorder.opacity(0.4))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 24)
+            .padding(.bottom, 16)
+
+            if submitted {
+                VStack(spacing: 14) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 44))
+                        .foregroundStyle(Color.sjBlue)
+                    Text("Report submitted")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.sjInk)
+                    Text("Thanks for helping keep sillajuku safe.")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.sjMuted)
+                        .multilineTextAlignment(.center)
+                    Button("Done") { dismiss() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.sjBlue)
+                        .padding(.top, 4)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.bottom, 40)
+            } else {
+                if let error = errorMessage {
+                    Text(error)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.red)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 8)
+                }
+                Text("Why are you reporting this post?")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.sjMuted)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 12)
+
+                Divider()
+
+                ForEach(reasons, id: \.self) { reason in
+                    Button {
+                        guard !isSubmitting else { return }
+                        Task { await submit(reason: reason) }
+                    } label: {
+                        HStack {
+                            Text(reason)
+                                .font(.system(size: 15))
+                                .foregroundStyle(Color.sjInk)
+                            Spacer()
+                            if isSubmitting {
+                                ProgressView().scaleEffect(0.8)
+                            } else {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(Color.sjMuted)
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 14)
+                    }
+                    .buttonStyle(.plain)
+                    Divider()
+                }
+            }
+        }
+        .background(Color.sjSurface)
+    }
+
+    private func submit(reason: String) async {
+        guard let reporterId = supabase.auth.currentUser?.id else { return }
+        isSubmitting = true
+        errorMessage = nil
+        struct Payload: Encodable {
+            let reporterId: UUID; let reportedUserId: UUID
+            let ratingId: UUID; let reason: String
+            enum CodingKeys: String, CodingKey {
+                case reporterId = "reporter_id"
+                case reportedUserId = "reported_user_id"
+                case ratingId = "rating_id"
+                case reason
+            }
+        }
+        do {
+            try await supabase.from("reports")
+                .insert(Payload(reporterId: reporterId, reportedUserId: reportedUserId,
+                                ratingId: ratingId, reason: reason))
+                .execute()
+            submitted = true
+        } catch {
+            errorMessage = "Something went wrong. Please try again."
+        }
+        isSubmitting = false
     }
 }
 

@@ -145,6 +145,7 @@ final class TasteViewModel {
 // MARK: - TasteView (root)
 
 struct TasteView: View {
+    var onGoToAdd: (() -> Void)? = nil
     @State private var vm = TasteViewModel()
 
     var body: some View {
@@ -153,7 +154,7 @@ struct TasteView: View {
                 if vm.isLoading {
                     tasteLoader
                 } else if !vm.isUnlocked {
-                    TasteLockView(ratingCount: vm.ratingCount)
+                    TasteLockView(ratingCount: vm.ratingCount, onGoToAdd: onGoToAdd)
                 } else {
                     TasteReelView(cards: vm.cards)
                 }
@@ -175,6 +176,7 @@ struct TasteView: View {
 
 private struct TasteLockView: View {
     let ratingCount: Int
+    var onGoToAdd: (() -> Void)? = nil
     private static let threshold = TasteViewModel.unlockThreshold
 
     var body: some View {
@@ -188,7 +190,7 @@ private struct TasteLockView: View {
                     .foregroundStyle(Color.sjAmber)
                     .padding(.bottom, 24)
 
-                Text("Rate \(Self.threshold - ratingCount) more\nalbums to unlock Taste")
+                Text("Rate \(Self.threshold - ratingCount) more\nreleases to unlock Taste")
                     .font(.system(size: 24, weight: .bold))
                     .foregroundStyle(Color.sjInk)
                     .multilineTextAlignment(.center)
@@ -221,6 +223,21 @@ private struct TasteLockView: View {
                     Text("\(ratingCount) of \(Self.threshold)")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color.sjMuted)
+                }
+
+                if let onGoToAdd {
+                    Button(action: onGoToAdd) {
+                        Text("Find releases to rate")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color.sjCream)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                            .background(Color.sjBlue)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 48)
+                    .padding(.top, 20)
                 }
 
                 Spacer()

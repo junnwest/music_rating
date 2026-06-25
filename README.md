@@ -22,7 +22,7 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 Migration written: [`apps/web/supabase/migrations/20260624000001_db_renovation.sql`](apps/web/supabase/migrations/20260624000001_db_renovation.sql) — ⏳ **NOT YET RUN**. Run it in the Supabase SQL editor (not `supabase db push`). Rating backups saved to `backups/` (98 album ratings, 20 track ratings). See the **DB Renovation** section below for full step-by-step plan.
 
-**Mac priority order:** Wire Report/Block no-ops in feed card menu → Profile > Stats subtab → TestFlight setup. iOS app dev can continue in parallel — update Swift models for new schema as Windows applies the migration.
+**Mac priority order:** ✅ Report/Block wired (2026-06-25) → Profile > Stats subtab → TestFlight setup. iOS app dev can continue in parallel — update Swift models for new schema as Windows applies the migration.
 
 **Windows — backend + web prep (`apps/web/`):** ✅ Instinct rating mode shipped end-to-end (2026-06-17/18). All three migrations applied to prod (see table below).
 - ✅ Elo math (`lib/elo.ts`) + `/api/rate/compare`; essentials removed; Spotify OAuth scopes added.
@@ -103,6 +103,7 @@ Full schema rebuild to fix artist identity, release grouping, and song-level ide
 
 | File | What it adds | Prod |
 |------|-------------|------|
+| `20260625000001_report_block.sql` | `reports` table (abuse reports with reason picker) + `blocked_users` table (feed filtering); RLS: users insert own reports/blocks, blocked users cannot see they're blocked | ⏳ **NOT YET RUN** — run in SQL editor (Windows) |
 | `20260624000001_db_renovation.sql` | Full schema rebuild: artists uuid PK, artist_aliases, artist_external_ids, release_groups, recordings, release_tracks; all user-content tables switched to release_group_id / recording_id; sustainability scheduler columns | ⏳ **NOT YET RUN** — run in SQL editor (Windows) |
 | `20260622000001_spotify_data_cache.sql` | `spotify_artists jsonb`, `spotify_recently_played jsonb`, `spotify_data_updated_at timestamptz` on `profiles` — persistent Spotify data cache; survives token expiry, reinstalls, and device switches | ✅ applied 2026-06-22 (SQL editor) |
 | `20260621000003_suggested_users.sql` | `get_suggested_users(p_user_id)` RPC — active users not yet followed, ordered by rating count, for Find People page | ✅ applied 2026-06-21 (SQL editor) |

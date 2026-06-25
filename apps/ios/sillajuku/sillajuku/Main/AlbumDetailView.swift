@@ -503,6 +503,7 @@ struct AlbumDetailView: View {
     @State private var showManualSheet = false
     @State private var showInstinctSheet = false
     @State private var trackRatingTarget: TrackEntry? = nil
+    @State private var selectedSong: TrackEntry? = nil
 
     private var releaseYear: String {
         guard let d = release.releaseDate, d.count >= 4 else { return "" }
@@ -561,6 +562,9 @@ struct AlbumDetailView: View {
                                                   position: t.position,
                                                   title: t.title, score: score) }
             }
+        }
+        .navigationDestination(item: $selectedSong) { track in
+            SongDetailView(track: track, release: release)
         }
     }
 
@@ -764,6 +768,7 @@ struct AlbumDetailView: View {
                 TrackRow(
                     track: track,
                     existingScore: viewModel.trackRatings[track.position],
+                    onTap: track.trackId != nil ? { selectedSong = track } : nil,
                     onAdd: track.trackId != nil ? { trackRatingTarget = track } : nil
                 )
                 if i < viewModel.tracks.count - 1 {
@@ -925,6 +930,7 @@ private struct PostRow: View {
 private struct TrackRow: View {
     let track: TrackEntry
     var existingScore: Double? = nil
+    var onTap: (() -> Void)? = nil
     var onAdd: (() -> Void)? = nil
 
     private var formattedDuration: String {
@@ -942,8 +948,18 @@ private struct TrackRow: View {
             Text("\(track.position)")
                 .font(.system(size: 13)).foregroundStyle(Color.sjMuted)
                 .frame(width: 24, alignment: .trailing)
-            Text(track.title)
-                .font(.system(size: 14)).foregroundStyle(Color.sjInk).lineLimit(1)
+
+            if let onTap {
+                Button(action: onTap) {
+                    Text(track.title)
+                        .font(.system(size: 14)).foregroundStyle(Color.sjBlue).lineLimit(1)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Text(track.title)
+                    .font(.system(size: 14)).foregroundStyle(Color.sjInk).lineLimit(1)
+            }
+
             Spacer()
             if !formattedDuration.isEmpty {
                 Text(formattedDuration)
@@ -1048,6 +1064,211 @@ private struct TrackRatingSheet: View {
         .background(Color.sjCream.ignoresSafeArea())
         .presentationDetents([.medium])
         .presentationDragIndicator(.visible)
+    }
+}
+
+// MARK: - Song Detail View
+
+struct SongDetailView: View {
+    let track: TrackEntry
+    let release: Release
+
+    @State private var communityAvg: Double? = nil
+    @State private var communityCount: Int = 0
+    @State private var userScore: Double? = nil
+    @State private var isLoaded = false
+    @State private var showRatingSheet = false
+
+    private var durationString: String {
+        guard let ms = track.durationMs, ms > 0 else { return "" }
+        let s = ms / 1000
+        return String(format: "%d:%02d", s / 60, s % 60)
+    }
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                songHeader
+                Divider().padding(.horizontal, 20)
+                communitySection
+                Divider().padding(.horizontal, 20)
+                ratingSection
+                Divider().padding(.horizontal, 20)
+                appearsOnSection
+            }
+            .padding(.bottom, 40)
+        }
+        .background(Color.sjCream.ignoresSafeArea())
+        .navigationTitle(track.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            guard !isLoaded else { return }
+            isLoaded = true
+            await loadStats()
+        }
+        .sheet(isPresented: $showRatingSheet) {
+            TrackRatingSheet(track: track, release: release, existingScore: userScore) { _, score in
+                userScore = score
+            }
+        }
+    }
+
+    private var songHeader: some View {
+        HStack(spacing: 16) {
+            AsyncImage(url: URL(string: release.coverUrl?.thumbnailUrl ?? "")) { phase in
+                switch phase {
+                case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
+                default: Color.sjBorder
+                }
+            }
+            .frame(width: 80, height: 80)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Track \(track.position)")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.sjMuted)
+                    .textCase(.uppercase)
+                    .tracking(0.5)
+                Text(track.title)
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(Color.sjInk)
+                    .lineLimit(2)
+                Text(release.artist)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.sjMuted)
+                if !durationString.isEmpty {
+                    Text(durationString)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.sjMuted)
+                }
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 20)
+    }
+
+    private var communitySection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("COMMUNITY")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.sjMuted)
+                .tracking(0.8)
+            HStack(spacing: 32) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(communityAvg.map {
+                        $0.truncatingRemainder(dividingBy: 1) == 0
+                            ? "\(Int($0))" : String(format: "%.2f", $0)
+                    } ?? "—")
+                    .font(.system(size: 28, weight: .bold)).foregroundStyle(Color.sjInk)
+                    Text("avg score")
+                        .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("\(communityCount)")
+                        .font(.system(size: 28, weight: .bold)).foregroundStyle(Color.sjInk)
+                    Text(communityCount == 1 ? "rating" : "ratings")
+                        .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                }
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 20)
+    }
+
+    private var ratingSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("YOUR RATING")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.sjMuted)
+                .tracking(0.8)
+            if let score = userScore {
+                HStack(spacing: 8) {
+                    Text(score.truncatingRemainder(dividingBy: 1) == 0
+                         ? "\(Int(score))" : String(format: "%.1f", score))
+                    .font(.system(size: 22, weight: .bold)).foregroundStyle(Color.sjBlue)
+                    Text("/ 5")
+                        .font(.system(size: 16)).foregroundStyle(Color.sjMuted)
+                    Spacer()
+                    Button("Edit") { showRatingSheet = true }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.sjBlue)
+                }
+            } else {
+                Button { showRatingSheet = true } label: {
+                    Text("Rate this track")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.sjCream)
+                        .frame(maxWidth: .infinity).frame(height: 42)
+                        .background(Color.sjBlue)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 20)
+    }
+
+    private var appearsOnSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("APPEARS ON")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.sjMuted)
+                .tracking(0.8)
+            NavigationLink(value: release) {
+                HStack(spacing: 12) {
+                    AsyncImage(url: URL(string: release.coverUrl?.thumbnailUrl ?? "")) { phase in
+                        switch phase {
+                        case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
+                        default: Color.sjBorder
+                        }
+                    }
+                    .frame(width: 44, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(release.displayTitle)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color.sjInk).lineLimit(1)
+                        Text(release.artist)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.sjMuted).lineLimit(1)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 20)
+    }
+
+    private func loadStats() async {
+        // Note: after DB renovation, query by recording_id instead of (release_id, track_position)
+        struct ScoreRow: Decodable { let score: Double? }
+        let allRows: [ScoreRow] = (try? await supabase
+            .from("track_ratings").select("score")
+            .eq("release_id", value: release.id)
+            .eq("track_position", value: track.position)
+            .execute().value) ?? []
+        let scores = allRows.compactMap(\.score)
+        communityCount = scores.count
+        communityAvg = scores.isEmpty ? nil : scores.reduce(0, +) / Double(scores.count)
+
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        struct UserRow: Decodable { let score: Double? }
+        let row: UserRow? = try? await supabase
+            .from("track_ratings").select("score")
+            .eq("user_id", value: userId)
+            .eq("release_id", value: release.id)
+            .eq("track_position", value: track.position)
+            .maybeSingle().execute().value
+        userScore = row?.score
     }
 }
 

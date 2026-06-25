@@ -27,6 +27,7 @@ const nextConfig = {
   },
   async redirects() {
     return [
+      { source: '/@:username', destination: '/profile/:username', permanent: true },
       { source: '/rankings', destination: '/leaderboard', permanent: true },
       { source: '/rankings/build', destination: '/leaderboard/build', permanent: true },
       { source: '/rankings/build/rank', destination: '/leaderboard/build', permanent: true },

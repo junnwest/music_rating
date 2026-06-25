@@ -1,9 +1,41 @@
-﻿import { createServerClient } from '../../../../lib/supabaseServer';
+﻿import type { Metadata } from 'next';
+import { createServerClient } from '../../../../lib/supabaseServer';
 import ProfilePanel from '../../../../components/ProfilePanel';
 import { getServerT } from '../../../../lib/i18n/server';
 
 interface Props {
   params: { username: string };
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const username = decodeURIComponent(params.username);
+  const supabase = createServerClient();
+  const displayName = await (async () => {
+    if (!supabase) return username;
+    const { data } = await supabase
+      .from('profiles')
+      .select('display_name')
+      .eq('username', username)
+      .maybeSingle();
+    return data?.display_name ?? username;
+  })();
+
+  return {
+    title: `${displayName} (@${username}) — sillajuku`,
+    description: `See ${displayName}'s music ratings and taste on sillajuku.`,
+    openGraph: {
+      title: `${displayName} on sillajuku`,
+      description: `See ${displayName}'s music ratings and taste.`,
+      url: `https://sillajuku.com/profile/${username}`,
+      siteName: 'sillajuku',
+      type: 'profile',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: `${displayName} on sillajuku`,
+      description: `See ${displayName}'s music ratings and taste.`,
+    },
+  };
 }
 
 export default async function UserProfilePage({ params }: Props) {

@@ -368,7 +368,7 @@ struct ProfileView: View {
 
     private var profileURL: URL {
         let username = viewModel.profile?.username ?? ""
-        let path = username.isEmpty ? "" : "/@\(username)"
+        let path = username.isEmpty ? "" : "/profile/\(username)"
         return URL(string: "https://sillajuku.com\(path)") ?? URL(string: "https://sillajuku.com")!
     }
 

@@ -6,6 +6,20 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-25 — iOS session 15: Report/Block; clickable tracklist songs:**
+
+- **Clickable tracklist songs:** Track titles in `AlbumDetailView` are now tappable blue links (when `trackId != nil` — i.e., the track has a stable UUID from the `tracks` table). Tapping navigates to the new `SongDetailView` via `.navigationDestination(item: $selectedSong)`. Tracks without a UUID (JSONB fallback) remain non-clickable plain text. The `+` rate button alongside each title is unchanged and still opens `TrackRatingSheet`. `TrackRow` gained `onTap: (() -> Void)? = nil` param; `tracklistSection` passes `onTap: track.trackId != nil ? { selectedSong = track } : nil`.
+- **`SongDetailView`** (new, in `AlbumDetailView.swift`): cover + title/artist/track number/duration header; community stats (avg score + rating count from `track_ratings`); your rating (score + Edit button, or "Rate this track" button → `TrackRatingSheet`); "Appears on" → `NavigationLink(value: release)` → pushes `AlbumDetailView`. Community + user stats loaded via `loadStats()` using current `(release_id, track_position)` key — **note:** after DB renovation, update to `recording_id`. `isLoaded` guard prevents re-fetch on reappear.
+
+**Report/Block wired (also this session):**
+
+- **Report flow:** (same session) Tapping "Report" on a feed card opens a `ReportSheet` half-sheet. User picks a reason (Spam / Inappropriate Content / Harassment / Other), which writes to the new `reports` table (`reporter_id`, `reported_user_id`, `rating_id`, `reason`) via Supabase insert. On success: in-sheet confirmation state ("Thanks for helping keep sillajuku safe.") + Done button to dismiss. Error banner if the insert fails. `ReportSheet` is a `private struct` in `HomeView.swift`.
+- **Block flow:** Tapping "Block this user" shows a native `.confirmationDialog` ("Their posts won't appear in your feed."). Confirming calls `HomeViewModel.blockUser(userId:)` which: (1) immediately removes all their posts from `exploreItems` and `followingItems`; (2) inserts to `blocked_users` table. On next app launch, `loadPersonalization()` fetches the full block list in parallel with follows/liked-artists, and all feed load paths filter the pool before assigning.
+- **Migration written:** `apps/web/supabase/migrations/20260625000001_report_block.sql` — `reports` + `blocked_users` tables with RLS. ⏳ **NOT YET RUN** — run in SQL editor (Windows). Safe alongside the DB renovation (references stable `profiles.id` and `ratings.id` uuid PKs).
+- **`CardSheet` enum** gained `.report` case; `FeedCard` gained `onBlock: () async -> Void` param + `@State private var showBlockConfirm = false`.
+
+---
+
 **2026-06-24 — DB renovation: architecture design, migration written, backups saved:**
 
 - **Root cause identified:** `artists` table had only 1,533 rows vs ~418k releases — 98% of releases had `null artist_id`. Supabase 1000-row default limit was silently capping backfill queries. Fixed `backfill-itunes-artist-ids.ts` with `while(true)` pagination using `.range(from, from + 999)`.

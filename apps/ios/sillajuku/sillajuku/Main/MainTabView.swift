@@ -44,7 +44,7 @@ struct MainTabView: View {
                         SearchView(discoveryVM: discoveryVM)
                     }
                     Tab("Taste", systemImage: "sparkles", value: AppTab.taste) {
-                        TasteView()
+                        TasteView(onGoToAdd: { selectedTab = .add })
                     }
                     Tab("Profile", systemImage: "person.fill", value: AppTab.profile) {
                         ProfileView(viewModel: profileVM)
