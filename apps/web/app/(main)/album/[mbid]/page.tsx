@@ -1,8 +1,32 @@
-﻿import { notFound } from 'next/navigation';
+﻿import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { getSpotifyAlbum } from '../../../../lib/spotify';
 import { getCachedAlbum, cacheAlbum, getBasicRelease, isUUID } from '../../../../lib/dbCache';
 import { createServerClient } from '../../../../lib/supabaseServer';
+
+export async function generateMetadata({ params }: { params: { mbid: string } }): Promise<Metadata> {
+  const supabase = createServerClient();
+  if (!supabase) return {};
+  const col = isUUID(params.mbid) ? 'id' : 'spotify_id';
+  const { data } = await supabase
+    .from('releases')
+    .select('title, artist, cover_url')
+    .eq(col, params.mbid)
+    .maybeSingle();
+  if (!data) return { title: 'sillajuku' };
+  return {
+    title: `${data.title} — ${data.artist} · sillajuku`,
+    openGraph: {
+      title: `${data.title} — ${data.artist}`,
+      ...(data.cover_url && { images: [{ url: data.cover_url }] }),
+    },
+    twitter: {
+      card: 'summary_large_image',
+      ...(data.cover_url && { images: [data.cover_url] }),
+    },
+  };
+}
 
 // KNOWN ISSUE: Next.js 14.2.5 returns HTTP 200 (with the not-found.tsx body)
 // instead of 404 when `notFound()` is called from a page that also reads

@@ -10,15 +10,19 @@ interface Props {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const username = decodeURIComponent(params.username);
   const supabase = createServerClient();
-  const displayName = await (async () => {
-    if (!supabase) return username;
+
+  let displayName = username;
+  let avatarUrl: string | null = null;
+
+  if (supabase) {
     const { data } = await supabase
       .from('profiles')
-      .select('display_name')
+      .select('display_name, avatar_url')
       .eq('username', username)
       .maybeSingle();
-    return data?.display_name ?? username;
-  })();
+    displayName = data?.display_name ?? username;
+    avatarUrl = data?.avatar_url ?? null;
+  }
 
   return {
     title: `${displayName} (@${username}) — sillajuku`,
@@ -29,11 +33,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       url: `https://sillajuku.com/profile/${username}`,
       siteName: 'sillajuku',
       type: 'profile',
+      ...(avatarUrl && { images: [{ url: avatarUrl }] }),
     },
     twitter: {
-      card: 'summary_large_image',
+      card: 'summary',
       title: `${displayName} on sillajuku`,
       description: `See ${displayName}'s music ratings and taste.`,
+      ...(avatarUrl && { images: [avatarUrl] }),
     },
   };
 }

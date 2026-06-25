@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { createServerClient } from '../../../../lib/supabaseServer';
@@ -5,6 +6,36 @@ import { isUUID } from '../../../../lib/dbCache';
 import { TrackStreamingButtons } from '../../../../components/YouTubeMusicButton';
 import StarRatingWidget from '../../../../components/StarRatingWidget';
 import QuickAddButton from '../../../../components/QuickAddButton';
+
+export async function generateMetadata({ params }: { params: { trackId: string } }): Promise<Metadata> {
+  if (!isUUID(params.trackId)) return {};
+  const supabase = createServerClient();
+  if (!supabase) return {};
+  const { data: track } = await supabase
+    .from('tracks')
+    .select('title, artists, release_id')
+    .eq('id', params.trackId)
+    .maybeSingle();
+  if (!track) return { title: 'sillajuku' };
+  const { data: release } = await supabase
+    .from('releases')
+    .select('title, artist, cover_url')
+    .eq('id', track.release_id)
+    .maybeSingle();
+  const artist = track.artists || release?.artist || '';
+  const coverUrl = release?.cover_url ?? null;
+  return {
+    title: `${track.title}${artist ? ` — ${artist}` : ''} · sillajuku`,
+    openGraph: {
+      title: `${track.title}${artist ? ` — ${artist}` : ''}`,
+      ...(coverUrl && { images: [{ url: coverUrl }] }),
+    },
+    twitter: {
+      card: 'summary_large_image',
+      ...(coverUrl && { images: [coverUrl] }),
+    },
+  };
+}
 
 function formatDuration(ms: number | null): string {
   if (!ms) return '';
