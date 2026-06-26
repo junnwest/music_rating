@@ -6,7 +6,33 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-26 — iOS session 17 (Mac): Workstream C complete — all iOS Swift files updated to new DB schema:**
+
+All 9 Swift files updated to read/write against the renovated DB schema (`release_groups`, `recordings`, `release_tracks`). The DB renovation (session 14/15 Mac) was applied on Windows; this session wires the iOS app up to it.
+
+**Files updated:**
+
+- **`Models/Release.swift`** — `CodingKeys` updated: `artist` → `"artist_display"`, `releaseType` → `"release_group_type"`, `releaseDate` → `"first_release_date"`, `titleNative` → `"native_title"`.
+- **`AlbumDetailView.swift`** — Full refactor: `trackRatings` keyed by `UUID` (recording ID, not position); 2-step track loading (canonical release → `release_tracks` + `recordings`); all ratings/mixes queries use `release_group_id`; `rateTrack` upserts on `recording_id`; pairwise comparison columns `winner_id`/`loser_id`.
+- **`InstinctRatingView.swift`** — Opponent embed via `release_groups`; upsert conflict `"user_id,release_group_id"`; `logComparison()` uses `winner_id`/`loser_id` (was `winner_release_id`/`loser_release_id`).
+- **`HomeView.swift`** — `feedSelect` uses `release_groups` embed; `FeedItem` CodingKey `"release_groups"`; `FeedRelease` CodingKeys → `"artist_display"` / `"release_group_type"`; `prestige` removed from `ranked()` scoring; personalization artist seeds use `release_groups(artist_display)`.
+- **`SearchView.swift`** — Discovery (popular/personalized/taste/trending): all query `release_groups`, sort by `first_release_date`, lowercase type values; song discovery returns `[]` until Windows rebuilds RPCs. Song search: 2-step (`recordings` title match → `release_tracks` for cover art). `loadRatedReleaseIds` uses `release_group_id`. `ArtistPageView`: queries `release_groups`, `artist_display` exact match, `release_group_id` for ratings.
+- **`ProfileView.swift`** — `UserRating` embed key `"release_groups"`; `ReleaseRef` CodingKeys → `"artist_display"` / `"release_group_type"`; `SongRatingRow` now keyed by `recordingId: UUID` (removed `releaseId`/`position`); song ratings load via `track_ratings → recordings` + `release_tracks → release_groups` for cover art; `displayTitle` falls back to `"Unknown Track"`.
+- **`MixLibraryView.swift`** — `MixItem` CodingKey `"release_group_id"` / `"release_groups"`; `MixRelease` → `"artist_display"` / `"release_group_type"`; `MixDetailView.load()` selects `release_group_id, release_groups(...)`; add/remove mix functions use `release_group_id`, conflict `"mix_id,release_group_id"`.
+- **`UserProfileView.swift`** — `ProfileRating` embed key `"release_groups"`; `SongRating` keyed by `recordingId: UUID`; `loadRatings()` uses `release_groups` embed; `loadSongRatings()` 2-step via `recordings` + `release_tracks → release_groups` for cover art; `displayTitle` falls back to `"Unknown Track"`.
+- **`TasteView.swift`** — `TasteRatingRow` embed key `"release_groups"`; `ReleaseEmbed.artist` CodingKey → `"artist_display"`; select uses `release_groups(id, title, artist_display, cover_url, genres)`.
+
+**Known deferred items (out of scope):**
+- `ActivityView.swift`: one broken `releases(...)` embed — will silently return nil/empty. Not in scope per CLAUDE.md.
+- `RankingsView.swift`: chart RPCs already gracefully degraded via `try?`. No changes needed until Windows rebuilds them.
+- Song discovery sections (popular/personalized/taste) return empty arrays until Windows rebuilds the views/RPCs.
+- `get_user_genre_standings` RPC referenced in `TasteView` was dropped in the renovation — Taste genre cards will silently return nothing until Windows rebuilds it.
+
+---
+
 **2026-06-26 (cont. 4) — Clean catalog re-run + iOS schema reference + production-pipeline status:**
+
+**2026-06-26 — Session 16 (Mac): Profile share URL fix; OG images overhaul:**
 
 - **Pushed** discovery + composition filter (`77dc815`), then caught a real bug: `browseReleaseGroups` lacked `inc=artist-credits` → `release_groups.artist_display` was `'(unknown)'` AND the guest-feature/VA filter was silently disabled (`primaryArtistMbid` null = nothing filtered). Fixed (`d621fcb`).
 - **Clean truncate + re-run on final code** (decided: the existing ~163 artists were built across pre-filter / pre-inline-cover / buggy code versions → inconsistent; cheaper to rebuild than to clean in place). Verified the fresh run: **0 `(unknown)`** artist_display, filter live (aespa 61 → core), covers + embeddings attaching from the start, all lanes healthy. Re-run draining the 275-seed (~1–2 min/artist).

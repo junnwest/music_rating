@@ -20,14 +20,15 @@ struct Release: Codable, Identifiable, Hashable {
     let totalTracks: Int?
 
     enum CodingKeys: String, CodingKey {
-        case id, title, artist
-        case coverUrl = "cover_url"
-        case releaseType = "release_type"
-        case releaseDate = "release_date"
-        case titleNative = "title_native"
-        case artistNative = "artist_native"
-        case tracklist
-        case totalTracks = "total_tracks"
+        case id, title
+        case artist      = "artist_display"
+        case coverUrl    = "cover_url"
+        case releaseType = "release_group_type"
+        case releaseDate = "first_release_date"
+        case titleNative = "native_title"
+        case artistNative = "artist_native"    // not on release_groups; decodes as nil
+        case tracklist                         // not on release_groups; decodes as nil
+        case totalTracks = "total_tracks"      // not on release_groups; decodes as nil
     }
 
     var displayTitle: String { titleNative ?? title }

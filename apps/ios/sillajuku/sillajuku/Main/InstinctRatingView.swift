@@ -101,29 +101,29 @@ private class InstinctRatingViewModel {
         self.userId = userId
 
         struct OpponentRow: Decodable {
-            let releaseId: UUID
+            let releaseGroupId: UUID
             let eloScore: Double
             let eloGames: Int
-            let releases: Release
+            let releaseGroups: Release
             enum CodingKeys: String, CodingKey {
-                case releaseId = "release_id"
-                case eloScore  = "elo_score"
-                case eloGames  = "elo_games"
-                case releases
+                case releaseGroupId = "release_group_id"
+                case eloScore       = "elo_score"
+                case eloGames       = "elo_games"
+                case releaseGroups  = "release_groups"
             }
         }
 
         let rows: [OpponentRow] = (try? await supabase
             .from("ratings")
-            .select("release_id, elo_score, elo_games, releases(id, title, artist, cover_url, release_type, release_date, title_native, artist_native)")
+            .select("release_group_id, elo_score, elo_games, release_groups(id, title, artist_display, cover_url, release_group_type, first_release_date, native_title)")
             .eq("user_id", value: userId)
             .not("elo_score", operator: .is, value: AnyJSON.null)
-            .not("release_id", operator: .eq, value: releaseId)
+            .not("release_group_id", operator: .eq, value: releaseId)
             .order("elo_score", ascending: false)
             .execute()
             .value) ?? []
 
-        opponents = rows.map { Opponent(releaseId: $0.releaseId, release: $0.releases,
+        opponents = rows.map { Opponent(releaseId: $0.releaseGroupId, release: $0.releaseGroups,
                                         eloScore: $0.eloScore, eloGames: $0.eloGames) }
 
         let n = opponents.count
@@ -144,19 +144,19 @@ private class InstinctRatingViewModel {
         newEloGames = 0
 
         struct RatingUpsert: Encodable {
-            let userId: UUID; let releaseId: UUID
+            let userId: UUID; let releaseGroupId: UUID
             let eloScore: Double; let eloGames: Int
             enum CodingKeys: String, CodingKey {
-                case userId = "user_id"; case releaseId = "release_id"
+                case userId = "user_id"; case releaseGroupId = "release_group_id"
                 case eloScore = "elo_score"; case eloGames = "elo_games"
             }
         }
 
         try? await supabase
             .from("ratings")
-            .upsert(RatingUpsert(userId: userId, releaseId: releaseId,
+            .upsert(RatingUpsert(userId: userId, releaseGroupId: releaseId,
                                  eloScore: newElo, eloGames: newEloGames),
-                    onConflict: "user_id,release_id")
+                    onConflict: "user_id,release_group_id")
             .execute()
 
         if !opponents.isEmpty && lo < hi && totalComparisons > 0 {
@@ -226,7 +226,7 @@ private class InstinctRatingViewModel {
             .from("ratings")
             .update(EloUpdate(eloScore: eloScore, eloGames: eloGames))
             .eq("user_id", value: userId)
-            .eq("release_id", value: releaseId)
+            .eq("release_group_id", value: releaseId)
             .execute()
     }
 
@@ -236,22 +236,22 @@ private class InstinctRatingViewModel {
             .from("ratings")
             .update(ScoreUpdate(score: score))
             .eq("user_id", value: userId)
-            .eq("release_id", value: releaseId)
+            .eq("release_group_id", value: releaseId)
             .execute()
     }
 
     private func logComparison(userId: UUID, winnerReleaseId: UUID, loserReleaseId: UUID) async {
         struct Row: Encodable {
-            let userId: UUID; let winnerReleaseId: UUID; let loserReleaseId: UUID
+            let userId: UUID; let winnerId: UUID; let loserId: UUID
             enum CodingKeys: String, CodingKey {
                 case userId = "user_id"
-                case winnerReleaseId = "winner_release_id"
-                case loserReleaseId  = "loser_release_id"
+                case winnerId = "winner_id"
+                case loserId  = "loser_id"
             }
         }
         try? await supabase
             .from("pairwise_comparisons")
-            .insert(Row(userId: userId, winnerReleaseId: winnerReleaseId, loserReleaseId: loserReleaseId))
+            .insert(Row(userId: userId, winnerId: winnerReleaseId, loserId: loserReleaseId))
             .execute()
     }
 

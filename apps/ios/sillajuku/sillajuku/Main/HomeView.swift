@@ -13,7 +13,8 @@ struct FeedItem: Codable, Identifiable {
     let profiles: FeedProfile?
 
     enum CodingKeys: String, CodingKey {
-        case id, score, releases, profiles
+        case id, score, profiles
+        case releases  = "release_groups"
         case userId    = "user_id"
         case createdAt = "created_at"
     }
@@ -25,12 +26,12 @@ struct FeedRelease: Codable, Identifiable {
     let artist: String
     let coverUrl: String?
     let releaseType: String?
-    let prestige: Int?
 
     enum CodingKeys: String, CodingKey {
-        case id, title, artist, prestige
+        case id, title
+        case artist      = "artist_display"
         case coverUrl    = "cover_url"
-        case releaseType = "release_type"
+        case releaseType = "release_group_type"
     }
 
     var typeLabel: String {
@@ -77,7 +78,7 @@ class HomeViewModel {
     private var hasLoadedFollowing = false
 
     private static let feedSelect =
-        "id, user_id, score, created_at, releases(id, title, artist, cover_url, release_type, prestige), profiles!ratings_user_id_fkey(username, display_name)"
+        "id, user_id, score, created_at, release_groups(id, title, artist_display, cover_url, release_group_type), profiles!ratings_user_id_fkey(username, display_name)"
 
     // Personalization signals (populated before explore loads)
     private var followingIds:  Set<UUID>   = []
@@ -108,14 +109,18 @@ class HomeViewModel {
         }()
         async let artistsTask: [String] = {
             struct R: Codable {
-                let releases: AR
-                struct AR: Codable { let artist: String }
+                let releaseGroups: AR
+                struct AR: Codable {
+                    let artist: String
+                    enum CodingKeys: String, CodingKey { case artist = "artist_display" }
+                }
+                enum CodingKeys: String, CodingKey { case releaseGroups = "release_groups" }
             }
             let rows: [R] = (try? await supabase
-                .from("ratings").select("releases(artist)")
+                .from("ratings").select("release_groups(artist_display)")
                 .eq("user_id", value: userId).gte("score", value: 4.0)
                 .execute().value) ?? []
-            return rows.map(\.releases.artist)
+            return rows.map(\.releaseGroups.artist)
         }()
         async let blockedTask: [UUID] = {
             struct Row: Codable {
@@ -157,7 +162,6 @@ class HomeViewModel {
                 if likedArtists.contains(item.releases.artist) { s += 5 }
                 s += log(Double((likeCounts[item.id]    ?? 0) + 1)) * 5
                 s += log(Double((commentCounts[item.id] ?? 0) + 1)) * 3
-                s += Double(item.releases.prestige ?? 0) / 2000.0
                 let ageHours = -item.createdAt.timeIntervalSinceNow / 3600
                 if ageHours < 12       { s += 3 }
                 else if ageHours < 72  { s += 1.5 }

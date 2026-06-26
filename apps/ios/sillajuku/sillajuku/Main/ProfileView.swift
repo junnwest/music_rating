@@ -18,20 +18,20 @@ struct UserRating: Codable, Identifiable {
     let releases: ReleaseRef
 
     enum CodingKeys: String, CodingKey {
-        case id, score, releases
+        case id, score
+        case releases = "release_groups"
         case eloScore = "elo_score"
     }
 }
 
 struct SongRatingRow: Identifiable {
-    let releaseId: UUID
-    let position: Int
+    let recordingId: UUID
     let score: Double?
     let eloScore: Double?
     let trackTitle: String?
     let release: ReleaseRef
 
-    var id: String { "\(releaseId.uuidString)-\(position)" }
+    var id: String { recordingId.uuidString }
 }
 
 struct ScoreBucket: Identifiable {
@@ -54,9 +54,10 @@ struct ReleaseRef: Codable, Identifiable {
     let releaseType: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, title, artist
+        case id, title
+        case artist      = "artist_display"
         case coverUrl    = "cover_url"
-        case releaseType = "release_type"
+        case releaseType = "release_group_type"
     }
 
     var asRelease: Release {
@@ -170,63 +171,87 @@ class ProfileViewModel {
 
         ratings = (try? await supabase
             .from("ratings")
-            .select("id, score, elo_score, releases(id, title, artist, cover_url, release_type)")
+            .select("id, score, elo_score, release_groups(id, title, artist_display, cover_url, release_group_type)")
             .eq("user_id", value: user.id)
             .order("created_at", ascending: false)
             .limit(60)
             .execute()
             .value) ?? []
 
-        // Song ratings — two-step: track_ratings + batch track titles
-        struct SongRatingRaw: Codable {
-            let releaseId: UUID
-            let position: Int?
+        // Song ratings — Step 1: recording_id + score + recording title/artist
+        struct TrackRatingNew: Codable {
+            let recordingId: UUID
             let score: Double?
-            let eloScore: Double?
-            let releases: ReleaseRef
+            let recordings: RecordingInfo
+            struct RecordingInfo: Codable {
+                let id: UUID; let title: String; let artistDisplay: String?
+                enum CodingKeys: String, CodingKey {
+                    case id, title; case artistDisplay = "artist_display"
+                }
+            }
             enum CodingKeys: String, CodingKey {
-                case score, releases, position
-                case releaseId = "release_id"
-                case eloScore  = "elo_score"
+                case recordingId = "recording_id"; case score; case recordings
             }
         }
-        let rawSongs: [SongRatingRaw] = (try? await supabase
+        let rawSongs: [TrackRatingNew] = (try? await supabase
             .from("track_ratings")
-            .select("release_id, position, score, elo_score, releases(id, title, artist, cover_url)")
+            .select("recording_id, score, recordings(id, title, artist_display)")
             .eq("user_id", value: user.id)
+            .order("created_at", ascending: false)
             .limit(60)
             .execute()
             .value) ?? []
 
         if !rawSongs.isEmpty {
-            struct TrackTitle: Codable {
-                let releaseId: UUID
-                let position: Int?
-                let title: String?
+            // Step 2: get release group cover art via release_tracks
+            struct RTCoverRow: Codable {
+                let recordingId: UUID
+                let releases: CoverRelRow?
+                struct CoverRelRow: Codable {
+                    let isCanonical: Bool?
+                    let releaseGroups: RGCover?
+                    struct RGCover: Codable {
+                        let id: UUID; let title: String; let artistDisplay: String?; let coverUrl: String?
+                        enum CodingKeys: String, CodingKey {
+                            case id, title; case artistDisplay = "artist_display"; case coverUrl = "cover_url"
+                        }
+                    }
+                    enum CodingKeys: String, CodingKey {
+                        case isCanonical = "is_canonical"; case releaseGroups = "release_groups"
+                    }
+                }
                 enum CodingKeys: String, CodingKey {
-                    case title, position
-                    case releaseId = "release_id"
+                    case recordingId = "recording_id"; case releases
                 }
             }
-            let releaseIds = Array(Set(rawSongs.map { $0.releaseId.uuidString }))
-            let titles: [TrackTitle] = (try? await supabase
-                .from("tracks")
-                .select("release_id, position, title")
-                .in("release_id", values: releaseIds)
+            let coverRows: [RTCoverRow] = (try? await supabase
+                .from("release_tracks")
+                .select("recording_id, releases(is_canonical, release_groups(id, title, artist_display, cover_url))")
+                .in("recording_id", values: rawSongs.map(\.recordingId.uuidString))
                 .execute()
                 .value) ?? []
-            let titleMap = Dictionary(uniqueKeysWithValues: titles.compactMap { t -> (String, String)? in
-                guard let pos = t.position, let title = t.title else { return nil }
-                return ("\(t.releaseId.uuidString)-\(pos)", title)
-            })
+
+            var rgMap: [UUID: RTCoverRow.CoverRelRow.RGCover] = [:]
+            for row in coverRows {
+                guard let rel = row.releases, let rg = rel.releaseGroups else { continue }
+                if rel.isCanonical == true || rgMap[row.recordingId] == nil { rgMap[row.recordingId] = rg }
+            }
+
             songRatings = rawSongs.map { r in
-                SongRatingRow(
-                    releaseId: r.releaseId,
-                    position: r.position ?? 0,
-                    score: r.score,
-                    eloScore: r.eloScore,
-                    trackTitle: titleMap["\(r.releaseId.uuidString)-\(r.position ?? 0)"],
-                    release: r.releases
+                let rg = rgMap[r.recordingId]
+                let ref = ReleaseRef(
+                    id:          rg?.id ?? UUID(),
+                    title:       rg?.title ?? "",
+                    artist:      rg?.artistDisplay ?? r.recordings.artistDisplay ?? "",
+                    coverUrl:    rg?.coverUrl,
+                    releaseType: nil
+                )
+                return SongRatingRow(
+                    recordingId: r.recordingId,
+                    score:       r.score,
+                    eloScore:    nil,
+                    trackTitle:  r.recordings.title,
+                    release:     ref
                 )
             }
         }
@@ -290,7 +315,7 @@ enum ProfileRatedItem: Identifiable {
     var displayTitle: String {
         switch self {
         case .album(let r): return r.releases.title
-        case .song(let r):  return r.trackTitle ?? "Track \(r.position)"
+        case .song(let r):  return r.trackTitle ?? "Unknown Track"
         }
     }
     var artistLine: String {

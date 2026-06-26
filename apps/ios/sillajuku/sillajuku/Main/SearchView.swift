@@ -138,27 +138,16 @@ class DiscoveryViewModel {
     }
 
     private func loadPopular() async {
-        let albums: [Release] = (try? await supabase
-            .from("releases")
-            .select("id, title, artist, cover_url, title_native, artist_native")
-            .in("release_type", values: ["album", "Album", "ep", "EP"])
+        popularAlbums = (try? await supabase
+            .from("release_groups")
+            .select("id, title, artist_display, cover_url, native_title, release_group_type, first_release_date")
+            .in("release_group_type", values: ["album", "ep"])
             .not("cover_url", operator: .is, value: AnyJSON.null)
-            .order("prestige", ascending: false, nullsFirst: false)
+            .order("first_release_date", ascending: false, nullsFirst: false)
             .limit(50)
             .execute()
             .value) ?? []
-        popularAlbums = albums
-
-        let ids = albums.prefix(8).map(\.id.uuidString)
-        guard !ids.isEmpty else { return }
-        popularSongs = (try? await supabase
-            .from("tracks")
-            .select("id, title, artists, releases(id, title, artist, cover_url)")
-            .in("release_id", values: ids)
-            .order("position")
-            .limit(30)
-            .execute()
-            .value) ?? []
+        popularSongs = []  // songs in discovery deferred until Windows rebuilds search RPCs
     }
 
     private func loadPersonalized() async {
@@ -166,20 +155,23 @@ class DiscoveryViewModel {
 
         var dbArtists = Set<String>()
 
-        // Primary seeds: exact artist names from the user's own ratings.
-        // These come from the releases table itself so they always match DB values.
+        // Primary seeds: exact artist_display values from the user's own ratings.
         struct RatedRelease: Codable {
-            let releases: ArtistOnly
-            struct ArtistOnly: Codable { let artist: String }
+            let releaseGroups: ArtistOnly
+            struct ArtistOnly: Codable {
+                let artist: String
+                enum CodingKeys: String, CodingKey { case artist = "artist_display" }
+            }
+            enum CodingKeys: String, CodingKey { case releaseGroups = "release_groups" }
         }
         let ratedReleases: [RatedRelease] = (try? await supabase
             .from("ratings")
-            .select("releases(artist)")
+            .select("release_groups(artist_display)")
             .eq("user_id", value: userId)
             .limit(200)
             .execute()
             .value) ?? []
-        ratedReleases.forEach { dbArtists.insert($0.releases.artist) }
+        ratedReleases.forEach { dbArtists.insert($0.releaseGroups.artist) }
 
         // Supplement with Spotify artists when available.
         for a in spotifyArtists { dbArtists.insert(a.name) }
@@ -187,99 +179,86 @@ class DiscoveryViewModel {
 
         guard !dbArtists.isEmpty else { return }
 
-        // Use .in() instead of a hand-rolled OR filter string.
-        // .in() is handled natively by the SDK (no URL-encoding pitfalls).
         let seeds = Array(dbArtists.prefix(50))
 
-        let albums: [Release] = (try? await supabase
-            .from("releases")
-            .select("id, title, artist, cover_url, title_native, artist_native")
+        personalizedAlbums = (try? await supabase
+            .from("release_groups")
+            .select("id, title, artist_display, cover_url, native_title, release_group_type, first_release_date")
             .not("cover_url", operator: .is, value: AnyJSON.null)
-            .in("release_type", values: ["album", "Album", "ep", "EP"])
-            .in("artist", values: seeds)
-            .order("prestige", ascending: false, nullsFirst: false)
+            .in("release_group_type", values: ["album", "ep"])
+            .in("artist_display", values: seeds)
+            .order("first_release_date", ascending: false, nullsFirst: false)
             .limit(60)
             .execute()
             .value) ?? []
 
-        personalizedAlbums = albums
-        hasPersonalized = !albums.isEmpty
-
-        let ids = albums.prefix(10).map(\.id.uuidString)
-        guard !ids.isEmpty else { return }
-        personalizedSongs = (try? await supabase
-            .from("tracks")
-            .select("id, title, artists, releases(id, title, artist, cover_url)")
-            .in("release_id", values: ids)
-            .order("position")
-            .limit(40)
-            .execute()
-            .value) ?? []
+        hasPersonalized = !personalizedAlbums.isEmpty
+        personalizedSongs = []  // deferred until Windows rebuilds search RPCs
     }
 
-    // Albums by artists the user has explicitly loved (rated ≥ 4.0), sorted by prestige.
-    // Filtering out already-rated releases happens client-side in albumScroll() via ratedReleaseIds.
+    // Albums by artists the user has explicitly loved (rated ≥ 4.0).
     private func loadTasteAlbums() async {
         guard let userId = supabase.auth.currentUser?.id else { return }
 
         struct HighRated: Codable {
-            let releases: AR
-            struct AR: Codable { let artist: String }
+            let releaseGroups: AR
+            struct AR: Codable {
+                let artist: String
+                enum CodingKeys: String, CodingKey { case artist = "artist_display" }
+            }
+            enum CodingKeys: String, CodingKey { case releaseGroups = "release_groups" }
         }
         let rows: [HighRated] = (try? await supabase
             .from("ratings")
-            .select("releases(artist)")
+            .select("release_groups(artist_display)")
             .eq("user_id", value: userId)
             .gte("score", value: 4.0)
             .execute()
             .value) ?? []
 
-        let lovedArtists = Array(Set(rows.map(\.releases.artist)).prefix(30))
+        let lovedArtists = Array(Set(rows.map(\.releaseGroups.artist)).prefix(30))
         guard !lovedArtists.isEmpty else { return }
 
         tasteAlbums = (try? await supabase
-            .from("releases")
-            .select("id, title, artist, cover_url, title_native, artist_native")
-            .in("artist", values: lovedArtists)
-            .in("release_type", values: ["album", "Album", "ep", "EP"])
+            .from("release_groups")
+            .select("id, title, artist_display, cover_url, native_title, release_group_type, first_release_date")
+            .in("artist_display", values: lovedArtists)
+            .in("release_group_type", values: ["album", "ep"])
             .not("cover_url", operator: .is, value: AnyJSON.null)
-            .order("prestige", ascending: false, nullsFirst: false)
+            .order("first_release_date", ascending: false, nullsFirst: false)
             .limit(40)
             .execute()
             .value) ?? []
     }
 
-    // Most-rated albums on the platform in the last 30 days.
-    // We fetch recent ratings, count by release, and surface the top ones.
+    // Most-rated release groups on the platform in the last 30 days.
     private func loadTrending() async {
         let cutoff = ISO8601DateFormatter().string(
             from: Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
         )
 
         struct Row: Codable {
-            let releaseId: UUID
-            let releases: Release
+            let releaseGroupId: UUID
+            let releaseGroups: Release
             enum CodingKeys: String, CodingKey {
-                case releaseId = "release_id"
-                case releases
+                case releaseGroupId = "release_group_id"
+                case releaseGroups  = "release_groups"
             }
         }
 
         let rows: [Row] = (try? await supabase
             .from("ratings")
-            .select("release_id, releases(id, title, artist, cover_url, release_type, title_native, artist_native)")
+            .select("release_group_id, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, first_release_date)")
             .gt("created_at", value: cutoff)
-            .not("cover_url", operator: .is, value: AnyJSON.null)
             .order("created_at", ascending: false)
             .limit(500)
             .execute()
             .value) ?? []
 
-        // Count how many ratings each release received, then rank by count
         var counts: [UUID: (count: Int, release: Release)] = [:]
         for row in rows {
-            guard !["single", "Single"].contains(row.releases.releaseType) else { continue }
-            counts[row.releaseId] = ((counts[row.releaseId]?.count ?? 0) + 1, row.releases)
+            guard row.releaseGroups.releaseType != "single" else { continue }
+            counts[row.releaseGroupId] = ((counts[row.releaseGroupId]?.count ?? 0) + 1, row.releaseGroups)
         }
 
         trendingAlbums = counts.values
@@ -317,35 +296,85 @@ class SearchViewModel {
         isSearching = true
         defer { isSearching = false }
 
-        async let albumFetch: [Release] = (try? await supabase
-            .from("releases")
-            .select("id, title, artist, cover_url, title_native, artist_native")
-            .or("title.ilike.%\(q)%,artist.ilike.%\(q)%,title_native.ilike.%\(q)%,artist_native.ilike.%\(q)%")
-            .in("release_type", values: ["album", "Album", "ep", "EP"])
-            .order("prestige", ascending: false, nullsFirst: false)
+        // Album search against release_groups
+        let albums: [Release] = (try? await supabase
+            .from("release_groups")
+            .select("id, title, artist_display, cover_url, native_title, release_group_type, first_release_date")
+            .or("title.ilike.%\(q)%,artist_display.ilike.%\(q)%,native_title.ilike.%\(q)%")
+            .in("release_group_type", values: ["album", "ep"])
+            .order("first_release_date", ascending: false, nullsFirst: false)
             .limit(30)
             .execute()
             .value) ?? []
+        albumResults = albums
 
-        async let songFetch: [SongResult] = (try? await supabase
-            .from("tracks")
-            .select("id, title, artists, releases(id, title, artist, cover_url)")
+        // Song search: Step 1 — match recordings by title
+        struct RecordingHit: Codable, Identifiable {
+            let id: UUID; let title: String; let artistDisplay: String?
+            enum CodingKeys: String, CodingKey {
+                case id, title; case artistDisplay = "artist_display"
+            }
+        }
+        let hits: [RecordingHit] = (try? await supabase
+            .from("recordings")
+            .select("id, title, artist_display")
             .ilike("title", pattern: "%\(q)%")
             .limit(30)
             .execute()
             .value) ?? []
 
-        let (albums, songs) = await (albumFetch, songFetch)
-        albumResults = albums
-        songResults  = songs
+        if hits.isEmpty {
+            songResults = []
+        } else {
+            // Step 2 — get release group info for these recordings via release_tracks
+            struct RTRow: Codable {
+                let recordingId: UUID
+                let releases: RelRow?
+                struct RelRow: Codable {
+                    let isCanonical: Bool?
+                    let releaseGroups: RGInfo?
+                    struct RGInfo: Codable {
+                        let id: UUID; let title: String; let artistDisplay: String?; let coverUrl: String?
+                        enum CodingKeys: String, CodingKey {
+                            case id, title; case artistDisplay = "artist_display"; case coverUrl = "cover_url"
+                        }
+                    }
+                    enum CodingKeys: String, CodingKey {
+                        case isCanonical = "is_canonical"; case releaseGroups = "release_groups"
+                    }
+                }
+                enum CodingKeys: String, CodingKey {
+                    case recordingId = "recording_id"; case releases
+                }
+            }
+            let rtRows: [RTRow] = (try? await supabase
+                .from("release_tracks")
+                .select("recording_id, releases(is_canonical, release_groups(id, title, artist_display, cover_url))")
+                .in("recording_id", values: hits.map(\.id.uuidString))
+                .execute()
+                .value) ?? []
+
+            var rgMap: [UUID: RTRow.RelRow.RGInfo] = [:]
+            for row in rtRows {
+                guard let rg = row.releases?.releaseGroups else { continue }
+                if row.releases?.isCanonical == true || rgMap[row.recordingId] == nil {
+                    rgMap[row.recordingId] = rg
+                }
+            }
+            songResults = hits.compactMap { hit in
+                guard let rg = rgMap[hit.id] else { return nil }
+                return SongResult(id: hit.id, title: hit.title, artists: hit.artistDisplay,
+                                  releases: SongResult.SongRelease(
+                                      id: rg.id, title: rg.title,
+                                      artist: rg.artistDisplay ?? "", coverUrl: rg.coverUrl))
+            }
+        }
 
         // Derive artist suggestions from album results.
-        // Artists whose name contains the query rank first; otherwise must appear 3+ times.
         let ql = q.lowercased()
         var relevanceMap: [String: (count: Int, nameMatch: Bool)] = [:]
         for album in albums {
             let match = album.artist.lowercased().contains(ql)
-                     || (album.artistNative?.lowercased().contains(ql) ?? false)
             let e = relevanceMap[album.artist] ?? (0, false)
             relevanceMap[album.artist] = (e.count + 1, e.nameMatch || match)
         }
@@ -437,16 +466,16 @@ struct SearchView: View {
     private func loadRatedReleaseIds() async {
         guard let userId = supabase.auth.currentUser?.id else { return }
         struct Row: Decodable {
-            let releaseId: UUID
-            enum CodingKeys: String, CodingKey { case releaseId = "release_id" }
+            let releaseGroupId: UUID
+            enum CodingKeys: String, CodingKey { case releaseGroupId = "release_group_id" }
         }
         let rows: [Row] = (try? await supabase
             .from("ratings")
-            .select("release_id")
+            .select("release_group_id")
             .eq("user_id", value: userId)
             .execute()
             .value) ?? []
-        ratedReleaseIds = Set(rows.map(\.releaseId))
+        ratedReleaseIds = Set(rows.map(\.releaseGroupId))
     }
 
     private func loadUserRatingMode() async {
@@ -1211,39 +1240,38 @@ private struct ArtistPageView: View {
     private func load() async {
         let escaped = artist.name.replacingOccurrences(of: "'", with: "''")
         var loaded: [Release] = (try? await supabase
-            .from("releases")
-            .select("id, title, artist, cover_url, release_type, release_date, title_native, artist_native")
-            .ilike("artist", value: escaped)
-            .order("release_date", ascending: false, nullsFirst: false)
+            .from("release_groups")
+            .select("id, title, artist_display, cover_url, release_group_type, first_release_date, native_title")
+            .ilike("artist_display", value: escaped)
+            .order("first_release_date", ascending: false, nullsFirst: false)
             .limit(60)
             .execute()
             .value) ?? []
 
         // DB has no results for this artist — fall back to the web search API.
-        // The web endpoint saves Spotify results to DB so UUIDs are valid for rating.
         if loaded.isEmpty {
             loaded = await fetchFromWebSearch()
         }
         releases = loaded
 
-        // Load all ratings for these releases in one query
-        let releaseIds = loaded.map(\.id.uuidString)
-        guard !releaseIds.isEmpty else { isLoading = false; return }
+        // Load all ratings for these release groups in one query
+        let releaseGroupIds = loaded.map(\.id.uuidString)
+        guard !releaseGroupIds.isEmpty else { isLoading = false; return }
 
         struct RRow: Codable {
-            let releaseId: UUID
-            let userId:    UUID
-            let score:     Double?
+            let releaseGroupId: UUID
+            let userId:         UUID
+            let score:          Double?
             enum CodingKeys: String, CodingKey {
-                case releaseId = "release_id"
-                case userId    = "user_id"
+                case releaseGroupId = "release_group_id"
+                case userId         = "user_id"
                 case score
             }
         }
         let rows: [RRow] = (try? await supabase
             .from("ratings")
-            .select("release_id, user_id, score")
-            .in("release_id", values: releaseIds)
+            .select("release_group_id, user_id, score")
+            .in("release_group_id", values: releaseGroupIds)
             .execute()
             .value) ?? []
 
@@ -1253,9 +1281,9 @@ private struct ArtistPageView: View {
 
         for r in rows {
             if let s = r.score {
-                let e = sumMap[r.releaseId] ?? (0, 0)
-                sumMap[r.releaseId] = (e.sum + s, e.count + 1)
-                if r.userId == currentUserId { myMap[r.releaseId] = s }
+                let e = sumMap[r.releaseGroupId] ?? (0, 0)
+                sumMap[r.releaseGroupId] = (e.sum + s, e.count + 1)
+                if r.userId == currentUserId { myMap[r.releaseGroupId] = s }
             }
         }
 

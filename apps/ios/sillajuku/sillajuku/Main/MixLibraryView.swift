@@ -28,9 +28,10 @@ struct MixItem: Codable, Identifiable {
     let releases: MixRelease
 
     enum CodingKeys: String, CodingKey {
-        case id, releases
+        case id
+        case releases  = "release_groups"
         case mixId     = "mix_id"
-        case releaseId = "release_id"
+        case releaseId = "release_group_id"
         case createdAt = "created_at"
     }
 }
@@ -43,9 +44,10 @@ struct MixRelease: Codable, Identifiable {
     let releaseType: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, title, artist
+        case id, title
+        case artist      = "artist_display"
         case coverUrl    = "cover_url"
-        case releaseType = "release_type"
+        case releaseType = "release_group_type"
     }
 
     var asRelease: Release {
@@ -298,7 +300,7 @@ struct MixDetailView: View {
         isLoading = true
         items = (try? await supabase
             .from("mix_items")
-            .select("id, mix_id, release_id, created_at, releases(id, title, artist, cover_url, release_type)")
+            .select("id, mix_id, release_group_id, created_at, release_groups(id, title, artist_display, cover_url, release_group_type)")
             .eq("mix_id", value: mix.id)
             .order("created_at", ascending: false)
             .execute()
@@ -550,7 +552,7 @@ struct MixPickerView: View {
            let existing: [ExistingItem] = try? await supabase
             .from("mix_items")
             .select("mix_id")
-            .eq("release_id", value: releaseId)
+            .eq("release_group_id", value: releaseId)
             .in("mix_id", values: mixIds)
             .execute()
             .value {
@@ -563,13 +565,13 @@ struct MixPickerView: View {
     private func save() async {
         isSaving = true
         struct Payload: Encodable {
-            let mixId: UUID; let releaseId: UUID
-            enum CodingKeys: String, CodingKey { case mixId = "mix_id"; case releaseId = "release_id" }
+            let mixId: UUID; let releaseGroupId: UUID
+            enum CodingKeys: String, CodingKey { case mixId = "mix_id"; case releaseGroupId = "release_group_id" }
         }
         for mixId in selectedIds {
             _ = try? await supabase
                 .from("mix_items")
-                .upsert(Payload(mixId: mixId, releaseId: releaseId), onConflict: "mix_id,release_id")
+                .upsert(Payload(mixId: mixId, releaseGroupId: releaseId), onConflict: "mix_id,release_group_id")
                 .execute()
         }
         // Remove from mixes that were deselected
@@ -579,7 +581,7 @@ struct MixPickerView: View {
                 .from("mix_items")
                 .delete()
                 .eq("mix_id", value: mixId)
-                .eq("release_id", value: releaseId)
+                .eq("release_group_id", value: releaseId)
                 .execute()
         }
         isSaving = false

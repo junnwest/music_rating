@@ -36,14 +36,14 @@ struct AlbumPublicMix: Identifiable {
     let authorHandle: String
 }
 
-// MARK: - Track entry (loaded from `tracks` table with stable UUID)
+// MARK: - Track entry (loaded via release_tracks → recordings)
 
 struct TrackEntry: Codable, Identifiable {
-    let trackId: UUID?
+    let trackId: UUID?        // recordings.id
     let position: Int
     let title: String
     let durationMs: Int?
-    let artists: String?
+    let artists: String?      // recordings.artist_display
 
     var id: String { trackId?.uuidString ?? "\(position)" }
 
@@ -52,12 +52,31 @@ struct TrackEntry: Codable, Identifiable {
         case position, title, artists
         case durationMs = "duration_ms"
     }
+}
 
-    // Fallback: build from JSONB TrackItem (no UUID)
-    static func from(_ item: TrackItem) -> TrackEntry {
-        TrackEntry(trackId: nil, position: item.position, title: item.title,
-                   durationMs: item.durationMs,
-                   artists: item.artists?.joined(separator: ", "))
+// Intermediate type for decoding release_tracks + embedded recordings
+private struct ReleaseTrackRow: Decodable {
+    let position: Int
+    let discNumber: Int?
+    let recordings: RecordingRef
+
+    struct RecordingRef: Decodable {
+        let id: UUID
+        let title: String
+        let durationMs: Int?
+        let artistDisplay: String?
+
+        enum CodingKeys: String, CodingKey {
+            case id, title
+            case durationMs   = "duration_ms"
+            case artistDisplay = "artist_display"
+        }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case position
+        case discNumber = "disc_number"
+        case recordings
     }
 }
 
@@ -67,7 +86,7 @@ struct TrackEntry: Codable, Identifiable {
 class AlbumDetailViewModel {
     var tracklist: [TrackItem] = []
     var tracks: [TrackEntry] = []
-    var trackRatings: [Int: Double] = [:]   // keyed by track_position
+    var trackRatings: [UUID: Double] = [:]   // keyed by recordings.id
     var communityAvg: Double?
     var communityCount: Int = 0
     var userScore: Double?
@@ -80,110 +99,103 @@ class AlbumDetailViewModel {
 
     var isRated: Bool { userScore != nil || userEloScore != nil }
 
-    func load(releaseId: UUID) async {
+    func load(releaseGroupId: UUID) async {
         isLoading = true
 
-        async let tracksTask: Void       = loadTracks(releaseId: releaseId)
-        async let trackRatingsTask: Void = loadTrackRatings(releaseId: releaseId)
-        async let ratingsTask: Void      = loadRatings(releaseId: releaseId)
-        async let modeTask: Void         = loadRatingMode()
-        async let postsTask: Void        = loadPosts(releaseId: releaseId)
-        async let mixesTask: Void        = loadPublicMixes(releaseId: releaseId)
-        _ = await (tracksTask, trackRatingsTask, ratingsTask, modeTask, postsTask, mixesTask)
+        // These can run immediately in parallel while tracks loads sequentially first
+        async let ratingsTask: Void = loadRatings(releaseGroupId: releaseGroupId)
+        async let modeTask: Void    = loadRatingMode()
+        async let postsTask: Void   = loadPosts(releaseGroupId: releaseGroupId)
+        async let mixesTask: Void   = loadPublicMixes(releaseGroupId: releaseGroupId)
 
+        // Track ratings need recording IDs, so tracks must finish first
+        await loadTracks(releaseGroupId: releaseGroupId)
+        await loadTrackRatings(recordingIds: tracks.compactMap(\.trackId))
+
+        _ = await (ratingsTask, modeTask, postsTask, mixesTask)
         isLoading = false
     }
 
-    private func loadTracks(releaseId: UUID) async {
-        let loaded: [TrackEntry] = (try? await supabase
-            .from("tracks")
-            .select("id, position, title, duration_ms, artists")
-            .eq("release_id", value: releaseId)
+    private func loadTracks(releaseGroupId: UUID) async {
+        // Step 1: find the canonical release edition for this release group
+        struct CanonicalRelease: Decodable { let id: UUID }
+        guard let canonical: CanonicalRelease = try? await supabase
+            .from("releases")
+            .select("id")
+            .eq("release_group_id", value: releaseGroupId)
+            .eq("is_canonical", value: true)
+            .maybeSingle()
+            .execute()
+            .value else { return }
+
+        // Step 2: load release_tracks with embedded recording info
+        let rows: [ReleaseTrackRow] = (try? await supabase
+            .from("release_tracks")
+            .select("position, disc_number, recordings(id, title, duration_ms, artist_display)")
+            .eq("release_id", value: canonical.id)
             .order("position")
             .execute()
             .value) ?? []
 
-        if !loaded.isEmpty {
-            tracks = loaded
-        } else {
-            // Fallback to JSONB tracklist when `tracks` table has no rows for this release
-            struct ReleaseFull: Decodable {
-                let tracklist: [TrackItem]?
-                enum CodingKeys: String, CodingKey { case tracklist }
-            }
-            if let full: ReleaseFull = try? await supabase
-                .from("releases").select("tracklist")
-                .eq("id", value: releaseId).single().execute().value {
-                tracklist = full.tracklist ?? []
-                tracks = tracklist.map { TrackEntry.from($0) }
-            }
+        tracks = rows.map { row in
+            TrackEntry(
+                trackId:   row.recordings.id,
+                position:  row.position,
+                title:     row.recordings.title,
+                durationMs: row.recordings.durationMs,
+                artists:   row.recordings.artistDisplay
+            )
         }
     }
 
-    private func loadTrackRatings(releaseId: UUID) async {
-        guard let userId = supabase.auth.currentUser?.id else { return }
+    private func loadTrackRatings(recordingIds: [UUID]) async {
+        guard let userId = supabase.auth.currentUser?.id,
+              !recordingIds.isEmpty else { return }
         struct TR: Decodable {
-            let position: Int
+            let recordingId: UUID
             let score: Double?
             enum CodingKeys: String, CodingKey {
-                case score
-                case position = "track_position"
+                case recordingId = "recording_id"; case score
             }
         }
         let rows: [TR] = (try? await supabase
             .from("track_ratings")
-            .select("track_position, score")
-            .eq("release_id", value: releaseId)
+            .select("recording_id, score")
             .eq("user_id", value: userId)
+            .in("recording_id", values: recordingIds.map(\.uuidString))
             .execute()
             .value) ?? []
         trackRatings = Dictionary(uniqueKeysWithValues: rows.compactMap { r in
             guard let s = r.score else { return nil }
-            return (r.position, s)
+            return (r.recordingId, s)
         })
     }
 
-    func rateTrack(releaseId: UUID, position: Int, title: String, score: Double?) async {
+    func rateTrack(recordingId: UUID, score: Double?) async {
         guard let userId = supabase.auth.currentUser?.id else { return }
         if let score {
             struct Row: Encodable {
-                let userId: UUID; let releaseId: UUID
-                let position: Int; let title: String; let score: Double
+                let userId: UUID; let recordingId: UUID; let score: Double
                 enum CodingKeys: String, CodingKey {
-                    case userId = "user_id"; case releaseId = "release_id"
-                    case position = "track_position"; case title = "track_title"; case score
+                    case userId = "user_id"; case recordingId = "recording_id"; case score
                 }
             }
             try? await supabase.from("track_ratings")
-                .upsert(Row(userId: userId, releaseId: releaseId,
-                            position: position, title: title, score: score),
-                        onConflict: "user_id,release_id,track_position")
+                .upsert(Row(userId: userId, recordingId: recordingId, score: score),
+                        onConflict: "user_id,recording_id")
                 .execute()
-            trackRatings[position] = score
+            trackRatings[recordingId] = score
         } else {
             try? await supabase.from("track_ratings")
                 .delete()
                 .eq("user_id", value: userId)
-                .eq("release_id", value: releaseId)
-                .eq("track_position", value: position)
+                .eq("recording_id", value: recordingId)
                 .execute()
-            trackRatings.removeValue(forKey: position)
+            trackRatings.removeValue(forKey: recordingId)
         }
     }
 
-    private func loadTracklist(releaseId: UUID) async {
-        struct ReleaseFull: Decodable {
-            let tracklist: [TrackItem]?
-            enum CodingKeys: String, CodingKey { case tracklist }
-        }
-        if let full: ReleaseFull = try? await supabase
-            .from("releases").select("tracklist")
-            .eq("id", value: releaseId).single().execute().value {
-            tracklist = full.tracklist ?? []
-        }
-    }
-
-    func loadRatings(releaseId: UUID) async {
+    func loadRatings(releaseGroupId: UUID) async {
         struct Row: Decodable {
             let score: Double?
             let eloScore: Double?
@@ -194,7 +206,7 @@ class AlbumDetailViewModel {
         }
         let rows: [Row] = (try? await supabase
             .from("ratings").select("score, elo_score, user_id")
-            .eq("release_id", value: releaseId).execute().value) ?? []
+            .eq("release_group_id", value: releaseGroupId).execute().value) ?? []
 
         communityCount = rows.count
         let scored = rows.compactMap(\.score)
@@ -220,7 +232,7 @@ class AlbumDetailViewModel {
         }
     }
 
-    func setRating(releaseId: UUID, score: Double?) async {
+    func setRating(releaseGroupId: UUID, score: Double?) async {
         guard let userId = supabase.auth.currentUser?.id else { return }
         isSaving = true
         defer { isSaving = false }
@@ -231,53 +243,53 @@ class AlbumDetailViewModel {
         do {
             if let score {
                 struct Upsert: Encodable {
-                    let userId: UUID; let releaseId: UUID; let score: Double
+                    let userId: UUID; let releaseGroupId: UUID; let score: Double
                     enum CodingKeys: String, CodingKey {
-                        case userId = "user_id"; case releaseId = "release_id"; case score
+                        case userId = "user_id"; case releaseGroupId = "release_group_id"; case score
                     }
                 }
                 try await supabase.from("ratings")
-                    .upsert(Upsert(userId: userId, releaseId: releaseId, score: score),
-                            onConflict: "user_id,release_id")
+                    .upsert(Upsert(userId: userId, releaseGroupId: releaseGroupId, score: score),
+                            onConflict: "user_id,release_group_id")
                     .execute()
             } else {
                 try await supabase.from("ratings")
-                    .delete().eq("user_id", value: userId).eq("release_id", value: releaseId)
+                    .delete().eq("user_id", value: userId).eq("release_group_id", value: releaseGroupId)
                     .execute()
                 userEloScore = nil
             }
-            await reloadCommunityStats(releaseId: releaseId, currentUserId: userId)
+            await reloadCommunityStats(releaseGroupId: releaseGroupId, currentUserId: userId)
         } catch {
             userScore = old
         }
     }
 
-    private func reloadCommunityStats(releaseId: UUID, currentUserId: UUID) async {
+    private func reloadCommunityStats(releaseGroupId: UUID, currentUserId: UUID) async {
         struct Row: Decodable {
             let score: Double?; let userId: UUID
             enum CodingKeys: String, CodingKey { case score; case userId = "user_id" }
         }
         let rows: [Row] = (try? await supabase
             .from("ratings").select("score, user_id")
-            .eq("release_id", value: releaseId).execute().value) ?? []
+            .eq("release_group_id", value: releaseGroupId).execute().value) ?? []
         communityCount = rows.count
         let scored = rows.compactMap(\.score)
         communityAvg = scored.isEmpty ? nil : scored.reduce(0, +) / Double(scored.count)
         userScore = rows.first(where: { $0.userId == currentUserId })?.score
     }
 
-    private func loadPosts(releaseId: UUID) async {
+    private func loadPosts(releaseGroupId: UUID) async {
         posts = (try? await supabase
             .from("ratings")
             .select("id, score, elo_score, created_at, user_id, profiles(username, display_name, avatar_url)")
-            .eq("release_id", value: releaseId)
+            .eq("release_group_id", value: releaseGroupId)
             .order("created_at", ascending: false)
             .limit(20)
             .execute()
             .value) ?? []
     }
 
-    private func loadPublicMixes(releaseId: UUID) async {
+    private func loadPublicMixes(releaseGroupId: UUID) async {
         struct MixItemRef: Codable {
             let mixId: UUID
             enum CodingKeys: String, CodingKey { case mixId = "mix_id" }
@@ -285,7 +297,7 @@ class AlbumDetailViewModel {
         let refs: [MixItemRef] = (try? await supabase
             .from("mix_items")
             .select("mix_id")
-            .eq("release_id", value: releaseId)
+            .eq("release_group_id", value: releaseGroupId)
             .limit(50)
             .execute()
             .value) ?? []
@@ -533,14 +545,14 @@ struct AlbumDetailView: View {
         .background(Color.sjCream.ignoresSafeArea())
         .navigationTitle(release.displayTitle)
         .navigationBarTitleDisplayMode(.inline)
-        .task { await viewModel.load(releaseId: release.id) }
+        .task { await viewModel.load(releaseGroupId: release.id) }
         .sheet(isPresented: $showManualSheet) {
             ManualRatingSheet(
                 release: release,
                 existingScore: $viewModel.userScore
             ) { score in
                 Task {
-                    await viewModel.setRating(releaseId: release.id, score: score)
+                    await viewModel.setRating(releaseGroupId: release.id, score: score)
                     if score != nil { onRated?(release.id) }
                 }
             }
@@ -549,18 +561,20 @@ struct AlbumDetailView: View {
             InstinctRatingView(release: release, onRated: { id in
                 onRated?(id)
                 viewModel.userEloScore = 1  // non-nil sentinel so isRated becomes true
-                Task { await viewModel.loadAfterInstinct(releaseId: release.id) }
+                Task { await viewModel.loadAfterInstinct(releaseGroupId: release.id) }
             }, onDone: { showInstinctSheet = false })
         }
         .sheet(item: $trackRatingTarget) { track in
             TrackRatingSheet(
                 track: track,
                 release: release,
-                existingScore: viewModel.trackRatings[track.position]
+                existingScore: track.trackId.flatMap { viewModel.trackRatings[$0] }
             ) { t, score in
-                Task { await viewModel.rateTrack(releaseId: release.id,
-                                                  position: t.position,
-                                                  title: t.title, score: score) }
+                Task {
+                    if let recordingId = t.trackId {
+                        await viewModel.rateTrack(recordingId: recordingId, score: score)
+                    }
+                }
             }
         }
         .navigationDestination(item: $selectedSong) { track in
@@ -767,7 +781,7 @@ struct AlbumDetailView: View {
             ForEach(Array(viewModel.tracks.enumerated()), id: \.element.id) { i, track in
                 TrackRow(
                     track: track,
-                    existingScore: viewModel.trackRatings[track.position],
+                    existingScore: track.trackId.flatMap { viewModel.trackRatings[$0] },
                     onTap: track.trackId != nil ? { selectedSong = track } : nil,
                     onAdd: track.trackId != nil ? { trackRatingTarget = track } : nil
                 )
@@ -848,8 +862,8 @@ struct AlbumDetailView: View {
 // MARK: - Reload after instinct rating
 
 extension AlbumDetailViewModel {
-    func loadAfterInstinct(releaseId: UUID) async {
-        await loadRatings(releaseId: releaseId)
+    func loadAfterInstinct(releaseGroupId: UUID) async {
+        await loadRatings(releaseGroupId: releaseGroupId)
     }
 }
 
@@ -1249,12 +1263,11 @@ struct SongDetailView: View {
     }
 
     private func loadStats() async {
-        // Note: after DB renovation, query by recording_id instead of (release_id, track_position)
+        guard let recordingId = track.trackId else { return }
         struct ScoreRow: Decodable { let score: Double? }
         let allRows: [ScoreRow] = (try? await supabase
             .from("track_ratings").select("score")
-            .eq("release_id", value: release.id)
-            .eq("track_position", value: track.position)
+            .eq("recording_id", value: recordingId)
             .execute().value) ?? []
         let scores = allRows.compactMap(\.score)
         communityCount = scores.count
@@ -1265,8 +1278,7 @@ struct SongDetailView: View {
         let row: UserRow? = try? await supabase
             .from("track_ratings").select("score")
             .eq("user_id", value: userId)
-            .eq("release_id", value: release.id)
-            .eq("track_position", value: track.position)
+            .eq("recording_id", value: recordingId)
             .maybeSingle().execute().value
         userScore = row?.score
     }

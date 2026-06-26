@@ -16,7 +16,8 @@ private struct TasteRatingRow: Codable {
         let coverUrl: String?
         let genres: String?
         enum CodingKeys: String, CodingKey {
-            case id, title, artist, genres
+            case id, title, genres
+            case artist   = "artist_display"
             case coverUrl = "cover_url"
         }
     }
@@ -24,7 +25,7 @@ private struct TasteRatingRow: Codable {
     enum CodingKeys: String, CodingKey {
         case score
         case createdAt = "created_at"
-        case releases
+        case releases  = "release_groups"
     }
 }
 
@@ -79,7 +80,7 @@ final class TasteViewModel {
 
         let rows: [TasteRatingRow] = (try? await supabase
             .from("ratings")
-            .select("score, created_at, releases(id, title, artist, cover_url, genres)")
+            .select("score, created_at, release_groups(id, title, artist_display, cover_url, genres)")
             .eq("user_id", value: user.id)
             .execute()
             .value) ?? []
