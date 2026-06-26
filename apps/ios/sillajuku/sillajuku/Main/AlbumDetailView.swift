@@ -751,7 +751,7 @@ struct AlbumDetailView: View {
                     track: track,
                     existingScore: track.trackId.flatMap { viewModel.trackRatings[$0] },
                     onTap: track.trackId != nil ? { selectedSong = track } : nil,
-                    onAdd: track.trackId != nil ? { trackRatingTarget = track } : nil
+                    onAdd: (track.trackId != nil && viewModel.ratingMode != "instinct") ? { trackRatingTarget = track } : nil
                 )
                 if i < viewModel.tracks.count - 1 {
                     Divider().padding(.leading, 56)
