@@ -1,117 +1,82 @@
 /**
  * iTunes queue ingest — drains artist_ingestion_queue via iTunes Search API.
- * No Spotify. No auth. No rate limits beyond iTunes throttling.
+ * No Spotify. No auth. Concurrency + a global rate limiter (not Spotify limits).
  *
- * For each pending artist:
- *   1. Search iTunes for the artist ID
- *   2. Fetch their full discography (albums + EPs)
- *   3. Upsert releases into DB (dedup on itunes_id, then title+artist)
- *   4. Mark queue row as done / failed / skipped
+ * Writes the post-renovation entity graph (via itunes-ingest-core.ts):
+ *   artists (+aliases +external_ids) → release_groups → releases [→ release_tracks/recordings]
+ *
+ * Speed model (see RENOVATION_PLAN.md §6, §8b):
+ *   - tracks are EAGER by default: each album's tracklist → recordings + release_tracks
+ *     (fills the song DB at ingest). Pass --no-tracks for a fast album-only drain.
+ *   - a worker POOL overlaps request latency; a GLOBAL per-IP limiter caps total
+ *     req/min (default 220, safely under the ~300/min iTunes 429 ceiling).
+ *   - --shard=i/N runs disjoint slices on separate machines/IPs (linear scaling).
  *
  * Run:
- *   npx tsx --env-file=.env.local scripts/ingest-itunes-queue.ts
- *   npx tsx --env-file=.env.local scripts/ingest-itunes-queue.ts --dry-run
- *   npx tsx --env-file=.env.local scripts/ingest-itunes-queue.ts --limit=50
+ *   npm run queue:ingest:albums                       # --skip-singles, eager tracks
+ *   npm run queue:ingest:albums:fast                  # --skip-singles --no-tracks
+ *   # multi-IP: Windows ── --shard=0/2 ; Mac ── --shard=1/2
+ *   npx tsx --env-file=.env.local scripts/ingest-itunes-queue.ts --skip-singles --shard=0/2
+ *   ... --dry-run | --limit=500 | --concurrency=8 | --rate=220
  *
- * Resumable: re-run anytime — processed artists are marked done in the queue.
+ * Resumable: re-run anytime — queue rows are marked done, and existing iTunes
+ * collections are skipped via the releases UNIQUE(itunes_id) constraint.
  */
 
-import { createClient } from '@supabase/supabase-js';
+import {
+  getDB,
+  createIngestContext,
+  findOrCreateArtist,
+  findOrCreateReleaseGroup,
+  ingestEdition,
+  normalizeStr,
+  detectLanguage,
+  artworkUrl,
+  mapGenre,
+  releaseType,
+  isCollaborationArtist,
+  LANGUAGE_TO_STORE,
+  type AlbumInput,
+  type TrackInput,
+  type NativeNames,
+} from './itunes-ingest-core';
+import { makeItunesGet, pool, type ItunesGet } from './itunes-fetch';
 
-const DRY_RUN   = process.argv.includes('--dry-run');
-// Fetch each album's tracklist (one extra iTunes lookup per album). Off by
-// default to keep the discover→ingest loop fast; the backfill:tracklists script
-// fills tracklists for existing rows. Use --with-tracks to populate at ingest.
-const WITH_TRACKS = process.argv.includes('--with-tracks');
-// Skip Single-type releases entirely. Singles are 66% of the catalog and are
-// excluded from recommendations/leaderboards anyway, so for deliberate
-// expansion runs this keeps new data album/EP-focused and improves the
-// album:single composition ratio over time.
+const DRY_RUN      = process.argv.includes('--dry-run');
+// Tracks are EAGER by default (fills the song DB at ingest — needed for song
+// search/leaderboards at launch). Pass --no-tracks for the fast album-only drain.
+const WITH_TRACKS  = !process.argv.includes('--no-tracks');
 const SKIP_SINGLES = process.argv.includes('--skip-singles');
-const LIMIT_ARG = process.argv.find(a => a.startsWith('--limit='));
-const BATCH_LIMIT = LIMIT_ARG ? parseInt(LIMIT_ARG.split('=')[1]) : 9999;
-const DELAY_MS  = 650;   // stay comfortably below iTunes 429 threshold
+const numArg = (flag: string, def: number) => {
+  const a = process.argv.find(x => x.startsWith(`${flag}=`));
+  return a ? parseInt(a.split('=')[1], 10) : def;
+};
+const BATCH_LIMIT  = numArg('--limit', 9999999);
+const CONCURRENCY  = numArg('--concurrency', 8);
+const RATE_PER_MIN = numArg('--rate', 220);
+
+// Multi-IP sharding: run `--shard=0/2` on one machine/IP and `--shard=1/2` on
+// another to drain disjoint slices of the queue in parallel. Each process has its
+// own per-IP rate limiter, so total throughput scales ~linearly with IPs.
+let SHARD = 0, SHARDS = 1;
+{
+  const a = process.argv.find(x => x.startsWith('--shard='));
+  if (a) { const [i, n] = a.split('=')[1].split('/').map(Number); SHARD = i || 0; SHARDS = n || 1; }
+}
+function inShard(id: string): boolean {
+  if (SHARDS <= 1) return true;
+  const h = parseInt(id.replace(/-/g, '').slice(0, 8), 16); // stable hash of the uuid head
+  return h % SHARDS === SHARD;
+}
+
 const ITUNES_BASE = 'https://itunes.apple.com';
+let itunesGet: ItunesGet; // set in main()
 
 // ── iTunes API ────────────────────────────────────────────────────────────────
 
-function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
-
-async function itunesGet(url: string, attempt = 0): Promise<any> {
-  await sleep(DELAY_MS);
-  const res = await fetch(url, { headers: { 'User-Agent': 'sillajuku-queue-ingest/1.0' } });
-  if (res.status === 429 || res.status === 403) {
-    const wait = Math.min(120000, 10000 * 2 ** attempt);
-    process.stdout.write(`\n  [${res.status}] iTunes blocked — waiting ${wait / 1000}s… `);
-    await sleep(wait);
-    if (attempt >= 5) return null;
-    return itunesGet(url, attempt + 1);
-  }
-  if (!res.ok) return null;
-  return res.json();
-}
-
-function normalizeStr(s: string): string {
-  return s.toLowerCase()
-    .replace(/[''`'"'""]/g, '')
-    .replace(/[^\w\s가-힣぀-ゟ゠-ヿ一-鿿]/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 const NOISE_RE = /\b(sped[- ]up|slowed|instrumental|karaoke|off[- ]vocal|mr\.?|inst\.?)\b/i;
 
-const LEGIT_COMPOUND_ACTS = new Set([
-  'hall & oates', 'simon & garfunkel', 'sly & the family stone',
-  'earth, wind & fire', 'crosby, stills, nash & young', 'crosby, stills & nash',
-  'toots & the maytals', 'all natural lemon & lime flavors',
-  'eric b. & rakim', 'pete rock & c.l. smooth',
-  'above & beyond', 'pig&dan',
-  'ampers&one', '15&', 'gd & top', 'h&d',
-  'irene & seulgi', 'red velvet – irene & seulgi', 'red velvet - irene & seulgi',
-  'moonbin & sanha', 'super junior-d&e', 'jinjin & rocky',
-  'longguo & shihyun', 'soohyun & hoon',
-  'kiha & the faces', 'shin jung hyun & yup juns',
-  'richard & linda thompson',
-]);
-
-function isCollaborationArtist(name: string): boolean {
-  if (LEGIT_COMPOUND_ACTS.has(name.toLowerCase())) return false;
-  if (/\bfeat\.?\b|\bft\.?\b|\bfeaturing\b/i.test(name)) return true;
-  if (/&/.test(name)) return true;
-  if (/\s\+\s/.test(name)) return true;
-  return false;
-}
-
-function artworkUrl(url: string): string {
-  return url.replace('100x100', '600x600').replace('100bb', '600bb');
-}
-
-function releaseType(trackCount: number, name: string): string {
-  const n = name.toLowerCase();
-  if (trackCount <= 3) return 'Single';
-  if (trackCount <= 6 || n.includes(' ep') || n.endsWith('ep')) return 'EP';
-  if (n.includes('live') || n.includes('concert')) return 'Live';
-  if (n.includes('best of') || n.includes('greatest hits') || n.includes('compilation')) return 'Compilation';
-  return 'Album';
-}
-
-const GENRE_MAP: Record<string, string> = {
-  'K-Pop': 'k-pop', 'Korean Pop': 'k-pop', 'Korean': 'k-pop',
-  'J-Pop': 'j-pop', 'Asian Pop': 'k-pop',
-  'Hip-Hop/Rap': 'hip-hop', 'Hip Hop/Rap': 'hip-hop',
-  'R&B/Soul': 'r&b', 'Electronic': 'electronic', 'Dance': 'electronic',
-  'Indie Pop': 'indie', 'Alternative': 'alternative', 'Rock': 'rock',
-  'Pop': 'pop', 'Classical': 'classical', 'Jazz': 'jazz',
-  'Soundtrack': 'soundtrack', 'Ballad': 'ballad',
-  'Singer/Songwriter': 'singer-songwriter', 'Folk': 'folk',
-};
-
-function mapGenre(g: string): string {
-  return GENRE_MAP[g] ?? g.toLowerCase();
-}
-
-async function findItunesArtistId(name: string): Promise<{ id: number; canonicalName: string } | null> {
+async function findItunesArtistId(name: string): Promise<number | null> {
   const url = `${ITUNES_BASE}/search?term=${encodeURIComponent(name)}&entity=musicArtist&limit=5`;
   const data = await itunesGet(url);
   if (!data) return null;
@@ -120,16 +85,12 @@ async function findItunesArtistId(name: string): Promise<{ id: number; canonical
   const match =
     results.find(r => r.wrapperType === 'artist' && normalizeStr(r.artistName) === normName) ??
     results.find(r => r.wrapperType === 'artist');
-  if (!match) return null;
-  return { id: match.artistId, canonicalName: match.artistName };
+  return match ? match.artistId : null;
 }
 
-type Track = { position: number; title: string; durationMs: number | null; artists: string };
-
-// Look up a collection's songs and map them to the album page's tracklist shape.
-// Multi-disc albums repeat track numbers per disc, so fall back to a sequential
-// running position to keep keys unique.
-async function fetchTracks(collectionId: number): Promise<Track[]> {
+// Map a collection's songs to TrackInput. Multi-disc albums repeat track numbers
+// per disc, so flatten to a running position for unique keys.
+async function fetchTracks(collectionId: number): Promise<TrackInput[]> {
   const data = await itunesGet(`${ITUNES_BASE}/lookup?id=${collectionId}&entity=song&limit=300`);
   const songs: any[] = (data?.results ?? []).filter(
     (r: any) => r.wrapperType === 'track' && r.kind === 'song' && r.trackName,
@@ -147,298 +108,153 @@ async function fetchTracks(collectionId: number): Promise<Track[]> {
   }));
 }
 
-async function fetchDiscography(artistId: number): Promise<any[]> {
-  const url = `${ITUNES_BASE}/lookup?id=${artistId}&entity=album&limit=200`;
-  const data = await itunesGet(url);
+async function fetchDiscography(artistId: number): Promise<AlbumInput[]> {
+  const data = await itunesGet(`${ITUNES_BASE}/lookup?id=${artistId}&entity=album&limit=200`);
   if (!data) return [];
   return (data.results ?? []).filter((r: any) =>
     r.wrapperType === 'collection' &&
     r.collectionType === 'Album' &&
     !NOISE_RE.test(r.collectionName)
-  );
+  ) as AlbumInput[];
 }
 
-// Detects ISO 639-1 language from script. Returns null for Latin/ASCII text.
-function detectLanguage(s: string): string | null {
-  if (/[가-힣ᄀ-ᇿ]/.test(s)) return 'ko';
-  if (/[぀-ゟ゠-ヿ]/.test(s)) return 'ja';
-  if (/[一-鿿]/.test(s)) return 'zh';
-  return null;
-}
-
-function hasNativeScript(s: string): boolean {
-  return detectLanguage(s) !== null;
-}
-
-const LANGUAGE_TO_STORE: Record<string, string> = { ko: 'KR', ja: 'JP', zh: 'TW' };
-
-// Fetch native-language names from the artist's local iTunes store.
-// Only called when we know the artist's language (from name_native in the queue row).
-// Returns a map of collectionId → { titleNative, artistNative, nativeLanguage }.
-async function fetchNativeNames(
-  artistId: number,
-  storeCountry: string,
-): Promise<Map<number, { titleNative: string; artistNative: string; nativeLanguage: string }>> {
-  const url = `${ITUNES_BASE}/lookup?id=${artistId}&entity=album&limit=200&country=${storeCountry}`;
-  const data = await itunesGet(url);
-  const map = new Map<number, { titleNative: string; artistNative: string; nativeLanguage: string }>();
+// Native-language names from the artist's local store (only when language is known).
+async function fetchNativeNames(artistId: number, storeCountry: string): Promise<Map<number, NativeNames>> {
+  const data = await itunesGet(`${ITUNES_BASE}/lookup?id=${artistId}&entity=album&limit=200&country=${storeCountry}`);
+  const map = new Map<number, NativeNames>();
   if (!data) return map;
   for (const r of data.results ?? []) {
     if (r.wrapperType !== 'collection' || !r.collectionId) continue;
     const titleNative  = r.collectionName ?? '';
     const artistNative = r.artistName ?? '';
     const lang = detectLanguage(titleNative) ?? detectLanguage(artistNative);
-    if (lang) {
-      map.set(r.collectionId, { titleNative, artistNative, nativeLanguage: lang });
-    }
+    if (lang) map.set(r.collectionId, { titleNative, artistNative, nativeLanguage: lang });
   }
   return map;
 }
 
-// ── DB ────────────────────────────────────────────────────────────────────────
-
-function getDB() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error('NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not set');
-  return createClient(url, key);
-}
-
-type DB = ReturnType<typeof getDB>;
-
-async function upsertRelease(
-  db: DB,
-  album: any,
-  nativeNames: { titleNative: string; artistNative: string; nativeLanguage: string } | undefined,
-): Promise<'inserted' | 'enriched' | 'skipped'> {
-  // 1. Already have this iTunes ID.
-  // Use .limit(1) not .maybeSingle() — maybeSingle() returns null data (not the row)
-  // when >1 rows match, causing the duplicate check to silently pass and insert again.
-  const { data: byItunesRows } = await db
-    .from('releases').select('id').eq('itunes_id', album.collectionId).limit(1);
-  if (byItunesRows && byItunesRows.length > 0) return 'skipped';
-
-  // 2. Existing record with same title+artist (Spotify-sourced) — enrich it.
-  // Two passes: first match by English artist name, then by artist_native.
-  // This catches cross-language-name duplicates like "Yerin Baek" (Spotify) vs
-  // "백예린" (iTunes) where the title matches but the artist name script differs.
-  let { data: byTitle } = await db
-    .from('releases').select('id, title, artist, artist_native, cover_url')
-    .ilike('title', album.collectionName)
-    .ilike('artist', album.artistName)
-    .maybeSingle();
-
-  if (!byTitle) {
-    const { data: byNative } = await db
-      .from('releases').select('id, title, artist, artist_native, cover_url')
-      .ilike('title', album.collectionName)
-      .ilike('artist_native', album.artistName)
-      .maybeSingle();
-    byTitle = byNative;
-  }
-
-  const cover  = artworkUrl(album.artworkUrl100 ?? '');
-  const genre  = mapGenre(album.primaryGenreName ?? '');
-  const rtype  = releaseType(album.trackCount ?? 0, album.collectionName);
-  const date   = album.releaseDate?.slice(0, 10) ?? null;
-
-  if (SKIP_SINGLES && rtype === 'Single') return 'skipped';
-
-  if (
-    byTitle &&
-    normalizeStr(byTitle.title) === normalizeStr(album.collectionName) &&
-    (
-      normalizeStr(byTitle.artist) === normalizeStr(album.artistName) ||
-      (byTitle.artist_native && normalizeStr(byTitle.artist_native) === normalizeStr(album.artistName))
-    )
-  ) {
-    const coverUpdate = cover && !(byTitle as any).cover_url
-      ? { cover_url: cover, cover_source: 'itunes' }
-      : {};
-    await db.from('releases').update({
-      itunes_id:        album.collectionId,
-      canonical_source: 'itunes',
-      ...(nativeNames ? { title_native: nativeNames.titleNative, artist_native: nativeNames.artistNative, native_language: nativeNames.nativeLanguage } : {}),
-      ...coverUpdate,
-    }).eq('id', byTitle.id);
-    return 'enriched';
-  }
-
-  // 3. New record
-  if (DRY_RUN) return 'inserted';
-  const tracklist = WITH_TRACKS ? await fetchTracks(album.collectionId) : [];
-  const { error } = await db.from('releases').insert({
-    id:               crypto.randomUUID(),
-    itunes_id:        album.collectionId,
-    title:            album.collectionName,
-    artist:           album.artistName,
-    title_native:         nativeNames?.titleNative ?? null,
-    artist_native:        nativeNames?.artistNative ?? null,
-    native_language:      nativeNames?.nativeLanguage ?? null,
-    release_date:     date,
-    release_type:     rtype,
-    cover_url:        cover || null,
-    cover_source:     cover ? 'itunes' : null,
-    genres:           genre || null,
-    canonical_source: 'itunes',
-    total_tracks:     album.trackCount ?? null,
-    tracklist:        tracklist.length > 0 ? tracklist : null,
-    cached_at:        new Date().toISOString(),
-  });
-  if (error) throw new Error(error.message);
-  return 'inserted';
-}
-
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-const PAGE_SIZE = 1000; // Supabase PostgREST max rows per request
+type QueueRow = { id: string; name: string; itunes_artist_id: number | null; name_native: string | null };
 
 async function main() {
-  console.log(`\n  sillajuku iTunes queue ingest${DRY_RUN ? ' [DRY RUN]' : ''}\n`);
+  console.log(`\n  sillajuku iTunes queue ingest${DRY_RUN ? ' [DRY RUN]' : ''}`);
+  console.log(`  concurrency=${CONCURRENCY} · rate=${RATE_PER_MIN}/min · tracks=${WITH_TRACKS ? 'eager' : 'off'} · skipSingles=${SKIP_SINGLES}${SHARDS > 1 ? ` · shard=${SHARD}/${SHARDS}` : ''}\n`);
 
   const db = getDB();
+  const ctx = createIngestContext(db, { dryRun: DRY_RUN, withTracks: WITH_TRACKS, skipSingles: SKIP_SINGLES });
+  itunesGet = makeItunesGet({ perMin: RATE_PER_MIN, userAgent: 'sillajuku-queue-ingest/2.0' });
 
-  let totalInserted = 0, totalEnriched = 0, totalSkipped = 0, artistsFailed = 0, artistsNoMatch = 0;
-  let totalProcessed = 0;
+  let totalInserted = 0, totalSkipped = 0, artistsFailed = 0, artistsNoMatch = 0;
+  let processed = 0;
   let pageNum = 0;
+  let afterId: string | null = null; // keyset cursor (by id) — avoids re-reading other shards' rows
 
-  while (totalProcessed < BATCH_LIMIT) {
-    const fetchSize = Math.min(PAGE_SIZE, BATCH_LIMIT - totalProcessed);
-
-    // Pull next page of pending artists (previously-processed rows are now done/skipped/failed,
-    // so re-querying always returns the next unprocessed batch).
-    const { data: queue, error: qErr } = await db
+  while (processed < BATCH_LIMIT) {
+    let q = db
       .from('artist_ingestion_queue')
       .select('id, name, itunes_artist_id, name_native')
       .eq('status', 'pending')
-      .order('created_at')
-      .limit(fetchSize);
+      .order('id', { ascending: true })
+      .limit(1000);
+    if (afterId) q = q.gt('id', afterId);
+    const { data: page, error: qErr } = await q;
 
     if (qErr) { console.error('Queue fetch error:', qErr.message); process.exit(1); }
-    if (!queue || queue.length === 0) {
-      if (pageNum === 0) console.log('  No pending artists in queue. Run npm run queue:build first.');
+    if (!page || page.length === 0) {
+      if (pageNum === 0) console.log('  No pending artists in queue. Run queue:build:global first.');
       break;
     }
+    afterId = page[page.length - 1].id;
+
+    // Keep only this shard's slice, and respect the overall --limit.
+    const slice = (page as QueueRow[])
+      .filter(r => inShard(r.id))
+      .slice(0, Math.max(0, BATCH_LIMIT - processed));
+    if (slice.length === 0) continue; // whole page belonged to other shards / over limit — advance
 
     pageNum++;
-    console.log(`  Page ${pageNum} — ${queue.length} pending artists (${totalProcessed} processed so far)${BATCH_LIMIT < 9999 ? ` / limit ${BATCH_LIMIT}` : ''}\n`);
+    console.log(`  Page ${pageNum} — ${slice.length} for this worker (${processed} done so far)\n`);
 
-  for (let i = 0; i < queue.length; i++) {
-    const row = queue[i];
-    totalProcessed++;
-    process.stdout.write(`  [${i + 1}/${queue.length}] ${row.name.padEnd(35)} `);
+    await pool(slice, CONCURRENCY, async (row) => {
+      const n = ++processed;
+      const label = `[${n}] ${row.name.slice(0, 32).padEnd(32)}`;
 
-    // Skip collaboration entries (e.g. "Coldplay & BTS", "Drake feat. 21 Savage").
-    // These are Last.fm collab nodes, not real standalone artist entities.
-    if (isCollaborationArtist(row.name)) {
-      process.stdout.write('collab — skipped\n');
-      if (!DRY_RUN) {
-        await db.from('artist_ingestion_queue')
-          .update({ status: 'skipped', processed_at: new Date().toISOString() })
-          .eq('id', row.id);
+      if (isCollaborationArtist(row.name)) {
+        if (!DRY_RUN) await db.from('artist_ingestion_queue')
+          .update({ status: 'skipped', processed_at: new Date().toISOString() }).eq('id', row.id);
+        console.log(`${label} collab — skipped`);
+        return;
       }
-      totalSkipped++;
-      continue;
-    }
 
-    // Mark as processing
-    if (!DRY_RUN) {
-      await db.from('artist_ingestion_queue')
-        .update({ status: 'processing' })
-        .eq('id', row.id);
-    }
+      if (!DRY_RUN) await db.from('artist_ingestion_queue').update({ status: 'processing' }).eq('id', row.id);
 
-    try {
-      // Resolve iTunes artist ID (use cached one if already found)
-      let itunesId = row.itunes_artist_id;
-      let canonicalName = row.name;
-
-      if (!itunesId) {
-        const found = await findItunesArtistId(row.name);
-        if (!found) {
-          process.stdout.write('no iTunes match\n');
-          if (!DRY_RUN) {
-            await db.from('artist_ingestion_queue')
-              .update({ status: 'skipped', processed_at: new Date().toISOString() })
-              .eq('id', row.id);
+      try {
+        let itunesId = row.itunes_artist_id;
+        if (!itunesId) {
+          itunesId = await findItunesArtistId(row.name);
+          if (!itunesId) {
+            if (!DRY_RUN) await db.from('artist_ingestion_queue')
+              .update({ status: 'skipped', processed_at: new Date().toISOString() }).eq('id', row.id);
+            artistsNoMatch++;
+            console.log(`${label} no iTunes match`);
+            return;
           }
-          artistsNoMatch++;
-          continue;
+          if (!DRY_RUN) await db.from('artist_ingestion_queue').update({ itunes_artist_id: itunesId }).eq('id', row.id);
         }
-        itunesId = found.id;
-        canonicalName = found.canonicalName;
-        if (!DRY_RUN) {
-          await db.from('artist_ingestion_queue')
-            .update({ itunes_artist_id: itunesId })
-            .eq('id', row.id);
+
+        const albums = await fetchDiscography(itunesId);
+        const artistLang = row.name_native ? detectLanguage(row.name_native) : null;
+        const storeCountry = artistLang ? LANGUAGE_TO_STORE[artistLang] : null;
+        const nativeMap = storeCountry ? await fetchNativeNames(itunesId, storeCountry) : new Map<number, NativeNames>();
+
+        let ins = 0, skp = 0;
+        for (const album of albums) {
+          const rtype = releaseType(album.trackCount ?? 0, album.collectionName);
+          if (SKIP_SINGLES && rtype === 'Single') { skp++; continue; }
+
+          const native = nativeMap.get(album.collectionId) ?? null;
+          const artistNative = native?.artistNative ?? (album.artistId === itunesId ? row.name_native : null);
+          const primaryArtistId = await findOrCreateArtist(ctx, {
+            itunesArtistId: album.artistId,
+            name:           album.artistName,
+            nativeName:     artistNative,
+            lang:           native?.nativeLanguage ?? (album.artistId === itunesId ? artistLang : null),
+          });
+          const group = await findOrCreateReleaseGroup(ctx, {
+            primaryArtistId,
+            artistDisplay:    album.artistName,
+            title:            album.collectionName,
+            appReleaseType:   rtype,
+            firstReleaseDate: album.releaseDate?.slice(0, 10) ?? null,
+            coverUrl:         artworkUrl(album.artworkUrl100 ?? '') || null,
+            genre:            mapGenre(album.primaryGenreName ?? '') || null,
+          });
+          const tracks = WITH_TRACKS ? await fetchTracks(album.collectionId) : [];
+          const result = await ingestEdition(ctx, { album, primaryArtistId, group, native, tracks });
+          if (result === 'inserted') ins++; else skp++;
         }
-      }
 
-      // Fetch discography (default store) + native names (local store if language known)
-      const albums = await fetchDiscography(itunesId);
-      // Only call the local store if we know the artist's language from name_native in queue.
-      // Artists without name_native (added by queue:discover) skip this — backfill:native handles them.
-      const artistLang = row.name_native ? detectLanguage(row.name_native) : null;
-      const storeCountry = artistLang ? LANGUAGE_TO_STORE[artistLang] : null;
-      const nativeMap = storeCountry ? await fetchNativeNames(itunesId, storeCountry) : new Map();
-      process.stdout.write(`${albums.length} albums → `);
-
-      let ins = 0, enr = 0, skp = 0;
-      for (const album of albums) {
-        const nativeNames = nativeMap.get(album.collectionId);
-        const result = await upsertRelease(db, album, nativeNames);
-        if (result === 'inserted') ins++;
-        else if (result === 'enriched') enr++;
-        else skp++;
-      }
-
-      // Propagate itunes_artist_id + name_native from the queue row to the artists table.
-      // The artists table has an itunes_artist_id column that check:completeness reads;
-      // it is never populated otherwise because resolution happens only in the queue flow.
-      if (!DRY_RUN) {
-        const artistUpdate: Record<string, any> = { itunes_artist_id: itunesId };
-        if (row.name_native && artistLang) {
-          artistUpdate.name_native     = row.name_native;
-          artistUpdate.native_language = artistLang;
-        }
-        await db.from('artists')
-          .update(artistUpdate)
-          .ilike('name', row.name)
-          .is('itunes_artist_id', null);
-      }
-
-      process.stdout.write(`+${ins} new, ~${enr} enriched, ${skp} skipped\n`);
-      totalInserted += ins;
-      totalEnriched += enr;
-      totalSkipped  += skp;
-
-      if (!DRY_RUN) {
-        await db.from('artist_ingestion_queue').update({
-          status:        'done',
-          releases_added: ins,
-          processed_at:  new Date().toISOString(),
+        totalInserted += ins;
+        totalSkipped  += skp;
+        if (!DRY_RUN) await db.from('artist_ingestion_queue').update({
+          status: 'done', releases_added: ins, processed_at: new Date().toISOString(),
         }).eq('id', row.id);
-      }
+        console.log(`${label} ${albums.length} albums → +${ins} new, ${skp} skipped`);
 
-    } catch (err) {
-      process.stdout.write(`ERROR: ${(err as Error).message}\n`);
-      if (!DRY_RUN) {
-        await db.from('artist_ingestion_queue').update({
-          status:       'failed',
-          error:        (err as Error).message.slice(0, 255),
-          processed_at: new Date().toISOString(),
+      } catch (err) {
+        artistsFailed++;
+        if (!DRY_RUN) await db.from('artist_ingestion_queue').update({
+          status: 'failed', error: (err as Error).message.slice(0, 255), processed_at: new Date().toISOString(),
         }).eq('id', row.id);
+        console.log(`${label} ERROR: ${(err as Error).message}`);
       }
-      artistsFailed++;
-    }
+    });
   }
-
-  } // end while (pagination loop)
 
   console.log(`
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Releases inserted  : ${totalInserted}
-  Releases enriched  : ${totalEnriched}
   Releases skipped   : ${totalSkipped}
   Artists no match   : ${artistsNoMatch}
   Artists failed     : ${artistsFailed}

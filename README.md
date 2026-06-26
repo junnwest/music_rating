@@ -18,9 +18,21 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 > **⚠️ AFTER macOS UPDATE (26.2 → 26.5):** 1) Open Xcode — it may prompt to install additional components, let it finish. 2) Connect iPhone via USB (phone unlocked). 3) If "Trust This Computer?" appears on the phone — tap Trust. 4) Xcode will download iOS 26.5 device support files automatically (~few minutes). 5) iPhone should then appear in the destination picker — select it and Cmd+R to run. 6) Run `cd apps/web && npm run dedup:releases` to see duplicate count (script was fixed this session — tracklist removed from bulk load).
 
-**⚠️ DB RENOVATION IN PROGRESS — Windows must do this before any catalog work:**
+**⚠️ DB RENOVATION + MB-PRIMARY PIPELINE — catalog re-ingest IN PROGRESS (2026-06-26).**
 
-Migration written: [`apps/web/supabase/migrations/20260624000001_db_renovation.sql`](apps/web/supabase/migrations/20260624000001_db_renovation.sql) — ⏳ **NOT YET RUN**. Run it in the Supabase SQL editor (not `supabase db push`). Rating backups saved to `backups/` (98 album ratings, 20 track ratings). See the **DB Renovation** section below for full step-by-step plan.
+Two migrations ✅ applied (SQL editor): [`20260624000001_db_renovation.sql`](apps/web/supabase/migrations/20260624000001_db_renovation.sql) (schema rebuild — `artists` uuid, `release_groups`, `recordings`, `release_tracks`, …) and [`20260626000000_pipeline_schema.sql`](apps/web/supabase/migrations/20260626000000_pipeline_schema.sql) (MB-pipeline cols: RG embedding+native_title+source+mb_release_group_id, recordings.mb_recording_id, artists ingest-state machine, non-unique aliases, pipeline_lanes). Two prod-only fixes applied directly: added `mb_release_group_id`/`mb_release_id`; dropped stale `releases_release_type_check`.
+
+**Source strategy = MusicBrainz-primary** (CC0/clean-IP, ISRC, by-MBID identity). Deezer + Last.fm rejected (non-commercial ToS). iTunes demoted to append-only gap-fill; covers from Cover Art Archive. **Full plan: [RENOVATION_PLAN.md](RENOVATION_PLAN.md).**
+
+**Pipeline built + RUNNING (~60% of data-collection):**
+- `npm run pipeline` — single orchestrator (DISCOVER seed → INGEST via MB → heartbeat; crash-safe/resumable; `--once`/`--limit`). `npm run pipeline:status` — dashboard. `npm run mb:gate` — read-only coverage gate. `npm run mb:ingest:one -- --name="X"` — single artist.
+- Core scripts: `mb-client.ts`, `mb-ingest.ts` (resolver + full DB writer, MBID-idempotent), `mb-overrides.ts`, `seed-artists.ts`, `pipeline.ts`, `pipeline-status.ts`.
+- Validated on prod: Se So Neon (14 groups/38 recordings, clean graph), aespa (61/166). Coverage gate PASSED (MB Korean coverage strong once resolver searched aliases + enforced region).
+- **▶ As of 2026-06-26 night: `npm run pipeline` is draining the 275-seed queue (MB ~1 req/s → many hours).** Resume with `npm run pipeline` if it stops.
+
+**Remaining (Windows):** enrichment lanes — EMBEDDINGS (Jina→`release_groups`), COVERS (CAA), QC sweep; iTunes GAPFILL by completeness; Wikipedia/ListenBrainz discovery; fill `mb-overrides.ts` for ~6–10 generic stage names (TXT/Kai/A Pink/…). **Then ③ re-import rating backups** (`backups/`, 97 album+20 track) → `release_group_id`.
+
+**Parallel downstream track (the real launch-blocker): app data-layer rewrite + dropped RPC/view rebuild + rating re-link — [APP_REWRITE_PLAN.md](APP_REWRITE_PLAN.md).** See also the **DB Renovation** section below.
 
 **Mac priority order:** ✅ Report/Block wired (2026-06-25) → Profile > Stats subtab → TestFlight setup. iOS app dev can continue in parallel — update Swift models for new schema as Windows applies the migration.
 
@@ -99,12 +111,13 @@ Full schema rebuild to fix artist identity, release grouping, and song-level ide
 
 #### DB migrations — production status (verified against prod 2026-06-11 via SQL editor)
 
-⚠️ One migration pending (see renovation section above). If `supabase db push` is blocked by timestamp-collision history, paste into the Supabase SQL editor instead.
+⏳ One migration pending: `20260625000001_report_block.sql` (Mac/session-15). If `supabase db push` is blocked by timestamp-collision history, paste into the Supabase SQL editor instead.
 
 | File | What it adds | Prod |
 |------|-------------|------|
+| `20260626000000_pipeline_schema.sql` | MB-pipeline columns: `release_groups` embedding(1024)+native_title+source+mb_release_group_id, `releases` source+mb_release_id, `recordings` mb_recording_id (ISRC un-uniqued)+source, `artists` ingest_state machine+claimed_at, non-unique aliases+normalization, `pipeline_lanes` | ✅ applied 2026-06-26 (SQL editor; +2 fixes: added mb_release_group_id/mb_release_id, dropped stale `releases_release_type_check`) |
 | `20260625000001_report_block.sql` | `reports` table (abuse reports with reason picker) + `blocked_users` table (feed filtering); RLS: users insert own reports/blocks, blocked users cannot see they're blocked | ⏳ **NOT YET RUN** — run in SQL editor (Windows) |
-| `20260624000001_db_renovation.sql` | Full schema rebuild: artists uuid PK, artist_aliases, artist_external_ids, release_groups, recordings, release_tracks; all user-content tables switched to release_group_id / recording_id; sustainability scheduler columns | ⏳ **NOT YET RUN** — run in SQL editor (Windows) |
+| `20260624000001_db_renovation.sql` | Full schema rebuild: artists uuid PK, artist_aliases, artist_external_ids, release_groups, recordings, release_tracks; all user-content tables switched to release_group_id / recording_id; sustainability scheduler columns | ✅ applied 2026-06-25 (SQL editor; +2 pre-flight fixes — CASCADE truncate, drop `trg_release_ratings_count`) |
 | `20260622000001_spotify_data_cache.sql` | `spotify_artists jsonb`, `spotify_recently_played jsonb`, `spotify_data_updated_at timestamptz` on `profiles` — persistent Spotify data cache; survives token expiry, reinstalls, and device switches | ✅ applied 2026-06-22 (SQL editor) |
 | `20260621000003_suggested_users.sql` | `get_suggested_users(p_user_id)` RPC — active users not yet followed, ordered by rating count, for Find People page | ✅ applied 2026-06-21 (SQL editor) |
 | `20260621000002_push_token.sql` | `push_token text` column on `profiles` for APNs device token storage | ✅ applied 2026-06-21 (SQL editor) |

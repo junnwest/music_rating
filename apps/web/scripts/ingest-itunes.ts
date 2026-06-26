@@ -25,7 +25,21 @@
 
 import fs from 'fs';
 import path from 'path';
-import { createClient } from '@supabase/supabase-js';
+import {
+  getDB,
+  createIngestContext,
+  findOrCreateArtist,
+  findOrCreateReleaseGroup,
+  ingestEdition,
+  normalizeStr,
+  detectLanguage,
+  artworkUrl,
+  mapGenre,
+  releaseType,
+  type IngestContext,
+  type AlbumInput,
+  type TrackInput,
+} from './itunes-ingest-core';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -107,9 +121,9 @@ async function searchArtist(name: string): Promise<ItunesArtist | null> {
   const data = await itunesGet(url);
   const results: any[] = data.results ?? [];
   // Find best name match
-  const normName = normalizeTitle(name);
+  const normName = normalizeStr(name);
   const exact = results.find(r =>
-    r.wrapperType === 'artist' && normalizeTitle(r.artistName) === normName
+    r.wrapperType === 'artist' && normalizeStr(r.artistName) === normName
   );
   const best = exact ?? results.find(r => r.wrapperType === 'artist');
   if (!best) return null;
@@ -134,78 +148,26 @@ async function fetchDiscography(itunesArtistId: number): Promise<ItunesAlbum[]> 
   ) as ItunesAlbum[];
 }
 
-async function fetchTracks(collectionId: number): Promise<ItunesTrack[]> {
+// Map a collection's songs to the shared TrackInput shape. Multi-disc albums
+// repeat track numbers per disc, so flatten to a running position for unique keys.
+async function fetchTracks(collectionId: number): Promise<TrackInput[]> {
   await sleep(TRACK_DELAY_MS);
-  const url = `${ITUNES_BASE}/lookup?id=${collectionId}&entity=song&limit=50`;
+  const url = `${ITUNES_BASE}/lookup?id=${collectionId}&entity=song&limit=300`;
   const data = await itunesGet(url);
-  return (data.results ?? []).filter((r: any) => r.wrapperType === 'track') as ItunesTrack[];
-}
-
-function artworkUrl(url: string, size = 600): string {
-  return url
-    .replace('100x100', `${size}x${size}`)
-    .replace('100bb', `${size}bb`);
-}
-
-function releaseTypeFromAlbum(album: ItunesAlbum): string {
-  const name = album.collectionName.toLowerCase();
-  if (album.trackCount === 1) return 'Single';
-  if (album.trackCount <= 3) return 'Single';
-  if (album.trackCount <= 6 || name.includes(' ep') || name.endsWith('ep')) return 'EP';
-  if (name.includes('live') || name.includes('concert')) return 'Live';
-  if (name.includes('best') || name.includes('greatest hits') || name.includes('compilation')) return 'Compilation';
-  return 'Album';
-}
-
-// ── Normalization & deduplication ─────────────────────────────────────────────
-
-// Keep CJK characters; strip punctuation but not letters or digits.
-function normalizeTitle(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[''`'"'""]/g, '')
-    .replace(/[^\w\s가-힣぀-ゟ゠-ヿ一-鿿]/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function normalizeArtist(s: string): string {
-  return normalizeTitle(s)
-    .replace(/\bthe\b/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function exactMatch(a: string, b: string): boolean {
-  return normalizeTitle(a) === normalizeTitle(b);
-}
-
-// ── Genre mapping ─────────────────────────────────────────────────────────────
-
-// Map iTunes genre names → internal genre tags used throughout the app.
-const GENRE_MAP: Record<string, string> = {
-  'K-Pop':          'k-pop',
-  'Korean Pop':     'k-pop',
-  'Korean':         'k-pop',
-  'J-Pop':          'j-pop',
-  'Asian Pop':      'k-pop',
-  'Hip-Hop/Rap':    'hip-hop',
-  'Hip Hop/Rap':    'hip-hop',
-  'R&B/Soul':       'r&b',
-  'Electronic':     'electronic',
-  'Dance':          'electronic',
-  'Indie Pop':      'indie',
-  'Alternative':    'alternative',
-  'Rock':           'rock',
-  'Pop':            'pop',
-  'Classical':      'classical',
-  'Jazz':           'jazz',
-  'Soundtrack':     'soundtrack',
-  'Ballad':         'ballad',
-};
-
-function mapGenre(itunesGenre: string): string {
-  return GENRE_MAP[itunesGenre] ?? itunesGenre.toLowerCase();
+  const songs: any[] = (data.results ?? []).filter(
+    (r: any) => r.wrapperType === 'track' && r.kind === 'song' && r.trackName,
+  );
+  if (songs.length === 0) return [];
+  songs.sort((a, b) =>
+    ((a.discNumber ?? 1) - (b.discNumber ?? 1)) || ((a.trackNumber ?? 0) - (b.trackNumber ?? 0)),
+  );
+  const multiDisc = new Set(songs.map(s => s.discNumber ?? 1)).size > 1;
+  return songs.map((s, i) => ({
+    position:   multiDisc ? i + 1 : (s.trackNumber ?? i + 1),
+    title:      s.trackName,
+    durationMs: s.trackTimeMillis ?? null,
+    artists:    s.artistName ?? '',
+  }));
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -223,80 +185,7 @@ function saveState(state: ItunesState): void {
   fs.writeFileSync(STATE_PATH, JSON.stringify(state, null, 2));
 }
 
-// ── Supabase ──────────────────────────────────────────────────────────────────
-
-function getDB() {
-  const url   = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key   = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error('NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not set');
-  return createClient(url, key);
-}
-
-interface UpsertResult { action: 'inserted' | 'enriched' | 'skipped' }
-
-async function upsertAlbum(
-  db: ReturnType<typeof getDB>,
-  album: ItunesAlbum,
-  tracks: ItunesTrack[],
-): Promise<UpsertResult> {
-  // 1. Already have this itunes_id?
-  const { data: existing } = await db
-    .from('releases')
-    .select('id, itunes_id')
-    .eq('itunes_id', album.collectionId)
-    .maybeSingle();
-
-  if (existing) return { action: 'skipped' };
-
-  // 2. Exact title+artist match on an existing record (Spotify-sourced)?
-  const { data: byTitle } = await db
-    .from('releases')
-    .select('id, itunes_id, artist_id, title, artist')
-    .ilike('title', album.collectionName)
-    .ilike('artist', album.artistName)
-    .maybeSingle();
-
-  const cover = artworkUrl(album.artworkUrl100);
-  const genre  = mapGenre(album.primaryGenreName);
-  const rtype  = releaseTypeFromAlbum(album);
-  const tracklist = tracks.map(t => ({
-    position:   t.trackNumber,
-    title:      t.trackName,
-    durationMs: t.trackTimeMillis ?? null,
-    artists:    t.artistName,
-  }));
-
-  if (byTitle && exactMatch(byTitle.title, album.collectionName) && exactMatch(byTitle.artist, album.artistName)) {
-    // Enrich the existing Spotify record with itunes_id.
-    // Don't overwrite tracklist — Spotify's is richer (has duration, ISRC, etc).
-    const update: Record<string, any> = { itunes_id: album.collectionId, canonical_source: 'itunes' };
-    if (!byTitle.artist_id && genre) update.genres = genre;  // backfill genre if Spotify left it empty
-    const { error } = await db.from('releases').update(update).eq('id', byTitle.id);
-    if (error) throw new Error(error.message);
-    return { action: 'enriched' };
-  }
-
-  // 3. Insert new iTunes-only record. Use a UUID as the text PK since there's no Spotify ID.
-  const newId = crypto.randomUUID();
-  const { error } = await db.from('releases').insert({
-    id:               newId,
-    itunes_id:        album.collectionId,
-    title:            album.collectionName,
-    artist:           album.artistName,
-    release_date:     album.releaseDate?.slice(0, 10) ?? null,
-    release_type:     rtype,
-    total_tracks:     album.trackCount,
-    genres:           genre,
-    cover_url:        cover,
-    cover_source:     'itunes',
-    canonical_source: 'itunes',
-    tracklist:        tracklist.length ? tracklist : null,
-    cached_at:        new Date().toISOString(),
-  });
-  if (error) throw new Error(error.message);
-
-  return { action: 'inserted' };
-}
+// (DB handle + entity-graph writes now live in itunes-ingest-core.ts)
 
 // ── Seed artist list ──────────────────────────────────────────────────────────
 
@@ -413,17 +302,16 @@ function sleep(ms: number) {
   return new Promise(r => setTimeout(r, ms));
 }
 
+type Stats = { inserted: number; skipped: number };
+
 async function processArtist(
   name: string,
-  db: ReturnType<typeof getDB> | null,
-  stats: { inserted: number; enriched: number; skipped: number },
+  ctx: IngestContext,
+  stats: Stats,
   knownItunesId?: number,
 ): Promise<'ok' | 'skip' | 'fatal'> {
-  let artistId: number;
-
   if (knownItunesId) {
     console.log(`  Using iTunes ID ${knownItunesId} for "${name}"`);
-    artistId = knownItunesId;
   } else {
     process.stdout.write(`  Searching iTunes for "${name}"… `);
     let artist;
@@ -439,29 +327,36 @@ async function processArtist(
       return 'skip';
     }
     console.log(`found: ${artist.artistName} (id ${artist.artistId})`);
-    artistId = artist.artistId;
+    knownItunesId = artist.artistId;
   }
 
-  const albums = await fetchDiscography(artistId);
+  const albums = await fetchDiscography(knownItunesId);
   console.log(`    ${albums.length} albums in iTunes discography`);
 
   for (const album of albums) {
-    let tracks: ItunesTrack[] = [];
-    if (WITH_TRACKS) tracks = await fetchTracks(album.collectionId);
-
     const year = album.releaseDate?.slice(0, 4) ?? '?';
     process.stdout.write(`    "${album.collectionName}" (${year}) … `);
 
-    if (DRY_RUN || !db) {
-      console.log('[dry run]');
-      stats.inserted++;
-      continue;
-    }
-
     try {
-      const result = await upsertAlbum(db, album, tracks);
-      console.log(result.action);
-      stats[result.action]++;
+      const primaryArtistId = await findOrCreateArtist(ctx, {
+        itunesArtistId: album.artistId,
+        name:           album.artistName,
+        nativeName:     detectLanguage(album.artistName) ? album.artistName : null,
+      });
+      const rtype = releaseType(album.trackCount ?? 0, album.collectionName);
+      const group = await findOrCreateReleaseGroup(ctx, {
+        primaryArtistId,
+        artistDisplay:    album.artistName,
+        title:            album.collectionName,
+        appReleaseType:   rtype,
+        firstReleaseDate: album.releaseDate?.slice(0, 10) ?? null,
+        coverUrl:         artworkUrl(album.artworkUrl100 ?? '') || null,
+        genre:            mapGenre(album.primaryGenreName ?? '') || null,
+      });
+      const tracks: TrackInput[] = WITH_TRACKS ? await fetchTracks(album.collectionId) : [];
+      const result = await ingestEdition(ctx, { album, primaryArtistId, group, tracks });
+      console.log(result);
+      stats[result]++;
     } catch (err: any) {
       console.log(`error: ${err.message}`);
       if (err.message.includes('retries')) return 'fatal';
@@ -472,16 +367,16 @@ async function processArtist(
 
 // ── Modes ─────────────────────────────────────────────────────────────────────
 
-async function runSeed(db: ReturnType<typeof getDB> | null, state: ItunesState) {
+async function runSeed(ctx: IngestContext, state: ItunesState): Promise<Stats> {
   const todo = SEED_ARTISTS.filter(a => !state.processedArtists.includes(a));
   console.log(`   Seed list: ${SEED_ARTISTS.length} artists | Remaining: ${todo.length}\n`);
 
-  const stats = { inserted: 0, enriched: 0, skipped: 0 };
+  const stats: Stats = { inserted: 0, skipped: 0 };
 
   for (let i = 0; i < todo.length; i++) {
     const name = todo[i];
     console.log(`\n[${i + 1}/${todo.length}] ${name}`);
-    const result = await processArtist(name, db, stats);
+    const result = await processArtist(name, ctx, stats);
     if (result !== 'fatal') state.processedArtists.push(name);
     if (!DRY_RUN) saveState(state);
     if (result === 'fatal') {
@@ -494,41 +389,22 @@ async function runSeed(db: ReturnType<typeof getDB> | null, state: ItunesState) 
   return stats;
 }
 
-async function runDiscography(db: ReturnType<typeof getDB> | null, state: ItunesState) {
-  if (!db) {
-    console.error('Cannot run discography mode in dry-run without DB connection');
-    process.exit(1);
-  }
-
-  const { data: artists } = await db
+async function runDiscography(ctx: IngestContext, state: ItunesState): Promise<Stats> {
+  const { data: artists } = await ctx.db
     .from('artists')
-    .select('id, name, itunes_artist_id')
+    .select('name, itunes_artist_id')
     .order('name');
-  const list = (artists ?? []) as { id: string; name: string; itunes_artist_id: number | null }[];
+  const list = (artists ?? []) as { name: string; itunes_artist_id: number | null }[];
   const todo = list.filter(a => !state.processedArtists.includes(a.name));
   console.log(`   DB artists: ${list.length} | Remaining: ${todo.length}\n`);
 
-  const stats = { inserted: 0, enriched: 0, skipped: 0 };
+  const stats: Stats = { inserted: 0, skipped: 0 };
 
   for (let i = 0; i < todo.length; i++) {
     const artist = todo[i];
     console.log(`\n[${i + 1}/${todo.length}] ${artist.name}${artist.itunes_artist_id ? ` (iTunes ID: ${artist.itunes_artist_id})` : ''}`);
-
-    const result = await processArtist(artist.name, db, stats, artist.itunes_artist_id ?? undefined);
-
-    // Store the iTunes artist ID back if we found it via name search
-    if (result === 'ok' && !artist.itunes_artist_id) {
-      // processArtist logged the found artist ID — re-search briefly to capture it
-      // (searchArtist is cheap and already rate-limited inside processArtist)
-      const found = await searchArtist(artist.name);
-      if (found) {
-        await db.from('artists')
-          .update({ itunes_artist_id: found.artistId })
-          .eq('id', artist.id)
-          .is('itunes_artist_id', null); // only write if still null (avoid race)
-      }
-    }
-
+    // findOrCreateArtist resolves + links the iTunes ID, so no manual back-write needed.
+    await processArtist(artist.name, ctx, stats, artist.itunes_artist_id ?? undefined);
     state.processedArtists.push(artist.name);
     if ((i + 1) % 5 === 0) saveState(state);
   }
@@ -537,11 +413,11 @@ async function runDiscography(db: ReturnType<typeof getDB> | null, state: Itunes
   return stats;
 }
 
-async function runArtist(db: ReturnType<typeof getDB> | null, _state: ItunesState) {
+async function runArtist(ctx: IngestContext, _state: ItunesState): Promise<Stats> {
   const label = ARTIST_ARG ?? `iTunes ID ${ITUNES_ID_ARG}`;
   console.log(`   Artist: ${label}\n`);
-  const stats = { inserted: 0, enriched: 0, skipped: 0 };
-  await processArtist(ARTIST_ARG ?? '', db, stats, ITUNES_ID_ARG);
+  const stats: Stats = { inserted: 0, skipped: 0 };
+  await processArtist(ARTIST_ARG ?? '', ctx, stats, ITUNES_ID_ARG);
   return stats;
 }
 
@@ -553,23 +429,23 @@ async function main() {
   if (WITH_TRACKS) console.log('  [WITH TRACKS — fetching tracklists]');
   console.log('');
 
-  const db    = DRY_RUN ? null : getDB();
+  const db    = getDB();
+  const ctx   = createIngestContext(db, { dryRun: DRY_RUN, withTracks: WITH_TRACKS, skipSingles: false });
   const state = loadState();
 
-  let stats: { inserted: number; enriched: number; skipped: number };
+  let stats: Stats;
 
-  if (MODE === 'seed')        stats = await runSeed(db, state);
-  else if (MODE === 'discography') stats = await runDiscography(db, state);
-  else                        stats = await runArtist(db, state);
+  if (MODE === 'seed')             stats = await runSeed(ctx, state);
+  else if (MODE === 'discography') stats = await runDiscography(ctx, state);
+  else                             stats = await runArtist(ctx, state);
 
-  const total = stats.inserted + stats.enriched + stats.skipped;
+  const total = stats.inserted + stats.skipped;
   console.log(`
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Mode      : ${MODE}
   Processed : ${total} albums
-  Inserted  : ${stats.inserted} new records${DRY_RUN ? ' (dry run)' : ''}
-  Enriched  : ${stats.enriched} existing records got itunes_id
-  Skipped   : ${stats.skipped} already in DB
+  Inserted  : ${stats.inserted} new editions${DRY_RUN ? ' (dry run)' : ''}
+  Skipped   : ${stats.skipped} (already present / dedup)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 `);
 }

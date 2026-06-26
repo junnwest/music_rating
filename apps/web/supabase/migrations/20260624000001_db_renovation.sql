@@ -52,10 +52,26 @@ DROP FUNCTION IF EXISTS get_charts_trending_songs(int);
 DROP TRIGGER  IF EXISTS ratings_history_trigger ON ratings;
 DROP FUNCTION IF EXISTS record_rating_change();
 
+-- Denormalized ratings_count maintainer (search/recs popularity signal,
+-- migration 20260527000002). Declared "AFTER ... UPDATE OF release_id ON
+-- ratings", which hard-binds it to ratings.release_id and blocks the §8
+-- column drop. The counter must be rebuilt on release_groups during the
+-- RPC/view rewrite; drop it here so the renovation can proceed. The
+-- releases.ratings_count column itself is kept (search_releases() reads it).
+DROP TRIGGER  IF EXISTS trg_release_ratings_count ON ratings;
+DROP FUNCTION IF EXISTS _sync_release_ratings_count();
+
 -- ─────────────────────────────────────────────────────────────────
 -- §1  Truncate all catalog-dependent data
 -- ─────────────────────────────────────────────────────────────────
 -- Leaf tables first (tables with FKs into releases/artists).
+-- CASCADE is required: several tables hold FKs into this set but are not
+-- listed here, so a plain TRUNCATE would abort with "cannot truncate a
+-- table referenced in a foreign key constraint". CASCADE additionally
+-- truncates those dependents (all disposable pre-launch, not in backups):
+--   rating_likes, rating_comments, notifications  → FK to ratings(id)
+--   comment_likes                                 → FK to reviews(id)
+--   list_item_tracks                              → FK to list_items(id)
 
 TRUNCATE TABLE
   track_pairwise_comparisons,
@@ -75,7 +91,7 @@ TRUNCATE TABLE
   artists,
   artist_ingestion_queue,
   search_misses
-RESTART IDENTITY;
+RESTART IDENTITY CASCADE;
 
 -- ─────────────────────────────────────────────────────────────────
 -- §2  Evolve artists table
