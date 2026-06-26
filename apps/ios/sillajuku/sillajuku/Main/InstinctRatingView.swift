@@ -54,7 +54,15 @@ private enum Elo {
     }
 }
 
-// MARK: - Opponent
+// MARK: - Opponents
+
+private struct TrackOpponent {
+    let recordingId: UUID
+    let title: String
+    let artist: String
+    let eloScore: Double
+    let eloGames: Int
+}
 
 private struct Opponent {
     let releaseId: UUID
@@ -481,7 +489,7 @@ struct InstinctRatingView: View {
         }
     }
 
-    // MARK: Phase 3 — Done (I2: checkmark cover + rank + score badge)
+    // MARK: Phase 3 — Done
 
     private var doneView: some View {
         VStack(spacing: 0) {
@@ -562,6 +570,392 @@ struct InstinctRatingView: View {
                 .padding(.horizontal, 24)
                 .padding(.top, 20)
                 .padding(.bottom, 24)
+        }
+    }
+}
+
+// MARK: - Track Instinct Rating ViewModel
+
+@Observable
+private class InstinctTrackRatingViewModel {
+    enum Phase { case bucket, comparing, done }
+
+    var phase: Phase = .bucket
+    var isSaving = false
+
+    private var opponents: [TrackOpponent] = []
+    private var lo = 0
+    private var hi = 0
+    private(set) var comparisonIndex = 0
+    private(set) var totalComparisons = 0
+    private(set) var newElo: Double = Elo.defaultElo
+    private var newEloGames = 0
+    private var recordingId: UUID?
+    private var userId: UUID?
+    private(set) var userRatingsCount = 0
+    private(set) var finalScore: Double?
+
+    var currentOpponent: TrackOpponent? {
+        let mid = (lo + hi) / 2
+        guard lo < hi, mid < opponents.count else { return nil }
+        return opponents[mid]
+    }
+
+    func start(recordingId: UUID, userId: UUID) async {
+        self.recordingId = recordingId
+        self.userId = userId
+
+        struct OpponentRow: Decodable {
+            let recordingId: UUID
+            let eloScore: Double
+            let eloGames: Int
+            let recordings: RecInfo
+            struct RecInfo: Decodable {
+                let title: String
+                let artistDisplay: String?
+                enum CodingKeys: String, CodingKey {
+                    case title; case artistDisplay = "artist_display"
+                }
+            }
+            enum CodingKeys: String, CodingKey {
+                case recordingId = "recording_id"
+                case eloScore    = "elo_score"
+                case eloGames    = "elo_games"
+                case recordings
+            }
+        }
+
+        let rows: [OpponentRow] = (try? await supabase
+            .from("track_ratings")
+            .select("recording_id, elo_score, elo_games, recordings(title, artist_display)")
+            .eq("user_id", value: userId)
+            .not("elo_score", operator: .is, value: AnyJSON.null)
+            .not("recording_id", operator: .eq, value: recordingId)
+            .order("elo_score", ascending: false)
+            .execute()
+            .value) ?? []
+
+        opponents = rows.map {
+            TrackOpponent(recordingId: $0.recordingId, title: $0.recordings.title,
+                          artist: $0.recordings.artistDisplay ?? "",
+                          eloScore: $0.eloScore, eloGames: $0.eloGames)
+        }
+        let n = opponents.count
+        totalComparisons = n > 0 ? min(3, Int(ceil(log2(Double(n + 1))))) : 0
+        lo = 0; hi = n
+        userRatingsCount = n
+    }
+
+    func seedAndContinue(bucket: InstinctBucket) async {
+        guard let recordingId, let userId else { return }
+        isSaving = true; defer { isSaving = false }
+        newElo = bucket.seedElo; newEloGames = 0
+
+        struct Upsert: Encodable {
+            let userId: UUID; let recordingId: UUID; let eloScore: Double; let eloGames: Int
+            enum CodingKeys: String, CodingKey {
+                case userId = "user_id"; case recordingId = "recording_id"
+                case eloScore = "elo_score"; case eloGames = "elo_games"
+            }
+        }
+        try? await supabase.from("track_ratings")
+            .upsert(Upsert(userId: userId, recordingId: recordingId,
+                           eloScore: newElo, eloGames: newEloGames),
+                    onConflict: "user_id,recording_id")
+            .execute()
+
+        if !opponents.isEmpty && lo < hi && totalComparisons > 0 { phase = .comparing }
+        else { await finalize() }
+    }
+
+    func vote(newTrackWon: Bool) async {
+        guard let recordingId, let userId, lo < hi, let opp = currentOpponent else {
+            await finalize(); return
+        }
+        let mid = (lo + hi) / 2
+        if newTrackWon { hi = mid } else { lo = mid + 1 }
+        comparisonIndex += 1
+
+        let (winElo, loseElo) = newTrackWon
+            ? Elo.update(winnerElo: newElo, winnerGames: newEloGames,
+                         loserElo: opp.eloScore, loserGames: opp.eloGames)
+            : Elo.update(winnerElo: opp.eloScore, winnerGames: opp.eloGames,
+                         loserElo: newElo, loserGames: newEloGames)
+
+        newElo = newTrackWon ? winElo : loseElo
+        newEloGames += 1
+
+        async let _ = updateElo(userId: userId, recordingId: recordingId,
+                                 eloScore: newElo, eloGames: newEloGames)
+        async let _ = updateElo(userId: userId, recordingId: opp.recordingId,
+                                 eloScore: newTrackWon ? loseElo : winElo, eloGames: opp.eloGames + 1)
+        async let _ = logComparison(userId: userId,
+                                     winnerId: newTrackWon ? recordingId : opp.recordingId,
+                                     loserId:  newTrackWon ? opp.recordingId : recordingId)
+        if opponents.count + 1 >= 5 {
+            async let _ = writeScore(userId: userId, recordingId: opp.recordingId,
+                                     score: Elo.toScore(newTrackWon ? loseElo : winElo))
+        }
+        if lo >= hi || comparisonIndex >= totalComparisons { await finalize() }
+    }
+
+    private func updateElo(userId: UUID, recordingId: UUID, eloScore: Double, eloGames: Int) async {
+        struct U: Encodable {
+            let eloScore: Double; let eloGames: Int
+            enum CodingKeys: String, CodingKey { case eloScore = "elo_score"; case eloGames = "elo_games" }
+        }
+        try? await supabase.from("track_ratings")
+            .update(U(eloScore: eloScore, eloGames: eloGames))
+            .eq("user_id", value: userId).eq("recording_id", value: recordingId).execute()
+    }
+
+    private func writeScore(userId: UUID, recordingId: UUID, score: Double) async {
+        struct S: Encodable { let score: Double }
+        try? await supabase.from("track_ratings")
+            .update(S(score: score))
+            .eq("user_id", value: userId).eq("recording_id", value: recordingId).execute()
+    }
+
+    private func logComparison(userId: UUID, winnerId: UUID, loserId: UUID) async {
+        struct Row: Encodable {
+            let userId: UUID; let winnerId: UUID; let loserId: UUID
+            enum CodingKeys: String, CodingKey {
+                case userId = "user_id"; case winnerId = "winner_id"; case loserId = "loser_id"
+            }
+        }
+        try? await supabase.from("track_pairwise_comparisons")
+            .insert(Row(userId: userId, winnerId: winnerId, loserId: loserId)).execute()
+    }
+
+    private func finalize() async {
+        userRatingsCount = opponents.count + 1
+        if userRatingsCount >= 5 {
+            finalScore = Elo.toScore(newElo)
+            if let recordingId, let userId {
+                await writeScore(userId: userId, recordingId: recordingId, score: finalScore!)
+            }
+        }
+        phase = .done
+    }
+}
+
+// MARK: - Track Instinct Rating View
+
+struct InstinctTrackRatingView: View {
+    let track: TrackEntry
+    let release: Release
+    var onRated: (() -> Void)? = nil
+    var onDone: (() -> Void)? = nil
+
+    @State private var vm = InstinctTrackRatingViewModel()
+    @Environment(\.dismiss) private var dismiss
+
+    private func close() {
+        if let onDone { onDone() } else { dismiss() }
+    }
+
+    var body: some View {
+        ZStack {
+            Color.sjCream.ignoresSafeArea()
+            switch vm.phase {
+            case .bucket:    bucketView
+            case .comparing: comparingView
+            case .done:      doneView
+            }
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+        .task {
+            guard let userId = supabase.auth.currentUser?.id,
+                  let recordingId = track.trackId else { return }
+            await vm.start(recordingId: recordingId, userId: userId)
+        }
+    }
+
+    // MARK: Phase 1 — Bucket
+
+    private var bucketView: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                CoverImage(url: release.coverUrl, cornerRadius: 8)
+                    .frame(width: 52, height: 52)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(track.title)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.sjInk)
+                        .lineLimit(2)
+                    Text(release.displayArtist)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.sjMuted)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+
+            Divider().padding(.vertical, 14)
+
+            Text("How was it?")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.sjMuted)
+                .textCase(.uppercase)
+                .tracking(0.8)
+                .padding(.bottom, 10)
+
+            HStack(spacing: 8) {
+                ForEach(InstinctBucket.allCases, id: \.label) { bucket in
+                    Button {
+                        Task { await vm.seedAndContinue(bucket: bucket); onRated?() }
+                    } label: {
+                        VStack(spacing: 6) {
+                            Image(systemName: bucket.icon)
+                                .font(.system(size: 20)).foregroundStyle(bucket.color)
+                            Text(bucket.label.uppercased())
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(bucket.color).tracking(0.5)
+                        }
+                        .frame(maxWidth: .infinity).padding(.vertical, 14)
+                        .background(bucket.color.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(vm.isSaving)
+                }
+            }
+            .padding(.horizontal, 20).padding(.bottom, 24)
+        }
+    }
+
+    // MARK: Phase 2 — Compare
+
+    private var comparingView: some View {
+        VStack(spacing: 0) {
+            if vm.totalComparisons > 0 {
+                HStack(spacing: 6) {
+                    ForEach(0..<vm.totalComparisons, id: \.self) { i in
+                        Capsule()
+                            .fill(i < vm.comparisonIndex ? Color.sjBlue : Color.sjBorder)
+                            .frame(height: 3)
+                    }
+                }
+                .padding(.horizontal, 32).padding(.top, 14).padding(.bottom, 10)
+            }
+            if let opp = vm.currentOpponent {
+                Text("Which do you prefer?")
+                    .font(.system(size: 14, weight: .bold)).foregroundStyle(Color.sjInk)
+                    .padding(.bottom, 12)
+
+                HStack(alignment: .top, spacing: 10) {
+                    trackCard(title: track.title, artist: release.displayArtist,
+                              coverUrl: release.coverUrl, isNew: true) {
+                        Task { await vm.vote(newTrackWon: true) }
+                    }
+                    trackCard(title: opp.title, artist: opp.artist,
+                              coverUrl: nil, isNew: false) {
+                        Task { await vm.vote(newTrackWon: false) }
+                    }
+                }
+                .padding(.horizontal, 20).padding(.bottom, 20)
+            }
+        }
+    }
+
+    private func trackCard(title: String, artist: String, coverUrl: String?,
+                            isNew: Bool, action: @escaping () -> Void) -> some View {
+        VStack(spacing: 6) {
+            if let url = coverUrl {
+                CoverImage(url: url, cornerRadius: 8).frame(width: 74, height: 74)
+            } else {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8).fill(Color.sjBorder).frame(width: 74, height: 74)
+                    Image(systemName: "music.note").font(.system(size: 28)).foregroundStyle(Color.sjMuted)
+                }
+            }
+            Text(title)
+                .font(.system(size: 11, weight: .bold)).foregroundStyle(Color.sjInk)
+                .multilineTextAlignment(.center).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            Text(artist)
+                .font(.system(size: 10)).foregroundStyle(Color.sjMuted).lineLimit(1)
+            if isNew {
+                Text("NEW")
+                    .font(.system(size: 9, weight: .bold)).foregroundStyle(Color.sjBlue)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Color.sjBlue.opacity(0.12)).clipShape(RoundedRectangle(cornerRadius: 4))
+            } else {
+                Color.clear.frame(height: 17)
+            }
+            Spacer(minLength: 0)
+            Button(action: action) {
+                Text("Select")
+                    .font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
+                    .frame(maxWidth: .infinity).padding(.vertical, 7)
+                    .background(isNew ? Color.sjBlue : Color.sjInk)
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(10).frame(maxWidth: .infinity)
+        .background(isNew ? Color.sjBlue.opacity(0.06) : Color.sjSurface)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(isNew ? Color.sjBlue : Color.sjBorder, lineWidth: 1.5))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    // MARK: Phase 3 — Done
+
+    private var doneView: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 8) {
+                ZStack(alignment: .bottomTrailing) {
+                    CoverImage(url: release.coverUrl).frame(width: 72, height: 72)
+                    ZStack {
+                        Circle().fill(Color.sjBlue).frame(width: 24, height: 24)
+                            .overlay(Circle().stroke(Color.sjCream, lineWidth: 2))
+                        Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
+                    }
+                    .offset(x: 5, y: 5)
+                }
+                .padding(.top, 20)
+
+                Text(track.title)
+                    .font(.system(size: 15, weight: .bold)).foregroundStyle(Color.sjInk)
+                    .multilineTextAlignment(.center).lineLimit(2).padding(.horizontal, 40)
+                Text(release.displayArtist)
+                    .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+            }
+
+            if let score = vm.finalScore {
+                VStack(spacing: 4) {
+                    HStack(spacing: 6) {
+                        Image("icon-flower").renderingMode(.template).resizable().scaledToFit()
+                            .frame(width: 16, height: 16).foregroundStyle(Color.sjBlue)
+                        Text(String(format: "%.1f", score))
+                            .font(.system(size: 28, weight: .bold)).foregroundStyle(Color.sjBlue)
+                    }
+                    Text("Instinct Score · #\(vm.userRatingsCount) ranked")
+                        .font(.system(size: 11)).foregroundStyle(Color.sjMuted)
+                }
+                .padding(.horizontal, 28).padding(.vertical, 16)
+                .background(Color.sjBlue.opacity(0.08)).clipShape(RoundedRectangle(cornerRadius: 14))
+                .padding(.top, 16)
+            } else {
+                VStack(spacing: 6) {
+                    Text("Ranked!")
+                        .font(.system(size: 18, weight: .bold)).foregroundStyle(Color.sjInk)
+                    let needed = max(0, 5 - vm.userRatingsCount)
+                    if needed > 0 {
+                        Text("Rate \(needed) more to reveal your score.")
+                            .font(.system(size: 13)).foregroundStyle(Color.sjMuted)
+                            .multilineTextAlignment(.center)
+                    }
+                }
+                .padding(.top, 16)
+            }
+
+            Button("Done") { close() }
+                .font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+                .frame(maxWidth: .infinity).padding(.vertical, 14)
+                .background(Color.sjBlue).clipShape(RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal, 24).padding(.top, 20).padding(.bottom, 24)
         }
     }
 }

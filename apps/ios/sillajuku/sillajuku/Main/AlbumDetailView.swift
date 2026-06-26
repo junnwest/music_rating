@@ -86,7 +86,8 @@ private struct ReleaseTrackRow: Decodable {
 class AlbumDetailViewModel {
     var tracklist: [TrackItem] = []
     var tracks: [TrackEntry] = []
-    var trackRatings: [UUID: Double] = [:]   // keyed by recordings.id
+    var trackRatings: [UUID: Double] = [:]      // keyed by recordings.id (manual score)
+    var eloRatedTrackIds: Set<UUID> = []        // tracks rated via instinct (may have no score yet)
     var communityAvg: Double?
     var communityCount: Int = 0
     var userScore: Double?
@@ -194,6 +195,10 @@ class AlbumDetailViewModel {
                 .execute()
             trackRatings.removeValue(forKey: recordingId)
         }
+    }
+
+    func markTrackEloRated(recordingId: UUID) {
+        eloRatedTrackIds.insert(recordingId)
     }
 
     func loadRatings(releaseGroupId: UUID) async {
@@ -489,6 +494,7 @@ struct AlbumDetailView: View {
     @State private var showManualSheet = false
     @State private var showInstinctSheet = false
     @State private var trackRatingTarget: TrackEntry? = nil
+    @State private var trackInstinctTarget: TrackEntry? = nil
     @State private var selectedSong: TrackEntry? = nil
 
     private var releaseYear: String {
@@ -555,6 +561,13 @@ struct AlbumDetailView: View {
             SongDetailView(track: track, release: release)
         }
         .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
+        .sheet(item: $trackInstinctTarget) { track in
+            InstinctTrackRatingView(track: track, release: release) {
+                if let id = track.trackId { viewModel.markTrackEloRated(recordingId: id) }
+            } onDone: {
+                trackInstinctTarget = nil
+            }
+        }
     }
 
     // MARK: Compact header
@@ -750,8 +763,12 @@ struct AlbumDetailView: View {
                 TrackRow(
                     track: track,
                     existingScore: track.trackId.flatMap { viewModel.trackRatings[$0] },
+                    isEloRated: track.trackId.map { viewModel.eloRatedTrackIds.contains($0) } ?? false,
                     onTap: track.trackId != nil ? { selectedSong = track } : nil,
-                    onAdd: (track.trackId != nil && viewModel.ratingMode != "instinct") ? { trackRatingTarget = track } : nil
+                    onAdd: track.trackId != nil ? {
+                        if viewModel.ratingMode == "instinct" { trackInstinctTarget = track }
+                        else { trackRatingTarget = track }
+                    } : nil
                 )
                 if i < viewModel.tracks.count - 1 {
                     Divider().padding(.leading, 56)
@@ -912,6 +929,7 @@ private struct PostRow: View {
 private struct TrackRow: View {
     let track: TrackEntry
     var existingScore: Double? = nil
+    var isEloRated: Bool = false
     var onTap: (() -> Void)? = nil
     var onAdd: (() -> Void)? = nil
 
@@ -952,6 +970,11 @@ private struct TrackRow: View {
                     .font(.system(size: 11, weight: .bold)).foregroundStyle(Color.sjBlue)
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(Color.sjBlue.opacity(0.1)).clipShape(RoundedRectangle(cornerRadius: 4))
+            } else if isEloRated {
+                Image(systemName: "arrow.up.arrow.down")
+                    .font(.system(size: 11, weight: .bold)).foregroundStyle(Color.sjBlue)
+                    .frame(width: 26, height: 26)
+                    .background(Color.sjBlue.opacity(0.1)).clipShape(Circle())
             } else if let onAdd {
                 Button(action: onAdd) {
                     Image(systemName: "plus")
