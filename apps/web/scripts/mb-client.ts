@@ -97,6 +97,7 @@ export interface MbReleaseGroup {
   secondaryTypes: string[];         // 'Compilation' | 'Live' | 'Soundtrack' | 'Remix' ...
   firstReleaseDate: string | null;  // YYYY[-MM[-DD]]
   artistCredit: string;             // "Lady Gaga & Bradley Cooper"
+  primaryArtistMbid: string | null; // first credited artist's MBID (to detect guest features)
   genres: string[];
 }
 export interface MbReleaseStub {
@@ -168,6 +169,7 @@ export async function browseReleaseGroups(artistMbid: string): Promise<MbRelease
         secondaryTypes: rg['secondary-types'] ?? [],
         firstReleaseDate: rg['first-release-date'] || null,
         artistCredit: creditPhrase(rg['artist-credit']),
+        primaryArtistMbid: rg['artist-credit']?.[0]?.artist?.id ?? null,
         genres: (rg.genres ?? []).map((g: any) => g.name).filter(Boolean),
       });
     }

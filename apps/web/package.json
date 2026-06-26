@@ -73,6 +73,7 @@
     "mb:ingest:one": "tsx --env-file=.env.local scripts/mb-ingest-one.ts",
     "mb:embed": "tsx --env-file=.env.local scripts/mb-embed.ts",
     "mb:audit": "tsx --env-file=.env.local scripts/mb-audit.ts",
+    "mb:discover": "tsx --env-file=.env.local scripts/mb-discover.ts",
     "pipeline": "tsx --env-file=.env.local scripts/pipeline.ts",
     "pipeline:status": "tsx --env-file=.env.local scripts/pipeline-status.ts",
     "queue:ingest:albums": "tsx --env-file=.env.local scripts/ingest-itunes-queue.ts --skip-singles",

@@ -277,6 +277,18 @@ async function ingestEditionFromPrefetched(
   return n;
 }
 
+// Composition filter (decided 2026-06-26): trim to core types. Keep the artist's OWN
+// album/EP/single (+ compilation/soundtrack, which carry primary-type Album); drop guest
+// features (primary artist ≠ this artist) and live/remix/dj-mix/etc.
+const SKIP_SECONDARY = new Set(['live', 'remix', 'dj-mix', 'interview', 'audiobook', 'spokenword', 'audio drama']);
+export function shouldIngestRG(rg: MbReleaseGroup, artistMbid: string): boolean {
+  if (rg.primaryArtistMbid && rg.primaryArtistMbid !== artistMbid) return false; // guest feature / various artists
+  const sec = (rg.secondaryTypes ?? []).map(s => s.toLowerCase());
+  if (sec.some(s => SKIP_SECONDARY.has(s))) return false;
+  const pt = (rg.primaryType ?? '').toLowerCase();
+  return pt === 'album' || pt === 'ep' || pt === 'single';
+}
+
 /** Full ingest of one MB artist → artists/aliases/external_ids → release_groups → releases → recordings/release_tracks. */
 export async function ingestArtist(db: DB, mbid: string): Promise<{ artistId: string; isNew: boolean; rgCount: number; recCount: number }> {
   const detail = await getArtist(mbid);
@@ -295,8 +307,10 @@ export async function ingestArtist(db: DB, mbid: string): Promise<{ artistId: st
     if (arr) arr.push(r); else byRg.set(r.rgId, [r]);
   }
 
-  let recCount = 0;
+  let recCount = 0, kept = 0;
   for (const rg of rgs) {
+    if (!shouldIngestRG(rg, mbid)) continue;           // composition filter (trim to core)
+    kept++;
     const rgId = await findOrCreateReleaseGroup(db, rg, artistId);
     recCount += await ingestEditionFromPrefetched(db, rgId, rg, artistId, byRg.get(rg.id) ?? []);
   }
@@ -305,5 +319,5 @@ export async function ingestArtist(db: DB, mbid: string): Promise<{ artistId: st
     .update({ ingest_state: 'tracks_done', last_ingested_at: new Date().toISOString() })
     .eq('id', artistId);
 
-  return { artistId, isNew, rgCount: rgs.length, recCount };
+  return { artistId, isNew, rgCount: kept, recCount };
 }

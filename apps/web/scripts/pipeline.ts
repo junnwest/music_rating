@@ -82,15 +82,21 @@ async function ingestLoop(db: DB) {
     process.stdout.write(`  [ingest] ${row.name.padEnd(24)} `);
     await beat(db, 'ingest', { status: 'running', last_active: now(), current_item: row.name, items_done: done, errors: failed });
     try {
-      const r = await resolveArtist(row.name, region);
-      if (!r.best) {
-        const why = r.needsReview ? 'needs_review' : 'no_match';
-        await mark(db, row.id, 'skipped', { error: why });
-        skipped++; console.log(why);
-      } else {
-        const res = await ingestArtist(db, r.best.id);
+      // ListenBrainz discovery rows already carry the MBID → ingest directly (no resolve).
+      let mbid: string | null = (row.source === 'listenbrainz' && row.source_id) ? row.source_id : null;
+      let label = row.name, ambig = false;
+      if (!mbid) {
+        const r = await resolveArtist(row.name, region);
+        if (!r.best) {
+          const why = r.needsReview ? 'needs_review' : 'no_match';
+          await mark(db, row.id, 'skipped', { error: why });
+          skipped++; console.log(why);
+        } else { mbid = r.best.id; label = r.best.name; ambig = r.ambiguous; }
+      }
+      if (mbid) {
+        const res = await ingestArtist(db, mbid);
         await mark(db, row.id, 'done', { releases_added: res.rgCount });
-        done++; console.log(`→ ${r.best.name}  ${res.rgCount} groups, ${res.recCount} recordings${r.ambiguous ? ' (ambig)' : ''}`);
+        done++; console.log(`→ ${label}  ${res.rgCount} groups, ${res.recCount} recordings${ambig ? ' (ambig)' : ''}`);
       }
     } catch (e) {
       await mark(db, row.id, 'failed', { error: (e as Error).message.slice(0, 255) });
