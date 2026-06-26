@@ -1066,7 +1066,7 @@ struct ArtistDestination: Hashable {
     let name: String
 }
 
-private struct ArtistPageView: View {
+struct ArtistPageView: View {
     let artist: ArtistDestination
 
     @State private var releases:       [Release]    = []

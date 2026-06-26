@@ -554,6 +554,7 @@ struct AlbumDetailView: View {
         .navigationDestination(item: $selectedSong) { track in
             SongDetailView(track: track, release: release)
         }
+        .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
     }
 
     // MARK: Compact header
@@ -569,10 +570,13 @@ struct AlbumDetailView: View {
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(release.displayArtist)
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color.sjMuted)
-                    .lineLimit(1)
+                NavigationLink(value: ArtistDestination(name: release.displayArtist)) {
+                    Text(release.displayArtist)
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.sjMuted)
+                        .lineLimit(1)
+                }
+                .buttonStyle(.plain)
                 HStack(spacing: 6) {
                     if let type = release.releaseType {
                         Text(type.capitalized)
@@ -1100,9 +1104,12 @@ struct SongDetailView: View {
                     .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(2)
-                Text(release.artist)
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color.sjMuted)
+                NavigationLink(value: ArtistDestination(name: release.displayArtist)) {
+                    Text(release.displayArtist)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.sjMuted)
+                }
+                .buttonStyle(.plain)
                 if !durationString.isEmpty {
                     Text(durationString)
                         .font(.system(size: 12))
