@@ -6,6 +6,15 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-26 (cont. 4) — Clean catalog re-run + iOS schema reference + production-pipeline status:**
+
+- **Pushed** discovery + composition filter (`77dc815`), then caught a real bug: `browseReleaseGroups` lacked `inc=artist-credits` → `release_groups.artist_display` was `'(unknown)'` AND the guest-feature/VA filter was silently disabled (`primaryArtistMbid` null = nothing filtered). Fixed (`d621fcb`).
+- **Clean truncate + re-run on final code** (decided: the existing ~163 artists were built across pre-filter / pre-inline-cover / buggy code versions → inconsistent; cheaper to rebuild than to clean in place). Verified the fresh run: **0 `(unknown)`** artist_display, filter live (aespa 61 → core), covers + embeddings attaching from the start, all lanes healthy. Re-run draining the 275-seed (~1–2 min/artist).
+- **iOS schema reference delivered to Mac** (for the Swift rewrite): `release_groups` / `recordings` exact columns — **no `prestige`**; artist display = **`artist_display`**; release type = **`release_group_type`** (lowercase: album/ep/single/compilation/live/soundtrack/other); recordings `artists` → **`artist_display`**, track identity = **`recordings.id`** (uuid, what `track_ratings.recording_id` references). PostgREST embeds `ratings→release_groups` and `mix_items→release_groups` **auto-detect** (single FK, no hint needed). Track loading: **no view** → 2-step (canonical `releases` where `is_canonical=true` → `release_tracks` join `recordings`). Chart song RPCs **not rebuilt yet** (will key on `recording_id` uuid).
+- **Production-pipeline status — core done, full autonomy NOT yet.** Working: INGEST (resolve → composition filter → inline covers, crash-resumable) + EMBEDDINGS (concurrent) + heartbeat + clean data. **Missing:** (1) **self-feeding DISCOVER lane** (seed drains → pipeline idles; discovery is manual `mb:discover`/`queue:build:global`), (2) **FRESHNESS** lane (re-poll for new releases), (3) **QC** lane (`mb-audit` is manual), (4) iTunes **GAPFILL** + `mb-overrides` (~8 generic names), (5) **rating re-link** (§7), (6) **chart RPC rebuild**. ≈80% data-collection, ≈60% of the "run-for-a-week autonomous" engine.
+
+---
+
 **2026-06-26 — Session 16 (Mac): Profile share URL fix; OG images overhaul:**
 
 - **Profile share URL fixed (iOS):** `ProfileView.profileURL` `/@username` (404) → `/profile/username`.
