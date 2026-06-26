@@ -862,14 +862,8 @@ struct SearchView: View {
             HStack(spacing: 12) {
                 ForEach(albums) { album in
                     VStack(alignment: .leading, spacing: 6) {
-                        AsyncImage(url: URL(string: album.imageUrl?.thumbnailUrl ?? "")) { phase in
-                            switch phase {
-                            case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
-                            default: Color.sjBorder
-                            }
-                        }
-                        .frame(width: 112, height: 112)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        CoverImage(url: album.imageUrl)
+                            .frame(width: 112, height: 112)
 
                         Text(album.name)
                             .font(.system(size: 12, weight: .semibold))
@@ -1020,14 +1014,8 @@ struct SongRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            AsyncImage(url: URL(string: song.releases.coverUrl?.thumbnailUrl ?? "")) { phase in
-                switch phase {
-                case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
-                default: Color.sjBorder
-                }
-            }
-            .frame(width: 44, height: 44)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+            CoverImage(url: song.releases.coverUrl, cornerRadius: 6)
+                .frame(width: 44, height: 44)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(song.title)
@@ -1317,14 +1305,8 @@ private struct ArtistReleaseRow: View {
     var body: some View {
         NavigationLink(value: release) {
             HStack(spacing: 12) {
-                AsyncImage(url: URL(string: release.coverUrl?.thumbnailUrl ?? "")) { phase in
-                    switch phase {
-                    case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
-                    default: Color.sjBorder
-                    }
-                }
-                .frame(width: 44, height: 44)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                CoverImage(url: release.coverUrl, cornerRadius: 6)
+                    .frame(width: 44, height: 44)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(release.displayTitle)

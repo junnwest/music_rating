@@ -976,16 +976,8 @@ struct RatingListRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            AsyncImage(url: URL(string: coverUrl ?? "")) { phase in
-                switch phase {
-                case .success(let image):
-                    image.resizable().aspectRatio(contentMode: .fill)
-                default:
-                    Color.sjBorder
-                }
-            }
-            .frame(width: 46, height: 46)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+            CoverImage(url: coverUrl, cornerRadius: 6)
+                .frame(width: 46, height: 46)
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {

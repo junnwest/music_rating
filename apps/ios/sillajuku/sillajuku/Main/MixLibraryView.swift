@@ -330,14 +330,8 @@ private struct MixItemRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            AsyncImage(url: URL(string: item.releases.coverUrl ?? "")) { phase in
-                switch phase {
-                case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
-                default: Color.sjBorder
-                }
-            }
-            .frame(width: 50, height: 50)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            CoverImage(url: item.releases.coverUrl, cornerRadius: 8)
+                .frame(width: 50, height: 50)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.releases.title)

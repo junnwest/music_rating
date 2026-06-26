@@ -495,14 +495,8 @@ private struct UserRatedItemRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            AsyncImage(url: URL(string: coverUrl ?? "")) { phase in
-                switch phase {
-                case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
-                default: Color.sjBorder
-                }
-            }
-            .frame(width: 54, height: 54)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            CoverImage(url: coverUrl, cornerRadius: 8)
+                .frame(width: 54, height: 54)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {

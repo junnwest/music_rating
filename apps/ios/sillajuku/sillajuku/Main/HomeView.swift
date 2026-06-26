@@ -884,14 +884,8 @@ private struct FeedCard: View {
     private var albumSection: some View {
         NavigationLink(value: item.releases.asRelease) {
             HStack(spacing: 13) {
-                AsyncImage(url: URL(string: item.releases.coverUrl?.thumbnailUrl ?? "")) { phase in
-                    switch phase {
-                    case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
-                    default: Color.sjBorder
-                    }
-                }
-                .frame(width: 80, height: 80)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                CoverImage(url: item.releases.coverUrl)
+                    .frame(width: 80, height: 80)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.releases.title)

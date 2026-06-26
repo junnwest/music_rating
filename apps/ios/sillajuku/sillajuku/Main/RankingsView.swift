@@ -1466,21 +1466,8 @@ struct CoverThumb: View {
     let radius: CGFloat
 
     var body: some View {
-        AsyncImage(url: URL(string: url ?? "")) { phase in
-            switch phase {
-            case .success(let img):
-                img.resizable().aspectRatio(contentMode: .fill)
-            default:
-                ZStack {
-                    Color.sjBorder
-                    Image(systemName: "music.note")
-                        .font(.system(size: size * 0.28))
-                        .foregroundStyle(Color.sjMuted)
-                }
-            }
-        }
-        .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: radius))
+        CoverImage(url: url, cornerRadius: radius)
+            .frame(width: size, height: size)
     }
 }
 

@@ -308,14 +308,8 @@ struct InstinctRatingView: View {
     private var bucketView: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                AsyncImage(url: URL(string: release.coverUrl ?? "")) { phase in
-                    switch phase {
-                    case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
-                    default: Color.sjBorder
-                    }
-                }
-                .frame(width: 52, height: 52)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                CoverImage(url: release.coverUrl, cornerRadius: 8)
+                    .frame(width: 52, height: 52)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(release.displayTitle)
@@ -397,14 +391,8 @@ struct InstinctRatingView: View {
                 HStack(alignment: .top, spacing: 10) {
                     // ── New album card ──
                     VStack(spacing: 6) {
-                        AsyncImage(url: URL(string: release.coverUrl ?? "")) { phase in
-                            switch phase {
-                            case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
-                            default: Color.sjBorder
-                            }
-                        }
-                        .frame(width: 74, height: 74)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        CoverImage(url: release.coverUrl, cornerRadius: 8)
+                            .frame(width: 74, height: 74)
 
                         Text(release.displayTitle)
                             .font(.system(size: 11, weight: .bold))
@@ -448,14 +436,8 @@ struct InstinctRatingView: View {
 
                     // ── Opponent card ──
                     VStack(spacing: 6) {
-                        AsyncImage(url: URL(string: opp.release.coverUrl ?? "")) { phase in
-                            switch phase {
-                            case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
-                            default: Color.sjBorder
-                            }
-                        }
-                        .frame(width: 74, height: 74)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        CoverImage(url: opp.release.coverUrl, cornerRadius: 8)
+                            .frame(width: 74, height: 74)
 
                         Text(opp.release.displayTitle)
                             .font(.system(size: 11, weight: .bold))
@@ -505,14 +487,8 @@ struct InstinctRatingView: View {
         VStack(spacing: 0) {
             VStack(spacing: 8) {
                 ZStack(alignment: .bottomTrailing) {
-                    AsyncImage(url: URL(string: release.coverUrl ?? "")) { phase in
-                        switch phase {
-                        case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
-                        default: Color.sjBorder
-                        }
-                    }
-                    .frame(width: 72, height: 72)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    CoverImage(url: release.coverUrl)
+                        .frame(width: 72, height: 72)
 
                     ZStack {
                         Circle()

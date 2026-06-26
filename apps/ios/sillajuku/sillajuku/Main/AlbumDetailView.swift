@@ -38,7 +38,7 @@ struct AlbumPublicMix: Identifiable {
 
 // MARK: - Track entry (loaded via release_tracks → recordings)
 
-struct TrackEntry: Codable, Identifiable {
+struct TrackEntry: Codable, Identifiable, Hashable {
     let trackId: UUID?        // recordings.id
     let position: Int
     let title: String
@@ -119,14 +119,15 @@ class AlbumDetailViewModel {
     private func loadTracks(releaseGroupId: UUID) async {
         // Step 1: find the canonical release edition for this release group
         struct CanonicalRelease: Decodable { let id: UUID }
-        guard let canonical: CanonicalRelease = try? await supabase
+        let canonicals: [CanonicalRelease] = (try? await supabase
             .from("releases")
             .select("id")
             .eq("release_group_id", value: releaseGroupId)
             .eq("is_canonical", value: true)
-            .maybeSingle()
+            .limit(1)
             .execute()
-            .value else { return }
+            .value) ?? []
+        guard let canonical = canonicals.first else { return }
 
         // Step 2: load release_tracks with embedded recording info
         let rows: [ReleaseTrackRow] = (try? await supabase
@@ -404,18 +405,9 @@ struct ManualRatingSheet: View {
                     .frame(maxWidth: .infinity)
 
                 VStack(spacing: 0) {
-                    AsyncImage(url: URL(string: release.coverUrl ?? "")) { phase in
-                        switch phase {
-                        case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
-                        default:
-                            Color.sjBorder.overlay(
-                                Image(systemName: "music.note").foregroundStyle(Color.sjMuted)
-                            )
-                        }
-                    }
-                    .frame(width: 64, height: 64)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .padding(.top, 14)
+                    CoverImage(url: release.coverUrl)
+                        .frame(width: 64, height: 64)
+                        .padding(.top, 14)
 
                     Text(release.displayTitle)
                         .font(.system(size: 15, weight: .bold))
@@ -586,18 +578,8 @@ struct AlbumDetailView: View {
 
     private var compactHeader: some View {
         HStack(alignment: .top, spacing: 14) {
-            AsyncImage(url: URL(string: release.coverUrl ?? "")) { phase in
-                switch phase {
-                case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
-                default:
-                    ZStack {
-                        Color.sjBorder
-                        Image(systemName: "music.note").font(.system(size: 24)).foregroundStyle(Color.sjMuted)
-                    }
-                }
-            }
-            .frame(width: 88, height: 88)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            CoverImage(url: release.coverUrl, cornerRadius: 12)
+                .frame(width: 88, height: 88)
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(release.displayTitle)
@@ -1029,15 +1011,9 @@ private struct TrackRatingSheet: View {
             RoundedRectangle(cornerRadius: 2).fill(Color.sjBorder)
                 .frame(width: 36, height: 4).padding(.top, 10).frame(maxWidth: .infinity)
 
-            AsyncImage(url: URL(string: release.coverUrl ?? "")) { phase in
-                switch phase {
-                case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
-                default: Color.sjBorder.overlay(Image(systemName: "music.note").foregroundStyle(Color.sjMuted))
-                }
-            }
-            .frame(width: 56, height: 56)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .padding(.top, 16)
+            CoverImage(url: release.coverUrl, cornerRadius: 8)
+                .frame(width: 56, height: 56)
+                .padding(.top, 16)
 
             Text(track.title)
                 .font(.system(size: 15, weight: .bold)).foregroundStyle(Color.sjInk)
@@ -1129,14 +1105,8 @@ struct SongDetailView: View {
 
     private var songHeader: some View {
         HStack(spacing: 16) {
-            AsyncImage(url: URL(string: release.coverUrl?.thumbnailUrl ?? "")) { phase in
-                switch phase {
-                case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
-                default: Color.sjBorder
-                }
-            }
-            .frame(width: 80, height: 80)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            CoverImage(url: release.coverUrl)
+                .frame(width: 80, height: 80)
 
             VStack(alignment: .leading, spacing: 5) {
                 Text("Track \(track.position)")
@@ -1234,14 +1204,8 @@ struct SongDetailView: View {
                 .tracking(0.8)
             NavigationLink(value: release) {
                 HStack(spacing: 12) {
-                    AsyncImage(url: URL(string: release.coverUrl?.thumbnailUrl ?? "")) { phase in
-                        switch phase {
-                        case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
-                        default: Color.sjBorder
-                        }
-                    }
-                    .frame(width: 44, height: 44)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    CoverImage(url: release.coverUrl, cornerRadius: 6)
+                        .frame(width: 44, height: 44)
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(release.displayTitle)
@@ -1275,12 +1239,14 @@ struct SongDetailView: View {
 
         guard let userId = supabase.auth.currentUser?.id else { return }
         struct UserRow: Decodable { let score: Double? }
-        let row: UserRow? = try? await supabase
+        let rows: [UserRow] = (try? await supabase
             .from("track_ratings").select("score")
             .eq("user_id", value: userId)
             .eq("recording_id", value: recordingId)
-            .maybeSingle().execute().value
-        userScore = row?.score
+            .limit(1)
+            .execute()
+            .value) ?? []
+        userScore = rows.first?.score
     }
 }
 

@@ -122,16 +122,8 @@ private struct ActivityRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            AsyncImage(url: URL(string: item.releases.coverUrl ?? "")) { phase in
-                switch phase {
-                case .success(let image):
-                    image.resizable().aspectRatio(contentMode: .fill)
-                default:
-                    Color.sjBorder
-                }
-            }
-            .frame(width: 52, height: 52)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+            CoverImage(url: item.releases.coverUrl, cornerRadius: 6)
+                .frame(width: 52, height: 52)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.releases.title)
