@@ -219,16 +219,25 @@ class DiscoveryViewModel {
         let lovedArtists = Array(Set(rows.map(\.releaseGroups.artist)).prefix(30))
         guard !lovedArtists.isEmpty else { return }
 
-        tasteAlbums = (try? await supabase
+        let all: [Release] = (try? await supabase
             .from("release_groups")
             .select("id, title, artist_display, cover_url, native_title, release_group_type, first_release_date")
             .in("artist_display", values: lovedArtists)
             .in("release_group_type", values: ["album", "ep"])
             .not("cover_url", operator: .is, value: AnyJSON.null)
             .order("first_release_date", ascending: false, nullsFirst: false)
-            .limit(40)
+            .limit(200)
             .execute()
             .value) ?? []
+
+        // Cap at 3 albums per artist so no single prolific artist floods the section.
+        var countPerArtist: [String: Int] = [:]
+        var capped: [Release] = []
+        for album in all {
+            let n = countPerArtist[album.displayArtist, default: 0]
+            if n < 3 { capped.append(album); countPerArtist[album.displayArtist] = n + 1 }
+        }
+        tasteAlbums = capped.shuffled()
     }
 
     // Most-rated release groups on the platform in the last 30 days.
@@ -698,7 +707,7 @@ struct SearchView: View {
                     }
                     if !visibleTaste.isEmpty {
                         discoverySectionTitle("From Your Taste")
-                        albumScroll(discoveryVM.tasteAlbums)
+                        albumScroll(visibleTaste)
                         Spacer().frame(height: 24)
                     }
 
