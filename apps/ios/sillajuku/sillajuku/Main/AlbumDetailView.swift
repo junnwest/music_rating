@@ -486,7 +486,7 @@ struct ManualRatingSheet: View {
             .padding(.top, 14)
             .padding(.trailing, 14)
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.fraction(0.36)])
         .presentationDragIndicator(.hidden)
     }
 
@@ -1052,7 +1052,7 @@ private struct TrackRatingSheet: View {
             .padding(.horizontal, 24).padding(.top, 16).padding(.bottom, 24)
         }
         .background(Color.sjCream.ignoresSafeArea())
-        .presentationDetents([.medium])
+        .presentationDetents([.fraction(0.36)])
         .presentationDragIndicator(.visible)
     }
 }
