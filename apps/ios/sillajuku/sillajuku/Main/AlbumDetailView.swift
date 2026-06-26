@@ -396,96 +396,78 @@ struct ManualRatingSheet: View {
     }
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
+        VStack(spacing: 0) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(Color.sjBorder)
+                .frame(width: 36, height: 4)
+                .padding(.top, 10)
+                .frame(maxWidth: .infinity)
+
             VStack(spacing: 0) {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(Color.sjBorder)
-                    .frame(width: 36, height: 4)
-                    .padding(.top, 10)
-                    .frame(maxWidth: .infinity)
+                Text(release.displayTitle)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Color.sjInk)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(1)
+                    .padding(.horizontal, 40)
+                    .padding(.top, 16)
 
-                VStack(spacing: 0) {
-                    CoverImage(url: release.coverUrl)
-                        .frame(width: 64, height: 64)
-                        .padding(.top, 14)
-
-                    Text(release.displayTitle)
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(Color.sjInk)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                        .padding(.horizontal, 40)
-                        .padding(.top, 8)
-
-                    Text(release.displayArtist)
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color.sjMuted)
-                        .padding(.top, 2)
-
-                    Text(scoreLabel)
-                        .font(.system(size: 32, weight: .bold))
-                        .foregroundStyle(Color.sjBlue)
-                        .monospacedDigit()
-                        .padding(.top, 12)
-
-                    Slider(value: $draftScore, in: 0.5...5.0, step: 0.5)
-                        .tint(Color.sjBlue)
-                        .padding(.horizontal, 24)
-                        .padding(.top, 8)
-                        .sensoryFeedback(.selection, trigger: draftScore)
-
-                    HStack {
-                        Text("0.5")
-                        Spacer()
-                        Text("5.0")
-                    }
-                    .font(.system(size: 10))
+                Text(release.displayArtist)
+                    .font(.system(size: 12))
                     .foregroundStyle(Color.sjMuted)
-                    .padding(.horizontal, 26)
                     .padding(.top, 2)
 
-                    VStack(spacing: 10) {
-                        Button {
-                            onSave(draftScore)
-                            dismiss()
-                        } label: {
-                            Text("Save Rating")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .background(Color.sjBlue)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                        }
+                Text(scoreLabel)
+                    .font(.system(size: 36, weight: .bold))
+                    .foregroundStyle(Color.sjBlue)
+                    .monospacedDigit()
+                    .padding(.top, 10)
 
-                        if existingScore != nil {
-                            Button("Remove Rating") {
-                                onSave(nil)
-                                dismiss()
-                            }
-                            .font(.system(size: 13))
-                            .foregroundStyle(Color.sjMuted)
-                        }
-                    }
+                Slider(value: $draftScore, in: 0.5...5.0, step: 0.5)
+                    .tint(Color.sjBlue)
                     .padding(.horizontal, 24)
-                    .padding(.bottom, 28)
-                }
-            }
-            .background(Color.sjCream.ignoresSafeArea())
+                    .padding(.top, 6)
+                    .sensoryFeedback(.selection, trigger: draftScore)
 
-            Button { dismiss() } label: {
-                ZStack {
-                    Circle()
-                        .fill(Color.sjBorder)
-                        .frame(width: 28, height: 28)
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color.sjMuted)
+                HStack {
+                    Text("0.5")
+                    Spacer()
+                    Text("5.0")
                 }
+                .font(.system(size: 10))
+                .foregroundStyle(Color.sjMuted)
+                .padding(.horizontal, 26)
+                .padding(.top, 2)
+
+                VStack(spacing: 8) {
+                    Button {
+                        onSave(draftScore)
+                        dismiss()
+                    } label: {
+                        Text("Save Rating")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                            .background(Color.sjBlue)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+
+                    if existingScore != nil {
+                        Button("Remove Rating") {
+                            onSave(nil)
+                            dismiss()
+                        }
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.sjMuted)
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 12)
+                .padding(.bottom, 24)
             }
-            .padding(.top, 14)
-            .padding(.trailing, 14)
         }
+        .background(Color.sjCream.ignoresSafeArea())
         .presentationDetents([.fraction(0.36)])
         .presentationDragIndicator(.hidden)
     }
