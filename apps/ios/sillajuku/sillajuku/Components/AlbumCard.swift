@@ -8,21 +8,8 @@ struct AlbumCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ZStack(alignment: .bottomTrailing) {
-                AsyncImage(url: URL(string: release.coverUrl ?? "")) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().aspectRatio(contentMode: .fill)
-                    default:
-                        ZStack {
-                            Color.sjBorder
-                            Image(systemName: "music.note")
-                                .font(.system(size: 20))
-                                .foregroundStyle(Color.sjMuted)
-                        }
-                    }
-                }
-                .aspectRatio(1, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                CoverImage(url: release.coverUrl, cornerRadius: 8)
+                    .aspectRatio(1, contentMode: .fit)
 
                 if isRated {
                     ZStack {

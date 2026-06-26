@@ -964,14 +964,8 @@ private struct DiscoveryAlbumCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ZStack(alignment: .bottomTrailing) {
-                AsyncImage(url: URL(string: release.coverUrl?.thumbnailUrl ?? "")) { phase in
-                    switch phase {
-                    case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
-                    default: Color.sjBorder
-                    }
-                }
-                .frame(width: 128, height: 128)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                CoverImage(url: release.coverUrl)
+                    .frame(width: 128, height: 128)
 
                 if isRated {
                     ZStack {

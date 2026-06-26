@@ -11,11 +11,64 @@ extension Color {
 
 extension String {
     // Returns a downscaled URL for thumbnails (≤128pt).
-    // iTunes stores images at 600×600; replacing the size token cuts download size ~4×.
-    // Spotify CDN (i.scdn.co) doesn't support URL-based resizing — those remain as-is.
+    // iTunes:           600x600bb / 1200x1200bb → 300x300bb (~4× smaller)
+    // Cover Art Archive: front-500 → front-250   (~4× smaller, no redirect overhead)
     var thumbnailUrl: String {
         self
-            .replacingOccurrences(of: "600x600bb", with: "300x300bb")
+            .replacingOccurrences(of: "600x600bb",   with: "300x300bb")
             .replacingOccurrences(of: "1200x1200bb", with: "300x300bb")
+            .replacingOccurrences(of: "front-500",   with: "front-250")
+    }
+}
+
+// MARK: - Shimmer placeholder
+
+private struct ShimmerView: View {
+    @State private var phase: CGFloat = 0
+
+    var body: some View {
+        GeometryReader { geo in
+            Color.sjBorder
+                .overlay(
+                    Rectangle()
+                        .fill(LinearGradient(
+                            colors: [.clear, .white.opacity(0.28), .clear],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ))
+                        .frame(width: geo.size.width * 0.55)
+                        .offset(x: (geo.size.width * 1.55) * phase - geo.size.width * 0.55)
+                )
+                .clipped()
+        }
+        .onAppear {
+            withAnimation(.linear(duration: 1.1).repeatForever(autoreverses: false)) {
+                phase = 1
+            }
+        }
+    }
+}
+
+// MARK: - Shared cover image component
+
+/// Drop-in replacement for AsyncImage on release covers.
+/// Applies thumbnailUrl downsizing, shows an animated shimmer while loading,
+/// and clips to a rounded rectangle. Set size via .frame() on the call site.
+struct CoverImage: View {
+    let url: String?
+    var cornerRadius: CGFloat = 10
+
+    var body: some View {
+        AsyncImage(url: URL(string: url?.thumbnailUrl ?? "")) { phase in
+            switch phase {
+            case .success(let img):
+                img.resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .transition(.opacity.animation(.easeIn(duration: 0.15)))
+            default:
+                ShimmerView()
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
     }
 }
