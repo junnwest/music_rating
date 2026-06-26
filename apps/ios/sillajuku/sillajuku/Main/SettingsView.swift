@@ -264,6 +264,7 @@ struct SettingsView: View {
 
     private func loadPreferences() {
         ratingMode = viewModel.profile?.ratingMode ?? "manual"
+        ratingStep = viewModel.profile?.ratingStep ?? 0.5
     }
 
     private func saveRatingMode(_ value: String) {

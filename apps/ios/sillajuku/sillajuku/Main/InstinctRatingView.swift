@@ -296,14 +296,14 @@ struct InstinctRatingView: View {
 
     var body: some View {
         ZStack {
-            Color.sjCream.ignoresSafeArea()
             switch vm.phase {
             case .bucket:    bucketView
             case .comparing: comparingView
             case .done:      doneView
             }
         }
-        .presentationDetents([.medium])
+        .presentationBackground(Color.sjCream)
+        .presentationDetents([.fraction(0.36)])
         .presentationDragIndicator(.visible)
         .task {
             guard let userId = supabase.auth.currentUser?.id else { return }

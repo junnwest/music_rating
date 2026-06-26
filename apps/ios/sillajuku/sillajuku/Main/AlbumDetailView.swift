@@ -93,6 +93,7 @@ class AlbumDetailViewModel {
     var userScore: Double?
     var userEloScore: Double?
     var ratingMode = "manual"
+    var ratingStep: Double = 0.5
     var posts: [AlbumPost] = []
     var publicMixes: [AlbumPublicMix] = []
     var isLoading = true
@@ -229,12 +230,17 @@ class AlbumDetailViewModel {
         guard let userId = supabase.auth.currentUser?.id else { return }
         struct P: Decodable {
             let ratingMode: String?
-            enum CodingKeys: String, CodingKey { case ratingMode = "rating_mode" }
+            let ratingStep: Double?
+            enum CodingKeys: String, CodingKey {
+                case ratingMode = "rating_mode"
+                case ratingStep = "manual_rating_step"
+            }
         }
         if let p: P = try? await supabase
-            .from("profiles").select("rating_mode")
+            .from("profiles").select("rating_mode, manual_rating_step")
             .eq("id", value: userId).single().execute().value {
             ratingMode = p.ratingMode ?? "manual"
+            ratingStep = p.ratingStep ?? 0.5
         }
     }
 
@@ -388,14 +394,16 @@ struct StarRatingView: View {
 struct ManualRatingSheet: View {
     let release: Release
     @Binding var existingScore: Double?
+    var ratingStep: Double = 0.5
     let onSave: (Double?) -> Void
 
     @State private var draftScore: Double
     @Environment(\.dismiss) private var dismiss
 
-    init(release: Release, existingScore: Binding<Double?>, onSave: @escaping (Double?) -> Void) {
+    init(release: Release, existingScore: Binding<Double?>, ratingStep: Double = 0.5, onSave: @escaping (Double?) -> Void) {
         self.release        = release
         self._existingScore = existingScore
+        self.ratingStep     = ratingStep
         self.onSave         = onSave
         self._draftScore    = State(initialValue: existingScore.wrappedValue ?? 2.5)
     }
@@ -428,7 +436,7 @@ struct ManualRatingSheet: View {
                     .monospacedDigit()
                     .padding(.top, 10)
 
-                Slider(value: $draftScore, in: 0.5...5.0, step: 0.5)
+                Slider(value: $draftScore, in: 0.5...5.0, step: ratingStep)
                     .tint(Color.sjBlue)
                     .padding(.horizontal, 24)
                     .padding(.top, 6)
@@ -473,7 +481,7 @@ struct ManualRatingSheet: View {
             }
         }
         .presentationBackground(Color.sjCream)
-        .presentationDetents([.fraction(0.36)])
+        .presentationDetents([.fraction(0.33)])
         .presentationDragIndicator(.hidden)
     }
 
@@ -529,7 +537,8 @@ struct AlbumDetailView: View {
         .sheet(isPresented: $showManualSheet) {
             ManualRatingSheet(
                 release: release,
-                existingScore: $viewModel.userScore
+                existingScore: $viewModel.userScore,
+                ratingStep: viewModel.ratingStep
             ) { score in
                 Task {
                     await viewModel.setRating(releaseGroupId: release.id, score: score)
