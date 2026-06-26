@@ -37,9 +37,14 @@ async function mbGet(path: string, attempt = 0): Promise<any> {
   await acquire();
   let res: Response;
   try {
-    res = await fetch(`${MB_BASE}${path}${path.includes('?') ? '&' : '?'}fmt=json`, {
-      headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
-    });
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 30_000); // never let one call hang the pipeline
+    try {
+      res = await fetch(`${MB_BASE}${path}${path.includes('?') ? '&' : '?'}fmt=json`, {
+        headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+        signal: ctrl.signal,
+      });
+    } finally { clearTimeout(timer); }
   } catch {
     if (attempt >= 5) return null;
     await sleep(Math.min(30_000, 2_000 * 2 ** attempt));
@@ -184,11 +189,10 @@ export async function browseReleases(releaseGroupMbid: string): Promise<MbReleas
   }));
 }
 
-export async function getReleaseTracks(releaseMbid: string): Promise<MbTrack[]> {
-  const r = await mbGet(`/release/${releaseMbid}?inc=${enc('recordings isrcs artist-credits media')}`);
-  if (!r) return [];
+// Parse a release's media[] → flat track list (recordings + ISRCs + disc/position).
+function parseMedia(media: any[] | undefined): MbTrack[] {
   const tracks: MbTrack[] = [];
-  for (const m of r.media ?? []) {
+  for (const m of media ?? []) {
     const disc = m.position ?? 1;
     for (const t of m.tracks ?? []) {
       const rec = t.recording ?? {};
@@ -205,6 +209,60 @@ export async function getReleaseTracks(releaseMbid: string): Promise<MbTrack[]> 
     }
   }
   return tracks;
+}
+
+export async function getReleaseTracks(releaseMbid: string): Promise<MbTrack[]> {
+  const r = await mbGet(`/release/${releaseMbid}?inc=${enc('recordings isrcs artist-credits media')}`);
+  return r ? parseMedia(r.media) : [];
+}
+
+// A release edition WITH its tracks + the release-group it belongs to.
+export interface MbArtistRelease {
+  id: string;
+  rgId: string | null;       // release-group MBID
+  status: string | null;
+  date: string | null;
+  country: string | null;
+  trackCount: number;
+  coverFront: boolean;       // Cover Art Archive has front art for this release
+  tracks: MbTrack[];
+}
+
+// Bulk-fetch ALL of an artist's release editions WITH tracks+ISRCs in pages of 100.
+// One paginated call replaces (browseReleases + getReleaseTracks) per release-group —
+// the big throughput win for prolific artists.
+const MAX_RELEASE_PAGES = 40; // cap heavily-featured artists (Future/Drake) at 4000 releases
+
+export async function browseArtistReleases(artistMbid: string): Promise<MbArtistRelease[]> {
+  const out: MbArtistRelease[] = [];
+  let offset = 0, page = 0;
+  for (;;) {
+    const data = await mbGet(
+      `/release?artist=${artistMbid}&inc=${enc('recordings isrcs artist-credits media release-groups')}&limit=100&offset=${offset}`,
+    );
+    const rs: any[] = data?.releases ?? [];
+    for (const r of rs) {
+      out.push({
+        id: r.id,
+        rgId: r['release-group']?.id ?? null,
+        status: r.status ?? null,
+        date: r.date || null,
+        country: r.country ?? null,
+        trackCount: (r.media ?? []).reduce((n: number, m: any) => n + (m['track-count'] ?? (m.tracks?.length ?? 0)), 0),
+        coverFront: r['cover-art-archive']?.front ?? false,
+        tracks: parseMedia(r.media),
+      });
+    }
+    const total = data?.['release-count'] ?? out.length;
+    offset += rs.length;
+    page++;
+    if (rs.length === 0 || offset >= total) break;
+    if (page >= MAX_RELEASE_PAGES) {
+      process.stdout.write(`\n  [mb] capped at ${offset}/${total} releases for ${artistMbid} (heavily featured) `);
+      break;
+    }
+  }
+  return out;
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────

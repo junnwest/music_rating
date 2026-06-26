@@ -6,8 +6,8 @@
 
 import { randomUUID } from 'crypto';
 import {
-  searchArtists, getArtist, browseReleaseGroups, browseReleases, getReleaseTracks,
-  type MbArtistCandidate, type MbArtistDetail, type MbReleaseGroup, type MbReleaseStub, type MbTrack,
+  searchArtists, getArtist, browseReleaseGroups, browseArtistReleases,
+  type MbArtistCandidate, type MbArtistDetail, type MbReleaseGroup, type MbArtistRelease, type MbTrack,
 } from './mb-client';
 import { getDB, normalizeStr, detectLanguage, type DB } from './itunes-ingest-core';
 import { MB_ARTIST_OVERRIDES } from './mb-overrides';
@@ -115,7 +115,8 @@ function pickNative(detail: MbArtistDetail): string | null {
 const rankCountry = (c: string | null) => (c === 'KR' ? 0 : c === 'JP' ? 1 : c === 'US' ? 2 : 3);
 
 // Representative edition: Official → earliest date → region KR>JP>US → most complete.
-function pickRepresentative(rs: MbReleaseStub[]): MbReleaseStub {
+type RepCandidate = { status: string | null; date: string | null; country: string | null; trackCount: number };
+function pickRepresentative<T extends RepCandidate>(rs: T[]): T {
   const official = rs.filter(r => r.status === 'Official');
   const pool = official.length ? official : rs;
   return [...pool].sort((a, b) => {
@@ -220,11 +221,15 @@ async function findOrCreateRecording(db: DB, t: MbTrack, primaryArtistId: string
   return data.id;
 }
 
-// Insert the representative edition + its recordings/release_tracks. Returns track count.
-async function ingestEditions(db: DB, rgId: string, rg: MbReleaseGroup, primaryArtistId: string): Promise<number> {
-  const releases = await browseReleases(rg.id);
-  if (releases.length === 0) return 0;
-  const rep = pickRepresentative(releases);
+// Insert the representative edition + its recordings/release_tracks from PRE-FETCHED
+// editions (no per-RG MB calls — tracks already came with the bulk artist-releases fetch).
+async function ingestEditionFromPrefetched(
+  db: DB, rgId: string, rg: MbReleaseGroup, primaryArtistId: string, editions: MbArtistRelease[],
+): Promise<number> {
+  if (editions.length === 0) return 0;
+  const rep = pickRepresentative(editions);
+  // Cover Art Archive front art (hotlink, never cached). MB's flag tells us if it exists.
+  const coverUrl = rep.coverFront ? `https://coverartarchive.org/release/${rep.id}/front-500` : null;
 
   const releaseId = randomUUID();
   const { error: upErr } = await db.from('releases').upsert({
@@ -238,6 +243,8 @@ async function ingestEditions(db: DB, rgId: string, rg: MbReleaseGroup, primaryA
     release_date: padDate(rep.date),
     release_type: TITLE_TYPE[mbTypeToGroupType(rg.primaryType, rg.secondaryTypes)] ?? 'Album',
     total_tracks: rep.trackCount || null,
+    cover_url: coverUrl,
+    cover_source: coverUrl ? 'coverartarchive' : null,
     source: 'musicbrainz',
     cached_at: new Date().toISOString(),
   }, { onConflict: 'mb_release_id', ignoreDuplicates: true });
@@ -246,7 +253,15 @@ async function ingestEditions(db: DB, rgId: string, rg: MbReleaseGroup, primaryA
   if (error) throw new Error(`release resolve ${rep.id}: ${error.message}`);
   const releaseDbId = relRow.id;
 
-  const tracks = await getReleaseTracks(rep.id);
+  // Guarantee exactly one canonical edition per group (idempotent across re-ingests /
+  // a changed representative pick): demote any other canonical edition in this group.
+  await db.from('releases').update({ is_canonical: false })
+    .eq('release_group_id', rgId).eq('is_canonical', true).neq('id', releaseDbId);
+
+  // The group's display cover = its canonical edition's cover.
+  if (coverUrl) await db.from('release_groups').update({ cover_url: coverUrl }).eq('id', rgId);
+
+  const tracks = rep.tracks;           // already fetched in the bulk artist-releases call
   const seenRec = new Set<string>();   // a recording appears once per release (UNIQUE(release_id, recording_id))
   let n = 0;
   for (const t of tracks) {
@@ -269,10 +284,21 @@ export async function ingestArtist(db: DB, mbid: string): Promise<{ artistId: st
   const { id: artistId, isNew } = await findOrCreateArtistByMbid(db, detail);
 
   const rgs = await browseReleaseGroups(mbid);
+
+  // Bulk-fetch ALL editions WITH tracks in pages of 100, then group by release-group —
+  // replaces (browseReleases + getReleaseTracks) per RG. ~10–75× fewer MB calls.
+  const editions = await browseArtistReleases(mbid);
+  const byRg = new Map<string, MbArtistRelease[]>();
+  for (const r of editions) {
+    if (!r.rgId) continue;
+    const arr = byRg.get(r.rgId);
+    if (arr) arr.push(r); else byRg.set(r.rgId, [r]);
+  }
+
   let recCount = 0;
   for (const rg of rgs) {
     const rgId = await findOrCreateReleaseGroup(db, rg, artistId);
-    recCount += await ingestEditions(db, rgId, rg, artistId);
+    recCount += await ingestEditionFromPrefetched(db, rgId, rg, artistId, byRg.get(rg.id) ?? []);
   }
 
   await db.from('artists')

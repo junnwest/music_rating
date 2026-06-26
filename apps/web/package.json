@@ -71,6 +71,8 @@
     "queue:discover:global:dry": "tsx --env-file=.env.local scripts/discover-global.ts --dry-run",
     "mb:gate": "tsx scripts/mb-coverage-gate.ts",
     "mb:ingest:one": "tsx --env-file=.env.local scripts/mb-ingest-one.ts",
+    "mb:embed": "tsx --env-file=.env.local scripts/mb-embed.ts",
+    "mb:audit": "tsx --env-file=.env.local scripts/mb-audit.ts",
     "pipeline": "tsx --env-file=.env.local scripts/pipeline.ts",
     "pipeline:status": "tsx --env-file=.env.local scripts/pipeline-status.ts",
     "queue:ingest:albums": "tsx --env-file=.env.local scripts/ingest-itunes-queue.ts --skip-singles",

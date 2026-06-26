@@ -22,9 +22,11 @@ async function main() {
     count(db, 'artist_ingestion_queue', q => q.eq('status', 'skipped')),
     count(db, 'artist_ingestion_queue', q => q.eq('status', 'failed')),
   ]);
-  const [artists, groups, releases, recordings, tracks] = await Promise.all([
+  const [artists, groups, releases, recordings, tracks, embedded, covered] = await Promise.all([
     count(db, 'artists'), count(db, 'release_groups'), count(db, 'releases'),
     count(db, 'recordings'), count(db, 'release_tracks'),
+    count(db, 'release_groups', q => q.not('embedding', 'is', null)),
+    count(db, 'release_groups', q => q.not('cover_url', 'is', null)),
   ]);
 
   console.log('\n  ── lanes ──');
@@ -38,7 +40,8 @@ async function main() {
   console.log(`    pending ${pending} · processing ${processing} · done ${done} · skipped ${skipped} · failed ${failed}`);
 
   console.log('\n  ── catalog ──');
-  console.log(`    artists ${artists} · release_groups ${groups} · releases ${releases} · recordings ${recordings} · release_tracks ${tracks}\n`);
+  console.log(`    artists ${artists} · release_groups ${groups} · releases ${releases} · recordings ${recordings} · release_tracks ${tracks}`);
+  console.log(`    enrichment: embedded ${embedded}/${groups} · covered ${covered}/${groups}\n`);
 }
 
 main().catch(e => { console.error(e); process.exit(1); });

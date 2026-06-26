@@ -16,11 +16,14 @@
  */
 
 import { getDB, resolveArtist, ingestArtist, type DB } from './mb-ingest';
+import { embedReleaseGroupsBatch, embeddingsEnabled } from './mb-enrich';
 import { SEED } from './seed-artists';
 
 const ONCE = process.argv.includes('--once');
 const DISCOVER_ONLY = process.argv.includes('--discover-only');
+const NO_EMBED = process.argv.includes('--no-embed');
 const LIMIT = (() => { const a = process.argv.find(x => x.startsWith('--limit=')); return a ? parseInt(a.split('=')[1], 10) : Infinity; })();
+const DRAIN_ONCE = ONCE || Number.isFinite(LIMIT); // bounded runs: drain then exit
 const IDLE_MS = 30_000;
 
 function sleep(ms: number) { return new Promise<void>(r => setTimeout(r, ms)); }
@@ -102,6 +105,27 @@ async function mark(db: DB, id: string, status: string, extra: Record<string, un
   await db.from('artist_ingestion_queue').update({ status, processed_at: now(), ...extra }).eq('id', id);
 }
 
+// ── EMBEDDINGS lane: Jina-bound, runs concurrently with INGEST (no MB contention) ──
+async function embeddingsLoop(db: DB) {
+  if (NO_EMBED || !embeddingsEnabled()) {
+    await beat(db, 'embeddings', { status: NO_EMBED ? 'off' : 'disabled (no JINA_API_KEY)', last_active: now() });
+    return;
+  }
+  let done = 0, errs = 0;
+  for (;;) {
+    const n = await embedReleaseGroupsBatch(db, 64);
+    if (n > 0) { done += n; await beat(db, 'embeddings', { status: 'running', last_active: now(), items_done: done, errors: errs }); continue; }
+    if (n < 0) { // transient Jina error
+      errs++; await beat(db, 'embeddings', { status: 'error', last_active: now(), items_done: done, errors: errs });
+      if (DRAIN_ONCE) return;
+      await sleep(IDLE_MS); continue;
+    }
+    await beat(db, 'embeddings', { status: 'idle', last_active: now(), items_done: done, errors: errs });
+    if (DRAIN_ONCE) return;
+    await sleep(IDLE_MS);
+  }
+}
+
 // ── startup: reset stale 'processing' (from a prior crash) back to 'pending' ────
 async function resetStale(db: DB) {
   const { count } = await db.from('artist_ingestion_queue')
@@ -118,7 +142,8 @@ async function main() {
   await resetStale(db);
   await discoverSeed(db);
   if (DISCOVER_ONLY) return;
-  await ingestLoop(db);
+  // INGEST (MB) + EMBEDDINGS (Jina) run concurrently — different resources, no contention.
+  await Promise.all([ingestLoop(db), embeddingsLoop(db)]);
 }
 
 main().catch(e => { console.error(e); process.exit(1); });

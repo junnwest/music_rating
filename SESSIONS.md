@@ -6,6 +6,15 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-26 (cont. 2) — Pipeline running; enrichment lanes + speed + robustness:**
+
+- **Overnight run audited (`mb-audit.ts`, read-only): clean.** ~152 artists, ~6.7k groups, 30k recordings; canonical integrity perfect (0 groups with >1 or 0 canonical), no dup artists, source all `musicbrainz`, sample eyeball all-correct. 8 skipped = correct safe-fails (needs_review for generic names Dean/GRAY/SOLE/BIBI/H.O.T/god; no_match for romanization variants) — **zero false data**.
+- **Batch-fetch speedup:** `browseArtistReleases` bulk-fetches an artist's editions WITH tracks+ISRCs in pages of 100, grouped by RG client-side — replaces (browseReleases + getReleaseTracks) per RG. ~10× small artists, ~50–75× prolific. `ingestArtist` refactored; canonical-demote safeguard (exactly 1 canonical per group across re-ingests).
+- **Robustness (found via the "Future" hang):** browse-by-artist over-fetches heavily-featured artists → **30s per-call AbortController timeout** + **40-page cap** (Future now 227 groups/1122 recordings in ~1 min instead of hanging). Jina `embedBatch` retries 5xx + 429.
+- **Enrichment lanes (non-MB, concurrent):** EMBEDDINGS (`mb-enrich.ts`, Jina v3 → `release_groups.embedding`) as a pipeline lane + standalone `npm run mb:embed`; COVERS captured **inline** from MB's `cover-art-archive.front` flag (hotlink CAA, never cached) → `cover_url`. `pipeline:status` shows embedded/covered. `npm run mb:audit`.
+- **Rate-limit facts:** MB ~1 req/s **per IP** → 2 devices help only on *different* public IPs; pipeline already supports concurrent workers (atomic queue claim). Local MB mirror = unlimited endgame (deferred).
+- **Still NOT done (data pipeline ≈75%):** DISCOVERY for breadth (Wikipedia/ListenBrainz — pipeline idles after seed drains), iTunes GAPFILL by completeness, `mb-overrides` population (~8 generic names), QC lane (mb-audit is manual), FRESHNESS lane, composition filter (trim prolific-artist features?), covers backfill for pre-inline groups, per-RG heartbeat, rating re-link (§7).
+
 **2026-06-25 — iOS session 15: Report/Block; clickable tracklist songs:**
 
 - **Clickable tracklist songs:** Track titles in `AlbumDetailView` are now tappable blue links (when `trackId != nil` — i.e., the track has a stable UUID from the `tracks` table). Tapping navigates to the new `SongDetailView` via `.navigationDestination(item: $selectedSong)`. Tracks without a UUID (JSONB fallback) remain non-clickable plain text. The `+` rate button alongside each title is unchanged and still opens `TrackRatingSheet`. `TrackRow` gained `onTap: (() -> Void)? = nil` param; `tracklistSection` passes `onTap: track.trackId != nil ? { selectedSong = track } : nil`.
