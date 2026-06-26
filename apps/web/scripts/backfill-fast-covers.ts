@@ -25,6 +25,7 @@ import { createClient } from '@supabase/supabase-js';
 
 const DRY_RUN      = process.argv.includes('--dry-run');
 const SKIP_SPOTIFY = process.argv.includes('--skip-spotify');
+const REVERIFY     = process.argv.includes('--reverify');  // re-check already-converted mzstatic URLs
 const STATE_PATH   = path.resolve('scripts/backfill-fast-covers-state.json');
 
 const SUPABASE_URL  = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -92,8 +93,8 @@ function norm(s: string): string {
 
 function titlesMatch(a: string, b: string): boolean {
   const na = norm(a), nb = norm(b);
-  // Exact match, or one contains the other's first 12 chars (handles subtitles)
-  return na === nb || na.startsWith(nb.slice(0, 12)) || nb.startsWith(na.slice(0, 12));
+  // Exact match, or one is fully contained in the other (handles "NCT #127 CHERRY BOMB – ...")
+  return na === nb || na.includes(nb) || nb.includes(na);
 }
 
 function artistsMatch(a: string, b: string): boolean {
@@ -122,12 +123,10 @@ async function coverFromItunes(
     const data = await res.json();
     const results: any[] = data.results ?? [];
 
-    // Best match: title + artist. Fall back to just title match.
+    // Require both title AND artist to match — no artist-blind fallback.
     const best = results.find(r =>
       (titlesMatch(r.collectionName ?? '', title) || (nativeTitle && titlesMatch(r.collectionName ?? '', nativeTitle))) &&
       artistsMatch(r.artistName ?? '', artist)
-    ) ?? results.find(r =>
-      titlesMatch(r.collectionName ?? '', title) || (nativeTitle && titlesMatch(r.collectionName ?? '', nativeTitle))
     );
 
     if (!best?.artworkUrl100) return null;
@@ -163,8 +162,6 @@ async function coverFromSpotify(
     const best = items.find(a =>
       (titlesMatch(a.name, title) || (nativeTitle && titlesMatch(a.name, nativeTitle))) &&
       a.artists?.some((ar: any) => artistsMatch(ar.name, artist))
-    ) ?? items.find(a =>
-      titlesMatch(a.name, title) || (nativeTitle && titlesMatch(a.name, nativeTitle))
     );
 
     if (!best) return null;
@@ -178,20 +175,23 @@ async function coverFromSpotify(
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log(`Mode: ${DRY_RUN ? 'DRY RUN' : 'LIVE'} | Spotify: ${SKIP_SPOTIFY ? 'skip' : 'enabled'}`);
+  console.log(`Mode: ${DRY_RUN ? 'DRY RUN' : 'LIVE'} | Spotify: ${SKIP_SPOTIFY ? 'skip' : 'enabled'} | Reverify: ${REVERIFY}`);
 
   const state = loadState();
-  const processed = new Set(state.processed);
+  // In reverify mode, ignore the processed list so everything gets re-checked
+  const processed = REVERIFY ? new Set<string>() : new Set(state.processed);
 
-  // Fetch all CAA release_groups not yet processed
+  // --reverify: re-check already-converted mzstatic URLs for wrong matches
+  // Normal mode: only target remaining CAA URLs
+  const filter = REVERIFY ? '%mzstatic%' : '%coverartarchive%';
   const { data: rows, error } = await supabase
     .from('release_groups')
     .select('id, title, native_title, artist_display')
-    .ilike('cover_url', '%coverartarchive%')
+    .ilike('cover_url', filter)
     .order('id');
 
   if (error) { console.error('DB fetch failed:', error); process.exit(1); }
-  if (!rows?.length) { console.log('No CAA URLs found — already done!'); return; }
+  if (!rows?.length) { console.log(`No entries matching ${filter} found.`); return; }
 
   const todo = rows.filter(r => !processed.has(r.id));
   console.log(`Total with CAA: ${rows.length}  |  Todo: ${todo.length}  |  Already done: ${processed.size}`);
@@ -233,7 +233,7 @@ async function main() {
         updated++;
       }
     } else {
-      process.stdout.write(`no match — keeping CAA\n`);
+      process.stdout.write(`no match — ${REVERIFY ? 'keeping existing' : 'keeping CAA'}\n`);
       kept++;
     }
 
