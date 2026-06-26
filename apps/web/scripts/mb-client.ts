@@ -158,7 +158,7 @@ export async function browseReleaseGroups(artistMbid: string): Promise<MbRelease
   let offset = 0;
   for (;;) {
     const data = await mbGet(
-      `/release-group?artist=${artistMbid}&type=${enc('album|ep|single')}&inc=${enc('genres')}&limit=100&offset=${offset}`,
+      `/release-group?artist=${artistMbid}&type=${enc('album|ep|single')}&inc=${enc('genres artist-credits')}&limit=100&offset=${offset}`,
     );
     const rgs: any[] = data?.['release-groups'] ?? [];
     for (const rg of rgs) {
