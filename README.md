@@ -14,6 +14,19 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **⚑ MAC — PICK UP HERE (session left off 2026-06-27):**
+>
+> 1. **Re-run Grammy seed** (Spotify rate limit was hit mid-run): `cd apps/web && npm run seed:external -- --source grammy_aoty` — 68/360 rows already in DB, re-run skips them and inserts the remaining ~292. State file at `apps/web/scripts/seed-external-scores-state-grammy_aoty.json`. Rate limit clears ~21:30 UTC 2026-06-27.
+> 2. **Build/compile check on device** — `apps/ios/sillajuku.xcodeproj`, Cmd+B in Xcode, make sure `RankingsView.swift` compiles (added `SillaLeaderboardRow` + `SillaLeaderboardParams` structs, new `load()` calling `get_silla_leaderboard`).
+> 3. **Seed next prestige sources** — add data files + cases to `scripts/seed-external-scores.ts`:
+>    - Mercury Prize (`scope_country='uk'`, `normalized_score=1.0 win / 0.35 nom`, `source_tier=3`)
+>    - Korean Music Awards (`scope_country='kr'`, same pattern)
+>    - Pitchfork 10.0 albums (`source_tier=2`, `normalized_score=1.0`, no scope)
+> 4. Profile > Stats subtab (iOS)
+> 5. TestFlight setup once Apple Developer account is active (paid $99 on 2026-06-23, email sent to Apple support)
+>
+> **What was built last session (2026-06-27):** `external_scores` table + `get_external_prestige_scores` RPC; Grammy AOTY data + `seed-external-scores.ts` seeder; `get_silla_leaderboard` RPC (combines Bayesian rating + prestige, post-renovation schema); iOS `RankingDetailView` wired to real Silla Score RPC with genre/country filter reloads. Both SQL migrations ✅ applied. See SESSIONS.md for full detail.
+
 > **Build note (Mac):** Always build from **Xcode GUI (Cmd+B)**, not `xcodebuild` CLI — the CLI has an Xcode 26 SPM dependency-ordering bug. Project: `apps/ios/sillajuku.xcodeproj`. **Physical iPhone:** Debug config now has `CODE_SIGN_STYLE = Automatic` + team `GGJ5HX3A4M` — connect iPhone via USB, select it as destination in Xcode, Cmd+R to run. (Simulator still blocked on 8 GB RAM.)
 
 > **⚠️ AFTER macOS UPDATE (26.2 → 26.5):** 1) Open Xcode — it may prompt to install additional components, let it finish. 2) Connect iPhone via USB (phone unlocked). 3) If "Trust This Computer?" appears on the phone — tap Trust. 4) Xcode will download iOS 26.5 device support files automatically (~few minutes). 5) iPhone should then appear in the destination picker — select it and Cmd+R to run. 6) Run `cd apps/web && npm run dedup:releases` to see duplicate count (script was fixed this session — tracklist removed from bulk load).
