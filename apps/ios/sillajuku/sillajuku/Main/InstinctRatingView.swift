@@ -25,7 +25,7 @@ enum InstinctBucket: CaseIterable {
 
 // MARK: - Elo math (mirrors lib/elo.ts)
 
-private enum Elo {
+enum Elo {
     static let defaultElo: Double = 1500
     static let scoreCentre: Double = 1500
     static let scoreSpread: Double = 250
