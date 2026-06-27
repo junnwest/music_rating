@@ -1,0 +1,448 @@
+/**
+ * Grammy Award for Album of the Year — complete winners + nominees.
+ *
+ * year     = Grammy ceremony year (NOT album release year)
+ * won      = true → normalized_score 1.0 (award_win)
+ *            false → normalized_score 0.35 (award_nomination)
+ *
+ * Data source: Wikipedia "Grammy Award for Album of the Year"
+ * 1959–2022 verified from paste; 2023–2025 from training data — spot-check if needed.
+ */
+
+export type GrammyEntry = {
+  year: number;
+  album: string;
+  artist: string;
+  won: boolean;
+  spotifyId?: string;  // hardcoded when Spotify search can't find it
+};
+
+export const GRAMMY_AOTY: GrammyEntry[] = [
+  // ── 1959 ──────────────────────────────────────────────────────────────────
+  { year: 1959, won: true,  album: 'The Music from Peter Gunn',                              artist: 'Henry Mancini' },
+  { year: 1959, won: false, album: 'Come Fly with Me',                                       artist: 'Frank Sinatra' },
+  { year: 1959, won: false, album: 'Ella Fitzgerald Sings the Irving Berlin Song Book',      artist: 'Ella Fitzgerald' },
+  { year: 1959, won: false, album: 'Frank Sinatra Sings for Only the Lonely',                artist: 'Frank Sinatra' },
+  { year: 1959, won: false, album: 'Tchaikovsky: Concerto No. 1 in B-Flat Minor',            artist: 'Van Cliburn' },
+  // ── 1960 ──────────────────────────────────────────────────────────────────
+  { year: 1960, won: true,  album: 'Come Dance with Me!',                                    artist: 'Frank Sinatra' },
+  { year: 1960, won: false, album: 'Belafonte at Carnegie Hall',                             artist: 'Harry Belafonte' },
+  { year: 1960, won: false, album: 'More Music from Peter Gunn',                             artist: 'Henry Mancini' },
+  { year: 1960, won: false, album: 'Rachmaninoff Piano Concerto No. 3',                      artist: 'Van Cliburn' },
+  { year: 1960, won: false, album: 'Victory at Sea, Vol. I',                                 artist: 'Robert Russell Bennett' },
+  // ── 1961 ──────────────────────────────────────────────────────────────────
+  { year: 1961, won: true,  album: 'The Button-Down Mind of Bob Newhart',                    artist: 'Bob Newhart' },
+  { year: 1961, won: false, album: 'Belafonte Returns to Carnegie Hall',                     artist: 'Harry Belafonte' },
+  { year: 1961, won: false, album: 'Brahms: Concerto',                                       artist: 'Sviatoslav Richter' },
+  { year: 1961, won: false, album: "Nice 'n' Easy",                                          artist: 'Frank Sinatra' },
+  { year: 1961, won: false, album: 'Puccini: Turandot',                                      artist: 'Erich Leinsdorf' },
+  { year: 1961, won: false, album: 'Wild Is Love',                                           artist: 'Nat King Cole' },
+  // ── 1962 ──────────────────────────────────────────────────────────────────
+  { year: 1962, won: true,  album: 'Judy at Carnegie Hall',                                  artist: 'Judy Garland' },
+  { year: 1962, won: false, album: 'Breakfast at Tiffany\'s',                                artist: 'Henry Mancini' },
+  { year: 1962, won: false, album: 'Genius + Soul = Jazz',                                   artist: 'Ray Charles' },
+  { year: 1962, won: false, album: 'Great Band with Great Voices',                           artist: 'Si Zentner & Johnny Mann Singers' },
+  { year: 1962, won: false, album: 'The Nat King Cole Story',                                artist: 'Nat King Cole' },
+  { year: 1962, won: false, album: 'West Side Story',                                        artist: 'John Green' },
+  // ── 1963 ──────────────────────────────────────────────────────────────────
+  { year: 1963, won: true,  album: 'The First Family',                                       artist: 'Vaughn Meader' },
+  { year: 1963, won: false, album: 'I Left My Heart in San Francisco',                       artist: 'Tony Bennett' },
+  { year: 1963, won: false, album: 'Jazz Samba',                                             artist: 'Stan Getz & Charlie Byrd' },
+  { year: 1963, won: false, album: 'Modern Sounds in Country and Western Music',             artist: 'Ray Charles' },
+  { year: 1963, won: false, album: 'My Son, the Folk Singer',                                artist: 'Allan Sherman' },
+  // ── 1964 ──────────────────────────────────────────────────────────────────
+  { year: 1964, won: true,  album: 'The Barbra Streisand Album',                             artist: 'Barbra Streisand' },
+  { year: 1964, won: false, album: "Bach's Greatest Hits",                                   artist: 'The Swingle Singers' },
+  { year: 1964, won: false, album: 'Days of Wine and Roses and Other TV Requests',           artist: 'Andy Williams' },
+  { year: 1964, won: false, album: 'Honey in the Horn',                                      artist: 'Al Hirt' },
+  { year: 1964, won: false, album: 'The Singing Nun',                                        artist: 'Soeur Sourire' },
+  // ── 1965 ──────────────────────────────────────────────────────────────────
+  { year: 1965, won: true,  album: 'Getz/Gilberto',                                          artist: 'Stan Getz & João Gilberto' },
+  { year: 1965, won: false, album: 'Cotton Candy',                                           artist: 'Al Hirt' },
+  { year: 1965, won: false, album: 'Funny Girl',                                             artist: 'Barbra Streisand' },
+  { year: 1965, won: false, album: 'People',                                                 artist: 'Barbra Streisand' },
+  { year: 1965, won: false, album: 'The Pink Panther',                                       artist: 'Henry Mancini' },
+  // ── 1966 ──────────────────────────────────────────────────────────────────
+  { year: 1966, won: true,  album: 'September of My Years',                                  artist: 'Frank Sinatra' },
+  { year: 1966, won: false, album: 'Help!',                                                  artist: 'The Beatles' },
+  { year: 1966, won: false, album: 'My Name Is Barbra',                                      artist: 'Barbra Streisand' },
+  { year: 1966, won: false, album: 'My World',                                               artist: 'Eddy Arnold' },
+  { year: 1966, won: false, album: 'The Sound of Music',                                     artist: 'Various Artists' },
+  // ── 1967 ──────────────────────────────────────────────────────────────────
+  { year: 1967, won: true,  album: 'A Man and His Music',                                    artist: 'Frank Sinatra' },
+  { year: 1967, won: false, album: 'Color Me Barbra',                                        artist: 'Barbra Streisand' },
+  { year: 1967, won: false, album: 'Doctor Zhivago',                                         artist: 'Maurice Jarre' },
+  { year: 1967, won: false, album: 'Revolver',                                               artist: 'The Beatles' },
+  { year: 1967, won: false, album: 'What Now My Love',                                       artist: 'Herb Alpert & The Tijuana Brass' },
+  // ── 1968 ──────────────────────────────────────────────────────────────────
+  { year: 1968, won: true,  album: "Sgt. Pepper's Lonely Hearts Club Band",                  artist: 'The Beatles' },
+  { year: 1968, won: false, album: 'Francis Albert Sinatra & Antônio Carlos Jobim',          artist: 'Frank Sinatra & Antônio Carlos Jobim' },
+  { year: 1968, won: false, album: 'It Must Be Him',                                         artist: 'Vikki Carr' },
+  { year: 1968, won: false, album: 'My Cup Runneth Over',                                    artist: 'Ed Ames' },
+  { year: 1968, won: false, album: 'Ode to Billie Joe',                                      artist: 'Bobbie Gentry' },
+  // ── 1969 ──────────────────────────────────────────────────────────────────
+  { year: 1969, won: true,  album: 'By the Time I Get to Phoenix',                           artist: 'Glen Campbell' },
+  { year: 1969, won: false, album: 'Bookends',                                               artist: 'Simon & Garfunkel' },
+  { year: 1969, won: false, album: 'Feliciano!',                                             artist: 'José Feliciano' },
+  { year: 1969, won: false, album: 'Magical Mystery Tour',                                   artist: 'The Beatles' },
+  { year: 1969, won: false, album: 'A Tramp Shining',                                        artist: 'Richard Harris' },
+  // ── 1970 ──────────────────────────────────────────────────────────────────
+  { year: 1970, won: true,  album: 'Blood, Sweat & Tears',                                   artist: 'Blood, Sweat & Tears' },
+  { year: 1970, won: false, album: 'Abbey Road',                                             artist: 'The Beatles' },
+  { year: 1970, won: false, album: 'The Age of Aquarius',                                    artist: 'The 5th Dimension' },
+  { year: 1970, won: false, album: 'Crosby, Stills & Nash',                                  artist: 'Crosby, Stills & Nash' },
+  { year: 1970, won: false, album: 'Johnny Cash at San Quentin',                             artist: 'Johnny Cash' },
+  // ── 1971 ──────────────────────────────────────────────────────────────────
+  { year: 1971, won: true,  album: 'Bridge over Troubled Water',                             artist: 'Simon & Garfunkel' },
+  { year: 1971, won: false, album: 'Chicago',                                                artist: 'Chicago' },
+  { year: 1971, won: false, album: 'Close to You',                                           artist: 'Carpenters' },
+  { year: 1971, won: false, album: 'Déjà Vu',                                               artist: 'Crosby, Stills, Nash & Young' },
+  { year: 1971, won: false, album: 'Elton John',                                             artist: 'Elton John' },
+  { year: 1971, won: false, album: 'Sweet Baby James',                                       artist: 'James Taylor' },
+  // ── 1972 ──────────────────────────────────────────────────────────────────
+  { year: 1972, won: true,  album: 'Tapestry',                                               artist: 'Carole King' },
+  { year: 1972, won: false, album: 'All Things Must Pass',                                   artist: 'George Harrison' },
+  { year: 1972, won: false, album: 'Carpenters',                                             artist: 'Carpenters' },
+  { year: 1972, won: false, album: 'Jesus Christ Superstar',                                 artist: 'Various Artists' },
+  { year: 1972, won: false, album: 'Shaft',                                                  artist: 'Isaac Hayes' },
+  // ── 1973 ──────────────────────────────────────────────────────────────────
+  { year: 1973, won: true,  album: 'The Concert for Bangladesh',                             artist: 'George Harrison & Friends' },
+  { year: 1973, won: false, album: 'American Pie',                                           artist: 'Don McLean' },
+  { year: 1973, won: false, album: 'Jesus Christ Superstar',                                 artist: 'Original Broadway Cast' },
+  { year: 1973, won: false, album: 'Moods',                                                  artist: 'Neil Diamond' },
+  { year: 1973, won: false, album: 'Nilsson Schmilsson',                                     artist: 'Nilsson' },
+  // ── 1974 ──────────────────────────────────────────────────────────────────
+  { year: 1974, won: true,  album: 'Innervisions',                                           artist: 'Stevie Wonder' },
+  { year: 1974, won: false, album: 'Behind Closed Doors',                                    artist: 'Charlie Rich' },
+  { year: 1974, won: false, album: 'The Divine Miss M',                                      artist: 'Bette Midler' },
+  { year: 1974, won: false, album: 'Killing Me Softly',                                      artist: 'Roberta Flack' },
+  { year: 1974, won: false, album: 'There Goes Rhymin\' Simon',                              artist: 'Paul Simon' },
+  // ── 1975 ──────────────────────────────────────────────────────────────────
+  { year: 1975, won: true,  album: "Fulfillingness' First Finale",                           artist: 'Stevie Wonder' },
+  { year: 1975, won: false, album: 'Back Home Again',                                        artist: 'John Denver' },
+  { year: 1975, won: false, album: 'Band on the Run',                                        artist: 'Paul McCartney and Wings' },
+  { year: 1975, won: false, album: 'Caribou',                                                artist: 'Elton John' },
+  { year: 1975, won: false, album: 'Court and Spark',                                        artist: 'Joni Mitchell' },
+  // ── 1976 ──────────────────────────────────────────────────────────────────
+  { year: 1976, won: true,  album: 'Still Crazy After All These Years',                      artist: 'Paul Simon' },
+  { year: 1976, won: false, album: 'Between the Lines',                                      artist: 'Janis Ian' },
+  { year: 1976, won: false, album: 'Captain Fantastic and the Brown Dirt Cowboy',            artist: 'Elton John' },
+  { year: 1976, won: false, album: 'Heart Like a Wheel',                                     artist: 'Linda Ronstadt' },
+  { year: 1976, won: false, album: 'One of These Nights',                                    artist: 'Eagles' },
+  // ── 1977 ──────────────────────────────────────────────────────────────────
+  { year: 1977, won: true,  album: 'Songs in the Key of Life',                               artist: 'Stevie Wonder' },
+  { year: 1977, won: false, album: "Breezin'",                                               artist: 'George Benson' },
+  { year: 1977, won: false, album: 'Chicago X',                                              artist: 'Chicago' },
+  { year: 1977, won: false, album: 'Frampton Comes Alive!',                                  artist: 'Peter Frampton' },
+  { year: 1977, won: false, album: 'Silk Degrees',                                           artist: 'Boz Scaggs' },
+  // ── 1978 ──────────────────────────────────────────────────────────────────
+  { year: 1978, won: true,  album: 'Rumours',                                                artist: 'Fleetwood Mac' },
+  { year: 1978, won: false, album: 'Aja',                                                    artist: 'Steely Dan' },
+  { year: 1978, won: false, album: 'Hotel California',                                       artist: 'Eagles' },
+  { year: 1978, won: false, album: 'JT',                                                     artist: 'James Taylor' },
+  { year: 1978, won: false, album: 'Star Wars',                                              artist: 'John Williams' },
+  // ── 1979 ──────────────────────────────────────────────────────────────────
+  { year: 1979, won: true,  album: 'Saturday Night Fever',                                   artist: 'Various Artists' },
+  { year: 1979, won: false, album: 'Even Now',                                               artist: 'Barry Manilow' },
+  { year: 1979, won: false, album: 'Grease',                                                 artist: 'Various Artists' },
+  { year: 1979, won: false, album: 'Running on Empty',                                       artist: 'Jackson Browne' },
+  { year: 1979, won: false, album: 'Some Girls',                                             artist: 'The Rolling Stones' },
+  // ── 1980 ──────────────────────────────────────────────────────────────────
+  { year: 1980, won: true,  album: '52nd Street',                                            artist: 'Billy Joel' },
+  { year: 1980, won: false, album: 'Minute by Minute',                                       artist: 'The Doobie Brothers' },
+  { year: 1980, won: false, album: 'The Gambler',                                            artist: 'Kenny Rogers' },
+  { year: 1980, won: false, album: 'Bad Girls',                                              artist: 'Donna Summer' },
+  { year: 1980, won: false, album: 'Breakfast in America',                                   artist: 'Supertramp' },
+  // ── 1981 ──────────────────────────────────────────────────────────────────
+  { year: 1981, won: true,  album: 'Christopher Cross',                                      artist: 'Christopher Cross' },
+  { year: 1981, won: false, album: 'Glass Houses',                                           artist: 'Billy Joel' },
+  { year: 1981, won: false, album: 'The Wall',                                               artist: 'Pink Floyd' },
+  { year: 1981, won: false, album: 'Trilogy: Past Present Future',                           artist: 'Frank Sinatra' },
+  { year: 1981, won: false, album: 'Guilty',                                                 artist: 'Barbra Streisand' },
+  // ── 1982 ──────────────────────────────────────────────────────────────────
+  { year: 1982, won: true,  album: 'Double Fantasy',                                         artist: 'John Lennon & Yoko Ono' },
+  { year: 1982, won: false, album: 'Mistaken Identity',                                      artist: 'Kim Carnes' },
+  { year: 1982, won: false, album: "Breakin' Away",                                          artist: 'Al Jarreau' },
+  { year: 1982, won: false, album: 'The Dude',                                               artist: 'Quincy Jones' },
+  { year: 1982, won: false, album: 'Gaucho',                                                 artist: 'Steely Dan' },
+  // ── 1983 ──────────────────────────────────────────────────────────────────
+  { year: 1983, won: true,  album: 'Toto IV',                                                artist: 'Toto' },
+  { year: 1983, won: false, album: 'American Fool',                                          artist: 'John Cougar' },
+  { year: 1983, won: false, album: 'The Nightfly',                                           artist: 'Donald Fagen' },
+  { year: 1983, won: false, album: 'The Nylon Curtain',                                      artist: 'Billy Joel' },
+  { year: 1983, won: false, album: 'Tug of War',                                             artist: 'Paul McCartney' },
+  // ── 1984 ──────────────────────────────────────────────────────────────────
+  { year: 1984, won: true,  album: 'Thriller',                                               artist: 'Michael Jackson' },
+  { year: 1984, won: false, album: "Let's Dance",                                            artist: 'David Bowie' },
+  { year: 1984, won: false, album: 'An Innocent Man',                                        artist: 'Billy Joel' },
+  { year: 1984, won: false, album: 'Synchronicity',                                          artist: 'The Police' },
+  { year: 1984, won: false, album: 'Flashdance',                                             artist: 'Various Artists' },
+  // ── 1985 ──────────────────────────────────────────────────────────────────
+  { year: 1985, won: true,  album: "Can't Slow Down",                                        artist: 'Lionel Richie' },
+  { year: 1985, won: false, album: "She's So Unusual",                                       artist: 'Cyndi Lauper' },
+  { year: 1985, won: false, album: 'Purple Rain',                                            artist: 'Prince & The Revolution' },
+  { year: 1985, won: false, album: 'Born in the U.S.A.',                                     artist: 'Bruce Springsteen' },
+  { year: 1985, won: false, album: 'Private Dancer',                                         artist: 'Tina Turner' },
+  // ── 1986 ──────────────────────────────────────────────────────────────────
+  { year: 1986, won: true,  album: 'No Jacket Required',                                     artist: 'Phil Collins' },
+  { year: 1986, won: false, album: 'Brothers in Arms',                                       artist: 'Dire Straits' },
+  { year: 1986, won: false, album: 'Whitney Houston',                                        artist: 'Whitney Houston' },
+  { year: 1986, won: false, album: 'The Dream of the Blue Turtles',                          artist: 'Sting' },
+  { year: 1986, won: false, album: 'We Are the World',                                       artist: 'USA for Africa' },
+  // ── 1987 ──────────────────────────────────────────────────────────────────
+  { year: 1987, won: true,  album: 'Graceland',                                              artist: 'Paul Simon' },
+  { year: 1987, won: false, album: 'So',                                                     artist: 'Peter Gabriel' },
+  { year: 1987, won: false, album: 'Control',                                                artist: 'Janet Jackson' },
+  { year: 1987, won: false, album: 'The Broadway Album',                                     artist: 'Barbra Streisand' },
+  { year: 1987, won: false, album: 'Back in the High Life',                                  artist: 'Steve Winwood' },
+  // ── 1988 ──────────────────────────────────────────────────────────────────
+  { year: 1988, won: true,  album: 'The Joshua Tree',                                        artist: 'U2' },
+  { year: 1988, won: false, album: 'Whitney',                                                artist: 'Whitney Houston' },
+  { year: 1988, won: false, album: 'Bad',                                                    artist: 'Michael Jackson' },
+  { year: 1988, won: false, album: 'Trio',                                                   artist: 'Dolly Parton, Linda Ronstadt & Emmylou Harris' },
+  { year: 1988, won: false, album: "Sign o' the Times",                                      artist: 'Prince' },
+  // ── 1989 ──────────────────────────────────────────────────────────────────
+  { year: 1989, won: true,  album: 'Faith',                                                  artist: 'George Michael' },
+  { year: 1989, won: false, album: 'Tracy Chapman',                                          artist: 'Tracy Chapman' },
+  { year: 1989, won: false, album: 'Simple Pleasures',                                       artist: 'Bobby McFerrin' },
+  { year: 1989, won: false, album: '...Nothing Like the Sun',                                artist: 'Sting' },
+  { year: 1989, won: false, album: 'Roll with It',                                           artist: 'Steve Winwood' },
+  // ── 1990 ──────────────────────────────────────────────────────────────────
+  { year: 1990, won: true,  album: 'Nick of Time',                                           artist: 'Bonnie Raitt' },
+  { year: 1990, won: false, album: 'The End of the Innocence',                               artist: 'Don Henley' },
+  { year: 1990, won: false, album: 'The Raw & the Cooked',                                   artist: 'Fine Young Cannibals' },
+  { year: 1990, won: false, album: 'Full Moon Fever',                                        artist: 'Tom Petty' },
+  { year: 1990, won: false, album: 'Traveling Wilburys Vol. 1',                              artist: 'Traveling Wilburys' },
+  // ── 1991 ──────────────────────────────────────────────────────────────────
+  { year: 1991, won: true,  album: 'Back on the Block',                                      artist: 'Quincy Jones' },
+  { year: 1991, won: false, album: '...But Seriously',                                       artist: 'Phil Collins' },
+  { year: 1991, won: false, album: 'Mariah Carey',                                           artist: 'Mariah Carey' },
+  { year: 1991, won: false, album: "Please Hammer Don't Hurt 'Em",                           artist: 'MC Hammer' },
+  { year: 1991, won: false, album: 'Wilson Phillips',                                        artist: 'Wilson Phillips' },
+  // ── 1992 ──────────────────────────────────────────────────────────────────
+  { year: 1992, won: true,  album: 'Unforgettable... with Love',                             artist: 'Natalie Cole' },
+  { year: 1992, won: false, album: 'Heart in Motion',                                        artist: 'Amy Grant' },
+  { year: 1992, won: false, album: 'Luck of the Draw',                                       artist: 'Bonnie Raitt' },
+  { year: 1992, won: false, album: 'Out of Time',                                            artist: 'R.E.M.' },
+  { year: 1992, won: false, album: 'The Rhythm of the Saints',                               artist: 'Paul Simon' },
+  // ── 1993 ──────────────────────────────────────────────────────────────────
+  { year: 1993, won: true,  album: 'Unplugged',                                              artist: 'Eric Clapton' },
+  { year: 1993, won: false, album: 'Achtung Baby',                                           artist: 'U2' },
+  { year: 1993, won: false, album: 'Diva',                                                   artist: 'Annie Lennox' },
+  { year: 1993, won: false, album: 'Ingénue',                                                artist: 'k.d. lang' },
+  // ── 1994 ──────────────────────────────────────────────────────────────────
+  { year: 1994, won: true,  album: 'The Bodyguard',                                          artist: 'Whitney Houston' },
+  { year: 1994, won: false, album: 'Automatic for the People',                               artist: 'R.E.M.' },
+  { year: 1994, won: false, album: 'Kamakiriad',                                             artist: 'Donald Fagen' },
+  { year: 1994, won: false, album: 'River of Dreams',                                        artist: 'Billy Joel' },
+  { year: 1994, won: false, album: "Ten Summoner's Tales",                                   artist: 'Sting' },
+  // ── 1995 ──────────────────────────────────────────────────────────────────
+  { year: 1995, won: true,  album: 'MTV Unplugged',                                          artist: 'Tony Bennett' },
+  { year: 1995, won: false, album: 'From the Cradle',                                        artist: 'Eric Clapton' },
+  { year: 1995, won: false, album: 'Longing in Their Hearts',                                artist: 'Bonnie Raitt' },
+  { year: 1995, won: false, album: 'Seal',                                                   artist: 'Seal' },
+  // ── 1996 ──────────────────────────────────────────────────────────────────
+  { year: 1996, won: true,  album: 'Jagged Little Pill',                                     artist: 'Alanis Morissette' },
+  { year: 1996, won: false, album: 'Daydream',                                               artist: 'Mariah Carey' },
+  { year: 1996, won: false, album: 'HIStory: Past, Present and Future, Book I',              artist: 'Michael Jackson' },
+  { year: 1996, won: false, album: 'Relish',                                                 artist: 'Joan Osborne' },
+  { year: 1996, won: false, album: 'Vitalogy',                                               artist: 'Pearl Jam' },
+  // ── 1997 ──────────────────────────────────────────────────────────────────
+  { year: 1997, won: true,  album: 'Falling into You',                                       artist: 'Celine Dion' },
+  { year: 1997, won: false, album: 'Mellon Collie and the Infinite Sadness',                 artist: 'The Smashing Pumpkins' },
+  { year: 1997, won: false, album: 'Odelay',                                                 artist: 'Beck' },
+  { year: 1997, won: false, album: 'The Score',                                              artist: 'Fugees' },
+  { year: 1997, won: false, album: 'Waiting to Exhale',                                      artist: 'Various Artists' },
+  // ── 1998 ──────────────────────────────────────────────────────────────────
+  { year: 1998, won: true,  album: 'Time Out of Mind',                                       artist: 'Bob Dylan' },
+  { year: 1998, won: false, album: 'The Day',                                                artist: 'Babyface' },
+  { year: 1998, won: false, album: 'Flaming Pie',                                            artist: 'Paul McCartney' },
+  { year: 1998, won: false, album: 'OK Computer',                                            artist: 'Radiohead' },
+  { year: 1998, won: false, album: 'This Fire',                                              artist: 'Paula Cole' },
+  // ── 1999 ──────────────────────────────────────────────────────────────────
+  { year: 1999, won: true,  album: 'The Miseducation of Lauryn Hill',                        artist: 'Lauryn Hill' },
+  { year: 1999, won: false, album: 'Come on Over',                                           artist: 'Shania Twain' },
+  { year: 1999, won: false, album: 'The Globe Sessions',                                     artist: 'Sheryl Crow' },
+  { year: 1999, won: false, album: 'Ray of Light',                                           artist: 'Madonna' },
+  { year: 1999, won: false, album: 'Version 2.0',                                            artist: 'Garbage' },
+  // ── 2000 ──────────────────────────────────────────────────────────────────
+  { year: 2000, won: true,  album: 'Supernatural',                                           artist: 'Santana' },
+  { year: 2000, won: false, album: 'FanMail',                                                artist: 'TLC' },
+  { year: 2000, won: false, album: 'Fly',                                                    artist: 'Dixie Chicks' },
+  { year: 2000, won: false, album: 'Millennium',                                             artist: 'Backstreet Boys' },
+  { year: 2000, won: false, album: 'When I Look in Your Eyes',                               artist: 'Diana Krall' },
+  // ── 2001 ──────────────────────────────────────────────────────────────────
+  { year: 2001, won: true,  album: 'Two Against Nature',                                     artist: 'Steely Dan' },
+  { year: 2001, won: false, album: 'Kid A',                                                  artist: 'Radiohead' },
+  { year: 2001, won: false, album: 'The Marshall Mathers LP',                                artist: 'Eminem' },
+  { year: 2001, won: false, album: 'Midnite Vultures',                                       artist: 'Beck' },
+  { year: 2001, won: false, album: "You're the One",                                         artist: 'Paul Simon' },
+  // ── 2002 ──────────────────────────────────────────────────────────────────
+  { year: 2002, won: true,  album: 'O Brother, Where Art Thou?',                             artist: 'Various Artists' },
+  { year: 2002, won: false, album: 'Acoustic Soul',                                          artist: 'India.Arie' },
+  { year: 2002, won: false, album: 'All That You Can\'t Leave Behind',                       artist: 'U2' },
+  { year: 2002, won: false, album: 'Love and Theft',                                         artist: 'Bob Dylan' },
+  { year: 2002, won: false, album: 'Stankonia',                                              artist: 'OutKast' },
+  // ── 2003 ──────────────────────────────────────────────────────────────────
+  { year: 2003, won: true,  album: 'Come Away with Me',                                      artist: 'Norah Jones' },
+  { year: 2003, won: false, album: 'The Eminem Show',                                        artist: 'Eminem' },
+  { year: 2003, won: false, album: 'Home',                                                   artist: 'Dixie Chicks' },
+  { year: 2003, won: false, album: 'Nellyville',                                             artist: 'Nelly' },
+  { year: 2003, won: false, album: 'The Rising',                                             artist: 'Bruce Springsteen' },
+  // ── 2004 ──────────────────────────────────────────────────────────────────
+  { year: 2004, won: true,  album: 'Speakerboxxx/The Love Below',                            artist: 'OutKast' },
+  { year: 2004, won: false, album: 'Elephant',                                               artist: 'The White Stripes' },
+  { year: 2004, won: false, album: 'Fallen',                                                 artist: 'Evanescence' },
+  { year: 2004, won: false, album: 'Justified',                                              artist: 'Justin Timberlake' },
+  { year: 2004, won: false, album: 'Under Construction',                                     artist: 'Missy Elliott' },
+  // ── 2005 ──────────────────────────────────────────────────────────────────
+  { year: 2005, won: true,  album: 'Genius Loves Company',                                   artist: 'Ray Charles' },
+  { year: 2005, won: false, album: 'American Idiot',                                         artist: 'Green Day' },
+  { year: 2005, won: false, album: 'The College Dropout',                                    artist: 'Kanye West' },
+  { year: 2005, won: false, album: 'Confessions',                                            artist: 'Usher' },
+  { year: 2005, won: false, album: 'The Diary of Alicia Keys',                               artist: 'Alicia Keys' },
+  // ── 2006 ──────────────────────────────────────────────────────────────────
+  { year: 2006, won: true,  album: 'How to Dismantle an Atomic Bomb',                        artist: 'U2' },
+  { year: 2006, won: false, album: 'Chaos and Creation in the Backyard',                     artist: 'Paul McCartney' },
+  { year: 2006, won: false, album: 'The Emancipation of Mimi',                               artist: 'Mariah Carey' },
+  { year: 2006, won: false, album: 'Late Registration',                                      artist: 'Kanye West' },
+  { year: 2006, won: false, album: 'Love. Angel. Music. Baby.',                              artist: 'Gwen Stefani' },
+  // ── 2007 ──────────────────────────────────────────────────────────────────
+  { year: 2007, won: true,  album: 'Taking the Long Way',                                    artist: 'Dixie Chicks' },
+  { year: 2007, won: false, album: 'Continuum',                                              artist: 'John Mayer' },
+  { year: 2007, won: false, album: 'FutureSex/LoveSounds',                                   artist: 'Justin Timberlake' },
+  { year: 2007, won: false, album: 'St. Elsewhere',                                          artist: 'Gnarls Barkley' },
+  { year: 2007, won: false, album: 'Stadium Arcadium',                                       artist: 'Red Hot Chili Peppers' },
+  // ── 2008 ──────────────────────────────────────────────────────────────────
+  { year: 2008, won: true,  album: 'River: The Joni Letters',                                artist: 'Herbie Hancock' },
+  { year: 2008, won: false, album: 'Back to Black',                                          artist: 'Amy Winehouse' },
+  { year: 2008, won: false, album: 'Echoes, Silence, Patience & Grace',                      artist: 'Foo Fighters' },
+  { year: 2008, won: false, album: 'Graduation',                                             artist: 'Kanye West' },
+  { year: 2008, won: false, album: 'These Days',                                             artist: 'Vince Gill' },
+  // ── 2009 ──────────────────────────────────────────────────────────────────
+  { year: 2009, won: true,  album: 'Raising Sand',                                           artist: 'Robert Plant & Alison Krauss' },
+  { year: 2009, won: false, album: 'In Rainbows',                                            artist: 'Radiohead' },
+  { year: 2009, won: false, album: 'Tha Carter III',                                         artist: 'Lil Wayne' },
+  { year: 2009, won: false, album: 'Viva la Vida or Death and All His Friends',              artist: 'Coldplay' },
+  { year: 2009, won: false, album: 'Year of the Gentleman',                                  artist: 'Ne-Yo' },
+  // ── 2010 ──────────────────────────────────────────────────────────────────
+  { year: 2010, won: true,  album: 'Fearless',                                               artist: 'Taylor Swift' },
+  { year: 2010, won: false, album: 'Big Whiskey & the GrooGrux King',                        artist: 'Dave Matthews Band' },
+  { year: 2010, won: false, album: 'The E.N.D.',                                             artist: 'Black Eyed Peas' },
+  { year: 2010, won: false, album: 'The Fame',                                               artist: 'Lady Gaga' },
+  { year: 2010, won: false, album: 'I Am... Sasha Fierce',                                   artist: 'Beyoncé' },
+  // ── 2011 ──────────────────────────────────────────────────────────────────
+  { year: 2011, won: true,  album: 'The Suburbs',                                            artist: 'Arcade Fire' },
+  { year: 2011, won: false, album: 'The Fame Monster',                                       artist: 'Lady Gaga' },
+  { year: 2011, won: false, album: 'Need You Now',                                           artist: 'Lady Antebellum' },
+  { year: 2011, won: false, album: 'Recovery',                                               artist: 'Eminem' },
+  { year: 2011, won: false, album: 'Teenage Dream',                                          artist: 'Katy Perry' },
+  // ── 2012 ──────────────────────────────────────────────────────────────────
+  { year: 2012, won: true,  album: '21',                                                     artist: 'Adele' },
+  { year: 2012, won: false, album: 'Born This Way',                                          artist: 'Lady Gaga' },
+  { year: 2012, won: false, album: 'Doo-Wops & Hooligans',                                   artist: 'Bruno Mars' },
+  { year: 2012, won: false, album: 'Loud',                                                   artist: 'Rihanna' },
+  { year: 2012, won: false, album: 'Wasting Light',                                          artist: 'Foo Fighters' },
+  // ── 2013 ──────────────────────────────────────────────────────────────────
+  { year: 2013, won: true,  album: 'Babel',                                                  artist: 'Mumford & Sons' },
+  { year: 2013, won: false, album: 'Blunderbuss',                                            artist: 'Jack White' },
+  { year: 2013, won: false, album: 'Channel Orange',                                         artist: 'Frank Ocean' },
+  { year: 2013, won: false, album: 'El Camino',                                              artist: 'The Black Keys' },
+  { year: 2013, won: false, album: 'Some Nights',                                            artist: 'fun.' },
+  // ── 2014 ──────────────────────────────────────────────────────────────────
+  { year: 2014, won: true,  album: 'Random Access Memories',                                 artist: 'Daft Punk' },
+  { year: 2014, won: false, album: 'The Blessed Unrest',                                     artist: 'Sara Bareilles' },
+  { year: 2014, won: false, album: 'Good Kid, M.A.A.D City',                                artist: 'Kendrick Lamar' },
+  { year: 2014, won: false, album: 'The Heist',                                              artist: 'Macklemore & Ryan Lewis' },
+  { year: 2014, won: false, album: 'Red',                                                    artist: 'Taylor Swift' },
+  // ── 2015 ──────────────────────────────────────────────────────────────────
+  { year: 2015, won: true,  album: 'Morning Phase',                                          artist: 'Beck' },
+  { year: 2015, won: false, album: 'Beyoncé',                                                artist: 'Beyoncé' },
+  { year: 2015, won: false, album: 'G I R L',                                                artist: 'Pharrell Williams' },
+  { year: 2015, won: false, album: 'In the Lonely Hour',                                     artist: 'Sam Smith' },
+  { year: 2015, won: false, album: 'x',                                                      artist: 'Ed Sheeran' },
+  // ── 2016 ──────────────────────────────────────────────────────────────────
+  { year: 2016, won: true,  album: '1989',                                                   artist: 'Taylor Swift' },
+  { year: 2016, won: false, album: 'Beauty Behind the Madness',                              artist: 'The Weeknd' },
+  { year: 2016, won: false, album: 'Sound & Color',                                          artist: 'Alabama Shakes' },
+  { year: 2016, won: false, album: 'To Pimp a Butterfly',                                   artist: 'Kendrick Lamar' },
+  { year: 2016, won: false, album: 'Traveller',                                              artist: 'Chris Stapleton' },
+  // ── 2017 ──────────────────────────────────────────────────────────────────
+  { year: 2017, won: true,  album: '25',                                                     artist: 'Adele' },
+  { year: 2017, won: false, album: 'Lemonade',                                               artist: 'Beyoncé' },
+  { year: 2017, won: false, album: 'Purpose',                                                artist: 'Justin Bieber' },
+  { year: 2017, won: false, album: "A Sailor's Guide to Earth",                              artist: 'Sturgill Simpson' },
+  { year: 2017, won: false, album: 'Views',                                                  artist: 'Drake' },
+  // ── 2018 ──────────────────────────────────────────────────────────────────
+  { year: 2018, won: true,  album: '24K Magic',                                              artist: 'Bruno Mars' },
+  { year: 2018, won: false, album: '"Awaken, My Love!"',                                     artist: 'Childish Gambino' },
+  { year: 2018, won: false, album: 'DAMN.',                                                  artist: 'Kendrick Lamar' },
+  { year: 2018, won: false, album: '4:44',                                                   artist: 'JAY-Z', spotifyId: '4oFRQFP7aHrmHJMZlO33iP' },
+  { year: 2018, won: false, album: 'Melodrama',                                              artist: 'Lorde' },
+  // ── 2019 ──────────────────────────────────────────────────────────────────
+  { year: 2019, won: true,  album: 'Golden Hour',                                            artist: 'Kacey Musgraves' },
+  { year: 2019, won: false, album: 'Beerbongs & Bentleys',                                   artist: 'Post Malone' },
+  { year: 2019, won: false, album: 'Black Panther: The Album',                               artist: 'Kendrick Lamar' },
+  { year: 2019, won: false, album: 'By the Way, I Forgive You',                              artist: 'Brandi Carlile' },
+  { year: 2019, won: false, album: 'Dirty Computer',                                         artist: 'Janelle Monáe' },
+  { year: 2019, won: false, album: 'H.E.R.',                                                 artist: 'H.E.R.' },
+  { year: 2019, won: false, album: 'Invasion of Privacy',                                    artist: 'Cardi B' },
+  { year: 2019, won: false, album: 'Scorpion',                                               artist: 'Drake' },
+  // ── 2020 ──────────────────────────────────────────────────────────────────
+  { year: 2020, won: true,  album: 'When We All Fall Asleep, Where Do We Go?',               artist: 'Billie Eilish' },
+  { year: 2020, won: false, album: 'Cuz I Love You (Deluxe)',                                artist: 'Lizzo' },
+  { year: 2020, won: false, album: 'Father of the Bride',                                    artist: 'Vampire Weekend' },
+  { year: 2020, won: false, album: 'I, I',                                                   artist: 'Bon Iver' },
+  { year: 2020, won: false, album: 'I Used to Know Her',                                     artist: 'H.E.R.' },
+  { year: 2020, won: false, album: 'Norman Fucking Rockwell!',                               artist: 'Lana Del Rey' },
+  { year: 2020, won: false, album: '7',                                                      artist: 'Lil Nas X' },
+  { year: 2020, won: false, album: 'Thank U, Next',                                          artist: 'Ariana Grande' },
+  // ── 2021 ──────────────────────────────────────────────────────────────────
+  { year: 2021, won: true,  album: 'Folklore',                                               artist: 'Taylor Swift' },
+  { year: 2021, won: false, album: 'Black Pumas (Deluxe Edition)',                           artist: 'Black Pumas' },
+  { year: 2021, won: false, album: 'Chilombo',                                               artist: 'Jhené Aiko' },
+  { year: 2021, won: false, album: 'Djesse Vol. 3',                                          artist: 'Jacob Collier' },
+  { year: 2021, won: false, album: 'Everyday Life',                                          artist: 'Coldplay' },
+  { year: 2021, won: false, album: 'Future Nostalgia',                                       artist: 'Dua Lipa' },
+  { year: 2021, won: false, album: "Hollywood's Bleeding",                                   artist: 'Post Malone' },
+  { year: 2021, won: false, album: 'Women in Music Pt. III',                                 artist: 'HAIM' },
+  // ── 2022 ──────────────────────────────────────────────────────────────────
+  { year: 2022, won: true,  album: 'We Are',                                                 artist: 'Jon Batiste' },
+  { year: 2022, won: false, album: 'Back of My Mind',                                        artist: 'H.E.R.' },
+  { year: 2022, won: false, album: 'Certified Lover Boy',                                    artist: 'Drake' },
+  { year: 2022, won: false, album: 'Happier Than Ever',                                      artist: 'Billie Eilish' },
+  { year: 2022, won: false, album: 'Justice',                                                artist: 'Justin Bieber' },
+  { year: 2022, won: false, album: 'Planet Her',                                             artist: 'Doja Cat' },
+  { year: 2022, won: false, album: 'Sour',                                                   artist: 'Olivia Rodrigo' },
+  { year: 2022, won: false, album: 'Montero (Call Me by Your Name)',                         artist: 'Lil Nas X' },
+  // ── 2023 ──────────────────────────────────────────────────────────────────
+  { year: 2023, won: true,  album: "Harry's House",                                          artist: 'Harry Styles' },
+  { year: 2023, won: false, album: 'RENAISSANCE',                                            artist: 'Beyoncé' },
+  { year: 2023, won: false, album: 'Un Verano Sin Ti',                                       artist: 'Bad Bunny' },
+  { year: 2023, won: false, album: 'Good Morning Gorgeous (Deluxe)',                         artist: 'Mary J. Blige' },
+  { year: 2023, won: false, album: '30',                                                     artist: 'Adele' },
+  { year: 2023, won: false, album: 'Mr. Morale & the Big Steppers',                          artist: 'Kendrick Lamar' },
+  { year: 2023, won: false, album: 'Voyage',                                                 artist: 'ABBA' },
+  { year: 2023, won: false, album: 'In These Silent Days',                                   artist: 'Brandi Carlile' },
+  // ── 2024 ──────────────────────────────────────────────────────────────────
+  { year: 2024, won: true,  album: 'Midnights',                                              artist: 'Taylor Swift' },
+  { year: 2024, won: false, album: 'Did You Know That There\'s a Tunnel Under Ocean Blvd',  artist: 'Lana Del Rey' },
+  { year: 2024, won: false, album: 'Endless Summer Vacation',                                artist: 'Miley Cyrus' },
+  { year: 2024, won: false, album: 'the record',                                             artist: 'boygenius' },
+  { year: 2024, won: false, album: 'A Great Chaos',                                          artist: 'Killer Mike', spotifyId: '5OkFSoR5KJU2QhuyTBPgEB' },
+  { year: 2024, won: false, album: 'World Music Radio',                                      artist: 'Jon Batiste' },
+  { year: 2024, won: false, album: 'Guts',                                                   artist: 'Olivia Rodrigo' },
+  { year: 2024, won: false, album: 'Nadie Sabe Lo Que Va a Pasar Mañana',                   artist: 'Bad Bunny' },
+  { year: 2024, won: false, album: 'One Thing at a Time',                                    artist: 'Morgan Wallen' },
+  // ── 2025 ──────────────────────────────────────────────────────────────────
+  { year: 2025, won: true,  album: 'Cowboy Carter',                                          artist: 'Beyoncé' },
+  { year: 2025, won: false, album: "Short n' Sweet",                                         artist: 'Sabrina Carpenter' },
+  { year: 2025, won: false, album: 'Brat',                                                   artist: 'Charli XCX' },
+  { year: 2025, won: false, album: 'Hit Me Hard and Soft',                                   artist: 'Billie Eilish' },
+  { year: 2025, won: false, album: 'Manning Fireworks',                                      artist: 'MJ Lenderman' },
+  { year: 2025, won: false, album: 'Radical Optimism',                                       artist: 'Dua Lipa' },
+  { year: 2025, won: false, album: 'Imaginal Disk',                                          artist: 'Magdalena Bay' },
+  { year: 2025, won: false, album: 'GNX',                                                    artist: 'Kendrick Lamar' },
+  { year: 2025, won: false, album: 'The Great Impersonator',                                 artist: 'Halsey' },
+  { year: 2025, won: false, album: 'Chromakopia',                                            artist: 'Tyler, the Creator' },
+];

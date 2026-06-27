@@ -80,6 +80,29 @@ enum ChartDetailType: Hashable {
 
 enum TrendingMode { case global_, forYou }
 
+// Silla Score leaderboard row — returned by get_silla_leaderboard RPC
+private struct SillaLeaderboardRow: Codable {
+    let releaseId:   UUID
+    let title:       String
+    let artist:      String
+    let coverUrl:    String?
+    let sillaScore:  Double
+    let ratingCount: Int?
+    enum CodingKeys: String, CodingKey {
+        case releaseId   = "release_id"; case title; case artist
+        case coverUrl    = "cover_url"
+        case sillaScore  = "silla_score"
+        case ratingCount = "rating_count"
+    }
+}
+
+private struct SillaLeaderboardParams: Encodable {
+    let p_genre:   String?
+    let p_country: String?
+    let p_limit:   Int
+    let p_offset:  Int
+}
+
 // Shared Codable rows — must be at file scope (Swift disallows type declarations in generic functions)
 private struct RankedRPCRow: Codable {
     let releaseId: UUID; let title: String; let artist: String
@@ -886,6 +909,8 @@ struct RankingDetailView: View {
         .navigationTitle("Ranking")
         .navigationBarTitleDisplayMode(.large)
         .task { await load() }
+        .onChange(of: selectedGenre)   { Task { await load() } }
+        .onChange(of: selectedCountry) { Task { await load() } }
     }
 
     // MARK: Filter bar
@@ -929,15 +954,23 @@ struct RankingDetailView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: Load (uses top_rated as placeholder until silla_score exists)
+    // MARK: Load
 
     private func load() async {
-        let rows: [RankedRPCRow] = (try? await supabase
-            .rpc("get_charts_top_rated", params: ["p_limit": 100])
+        isLoading = true
+        let params = SillaLeaderboardParams(
+            p_genre:   selectedGenre,
+            p_country: selectedCountry,
+            p_limit:   100,
+            p_offset:  0
+        )
+        let rows: [SillaLeaderboardRow] = (try? await supabase
+            .rpc("get_silla_leaderboard", params: params)
             .execute().value) ?? []
+        // silla_score is [0,1]; scale ×5 so the badge reads on the same 0–5 axis as ratings
         entries = rows.map {
             ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
-                       coverUrl: $0.coverUrl, avgScore: $0.avgScore,
+                       coverUrl: $0.coverUrl, avgScore: $0.sillaScore * 5.0,
                        ratingCount: $0.ratingCount, newCount: nil)
         }
         isLoading = false

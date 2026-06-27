@@ -6,6 +6,19 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-27 — Silla Score system: external_scores table, Grammy AOTY seeder, get_silla_leaderboard RPC, iOS leaderboard wired (Mac):**
+
+- **Decision:** build the Silla Score from scratch with a new `external_scores` table (prestige signal) rather than repurposing existing data. Formula: `silla_score = 0.55 × rating_norm + 0.45 × prestige` (adaptive: rating-only or prestige-only albums use α=1.0 so no signal is penalized for lacking the other).
+- **Prestige philosophy:** global hierarchy (Grammy = most prestigious globally) + equal weight within scope (KMA = Grammy when KR filter active, Mercury = Grammy when UK filter active). Achieved naturally via `scope_country` on `external_scores` — regional awards don't fire in the global view. No schema changes needed.
+- **`external_scores` table (`20260627000000_external_scores.sql` ✅ applied):** one row per source per album. `normalized_score` [0,1]. `source_tier` (1=aggregators/0.45, 2=critics/0.30, 3=awards/0.25). `scope_genre`/`scope_country` = null → global; non-null → fires only under that filter. `UNIQUE(release_id, source, year)`. Indexed. `get_external_prestige_scores(release_ids text[], p_genre, p_country)` RPC also created.
+- **Grammy AOTY data file (`scripts/data/grammy-aoty.ts`):** 360 entries (1959–2025), winners + nominees. `won → normalized_score=1.0/award_win`; `!won → 0.35/award_nomination`; `source_tier=3`; no scope (global award). 5 fixes applied (Saturday Night Fever artist, Fugees prefix, Pharrell G I R L spacing, Jay-Z 4:44 + Killer Mike hardcoded Spotify IDs).
+- **Generic seeder (`scripts/seed-external-scores.ts`):** `npm run seed:external -- --source grammy_aoty [--dry-run] [--year YYYY]`. Spotify search → fuzzy match → upsert (`ON CONFLICT DO NOTHING`). State saved to `scripts/seed-external-scores-state-<source>.json` so re-runs skip completed rows. Spotify circuit breaker (`spotify-circuit.ts`) prevents running while rate-limited.
+- **Grammy seed status:** 68 rows inserted before Spotify 429 at Neil Diamond "Moods" (1973). Rate limit clears ~21:30 UTC 2026-06-27. **Re-run `npm run seed:external -- --source grammy_aoty` to continue (~292 remaining).**
+- **`get_silla_leaderboard` RPC (`20260627000001_silla_leaderboard.sql` ✅ applied):** combines Bayesian calibrated rating + tier-weighted prestige per `release_group_id` (post-renovation schema). Rating joins via `ratings.release_group_id → release_groups`. Prestige bridges via `external_scores.release_id → releases.spotify_id → releases.release_group_id`. Genre filter uses `_rg_has_genre()`. Returns `release_groups.id AS release_id`, metadata from `release_groups`, `silla_score float8 [0,1]`, `rating_norm`, `prestige_score`, `rating_count`, `source_count`. First attempt failed: `ratings.release_id` doesn't exist (renovation dropped it in §8). Fixed to use `ratings.release_group_id`.
+- **iOS `RankingDetailView` wired:** added `SillaLeaderboardRow` + `SillaLeaderboardParams` codable structs; `load()` now calls `get_silla_leaderboard` (was `get_charts_top_rated` placeholder); `.onChange(of: selectedGenre/selectedCountry)` triggers reload; `silla_score × 5` displayed in score badge (maps [0,1] to [0,5] to match rating scale).
+
+---
+
 **2026-06-27 — Deezer fallback for MB-missing artists (replaces the killed GAPFILL job C):**
 
 - **Decision:** for artists MB can't resolve, fall back to **Deezer** (over iTunes/Spotify) — it exposes **ISRC** (so fallback recordings can auto-link to MB later, unlike iTunes), needs **no auth**, and carries no baggage from the sources the renovation left. Collaborators come back as text contributors (not entities), so it structurally can't spawn shadow artists (job-C's failure).

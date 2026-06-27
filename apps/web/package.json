@@ -15,6 +15,8 @@
     "expand:genre": "tsx --env-file=.env.local scripts/expand-catalog.ts genre",
     "seed:prestige": "tsx --env-file=.env.local scripts/seed-prestige.ts",
     "seed:prestige:dry": "tsx --env-file=.env.local scripts/seed-prestige.ts --dry-run",
+    "seed:external": "tsx --env-file=.env.local scripts/seed-external-scores.ts",
+    "seed:external:dry": "tsx --env-file=.env.local scripts/seed-external-scores.ts --dry-run",
     "backfill:genres": "tsx --env-file=.env.local scripts/backfill-genres-itunes.ts",
     "backfill:genres:dry": "tsx --env-file=.env.local scripts/backfill-genres-itunes.ts --dry-run",
     "backfill:genres:lastfm": "tsx --env-file=.env.local scripts/backfill-genres-lastfm.ts",
