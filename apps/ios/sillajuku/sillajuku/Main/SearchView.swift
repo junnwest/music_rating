@@ -1130,6 +1130,7 @@ struct ArtistPageView: View {
         let userId: UUID
         let releaseGroupId: UUID
         let score: Double?
+        let eloScore: Double?
         let createdAt: Date
         let profiles: CRProfile?
         struct CRProfile: Codable {
@@ -1140,7 +1141,12 @@ struct ArtistPageView: View {
         }
         enum CodingKeys: String, CodingKey {
             case id; case userId = "user_id"; case releaseGroupId = "release_group_id"
-            case score; case createdAt = "created_at"; case profiles
+            case score; case eloScore = "elo_score"; case createdAt = "created_at"; case profiles
+        }
+        var displayScore: Double? {
+            if let s = score { return s }
+            if let e = eloScore { return Elo.toScore(e) }
+            return nil
         }
     }
 
@@ -1339,7 +1345,7 @@ struct ArtistPageView: View {
         myRatings       = myMap
         let allScores   = rows.compactMap(\.score)
         allRatingScores = allScores
-        communityCount  = allScores.count
+        communityCount  = rows.count  // all ratings, including instinct (score may be nil)
         communityAvg    = allScores.isEmpty ? nil : allScores.reduce(0, +) / Double(allScores.count)
         isLoading       = false
 
@@ -1349,14 +1355,14 @@ struct ArtistPageView: View {
     private func loadCommunityFeed(releaseGroupIds: [String]) async {
         struct CFRow: Codable {
             let id: UUID; let userId: UUID; let releaseGroupId: UUID
-            let score: Double?; let createdAt: Date
+            let score: Double?; let eloScore: Double?; let createdAt: Date
             enum CodingKeys: String, CodingKey {
                 case id; case userId = "user_id"; case releaseGroupId = "release_group_id"
-                case score; case createdAt = "created_at"
+                case score; case eloScore = "elo_score"; case createdAt = "created_at"
             }
         }
         let cfRows: [CFRow] = (try? await supabase
-            .from("ratings").select("id, user_id, release_group_id, score, created_at")
+            .from("ratings").select("id, user_id, release_group_id, score, elo_score, created_at")
             .in("release_group_id", values: releaseGroupIds)
             .order("created_at", ascending: false)
             .limit(60)
@@ -1377,7 +1383,7 @@ struct ArtistPageView: View {
             let p = pMap[row.userId]
             return CommunityRating(
                 id: row.id, userId: row.userId, releaseGroupId: row.releaseGroupId,
-                score: row.score, createdAt: row.createdAt,
+                score: row.score, eloScore: row.eloScore, createdAt: row.createdAt,
                 profiles: p.map { CommunityRating.CRProfile(username: $0.username, displayName: $0.displayName) }
             )
         }
@@ -1468,7 +1474,7 @@ struct ArtistPageView: View {
                 }
             }
             Spacer()
-            if let score = entry.score {
+            if let score = entry.displayScore {
                 HStack(spacing: 3) {
                     Image("icon-flower")
                         .renderingMode(.template).resizable().scaledToFit()

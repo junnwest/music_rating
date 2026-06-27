@@ -352,6 +352,7 @@ struct ProfileView: View {
     @State private var showEditProfile    = false
     @State private var showShareSheet     = false
     @State private var showFollowModal    = false
+    @State private var showUserSearch     = false
     @State private var followModalInitTab: FollowMode = .following
     @State private var mixLibVM           = MixLibraryViewModel()
     @State private var ratingSortOrder:   RatingSortOrder = .recent
@@ -386,6 +387,9 @@ struct ProfileView: View {
                 if let id = viewModel.profile?.id {
                     FollowListModal(userId: id, initialTab: followModalInitTab)
                 }
+            }
+            .sheet(isPresented: $showUserSearch) {
+                UserSearchSheet()
             }
         }
         .task { await viewModel.load() }
@@ -438,6 +442,11 @@ struct ProfileView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
 
             HStack {
+                Button { showUserSearch = true } label: {
+                    Image(systemName: "person.badge.plus")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Color.sjInk)
+                }
                 Spacer()
                 Button { showSettings = true } label: {
                     Image(systemName: "gearshape")
@@ -1273,6 +1282,107 @@ private struct FollowProfileRow: View {
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+// MARK: - User search sheet
+
+struct UserSearchSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var query       = ""
+    @State private var results:    [SearchProfile] = []
+    @State private var isSearching = false
+    @State private var searchTask: Task<Void, Never>?
+
+    struct SearchProfile: Codable, Identifiable {
+        let id: UUID
+        let username: String?
+        let displayName: String?
+        enum CodingKeys: String, CodingKey { case id, username; case displayName = "display_name" }
+        var handle: String  { username ?? displayName ?? "someone" }
+        var label: String   { displayName ?? username ?? "someone" }
+        var initial: String { String(handle.prefix(1)).uppercased() }
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(Color.sjMuted)
+                    TextField("Search by username…", text: $query)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                    if !query.isEmpty {
+                        Button { query = "" } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundStyle(Color.sjMuted)
+                        }
+                    }
+                }
+                .padding(10)
+                .background(Color.sjSurface)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+
+                Divider()
+
+                if isSearching {
+                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if results.isEmpty && !query.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Text("No users found.")
+                        .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List(results) { profile in
+                        NavigationLink {
+                            UserProfileView(userId: profile.id, initialHandle: profile.handle)
+                        } label: {
+                            HStack(spacing: 12) {
+                                ZStack {
+                                    Circle().fill(Color.sjAmber.opacity(0.15)).frame(width: 40, height: 40)
+                                    Text(profile.initial)
+                                        .font(.system(size: 16, weight: .bold)).foregroundStyle(Color.sjAmber)
+                                }
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(profile.label)
+                                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(Color.sjInk)
+                                    Text("@\(profile.handle)")
+                                        .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                    .listStyle(.plain)
+                }
+            }
+            .background(Color.sjCream.ignoresSafeArea())
+            .navigationTitle("Find People")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }.fontWeight(.semibold)
+                }
+            }
+        }
+        .onChange(of: query) { _, new in
+            searchTask?.cancel()
+            let trimmed = new.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { results = []; return }
+            searchTask = Task {
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                guard !Task.isCancelled else { return }
+                isSearching = true
+                results = (try? await supabase
+                    .from("profiles")
+                    .select("id, username, display_name")
+                    .ilike("username", value: "%\(trimmed)%")
+                    .limit(25)
+                    .execute()
+                    .value) ?? []
+                isSearching = false
+            }
+        }
     }
 }
 
