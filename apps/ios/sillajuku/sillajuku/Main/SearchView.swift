@@ -1075,16 +1075,27 @@ struct ArtistDestination: Hashable {
     let name: String
 }
 
+private struct ArtistSong: Identifiable {
+    let id: UUID
+    let title: String
+    let albumId: UUID?
+    let albumTitle: String
+    let albumCoverUrl: String?
+}
+
 struct ArtistPageView: View {
     let artist: ArtistDestination
 
-    @State private var releases:       [Release]    = []
-    @State private var communityAvg:   Double?       = nil
-    @State private var communityCount: Int           = 0
-    @State private var releaseScores:  [UUID: Double] = [:]   // community avg per release
-    @State private var myRatings:      [UUID: Double] = [:]   // user's score per release
+    @State private var releases:       [Release]     = []
+    @State private var songs:          [ArtistSong]  = []
+    @State private var communityAvg:   Double?        = nil
+    @State private var communityCount: Int            = 0
+    @State private var releaseScores:  [UUID: Double] = [:]
+    @State private var myRatings:      [UUID: Double] = [:]
     @State private var selectedTab     = 0
     @State private var isLoading       = true
+
+    private let tabLabels = ["Albums", "Songs", "Community", "Fans"]
 
     private var myRatedCount: Int { myRatings.values.filter { $0 > 0 }.count }
     private var myAvg: Double? {
@@ -1094,10 +1105,9 @@ struct ArtistPageView: View {
     }
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
+        VStack(spacing: 0) {
+            // ── Header ──────────────────────────────────────
             VStack(alignment: .leading, spacing: 0) {
-
-                // ── Artist name block ──────────────────────
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Artist")
                         .font(.system(size: 10, weight: .semibold))
@@ -1113,12 +1123,9 @@ struct ArtistPageView: View {
                 .padding(.top, 16)
                 .padding(.bottom, 14)
 
-                // ── Stats row ─────────────────────────────
                 HStack(spacing: 0) {
-                    artistStat(
-                        value: communityAvg.map { String(format: "%.1f", $0) } ?? "—",
-                        label: "community avg"
-                    )
+                    artistStat(value: communityAvg.map { String(format: "%.1f", $0) } ?? "—",
+                               label: "community avg")
                     Divider().frame(height: 28)
                     artistStat(value: "\(communityCount)", label: "ratings")
                     Divider().frame(height: 28)
@@ -1127,7 +1134,6 @@ struct ArtistPageView: View {
                 .padding(.horizontal, 18)
                 .padding(.bottom, 14)
 
-                // ── Your ratings chip ─────────────────────
                 if myRatedCount > 0, let avg = myAvg {
                     HStack(spacing: 6) {
                         Text("You")
@@ -1138,74 +1144,94 @@ struct ArtistPageView: View {
                             .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(Color.sjInk)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, 10).padding(.vertical, 6)
                     .background(Color.sjAmber.opacity(0.12))
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.sjAmber.opacity(0.4), lineWidth: 1))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 12)
+                    .padding(.horizontal, 18).padding(.bottom, 12)
                 }
+            }
 
-                // ── Tabs ──────────────────────────────────
-                HStack(spacing: 0) {
-                    ForEach(["Albums", "Community", "Fans"].indices, id: \.self) { i in
-                        let label = ["Albums", "Community", "Fans"][i]
-                        Button {
-                            selectedTab = i
-                        } label: {
-                            Text(label)
-                                .font(.system(size: 12, weight: selectedTab == i ? .bold : .medium))
-                                .foregroundStyle(selectedTab == i ? Color.sjInk : Color.sjMuted)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 9)
-                                .overlay(alignment: .bottom) {
-                                    if selectedTab == i {
-                                        Rectangle().frame(height: 2).foregroundStyle(Color.sjInk)
-                                    }
-                                }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .overlay(alignment: .bottom) {
-                    Divider()
-                }
-
-                // ── Tab content ───────────────────────────
-                if isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 48)
-                } else if selectedTab == 0 {
-                    if releases.isEmpty {
-                        Text("No releases in the catalogue yet.")
-                            .font(.system(size: 14))
-                            .foregroundStyle(Color.sjMuted)
+            // ── Tab bar ──────────────────────────────────────
+            HStack(spacing: 0) {
+                ForEach(tabLabels.indices, id: \.self) { i in
+                    Button { selectedTab = i } label: {
+                        Text(tabLabels[i])
+                            .font(.system(size: 11, weight: selectedTab == i ? .bold : .medium))
+                            .foregroundStyle(selectedTab == i ? Color.sjInk : Color.sjMuted)
                             .frame(maxWidth: .infinity)
-                            .padding(.top, 40)
-                    } else {
+                            .padding(.vertical, 9)
+                            .overlay(alignment: .bottom) {
+                                if selectedTab == i {
+                                    Rectangle().frame(height: 2).foregroundStyle(Color.sjInk)
+                                }
+                            }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .overlay(alignment: .bottom) { Divider() }
+
+            // ── Swipeable content ────────────────────────────
+            if isLoading {
+                Spacer()
+                ProgressView()
+                Spacer()
+            } else {
+                TabView(selection: $selectedTab) {
+                    // Albums
+                    ScrollView(showsIndicators: false) {
                         LazyVStack(spacing: 0) {
-                            ForEach(Array(releases.enumerated()), id: \.element.id) { idx, release in
-                                ArtistReleaseRow(
-                                    release: release,
-                                    communityScore: releaseScores[release.id],
-                                    userScore: myRatings[release.id]
-                                )
-                                if idx < releases.count - 1 {
-                                    Divider().padding(.leading, 68)
-                                        .foregroundStyle(Color.sjBorder)
+                            if releases.isEmpty {
+                                Text("No releases in the catalogue yet.")
+                                    .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                                    .frame(maxWidth: .infinity).padding(.top, 40)
+                            } else {
+                                ForEach(Array(releases.enumerated()), id: \.element.id) { idx, release in
+                                    ArtistReleaseRow(release: release,
+                                                     communityScore: releaseScores[release.id],
+                                                     userScore: myRatings[release.id])
+                                    if idx < releases.count - 1 {
+                                        Divider().padding(.leading, 68).foregroundStyle(Color.sjBorder)
+                                    }
                                 }
                             }
                         }
                     }
-                } else {
+                    .tag(0)
+
+                    // Songs
+                    ScrollView(showsIndicators: false) {
+                        LazyVStack(spacing: 0) {
+                            if songs.isEmpty {
+                                Text("No songs in the catalogue yet.")
+                                    .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                                    .frame(maxWidth: .infinity).padding(.top, 40)
+                            } else {
+                                ForEach(Array(songs.enumerated()), id: \.element.id) { idx, song in
+                                    ArtistSongRow(song: song)
+                                    if idx < songs.count - 1 {
+                                        Divider().padding(.leading, 68).foregroundStyle(Color.sjBorder)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .tag(1)
+
+                    // Community
                     Text("Coming soon")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Color.sjMuted)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 40)
+                        .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                        .frame(maxWidth: .infinity).padding(.top, 40)
+                        .tag(2)
+
+                    // Fans
+                    Text("Coming soon")
+                        .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                        .frame(maxWidth: .infinity).padding(.top, 40)
+                        .tag(3)
                 }
+                .tabViewStyle(.page(indexDisplayMode: .never))
             }
         }
         .background(Color.sjCream.ignoresSafeArea())
@@ -1218,12 +1244,8 @@ struct ArtistPageView: View {
     @ViewBuilder
     private func artistStat(value: String, label: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(value)
-                .font(.system(size: 22, weight: .heavy))
-                .foregroundStyle(Color.sjInk)
-            Text(label)
-                .font(.system(size: 10))
-                .foregroundStyle(Color.sjMuted)
+            Text(value).font(.system(size: 22, weight: .heavy)).foregroundStyle(Color.sjInk)
+            Text(label).font(.system(size: 10)).foregroundStyle(Color.sjMuted)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -1239,37 +1261,29 @@ struct ArtistPageView: View {
             .execute()
             .value) ?? []
 
-        // DB has no results for this artist — fall back to the web search API.
-        if loaded.isEmpty {
-            loaded = await fetchFromWebSearch()
-        }
+        if loaded.isEmpty { loaded = await fetchFromWebSearch() }
         releases = loaded
 
-        // Load all ratings for these release groups in one query
         let releaseGroupIds = loaded.map(\.id.uuidString)
         guard !releaseGroupIds.isEmpty else { isLoading = false; return }
 
         struct RRow: Codable {
-            let releaseGroupId: UUID
-            let userId:         UUID
-            let score:          Double?
+            let releaseGroupId: UUID; let userId: UUID; let score: Double?
             enum CodingKeys: String, CodingKey {
-                case releaseGroupId = "release_group_id"
-                case userId         = "user_id"
-                case score
+                case releaseGroupId = "release_group_id"; case userId = "user_id"; case score
             }
         }
-        let rows: [RRow] = (try? await supabase
-            .from("ratings")
-            .select("release_group_id, user_id, score")
-            .in("release_group_id", values: releaseGroupIds)
-            .execute()
-            .value) ?? []
+        async let rowsFetch: [RRow] = (try? await supabase
+            .from("ratings").select("release_group_id, user_id, score")
+            .in("release_group_id", values: releaseGroupIds).execute().value) ?? []
+        async let songsFetch: Void = loadSongs()
+
+        let rows = await rowsFetch
+        await songsFetch
 
         let currentUserId = supabase.auth.currentUser?.id
         var sumMap: [UUID: (sum: Double, count: Int)] = [:]
         var myMap:  [UUID: Double] = [:]
-
         for r in rows {
             if let s = r.score {
                 let e = sumMap[r.releaseGroupId] ?? (0, 0)
@@ -1277,7 +1291,6 @@ struct ArtistPageView: View {
                 if r.userId == currentUserId { myMap[r.releaseGroupId] = s }
             }
         }
-
         releaseScores  = sumMap.mapValues { $0.sum / Double($0.count) }
         myRatings      = myMap
         communityCount = rows.compactMap(\.score).count
@@ -1286,13 +1299,51 @@ struct ArtistPageView: View {
         isLoading      = false
     }
 
+    private func loadSongs() async {
+        struct RecHit: Codable { let id: UUID; let title: String }
+        let hits: [RecHit] = (try? await supabase
+            .from("recordings").select("id, title")
+            .ilike("artist_display", value: artist.name)
+            .order("title").limit(200).execute().value) ?? []
+        guard !hits.isEmpty else { return }
+
+        struct RTRow: Codable {
+            let recordingId: UUID; let releases: RelRow?
+            struct RelRow: Codable {
+                let isCanonical: Bool?; let releaseGroups: RGInfo?
+                struct RGInfo: Codable {
+                    let id: UUID; let title: String; let coverUrl: String?
+                    enum CodingKeys: String, CodingKey { case id, title; case coverUrl = "cover_url" }
+                }
+                enum CodingKeys: String, CodingKey {
+                    case isCanonical = "is_canonical"; case releaseGroups = "release_groups"
+                }
+            }
+            enum CodingKeys: String, CodingKey { case recordingId = "recording_id"; case releases }
+        }
+        let rtRows: [RTRow] = (try? await supabase
+            .from("release_tracks")
+            .select("recording_id, releases(is_canonical, release_groups(id, title, cover_url))")
+            .in("recording_id", values: hits.map(\.id.uuidString)).execute().value) ?? []
+
+        var rgMap: [UUID: RTRow.RelRow.RGInfo] = [:]
+        for row in rtRows {
+            guard let rg = row.releases?.releaseGroups else { continue }
+            if row.releases?.isCanonical == true || rgMap[row.recordingId] == nil { rgMap[row.recordingId] = rg }
+        }
+        songs = hits.compactMap { hit in
+            let rg = rgMap[hit.id]
+            return ArtistSong(id: hit.id, title: hit.title,
+                              albumId: rg?.id, albumTitle: rg?.title ?? "",
+                              albumCoverUrl: rg?.coverUrl)
+        }
+    }
+
     private func fetchFromWebSearch() async -> [Release] {
         var comps = URLComponents(url: Config.webBaseURL.appendingPathComponent("api/search"),
                                   resolvingAgainstBaseURL: false)!
-        comps.queryItems = [
-            URLQueryItem(name: "query", value: artist.name),
-            URLQueryItem(name: "type",  value: "releases")
-        ]
+        comps.queryItems = [URLQueryItem(name: "query", value: artist.name),
+                            URLQueryItem(name: "type", value: "releases")]
         guard let url = comps.url,
               let (data, _) = try? await URLSession.shared.data(from: url) else { return [] }
         struct SearchResponse: Decodable { let releases: [Release] }
@@ -1301,8 +1352,30 @@ struct ArtistPageView: View {
     }
 }
 
+private struct ArtistSongRow: View {
+    let song: ArtistSong
+
+    var body: some View {
+        HStack(spacing: 12) {
+            CoverImage(url: song.albumCoverUrl, cornerRadius: 6)
+                .frame(width: 44, height: 44)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(song.title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.sjInk).lineLimit(1)
+                Text(song.albumTitle)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.sjMuted).lineLimit(1)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 16).padding(.vertical, 11)
+        .contentShape(Rectangle())
+    }
+}
+
 private struct ArtistReleaseRow: View {
-    let release:       Release
+    let release:        Release
     let communityScore: Double?
     let userScore:      Double?
 
@@ -1320,40 +1393,44 @@ private struct ArtistReleaseRow: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(release.displayTitle)
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.sjInk)
-                        .lineLimit(1)
+                        .foregroundStyle(Color.sjInk).lineLimit(1)
                     HStack(spacing: 3) {
-                        if let t = release.releaseType { Text(t.capitalized) }
+                        if let t = release.releaseType {
+                            Text(t.lowercased() == "ep" ? "EP" : t.capitalized)
+                        }
                         if let y = year { Text("·"); Text(y) }
                     }
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.sjMuted)
+                    .font(.system(size: 11)).foregroundStyle(Color.sjMuted)
                 }
 
                 Spacer()
 
-                // Community score dot or add ring
-                if let score = communityScore {
-                    HStack(spacing: 5) {
-                        Circle().fill(Color.sjAmber).frame(width: 7, height: 7)
-                        Text(String(format: "%.1f", score))
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(Color.sjInk)
-                    }
+                if let s = userScore {
+                    flowerScore(s, color: Color.sjBlue)
+                } else if let s = communityScore {
+                    flowerScore(s, color: Color.sjAmber)
                 } else {
                     ZStack {
                         Circle().stroke(Color.sjBorder, lineWidth: 1.5).frame(width: 24, height: 24)
-                        Image(systemName: "plus")
-                            .font(.system(size: 10, weight: .semibold))
+                        Image(systemName: "plus").font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(Color.sjMuted)
                     }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 11)
+            .padding(.horizontal, 16).padding(.vertical, 11)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    private func flowerScore(_ score: Double, color: Color) -> some View {
+        HStack(spacing: 4) {
+            Image("icon-flower")
+                .renderingMode(.template).resizable().scaledToFit()
+                .frame(width: 11, height: 11).foregroundStyle(color)
+            Text(String(format: "%.1f", score))
+                .font(.system(size: 12, weight: .bold)).foregroundStyle(color)
+        }
     }
 }
 
