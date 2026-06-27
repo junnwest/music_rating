@@ -8,12 +8,20 @@ struct FeedItem: Codable, Identifiable {
     let id: UUID
     let userId: UUID
     let score: Double?
+    let eloScore: Double?
     let createdAt: Date
     let releases: FeedRelease
     let profiles: FeedProfile?
 
+    var displayScore: Double? {
+        if let s = score { return s }
+        if let e = eloScore { return Elo.toScore(e) }
+        return nil
+    }
+
     enum CodingKeys: String, CodingKey {
         case id, score, profiles
+        case eloScore  = "elo_score"
         case releases  = "release_groups"
         case userId    = "user_id"
         case createdAt = "created_at"
@@ -78,7 +86,7 @@ class HomeViewModel {
     private var hasLoadedFollowing = false
 
     private static let feedSelect =
-        "id, user_id, score, created_at, release_groups(id, title, artist_display, cover_url, release_group_type), profiles!ratings_user_id_fkey(username, display_name)"
+        "id, user_id, score, elo_score, created_at, release_groups(id, title, artist_display, cover_url, release_group_type), profiles!ratings_user_id_fkey(username, display_name)"
 
     // Personalization signals (populated before explore loads)
     private var followingIds:  Set<UUID>   = []
@@ -911,7 +919,7 @@ private struct FeedCard: View {
 
     @ViewBuilder
     private var scoreView: some View {
-        if let score = item.score {
+        if let score = item.displayScore {
             HStack(spacing: 5) {
                 Image("icon-flower")
                     .renderingMode(.template).resizable().scaledToFit()
@@ -924,17 +932,7 @@ private struct FeedCard: View {
             .background(Color.sjAmber.opacity(0.1))
             .clipShape(RoundedRectangle(cornerRadius: 7))
         } else {
-            HStack(spacing: 5) {
-                Image("icon-flower")
-                    .renderingMode(.template).resizable().scaledToFit()
-                    .frame(width: 12, height: 12)
-                Image(systemName: "lock.fill").font(.system(size: 10))
-            }
-            .foregroundStyle(Color.sjMuted)
-            .frame(minHeight: 26)
-            .padding(.horizontal, 9).padding(.vertical, 4)
-            .background(Color.sjMuted.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 7))
+            EmptyView()
         }
     }
 
