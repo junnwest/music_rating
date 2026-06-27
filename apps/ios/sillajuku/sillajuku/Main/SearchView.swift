@@ -404,9 +404,11 @@ struct SearchView: View {
     let discoveryVM: DiscoveryViewModel
     @State private var searchVM           = SearchViewModel()
     @State private var searchTask: Task<Void, Never>?
-    @State private var ratingSheetRelease: Release?
+    @State private var quickRateRelease: Release?
+    @State private var quickRateScore: Double?     = nil
     @State private var instinctSheetRelease: Release?
-    @State private var userRatingMode = "manual"
+    @State private var userRatingMode  = "manual"
+    @State private var userRatingStep: Double = 0.5
     @State private var ratedReleaseIds: Set<UUID> = []   // loaded from DB at launch — used to hide pre-rated items
     @State private var sessionRatedIds: Set<UUID>  = []   // tapped in this session — shows checkmark
     @State private var showAllPersonalizedSongs = false
@@ -441,15 +443,20 @@ struct SearchView: View {
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
             .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
-            .sheet(item: $ratingSheetRelease) { release in
-                NavigationStack {
-                    AlbumDetailView(release: release) { id in ratedReleaseIds.insert(id) }
+            .sheet(item: $quickRateRelease) { release in
+                ManualRatingSheet(
+                    release: release,
+                    existingScore: $quickRateScore,
+                    ratingStep: userRatingStep
+                ) { score in
+                    guard let score else { return }
+                    Task { await saveQuickRating(score, for: release) }
                 }
-                .presentationDetents([.large])
             }
             .sheet(item: $instinctSheetRelease) { release in
                 InstinctRatingView(release: release, onRated: { id in
                     ratedReleaseIds.insert(id)
+                    sessionRatedIds.insert(id)
                 }, onDone: { instinctSheetRelease = nil })
             }
         }
@@ -490,27 +497,47 @@ struct SearchView: View {
     private func loadUserRatingMode() async {
         guard let userId = supabase.auth.currentUser?.id else { return }
         struct P: Decodable {
-            let ratingMode: String?
-            enum CodingKeys: String, CodingKey { case ratingMode = "rating_mode" }
+            let ratingMode: String?; let manualRatingStep: Double?
+            enum CodingKeys: String, CodingKey {
+                case ratingMode = "rating_mode"; case manualRatingStep = "manual_rating_step"
+            }
         }
         if let p: P = try? await supabase
             .from("profiles")
-            .select("rating_mode")
+            .select("rating_mode, manual_rating_step")
             .eq("id", value: userId)
             .single()
             .execute()
             .value {
             userRatingMode = p.ratingMode ?? "manual"
+            userRatingStep = p.manualRatingStep ?? 0.5
         }
     }
 
     private func addRelease(_ release: Release) {
-        sessionRatedIds.insert(release.id)  // shows checkmark in discovery until next launch
         if userRatingMode == "instinct" {
             instinctSheetRelease = release
         } else {
-            ratingSheetRelease = release
+            quickRateScore   = nil
+            quickRateRelease = release
         }
+    }
+
+    private func saveQuickRating(_ score: Double, for release: Release) async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        struct Payload: Encodable {
+            let userId: UUID; let releaseGroupId: UUID; let score: Double
+            enum CodingKeys: String, CodingKey {
+                case userId = "user_id"; case releaseGroupId = "release_group_id"; case score
+            }
+        }
+        try? await supabase.from("ratings")
+            .upsert(Payload(userId: userId, releaseGroupId: release.id, score: score),
+                    onConflict: "user_id,release_group_id")
+            .execute()
+        sessionRatedIds.insert(release.id)
+        ratedReleaseIds.insert(release.id)
+        NotificationCenter.default.post(name: .ratingChanged, object: nil)
     }
 
     // MARK: - Search bar
