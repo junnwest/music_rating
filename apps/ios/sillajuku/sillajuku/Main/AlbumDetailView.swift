@@ -2,6 +2,10 @@ import SwiftUI
 import Observation
 import Supabase
 
+extension Notification.Name {
+    static let ratingChanged = Notification.Name("com.sillajuku.ratingChanged")
+}
+
 // MARK: - Models
 
 struct AlbumPost: Codable, Identifiable {
@@ -271,6 +275,7 @@ class AlbumDetailViewModel {
                 userEloScore = nil
             }
             await reloadCommunityStats(releaseGroupId: releaseGroupId, currentUserId: userId)
+            NotificationCenter.default.post(name: .ratingChanged, object: nil)
         } catch {
             userScore = old
         }
@@ -601,7 +606,7 @@ struct AlbumDetailView: View {
                 .buttonStyle(.plain)
                 HStack(spacing: 6) {
                     if let type = release.releaseType {
-                        Text(type.capitalized)
+                        Text(type.lowercased() == "ep" ? "EP" : type.capitalized)
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(Color.sjBlue)
                             .padding(.horizontal, 8).padding(.vertical, 3)
@@ -1070,7 +1075,7 @@ private struct TrackRatingSheet: View {
             .padding(.horizontal, 24).padding(.top, 16).padding(.bottom, 24)
         }
         .presentationBackground(Color.sjCream)
-        .presentationDetents([.fraction(0.36)])
+        .presentationDetents([.fraction(0.33)])
         .presentationDragIndicator(.visible)
     }
 }

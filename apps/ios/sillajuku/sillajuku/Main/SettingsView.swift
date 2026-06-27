@@ -93,6 +93,8 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showDeleteConfirm) { deleteAccountSheet }
             .onAppear { loadPreferences() }
+            .onChange(of: viewModel.profile?.ratingMode) { _, _ in loadPreferences() }
+            .onChange(of: viewModel.profile?.ratingStep) { _, _ in loadPreferences() }
         }
     }
 

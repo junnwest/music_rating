@@ -389,6 +389,9 @@ struct ProfileView: View {
             }
         }
         .task { await viewModel.load() }
+        .onReceive(NotificationCenter.default.publisher(for: .ratingChanged)) { _ in
+            Task { await viewModel.reload() }
+        }
     }
 
     private var profileURL: URL {
@@ -993,7 +996,7 @@ struct RatingListRow: View {
                             .background(Color.sjAmber.opacity(0.12))
                             .clipShape(RoundedRectangle(cornerRadius: 4))
                     } else if let rt = releaseType {
-                        Text(rt.capitalized)
+                        Text(rt.lowercased() == "ep" ? "EP" : rt.capitalized)
                             .font(.system(size: 10, weight: .medium))
                             .foregroundStyle(Color.sjBlue)
                             .padding(.horizontal, 5).padding(.vertical, 2)

@@ -273,6 +273,7 @@ private class InstinctRatingViewModel {
             }
         }
         phase = .done
+        NotificationCenter.default.post(name: .ratingChanged, object: nil)
     }
 }
 
@@ -283,6 +284,7 @@ struct InstinctRatingView: View {
     var onRated: ((UUID) -> Void)? = nil
     var onDone: (() -> Void)? = nil
     @State private var vm = InstinctRatingViewModel()
+    @State private var selectedSide: Bool? = nil
     @Environment(\.dismiss) private var dismiss
 
     private func close() {
@@ -373,7 +375,7 @@ struct InstinctRatingView: View {
         }
     }
 
-    // MARK: Phase 2 — Compare (I2: side-by-side cards)
+    // MARK: Phase 2 — Compare
 
     private var comparingView: some View {
         VStack(spacing: 0) {
@@ -394,99 +396,89 @@ struct InstinctRatingView: View {
                 Text("Which do you prefer?")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(Color.sjInk)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, 10)
 
                 HStack(alignment: .top, spacing: 10) {
-                    // ── New album card ──
-                    VStack(spacing: 6) {
-                        CoverImage(url: release.coverUrl, cornerRadius: 8)
-                            .frame(width: 74, height: 74)
+                    compareCard(title: release.displayTitle, artist: release.displayArtist,
+                                coverUrl: release.coverUrl, isNew: true,
+                                isSelected: selectedSide == true)
+                        .onTapGesture { selectedSide = true }
 
-                        Text(release.displayTitle)
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(Color.sjInk)
-                            .multilineTextAlignment(.center)
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        Text(release.displayArtist)
-                            .font(.system(size: 10))
-                            .foregroundStyle(Color.sjMuted)
-                            .lineLimit(1)
-
-                        Text("NEW")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(Color.sjBlue)
-                            .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(Color.sjBlue.opacity(0.12))
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-
-                        Spacer(minLength: 0)
-
-                        Button {
-                            Task { await vm.vote(newAlbumWon: true) }
-                        } label: {
-                            Text("Select")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 7)
-                                .background(Color.sjBlue)
-                                .clipShape(RoundedRectangle(cornerRadius: 7))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(10)
-                    .frame(maxWidth: .infinity)
-                    .background(Color.sjBlue.opacity(0.06))
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.sjBlue, lineWidth: 1.5))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-
-                    // ── Opponent card ──
-                    VStack(spacing: 6) {
-                        CoverImage(url: opp.release.coverUrl, cornerRadius: 8)
-                            .frame(width: 74, height: 74)
-
-                        Text(opp.release.displayTitle)
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(Color.sjInk)
-                            .multilineTextAlignment(.center)
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        Text(opp.release.displayArtist)
-                            .font(.system(size: 10))
-                            .foregroundStyle(Color.sjMuted)
-                            .lineLimit(1)
-
-                        // Spacer to align with NEW badge on the other card
-                        Color.clear.frame(height: 17)
-
-                        Spacer(minLength: 0)
-
-                        Button {
-                            Task { await vm.vote(newAlbumWon: false) }
-                        } label: {
-                            Text("Select")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 7)
-                                .background(Color.sjInk)
-                                .clipShape(RoundedRectangle(cornerRadius: 7))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(10)
-                    .frame(maxWidth: .infinity)
-                    .background(Color.sjSurface)
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.sjBorder, lineWidth: 1.5))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    compareCard(title: opp.release.displayTitle, artist: opp.release.displayArtist,
+                                coverUrl: opp.release.coverUrl, isNew: false,
+                                isSelected: selectedSide == false)
+                        .onTapGesture { selectedSide = false }
                 }
                 .padding(.horizontal, 20)
+
+                HStack(spacing: 10) {
+                    Button {
+                        vm.phase = .bucket
+                        selectedSide = nil
+                    } label: {
+                        Text("← Back")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.sjMuted)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.sjBorder.opacity(0.5))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        guard let side = selectedSide else { return }
+                        selectedSide = nil
+                        Task { await vm.vote(newAlbumWon: side) }
+                    } label: {
+                        Text("Select")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(selectedSide == nil ? Color.sjMuted : Color.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(selectedSide == nil ? Color.sjBorder.opacity(0.5) : Color.sjBlue)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(selectedSide == nil)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 10)
                 .padding(.bottom, 20)
             }
         }
+        .onChange(of: vm.comparisonIndex) { _, _ in selectedSide = nil }
+    }
+
+    private func compareCard(title: String, artist: String, coverUrl: String?,
+                              isNew: Bool, isSelected: Bool) -> some View {
+        VStack(spacing: 6) {
+            CoverImage(url: coverUrl, cornerRadius: 8)
+                .frame(width: 74, height: 74)
+            Text(title)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(Color.sjInk)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(artist)
+                .font(.system(size: 10))
+                .foregroundStyle(Color.sjMuted)
+                .lineLimit(1)
+            if isNew {
+                Text("NEW")
+                    .font(.system(size: 9, weight: .bold)).foregroundStyle(Color.sjBlue)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Color.sjBlue.opacity(0.12)).clipShape(RoundedRectangle(cornerRadius: 4))
+            } else {
+                Color.clear.frame(height: 17)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity)
+        .background(isSelected ? Color.sjBlue.opacity(0.1) : (isNew ? Color.sjBlue.opacity(0.04) : Color.sjSurface))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(isSelected ? Color.sjBlue : Color.sjBorder, lineWidth: isSelected ? 2 : 1.5))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     // MARK: Phase 3 — Done
@@ -736,6 +728,7 @@ private class InstinctTrackRatingViewModel {
             }
         }
         phase = .done
+        NotificationCenter.default.post(name: .ratingChanged, object: nil)
     }
 }
 
@@ -748,6 +741,7 @@ struct InstinctTrackRatingView: View {
     var onDone: (() -> Void)? = nil
 
     @State private var vm = InstinctTrackRatingViewModel()
+    @State private var selectedSide: Bool? = nil
     @Environment(\.dismiss) private var dismiss
 
     private func close() {
@@ -756,14 +750,14 @@ struct InstinctTrackRatingView: View {
 
     var body: some View {
         ZStack {
-            Color.sjCream.ignoresSafeArea()
             switch vm.phase {
             case .bucket:    bucketView
             case .comparing: comparingView
             case .done:      doneView
             }
         }
-        .presentationDetents([.medium])
+        .presentationBackground(Color.sjCream)
+        .presentationDetents([.fraction(0.36)])
         .presentationDragIndicator(.visible)
         .task {
             guard let userId = supabase.auth.currentUser?.id,
@@ -843,25 +837,59 @@ struct InstinctTrackRatingView: View {
             if let opp = vm.currentOpponent {
                 Text("Which do you prefer?")
                     .font(.system(size: 14, weight: .bold)).foregroundStyle(Color.sjInk)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, 10)
 
                 HStack(alignment: .top, spacing: 10) {
                     trackCard(title: track.title, artist: release.displayArtist,
-                              coverUrl: release.coverUrl, isNew: true) {
-                        Task { await vm.vote(newTrackWon: true) }
-                    }
+                              coverUrl: release.coverUrl, isNew: true, isSelected: selectedSide == true)
+                        .onTapGesture { selectedSide = true }
                     trackCard(title: opp.title, artist: opp.artist,
-                              coverUrl: nil, isNew: false) {
-                        Task { await vm.vote(newTrackWon: false) }
-                    }
+                              coverUrl: nil, isNew: false, isSelected: selectedSide == false)
+                        .onTapGesture { selectedSide = false }
                 }
-                .padding(.horizontal, 20).padding(.bottom, 20)
+                .padding(.horizontal, 20)
+
+                HStack(spacing: 10) {
+                    Button {
+                        vm.phase = .bucket
+                        selectedSide = nil
+                    } label: {
+                        Text("← Back")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.sjMuted)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.sjBorder.opacity(0.5))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        guard let side = selectedSide else { return }
+                        selectedSide = nil
+                        Task { await vm.vote(newTrackWon: side) }
+                    } label: {
+                        Text("Select")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(selectedSide == nil ? Color.sjMuted : Color.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(selectedSide == nil ? Color.sjBorder.opacity(0.5) : Color.sjBlue)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(selectedSide == nil)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 10)
+                .padding(.bottom, 20)
             }
         }
+        .onChange(of: vm.comparisonIndex) { _, _ in selectedSide = nil }
     }
 
     private func trackCard(title: String, artist: String, coverUrl: String?,
-                            isNew: Bool, action: @escaping () -> Void) -> some View {
+                            isNew: Bool, isSelected: Bool) -> some View {
         VStack(spacing: 6) {
             if let url = coverUrl {
                 CoverImage(url: url, cornerRadius: 8).frame(width: 74, height: 74)
@@ -884,19 +912,10 @@ struct InstinctTrackRatingView: View {
             } else {
                 Color.clear.frame(height: 17)
             }
-            Spacer(minLength: 0)
-            Button(action: action) {
-                Text("Select")
-                    .font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
-                    .frame(maxWidth: .infinity).padding(.vertical, 7)
-                    .background(isNew ? Color.sjBlue : Color.sjInk)
-                    .clipShape(RoundedRectangle(cornerRadius: 7))
-            }
-            .buttonStyle(.plain)
         }
         .padding(10).frame(maxWidth: .infinity)
-        .background(isNew ? Color.sjBlue.opacity(0.06) : Color.sjSurface)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(isNew ? Color.sjBlue : Color.sjBorder, lineWidth: 1.5))
+        .background(isSelected ? Color.sjBlue.opacity(0.1) : (isNew ? Color.sjBlue.opacity(0.04) : Color.sjSurface))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(isSelected ? Color.sjBlue : Color.sjBorder, lineWidth: isSelected ? 2 : 1.5))
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
