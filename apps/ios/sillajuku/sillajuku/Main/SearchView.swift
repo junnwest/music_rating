@@ -1283,11 +1283,15 @@ struct ArtistPageView: View {
         let releaseGroupIds = loaded.map(\.id.uuidString)
         guard !releaseGroupIds.isEmpty else { isLoading = false; return }
 
-        async let rowsFetch: [CommunityRating] = (try? await supabase
-            .from("ratings")
-            .select("id, release_group_id, user_id, score, created_at, profiles(username, display_name)")
-            .in("release_group_id", values: releaseGroupIds)
-            .execute().value) ?? []
+        struct RRow: Codable {
+            let releaseGroupId: UUID; let userId: UUID; let score: Double?
+            enum CodingKeys: String, CodingKey {
+                case releaseGroupId = "release_group_id"; case userId = "user_id"; case score
+            }
+        }
+        async let rowsFetch: [RRow] = (try? await supabase
+            .from("ratings").select("release_group_id, user_id, score")
+            .in("release_group_id", values: releaseGroupIds).execute().value) ?? []
         async let songsFetch: Void = loadSongs()
 
         let rows = await rowsFetch
@@ -1308,10 +1312,48 @@ struct ArtistPageView: View {
         myRatings       = myMap
         let allScores   = rows.compactMap(\.score)
         allRatingScores = allScores
-        communityFeed   = rows.filter { $0.score != nil }.sorted { $0.createdAt > $1.createdAt }
         communityCount  = allScores.count
         communityAvg    = allScores.isEmpty ? nil : allScores.reduce(0, +) / Double(allScores.count)
         isLoading       = false
+
+        await loadCommunityFeed(releaseGroupIds: releaseGroupIds)
+    }
+
+    private func loadCommunityFeed(releaseGroupIds: [String]) async {
+        struct CFRow: Codable {
+            let id: UUID; let userId: UUID; let releaseGroupId: UUID
+            let score: Double?; let createdAt: Date
+            enum CodingKeys: String, CodingKey {
+                case id; case userId = "user_id"; case releaseGroupId = "release_group_id"
+                case score; case createdAt = "created_at"
+            }
+        }
+        let cfRows: [CFRow] = (try? await supabase
+            .from("ratings").select("id, user_id, release_group_id, score, created_at")
+            .in("release_group_id", values: releaseGroupIds)
+            .order("created_at", ascending: false)
+            .limit(60)
+            .execute().value) ?? []
+        guard !cfRows.isEmpty else { return }
+
+        struct ProfileRow: Codable {
+            let id: UUID; let username: String?; let displayName: String?
+            enum CodingKeys: String, CodingKey { case id, username; case displayName = "display_name" }
+        }
+        let userIds = Array(Set(cfRows.map(\.userId.uuidString)))
+        let profiles: [ProfileRow] = (try? await supabase
+            .from("profiles").select("id, username, display_name")
+            .in("id", values: userIds).execute().value) ?? []
+        let pMap = Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
+
+        communityFeed = cfRows.map { row in
+            let p = pMap[row.userId]
+            return CommunityRating(
+                id: row.id, userId: row.userId, releaseGroupId: row.releaseGroupId,
+                score: row.score, createdAt: row.createdAt,
+                profiles: p.map { CommunityRating.CRProfile(username: $0.username, displayName: $0.displayName) }
+            )
+        }
     }
 
     private func loadSongs() async {

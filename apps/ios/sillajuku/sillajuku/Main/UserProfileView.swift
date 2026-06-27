@@ -475,12 +475,15 @@ struct UserProfileView: View {
         var following = false
         var blocked   = false
         if let cid = currentUserId {
-            async let followChk = supabase.from("follows").select("*", count: .exact)
-                .eq("follower_id", value: cid).eq("following_id", value: userId).execute()
-            async let blockChk  = supabase.from("blocked_users").select("*", count: .exact)
-                .eq("blocker_id", value: cid).eq("blocked_id", value: userId).execute()
-            following = ((try? await followChk)?.count ?? 0) > 0
-            blocked   = ((try? await blockChk)?.count  ?? 0) > 0
+            // Match HomeView's pattern: fetch rows, not count — avoids RLS edge cases
+            struct FollowRow: Codable { let followerId: UUID; enum CodingKeys: String, CodingKey { case followerId = "follower_id" } }
+            struct BlockRow:  Codable { let blockedId: UUID;  enum CodingKeys: String, CodingKey { case blockedId  = "blocked_id"  } }
+            async let followRows: [FollowRow] = (try? await supabase.from("follows").select("follower_id")
+                .eq("follower_id", value: cid).eq("following_id", value: userId).execute().value) ?? []
+            async let blockRows: [BlockRow] = (try? await supabase.from("blocked_users").select("blocked_id")
+                .eq("blocker_id", value: cid).eq("blocked_id", value: userId).execute().value) ?? []
+            following = !(await followRows).isEmpty
+            blocked   = !(await blockRows).isEmpty
         }
         return (rc, fwer, fwing, following, blocked)
     }
