@@ -79,6 +79,7 @@
     "mb:gapfill": "tsx --env-file=.env.local scripts/mb-gapfill.ts",
     "mb:tiers": "tsx --env-file=.env.local scripts/mb-qc.ts --tiers",
     "cleanup:itunes-shadows": "tsx --env-file=.env.local scripts/cleanup-itunes-shadows.ts",
+    "mb:deezer-fallback": "tsx --env-file=.env.local scripts/mb-deezer-fallback.ts",
     "pipeline": "tsx --env-file=.env.local scripts/pipeline.ts",
     "pipeline:status": "tsx --env-file=.env.local scripts/pipeline-status.ts",
     "pipeline:verify": "tsx --env-file=.env.local scripts/pipeline-verify.ts",

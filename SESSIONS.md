@@ -6,6 +6,17 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-27 — Deezer fallback for MB-missing artists (replaces the killed GAPFILL job C):**
+
+- **Decision:** for artists MB can't resolve, fall back to **Deezer** (over iTunes/Spotify) — it exposes **ISRC** (so fallback recordings can auto-link to MB later, unlike iTunes), needs **no auth**, and carries no baggage from the sources the renovation left. Collaborators come back as text contributors (not entities), so it structurally can't spawn shadow artists (job-C's failure).
+- **Built:** `deezer-client.ts` (open API, ~220ms limiter; ISRC fetched per `/track/{id}`); `mb-deezer-fallback.ts` (`npm run mb:deezer-fallback`, dry-run default, `--write`, `--limit`). Processes `skipped` queue rows; **disambiguation guard**: generic names (override candidates + short single tokens) are **excluded → handled by mb-overrides, not Deezer**; the rest require an **exact or token-set name match** (catches "Hoshino Gen" ↔ "Gen Hoshino"; intentionally skips pure romanization variants like "shik"/"sik" — missing > wrong). Clean writer: one artist row only, `source='deezer'` / `source_status='gapfill_unverified'`, country = seed-region hint or NULL (never a store country), recordings carry Deezer ISRC (`mb_recording_id` null). Standalone + bounded (NOT an auto lane) so it can't repeat job C.
+- **Validated (dry-run):** 6 current skips correctly routed to overrides; Hoshino Gen → Gen Hoshino [JP] matched; Song Chang Shik correctly skipped (romanization). Found + fixed 3 CHECK constraints en route: `source_status` allows only `mb_verified`/`gapfill_unverified` (used the latter; also why job-C's `itunes_gapfill` tagging had silently failed); `source` allow-lists + `artist_external_ids` source lacked `deezer`.
+- **Migration `20260627000000_deezer_source.sql` ✅ applied + validated `--write`:** Gen Hoshino → 35 groups, `source='deezer'`, ISRC present, single artist row, no dups/shadows. QC source-purity accepts `deezer`.
+- **Gated DEEZER lane built:** refactored the core into `runDeezerFallback(db, {limit, write})`; `pipeline.ts` runs a supervised `deezerLoop` **gated behind `DEEZER_FALLBACK=1` (default OFF)** — integrated + opt-in (same caution pattern as job C, since it's a blind auto-writer; it's clean-by-construction but unproven at volume). `DEEZER_BATCH`/`DEEZER_POLL_MS` tunable.
+- **Fixed the recurring orphan leak (root cause, web side):** `apps/web/app/api/search/route.ts` was persisting Spotify/iTunes search hits via `saveBasicReleases`/`saveItunesReleases` → bare `releases` rows (`spotify_id` set, `release_group_id`/`source` null) on every DB-insufficient search. Removed both persistence calls (search now returns live results without writing — the catalog is the pipeline's job post-renovation). ⚠️ If the web app is **deployed**, this fix only stops the leak once **re-deployed**; clean the existing orphans (`DELETE FROM releases WHERE release_group_id IS NULL`) **after** the fix is live, else searches refill them.
+
+---
+
 **2026-06-26 — iOS session 17 (Mac): Workstream C complete — all iOS Swift files updated to new DB schema:**
 
 All 9 Swift files updated to read/write against the renovated DB schema (`release_groups`, `recordings`, `release_tracks`). The DB renovation (session 14/15 Mac) was applied on Windows; this session wires the iOS app up to it.

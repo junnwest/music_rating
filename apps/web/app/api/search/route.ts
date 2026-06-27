@@ -1,7 +1,7 @@
 import { searchSpotifyAlbums, searchSpotifyArtists, searchSpotifyTracks, SpotifyCircuitOpenError } from '../../../lib/spotify';
 import { searchItunesAlbums } from '../../../lib/itunes';
 import { cacheGet, cacheSet } from '../../../lib/cache';
-import { saveBasicReleases, saveItunesReleases, searchReleases, searchArtistsInDb, searchReleasesInDb } from '../../../lib/dbCache';
+import { searchReleases, searchArtistsInDb, searchReleasesInDb } from '../../../lib/dbCache';
 import { rateLimit } from '../../../lib/rateLimit';
 import { createClient } from '@supabase/supabase-js';
 import type { NextRequest } from 'next/server';
@@ -100,18 +100,19 @@ export async function GET(request: NextRequest) {
     // DB insufficient — log miss for nightly ingestion queue
     logSearchMiss(normalized, 'releases', dbResults.length).catch(() => {});
 
-    // DB results insufficient — try Spotify, then iTunes
+    // DB results insufficient — try Spotify, then iTunes, and return live results to the
+    // user. NOTE: do NOT persist them. Post-renovation the catalog is built by the MB
+    // pipeline; the old saveBasic/saveItunesReleases wrote bare `releases` (spotify_id set,
+    // release_group_id/source null) → orphan rows that polluted the catalog and tripped QC.
     const spotifyQuery = year ? `${query} year:${year}` : query;
     let results: Awaited<ReturnType<typeof searchSpotifyAlbums>>;
     try {
       results = await searchSpotifyAlbums(spotifyQuery, 10, market);
       if (year) results = results.filter(r => !r.date || r.date.startsWith(year));
-      saveBasicReleases(results).catch(() => {});
     } catch (spotifyErr) {
       console.warn('[search] Spotify album search failed, trying iTunes:', (spotifyErr as Error).message);
       results = await searchItunesAlbums(query, 10);
       if (year) results = results.filter(r => !r.date || r.date.startsWith(year));
-      saveItunesReleases(results).catch(() => {});
     }
 
     const body = { releases: results };
@@ -123,8 +124,7 @@ export async function GET(request: NextRequest) {
       try {
         const results = await searchItunesAlbums(query, 10);
         const filtered = year ? results.filter(r => !r.date || r.date.startsWith(year)) : results;
-        saveItunesReleases(filtered).catch(() => {});
-        return jsonResponse({ releases: filtered });
+        return jsonResponse({ releases: filtered }); // live results only — not persisted (see note above)
       } catch { /* fall through to DB */ }
       const dbResults = await searchReleases(query, year ?? null);
       return jsonResponse({ releases: dbResults });

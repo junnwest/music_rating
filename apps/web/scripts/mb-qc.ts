@@ -60,11 +60,12 @@ export async function integrityCheck(db: DB): Promise<IntegrityResult> {
   const multiCanon = Object.values(canonPerGroup).filter(n => n > 1).length;
   const noCanon = Object.keys(editionsPerGroup).length - Object.keys(canonPerGroup).length;
 
-  // source purity — 'musicbrainz' (INGEST) and 'itunes' (GAPFILL) are both legitimate
-  // provenance; anything else (or an untagged row) is a real anomaly.
+  // source purity — 'musicbrainz' (INGEST), 'itunes' (GAPFILL covers/tracklists), and
+  // 'deezer' (MB-miss fallback) are all legitimate provenance; anything else (or an
+  // untagged row) is a real anomaly.
   let nonMbSources = 0;
   for (const t of ['release_groups', 'releases', 'recordings']) {
-    nonMbSources += await cnt(db, t, q => q.not('source', 'in', '("musicbrainz","itunes")'));
+    nonMbSources += await cnt(db, t, q => q.not('source', 'in', '("musicbrainz","itunes","deezer")'));
   }
 
   // tracks_done artists with 0 release_groups (the old-TXT false-match shape).

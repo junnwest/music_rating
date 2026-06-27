@@ -35,6 +35,7 @@ import { listenBrainzTopUp } from './mb-discover';
 import { wikipediaTopUp, REGIONS } from './build-global-queue';
 import { integrityCheck, requeueFailures, recomputePriorities } from './mb-qc';
 import { gapfillGroups, gapfillSkippedArtists, MigrationNeeded } from './mb-gapfill';
+import { runDeezerFallback } from './mb-deezer-fallback';
 import { ItunesBlockedError, resetBlock } from './itunes-client';
 import { SEED } from './seed-artists';
 
@@ -76,6 +77,14 @@ const GAPFILL_GROUP_BATCH= envInt('GAPFILL_GROUP_BATCH', 25);        // cover/tr
 const GAPFILL_ARTIST_BATCH = envInt('GAPFILL_ARTIST_BATCH', 3);      // MB-skipped artists per cycle
 const GAPFILL_BLOCK_COOLDOWN_MS = envInt('GAPFILL_BLOCK_COOLDOWN_MS', 7_200_000); // back off 2h on a 403 block
 const GAPFILL_RECOVER_ARTISTS = process.env.GAPFILL_RECOVER_ARTISTS === '1'; // job C (iTunes skipped-artist recovery) — OFF: pollutes with shadow artists
+
+// ── DEEZER fallback lane (recover genuinely MB-missing artists from Deezer) — OFF by
+// default; opt in with DEEZER_FALLBACK=1 once standalone runs prove it clean. Clean by
+// construction (no shadow artists possible) + guarded, but it's a blind auto-writer, so
+// it's gated like job C until trusted. Generic names still go to mb-overrides, not here.
+const DEEZER_FALLBACK = process.env.DEEZER_FALLBACK === '1';
+const DEEZER_BATCH    = envInt('DEEZER_BATCH', 5);
+const DEEZER_POLL_MS  = envInt('DEEZER_POLL_MS', 1_800_000); // 30m idle cadence
 
 function sleep(ms: number) { return new Promise<void>(r => setTimeout(r, ms)); }
 const now = () => new Date().toISOString();
@@ -368,6 +377,22 @@ async function gapfillLoop(db: DB) {
   }
 }
 
+// ── DEEZER lane: recover MB-skipped artists from Deezer (DB + Deezer, no MB contention).
+// OFF unless DEEZER_FALLBACK=1. Bounded; the Deezer client self-throttles (429 → null, no
+// fatal throw); supervised like the rest. Generic names are excluded inside runDeezerFallback. ──
+async function deezerLoop(db: DB) {
+  if (!DEEZER_FALLBACK || DRAIN_ONCE) { await beat(db, 'deezer', { status: DEEZER_FALLBACK ? 'idle (drain-only)' : 'off', last_active: now() }); return; }
+  let ingested = 0, matched = 0;
+  for (;;) {
+    const r = await runDeezerFallback(db, { limit: DEEZER_BATCH, write: true, log: m => console.log(m) });
+    ingested += r.ingested; matched += r.matched;
+    const worked = r.processed > 0;
+    if (worked) console.log(`  [deezer] matched ${r.matched}, ingested ${r.ingested} groups (generic→overrides ${r.skippedGeneric})`);
+    await beat(db, 'deezer', { status: worked ? 'running' : 'idle', last_active: now(), items_done: ingested, current_item: `matched ${matched} · ${ingested} groups` });
+    await sleep(worked ? 5_000 : DEEZER_POLL_MS);
+  }
+}
+
 // ── startup: reset stale 'processing' (from a prior crash) back to 'pending' ────
 async function resetStale(db: DB) {
   const { count } = await db.from('artist_ingestion_queue')
@@ -427,6 +452,7 @@ async function main() {
     supervise(db, 'discover', discoverLoop),
     supervise(db, 'qc', qcLoop),
     supervise(db, 'gapfill', gapfillLoop),
+    supervise(db, 'deezer', deezerLoop),
   ]);
 }
 
