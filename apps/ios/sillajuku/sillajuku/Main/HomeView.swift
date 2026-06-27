@@ -579,17 +579,22 @@ struct FindPeopleView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(suggestions) { user in
-                    SuggestedUserRow(
-                        user: user,
-                        isFollowed: followedIds.contains(user.id),
-                        onToggle: { await toggleFollow(user) }
-                    )
-                    .listRowBackground(Color.sjSurface)
-                    .listRowSeparatorTint(Color.sjBorder.opacity(0.5))
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(suggestions) { user in
+                            SuggestedUserRow(
+                                user: user,
+                                isFollowed: followedIds.contains(user.id),
+                                onToggle: { await toggleFollow(user) }
+                            )
+                            .padding(.horizontal, 16)
+                            .background(Color.sjSurface)
+                            if user.id != suggestions.last?.id {
+                                Divider()
+                            }
+                        }
+                    }
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
             }
         }
         .background(Color.sjCream.ignoresSafeArea())
@@ -650,6 +655,7 @@ struct FindPeopleView: View {
             _ = try? await supabase.from("follows")
                 .insert(Payload(followerId: me, followingId: user.id)).execute()
         }
+        NotificationCenter.default.post(name: .followChanged, object: nil)
     }
 }
 
@@ -658,40 +664,50 @@ private struct SuggestedUserRow: View {
     let isFollowed: Bool
     let onToggle: () async -> Void
 
+    private var handle: String { user.username ?? user.displayName ?? "" }
+
     var body: some View {
         HStack(spacing: 12) {
-            Group {
-                if let url = user.avatarUrl.flatMap(URL.init) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let img): img.resizable().scaledToFill()
-                        default: Color.sjBorder
+            // Left: tapping navigates to the user's profile
+            NavigationLink(value: UserProfileDestination(userId: user.id, handle: handle)) {
+                HStack(spacing: 12) {
+                    Group {
+                        if let url = user.avatarUrl.flatMap(URL.init) {
+                            AsyncImage(url: url) { phase in
+                                switch phase {
+                                case .success(let img): img.resizable().scaledToFill()
+                                default: Color.sjBorder
+                                }
+                            }
+                        } else {
+                            Image(systemName: "person.circle.fill")
+                                .resizable().scaledToFit()
+                                .foregroundStyle(Color(uiColor: .systemGray3))
                         }
                     }
-                } else {
-                    Image(systemName: "person.circle.fill")
-                        .resizable().scaledToFit()
-                        .foregroundStyle(Color(uiColor: .systemGray3))
-                }
-            }
-            .frame(width: 44, height: 44).clipShape(Circle())
+                    .frame(width: 44, height: 44).clipShape(Circle())
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(user.displayName ?? user.username ?? "User")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.sjInk)
-                if let u = user.username {
-                    Text("@\(u)")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color.sjMuted)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(user.displayName ?? user.username ?? "User")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color.sjInk)
+                        if let u = user.username {
+                            Text("@\(u)")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Color.sjMuted)
+                        }
+                        Text("\(user.ratingCount) ratings")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.sjMuted)
+                    }
                 }
-                Text("\(user.ratingCount) ratings")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.sjMuted)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
 
             Spacer()
 
+            // Right: follow toggle — outside NavigationLink so it doesn't navigate
             Button {
                 Task { await onToggle() }
             } label: {
@@ -705,7 +721,7 @@ private struct SuggestedUserRow: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 10)
     }
 }
 
