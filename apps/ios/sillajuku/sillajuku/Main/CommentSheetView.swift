@@ -33,11 +33,22 @@ struct RatingComment: Codable, Identifiable {
 struct CommentSheetView: View {
     let ratingId: UUID
 
-    @State private var comments: [RatingComment] = []
-    @State private var isLoading = true
+    @State private var comments: [RatingComment]
+    @State private var isLoading: Bool
     @State private var newComment = ""
     @State private var isSending = false
     @State private var errorMessage: String?
+
+    init(ratingId: UUID, preloaded: [RatingComment]? = nil) {
+        self.ratingId = ratingId
+        if let pre = preloaded {
+            _comments  = State(initialValue: pre)
+            _isLoading = State(initialValue: false)
+        } else {
+            _comments  = State(initialValue: [])
+            _isLoading = State(initialValue: true)
+        }
+    }
 
     private var currentUserId: UUID? { supabase.auth.currentUser?.id }
 
@@ -135,14 +146,14 @@ struct CommentSheetView: View {
     // MARK: Data
 
     private func loadComments() async {
-        isLoading = true
-        comments = (try? await supabase
+        let fetched = (try? await supabase
             .from("rating_comments")
             .select("id, user_id, content, created_at, profiles!rating_comments_user_id_fkey(username, display_name)")
             .eq("rating_id", value: ratingId)
             .order("created_at", ascending: true)
             .execute()
-            .value) ?? []
+            .value) ?? [RatingComment]()
+        comments  = fetched
         isLoading = false
     }
 

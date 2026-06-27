@@ -730,7 +730,8 @@ private struct FeedCard: View {
 
     @State private var activeSheet: CardSheet?
     @State private var showBlockConfirm = false
-    @State private var userMixCount: Int? = nil  // nil = not loaded yet
+    @State private var userMixCount: Int? = nil
+    @State private var prefetchedComments: [RatingComment]? = nil
 
     private var isOwnPost: Bool {
         guard let cid = currentUserId else { return false }
@@ -749,7 +750,7 @@ private struct FeedCard: View {
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
             case .comments:
-                CommentSheetView(ratingId: item.id)
+                CommentSheetView(ratingId: item.id, preloaded: prefetchedComments)
                     .presentationDetents([.fraction(0.67), .large])
                     .presentationDragIndicator(.visible)
             case .likers:
@@ -780,7 +781,6 @@ private struct FeedCard: View {
             Text("Their posts won't appear in your feed.")
         }
         .task {
-            // Preload mix count so Save knows whether to show picker or save immediately
             guard let userId = currentUserId else { return }
             let resp = try? await supabase
                 .from("mixes")
@@ -788,6 +788,16 @@ private struct FeedCard: View {
                 .eq("user_id", value: userId)
                 .execute()
             userMixCount = resp?.count ?? 0
+        }
+        .task(id: item.id) {
+            guard commentsCount > 0, prefetchedComments == nil else { return }
+            prefetchedComments = (try? await supabase
+                .from("rating_comments")
+                .select("id, user_id, content, created_at, profiles!rating_comments_user_id_fkey(username, display_name)")
+                .eq("rating_id", value: item.id)
+                .order("created_at", ascending: true)
+                .execute()
+                .value) ?? []
         }
     }
 
@@ -1179,7 +1189,8 @@ private struct ReportSheet: View {
                 .execute()
             submitted = true
         } catch {
-            errorMessage = "Something went wrong. Please try again."
+            print("Report submit error: \(error)")
+            errorMessage = error.localizedDescription
         }
         isSubmitting = false
     }
