@@ -4,6 +4,7 @@ import Supabase
 
 extension Notification.Name {
     static let ratingChanged = Notification.Name("com.sillajuku.ratingChanged")
+    static let followChanged = Notification.Name("com.sillajuku.followChanged")
 }
 
 // MARK: - Models

@@ -534,6 +534,7 @@ struct UserProfileView: View {
                 isFollowing = true
                 followerCount += 1
             }
+            NotificationCenter.default.post(name: .followChanged, object: nil)
         } catch { /* silently handle */ }
     }
 }

@@ -396,6 +396,9 @@ struct ProfileView: View {
         .onReceive(NotificationCenter.default.publisher(for: .ratingChanged)) { _ in
             Task { await viewModel.reload() }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .followChanged)) { _ in
+            Task { await viewModel.reload() }
+        }
     }
 
     private var profileURL: URL {
@@ -1294,7 +1297,7 @@ struct UserSearchSheet: View {
     @State private var isSearching = false
     @State private var searchTask: Task<Void, Never>?
 
-    struct SearchProfile: Codable, Identifiable {
+    struct SearchProfile: Codable, Identifiable, Hashable {
         let id: UUID
         let username: String?
         let displayName: String?
@@ -1333,27 +1336,38 @@ struct UserSearchSheet: View {
                         .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    List(results) { profile in
-                        NavigationLink {
-                            UserProfileView(userId: profile.id, initialHandle: profile.handle)
-                        } label: {
-                            HStack(spacing: 12) {
-                                ZStack {
-                                    Circle().fill(Color.sjAmber.opacity(0.15)).frame(width: 40, height: 40)
-                                    Text(profile.initial)
-                                        .font(.system(size: 16, weight: .bold)).foregroundStyle(Color.sjAmber)
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(results) { profile in
+                                NavigationLink(value: profile) {
+                                    HStack(spacing: 12) {
+                                        ZStack {
+                                            Circle().fill(Color.sjAmber.opacity(0.15)).frame(width: 40, height: 40)
+                                            Text(profile.initial)
+                                                .font(.system(size: 16, weight: .bold)).foregroundStyle(Color.sjAmber)
+                                        }
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(profile.label)
+                                                .font(.system(size: 14, weight: .semibold)).foregroundStyle(Color.sjInk)
+                                            Text("@\(profile.handle)")
+                                                .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                                        }
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .foregroundStyle(Color.sjBorder)
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 12)
+                                    .contentShape(Rectangle())
                                 }
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(profile.label)
-                                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(Color.sjInk)
-                                    Text("@\(profile.handle)")
-                                        .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                                .buttonStyle(.plain)
+                                if profile.id != results.last?.id {
+                                    Divider().padding(.leading, 68)
                                 }
                             }
-                            .padding(.vertical, 4)
                         }
                     }
-                    .listStyle(.plain)
                 }
             }
             .background(Color.sjCream.ignoresSafeArea())
@@ -1364,6 +1378,14 @@ struct UserSearchSheet: View {
                     Button("Done") { dismiss() }.fontWeight(.semibold)
                 }
             }
+            // Destinations for UserProfileView and its inner navigation
+            .navigationDestination(for: SearchProfile.self) { profile in
+                UserProfileView(userId: profile.id, initialHandle: profile.handle)
+            }
+            .navigationDestination(for: UserProfileDestination.self) { dest in
+                UserProfileView(userId: dest.userId, initialHandle: dest.handle)
+            }
+            .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
         }
         .onChange(of: query) { _, new in
             searchTask?.cancel()
