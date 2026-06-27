@@ -41,7 +41,22 @@ async function main() {
 
   console.log('\n  ── catalog ──');
   console.log(`    artists ${artists} · release_groups ${groups} · releases ${releases} · recordings ${recordings} · release_tracks ${tracks}`);
-  console.log(`    enrichment: embedded ${embedded}/${groups} · covered ${covered}/${groups}\n`);
+  console.log(`    enrichment: embedded ${embedded}/${groups} · covered ${covered}/${groups}`);
+
+  // ── throughput ── drain rate from queue.processed_at (DB-persistent → survives restarts).
+  // This is the rate that actually reduces `pending`, so the ETA reflects when the 5k finishes.
+  const since = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
+  const processedSince = (m: number) => count(db, 'artist_ingestion_queue', q => q.gte('processed_at', since(m)).in('status', ['done', 'skipped', 'failed']));
+  const [drain10, drain60, rec60] = await Promise.all([
+    processedSince(10), processedSince(60),
+    count(db, 'recordings', q => q.gte('created_at', since(60))),
+  ]);
+  const rate10 = drain10 * 6;          // last-10-min rate, extrapolated to /hr (most current)
+  const rateHr = drain60 || rate10;    // prefer the full-hour sample; fall back to the 10-min one
+  const etaDays = rateHr > 0 ? pending / rateHr / 24 : null;
+  console.log('\n  ── throughput ──');
+  console.log(`    drained: last 10m ${drain10} (~${rate10}/hr) · last 60m ${drain60}/hr · recordings ~${rec60}/hr`);
+  console.log(`    ETA: ${pending} pending ÷ ${rateHr}/hr ≈ ${etaDays === null ? '—' : etaDays.toFixed(1) + ' days'} to drain\n`);
 }
 
 main().catch(e => { console.error(e); process.exit(1); });

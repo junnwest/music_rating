@@ -290,6 +290,15 @@ export function shouldIngestRG(rg: MbReleaseGroup, artistMbid: string): boolean 
 }
 
 /** Full ingest of one MB artist → artists/aliases/external_ids → release_groups → releases → recordings/release_tracks. */
+// ── FRESHNESS scheduling: how long until an artist is re-polled for new releases ──
+// Drives `artists.next_check_at` (RENOVATION_PLAN §6 cadence tiers). The FRESHNESS lane
+// (pipeline.ts) claims artists whose next_check_at has passed and re-ingests them.
+export const FRESHNESS_DAYS: Record<string, number> = { hot: 1, active: 7, known: 30, dormant: 90 };
+export function nextCheckAt(priority: string | null | undefined, from: Date = new Date()): string {
+  const days = FRESHNESS_DAYS[priority ?? 'known'] ?? 30;
+  return new Date(from.getTime() + days * 86_400_000).toISOString();
+}
+
 export async function ingestArtist(db: DB, mbid: string): Promise<{ artistId: string; isNew: boolean; rgCount: number; recCount: number }> {
   const detail = await getArtist(mbid);
   if (!detail) throw new Error(`MB artist not found: ${mbid}`);
@@ -315,8 +324,10 @@ export async function ingestArtist(db: DB, mbid: string): Promise<{ artistId: st
     recCount += await ingestEditionFromPrefetched(db, rgId, rg, artistId, byRg.get(rg.id) ?? []);
   }
 
+  // Schedule the next freshness re-poll from the artist's priority tier (default 'known').
+  const { data: pr } = await db.from('artists').select('ingest_priority').eq('id', artistId).maybeSingle();
   await db.from('artists')
-    .update({ ingest_state: 'tracks_done', last_ingested_at: new Date().toISOString() })
+    .update({ ingest_state: 'tracks_done', last_ingested_at: new Date().toISOString(), next_check_at: nextCheckAt(pr?.ingest_priority) })
     .eq('id', artistId);
 
   return { artistId, isNew, rgCount: kept, recCount };

@@ -11,16 +11,18 @@
  *
  *   npm run mb:discover
  *
- * (Wikipedia breadth is separate: `npm run queue:build:global` already queues
- *  wikipedia_<region> rows that INGEST resolves via MB.)
+ * The core is exported as `listenBrainzTopUp` so the pipeline's self-feeding DISCOVER
+ * lane can call it in bounded batches (see pipeline.ts). The CLI below is a thin wrapper.
+ *
+ * (Wikipedia breadth is separate: `wikipediaTopUp` in build-global-queue.ts, also
+ *  wired into the DISCOVER lane and runnable standalone via `npm run queue:build:global`.)
  */
 import { getDB } from './itunes-ingest-core';
 
+type DB = ReturnType<typeof getDB>;
+
 const LB_ALGO = 'session_based_days_7500_session_300_contribution_5_threshold_10_limit_100_filter_True_skip_30';
 const num = (f: string, d: number) => { const a = process.argv.find(x => x.startsWith(`${f}=`)); return a ? parseInt(a.split('=')[1], 10) : d; };
-const FROM = num('--from', 200);
-const PER = num('--per', 8);
-const LIMIT = num('--limit', 500);
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
 interface LbArtist { artist_mbid: string; name: string; score: number }
@@ -37,41 +39,78 @@ async function similarArtists(mbid: string): Promise<LbArtist[]> {
   } catch { return []; }
 }
 
-async function main() {
-  const db = getDB();
-  console.log(`\n  ListenBrainz discovery — from ${FROM} artists, ${PER} similar each, max ${LIMIT} new\n`);
+export interface ListenBrainzTopUpOpts {
+  from?: number;     // source artists to snowball from (default 200)
+  per?: number;      // similar artists to take per source (default 8)
+  limit?: number;    // max NEW artists to queue this call (default 500)
+  log?: (msg: string) => void; // optional progress sink (no-op in the pipeline lane)
+}
+
+/**
+ * Snowball one bounded batch of similar artists off the catalog we already have and
+ * queue the NEW ones (source='listenbrainz', source_id=MBID). Idempotent across calls
+ * (dedupes against both the catalog and already-queued listenbrainz rows). Returns the
+ * number of new artists queued.
+ *
+ * Note on drift control: snowball *sources* are taken from the artists we already have,
+ * so while the catalog is Asian-curated the candidates stay on-genre. The hard backstop
+ * against runaway Western drift is the DISCOVER lane's lifetime ceiling (pipeline.ts) plus
+ * Wikipedia's region-curated counterweight — not this function.
+ */
+export async function listenBrainzTopUp(db: DB, opts: ListenBrainzTopUpOpts = {}): Promise<number> {
+  const FROM = opts.from ?? 200;
+  const PER = opts.per ?? 8;
+  const LIMIT = opts.limit ?? 500;
+  if (LIMIT <= 0) return 0;
 
   // Artists we already have (MBID) — both the snowball sources and the dedup set.
   const { data: ext } = await db.from('artist_external_ids').select('external_id').eq('source', 'musicbrainz');
-  const haveMbids = new Set((ext ?? []).map(r => r.external_id as string));
+  const haveMbids = new Set((ext ?? []).map((r: any) => r.external_id as string));
   // Already-queued ListenBrainz MBIDs (avoid re-queuing across runs).
   const { data: q } = await db.from('artist_ingestion_queue').select('source_id').eq('source', 'listenbrainz');
-  const queued = new Set((q ?? []).map(r => r.source_id as string).filter(Boolean));
+  const queued = new Set((q ?? []).map((r: any) => r.source_id as string).filter(Boolean));
 
-  const sources = [...haveMbids].slice(0, FROM);
+  // Random sample of FROM sources (not the first N): a fixed window dries up once its
+  // neighbours are queued, so we vary it each call to keep discovery productive as the
+  // catalog grows.
+  const all = [...haveMbids];
+  for (let i = all.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [all[i], all[j]] = [all[j], all[i]]; }
+  const sources = all.slice(0, FROM);
   const collected = new Map<string, string>(); // mbid → name (dedup this run)
 
   for (let i = 0; i < sources.length && collected.size < LIMIT; i++) {
     const sims = await similarArtists(sources[i]);
-    let added = 0;
     for (const s of sims.slice(0, PER)) {
       if (!s.artist_mbid || !s.name) continue;
       if (haveMbids.has(s.artist_mbid) || queued.has(s.artist_mbid) || collected.has(s.artist_mbid)) continue;
       collected.set(s.artist_mbid, s.name);
-      added++;
       if (collected.size >= LIMIT) break;
     }
-    process.stdout.write(`\r  [${i + 1}/${sources.length}] +${collected.size} new candidates…`);
+    opts.log?.(`  [lb] [${i + 1}/${sources.length}] +${collected.size} new candidates…`);
   }
 
   const rows = [...collected].map(([mbid, name]) => ({ name, source: 'listenbrainz', source_id: mbid, status: 'pending' }));
-  if (rows.length && !process.argv.includes('--dry-run')) {
-    // Chunk inserts; UNIQUE(name, source) makes it idempotent on name collisions.
-    for (let i = 0; i < rows.length; i += 500) {
-      await db.from('artist_ingestion_queue').upsert(rows.slice(i, i + 500), { onConflict: 'name,source', ignoreDuplicates: true });
-    }
+  for (let i = 0; i < rows.length; i += 500) {
+    // UNIQUE(name, source) makes this idempotent on name collisions.
+    await db.from('artist_ingestion_queue').upsert(rows.slice(i, i + 500), { onConflict: 'name,source', ignoreDuplicates: true });
   }
-  console.log(`\n\n  queued ${rows.length} new artists (source=listenbrainz)${process.argv.includes('--dry-run') ? ' [dry run]' : ''}\n`);
+  return rows.length;
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+// ── CLI ─────────────────────────────────────────────────────────────────────
+async function main() {
+  const db = getDB();
+  const dry = process.argv.includes('--dry-run');
+  const from = num('--from', 200), per = num('--per', 8), limit = num('--limit', 500);
+  console.log(`\n  ListenBrainz discovery — from ${from} artists, ${per} similar each, max ${limit} new\n`);
+  if (dry) {
+    console.log('  [dry-run] not supported for the refactored top-up; run without --dry-run.\n');
+    return;
+  }
+  const n = await listenBrainzTopUp(db, { from, per, limit, log: m => process.stdout.write(`\r${m}`) });
+  console.log(`\n\n  queued ${n} new artists (source=listenbrainz)\n`);
+}
+
+if (process.argv[1] && process.argv[1].endsWith('mb-discover.ts')) {
+  main().catch(e => { console.error(e); process.exit(1); });
+}

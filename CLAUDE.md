@@ -12,6 +12,10 @@ Update `README.md` and `SESSIONS.md` after every meaningful change — not just 
 
 The README is the source of truth for project state. SESSIONS.md is the historical record. Both rot fast — keep them accurate in real time, not retroactively.
 
+## Pipeline health checks (auto-run when due)
+
+At the start of a session, read [`PIPELINE_CHECKS.md`](PIPELINE_CHECKS.md). If today's date is on or past the `next due` date in its Check log **and** the catalog pipeline is running, run the checks it lists (`pipeline:status` / `pipeline:verify` from `apps/web/`), report a short summary, and prepend a new dated row to its Check log with the next due date. If it isn't due yet, don't bring it up. Always run the checks right after a pipeline restart, a migration, or a pipeline code change. Follow that file's "Reading the results" guide — don't auto-fix data, just report and propose.
+
 ## Scope of changes
 
 Only make changes to pages, components, or files that the user has explicitly mentioned or assigned. Do not proactively fix, clean up, or modify anything outside the current task scope — even if an issue is noticed while working on something else. If something looks wrong in an unrelated file, point it out in text but do not touch it without being asked.

@@ -30,6 +30,103 @@ All 9 Swift files updated to read/write against the renovated DB schema (`releas
 
 ---
 
+**2026-06-26 (cont. 14) — integrity-check bugfix + periodic-check infra:**
+
+- **Fixed the empty-artists false alarm** (`mb-qc.ts` `integrityCheck`): the per-batch `.in()` query truncated at Supabase's 1000-row default, so prolific artists' release_groups were missed and their owners falsely counted "empty" (the 25→47 scares). Now a **full paginated scan** of `release_groups.primary_artist_id` → accurate count (4, all benign). `pipeline-verify` now treats empty-artists as a **soft review-note**, not a hard fail (features-only acts legitimately have 0 core releases). Cleanup verified durable: `pending_resolve`=0, `USA`=0, gapfill lane `artists 0` (job C off). verify **7/7**.
+- **Periodic-check infra:** new [`PIPELINE_CHECKS.md`](PIPELINE_CHECKS.md) — schedule (daily while 5k drains → weekly), commands, a "what's fine vs a real problem" guide, and a dated Check log. `CLAUDE.md` now instructs each session to read it and **auto-run the checks if `next due` has passed** (and after any restart/migration/code change), then append a log row.
+- **⚠️ Throughput watch:** today's reading dipped to ~18/hr (ETA ~12d, tight vs the 2-week window) — likely the restart/cleanup downtime in the 60-min window + the prolific-artist stretch. Re-check 2026-06-27; if it holds ≤20/hr, revisit the local-MB-mirror option.
+
+---
+
+**2026-06-26 (cont. 13) — Data check: disabled GAPFILL job C (iTunes shadow-artist pollution):**
+
+- **Audit verdict:** MB data clean (correct countries, perfect canonical integrity, composition filter trimming prolific artists to 43–69 groups, high ISRC). **But GAPFILL job C (recover MB-skipped artists from iTunes) polluted the catalog:** ingesting skipped names' (H.O.T, god, …) full iTunes US-store discographies created **56 shadow artist rows** — store-country `USA` (wrong for Korean acts), `source=null` (provenance tagging never ran), `ingest_state='pending_resolve'`, collab-string junk ("Loco & GRAY"), and **duplicates of real MB artists** (DOK2[USA] vs Dok2[KR]). Dragged ISRC 88%→59%. Compounding (2→6 recovered as it ran).
+- **Fix (user chose A = disable, not rework):** gated job C behind `GAPFILL_RECOVER_ARTISTS=1` (default OFF) in `pipeline.ts` — covers + tracklists (jobs A/B) stay (they're clean, append-only on MB groups). MB-skipped generic names are recovered via **mb-overrides** instead (proper MB identity + ISRC), not iTunes.
+- **Cleanup:** new `cleanup-itunes-shadows.ts` (`npm run cleanup:itunes-shadows [-- --write]`) deletes the `pending_resolve` shadow artists + their full graph (185 groups / 189 releases / recordings / tracks) and resets the 6 `error='itunes-gapfill'` queue rows → `skipped`. Identified by `ingest_state='pending_resolve'` (iTunes-core default; MB never uses it). Dry-run verified. **Run order: restart pipeline (job C now off) → `cleanup:itunes-shadows --write`** (so no new shadows mid-cleanup). Typecheck clean.
+
+---
+
+**2026-06-26 (cont. 12) — Launch-5k composition plan + queue tooling (proportional, ko-wiki):**
+
+- **Goal set:** 5k artists for launch (floor), then continuous growth; ~2-week window; quality non-negotiable. Same-IP so a 2nd worker is a no-op (MB limit is per-IP). Mirror deferred (needs external SSD; not required for 5k — public API does ~20k/mo).
+- **Composition locked (CATALOG_EXPANSION_PLAN §2 shares):** KR 28 · West 30 · JP 15 · CN 7 · SEA 5 · S.Asia 4 · Latin 5 · Africa 3 · Other 3. User chose West 30 / KR 28.
+- **`build-global-queue.ts` upgraded:** restored the `--dry-run` preview (per-region/category counts — I'd broken it in the cont.5 refactor); added a **`latin`** region + a **`korea`** region; broadened **western_canon** to genre-diverse *canon* (awards/HoF + Motown/Stax/Blue Note/Verve/Def Jam/Death Row/Sub Pop/Matador/4AD — soul/jazz/hip-hop/indie/country/blues); added **`--target=N` proportional mode** (caps each region at `SHARE×N`) + `--limit`.
+- **Saturation finding:** English Wikipedia caps Korea at **~765** artists — couldn't hit the 1,400 KR target, which would've made Western 2× Korea. **Namuwiki rejected** (no MediaWiki API + CC BY-**NC** = illegal for a commercial app). **Fix = Korean Wikipedia** (`ko.wikipedia.org`, CC BY-SA): added `wiki:'en'|'ko'` per region; ko titles are Hangul (= native name, resolves via MB Hangul aliases, no langlink fetch). `대한민국의_가수` alone yields 1,303 → Korea now clears 1,400.
+- **Dry-run confirms 5,000 at the planned proportions.** Queued for real via `npm run queue:build:global -- --target=5000` (safe alongside the running pipeline — insert-only, hits Wikipedia not MB). LB snowball (DISCOVER lane) keeps deepening Korea during the run (the "B" in A+B).
+
+---
+
+**2026-06-26 (cont. 11) — Crash fix + `pipeline:verify` harness (caught 2 real bugs):**
+
+- **Pipeline crashed on restart** — a transient `ECONNRESET`/`fetch failed` (to Jina) threw out of `embeddingsLoop` (which only handled the `-1` HTTP-error return, not a raw network throw) → killed the process. **Fixed:** wrapped the batch call in try/catch (treat a throw as transient → sleep + continue); the `supervise()` backstop (cont.10) also now catches any lane throw. Ingest's per-row catch already handled its `fetch failed` (marked failed → QC requeues).
+- **Built `pipeline:verify`** (`npm run pipeline:verify`): a repeatable battery — migrations present, integrity, freshness-cadence ordering, tiering RPC, QC requeue round-trip (disposable row, cleaned up), gapfill wired, all 10 charts RPCs return arrays. It immediately caught **two real bugs**:
+  - **Tiering SQL bug:** `first_release_date` is a `date`, not text → my `latest >= to_char(...)` was `date >= text` (runtime fail). Fixed migration to `(now() - interval 'X')::date`. ⏳ **re-run the corrected `20260626000004`.** Also narrowed `recomputePriorities`' `needsMigration` regex (it had matched the operator error's "does not exist" and mislabeled it "not installed").
+  - **10 orphan `releases`** (null `release_group_id`/`source`/`itunes_id`, all created 21:30:24, "dress"-search titles) — from the **web app search-insert path**, NOT the pipeline. `integrityCheck` now counts these as a distinct `orphanReleases` anomaly instead of fake "0-canonical groups". Recommend deleting the 10 + investigating the web search path (separate, out of pipeline scope).
+- Typecheck clean. Next: restart on fixed code, re-run `pipeline:verify` (should be green once the tiering SQL is re-applied + orphans cleared).
+
+---
+
+**2026-06-26 (cont. 10) — Pipeline gap audit (2 fixes) + sustainability review:**
+
+- **Fixed (bug I'd introduced):** QC `integrityCheck` counted every `source != 'musicbrainz'` as an anomaly — but GAPFILL legitimately writes `source='itunes'`, so QC would flip to `warn` forever once gapfill ran. Now allows `('musicbrainz','itunes')`; anything else is the anomaly.
+- **Fixed (run-for-a-week robustness):** the per-iteration reads at the top of `discoverLoop`/`qcLoop`/`ingestLoop` sat outside their try/catch, so a transient Supabase blip there would reject `Promise.all` and kill the WHOLE pipeline. Added a `supervise()` wrapper in `main()`: a lane that throws is logged + restarted after 30s (ingest also re-runs `resetStale` to free a row stranded mid-claim); bounded `--once` runs still surface errors immediately.
+- **Identified, NOT yet built — the one real design gap (freshness cadence):** every artist is `ingest_priority='known'` (30-day re-poll) because nothing assigns the hot/active/dormant tiers. So a new release from an active artist can lag up to 30 days. The FRESHNESS engine itself is correct (idempotent re-poll adds only new RGs); the gap is tiering by release-recency + engagement. Proposed plan pending user decision (see below).
+- **Sustainability verdict:** the user's "record batch date → ingest releases past that date" idea is unnecessary — MBID-idempotent re-poll already adds only new releases AND catches back-catalogued/old-dated releases a date-cutoff would miss. Keep FRESHNESS; add priority tiering for cadence.
+- **Built the tiering job** (closes the gap): `recompute_ingest_priorities()` SQL function (migration `20260626000004`, ⏳ apply) sets `ingest_priority` + re-derives `next_check_at` from release-recency (max `first_release_date`) + engagement (any rating) — released ≤3mo → hot · ≤18mo or rated → active · catalog → known · old+unrated → dormant; only rows whose tier changes are touched. `recomputePriorities()` wrapper in `mb-qc.ts`; QC lane calls it daily (`TIER_INTERVAL_MS`), degrades gracefully until the migration lands. Manual: `npm run mb:tiers`. Typecheck clean.
+
+---
+
+**2026-06-26 (cont. 9) — iTunes GAPFILL lane (§2) — completes the lane list:**
+
+- **`itunes-client.ts` (new):** reusable iTunes Search client — store rotation (native-lang bias + lean GB/JP/KR/DE/BR fallback) lifted from `backfill-tracklists` but with a **NON-FATAL** 403 breaker (throws `ItunesBlockedError` instead of `process.exit`, so a block backs the lane off without killing the pipeline). Match key = `releaseGroupKey` + extra strip of iTunes release-TYPE suffixes (`- The 3rd Mini Album - EP`, `- Single`) the MB title lacks → smoke hit 9/10 on null-cover groups.
+- **`mb-gapfill.ts` (new):** **append-only + MB-authoritative.** `gapfillGroups` fills null `release_groups.cover_url` and empty canonical tracklists (recordings + release_tracks, `source='itunes'`); `gapfillSkippedArtists` re-ingests MB-`skipped` queue rows from iTunes via the shared `itunes-ingest-core` writers, then **tags every new row `source='itunes'`** (release_groups/recordings/releases) + artist `source_status='itunes_gapfill'`, all guarded `.is('source', null)` so an alias-merge onto an MB artist can never relabel MB rows. Retry caps reuse the QC `attempt_count` column; cover retries gated by new `release_groups.gapfill_checked_at`.
+- **Migration `20260626000003_gapfill_checked.sql` (⏳ apply):** adds `gapfill_checked_at` + a partial index. The lane self-disables (`MigrationNeeded` → status `off (apply migration)`) until it's applied — integrity of the rest is unaffected.
+- **Wired `gapfillLoop` into `pipeline.ts`** (concurrent; iTunes ≠ MB so no contention) — slow/bounded (`GAPFILL_GROUP_BATCH` 25, `GAPFILL_ARTIST_BATCH` 3, 30m idle poll, 2h block cooldown), `--no-gapfill` to disable. `npm run mb:gapfill` for standalone bounded runs. Typecheck clean throughout.
+- **Why bounded/non-fatal:** iTunes is exactly what the renovation fled (region mismatch + IP-level 403 blocks) — GAPFILL keeps volume low and degrades gracefully so it can never take the catalog or the pipeline down. **167 groups currently missing a cover; 0 skipped artists yet** (skipped grows as MB hits generic names). Activates on next restart + the migration.
+
+---
+
+**2026-06-26 (cont. 8) — Chart RPC rebuild (§5, drop-in for iOS):**
+
+- **Got the exact iOS contract from the Mac session:** `RankingsView` was NOT updated in the renovation — it still decodes OLD column names (`release_id`, `artist`, and for songs `track_position`/`track_title`/`album_title`), all via `supabase.rpc(...)` (no embeds/views). 10 RPCs are actively called (+ controversial exists as a case but falls through to top_rated). Charts read **manual `score` only** (`elo_score` not surfaced).
+- **Built `20260626000002_charts_rpcs_rebuild.sql` (⏳ apply in SQL editor) — DROP-IN, no iOS change:** all 11 charts RPCs rebuilt on the new schema but aliased back to the Swift-expected shape — `release_groups.id AS release_id`, `artist_display AS artist`. Song charts (`get_charts_{top_rated,most_rated,trending}_songs`) aggregate `track_ratings` by `recording_id`, then map each recording → ONE placement via a `DISTINCT ON (recording_id)` `loc` CTE that prefers the canonical release (`position AS track_position`, parent `release_group_id AS release_id`) — so tap-through still hits `AlbumDetailView(release: <group id>)` and `ChartSongEntry.id = "release_id_track_position"` stays stable.
+- **New-schema adaptations:** genres moved text→`text[]` → `_rg_has_genre()` helper (unnest + hyphen/space tolerant so iOS slug `hip-hop` matches stored `hip hop`); `first_release_date` may be partial → year filter uses `LEFT(...,4)::int`; `get_user_top_genres` unnests the array directly.
+- **Validation:** no direct PG conn in env (PostgREST only) so DDL validates on apply; reviewed against confirmed columns + the live `ratings→release_groups` join (proven by the re-link). Charts will read empty until ratings re-link + catalog drain.
+- **Left open (NOT charts, separate iOS contract needed):** `get_user_genre_standings` (TasteView still calls it), `get_calibrated_bayesian_scores`, `recommendable_releases` view.
+
+---
+
+**2026-06-26 (cont. 7) — Rating re-link (§7):**
+
+- **Restart verified** — all 5 lanes live (discover/embeddings/freshness/ingest/qc); QC shows `clean «integrity ok»` (migration `20260626000001` applied → auto-requeue active).
+- **`relink-ratings.ts` built** (`npm run relink:ratings`, dry-run default, `-- --write` upserts): the pre-renovation backups (`backups/ratings_pre_renovation_20260624_win.json` 97 album + `track_ratings…_win.json` 20 track) are matched by `_release.{title, artist}` → new `release_groups` (then track ratings → the group's canonical-release tracklist → `recording_id`). Idempotent (upsert on the unique keys) and **re-runnable** as the catalog fills in.
+- **Matcher robustness:** MB stores clean titles while Spotify backups wrap them (`NewJeans 2nd EP 'Get Up'`, `IU 5th Album 'LILAC'`) and list collab credits (`Sik-K, Lil Moshpit`). Added quoted-segment extraction + `- EP/Single/Album` suffix strip + primary-artist fallback → recall 4→8 on the current partial catalog.
+- **Ran `--write`:** 8 matched → 7 distinct `ratings` rows (one user had two editions collapsing to one group; upsert kept the latest — expected). Scores + Elo preserved, `release_groups` join resolves. **Most misses are simply un-ingested artists (only ~23/275 drained); RE-RUN after the pipeline finishes draining.** Track ratings 0 so far (parent albums not yet ingested).
+- **Caught + noted:** `release_groups`' artist FK is **`primary_artist_id`** (no `artist_id`) — documented in README for iOS too.
+- **Remaining in #4:** chart RPC rebuild (dropped in renovation; coordinate with iOS — song RPCs key on `recording_id`).
+
+---
+
+**2026-06-26 (cont. 6) — FRESHNESS + QC lanes:**
+
+- **Health check first:** confirmed the restarted pipeline is clean — `err=0` all lanes, `skipped/failed 0`, canonical integrity perfect, no dup artists, 100% MB source purity (the one `recordings other=1` was a transient mid-write race; re-checked → 0). Self-feeding DISCOVER idling correctly. TXT dropped from sample (pending correct re-ingest).
+- **#3 FRESHNESS (built):** `mb-ingest.ts` now sets `artists.next_check_at` on every `tracks_done` from the priority tier (`nextCheckAt`, hot 1d/active 7d/known 30d/dormant 90d). `pipeline.ts` weaves freshness into the single MB worker (no separate MB lane → no contention): every `FRESHNESS_EVERY` (20) ingests, and whenever the queue is empty, it claims a due artist (`next_check_at <= now`) and re-ingests (MBID-idempotent → adds only new groups). Startup `bootstrapFreshness` schedules legacy null rows.
+- **#3 QC (built):** new DB-only `mb-qc.ts` — `integrityCheck` (structured mb-audit invariants + `ok`/anomalies) and `requeueFailures` (failed→pending, capped by `attempt_count`, self-healing). `pipeline.ts` runs `qcLoop` concurrently (default 1h); `--no-qc` to disable. Migration `20260626000001_queue_attempt_count.sql` (⏳ apply) adds the queue retry counter; `requeueFailures` degrades gracefully (`needsMigration` flag) until it's applied — integrity checks run regardless.
+- **Caught a bug via read-only smoke test:** QC `emptyArtists` + freshness delta-counter used `release_groups.artist_id`, which **doesn't exist** — the FK is **`primary_artist_id`**. First smoke run false-flagged "19 tracks_done artists with 0 release_groups"; fixed both to `primary_artist_id`, re-ran → `ok: true`, 0 anomalies. (Noted the column name in README for iOS artist→releases queries.)
+- **⚠️ Activation = restart** (+ apply migration `20260626000001` for QC auto-requeue). Currently-running pipeline keeps draining on the prior code; FRESHNESS/QC/`next_check_at` take effect on next `npm run pipeline`. Typecheck clean throughout.
+
+---
+
+**2026-06-26 (cont. 5) — Self-feeding DISCOVER lane + generic-name overrides:**
+
+- **Oriented (pipeline running, clean):** fresh re-run mid-drain (~11/275 seed artists done), 100% `musicbrainz` source purity, canonical integrity perfect, no dup artists. Did **not** restart it.
+- **Found + fixed a live false-match:** seed **TXT** had resolved to *"Depeche Mode remixer"* (MBID `dcc522aa…`, country null, **0 release_groups**) — content-harmless but a wrong artist row. Deleted via the new `mb-requeue-overrides` (cleanup mode, safe live).
+- **#1 Self-feeding DISCOVER lane (built):** refactored `mb-discover.ts` → exported `listenBrainzTopUp(db, opts)` (now **random-samples** sources so the snowball stays productive as the catalog grows) and `build-global-queue.ts` → exported `wikipediaTopUp(db, opts)` (bounded, incremental insert, region-curated); both keep their CLIs via an `argv[1].endsWith()` guard. Added `discoverLoop` to `pipeline.ts`: concurrent with INGEST (hits LB+Wikipedia, **not** MB), tops up when `pending < DISCOVER_LOW_WATER` toward `DISCOVER_TARGET`, bounded by a lifetime `DISCOVER_CEILING` on non-seed rows, **region-rotated Wikipedia** as the counterweight to LB drift. Env-tunable; `--no-discover` for drain-only. Typecheck clean; import smoke test confirms no CLI side-effects on import.
+- **#2 mb-overrides filled (5 of 8):** MBID-verified against MB (KR country + alias carrying the stage name): **txt** `9d027d72`, **a pink** `9102bdf6`, **loco** `9e9e2a33`, **woo** `b22efa02` (우원재, alias "Woo"), **miso** `175f54d4`. **dean / gray / kai** deliberately left `needs_review` — their Korean artist doesn't surface in MB search even KR-filtered (missing > wrong). New `npm run mb:requeue-overrides` (`--requeue` resets mis-ingested names' queue rows; run at restart).
+- **⚠️ Activation = restart:** the running process loaded the old (empty) override map + has no discover loop. Both changes take effect on the next `npm run pipeline`. Recommended restart sequence: kill → `npm run mb:requeue-overrides -- --requeue` → `npm run pipeline`. Restart is cheap here (only ~11 seed artists in, crash-resumable).
+
+---
+
 **2026-06-26 (cont. 4) — Clean catalog re-run + iOS schema reference + production-pipeline status:**
 
 **2026-06-26 — Session 16 (Mac): Profile share URL fix; OG images overhaul:**
