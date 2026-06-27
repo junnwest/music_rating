@@ -38,4 +38,5 @@ npm run mb:audit          # deeper data view: sample eyeball, skipped list, sour
 ## Check log (newest first)
 | Date | verify | rate (last 60m) | pending | notes / next due |
 |------|--------|-----------------|---------|------------------|
-| 2026-06-26 | 7/7, structurally clean (4 empty, benign) | 18/hr ⚠ | 5178 | iTunes-shadow cleanup done + job C disabled. Rate dipped (restart/cleanup downtime in window + prolific stretch) — **re-check 2026-06-27**; if ≤20/hr persists, consider local mirror. qc lane heartbeat stale (pre-fix code) — clears on next restart. **Next due: 2026-06-27** |
+| 2026-06-27 | 7/7, structurally clean (5 empty, benign) | 20/hr | 5091 | Web orphan leak fixed at root (search-insert) + **deployed** (fd66fea) + 20 orphans cleaned — won't recur. Deezer fallback lane live (`DEEZER_FALLBACK=1`, idle). Rate ~20/hr → ETA ~10.6d (within the 2-wk window but **tight** — keep watching; if it holds ≤20/hr, stand up the local MB mirror). **Next due: 2026-06-28** |
+| 2026-06-26 | 7/7, structurally clean (4 empty, benign) | 18/hr ⚠ | 5178 | iTunes-shadow cleanup done + job C disabled. Rate dipped (restart/cleanup downtime in window + prolific stretch) — re-check 2026-06-27; if ≤20/hr persists, consider local mirror. qc lane heartbeat stale (pre-fix code) — clears on next restart. |

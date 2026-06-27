@@ -22,13 +22,14 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 The renovation is applied and the catalog pipeline is a **single long-running orchestrator** on **MusicBrainz** (CC0, MBID identity) — *not* iTunes. Run it: **`cd apps/web && npm run pipeline`** · status: **`npm run pipeline:status`** · health: **`npm run pipeline:verify`**. (The iTunes catalog-expansion sections further down are **superseded**.)
 
-**Status (end of 2026-06-26):**
-- **All 6 lanes built + live:** INGEST · FRESHNESS · EMBEDDINGS · DISCOVER (self-feeding) · QC · GAPFILL. Crash-supervised (a lane that throws restarts; transient network blips no longer kill the process).
-- **All 4 pipeline migrations applied** (`20260626000001` attempt_count · `…0002` charts RPCs · `…0003` gapfill_checked · `…0004` ingest_priorities).
-- **Launch 5,000 queued at planned proportions** (`npm run queue:build:global -- --target=5000`): KR 1400 · West 1500 · JP 750 · CN 350 · SEA 250 · S.Asia 200 · Latin 250 · Africa 150 · Other 150 — draining now (~5–12 days; **watch throughput**, see [PIPELINE_CHECKS.md](PIPELINE_CHECKS.md)).
-- **Periodic health checks:** [PIPELINE_CHECKS.md](PIPELINE_CHECKS.md) (daily while draining → weekly; auto-run when due per CLAUDE.md).
-- **⚠️ GAPFILL job C (skipped-artist iTunes recovery) DISABLED** by default (`GAPFILL_RECOVER_ARTISTS=1` to re-enable) — it created store-country shadow artists that duplicated MB rows; covers + tracklists only.
-- **Skipped-artist recovery (replaces job C):** generic names → `mb-overrides`; genuinely MB-missing artists → **Deezer fallback** `npm run mb:deezer-fallback` ([mb-deezer-fallback.ts](apps/web/scripts/mb-deezer-fallback.ts) + [deezer-client.ts](apps/web/scripts/deezer-client.ts)) — clean (one artist row, `source='deezer'`, ISRC, no shadows), guarded (exact/token-set name match; generics excluded), standalone + dry-run default. ⏳ **apply `20260627000000_deezer_source.sql`** (adds `deezer` to source CHECKs), then `-- --write`.
+**Status (end of 2026-06-27):**
+- **7 lanes built + live, supervised:** INGEST · FRESHNESS · EMBEDDINGS · DISCOVER (self-feeding) · QC · GAPFILL · DEEZER (gated). A lane that throws restarts; transient network blips no longer kill the process.
+- **All 5 pipeline migrations applied** (`20260626000001` attempt_count · `…0002` charts RPCs · `…0003` gapfill_checked · `…0004` ingest_priorities · `20260627000000` deezer_source).
+- **Launch 5,000 queued at planned proportions** (`npm run queue:build:global -- --target=5000`): KR 1400 · West 1500 · JP 750 · CN 350 · SEA 250 · S.Asia 200 · Latin 250 · Africa 150 · Other 150 — **draining** (2026-06-27: ~20 artists/hr, ETA ~10.6d — within the 2-wk window but tight; **watch throughput** — if it holds ≤20/hr, stand up the local MB mirror).
+- **`pipeline:verify` 7/7, catalog clean.** Periodic checks in [PIPELINE_CHECKS.md](PIPELINE_CHECKS.md) (daily while draining → weekly; auto-run when due per CLAUDE.md).
+- **Skipped-artist recovery:** generic names → `mb-overrides`; genuinely MB-missing artists → **Deezer fallback** (`mb:deezer-fallback`, or the gated `DEEZER_FALLBACK=1` lane) — clean (one artist row, `source='deezer'`, ISRC, no shadows; guarded exact/token-set match). Validated: Gen Hoshino → 35 groups. GAPFILL **job C (iTunes skipped-artist recovery) stays DISABLED** (`GAPFILL_RECOVER_ARTISTS=1` to re-enable) — it created store-country shadow artists; covers + tracklists only.
+- **Web orphan leak fixed + deployed:** `app/api/search/route.ts` no longer persists Spotify/iTunes search hits as bare `releases` (was leaking null-`release_group_id` orphans on every search); existing orphans cleaned.
+- **Open (optional, non-blocking):** fill `mb-overrides` for the generic skips (H.O.T, god, Dean, GRAY, SOLE, BIBI); re-run `relink:ratings` after the 5k drains.
 
 **Pipeline lanes** (all in [`apps/web/scripts/pipeline.ts`](apps/web/scripts/pipeline.ts)):
 - **INGEST** ✅ — claim queued artist → MB resolve ([`mb-ingest.ts`](apps/web/scripts/mb-ingest.ts)) → `ingestArtist`. Composition filter `shouldIngestRG` trims to core (own album/EP/single; **drops guest features** + live/remix/dj-mix). Inline Cover Art Archive covers. Single-worker (MB ~1 req/s **per IP**), crash-resumable, MBID-idempotent.
