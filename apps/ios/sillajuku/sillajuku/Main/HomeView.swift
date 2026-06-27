@@ -750,7 +750,7 @@ private struct FeedCard: View {
             switch sheet {
             case .comments:
                 CommentSheetView(ratingId: item.id)
-                    .presentationDetents([.fraction(2/3), .large])
+                    .presentationDetents([.fraction(0.67), .large])
                     .presentationDragIndicator(.visible)
             case .likers:
                 LikersSheetView(ratingId: item.id)
@@ -1081,89 +1081,81 @@ private struct ReportSheet: View {
     private let reasons = ["Spam", "Inappropriate Content", "Harassment", "Other"]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Report Post")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Color.sjInk)
-                Spacer()
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(Color.sjMuted)
-                        .frame(width: 30, height: 30)
-                        .background(Color.sjBorder.opacity(0.4))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 24)
-            .padding(.bottom, 16)
-
-            if submitted {
-                VStack(spacing: 14) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 44))
-                        .foregroundStyle(Color.sjBlue)
-                    Text("Report submitted")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Color.sjInk)
-                    Text("Thanks for helping keep sillajuku safe.")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Color.sjMuted)
-                        .multilineTextAlignment(.center)
-                    Button("Done") { dismiss() }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Color.sjBlue)
-                        .padding(.top, 4)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.bottom, 40)
-            } else {
-                if let error = errorMessage {
-                    Text(error)
-                        .font(.system(size: 13))
-                        .foregroundStyle(.red)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 8)
-                }
-                Text("Why are you reporting this post?")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color.sjMuted)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 12)
-
-                Divider()
-
-                ForEach(reasons, id: \.self) { reason in
-                    Button {
-                        guard !isSubmitting else { return }
-                        Task { await submit(reason: reason) }
-                    } label: {
-                        HStack {
-                            Text(reason)
-                                .font(.system(size: 15))
-                                .foregroundStyle(Color.sjInk)
-                            Spacer()
-                            if isSubmitting {
-                                ProgressView().scaleEffect(0.8)
-                            } else {
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundStyle(Color.sjMuted)
-                            }
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 14)
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 0) {
+                if submitted {
+                    VStack(spacing: 14) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 44))
+                            .foregroundStyle(Color.sjBlue)
+                        Text("Report submitted")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Color.sjInk)
+                        Text("Thanks for helping keep sillajuku safe.")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Color.sjMuted)
+                            .multilineTextAlignment(.center)
+                        Button("Done") { dismiss() }
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Color.sjBlue)
+                            .padding(.top, 4)
                     }
-                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.bottom, 40)
+                } else {
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.system(size: 13))
+                            .foregroundStyle(.red)
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 8)
+                    }
+                    Text("Why are you reporting this post?")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.sjMuted)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+
                     Divider()
+
+                    ForEach(reasons, id: \.self) { reason in
+                        Button {
+                            guard !isSubmitting else { return }
+                            Task { await submit(reason: reason) }
+                        } label: {
+                            HStack {
+                                Text(reason)
+                                    .font(.system(size: 15))
+                                    .foregroundStyle(Color.sjInk)
+                                Spacer()
+                                if isSubmitting {
+                                    ProgressView().scaleEffect(0.8)
+                                } else {
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(Color.sjMuted)
+                                }
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 14)
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        Divider()
+                    }
+                }
+                Spacer()
+            }
+            .background(Color.sjCream.ignoresSafeArea())
+            .navigationTitle("Report Post")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Cancel") { dismiss() }
                 }
             }
         }
-        .background(Color.sjSurface)
     }
 
     private func submit(reason: String) async {

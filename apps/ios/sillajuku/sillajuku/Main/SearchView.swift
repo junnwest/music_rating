@@ -426,6 +426,7 @@ struct SearchView: View {
             VStack(spacing: 0) {
                 searchBar
                     .padding(.horizontal, 16)
+                    .padding(.top, 10)
                     .padding(.bottom, 10)
                 Divider()
 
@@ -437,8 +438,7 @@ struct SearchView: View {
             }
             .background(Color.sjCream.ignoresSafeArea())
             .onTapGesture { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
-            .navigationTitle("Add")
-            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
             .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
             .sheet(item: $ratingSheetRelease) { release in
@@ -1090,12 +1090,32 @@ struct ArtistPageView: View {
     @State private var songs:          [ArtistSong]  = []
     @State private var communityAvg:   Double?        = nil
     @State private var communityCount: Int            = 0
-    @State private var releaseScores:    [UUID: Double] = [:]
-    @State private var releaseCounts:   [UUID: Int]    = [:]
-    @State private var myRatings:       [UUID: Double] = [:]
-    @State private var allRatingScores: [Double]       = []
+    @State private var releaseScores:    [UUID: Double]        = [:]
+    @State private var releaseCounts:   [UUID: Int]           = [:]
+    @State private var myRatings:       [UUID: Double]        = [:]
+    @State private var allRatingScores: [Double]              = []
+    @State private var communityFeed:   [CommunityRating]     = []
     @State private var selectedTab      = 0
     @State private var isLoading        = true
+
+    private struct CommunityRating: Codable, Identifiable {
+        let id: UUID
+        let userId: UUID
+        let releaseGroupId: UUID
+        let score: Double?
+        let createdAt: Date
+        let profiles: CRProfile?
+        struct CRProfile: Codable {
+            let username: String?; let displayName: String?
+            enum CodingKeys: String, CodingKey { case username; case displayName = "display_name" }
+            var handle: String { username ?? displayName ?? "someone" }
+            var initial: String { String((username ?? displayName ?? "?").prefix(1)).uppercased() }
+        }
+        enum CodingKeys: String, CodingKey {
+            case id; case userId = "user_id"; case releaseGroupId = "release_group_id"
+            case score; case createdAt = "created_at"; case profiles
+        }
+    }
 
     private let tabLabels = ["Albums", "Songs", "Community", "Stats"]
 
@@ -1222,10 +1242,7 @@ struct ArtistPageView: View {
                     .tag(1)
 
                     // Community
-                    Text("Coming soon")
-                        .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
-                        .frame(maxWidth: .infinity).padding(.top, 40)
-                        .tag(2)
+                    communityTab.tag(2)
 
                     // Stats
                     statsTab.tag(3)
@@ -1266,15 +1283,11 @@ struct ArtistPageView: View {
         let releaseGroupIds = loaded.map(\.id.uuidString)
         guard !releaseGroupIds.isEmpty else { isLoading = false; return }
 
-        struct RRow: Codable {
-            let releaseGroupId: UUID; let userId: UUID; let score: Double?
-            enum CodingKeys: String, CodingKey {
-                case releaseGroupId = "release_group_id"; case userId = "user_id"; case score
-            }
-        }
-        async let rowsFetch: [RRow] = (try? await supabase
-            .from("ratings").select("release_group_id, user_id, score")
-            .in("release_group_id", values: releaseGroupIds).execute().value) ?? []
+        async let rowsFetch: [CommunityRating] = (try? await supabase
+            .from("ratings")
+            .select("id, release_group_id, user_id, score, created_at, profiles(username, display_name)")
+            .in("release_group_id", values: releaseGroupIds)
+            .execute().value) ?? []
         async let songsFetch: Void = loadSongs()
 
         let rows = await rowsFetch
@@ -1295,6 +1308,7 @@ struct ArtistPageView: View {
         myRatings       = myMap
         let allScores   = rows.compactMap(\.score)
         allRatingScores = allScores
+        communityFeed   = rows.filter { $0.score != nil }.sorted { $0.createdAt > $1.createdAt }
         communityCount  = allScores.count
         communityAvg    = allScores.isEmpty ? nil : allScores.reduce(0, +) / Double(allScores.count)
         isLoading       = false
@@ -1338,6 +1352,69 @@ struct ArtistPageView: View {
                               albumId: rg?.id, albumTitle: rg?.title ?? "",
                               albumCoverUrl: rg?.coverUrl)
         }
+    }
+
+    // MARK: - Community tab
+
+    @ViewBuilder
+    private var communityTab: some View {
+        if communityFeed.isEmpty {
+            Text("No community ratings yet.")
+                .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                .frame(maxWidth: .infinity).padding(.top, 40)
+        } else {
+            ScrollView(showsIndicators: false) {
+                LazyVStack(spacing: 0) {
+                    ForEach(communityFeed) { entry in
+                        communityRow(entry)
+                        Divider().padding(.leading, 54)
+                    }
+                }
+                .padding(.top, 4)
+            }
+        }
+    }
+
+    private func communityRow(_ entry: CommunityRating) -> some View {
+        let release = releases.first { $0.id == entry.releaseGroupId }
+        return HStack(spacing: 10) {
+            // Avatar circle
+            ZStack {
+                Circle().fill(Color.sjAmber.opacity(0.15)).frame(width: 36, height: 36)
+                Text(entry.profiles?.initial ?? "?")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color.sjAmber)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Text("@\(entry.profiles?.handle ?? "someone")")
+                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.sjInk)
+                    Text("·").foregroundStyle(Color.sjBorder)
+                    Text(entry.createdAt.relativeTimeString)
+                        .font(.system(size: 11)).foregroundStyle(Color.sjMuted)
+                }
+                if let r = release {
+                    Text(r.displayTitle)
+                        .font(.system(size: 12)).foregroundStyle(Color.sjMuted).lineLimit(1)
+                }
+            }
+            Spacer()
+            if let score = entry.score {
+                HStack(spacing: 3) {
+                    Image("icon-flower")
+                        .renderingMode(.template).resizable().scaledToFit()
+                        .frame(width: 10, height: 10).foregroundStyle(Color.sjAmber)
+                    Text(score.truncatingRemainder(dividingBy: 1) == 0
+                         ? "\(Int(score))" : String(format: "%.1f", score))
+                        .font(.system(size: 12, weight: .bold)).foregroundStyle(Color.sjAmber)
+                }
+            }
+            if let r = release {
+                CoverImage(url: r.coverUrl, cornerRadius: 6).frame(width: 36, height: 36)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 
     // MARK: - Stats tab

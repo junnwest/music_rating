@@ -94,9 +94,11 @@ struct UserProfileView: View {
     @State private var ratingCount    = 0
     @State private var followerCount  = 0
     @State private var followingCount = 0
-    @State private var isFollowing    = false
-    @State private var isLoading      = true
+    @State private var isFollowing      = false
+    @State private var isBlocked        = false
+    @State private var isLoading        = true
     @State private var isTogglingFollow = false
+    @State private var isTogglingBlock  = false
 
     @State private var ratingSortOrder:  RatingSortOrder  = .recent
     @State private var ratingTypeFilter: RatingTypeFilter = .all
@@ -173,7 +175,11 @@ struct UserProfileView: View {
             statsRow
 
             if let cid = currentUserId, cid != userId {
-                followButton
+                if isBlocked {
+                    unblockButton
+                } else {
+                    followButton
+                }
             }
         }
         .padding(.bottom, 20)
@@ -211,6 +217,25 @@ struct UserProfileView: View {
                 .font(.system(size: 12))
                 .foregroundStyle(Color.sjMuted)
         }
+    }
+
+    private var unblockButton: some View {
+        Button {
+            Task { await toggleBlock() }
+        } label: {
+            if isTogglingBlock {
+                ProgressView().scaleEffect(0.8)
+                    .frame(width: 130, height: 36)
+            } else {
+                Text("Unblock")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 130, height: 36)
+                    .background(Color.red.opacity(0.8))
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     private var followButton: some View {
@@ -319,22 +344,23 @@ struct UserProfileView: View {
     private func loadAll() async {
         isLoading = true
 
-        async let profileFetch: OtherProfile?         = loadProfile()
-        async let ratingsFetch: [ProfileRating]       = loadRatings()
-        async let countsFetch: (Int, Int, Int, Bool)  = loadCounts()
-        async let songFetch: [SongRating]             = loadSongRatings()
+        async let profileFetch: OtherProfile?               = loadProfile()
+        async let ratingsFetch: [ProfileRating]             = loadRatings()
+        async let countsFetch: (Int, Int, Int, Bool, Bool)  = loadCounts()
+        async let songFetch: [SongRating]                   = loadSongRatings()
 
-        let (p, r, (rc, fwer, fwing, following), songs) =
+        let (p, r, (rc, fwer, fwing, following, blocked), songs) =
             await (profileFetch, ratingsFetch, countsFetch, songFetch)
 
-        profile       = p
-        ratings       = r
-        songRatings   = songs
-        ratingCount   = rc + songs.count
-        followerCount = fwer
+        profile        = p
+        ratings        = r
+        songRatings    = songs
+        ratingCount    = rc + songs.count
+        followerCount  = fwer
         followingCount = fwing
-        isFollowing   = following
-        isLoading     = false
+        isFollowing    = following
+        isBlocked      = blocked
+        isLoading      = false
     }
 
     private func loadProfile() async -> OtherProfile? {
@@ -437,7 +463,7 @@ struct UserProfileView: View {
         }
     }
 
-    private func loadCounts() async -> (Int, Int, Int, Bool) {
+    private func loadCounts() async -> (Int, Int, Int, Bool, Bool) {
         async let ratingsResp   = supabase.from("ratings").select("*", count: .exact).eq("user_id", value: userId).execute()
         async let followersResp = supabase.from("follows").select("*", count: .exact).eq("following_id", value: userId).execute()
         async let followingResp = supabase.from("follows").select("*", count: .exact).eq("follower_id", value: userId).execute()
@@ -447,12 +473,37 @@ struct UserProfileView: View {
         let fwing = (try? await followingResp)?.count ?? 0
 
         var following = false
+        var blocked   = false
         if let cid = currentUserId {
-            let chk = try? await supabase.from("follows").select("*", count: .exact)
+            async let followChk = supabase.from("follows").select("*", count: .exact)
                 .eq("follower_id", value: cid).eq("following_id", value: userId).execute()
-            following = (chk?.count ?? 0) > 0
+            async let blockChk  = supabase.from("blocked_users").select("*", count: .exact)
+                .eq("blocker_id", value: cid).eq("blocked_id", value: userId).execute()
+            following = ((try? await followChk)?.count ?? 0) > 0
+            blocked   = ((try? await blockChk)?.count  ?? 0) > 0
         }
-        return (rc, fwer, fwing, following)
+        return (rc, fwer, fwing, following, blocked)
+    }
+
+    private func toggleBlock() async {
+        guard let cid = currentUserId else { return }
+        isTogglingBlock = true
+        defer { isTogglingBlock = false }
+        if isBlocked {
+            try? await supabase.from("blocked_users").delete()
+                .eq("blocker_id", value: cid).eq("blocked_id", value: userId).execute()
+            isBlocked = false
+        } else {
+            struct Payload: Encodable {
+                let blockerId: UUID; let blockedId: UUID
+                enum CodingKeys: String, CodingKey {
+                    case blockerId = "blocker_id"; case blockedId = "blocked_id"
+                }
+            }
+            try? await supabase.from("blocked_users")
+                .insert(Payload(blockerId: cid, blockedId: userId)).execute()
+            isBlocked = true
+        }
     }
 
     private func toggleFollow() async {
