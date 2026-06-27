@@ -55,6 +55,8 @@ struct ChartGenre: Identifiable, Hashable {
     ]
 }
 
+struct RankingDetailDestination: Hashable {}
+
 // A chart category that can be drilled into (non-genre)
 enum ChartDetailType: Hashable {
     case topRated
@@ -303,9 +305,12 @@ struct ChartsView: View {
                 floatingHeader
             }
             .navigationBarHidden(true)
-            .navigationDestination(for: Release.self)       { AlbumDetailView(release: $0) }
-            .navigationDestination(for: ChartDetailType.self) { ChartDetailView(type: $0) }
-            .navigationDestination(for: ChartGenre.self)    { GenreDetailView(genre: $0) }
+            .navigationDestination(for: Release.self)              { AlbumDetailView(release: $0) }
+            .navigationDestination(for: ChartDetailType.self)      { ChartDetailView(type: $0) }
+            .navigationDestination(for: ChartGenre.self)           { GenreDetailView(genre: $0) }
+            .navigationDestination(for: RankingDetailDestination.self) { _ in
+                RankingDetailView()
+            }
         }
         .task { await viewModel.load() }
     }
@@ -355,6 +360,10 @@ struct ChartsView: View {
             } else {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
+                        RankingBlock(entries: viewModel.topRated)
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 22)
+
                         TrendingCard(viewModel: viewModel)
                             .padding(.bottom, 22)
 
@@ -590,6 +599,348 @@ private struct TrendingSongRow: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+}
+
+// MARK: - RankingBlock
+
+private struct RankingBlock: View {
+    let entries: [ChartEntry]
+
+    @State private var isExpanded = false
+    @State private var selectedGenre: String? = nil
+    @State private var selectedCountry: String? = nil
+
+    private let genres    = ["Hip Hop", "K-Pop", "Jazz", "Electronic", "Classical", "Metal", "R&B", "Pop"]
+    private let countries = [("Global", Optional<String>.none), ("🇰🇷 KR", "kr"), ("🇯🇵 JP", "jp"),
+                             ("🇺🇸 US", "us"), ("🇬🇧 UK", "uk"), ("🇫🇷 FR", "fr"), ("🌎 LA", "la")]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header — tap to collapse / expand
+            Button {
+                withAnimation(.easeInOut(duration: 0.22)) { isExpanded.toggle() }
+            } label: {
+                HStack {
+                    HStack(spacing: 8) {
+                        Image(systemName: "trophy.fill")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(Color.sjAmber)
+                        Text("Ranking")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(Color.sjInk)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.sjMuted)
+                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                        .animation(.easeInOut(duration: 0.22), value: isExpanded)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                expandedContent
+            } else {
+                collapsedTeaser
+            }
+        }
+        .background(Color.sjSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.sjBorder, lineWidth: 0.5))
+        .animation(.easeInOut(duration: 0.22), value: isExpanded)
+    }
+
+    // MARK: Collapsed — 3-album teaser
+
+    private var collapsedTeaser: some View {
+        GeometryReader { geo in
+            let itemSize = (geo.size.width - 20) / 3   // 2 gaps of 10pt
+            HStack(spacing: 10) {
+                ForEach(Array(entries.prefix(3).enumerated()), id: \.element.id) { idx, entry in
+                    NavigationLink(value: entry.asRelease) {
+                        ZStack(alignment: .topLeading) {
+                            CoverThumb(url: entry.coverUrl, size: itemSize, radius: 8)
+                            Text("#\(idx + 1)")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 5).padding(.vertical, 2)
+                                .background(Color.black.opacity(0.55))
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .padding(5)
+                        }
+                        .overlay(alignment: .bottomTrailing) {
+                            if let score = entry.avgScore {
+                                Text(String(format: "%.1f", score))
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 5).padding(.vertical, 2)
+                                    .background(Color.sjAmber)
+                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                                    .padding(5)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .frame(height: (UIScreen.main.bounds.width - 32 - 20) / 3)   // 32 = outer h-padding, 20 = gaps
+        .padding(.horizontal, 16)
+        .padding(.bottom, 14)
+    }
+
+    // MARK: Expanded — filters + rows + see all
+
+    @ViewBuilder
+    private var expandedContent: some View {
+        Divider()
+
+        // Genre
+        filterLabel("Genre")
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 7) {
+                filterChip(nil, label: "All", selectedValue: selectedGenre) { selectedGenre = nil }
+                ForEach(genres, id: \.self) { genre in
+                    filterChip(genre, label: genre, selectedValue: selectedGenre) { selectedGenre = genre }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
+        }
+
+        // Country
+        filterLabel("Country")
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 7) {
+                ForEach(countries, id: \.0) { label, code in
+                    filterChip(code, label: label, selectedValue: selectedCountry) { selectedCountry = code }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
+        }
+
+        Divider()
+
+        // Top 5 rows
+        VStack(spacing: 0) {
+            ForEach(Array(entries.prefix(5).enumerated()), id: \.element.id) { idx, entry in
+                NavigationLink(value: entry.asRelease) {
+                    rankRow(rank: idx + 1, entry: entry)
+                }
+                .buttonStyle(.plain)
+                if idx < min(4, entries.count - 1) {
+                    Divider().padding(.leading, 16 + 24 + 8 + 44 + 8)
+                }
+            }
+        }
+
+        Divider()
+
+        // See full ranking
+        NavigationLink(value: RankingDetailDestination()) {
+            HStack(spacing: 4) {
+                Text("See full ranking")
+                    .font(.system(size: 14, weight: .semibold))
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(Color.sjAmber)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: Helpers
+
+    private func filterLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(Color.sjMuted)
+            .kerning(0.4)
+            .textCase(.uppercase)
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func filterChip(_ value: String?, label: String, selectedValue: String?, action: @escaping () -> Void) -> some View {
+        let selected = selectedValue == value
+        return Button(action: action) {
+            Text(label)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(selected ? .white : Color.sjMuted)
+                .padding(.horizontal, 12).padding(.vertical, 5)
+                .background(selected ? Color.sjAmber : Color.sjCream)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .overlay(!selected ? RoundedRectangle(cornerRadius: 14).stroke(Color.sjBorder, lineWidth: 0.5) : nil)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func rankRow(rank: Int, entry: ChartEntry) -> some View {
+        HStack(spacing: 10) {
+            Text("\(rank)")
+                .font(.system(size: 16, weight: .black))
+                .foregroundStyle(rank <= 3 ? Color.sjAmber : Color.sjBorder)
+                .frame(width: 24, alignment: .center)
+                .monospacedDigit()
+
+            CoverThumb(url: entry.coverUrl, size: 44, radius: 8)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.sjInk)
+                    .lineLimit(1)
+                Text(entry.artist)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.sjMuted)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            if let score = entry.avgScore {
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text(String(format: "%.1f", score))
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 9).padding(.vertical, 3)
+                        .background(Color.sjAmber)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    Text("avg")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.sjMuted)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
+    }
+}
+
+// MARK: - RankingDetailView
+
+struct RankingDetailView: View {
+    @State private var entries:    [ChartEntry] = []
+    @State private var isLoading   = true
+    @State private var selectedGenre:   String? = nil
+    @State private var selectedCountry: String? = nil
+
+    private let genres    = ["Hip Hop", "K-Pop", "Jazz", "Electronic", "Classical", "Metal", "R&B", "Pop"]
+    private let countries = [("Global", Optional<String>.none), ("🇰🇷 KR", "kr"), ("🇯🇵 JP", "jp"),
+                             ("🇺🇸 US", "us"), ("🇬🇧 UK", "uk"), ("🇫🇷 FR", "fr"), ("🌎 LA", "la")]
+
+    var body: some View {
+        ZStack {
+            Color.sjCream.ignoresSafeArea()
+            VStack(spacing: 0) {
+                // Sticky filter bar
+                filterBar
+                    .background(Color.sjCream)
+                Divider()
+
+                if isLoading {
+                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if entries.isEmpty {
+                    VStack(spacing: 10) {
+                        Image(systemName: "trophy")
+                            .font(.system(size: 36)).foregroundStyle(Color.sjMuted)
+                        Text("No ranking data yet.")
+                            .font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            // Podium (#1–3)
+                            if entries.count >= 3 {
+                                PodiumRow(entries: Array(entries.prefix(3)))
+                                    .padding(.horizontal, 16).padding(.vertical, 14)
+                                Divider()
+                            }
+                            // Rest of the list
+                            let offset = entries.count >= 3 ? 3 : 0
+                            ForEach(Array(entries.dropFirst(offset).enumerated()), id: \.element.id) { idx, entry in
+                                NavigationLink(value: entry.asRelease) {
+                                    RankedListRow(rank: idx + offset + 1, entry: entry, isTrending: false)
+                                }
+                                .buttonStyle(.plain)
+                                Divider().padding(.leading, 16)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle("Ranking")
+        .navigationBarTitleDisplayMode(.large)
+        .task { await load() }
+    }
+
+    // MARK: Filter bar
+
+    private var filterBar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    detailChip(nil, label: "All", selectedValue: selectedGenre) { selectedGenre = nil }
+                    ForEach(genres, id: \.self) { g in
+                        detailChip(g, label: g, selectedValue: selectedGenre) { selectedGenre = g }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+            }
+            Divider()
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    ForEach(countries, id: \.0) { label, code in
+                        detailChip(code, label: label, selectedValue: selectedCountry) { selectedCountry = code }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+            }
+        }
+    }
+
+    private func detailChip(_ value: String?, label: String, selectedValue: String?, action: @escaping () -> Void) -> some View {
+        let selected = selectedValue == value
+        return Button(action: action) {
+            Text(label)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(selected ? .white : Color.sjMuted)
+                .padding(.horizontal, 12).padding(.vertical, 5)
+                .background(selected ? Color.sjAmber : Color.sjSurface)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .overlay(!selected ? RoundedRectangle(cornerRadius: 14).stroke(Color.sjBorder, lineWidth: 0.5) : nil)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: Load (uses top_rated as placeholder until silla_score exists)
+
+    private func load() async {
+        let rows: [RankedRPCRow] = (try? await supabase
+            .rpc("get_charts_top_rated", params: ["p_limit": 100])
+            .execute().value) ?? []
+        entries = rows.map {
+            ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
+                       coverUrl: $0.coverUrl, avgScore: $0.avgScore,
+                       ratingCount: $0.ratingCount, newCount: nil)
+        }
+        isLoading = false
     }
 }
 
