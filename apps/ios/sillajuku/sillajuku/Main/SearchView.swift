@@ -1090,12 +1090,14 @@ struct ArtistPageView: View {
     @State private var songs:          [ArtistSong]  = []
     @State private var communityAvg:   Double?        = nil
     @State private var communityCount: Int            = 0
-    @State private var releaseScores:  [UUID: Double] = [:]
-    @State private var myRatings:      [UUID: Double] = [:]
-    @State private var selectedTab     = 0
-    @State private var isLoading       = true
+    @State private var releaseScores:    [UUID: Double] = [:]
+    @State private var releaseCounts:   [UUID: Int]    = [:]
+    @State private var myRatings:       [UUID: Double] = [:]
+    @State private var allRatingScores: [Double]       = []
+    @State private var selectedTab      = 0
+    @State private var isLoading        = true
 
-    private let tabLabels = ["Albums", "Songs", "Community", "Fans"]
+    private let tabLabels = ["Albums", "Songs", "Community", "Stats"]
 
     private var myRatedCount: Int { myRatings.values.filter { $0 > 0 }.count }
     private var myAvg: Double? {
@@ -1225,11 +1227,8 @@ struct ArtistPageView: View {
                         .frame(maxWidth: .infinity).padding(.top, 40)
                         .tag(2)
 
-                    // Fans
-                    Text("Coming soon")
-                        .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
-                        .frame(maxWidth: .infinity).padding(.top, 40)
-                        .tag(3)
+                    // Stats
+                    statsTab.tag(3)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
             }
@@ -1291,12 +1290,14 @@ struct ArtistPageView: View {
                 if r.userId == currentUserId { myMap[r.releaseGroupId] = s }
             }
         }
-        releaseScores  = sumMap.mapValues { $0.sum / Double($0.count) }
-        myRatings      = myMap
-        communityCount = rows.compactMap(\.score).count
-        let allScores  = rows.compactMap(\.score)
-        communityAvg   = allScores.isEmpty ? nil : allScores.reduce(0, +) / Double(allScores.count)
-        isLoading      = false
+        releaseScores    = sumMap.mapValues { $0.sum / Double($0.count) }
+        releaseCounts   = sumMap.mapValues { $0.count }
+        myRatings       = myMap
+        let allScores   = rows.compactMap(\.score)
+        allRatingScores = allScores
+        communityCount  = allScores.count
+        communityAvg    = allScores.isEmpty ? nil : allScores.reduce(0, +) / Double(allScores.count)
+        isLoading       = false
     }
 
     private func loadSongs() async {
@@ -1336,6 +1337,191 @@ struct ArtistPageView: View {
             return ArtistSong(id: hit.id, title: hit.title,
                               albumId: rg?.id, albumTitle: rg?.title ?? "",
                               albumCoverUrl: rg?.coverUrl)
+        }
+    }
+
+    // MARK: - Stats tab
+
+    @ViewBuilder
+    private var statsTab: some View {
+        if allRatingScores.isEmpty && myRatings.isEmpty {
+            Text("No ratings yet.")
+                .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                .frame(maxWidth: .infinity).padding(.top, 40)
+        } else {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 20) {
+                    if !allRatingScores.isEmpty {
+                        statsSectionView("Score Distribution") { distributionChart }
+                        statsSectionView("Top Releases") { topReleasesView }
+                    }
+                    if !myRatings.isEmpty {
+                        statsSectionView("Your Coverage") { coverageView }
+                    }
+                    if typeStats.count > 1 {
+                        statsSectionView("By Release Type") { typeBreakdownView }
+                    }
+                }
+                .padding(18)
+            }
+        }
+    }
+
+    private func statsSectionView(_ title: String, @ViewBuilder content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.sjMuted)
+                .textCase(.uppercase)
+                .tracking(0.8)
+            content()
+        }
+    }
+
+    // Horizontal bar chart — one row per 0.5-point bucket
+    private var distributionChart: some View {
+        let bins = scoreBins
+        let maxCount = bins.map(\.count).max() ?? 1
+        return VStack(alignment: .leading, spacing: 5) {
+            ForEach(bins, id: \.label) { bin in
+                HStack(spacing: 8) {
+                    Text(bin.label)
+                        .font(.system(size: 11, weight: .medium)).foregroundStyle(Color.sjMuted)
+                        .frame(width: 26, alignment: .trailing)
+                    GeometryReader { geo in
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Color.sjAmber.opacity(0.75))
+                            .frame(width: geo.size.width * CGFloat(bin.count) / CGFloat(maxCount))
+                    }
+                    .frame(height: 14)
+                    Text("\(bin.count)")
+                        .font(.system(size: 11)).foregroundStyle(Color.sjMuted)
+                }
+            }
+        }
+    }
+
+    private var scoreBins: [(label: String, count: Int)] {
+        var bins: [Int: Int] = [:]
+        for s in allRatingScores {
+            let key = Int((s * 2).rounded())  // e.g. 4.5 → 9, 5.0 → 10
+            bins[key, default: 0] += 1
+        }
+        return stride(from: 10, through: 1, by: -1).compactMap { key in
+            guard let count = bins[key], count > 0 else { return nil }
+            let val = Double(key) / 2.0
+            let label = val.truncatingRemainder(dividingBy: 1) == 0
+                ? "\(Int(val))" : String(format: "%.1f", val)
+            return (label, count)
+        }
+    }
+
+    // Top 3 releases by community avg (min 1 rating)
+    private var topReleasesView: some View {
+        let top = releases
+            .compactMap { r -> (Release, Double, Int)? in
+                guard let s = releaseScores[r.id], let c = releaseCounts[r.id] else { return nil }
+                return (r, s, c)
+            }
+            .sorted { $0.1 > $1.1 }
+            .prefix(3)
+        return VStack(spacing: 0) {
+            ForEach(Array(top.enumerated()), id: \.element.0.id) { idx, item in
+                let (release, score, count) = item
+                NavigationLink(value: release) {
+                    HStack(spacing: 10) {
+                        Text("#\(idx + 1)")
+                            .font(.system(size: 11, weight: .bold)).foregroundStyle(Color.sjMuted)
+                            .frame(width: 20)
+                        CoverImage(url: release.coverUrl, cornerRadius: 5)
+                            .frame(width: 36, height: 36)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(release.displayTitle)
+                                .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.sjInk).lineLimit(1)
+                            Text("\(count) rating\(count == 1 ? "" : "s")")
+                                .font(.system(size: 10)).foregroundStyle(Color.sjMuted)
+                        }
+                        Spacer()
+                        HStack(spacing: 3) {
+                            Image("icon-flower")
+                                .renderingMode(.template).resizable().scaledToFit()
+                                .frame(width: 10, height: 10).foregroundStyle(Color.sjAmber)
+                            Text(String(format: "%.1f", score))
+                                .font(.system(size: 12, weight: .bold)).foregroundStyle(Color.sjAmber)
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
+                .buttonStyle(.plain)
+                if idx < top.count - 1 { Divider() }
+            }
+        }
+    }
+
+    // Your coverage stats
+    private var coverageView: some View {
+        let rated  = myRatings.values.filter { $0 > 0 }.count
+        let total  = releases.count
+        let myAvgV = myRatings.values.filter { $0 > 0 }.reduce(0, +) / Double(max(1, rated))
+        let pct    = total > 0 ? Int(Double(rated) / Double(total) * 100) : 0
+        return HStack(spacing: 20) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(rated)/\(total)").font(.system(size: 20, weight: .heavy)).foregroundStyle(Color.sjInk)
+                Text("releases rated").font(.system(size: 10)).foregroundStyle(Color.sjMuted)
+            }
+            if rated > 0 {
+                Divider().frame(height: 32)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(String(format: "%.1f", myAvgV)).font(.system(size: 20, weight: .heavy)).foregroundStyle(Color.sjInk)
+                    Text("your avg").font(.system(size: 10)).foregroundStyle(Color.sjMuted)
+                }
+                if let cAvg = communityAvg {
+                    Divider().frame(height: 32)
+                    VStack(alignment: .leading, spacing: 2) {
+                        let diff = myAvgV - cAvg
+                        Text((diff >= 0 ? "+" : "") + String(format: "%.1f", diff))
+                            .font(.system(size: 20, weight: .heavy))
+                            .foregroundStyle(diff >= 0 ? Color.sjBlue : Color.sjMuted)
+                        Text("vs community").font(.system(size: 10)).foregroundStyle(Color.sjMuted)
+                    }
+                }
+            }
+            Spacer()
+        }
+    }
+
+    // Per release-type breakdown
+    private var typeStats: [(type: String, avg: Double, count: Int)] {
+        var map: [String: (sum: Double, count: Int)] = [:]
+        for r in releases {
+            guard let t = r.releaseType, let s = releaseScores[r.id] else { continue }
+            let e = map[t] ?? (0, 0)
+            map[t] = (e.sum + s, e.count + 1)
+        }
+        return map.map { key, val in
+            let label = key.lowercased() == "ep" ? "EP" : key.capitalized
+            return (label, val.sum / Double(val.count), val.count)
+        }.sorted { $0.count > $1.count }
+    }
+
+    private var typeBreakdownView: some View {
+        VStack(spacing: 8) {
+            ForEach(typeStats, id: \.type) { stat in
+                HStack {
+                    Text(stat.type)
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.sjInk)
+                    Text("(\(stat.count))")
+                        .font(.system(size: 11)).foregroundStyle(Color.sjMuted)
+                    Spacer()
+                    HStack(spacing: 3) {
+                        Image("icon-flower")
+                            .renderingMode(.template).resizable().scaledToFit()
+                            .frame(width: 10, height: 10).foregroundStyle(Color.sjAmber)
+                        Text(String(format: "%.1f", stat.avg))
+                            .font(.system(size: 12, weight: .bold)).foregroundStyle(Color.sjAmber)
+                    }
+                }
+            }
         }
     }
 
