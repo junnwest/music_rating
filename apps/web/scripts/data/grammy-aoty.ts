@@ -377,7 +377,7 @@ export const GRAMMY_AOTY: GrammyEntry[] = [
   { year: 2018, won: true,  album: '24K Magic',                                              artist: 'Bruno Mars' },
   { year: 2018, won: false, album: '"Awaken, My Love!"',                                     artist: 'Childish Gambino' },
   { year: 2018, won: false, album: 'DAMN.',                                                  artist: 'Kendrick Lamar' },
-  { year: 2018, won: false, album: '4:44',                                                   artist: 'JAY-Z', spotifyId: '4oFRQFP7aHrmHJMZlO33iP' },
+  { year: 2018, won: false, album: '4:44',                                                   artist: 'JAY-Z' },
   { year: 2018, won: false, album: 'Melodrama',                                              artist: 'Lorde' },
   // ── 2019 ──────────────────────────────────────────────────────────────────
   { year: 2019, won: true,  album: 'Golden Hour',                                            artist: 'Kacey Musgraves' },
@@ -429,7 +429,7 @@ export const GRAMMY_AOTY: GrammyEntry[] = [
   { year: 2024, won: false, album: 'Did You Know That There\'s a Tunnel Under Ocean Blvd',  artist: 'Lana Del Rey' },
   { year: 2024, won: false, album: 'Endless Summer Vacation',                                artist: 'Miley Cyrus' },
   { year: 2024, won: false, album: 'the record',                                             artist: 'boygenius' },
-  { year: 2024, won: false, album: 'A Great Chaos',                                          artist: 'Killer Mike', spotifyId: '5OkFSoR5KJU2QhuyTBPgEB' },
+  { year: 2024, won: false, album: 'A Great Chaos',                                          artist: 'Killer Mike' },
   { year: 2024, won: false, album: 'World Music Radio',                                      artist: 'Jon Batiste' },
   { year: 2024, won: false, album: 'Guts',                                                   artist: 'Olivia Rodrigo' },
   { year: 2024, won: false, album: 'Nadie Sabe Lo Que Va a Pasar Mañana',                   artist: 'Bad Bunny' },

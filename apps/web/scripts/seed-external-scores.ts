@@ -83,7 +83,6 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         artist:          e.artist,
         scoreType:       'list_rank' as const,
         normalizedScore: 0.8,
-        rawScore:        null,
         sourceTier:      2,
         mbid:            e.mbid,
       }));
@@ -231,7 +230,7 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         artist:          e.artist,
         scoreType:       'list_rank' as const,
         normalizedScore: e.rank === null ? 0.8 : (10 + 1 - e.rank) / 10,
-        rawScore:        e.rank ?? null,
+        rawScore:        e.rank ?? undefined,
         sourceTier:      2,
         mbid:            e.mbid,
       }));
