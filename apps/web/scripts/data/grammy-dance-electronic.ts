@@ -15,8 +15,37 @@ export const GRAMMY_DANCE_ELECTRONIC: GrammyEntry[] = [
   // ── 2007 ──────────────────────────────────────────────────────────────────
   { year: 2007, won: true,  album: 'Monkey Business',                             artist: 'The Black Eyed Peas' },
   { year: 2007, won: false, album: 'We Are the Night',                            artist: 'The Chemical Brothers' },
-  // ── 2008 ──────────────────────────────────────────────────────────────────
-  { year: 2008, won: true,  album: 'Alive 2007',                                  artist: 'Daft Punk' },
+  // ── 2009 ──────────────────────────────────────────────────────────────────
+  { year: 2009, won: true,  album: 'Alive 2007',                                  artist: 'Daft Punk' },
+  { year: 2009, won: false, album: 'Bring Ya to the Brink',                       artist: 'Cyndi Lauper' },
+  { year: 2009, won: false, album: 'Last Night',                                  artist: 'Moby' },
+  { year: 2009, won: false, album: 'New York City',                               artist: 'Brazilian Girls' },
+  { year: 2009, won: false, album: 'Robyn',                                       artist: 'Robyn' },
+  { year: 2009, won: false, album: 'X',                                           artist: 'Kylie Minogue' },
+  // ── 2010 ──────────────────────────────────────────────────────────────────
+  { year: 2010, won: true,  album: 'The Fame',                                    artist: 'Lady Gaga' },
+  { year: 2010, won: false, album: 'Divided by Night',                            artist: 'The Crystal Method' },
+  { year: 2010, won: false, album: 'One Love',                                    artist: 'David Guetta' },
+  { year: 2010, won: false, album: 'Party Rock',                                  artist: 'LMFAO' },
+  { year: 2010, won: false, album: 'Yes',                                         artist: 'Pet Shop Boys' },
+  // ── 2011 ──────────────────────────────────────────────────────────────────
+  { year: 2011, won: true,  album: 'La Roux',                                     artist: 'La Roux' },
+  { year: 2011, won: false, album: 'Black Light',                                 artist: 'Groove Armada' },
+  { year: 2011, won: false, album: 'Further',                                     artist: 'The Chemical Brothers' },
+  { year: 2011, won: false, album: 'Head First',                                  artist: 'Goldfrapp' },
+  { year: 2011, won: false, album: 'These Hopeful Machines',                      artist: 'BT' },
+  // ── 2012 ──────────────────────────────────────────────────────────────────
+  { year: 2012, won: true,  album: 'Scary Monsters and Nice Sprites',             artist: 'Skrillex' },
+  { year: 2012, won: false, album: '4x4=12',                                      artist: 'Deadmau5' },
+  { year: 2012, won: false, album: 'Body Talk Pt. 3',                             artist: 'Robyn' },
+  { year: 2012, won: false, album: 'Nothing but the Beat',                        artist: 'David Guetta' },
+  { year: 2012, won: false, album: 'Zonoscope',                                   artist: 'Cut Copy' },
+  // ── 2013 ──────────────────────────────────────────────────────────────────
+  { year: 2013, won: true,  album: 'Bangarang',                                   artist: 'Skrillex' },
+  { year: 2013, won: false, album: 'Album Title Goes Here',                       artist: 'Deadmau5' },
+  { year: 2013, won: false, album: 'Don\'t Think',                                artist: 'The Chemical Brothers' },
+  { year: 2013, won: false, album: 'Fire & Ice',                                  artist: 'Kaskade' },
+  { year: 2013, won: false, album: 'Wonderland',                                  artist: 'Steve Aoki' },
   // ── 2014 ──────────────────────────────────────────────────────────────────
   { year: 2014, won: true,  album: 'Random Access Memories',                      artist: 'Daft Punk' },
   { year: 2014, won: false, album: 'Bangarang',                                   artist: 'Skrillex' },
@@ -28,9 +57,11 @@ export const GRAMMY_DANCE_ELECTRONIC: GrammyEntry[] = [
   // ── 2017 ──────────────────────────────────────────────────────────────────
   { year: 2017, won: true,  album: 'Skin',                                        artist: 'Flume' },
   // ── 2018 ──────────────────────────────────────────────────────────────────
-  // Winner TBD — need to verify via Windows /browse
+  { year: 2018, won: true,  album: '3-D The Catalogue',                           artist: 'Kraftwerk' },
   { year: 2018, won: false, album: 'Migration',                                   artist: 'Bonobo' },
-  { year: 2018, won: false, album: 'Funk Wav Bounces Vol. 1',                     artist: 'Calvin Harris' },
+  { year: 2018, won: false, album: 'A Moment Apart',                              artist: 'Odesza' },
+  { year: 2018, won: false, album: 'Mura Masa',                                   artist: 'Mura Masa' },
+  { year: 2018, won: false, album: 'What Now',                                    artist: 'Sylvan Esso' },
   // ── 2019 ──────────────────────────────────────────────────────────────────
   { year: 2019, won: true,  album: 'Woman Worldwide',                             artist: 'Justice' },
   { year: 2019, won: false, album: 'Bloom',                                       artist: 'Odesza' },

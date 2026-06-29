@@ -29,7 +29,7 @@ const YEAR_ARG   = (() => { const i = process.argv.indexOf('--year');   return i
 
 if (!SOURCE_ARG) {
   console.error('Usage: npm run seed:external -- --source <source> [--dry-run] [--year YYYY]');
-  console.error('Available sources: grammy_aoty, grammy_rap, grammy_rnb, grammy_rock, grammy_alternative, grammy_pop_vocal, grammy_dance_electronic, mercury_prize, izm_aoty, mama_aoty, kha_hiphop, kha_rnb, kr_masterpiece_100, kma_aoty, rhythmer_hiphop, rhythmer_rnb, mma_aoty, sma_album, golden_disc_bonsang, golden_disc_daesang, weiv_aoty');
+  console.error('Available sources: grammy_aoty, grammy_rap, grammy_rnb, grammy_rock, grammy_alternative, grammy_pop_vocal, grammy_dance_electronic, mercury_prize, izm_aoty, mama_aoty, kha_hiphop, kha_rnb, kr_masterpiece_100, kma_aoty, rhythmer_hiphop, rhythmer_rnb, mma_aoty, sma_album, golden_disc_bonsang, golden_disc_daesang, weiv_aoty, pitchfork_perfect, rs500, brit_album');
   process.exit(1);
 }
 
@@ -300,6 +300,43 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         scoreType:       e.won ? 'award_win' : 'award_nomination',
         normalizedScore: e.won ? 1.0 : 0.35,
         sourceTier:      3,
+      }));
+    }
+    case 'pitchfork_perfect': {
+      const { PITCHFORK_PERFECT } = await import('./data/pitchfork-perfect');
+      return PITCHFORK_PERFECT.map(e => ({
+        year:            e.year,
+        album:           e.album,
+        artist:          e.artist,
+        scoreType:       'list_rank' as const,
+        normalizedScore: 1.0,
+        sourceTier:      2,
+        mbid:            e.mbid,
+      }));
+    }
+    case 'rs500': {
+      const { RS500 } = await import('./data/rs500');
+      return RS500.map(e => ({
+        year:            e.year,
+        album:           e.album,
+        artist:          e.artist,
+        scoreType:       'list_rank' as const,
+        normalizedScore: (501 - e.rank) / 500,
+        rawScore:        e.rank,
+        sourceTier:      2,
+        mbid:            e.mbid,
+      }));
+    }
+    case 'brit_album': {
+      const { BRIT_ALBUM } = await import('./data/brit-album');
+      return BRIT_ALBUM.map(e => ({
+        year:            e.year,
+        album:           e.album,
+        artist:          e.artist,
+        scoreType:       e.won ? 'award_win' : 'award_nomination',
+        normalizedScore: e.won ? 1.0 : 0.35,
+        sourceTier:      3,
+        mbid:            e.mbid,
       }));
     }
     default:
