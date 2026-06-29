@@ -1,0 +1,195 @@
+// Grammy Award for Best Rap Album
+// year = ceremony year. Source: Wikipedia
+import type { GrammyEntry } from './grammy-aoty';
+export type { GrammyEntry };
+
+export const GRAMMY_RAP: GrammyEntry[] = [
+  // ── 1996 ──────────────────────────────────────────────────────────────────
+  { year: 1996, won: true,  album: "Poverty's Paradise",                          artist: 'Naughty by Nature' },
+  { year: 1996, won: false, album: 'E. 1999 Eternal',                             artist: 'Bone Thugs-n-Harmony' },
+  { year: 1996, won: false, album: 'I Wish',                                      artist: 'Skee-Lo' },
+  { year: 1996, won: false, album: 'Me Against the World',                        artist: '2Pac' },
+  { year: 1996, won: false, album: 'Return to the 36 Chambers: The Dirty Version', artist: 'Ol\' Dirty Bastard' },
+  // ── 1997 ──────────────────────────────────────────────────────────────────
+  { year: 1997, won: true,  album: 'The Score',                                   artist: 'Fugees' },
+  { year: 1997, won: false, album: 'All Eyez on Me',                              artist: '2Pac' },
+  { year: 1997, won: false, album: 'Beats, Rhymes and Life',                      artist: 'A Tribe Called Quest' },
+  { year: 1997, won: false, album: "Gangsta's Paradise",                          artist: 'Coolio' },
+  { year: 1997, won: false, album: 'Mr. Smith',                                   artist: 'LL Cool J' },
+  // ── 1998 ──────────────────────────────────────────────────────────────────
+  { year: 1998, won: true,  album: 'No Way Out',                                  artist: 'Puff Daddy and the Family' },
+  { year: 1998, won: false, album: 'Life After Death',                            artist: 'The Notorious B.I.G.' },
+  { year: 1998, won: false, album: 'Supa Dupa Fly',                               artist: 'Missy Elliott' },
+  { year: 1998, won: false, album: 'Wu-Tang Forever',                             artist: 'Wu-Tang Clan' },
+  { year: 1998, won: false, album: 'Wyclef Jean Presents The Carnival',           artist: 'Wyclef Jean' },
+  // ── 1999 ──────────────────────────────────────────────────────────────────
+  { year: 1999, won: true,  album: 'Vol. 2... Hard Knock Life',                   artist: 'Jay-Z' },
+  { year: 1999, won: false, album: 'Capital Punishment',                          artist: 'Big Pun' },
+  { year: 1999, won: false, album: 'Harlem World',                                artist: 'Mase' },
+  { year: 1999, won: false, album: 'Life in 1472',                                artist: 'Jermaine Dupri' },
+  { year: 1999, won: false, album: 'The Love Movement',                           artist: 'A Tribe Called Quest' },
+  // ── 2000 ──────────────────────────────────────────────────────────────────
+  { year: 2000, won: true,  album: 'The Slim Shady LP',                           artist: 'Eminem' },
+  { year: 2000, won: false, album: 'Da Real World',                               artist: 'Missy Elliott' },
+  { year: 2000, won: false, album: 'E.L.E. (Extinction Level Event): The Final World Front', artist: 'Busta Rhymes' },
+  { year: 2000, won: false, album: 'I Am...',                                     artist: 'Nas' },
+  { year: 2000, won: false, album: 'Things Fall Apart',                           artist: 'The Roots' },
+  // ── 2001 ──────────────────────────────────────────────────────────────────
+  { year: 2001, won: true,  album: 'The Marshall Mathers LP',                     artist: 'Eminem' },
+  { year: 2001, won: false, album: '2001',                                        artist: 'Dr. Dre' },
+  { year: 2001, won: false, album: 'Country Grammar',                             artist: 'Nelly' },
+  { year: 2001, won: false, album: '...And Then There Was X',                     artist: 'DMX' },
+  { year: 2001, won: false, album: 'Vol. 3... Life and Times of S. Carter',       artist: 'Jay-Z' },
+  // ── 2002 ──────────────────────────────────────────────────────────────────
+  { year: 2002, won: true,  album: 'Stankonia',                                   artist: 'Outkast' },
+  { year: 2002, won: false, album: 'Back for the First Time',                     artist: 'Ludacris' },
+  { year: 2002, won: false, album: 'The Blueprint',                               artist: 'Jay-Z' },
+  { year: 2002, won: false, album: 'Pain Is Love',                                artist: 'Ja Rule' },
+  { year: 2002, won: false, album: 'Scorpion',                                    artist: 'Eve' },
+  // ── 2003 ──────────────────────────────────────────────────────────────────
+  { year: 2003, won: true,  album: 'The Eminem Show',                             artist: 'Eminem' },
+  { year: 2003, won: false, album: 'Diary of a Sinner: 1st Entry',               artist: 'Petey Pablo' },
+  { year: 2003, won: false, album: 'Nellyville',                                  artist: 'Nelly' },
+  { year: 2003, won: false, album: 'Tarantula',                                   artist: 'Mystikal' },
+  { year: 2003, won: false, album: 'Word of Mouf',                                artist: 'Ludacris' },
+  // ── 2004 ──────────────────────────────────────────────────────────────────
+  { year: 2004, won: true,  album: 'Speakerboxxx/The Love Below',                 artist: 'Outkast' },
+  { year: 2004, won: false, album: 'The Blueprint 2: The Gift & the Curse',       artist: 'Jay-Z' },
+  { year: 2004, won: false, album: 'Get Rich or Die Tryin\'',                     artist: '50 Cent' },
+  { year: 2004, won: false, album: 'Phrenology',                                  artist: 'The Roots' },
+  { year: 2004, won: false, album: 'Under Construction',                          artist: 'Missy Elliott' },
+  // ── 2005 ──────────────────────────────────────────────────────────────────
+  { year: 2005, won: true,  album: 'The College Dropout',                         artist: 'Kanye West' },
+  { year: 2005, won: false, album: 'The Black Album',                             artist: 'Jay-Z' },
+  { year: 2005, won: false, album: 'The DEFinition',                              artist: 'LL Cool J' },
+  { year: 2005, won: false, album: 'Suit',                                        artist: 'Nelly' },
+  { year: 2005, won: false, album: 'To the 5 Boroughs',                           artist: 'Beastie Boys' },
+  // ── 2006 ──────────────────────────────────────────────────────────────────
+  { year: 2006, won: true,  album: 'Late Registration',                           artist: 'Kanye West' },
+  { year: 2006, won: false, album: 'Be',                                          artist: 'Common' },
+  { year: 2006, won: false, album: 'The Cookbook',                                artist: 'Missy Elliott' },
+  { year: 2006, won: false, album: 'Encore',                                      artist: 'Eminem' },
+  { year: 2006, won: false, album: 'The Massacre',                                artist: '50 Cent' },
+  // ── 2007 ──────────────────────────────────────────────────────────────────
+  { year: 2007, won: true,  album: 'Release Therapy',                             artist: 'Ludacris' },
+  { year: 2007, won: false, album: 'Game Theory',                                 artist: 'The Roots' },
+  { year: 2007, won: false, album: 'In My Mind',                                  artist: 'Pharrell Williams' },
+  { year: 2007, won: false, album: 'King',                                        artist: 'T.I.' },
+  { year: 2007, won: false, album: "Lupe Fiasco's Food & Liquor",                 artist: 'Lupe Fiasco' },
+  // ── 2008 ──────────────────────────────────────────────────────────────────
+  { year: 2008, won: true,  album: 'Graduation',                                  artist: 'Kanye West' },
+  { year: 2008, won: false, album: 'Finding Forever',                             artist: 'Common' },
+  { year: 2008, won: false, album: 'Hip-Hop Is Dead',                             artist: 'Nas' },
+  { year: 2008, won: false, album: 'Kingdom Come',                                artist: 'Jay-Z' },
+  { year: 2008, won: false, album: 'T.I. vs. T.I.P.',                            artist: 'T.I.' },
+  // ── 2009 ──────────────────────────────────────────────────────────────────
+  { year: 2009, won: true,  album: 'Tha Carter III',                              artist: 'Lil Wayne' },
+  { year: 2009, won: false, album: 'American Gangster',                           artist: 'Jay-Z' },
+  { year: 2009, won: false, album: "Lupe Fiasco's The Cool",                      artist: 'Lupe Fiasco' },
+  { year: 2009, won: false, album: 'Paper Trail',                                 artist: 'T.I.' },
+  { year: 2009, won: false, album: 'Untitled',                                    artist: 'Nas' },
+  // ── 2010 ──────────────────────────────────────────────────────────────────
+  { year: 2010, won: true,  album: 'Relapse',                                     artist: 'Eminem' },
+  { year: 2010, won: false, album: 'The Ecstatic',                                artist: 'Mos Def' },
+  { year: 2010, won: false, album: 'The Renaissance',                             artist: 'Q-Tip' },
+  { year: 2010, won: false, album: 'R.O.O.T.S.',                                 artist: 'Flo Rida' },
+  { year: 2010, won: false, album: 'Universal Mind Control',                      artist: 'Common' },
+  // ── 2011 ──────────────────────────────────────────────────────────────────
+  { year: 2011, won: true,  album: 'Recovery',                                    artist: 'Eminem' },
+  { year: 2011, won: false, album: 'The Blueprint 3',                             artist: 'Jay-Z' },
+  { year: 2011, won: false, album: "B.o.B Presents: The Adventures of Bobby Ray", artist: 'B.o.B' },
+  { year: 2011, won: false, album: 'How I Got Over',                              artist: 'The Roots' },
+  { year: 2011, won: false, album: 'Thank Me Later',                              artist: 'Drake' },
+  // ── 2012 ──────────────────────────────────────────────────────────────────
+  { year: 2012, won: true,  album: 'My Beautiful Dark Twisted Fantasy',           artist: 'Kanye West' },
+  { year: 2012, won: false, album: 'Lasers',                                      artist: 'Lupe Fiasco' },
+  { year: 2012, won: false, album: 'Pink Friday',                                 artist: 'Nicki Minaj' },
+  { year: 2012, won: false, album: 'Tha Carter IV',                               artist: 'Lil Wayne' },
+  { year: 2012, won: false, album: 'Watch the Throne',                            artist: 'Jay-Z & Kanye West' },
+  // ── 2013 ──────────────────────────────────────────────────────────────────
+  { year: 2013, won: true,  album: 'Take Care',                                   artist: 'Drake' },
+  { year: 2013, won: false, album: 'Based on a T.R.U. Story',                    artist: '2 Chainz' },
+  { year: 2013, won: false, album: 'Food & Liquor II: The Great American Rap Album Pt. 1', artist: 'Lupe Fiasco' },
+  { year: 2013, won: false, album: "God Forgives, I Don't",                       artist: 'Rick Ross' },
+  { year: 2013, won: false, album: 'Life Is Good',                                artist: 'Nas' },
+  { year: 2013, won: false, album: 'Undun',                                       artist: 'The Roots' },
+  // ── 2014 ──────────────────────────────────────────────────────────────────
+  { year: 2014, won: true,  album: 'The Heist',                                   artist: 'Macklemore & Ryan Lewis' },
+  { year: 2014, won: false, album: 'good kid, m.A.A.d city',                     artist: 'Kendrick Lamar' },
+  { year: 2014, won: false, album: 'Magna Carta Holy Grail',                      artist: 'Jay-Z' },
+  { year: 2014, won: false, album: 'Nothing Was the Same',                        artist: 'Drake' },
+  { year: 2014, won: false, album: 'Yeezus',                                      artist: 'Kanye West' },
+  // ── 2015 ──────────────────────────────────────────────────────────────────
+  { year: 2015, won: true,  album: 'The Marshall Mathers LP 2',                   artist: 'Eminem' },
+  { year: 2015, won: false, album: 'Because the Internet',                        artist: 'Childish Gambino' },
+  { year: 2015, won: false, album: 'Blacc Hollywood',                             artist: 'Wiz Khalifa' },
+  { year: 2015, won: false, album: 'The New Classic',                             artist: 'Iggy Azalea' },
+  { year: 2015, won: false, album: "Nobody's Smiling",                            artist: 'Common' },
+  { year: 2015, won: false, album: 'Oxymoron',                                    artist: 'ScHoolboy Q' },
+  // ── 2016 ──────────────────────────────────────────────────────────────────
+  { year: 2016, won: true,  album: 'To Pimp a Butterfly',                         artist: 'Kendrick Lamar' },
+  { year: 2016, won: false, album: '2014 Forest Hills Drive',                     artist: 'J. Cole' },
+  { year: 2016, won: false, album: 'Compton',                                     artist: 'Dr. Dre' },
+  { year: 2016, won: false, album: "If You're Reading This It's Too Late",         artist: 'Drake' },
+  { year: 2016, won: false, album: 'The Pinkprint',                               artist: 'Nicki Minaj' },
+  // ── 2017 ──────────────────────────────────────────────────────────────────
+  { year: 2017, won: true,  album: 'Coloring Book',                               artist: 'Chance the Rapper' },
+  { year: 2017, won: false, album: 'And the Anonymous Nobody...',                 artist: 'De La Soul' },
+  { year: 2017, won: false, album: 'Blank Face LP',                               artist: 'ScHoolboy Q' },
+  { year: 2017, won: false, album: 'The Life of Pablo',                           artist: 'Kanye West' },
+  { year: 2017, won: false, album: 'Major Key',                                   artist: 'DJ Khaled' },
+  { year: 2017, won: false, album: 'Views',                                       artist: 'Drake' },
+  // ── 2018 ──────────────────────────────────────────────────────────────────
+  { year: 2018, won: true,  album: 'DAMN.',                                        artist: 'Kendrick Lamar' },
+  { year: 2018, won: false, album: '4:44',                                        artist: 'Jay-Z' },
+  { year: 2018, won: false, album: 'Culture',                                     artist: 'Migos' },
+  { year: 2018, won: false, album: 'Flower Boy',                                  artist: 'Tyler, the Creator' },
+  { year: 2018, won: false, album: "Laila's Wisdom",                              artist: 'Rapsody' },
+  // ── 2019 ──────────────────────────────────────────────────────────────────
+  { year: 2019, won: true,  album: 'Invasion of Privacy',                         artist: 'Cardi B' },
+  { year: 2019, won: false, album: 'Astroworld',                                  artist: 'Travis Scott' },
+  { year: 2019, won: false, album: 'Daytona',                                     artist: 'Pusha T' },
+  { year: 2019, won: false, album: 'Swimming',                                    artist: 'Mac Miller' },
+  { year: 2019, won: false, album: 'Victory Lap',                                 artist: 'Nipsey Hussle' },
+  // ── 2020 ──────────────────────────────────────────────────────────────────
+  { year: 2020, won: true,  album: 'Igor',                                        artist: 'Tyler, the Creator' },
+  { year: 2020, won: false, album: 'Championships',                               artist: 'Meek Mill' },
+  { year: 2020, won: false, album: 'I Am > I Was',                                artist: '21 Savage' },
+  { year: 2020, won: false, album: 'The Lost Boy',                                artist: 'Cordae' },
+  { year: 2020, won: false, album: 'Revenge of the Dreamers III',                 artist: 'Dreamville' },
+  // ── 2021 ──────────────────────────────────────────────────────────────────
+  { year: 2021, won: true,  album: "King's Disease",                              artist: 'Nas' },
+  { year: 2021, won: false, album: 'Alfredo',                                     artist: 'Freddie Gibbs & The Alchemist' },
+  { year: 2021, won: false, album: 'The Allegory',                                artist: "Royce Da 5'9\"" },
+  { year: 2021, won: false, album: 'Black Habits',                                artist: 'D Smoke' },
+  { year: 2021, won: false, album: 'A Written Testimony',                         artist: 'Jay Electronica' },
+  // ── 2022 ──────────────────────────────────────────────────────────────────
+  { year: 2022, won: true,  album: 'Call Me If You Get Lost',                     artist: 'Tyler, the Creator' },
+  { year: 2022, won: false, album: 'Donda',                                       artist: 'Kanye West' },
+  { year: 2022, won: false, album: "King's Disease II",                           artist: 'Nas' },
+  { year: 2022, won: false, album: 'The Off-Season',                              artist: 'J. Cole' },
+  // ── 2023 ──────────────────────────────────────────────────────────────────
+  { year: 2023, won: true,  album: 'Mr. Morale & the Big Steppers',              artist: 'Kendrick Lamar' },
+  { year: 2023, won: false, album: 'Come Home the Kids Miss You',                 artist: 'Jack Harlow' },
+  { year: 2023, won: false, album: 'God Did',                                     artist: 'DJ Khaled' },
+  { year: 2023, won: false, album: 'I Never Liked You',                           artist: 'Future' },
+  { year: 2023, won: false, album: "It's Almost Dry",                             artist: 'Pusha T' },
+  // ── 2024 ──────────────────────────────────────────────────────────────────
+  { year: 2024, won: true,  album: 'Michael',                                     artist: 'Killer Mike' },
+  { year: 2024, won: false, album: 'Her Loss',                                    artist: 'Drake & 21 Savage' },
+  { year: 2024, won: false, album: 'Heroes & Villains',                           artist: 'Metro Boomin' },
+  { year: 2024, won: false, album: "King's Disease III",                          artist: 'Nas' },
+  { year: 2024, won: false, album: 'Utopia',                                      artist: 'Travis Scott' },
+  // ── 2025 ──────────────────────────────────────────────────────────────────
+  { year: 2025, won: true,  album: 'Alligator Bites Never Heal',                  artist: 'Doechii' },
+  { year: 2025, won: false, album: 'The Auditorium Vol. 1',                       artist: 'Common & Pete Rock' },
+  { year: 2025, won: false, album: 'The Death of Slim Shady (Coup de Grâce)',    artist: 'Eminem' },
+  { year: 2025, won: false, album: 'Might Delete Later',                          artist: 'J. Cole' },
+  { year: 2025, won: false, album: 'We Don\'t Trust You',                         artist: 'Future & Metro Boomin' },
+  // ── 2026 ──────────────────────────────────────────────────────────────────
+  { year: 2026, won: true,  album: 'GNX',                                         artist: 'Kendrick Lamar' },
+  { year: 2026, won: false, album: 'Chromakopia',                                 artist: 'Tyler, the Creator' },
+  { year: 2026, won: false, album: 'Glorious',                                    artist: 'GloRilla' },
+  { year: 2026, won: false, album: 'God Does Like Ugly',                          artist: 'JID' },
+  { year: 2026, won: false, album: 'Let God Sort Em Out',                         artist: 'Clipse' },
+];

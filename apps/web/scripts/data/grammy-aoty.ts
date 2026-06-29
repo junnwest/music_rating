@@ -14,7 +14,7 @@ export type GrammyEntry = {
   album: string;
   artist: string;
   won: boolean;
-  spotifyId?: string;  // hardcoded when Spotify search can't find it
+  mbid?: string;  // hardcoded MB release-group MBID override when search can't find it
 };
 
 export const GRAMMY_AOTY: GrammyEntry[] = [
