@@ -37,6 +37,7 @@ import { integrityCheck, requeueFailures, recomputePriorities } from './mb-qc';
 import { gapfillGroups, gapfillSkippedArtists, MigrationNeeded } from './mb-gapfill';
 import { runDeezerFallback } from './mb-deezer-fallback';
 import { ItunesBlockedError, resetBlock } from './itunes-client';
+import { mbLastActivityAt } from './mb-client';
 import { SEED } from './seed-artists';
 
 const ONCE = process.argv.includes('--once');
@@ -61,6 +62,13 @@ const DISCOVER_LOW_WATER = envInt('DISCOVER_LOW_WATER', 40);   // top up when pe
 const DISCOVER_TARGET    = envInt('DISCOVER_TARGET', 200);     // refill pending toward this
 const DISCOVER_CEILING   = envInt('DISCOVER_CEILING', 12000);  // lifetime cap on auto-discovered rows
 const DISCOVER_POLL_MS   = envInt('DISCOVER_POLL_MS', 60_000); // re-check cadence while above low-water
+
+// Watchdog: the supervisor only restarts a lane that THROWS; a lane hung on an unguarded
+// await (e.g. a Supabase call with no timeout) never throws → it stalls forever. For the MB
+// worker we arm a watchdog that forces a restart once it's been idle this long — judged by
+// BOTH no heartbeat AND no MB request dispatch, so a slow/throttled artist (still making MB
+// calls between beats) is never mistaken for a hang. 0 disables it.
+const INGEST_STALE_MS    = envInt('INGEST_STALE_MS', 600_000); // 10 min
 
 // ── FRESHNESS + QC tuning (env-overridable) ────────────────────────────────────
 // FRESHNESS shares the single MB worker (one re-poll every FRESHNESS_EVERY new ingests,
@@ -90,7 +98,9 @@ function sleep(ms: number) { return new Promise<void>(r => setTimeout(r, ms)); }
 const now = () => new Date().toISOString();
 
 // ── heartbeat ───────────────────────────────────────────────────────────────
+const laneLastBeat = new Map<string, number>(); // in-process heartbeat clock for the watchdog
 async function beat(db: DB, lane: string, patch: Record<string, unknown>) {
+  laneLastBeat.set(lane, Date.now());
   await db.from('pipeline_lanes').upsert(
     { lane, updated_at: now(), ...patch },
     { onConflict: 'lane' },
@@ -422,15 +432,40 @@ async function bootstrapFreshness(db: DB) {
 // blip in an unguarded read) is logged and restarted after a short backoff instead of
 // rejecting Promise.all and killing every other lane. Bounded runs (DRAIN_ONCE) don't
 // supervise — a throw there should surface immediately.
-async function supervise(db: DB, name: string, loop: (db: DB) => Promise<void>, onRestart?: () => Promise<void>) {
+async function supervise(db: DB, name: string, loop: (db: DB) => Promise<void>, onRestart?: () => Promise<void>, staleMs = 0) {
   for (;;) {
-    try { await loop(db); return; }
-    catch (e) {
+    let timer: ReturnType<typeof setInterval> | undefined;
+    try {
+      laneLastBeat.set(name, Date.now()); // seed so a slow first beat isn't flagged
+      const work = loop(db);
+      if (staleMs > 0) {
+        // Watchdog: reject (→ restart) only when BOTH the heartbeat and MB activity are stale.
+        // The dangling hung promise from `work` is harmless — it's frozen and the restarted
+        // loop re-claims via onRestart; writes are MBID-idempotent.
+        const watchdog = new Promise<never>((_, reject) => {
+          timer = setInterval(() => {
+            const beatAge = Date.now() - (laneLastBeat.get(name) ?? Date.now());
+            const mbAge = Date.now() - mbLastActivityAt();
+            if (beatAge > staleMs && mbAge > staleMs) {
+              reject(new Error(`watchdog: idle ${Math.round(beatAge / 1000)}s, no MB activity ${Math.round(mbAge / 1000)}s — forcing restart`));
+            }
+          }, 30_000);
+          (timer as { unref?: () => void }).unref?.();
+        });
+        await Promise.race([work, watchdog]);
+      } else {
+        await work;
+      }
+      return;
+    } catch (e) {
       if (DRAIN_ONCE) throw e;
-      console.error(`  [${name}] lane crashed: ${(e as Error).message} — restarting in 30s`);
+      const stalled = (e as Error).message.startsWith('watchdog:');
+      console.error(`  [${name}] lane ${stalled ? 'stalled' : 'crashed'}: ${(e as Error).message} — restarting in 30s`);
       await beat(db, name, { status: 'restarting', last_active: now(), current_item: (e as Error).message.slice(0, 120) }).catch(() => {});
       await sleep(30_000);
       await onRestart?.().catch(() => {});
+    } finally {
+      if (timer) clearInterval(timer);
     }
   }
 }
@@ -447,7 +482,7 @@ async function main() {
   // nothing contends with INGEST's 1-req/s MB limit. Each is supervised so a transient
   // error in one lane never takes the others down.
   await Promise.all([
-    supervise(db, 'ingest', ingestLoop, () => resetStale(db)), // re-claim a row stranded by the crash
+    supervise(db, 'ingest', ingestLoop, () => resetStale(db), INGEST_STALE_MS), // watchdog-armed; re-claim a row stranded by the crash/hang
     supervise(db, 'embeddings', embeddingsLoop),
     supervise(db, 'discover', discoverLoop),
     supervise(db, 'qc', qcLoop),

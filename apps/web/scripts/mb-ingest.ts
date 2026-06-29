@@ -15,6 +15,19 @@ import { MB_ARTIST_OVERRIDES } from './mb-overrides';
 export { detectLanguage, getDB };
 export type { DB };
 
+// MusicBrainz special-purpose "artists" — placeholders, NOT real people/groups. "Various
+// Artists" alone carries 300k+ releases; resolving a queue name to one (e.g. "Ray" →
+// Various Artists) makes the MB worker crawl a junk mega-catalog for hours and pollutes the
+// catalog with compilations. Never resolve to, nor ingest, these MBIDs.
+export const SPECIAL_MBIDS = new Set<string>([
+  '89ad4ac3-39f7-470e-963a-56509c546377', // Various Artists
+  '125ec42a-7229-4250-afc5-e057484327fe', // [unknown]
+  'f731ccc4-e22a-43af-a747-64213329e088', // [anonymous]
+  'eec63d3c-3b81-4ad4-b1e4-7c147d4d2b61', // [no artist]
+  '33cf029c-63b0-41a0-9855-be2a3665fb3b', // [data]
+  '9be7f096-97ec-4615-8957-8d40b5dcbc41', // [traditional]
+]);
+
 // MB release-group primary/secondary types → our `release_group_type` enum.
 export function mbTypeToGroupType(primaryType: string | null, secondaryTypes: string[]): string {
   const s = (secondaryTypes ?? []).map(x => x.toLowerCase());
@@ -57,17 +70,38 @@ export async function resolveArtist(name: string, region: string | null = null):
   const override = MB_ARTIST_OVERRIDES[normalizeStr(name)];
   if (override) {
     return {
-      best: { id: override, name, score: 100, type: null, country: region, area: null, disambiguation: '(manual override)' },
+      best: { id: override, name, score: 100, type: null, country: region, area: null, disambiguation: '(manual override)', aliases: [] },
       needsReview: false, ambiguous: false, candidates: [],
     };
   }
 
-  const candidates = await searchArtists(name, 8);
+  const candidates = (await searchArtists(name, 8)).filter(c => !SPECIAL_MBIDS.has(c.id));
   if (candidates.length === 0) return { best: null, needsReview: false, ambiguous: false, candidates: [] };
 
   const norm = normalizeStr(name);
-  const exact = candidates.filter(c => normalizeStr(c.name) === norm);
+  // Exact match on the primary name OR any alias/sort-name. Critical for non-Latin
+  // queries: a Korean name like "우디" never equals a candidate's romanized primary
+  // ("Woody"), so a name-only check fell through to the fuzzy score≥90 branch and
+  // grabbed a wrong higher-scored artist (e.g. "우디"→"Woodie Gochild"). An exact alias
+  // hit is a far stronger signal than a fuzzy score on a *different* artist.
+  const exact = candidates.filter(c =>
+    normalizeStr(c.name) === norm || (c.aliases ?? []).some(a => normalizeStr(a) === norm),
+  );
   const fromExact = exact.length > 0;
+
+  // Short non-Latin guard: a 2–3 char Hangul/CJK query fuzzily substring-matches longer
+  // artist names ("우디" ⊂ "우디 고차일드"), so MB returns the wrong artist at score 100
+  // while the real one is lower-scored or unreachable (its match sits in disambiguation,
+  // which the search query can't see). With no exact name/alias hit we can't trust the
+  // fuzzy pick → flag for review (→ mb-overrides) rather than silently shadow a real
+  // artist. Latin queries keep the old fuzzy behaviour (not prone to this collision).
+  if (!fromExact) {
+    const cjkLen = (name.match(/[가-힣぀-ゟ゠-ヿ一-鿿]/g) ?? []).length;
+    if (cjkLen > 0 && cjkLen <= 3) {
+      return { best: null, needsReview: true, ambiguous: false, candidates };
+    }
+  }
+
   let pool = exact;
   if (pool.length === 0) pool = candidates.filter(c => c.score >= 90);
   if (pool.length === 0) pool = candidates.slice(0, 3);
@@ -300,6 +334,9 @@ export function nextCheckAt(priority: string | null | undefined, from: Date = ne
 }
 
 export async function ingestArtist(db: DB, mbid: string): Promise<{ artistId: string; isNew: boolean; rgCount: number; recCount: number }> {
+  // Belt-and-suspenders for the ListenBrainz path (carries an MBID directly, bypassing the
+  // resolver's candidate filter): never ingest a special-purpose placeholder.
+  if (SPECIAL_MBIDS.has(mbid)) throw new Error(`refusing special-purpose MBID ${mbid} (Various Artists / [unknown] / …)`);
   const detail = await getArtist(mbid);
   if (!detail) throw new Error(`MB artist not found: ${mbid}`);
   const { id: artistId, isNew } = await findOrCreateArtistByMbid(db, detail);

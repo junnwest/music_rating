@@ -24,14 +24,20 @@ function sleep(ms: number) { return new Promise<void>(r => setTimeout(r, ms)); }
 // Single global limiter shared by every caller of this module.
 let chain: Promise<void> = Promise.resolve();
 let last = 0;
+let lastActivity = Date.now(); // refreshed on every MB request dispatch — lets the pipeline
+                               // watchdog tell a true hang (no MB calls) from a slow/throttled
+                               // artist (MB calls still flowing, just between heartbeats).
 function acquire(): Promise<void> {
   chain = chain.then(async () => {
     const wait = Math.max(0, MIN_INTERVAL_MS - (Date.now() - last));
     if (wait) await sleep(wait);
     last = Date.now();
+    lastActivity = last;
   });
   return chain;
 }
+/** Wall-clock time of the most recent MB request dispatch (liveness signal). */
+export function mbLastActivityAt(): number { return lastActivity; }
 
 async function mbGet(path: string, attempt = 0): Promise<any> {
   await acquire();
@@ -80,6 +86,7 @@ export interface MbArtistCandidate {
   country: string | null;
   area: string | null;
   disambiguation: string | null;
+  aliases: string[];       // alias + sort-name variants — for alias-aware exact matching
 }
 export interface MbArtistDetail {
   id: string;
@@ -134,6 +141,13 @@ export async function searchArtists(name: string, limit = 8): Promise<MbArtistCa
     country: a.country ?? null,
     area: a.area?.name ?? null,
     disambiguation: a.disambiguation ?? null,
+    // alias names + sort-name; the search query matches the alias field (e.g. Korean
+    // "우디" on an artist whose primary name is the romanized "Woody"), so a Hangul
+    // query that can't exact-match the Latin primary name can still exact-match here.
+    aliases: [
+      ...(a.aliases ?? []).map((al: any) => al?.name).filter(Boolean),
+      ...(a['sort-name'] ? [a['sort-name']] : []),
+    ],
   }));
 }
 
