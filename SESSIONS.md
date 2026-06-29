@@ -6,6 +6,87 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-29 (session 3) — Grammy genre sources blitz + RankingBlock wired (Mac):**
+
+Finished the Western prestige collection pass on Mac and wired the iOS Charts RankingBlock to real data.
+
+**iOS: RankingBlock self-contained (`apps/ios/sillajuku/sillajuku/Main/RankingsView.swift`):**
+- Was reading `viewModel.topRated` (community avg via `get_charts_top_rated`); genre/country filters were decorative.
+- Now manages its own state: `@State private var entries/isLoading/isExpanded/selectedGenre/selectedCountry`.
+- Calls `get_silla_leaderboard` (p_limit=10) on `.task` and `.onChange(of: selectedGenre/selectedCountry)`.
+- `sillaScore × 5.0` for badge display (maps [0,1] → [0,5]). Spinner shown while loading/reloading.
+- Call site simplified: `RankingBlock()` (no `entries:` param).
+
+**New data files (`apps/web/scripts/data/`):**
+- **`grammy-rap.ts`** — Grammy Best Rap Album, 1996–2026, ~130 entries (winners + nominees).
+- **`grammy-rnb.ts`** — Grammy Best R&B Album, 1995–2026, ~140 entries.
+- **`grammy-rock.ts`** — Grammy Best Rock Album, 1995–2026, ~120 entries.
+- **`grammy-alternative.ts`** — Grammy Best Alternative Music Album, 1991–2026, ~115 entries.
+- **`grammy-pop-vocal.ts`** — Grammy Best Pop Vocal Album, 1968 + 1995–2026, ~100 entries.
+- **`grammy-dance-electronic.ts`** — Grammy Best Dance/Electronic Album, 2005–2026 (2009–2013 omitted — uncertain nominees; 2018 winner TBD, needs Windows `/browse` to verify).
+
+**Seeder updated (`apps/web/scripts/seed-external-scores.ts`):**
+- 6 new cases: `grammy_rap`, `grammy_rnb`, `grammy_rock`, `grammy_alternative`, `grammy_pop_vocal`, `grammy_dance_electronic`.
+- Available sources list in help text updated to full inventory.
+- All 6 sources seeded successfully. Reconcile runs automatically at end of each seed.
+
+**Status after seeding:** reconcile updated/pending numbers TBD (ran automatically after each seed). The leaderboard is still Korean-dominant because 452 pending entries in `external_scores` are Western artists not yet ingested by the pipeline.
+
+**Windows prompt drafted (ready to send):** Two tracks — (a) pipeline: ingest Western artists to resolve the 452 pending entries; (b) sources via `/browse`: RS500 (500 entries, `list_rank`, `normalizedScore=(501-rank)/500`, tier 2), Pitchfork 10.0 (`normalizedScore=1.0`, tier 2), Grammy Dance/Electronic 2009–2013 + 2018 winner gaps, Brit Award Album of the Year (optional). After seeding: `npm run prestige:reconcile`.
+
+**Year convention note (all Grammy files):** `year` = ceremony year, not album release year. Consistent with grammy-aoty.ts convention.
+
+---
+
+**2026-06-28 (session 2) — Korean prestige sources blitz (Mac):**
+
+Completed Weiv AOTY 2015–2019 and seeded 5 new Korean prestige sources. Total: 15 sources in `external_scores`, 247 release_groups with `prestige_score`, 452 pending (will resolve as pipeline ingests more artists).
+
+**Data files created/updated:**
+- **`scripts/data/weiv-aoty.ts`** — Completed: 50 entries, 2015–2019. 2019 unranked (rank=null, score=0.8); 2015–2018 ranked top-10 (score=(11-rank)/10). 2016 has tied rank 8 (실리카겔 + 구텐버즈, both score=0.3); rank 9 skipped; rank 10 = BTS Wings. 2017 rank 1 = Red Velvet — Perfect Velvet. Source: Weiv.co.kr archive (2020+ confirmed doesn't exist — HTTP 500 on all IDs above 24366).
+- **`scripts/data/golden-disc-daesang.ts`** — NEW: 40 entries, 1986–2025. 음반 대상 (Album Grand Prize) winners. `award_win`/1.0/tier3. Key: 조용필 (1986), H.O.T. (1997), god (2001), TVXQ (2006, 2008), Super Junior (2009, 2011, 2012), Girls' Generation (2010), EXO (2013–2016), BTS (2017–2022), Seventeen (2023–2024), Stray Kids (2025). Source: Wikipedia.
+- **`scripts/data/golden-disc-bonsang.ts`** — NEW: 134 entries, 2017–2025. 음반 본상 (Album Main Prize). `award_nomination`/0.35/tier3. Daesang winners not duplicated here. Counts: 2017(9), 2018(10), 2019(10), 2020(29), 2021(29), 2022(20), 2023(9), 2024(9), 2025(9). Source: Wikipedia individual ceremony pages (32nd–40th). ⚠️ English Wikipedia 38th page had wrong winner (NewJeans/FML) — used Korean Wikipedia which correctly shows Seventeen.
+- **`scripts/data/mma-aoty.ts`** — NEW: 17 entries, 2009–2025. Melon Music Award for Album of the Year. `award_win`/1.0/tier3. Source: Wikipedia.
+- **`scripts/data/sma-album.ts`** — NEW: 10 entries, 2013–2023. Seoul Music Awards Best Album Award (years with confirmed titles only; 2019 and 2024 omitted — no confirmed album title). `award_win`/1.0/tier3. Source: Wikipedia.
+- **`scripts/data/izm-aoty.ts`** — UPDATED: added 2023 (10 entries). Now 2023–2025. Note: RM's *Indigo* (Dec 2022 release) appears in IZM's 2023 list — kept as year=2023.
+
+**Seeder cases added** (in `seed-external-scores.ts`): `weiv_aoty`, `golden_disc_daesang`, `golden_disc_bonsang`, `mma_aoty`, `sma_album`.
+
+**Sources inaccessible (gaps):**
+- Weiv 2020+ — confirmed doesn't exist (Weiv stopped publishing domestic AOTY after 2019).
+- IZM 2015–2022 — m.izm.co.kr ENOTFOUND; archive.izm.co.kr domain-squatted (SSL mismatch pointing to bombit.or.kr). Only 2023–2025 accessible on new site.
+- Hiphopplaya Awards 2001–2016 — awards.hiphopplaya.com ECONNRESET / rate-limited during session.
+
+**Golden Disc year convention:** ceremony year ≈ album release year; coverage window ~Nov 1(year-1)–Oct 31(year); e.g. BTS - *BE* (Nov 20, 2020) falls under year=2021. All entries follow Golden Disc's own labeling, not album release date.
+
+**Final reconcile stats:** updated=247, pending=452. BTS albums (Love Yourself: Her, Answer, Map of the Soul: Persona/7) stored as pending — will resolve when pipeline ingests them.
+
+---
+
+**2026-06-28 (session 1) — Prestige system redesign + Grammy AOTY + Mercury Prize seeded (Mac):**
+
+- **Architecture pivot:** scrapped Spotify-ID-keyed `external_scores` — the MB pipeline never writes `releases.spotify_id`, so the old 3-hop bridge `external_scores.release_id → releases.spotify_id → release_group_id` was broken for all MB-ingested albums. Redesign: `external_scores` is now MBID-keyed (`mb_release_group_id`), no scope columns (filtering is UI-only), deferred injection pattern (store with MBID → `reconcile_prestige_scores()` pushes to `release_groups.prestige_score`).
+- **Migration `20260628000000_prestige_redesign.sql` ✅ applied:** TRUNCATE old Grammy data; DROP `release_id`/`scope_genre`/`scope_country`; ADD `mb_release_group_id text`; new UNIQUE on `(album_title, artist, source, year)`; ADD `release_groups.prestige_score float8`; CREATE `reconcile_prestige_scores()` (idempotent, tier-weighted blend); rebuilt `get_silla_leaderboard` reads `prestige_score` directly; `p_country` now filters by `artists.country` not prestige scope.
+- **Seeder rewritten:** MB release-group search (`searchReleaseGroups()` added to `mb-client.ts`) replaces Spotify search. Fuzzy match on title+artist. Stores MBID or null (pending). Auto-reconciles after run.
+- **Grammy AOTY re-seeded (360/360, 0 failed):** MB found Fugees — *The Score* this time. 340 matched with MBID, 20 pending. `reconcile_prestige_scores()` updated 67 release_groups.
+- **Mercury Prize seeded (332/332, 0 failed):** 326 matched with MBID, 6 pending (Florence and the Machine ×3, Robert Plant & Alison Krauss ×2, Kae Tempest — *Let Them Eat Chaos*). After both sources: 86 release_groups have `prestige_score`, 26 total pending.
+- Xcode Cmd+B verified 2026-06-28.
+
+---
+
+**2026-06-27 — Silla Score system: external_scores table, Grammy AOTY seeder, get_silla_leaderboard RPC, iOS leaderboard wired (Mac):**
+
+- **Decision:** build the Silla Score from scratch with a new `external_scores` table (prestige signal) rather than repurposing existing data. Formula: `silla_score = 0.55 × rating_norm + 0.45 × prestige` (adaptive: rating-only or prestige-only albums use α=1.0 so no signal is penalized for lacking the other).
+- **Prestige philosophy:** global hierarchy (Grammy = most prestigious globally) + equal weight within scope (KMA = Grammy when KR filter active, Mercury = Grammy when UK filter active). Achieved naturally via `scope_country` on `external_scores` — regional awards don't fire in the global view. No schema changes needed.
+- **`external_scores` table (`20260627000000_external_scores.sql` ✅ applied):** one row per source per album. `normalized_score` [0,1]. `source_tier` (1=aggregators/0.45, 2=critics/0.30, 3=awards/0.25). `scope_genre`/`scope_country` = null → global; non-null → fires only under that filter. `UNIQUE(release_id, source, year)`. Indexed. `get_external_prestige_scores(release_ids text[], p_genre, p_country)` RPC also created.
+- **Grammy AOTY data file (`scripts/data/grammy-aoty.ts`):** 360 entries (1959–2025), winners + nominees. `won → normalized_score=1.0/award_win`; `!won → 0.35/award_nomination`; `source_tier=3`; no scope (global award). 5 fixes applied (Saturday Night Fever artist, Fugees prefix, Pharrell G I R L spacing, Jay-Z 4:44 + Killer Mike hardcoded Spotify IDs).
+- **Generic seeder (`scripts/seed-external-scores.ts`):** `npm run seed:external -- --source grammy_aoty [--dry-run] [--year YYYY]`. Spotify search → fuzzy match → upsert (`ON CONFLICT DO NOTHING`). State saved to `scripts/seed-external-scores-state-<source>.json` so re-runs skip completed rows. Spotify circuit breaker (`spotify-circuit.ts`) prevents running while rate-limited.
+- **Grammy seed status:** 68 rows inserted before Spotify 429 at Neil Diamond "Moods" (1973). Rate limit clears ~21:30 UTC 2026-06-27. **Re-run `npm run seed:external -- --source grammy_aoty` to continue (~292 remaining).**
+- **`get_silla_leaderboard` RPC (`20260627000001_silla_leaderboard.sql` ✅ applied):** combines Bayesian calibrated rating + tier-weighted prestige per `release_group_id` (post-renovation schema). Rating joins via `ratings.release_group_id → release_groups`. Prestige bridges via `external_scores.release_id → releases.spotify_id → releases.release_group_id`. Genre filter uses `_rg_has_genre()`. Returns `release_groups.id AS release_id`, metadata from `release_groups`, `silla_score float8 [0,1]`, `rating_norm`, `prestige_score`, `rating_count`, `source_count`. First attempt failed: `ratings.release_id` doesn't exist (renovation dropped it in §8). Fixed to use `ratings.release_group_id`.
+- **iOS `RankingDetailView` wired:** added `SillaLeaderboardRow` + `SillaLeaderboardParams` codable structs; `load()` now calls `get_silla_leaderboard` (was `get_charts_top_rated` placeholder); `.onChange(of: selectedGenre/selectedCountry)` triggers reload; `silla_score × 5` displayed in score badge (maps [0,1] to [0,5] to match rating scale).
+
+---
+
 **2026-06-29 — "Various Artists" mega-match incident + special-MBID blocklist (Windows):**
 
 - **Symptom:** user saw the MB worker stuck — no artist completed for **~71 min**, log spamming `[503] MB throttled` + `[mb] capped at 1376/324926 releases for 89ad4ac3…`. Diagnosis: queue name **"Ray" (wikipedia_japan) mis-resolved to MBID `89ad4ac3` = MusicBrainz "Various Artists"** (324,926 releases). The worker was crawling its capped 1,376 releases under throttling AND **actively polluting** the catalog (75 junk RGs / 72 releases / 1,143 recordings written before it was stopped).

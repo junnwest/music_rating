@@ -80,6 +80,29 @@ enum ChartDetailType: Hashable {
 
 enum TrendingMode { case global_, forYou }
 
+// Silla Score leaderboard row — returned by get_silla_leaderboard RPC
+private struct SillaLeaderboardRow: Codable {
+    let releaseId:   UUID
+    let title:       String
+    let artist:      String
+    let coverUrl:    String?
+    let sillaScore:  Double
+    let ratingCount: Int?
+    enum CodingKeys: String, CodingKey {
+        case releaseId   = "release_id"; case title; case artist
+        case coverUrl    = "cover_url"
+        case sillaScore  = "silla_score"
+        case ratingCount = "rating_count"
+    }
+}
+
+private struct SillaLeaderboardParams: Encodable {
+    let p_genre:   String?
+    let p_country: String?
+    let p_limit:   Int
+    let p_offset:  Int
+}
+
 // Shared Codable rows — must be at file scope (Swift disallows type declarations in generic functions)
 private struct RankedRPCRow: Codable {
     let releaseId: UUID; let title: String; let artist: String
@@ -360,7 +383,7 @@ struct ChartsView: View {
             } else {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
-                        RankingBlock(entries: viewModel.topRated)
+                        RankingBlock()
                             .padding(.horizontal, 16)
                             .padding(.bottom, 22)
 
@@ -605,8 +628,8 @@ private struct TrendingSongRow: View {
 // MARK: - RankingBlock
 
 private struct RankingBlock: View {
-    let entries: [ChartEntry]
-
+    @State private var entries: [ChartEntry] = []
+    @State private var isLoading = true
     @State private var isExpanded = false
     @State private var selectedGenre: String? = nil
     @State private var selectedCountry: String? = nil
@@ -653,45 +676,83 @@ private struct RankingBlock: View {
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.sjBorder, lineWidth: 0.5))
         .animation(.easeInOut(duration: 0.22), value: isExpanded)
+        .task { await load() }
+        .onChange(of: selectedGenre)   { Task { await load() } }
+        .onChange(of: selectedCountry) { Task { await load() } }
+    }
+
+    // MARK: Load
+
+    private func load() async {
+        isLoading = true
+        let params = SillaLeaderboardParams(
+            p_genre:   selectedGenre,
+            p_country: selectedCountry,
+            p_limit:   10,
+            p_offset:  0
+        )
+        let rows: [SillaLeaderboardRow] = (try? await supabase
+            .rpc("get_silla_leaderboard", params: params)
+            .execute().value) ?? []
+        entries = rows.map {
+            ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
+                       coverUrl: $0.coverUrl, avgScore: $0.sillaScore * 5.0,
+                       ratingCount: $0.ratingCount, newCount: nil)
+        }
+        isLoading = false
     }
 
     // MARK: Collapsed — 3-album teaser
 
     private var collapsedTeaser: some View {
-        GeometryReader { geo in
-            let itemSize = (geo.size.width - 20) / 3   // 2 gaps of 10pt
-            HStack(spacing: 10) {
-                ForEach(Array(entries.prefix(3).enumerated()), id: \.element.id) { idx, entry in
-                    NavigationLink(value: entry.asRelease) {
-                        ZStack(alignment: .topLeading) {
-                            CoverThumb(url: entry.coverUrl, size: itemSize, radius: 8)
-                            Text("#\(idx + 1)")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 5).padding(.vertical, 2)
-                                .background(Color.black.opacity(0.55))
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                                .padding(5)
-                        }
-                        .overlay(alignment: .bottomTrailing) {
-                            if let score = entry.avgScore {
-                                Text(String(format: "%.1f", score))
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 5).padding(.vertical, 2)
-                                    .background(Color.sjAmber)
-                                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                                    .padding(5)
+        Group {
+            if isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
+            } else if entries.isEmpty {
+                Text("No ranking data yet.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.sjMuted)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 20)
+            } else {
+                GeometryReader { geo in
+                    let itemSize = (geo.size.width - 20) / 3
+                    HStack(spacing: 10) {
+                        ForEach(Array(entries.prefix(3).enumerated()), id: \.element.id) { idx, entry in
+                            NavigationLink(value: entry.asRelease) {
+                                ZStack(alignment: .topLeading) {
+                                    CoverThumb(url: entry.coverUrl, size: itemSize, radius: 8)
+                                    Text("#\(idx + 1)")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 5).padding(.vertical, 2)
+                                        .background(Color.black.opacity(0.55))
+                                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                                        .padding(5)
+                                }
+                                .overlay(alignment: .bottomTrailing) {
+                                    if let score = entry.avgScore {
+                                        Text(String(format: "%.1f", score))
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundStyle(.white)
+                                            .padding(.horizontal, 5).padding(.vertical, 2)
+                                            .background(Color.sjAmber)
+                                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                                            .padding(5)
+                                    }
+                                }
                             }
+                            .buttonStyle(.plain)
                         }
                     }
-                    .buttonStyle(.plain)
                 }
+                .frame(height: (UIScreen.main.bounds.width - 32 - 20) / 3)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 14)
             }
         }
-        .frame(height: (UIScreen.main.bounds.width - 32 - 20) / 3)   // 32 = outer h-padding, 20 = gaps
-        .padding(.horizontal, 16)
-        .padding(.bottom, 14)
     }
 
     // MARK: Expanded — filters + rows + see all
@@ -728,14 +789,20 @@ private struct RankingBlock: View {
         Divider()
 
         // Top 5 rows
-        VStack(spacing: 0) {
-            ForEach(Array(entries.prefix(5).enumerated()), id: \.element.id) { idx, entry in
-                NavigationLink(value: entry.asRelease) {
-                    rankRow(rank: idx + 1, entry: entry)
-                }
-                .buttonStyle(.plain)
-                if idx < min(4, entries.count - 1) {
-                    Divider().padding(.leading, 16 + 24 + 8 + 44 + 8)
+        if isLoading {
+            ProgressView()
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+        } else {
+            VStack(spacing: 0) {
+                ForEach(Array(entries.prefix(5).enumerated()), id: \.element.id) { idx, entry in
+                    NavigationLink(value: entry.asRelease) {
+                        rankRow(rank: idx + 1, entry: entry)
+                    }
+                    .buttonStyle(.plain)
+                    if idx < min(4, entries.count - 1) {
+                        Divider().padding(.leading, 16 + 24 + 8 + 44 + 8)
+                    }
                 }
             }
         }
@@ -886,6 +953,8 @@ struct RankingDetailView: View {
         .navigationTitle("Ranking")
         .navigationBarTitleDisplayMode(.large)
         .task { await load() }
+        .onChange(of: selectedGenre)   { Task { await load() } }
+        .onChange(of: selectedCountry) { Task { await load() } }
     }
 
     // MARK: Filter bar
@@ -929,15 +998,23 @@ struct RankingDetailView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: Load (uses top_rated as placeholder until silla_score exists)
+    // MARK: Load
 
     private func load() async {
-        let rows: [RankedRPCRow] = (try? await supabase
-            .rpc("get_charts_top_rated", params: ["p_limit": 100])
+        isLoading = true
+        let params = SillaLeaderboardParams(
+            p_genre:   selectedGenre,
+            p_country: selectedCountry,
+            p_limit:   100,
+            p_offset:  0
+        )
+        let rows: [SillaLeaderboardRow] = (try? await supabase
+            .rpc("get_silla_leaderboard", params: params)
             .execute().value) ?? []
+        // silla_score is [0,1]; scale ×5 so the badge reads on the same 0–5 axis as ratings
         entries = rows.map {
             ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
-                       coverUrl: $0.coverUrl, avgScore: $0.avgScore,
+                       coverUrl: $0.coverUrl, avgScore: $0.sillaScore * 5.0,
                        ratingCount: $0.ratingCount, newCount: nil)
         }
         isLoading = false

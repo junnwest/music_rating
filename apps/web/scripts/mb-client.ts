@@ -127,6 +127,31 @@ export interface MbTrack {
 
 // ── API wrappers ───────────────────────────────────────────────────────────────
 
+export interface MbReleaseGroupResult {
+  id: string;       // MBID
+  title: string;
+  primaryType: string | null;
+  artistCredit: string;
+  firstReleaseDate: string | null;
+  score: number;    // MB search relevance 0–100
+}
+
+export async function searchReleaseGroups(title: string, artist: string, limit = 5): Promise<MbReleaseGroupResult[]> {
+  const t = title.replace(/(["\\])/g, '\\$1');
+  const a = artist.replace(/(["\\])/g, '\\$1');
+  const data = await mbGet(
+    `/release-group?query=${enc(`releasegroup:"${t}" AND artist:"${a}"`)}&limit=${limit}`,
+  );
+  return (data?.['release-groups'] ?? []).map((rg: any): MbReleaseGroupResult => ({
+    id: rg.id,
+    title: rg.title,
+    primaryType: rg['primary-type'] ?? null,
+    artistCredit: creditPhrase(rg['artist-credit']),
+    firstReleaseDate: rg['first-release-date'] || null,
+    score: rg.score ?? 0,
+  }));
+}
+
 export async function searchArtists(name: string, limit = 8): Promise<MbArtistCandidate[]> {
   // Search the NAME *and* ALIAS fields: many Korean artists' MB primary name is
   // Hangul (e.g. 혁오) with the romanized form ("Hyukoh") only as an alias, so a
