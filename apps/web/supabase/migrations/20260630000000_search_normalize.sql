@@ -47,11 +47,11 @@ RETURNS TABLE (
 LANGUAGE sql STABLE AS $$
   WITH nq AS (SELECT normalize_text(q) AS qn, lower(btrim(q)) AS ql)
   SELECT rg.id, rg.title, rg.artist_display, rg.cover_url,
-         rg.native_title, rg.release_group_type, rg.first_release_date
+         rg.native_title, rg.release_group_type, rg.first_release_date::text
   FROM release_groups rg, nq
   WHERE rg.release_group_type IN ('album', 'ep')
     AND nq.qn <> ''
-    AND (yr IS NULL OR rg.first_release_date LIKE yr || '%')
+    AND (yr IS NULL OR rg.first_release_date::text LIKE yr || '%')
     AND (
          normalize_text(rg.title)                       LIKE '%' || nq.qn || '%'
       OR normalize_text(rg.artist_display)              LIKE '%' || nq.qn || '%'

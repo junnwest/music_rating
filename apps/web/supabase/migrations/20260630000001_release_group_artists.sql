@@ -36,7 +36,7 @@ RETURNS TABLE (
 LANGUAGE sql STABLE AS $$
   SELECT DISTINCT ON (rg.id)
          rg.id, rg.title, rg.artist_display, rg.cover_url,
-         rg.native_title, rg.release_group_type, rg.first_release_date
+         rg.native_title, rg.release_group_type, rg.first_release_date::text
   FROM release_groups rg
   WHERE rg.primary_artist_id = p_artist_id
      OR EXISTS (
