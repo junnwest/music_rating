@@ -2,10 +2,6 @@ import { createServerClient } from './supabaseServer';
 import type { SpotifyAlbumDetail, SpotifyArtist, SpotifyArtistDetail } from './spotify';
 import type { AlbumRelease } from '../types';
 
-function escapeIlike(s: string): string {
-  return s.replace(/[\\%_,]/g, (m) => '\\' + m);
-}
-
 export function isUUID(s: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 }
@@ -168,33 +164,13 @@ export async function searchReleasesInDb(query: string, limit = 10): Promise<Alb
 export async function searchArtistsInDb(query: string, limit = 10): Promise<SpotifyArtist[]> {
   const supabase = createServerClient();
   if (!supabase) return [];
-  const q = escapeIlike(query.trim());
+  const q = query.trim();
   if (!q) return [];
-  const pattern = `%${q}%`;
-  // Over-fetch so we can re-rank in JS with exact/prefix bonuses before returning.
-  // Popularity alone would surface "Iuiu Hq" over "IU" for a 2-letter query.
-  const { data } = await supabase
-    .from('artists')
-    .select('id, name, name_native, genres, popularity, cover_url')
-    .or(`name.ilike.${pattern},name_native.ilike.${pattern}`)
-    .order('popularity', { ascending: false })
-    .limit(limit * 4);
+  // Normalized, identity-deduped artist search (RPC handles punctuation/space insensitivity and
+  // ranking). One row per artist → "Kanye West" and "Ye" collapse to the single canonical row.
+  const { data } = await (supabase as any).rpc('search_artists', { q, lim: limit });
   if (!data) return [];
-
-  const qLower = query.trim().toLowerCase();
-  const ranked = data
-    .map((a) => {
-      const nameLower   = (a.name        ?? '').toLowerCase();
-      const nativeLower = (a.name_native ?? '').toLowerCase();
-      let bonus = 0;
-      if (nameLower === qLower || nativeLower === qLower)           bonus = 1_000_000; // exact
-      else if (nameLower.startsWith(qLower) || nativeLower.startsWith(qLower)) bonus = 100_000; // prefix
-      return { ...a, _score: (a.popularity ?? 0) + bonus };
-    })
-    .sort((a, b) => b._score - a._score)
-    .slice(0, limit);
-
-  return ranked.map((a) => ({
+  return (data as any[]).map((a) => ({
     id: a.id,
     name: a.name,
     genres: a.genres ? a.genres.split(',').map((g: string) => g.trim()).filter(Boolean) : [],
@@ -285,23 +261,25 @@ export async function searchReleases(
   if (!q) return [];
   try {
     const embedding = await embedQuery(q);
-    const { data } = await (supabase as any).rpc('search_releases', {
+    // Normalized hybrid search over release_groups (post-renovation canonical entity).
+    // Punctuation/space-insensitive lexical + optional Jina semantic re-rank.
+    const { data } = await (supabase as any).rpc('search_release_groups', {
       q,
-      yr:              year ?? null,
       lim:             limit,
+      yr:              year ?? null,
       query_embedding: embedding,
     });
     if (!data) return [];
     return (data as any[]).map((r) => ({
-      id:          r.id,
-      title:       r.title,
-      artist:      r.artist,
-      titleNative: r.title_native  ?? null,
-      artistNative: r.artist_native ?? null,
-      date:        r.release_date  ?? null,
-      country:     null,
-      releaseType: (r.release_type ?? 'Album') as AlbumRelease['releaseType'],
-      coverUrl:    r.cover_url     ?? null,
+      id:           r.id,
+      title:        r.title,
+      artist:       r.artist_display,
+      titleNative:  r.native_title ?? null,
+      artistNative: null,
+      date:         r.first_release_date ?? null,
+      country:      null,
+      releaseType:  (r.release_group_type ?? 'Album') as AlbumRelease['releaseType'],
+      coverUrl:     r.cover_url ?? null,
     }));
   } catch {
     return [];
