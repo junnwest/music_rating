@@ -104,8 +104,9 @@ class AlbumDetailViewModel {
     var publicMixes: [AlbumPublicMix] = []
     var isLoading = true
     var isSaving = false
+    var isLoadingInstinctScore = false
 
-    var isRated: Bool { userScore != nil || userEloScore != nil }
+    var isRated: Bool { userScore != nil || userEloScore != nil || isLoadingInstinctScore }
 
     func load(releaseGroupId: UUID) async {
         isLoading = true
@@ -230,6 +231,7 @@ class AlbumDetailViewModel {
             userScore    = mine?.score
             userEloScore = mine?.eloScore
         }
+        isLoadingInstinctScore = false
     }
 
     private func loadRatingMode() async {
@@ -557,7 +559,7 @@ struct AlbumDetailView: View {
         .sheet(isPresented: $showInstinctSheet) {
             InstinctRatingView(release: release, onRated: { id in
                 onRated?(id)
-                viewModel.userEloScore = 1  // non-nil sentinel so isRated becomes true
+                viewModel.isLoadingInstinctScore = true
                 Task { await viewModel.loadAfterInstinct(releaseGroupId: release.id) }
             }, onDone: { showInstinctSheet = false })
         }
@@ -710,7 +712,15 @@ struct AlbumDetailView: View {
     // Instinct mode rating body
     private var instinctRatingBody: some View {
         Group {
-            if let elo = viewModel.userEloScore {
+            if viewModel.isLoadingInstinctScore {
+                HStack {
+                    ProgressView().scaleEffect(0.9)
+                    Text("Updating ranking…")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.sjMuted)
+                    Spacer()
+                }
+            } else if let elo = viewModel.userEloScore {
                 let score = instinctEloToScore(elo)
                 HStack(spacing: 12) {
                     HStack(spacing: 4) {

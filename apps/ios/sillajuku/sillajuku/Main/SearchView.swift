@@ -452,6 +452,7 @@ struct SearchView: View {
     @State private var sessionRatedIds: Set<UUID>  = []   // tapped in this session — shows checkmark
     @State private var showAllPersonalizedSongs = false
     @State private var showAllPopularSongs      = false
+    @State private var recentlyPlayedNavTarget: Release?
     @Environment(\.scenePhase) private var scenePhase
 
     private let threeColumns = [GridItem(.flexible(), spacing: 12),
@@ -482,6 +483,7 @@ struct SearchView: View {
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
             .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
+            .navigationDestination(item: $recentlyPlayedNavTarget) { AlbumDetailView(release: $0) }
             .sheet(item: $quickRateRelease) { release in
                 ManualRatingSheet(
                     release: release,
@@ -952,27 +954,45 @@ struct SearchView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 12) {
                 ForEach(albums) { album in
-                    VStack(alignment: .leading, spacing: 6) {
-                        CoverImage(url: album.imageUrl)
-                            .frame(width: 112, height: 112)
+                    Button {
+                        Task { recentlyPlayedNavTarget = await fetchRelease(name: album.name, artist: album.artistName) }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 6) {
+                            CoverImage(url: album.imageUrl)
+                                .frame(width: 112, height: 112)
 
-                        Text(album.name)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(Color.sjInk)
-                            .lineLimit(1)
-                            .frame(width: 112, alignment: .leading)
+                            Text(album.name)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Color.sjInk)
+                                .lineLimit(1)
+                                .frame(width: 112, alignment: .leading)
 
-                        Text(album.artistName)
-                            .font(.system(size: 11))
-                            .foregroundStyle(Color.sjMuted)
-                            .lineLimit(1)
-                            .frame(width: 112, alignment: .leading)
+                            Text(album.artistName)
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color.sjMuted)
+                                .lineLimit(1)
+                                .frame(width: 112, alignment: .leading)
+                        }
                     }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
         }
+    }
+
+    private func fetchRelease(name: String, artist: String) async -> Release? {
+        let rows: [Release] = (try? await supabase
+            .from("release_groups")
+            .select("id, title, artist_display, cover_url, release_group_type, first_release_date, native_title")
+            .ilike("title", value: name)
+            .limit(5)
+            .execute()
+            .value) ?? []
+        let al = artist.lowercased()
+        return rows.first { $0.artist.lowercased().contains(al) || al.contains($0.artist.lowercased()) }
+            ?? rows.first
     }
 
     private func appleMusicArtistScroll(_ artists: [AppleMusicArtistDisplay]) -> some View {
@@ -1016,30 +1036,35 @@ struct SearchView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 12) {
                 ForEach(albums) { album in
-                    VStack(alignment: .leading, spacing: 6) {
-                        AsyncImage(url: album.artworkURL) { phase in
-                            switch phase {
-                            case .success(let img):
-                                img.resizable().aspectRatio(contentMode: .fill)
-                            default:
-                                Color.sjBorder
+                    Button {
+                        Task { recentlyPlayedNavTarget = await fetchRelease(name: album.name, artist: album.artistName) }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 6) {
+                            AsyncImage(url: album.artworkURL) { phase in
+                                switch phase {
+                                case .success(let img):
+                                    img.resizable().aspectRatio(contentMode: .fill)
+                                default:
+                                    Color.sjBorder
+                                }
                             }
+                            .frame(width: 112, height: 112)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                            Text(album.name)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Color.sjInk)
+                                .lineLimit(1)
+                                .frame(width: 112, alignment: .leading)
+
+                            Text(album.artistName)
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color.sjMuted)
+                                .lineLimit(1)
+                                .frame(width: 112, alignment: .leading)
                         }
-                        .frame(width: 112, height: 112)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-
-                        Text(album.name)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(Color.sjInk)
-                            .lineLimit(1)
-                            .frame(width: 112, alignment: .leading)
-
-                        Text(album.artistName)
-                            .font(.system(size: 11))
-                            .foregroundStyle(Color.sjMuted)
-                            .lineLimit(1)
-                            .frame(width: 112, alignment: .leading)
                     }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 16)

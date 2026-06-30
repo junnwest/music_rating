@@ -236,6 +236,25 @@ class HomeViewModel {
         isLoadingExplore = false
     }
 
+    func refreshFollowing() async {
+        guard let userId = currentUserId else { return }
+        struct FollowRow: Codable {
+            let followingId: UUID
+            enum CodingKeys: String, CodingKey { case followingId = "following_id" }
+        }
+        let rows: [FollowRow] = (try? await supabase
+            .from("follows").select("following_id")
+            .eq("follower_id", value: userId).execute().value) ?? []
+        let ids = rows.map(\.followingId.uuidString)
+        guard !ids.isEmpty else { followingItems = []; return }
+        let items: [FeedItem] = (try? await supabase
+            .from("ratings").select(Self.feedSelect)
+            .in("user_id", values: ids)
+            .order("created_at", ascending: false).limit(60).execute().value) ?? []
+        followingItems = items.filter { !blockedUserIds.contains($0.userId) }
+        hasLoadedFollowing = true
+    }
+
     func loadFollowing() async {
         guard !hasLoadedFollowing else { return }
         hasLoadedFollowing = true
@@ -539,6 +558,7 @@ struct HomeView: View {
                 .contentMargins(.top, 90, for: .scrollContent)
                 .refreshable {
                     if isExplore { await viewModel.refreshExplore() }
+                    else { await viewModel.refreshFollowing() }
                 }
                 .onChange(of: scrollTrigger) { _, _ in
                     withAnimation { proxy.scrollTo("feed-top", anchor: .top) }

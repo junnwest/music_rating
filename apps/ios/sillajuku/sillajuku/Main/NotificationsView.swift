@@ -8,6 +8,7 @@ struct AppNotification: Codable, Identifiable {
     let type: String
     let createdAt: Date
     let ratingId: UUID?
+    let actorId: UUID?
     let actor: Actor?
     let rating: RatingInfo?
 
@@ -21,9 +22,11 @@ struct AppNotification: Codable, Identifiable {
     struct RatingInfo: Codable {
         let releaseGroups: ReleaseInfo?
         struct ReleaseInfo: Codable {
+            let id: UUID
             let title: String
             let artistDisplay: String
             enum CodingKeys: String, CodingKey {
+                case id
                 case title
                 case artistDisplay = "artist_display"
             }
@@ -37,6 +40,19 @@ struct AppNotification: Codable, Identifiable {
         case id, type, actor, rating
         case createdAt = "created_at"
         case ratingId  = "rating_id"
+        case actorId   = "actor_id"
+    }
+
+    var albumRelease: Release? {
+        guard (type == "like" || type == "comment"), let rg = rating?.releaseGroups else { return nil }
+        return Release(id: rg.id, title: rg.title, artist: rg.artistDisplay,
+                       coverUrl: nil, releaseType: nil, releaseDate: nil,
+                       titleNative: nil, artistNative: nil, tracklist: nil, totalTracks: nil)
+    }
+
+    var actorDestination: UserProfileDestination? {
+        guard type == "follow", let actorId else { return nil }
+        return UserProfileDestination(userId: actorId, handle: actor?.handle ?? "someone")
     }
 
     var bodyText: String {
@@ -97,9 +113,21 @@ struct NotificationsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List(notifications) { notif in
-                    NotificationRow(notif: notif)
-                        .listRowBackground(Color.sjSurface)
-                        .listRowSeparatorTint(Color.sjBorder.opacity(0.5))
+                    Group {
+                        if let release = notif.albumRelease {
+                            NavigationLink(value: release) {
+                                NotificationRow(notif: notif)
+                            }
+                        } else if let dest = notif.actorDestination {
+                            NavigationLink(value: dest) {
+                                NotificationRow(notif: notif)
+                            }
+                        } else {
+                            NotificationRow(notif: notif)
+                        }
+                    }
+                    .listRowBackground(Color.sjSurface)
+                    .listRowSeparatorTint(Color.sjBorder.opacity(0.5))
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
@@ -119,7 +147,7 @@ struct NotificationsView: View {
         isLoading = true
         notifications = (try? await supabase
             .from("notifications")
-            .select("id, type, created_at, rating_id, actor:actor_id(username, display_name), rating:rating_id(release_groups(title, artist_display))")
+            .select("id, type, created_at, rating_id, actor_id, actor:actor_id(username, display_name), rating:rating_id(release_groups(id, title, artist_display))")
             .eq("user_id", value: userId)
             .order("created_at", ascending: false)
             .limit(60)
