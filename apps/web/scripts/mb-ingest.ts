@@ -134,6 +134,18 @@ function padDate(d: string | null): string | null {
   if (!d) return null;
   if (/^\d{4}$/.test(d)) return `${d}-01-01`;
   if (/^\d{4}-\d{2}$/.test(d)) return `${d}-01`;
+  // MB emits partial dates with `??` placeholders for unknown components, e.g.
+  // "1994-??-11" or "????-03-01". Postgres rejects those as a date → ingest crash.
+  // Normalize: unknown month/day → 01; if a higher component is unknown, lower ones
+  // collapse to 01; unknown year → unusable → null.
+  const m = d.match(/^(\d{4}|\?{4})-(\d{2}|\?{2})-(\d{2}|\?{2})$/);
+  if (m) {
+    const [, y, mo, da] = m;
+    if (y === '????') return null;
+    const month = mo !== '??' ? mo : '01';
+    const day   = (mo !== '??' && da !== '??') ? da : '01';
+    return `${y}-${month}-${day}`;
+  }
   return d;
 }
 
