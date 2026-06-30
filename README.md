@@ -14,13 +14,28 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
-> **⚑ DATA-FIX TRACK (started 2026-06-30):** A data review found 6 catalog/UX gaps → 5 work items (see
-> [`DATA_FIXES_IOS.md`](DATA_FIXES_IOS.md) for the **Mac/iOS** hand-off, ready to build now). Items: **A** artist
-> identity via new `release_group_artists` join table (fixes collab albums under both artists + Kanye/Ye split),
-> **B** search normalization (punctuation/space-insensitive — fixes "new jeans"/"sikk"/"Sik-K"), **C** cover backfill
-> (29.5% of release_groups have no cover), **D** queue missing artists by MBID (Zico/Paloalto/Don Toliver/etc. — none
-> are queued today), **E** artist avatars (`artists.cover_url` 0/2641 populated). **Windows** owns DB/RPC/pipeline/web;
-> **Mac** owns iOS per the hand-off doc. Windows sequence: B → C → D → A (migration first) → E.
+> **⚑ DATA-FIX TRACK (started 2026-06-30):** A data review found 6 catalog/UX gaps → 5 work items.
+> Windows code is **all built + typecheck-clean** (committed); iOS hand-off in [`DATA_FIXES_IOS.md`](DATA_FIXES_IOS.md).
+> Items: **A** artist identity via new `release_group_artists` join table (collab albums under both artists +
+> Kanye/Ye split), **B** search normalization ("new jeans"/"sikk"/"Sik-K"), **C** cover backfill (was 29.5% null),
+> **D** queue missing artists by MBID, **E** artist avatars (was 0/2641).
+>
+> **▶ TO ACTIVATE (do in this order):**
+> 1. **Apply 2 migrations** in Supabase SQL editor: `20260630000000_search_normalize.sql` (B), then
+>    `20260630000001_release_group_artists.sql` (A).
+> 2. **Deploy web** — only AFTER step 1's search migration (the repointed `lib/dbCache` calls the new RPCs;
+>    before the migration it degrades to empty results).
+> 3. **Restart the pipeline** (`npm run pipeline`) to load the `mbid` ingest source (D) + the credit write-path (A).
+> 4. **After the restart:** `npm run seed:missing` (D — queues ZICO/Paloalto/Don Toliver/ksmartboi/OKASHII/JMIN/
+>    BewhY/YANGHONGWON by MBID, ingested next). `lov3rboi` isn't in MB → Deezer fallback later.
+> 5. **During a pipeline pause** (MB-contending, ~2h): `npm run backfill:rg-credits` (A — backfills collab credits
+>    for existing groups; single-artist groups need none).
+> 6. **Already run this session (background):** `npm run covers:caa` (C — CAA release-group covers, ~50% of the
+>    5,600 album/EP gaps filled incl. NewJeans *Get Up*) and `npm run backfill:avatars` (E — Deezer avatars, ~88% match).
+>    Re-runnable/resumable; `npm run covers:caa -- --all` extends C to the ~16k single gaps.
+>
+> **iOS (Mac):** build per [`DATA_FIXES_IOS.md`](DATA_FIXES_IOS.md) — RPC contracts `search_release_groups` /
+> `search_artists` / `get_artist_release_groups` / `get_release_group_credits` go live once step 1 is applied.
 >
 > **⚑ NEXT SESSION — PICK UP HERE (session left off 2026-06-29):**
 >

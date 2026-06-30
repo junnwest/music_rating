@@ -8,6 +8,7 @@ import { randomUUID } from 'crypto';
 import {
   searchArtists, getArtist, browseReleaseGroups, browseArtistReleases,
   type MbArtistCandidate, type MbArtistDetail, type MbReleaseGroup, type MbArtistRelease, type MbTrack,
+  type MbCredit,
 } from './mb-client';
 import { getDB, normalizeStr, detectLanguage, type DB } from './itunes-ingest-core';
 import { MB_ARTIST_OVERRIDES } from './mb-overrides';
@@ -27,6 +28,10 @@ export const SPECIAL_MBIDS = new Set<string>([
   '33cf029c-63b0-41a0-9855-be2a3665fb3b', // [data]
   '9be7f096-97ec-4615-8957-8d40b5dcbc41', // [traditional]
 ]);
+
+// Set once if the release_group_artists table is absent (migration 20260630000001 not applied)
+// so we stop attempting credit writes for the rest of the run instead of throwing per RG.
+let creditsTableMissing = false;
 
 // MB release-group primary/secondary types → our `release_group_type` enum.
 export function mbTypeToGroupType(primaryType: string | null, secondaryTypes: string[]): string {
@@ -249,6 +254,56 @@ async function findOrCreateReleaseGroup(db: DB, rg: MbReleaseGroup, primaryArtis
   return data.id;
 }
 
+// Lightweight artist row for a CREDITED collaborator we only know by MBID + name (e.g. a feature
+// on someone else's album). Returns the existing artist if already ingested, else a 'credit_stub'
+// row — clickable, shows the albums it's credited on, and gets fully fleshed out if/when it's
+// ingested for real. Returns null when the credit has no MBID (can't be linked).
+async function findOrCreateArtistStub(db: DB, mbid: string | null, name: string): Promise<string | null> {
+  if (!mbid || SPECIAL_MBIDS.has(mbid)) return null;
+  const { data: existing } = await db.from('artist_external_ids')
+    .select('artist_id').eq('source', 'musicbrainz').eq('external_id', mbid).maybeSingle();
+  if (existing?.artist_id) return existing.artist_id as string;
+
+  const id = randomUUID();
+  const native = scriptOf(name) !== 'latin' ? name : null;
+  const { error: insErr } = await db.from('artists').insert({
+    id, name, name_native: native, native_language: native ? detectLanguage(native) : null,
+    source_status: 'mb_credit_stub', ingest_state: 'credit_stub', cached_at: new Date().toISOString(),
+  });
+  if (insErr) throw new Error(`stub artist insert "${name}": ${insErr.message}`);
+  await db.from('artist_external_ids').upsert(
+    { source: 'musicbrainz', external_id: mbid, artist_id: id },
+    { onConflict: 'source,external_id', ignoreDuplicates: true });
+  const { data, error } = await db.from('artist_external_ids')
+    .select('artist_id').eq('source', 'musicbrainz').eq('external_id', mbid).single();
+  if (error) throw new Error(`stub external_id resolve ${mbid}: ${error.message}`);
+  const winner = data.artist_id as string;
+  if (winner !== id) { await db.from('artists').delete().eq('id', id); return winner; } // lost race
+  await db.from('artist_aliases').upsert(
+    { artist_id: id, alias: name, alias_norm: normalizeStr(name), script: scriptOf(name), source: 'musicbrainz' },
+    { onConflict: 'artist_id,alias', ignoreDuplicates: true });
+  return id;
+}
+
+// Populate release_group_artists from the ordered MB artist-credit. position 0 is the primary
+// (the artist being ingested, for kept RGs). Each credit links to a real/stub artist by MBID;
+// free-text credits with no MBID are skipped (their position is left out — gaps are fine).
+export async function writeReleaseGroupCredits(
+  db: DB, rgId: string, credits: MbCredit[], ingestMbid: string, primaryArtistId: string,
+): Promise<void> {
+  const rows: { release_group_id: string; artist_id: string; position: number; credited_as: string; join_phrase: string }[] = [];
+  for (let i = 0; i < credits.length; i++) {
+    const c = credits[i];
+    const artistId = c.mbid === ingestMbid ? primaryArtistId : await findOrCreateArtistStub(db, c.mbid, c.name);
+    if (!artistId) continue;
+    rows.push({ release_group_id: rgId, artist_id: artistId, position: i, credited_as: c.name, join_phrase: c.joinphrase });
+  }
+  if (rows.length) {
+    const { error } = await db.from('release_group_artists').upsert(rows, { onConflict: 'release_group_id,position' });
+    if (error) throw new Error(error.message); // missing-table message contains 'release_group_artists' → guarded upstream
+  }
+}
+
 async function findOrCreateRecording(db: DB, t: MbTrack, primaryArtistId: string): Promise<string> {
   const id = randomUUID();
   const { error: upErr } = await db.from('recordings').upsert({
@@ -370,6 +425,18 @@ export async function ingestArtist(db: DB, mbid: string): Promise<{ artistId: st
     if (!shouldIngestRG(rg, mbid)) continue;           // composition filter (trim to core)
     kept++;
     const rgId = await findOrCreateReleaseGroup(db, rg, artistId);
+    // Multi-artist credits (Work Item A). Guarded: if the release_group_artists migration isn't
+    // applied yet, skip silently so ingestion still succeeds.
+    if (!creditsTableMissing) {
+      try {
+        await writeReleaseGroupCredits(db, rgId, rg.credits, mbid, artistId);
+      } catch (e) {
+        if (/release_group_artists/.test((e as Error).message)) {
+          creditsTableMissing = true;
+          console.warn('  [credits] release_group_artists missing — skipping credit writes (apply migration 20260630000001)');
+        } else throw e;
+      }
+    }
     recCount += await ingestEditionFromPrefetched(db, rgId, rg, artistId, byRg.get(rg.id) ?? []);
   }
 

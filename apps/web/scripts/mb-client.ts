@@ -97,6 +97,12 @@ export interface MbArtistDetail {
   aliases: MbAlias[];
   genres: string[];
 }
+export interface MbCredit {
+  mbid: string | null;   // credited artist's MBID (null for pure free-text credits)
+  name: string;          // credited-as name for THIS release ("Kanye West", "Paloalto")
+  joinphrase: string;    // separator that follows ("" | " & " | " feat. " | " x " …)
+}
+
 export interface MbReleaseGroup {
   id: string;
   title: string;
@@ -105,6 +111,7 @@ export interface MbReleaseGroup {
   firstReleaseDate: string | null;  // YYYY[-MM[-DD]]
   artistCredit: string;             // "Lady Gaga & Bradley Cooper"
   primaryArtistMbid: string | null; // first credited artist's MBID (to detect guest features)
+  credits: MbCredit[];              // ordered artist credits (for the release_group_artists join)
   genres: string[];
 }
 export interface MbReleaseStub {
@@ -209,6 +216,7 @@ export async function browseReleaseGroups(artistMbid: string): Promise<MbRelease
         firstReleaseDate: rg['first-release-date'] || null,
         artistCredit: creditPhrase(rg['artist-credit']),
         primaryArtistMbid: rg['artist-credit']?.[0]?.artist?.id ?? null,
+        credits: parseCredits(rg['artist-credit']),
         genres: (rg.genres ?? []).map((g: any) => g.name).filter(Boolean),
       });
     }
@@ -306,11 +314,27 @@ export async function browseArtistReleases(artistMbid: string): Promise<MbArtist
   return out;
 }
 
+// Ordered artist credits for a single release group (for the release_group_artists backfill).
+export async function getReleaseGroupCredits(mbid: string): Promise<MbCredit[]> {
+  const data = await mbGet(`/release-group/${mbid}?inc=${enc('artist-credits')}`);
+  return parseCredits(data?.['artist-credit']);
+}
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 function creditPhrase(credit: any[] | undefined): string {
   if (!Array.isArray(credit)) return '';
   return credit.map(c => `${c.name ?? c.artist?.name ?? ''}${c.joinphrase ?? ''}`).join('').trim();
+}
+
+// Ordered, structured artist credits for the release_group_artists join table.
+function parseCredits(credit: any[] | undefined): MbCredit[] {
+  if (!Array.isArray(credit)) return [];
+  return credit.map(c => ({
+    mbid: c.artist?.id ?? null,
+    name: c.name ?? c.artist?.name ?? '',
+    joinphrase: c.joinphrase ?? '',
+  })).filter(c => c.name);
 }
 
 export { MB_BASE, USER_AGENT };

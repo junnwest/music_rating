@@ -254,8 +254,11 @@ async function ingestLoop(db: DB) {
     process.stdout.write(`  [ingest] ${row.name.padEnd(24)} `);
     await beat(db, 'ingest', { status: 'running', last_active: now(), current_item: row.name, items_done: done, errors: failed });
     try {
-      // ListenBrainz discovery rows already carry the MBID → ingest directly (no resolve).
-      let mbid: string | null = (row.source === 'listenbrainz' && row.source_id) ? row.source_id : null;
+      // Rows that already carry an MBID → ingest directly (no name resolve). This is the
+      // ListenBrainz discovery path AND the curated `mbid` source (hand-seeded artists where a
+      // name search would mis-resolve, e.g. "Zico" → a French rapper). Both put the MBID in source_id.
+      let mbid: string | null =
+        ((row.source === 'listenbrainz' || row.source === 'mbid') && row.source_id) ? row.source_id : null;
       let label = row.name, ambig = false;
       if (!mbid) {
         const r = await resolveArtist(row.name, region);
