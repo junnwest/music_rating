@@ -1016,12 +1016,20 @@ struct LikersSheetView: View {
     let ratingId: UUID
 
     private struct LikerRow: Codable {
+        let userId: UUID
         let profiles: LikerProfile?
         struct LikerProfile: Codable {
+            let id: UUID
             let username: String?
             let displayName: String?
-            enum CodingKeys: String, CodingKey { case username; case displayName = "display_name" }
+            enum CodingKeys: String, CodingKey {
+                case id, username
+                case displayName = "display_name"
+            }
             var handle: String { username ?? displayName ?? "someone" }
+        }
+        enum CodingKeys: String, CodingKey {
+            case userId = "user_id"; case profiles
         }
     }
 
@@ -1042,15 +1050,20 @@ struct LikersSheetView: View {
                     .background(Color.sjCream.ignoresSafeArea())
                 } else {
                     List(Array(likers.enumerated()), id: \.offset) { _, liker in
-                        HStack(spacing: 11) {
-                            Image(systemName: "person.circle.fill")
-                                .font(.system(size: 32))
-                                .foregroundStyle(Color(uiColor: .systemGray3))
-                            Text("@\(liker.profiles?.handle ?? "someone")")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(Color.sjInk)
+                        NavigationLink(value: UserProfileDestination(
+                            userId: liker.profiles?.id ?? liker.userId,
+                            handle: liker.profiles?.handle ?? "someone"
+                        )) {
+                            HStack(spacing: 11) {
+                                Image(systemName: "person.circle.fill")
+                                    .font(.system(size: 32))
+                                    .foregroundStyle(Color(uiColor: .systemGray3))
+                                Text("@\(liker.profiles?.handle ?? "someone")")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(Color.sjInk)
+                            }
+                            .padding(.vertical, 4)
                         }
-                        .padding(.vertical, 4)
                         .listRowBackground(Color.sjSurface)
                     }
                     .listStyle(.plain)
@@ -1060,6 +1073,9 @@ struct LikersSheetView: View {
             }
             .navigationTitle("\(likers.count) Like\(likers.count == 1 ? "" : "s")")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: UserProfileDestination.self) { dest in
+                UserProfileView(userId: dest.userId, initialHandle: dest.handle)
+            }
         }
         .task { await load() }
     }
@@ -1067,7 +1083,7 @@ struct LikersSheetView: View {
     private func load() async {
         isLoading = true
         likers = (try? await supabase
-            .from("rating_likes").select("profiles!rating_likes_user_id_fkey(username, display_name)")
+            .from("rating_likes").select("user_id, profiles!rating_likes_user_id_fkey(id, username, display_name)")
             .eq("rating_id", value: ratingId).execute().value) ?? []
         isLoading = false
     }

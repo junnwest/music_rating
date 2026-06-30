@@ -39,6 +39,7 @@ struct AlbumPublicMix: Identifiable {
     let id: UUID
     let name: String
     let authorHandle: String
+    let authorId: UUID?
 }
 
 // MARK: - Track entry (loaded via release_tracks → recordings)
@@ -328,16 +329,17 @@ class AlbumDetailViewModel {
             let name: String
             let profiles: MixProfile?
             struct MixProfile: Codable {
+                let id: UUID
                 let username: String?
                 let displayName: String?
                 enum CodingKeys: String, CodingKey {
-                    case username; case displayName = "display_name"
+                    case id, username; case displayName = "display_name"
                 }
             }
         }
         let rows: [MixRow] = (try? await supabase
             .from("mixes")
-            .select("id, name, profiles(username, display_name)")
+            .select("id, name, profiles(id, username, display_name)")
             .in("id", values: mixIds)
             .eq("is_public", value: true)
             .limit(10)
@@ -346,7 +348,7 @@ class AlbumDetailViewModel {
 
         publicMixes = rows.map { row in
             let handle = row.profiles.flatMap { $0.username.map { "@\($0)" } ?? $0.displayName } ?? "someone"
-            return AlbumPublicMix(id: row.id, name: row.name, authorHandle: handle)
+            return AlbumPublicMix(id: row.id, name: row.name, authorHandle: handle, authorId: row.profiles?.id)
         }
     }
 }
@@ -576,6 +578,9 @@ struct AlbumDetailView: View {
             SongDetailView(track: track, release: release)
         }
         .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
+        .navigationDestination(for: UserProfileDestination.self) { dest in
+            UserProfileView(userId: dest.userId, initialHandle: dest.handle)
+        }
         .sheet(item: $trackInstinctTarget) { track in
             InstinctTrackRatingView(track: track, release: release) {
                 if let id = track.trackId { viewModel.markTrackEloRated(recordingId: id) }
@@ -816,27 +821,16 @@ struct AlbumDetailView: View {
             sectionLabel("In Public Mixes")
 
             ForEach(Array(viewModel.publicMixes.enumerated()), id: \.element.id) { i, mix in
-                HStack(spacing: 12) {
-                    Image(systemName: "music.note.list")
-                        .font(.system(size: 16))
-                        .foregroundStyle(Color.sjBlue)
-                        .frame(width: 32)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(mix.name)
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(Color.sjInk)
-                            .lineLimit(1)
-                        Text(mix.authorHandle)
-                            .font(.system(size: 12))
-                            .foregroundStyle(Color.sjMuted)
+                Group {
+                    if let authorId = mix.authorId {
+                        NavigationLink(value: UserProfileDestination(userId: authorId, handle: mix.authorHandle)) {
+                            mixRow(mix)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        mixRow(mix)
                     }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color.sjMuted)
                 }
-                .padding(.vertical, 11)
-                .padding(.horizontal, 20)
                 if i < viewModel.publicMixes.count - 1 {
                     Divider().padding(.leading, 52)
                 }
@@ -846,6 +840,30 @@ struct AlbumDetailView: View {
     }
 
     // MARK: Helpers
+
+    private func mixRow(_ mix: AlbumPublicMix) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "music.note.list")
+                .font(.system(size: 16))
+                .foregroundStyle(Color.sjBlue)
+                .frame(width: 32)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(mix.name)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.sjInk)
+                    .lineLimit(1)
+                Text(mix.authorHandle)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.sjMuted)
+            }
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12))
+                .foregroundStyle(Color.sjMuted)
+        }
+        .padding(.vertical, 11)
+        .padding(.horizontal, 20)
+    }
 
     private func sectionLabel(_ text: String) -> some View {
         Text(text)
@@ -880,24 +898,31 @@ private struct PostRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Avatar placeholder
-            Circle()
-                .fill(Color.sjBorder)
-                .frame(width: 32, height: 32)
-                .overlay(
-                    Text(String((post.profiles?.handle ?? "?").prefix(1)).uppercased())
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.sjMuted)
-                )
+            NavigationLink(value: UserProfileDestination(
+                userId: post.userId,
+                handle: post.profiles?.handle ?? "someone"
+            )) {
+                HStack(spacing: 12) {
+                    Circle()
+                        .fill(Color.sjBorder)
+                        .frame(width: 32, height: 32)
+                        .overlay(
+                            Text(String((post.profiles?.handle ?? "?").prefix(1)).uppercased())
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Color.sjMuted)
+                        )
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(post.profiles?.handle ?? "someone")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color.sjInk)
-                Text(relativeDate)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.sjMuted)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(post.profiles?.handle ?? "someone")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(Color.sjInk)
+                        Text(relativeDate)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.sjMuted)
+                    }
+                }
             }
+            .buttonStyle(.plain)
 
             Spacer()
 

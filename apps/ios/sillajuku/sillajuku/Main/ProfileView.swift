@@ -163,7 +163,7 @@ class ProfileViewModel {
 
         profile = try? await supabase
             .from("profiles")
-            .select("id, display_name, username, rating_mode, manual_rating_step, bio, avatar_url")
+            .select("id, display_name, username, rating_mode, manual_rating_step, bio, avatar_url, notify_likes, notify_replies, notify_followers, notify_rankings, notify_capsule, profile_visibility, catalog_visibility, listen_later_visibility")
             .eq("id", value: user.id)
             .single()
             .execute()
@@ -276,6 +276,7 @@ class ProfileViewModel {
     }
 
     func signOut() async {
+        SpotifyService.clearCache()
         try? await supabase.auth.signOut()
     }
 }

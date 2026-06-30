@@ -95,6 +95,15 @@ enum SpotifyService {
         return (try? JSONDecoder().decode([SpotifyAlbumDisplay].self, from: d)) ?? []
     }
 
+    // Clears all device-local Spotify cache — call on sign out so the next
+    // user doesn't see a previous account's data.
+    static func clearCache() {
+        UserDefaults.standard.removeObject(forKey: "sj_cached_artists")
+        UserDefaults.standard.removeObject(forKey: "sj_cached_recent")
+        UserDefaults.standard.removeObject(forKey: "sj_spotify_provider_token")
+        UserDefaults.standard.removeObject(forKey: "sj_spotify_provider_refresh_token")
+    }
+
     // The auth observer in sillajukuApp saves the token immediately on sign-in,
     // before any session refresh can drop it. We just read from there.
     static func providerToken() -> String? {

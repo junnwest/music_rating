@@ -5,6 +5,7 @@ struct SettingsView: View {
     var viewModel: ProfileViewModel
     @AppStorage("appearanceMode") private var appearanceMode = "system"
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
 
     @State private var ratingMode: String  = "manual"
     @State private var ratingStep: Double  = 0.5
@@ -51,18 +52,26 @@ struct SettingsView: View {
                 // MARK: Notifications
                 Section("Notifications") {
                     Toggle("Likes on my ratings",    isOn: $notifyLikes)
+                        .onChange(of: notifyLikes)    { _, v in saveBool("notify_likes",      v) }
                     Toggle("Replies to my comments", isOn: $notifyReplies)
+                        .onChange(of: notifyReplies)  { _, v in saveBool("notify_replies",    v) }
                     Toggle("New followers",          isOn: $notifyFollowers)
+                        .onChange(of: notifyFollowers){ _, v in saveBool("notify_followers",  v) }
                     Toggle("Ranking updates",        isOn: $notifyRankings)
+                        .onChange(of: notifyRankings) { _, v in saveBool("notify_rankings",   v) }
                     Toggle("Monthly capsule",        isOn: $notifyCapsule)
+                        .onChange(of: notifyCapsule)  { _, v in saveBool("notify_capsule",    v) }
                 }
                 .tint(Color.sjAmber)
 
                 // MARK: Privacy
                 Section("Privacy") {
                     Picker("Profile",      selection: $profileVisibility)  { visibilityOptions }
+                        .onChange(of: profileVisibility)  { _, v in saveText("profile_visibility",       v) }
                     Picker("Catalog",      selection: $catalogVisibility)  { visibilityOptions }
+                        .onChange(of: catalogVisibility)  { _, v in saveText("catalog_visibility",       v) }
                     Picker("Listen Later", selection: $listenLaterVisible) { visibilityOptions }
+                        .onChange(of: listenLaterVisible) { _, v in saveText("listen_later_visibility",  v) }
                 }
 
                 // MARK: Danger zone
@@ -88,13 +97,20 @@ struct SettingsView: View {
                 }
             }
             .confirmationDialog("Sign out of sillajuku?", isPresented: $showSignOutConfirm, titleVisibility: .visible) {
-                Button("Sign Out", role: .destructive) { Task { await viewModel.signOut() } }
+                Button("Sign Out", role: .destructive) {
+                    Task {
+                        await viewModel.signOut()
+                        appState.authState = .unauthenticated
+                    }
+                }
                 Button("Cancel", role: .cancel) {}
             }
             .sheet(isPresented: $showDeleteConfirm) { deleteAccountSheet }
             .onAppear { loadPreferences() }
-            .onChange(of: viewModel.profile?.ratingMode) { _, _ in loadPreferences() }
-            .onChange(of: viewModel.profile?.ratingStep) { _, _ in loadPreferences() }
+            .onChange(of: viewModel.profile?.ratingMode)          { _, _ in loadPreferences() }
+            .onChange(of: viewModel.profile?.ratingStep)          { _, _ in loadPreferences() }
+            .onChange(of: viewModel.profile?.notifyLikes)         { _, _ in loadPreferences() }
+            .onChange(of: viewModel.profile?.profileVisibility)   { _, _ in loadPreferences() }
         }
     }
 
@@ -265,8 +281,17 @@ struct SettingsView: View {
     // MARK: - Persistence
 
     private func loadPreferences() {
-        ratingMode = viewModel.profile?.ratingMode ?? "manual"
-        ratingStep = viewModel.profile?.ratingStep ?? 0.5
+        guard let p = viewModel.profile else { return }
+        ratingMode           = p.ratingMode ?? "manual"
+        ratingStep           = p.ratingStep ?? 0.5
+        notifyLikes          = p.notifyLikes ?? true
+        notifyReplies        = p.notifyReplies ?? true
+        notifyFollowers      = p.notifyFollowers ?? true
+        notifyRankings       = p.notifyRankings ?? true
+        notifyCapsule        = p.notifyCapsule ?? true
+        profileVisibility    = p.profileVisibility ?? "Public"
+        catalogVisibility    = p.catalogVisibility ?? "Public"
+        listenLaterVisible   = p.listenLaterVisibility ?? "Public"
     }
 
     private func saveRatingMode(_ value: String) {
@@ -283,6 +308,24 @@ struct SettingsView: View {
         Task {
             try? await supabase.from("profiles")
                 .update(["manual_rating_step": value])
+                .eq("id", value: user.id).execute()
+        }
+    }
+
+    private func saveBool(_ column: String, _ value: Bool) {
+        guard let user = supabase.auth.currentUser else { return }
+        Task {
+            try? await supabase.from("profiles")
+                .update([column: value])
+                .eq("id", value: user.id).execute()
+        }
+    }
+
+    private func saveText(_ column: String, _ value: String) {
+        guard let user = supabase.auth.currentUser else { return }
+        Task {
+            try? await supabase.from("profiles")
+                .update([column: value])
                 .eq("id", value: user.id).execute()
         }
     }

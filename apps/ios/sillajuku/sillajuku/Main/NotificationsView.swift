@@ -19,10 +19,17 @@ struct AppNotification: Codable, Identifiable {
     }
 
     struct RatingInfo: Codable {
-        let releases: ReleaseInfo?
+        let releaseGroups: ReleaseInfo?
         struct ReleaseInfo: Codable {
             let title: String
-            let artist: String
+            let artistDisplay: String
+            enum CodingKeys: String, CodingKey {
+                case title
+                case artistDisplay = "artist_display"
+            }
+        }
+        enum CodingKeys: String, CodingKey {
+            case releaseGroups = "release_groups"
         }
     }
 
@@ -36,10 +43,10 @@ struct AppNotification: Codable, Identifiable {
         let who = "@\(actor?.handle ?? "someone")"
         switch type {
         case "like":
-            if let title = rating?.releases?.title { return "\(who) liked your rating of \(title)" }
+            if let title = rating?.releaseGroups?.title { return "\(who) liked your rating of \(title)" }
             return "\(who) liked your rating"
         case "comment":
-            if let title = rating?.releases?.title { return "\(who) commented on \(title)" }
+            if let title = rating?.releaseGroups?.title { return "\(who) commented on \(title)" }
             return "\(who) commented on your rating"
         case "follow":
             return "\(who) started following you"
@@ -112,7 +119,7 @@ struct NotificationsView: View {
         isLoading = true
         notifications = (try? await supabase
             .from("notifications")
-            .select("id, type, created_at, rating_id, actor:actor_id(username, display_name), rating:rating_id(releases(title, artist))")
+            .select("id, type, created_at, rating_id, actor:actor_id(username, display_name), rating:rating_id(release_groups(title, artist_display))")
             .eq("user_id", value: userId)
             .order("created_at", ascending: false)
             .limit(60)

@@ -20,8 +20,11 @@ struct UserProfileView: View {
         let username: String?
         let displayName: String?
         let bio: String?
+        let avatarUrl: String?
         enum CodingKeys: String, CodingKey {
-            case id, username, bio; case displayName = "display_name"
+            case id, username, bio
+            case displayName = "display_name"
+            case avatarUrl   = "avatar_url"
         }
         var handle: String { username ?? displayName ?? "someone" }
         var displayLabel: String { displayName ?? username ?? "someone" }
@@ -149,10 +152,17 @@ struct UserProfileView: View {
 
     private var profileHeader: some View {
         VStack(spacing: 14) {
-            Image(systemName: "person.circle.fill")
-                .font(.system(size: 80))
-                .foregroundStyle(Color(uiColor: .systemGray3))
-                .padding(.top, 24)
+            Group {
+                if let url = profile?.avatarUrl {
+                    CoverImage(url: url, cornerRadius: 40)
+                        .frame(width: 80, height: 80)
+                } else {
+                    Image(systemName: "person.circle.fill")
+                        .font(.system(size: 80))
+                        .foregroundStyle(Color(uiColor: .systemGray3))
+                }
+            }
+            .padding(.top, 24)
 
             VStack(spacing: 4) {
                 Text(profile?.displayLabel ?? initialHandle)
@@ -366,7 +376,7 @@ struct UserProfileView: View {
     private func loadProfile() async -> OtherProfile? {
         try? await supabase
             .from("profiles")
-            .select("id, username, display_name, bio")
+            .select("id, username, display_name, bio, avatar_url")
             .eq("id", value: userId)
             .single()
             .execute()

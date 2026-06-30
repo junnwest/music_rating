@@ -1,6 +1,7 @@
 import SwiftUI
 import Observation
 import Supabase
+import MusicKit
 
 // MARK: - Song model
 
@@ -32,6 +33,12 @@ class DiscoveryViewModel {
     var recentlyPlayed: [SpotifyAlbumDisplay] = []
     var hasSpotifyData = false
 
+    // Apple Music-sourced (Apple Sign In users)
+    var appleMusicArtists: [AppleMusicArtistDisplay] = []
+    var appleMusicRecentlyPlayed: [AppleMusicAlbumDisplay] = []
+    var appleMusicLibraryAlbums: [AppleMusicAlbumDisplay] = []
+    var hasAppleMusicData = false
+
     // DB-personalized (based on user's ratings)
     var personalizedAlbums: [Release] = []
     var personalizedSongs:  [SongResult] = []
@@ -55,7 +62,11 @@ class DiscoveryViewModel {
     func load() async {
         if !hasLoaded {
             hasLoaded = true
-            await loadSpotify()
+            // Load music service data in parallel, then personalized (needs artist seeds from both)
+            await withTaskGroup(of: Void.self) { g in
+                g.addTask { await self.loadSpotify() }
+                g.addTask { await self.loadAppleMusic() }
+            }
             await withTaskGroup(of: Void.self) { g in
                 g.addTask { await self.loadPopular() }
                 g.addTask { await self.loadPersonalized() }
@@ -68,7 +79,30 @@ class DiscoveryViewModel {
         isLoading = false
     }
 
+    private func loadAppleMusic() async {
+        guard MusicKitService.isAuthorized else { return }
+        async let artists = MusicKitService.fetchLibraryArtists(limit: 20)
+        async let recent  = MusicKitService.fetchRecentlyPlayedAlbums(limit: 20)
+        async let library = MusicKitService.fetchLibraryAlbums(limit: 25)
+        let (a, r, l) = await (artists, recent, library)
+        appleMusicArtists         = a
+        appleMusicRecentlyPlayed  = r
+        appleMusicLibraryAlbums   = l
+        hasAppleMusicData = !a.isEmpty || !r.isEmpty || !l.isEmpty
+    }
+
     private func loadSpotify() async {
+        // If this account has never linked Spotify, any cached data belongs to a previous
+        // account on this device — clear it and bail out immediately.
+        let provider = supabase.auth.currentUser?.appMetadata["provider"]
+        let linkedSpotify: Bool
+        if case .string(let p) = provider { linkedSpotify = p == "spotify" } else { linkedSpotify = false }
+        if !linkedSpotify {
+            SpotifyService.clearCache()
+            needsSpotifyReconnect = false
+            return
+        }
+
         // Layer 1: UserDefaults (instant, device-local)
         if spotifyArtists.isEmpty { spotifyArtists = SpotifyService.loadCachedArtists() }
         if recentlyPlayed.isEmpty { recentlyPlayed  = SpotifyService.loadCachedRecentlyPlayed() }
@@ -176,6 +210,11 @@ class DiscoveryViewModel {
         // Supplement with Spotify artists when available.
         for a in spotifyArtists { dbArtists.insert(a.name) }
         for a in recentlyPlayed  { dbArtists.insert(a.artistName) }
+
+        // Supplement with Apple Music library when available.
+        for a in appleMusicArtists        { dbArtists.insert(a.name) }
+        for a in appleMusicRecentlyPlayed { dbArtists.insert(a.artistName) }
+        for a in appleMusicLibraryAlbums  { dbArtists.insert(a.artistName) }
 
         guard !dbArtists.isEmpty else { return }
 
@@ -728,6 +767,22 @@ struct SearchView: View {
                         Spacer().frame(height: 24)
                     }
 
+                    // ── Apple Music: Library Artists ──────────
+                    if !discoveryVM.appleMusicArtists.isEmpty {
+                        discoverySectionTitle("Your Library Artists")
+                        appleMusicArtistScroll(discoveryVM.appleMusicArtists)
+                        Spacer().frame(height: 24)
+                    }
+
+                    // ── Apple Music: Recently Listened ────────
+                    if !discoveryVM.appleMusicRecentlyPlayed.isEmpty {
+                        discoverySectionTitle(
+                            discoveryVM.recentlyPlayed.isEmpty ? "Recently Listened" : "Recently Listened (Apple)"
+                        )
+                        appleMusicAlbumScroll(discoveryVM.appleMusicRecentlyPlayed)
+                        Spacer().frame(height: 24)
+                    }
+
                     // ── From Your Taste (4+ star artists) ────
                     let visibleTaste = discoveryVM.tasteAlbums.filter {
                         !ratedReleaseIds.contains($0.id) || sessionRatedIds.contains($0.id)
@@ -900,6 +955,78 @@ struct SearchView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         CoverImage(url: album.imageUrl)
                             .frame(width: 112, height: 112)
+
+                        Text(album.name)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.sjInk)
+                            .lineLimit(1)
+                            .frame(width: 112, alignment: .leading)
+
+                        Text(album.artistName)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.sjMuted)
+                            .lineLimit(1)
+                            .frame(width: 112, alignment: .leading)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+        }
+    }
+
+    private func appleMusicArtistScroll(_ artists: [AppleMusicArtistDisplay]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: 14) {
+                ForEach(artists) { artist in
+                    NavigationLink(value: ArtistDestination(name: artist.name)) {
+                        VStack(spacing: 7) {
+                            AsyncImage(url: artist.artworkURL) { phase in
+                                switch phase {
+                                case .success(let img):
+                                    img.resizable().aspectRatio(contentMode: .fill)
+                                default:
+                                    Color.sjBorder.overlay(
+                                        Text(String(artist.name.prefix(1)))
+                                            .font(.system(size: 20, weight: .bold))
+                                            .foregroundStyle(Color.sjMuted)
+                                    )
+                                }
+                            }
+                            .frame(width: 72, height: 72)
+                            .clipShape(Circle())
+
+                            Text(artist.name)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Color.sjInk)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.center)
+                                .frame(width: 72)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+        }
+    }
+
+    private func appleMusicAlbumScroll(_ albums: [AppleMusicAlbumDisplay]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                ForEach(albums) { album in
+                    VStack(alignment: .leading, spacing: 6) {
+                        AsyncImage(url: album.artworkURL) { phase in
+                            switch phase {
+                            case .success(let img):
+                                img.resizable().aspectRatio(contentMode: .fill)
+                            default:
+                                Color.sjBorder
+                            }
+                        }
+                        .frame(width: 112, height: 112)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
 
                         Text(album.name)
                             .font(.system(size: 12, weight: .semibold))

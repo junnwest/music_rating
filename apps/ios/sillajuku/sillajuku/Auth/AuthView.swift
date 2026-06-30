@@ -81,7 +81,7 @@ struct AuthView: View {
                     }
 
                     if showMoreOptions {
-                        AppleAuthButton {
+                        AppleAuthButton(isLoading: viewModel.isLoading) {
                             Task { await viewModel.signInWithApple() }
                         }
                         .transition(.opacity.combined(with: .move(edge: .top)))
@@ -171,6 +171,7 @@ private struct SpotifyAuthButton: View {
 // MARK: - Apple button
 
 private struct AppleAuthButton: View {
+    let isLoading: Bool
     let action: () -> Void
 
     var body: some View {
@@ -178,28 +179,20 @@ private struct AppleAuthButton: View {
             HStack(spacing: 12) {
                 Image(systemName: "apple.logo")
                     .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.4))
+                    .foregroundStyle(.white)
                     .frame(width: 24)
 
                 Text("Continue with Apple")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.4))
-
-                Text("Coming soon")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.3))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(.white.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .foregroundStyle(.white)
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 16)
             .frame(maxWidth: .infinity, alignment: .center)
-            .background(Color.sjInk.opacity(0.35))
+            .background(isLoading ? Color.black.opacity(0.6) : Color.black)
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
-        .disabled(true)
+        .disabled(isLoading)
     }
 }
 

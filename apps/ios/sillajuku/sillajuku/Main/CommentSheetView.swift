@@ -57,6 +57,7 @@ struct CommentSheetView: View {
             VStack(spacing: 0) {
                 commentList
                 if let err = errorMessage {
+                    // error banner sits above the input bar
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.circle.fill")
                             .font(.system(size: 12)).foregroundStyle(.red)
@@ -73,6 +74,9 @@ struct CommentSheetView: View {
             .background(Color.sjCream.ignoresSafeArea())
             .navigationTitle(isLoading ? "Comments" : "\(comments.count) Comment\(comments.count == 1 ? "" : "s")")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: UserProfileDestination.self) { dest in
+                UserProfileView(userId: dest.userId, initialHandle: dest.handle)
+            }
         }
         .task { await loadComments() }
     }
@@ -99,7 +103,13 @@ struct CommentSheetView: View {
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 0) {
                     ForEach(comments) { comment in
-                        CommentRow(comment: comment)
+                        NavigationLink(value: UserProfileDestination(
+                            userId: comment.userId,
+                            handle: comment.profiles?.handle ?? "someone"
+                        )) {
+                            CommentRow(comment: comment)
+                        }
+                        .buttonStyle(.plain)
                         if comment.id != comments.last?.id {
                             Divider().padding(.leading, 54)
                         }
