@@ -266,9 +266,11 @@ async function findOrCreateArtistStub(db: DB, mbid: string | null, name: string)
 
   const id = randomUUID();
   const native = scriptOf(name) !== 'latin' ? name : null;
+  // 'resolved' = MBID known, discography not ingested. Inert: only 'tracks_done' artists are
+  // claimed by the freshness/QC lanes, so a stub is never auto-ingested (queue it to flesh out).
   const { error: insErr } = await db.from('artists').insert({
     id, name, name_native: native, native_language: native ? detectLanguage(native) : null,
-    source_status: 'mb_credit_stub', ingest_state: 'credit_stub', cached_at: new Date().toISOString(),
+    source_status: 'mb_verified', ingest_state: 'resolved', cached_at: new Date().toISOString(),
   });
   if (insErr) throw new Error(`stub artist insert "${name}": ${insErr.message}`);
   await db.from('artist_external_ids').upsert(

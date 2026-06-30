@@ -22,28 +22,28 @@ const STATE = `${__dirname}/backfill-rg-credits-state.json`;
 const args = process.argv.slice(2);
 const LIMIT = (() => { const a = args.find(x => x.startsWith('--limit=')); return a ? parseInt(a.split('=')[1], 10) : Infinity; })();
 
-// artist_display patterns that imply more than one credited artist.
-const SEPARATORS = ['%&%', '% feat%', '% Feat%', '% ft%', '% X %', '% x %', '%×%', '% vs%', '% with %', '%,%'];
-
 function loadState(): Set<string> { try { return new Set(existsSync(STATE) ? JSON.parse(readFileSync(STATE, 'utf8')).done : []); } catch { return new Set(); } }
 function saveState(s: Set<string>) { writeFileSync(STATE, JSON.stringify({ done: [...s] }, null, 0)); }
+
+// artist_display strings that imply more than one credited artist. JS-filtered (a PostgREST .or()
+// with a literal comma pattern collides with the comma that separates OR conditions).
+const COLLAB_RE = /\s&\s|\sfeat\.?\b|\bft\.?\s|\sx\s|\sX\s|×|\svs\.?\b|\swith\s|,/i;
 
 async function main() {
   const done = loadState();
 
-  // Pull collab-pattern groups with an MBID. (artist_display OR matches any separator.)
-  const orFilter = SEPARATORS.map(p => `artist_display.ilike.${p}`).join(',');
+  // Page the whole MB catalog and keep only collab-pattern artist_display. Single-artist groups
+  // need no join row (get_artist_release_groups matches them via primary_artist_id).
   const PAGE = 1000;
   let groups: { id: string; mb_release_group_id: string; primary_artist_id: string; artist_display: string }[] = [];
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await db.from('release_groups')
       .select('id, mb_release_group_id, primary_artist_id, artist_display')
       .not('mb_release_group_id', 'is', null)
-      .or(orFilter)
       .range(from, from + PAGE - 1);
     if (error) { console.error('fetch error:', error.message); break; }
     if (!data?.length) break;
-    groups.push(...(data as any[]));
+    for (const g of data as any[]) if (g.artist_display && COLLAB_RE.test(g.artist_display)) groups.push(g);
     if (data.length < PAGE) break;
   }
   groups = groups.filter(g => !done.has(g.id));
@@ -58,10 +58,11 @@ async function main() {
         await writeReleaseGroupCredits(db, g.id, credits, '', g.primary_artist_id);
         wrote++;
       } else single++; // artist_display had a separator (e.g. comma in a solo act's name) but one credit
+      done.add(g.id); // only mark done on success → failures retry on the next run
     } catch (e) {
       failed++; console.warn(`  ! ${g.artist_display}: ${(e as Error).message.slice(0, 120)}`);
     }
-    done.add(g.id); processed++;
+    processed++;
     if (processed % 50 === 0) { saveState(done); console.log(`  ${processed}/${groups.length}  wrote=${wrote} single=${single} failed=${failed}`); }
   }
   saveState(done);
