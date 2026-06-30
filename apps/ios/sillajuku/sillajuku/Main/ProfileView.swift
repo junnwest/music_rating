@@ -75,7 +75,7 @@ enum ProfileTab: CaseIterable {
     var icon: String {
         switch self {
         case .rated: return "square.grid.2x2"
-        case .lists: return "bookmark"
+        case .lists: return "music.note.list"
         case .stats: return "chart.bar"
         }
     }
@@ -83,7 +83,7 @@ enum ProfileTab: CaseIterable {
     var activeIcon: String {
         switch self {
         case .rated: return "square.grid.2x2.fill"
-        case .lists: return "bookmark.fill"
+        case .lists: return "music.note.list"
         case .stats: return "chart.bar.fill"
         }
     }
@@ -561,7 +561,7 @@ struct ProfileView: View {
                     VStack(spacing: 0) {
                         Image(systemName: activeTab == tab ? tab.activeIcon : tab.icon)
                             // bookmark is a tall narrow symbol — use smaller size to balance it
-                            .font(.system(size: tab == .lists ? 17 : 20))
+                            .font(.system(size: 20))
                             .foregroundStyle(activeTab == tab ? Color.sjInk : Color.sjMuted)
                             .frame(maxWidth: .infinity)
                             .frame(height: 44)

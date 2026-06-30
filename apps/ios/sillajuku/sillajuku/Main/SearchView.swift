@@ -453,6 +453,7 @@ struct SearchView: View {
     @State private var showAllPersonalizedSongs = false
     @State private var showAllPopularSongs      = false
     @State private var recentlyPlayedNavTarget: Release?
+    @State private var showNotInCatalog = false
     @Environment(\.scenePhase) private var scenePhase
 
     private let threeColumns = [GridItem(.flexible(), spacing: 12),
@@ -484,6 +485,11 @@ struct SearchView: View {
             .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
             .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
             .navigationDestination(item: $recentlyPlayedNavTarget) { AlbumDetailView(release: $0) }
+            .alert("Not in catalog", isPresented: $showNotInCatalog) {
+                Button("OK") {}
+            } message: {
+                Text("This album isn't in sillajuku's catalog yet.")
+            }
             .sheet(item: $quickRateRelease) { release in
                 ManualRatingSheet(
                     release: release,
@@ -955,7 +961,13 @@ struct SearchView: View {
             HStack(spacing: 12) {
                 ForEach(albums) { album in
                     Button {
-                        Task { recentlyPlayedNavTarget = await fetchRelease(name: album.name, artist: album.artistName) }
+                        Task {
+                            if let r = await fetchRelease(name: album.name, artist: album.artistName) {
+                                recentlyPlayedNavTarget = r
+                            } else {
+                                showNotInCatalog = true
+                            }
+                        }
                     } label: {
                         VStack(alignment: .leading, spacing: 6) {
                             CoverImage(url: album.imageUrl)
@@ -1037,7 +1049,13 @@ struct SearchView: View {
             HStack(spacing: 12) {
                 ForEach(albums) { album in
                     Button {
-                        Task { recentlyPlayedNavTarget = await fetchRelease(name: album.name, artist: album.artistName) }
+                        Task {
+                            if let r = await fetchRelease(name: album.name, artist: album.artistName) {
+                                recentlyPlayedNavTarget = r
+                            } else {
+                                showNotInCatalog = true
+                            }
+                        }
                     } label: {
                         VStack(alignment: .leading, spacing: 6) {
                             AsyncImage(url: album.artworkURL) { phase in

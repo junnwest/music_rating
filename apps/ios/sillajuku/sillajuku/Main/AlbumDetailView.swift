@@ -223,7 +223,14 @@ class AlbumDetailViewModel {
             .eq("release_group_id", value: releaseGroupId).execute().value) ?? []
 
         communityCount = rows.count
-        let scored = rows.compactMap(\.score)
+        let scored = rows.compactMap { row -> Double? in
+            if let s = row.score { return s }
+            if let elo = row.eloScore {
+                let raw = 5.0 / (1.0 + pow(10.0, (1500.0 - elo) / 250.0))
+                return (raw * 10).rounded() / 10.0
+            }
+            return nil
+        }
         communityAvg = scored.isEmpty ? nil : scored.reduce(0, +) / Double(scored.count)
 
         if let userId = supabase.auth.currentUser?.id {
@@ -287,14 +294,23 @@ class AlbumDetailViewModel {
 
     private func reloadCommunityStats(releaseGroupId: UUID, currentUserId: UUID) async {
         struct Row: Decodable {
-            let score: Double?; let userId: UUID
-            enum CodingKeys: String, CodingKey { case score; case userId = "user_id" }
+            let score: Double?; let eloScore: Double?; let userId: UUID
+            enum CodingKeys: String, CodingKey {
+                case score; case eloScore = "elo_score"; case userId = "user_id"
+            }
         }
         let rows: [Row] = (try? await supabase
-            .from("ratings").select("score, user_id")
+            .from("ratings").select("score, elo_score, user_id")
             .eq("release_group_id", value: releaseGroupId).execute().value) ?? []
         communityCount = rows.count
-        let scored = rows.compactMap(\.score)
+        let scored = rows.compactMap { row -> Double? in
+            if let s = row.score { return s }
+            if let elo = row.eloScore {
+                let raw = 5.0 / (1.0 + pow(10.0, (1500.0 - elo) / 250.0))
+                return (raw * 10).rounded() / 10.0
+            }
+            return nil
+        }
         communityAvg = scored.isEmpty ? nil : scored.reduce(0, +) / Double(scored.count)
         userScore = rows.first(where: { $0.userId == currentUserId })?.score
     }

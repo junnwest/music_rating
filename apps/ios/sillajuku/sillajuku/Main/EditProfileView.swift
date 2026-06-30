@@ -171,10 +171,14 @@ struct EditProfileView: View {
                     try await supabase.storage
                         .from("avatars")
                         .upload(path, data: data, options: FileOptions(contentType: "image/jpeg", upsert: true))
-                    newAvatarUrl = try? supabase.storage
+                    let base = try? supabase.storage
                         .from("avatars")
                         .getPublicURL(path: path)
                         .absoluteString
+                    // Append a timestamp so the iOS URLSession cache is invalidated
+                    // on every upload (the path is fixed per user, so without this
+                    // the old avatar stays cached until the app is restarted).
+                    newAvatarUrl = base.map { "\($0)?t=\(Int(Date().timeIntervalSince1970))" }
                 } catch {
                     // avatars bucket not set up yet — skip avatar, continue saving other fields
                 }
