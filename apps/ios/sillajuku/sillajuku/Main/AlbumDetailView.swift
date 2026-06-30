@@ -530,6 +530,19 @@ struct AlbumDetailView: View {
     @State private var trackRatingTarget: TrackEntry? = nil
     @State private var trackInstinctTarget: TrackEntry? = nil
     @State private var selectedSong: TrackEntry? = nil
+    @State private var credits: [Credit] = []
+
+    private struct Credit: Codable, Identifiable {
+        let artistId: UUID
+        let creditedAs: String
+        let joinPhrase: String
+        let position: Int
+        var id: Int { position }
+        enum CodingKeys: String, CodingKey {
+            case artistId = "artist_id"; case creditedAs = "credited_as"
+            case joinPhrase = "join_phrase"; case position
+        }
+    }
 
     private var releaseYear: String {
         guard let d = release.releaseDate, d.count >= 4 else { return "" }
@@ -560,6 +573,12 @@ struct AlbumDetailView: View {
         .navigationTitle(release.displayTitle)
         .navigationBarTitleDisplayMode(.inline)
         .task { await viewModel.load(releaseGroupId: release.id) }
+        .task {
+            credits = (try? await supabase
+                .rpc("get_release_group_credits", params: ["p_release_group_id": release.id.uuidString])
+                .execute()
+                .value) ?? []
+        }
         .sheet(isPresented: $showManualSheet) {
             ManualRatingSheet(
                 release: release,
@@ -621,13 +640,32 @@ struct AlbumDetailView: View {
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
-                NavigationLink(value: ArtistDestination(name: release.displayArtist)) {
-                    Text(release.displayArtist)
-                        .font(.system(size: 14))
-                        .foregroundStyle(Color.sjMuted)
-                        .lineLimit(1)
+                if credits.isEmpty {
+                    NavigationLink(value: ArtistDestination(artistId: nil, name: release.displayArtist)) {
+                        Text(release.displayArtist)
+                            .font(.system(size: 14))
+                            .foregroundStyle(Color.sjMuted)
+                            .lineLimit(1)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    HStack(spacing: 0) {
+                        ForEach(credits) { credit in
+                            NavigationLink(value: ArtistDestination(artistId: credit.artistId, name: credit.creditedAs)) {
+                                Text(credit.creditedAs)
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(Color.sjAmber)
+                                    .lineLimit(1)
+                            }
+                            .buttonStyle(.plain)
+                            if !credit.joinPhrase.isEmpty {
+                                Text(credit.joinPhrase)
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(Color.sjMuted)
+                            }
+                        }
+                    }
                 }
-                .buttonStyle(.plain)
                 HStack(spacing: 6) {
                     if let type = release.releaseType {
                         Text(type.lowercased() == "ep" ? "EP" : type.capitalized)
@@ -1193,7 +1231,7 @@ struct SongDetailView: View {
                     .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(2)
-                NavigationLink(value: ArtistDestination(name: release.displayArtist)) {
+                NavigationLink(value: ArtistDestination(artistId: nil, name: release.displayArtist)) {
                     Text(release.displayArtist)
                         .font(.system(size: 13))
                         .foregroundStyle(Color.sjMuted)

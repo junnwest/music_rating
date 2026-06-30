@@ -323,10 +323,16 @@ class DiscoveryViewModel {
 
 // MARK: - Search ViewModel
 
-struct SearchArtist: Identifiable {
+struct SearchArtist: Codable, Identifiable {
+    let id: UUID
     let name: String
+    let nameNative: String?
+    let coverUrl: String?
     let releaseCount: Int
-    var id: String { name }
+    enum CodingKeys: String, CodingKey {
+        case id; case name; case nameNative = "name_native"
+        case coverUrl = "cover_url"; case releaseCount = "release_count"
+    }
 }
 
 @Observable
@@ -348,14 +354,9 @@ class SearchViewModel {
         isSearching = true
         defer { isSearching = false }
 
-        // Album search against release_groups
+        // Album search — normalized RPC (handles spacing/punctuation, e.g. "new jeans" → NewJeans)
         let albums: [Release] = (try? await supabase
-            .from("release_groups")
-            .select("id, title, artist_display, cover_url, native_title, release_group_type, first_release_date")
-            .or("title.ilike.%\(q)%,artist_display.ilike.%\(q)%,native_title.ilike.%\(q)%")
-            .in("release_group_type", values: ["album", "ep"])
-            .order("first_release_date", ascending: false, nullsFirst: false)
-            .limit(30)
+            .rpc("search_release_groups", params: ["q": q, "lim": 30])
             .execute()
             .value) ?? []
         albumResults = albums
@@ -422,22 +423,11 @@ class SearchViewModel {
             }
         }
 
-        // Derive artist suggestions from album results.
-        let ql = q.lowercased()
-        var relevanceMap: [String: (count: Int, nameMatch: Bool)] = [:]
-        for album in albums {
-            let match = album.artist.lowercased().contains(ql)
-            let e = relevanceMap[album.artist] ?? (0, false)
-            relevanceMap[album.artist] = (e.count + 1, e.nameMatch || match)
-        }
-        artistResults = relevanceMap
-            .filter  { $0.value.nameMatch || $0.value.count >= 3 }
-            .sorted  { a, b in
-                if a.value.nameMatch != b.value.nameMatch { return a.value.nameMatch }
-                return a.value.count > b.value.count
-            }
-            .prefix(4)
-            .map { SearchArtist(name: $0.key, releaseCount: $0.value.count) }
+        // Artist search — identity-aware RPC (collapses aliases, e.g. "kanye"/"ye" → one entry)
+        artistResults = (try? await supabase
+            .rpc("search_artists", params: ["q": q, "lim": 10])
+            .execute()
+            .value) ?? []
     }
 }
 
@@ -663,15 +653,28 @@ struct SearchView: View {
                         sectionLabel("Artists")
                         VStack(spacing: 0) {
                             ForEach(searchVM.artistResults) { artist in
-                                NavigationLink(value: ArtistDestination(name: artist.name)) {
+                                NavigationLink(value: ArtistDestination(artistId: artist.id, name: artist.name)) {
                                     HStack(spacing: 12) {
-                                        ZStack {
-                                            Circle().fill(Color.sjBorder)
-                                            Text(String(artist.name.prefix(1)).uppercased())
-                                                .font(.system(size: 16, weight: .bold))
-                                                .foregroundStyle(Color.sjMuted)
+                                        Group {
+                                            if let urlStr = artist.coverUrl, let url = URL(string: urlStr) {
+                                                CachedImage(url: url) {
+                                                    Circle().fill(Color.sjBorder)
+                                                        .overlay(Text(String(artist.name.prefix(1)).uppercased())
+                                                            .font(.system(size: 16, weight: .bold))
+                                                            .foregroundStyle(Color.sjMuted))
+                                                }
+                                                .aspectRatio(contentMode: .fill)
+                                            } else {
+                                                ZStack {
+                                                    Circle().fill(Color.sjBorder)
+                                                    Text(String(artist.name.prefix(1)).uppercased())
+                                                        .font(.system(size: 16, weight: .bold))
+                                                        .foregroundStyle(Color.sjMuted)
+                                                }
+                                            }
                                         }
                                         .frame(width: 44, height: 44)
+                                        .clipShape(Circle())
 
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text(artist.name)
@@ -927,7 +930,7 @@ struct SearchView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(alignment: .top, spacing: 14) {
                 ForEach(artists) { artist in
-                    NavigationLink(value: ArtistDestination(name: artist.name)) {
+                    NavigationLink(value: ArtistDestination(artistId: nil, name: artist.name)) {
                         VStack(spacing: 7) {
                             CachedImage(url: URL(string: artist.imageUrl?.thumbnailUrl ?? "")) {
                                 Color.sjBorder.overlay(
@@ -1011,7 +1014,7 @@ struct SearchView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(alignment: .top, spacing: 14) {
                 ForEach(artists) { artist in
-                    NavigationLink(value: ArtistDestination(name: artist.name)) {
+                    NavigationLink(value: ArtistDestination(artistId: nil, name: artist.name)) {
                         VStack(spacing: 7) {
                             CachedImage(url: artist.artworkURL) {
                                 Color.sjBorder.overlay(
@@ -1259,6 +1262,7 @@ struct SongRow: View {
 // MARK: - Artist page (navigation destination)
 
 struct ArtistDestination: Hashable {
+    let artistId: UUID?
     let name: String
 }
 
@@ -1284,6 +1288,8 @@ struct ArtistPageView: View {
     @State private var communityFeed:   [CommunityRating]     = []
     @State private var selectedTab      = 0
     @State private var isLoading        = true
+    @State private var artistAvatarUrl: String? = nil
+    @State private var canonicalName:   String? = nil
 
     private struct CommunityRating: Codable, Identifiable {
         let id: UUID
@@ -1323,16 +1329,24 @@ struct ArtistPageView: View {
         VStack(spacing: 0) {
             // ── Header ──────────────────────────────────────
             VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Artist")
-                        .font(.system(size: 10, weight: .semibold))
-                        .tracking(1.4)
-                        .foregroundStyle(Color.sjMuted)
-                    Text(artist.name)
-                        .font(.system(size: 28, weight: .heavy))
-                        .foregroundStyle(Color.sjInk)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.75)
+                HStack(alignment: .center, spacing: 12) {
+                    if let urlStr = artistAvatarUrl, let url = URL(string: urlStr) {
+                        CachedImage(url: url) { Color.sjBorder }
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 56, height: 56)
+                            .clipShape(Circle())
+                    }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Artist")
+                            .font(.system(size: 10, weight: .semibold))
+                            .tracking(1.4)
+                            .foregroundStyle(Color.sjMuted)
+                        Text(canonicalName ?? artist.name)
+                            .font(.system(size: 28, weight: .heavy))
+                            .foregroundStyle(Color.sjInk)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.75)
+                    }
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 16)
@@ -1444,7 +1458,7 @@ struct ArtistPageView: View {
             }
         }
         .background(Color.sjCream.ignoresSafeArea())
-        .navigationTitle(artist.name)
+        .navigationTitle(canonicalName ?? artist.name)
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
         .task { await load() }
@@ -1460,17 +1474,34 @@ struct ArtistPageView: View {
     }
 
     private func load() async {
-        let escaped = artist.name.replacingOccurrences(of: "'", with: "''")
-        var loaded: [Release] = (try? await supabase
-            .from("release_groups")
-            .select("id, title, artist_display, cover_url, release_group_type, first_release_date, native_title")
-            .ilike("artist_display", value: escaped)
-            .order("first_release_date", ascending: false, nullsFirst: false)
-            .limit(60)
-            .execute()
-            .value) ?? []
-
-        if loaded.isEmpty { loaded = await fetchFromWebSearch() }
+        var loaded: [Release]
+        if let artistId = artist.artistId {
+            // Identity-aware: returns all releases credited to this artist, regardless of credit position
+            loaded = (try? await supabase
+                .rpc("get_artist_release_groups", params: ["p_artist_id": artistId.uuidString, "lim": 60])
+                .execute()
+                .value) ?? []
+            // Fetch canonical name + avatar
+            struct ARow: Codable {
+                let name: String; let coverUrl: String?
+                enum CodingKeys: String, CodingKey { case name; case coverUrl = "cover_url" }
+            }
+            let arows: [ARow] = (try? await supabase
+                .from("artists").select("name, cover_url")
+                .eq("id", value: artistId.uuidString).limit(1).execute().value) ?? []
+            if let row = arows.first { artistAvatarUrl = row.coverUrl; canonicalName = row.name }
+        } else {
+            let escaped = artist.name.replacingOccurrences(of: "'", with: "''")
+            loaded = (try? await supabase
+                .from("release_groups")
+                .select("id, title, artist_display, cover_url, release_group_type, first_release_date, native_title")
+                .ilike("artist_display", value: escaped)
+                .order("first_release_date", ascending: false, nullsFirst: false)
+                .limit(60)
+                .execute()
+                .value) ?? []
+            if loaded.isEmpty { loaded = await fetchFromWebSearch() }
+        }
         releases = loaded
 
         let releaseGroupIds = loaded.map(\.id.uuidString)
