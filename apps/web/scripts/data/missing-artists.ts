@@ -18,6 +18,11 @@ export const MISSING_ARTISTS: MissingArtist[] = [
   { name: 'JMIN',        mbid: '6802de65-29cf-40b5-b51e-776b90ad8296', note: 'KR rapper' },
   { name: 'BewhY',       mbid: 'b043d091-9c31-44c4-b646-c79d0c97840f', note: 'KR' },
   { name: 'YANGHONGWON', mbid: 'b1c58e6a-2e9a-4502-8724-5571b47292ad', note: 'KR rapper, formerly Young B' },
+  // From the kr-scene no-match list (2026-06-30): English-name search couldn't resolve these (accent
+  // / non-KR country), so their MBIDs are pinned here. The other 7 no-matches (Gray/Dean/BIBI/
+  // Woo Won Jae/Sole/George/Hate the Sun) are KR-stored under Hangul → captured by `discover:area --country=KR`.
+  { name: 'BLASÉ',         mbid: '2f96c1ae-0671-4d48-9507-670892a2ac67', note: 'KR rapper; accent broke the name match' },
+  { name: 'Jasmine Sokko', mbid: '19f820c2-9d82-4079-990a-5ab24e36924d', note: 'SG (not KR → not in the country:KR sweep)' },
 ];
 
 // Not in MusicBrainz at all → cannot be MBID-seeded. Recover via the Deezer fallback lane

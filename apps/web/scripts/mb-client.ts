@@ -183,6 +183,23 @@ export async function searchArtists(name: string, limit = 8): Promise<MbArtistCa
   }));
 }
 
+// One page of an arbitrary Lucene artist query (e.g. `country:KR AND tag:"hip hop"`). MBID comes
+// straight from the result, so no name resolution is needed — captures Hangul-named artists too.
+export interface MbArtistPage {
+  count: number;
+  artists: { id: string; name: string; country: string | null; type: string | null }[];
+}
+export async function searchArtistsByQuery(luceneQuery: string, limit = 100, offset = 0): Promise<MbArtistPage> {
+  const data = await mbGet(`/artist?query=${enc(luceneQuery)}&limit=${limit}&offset=${offset}`);
+  const artists = (data?.artists ?? []).map((a: any) => ({
+    id: a.id,
+    name: a.name,
+    country: a.country ?? a.area?.['iso-3166-1-codes']?.[0] ?? null,
+    type: a.type ?? null,
+  }));
+  return { count: data?.count ?? 0, artists };
+}
+
 export async function getArtist(mbid: string): Promise<MbArtistDetail | null> {
   const a = await mbGet(`/artist/${mbid}?inc=${enc('aliases genres')}`);
   if (!a) return null;

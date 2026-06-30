@@ -34,6 +34,10 @@ Activation order in README START HERE: apply 2 migrations → deploy web → res
 
 ~4,750 artists now pending MBID-direct ingest; the live pipeline drains them over time (each stub ingest spawns its own collaborators → re-run `queue:stubs` periodically to snowball). Scripts committed + pushed.
 
+**Comprehensive area discovery + search-miss cron (follow-up — "way more than 9 missing"):** the kr-scene no-match analysis exposed the real limit — English-name search structurally misses Korean artists stored under Hangul (그레이/딘/비비/우원재…). **MB has 15,540 `country:KR` artists vs our ~525.**
+- **`discover-mb-area.ts` (`discover:area`)** + `mb-client.searchArtistsByQuery`: pages an arbitrary Lucene query (`--country=KR [--tag= --type= --limit=]`) and queues each artist by the **MBID in the result** — so Hangul-named artists (incl. 7 of the 9 kr-scene no-matches) come along with no name resolution. **⚠️ pages MB heavily → run during a pipeline pause** (a dry-run alongside the live pipeline got throttled to 0; a single direct call confirmed 15,540). Verified working (TWICE/BoA/BTS…). The 2 resolvable no-matches (BLASÉ [KR], Jasmine Sokko [SG]) pinned in `data/missing-artists.ts`.
+- **Search-miss self-healer (cron, built into the pipeline):** migration `20260701000000_search_misses_queued.sql` adds `search_misses.queued_at`; `pipeline.ts` `tryMisses()` runs in the ingest lane's **idle** time — resolves un-queued misses → queues confident matches by MBID, marks `queued_at` (tried once). Pre-launch `search_misses` is ~empty; this is the post-launch self-healer with no external cron needed. Restart-gated + needs the migration.
+
 **2026-06-29 (Windows) — Prestige Western-ingest + RS500/Pitchfork/Brit sources + padDate fix:**
 
 Executed the Windows prestige prompt (pulled the Mac's `external_scores`/seeder/`get_silla_leaderboard` work first — merged `origin/main` twice incl. `becbb47` TS-fix, no conflicts).

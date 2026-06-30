@@ -23,6 +23,8 @@
     "queue:stubs:dry": "tsx --env-file=.env.local scripts/queue-stubs.ts --dry-run",
     "queue:names": "tsx --env-file=.env.local scripts/queue-by-name.ts",
     "queue:misses": "tsx --env-file=.env.local scripts/queue-by-name.ts --misses",
+    "discover:area": "tsx --env-file=.env.local scripts/discover-mb-area.ts",
+    "discover:area:dry": "tsx --env-file=.env.local scripts/discover-mb-area.ts --dry-run",
     "covers:caa": "tsx --env-file=.env.local scripts/backfill-rg-covers-caa.ts",
     "covers:caa:dry": "tsx --env-file=.env.local scripts/backfill-rg-covers-caa.ts --limit=200 --dry-run",
     "backfill:rg-credits": "tsx --env-file=.env.local scripts/backfill-rg-credits.ts",

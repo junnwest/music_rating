@@ -235,6 +235,28 @@ async function ingestLoop(db: DB) {
     catch (e) { console.log(`  [freshness] ERROR ${due.name}: ${(e as Error).message}`); }
     return true;
   };
+  // When the queue is idle, spend MB time resolving logged search misses → queue confident
+  // matches by MBID (self-healing: the catalog fills where real users looked and found nothing).
+  // Marks every miss queued_at (even ambiguous/no-match) so it's tried once, not forever.
+  const tryMisses = async (): Promise<boolean> => {
+    if (DRAIN_ONCE) return false;
+    const { data, error } = await db.from('search_misses')
+      .select('id, query').is('queued_at', null).order('searched_at').limit(5);
+    if (error || !data?.length) return false; // table without queued_at → migration not applied yet
+    for (const m of data as { id: string; query: string }[]) {
+      try {
+        const r = await resolveArtist(m.query, null);
+        if (r.best && !r.ambiguous) {
+          await db.from('artist_ingestion_queue').upsert(
+            { name: m.query, source: 'mbid', source_id: r.best.id, status: 'pending' },
+            { onConflict: 'name,source', ignoreDuplicates: true });
+          console.log(`  [misses] ${m.query} → ${r.best.name} [${r.best.country ?? '--'}]`);
+        }
+      } catch { /* transient → leave queued_at null, retry next idle */ continue; }
+      await db.from('search_misses').update({ queued_at: now() }).eq('id', m.id);
+    }
+    return true;
+  };
   await beat(db, 'freshness', { status: FRESHNESS_EVERY > 0 && !DRAIN_ONCE ? 'idle' : 'off', last_active: now() });
   for (;;) {
     // Spend one MB cycle on a due re-poll every FRESHNESS_EVERY new ingests, so catalog
@@ -245,8 +267,9 @@ async function ingestLoop(db: DB) {
     if (!row) {
       await beat(db, 'ingest', { status: 'idle', last_active: now(), items_done: done, errors: failed });
       if (ONCE) { console.log(`\n  [ingest] queue drained — done ${done}, skipped ${skipped}, failed ${failed}`); return; }
-      // Queue empty → use the idle MB time for freshness if anything is due.
+      // Queue empty → use the idle MB time for freshness, then for search-miss recovery.
       if (await tryFreshness()) continue;
+      if (await tryMisses()) continue;
       await sleep(IDLE_MS);
       continue;
     }
