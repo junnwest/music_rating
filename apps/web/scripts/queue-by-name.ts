@@ -39,8 +39,15 @@ async function main() {
   const names = await loadNames(db);
   console.log(`[queue-by-name] ${names.length} names${REGION ? ` (region ${REGION})` : ''}${DRY ? '  [DRY RUN]' : ''}`);
 
-  const { data: existing } = await db.from('artist_ingestion_queue').select('source_id').eq('source', 'mbid');
-  const queued = new Set((existing ?? []).map((r: any) => r.source_id));
+  // Page the full set (MBIDs aren't known until resolution) — a plain select caps at PostgREST's
+  // 1000-row default, silently breaking dedup once the queue is big.
+  const queued = new Set<string>();
+  for (let from = 0; ; from += 1000) {
+    const { data } = await db.from('artist_ingestion_queue').select('source_id').eq('source', 'mbid').order('source_id').range(from, from + 999);
+    if (!data?.length) break;
+    for (const r of data) queued.add((r as any).source_id);
+    if (data.length < 1000) break;
+  }
   const usedNames = new Set<string>();
   const rows: { name: string; source: string; source_id: string; status: string }[] = [];
   const ambiguous: string[] = [], nomatch: string[] = [];

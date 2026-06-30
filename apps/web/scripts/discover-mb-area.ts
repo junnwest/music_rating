@@ -62,8 +62,11 @@ async function main() {
       .select('external_id').eq('source', 'musicbrainz').in('external_id', mbids.slice(i, i + 100));
     for (const r of data ?? []) have.add((r as any).external_id);
   }
-  const { data: q } = await db.from('artist_ingestion_queue').select('source_id').eq('source', 'mbid');
-  const queued = new Set((q ?? []).map((r: any) => r.source_id));
+  const queued = new Set<string>(); // batched .in() — a plain select caps at PostgREST's 1000-row default
+  for (let i = 0; i < mbids.length; i += 100) {
+    const { data } = await db.from('artist_ingestion_queue').select('source_id').eq('source', 'mbid').in('source_id', mbids.slice(i, i + 100));
+    for (const r of data ?? []) queued.add((r as any).source_id);
+  }
 
   const usedNames = new Set<string>();
   const rows: { name: string; source: string; source_id: string; status: string }[] = [];

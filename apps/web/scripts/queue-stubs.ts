@@ -47,10 +47,14 @@ async function main() {
     for (const r of data ?? []) byArtist.set((r as any).artist_id, (r as any).external_id);
   }
 
-  // Skip MBIDs already queued under source='mbid' (idempotent re-runs).
-  const { data: existing } = await db.from('artist_ingestion_queue')
-    .select('source_id').eq('source', 'mbid');
-  const queued = new Set((existing ?? []).map((r: any) => r.source_id));
+  // Skip MBIDs already queued under source='mbid' (idempotent re-runs). Batched .in() — a plain
+  // select caps at PostgREST's 1000-row default, which silently breaks dedup once the queue is big.
+  const queued = new Set<string>();
+  const allMbids = [...byArtist.values()];
+  for (let i = 0; i < allMbids.length; i += 100) {
+    const { data } = await db.from('artist_ingestion_queue').select('source_id').eq('source', 'mbid').in('source_id', allMbids.slice(i, i + 100));
+    for (const r of data ?? []) queued.add((r as any).source_id);
+  }
 
   // Build rows; (name, source) is UNIQUE, so disambiguate same-name stubs with a short MBID prefix.
   const usedNames = new Set<string>();
