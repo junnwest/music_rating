@@ -56,7 +56,7 @@ RETURNS TABLE (
   artist_id   uuid,
   credited_as text,
   join_phrase text,
-  position    int
+  "position"  int   -- quoted: position is a reserved keyword in a RETURNS TABLE column list
 )
 LANGUAGE plpgsql STABLE AS $$
 BEGIN

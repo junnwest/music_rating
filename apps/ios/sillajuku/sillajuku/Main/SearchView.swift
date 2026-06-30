@@ -335,6 +335,11 @@ struct SearchArtist: Codable, Identifiable {
     }
 }
 
+// RPC param payloads. supabase-swift's `params:` takes `some Encodable`, so a heterogeneous
+// dictionary literal (["q": q, "lim": 30] — String + Int) doesn't type-check; use a struct.
+private struct SearchParams: Encodable { let q: String; let lim: Int }
+private struct ArtistReleasesParams: Encodable { let p_artist_id: String; let lim: Int }
+
 @Observable
 class SearchViewModel {
     var query = ""
@@ -356,7 +361,7 @@ class SearchViewModel {
 
         // Album search — normalized RPC (handles spacing/punctuation, e.g. "new jeans" → NewJeans)
         let albums: [Release] = (try? await supabase
-            .rpc("search_release_groups", params: ["q": q, "lim": 30])
+            .rpc("search_release_groups", params: SearchParams(q: q, lim: 30))
             .execute()
             .value) ?? []
         albumResults = albums
@@ -425,7 +430,7 @@ class SearchViewModel {
 
         // Artist search — identity-aware RPC (collapses aliases, e.g. "kanye"/"ye" → one entry)
         artistResults = (try? await supabase
-            .rpc("search_artists", params: ["q": q, "lim": 10])
+            .rpc("search_artists", params: SearchParams(q: q, lim: 10))
             .execute()
             .value) ?? []
     }
@@ -1478,7 +1483,7 @@ struct ArtistPageView: View {
         if let artistId = artist.artistId {
             // Identity-aware: returns all releases credited to this artist, regardless of credit position
             loaded = (try? await supabase
-                .rpc("get_artist_release_groups", params: ["p_artist_id": artistId.uuidString, "lim": 60])
+                .rpc("get_artist_release_groups", params: ArtistReleasesParams(p_artist_id: artistId.uuidString, lim: 60))
                 .execute()
                 .value) ?? []
             // Fetch canonical name + avatar
