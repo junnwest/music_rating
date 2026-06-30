@@ -106,14 +106,9 @@ struct EditProfileView: View {
                 .scaledToFill()
                 .clipShape(Circle())
         } else if let urlStr = profile?.avatarUrl, let url = URL(string: urlStr) {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let img):
-                    img.resizable().scaledToFill().clipShape(Circle())
-                default:
-                    initialsCircle
-                }
-            }
+            CachedImage(url: url) { initialsCircle }
+                .scaledToFill()
+                .clipShape(Circle())
         } else {
             initialsCircle
         }

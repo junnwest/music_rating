@@ -60,17 +60,10 @@ struct CoverImage: View {
 
     var body: some View {
         GeometryReader { geo in
-            AsyncImage(url: URL(string: url?.thumbnailUrl ?? "")) { phase in
-                switch phase {
-                case .success(let img):
-                    img.resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: geo.size.width, height: geo.size.height)
-                        .clipped()
-                default:
-                    ShimmerView()
-                }
-            }
+            CachedImage(url: URL(string: url?.thumbnailUrl ?? "")) { ShimmerView() }
+                .aspectRatio(contentMode: .fill)
+                .frame(width: geo.size.width, height: geo.size.height)
+                .clipped()
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
     }

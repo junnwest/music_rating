@@ -693,12 +693,8 @@ private struct SuggestedUserRow: View {
                 HStack(spacing: 12) {
                     Group {
                         if let url = user.avatarUrl.flatMap(URL.init) {
-                            AsyncImage(url: url) { phase in
-                                switch phase {
-                                case .success(let img): img.resizable().scaledToFill()
-                                default: Color.sjBorder
-                                }
-                            }
+                            CachedImage(url: url) { Color.sjBorder }
+                                .scaledToFill()
                         } else {
                             Image(systemName: "person.circle.fill")
                                 .resizable().scaledToFit()

@@ -401,11 +401,8 @@ private struct TopAlbumCard: View {
     private var coverThumb: some View {
         Group {
             if let s = coverUrl, let url = URL(string: s) {
-                AsyncImage(url: url) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: {
-                    Color.white.opacity(0.08)
-                }
+                CachedImage(url: url) { Color.white.opacity(0.08) }
+                    .scaledToFill()
             } else {
                 Color.white.opacity(0.08)
             }

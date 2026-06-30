@@ -496,14 +496,9 @@ struct ProfileView: View {
     private var avatarCircle: some View {
         Group {
             if let urlStr = viewModel.profile?.avatarUrl, let url = URL(string: urlStr) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let img):
-                        img.resizable().scaledToFill().clipShape(Circle())
-                    default:
-                        defaultAvatar
-                    }
-                }
+                CachedImage(url: url) { defaultAvatar }
+                    .scaledToFill()
+                    .clipShape(Circle())
             } else {
                 defaultAvatar
             }
@@ -1256,12 +1251,8 @@ private struct FollowProfileRow: View {
         HStack(spacing: 12) {
             Group {
                 if let url = profile.avatarUrl.flatMap(URL.init) {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let img): img.resizable().scaledToFill()
-                        default: Color.sjBorder
-                        }
-                    }
+                    CachedImage(url: url) { Color.sjBorder }
+                        .scaledToFill()
                 } else {
                     Image(systemName: "person.circle.fill")
                         .resizable()

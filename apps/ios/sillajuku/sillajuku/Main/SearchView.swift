@@ -77,6 +77,10 @@ class DiscoveryViewModel {
             await loadSpotify()
         }
         isLoading = false
+        // Kick off background downloads for all album art so covers are ready before the user scrolls
+        let prefetchUrls = (personalizedAlbums + trendingAlbums + popularAlbums + tasteAlbums)
+            .compactMap { URL(string: $0.coverUrl?.thumbnailUrl ?? "") }
+        ImageCache.prefetch(prefetchUrls)
     }
 
     private func loadAppleMusic() async {
@@ -925,18 +929,14 @@ struct SearchView: View {
                 ForEach(artists) { artist in
                     NavigationLink(value: ArtistDestination(name: artist.name)) {
                         VStack(spacing: 7) {
-                            AsyncImage(url: URL(string: artist.imageUrl?.thumbnailUrl ?? "")) { phase in
-                                switch phase {
-                                case .success(let img):
-                                    img.resizable().aspectRatio(contentMode: .fill)
-                                default:
-                                    Color.sjBorder.overlay(
-                                        Text(String(artist.name.prefix(1)))
-                                            .font(.system(size: 20, weight: .bold))
-                                            .foregroundStyle(Color.sjMuted)
-                                    )
-                                }
+                            CachedImage(url: URL(string: artist.imageUrl?.thumbnailUrl ?? "")) {
+                                Color.sjBorder.overlay(
+                                    Text(String(artist.name.prefix(1)))
+                                        .font(.system(size: 20, weight: .bold))
+                                        .foregroundStyle(Color.sjMuted)
+                                )
                             }
+                            .aspectRatio(contentMode: .fill)
                             .frame(width: 72, height: 72)
                             .clipShape(Circle())
 
@@ -1013,18 +1013,14 @@ struct SearchView: View {
                 ForEach(artists) { artist in
                     NavigationLink(value: ArtistDestination(name: artist.name)) {
                         VStack(spacing: 7) {
-                            AsyncImage(url: artist.artworkURL) { phase in
-                                switch phase {
-                                case .success(let img):
-                                    img.resizable().aspectRatio(contentMode: .fill)
-                                default:
-                                    Color.sjBorder.overlay(
-                                        Text(String(artist.name.prefix(1)))
-                                            .font(.system(size: 20, weight: .bold))
-                                            .foregroundStyle(Color.sjMuted)
-                                    )
-                                }
+                            CachedImage(url: artist.artworkURL) {
+                                Color.sjBorder.overlay(
+                                    Text(String(artist.name.prefix(1)))
+                                        .font(.system(size: 20, weight: .bold))
+                                        .foregroundStyle(Color.sjMuted)
+                                )
                             }
+                            .aspectRatio(contentMode: .fill)
                             .frame(width: 72, height: 72)
                             .clipShape(Circle())
 
@@ -1058,16 +1054,10 @@ struct SearchView: View {
                         }
                     } label: {
                         VStack(alignment: .leading, spacing: 6) {
-                            AsyncImage(url: album.artworkURL) { phase in
-                                switch phase {
-                                case .success(let img):
-                                    img.resizable().aspectRatio(contentMode: .fill)
-                                default:
-                                    Color.sjBorder
-                                }
-                            }
-                            .frame(width: 112, height: 112)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            CachedImage(url: album.artworkURL) { Color.sjBorder }
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 112, height: 112)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
 
                             Text(album.name)
                                 .font(.system(size: 12, weight: .semibold))
