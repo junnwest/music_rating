@@ -6,6 +6,21 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-29 (Windows) — Prestige Western-ingest + RS500/Pitchfork/Brit sources + padDate fix:**
+
+Executed the Windows prestige prompt (pulled the Mac's `external_scores`/seeder/`get_silla_leaderboard` work first — merged `origin/main` twice incl. `becbb47` TS-fix, no conflicts).
+
+- **Track 1 — Western ingest:** the leaderboard was Korean-only because Western prestige artists weren't ingested (no `release_groups` to reconcile against). Queued **726 modern (post-1990) prestige artists** from the pending `external_scores` set into `artist_ingestion_queue` at **priority** (`source='prestige'`, backdated `created_at='2020-01-01'` → claimed ahead of the 5k tail); obscure pre-1990-only artists left to drain naturally. Catalog grew **16k → ~71k release_groups** (canon is compilation-heavy — Beatles 1,730 releases, Sinatra, etc.; comps now 23% + soundtracks 4.6%, kept as authentic). `reconcile_prestige_scores` `updated=` climbs as they land.
+- **Track 2 — 4 new sources** (all typecheck-clean, seeder cases added; `/browse` isn't registered in this harness → used WebFetch, allowed under the "no chrome-MCP" rule):
+  - **`data/rs500.ts`** — Rolling Stone 500 (2020), all 500 with **hardcoded MB release-group MBIDs** pulled from MB's curated series (`?inc=release-group-rels+artist-credits`, one call → rank/album/artist/year/MBID). Hardcoded MBIDs = seeder skips MB search = zero pipeline contention.
+  - **`data/pitchfork-perfect.ts`** — 175 perfect-10.0 albums (Wikipedia "List of albums awarded 10 by Pitchfork"; VA comps excluded).
+  - **`data/brit-album.ts`** — BRIT Album of the Year 1977–2026, 222 (46 winners).
+  - **`grammy-dance-electronic.ts`** — filled 2009–2013; corrected the 2009 winner (was mislabeled `2008`) + 2018 (real winner Kraftwerk *3-D The Catalogue*; dropped wrong Calvin Harris nominee).
+  - **Seeded all:** `external_scores` 2,250 → **3,219**. reconcile climbed **315 → 378 (RS500) → 402 (Pitchfork) → 409 (Brit)**, then the Grammy-Dance reconcile **timed out (57014)** — the prestige UPDATE can't finish while 726 artists hammer `release_groups`. **Re-run `npm run prestige:reconcile` once the queue drains / pipeline paused** for the real (much higher) number. 28 entries (9+8+11) stored without MBID (pending; symbol/comp titles MB search missed).
+- **`padDate` bug found + fixed (committed `2928721`):** MB emits partial dates with `??` ("1994-??-11", "????-03-01") that Postgres rejects → aborted the whole artist ingest (Mariah Carey, Luther Vandross, Damon Albarn `failed`). `padDate` now normalizes `??`→`01` (unknown year→null). After restart, verified live — Luther Vandross re-ingested cleanly (71 RGs, no crash); the 3 re-queued (attempt_count→0).
+- **Cleanliness audit (post 4× growth):** clean — source-pure (70.6k MB · 358 deezer · 0 itunes/null), special-MBID blocklist holding (0 VA leaks), 0 broken FKs, canonical intact. Benign: 3 duplicate names (김광석 singer/drummer · S.E.S. group/jungle · Cream supergroup/Polish-DJ — each partner 0 RGs). Cleaned 1 orphan release ("Salad Days", null RG).
+- **Git:** 5 local commits (this session's pipeline + prestige work), **not pushed** (hold-push preference).
+
 **2026-06-29 (session 3) — Grammy genre sources blitz + RankingBlock wired (Mac):**
 
 Finished the Western prestige collection pass on Mac and wired the iOS Charts RankingBlock to real data.
