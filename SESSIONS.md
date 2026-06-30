@@ -27,6 +27,13 @@ Investigated 6 reported catalog/UX gaps directly against prod (read-only query s
 
 Activation order in README START HERE: apply 2 migrations → deploy web → restart pipeline → `seed:missing` → (pause) `backfill:rg-credits`. Pushed.
 
+**Catalog expansion (after the fixes landed):** the `backfill:rg-credits` run created **4,665 `credit_stub` artists** (every collaborator on an album we have, MBID-known but no own discography) — total artists 2,641 → **7,243**. Three expansion lanes, all queue `source='mbid'` (MBID-direct, no name resolution):
+- **#1 stubs — `queue:stubs`** (`queue-stubs.ts`): queued **4,660** stubs for full ingestion — the strongest non-arbitrary signal (artists demonstrably connected to existing catalog). Pure DB inserts, safe alongside the live pipeline. (Bug found+fixed: a 500-UUID `.in()` overflows the request URL and silently returns nothing → batch to 100.)
+- **#2 curated KR roster — `queue:names --list=kr-scene --region=KR`** (`queue-by-name.ts` + `data/kr-scene.ts`, 111 names): **86 queued** (all correct), 1 ambiguous (Young B → already YANGHONGWON), 9 no-match (Gray/Dean/BIBI/Woo Won Jae/Sole/George/Blase/Jasmine Sokko/Hate the Sun — generic-name/MB-indexing hard cases needing explicit MBIDs in `data/missing-artists.ts`).
+- **#3 search-miss recovery — `queue:misses`** (same script, reads `search_misses`): **2 queued** (the black skirts→검정치마, fred again..); *dress* safely skipped as ambiguous. Pre-launch only 4 misses exist; this is the post-launch self-healer (wire to a cron later). `queue-by-name` only queues confident, UNAMBIGUOUS resolver matches.
+
+~4,750 artists now pending MBID-direct ingest; the live pipeline drains them over time (each stub ingest spawns its own collaborators → re-run `queue:stubs` periodically to snowball). Scripts committed + pushed.
+
 **2026-06-29 (Windows) — Prestige Western-ingest + RS500/Pitchfork/Brit sources + padDate fix:**
 
 Executed the Windows prestige prompt (pulled the Mac's `external_scores`/seeder/`get_silla_leaderboard` work first — merged `origin/main` twice incl. `becbb47` TS-fix, no conflicts).
