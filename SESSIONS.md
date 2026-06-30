@@ -6,6 +6,18 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-06-30 (Windows) — Data-quality review + iOS hand-off:**
+
+Investigated 6 reported catalog/UX gaps directly against prod (read-only query scripts, since removed). Findings:
+- **#1 Missing artists** — `yanghongwon, ksmartboi, paloalto, zico, jmin, okashii, don toliver` are absent from `artists` **and** the ingestion queue → won't be collected after the drain. MB has almost all of them (ZICO[KR], Paloalto[KR], Don Toliver[US], ksmartboi, OKASHII, JMIN, BewhY, YANGHONGWON "formerly Young B"); `lov3rboi` is **not** in MB (Deezer-fallback only). Resolver caveat: bare "Zico" resolves to a French rapper above the KR ZICO → must queue by **MBID**.
+- **#2 Collab albums** — schema has only one `primary_artist_id` per release group (no multi-artist join table; `release_group_artists` etc. don't exist). "4 the Youth" (`artist_display="JUSTHIS & Paloalto"`) is attached to JUSTHIS only; Paloalto has no row. 4,207 RGs have `&`, 1,788 `feat`, 208 `X`.
+- **#3 Kanye/Ye** — **not** a duplicate row. One artist (`Ye`, name_native "Kanye West", aliases incl. "Kanye West"). The app splits him because it derives artist entries from the free-text `artist_display`: his 201 RGs carry 119×"Kanye West" + 37×"Ye" + collab variants. Same root cause as #2.
+- **#4 Search** — lexical, not embeddings. Both web (`search_releases` RPC) and iOS (`ILIKE %q%`) match raw substrings with no punctuation/space normalization. "new jeans"✗"NewJeans"; "sikk"✗"Sik-K" — and Sik-K is stored with **U+2010** (typographic hyphen), so even "Sik-K" with a normal hyphen misses.
+- **#5 Covers** — `Get Up (EP)` genuinely null; **21,476/72,908 (29.5%)** release_groups have no cover (album 28.2% / ep 24.2% / single 29.2%). GAPFILL is behind.
+- **#6 Avatars** — `artists.cover_url` exists, **0/2641** populated.
+
+**Plan → 5 work items:** A artist-identity join table (`release_group_artists`, fixes #2+#3), B search normalization (#4), C cover backfill (#5), D queue-missing-by-MBID (#1), E avatar backfill (#6). User confirmed the join table (per stated spec: each credited artist a separate tappable link on the album page; album shows on both artist pages). Wrote **[`DATA_FIXES_IOS.md`](DATA_FIXES_IOS.md)** — full Mac/iOS hand-off with the DB contracts (table + `search_release_groups` / `search_artists` / `get_artist_release_groups` / `get_release_group_credits` RPCs) Windows is building, so Mac can build in parallel (`try?`-degrades until the migration lands). Windows now starts B → C → D → A → E.
+
 **2026-06-29 (Windows) — Prestige Western-ingest + RS500/Pitchfork/Brit sources + padDate fix:**
 
 Executed the Windows prestige prompt (pulled the Mac's `external_scores`/seeder/`get_silla_leaderboard` work first — merged `origin/main` twice incl. `becbb47` TS-fix, no conflicts).

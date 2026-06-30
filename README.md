@@ -14,6 +14,14 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **⚑ DATA-FIX TRACK (started 2026-06-30):** A data review found 6 catalog/UX gaps → 5 work items (see
+> [`DATA_FIXES_IOS.md`](DATA_FIXES_IOS.md) for the **Mac/iOS** hand-off, ready to build now). Items: **A** artist
+> identity via new `release_group_artists` join table (fixes collab albums under both artists + Kanye/Ye split),
+> **B** search normalization (punctuation/space-insensitive — fixes "new jeans"/"sikk"/"Sik-K"), **C** cover backfill
+> (29.5% of release_groups have no cover), **D** queue missing artists by MBID (Zico/Paloalto/Don Toliver/etc. — none
+> are queued today), **E** artist avatars (`artists.cover_url` 0/2641 populated). **Windows** owns DB/RPC/pipeline/web;
+> **Mac** owns iOS per the hand-off doc. Windows sequence: B → C → D → A (migration first) → E.
+>
 > **⚑ NEXT SESSION — PICK UP HERE (session left off 2026-06-29):**
 >
 > 1. ✅ **Prestige system redesigned** — `external_scores` now MBID-keyed, `release_groups.prestige_score` column added, `reconcile_prestige_scores()` RPC live. Migration `20260628000000` ✅ applied.
