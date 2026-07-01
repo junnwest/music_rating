@@ -1,16 +1,30 @@
 import { createServerClient } from './supabaseServer';
 
 export async function getAuthedUserId(authHeader: string | null): Promise<string | null> {
-  if (!authHeader?.startsWith('Bearer ')) return null;
+  console.log('[authGuard] header received:', authHeader ? `Bearer ...${authHeader.slice(-8)}` : 'null');
+
+  if (!authHeader?.startsWith('Bearer ')) {
+    console.log('[authGuard] FAIL: missing or malformed Authorization header');
+    return null;
+  }
   const token = authHeader.slice(7);
 
-  // Use the service-role client's getUser(token) — the SDK validates the JWT
-  // against Supabase and returns the user. More reliable than a raw fetch to
-  // /auth/v1/user which breaks with the new sb_publishable_ key format.
   const supabase = createServerClient();
-  if (!supabase) return null;
+  if (!supabase) {
+    console.log('[authGuard] FAIL: createServerClient() returned null — check NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY env vars');
+    return null;
+  }
 
   const { data: { user }, error } = await supabase.auth.getUser(token);
-  if (error || !user) return null;
+  if (error) {
+    console.log('[authGuard] FAIL: getUser error:', error.message, error.status);
+    return null;
+  }
+  if (!user) {
+    console.log('[authGuard] FAIL: getUser returned no user (token invalid or expired)');
+    return null;
+  }
+
+  console.log('[authGuard] OK: userId =', user.id);
   return user.id;
 }
