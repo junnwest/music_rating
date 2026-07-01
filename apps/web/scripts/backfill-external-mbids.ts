@@ -27,6 +27,18 @@ const LIMIT = (() => { const a = args.find(x => x.startsWith('--limit=')); retur
 
 const norm = (s: string | null | undefined) => (s ?? '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+const hasCJK = (s: string) => /[぀-ヿ㐀-鿿가-힯]/.test(s); // Kana/CJK/Hangul
+
+// A safe fuzzy title match: one title must be a prefix OR suffix of the other (an edition/volume
+// difference — "Armageddon" ⊂ "Armageddon - The 1st Album", "산울림" ⊂ "산울림 2집"), never a
+// mid-string hit ("BE" ⊄ "The Most BEautiful Moment"). The shorter side must be ≥6 chars for Latin,
+// or ≥2 for CJK (3 Hangul/Kanji chars are highly distinctive; "산울림" is legit, "be" is not).
+function fuzzyTitleMatch(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  const minOk = hasCJK(short) ? short.length >= 2 : short.length >= 6;
+  return minOk && (long.startsWith(short) || long.endsWith(short));
+}
 
 // Region hint from the prestige source → the resolver disambiguates a romanized name (Black Skirt →
 // 검정치마) far more confidently when it knows the country.
@@ -84,13 +96,7 @@ async function main() {
       // path requires the SHORTER title be ≥6 chars, or a short MB title like "BE" spuriously matches
       // inside a longer external one ("BE" ⊂ "The Most BEautiful Moment…").
       let hits = rgs.filter(g => norm(g.title) === want);
-      if (!hits.length) hits = rgs.filter(g => {
-        const t = norm(g.title);
-        if (!t || !want) return false;
-        const short = t.length <= want.length ? t : want;
-        const long = t.length <= want.length ? want : t;
-        return short.length >= 6 && long.includes(short);
-      });
+      if (!hits.length) hits = rgs.filter(g => fuzzyTitleMatch(norm(g.title), want));
       const src = srcOf.get(`${artist}::${title}`) ?? '?';
       if (hits.length === 1) {
         matched++;
