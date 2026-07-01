@@ -207,6 +207,9 @@ class ChartsViewModel {
             group.addTask { await self.loadTrendingSongs() }
         }
         isLoading = false
+        let prefetchUrls = (topRated + mostRated + trendingGlobal + trendingForYou)
+            .compactMap { URL(string: $0.coverUrl?.thumbnailUrl ?? "") }
+        ImageCache.prefetch(prefetchUrls)
     }
 
     // MARK: Loaders
@@ -700,6 +703,8 @@ private struct RankingBlock: View {
                        ratingCount: $0.ratingCount, newCount: nil)
         }
         isLoading = false
+        let prefetchUrls = entries.compactMap { URL(string: $0.coverUrl?.thumbnailUrl ?? "") }
+        ImageCache.prefetch(prefetchUrls)
     }
 
     // MARK: Collapsed — 3-album teaser
@@ -1018,6 +1023,8 @@ struct RankingDetailView: View {
                        ratingCount: $0.ratingCount, newCount: nil)
         }
         isLoading = false
+        let prefetchUrls = entries.compactMap { URL(string: $0.coverUrl?.thumbnailUrl ?? "") }
+        ImageCache.prefetch(prefetchUrls)
     }
 }
 

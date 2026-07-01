@@ -19,6 +19,8 @@
     "seed:external:dry": "tsx --env-file=.env.local scripts/seed-external-scores.ts --dry-run",
     "seed:missing": "tsx --env-file=.env.local scripts/seed-missing-artists.ts",
     "seed:missing:dry": "tsx --env-file=.env.local scripts/seed-missing-artists.ts --dry-run",
+    "seed:missing-from-external": "tsx --env-file=.env.local scripts/seed-missing-from-external.ts",
+    "seed:missing-from-external:dry": "tsx --env-file=.env.local scripts/seed-missing-from-external.ts --dry-run",
     "queue:stubs": "tsx --env-file=.env.local scripts/queue-stubs.ts",
     "queue:stubs:dry": "tsx --env-file=.env.local scripts/queue-stubs.ts --dry-run",
     "queue:names": "tsx --env-file=.env.local scripts/queue-by-name.ts",

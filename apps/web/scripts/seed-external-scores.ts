@@ -29,7 +29,7 @@ const YEAR_ARG   = (() => { const i = process.argv.indexOf('--year');   return i
 
 if (!SOURCE_ARG) {
   console.error('Usage: npm run seed:external -- --source <source> [--dry-run] [--year YYYY]');
-  console.error('Available sources: grammy_aoty, grammy_rap, grammy_rnb, grammy_rock, grammy_alternative, grammy_pop_vocal, grammy_dance_electronic, mercury_prize, izm_aoty, mama_aoty, kha_hiphop, kha_rnb, kr_masterpiece_100, kma_aoty, rhythmer_hiphop, rhythmer_rnb, mma_aoty, sma_album, golden_disc_bonsang, golden_disc_daesang, weiv_aoty, pitchfork_perfect, rs500, brit_album');
+  console.error('Available sources: grammy_aoty, grammy_rap, grammy_rnb, grammy_rock, grammy_alternative, grammy_pop_vocal, grammy_dance_electronic, mercury_prize, izm_aoty, mama_aoty, kha_hiphop, kha_rnb, kr_masterpiece_100, kma_aoty, rhythmer_hiphop, rhythmer_rnb, mma_aoty, sma_album, golden_disc_bonsang, golden_disc_daesang, weiv_aoty, pitchfork_perfect, rs500, brit_album, jp_mino_100');
   process.exit(1);
 }
 
@@ -46,6 +46,8 @@ type ExternalEntry = {
   normalizedScore: number;
   rawScore?:       number;
   sourceTier:      number;
+  scopeCountry?:   string;  // 'kr', 'jp', 'uk', etc. null = global
+  scopeGenre?:     string;
   mbid?:           string;  // hardcoded MBID override — skips MB search
 };
 
@@ -58,8 +60,8 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         album:           e.album,
         artist:          e.artist,
         scoreType:       e.won ? 'award_win' : 'award_nomination',
-        normalizedScore: e.won ? 1.0 : 0.35,
-        sourceTier:      3,
+        normalizedScore: e.won ? 0.82 : 0.28,
+        sourceTier:      1,
         mbid:            e.mbid,
       }));
     }
@@ -70,8 +72,8 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         album:           e.album,
         artist:          e.artist,
         scoreType:       e.won ? 'award_win' : 'award_nomination',
-        normalizedScore: e.won ? 1.0 : 0.35,
-        sourceTier:      3,
+        normalizedScore: e.won ? 0.82 : 0.28,
+        sourceTier:      1,
         mbid:            e.mbid,
       }));
     }
@@ -82,8 +84,9 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         album:           e.album,
         artist:          e.artist,
         scoreType:       'list_rank' as const,
-        normalizedScore: 0.8,
-        sourceTier:      2,
+        normalizedScore: 0.70,
+        sourceTier:      1,
+        scopeCountry:    'kr',
         mbid:            e.mbid,
       }));
     }
@@ -94,8 +97,9 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         album:           e.album,
         artist:          e.artist,
         scoreType:       e.won ? 'award_win' : 'award_nomination',
-        normalizedScore: e.won ? 1.0 : 0.35,
+        normalizedScore: e.won ? 0.62 : 0.28,
         sourceTier:      3,
+        scopeCountry:    'kr',
         mbid:            e.mbid,
       }));
     }
@@ -106,8 +110,10 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         album:           e.album,
         artist:          e.artist,
         scoreType:       e.won ? 'award_win' : 'award_nomination',
-        normalizedScore: e.won ? 1.0 : 0.35,
-        sourceTier:      3,
+        normalizedScore: e.won ? 0.72 : 0.28,
+        sourceTier:      2,
+        scopeCountry:    'kr',
+        scopeGenre:      'hip_hop',
         mbid:            e.mbid,
       }));
     }
@@ -118,8 +124,10 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         album:           e.album,
         artist:          e.artist,
         scoreType:       e.won ? 'award_win' : 'award_nomination',
-        normalizedScore: e.won ? 1.0 : 0.35,
-        sourceTier:      3,
+        normalizedScore: e.won ? 0.72 : 0.28,
+        sourceTier:      2,
+        scopeCountry:    'kr',
+        scopeGenre:      'r_n_b',
         mbid:            e.mbid,
       }));
     }
@@ -130,9 +138,10 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         album:           e.album,
         artist:          e.artist,
         scoreType:       'list_rank' as const,
-        normalizedScore: (101 - e.rank) / 100,
+        normalizedScore: (101 - e.rank) / 100 * 0.85,
         rawScore:        e.rank,
-        sourceTier:      2,
+        sourceTier:      1,
+        scopeCountry:    'kr',
         mbid:            e.mbid,
       }));
     }
@@ -143,8 +152,9 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         album:           e.album,
         artist:          e.artist,
         scoreType:       e.won ? 'award_win' : 'award_nomination',
-        normalizedScore: e.won ? 1.0 : 0.35,
+        normalizedScore: e.won ? 0.62 : 0.28,
         sourceTier:      3,
+        scopeCountry:    'kr',
         mbid:            e.mbid,
       }));
     }
@@ -155,9 +165,11 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         album:           e.album,
         artist:          e.artist,
         scoreType:       'list_rank' as const,
-        normalizedScore: (e.total + 1 - e.rank) / e.total,
+        normalizedScore: (e.total + 1 - e.rank) / e.total * 0.75,
         rawScore:        e.rank,
         sourceTier:      2,
+        scopeCountry:    'kr',
+        scopeGenre:      'hip_hop',
         mbid:            e.mbid,
       }));
     }
@@ -168,9 +180,11 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         album:           e.album,
         artist:          e.artist,
         scoreType:       'list_rank' as const,
-        normalizedScore: (e.total + 1 - e.rank) / e.total,
+        normalizedScore: (e.total + 1 - e.rank) / e.total * 0.75,
         rawScore:        e.rank,
         sourceTier:      2,
+        scopeCountry:    'kr',
+        scopeGenre:      'r_n_b',
         mbid:            e.mbid,
       }));
     }
@@ -181,8 +195,9 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         album:           e.album,
         artist:          e.artist,
         scoreType:       'award_win' as const,
-        normalizedScore: 1.0,
+        normalizedScore: 0.62,
         sourceTier:      3,
+        scopeCountry:    'kr',
         mbid:            e.mbid,
       }));
     }
@@ -193,8 +208,9 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         album:           e.album,
         artist:          e.artist,
         scoreType:       'award_win' as const,
-        normalizedScore: 1.0,
+        normalizedScore: 0.62,
         sourceTier:      3,
+        scopeCountry:    'kr',
         mbid:            e.mbid,
       }));
     }
@@ -205,8 +221,9 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         album:           e.album,
         artist:          e.artist,
         scoreType:       'award_nomination' as const,
-        normalizedScore: 0.35,
+        normalizedScore: 0.28,
         sourceTier:      3,
+        scopeCountry:    'kr',
         mbid:            e.mbid,
       }));
     }
@@ -217,8 +234,9 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         album:           e.album,
         artist:          e.artist,
         scoreType:       'award_win' as const,
-        normalizedScore: 1.0,
+        normalizedScore: 0.62,
         sourceTier:      3,
+        scopeCountry:    'kr',
         mbid:            e.mbid,
       }));
     }
@@ -229,9 +247,10 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         album:           e.album,
         artist:          e.artist,
         scoreType:       'list_rank' as const,
-        normalizedScore: e.rank === null ? 0.8 : (10 + 1 - e.rank) / 10,
+        normalizedScore: e.rank === null ? 0.75 : Math.min((10 + 1 - e.rank) / 10 * 0.80, 0.75),
         rawScore:        e.rank ?? undefined,
         sourceTier:      2,
+        scopeCountry:    'kr',
         mbid:            e.mbid,
       }));
     }
@@ -242,8 +261,8 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         album:           e.album,
         artist:          e.artist,
         scoreType:       e.won ? 'award_win' : 'award_nomination',
-        normalizedScore: e.won ? 1.0 : 0.35,
-        sourceTier:      3,
+        normalizedScore: e.won ? 0.72 : 0.28,
+        sourceTier:      2,
       }));
     }
     case 'grammy_rnb': {
@@ -253,8 +272,8 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         album:           e.album,
         artist:          e.artist,
         scoreType:       e.won ? 'award_win' : 'award_nomination',
-        normalizedScore: e.won ? 1.0 : 0.35,
-        sourceTier:      3,
+        normalizedScore: e.won ? 0.72 : 0.28,
+        sourceTier:      2,
       }));
     }
     case 'grammy_rock': {
@@ -264,8 +283,8 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         album:           e.album,
         artist:          e.artist,
         scoreType:       e.won ? 'award_win' : 'award_nomination',
-        normalizedScore: e.won ? 1.0 : 0.35,
-        sourceTier:      3,
+        normalizedScore: e.won ? 0.72 : 0.28,
+        sourceTier:      2,
       }));
     }
     case 'grammy_alternative': {
@@ -275,8 +294,8 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         album:           e.album,
         artist:          e.artist,
         scoreType:       e.won ? 'award_win' : 'award_nomination',
-        normalizedScore: e.won ? 1.0 : 0.35,
-        sourceTier:      3,
+        normalizedScore: e.won ? 0.72 : 0.28,
+        sourceTier:      2,
       }));
     }
     case 'grammy_pop_vocal': {
@@ -286,8 +305,8 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         album:           e.album,
         artist:          e.artist,
         scoreType:       e.won ? 'award_win' : 'award_nomination',
-        normalizedScore: e.won ? 1.0 : 0.35,
-        sourceTier:      3,
+        normalizedScore: e.won ? 0.72 : 0.28,
+        sourceTier:      2,
       }));
     }
     case 'grammy_dance_electronic': {
@@ -297,8 +316,8 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         album:           e.album,
         artist:          e.artist,
         scoreType:       e.won ? 'award_win' : 'award_nomination',
-        normalizedScore: e.won ? 1.0 : 0.35,
-        sourceTier:      3,
+        normalizedScore: e.won ? 0.72 : 0.28,
+        sourceTier:      2,
       }));
     }
     case 'pitchfork_perfect': {
@@ -308,7 +327,7 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         album:           e.album,
         artist:          e.artist,
         scoreType:       'list_rank' as const,
-        normalizedScore: 1.0,
+        normalizedScore: 0.75,
         sourceTier:      2,
         mbid:            e.mbid,
       }));
@@ -338,6 +357,20 @@ async function loadEntries(source: string): Promise<ExternalEntry[]> {
         mbid:            e.mbid,
       }));
     }
+    case 'jp_mino_100': {
+      const { JP_MINO_100 } = await import('./data/jp-mino-100');
+      return JP_MINO_100.map(e => ({
+        year:            e.year,
+        album:           e.album,
+        artist:          e.artist,
+        scoreType:       'list_rank' as const,
+        normalizedScore: (101 - e.rank) / 100 * 0.85,
+        rawScore:        e.rank,
+        sourceTier:      2,
+        scopeCountry:    'jp',
+        mbid:            e.mbid,
+      }));
+    }
     default:
       throw new Error(`Unknown source "${source}". Add it to the registry in seed-external-scores.ts`);
   }
@@ -349,7 +382,8 @@ function normalize(s: string): string {
   return s
     .toLowerCase()
     .replace(/[''`]/g, '')
-    .replace(/[^a-z0-9\s가-힣]/g, ' ')
+    // keep Latin, digits, Korean (가-힣), Japanese (hiragana/katakana/kanji)
+    .replace(/[^a-z0-9\s가-힣぀-ゟ゠-ヿ一-鿿㐀-䶿]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -446,6 +480,8 @@ async function main() {
         normalized_score:     entry.normalizedScore,
         score_type:           entry.scoreType,
         source_tier:          entry.sourceTier,
+        scope_country:        entry.scopeCountry ?? null,
+        scope_genre:          entry.scopeGenre ?? null,
         year:                 entry.year,
         mb_release_group_id:  mbid ?? null,
       }, { onConflict: 'album_title,artist,source,year', ignoreDuplicates: true });
@@ -462,8 +498,10 @@ async function main() {
 
     console.log(DRY_RUN ? ' (dry)' : '');
     inserted++;
-    done.add(key);
-    saveState(done);
+    if (!DRY_RUN) {
+      done.add(key);
+      saveState(done);
+    }
   }
 
   console.log(`\nDone. inserted=${inserted} skipped=${skipped} unmatched=${unmatched} failed=${failed}`);
