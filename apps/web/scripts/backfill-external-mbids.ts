@@ -80,9 +80,17 @@ async function main() {
     await sleep(200);
     for (const title of albums) {
       const want = norm(title);
-      // exact first, else a unique suffix/substring match within THIS artist's catalog
+      // exact first, else a unique edition-suffix match within THIS artist's catalog. The substring
+      // path requires the SHORTER title be ≥6 chars, or a short MB title like "BE" spuriously matches
+      // inside a longer external one ("BE" ⊂ "The Most BEautiful Moment…").
       let hits = rgs.filter(g => norm(g.title) === want);
-      if (!hits.length) hits = rgs.filter(g => { const t = norm(g.title); return t && want && (t.includes(want) || want.includes(t)); });
+      if (!hits.length) hits = rgs.filter(g => {
+        const t = norm(g.title);
+        if (!t || !want) return false;
+        const short = t.length <= want.length ? t : want;
+        const long = t.length <= want.length ? want : t;
+        return short.length >= 6 && long.includes(short);
+      });
       const src = srcOf.get(`${artist}::${title}`) ?? '?';
       if (hits.length === 1) {
         matched++;
