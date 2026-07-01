@@ -3,34 +3,22 @@ import Supabase
 
 struct PostRatingOptionsView: View {
     let release: Release
-    var ratingId: UUID?
-    let onDone: () -> Void
+    var continueLabel: String = "Continue"
+    let onContinue: (String?) -> Void
 
     @State private var isAddingComment = false
     @State private var commentText = ""
-    @State private var isSavingComment = false
-    @State private var commentSaved = false
     @State private var showMixPicker = false
 
     var body: some View {
         VStack(spacing: 0) {
             albumHeader
-
             Divider().padding(.vertical, 14)
-
             commentRow
-
             Divider().padding(.horizontal, 20)
-
             listRow
-
             Divider().padding(.horizontal, 20)
-
-            Button("Skip") { onDone() }
-                .font(.system(size: 14))
-                .foregroundStyle(Color.sjMuted)
-                .padding(.top, 16)
-                .padding(.bottom, 28)
+            bottomButtons
         }
         .sheet(isPresented: $showMixPicker) {
             MixPickerView(releaseId: release.id, releaseTitle: release.displayTitle)
@@ -66,23 +54,20 @@ struct PostRatingOptionsView: View {
     private var commentRow: some View {
         VStack(spacing: 0) {
             Button {
-                guard !commentSaved else { return }
                 withAnimation(.easeInOut(duration: 0.2)) { isAddingComment.toggle() }
             } label: {
                 HStack(spacing: 14) {
-                    Image(systemName: commentSaved ? "checkmark.bubble.fill" : "bubble.right")
+                    Image(systemName: "bubble.right")
                         .font(.system(size: 18))
-                        .foregroundStyle(commentSaved ? Color.sjBlue : Color.sjInk)
+                        .foregroundStyle(Color.sjInk)
                         .frame(width: 24)
-                    Text(commentSaved ? "Comment saved" : "Add a comment")
+                    Text("Add a comment")
                         .font(.system(size: 15))
-                        .foregroundStyle(commentSaved ? Color.sjBlue : Color.sjInk)
+                        .foregroundStyle(Color.sjInk)
                     Spacer()
-                    if !commentSaved {
-                        Image(systemName: isAddingComment ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(Color.sjMuted)
-                    }
+                    Image(systemName: isAddingComment ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color.sjMuted)
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 14)
@@ -90,53 +75,28 @@ struct PostRatingOptionsView: View {
             }
             .buttonStyle(.plain)
 
-            if isAddingComment && !commentSaved {
-                VStack(spacing: 10) {
-                    ZStack(alignment: .topLeading) {
-                        if commentText.isEmpty {
-                            Text("What did you think?")
-                                .font(.system(size: 14))
-                                .foregroundStyle(Color.sjMuted)
-                                .padding(.horizontal, 14)
-                                .padding(.top, 12)
-                        }
-                        TextEditor(text: $commentText)
+            if isAddingComment {
+                ZStack(alignment: .topLeading) {
+                    if commentText.isEmpty {
+                        Text("What did you think?")
                             .font(.system(size: 14))
-                            .foregroundStyle(Color.sjInk)
-                            .scrollContentBackground(.hidden)
-                            .frame(minHeight: 80, maxHeight: 120)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 8)
+                            .foregroundStyle(Color.sjMuted)
+                            .padding(.horizontal, 14)
+                            .padding(.top, 12)
                     }
-                    .background(Color.sjSurface)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.sjBorder, lineWidth: 1))
-                    .padding(.horizontal, 20)
-
-                    Button {
-                        Task { await saveComment() }
-                    } label: {
-                        Group {
-                            if isSavingComment {
-                                ProgressView().scaleEffect(0.8).tint(.white)
-                            } else {
-                                Text("Save Comment")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(.white)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(
-                            commentText.trimmingCharacters(in: .whitespaces).isEmpty
-                                ? Color.sjBorder : Color.sjBlue
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
-                    .disabled(commentText.trimmingCharacters(in: .whitespaces).isEmpty || isSavingComment)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 12)
+                    TextEditor(text: $commentText)
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.sjInk)
+                        .scrollContentBackground(.hidden)
+                        .frame(minHeight: 80, maxHeight: 120)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
                 }
+                .background(Color.sjSurface)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.sjBorder, lineWidth: 1))
+                .padding(.horizontal, 20)
+                .padding(.bottom, 12)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
@@ -166,26 +126,30 @@ struct PostRatingOptionsView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: Save
+    // MARK: Bottom buttons
 
-    private func saveComment() async {
-        guard let rid = ratingId else { return }
-        let text = commentText.trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty else { return }
+    private var bottomButtons: some View {
+        VStack(spacing: 8) {
+            Button {
+                let text = commentText.trimmingCharacters(in: .whitespaces)
+                onContinue(text.isEmpty ? nil : text)
+            } label: {
+                Text(continueLabel)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                    .background(Color.sjBlue)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
 
-        isSavingComment = true
-        struct Update: Encodable {
-            let reviewText: String
-            enum CodingKeys: String, CodingKey { case reviewText = "review_text" }
+            Button("Skip") { onContinue(nil) }
+                .font(.system(size: 14))
+                .foregroundStyle(Color.sjMuted)
         }
-        try? await supabase.from("ratings")
-            .update(Update(reviewText: text))
-            .eq("id", value: rid)
-            .execute()
-        isSavingComment = false
-        withAnimation(.easeInOut(duration: 0.2)) {
-            commentSaved = true
-            isAddingComment = false
-        }
+        .padding(.horizontal, 20)
+        .padding(.top, 16)
+        .padding(.bottom, 28)
     }
 }

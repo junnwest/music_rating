@@ -15,12 +15,16 @@ struct UserRating: Codable, Identifiable {
     let id: UUID
     let score: Double?
     let eloScore: Double?
+    let reviewText: String?
+    let createdAt: Date
     let releases: ReleaseRef
 
     enum CodingKeys: String, CodingKey {
         case id, score
-        case releases = "release_groups"
-        case eloScore = "elo_score"
+        case releases   = "release_groups"
+        case eloScore   = "elo_score"
+        case reviewText = "review_text"
+        case createdAt  = "created_at"
     }
 }
 
@@ -58,6 +62,15 @@ struct ReleaseRef: Codable, Identifiable {
         case artist      = "artist_display"
         case coverUrl    = "cover_url"
         case releaseType = "release_group_type"
+    }
+
+    var typeLabel: String {
+        switch releaseType?.lowercased() {
+        case "album":  return "Album"
+        case "single": return "Single"
+        case "ep":     return "EP"
+        default:       return "Release"
+        }
     }
 
     var asRelease: Release {
@@ -152,6 +165,9 @@ class ProfileViewModel {
         }
     }
 
+    var likeCounts:    [UUID: Int] = [:]
+    var commentCounts: [UUID: Int] = [:]
+
     var followingCount = 0
     var followerCount  = 0
 
@@ -171,12 +187,35 @@ class ProfileViewModel {
 
         ratings = (try? await supabase
             .from("ratings")
-            .select("id, score, elo_score, release_groups(id, title, artist_display, cover_url, release_group_type)")
+            .select("id, score, elo_score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type)")
             .eq("user_id", value: user.id)
             .order("created_at", ascending: false)
             .limit(60)
             .execute()
             .value) ?? []
+
+        // Fetch like + comment counts for the posts display mode
+        let ratingIds = ratings.map(\.id.uuidString)
+        if !ratingIds.isEmpty {
+            struct RatingIdRow: Codable {
+                let ratingId: UUID
+                enum CodingKeys: String, CodingKey { case ratingId = "rating_id" }
+            }
+            if let rows: [RatingIdRow] = try? await supabase
+                .from("rating_likes").select("rating_id")
+                .in("rating_id", values: ratingIds).execute().value {
+                var counts: [UUID: Int] = [:]
+                for r in rows { counts[r.ratingId, default: 0] += 1 }
+                likeCounts = counts
+            }
+            if let rows: [RatingIdRow] = try? await supabase
+                .from("rating_comments").select("rating_id")
+                .in("rating_id", values: ratingIds).execute().value {
+                var counts: [UUID: Int] = [:]
+                for r in rows { counts[r.ratingId, default: 0] += 1 }
+                commentCounts = counts
+            }
+        }
 
         // Song ratings — Step 1: recording_id + score + recording title/artist
         struct TrackRatingNew: Codable {
@@ -296,6 +335,10 @@ enum RatingTypeFilter: String, CaseIterable {
     case songs  = "Songs"
 }
 
+enum RatingDisplayMode {
+    case list, posts
+}
+
 // Unified item type for the rated list (albums + songs together)
 enum ProfileRatedItem: Identifiable {
     case album(UserRating)
@@ -356,8 +399,9 @@ struct ProfileView: View {
     @State private var showUserSearch     = false
     @State private var followModalInitTab: FollowMode = .following
     @State private var mixLibVM           = MixLibraryViewModel()
-    @State private var ratingSortOrder:   RatingSortOrder = .recent
-    @State private var ratingTypeFilter:  RatingTypeFilter = .all
+    @State private var ratingSortOrder:    RatingSortOrder = .recent
+    @State private var ratingTypeFilter:   RatingTypeFilter = .all
+    @State private var ratingDisplayMode:  RatingDisplayMode = .list
 
     var body: some View {
         NavigationStack {
@@ -616,7 +660,7 @@ struct ProfileView: View {
             .padding(.top, 60)
         } else {
             LazyVStack(spacing: 0) {
-                // Type filter tabs
+                // Type filter tabs + display mode toggle
                 HStack(spacing: 4) {
                     ForEach(RatingTypeFilter.allCases, id: \.self) { filter in
                         Button {
@@ -631,7 +675,22 @@ struct ProfileView: View {
                         }
                         .buttonStyle(.plain)
                     }
+
                     Spacer()
+
+                    HStack(spacing: 2) {
+                        ForEach([RatingDisplayMode.list, .posts], id: \.self) { mode in
+                            Button { ratingDisplayMode = mode } label: {
+                                Image(systemName: mode == .list ? "list.bullet" : "newspaper")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(ratingDisplayMode == mode ? Color.sjBlue : Color.sjMuted)
+                                    .frame(width: 32, height: 28)
+                                    .background(ratingDisplayMode == mode ? Color.sjBlue.opacity(0.1) : Color.clear)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
                 }
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
@@ -674,7 +733,7 @@ struct ProfileView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.top, 40)
-                } else {
+                } else if ratingDisplayMode == .list {
                     ForEach(items) { item in
                         NavigationLink(value: item.asRelease) {
                             RatingListRow(
@@ -690,6 +749,35 @@ struct ProfileView: View {
                         }
                         .buttonStyle(.plain)
                         Divider().padding(.leading, 70)
+                    }
+                } else {
+                    // Posts display — album ratings only
+                    let albumItems = items.filter { !$0.isSong }
+                    if albumItems.isEmpty {
+                        VStack(spacing: 10) {
+                            Image(systemName: "newspaper")
+                                .font(.system(size: 28)).foregroundStyle(Color.sjMuted)
+                            Text("No album ratings yet")
+                                .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                        }
+                        .frame(maxWidth: .infinity).padding(.top, 40)
+                    } else {
+                        ForEach(albumItems) { item in
+                            if case .album(let rating) = item {
+                                NavigationLink(value: rating.releases.asRelease) {
+                                    ProfilePostCard(
+                                        rating: rating,
+                                        likesCount: viewModel.likeCounts[rating.id] ?? 0,
+                                        commentsCount: viewModel.commentCounts[rating.id] ?? 0,
+                                        instinctAlbumCount: viewModel.instinctAlbumCount
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                .padding(.horizontal, 12)
+                                .padding(.top, 8)
+                            }
+                        }
+                        .padding(.bottom, 8)
                     }
                 }
             }
@@ -1397,6 +1485,102 @@ struct UserSearchSheet: View {
                 isSearching = false
             }
         }
+    }
+}
+
+// MARK: - Profile Post Card (posts display mode)
+
+private struct ProfilePostCard: View {
+    let rating: UserRating
+    let likesCount: Int
+    let commentsCount: Int
+    let instinctAlbumCount: Int
+
+    private var displayScore: Double? {
+        if let s = rating.score { return s }
+        if let e = rating.eloScore, instinctAlbumCount >= 5 {
+            return eloToDisplayScore(e)
+        }
+        return nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Album row
+            HStack(spacing: 13) {
+                CoverImage(url: rating.releases.coverUrl)
+                    .frame(width: 72, height: 72)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(rating.releases.title)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Color.sjInk)
+                        .lineLimit(2)
+                    Text("\(rating.releases.typeLabel) · \(rating.releases.artist)")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.sjMuted)
+                        .lineLimit(1)
+                    if let score = displayScore {
+                        HStack(spacing: 5) {
+                            Image("icon-flower")
+                                .renderingMode(.template).resizable().scaledToFit()
+                                .frame(width: 11, height: 11).foregroundStyle(Color.sjAmber)
+                            Text(scoreLabel(score))
+                                .font(.system(size: 13, weight: .bold)).foregroundStyle(Color.sjAmber)
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Color.sjAmber.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .padding(.top, 2)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.sjBorder)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
+
+            // Review text
+            if let text = rating.reviewText, !text.isEmpty {
+                Text(text)
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color.sjInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 10)
+            }
+
+            // Action bar: likes · comments · date
+            HStack(spacing: 14) {
+                HStack(spacing: 5) {
+                    Image(systemName: "heart")
+                        .font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                    Text("\(likesCount)")
+                        .font(.system(size: 13, weight: .medium)).foregroundStyle(Color.sjMuted)
+                }
+                HStack(spacing: 5) {
+                    Image(systemName: "bubble.right")
+                        .font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                    Text("\(commentsCount)")
+                        .font(.system(size: 13, weight: .medium)).foregroundStyle(Color.sjMuted)
+                }
+                Spacer()
+                Text(rating.createdAt.relativeTimeString)
+                    .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+            }
+            .padding(.horizontal, 14)
+            .padding(.bottom, 12)
+        }
+        .background(Color.sjSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 1)
+    }
+
+    private func scoreLabel(_ s: Double) -> String {
+        s.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(s))" : String(format: "%.1f", s)
     }
 }
 

@@ -94,6 +94,7 @@ private class InstinctRatingViewModel {
     private(set) var userRatingsCount = 0
     private(set) var finalScore: Double?
     private(set) var ratingId: UUID? = nil
+    private var pendingReviewText: String? = nil
 
     var currentOpponent: Opponent? {
         let mid = (lo + hi) / 2
@@ -181,7 +182,8 @@ private class InstinctRatingViewModel {
         phase = .postRating
     }
 
-    func continueFromPostRating() async {
+    func continueFromPostRating(reviewText: String?) async {
+        pendingReviewText = reviewText
         if !opponents.isEmpty && lo < hi && totalComparisons > 0 {
             phase = .comparing
         } else {
@@ -287,6 +289,16 @@ private class InstinctRatingViewModel {
                 await writeScore(userId: userId, releaseId: releaseId, score: score)
             }
         }
+        if let text = pendingReviewText, !text.isEmpty, let rid = ratingId {
+            struct Update: Encodable {
+                let reviewText: String
+                enum CodingKeys: String, CodingKey { case reviewText = "review_text" }
+            }
+            try? await supabase.from("ratings")
+                .update(Update(reviewText: text))
+                .eq("id", value: rid)
+                .execute()
+        }
         phase = .done
         NotificationCenter.default.post(name: .ratingChanged, object: nil)
     }
@@ -339,8 +351,7 @@ struct InstinctRatingView: View {
     private var postRatingView: some View {
         PostRatingOptionsView(
             release: release,
-            ratingId: vm.ratingId,
-            onDone: { Task { await vm.continueFromPostRating() } }
+            onContinue: { text in Task { await vm.continueFromPostRating(reviewText: text) } }
         )
     }
 

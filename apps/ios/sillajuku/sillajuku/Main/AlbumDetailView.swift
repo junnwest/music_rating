@@ -445,8 +445,8 @@ struct ManualRatingSheet: View {
             } else {
                 PostRatingOptionsView(
                     release: release,
-                    ratingId: ratingId,
-                    onDone: { dismiss() }
+                    continueLabel: "Done",
+                    onContinue: { text in Task { await saveReviewAndDismiss(text: text) } }
                 )
             }
         }
@@ -543,6 +543,20 @@ struct ManualRatingSheet: View {
         }
         withAnimation { sheetDetent = .medium }
         phase = .postRating
+    }
+
+    private func saveReviewAndDismiss(text: String?) async {
+        if let text, let rid = ratingId {
+            struct Update: Encodable {
+                let reviewText: String
+                enum CodingKeys: String, CodingKey { case reviewText = "review_text" }
+            }
+            try? await supabase.from("ratings")
+                .update(Update(reviewText: text))
+                .eq("id", value: rid)
+                .execute()
+        }
+        dismiss()
     }
 
     private var scoreLabel: String {
