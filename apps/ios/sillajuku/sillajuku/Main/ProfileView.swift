@@ -171,6 +171,22 @@ class ProfileViewModel {
     var followingCount = 0
     var followerCount  = 0
 
+    func deleteRating(_ item: ProfileRatedItem) async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        switch item {
+        case .album(let r):
+            ratings.removeAll { $0.id == r.id }
+            _ = try? await supabase.from("ratings").delete().eq("id", value: r.id).execute()
+        case .song(let r):
+            songRatings.removeAll { $0.recordingId == r.recordingId }
+            _ = try? await supabase.from("track_ratings")
+                .delete()
+                .eq("user_id", value: userId)
+                .eq("recording_id", value: r.recordingId)
+                .execute()
+        }
+    }
+
     func load() async {
         guard !hasLoaded else { return }
         hasLoaded = true
@@ -748,6 +764,13 @@ struct ProfileView: View {
                             )
                         }
                         .buttonStyle(.plain)
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                Task { await viewModel.deleteRating(item) }
+                            } label: {
+                                Label("Delete Rating", systemImage: "trash")
+                            }
+                        }
                         Divider().padding(.leading, 70)
                     }
                 } else {
@@ -775,6 +798,13 @@ struct ProfileView: View {
                                 .buttonStyle(.plain)
                                 .padding(.horizontal, 12)
                                 .padding(.top, 8)
+                                .contextMenu {
+                                    Button(role: .destructive) {
+                                        Task { await viewModel.deleteRating(item) }
+                                    } label: {
+                                        Label("Delete Rating", systemImage: "trash")
+                                    }
+                                }
                             }
                         }
                         .padding(.bottom, 8)
