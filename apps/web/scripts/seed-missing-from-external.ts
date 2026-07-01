@@ -27,32 +27,40 @@ async function main() {
   const db = getDB();
 
   // ── 1. All MBIDs present in external_scores ─────────────────────────────────
+  // NB: page every fetch — a plain select caps at PostgREST's 1000-row default, which would
+  // silently truncate both sides of the gap (3.2k external rows, 86k release_groups).
   console.log('Fetching external_scores MBIDs…');
-  const { data: extRows, error: extErr } = await db
-    .from('external_scores')
-    .select('mb_release_group_id, album_title, artist, source')
-    .not('mb_release_group_id', 'is', null);
-  if (extErr) { console.error('external_scores query failed:', extErr.message); process.exit(1); }
-
-  // Deduplicate: keep first occurrence per MBID for display purposes.
   const extByMbid = new Map<string, { title: string; artist: string; source: string }>();
-  for (const r of extRows ?? []) {
-    if (!extByMbid.has(r.mb_release_group_id)) {
-      extByMbid.set(r.mb_release_group_id, {
-        title: r.album_title, artist: r.artist, source: r.source,
-      });
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db
+      .from('external_scores')
+      .select('mb_release_group_id, album_title, artist, source')
+      .not('mb_release_group_id', 'is', null)
+      .order('mb_release_group_id').range(from, from + 999);
+    if (error) { console.error('external_scores query failed:', error.message); process.exit(1); }
+    if (!data?.length) break;
+    for (const r of data) {
+      if (!extByMbid.has(r.mb_release_group_id)) {
+        extByMbid.set(r.mb_release_group_id, { title: r.album_title, artist: r.artist, source: r.source });
+      }
     }
+    if (data.length < 1000) break;
   }
   console.log(`  ${extByMbid.size} unique release-group MBIDs in external_scores`);
 
   // ── 2. MBIDs already linked in release_groups ────────────────────────────────
-  const { data: rgRows, error: rgErr } = await db
-    .from('release_groups')
-    .select('mb_release_group_id')
-    .not('mb_release_group_id', 'is', null);
-  if (rgErr) { console.error('release_groups query failed:', rgErr.message); process.exit(1); }
-
-  const inDB = new Set((rgRows ?? []).map(r => r.mb_release_group_id as string));
+  const inDB = new Set<string>();
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db
+      .from('release_groups')
+      .select('mb_release_group_id')
+      .not('mb_release_group_id', 'is', null)
+      .order('mb_release_group_id').range(from, from + 999);
+    if (error) { console.error('release_groups query failed:', error.message); process.exit(1); }
+    if (!data?.length) break;
+    for (const r of data) inDB.add(r.mb_release_group_id as string);
+    if (data.length < 1000) break;
+  }
   console.log(`  ${inDB.size} already linked in release_groups`);
 
   // ── 3. The gap ───────────────────────────────────────────────────────────────
