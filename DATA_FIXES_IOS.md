@@ -1,10 +1,16 @@
 # Data-fix hand-off — iOS work (Mac session)
 
-> **Context (2026-06-30):** A data-quality review surfaced 6 issues. Fixes are split: **Windows** owns the DB
+> **✅ STATUS: DONE (as of 2026-07-01).** All DB contracts below are **live in prod** (migrations
+> `20260630000000` search_normalize, `20260630000001` release_group_artists, `20260701000000`
+> search_misses_queued — all applied). The iOS tasks were **implemented by the Mac in commit `e51f9b9`**
+> and reviewed + fixed on Windows in **`82fdeb7`** (the `.rpc(params:)` calls needed Encodable param
+> structs, not heterogeneous dict literals; the `position` column was quoted; `first_release_date` cast
+> to text). Backend backfills done: covers (2,370), avatars (2,009), collab credits (6,176 albums).
+> **Remaining: build on device + verify the Acceptance checklist below.** The task detail is kept as a record.
+
+> **Original context (2026-06-30):** A data-quality review surfaced 6 issues. Fixes were split: **Windows** owns the DB
 > migrations / RPCs / pipeline / web; **Mac (this doc)** owns the iOS surfaces. The two sides meet at the
-> **DB contracts** defined below. Windows is building those contracts in parallel — until the migration lands,
-> every new `.rpc(...)` call here `try?`-degrades to `[]`, so you can write all of this against the contract now
-> and it lights up the moment Windows pushes the migration. **Nothing here is blocked on Windows.**
+> **DB contracts** defined below.
 >
 > Issues this doc covers on iOS: **#3** Kanye/Ye split, **#2** collab albums under both artists, **#4** search
 > normalization, **#6** artist avatars. (#1 queue + #5 covers are backend-only — no iOS work.)
