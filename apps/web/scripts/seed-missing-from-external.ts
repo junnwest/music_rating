@@ -18,6 +18,7 @@
 
 import { getDB } from './itunes-ingest-core';
 import { getReleaseGroupCredits } from './mb-client';
+import { SPECIAL_MBIDS } from './mb-ingest';
 
 const DRY   = process.argv.includes('--dry-run');
 // Same backdate as seed:missing — lands ahead of the prestige-backfill tail.
@@ -90,6 +91,10 @@ async function main() {
     const primary = credits[0];
     if (!primary?.mbid) {
       console.log('✗ no primary artist MBID in MB');
+      continue;
+    }
+    if (SPECIAL_MBIDS.has(primary.mbid)) {
+      console.log(`✗ special-purpose artist (${primary.name}) — skipped`);
       continue;
     }
 
