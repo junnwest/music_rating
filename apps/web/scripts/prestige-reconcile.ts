@@ -19,15 +19,23 @@ async function main() {
     throw new Error('NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not set');
   }
 
-  console.log('Running reconcile_prestige_scores()…');
-  const { data, error } = await supabase.rpc('reconcile_prestige_scores');
-  if (error) throw new Error(`reconcile failed: ${error.message}`);
+  // reconcile is batched (each call updates ≤batch_limit changed rows) so it stays under the API
+  // gateway timeout regardless of how big the delta is. Loop until a call updates nothing.
+  console.log('Running reconcile_prestige_scores() in batches…');
+  let total = 0, pending = 0, batch = 0, calls = 0;
+  do {
+    const { data, error } = await supabase.rpc('reconcile_prestige_scores', { batch_limit: 300 });
+    if (error) throw new Error(`reconcile failed: ${error.message}`);
+    const row = Array.isArray(data) ? data[0] : data;
+    batch = row?.updated ?? 0;
+    pending = row?.pending ?? 0;
+    total += batch;
+    calls++;
+    if (batch) process.stdout.write(`\r  updated ${total} (batch ${batch}, ${calls} calls)   `);
+  } while (batch > 0);
 
-  const row = Array.isArray(data) ? data[0] : data;
-  console.log(`Done — updated=${row?.updated ?? '?'} pending=${row?.pending ?? '?'}`);
-  if ((row?.pending ?? 0) > 0) {
-    console.log(`${row.pending} entries still have no MBID (pipeline hasn't ingested those artists yet).`);
-  }
+  console.log(`\nDone — updated ${total} release_groups in ${calls} call(s), ${pending} external entries still un-MBID'd.`);
+  if (pending > 0) console.log(`  (${pending} scored albums have no MBID / their artists aren't ingested yet.)`);
 }
 
 main().catch(err => { console.error(err); process.exit(1); });
