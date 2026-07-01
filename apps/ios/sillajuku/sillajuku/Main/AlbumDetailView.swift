@@ -423,7 +423,11 @@ struct ManualRatingSheet: View {
     var ratingStep: Double = 0.5
     let onSave: (Double?) -> Void
 
+    private enum Phase { case rating, postRating }
+    @State private var phase: Phase = .rating
     @State private var draftScore: Double
+    @State private var ratingId: UUID? = nil
+    @State private var sheetDetent: PresentationDetent = .fraction(0.33)
     @Environment(\.dismiss) private var dismiss
 
     init(release: Release, existingScore: Binding<Double?>, ratingStep: Double = 0.5, onSave: @escaping (Double?) -> Void) {
@@ -435,6 +439,23 @@ struct ManualRatingSheet: View {
     }
 
     var body: some View {
+        Group {
+            if phase == .rating {
+                ratingView
+            } else {
+                PostRatingOptionsView(
+                    release: release,
+                    ratingId: ratingId,
+                    onDone: { dismiss() }
+                )
+            }
+        }
+        .presentationBackground(Color.sjCream)
+        .presentationDetents([.fraction(0.33), .medium], selection: $sheetDetent)
+        .presentationDragIndicator(phase == .postRating ? .visible : .hidden)
+    }
+
+    private var ratingView: some View {
         VStack(spacing: 0) {
             RoundedRectangle(cornerRadius: 2)
                 .fill(Color.sjBorder)
@@ -480,8 +501,9 @@ struct ManualRatingSheet: View {
 
                 VStack(spacing: 8) {
                     Button {
-                        onSave(draftScore)
-                        dismiss()
+                        let score = draftScore
+                        onSave(score)
+                        Task { await transitionToPostRating() }
                     } label: {
                         Text("Save Rating")
                             .font(.system(size: 16, weight: .semibold))
@@ -506,9 +528,21 @@ struct ManualRatingSheet: View {
                 .padding(.bottom, 24)
             }
         }
-        .presentationBackground(Color.sjCream)
-        .presentationDetents([.fraction(0.33)])
-        .presentationDragIndicator(.hidden)
+    }
+
+    private func transitionToPostRating() async {
+        if let userId = supabase.auth.currentUser?.id {
+            struct IdRow: Decodable { let id: UUID }
+            ratingId = (try? await supabase.from("ratings")
+                .select("id")
+                .eq("user_id", value: userId)
+                .eq("release_group_id", value: release.id)
+                .single()
+                .execute()
+                .value as IdRow)?.id
+        }
+        withAnimation { sheetDetent = .medium }
+        phase = .postRating
     }
 
     private var scoreLabel: String {

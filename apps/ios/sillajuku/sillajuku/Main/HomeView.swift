@@ -9,6 +9,7 @@ struct FeedItem: Codable, Identifiable {
     let userId: UUID
     let score: Double?
     let eloScore: Double?
+    let reviewText: String?
     let createdAt: Date
     let releases: FeedRelease
     let profiles: FeedProfile?
@@ -22,6 +23,7 @@ struct FeedItem: Codable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id, score, profiles
         case eloScore  = "elo_score"
+        case reviewText = "review_text"
         case releases  = "release_groups"
         case userId    = "user_id"
         case createdAt = "created_at"
@@ -86,7 +88,7 @@ class HomeViewModel {
     private var hasLoadedFollowing = false
 
     private static let feedSelect =
-        "id, user_id, score, elo_score, created_at, release_groups(id, title, artist_display, cover_url, release_group_type), profiles!ratings_user_id_fkey(username, display_name)"
+        "id, user_id, score, elo_score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type), profiles!ratings_user_id_fkey(username, display_name)"
 
     // Personalization signals (populated before explore loads)
     private var followingIds:  Set<UUID>   = []
@@ -774,6 +776,14 @@ private struct FeedCard: View {
         VStack(alignment: .leading, spacing: 0) {
             cardHeader
             albumSection
+            if let text = item.reviewText, !text.isEmpty {
+                Text(text)
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color.sjInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 10)
+            }
             actionBar
         }
         .background(Color.sjSurface)

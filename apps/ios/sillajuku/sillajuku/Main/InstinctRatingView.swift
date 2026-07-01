@@ -75,7 +75,7 @@ private struct Opponent {
 
 @Observable
 private class InstinctRatingViewModel {
-    enum Phase { case bucket, comparing, done }
+    enum Phase { case bucket, postRating, comparing, done }
 
     var phase: Phase = .bucket
     var isSaving = false
@@ -93,6 +93,7 @@ private class InstinctRatingViewModel {
 
     private(set) var userRatingsCount = 0
     private(set) var finalScore: Double?
+    private(set) var ratingId: UUID? = nil
 
     var currentOpponent: Opponent? {
         let mid = (lo + hi) / 2
@@ -167,6 +168,20 @@ private class InstinctRatingViewModel {
                     onConflict: "user_id,release_group_id")
             .execute()
 
+        // Fetch the rating ID so PostRatingOptionsView can save review_text
+        struct IdRow: Decodable { let id: UUID }
+        ratingId = (try? await supabase.from("ratings")
+            .select("id")
+            .eq("user_id", value: userId)
+            .eq("release_group_id", value: releaseId)
+            .single()
+            .execute()
+            .value as IdRow)?.id
+
+        phase = .postRating
+    }
+
+    func continueFromPostRating() async {
         if !opponents.isEmpty && lo < hi && totalComparisons > 0 {
             phase = .comparing
         } else {
@@ -285,10 +300,10 @@ struct InstinctRatingView: View {
     var onDone: (() -> Void)? = nil
     @State private var vm = InstinctRatingViewModel()
     @State private var selectedSide: Bool? = nil
+    @State private var sheetDetent: PresentationDetent = .fraction(0.36)
     @Environment(\.dismiss) private var dismiss
 
     private func close() {
-        // Use parent binding when available — calling both simultaneously can cancel the animation
         if let onDone {
             onDone()
         } else {
@@ -299,18 +314,34 @@ struct InstinctRatingView: View {
     var body: some View {
         ZStack {
             switch vm.phase {
-            case .bucket:    bucketView
-            case .comparing: comparingView
-            case .done:      doneView
+            case .bucket:     bucketView
+            case .postRating: postRatingView
+            case .comparing:  comparingView
+            case .done:       doneView
             }
         }
         .presentationBackground(Color.sjCream)
-        .presentationDetents([.fraction(0.36)])
+        .presentationDetents([.fraction(0.36), .medium], selection: $sheetDetent)
         .presentationDragIndicator(.visible)
+        .onChange(of: vm.phase) { _, newPhase in
+            withAnimation {
+                sheetDetent = newPhase == .postRating ? .medium : .fraction(0.36)
+            }
+        }
         .task {
             guard let userId = supabase.auth.currentUser?.id else { return }
             await vm.start(releaseId: release.id, userId: userId)
         }
+    }
+
+    // MARK: Phase 1.5 — Post-rating options
+
+    private var postRatingView: some View {
+        PostRatingOptionsView(
+            release: release,
+            ratingId: vm.ratingId,
+            onDone: { Task { await vm.continueFromPostRating() } }
+        )
     }
 
     // MARK: Phase 1 — Bucket
