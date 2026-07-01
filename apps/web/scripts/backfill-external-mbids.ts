@@ -20,6 +20,7 @@
  */
 import { getDB, resolveArtist } from './mb-ingest';
 import { browseReleaseGroups } from './mb-client';
+import { OVERRIDES } from './data/external-mbid-overrides';
 
 const args = process.argv.slice(2);
 const DRY = args.includes('--dry-run');
@@ -52,6 +53,20 @@ function regionOfSource(sources: Set<string>): string | null {
 async function main() {
   const db = getDB();
 
+  // ── 0. Apply hand-verified overrides first (no MB call; wins over auto-matching) ──
+  if (OVERRIDES.length) {
+    let ov = 0;
+    for (const o of OVERRIDES) {
+      if (DRY) { console.log(`  [override] ${o.artist} — ${o.album_title} → ${o.mbid}${o.note ? `  (${o.note})` : ''}`); ov++; continue; }
+      const { error, count } = await db.from('external_scores')
+        .update({ mb_release_group_id: o.mbid }, { count: 'exact' })
+        .eq('artist', o.artist).eq('album_title', o.album_title).is('mb_release_group_id', null);
+      if (error) { console.warn(`  ! override ${o.artist} — ${o.album_title}: ${error.message}`); continue; }
+      ov += count ?? 0;
+    }
+    console.log(`[ext-mbids] applied ${ov} override row(s)\n`);
+  }
+
   // Page NULL-MBID rows; group album titles under each distinct artist name.
   const byArtist = new Map<string, Set<string>>();
   const artistSources = new Map<string, Set<string>>();
@@ -73,6 +88,23 @@ async function main() {
   let artists = [...byArtist.keys()];
   if (artists.length > LIMIT) artists = artists.slice(0, LIMIT);
   const albumCount = artists.reduce((n, a) => n + byArtist.get(a)!.size, 0);
+
+  // --suggest: browse each still-unmatched artist and print their albums (title · year · MBID) so
+  // overrides can be filled by picking — e.g. map "이문세 5집" to whichever RG is the 5th by date.
+  // Filter to the canon/masterpiece sources by default (the ones worth hand-curating).
+  if (args.includes('--suggest')) {
+    for (const artist of artists) {
+      const srcs = artistSources.get(artist)!;
+      if (![...srcs].some(s => /masterpiece|mino/.test(s))) continue;
+      const r = await resolveArtist(artist, regionOfSource(srcs)); await sleep(200);
+      console.log(`\n■ ${artist}  (wants: ${[...byArtist.get(artist)!].join(' | ')})`);
+      if (!r.best) { console.log('   (artist unresolved)'); continue; }
+      const rgs = (await browseReleaseGroups(r.best.id)).sort((a, b) => (a.firstReleaseDate ?? '').localeCompare(b.firstReleaseDate ?? '')); await sleep(200);
+      for (const g of rgs) console.log(`   ${(g.firstReleaseDate ?? '????').slice(0, 4)}  ${g.primaryType ?? '?'}  ${g.title}   ${g.id}`);
+    }
+    return;
+  }
+
   console.log(`[ext-mbids] ${artists.length} distinct artists / ${albumCount} albums (resolve→browse)${DRY ? '  [DRY RUN]' : ''}\n`);
 
   let matched = 0, noArtist = 0, noAlbum = 0;
