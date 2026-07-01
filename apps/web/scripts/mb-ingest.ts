@@ -33,6 +33,13 @@ export const SPECIAL_MBIDS = new Set<string>([
 // so we stop attempting credit writes for the rest of the run instead of throwing per RG.
 let creditsTableMissing = false;
 
+// Above this many release-groups an artist is a composer/Various-Artists-tier entity (Mozart has
+// thousands): ingesting them floods the catalog with classical comps and stalls the watchdog.
+export const MAX_INGEST_RGS = 800;
+export class HeavilyFeaturedError extends Error {
+  constructor(message: string) { super(message); this.name = 'HeavilyFeaturedError'; }
+}
+
 // MB release-group primary/secondary types → our `release_group_type` enum.
 export function mbTypeToGroupType(primaryType: string | null, secondaryTypes: string[]): string {
   const s = (secondaryTypes ?? []).map(x => x.toLowerCase());
@@ -411,6 +418,13 @@ export async function ingestArtist(db: DB, mbid: string): Promise<{ artistId: st
   const { id: artistId, isNew } = await findOrCreateArtistByMbid(db, detail);
 
   const rgs = await browseReleaseGroups(mbid);
+
+  // Hard-skip heavily-featured entities (classical composers like Mozart/Bach, prolific producers)
+  // whose thousands of release-groups make the DB-write phase so long the watchdog mistakes it for
+  // a hang, restart-loops, and blocks the whole queue. They're not core catalog artists anyway.
+  if (rgs.length > MAX_INGEST_RGS) {
+    throw new HeavilyFeaturedError(`heavily-featured (${rgs.length} release groups > ${MAX_INGEST_RGS}) — skipping ${detail.name}`);
+  }
 
   // Bulk-fetch ALL editions WITH tracks in pages of 100, then group by release-group —
   // replaces (browseReleases + getReleaseTracks) per RG. ~10–75× fewer MB calls.

@@ -29,7 +29,7 @@
  * cleanly: stale 'processing' rows are reset to 'pending' on startup.
  */
 
-import { getDB, resolveArtist, ingestArtist, nextCheckAt, type DB } from './mb-ingest';
+import { getDB, resolveArtist, ingestArtist, nextCheckAt, HeavilyFeaturedError, type DB } from './mb-ingest';
 import { embedReleaseGroupsBatch, embeddingsEnabled } from './mb-enrich';
 import { listenBrainzTopUp } from './mb-discover';
 import { wikipediaTopUp, REGIONS } from './build-global-queue';
@@ -297,6 +297,12 @@ async function ingestLoop(db: DB) {
         done++; console.log(`→ ${label}  ${res.rgCount} groups, ${res.recCount} recordings${ambig ? ' (ambig)' : ''}`);
       }
     } catch (e) {
+      // Heavily-featured (composer/VA-tier) → skip terminally, don't fail+requeue into a loop.
+      if (e instanceof HeavilyFeaturedError) {
+        await mark(db, row.id, 'skipped', { error: 'heavily_featured' });
+        skipped++; console.log(`skipped (heavily featured)`);
+        continue;
+      }
       await mark(db, row.id, 'failed', { error: (e as Error).message.slice(0, 255) });
       failed++; console.log(`ERROR: ${(e as Error).message}`);
     }
