@@ -146,9 +146,11 @@ export interface MbReleaseGroupResult {
 export async function searchReleaseGroups(title: string, artist: string, limit = 5): Promise<MbReleaseGroupResult[]> {
   const t = title.replace(/(["\\])/g, '\\$1');
   const a = artist.replace(/(["\\])/g, '\\$1');
-  const data = await mbGet(
-    `/release-group?query=${enc(`releasegroup:"${t}" AND artist:"${a}"`)}&limit=${limit}`,
-  );
+  // `artistname` (the artist ENTITY name) not `artist` (the per-release credit): "Another Green
+  // World" is credited to "Eno" but the entity is "Brian Eno", so artist:"Brian Eno" wrongly
+  // returns nothing. Empty artist → title-only (caller verifies the artist in code).
+  const query = a ? `releasegroup:"${t}" AND artistname:"${a}"` : `releasegroup:"${t}"`;
+  const data = await mbGet(`/release-group?query=${enc(query)}&limit=${limit}`);
   return (data?.['release-groups'] ?? []).map((rg: any): MbReleaseGroupResult => ({
     id: rg.id,
     title: rg.title,
