@@ -6,6 +6,34 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-07-01 (Mac) — Delete account fix + post-rating comment flow + profile posts view + delete ratings:**
+
+Four features shipped, all iOS.
+
+**Delete account fix:**
+- Root cause: Vercel silently redirects `sillajuku.com` → `www.sillajuku.com`; iOS `URLSession` drops the `Authorization` header on redirect per HTTP security spec. Fix: `Config.webBaseURL` changed to `https://www.sillajuku.com` — app now hits the canonical domain directly, no redirect.
+- `authGuard.ts` also updated from raw fetch to `supabase.auth.getUser(token)` via SDK (old approach used raw fetch with `sb_publishable_` key format that Supabase no longer validates the same way). Debug logs added to diagnose, removed once confirmed working.
+
+**Post-rating comment + list flow (`ratings.review_text`):**
+- Migration `20260701000001_ratings_review_text.sql` adds `review_text text` to `ratings` — ✅ applied.
+- New `PostRatingOptionsView.swift`: inline expandable comment field (no sub-save button), "Add to a list" opens `MixPickerView`. "Continue" passes text to caller; "Skip" passes nil.
+- Instinct mode (`InstinctRatingView.swift`): new `.postRating` phase after bucket selection. `pendingReviewText` stored in VM, written to DB in `finalize()` alongside the final ELO update. Comment is never saved prematurely.
+- Normal mode (`AlbumDetailView.swift` `ManualRatingSheet`): after save, fetches rating ID, expands sheet to `.medium`, shows `PostRatingOptionsView`. `saveReviewAndDismiss()` writes `review_text` then dismisses (rating already saved).
+- `HomeView.swift` `FeedCard`: shows `review_text` (if non-empty) between the album section and the action bar.
+
+**Profile posts display mode (`ProfileView.swift`):**
+- `RatingDisplayMode` enum (`.list` / `.posts`). Toggle on the right side of the `[All|Albums|Songs]` filter row — `list.bullet` / `newspaper` icons.
+- Posts mode: `ProfilePostCard` — 72px cover, title, type·artist, score chip, review text if set, action bar (♡ likes · 💬 comments · relative date). Backed by bulk-fetched `likeCounts` + `commentCounts` from `rating_likes` / `rating_comments`.
+- `ReleaseRef.typeLabel` computed property added (Album/Single/EP/Release).
+
+**Delete ratings from profile:**
+- `ProfileViewModel.deleteRating(_ item: ProfileRatedItem)`: optimistic local remove + DB delete. Albums: `DELETE FROM ratings WHERE id = r.id`. Songs: `DELETE FROM track_ratings WHERE user_id = userId AND recording_id = r.recordingId`.
+- Long-press context menu ("Delete Rating", destructive) wired to both list-mode rows and posts-mode cards.
+
+**Commits this session:** `fddecec`, `6b33b99`, `20923b5`, `06c3f5d`, `2b5d748`, `ee2122a` — all pushed.
+
+---
+
 **2026-06-30 (Windows) — Data-quality review + iOS hand-off:**
 
 Investigated 6 reported catalog/UX gaps directly against prod (read-only query scripts, since removed). Findings:
