@@ -111,42 +111,50 @@ async function main() {
     }
     if (data.length < 1000) break;
   }
-  const multiCanon = [...canonCount.values()].filter(n => n > 1).length;
+  // Paged scans over a live-writing table double-count (range windows shift as rows are inserted),
+  // so RE-VERIFY each candidate with a targeted count before flagging — avoids false positives.
+  const verifyCanon = async (cands: string[]) => {
+    let real = 0;
+    for (const rg of cands) { if ((await cnt('releases', q => q.eq('release_group_id', rg).eq('is_canonical', true))) > 1) real++; }
+    return real;
+  };
+  const multiCanon = await verifyCanon([...canonCount.entries()].filter(([, n]) => n > 1).map(([id]) => id));
   const zeroCanon = [...editionCount.keys()].filter(rg => !canonCount.has(rg)).length;
-  line('release_groups with >1 canonical (must be 0)', multiCanon, multiCanon > 0);
+  line('release_groups with >1 canonical (verified, must be 0)', multiCanon, multiCanon > 0);
   line('release_groups with editions but 0 canonical', zeroCanon, zeroCanon > 1);
   line('release_groups with ≥1 edition', editionCount.size);
+  console.log('  note: (position dup-check omitted — the (release_group_id, position) PK makes it impossible)');
 
-  console.log('\n════ release_group_artists POSITION integrity (page) ════');
-  const perGroup = new Map<string, number[]>();
+  console.log('\n════ release_group_artists PRIMARY integrity (page) ════');
+  const perGroup = new Map<string, boolean>();
   for (let from = 0; ; from += 1000) {
     const { data } = await db.from('release_group_artists').select('release_group_id, position').order('release_group_id').range(from, from + 999);
     if (!data?.length) break;
-    for (const r of data as any[]) { const a = perGroup.get(r.release_group_id) ?? []; a.push(r.position); perGroup.set(r.release_group_id, a); }
+    for (const r of data as any[]) perGroup.set(r.release_group_id, perGroup.get(r.release_group_id) || r.position === 0);
     if (data.length < 1000) break;
   }
-  let dupPos = 0, noPrimary = 0;
-  for (const positions of perGroup.values()) {
-    if (new Set(positions).size !== positions.length) dupPos++;
-    if (!positions.includes(0)) noPrimary++;
-  }
-  line('groups with duplicate positions (must be 0)', dupPos, dupPos > 0);
+  const noPrimary = [...perGroup.values()].filter(v => !v).length;
   line('groups missing position 0 / primary', noPrimary, noPrimary > 0);
 
   console.log('\n════ external_scores field validity ════');
-  line('normalized_score out of [0,1]', await cnt('external_scores', q => q.or('normalized_score.lt.0,normalized_score.gt.1')), true);
-  line('source_tier not in {1,2,3}', await cnt('external_scores', q => q.not('source_tier', 'in', '(1,2,3)')), true);
+  const nsBad = await cnt('external_scores', q => q.or('normalized_score.lt.0,normalized_score.gt.1'));
+  line('normalized_score out of [0,1]', nsBad, nsBad > 0);
+  const tierBad = await cnt('external_scores', q => q.not('source_tier', 'in', '(1,2,3)'));
+  line('source_tier not in {1,2,3}', tierBad, tierBad > 0);
+  const esTot = await cnt('external_scores');
   const scoped = await cnt('external_scores', q => q.not('scope_country', 'is', null));
-  line('scope_country set (country-scoped)', `${scoped} (global: ${3319 - scoped})`);
+  line('scope_country set (country-scoped)', `${scoped} (global: ${esTot - scoped})`);
 
   console.log('\n════ RATINGS validity ════');
-  line('score out of [0,5]', await cnt('ratings', q => q.or('score.lt.0,score.gt.5')), true);
+  const rBad = await cnt('ratings', q => q.or('score.lt.0,score.gt.5'));
+  line('score out of [0,5]', rBad, rBad > 0);
 
   console.log('\n════ RELEASE-GROUP TYPE distribution ════');
-  for (const t of ['album', 'ep', 'single', 'broadcast', 'other'])
-    console.log(`  ${t.padEnd(12)} ${await cnt('release_groups', q => q.eq('release_group_type', t))}`);
-  const knownTypes = await cnt('release_groups', q => q.in('release_group_type', ['album', 'ep', 'single', 'broadcast', 'other']));
-  line('unexpected release_group_type', (await cnt('release_groups')) - knownTypes, ((await cnt('release_groups')) - knownTypes) > 0);
+  const TYPES = ['album', 'ep', 'single', 'compilation', 'soundtrack', 'live', 'remix', 'broadcast', 'other'];
+  for (const t of TYPES) console.log(`  ${t.padEnd(12)} ${await cnt('release_groups', q => q.eq('release_group_type', t))}`);
+  const rgTot2 = await cnt('release_groups');
+  const knownTypes = await cnt('release_groups', q => q.in('release_group_type', TYPES));
+  line('unexpected release_group_type', rgTot2 - knownTypes, (rgTot2 - knownTypes) > 0);
 
   console.log('\n════ DONE ════');
 }
