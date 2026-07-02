@@ -46,6 +46,15 @@ export async function searchArtists(name: string, limit = 5): Promise<DzArtist[]
   }));
 }
 
+export interface DzAlbumHit { id: number; title: string; cover: string | null; artist: string }
+/** Album search by artist + title (for the cover backfill). cover is the largest available. */
+export async function searchAlbums(artist: string, title: string, limit = 5): Promise<DzAlbumHit[]> {
+  const data = await dz(`/search/album?q=${enc(`artist:"${artist}" album:"${title}"`)}&limit=${limit}`);
+  return (data?.data ?? []).map((a: any): DzAlbumHit => ({
+    id: a.id, title: a.title, cover: a.cover_xl || a.cover_big || a.cover_medium || null, artist: a.artist?.name ?? '',
+  }));
+}
+
 /** The artist's own albums (Deezer's /artist/{id}/albums is already scoped to them). */
 export async function artistAlbums(artistId: number, limit = 100): Promise<DzAlbum[]> {
   const data = await dz(`/artist/${artistId}/albums?limit=${limit}`);
