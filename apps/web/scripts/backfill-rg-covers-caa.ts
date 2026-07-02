@@ -32,13 +32,16 @@ function saveState(s: { done: string[] }) { writeFileSync(STATE, JSON.stringify(
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 /** Returns the stable front-500 release-group URL if CAA has art for this group, else null. */
-async function caaCover(mbid: string): Promise<string | null> {
+// 'filled' = art exists (200); 'none' = confirmed no art (404); 'retry' = throttle/5xx/network —
+// leave it un-done so a later run tries again (never record a throttle as a permanent miss).
+async function caaCover(mbid: string): Promise<{ status: 'filled' | 'none' | 'retry'; url?: string }> {
   const url = `https://coverartarchive.org/release-group/${mbid}/front-500`;
   try {
     const res = await fetch(url, { method: 'GET', redirect: 'follow' });
-    if (res.status === 200) return url; // store the canonical redirecting URL, not the volatile CDN node
-    return null; // 404 = no art in the group
-  } catch { return null; }
+    if (res.status === 200) return { status: 'filled', url };
+    if (res.status === 404) return { status: 'none' };
+    return { status: 'retry' }; // 429/503/5xx
+  } catch { return { status: 'retry' }; }
 }
 
 async function main() {
@@ -67,7 +70,7 @@ async function main() {
   if (rows.length > LIMIT) rows = rows.slice(0, LIMIT);
 
   console.log(`[caa-covers] candidates: ${rows.length} (${types.join('/')})${DRY ? '  [DRY RUN]' : ''}`);
-  let filled = 0, miss = 0, processed = 0;
+  let filled = 0, miss = 0, retry = 0, processed = 0;
 
   // Simple bounded-concurrency worker pool.
   let idx = 0;
@@ -75,26 +78,29 @@ async function main() {
     while (idx < rows.length) {
       const r = rows[idx++];
       await sleep(SPACING_MS);
-      const cover = await caaCover(r.mb_release_group_id);
+      const res = await caaCover(r.mb_release_group_id);
       processed++;
-      if (cover) {
+      if (res.status === 'filled') {
         if (!DRY) {
           const { error } = await db.from('release_groups')
-            .update({ cover_url: cover }).eq('id', r.id).is('cover_url', null);
+            .update({ cover_url: res.url }).eq('id', r.id).is('cover_url', null);
           if (error) { console.warn(`  ! ${r.id}: ${error.message}`); }
-          else filled++;
-        } else filled++;
-      } else miss++;
-      doneSet.add(r.id);
+        }
+        filled++; doneSet.add(r.id);
+      } else if (res.status === 'none') {
+        miss++; doneSet.add(r.id);          // confirmed no CAA art → don't retry via CAA
+      } else {
+        retry++;                            // throttle/error → leave un-done for a later run
+      }
       if (processed % 100 === 0) {
         if (!DRY) saveState({ done: [...doneSet] });
-        console.log(`  ${processed}/${rows.length}  filled=${filled} miss=${miss} (${(100 * filled / processed).toFixed(0)}% hit)`);
+        console.log(`  ${processed}/${rows.length}  filled=${filled} miss=${miss} retry=${retry} (${(100 * filled / processed).toFixed(0)}% hit)`);
       }
     }
   }
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
 
   if (!DRY) saveState({ done: [...doneSet] });
-  console.log(`[caa-covers] DONE — processed ${processed}, filled ${filled}, miss ${miss} (${(100 * filled / Math.max(processed, 1)).toFixed(0)}% hit)`);
+  console.log(`[caa-covers] DONE — processed ${processed}, filled ${filled}, miss ${miss}, retry-later ${retry} (${(100 * filled / Math.max(processed, 1)).toFixed(0)}% hit)`);
 }
 main().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); });
