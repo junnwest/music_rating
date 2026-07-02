@@ -22,41 +22,10 @@ async function releaseByAnyId(
   return q.eq('spotify_id', id).maybeSingle();
 }
 
-export async function saveBasicReleases(albums: AlbumRelease[]): Promise<void> {
-  const supabase = createServerClient();
-  if (!supabase || albums.length === 0) return;
-  const rows = albums
-    .filter(a => a.spotifyId)
-    .map(a => ({
-      spotify_id:        a.spotifyId,
-      title:             a.title,
-      artist:            a.artist,
-      cover_url:         a.coverUrl,
-      release_type:      a.releaseType,
-      release_date:      a.date,
-      canonical_source:  'spotify',
-    }));
-  if (rows.length === 0) return;
-  await supabase.from('releases').upsert(rows, { onConflict: 'spotify_id', ignoreDuplicates: true });
-}
-
-export async function saveItunesReleases(albums: AlbumRelease[]): Promise<void> {
-  const supabase = createServerClient();
-  if (!supabase || albums.length === 0) return;
-  const rows = albums
-    .filter(a => a.itunesId != null)
-    .map(a => ({
-      itunes_id:         a.itunesId,
-      title:             a.title,
-      artist:            a.artist,
-      cover_url:         a.coverUrl,
-      release_type:      a.releaseType,
-      release_date:      a.date,
-      canonical_source:  'itunes',
-    }));
-  if (rows.length === 0) return;
-  await supabase.from('releases').upsert(rows, { onConflict: 'itunes_id', ignoreDuplicates: true });
-}
+// NOTE: saveBasicReleases()/saveItunesReleases() removed (2026-07-02). They persisted bare
+// Spotify/iTunes search hits into `releases` (null release_group_id / null source → catalog
+// orphans). The search route stopped calling them during the renovation; they were dead code and
+// the same leak class as cacheAlbum. Search now returns live results without persisting.
 
 const ALBUM_TTL_DAYS = 30;
 const ARTIST_TTL_DAYS = 7;
@@ -128,34 +97,11 @@ export async function getCachedAlbum(id: string): Promise<SpotifyAlbumDetail | n
   };
 }
 
-export async function cacheAlbum(album: SpotifyAlbumDetail): Promise<string | null> {
-  const supabase = createServerClient();
-  if (!supabase) return null;
-
-  const spotifyId = album.spotifyId ?? album.id;
-  const { data } = await supabase.from('releases').upsert(
-    {
-      spotify_id:      spotifyId,
-      title:           album.title,
-      artist:          album.artist,
-      artist_id:       album.artistId,
-      artists_json:    album.artists,
-      release_date:    album.date,
-      release_type:    album.releaseType,
-      label:           album.label,
-      total_tracks:    album.totalTracks,
-      tracklist:       album.tracks,
-      genres:          album.genres.join(','),
-      cover_url:       album.coverUrl,
-      spotify_url:     album.spotifyUrl,
-      canonical_source: 'spotify',
-      cached_at:       new Date().toISOString(),
-    },
-    { onConflict: 'spotify_id' }
-  ).select('id').single();
-
-  return data?.id ?? null;
-}
+// NOTE: cacheAlbum() was removed (2026-07-02). It persisted a Spotify album into `releases` to get
+// a UUID for the album page, but post-renovation that just created orphan rows (null
+// release_group_id / null source) that can't be rated (ratings key on release_group_id). The album
+// page now renders Spotify-only albums in-memory (getSpotifyAlbum is Redis-cached); they become
+// real, rateable rows when the MB pipeline ingests them.
 
 export async function searchReleasesInDb(query: string, limit = 10): Promise<AlbumRelease[]> {
   return searchReleases(query, null, limit);

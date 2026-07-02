@@ -2,7 +2,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { getSpotifyAlbum } from '../../../../lib/spotify';
-import { getCachedAlbum, cacheAlbum, getBasicRelease, isUUID } from '../../../../lib/dbCache';
+import { getCachedAlbum, getBasicRelease, isUUID } from '../../../../lib/dbCache';
 import { createServerClient } from '../../../../lib/supabaseServer';
 
 export async function generateMetadata({ params }: { params: { mbid: string } }): Promise<Metadata> {
@@ -77,8 +77,12 @@ export default async function AlbumPage({ params }: { params: { mbid: string } }
       if (spotifyId) {
         const fetched = await getSpotifyAlbum(spotifyId);
         if (fetched) {
-          const uuid = await cacheAlbum(fetched);
-          album = { ...fetched, id: uuid ?? fetched.id };
+          // Render in-memory only — do NOT persist. A Spotify-only album has no MB release_group,
+          // so post-renovation it can't be rated anyway; writing a bare `releases` row just created
+          // orphans (null release_group_id / null source). getSpotifyAlbum is Redis-cached, so
+          // repeat views don't burn quota. It becomes a real, rateable album once the MB pipeline
+          // ingests it.
+          album = fetched;
         }
       }
       if (!album) {
