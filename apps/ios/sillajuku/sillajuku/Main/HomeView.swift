@@ -557,7 +557,7 @@ struct HomeView: View {
                     .padding(.bottom, 100)
                 }
                 // Top margin pushes PTR spinner below the floating header
-                .contentMargins(.top, 90, for: .scrollContent)
+                .contentMargins(.top, 52, for: .scrollContent)
                 .refreshable {
                     if isExplore { await viewModel.refreshExplore() }
                     else { await viewModel.refreshFollowing() }
@@ -898,7 +898,7 @@ private struct FeedCard: View {
             }
         }
         .padding(.leading, 14).padding(.trailing, 4)
-        .padding(.top, 12).padding(.bottom, 10)
+        .padding(.top, 10).padding(.bottom, 6)
     }
 
     @ViewBuilder
@@ -949,22 +949,18 @@ private struct FeedCard: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.releases.title)
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(Color.sjInk).lineLimit(2)
 
                     Text("\(item.releases.typeLabel) · \(item.releases.artist)")
-                        .font(.system(size: 13)).foregroundStyle(Color.sjMuted).lineLimit(1)
-
-                    scoreView.padding(.top, 4)
+                        .font(.system(size: 14)).foregroundStyle(Color.sjMuted).lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.sjBorder)
+                scoreView
             }
-            .padding(.horizontal, 14).padding(.bottom, 14)
-            .contentShape(Rectangle())  // makes the full row tappable, including empty space
+            .padding(.horizontal, 14).padding(.bottom, 10)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -1014,7 +1010,7 @@ private struct FeedCard: View {
             // Comment group: icon + count
             HStack(spacing: 5) {
                 Button { activeSheet = .comments } label: {
-                    Image(systemName: "bubble.right")
+                    Image(systemName: "bubble.left")
                         .font(.system(size: 19))
                         .foregroundStyle(Color.sjMuted)
                 }
@@ -1028,7 +1024,7 @@ private struct FeedCard: View {
             Spacer(minLength: 0)
         }
         .padding(.leading, 14)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
     }
 
     private func scoreLabel(_ s: Double) -> String {

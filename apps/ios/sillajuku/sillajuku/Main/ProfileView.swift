@@ -418,6 +418,7 @@ struct ProfileView: View {
     @State private var ratingSortOrder:    RatingSortOrder = .recent
     @State private var ratingTypeFilter:   RatingTypeFilter = .all
     @State private var ratingDisplayMode:  RatingDisplayMode = .list
+    @State private var pendingDeleteItem:  ProfileRatedItem? = nil
 
     var body: some View {
         NavigationStack {
@@ -766,7 +767,7 @@ struct ProfileView: View {
                         .buttonStyle(.plain)
                         .contextMenu {
                             Button(role: .destructive) {
-                                Task { await viewModel.deleteRating(item) }
+                                pendingDeleteItem = item
                             } label: {
                                 Label("Delete Rating", systemImage: "trash")
                             }
@@ -800,7 +801,7 @@ struct ProfileView: View {
                                 .padding(.top, 8)
                                 .contextMenu {
                                     Button(role: .destructive) {
-                                        Task { await viewModel.deleteRating(item) }
+                                        pendingDeleteItem = item
                                     } label: {
                                         Label("Delete Rating", systemImage: "trash")
                                     }
@@ -812,6 +813,24 @@ struct ProfileView: View {
                 }
             }
             .padding(.top, 4)
+            .confirmationDialog(
+                "Delete Rating?",
+                isPresented: Binding(
+                    get: { pendingDeleteItem != nil },
+                    set: { if !$0 { pendingDeleteItem = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    if let item = pendingDeleteItem {
+                        Task { await viewModel.deleteRating(item) }
+                    }
+                    pendingDeleteItem = nil
+                }
+                Button("Cancel", role: .cancel) { pendingDeleteItem = nil }
+            } message: {
+                Text("This will permanently remove this rating.")
+            }
         }
     }
 

@@ -4,6 +4,7 @@ import Supabase
 struct PostRatingOptionsView: View {
     let release: Release
     var continueLabel: String = "Continue"
+    var onBack: (() -> Void)? = nil
     let onContinue: (String?) -> Void
 
     @State private var isAddingComment = false
@@ -13,7 +14,7 @@ struct PostRatingOptionsView: View {
     var body: some View {
         VStack(spacing: 0) {
             albumHeader
-            Divider().padding(.vertical, 14)
+            Divider().padding(.vertical, 10)
             commentRow
             Divider().padding(.horizontal, 20)
             listRow
@@ -32,21 +33,29 @@ struct PostRatingOptionsView: View {
     private var albumHeader: some View {
         HStack(spacing: 12) {
             CoverImage(url: release.coverUrl, cornerRadius: 8)
-                .frame(width: 48, height: 48)
+                .frame(width: 44, height: 44)
             VStack(alignment: .leading, spacing: 2) {
                 Text(release.displayTitle)
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(1)
-                Text(release.displayArtist)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.sjMuted)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(release.typeLabel)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Color.sjBlue)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(Color.sjBlue.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                    Text(release.displayArtist)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.sjMuted)
+                        .lineLimit(1)
+                }
             }
             Spacer()
         }
         .padding(.horizontal, 20)
-        .padding(.top, 20)
+        .padding(.top, 16)
     }
 
     // MARK: Comment row
@@ -58,7 +67,7 @@ struct PostRatingOptionsView: View {
             } label: {
                 HStack(spacing: 14) {
                     Image(systemName: "bubble.right")
-                        .font(.system(size: 18))
+                        .font(.system(size: 17))
                         .foregroundStyle(Color.sjInk)
                         .frame(width: 24)
                     Text("Add a comment")
@@ -70,7 +79,7 @@ struct PostRatingOptionsView: View {
                         .foregroundStyle(Color.sjMuted)
                 }
                 .padding(.horizontal, 20)
-                .padding(.vertical, 14)
+                .padding(.vertical, 12)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -82,21 +91,21 @@ struct PostRatingOptionsView: View {
                             .font(.system(size: 14))
                             .foregroundStyle(Color.sjMuted)
                             .padding(.horizontal, 14)
-                            .padding(.top, 12)
+                            .padding(.top, 10)
                     }
                     TextEditor(text: $commentText)
                         .font(.system(size: 14))
                         .foregroundStyle(Color.sjInk)
                         .scrollContentBackground(.hidden)
-                        .frame(minHeight: 80, maxHeight: 120)
+                        .frame(height: 68)
                         .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 6)
                 }
                 .background(Color.sjSurface)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.sjBorder, lineWidth: 1))
                 .padding(.horizontal, 20)
-                .padding(.bottom, 12)
+                .padding(.bottom, 10)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
@@ -108,7 +117,7 @@ struct PostRatingOptionsView: View {
         Button { showMixPicker = true } label: {
             HStack(spacing: 14) {
                 Image(systemName: "plus.square")
-                    .font(.system(size: 18))
+                    .font(.system(size: 17))
                     .foregroundStyle(Color.sjInk)
                     .frame(width: 24)
                 Text("Add to a list")
@@ -120,7 +129,7 @@ struct PostRatingOptionsView: View {
                     .foregroundStyle(Color.sjMuted)
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 14)
+            .padding(.vertical, 12)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -144,12 +153,18 @@ struct PostRatingOptionsView: View {
             }
             .buttonStyle(.plain)
 
-            Button("Skip") { onContinue(nil) }
-                .font(.system(size: 14))
-                .foregroundStyle(Color.sjMuted)
+            if let onBack {
+                Button {
+                    onBack()
+                } label: {
+                    Text("← Back")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.sjMuted)
+                }
+            }
         }
         .padding(.horizontal, 20)
-        .padding(.top, 16)
-        .padding(.bottom, 28)
+        .padding(.top, 12)
+        .padding(.bottom, 22)
     }
 }

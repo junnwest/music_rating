@@ -105,10 +105,12 @@ class AlbumDetailViewModel {
     var isLoading = true
     var isSaving = false
     var isLoadingInstinctScore = false
+    private(set) var releaseGroupId: UUID?
 
     var isRated: Bool { userScore != nil || userEloScore != nil || isLoadingInstinctScore }
 
     func load(releaseGroupId: UUID) async {
+        self.releaseGroupId = releaseGroupId
         isLoading = true
 
         // These can run immediately in parallel while tracks loads sequentially first
@@ -239,6 +241,18 @@ class AlbumDetailViewModel {
             userEloScore = mine?.eloScore
         }
         isLoadingInstinctScore = false
+    }
+
+    func deleteInstinctRating() async {
+        guard let userId = supabase.auth.currentUser?.id,
+              let rgId = releaseGroupId else { return }
+        userEloScore = nil
+        _ = try? await supabase.from("ratings")
+            .delete()
+            .eq("user_id", value: userId)
+            .eq("release_group_id", value: rgId)
+            .execute()
+        NotificationCenter.default.post(name: .ratingChanged, object: nil)
     }
 
     private func loadRatingMode() async {
@@ -446,6 +460,7 @@ struct ManualRatingSheet: View {
                 PostRatingOptionsView(
                     release: release,
                     continueLabel: "Done",
+                    onBack: { withAnimation { phase = .rating; sheetDetent = .fraction(0.33) } },
                     onContinue: { text in Task { await saveReviewAndDismiss(text: text) } }
                 )
             }
@@ -457,77 +472,66 @@ struct ManualRatingSheet: View {
 
     private var ratingView: some View {
         VStack(spacing: 0) {
-            RoundedRectangle(cornerRadius: 2)
-                .fill(Color.sjBorder)
-                .frame(width: 36, height: 4)
-                .padding(.top, 10)
-                .frame(maxWidth: .infinity)
+            Spacer(minLength: 0)
 
-            VStack(spacing: 0) {
-                Text(release.displayTitle)
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(Color.sjInk)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(1)
-                    .padding(.horizontal, 40)
-                    .padding(.top, 16)
-
-                Text(release.displayArtist)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.sjMuted)
-                    .padding(.top, 2)
-
-                Text(scoreLabel)
-                    .font(.system(size: 36, weight: .bold))
-                    .foregroundStyle(Color.sjBlue)
-                    .monospacedDigit()
-                    .padding(.top, 10)
-
-                Slider(value: $draftScore, in: 0.5...5.0, step: ratingStep)
-                    .tint(Color.sjBlue)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 6)
-                    .sensoryFeedback(.selection, trigger: draftScore)
-
-                HStack {
-                    Text("0.5")
-                    Spacer()
-                    Text("5.0")
-                }
-                .font(.system(size: 10))
-                .foregroundStyle(Color.sjMuted)
-                .padding(.horizontal, 26)
-                .padding(.top, 2)
-
-                VStack(spacing: 8) {
-                    Button {
-                        let score = draftScore
-                        onSave(score)
-                        Task { await transitionToPostRating() }
-                    } label: {
-                        Text("Save Rating")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 13)
-                            .background(Color.sjBlue)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
-
-                    if existingScore != nil {
-                        Button("Remove Rating") {
-                            onSave(nil)
-                            dismiss()
-                        }
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color.sjMuted)
+            HStack(spacing: 12) {
+                CoverImage(url: release.coverUrl, cornerRadius: 8)
+                    .frame(width: 52, height: 52)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(release.displayTitle)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.sjInk).lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(release.typeLabel)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color.sjBlue)
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(Color.sjBlue.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                        Text(release.displayArtist)
+                            .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
                     }
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 12)
-                .padding(.bottom, 24)
+                Spacer()
             }
+            .padding(.horizontal, 20)
+
+            Divider().padding(.vertical, 14)
+
+            Text(scoreLabel)
+                .font(.system(size: 26, weight: .bold))
+                .foregroundStyle(Color.sjBlue).monospacedDigit()
+
+            Slider(value: $draftScore, in: 0.5...5.0, step: ratingStep)
+                .tint(Color.sjBlue)
+                .padding(.horizontal, 24).padding(.top, 8)
+                .sensoryFeedback(.selection, trigger: draftScore)
+
+            HStack { Text("0.5"); Spacer(); Text("5.0") }
+                .font(.system(size: 10)).foregroundStyle(Color.sjMuted)
+                .padding(.horizontal, 26).padding(.top, 2)
+
+            VStack(spacing: 8) {
+                Button {
+                    let score = draftScore
+                    onSave(score)
+                    Task { await transitionToPostRating() }
+                } label: {
+                    Text("Save Rating")
+                        .font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity).padding(.vertical, 13)
+                        .background(Color.sjBlue).clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                if existingScore != nil {
+                    Button("Remove Rating") { onSave(nil); dismiss() }
+                        .font(.system(size: 13)).foregroundStyle(Color.sjMuted)
+                }
+            }
+            .padding(.horizontal, 20).padding(.top, 14)
+
+            Spacer(minLength: 0)
         }
+        .padding(.vertical, 16)
     }
 
     private func transitionToPostRating() async {
@@ -575,6 +579,7 @@ struct AlbumDetailView: View {
     @State private var viewModel = AlbumDetailViewModel()
     @State private var showManualSheet = false
     @State private var showInstinctSheet = false
+    @State private var showDeleteRankingConfirm = false
     @State private var trackRatingTarget: TrackEntry? = nil
     @State private var trackInstinctTarget: TrackEntry? = nil
     @State private var selectedSong: TrackEntry? = nil
@@ -660,7 +665,7 @@ struct AlbumDetailView: View {
             }
         }
         .navigationDestination(item: $selectedSong) { track in
-            SongDetailView(track: track, release: release)
+            SongDetailView(track: track, release: release, ratingMode: viewModel.ratingMode)
         }
         .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
         .navigationDestination(for: UserProfileDestination.self) { dest in
@@ -775,19 +780,24 @@ struct AlbumDetailView: View {
             if let score = viewModel.userScore {
                 // Already rated
                 HStack(spacing: 12) {
-                    StarRatingView(score: score, interactive: false, onRate: { _ in }, starSize: 22)
+                    Button { showManualSheet = true } label: {
+                        HStack(spacing: 8) {
+                            StarRatingView(score: score, interactive: false, onRate: { _ in }, starSize: 22)
 
-                    HStack(spacing: 4) {
-                        Image("icon-flower")
-                            .renderingMode(.template).resizable().scaledToFit()
-                            .frame(width: 12, height: 12).foregroundStyle(Color.sjBlue)
-                        Text(score.truncatingRemainder(dividingBy: 1) == 0
-                             ? "\(Int(score))" : String(format: "%.1f", score))
-                            .font(.system(size: 14, weight: .bold)).foregroundStyle(Color.sjBlue)
+                            HStack(spacing: 4) {
+                                Image("icon-flower")
+                                    .renderingMode(.template).resizable().scaledToFit()
+                                    .frame(width: 12, height: 12).foregroundStyle(Color.sjBlue)
+                                Text(score.truncatingRemainder(dividingBy: 1) == 0
+                                     ? "\(Int(score))" : String(format: "%.1f", score))
+                                    .font(.system(size: 14, weight: .bold)).foregroundStyle(Color.sjBlue)
+                            }
+                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(Color.sjBlue.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
                     }
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(Color.sjBlue.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .buttonStyle(.plain)
 
                     Spacer()
 
@@ -825,16 +835,19 @@ struct AlbumDetailView: View {
             } else if let elo = viewModel.userEloScore {
                 let score = instinctEloToScore(elo)
                 HStack(spacing: 12) {
-                    HStack(spacing: 4) {
-                        Image("icon-flower")
-                            .renderingMode(.template).resizable().scaledToFit()
-                            .frame(width: 14, height: 14).foregroundStyle(Color.sjBlue)
-                        Text(String(format: "%.1f", score))
-                            .font(.system(size: 18, weight: .bold)).foregroundStyle(Color.sjBlue)
+                    Button { showInstinctSheet = true } label: {
+                        HStack(spacing: 4) {
+                            Image("icon-flower")
+                                .renderingMode(.template).resizable().scaledToFit()
+                                .frame(width: 14, height: 14).foregroundStyle(Color.sjBlue)
+                            Text(String(format: "%.1f", score))
+                                .font(.system(size: 18, weight: .bold)).foregroundStyle(Color.sjBlue)
+                        }
+                        .padding(.horizontal, 14).padding(.vertical, 8)
+                        .background(Color.sjBlue.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
-                    .padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(Color.sjBlue.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .buttonStyle(.plain)
 
                     Text("Instinct Score")
                         .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
@@ -844,6 +857,27 @@ struct AlbumDetailView: View {
                     Button("Re-rank") { showInstinctSheet = true }
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color.sjBlue)
+
+                    Button {
+                        showDeleteRankingConfirm = true
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color.sjMuted)
+                    }
+                    .buttonStyle(.plain)
+                    .confirmationDialog(
+                        "Delete Ranking?",
+                        isPresented: $showDeleteRankingConfirm,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Delete", role: .destructive) {
+                            Task { await viewModel.deleteInstinctRating() }
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("This will permanently remove this instinct ranking.")
+                    }
                 }
             } else {
                 Button { showInstinctSheet = true } label: {
@@ -1104,7 +1138,7 @@ private struct TrackRow: View {
             if let onTap {
                 Button(action: onTap) {
                     Text(track.title)
-                        .font(.system(size: 14)).foregroundStyle(Color.sjBlue).lineLimit(1)
+                        .font(.system(size: 14)).foregroundStyle(Color.sjInk).lineLimit(1)
                 }
                 .buttonStyle(.plain)
             } else {
@@ -1169,23 +1203,35 @@ private struct TrackRatingSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            RoundedRectangle(cornerRadius: 2).fill(Color.sjBorder)
-                .frame(width: 36, height: 4).padding(.top, 10).frame(maxWidth: .infinity)
+            Spacer(minLength: 0)
 
-            CoverImage(url: release.coverUrl, cornerRadius: 8)
-                .frame(width: 56, height: 56)
-                .padding(.top, 16)
+            HStack(spacing: 12) {
+                CoverImage(url: release.coverUrl, cornerRadius: 8)
+                    .frame(width: 52, height: 52)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(track.title)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.sjInk).lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text("Song")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color.sjBlue)
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(Color.sjBlue.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                        Text(release.displayArtist)
+                            .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                    }
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 20)
 
-            Text(track.title)
-                .font(.system(size: 15, weight: .bold)).foregroundStyle(Color.sjInk)
-                .multilineTextAlignment(.center).lineLimit(2)
-                .padding(.horizontal, 32).padding(.top, 8)
-            Text(release.displayArtist)
-                .font(.system(size: 12)).foregroundStyle(Color.sjMuted).padding(.top, 2)
+            Divider().padding(.vertical, 14)
 
             Text(scoreLabel)
-                .font(.system(size: 30, weight: .bold)).foregroundStyle(Color.sjBlue)
-                .monospacedDigit().padding(.top, 12)
+                .font(.system(size: 26, weight: .bold))
+                .foregroundStyle(Color.sjBlue).monospacedDigit()
 
             Slider(value: $draftScore, in: 0.5...5.0, step: 0.5)
                 .tint(Color.sjBlue)
@@ -1195,14 +1241,14 @@ private struct TrackRatingSheet: View {
                 .font(.system(size: 10)).foregroundStyle(Color.sjMuted)
                 .padding(.horizontal, 26).padding(.top, 2)
 
-            VStack(spacing: 10) {
+            VStack(spacing: 8) {
                 Button {
                     onSave(track, draftScore)
                     dismiss()
                 } label: {
                     Text("Save Rating")
                         .font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
-                        .frame(maxWidth: .infinity).padding(.vertical, 14)
+                        .frame(maxWidth: .infinity).padding(.vertical, 13)
                         .background(Color.sjBlue).clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 if existingScore != nil {
@@ -1210,8 +1256,11 @@ private struct TrackRatingSheet: View {
                         .font(.system(size: 13)).foregroundStyle(Color.sjMuted)
                 }
             }
-            .padding(.horizontal, 24).padding(.top, 16).padding(.bottom, 24)
+            .padding(.horizontal, 20).padding(.top, 14)
+
+            Spacer(minLength: 0)
         }
+        .padding(.vertical, 16)
         .presentationBackground(Color.sjCream)
         .presentationDetents([.fraction(0.33)])
         .presentationDragIndicator(.visible)
@@ -1223,12 +1272,14 @@ private struct TrackRatingSheet: View {
 struct SongDetailView: View {
     let track: TrackEntry
     let release: Release
+    var ratingMode: String = "manual"
 
     @State private var communityAvg: Double? = nil
     @State private var communityCount: Int = 0
     @State private var userScore: Double? = nil
     @State private var isLoaded = false
     @State private var showRatingSheet = false
+    @State private var showInstinctSheet = false
 
     private var durationString: String {
         guard let ms = track.durationMs, ms > 0 else { return "" }
@@ -1261,6 +1312,9 @@ struct SongDetailView: View {
             TrackRatingSheet(track: track, release: release, existingScore: userScore) { _, score in
                 userScore = score
             }
+        }
+        .sheet(isPresented: $showInstinctSheet) {
+            InstinctTrackRatingView(track: track, release: release, onDone: { showInstinctSheet = false })
         }
     }
 
@@ -1345,7 +1399,10 @@ struct SongDetailView: View {
                         .foregroundStyle(Color.sjBlue)
                 }
             } else {
-                Button { showRatingSheet = true } label: {
+                Button {
+                    if ratingMode == "instinct" { showInstinctSheet = true }
+                    else { showRatingSheet = true }
+                } label: {
                     Text("Rate this track")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Color.sjCream)

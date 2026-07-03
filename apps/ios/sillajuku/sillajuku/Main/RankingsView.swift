@@ -388,10 +388,10 @@ struct ChartsView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         RankingBlock()
                             .padding(.horizontal, 16)
-                            .padding(.bottom, 22)
+                            .padding(.bottom, 30)
 
                         TrendingCard(viewModel: viewModel)
-                            .padding(.bottom, 22)
+                            .padding(.bottom, 30)
 
                         ChartHorizSection(
                             title: "Most Rated",
@@ -399,23 +399,17 @@ struct ChartsView: View {
                             destination: ChartDetailType.mostRated,
                             showScore: false
                         )
-                        .padding(.bottom, 22)
-
-                        GenreScrollSection()
-                            .padding(.bottom, 22)
+                        .padding(.bottom, 30)
 
                         InsightCardRow()
-                            .padding(.bottom, 22)
-
-                        YearScrollSection()
-                            .padding(.bottom, 22)
+                            .padding(.bottom, 30)
 
                         PulseCard(pulse: viewModel.pulse)
                             .padding(.horizontal, 16)
-                            .padding(.bottom, 32)
+                            .padding(.bottom, 40)
                     }
                 }
-                .contentMargins(.top, 54, for: .scrollContent)
+                .contentMargins(.top, 64, for: .scrollContent)
             }
         }
     }
@@ -432,20 +426,20 @@ struct ChartsView: View {
                             entries: viewModel.topRatedSongs,
                             showScore: true
                         )
-                        .padding(.bottom, 22)
+                        .padding(.bottom, 30)
 
                         SongHorizSection(
                             title: "Most Rated",
                             entries: viewModel.mostRatedSongs,
                             showScore: false
                         )
-                        .padding(.bottom, 22)
+                        .padding(.bottom, 30)
 
                         TrendingSongsSection(entries: viewModel.trendingSongs)
-                            .padding(.bottom, 32)
+                            .padding(.bottom, 40)
                     }
                 }
-                .contentMargins(.top, 54, for: .scrollContent)
+                .contentMargins(.top, 64, for: .scrollContent)
             }
         }
     }
@@ -638,8 +632,8 @@ private struct RankingBlock: View {
     @State private var selectedCountry: String? = nil
 
     private let genres    = ["Hip Hop", "K-Pop", "Jazz", "Electronic", "Classical", "Metal", "R&B", "Pop"]
-    private let countries = [("Global", Optional<String>.none), ("🇰🇷 KR", "kr"), ("🇯🇵 JP", "jp"),
-                             ("🇺🇸 US", "us"), ("🇬🇧 UK", "uk"), ("🇫🇷 FR", "fr"), ("🌎 LA", "la")]
+    private let countries = [("Global", Optional<String>.none), ("KR", "kr"), ("JP", "jp"),
+                             ("US", "us"), ("UK", "uk"), ("FR", "fr"), ("LA", "la")]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -910,8 +904,8 @@ struct RankingDetailView: View {
     @State private var selectedCountry: String? = nil
 
     private let genres    = ["Hip Hop", "K-Pop", "Jazz", "Electronic", "Classical", "Metal", "R&B", "Pop"]
-    private let countries = [("Global", Optional<String>.none), ("🇰🇷 KR", "kr"), ("🇯🇵 JP", "jp"),
-                             ("🇺🇸 US", "us"), ("🇬🇧 UK", "uk"), ("🇫🇷 FR", "fr"), ("🌎 LA", "la")]
+    private let countries = [("Global", Optional<String>.none), ("KR", "kr"), ("JP", "jp"),
+                             ("US", "us"), ("UK", "uk"), ("FR", "fr"), ("LA", "la")]
 
     var body: some View {
         ZStack {
@@ -1131,7 +1125,7 @@ private struct TrendingCard: View {
                 .padding(.horizontal, 16)
 
                 NavigationLink(value: ChartDetailType.trending) {
-                    Text("See all")
+                    Text("View all")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Color.sjAmber)
                         .frame(maxWidth: .infinity)
@@ -1217,7 +1211,7 @@ private struct ChartHorizSection: View {
                     .foregroundStyle(Color.sjInk)
                 Spacer()
                 NavigationLink(value: destination) {
-                    Text("See all")
+                    Text("View all")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Color.sjAmber)
                 }
@@ -1648,7 +1642,8 @@ private struct RankedListRow: View {
             Text("\(rank)")
                 .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(Color.sjMuted)
-                .frame(width: 22, alignment: .trailing)
+                .lineLimit(1)
+                .frame(width: 30, alignment: .trailing)
             CoverThumb(url: entry.coverUrl, size: 38, radius: 5)
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.title)

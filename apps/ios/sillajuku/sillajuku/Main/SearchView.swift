@@ -1140,7 +1140,7 @@ struct SearchView: View {
                 Button {
                     expanded?.wrappedValue = true
                 } label: {
-                    Text("See all \(visible.count) songs")
+                    Text("View all \(visible.count) songs")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color.sjAmber)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1200,11 +1200,19 @@ private struct DiscoveryAlbumCard: View {
                 .lineLimit(1)
                 .frame(width: 128, alignment: .leading)
 
-            Text(release.artist)
-                .font(.system(size: 12))
-                .foregroundStyle(Color.sjMuted)
-                .lineLimit(1)
-                .frame(width: 128, alignment: .leading)
+            HStack(spacing: 5) {
+                Text(release.typeLabel)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(Color.sjBlue)
+                    .padding(.horizontal, 4).padding(.vertical, 2)
+                    .background(Color.sjBlue.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                Text(release.artist)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.sjMuted)
+                    .lineLimit(1)
+            }
+            .frame(width: 128, alignment: .leading)
         }
     }
 }
@@ -1222,10 +1230,18 @@ struct SongRow: View {
                 .frame(width: 44, height: 44)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(song.title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.sjInk)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(song.title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.sjInk)
+                        .lineLimit(1)
+                    Text("Song")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(Color.sjBlue)
+                        .padding(.horizontal, 4).padding(.vertical, 2)
+                        .background(Color.sjBlue.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                }
                 Text("\(song.releases.title) · \(song.artists ?? song.releases.artist)")
                     .font(.system(size: 12))
                     .foregroundStyle(Color.sjMuted)

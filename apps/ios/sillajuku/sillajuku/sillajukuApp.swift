@@ -99,7 +99,7 @@ struct RootView: View {
         Group {
             switch appState.authState {
             case .loading:
-                Color.sjCream.ignoresSafeArea()
+                Color.white.ignoresSafeArea()
             case .unauthenticated:
                 AuthView()
             case .onboarding(let provider):

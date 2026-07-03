@@ -6,6 +6,47 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-07-02 (Mac) — iOS UI polish pass (20 items):**
+
+All changes are iOS Swift. No migrations, no web changes.
+
+**Rating modal fixes:**
+- `InstinctRatingView` + `InstinctTrackRatingView`: all phases (bucket, postRating, comparing, done) now stay locked at `.fraction(0.36)` — no size change after first tab. `onChange(of: vm.phase)` forces `sheetDetent = .fraction(0.36)` on every transition.
+- Instinct bucket tap no longer writes to DB. `seedAndContinue()` only sets local Elo state (`newElo`, `newEloGames`). The initial DB upsert + ratingId fetch moved into `continueFromPostRating()` — no rating row exists until the user taps Continue.
+- `ManualRatingSheet.ratingView` + `TrackRatingSheet` redesigned to match instinct modal: horizontal header (52pt cover + VStack(title, type badge, artist)), `Spacer(minLength: 0)` top+bottom for centering, `Divider`, 26pt score — fitting within `.fraction(0.33)`. Removed the manual drag handle widget (system `presentationDragIndicator(.visible)` handles it).
+- Tapping the rated score pill on the album page opens the re-rank/edit modal: instinct score pill → `Button { showInstinctSheet = true }`; manual stars+score → `Button { showManualSheet = true }`.
+- `ManualRatingSheet` back button: `PostRatingOptionsView` has `onBack: (() -> Void)?`; tapping "← Back" returns to the rating phase at `.fraction(0.33)`.
+
+**Song page instinct routing:**
+- `SongDetailView` accepts `var ratingMode: String = "manual"` and routes "Rate this track" to `InstinctTrackRatingView` when `ratingMode == "instinct"`. `AlbumDetailView` passes `viewModel.ratingMode` at the call site.
+
+**Type labels everywhere:**
+- `Release.typeLabel` computed property added to `Release.swift` (Album/EP/Single/Song).
+- Applied to: `DiscoveryAlbumCard` (badge next to artist), `SongRow` ("Song" badge next to title), `InstinctRatingView` + `InstinctTrackRatingView` bucket views, both redesigned manual rating sheets, and `PostRatingOptionsView` album header.
+
+**Home feed:**
+- Title 15→17pt bold, type·artist 13→14pt, score moved to trailing (chevron removed).
+- `contentMargins(.top, 90)` → 52 to close gap between floating Explore/Following header and first post.
+- Post card padding trimmed (cardHeader top 12→10, bottom 10→6; actionBar vertical 8→6; albumSection bottom 14→10).
+
+**Charts + Rankings:**
+- Country filter: flag emojis removed (`"🇰🇷 KR"` → `"KR"` etc.) in `RankingSection` + `RankingDetailView`.
+- Rank "100" line-break fixed: `RankedListRow` frame width 22→30 + `.lineLimit(1)`.
+- "See all" → "View all" throughout `RankingsView`.
+- Empty `GenreScrollSection` + `YearScrollSection` removed from Albums tab (structs kept, unused).
+- Charts breathing room: section bottom padding 22→30, final 32→40, `contentMargins` 54→64 on both tabs.
+
+**Delete confirmations:**
+- `ProfileView`: `pendingDeleteItem: ProfileRatedItem?` drives a `.confirmationDialog` before `viewModel.deleteRating()` fires. Both list-mode and posts-mode long-press menus set `pendingDeleteItem` instead of deleting immediately.
+- `AlbumDetailView`: trash button sets `showDeleteRankingConfirm = true`; `.confirmationDialog` guards the delete.
+
+**Dark mode + visual:**
+- `sjCream` dark: 0.067 → 0.020 (near-pure black #050505). `sjSurface` dark: 0.118 → 0.067 (#111111). `sjBorder` dark: 0.173 → 0.118 (cascaded).
+- `TrackRow` title color: `Color.sjBlue` → `Color.sjInk` (tracklist songs no longer appear blue).
+- Comment icon: `bubble.right` → `bubble.left` (Instagram-style).
+
+---
+
 **2026-07-01 (Mac) — Delete account fix + post-rating comment flow + profile posts view + delete ratings:**
 
 Four features shipped, all iOS.

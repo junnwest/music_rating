@@ -146,12 +146,16 @@ private class InstinctRatingViewModel {
     // MARK: Bucket → seed Elo → maybe compare
 
     func seedAndContinue(bucket: InstinctBucket) async {
-        guard let releaseId, let userId else { return }
-        isSaving = true
-        defer { isSaving = false }
-
         newElo = bucket.seedElo
         newEloGames = 0
+        phase = .postRating
+    }
+
+    func continueFromPostRating(reviewText: String?) async {
+        guard let releaseId, let userId else { return }
+        pendingReviewText = reviewText
+        isSaving = true
+        defer { isSaving = false }
 
         struct RatingUpsert: Encodable {
             let userId: UUID; let releaseGroupId: UUID
@@ -169,7 +173,6 @@ private class InstinctRatingViewModel {
                     onConflict: "user_id,release_group_id")
             .execute()
 
-        // Fetch the rating ID so PostRatingOptionsView can save review_text
         struct IdRow: Decodable { let id: UUID }
         ratingId = (try? await supabase.from("ratings")
             .select("id")
@@ -179,11 +182,6 @@ private class InstinctRatingViewModel {
             .execute()
             .value as IdRow)?.id
 
-        phase = .postRating
-    }
-
-    func continueFromPostRating(reviewText: String?) async {
-        pendingReviewText = reviewText
         if !opponents.isEmpty && lo < hi && totalComparisons > 0 {
             phase = .comparing
         } else {
@@ -335,10 +333,8 @@ struct InstinctRatingView: View {
         .presentationBackground(Color.sjCream)
         .presentationDetents([.fraction(0.36), .medium], selection: $sheetDetent)
         .presentationDragIndicator(.visible)
-        .onChange(of: vm.phase) { _, newPhase in
-            withAnimation {
-                sheetDetent = newPhase == .postRating ? .medium : .fraction(0.36)
-            }
+        .onChange(of: vm.phase) { _, _ in
+            withAnimation { sheetDetent = .fraction(0.36) }
         }
         .task {
             guard let userId = supabase.auth.currentUser?.id else { return }
@@ -351,6 +347,7 @@ struct InstinctRatingView: View {
     private var postRatingView: some View {
         PostRatingOptionsView(
             release: release,
+            onBack: { withAnimation { vm.phase = .bucket; sheetDetent = .fraction(0.36) } },
             onContinue: { text in Task { await vm.continueFromPostRating(reviewText: text) } }
         )
     }
@@ -359,6 +356,8 @@ struct InstinctRatingView: View {
 
     private var bucketView: some View {
         VStack(spacing: 0) {
+            Spacer(minLength: 0)
+
             HStack(spacing: 12) {
                 CoverImage(url: release.coverUrl, cornerRadius: 8)
                     .frame(width: 52, height: 52)
@@ -368,14 +367,21 @@ struct InstinctRatingView: View {
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(Color.sjInk)
                         .lineLimit(2)
-                    Text(release.displayArtist)
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color.sjMuted)
+                    HStack(spacing: 6) {
+                        Text(release.typeLabel)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color.sjBlue)
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(Color.sjBlue.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                        Text(release.displayArtist)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.sjMuted)
+                    }
                 }
                 Spacer()
             }
             .padding(.horizontal, 20)
-            .padding(.top, 20)
 
             Divider().padding(.vertical, 14)
 
@@ -413,8 +419,10 @@ struct InstinctRatingView: View {
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.bottom, 24)
+
+            Spacer(minLength: 0)
         }
+        .padding(.vertical, 16)
     }
 
     // MARK: Phase 2 — Compare
@@ -527,83 +535,83 @@ struct InstinctRatingView: View {
 
     private var doneView: some View {
         VStack(spacing: 0) {
-            VStack(spacing: 8) {
+            HStack(spacing: 14) {
                 ZStack(alignment: .bottomTrailing) {
                     CoverImage(url: release.coverUrl)
-                        .frame(width: 72, height: 72)
+                        .frame(width: 56, height: 56)
 
                     ZStack {
                         Circle()
                             .fill(Color.sjBlue)
-                            .frame(width: 24, height: 24)
+                            .frame(width: 20, height: 20)
                             .overlay(Circle().stroke(Color.sjCream, lineWidth: 2))
                         Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.system(size: 8, weight: .bold))
                             .foregroundStyle(.white)
                     }
-                    .offset(x: 5, y: 5)
+                    .offset(x: 4, y: 4)
                 }
-                .padding(.top, 20)
 
-                Text(release.displayTitle)
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(Color.sjInk)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .padding(.horizontal, 40)
-
-                Text(release.displayArtist)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.sjMuted)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(release.displayTitle)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.sjInk)
+                        .lineLimit(2)
+                    Text(release.displayArtist)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.sjMuted)
+                }
+                Spacer()
             }
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
 
             if let score = vm.finalScore {
-                VStack(spacing: 4) {
-                    HStack(spacing: 6) {
-                        Image("icon-flower")
-                            .renderingMode(.template)
-                            .resizable().scaledToFit()
-                            .frame(width: 16, height: 16)
-                            .foregroundStyle(Color.sjBlue)
-                        Text(String(format: "%.1f", score))
-                            .font(.system(size: 28, weight: .bold))
-                            .foregroundStyle(Color.sjBlue)
-                    }
-                    Text("Instinct Score · #\(vm.userRatingsCount) ranked")
+                HStack(spacing: 6) {
+                    Image("icon-flower")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 14, height: 14)
+                        .foregroundStyle(Color.sjBlue)
+                    Text(String(format: "%.1f", score))
+                        .font(.system(size: 26, weight: .bold))
+                        .foregroundStyle(Color.sjBlue)
+                    Text("· #\(vm.userRatingsCount) ranked")
                         .font(.system(size: 11))
                         .foregroundStyle(Color.sjMuted)
                 }
-                .padding(.horizontal, 28)
-                .padding(.vertical, 16)
+                .padding(.horizontal, 20).padding(.vertical, 12)
+                .frame(maxWidth: .infinity)
                 .background(Color.sjBlue.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-                .padding(.top, 16)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
             } else {
-                VStack(spacing: 6) {
+                VStack(spacing: 4) {
                     Text("Ranked!")
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(Color.sjInk)
                     let needed = max(0, 5 - vm.userRatingsCount)
                     if needed > 0 {
                         Text("Rate \(needed) more to reveal your score.")
-                            .font(.system(size: 13))
+                            .font(.system(size: 12))
                             .foregroundStyle(Color.sjMuted)
                             .multilineTextAlignment(.center)
                     }
                 }
-                .padding(.top, 16)
+                .padding(.top, 12)
             }
 
             Button("Done") { close() }
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
+                .padding(.vertical, 13)
                 .background(Color.sjBlue)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-                .padding(.horizontal, 24)
-                .padding(.top, 20)
-                .padding(.bottom, 24)
+                .padding(.horizontal, 20)
+                .padding(.top, 14)
+                .padding(.bottom, 20)
         }
     }
 }
@@ -612,7 +620,7 @@ struct InstinctRatingView: View {
 
 @Observable
 private class InstinctTrackRatingViewModel {
-    enum Phase { case bucket, comparing, done }
+    enum Phase { case bucket, postRating, comparing, done }
 
     var phase: Phase = .bucket
     var isSaving = false
@@ -628,6 +636,7 @@ private class InstinctTrackRatingViewModel {
     private var userId: UUID?
     private(set) var userRatingsCount = 0
     private(set) var finalScore: Double?
+    private var pendingReviewText: String? = nil
 
     var currentOpponent: TrackOpponent? {
         let mid = (lo + hi) / 2
@@ -681,9 +690,15 @@ private class InstinctTrackRatingViewModel {
     }
 
     func seedAndContinue(bucket: InstinctBucket) async {
+        newElo = bucket.seedElo
+        newEloGames = 0
+        phase = .postRating
+    }
+
+    func continueFromPostRating(reviewText: String?) async {
         guard let recordingId, let userId else { return }
+        pendingReviewText = reviewText
         isSaving = true; defer { isSaving = false }
-        newElo = bucket.seedElo; newEloGames = 0
 
         struct Upsert: Encodable {
             let userId: UUID; let recordingId: UUID; let eloScore: Double; let eloGames: Int
@@ -698,8 +713,11 @@ private class InstinctTrackRatingViewModel {
                     onConflict: "user_id,recording_id")
             .execute()
 
-        if !opponents.isEmpty && lo < hi && totalComparisons > 0 { phase = .comparing }
-        else { await finalize() }
+        if !opponents.isEmpty && lo < hi && totalComparisons > 0 {
+            phase = .comparing
+        } else {
+            await finalize()
+        }
     }
 
     func vote(newTrackWon: Bool) async {
@@ -784,6 +802,7 @@ struct InstinctTrackRatingView: View {
 
     @State private var vm = InstinctTrackRatingViewModel()
     @State private var selectedSide: Bool? = nil
+    @State private var sheetDetent: PresentationDetent = .fraction(0.36)
     @Environment(\.dismiss) private var dismiss
 
     private func close() {
@@ -793,14 +812,18 @@ struct InstinctTrackRatingView: View {
     var body: some View {
         ZStack {
             switch vm.phase {
-            case .bucket:    bucketView
-            case .comparing: comparingView
-            case .done:      doneView
+            case .bucket:     bucketView
+            case .postRating: postRatingView
+            case .comparing:  comparingView
+            case .done:       doneView
             }
         }
         .presentationBackground(Color.sjCream)
-        .presentationDetents([.fraction(0.36)])
+        .presentationDetents([.fraction(0.36), .medium], selection: $sheetDetent)
         .presentationDragIndicator(.visible)
+        .onChange(of: vm.phase) { _, _ in
+            withAnimation { sheetDetent = .fraction(0.36) }
+        }
         .task {
             guard let userId = supabase.auth.currentUser?.id,
                   let recordingId = track.trackId else { return }
@@ -808,10 +831,22 @@ struct InstinctTrackRatingView: View {
         }
     }
 
+    // MARK: Phase 1.5 — Post-rating options
+
+    private var postRatingView: some View {
+        PostRatingOptionsView(
+            release: release,
+            onBack: { withAnimation { vm.phase = .bucket; sheetDetent = .fraction(0.36) } },
+            onContinue: { text in Task { await vm.continueFromPostRating(reviewText: text) } }
+        )
+    }
+
     // MARK: Phase 1 — Bucket
 
     private var bucketView: some View {
         VStack(spacing: 0) {
+            Spacer(minLength: 0)
+
             HStack(spacing: 12) {
                 CoverImage(url: release.coverUrl, cornerRadius: 8)
                     .frame(width: 52, height: 52)
@@ -820,14 +855,21 @@ struct InstinctTrackRatingView: View {
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(Color.sjInk)
                         .lineLimit(2)
-                    Text(release.displayArtist)
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color.sjMuted)
+                    HStack(spacing: 6) {
+                        Text("Song")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color.sjBlue)
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(Color.sjBlue.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                        Text(release.displayArtist)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.sjMuted)
+                    }
                 }
                 Spacer()
             }
             .padding(.horizontal, 20)
-            .padding(.top, 20)
 
             Divider().padding(.vertical, 14)
 
@@ -858,8 +900,11 @@ struct InstinctTrackRatingView: View {
                     .disabled(vm.isSaving)
                 }
             }
-            .padding(.horizontal, 20).padding(.bottom, 24)
+            .padding(.horizontal, 20)
+
+            Spacer(minLength: 0)
         }
+        .padding(.vertical, 16)
     }
 
     // MARK: Phase 2 — Compare

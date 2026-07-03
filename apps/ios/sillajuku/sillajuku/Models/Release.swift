@@ -33,6 +33,14 @@ struct Release: Codable, Identifiable, Hashable {
 
     var displayTitle: String { titleNative ?? title }
     var displayArtist: String { artistNative ?? artist }
+    var typeLabel: String {
+        switch releaseType?.lowercased() {
+        case "album":  return "Album"
+        case "ep":     return "EP"
+        case "single": return "Single"
+        default:       return releaseType?.capitalized ?? "Release"
+        }
+    }
 
     static func == (lhs: Release, rhs: Release) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
