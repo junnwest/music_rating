@@ -7,11 +7,28 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0820E26CDA8338C4AB5B6454 /* ReleaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A468003E574580928A3A4E37 /* ReleaseTests.swift */; };
+		14A8EAF98C01AB9A7116B4E3 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 74D1D19B05F8B6482AC31C56 /* Foundation.framework */; };
 		4C171D722FF8416800419A0A /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 4C171D712FF8416800419A0A /* Sentry */; };
+		605E2AAF15694F458133CFCC /* DateFormattingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64829FFB75985254C5D80F6B /* DateFormattingTests.swift */; };
 		E31DA0FF2FE3906400058EC8 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = E31DA0FE2FE3906400058EC8 /* Supabase */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		C37AF4CCBEBAB74A9AD74D71 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E31DA0E02FE38CEC00058EC8 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E31DA0E72FE38CEC00058EC8;
+			remoteInfo = sillajuku;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
+		0FC5F6B6AF91629FD5D2C92C /* sillajukuTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = sillajukuTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		64829FFB75985254C5D80F6B /* DateFormattingTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DateFormattingTests.swift; sourceTree = "<group>"; };
+		74D1D19B05F8B6482AC31C56 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		A468003E574580928A3A4E37 /* ReleaseTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReleaseTests.swift; sourceTree = "<group>"; };
 		E31DA0E82FE38CEC00058EC8 /* sillajuku.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = sillajuku.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -37,6 +54,14 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		6C10C9F390FE2EF8627F5129 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				14A8EAF98C01AB9A7116B4E3 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		E31DA0E52FE38CEC00058EC8 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -49,12 +74,31 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		0254272B1EBB51A6EC823CDA /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				74D1D19B05F8B6482AC31C56 /* Foundation.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
+		42D28EA71423FFE9FE17C34A /* sillajukuTests */ = {
+			isa = PBXGroup;
+			children = (
+				A468003E574580928A3A4E37 /* ReleaseTests.swift */,
+				64829FFB75985254C5D80F6B /* DateFormattingTests.swift */,
+			);
+			name = sillajukuTests;
+			path = sillajukuTests;
+			sourceTree = "<group>";
+		};
 		E31DA0DF2FE38CEC00058EC8 = {
 			isa = PBXGroup;
 			children = (
 				E31DA0EA2FE38CEC00058EC8 /* sillajuku */,
 				E31DA0FD2FE3906400058EC8 /* Frameworks */,
 				E31DA0E92FE38CEC00058EC8 /* Products */,
+				42D28EA71423FFE9FE17C34A /* sillajukuTests */,
 			);
 			sourceTree = "<group>";
 		};
@@ -62,6 +106,7 @@
 			isa = PBXGroup;
 			children = (
 				E31DA0E82FE38CEC00058EC8 /* sillajuku.app */,
+				0FC5F6B6AF91629FD5D2C92C /* sillajukuTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -69,6 +114,7 @@
 		E31DA0FD2FE3906400058EC8 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				0254272B1EBB51A6EC823CDA /* iOS */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -76,6 +122,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		91CB1801E23055565E90AA8E /* sillajukuTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7F1E0CF32FA47AB0C8BD9132 /* Build configuration list for PBXNativeTarget "sillajukuTests" */;
+			buildPhases = (
+				E80F19D39E4AB2AE213D6093 /* Sources */,
+				6C10C9F390FE2EF8627F5129 /* Frameworks */,
+				80F480935060389E138FE7D1 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C7F64DA12BE92A454C7C0B87 /* PBXTargetDependency */,
+			);
+			name = sillajukuTests;
+			productName = sillajukuTests;
+			productReference = 0FC5F6B6AF91629FD5D2C92C /* sillajukuTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		E31DA0E72FE38CEC00058EC8 /* sillajuku */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = E31DA0F32FE38CEF00058EC8 /* Build configuration list for PBXNativeTarget "sillajuku" */;
@@ -135,11 +199,19 @@
 			projectRoot = "";
 			targets = (
 				E31DA0E72FE38CEC00058EC8 /* sillajuku */,
+				91CB1801E23055565E90AA8E /* sillajukuTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		80F480935060389E138FE7D1 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		E31DA0E62FE38CEC00058EC8 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -157,9 +229,62 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E80F19D39E4AB2AE213D6093 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0820E26CDA8338C4AB5B6454 /* ReleaseTests.swift in Sources */,
+				605E2AAF15694F458133CFCC /* DateFormattingTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		C7F64DA12BE92A454C7C0B87 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = sillajuku;
+			target = E31DA0E72FE38CEC00058EC8 /* sillajuku */;
+			targetProxy = C37AF4CCBEBAB74A9AD74D71 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		25E77EB43A76707D34208CB0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = GGJ5HX3A4M;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sillajuku.app.sillajukuTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/sillajuku.app/sillajuku";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		2AF58F9CBBB6187EEF600049 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = GGJ5HX3A4M;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sillajuku.app.sillajukuTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/sillajuku.app/sillajuku";
+			};
+			name = Debug;
+		};
 		E31DA0F12FE38CEF00058EC8 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -359,6 +484,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		7F1E0CF32FA47AB0C8BD9132 /* Build configuration list for PBXNativeTarget "sillajukuTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				25E77EB43A76707D34208CB0 /* Release */,
+				2AF58F9CBBB6187EEF600049 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		E31DA0E32FE38CEC00058EC8 /* Build configuration list for PBXProject "sillajuku" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

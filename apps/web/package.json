@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "vitest run",
     "ingest": "tsx --env-file=.env.local scripts/ingest-music.ts",
     "ingest:dry": "tsx --env-file=.env.local scripts/ingest-music.ts --dry-run",
     "ingest:retry": "tsx --env-file=.env.local scripts/ingest-music.ts --retry",
@@ -145,6 +146,7 @@
     "eslint": "8.57.0",
     "eslint-config-next": "14.2.35",
     "tsx": "^4.21.0",
-    "typescript": "5.5.4"
+    "typescript": "5.5.4",
+    "vitest": "^4.1.9"
   }
 }

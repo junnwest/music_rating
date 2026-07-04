@@ -28,19 +28,27 @@ jobs:
         working-directory: apps/web
         run: npx tsc --noEmit
 
+      - name: Unit tests
+        working-directory: apps/web
+        run: npx vitest run
+
       - name: Build
         working-directory: apps/web
         run: npx next build
 
   ios:
-    name: iOS (build)
+    name: iOS (build + test)
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build for iOS Simulator
+      # Concrete simulator required for the test action ('generic/platform=iOS
+      # Simulator' only works for a build-only destination). iPhone 16 Pro is a
+      # reasonable default for a recent macOS runner image — adjust the name if
+      # the runner's pre-installed simulator set doesn't include it.
+      - name: Build and run unit tests
         working-directory: apps/ios
         run: |
           xcodebuild -project sillajuku.xcodeproj -scheme sillajuku \
-            -destination 'generic/platform=iOS Simulator' \
-            -quiet build
+            -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+            -quiet test
