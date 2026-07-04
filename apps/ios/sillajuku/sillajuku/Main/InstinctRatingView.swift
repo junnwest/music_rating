@@ -361,6 +361,7 @@ struct InstinctRatingView: View {
             HStack(spacing: 12) {
                 CoverImage(url: release.coverUrl, cornerRadius: 8)
                     .frame(width: 52, height: 52)
+                    .accessibilityHidden(true) // title text below already describes it
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(release.displayTitle)
@@ -505,6 +506,7 @@ struct InstinctRatingView: View {
         VStack(spacing: 6) {
             CoverImage(url: coverUrl, cornerRadius: 8)
                 .frame(width: 74, height: 74)
+                .accessibilityHidden(true) // title/artist text below already describes it
             Text(title)
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(Color.sjInk)
@@ -539,6 +541,7 @@ struct InstinctRatingView: View {
                 ZStack(alignment: .bottomTrailing) {
                     CoverImage(url: release.coverUrl)
                         .frame(width: 56, height: 56)
+                        .accessibilityHidden(true) // title/artist text alongside already describes it
 
                     ZStack {
                         Circle()
@@ -850,6 +853,7 @@ struct InstinctTrackRatingView: View {
             HStack(spacing: 12) {
                 CoverImage(url: release.coverUrl, cornerRadius: 8)
                     .frame(width: 52, height: 52)
+                    .accessibilityHidden(true) // track title text alongside already describes it
                 VStack(alignment: .leading, spacing: 2) {
                     Text(track.title)
                         .font(.system(size: 14, weight: .bold))
@@ -980,11 +984,13 @@ struct InstinctTrackRatingView: View {
         VStack(spacing: 6) {
             if let url = coverUrl {
                 CoverImage(url: url, cornerRadius: 8).frame(width: 74, height: 74)
+                    .accessibilityHidden(true) // title/artist text below already describes it
             } else {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8).fill(Color.sjBorder).frame(width: 74, height: 74)
                     Image(systemName: "music.note").font(.system(size: 28)).foregroundStyle(Color.sjMuted)
                 }
+                .accessibilityHidden(true)
             }
             Text(title)
                 .font(.system(size: 11, weight: .bold)).foregroundStyle(Color.sjInk)
@@ -1013,6 +1019,7 @@ struct InstinctTrackRatingView: View {
             VStack(spacing: 8) {
                 ZStack(alignment: .bottomTrailing) {
                     CoverImage(url: release.coverUrl).frame(width: 72, height: 72)
+                        .accessibilityHidden(true) // track/artist text below already describes it
                     ZStack {
                         Circle().fill(Color.sjBlue).frame(width: 24, height: 24)
                             .overlay(Circle().stroke(Color.sjCream, lineWidth: 2))

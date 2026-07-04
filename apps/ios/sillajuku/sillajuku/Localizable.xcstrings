@@ -2133,6 +2133,216 @@
         }
       }
     },
+    "Add %@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 추가"
+          }
+        }
+      }
+    },
+    "Change profile photo" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로필 사진 변경"
+          }
+        }
+      }
+    },
+    "Send comment" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "댓글 보내기"
+          }
+        }
+      }
+    },
+    "Unread notifications" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "읽지 않은 알림"
+          }
+        }
+      }
+    },
+    "View @%@'s profile" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "@%@ 프로필 보기"
+          }
+        }
+      }
+    },
+    "Your profile" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "내 프로필"
+          }
+        }
+      }
+    },
+    "Unlike" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "좋아요 취소"
+          }
+        }
+      }
+    },
+    "Like" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "좋아요"
+          }
+        }
+      }
+    },
+    "View comments" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "댓글 보기"
+          }
+        }
+      }
+    },
+    "Delete ranking" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "순위 삭제"
+          }
+        }
+      }
+    },
+    "Rate %@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 평가하기"
+          }
+        }
+      }
+    },
+    "Find people" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사람 찾기"
+          }
+        }
+      }
+    },
+    "Lists" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "리스트"
+          }
+        }
+      }
+    },
+    "List view" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "목록 보기"
+          }
+        }
+      }
+    },
+    "Post view" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "게시물 보기"
+          }
+        }
+      }
+    },
+    "Clear search" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "검색어 지우기"
+          }
+        }
+      }
+    },
+    "Rating" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "평점"
+          }
+        }
+      }
+    },
+    "Not rated" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "평가 안 함"
+          }
+        }
+      }
+    },
+    "%.1f out of 5 stars" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "5점 만점에 %.1f점"
+          }
+        }
+      }
+    },
+    "#%d %@ by %@" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$d위 %2$@ · %3$@"
+          }
+        }
+      }
+    },
+    "Your profile photo" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "내 프로필 사진"
+          }
+        }
+      }
+    },
     "rated today" : {
       "localizations" : {
         "ko" : {

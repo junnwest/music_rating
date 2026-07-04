@@ -340,6 +340,7 @@ private struct MixItemRow: View {
         HStack(spacing: 12) {
             CoverImage(url: item.releases.coverUrl, cornerRadius: 8)
                 .frame(width: 50, height: 50)
+                .accessibilityHidden(true) // title/artist text alongside already describes it
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.releases.displayTitle)

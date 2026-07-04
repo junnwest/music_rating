@@ -522,6 +522,7 @@ private struct HorizSongCard: View {
         VStack(alignment: .leading, spacing: 5) {
             ZStack(alignment: .topLeading) {
                 CoverThumb(url: entry.coverUrl, size: 110, radius: 10)
+                    .accessibilityHidden(true) // title/artist text below already describes it
 
                 Text("#\(rank)")
                     .font(.system(size: 9, weight: .black))
@@ -626,6 +627,7 @@ private struct TrendingSongRow: View {
                 .frame(width: 14, alignment: .trailing)
 
             CoverThumb(url: entry.coverUrl, size: 38, radius: 6)
+                .accessibilityHidden(true) // track title text alongside already describes it
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.trackTitle)
@@ -756,6 +758,7 @@ private struct RankingBlock: View {
                             NavigationLink(value: entry.asRelease) {
                                 ZStack(alignment: .topLeading) {
                                     CoverThumb(url: entry.coverUrl, size: itemSize, radius: 8)
+                                        .accessibilityLabel(String(format: String(localized: "#%d %@ by %@"), idx + 1, entry.displayTitle, entry.displayArtist))
                                     Text("#\(idx + 1)")
                                         .font(.system(size: 10, weight: .bold))
                                         .foregroundStyle(.white)
@@ -894,6 +897,7 @@ private struct RankingBlock: View {
                 .monospacedDigit()
 
             CoverThumb(url: entry.coverUrl, size: 44, radius: 8)
+                .accessibilityHidden(true) // title text alongside already describes it
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.displayTitle)
@@ -1201,6 +1205,7 @@ private struct TrendingRow: View {
                 .frame(width: 14, alignment: .trailing)
 
             CoverThumb(url: entry.coverUrl, size: 52, radius: 8)
+                .accessibilityHidden(true) // title text alongside already describes it
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.displayTitle)
@@ -1284,6 +1289,7 @@ private struct HorizAlbumCard: View {
         VStack(alignment: .leading, spacing: 5) {
             ZStack(alignment: .topLeading) {
                 CoverThumb(url: entry.coverUrl, size: 110, radius: 10)
+                    .accessibilityHidden(true) // title/artist text below already describes it
 
                 Text("#\(rank)")
                     .font(.system(size: 9, weight: .black))
@@ -1627,6 +1633,7 @@ private struct PodiumItem: View {
             VStack(spacing: 5) {
                 ZStack(alignment: .topLeading) {
                     CoverThumb(url: entry.coverUrl, size: height, radius: 8)
+                        .accessibilityHidden(true) // title text below already describes it
                     Group {
                         if rank == 1 {
                             Image(systemName: "trophy.fill")
@@ -1681,6 +1688,7 @@ private struct RankedListRow: View {
                 .lineLimit(1)
                 .frame(width: 30, alignment: .trailing)
             CoverThumb(url: entry.coverUrl, size: 38, radius: 5)
+                .accessibilityHidden(true) // title text alongside already describes it
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.displayTitle)
                     .font(.system(size: 12, weight: .semibold))

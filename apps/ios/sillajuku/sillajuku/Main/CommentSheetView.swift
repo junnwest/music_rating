@@ -146,6 +146,7 @@ struct CommentSheetView: View {
                     }
                 }
                 .disabled(isSending)
+                .accessibilityLabel(String(localized: "Send comment"))
             }
         }
         .padding(.horizontal, 16)

@@ -491,6 +491,8 @@ struct HomeView: View {
                 }
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(String(localized: "Notifications"))
+        .accessibilityHint(viewModel.hasUnreadNotifications ? String(localized: "Unread notifications") : "")
     }
 
     private func feedTabButton(_ tab: FeedTab, label: LocalizedStringKey) -> some View {
@@ -718,6 +720,7 @@ private struct SuggestedUserRow: View {
                         }
                     }
                     .frame(width: 44, height: 44).clipShape(Circle())
+                    .accessibilityHidden(true) // name text alongside already describes it
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(user.displayName ?? user.username ?? String(localized: "User"))
@@ -910,6 +913,7 @@ private struct FeedCard: View {
                     .frame(width: 34, height: 34)
                     .contentShape(Rectangle())
             }
+            .accessibilityLabel(String(localized: "More options"))
         }
         .padding(.leading, 14).padding(.trailing, 4)
         .padding(.top, 10).padding(.bottom, 6)
@@ -920,15 +924,20 @@ private struct FeedCard: View {
         let icon = Image(systemName: "person.circle.fill")
             .font(.system(size: 30))
             .foregroundStyle(Color(uiColor: .systemGray3))
+        let handle = item.profiles?.handle
+        let label = handle.map { String(format: String(localized: "View @%@'s profile"), $0) }
+            ?? String(localized: "View profile")
 
         if isOwnPost {
             Button { onOwnProfileTap() } label: { icon }
                 .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "Your profile"))
         } else if let profile = item.profiles {
             NavigationLink(value: UserProfileDestination(userId: item.userId, handle: profile.handle)) {
                 icon
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(label)
         } else {
             icon
         }
@@ -960,6 +969,7 @@ private struct FeedCard: View {
             HStack(spacing: 13) {
                 CoverImage(url: item.releases.coverUrl)
                     .frame(width: 80, height: 80)
+                    .accessibilityHidden(true) // title/artist text alongside already describes it
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.releases.displayTitle)
@@ -1011,6 +1021,7 @@ private struct FeedCard: View {
                 }
                 .buttonStyle(.plain)
                 .animation(.easeInOut(duration: 0.15), value: isLiked)
+                .accessibilityLabel(isLiked ? String(localized: "Unlike") : String(localized: "Like"))
 
                 Button { activeSheet = .likers } label: {
                     Text("\(likesCount)")
@@ -1029,6 +1040,7 @@ private struct FeedCard: View {
                         .foregroundStyle(Color.sjMuted)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "View comments"))
 
                 Text("\(commentsCount)")
                     .font(.system(size: 14, weight: .medium))

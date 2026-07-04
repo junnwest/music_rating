@@ -163,6 +163,7 @@ struct UserProfileView: View {
                 }
             }
             .padding(.top, 24)
+            .accessibilityHidden(true) // name/handle text below already describes it
 
             VStack(spacing: 4) {
                 Text(profile?.displayLabel ?? initialHandle)
@@ -564,6 +565,7 @@ private struct UserRatedItemRow: View {
         HStack(spacing: 12) {
             CoverImage(url: coverUrl, cornerRadius: 8)
                 .frame(width: 54, height: 54)
+                .accessibilityHidden(true) // title text alongside already describes it
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {

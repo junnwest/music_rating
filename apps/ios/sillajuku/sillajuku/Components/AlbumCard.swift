@@ -10,6 +10,9 @@ struct AlbumCard: View {
             ZStack(alignment: .bottomTrailing) {
                 CoverImage(url: release.coverUrl, cornerRadius: 8)
                     .aspectRatio(1, contentMode: .fit)
+                    // Decorative: the title/artist Text below already describes this
+                    // exact release, so a separate label would just repeat it.
+                    .accessibilityHidden(true)
 
                 if isRated {
                     ZStack {
@@ -37,6 +40,7 @@ struct AlbumCard: View {
                     }
                     .buttonStyle(.plain)
                     .padding(6)
+                    .accessibilityLabel(String(format: String(localized: "Add %@"), release.displayTitle))
                 }
             }
 

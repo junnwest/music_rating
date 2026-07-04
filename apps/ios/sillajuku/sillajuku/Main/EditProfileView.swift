@@ -41,6 +41,7 @@ struct EditProfileView: View {
                             }
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel(String(localized: "Change profile photo"))
                         Spacer()
                     }
                     .listRowBackground(Color.clear)

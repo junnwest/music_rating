@@ -34,6 +34,7 @@ struct PostRatingOptionsView: View {
         HStack(spacing: 12) {
             CoverImage(url: release.coverUrl, cornerRadius: 8)
                 .frame(width: 44, height: 44)
+                .accessibilityHidden(true) // title text alongside already describes it
             VStack(alignment: .leading, spacing: 2) {
                 Text(release.displayTitle)
                     .font(.system(size: 14, weight: .bold))

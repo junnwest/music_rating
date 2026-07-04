@@ -108,6 +108,14 @@ enum ProfileTab: CaseIterable {
         case .stats: return "chart.bar.fill"
         }
     }
+
+    var label: String {
+        switch self {
+        case .rated: return String(localized: "Rated")
+        case .lists: return String(localized: "Lists")
+        case .stats: return String(localized: "Stats")
+        }
+    }
 }
 
 // MARK: - Follow model
@@ -524,12 +532,14 @@ struct ProfileView: View {
                         .font(.system(size: 16))
                         .foregroundStyle(Color.sjInk)
                 }
+                .accessibilityLabel(String(localized: "Find people"))
                 Spacer()
                 Button { showSettings = true } label: {
                     Image(systemName: "gearshape")
                         .font(.system(size: 16))
                         .foregroundStyle(Color.sjInk)
                 }
+                .accessibilityLabel(String(localized: "Settings"))
             }
         }
         .padding(.horizontal, 18)
@@ -576,6 +586,7 @@ struct ProfileView: View {
                 defaultAvatar
             }
         }
+        .accessibilityLabel(String(localized: "Your profile photo"))
     }
 
     private var defaultAvatar: some View {
@@ -641,6 +652,7 @@ struct ProfileView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(tab.label)
             }
         }
         .padding(.top, 14)
@@ -718,6 +730,7 @@ struct ProfileView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 6))
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel(mode == .list ? String(localized: "List view") : String(localized: "Post view"))
                         }
                     }
                 }
@@ -1138,6 +1151,7 @@ struct RatingListRow: View {
         HStack(spacing: 12) {
             CoverImage(url: coverUrl, cornerRadius: 6)
                 .frame(width: 46, height: 46)
+                .accessibilityHidden(true) // title text alongside already describes it
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
@@ -1250,6 +1264,7 @@ struct FollowListModal: View {
                                 .foregroundStyle(Color.sjMuted)
                                 .font(.system(size: 14))
                         }
+                        .accessibilityLabel(String(localized: "Clear search"))
                         .buttonStyle(.plain)
                     }
                 }
@@ -1411,6 +1426,7 @@ private struct FollowProfileRow: View {
             }
             .frame(width: 40, height: 40)
             .clipShape(Circle())
+            .accessibilityHidden(true) // name/username text alongside already describes it
 
             VStack(alignment: .leading, spacing: 2) {
                 if let name = profile.displayName, !name.isEmpty {
@@ -1460,6 +1476,7 @@ struct UserSearchSheet: View {
                         Button { query = "" } label: {
                             Image(systemName: "xmark.circle.fill").foregroundStyle(Color.sjMuted)
                         }
+                        .accessibilityLabel(String(localized: "Clear search"))
                     }
                 }
                 .padding(10)
@@ -1571,6 +1588,7 @@ private struct ProfilePostCard: View {
             HStack(spacing: 13) {
                 CoverImage(url: rating.releases.coverUrl)
                     .frame(width: 72, height: 72)
+                    .accessibilityHidden(true) // title/artist text alongside already describes it
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(rating.releases.displayTitle)

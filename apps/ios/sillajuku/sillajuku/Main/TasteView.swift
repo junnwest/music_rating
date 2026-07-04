@@ -418,6 +418,7 @@ private struct TopAlbumCard: View {
         .frame(width: 156, height: 156)
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .shadow(color: .black.opacity(0.4), radius: 20, y: 8)
+        .accessibilityHidden(true) // title/artist text below already describes it
     }
 }
 

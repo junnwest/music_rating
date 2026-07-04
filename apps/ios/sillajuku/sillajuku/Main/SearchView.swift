@@ -625,6 +625,7 @@ struct SearchView: View {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(Color.sjMuted)
                 }
+                .accessibilityLabel(String(localized: "Clear search"))
             }
         }
         .padding(12)
@@ -687,6 +688,7 @@ struct SearchView: View {
                                         }
                                         .frame(width: 44, height: 44)
                                         .clipShape(Circle())
+                                        .accessibilityHidden(true) // name text alongside already describes it
 
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text(artist.name)
@@ -961,6 +963,7 @@ struct SearchView: View {
                             .aspectRatio(contentMode: .fill)
                             .frame(width: 72, height: 72)
                             .clipShape(Circle())
+                            .accessibilityHidden(true) // name text below already describes it
 
                             Text(artist.name)
                                 .font(.system(size: 11, weight: .medium))
@@ -994,6 +997,7 @@ struct SearchView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             CoverImage(url: album.imageUrl)
                                 .frame(width: 112, height: 112)
+                                .accessibilityHidden(true) // name text below already describes it
 
                             Text(album.name)
                                 .font(.system(size: 12, weight: .semibold))
@@ -1045,6 +1049,7 @@ struct SearchView: View {
                             .aspectRatio(contentMode: .fill)
                             .frame(width: 72, height: 72)
                             .clipShape(Circle())
+                            .accessibilityHidden(true) // name text below already describes it
 
                             Text(artist.name)
                                 .font(.system(size: 11, weight: .medium))
@@ -1080,6 +1085,7 @@ struct SearchView: View {
                                 .aspectRatio(contentMode: .fill)
                                 .frame(width: 112, height: 112)
                                 .clipShape(RoundedRectangle(cornerRadius: 6))
+                                .accessibilityHidden(true) // name text below already describes it
 
                             Text(album.name)
                                 .font(.system(size: 12, weight: .semibold))
@@ -1178,6 +1184,7 @@ private struct DiscoveryAlbumCard: View {
             ZStack(alignment: .bottomTrailing) {
                 CoverImage(url: release.coverUrl)
                     .frame(width: 128, height: 128)
+                    .accessibilityHidden(true) // title/artist text below already describes it
 
                 if isRated {
                     ZStack {
@@ -1205,6 +1212,7 @@ private struct DiscoveryAlbumCard: View {
                     }
                     .buttonStyle(.plain)
                     .padding(6)
+                    .accessibilityLabel(String(format: String(localized: "Add %@"), release.title))
                 }
             }
 
@@ -1242,6 +1250,7 @@ struct SongRow: View {
         HStack(spacing: 12) {
             CoverImage(url: song.releases.coverUrl, cornerRadius: 6)
                 .frame(width: 44, height: 44)
+                .accessibilityHidden(true) // title/artist text alongside already describes it
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
@@ -1286,6 +1295,7 @@ struct SongRow: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(String(format: String(localized: "Add %@"), song.title))
             }
         }
         .padding(.horizontal, 16)
@@ -1370,6 +1380,7 @@ struct ArtistPageView: View {
                             .aspectRatio(contentMode: .fill)
                             .frame(width: 56, height: 56)
                             .clipShape(Circle())
+                            .accessibilityHidden(true) // artist name text alongside already describes it
                     }
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Artist")
@@ -1712,6 +1723,7 @@ struct ArtistPageView: View {
             }
             if let r = release {
                 CoverImage(url: r.coverUrl, cornerRadius: 6).frame(width: 36, height: 36)
+                    .accessibilityHidden(true) // title text alongside already describes it
             }
         }
         .padding(.horizontal, 16)
@@ -1813,6 +1825,7 @@ struct ArtistPageView: View {
                             .frame(width: 20)
                         CoverImage(url: release.coverUrl, cornerRadius: 5)
                             .frame(width: 36, height: 36)
+                            .accessibilityHidden(true) // title text alongside already describes it
                         VStack(alignment: .leading, spacing: 2) {
                             Text(release.displayTitle)
                                 .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.sjInk).lineLimit(1)
@@ -1923,6 +1936,7 @@ private struct ArtistSongRow: View {
         HStack(spacing: 12) {
             CoverImage(url: song.albumCoverUrl, cornerRadius: 6)
                 .frame(width: 44, height: 44)
+                .accessibilityHidden(true) // title/album text alongside already describes it
             VStack(alignment: .leading, spacing: 3) {
                 Text(song.title)
                     .font(.system(size: 13, weight: .semibold))
@@ -1953,6 +1967,7 @@ private struct ArtistReleaseRow: View {
             HStack(spacing: 12) {
                 CoverImage(url: release.coverUrl, cornerRadius: 6)
                     .frame(width: 44, height: 44)
+                    .accessibilityHidden(true) // title text alongside already describes it
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(release.displayTitle)

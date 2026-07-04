@@ -394,7 +394,10 @@ struct StarRatingView: View {
     var starSize: CGFloat = 34
 
     var body: some View {
-        HStack(spacing: 2) {
+        // The 5 stars are individually meaningless to VoiceOver (half/full tap zones
+        // don't map to swipe navigation) — expose this as one element with a spoken
+        // value instead, matching how a native slider is accessible.
+        let stars = HStack(spacing: 2) {
             ForEach(1...5, id: \.self) { star in
                 ZStack {
                     Image(systemName: symbolName(for: star))
@@ -419,6 +422,27 @@ struct StarRatingView: View {
                 .frame(width: starSize + 14, height: starSize + 14)
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(String(localized: "Rating"))
+        .accessibilityValue(accessibilityScoreDescription)
+
+        if interactive {
+            stars.accessibilityAdjustableAction { direction in
+                let current = score ?? 0
+                switch direction {
+                case .increment: onRate(min(5.0, current + 0.5))
+                case .decrement: onRate(max(0.0, current - 0.5))
+                @unknown default: break
+                }
+            }
+        } else {
+            stars
+        }
+    }
+
+    private var accessibilityScoreDescription: String {
+        guard let score else { return String(localized: "Not rated") }
+        return String(format: String(localized: "%.1f out of 5 stars"), score)
     }
 
     private func symbolName(for star: Int) -> String {
@@ -477,6 +501,7 @@ struct ManualRatingSheet: View {
             HStack(spacing: 12) {
                 CoverImage(url: release.coverUrl, cornerRadius: 8)
                     .frame(width: 52, height: 52)
+                    .accessibilityHidden(true) // title/artist text alongside already describes it
                 VStack(alignment: .leading, spacing: 2) {
                     Text(release.displayTitle)
                         .font(.system(size: 14, weight: .bold))
@@ -686,6 +711,7 @@ struct AlbumDetailView: View {
         HStack(alignment: .top, spacing: 14) {
             CoverImage(url: release.coverUrl, cornerRadius: 12)
                 .frame(width: 88, height: 88)
+                .accessibilityHidden(true) // title/artist text alongside already describes it
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(release.displayTitle)
@@ -866,6 +892,7 @@ struct AlbumDetailView: View {
                             .foregroundStyle(Color.sjMuted)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(String(localized: "Delete ranking"))
                     .confirmationDialog(
                         "Delete Ranking?",
                         isPresented: $showDeleteRankingConfirm,
@@ -1169,6 +1196,7 @@ private struct TrackRow: View {
                         .background(Color.sjBlue.opacity(0.1)).clipShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(String(format: String(localized: "Rate %@"), track.title))
             }
         }
         .padding(.vertical, 11).padding(.horizontal, 20)
@@ -1208,6 +1236,7 @@ private struct TrackRatingSheet: View {
             HStack(spacing: 12) {
                 CoverImage(url: release.coverUrl, cornerRadius: 8)
                     .frame(width: 52, height: 52)
+                    .accessibilityHidden(true) // track title text alongside already describes it
                 VStack(alignment: .leading, spacing: 2) {
                     Text(track.title)
                         .font(.system(size: 14, weight: .bold))
@@ -1322,6 +1351,7 @@ struct SongDetailView: View {
         HStack(spacing: 16) {
             CoverImage(url: release.coverUrl)
                 .frame(width: 80, height: 80)
+                .accessibilityHidden(true) // track title text alongside already describes it
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(String(format: String(localized: "Track %d"), track.position))
@@ -1427,6 +1457,7 @@ struct SongDetailView: View {
                 HStack(spacing: 12) {
                     CoverImage(url: release.coverUrl, cornerRadius: 6)
                         .frame(width: 44, height: 44)
+                        .accessibilityHidden(true) // title/artist text alongside already describes it
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(release.displayTitle)
