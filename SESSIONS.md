@@ -180,6 +180,12 @@ Picked "zero automated tests" off the same audit list next — the highest-sever
 
 ---
 
+**2026-07-04 (Mac) — Add tab icon as a standalone action button:**
+
+Follow-up to the icon-only tab bar: user wanted the Add tab to visually stand out rather than blend in as a 5th destination (like Threads/TikTok/Instagram's center compose button). Switched from `Image(systemName: "plus")` to `"plus.app.fill"` with `.symbolRenderingMode(.palette)` + `.foregroundStyle(.white, .black)` (white plus, black rounded-square) and `.renderingMode(.original)` so it stays black/white regardless of selection state, instead of shifting to `sjAmber` like the other 4 tabs. Verified via simulator screenshot: black badge with white plus renders correctly in the tab bar, unaffected by Home being the active/highlighted tab.
+
+---
+
 **2026-07-04 (Mac) — icon-only bottom tab bar:**
 
 User request: remove all text labels from the 5-tab bottom `TabView`, icons only. Reverted from the modern `Tab(_:systemImage:value:)` struct API (which always renders a text label under the icon, no way to suppress it) back to the classic `.tabItem { Image(systemName:) }` + `.tag()` pattern — omitting `Text` from `.tabItem`'s content is the reliable way to get icon-only tabs. Added `.accessibilityLabel(String(localized:))` per tab reusing the already-translated catalog keys (Home/Charts/Add/Taste/Profile → 홈/차트/추가/취향/프로필) so VoiceOver isn't regressed by the switch. Verified: `xcodebuild build` clean, screenshot confirmed no text under any of the 5 icons, and tab-switching re-tested (tapped Charts icon → correct tab highlighted + content loaded) since the selection binding moved from the `Tab` struct's `value:` to `.tag()`.
