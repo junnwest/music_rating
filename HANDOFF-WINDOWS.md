@@ -2,81 +2,58 @@
 
 ## What was done this session (Mac)
 
-### Leaderboard formula fixes (already deployed to Supabase)
-- **Formula v2** (`20260630000004`): per-tier max + diversity bonus — albums with more sources now rank higher, no source can lower an album's score
-- **Dynamic prestige weight** (`20260630000005`): prestige starts at 100%, ratings blend in gradually as count grows; albums with 0 prestige sources no longer appear
+### Native-name pipeline: root cause fixed + data corrected
+- `scripts/mb-ingest.ts`'s `pickNative()` was grabbing *any* CJK alias when none was flagged primary — sometimes surfacing an artist's birth/legal name instead of their stage name (e.g. E SENS → wrongly "강민호"). Fixed going forward.
+- New `scripts/fix-bad-native-names.ts` corrected existing bad rows — 626 corrections applied to production, hardened through 3 rounds against real false-positive classes (see `SESSIONS.md` 2026-07-03 for the full trace).
 
-### Japan leaderboard
-- Seeded **jp_mino_100** (みのミュージック listener poll, 100 Japanese albums, scope_country='jp')
-- Japan went from 1 → 26 albums in the leaderboard
-- 14 entries had no MB match (see below)
+### Native-name display wired across the whole iOS app
+- Home/Profile first, then extended to Search, Rankings/Charts, Mix Library, Taste, Notifications.
+- New migrations `20260703000004`/`20260703000005` (applied) add `native_title`/`artist_native` to every relevant RPC, rebuild `get_user_genre_standings` (was dropped in the schema renovation, never recreated), and fix a real `anon`-role timeout in the song-chart RPCs.
 
-### New script
-- `seed:missing-from-external` — automatically finds all MBIDs in `external_scores` that have no matching row in `release_groups`, looks up the primary artist via MB API, and queues them for ingestion. No hardcoded list needed.
+### Small terminology fix
+- Album release-type label changed 앨범 → 정규 (iOS badge + web search filter) — 앨범 is a generic loanword, 정규/미니/싱글 is the actual three-way split Korean K-pop platforms use. EP intentionally stays "EP".
+
+Everything above is committed and pushed to `main` (`0da5e69`, `548cca0`).
 
 ---
 
-## What's still missing (needs Windows pipeline)
+## What's next — split between Mac and Windows
 
-### 1. Ingest missing artists from external sources (most important)
+Four items were on the table; split by which machine is naturally suited to each so both can move in parallel instead of one waiting on the other.
 
-These albums have MBIDs in `external_scores` but the artist was never ingested, so they don't appear in the leaderboard:
+**Windows (this doc — pick up here):** the two open-ended data-sourcing problems below.
+**Mac (in progress concurrently):** `get_charts_most_rated` intermittent 500, and a decision on the orphaned `ActivityView` screen. Not blocking anything below.
 
-- **Korean classics**: 유재하, 들국화, 산울림, 한대수, 어떤날 (top 8 of kr_masterpiece_100)
-- **Japanese**: 14 jp_mino_100 entries (大瀧詠一, Fishmans/空中キャンプ, Sugar Babe, etc.)
-- **Global**: Abbey Road, Nevermind, Dark Side of the Moon (in rs500 external_scores but release_groups has no matching mb_release_group_id)
+### 1. Korean release title backfill (research + implement)
 
-**Run in order:**
+`release_groups.native_title` is effectively 100% empty for Korean releases — Korean users never see the actual Korean-language album title, only the Latin/romanized one. Already tried and failed: iTunes and MusicBrainz don't carry K-pop Korean titles as a distinct field.
 
+Needs fresh research into a real source, e.g.:
+- Melon (melon.com) — Korea's dominant streaming platform, definitely has native titles, no public API but may be scrapable
+- Genie / Bugs — similar, Korean-market platforms
+- Naver Music / Naver's music search results
+- Check if any of these have an unofficial/reverse-engineerable API before resorting to scraping (check ToS implications either way — flag if scraping looks like the only option, don't just proceed)
+
+Once a source is found: a backfill script following the existing pattern (`scripts/backfill-native-names.ts` is the prior art for the artist-name equivalent — resumable, checkpointed, rate-limited) writing to `release_groups.native_title`.
+
+### 2. Korean phonetic search backfill
+
+Search doesn't understand Korean phonetic spellings of non-Korean artists — e.g. "드레이크" doesn't find Drake. The search code itself already works correctly (confirmed this session); it's purely a data gap — no Korean transliteration is stored for non-Korean artists at all.
+
+Needs:
+- A way to generate/source the standard Korean phonetic rendering per artist (there's often one "correct" convention, e.g. via Korean Wikipedia interlanguage links, or a transliteration library/heuristic — worth checking what Korean Wikipedia already has before building a transliteration algorithm from scratch)
+- Decide where this lives: reuse `artists.name_native` (currently reserved for genuinely-native artists' real names) or a new column/table specifically for phonetic search aliases — recommend a **separate** column (e.g. `artists.name_phonetic_ko`) rather than overloading `name_native`, since this session's whole native-name correction effort was specifically about `name_native` meaning "this artist's actual native-script identity," not "a searchable phonetic rendering." Conflating the two would reintroduce the exact class of ambiguity that was just cleaned up.
+- Wire the new column into `search_artists`/`search_release_groups` (both already normalize + match `name_native` — same pattern, new column)
+
+### Verification for both
+
+Once either backfill runs, spot-check a few known cases live (same approach used throughout this session):
 ```bash
 cd apps/web
-
-# 1. Preview what will be queued (no writes)
-npm run seed:missing-from-external:dry
-
-# 2. Queue all missing artists (hits MB API at 1 req/s, ~2-5 min)
-npm run seed:missing-from-external
-
-# 3. Restart pipeline so it picks them up
-npm run pipeline
-
-# 4. After ingestion finishes, link MBIDs on any existing album rows
-npm run backfill:rg-credits
+npx tsx --env-file=.env.local -e "
+import { getDB } from './scripts/itunes-ingest-core';
+const db = getDB();
+// check a few known artists/releases after backfill
+"
 ```
-
-### 2. Verify leaderboard after ingestion
-
-```bash
-# Regenerate the dashboard HTML to check rankings
-npx tsx --env-file=.env.local scripts/generate-leaderboard-dashboard.ts
-```
-
-Open `ranking-actual-dashboard.html` and confirm:
-- KR: 유재하 "사랑하기 때문에" appears near top
-- KR: 들국화, 산울림, 한대수 visible
-- Global: Abbey Road, Nevermind, Dark Side of the Moon visible
-- JP: more entries (was 26, should grow)
-
----
-
-## Current leaderboard state (as of end of session)
-
-| Region | Albums showing | Key gaps |
-|--------|---------------|----------|
-| Global | 30 | Abbey Road, Nevermind, DSOTM not showing (no MB link in release_groups) |
-| Korea  | 30 | Top 8 of kr_masterpiece_100 not showing (artists not ingested) |
-| US     | 30 | Looking OK |
-| Japan  | 26 | 14 jp_mino_100 entries unmatched (e.g. 大瀧詠一, Fishmans, Sugar Babe) |
-
----
-
-## Score reference (what scores mean)
-
-| Score | Meaning |
-|-------|---------|
-| 8.5+  | Top of kr_masterpiece_100 / jp_mino_100 rank #1 (prestige only) |
-| 7.5–8.0 | Grammy AOTY winner or single top-tier source |
-| 6.0–7.5 | Multiple mid-tier sources |
-| <6.0  | Single nomination or low-rank list entry |
-
-Dynamic weighting: at 0 ratings = 100% prestige; grows to max 55% ratings / 45% prestige as rating count increases.
+And update `SESSIONS.md` / `README.md`'s Known Issues per the project's doc-currency convention — both data gaps are currently documented there as open.
