@@ -576,7 +576,7 @@ struct InstinctRatingView: View {
                     Text(String(format: "%.1f", score))
                         .font(.system(size: 26, weight: .bold))
                         .foregroundStyle(Color.sjBlue)
-                    Text("· #\(vm.userRatingsCount) ranked")
+                    Text(String(format: String(localized: "· #%d ranked"), vm.userRatingsCount))
                         .font(.system(size: 11))
                         .foregroundStyle(Color.sjMuted)
                 }
@@ -593,7 +593,7 @@ struct InstinctRatingView: View {
                         .foregroundStyle(Color.sjInk)
                     let needed = max(0, 5 - vm.userRatingsCount)
                     if needed > 0 {
-                        Text("Rate \(needed) more to reveal your score.")
+                        Text(String(format: String(localized: "Rate %d more to reveal your score."), needed))
                             .font(.system(size: 12))
                             .foregroundStyle(Color.sjMuted)
                             .multilineTextAlignment(.center)
@@ -1037,7 +1037,7 @@ struct InstinctTrackRatingView: View {
                         Text(String(format: "%.1f", score))
                             .font(.system(size: 28, weight: .bold)).foregroundStyle(Color.sjBlue)
                     }
-                    Text("Instinct Score · #\(vm.userRatingsCount) ranked")
+                    Text(String(format: String(localized: "Instinct Score · #%d ranked"), vm.userRatingsCount))
                         .font(.system(size: 11)).foregroundStyle(Color.sjMuted)
                 }
                 .padding(.horizontal, 28).padding(.vertical, 16)
@@ -1049,7 +1049,7 @@ struct InstinctTrackRatingView: View {
                         .font(.system(size: 18, weight: .bold)).foregroundStyle(Color.sjInk)
                     let needed = max(0, 5 - vm.userRatingsCount)
                     if needed > 0 {
-                        Text("Rate \(needed) more to reveal your score.")
+                        Text(String(format: String(localized: "Rate %d more to reveal your score."), needed))
                             .font(.system(size: 13)).foregroundStyle(Color.sjMuted)
                             .multilineTextAlignment(.center)
                     }

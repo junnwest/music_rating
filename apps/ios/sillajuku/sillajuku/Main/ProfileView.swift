@@ -56,26 +56,34 @@ struct ReleaseRef: Codable, Identifiable {
     let artist: String
     let coverUrl: String?
     let releaseType: String?
+    let titleNative: String?
+    let primaryArtist: NativeArtistRef?
 
     enum CodingKeys: String, CodingKey {
         case id, title
-        case artist      = "artist_display"
-        case coverUrl    = "cover_url"
-        case releaseType = "release_group_type"
+        case artist        = "artist_display"
+        case coverUrl      = "cover_url"
+        case releaseType   = "release_group_type"
+        case titleNative   = "native_title"
+        case primaryArtist = "artists"
     }
+
+    var artistNative: String? { primaryArtist?.nameNative }
+    var displayTitle: String { titleNative?.isPredominantlyHangul == true ? titleNative! : title }
+    var displayArtist: String { artistNative?.isPredominantlyHangul == true ? artistNative! : artist }
 
     var typeLabel: String {
         switch releaseType?.lowercased() {
-        case "album":  return "Album"
-        case "single": return "Single"
-        case "ep":     return "EP"
-        default:       return "Release"
+        case "album":  return String(localized: "Album")
+        case "single": return String(localized: "Single")
+        case "ep":     return String(localized: "EP")
+        default:       return String(localized: "Release")
         }
     }
 
     var asRelease: Release {
         Release(id: id, title: title, artist: artist, coverUrl: coverUrl,
-                releaseType: releaseType, releaseDate: nil, titleNative: nil, artistNative: nil,
+                releaseType: releaseType, releaseDate: nil, titleNative: titleNative, artistNative: artistNative,
                 tracklist: nil, totalTracks: nil)
     }
 }
@@ -203,7 +211,7 @@ class ProfileViewModel {
 
         ratings = (try? await supabase
             .from("ratings")
-            .select("id, score, elo_score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type)")
+            .select("id, score, elo_score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native))")
             .eq("user_id", value: user.id)
             .order("created_at", ascending: false)
             .limit(60)
@@ -267,8 +275,10 @@ class ProfileViewModel {
                     let releaseGroups: RGCover?
                     struct RGCover: Codable {
                         let id: UUID; let title: String; let artistDisplay: String?; let coverUrl: String?
+                        let titleNative: String?; let primaryArtist: NativeArtistRef?
                         enum CodingKeys: String, CodingKey {
                             case id, title; case artistDisplay = "artist_display"; case coverUrl = "cover_url"
+                            case titleNative = "native_title"; case primaryArtist = "artists"
                         }
                     }
                     enum CodingKeys: String, CodingKey {
@@ -281,7 +291,7 @@ class ProfileViewModel {
             }
             let coverRows: [RTCoverRow] = (try? await supabase
                 .from("release_tracks")
-                .select("recording_id, releases(is_canonical, release_groups(id, title, artist_display, cover_url))")
+                .select("recording_id, releases(is_canonical, release_groups(id, title, artist_display, cover_url, native_title, artists!release_groups_primary_artist_id_fkey(name_native)))")
                 .in("recording_id", values: rawSongs.map(\.recordingId.uuidString))
                 .execute()
                 .value) ?? []
@@ -295,11 +305,13 @@ class ProfileViewModel {
             songRatings = rawSongs.map { r in
                 let rg = rgMap[r.recordingId]
                 let ref = ReleaseRef(
-                    id:          rg?.id ?? UUID(),
-                    title:       rg?.title ?? "",
-                    artist:      rg?.artistDisplay ?? r.recordings.artistDisplay ?? "",
-                    coverUrl:    rg?.coverUrl,
-                    releaseType: nil
+                    id:            rg?.id ?? UUID(),
+                    title:         rg?.title ?? "",
+                    artist:        rg?.artistDisplay ?? r.recordings.artistDisplay ?? "",
+                    coverUrl:      rg?.coverUrl,
+                    releaseType:   nil,
+                    titleNative:   rg?.titleNative,
+                    primaryArtist: rg?.primaryArtist
                 )
                 return SongRatingRow(
                     recordingId: r.recordingId,
@@ -683,7 +695,7 @@ struct ProfileView: View {
                         Button {
                             ratingTypeFilter = filter
                         } label: {
-                            Text(filter.rawValue)
+                            Text(LocalizedStringKey(filter.rawValue))
                                 .font(.system(size: 12, weight: ratingTypeFilter == filter ? .semibold : .regular))
                                 .foregroundStyle(ratingTypeFilter == filter ? Color.sjBlue : Color.sjMuted)
                                 .padding(.horizontal, 12).padding(.vertical, 6)
@@ -714,7 +726,7 @@ struct ProfileView: View {
 
                 // Count + sort
                 HStack {
-                    Text("\(items.count) \(ratingTypeFilter == .all ? "ratings" : ratingTypeFilter.rawValue.lowercased())")
+                    Text(String(format: String(localized: "%d %@"), items.count, ratingTypeFilter == .all ? String(localized: "ratings") : String(localized: String.LocalizationValue(ratingTypeFilter.rawValue)).lowercased()))
                         .font(.system(size: 12))
                         .foregroundStyle(Color.sjMuted)
                     Spacer()
@@ -723,14 +735,14 @@ struct ProfileView: View {
                             Button {
                                 ratingSortOrder = order
                             } label: {
-                                Label(order.rawValue,
+                                Label(LocalizedStringKey(order.rawValue),
                                       systemImage: ratingSortOrder == order ? "checkmark" : "")
                             }
                         }
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "line.3.horizontal.decrease")
-                            Text(ratingSortOrder.rawValue)
+                            Text(LocalizedStringKey(ratingSortOrder.rawValue))
                         }
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.sjAmber)
@@ -744,7 +756,7 @@ struct ProfileView: View {
                         Image(systemName: ratingTypeFilter == .songs ? "music.note" : "square.grid.2x2")
                             .font(.system(size: 28))
                             .foregroundStyle(Color.sjMuted)
-                        Text("No \(ratingTypeFilter.rawValue.lowercased()) rated yet")
+                        Text(String(format: String(localized: "No %@ rated yet"), String(localized: String.LocalizationValue(ratingTypeFilter.rawValue)).lowercased()))
                             .font(.system(size: 14))
                             .foregroundStyle(Color.sjMuted)
                     }
@@ -885,7 +897,7 @@ struct ProfileView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
-    private func statsCell(value: String, label: String) -> some View {
+    private func statsCell(value: String, label: LocalizedStringKey) -> some View {
         VStack(spacing: 3) {
             Text(value)
                 .font(.system(size: 20, weight: .bold))
@@ -985,7 +997,7 @@ struct ProfileView: View {
         }
     }
 
-    private func modePill(label: String, count: Int) -> some View {
+    private func modePill(label: LocalizedStringKey, count: Int) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("\(count)")
                 .font(.system(size: 22, weight: .bold))
@@ -1001,7 +1013,7 @@ struct ProfileView: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
-    private func statSectionHeader(_ title: String) -> some View {
+    private func statSectionHeader(_ title: LocalizedStringKey) -> some View {
         Text(title)
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(Color.sjMuted)
@@ -1066,7 +1078,7 @@ private class ProfileShareItem: NSObject, UIActivityItemSource {
 
 private struct ProfileStatCell: View {
     let value: String
-    let label: String
+    let label: LocalizedStringKey
 
     var body: some View {
         VStack(spacing: 2) {
@@ -1141,7 +1153,7 @@ struct RatingListRow: View {
                             .background(Color.sjAmber.opacity(0.12))
                             .clipShape(RoundedRectangle(cornerRadius: 4))
                     } else if let rt = releaseType {
-                        Text(rt.lowercased() == "ep" ? "EP" : rt.capitalized)
+                        Text(LocalizedStringKey(rt.lowercased() == "ep" ? "EP" : rt.capitalized))
                             .font(.system(size: 10, weight: .medium))
                             .foregroundStyle(Color.sjBlue)
                             .padding(.horizontal, 5).padding(.vertical, 2)
@@ -1173,7 +1185,7 @@ struct RatingListRow: View {
                     Image("icon-flower")
                         .renderingMode(.template).resizable().scaledToFit()
                         .frame(width: 11, height: 11).foregroundStyle(Color.sjMuted)
-                    Text("Rate \(5 - instinctCount) more to reveal")
+                    Text(String(format: String(localized: "Rate %d more to reveal"), 5 - instinctCount))
                         .font(.system(size: 10))
                         .foregroundStyle(Color.sjMuted)
                         .multilineTextAlignment(.trailing)
@@ -1309,7 +1321,7 @@ struct FollowListModal: View {
             List(profiles) { profile in
                 NavigationLink(value: UserProfileDestination(
                     userId: profile.id,
-                    handle: profile.username ?? profile.displayName ?? "user"
+                    handle: profile.username ?? profile.displayName ?? String(localized: "user")
                 )) {
                     FollowProfileRow(profile: profile)
                 }
@@ -1321,7 +1333,7 @@ struct FollowListModal: View {
         }
     }
 
-    private func tabBtn(_ label: String, count: Int, tab: FollowMode) -> some View {
+    private func tabBtn(_ label: LocalizedStringKey, count: Int, tab: FollowMode) -> some View {
         Button { withAnimation { activeTab = tab } } label: {
             VStack(spacing: 0) {
                 HStack(spacing: 5) {
@@ -1407,7 +1419,7 @@ private struct FollowProfileRow: View {
                         .foregroundStyle(Color.sjInk)
                 }
                 if let username = profile.username {
-                    Text("@\(username)")
+                    Text("@" + username)
                         .font(.system(size: 13))
                         .foregroundStyle(Color.sjMuted)
                 }
@@ -1431,8 +1443,8 @@ struct UserSearchSheet: View {
         let username: String?
         let displayName: String?
         enum CodingKeys: String, CodingKey { case id, username; case displayName = "display_name" }
-        var handle: String  { username ?? displayName ?? "someone" }
-        var label: String   { displayName ?? username ?? "someone" }
+        var handle: String  { username ?? displayName ?? String(localized: "someone") }
+        var label: String   { displayName ?? username ?? String(localized: "someone") }
         var initial: String { String(handle.prefix(1)).uppercased() }
     }
 
@@ -1478,7 +1490,7 @@ struct UserSearchSheet: View {
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text(profile.label)
                                                 .font(.system(size: 14, weight: .semibold)).foregroundStyle(Color.sjInk)
-                                            Text("@\(profile.handle)")
+                                            Text("@" + profile.handle)
                                                 .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
                                         }
                                         Spacer()
@@ -1561,11 +1573,11 @@ private struct ProfilePostCard: View {
                     .frame(width: 72, height: 72)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(rating.releases.title)
+                    Text(rating.releases.displayTitle)
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(Color.sjInk)
                         .lineLimit(2)
-                    Text("\(rating.releases.typeLabel) · \(rating.releases.artist)")
+                    Text(rating.releases.typeLabel + " · " + rating.releases.displayArtist)
                         .font(.system(size: 13))
                         .foregroundStyle(Color.sjMuted)
                         .lineLimit(1)

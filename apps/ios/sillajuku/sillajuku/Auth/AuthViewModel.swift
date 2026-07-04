@@ -44,7 +44,7 @@ class AuthViewModel {
 
             guard let tokenData = credential.identityToken,
                   let idToken   = String(data: tokenData, encoding: .utf8) else {
-                errorMessage = "Sign In with Apple failed: no identity token received."
+                errorMessage = String(localized: "Sign In with Apple failed: no identity token received.")
                 return
             }
             try await supabase.auth.signInWithIdToken(

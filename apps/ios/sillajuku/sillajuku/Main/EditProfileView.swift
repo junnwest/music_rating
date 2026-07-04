@@ -148,7 +148,7 @@ struct EditProfileView: View {
         guard let user = supabase.auth.currentUser else { return }
         let trimmedUsername = username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !trimmedUsername.isEmpty else {
-            errorMessage = "Username cannot be empty."
+            errorMessage = String(localized: "Username cannot be empty.")
             return
         }
 
@@ -196,7 +196,7 @@ struct EditProfileView: View {
 
             dismiss()
         } catch {
-            errorMessage = "Failed to save. Please try again."
+            errorMessage = String(localized: "Failed to save. Please try again.")
         }
 
         isSaving = false

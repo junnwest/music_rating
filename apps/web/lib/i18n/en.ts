@@ -140,6 +140,7 @@ const en = {
     emailLabel: 'Email',
     emailPlaceholder: 'your@email.com',
     sendBtn: 'Send',
+    sendError: 'Something went wrong sending your message. Please try again.',
     received: 'We received your message',
     responseTime: 'Typical response time: 24–48 hours.',
     sendAnother: 'Send another',

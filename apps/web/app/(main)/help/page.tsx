@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { Search, ChevronDown, Send, Check, Clock, HelpCircle, ArrowLeft } from 'lucide-react';
 import { useLanguage } from '../../../lib/i18n';
+import { supabase } from '../../../lib/supabaseClient';
 
 const faqs = [
   {
@@ -48,12 +49,14 @@ export default function HelpPage() {
   const [message, setMessage] = useState('');
   const [email, setEmail] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const categories = [
-    t('help.reportBug'),
-    t('help.suggestFeature'),
-    t('help.askQuestion'),
-    t('help.reportContent'),
+    { key: 'bug', label: t('help.reportBug') },
+    { key: 'feature', label: t('help.suggestFeature') },
+    { key: 'question', label: t('help.askQuestion') },
+    { key: 'content', label: t('help.reportContent') },
   ];
 
   const filteredFaqs = faqs.filter(f =>
@@ -61,11 +64,37 @@ export default function HelpPage() {
     f.a.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleSubmit = () => {
-    if (!message.trim() || !category) return;
-    setSubmitted(true);
-    setMessage('');
-    setCategory('');
+  const handleSubmit = async () => {
+    if (!message.trim() || !category || submitting) return;
+    setSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      const session = supabase ? (await supabase.auth.getSession()).data.session : null;
+      const res = await fetch('/api/help', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify({ category, message, email: email || undefined }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setSubmitError(data?.error ?? t('help.sendError'));
+        return;
+      }
+
+      setSubmitted(true);
+      setMessage('');
+      setCategory('');
+      setEmail('');
+    } catch {
+      setSubmitError(t('help.sendError'));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -162,15 +191,15 @@ export default function HelpPage() {
                 <div className="flex flex-wrap gap-2">
                   {categories.map(c => (
                     <button
-                      key={c}
-                      onClick={() => setCategory(c)}
+                      key={c.key}
+                      onClick={() => setCategory(c.key)}
                       className={`px-3 py-1.5 rounded-full text-[11px] font-semibold border-2 transition ${
-                        category === c
+                        category === c.key
                           ? 'border-mint bg-mint-bg text-mint-dark'
                           : 'border-divider text-muted hover:border-ink hover:text-ink'
                       }`}
                     >
-                      {c}
+                      {c.label}
                     </button>
                   ))}
                 </div>
@@ -202,16 +231,20 @@ export default function HelpPage() {
                 />
               </div>
 
+              {submitError && (
+                <p className="text-[12px] text-red-500 mb-3">{submitError}</p>
+              )}
+
               <button
                 onClick={handleSubmit}
-                disabled={!message.trim() || !category}
+                disabled={!message.trim() || !category || submitting}
                 className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-[13px] font-bold transition ${
-                  message.trim() && category
+                  message.trim() && category && !submitting
                     ? 'bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] hover:opacity-80'
                     : 'bg-surface text-subtle border border-divider cursor-not-allowed'
                 }`}
               >
-                <Send size={14} /> {t('help.sendBtn')}
+                <Send size={14} /> {submitting ? '…' : t('help.sendBtn')}
               </button>
             </div>
           )}

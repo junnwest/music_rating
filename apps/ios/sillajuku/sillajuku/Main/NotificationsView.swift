@@ -16,7 +16,7 @@ struct AppNotification: Codable, Identifiable {
         let username: String?
         let displayName: String?
         enum CodingKeys: String, CodingKey { case username; case displayName = "display_name" }
-        var handle: String { username ?? displayName ?? "someone" }
+        var handle: String { username ?? displayName ?? String(localized: "someone") }
     }
 
     struct RatingInfo: Codable {
@@ -25,11 +25,18 @@ struct AppNotification: Codable, Identifiable {
             let id: UUID
             let title: String
             let artistDisplay: String
+            let titleNative: String?
+            let primaryArtist: NativeArtistRef?
             enum CodingKeys: String, CodingKey {
                 case id
                 case title
                 case artistDisplay = "artist_display"
+                case titleNative   = "native_title"
+                case primaryArtist = "artists"
             }
+            var artistNative: String? { primaryArtist?.nameNative }
+            var displayTitle: String { titleNative?.isPredominantlyHangul == true ? titleNative! : title }
+            var displayArtist: String { artistNative?.isPredominantlyHangul == true ? artistNative! : artistDisplay }
         }
         enum CodingKeys: String, CodingKey {
             case releaseGroups = "release_groups"
@@ -47,27 +54,31 @@ struct AppNotification: Codable, Identifiable {
         guard (type == "like" || type == "comment"), let rg = rating?.releaseGroups else { return nil }
         return Release(id: rg.id, title: rg.title, artist: rg.artistDisplay,
                        coverUrl: nil, releaseType: nil, releaseDate: nil,
-                       titleNative: nil, artistNative: nil, tracklist: nil, totalTracks: nil)
+                       titleNative: rg.titleNative, artistNative: rg.artistNative, tracklist: nil, totalTracks: nil)
     }
 
     var actorDestination: UserProfileDestination? {
         guard type == "follow", let actorId else { return nil }
-        return UserProfileDestination(userId: actorId, handle: actor?.handle ?? "someone")
+        return UserProfileDestination(userId: actorId, handle: actor?.handle ?? String(localized: "someone"))
     }
 
     var bodyText: String {
-        let who = "@\(actor?.handle ?? "someone")"
+        let who = "@" + (actor?.handle ?? String(localized: "someone"))
         switch type {
         case "like":
-            if let title = rating?.releaseGroups?.title { return "\(who) liked your rating of \(title)" }
-            return "\(who) liked your rating"
+            if let title = rating?.releaseGroups?.displayTitle {
+                return String(format: String(localized: "%@ liked your rating of %@"), who, title)
+            }
+            return String(format: String(localized: "%@ liked your rating"), who)
         case "comment":
-            if let title = rating?.releaseGroups?.title { return "\(who) commented on \(title)" }
-            return "\(who) commented on your rating"
+            if let title = rating?.releaseGroups?.displayTitle {
+                return String(format: String(localized: "%@ commented on %@"), who, title)
+            }
+            return String(format: String(localized: "%@ commented on your rating"), who)
         case "follow":
-            return "\(who) started following you"
+            return String(format: String(localized: "%@ started following you"), who)
         default:
-            return "\(who) interacted with your content"
+            return String(format: String(localized: "%@ interacted with your content"), who)
         }
     }
 
@@ -147,7 +158,7 @@ struct NotificationsView: View {
         isLoading = true
         notifications = (try? await supabase
             .from("notifications")
-            .select("id, type, created_at, rating_id, actor_id, actor:actor_id(username, display_name), rating:rating_id(release_groups(id, title, artist_display))")
+            .select("id, type, created_at, rating_id, actor_id, actor:actor_id(username, display_name), rating:rating_id(release_groups(id, title, artist_display, native_title, artists!release_groups_primary_artist_id_fkey(name_native)))")
             .eq("user_id", value: userId)
             .order("created_at", ascending: false)
             .limit(60)

@@ -74,6 +74,45 @@ struct SettingsView: View {
                         .onChange(of: listenLaterVisible) { _, v in saveText("listen_later_visibility",  v) }
                 }
 
+                // MARK: Support
+                Section("Support") {
+                    Link(destination: Config.webBaseURL.appendingPathComponent("/help")) {
+                        HStack {
+                            Label("Help & Feedback", systemImage: "questionmark.circle")
+                            Spacer()
+                            Image(systemName: "arrow.up.forward")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Color.sjMuted)
+                        }
+                    }
+                    .foregroundStyle(Color.sjInk)
+                }
+
+                // MARK: Legal
+                Section("Legal") {
+                    Link(destination: Config.webBaseURL.appendingPathComponent("/terms")) {
+                        HStack {
+                            Label("Terms of Service", systemImage: "doc.text")
+                            Spacer()
+                            Image(systemName: "arrow.up.forward")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Color.sjMuted)
+                        }
+                    }
+                    .foregroundStyle(Color.sjInk)
+
+                    Link(destination: Config.webBaseURL.appendingPathComponent("/privacy")) {
+                        HStack {
+                            Label("Privacy Policy", systemImage: "hand.raised")
+                            Spacer()
+                            Image(systemName: "arrow.up.forward")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Color.sjMuted)
+                        }
+                    }
+                    .foregroundStyle(Color.sjInk)
+                }
+
                 // MARK: Danger zone
                 Section("Danger Zone") {
                     Button(role: .destructive) { showSignOutConfirm = true } label: {
@@ -125,7 +164,7 @@ struct SettingsView: View {
             HStack(spacing: 8) {
                 ForEach([("sun.max", "Light", "light"),
                          ("circle.lefthalf.filled", "System", "system"),
-                         ("moon", "Dark", "dark")], id: \.2) { icon, label, value in
+                         ("moon", "Dark", "dark")] as [(String, LocalizedStringKey, String)], id: \.2) { icon, label, value in
                     segmentButton(icon: icon, label: label, selected: appearanceMode == value) {
                         appearanceMode = value
                     }
@@ -143,7 +182,7 @@ struct SettingsView: View {
 
             HStack(spacing: 8) {
                 ForEach([("star.fill", "Normal", "manual"),
-                         ("arrow.left.arrow.right", "Instinct", "instinct")], id: \.2) { icon, label, value in
+                         ("arrow.left.arrow.right", "Instinct", "instinct")] as [(String, LocalizedStringKey, String)], id: \.2) { icon, label, value in
                     segmentButton(icon: icon, label: label, selected: ratingMode == value) {
                         ratingMode = value
                         saveRatingMode(value)
@@ -161,7 +200,7 @@ struct SettingsView: View {
                 .foregroundStyle(Color.sjInk)
 
             HStack(spacing: 8) {
-                ForEach([(0.5, "Half star"), (0.1, "Tenth")], id: \.0) { step, label in
+                ForEach([(0.5, "Half star"), (0.1, "Tenth")] as [(Double, LocalizedStringKey)], id: \.0) { step, label in
                     Button {
                         ratingStep = step
                         saveRatingStep(step)
@@ -187,10 +226,12 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var visibilityOptions: some View {
-        ForEach(["Public", "Followers only", "Private"], id: \.self) { Text($0) }
+        ForEach([("Public", "Public"), ("Followers only", "Followers only"), ("Private", "Private")] as [(LocalizedStringKey, String)], id: \.1) { label, value in
+            Text(label).tag(value)
+        }
     }
 
-    private func segmentButton(icon: String, label: String, selected: Bool, action: @escaping () -> Void) -> some View {
+    private func segmentButton(icon: String, label: LocalizedStringKey, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 5) {
                 Image(systemName: icon).font(.system(size: 12))
@@ -225,7 +266,7 @@ struct SettingsView: View {
 
                     HStack(spacing: 2) {
                         Text("@").foregroundStyle(Color.sjMuted)
-                        TextField(viewModel.profile?.username ?? "username", text: $deleteUsernameInput)
+                        TextField(viewModel.profile?.username ?? String(localized: "username"), text: $deleteUsernameInput)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
                     }
@@ -332,7 +373,7 @@ struct SettingsView: View {
 
     private func deleteAccount() async {
         guard let session = try? await supabase.auth.session else {
-            deleteError = "Not signed in."
+            deleteError = String(localized: "Not signed in.")
             return
         }
 
@@ -352,10 +393,10 @@ struct SettingsView: View {
                 await viewModel.signOut()
             } else {
                 let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-                deleteError = (body?["error"] as? String) ?? "Failed to delete account. Please try again."
+                deleteError = (body?["error"] as? String) ?? String(localized: "Failed to delete account. Please try again.")
             }
         } catch {
-            deleteError = "Network error. Please try again."
+            deleteError = String(localized: "Network error. Please try again.")
         }
 
         isDeleting = false

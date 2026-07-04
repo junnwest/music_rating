@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		4C171D722FF8416800419A0A /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 4C171D712FF8416800419A0A /* Sentry */; };
 		E31DA0FF2FE3906400058EC8 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = E31DA0FE2FE3906400058EC8 /* Supabase */; };
 /* End PBXBuildFile section */
 
@@ -41,6 +42,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E31DA0FF2FE3906400058EC8 /* Supabase in Frameworks */,
+				4C171D722FF8416800419A0A /* Sentry in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -92,6 +94,7 @@
 			name = sillajuku;
 			packageProductDependencies = (
 				E31DA0FE2FE3906400058EC8 /* Supabase */,
+				4C171D712FF8416800419A0A /* Sentry */,
 			);
 			productName = sillajuku;
 			productReference = E31DA0E82FE38CEC00058EC8 /* sillajuku.app */;
@@ -118,11 +121,13 @@
 			knownRegions = (
 				en,
 				Base,
+				ko,
 			);
 			mainGroup = E31DA0DF2FE38CEC00058EC8;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				E31DA0FC2FE38F9200058EC8 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+				4C171D702FF8416800419A0A /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E31DA0E92FE38CEC00058EC8 /* Products */;
@@ -214,6 +219,7 @@
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
@@ -270,6 +276,7 @@
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_EMIT_LOC_STRINGS = YES;
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
@@ -373,6 +380,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		4C171D702FF8416800419A0A /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/getsentry/sentry-cocoa";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 8.0.0;
+			};
+		};
 		E31DA0FC2FE38F9200058EC8 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/supabase/supabase-swift";
@@ -384,6 +399,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		4C171D712FF8416800419A0A /* Sentry */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4C171D702FF8416800419A0A /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
+			productName = Sentry;
+		};
 		E31DA0FE2FE3906400058EC8 /* Supabase */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E31DA0FC2FE38F9200058EC8 /* XCRemoteSwiftPackageReference "supabase-swift" */;

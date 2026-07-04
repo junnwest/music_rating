@@ -3,7 +3,7 @@ import Supabase
 
 struct PostRatingOptionsView: View {
     let release: Release
-    var continueLabel: String = "Continue"
+    var continueLabel: LocalizedStringKey = "Continue"
     var onBack: (() -> Void)? = nil
     let onContinue: (String?) -> Void
 

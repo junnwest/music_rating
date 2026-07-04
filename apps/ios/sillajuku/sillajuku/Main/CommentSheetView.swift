@@ -17,7 +17,7 @@ struct RatingComment: Codable, Identifiable {
             case username
             case displayName = "display_name"
         }
-        var handle: String { username ?? displayName ?? "someone" }
+        var handle: String { username ?? displayName ?? String(localized: "someone") }
         var initial: String { String((username ?? displayName ?? "?").prefix(1)).uppercased() }
     }
 
@@ -72,7 +72,7 @@ struct CommentSheetView: View {
                 inputBar
             }
             .background(Color.sjCream.ignoresSafeArea())
-            .navigationTitle(isLoading ? "Comments" : "\(comments.count) Comment\(comments.count == 1 ? "" : "s")")
+            .navigationTitle(isLoading ? String(localized: "Comments") : (comments.count == 1 ? String(localized: "1 Comment") : String(format: String(localized: "%d Comments"), comments.count)))
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: UserProfileDestination.self) { dest in
                 UserProfileView(userId: dest.userId, initialHandle: dest.handle)
@@ -105,7 +105,7 @@ struct CommentSheetView: View {
                     ForEach(comments) { comment in
                         NavigationLink(value: UserProfileDestination(
                             userId: comment.userId,
-                            handle: comment.profiles?.handle ?? "someone"
+                            handle: comment.profiles?.handle ?? String(localized: "someone")
                         )) {
                             CommentRow(comment: comment)
                         }
@@ -169,7 +169,7 @@ struct CommentSheetView: View {
 
     private func sendComment() async {
         guard let userId = currentUserId else {
-            errorMessage = "You must be signed in to comment"
+            errorMessage = String(localized: "You must be signed in to comment")
             return
         }
         let text = newComment.trimmingCharacters(in: .whitespaces)
@@ -210,7 +210,7 @@ private struct CommentRow: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text("@\(comment.profiles?.handle ?? "someone")")
+                    Text("@" + (comment.profiles?.handle ?? String(localized: "someone")))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color.sjInk)
                     Text(comment.createdAt.relativeTimeString)

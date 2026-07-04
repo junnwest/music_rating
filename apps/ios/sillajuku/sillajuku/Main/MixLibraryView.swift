@@ -42,26 +42,34 @@ struct MixRelease: Codable, Identifiable {
     let artist: String
     let coverUrl: String?
     let releaseType: String?
+    let titleNative: String?
+    let primaryArtist: NativeArtistRef?
 
     enum CodingKeys: String, CodingKey {
         case id, title
         case artist      = "artist_display"
         case coverUrl    = "cover_url"
         case releaseType = "release_group_type"
+        case titleNative = "native_title"
+        case primaryArtist = "artists"
     }
+
+    var artistNative: String? { primaryArtist?.nameNative }
+    var displayTitle: String { titleNative?.isPredominantlyHangul == true ? titleNative! : title }
+    var displayArtist: String { artistNative?.isPredominantlyHangul == true ? artistNative! : artist }
 
     var asRelease: Release {
         Release(id: id, title: title, artist: artist, coverUrl: coverUrl,
-                releaseType: releaseType, releaseDate: nil, titleNative: nil, artistNative: nil,
+                releaseType: releaseType, releaseDate: nil, titleNative: titleNative, artistNative: artistNative,
                 tracklist: nil, totalTracks: nil)
     }
 
     var typeLabel: String {
         switch releaseType?.lowercased() {
-        case "album":  return "Album"
-        case "single": return "Single"
-        case "ep":     return "EP"
-        default:       return "Release"
+        case "album":  return String(localized: "Album")
+        case "single": return String(localized: "Single")
+        case "ep":     return String(localized: "EP")
+        default:       return String(localized: "Release")
         }
     }
 }
@@ -210,7 +218,7 @@ private struct MixRow: View {
                     .foregroundStyle(Color.sjInk)
 
                 HStack(spacing: 6) {
-                    Text("\(count) release\(count == 1 ? "" : "s")")
+                    Text(count == 1 ? String(localized: "1 release") : String(format: String(localized: "%d releases"), count))
                         .font(.system(size: 12))
                         .foregroundStyle(Color.sjMuted)
 
@@ -300,7 +308,7 @@ struct MixDetailView: View {
         isLoading = true
         items = (try? await supabase
             .from("mix_items")
-            .select("id, mix_id, release_group_id, created_at, release_groups(id, title, artist_display, cover_url, release_group_type)")
+            .select("id, mix_id, release_group_id, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native))")
             .eq("mix_id", value: mix.id)
             .order("created_at", ascending: false)
             .execute()
@@ -334,11 +342,11 @@ private struct MixItemRow: View {
                 .frame(width: 50, height: 50)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(item.releases.title)
+                Text(item.releases.displayTitle)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(1)
-                Text("\(item.releases.typeLabel) · \(item.releases.artist)")
+                Text(item.releases.typeLabel + " · " + item.releases.displayArtist)
                     .font(.system(size: 12))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)

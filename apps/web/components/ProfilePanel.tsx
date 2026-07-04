@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabaseClient';
 import { eloToScore } from '../lib/elo';
 import UserAvatar from './UserAvatar';
 import CreateListSection from './CreateListSection';
+import ReportBlockMenu from './ReportBlockMenu';
 import type { Session } from '@supabase/supabase-js';
 
 type Tab = 'All' | 'Albums' | 'EPs' | 'Singles' | 'Compilations' | 'Lists';
@@ -643,17 +644,20 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
                   </Link>
                 </>
               ) : session?.user ? (
-                <button
-                  onClick={isFollowing ? handleUnfollow : handleFollow}
-                  disabled={followLoading}
-                  className={`rounded-[9px] px-[18px] py-[9px] text-[13px] font-semibold transition ${
-                    isFollowing
-                      ? 'border border-divider text-ink hover:bg-surface'
-                      : 'bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] hover:opacity-80'
-                  } disabled:opacity-50`}
-                >
-                  {followLoading ? '…' : isFollowing ? 'Following' : 'Follow'}
-                </button>
+                <div className="flex items-center justify-center gap-1.5">
+                  <button
+                    onClick={isFollowing ? handleUnfollow : handleFollow}
+                    disabled={followLoading}
+                    className={`rounded-[9px] px-[18px] py-[9px] text-[13px] font-semibold transition ${
+                      isFollowing
+                        ? 'border border-divider text-ink hover:bg-surface'
+                        : 'bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] hover:opacity-80'
+                    } disabled:opacity-50`}
+                  >
+                    {followLoading ? '…' : isFollowing ? 'Following' : 'Follow'}
+                  </button>
+                  {targetUserId && <ReportBlockMenu reportedUserId={targetUserId} />}
+                </div>
               ) : null}
             </div>
           </div>

@@ -26,8 +26,8 @@ struct UserProfileView: View {
             case displayName = "display_name"
             case avatarUrl   = "avatar_url"
         }
-        var handle: String { username ?? displayName ?? "someone" }
-        var displayLabel: String { displayName ?? username ?? "someone" }
+        var handle: String { username ?? displayName ?? String(localized: "someone") }
+        var displayLabel: String { displayName ?? username ?? String(localized: "someone") }
     }
 
     struct ProfileRating: Codable, Identifiable {
@@ -140,7 +140,7 @@ struct UserProfileView: View {
             }
         }
         .background(Color.sjCream.ignoresSafeArea())
-        .navigationTitle("@\(profile?.handle ?? initialHandle)")
+        .navigationTitle("@" + (profile?.handle ?? initialHandle))
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showFollowModal) {
             FollowListModal(userId: userId, initialTab: followModalInitTab)
@@ -169,7 +169,7 @@ struct UserProfileView: View {
                     .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(Color.sjInk)
 
-                Text("@\(profile?.handle ?? initialHandle)")
+                Text("@" + (profile?.handle ?? initialHandle))
                     .font(.system(size: 14))
                     .foregroundStyle(Color.sjMuted)
             }
@@ -218,7 +218,7 @@ struct UserProfileView: View {
         }
     }
 
-    private func statCell(value: Int, label: String) -> some View {
+    private func statCell(value: Int, label: LocalizedStringKey) -> some View {
         VStack(spacing: 3) {
             Text("\(value)")
                 .font(.system(size: 18, weight: .bold))
@@ -291,7 +291,7 @@ struct UserProfileView: View {
                 HStack(spacing: 4) {
                     ForEach(RatingTypeFilter.allCases, id: \.self) { filter in
                         Button { ratingTypeFilter = filter } label: {
-                            Text(filter.rawValue)
+                            Text(LocalizedStringKey(filter.rawValue))
                                 .font(.system(size: 12,
                                               weight: ratingTypeFilter == filter ? .semibold : .regular))
                                 .foregroundStyle(ratingTypeFilter == filter ? Color.sjBlue : Color.sjMuted)
@@ -306,14 +306,14 @@ struct UserProfileView: View {
                     Menu {
                         ForEach(RatingSortOrder.allCases, id: \.self) { order in
                             Button { ratingSortOrder = order } label: {
-                                Label(order.rawValue,
+                                Label(LocalizedStringKey(order.rawValue),
                                       systemImage: ratingSortOrder == order ? "checkmark" : "")
                             }
                         }
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "line.3.horizontal.decrease")
-                            Text(ratingSortOrder.rawValue)
+                            Text(LocalizedStringKey(ratingSortOrder.rawValue))
                         }
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.sjAmber)
@@ -325,7 +325,7 @@ struct UserProfileView: View {
                     VStack(spacing: 10) {
                         Image(systemName: ratingTypeFilter == .songs ? "music.note" : "square.grid.2x2")
                             .font(.system(size: 28)).foregroundStyle(Color.sjMuted)
-                        Text("No \(ratingTypeFilter.rawValue.lowercased()) rated yet")
+                        Text(String(format: String(localized: "No %@ rated yet"), String(localized: String.LocalizationValue(ratingTypeFilter.rawValue)).lowercased()))
                             .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
                     }
                     .frame(maxWidth: .infinity).padding(.top, 40)
@@ -458,11 +458,13 @@ struct UserProfileView: View {
         return raw.map { r in
             let rg = rgMap[r.recordingId]
             let feedRelease = FeedRelease(
-                id:          rg?.id ?? UUID(),
-                title:       rg?.title ?? "",
-                artist:      rg?.artistDisplay ?? r.recordings.artistDisplay ?? "",
-                coverUrl:    rg?.coverUrl,
-                releaseType: nil
+                id:            rg?.id ?? UUID(),
+                title:         rg?.title ?? "",
+                artist:        rg?.artistDisplay ?? r.recordings.artistDisplay ?? "",
+                coverUrl:      rg?.coverUrl,
+                releaseType:   nil,
+                titleNative:   nil,
+                primaryArtist: nil
             )
             return SongRating(
                 recordingId: r.recordingId,

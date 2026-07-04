@@ -99,7 +99,7 @@ struct OnboardingView: View {
 				.execute()
 			appState.authState = .authenticated
 		} catch {
-			saveError = "Something went wrong. Please check your connection and try again."
+			saveError = String(localized: "Something went wrong. Please check your connection and try again.")
 		}
 	}
 }
@@ -108,7 +108,7 @@ extension OnboardingView {
 	var errorAlert: Alert {
 		Alert(
 			title: Text("Couldn't save your profile"),
-			message: Text(saveError ?? "Please try again."),
+			message: Text(saveError ?? String(localized: "Please try again.")),
 			dismissButton: .default(Text("OK")) { saveError = nil }
 		)
 	}

@@ -25,7 +25,7 @@ const sections = [
   {
     icon: Music,
     title: '5. Music Data',
-    body: 'Music metadata is sourced from Spotify. We are not affiliated with or endorsed by Spotify. Album artwork, artist images, and metadata are property of their respective rights holders and are used for informational purposes.',
+    body: 'Music metadata, cover art, and related information are sourced from a combination of third-party catalogs and databases, including MusicBrainz (released under a CC0 public-domain dedication), the Cover Art Archive, Deezer, Last.fm, and Apple/iTunes. We are not affiliated with, endorsed by, or sponsored by any of these services. Album artwork, artist images, and metadata remain the property of their respective rights holders and are used for informational, non-commercial cataloging purposes.',
   },
   {
     icon: AlertTriangle,
@@ -38,8 +38,13 @@ const sections = [
     body: 'We reserve the right to suspend or terminate accounts that violate these terms. You may delete your account at any time from Settings.',
   },
   {
+    icon: AlertCircle,
+    title: '8. Copyright Complaints (DMCA)',
+    body: 'If you believe content on sillajuku infringes your copyright, send a written notice to admin@sillajuku.com including: (1) a description of the copyrighted work you claim is infringed; (2) the specific URL or location of the material on sillajuku; (3) your contact information (name, address, phone, email); (4) a statement that you have a good-faith belief the use is not authorized by the copyright owner, its agent, or the law; (5) a statement, under penalty of perjury, that the notice is accurate and that you are authorized to act on the copyright owner’s behalf; and (6) your physical or electronic signature. We will review valid notices and remove or disable access to the identified material where appropriate. Accounts found to be repeat infringers may be terminated.',
+  },
+  {
     icon: Mail,
-    title: '8. Contact',
+    title: '9. Contact',
     body: 'For legal questions, contact admin@sillajuku.com.',
   },
 ];

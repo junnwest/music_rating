@@ -117,25 +117,27 @@ struct AuthView: View {
     }
 
     private var legalText: AttributedString {
-        var base = AttributedString("By continuing, you agree to our\n")
+        var base = AttributedString(String(localized: "By continuing, you agree to our"))
         base.font = .system(size: 12)
         base.foregroundColor = Color.sjMuted
 
-        var terms = AttributedString("Terms")
+        let lineBreak = AttributedString("\n")
+
+        var terms = AttributedString(String(localized: "Terms of Service"))
         terms.font = .system(size: 12, weight: .bold)
         terms.foregroundColor = Color.sjMuted
         terms.link = URL(string: "https://sillajuku.com/terms")
 
-        var sep = AttributedString(" and ")
+        var sep = AttributedString(String(localized: " and "))
         sep.font = .system(size: 12)
         sep.foregroundColor = Color.sjMuted
 
-        var privacy = AttributedString("Privacy Policy")
+        var privacy = AttributedString(String(localized: "Privacy Policy"))
         privacy.font = .system(size: 12, weight: .bold)
         privacy.foregroundColor = Color.sjMuted
         privacy.link = URL(string: "https://sillajuku.com/privacy")
 
-        return base + terms + sep + privacy
+        return base + lineBreak + terms + sep + privacy
     }
 }
 

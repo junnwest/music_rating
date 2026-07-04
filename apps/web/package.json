@@ -117,9 +117,11 @@
     "queue:ingest:albums:fast": "tsx --env-file=.env.local scripts/ingest-itunes-queue.ts --skip-singles --no-tracks"
   },
   "dependencies": {
+    "@sentry/nextjs": "^8.55.0",
     "@supabase/supabase-js": "2.103.2",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.38.0",
+    "apn": "^2.2.0",
     "autoprefixer": "10.5.0",
     "lucide-react": "^1.14.0",
     "next": "14.2.35",

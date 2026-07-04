@@ -36,35 +36,49 @@ struct FeedRelease: Codable, Identifiable {
     let artist: String
     let coverUrl: String?
     let releaseType: String?
+    let titleNative: String?
+    let primaryArtist: NativeArtistRef?
 
     enum CodingKeys: String, CodingKey {
         case id, title
-        case artist      = "artist_display"
-        case coverUrl    = "cover_url"
-        case releaseType = "release_group_type"
+        case artist        = "artist_display"
+        case coverUrl      = "cover_url"
+        case releaseType   = "release_group_type"
+        case titleNative   = "native_title"
+        case primaryArtist = "artists"
     }
+
+    var artistNative: String? { primaryArtist?.nameNative }
+    var displayTitle: String { titleNative?.isPredominantlyHangul == true ? titleNative! : title }
+    var displayArtist: String { artistNative?.isPredominantlyHangul == true ? artistNative! : artist }
 
     var typeLabel: String {
         switch releaseType?.lowercased() {
-        case "album":  return "Album"
-        case "single": return "Single"
-        case "ep":     return "EP"
-        default:       return "Release"
+        case "album":  return String(localized: "Album")
+        case "single": return String(localized: "Single")
+        case "ep":     return String(localized: "EP")
+        default:       return String(localized: "Release")
         }
     }
 
     var asRelease: Release {
         Release(id: id, title: title, artist: artist, coverUrl: coverUrl,
-                releaseType: releaseType, releaseDate: nil, titleNative: nil, artistNative: nil,
+                releaseType: releaseType, releaseDate: nil, titleNative: titleNative, artistNative: artistNative,
                 tracklist: nil, totalTracks: nil)
     }
+}
+
+/// The joined artist relation used solely to pull the primary artist's native (Korean) name.
+struct NativeArtistRef: Codable {
+    let nameNative: String?
+    enum CodingKeys: String, CodingKey { case nameNative = "name_native" }
 }
 
 struct FeedProfile: Codable {
     let username: String?
     let displayName: String?
     enum CodingKeys: String, CodingKey { case username; case displayName = "display_name" }
-    var handle: String { username ?? displayName ?? "someone" }
+    var handle: String { username ?? displayName ?? String(localized: "someone") }
 }
 
 // MARK: - ViewModel
@@ -88,7 +102,7 @@ class HomeViewModel {
     private var hasLoadedFollowing = false
 
     private static let feedSelect =
-        "id, user_id, score, elo_score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type), profiles!ratings_user_id_fkey(username, display_name)"
+        "id, user_id, score, elo_score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey(username, display_name)"
 
     // Personalization signals (populated before explore loads)
     private var followingIds:  Set<UUID>   = []
@@ -479,7 +493,7 @@ struct HomeView: View {
         .buttonStyle(.plain)
     }
 
-    private func feedTabButton(_ tab: FeedTab, label: String) -> some View {
+    private func feedTabButton(_ tab: FeedTab, label: LocalizedStringKey) -> some View {
         Button {
             if activeTab == tab {
                 if tab == .explore { exploreScrollTrigger = UUID() }
@@ -517,7 +531,7 @@ struct HomeView: View {
     }
 
     @ViewBuilder
-    private func feedList(items: [FeedItem], isLoading: Bool, emptyMessage: String, scrollTrigger: UUID, isExplore: Bool) -> some View {
+    private func feedList(items: [FeedItem], isLoading: Bool, emptyMessage: LocalizedStringKey, scrollTrigger: UUID, isExplore: Bool) -> some View {
         if isLoading {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if items.isEmpty {
@@ -706,15 +720,15 @@ private struct SuggestedUserRow: View {
                     .frame(width: 44, height: 44).clipShape(Circle())
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(user.displayName ?? user.username ?? "User")
+                        Text(user.displayName ?? user.username ?? String(localized: "User"))
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(Color.sjInk)
                         if let u = user.username {
-                            Text("@\(u)")
+                            Text("@" + u)
                                 .font(.system(size: 12))
                                 .foregroundStyle(Color.sjMuted)
                         }
-                        Text("\(user.ratingCount) ratings")
+                        Text(String(format: String(localized: "%d ratings"), user.ratingCount))
                             .font(.system(size: 11))
                             .foregroundStyle(Color.sjMuted)
                     }
@@ -879,7 +893,7 @@ private struct FeedCard: View {
                 }
                 ShareLink(
                     item: URL(string: "https://sillajuku.com/r/\(item.id)")!,
-                    subject: Text("\(item.releases.title) · \(item.releases.artist)"),
+                    subject: Text(item.releases.displayTitle + " · " + item.releases.displayArtist),
                     message: Text("Check out this rating on sillajuku")
                 ) {
                     Label("Share", systemImage: "square.and.arrow.up")
@@ -922,7 +936,7 @@ private struct FeedCard: View {
 
     @ViewBuilder
     private var usernameLink: some View {
-        let label = Text("@\(item.profiles?.handle ?? "someone")")
+        let label = Text("@" + (item.profiles?.handle ?? String(localized: "someone")))
             .font(.system(size: 13.5, weight: .semibold))
             .foregroundStyle(Color.sjInk)
 
@@ -948,11 +962,11 @@ private struct FeedCard: View {
                     .frame(width: 80, height: 80)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(item.releases.title)
+                    Text(item.releases.displayTitle)
                         .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(Color.sjInk).lineLimit(2)
 
-                    Text("\(item.releases.typeLabel) · \(item.releases.artist)")
+                    Text(item.releases.typeLabel + " · " + item.releases.displayArtist)
                         .font(.system(size: 14)).foregroundStyle(Color.sjMuted).lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1048,7 +1062,7 @@ struct LikersSheetView: View {
                 case id, username
                 case displayName = "display_name"
             }
-            var handle: String { username ?? displayName ?? "someone" }
+            var handle: String { username ?? displayName ?? String(localized: "someone") }
         }
         enum CodingKeys: String, CodingKey {
             case userId = "user_id"; case profiles
@@ -1074,13 +1088,13 @@ struct LikersSheetView: View {
                     List(Array(likers.enumerated()), id: \.offset) { _, liker in
                         NavigationLink(value: UserProfileDestination(
                             userId: liker.profiles?.id ?? liker.userId,
-                            handle: liker.profiles?.handle ?? "someone"
+                            handle: liker.profiles?.handle ?? String(localized: "someone")
                         )) {
                             HStack(spacing: 11) {
                                 Image(systemName: "person.circle.fill")
                                     .font(.system(size: 32))
                                     .foregroundStyle(Color(uiColor: .systemGray3))
-                                Text("@\(liker.profiles?.handle ?? "someone")")
+                                Text("@" + (liker.profiles?.handle ?? String(localized: "someone")))
                                     .font(.system(size: 14, weight: .semibold))
                                     .foregroundStyle(Color.sjInk)
                             }
@@ -1093,7 +1107,7 @@ struct LikersSheetView: View {
                     .background(Color.sjCream.ignoresSafeArea())
                 }
             }
-            .navigationTitle("\(likers.count) Like\(likers.count == 1 ? "" : "s")")
+            .navigationTitle(likers.count == 1 ? String(localized: "1 Like") : String(format: String(localized: "%d Likes"), likers.count))
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: UserProfileDestination.self) { dest in
                 UserProfileView(userId: dest.userId, initialHandle: dest.handle)
@@ -1142,7 +1156,10 @@ private struct ReportSheet: View {
     @State private var isSubmitting = false
     @State private var errorMessage: String?
 
-    private let reasons = ["Spam", "Inappropriate Content", "Harassment", "Other"]
+    private let reasons: [(LocalizedStringKey, String)] = [
+        ("Spam", "Spam"), ("Inappropriate Content", "Inappropriate Content"),
+        ("Harassment", "Harassment"), ("Other", "Other"),
+    ]
 
     var body: some View {
         NavigationStack {
@@ -1182,13 +1199,13 @@ private struct ReportSheet: View {
 
                     Divider()
 
-                    ForEach(reasons, id: \.self) { reason in
+                    ForEach(reasons, id: \.1) { label, reason in
                         Button {
                             guard !isSubmitting else { return }
                             Task { await submit(reason: reason) }
                         } label: {
                             HStack {
-                                Text(reason)
+                                Text(label)
                                     .font(.system(size: 15))
                                     .foregroundStyle(Color.sjInk)
                                 Spacer()

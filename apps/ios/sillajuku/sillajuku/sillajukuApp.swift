@@ -1,6 +1,7 @@
 import SwiftUI
 import Supabase
 import UserNotifications
+import Sentry
 
 extension Notification.Name {
     static let sjSpotifyTokenRefreshed = Notification.Name("sjSpotifyTokenRefreshed")
@@ -11,6 +12,16 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
+        SentrySDK.start { options in
+            options.dsn = Config.sentryDSN
+            #if DEBUG
+            options.environment = "development"
+            #else
+            options.environment = "production"
+            #endif
+            options.tracesSampleRate = 0.1
+        }
+
         // Default URLCache is 4 MB memory / 20 MB disk — not enough for an image-heavy tab.
         // 50 MB memory holds ~400 thumbnails at 300px; 300 MB disk survives app restarts.
         URLCache.shared = URLCache(

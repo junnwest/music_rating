@@ -12,7 +12,8 @@ struct ActivityRating: Codable, Identifiable {
     let profiles: ActivityProfile?
 
     enum CodingKeys: String, CodingKey {
-        case id, score, releases, profiles
+        case id, score, profiles
+        case releases  = "release_groups"
         case createdAt = "created_at"
     }
 }
@@ -22,15 +23,24 @@ struct ActivityRelease: Codable, Identifiable {
     let title: String
     let artist: String
     let coverUrl: String?
+    let titleNative: String?
+    let primaryArtist: NativeArtistRef?
 
     enum CodingKeys: String, CodingKey {
-        case id, title, artist
-        case coverUrl = "cover_url"
+        case id, title
+        case artist     = "artist_display"
+        case coverUrl   = "cover_url"
+        case titleNative = "native_title"
+        case primaryArtist = "artists"
     }
+
+    var artistNative: String? { primaryArtist?.nameNative }
+    var displayTitle: String { titleNative?.isPredominantlyHangul == true ? titleNative! : title }
+    var displayArtist: String { artistNative?.isPredominantlyHangul == true ? artistNative! : artist }
 
     var asRelease: Release {
         Release(id: id, title: title, artist: artist, coverUrl: coverUrl,
-                releaseType: nil, releaseDate: nil, titleNative: nil, artistNative: nil,
+                releaseType: nil, releaseDate: nil, titleNative: titleNative, artistNative: artistNative,
                 tracklist: nil, totalTracks: nil)
     }
 }
@@ -45,7 +55,7 @@ struct ActivityProfile: Codable {
     }
 
     var displayHandle: String {
-        displayName ?? username ?? "someone"
+        displayName ?? username ?? String(localized: "someone")
     }
 }
 
@@ -63,7 +73,7 @@ class ActivityViewModel {
         isLoading = true
         items = (try? await supabase
             .from("ratings")
-            .select("id, score, created_at, releases(id, title, artist, cover_url), profiles(username, display_name)")
+            .select("id, score, created_at, release_groups(id, title, artist_display, cover_url, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey(username, display_name)")
             .order("created_at", ascending: false)
             .limit(60)
             .execute()
@@ -126,16 +136,16 @@ private struct ActivityRow: View {
                 .frame(width: 52, height: 52)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(item.releases.title)
+                Text(item.releases.displayTitle)
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(1)
-                Text(item.releases.artist)
+                Text(item.releases.displayArtist)
                     .font(.system(size: 13))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
                 HStack(spacing: 4) {
-                    Text(item.profiles?.displayHandle ?? "someone")
+                    Text(item.profiles?.displayHandle ?? String(localized: "someone"))
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.sjAmber)
                     Text("·")
@@ -177,11 +187,11 @@ private struct ActivityRow: View {
 extension Date {
     var relativeTimeString: String {
         let s = -timeIntervalSinceNow
-        if s < 60 { return "just now" }
-        if s < 3600 { return "\(Int(s / 60))m" }
-        if s < 86400 { return "\(Int(s / 3600))h" }
-        if s < 604800 { return "\(Int(s / 86400))d" }
-        return "\(Int(s / 604800))w"
+        if s < 60 { return String(localized: "just now") }
+        if s < 3600 { return String(format: String(localized: "%dm"), Int(s / 60)) }
+        if s < 86400 { return String(format: String(localized: "%dh"), Int(s / 3600)) }
+        if s < 604800 { return String(format: String(localized: "%dd"), Int(s / 86400)) }
+        return String(format: String(localized: "%dw"), Int(s / 604800))
     }
 }
 

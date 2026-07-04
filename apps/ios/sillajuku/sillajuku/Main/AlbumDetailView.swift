@@ -24,7 +24,7 @@ struct AlbumPost: Codable, Identifiable {
         enum CodingKeys: String, CodingKey {
             case username; case displayName = "display_name"; case avatarUrl = "avatar_url"
         }
-        var handle: String { username.map { "@\($0)" } ?? displayName ?? "someone" }
+        var handle: String { username.map { "@\($0)" } ?? displayName ?? String(localized: "someone") }
     }
 
     enum CodingKeys: String, CodingKey {
@@ -379,7 +379,7 @@ class AlbumDetailViewModel {
             .value) ?? []
 
         publicMixes = rows.map { row in
-            let handle = row.profiles.flatMap { $0.username.map { "@\($0)" } ?? $0.displayName } ?? "someone"
+            let handle = row.profiles.flatMap { $0.username.map { "@\($0)" } ?? $0.displayName } ?? String(localized: "someone")
             return AlbumPublicMix(id: row.id, name: row.name, authorHandle: handle, authorId: row.profiles?.id)
         }
     }
@@ -899,7 +899,7 @@ struct AlbumDetailView: View {
         return (raw * 10).rounded() / 10.0
     }
 
-    private func communityStatBox(value: String, label: String, showIcon: Bool) -> some View {
+    private func communityStatBox(value: String, label: LocalizedStringKey, showIcon: Bool) -> some View {
         HStack(spacing: 6) {
             if showIcon {
                 Image("icon-flower")
@@ -1011,7 +1011,7 @@ struct AlbumDetailView: View {
         .padding(.horizontal, 20)
     }
 
-    private func sectionLabel(_ text: String) -> some View {
+    private func sectionLabel(_ text: LocalizedStringKey) -> some View {
         Text(text)
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(Color.sjMuted)
@@ -1046,7 +1046,7 @@ private struct PostRow: View {
         HStack(spacing: 12) {
             NavigationLink(value: UserProfileDestination(
                 userId: post.userId,
-                handle: post.profiles?.handle ?? "someone"
+                handle: post.profiles?.handle ?? String(localized: "someone")
             )) {
                 HStack(spacing: 12) {
                     Circle()
@@ -1059,7 +1059,7 @@ private struct PostRow: View {
                         )
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(post.profiles?.handle ?? "someone")
+                        Text(post.profiles?.handle ?? String(localized: "someone"))
                             .font(.system(size: 13, weight: .medium))
                             .foregroundStyle(Color.sjInk)
                         Text(relativeDate)
@@ -1324,7 +1324,7 @@ struct SongDetailView: View {
                 .frame(width: 80, height: 80)
 
             VStack(alignment: .leading, spacing: 5) {
-                Text("Track \(track.position)")
+                Text(String(format: String(localized: "Track %d"), track.position))
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Color.sjMuted)
                     .textCase(.uppercase)

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { supabase } from '../../../lib/supabaseClient';
 import UserAvatar from '../../../components/UserAvatar';
 import InlineStarRating from '../../../components/InlineStarRating';
+import ReportBlockMenu from '../../../components/ReportBlockMenu';
 import { useLanguage } from '../../../lib/i18n';
 import type { AlbumRelease } from '../../../types';
 
@@ -17,6 +18,7 @@ type FeedItem = {
   body?: string;
   date: string;
   releaseId: string;
+  ratingId: string | null;
 };
 
 function timeAgo(iso: string, t: (key: string) => string): string {
@@ -110,6 +112,7 @@ export default function ActivityPage() {
   const [loading, setLoading] = useState(true);
   const [isFiltered, setIsFiltered] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const load = async () => {
@@ -118,6 +121,14 @@ export default function ActivityPage() {
         const { data } = await supabase.auth.getSession();
         uid = data.session?.user?.id ?? null;
         setUserId(uid);
+
+        if (uid) {
+          const { data: blocked } = await supabase
+            .from('blocked_users')
+            .select('blocked_id')
+            .eq('blocker_id', uid);
+          setBlockedIds(new Set((blocked ?? []).map((b: any) => b.blocked_id)));
+        }
       }
 
       const url = uid ? `/api/activity?userId=${uid}` : '/api/activity';
@@ -129,6 +140,8 @@ export default function ActivityPage() {
     };
     load();
   }, []);
+
+  const visibleFeed = feed.filter((item) => !blockedIds.has(item.userId));
 
   const subtitle = isFiltered
     ? t('activity.subtitleFiltered')
@@ -164,7 +177,7 @@ export default function ActivityPage() {
                 </div>
               ))}
             </div>
-          ) : feed.length === 0 ? (
+          ) : visibleFeed.length === 0 ? (
             <div className="py-16 text-center">
               <p className="text-[15px] font-bold text-ink mb-2">
                 {isFiltered ? t('activity.noActivityFollows') : t('activity.noActivity')}
@@ -177,7 +190,7 @@ export default function ActivityPage() {
             </div>
           ) : (
             <div className="flex flex-col">
-              {feed.map((item, i) => (
+              {visibleFeed.map((item, i) => (
                 <div key={i} className="flex gap-4 py-5 border-b border-divider last:border-0">
                   <Link href={`/profile/${item.username}`} className="flex-shrink-0 mt-0.5 hover:opacity-80 transition">
                     <UserAvatar size={32} />
@@ -222,6 +235,14 @@ export default function ActivityPage() {
                             className="w-[52px] h-[52px] rounded-[5px] object-cover"
                           />
                         </Link>
+                      )}
+
+                      {userId && userId !== item.userId && (
+                        <ReportBlockMenu
+                          reportedUserId={item.userId}
+                          ratingId={item.type === 'rating' ? item.ratingId : null}
+                          onBlocked={() => setBlockedIds((prev) => new Set(prev).add(item.userId))}
+                        />
                       )}
                     </div>
                   </div>

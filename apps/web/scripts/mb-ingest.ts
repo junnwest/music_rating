@@ -163,11 +163,19 @@ function padDate(d: string | null): string | null {
 
 function pickNative(detail: MbArtistDetail): string | null {
   const cjk = detail.aliases.filter(a => a.locale && ['ko', 'ja', 'zh'].includes(a.locale.split('-')[0]));
-  const primary = cjk.find(a => a.primary);
+  // Prefer a primary Korean alias specifically (this is a Korean-first product) before
+  // falling back to a primary Japanese/Chinese one.
+  const primary =
+    cjk.find(a => a.primary && a.locale?.split('-')[0] === 'ko') ??
+    cjk.find(a => a.primary);
   if (primary) return primary.name;
-  if (cjk.length) return cjk[0].name;
+  // No alias explicitly marked primary for a CJK locale — don't guess. MusicBrainz sometimes
+  // only has the artist's *legal* name tagged with a ko/ja/zh locale (not their stage name's
+  // native-script transliteration), and displaying that instead of the real public name is
+  // worse than just falling back to the Latin name (e.g. E SENS → wrongly "강민호" instead of
+  // the correct "이센스", which MusicBrainz simply doesn't have on file for this artist).
   if (scriptOf(detail.name) !== 'latin') return detail.name;
-  return detail.aliases.find(a => scriptOf(a.name) !== 'latin')?.name ?? null;
+  return null;
 }
 
 const rankCountry = (c: string | null) => (c === 'KR' ? 0 : c === 'JP' ? 1 : c === 'US' ? 2 : 3);

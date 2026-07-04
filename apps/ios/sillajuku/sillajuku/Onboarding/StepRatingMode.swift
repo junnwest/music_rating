@@ -54,8 +54,8 @@ struct StepRatingMode: View {
 }
 
 private struct RatingModeCard: View {
-    let title: String
-    let description: String
+    let title: LocalizedStringKey
+    let description: LocalizedStringKey
     let icon: String
     let isSelected: Bool
     let onTap: () -> Void

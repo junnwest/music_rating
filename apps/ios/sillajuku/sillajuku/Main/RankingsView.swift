@@ -18,20 +18,25 @@ struct ChartEntry: Identifiable, Hashable {
     var avgScore: Double?
     var ratingCount: Int?
     var newCount: Int?
+    var titleNative: String? = nil
+    var artistNative: String? = nil
 
     static func == (lhs: ChartEntry, rhs: ChartEntry) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 
+    var displayTitle: String { titleNative?.isPredominantlyHangul == true ? titleNative! : title }
+    var displayArtist: String { artistNative?.isPredominantlyHangul == true ? artistNative! : artist }
+
     var asRelease: Release {
         Release(id: id, title: title, artist: artist, coverUrl: coverUrl,
-                releaseType: nil, releaseDate: nil, titleNative: nil, artistNative: nil,
+                releaseType: nil, releaseDate: nil, titleNative: titleNative, artistNative: artistNative,
                 tracklist: nil, totalTracks: nil)
     }
 }
 
 struct ChartGenre: Identifiable, Hashable {
     let id: String
-    let name: String
+    let name: LocalizedStringKey
     let slug: String      // used in ILIKE queries
     let symbol: String    // SF Symbol name
     let bgColor: Color
@@ -68,11 +73,11 @@ enum ChartDetailType: Hashable {
 
     var title: String {
         switch self {
-        case .topRated:             return "Top Rated"
-        case .mostRated:            return "Most Rated"
-        case .hiddenGems:           return "Hidden Gems"
-        case .controversial:        return "Controversial"
-        case .trending:             return "Trending"
+        case .topRated:             return String(localized: "Top Rated")
+        case .mostRated:            return String(localized: "Most Rated")
+        case .hiddenGems:           return String(localized: "Hidden Gems")
+        case .controversial:        return String(localized: "Controversial")
+        case .trending:             return String(localized: "Trending")
         case .bestOfYear(_, _, let label): return label
         }
     }
@@ -82,17 +87,21 @@ enum TrendingMode { case global_, forYou }
 
 // Silla Score leaderboard row — returned by get_silla_leaderboard RPC
 private struct SillaLeaderboardRow: Codable {
-    let releaseId:   UUID
-    let title:       String
-    let artist:      String
-    let coverUrl:    String?
-    let sillaScore:  Double
-    let ratingCount: Int?
+    let releaseId:    UUID
+    let title:        String
+    let artist:       String
+    let coverUrl:     String?
+    let sillaScore:   Double
+    let ratingCount:  Int?
+    let titleNative:  String?
+    let artistNative: String?
     enum CodingKeys: String, CodingKey {
         case releaseId   = "release_id"; case title; case artist
         case coverUrl    = "cover_url"
         case sillaScore  = "silla_score"
         case ratingCount = "rating_count"
+        case titleNative = "native_title"
+        case artistNative = "artist_native"
     }
 }
 
@@ -107,20 +116,26 @@ private struct SillaLeaderboardParams: Encodable {
 private struct RankedRPCRow: Codable {
     let releaseId: UUID; let title: String; let artist: String
     let coverUrl: String?; let avgScore: Double?; let ratingCount: Int?
+    let titleNative: String?; let artistNative: String?
     enum CodingKeys: String, CodingKey {
         case releaseId   = "release_id"; case title; case artist
         case coverUrl    = "cover_url"
         case avgScore    = "avg_score"
         case ratingCount = "rating_count"
+        case titleNative = "native_title"
+        case artistNative = "artist_native"
     }
 }
 
 private struct TrendingRPCRow: Codable {
     let releaseId: UUID; let title: String; let artist: String
     let coverUrl: String?; let newCount: Int?
+    let titleNative: String?; let artistNative: String?
     enum CodingKeys: String, CodingKey {
         case releaseId = "release_id"; case title; case artist
         case coverUrl  = "cover_url";  case newCount = "new_count"
+        case titleNative = "native_title"
+        case artistNative = "artist_native"
     }
 }
 
@@ -128,21 +143,27 @@ private struct SongRPCRow: Codable {
     let releaseId: UUID; let trackPosition: Int; let trackTitle: String
     let artist: String; let albumTitle: String; let coverUrl: String?
     let avgScore: Double?; let ratingCount: Int?
+    let albumTitleNative: String?; let artistNative: String?
     enum CodingKeys: String, CodingKey {
         case releaseId    = "release_id"; case trackPosition = "track_position"
         case trackTitle   = "track_title"; case artist; case albumTitle = "album_title"
         case coverUrl     = "cover_url"; case avgScore = "avg_score"
         case ratingCount  = "rating_count"
+        case albumTitleNative = "album_title_native"
+        case artistNative = "artist_native"
     }
 }
 
 private struct TrendingSongRPCRow: Codable {
     let releaseId: UUID; let trackPosition: Int; let trackTitle: String
     let artist: String; let albumTitle: String; let coverUrl: String?; let newCount: Int?
+    let albumTitleNative: String?; let artistNative: String?
     enum CodingKeys: String, CodingKey {
         case releaseId    = "release_id"; case trackPosition = "track_position"
         case trackTitle   = "track_title"; case artist; case albumTitle = "album_title"
         case coverUrl     = "cover_url"; case newCount = "new_count"
+        case albumTitleNative = "album_title_native"
+        case artistNative = "artist_native"
     }
 }
 
@@ -159,10 +180,17 @@ struct ChartSongEntry: Identifiable, Hashable {
     var avgScore: Double?
     var ratingCount: Int?
     var newCount: Int?
+    var albumTitleNative: String? = nil
+    var artistNative: String? = nil
+
+    // Track titles have no native-script column anywhere in the schema — only the album
+    // title and artist name can show a native form here.
+    var displayAlbumTitle: String { albumTitleNative?.isPredominantlyHangul == true ? albumTitleNative! : albumTitle }
+    var displayArtist: String { artistNative?.isPredominantlyHangul == true ? artistNative! : artist }
 
     var asRelease: Release {
         Release(id: releaseId, title: albumTitle, artist: artist, coverUrl: coverUrl,
-                releaseType: nil, releaseDate: nil, titleNative: nil, artistNative: nil,
+                releaseType: nil, releaseDate: nil, titleNative: albumTitleNative, artistNative: artistNative,
                 tracklist: nil, totalTracks: nil)
     }
 
@@ -287,7 +315,8 @@ class ChartsViewModel {
             ChartSongEntry(releaseId: $0.releaseId, trackPosition: $0.trackPosition,
                            trackTitle: $0.trackTitle, artist: $0.artist,
                            albumTitle: $0.albumTitle, coverUrl: $0.coverUrl,
-                           avgScore: nil, ratingCount: nil, newCount: $0.newCount)
+                           avgScore: nil, ratingCount: nil, newCount: $0.newCount,
+                           albumTitleNative: $0.albumTitleNative, artistNative: $0.artistNative)
         }
     }
 
@@ -295,7 +324,8 @@ class ChartsViewModel {
         ChartSongEntry(releaseId: r.releaseId, trackPosition: r.trackPosition,
                        trackTitle: r.trackTitle, artist: r.artist,
                        albumTitle: r.albumTitle, coverUrl: r.coverUrl,
-                       avgScore: r.avgScore, ratingCount: r.ratingCount, newCount: nil)
+                       avgScore: r.avgScore, ratingCount: r.ratingCount, newCount: nil,
+                       albumTitleNative: r.albumTitleNative, artistNative: r.artistNative)
     }
 
     // MARK: Generic fetch helpers
@@ -305,7 +335,8 @@ class ChartsViewModel {
         return rows.map {
             ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
                        coverUrl: $0.coverUrl, avgScore: $0.avgScore,
-                       ratingCount: $0.ratingCount, newCount: nil)
+                       ratingCount: $0.ratingCount, newCount: nil,
+                       titleNative: $0.titleNative, artistNative: $0.artistNative)
         }
     }
 
@@ -313,7 +344,8 @@ class ChartsViewModel {
         let rows: [TrendingRPCRow] = (try? await supabase.rpc(name, params: params).execute().value) ?? []
         return rows.map {
             ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
-                       coverUrl: $0.coverUrl, avgScore: nil, ratingCount: nil, newCount: $0.newCount)
+                       coverUrl: $0.coverUrl, avgScore: nil, ratingCount: nil, newCount: $0.newCount,
+                       titleNative: $0.titleNative, artistNative: $0.artistNative)
         }
     }
 }
@@ -354,7 +386,7 @@ struct ChartsView: View {
         .background(Color.sjCream.ignoresSafeArea(edges: .top))
     }
 
-    private func chartTabButton(_ mode: ChartMode, label: String) -> some View {
+    private func chartTabButton(_ mode: ChartMode, label: LocalizedStringKey) -> some View {
         Button {
             withAnimation(.easeInOut(duration: 0.18)) { viewModel.chartMode = mode }
         } label: {
@@ -429,7 +461,7 @@ struct ChartsView: View {
                         .padding(.bottom, 30)
 
                         SongHorizSection(
-                            title: "Most Rated",
+                            title: "Most Rated Songs",
                             entries: viewModel.mostRatedSongs,
                             showScore: false
                         )
@@ -448,7 +480,7 @@ struct ChartsView: View {
 // MARK: - Song hub sections
 
 private struct SongHorizSection: View {
-    let title: String
+    let title: LocalizedStringKey
     let entries: [ChartSongEntry]
     let showScore: Bool
 
@@ -525,13 +557,13 @@ private struct HorizSongCard: View {
                 .lineLimit(1)
                 .frame(width: 110, alignment: .leading)
 
-            Text(entry.artist)
+            Text(entry.displayArtist)
                 .font(.system(size: 10))
                 .foregroundStyle(Color.sjMuted)
                 .lineLimit(1)
                 .frame(width: 110, alignment: .leading)
 
-            Text(entry.albumTitle)
+            Text(entry.displayAlbumTitle)
                 .font(.system(size: 9))
                 .foregroundStyle(Color.sjMuted.opacity(0.7))
                 .lineLimit(1)
@@ -600,7 +632,7 @@ private struct TrendingSongRow: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(1)
-                Text("\(entry.artist) · \(entry.albumTitle)")
+                Text(entry.displayArtist + " · " + entry.displayAlbumTitle)
                     .font(.system(size: 10))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
@@ -694,7 +726,8 @@ private struct RankingBlock: View {
         entries = rows.map {
             ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
                        coverUrl: $0.coverUrl, avgScore: $0.sillaScore * 5.0,
-                       ratingCount: $0.ratingCount, newCount: nil)
+                       ratingCount: $0.ratingCount, newCount: nil,
+                       titleNative: $0.titleNative, artistNative: $0.artistNative)
         }
         isLoading = false
         let prefetchUrls = entries.compactMap { URL(string: $0.coverUrl?.thumbnailUrl ?? "") }
@@ -826,7 +859,7 @@ private struct RankingBlock: View {
 
     // MARK: Helpers
 
-    private func filterLabel(_ text: String) -> some View {
+    private func filterLabel(_ text: LocalizedStringKey) -> some View {
         Text(text)
             .font(.system(size: 10, weight: .semibold))
             .foregroundStyle(Color.sjMuted)
@@ -863,11 +896,11 @@ private struct RankingBlock: View {
             CoverThumb(url: entry.coverUrl, size: 44, radius: 8)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(entry.title)
+                Text(entry.displayTitle)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(1)
-                Text(entry.artist)
+                Text(entry.displayArtist)
                     .font(.system(size: 12))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
@@ -1014,7 +1047,8 @@ struct RankingDetailView: View {
         entries = rows.map {
             ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
                        coverUrl: $0.coverUrl, avgScore: $0.sillaScore * 5.0,
-                       ratingCount: $0.ratingCount, newCount: nil)
+                       ratingCount: $0.ratingCount, newCount: nil,
+                       titleNative: $0.titleNative, artistNative: $0.artistNative)
         }
         isLoading = false
         let prefetchUrls = entries.compactMap { URL(string: $0.coverUrl?.thumbnailUrl ?? "") }
@@ -1050,7 +1084,7 @@ private struct PulseCard: View {
 
 private struct PulseStat: View {
     let value: String
-    let label: String
+    let label: LocalizedStringKey
 
     var body: some View {
         VStack(spacing: 3) {
@@ -1137,7 +1171,7 @@ private struct TrendingCard: View {
     }
 
     @ViewBuilder
-    private func toggleBtn(label: String, mode: TrendingMode) -> some View {
+    private func toggleBtn(label: LocalizedStringKey, mode: TrendingMode) -> some View {
         let active = viewModel.trendingMode == mode
         Button {
             viewModel.trendingMode = mode
@@ -1169,17 +1203,17 @@ private struct TrendingRow: View {
             CoverThumb(url: entry.coverUrl, size: 52, radius: 8)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(entry.title)
+                Text(entry.displayTitle)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(1)
                 if let n = entry.newCount {
-                    Text("\(entry.artist) · +\(n) this week")
+                    Text(String(format: String(localized: "%@ · +%d this week"), entry.displayArtist, n))
                         .font(.system(size: 11))
                         .foregroundStyle(Color.sjMuted)
                         .lineLimit(1)
                 } else {
-                    Text(entry.artist)
+                    Text(entry.displayArtist)
                         .font(.system(size: 11))
                         .foregroundStyle(Color.sjMuted)
                         .lineLimit(1)
@@ -1198,7 +1232,7 @@ private struct TrendingRow: View {
 // MARK: - Horizontal album scroll section
 
 private struct ChartHorizSection: View {
-    let title: String
+    let title: LocalizedStringKey
     let entries: [ChartEntry]
     let destination: ChartDetailType
     let showScore: Bool
@@ -1279,13 +1313,13 @@ private struct HorizAlbumCard: View {
             }
             .frame(width: 110, height: 110)
 
-            Text(entry.title)
+            Text(entry.displayTitle)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Color.sjInk)
                 .lineLimit(1)
                 .frame(width: 110, alignment: .leading)
 
-            Text(entry.artist)
+            Text(entry.displayArtist)
                 .font(.system(size: 10))
                 .foregroundStyle(Color.sjMuted)
                 .lineLimit(1)
@@ -1495,7 +1529,8 @@ private class ChartDetailViewModel {
         return rows.map {
             ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
                        coverUrl: $0.coverUrl, avgScore: $0.avgScore,
-                       ratingCount: $0.ratingCount, newCount: nil)
+                       ratingCount: $0.ratingCount, newCount: nil,
+                       titleNative: $0.titleNative, artistNative: $0.artistNative)
         }
     }
 
@@ -1505,7 +1540,8 @@ private class ChartDetailViewModel {
             .execute().value) ?? []
         return rows.map {
             ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
-                       coverUrl: $0.coverUrl, avgScore: nil, ratingCount: nil, newCount: $0.newCount)
+                       coverUrl: $0.coverUrl, avgScore: nil, ratingCount: nil, newCount: $0.newCount,
+                       titleNative: $0.titleNative, artistNative: $0.artistNative)
         }
     }
 }
@@ -1617,11 +1653,11 @@ private struct PodiumItem: View {
                         .font(.system(size: 13, weight: .black))
                         .foregroundStyle(rank == 1 ? Color.sjAmber : Color.sjInk)
                 }
-                Text(entry.title)
+                Text(entry.displayTitle)
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(1)
-                Text(entry.artist)
+                Text(entry.displayArtist)
                     .font(.system(size: 8))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
@@ -1646,11 +1682,11 @@ private struct RankedListRow: View {
                 .frame(width: 30, alignment: .trailing)
             CoverThumb(url: entry.coverUrl, size: 38, radius: 5)
             VStack(alignment: .leading, spacing: 2) {
-                Text(entry.title)
+                Text(entry.displayTitle)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(1)
-                Text(entry.artist)
+                Text(entry.displayArtist)
                     .font(.system(size: 10))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
@@ -1728,19 +1764,25 @@ private class GenreDetailViewModel {
         struct RankedRow: Codable {
             let releaseId: UUID; let title: String; let artist: String
             let coverUrl: String?; let avgScore: Double?; let ratingCount: Int?
+            let titleNative: String?; let artistNative: String?
             enum CodingKeys: String, CodingKey {
                 case releaseId   = "release_id"; case title; case artist
                 case coverUrl    = "cover_url"
                 case avgScore    = "avg_score"
                 case ratingCount = "rating_count"
+                case titleNative = "native_title"
+                case artistNative = "artist_native"
             }
         }
         struct TrendRow: Codable {
             let releaseId: UUID; let title: String; let artist: String
             let coverUrl: String?; let newCount: Int?
+            let titleNative: String?; let artistNative: String?
             enum CodingKeys: String, CodingKey {
                 case releaseId = "release_id"; case title; case artist
                 case coverUrl  = "cover_url";  case newCount = "new_count"
+                case titleNative = "native_title"
+                case artistNative = "artist_native"
             }
         }
         struct GenreLimit: Encodable { let p_limit: Int; let p_genre: String }
@@ -1755,7 +1797,8 @@ private class GenreDetailViewModel {
             entries = rows.map {
                 ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
                            coverUrl: $0.coverUrl, avgScore: $0.avgScore,
-                           ratingCount: $0.ratingCount, newCount: nil)
+                           ratingCount: $0.ratingCount, newCount: nil,
+                           titleNative: $0.titleNative, artistNative: $0.artistNative)
             }
             avgScore = entries.compactMap(\.avgScore).first
 
@@ -1767,7 +1810,8 @@ private class GenreDetailViewModel {
             entries = rows.map {
                 ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
                            coverUrl: $0.coverUrl, avgScore: $0.avgScore,
-                           ratingCount: $0.ratingCount, newCount: nil)
+                           ratingCount: $0.ratingCount, newCount: nil,
+                           titleNative: $0.titleNative, artistNative: $0.artistNative)
             }
 
         case .trending:
@@ -1778,7 +1822,8 @@ private class GenreDetailViewModel {
             entries = rows.map {
                 ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
                            coverUrl: $0.coverUrl, avgScore: nil,
-                           ratingCount: nil, newCount: $0.newCount)
+                           ratingCount: nil, newCount: $0.newCount,
+                           titleNative: $0.titleNative, artistNative: $0.artistNative)
             }
 
         case .gems:
@@ -1789,7 +1834,8 @@ private class GenreDetailViewModel {
             entries = rows.map {
                 ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
                            coverUrl: $0.coverUrl, avgScore: $0.avgScore,
-                           ratingCount: $0.ratingCount, newCount: nil)
+                           ratingCount: $0.ratingCount, newCount: nil,
+                           titleNative: $0.titleNative, artistNative: $0.artistNative)
             }
         }
     }
@@ -1875,7 +1921,7 @@ private struct SortChip: View {
 
     var body: some View {
         Button(action: action) {
-            Text(label)
+            Text(LocalizedStringKey(label))
                 .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(active ? Color.sjSurface : Color.sjMuted)
                 .padding(.horizontal, 14)

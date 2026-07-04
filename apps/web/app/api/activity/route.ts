@@ -32,25 +32,25 @@ export async function GET(req: NextRequest) {
     filterIds
       ? supabase
           .from('ratings')
-          .select('user_id, release_id, score, created_at, releases(id, title, artist, cover_url)')
+          .select('id, user_id, release_id, score, created_at, releases(id, title, artist, cover_url)')
           .in('user_id', filterIds)
           .order('created_at', { ascending: false })
           .limit(40)
       : supabase
           .from('ratings')
-          .select('user_id, release_id, score, created_at, releases(id, title, artist, cover_url)')
+          .select('id, user_id, release_id, score, created_at, releases(id, title, artist, cover_url)')
           .order('created_at', { ascending: false })
           .limit(40),
     filterIds
       ? supabase
           .from('reviews')
-          .select('user_id, username, release_id, body, created_at')
+          .select('id, user_id, username, release_id, body, created_at')
           .in('user_id', filterIds)
           .order('created_at', { ascending: false })
           .limit(40)
       : supabase
           .from('reviews')
-          .select('user_id, username, release_id, body, created_at')
+          .select('id, user_id, username, release_id, body, created_at')
           .order('created_at', { ascending: false })
           .limit(40),
   ]);
@@ -86,6 +86,7 @@ export async function GET(req: NextRequest) {
       body: undefined,
       date: r.created_at,
       releaseId: r.release_id,
+      ratingId: r.id,
     })),
     ...(reviews ?? []).map((r: any) => ({
       type: 'review' as const,
@@ -96,6 +97,7 @@ export async function GET(req: NextRequest) {
       body: r.body,
       date: r.created_at,
       releaseId: r.release_id,
+      ratingId: null,
     })),
   ]
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())

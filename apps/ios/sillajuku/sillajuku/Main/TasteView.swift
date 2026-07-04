@@ -14,12 +14,20 @@ private struct TasteRatingRow: Codable {
         let title: String
         let artist: String
         let coverUrl: String?
-        let genres: String?
+        let genres: [String]?
+        let titleNative: String?
+        let primaryArtist: NativeArtistRef?
         enum CodingKeys: String, CodingKey {
             case id, title, genres
-            case artist   = "artist_display"
-            case coverUrl = "cover_url"
+            case artist       = "artist_display"
+            case coverUrl     = "cover_url"
+            case titleNative  = "native_title"
+            case primaryArtist = "artists"
         }
+
+        var artistNative: String? { primaryArtist?.nameNative }
+        var displayTitle: String { titleNative?.isPredominantlyHangul == true ? titleNative! : title }
+        var displayArtist: String { artistNative?.isPredominantlyHangul == true ? artistNative! : artist }
     }
 
     enum CodingKeys: String, CodingKey {
@@ -80,7 +88,7 @@ final class TasteViewModel {
 
         let rows: [TasteRatingRow] = (try? await supabase
             .from("ratings")
-            .select("score, created_at, release_groups(id, title, artist_display, cover_url, genres)")
+            .select("score, created_at, release_groups(id, title, artist_display, cover_url, genres, native_title, artists!release_groups_primary_artist_id_fkey(name_native))")
             .eq("user_id", value: user.id)
             .execute()
             .value) ?? []
@@ -120,8 +128,8 @@ final class TasteViewModel {
            let rel = top.releases,
            let score = top.score {
             result.append(.topAlbum(
-                releaseId: rel.id, title: rel.title,
-                artist: rel.artist, coverUrl: rel.coverUrl, score: score
+                releaseId: rel.id, title: rel.displayTitle,
+                artist: rel.displayArtist, coverUrl: rel.coverUrl, score: score
             ))
         }
 
@@ -191,7 +199,7 @@ private struct TasteLockView: View {
                     .foregroundStyle(Color.sjAmber)
                     .padding(.bottom, 24)
 
-                Text("Rate \(Self.threshold - ratingCount) more\nreleases to unlock Taste")
+                Text(String(format: String(localized: "Rate %d more\nreleases to unlock Taste"), Self.threshold - ratingCount))
                     .font(.system(size: 24, weight: .bold))
                     .foregroundStyle(Color.sjInk)
                     .multilineTextAlignment(.center)
@@ -221,7 +229,7 @@ private struct TasteLockView: View {
                     .frame(height: 6)
                     .padding(.horizontal, 48)
 
-                    Text("\(ratingCount) of \(Self.threshold)")
+                    Text(String(format: String(localized: "%d of %d"), ratingCount, Self.threshold))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color.sjMuted)
                 }
@@ -437,7 +445,7 @@ private struct ActivityCard: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
                     .padding(.bottom, 8)
-                Text("\(count) albums rated")
+                Text(String(format: String(localized: "%d albums rated"), count))
                     .font(.system(size: 14))
                     .foregroundStyle(Color.sjAmber.opacity(0.7))
                     .padding(.bottom, 36)
@@ -473,22 +481,22 @@ private struct RatingStyleCard: View {
     private var pct: Double { totalCount > 0 ? Double(fiveStarCount) / Double(totalCount) : 0 }
 
     private var label: String {
-        if fiveStarCount == 0 { return "The Skeptic" }
+        if fiveStarCount == 0 { return String(localized: "The Skeptic") }
         switch pct {
-        case ..<0.05: return "The Purist"
-        case ..<0.15: return "The Enthusiast"
-        case ..<0.30: return "The Generous Ear"
-        default:      return "The Champion"
+        case ..<0.05: return String(localized: "The Purist")
+        case ..<0.15: return String(localized: "The Enthusiast")
+        case ..<0.30: return String(localized: "The Generous Ear")
+        default:      return String(localized: "The Champion")
         }
     }
 
     private var desc: String {
-        if fiveStarCount == 0 { return "A 5.0 from you would mean everything." }
+        if fiveStarCount == 0 { return String(localized: "A 5.0 from you would mean everything.") }
         switch pct {
-        case ..<0.05: return "You save perfect scores for the truly special."
-        case ..<0.15: return "You know great music when you hear it."
-        case ..<0.30: return "You lead with love."
-        default:      return "Music makes you generous."
+        case ..<0.05: return String(localized: "You save perfect scores for the truly special.")
+        case ..<0.15: return String(localized: "You know great music when you hear it.")
+        case ..<0.30: return String(localized: "You lead with love.")
+        default:      return String(localized: "Music makes you generous.")
         }
     }
 
@@ -526,7 +534,7 @@ private struct RatingStyleCard: View {
         }
     }
 
-    private func statBlock(value: String, label: String, color: Color) -> some View {
+    private func statBlock(value: String, label: LocalizedStringKey, color: Color) -> some View {
         VStack(spacing: 4) {
             Text(value)
                 .font(.system(size: 38, weight: .black))
@@ -557,13 +565,13 @@ private struct GenreStandingCard: View {
                 Spacer()
                 TasteEyebrow(label: "Genre DNA", color: accentColor)
                     .padding(.bottom, 20)
-                Text("You rate \(genre)\n\(diff >= 0 ? "higher" : "lower") than most.")
+                Text(String(format: String(localized: "You rate %@\n%@ than most."), genre, diff >= 0 ? String(localized: "higher") : String(localized: "lower")))
                     .font(.system(size: 26, weight: .bold))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
                     .padding(.bottom, 6)
-                Text("From \(userCount) ratings")
+                Text(String(format: String(localized: "From %d ratings"), userCount))
                     .font(.system(size: 13))
                     .foregroundStyle(Color.white.opacity(0.3))
                     .padding(.bottom, 36)
@@ -601,7 +609,7 @@ private struct GenreStandingCard: View {
         .clipShape(Capsule())
     }
 
-    private func genreBar(label: String, value: Double, color: Color) -> some View {
+    private func genreBar(label: LocalizedStringKey, value: Double, color: Color) -> some View {
         HStack(spacing: 10) {
             Text(label)
                 .font(.system(size: 12, weight: .semibold))
@@ -626,13 +634,14 @@ private struct GenreStandingCard: View {
 // MARK: - Shared sub-views
 
 private struct TasteEyebrow: View {
-    let label: String
+    let label: LocalizedStringKey
     let color: Color
 
     var body: some View {
-        Text(label.uppercased())
+        Text(label)
             .font(.system(size: 9, weight: .black))
             .foregroundStyle(color)
+            .textCase(.uppercase)
             .kerning(0.8)
             .padding(.horizontal, 12)
             .padding(.vertical, 5)

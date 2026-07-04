@@ -142,6 +142,7 @@ const ko: Translations = {
     emailLabel: '이메일',
     emailPlaceholder: 'your@email.com',
     sendBtn: '전송',
+    sendError: '메시지를 보내는 중 문제가 발생했습니다. 다시 시도해 주세요.',
     received: '메시지를 받았습니다',
     responseTime: '일반적인 응답 시간: 24–48시간.',
     sendAnother: '다른 메시지 보내기',

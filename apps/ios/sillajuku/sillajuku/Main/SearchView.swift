@@ -333,6 +333,13 @@ struct SearchArtist: Codable, Identifiable {
         case id; case name; case nameNative = "name_native"
         case coverUrl = "cover_url"; case releaseCount = "release_count"
     }
+
+    // name_native is mixed-provenance (some rows hold a non-Korean transliteration instead
+    // of the artist's real Korean name) — only trust it when it's actually Hangul.
+    var displayNativeName: String? {
+        guard let nameNative, nameNative.isPredominantlyHangul else { return nil }
+        return nameNative
+    }
 }
 
 // RPC param payloads. supabase-swift's `params:` takes `some Encodable`, so a heterogeneous
@@ -643,7 +650,7 @@ struct SearchView: View {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 44))
                         .foregroundStyle(Color.sjBorder)
-                    Text("No results for \"\(searchVM.query)\"")
+                    Text(String(format: String(localized: "No results for \"%@\""), searchVM.query))
                         .font(.system(size: 15))
                         .foregroundStyle(Color.sjMuted)
                 }
@@ -685,7 +692,12 @@ struct SearchView: View {
                                             Text(artist.name)
                                                 .font(.system(size: 14, weight: .semibold))
                                                 .foregroundStyle(Color.sjInk)
-                                            Text("\(artist.releaseCount) release\(artist.releaseCount == 1 ? "" : "s")")
+                                            if let native = artist.displayNativeName {
+                                                Text(native)
+                                                    .font(.system(size: 12))
+                                                    .foregroundStyle(Color.sjMuted)
+                                            }
+                                            Text(artist.releaseCount == 1 ? String(localized: "1 release") : String(format: String(localized: "%d releases"), artist.releaseCount))
                                                 .font(.system(size: 12))
                                                 .foregroundStyle(Color.sjMuted)
                                         }
@@ -902,16 +914,17 @@ struct SearchView: View {
 
     // MARK: - Helpers
 
-    private func sectionLabel(_ text: String) -> some View {
-        Text(text.uppercased())
+    private func sectionLabel(_ text: LocalizedStringKey) -> some View {
+        Text(text)
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(Color.sjMuted)
             .tracking(1)
+            .textCase(.uppercase)
             .padding(.horizontal, 16)
             .padding(.bottom, 12)
     }
 
-    private func discoverySectionTitle(_ text: String) -> some View {
+    private func discoverySectionTitle(_ text: LocalizedStringKey) -> some View {
         Text(text)
             .font(.system(size: 20, weight: .bold))
             .foregroundStyle(Color.sjInk)
@@ -921,10 +934,11 @@ struct SearchView: View {
     }
 
 
-    private func discoverySubheader(_ text: String) -> some View {
-        Text(text.uppercased())
+    private func discoverySubheader(_ text: LocalizedStringKey) -> some View {
+        Text(text)
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(Color.sjAmber)
+            .textCase(.uppercase)
             .tracking(1)
             .padding(.horizontal, 16)
             .padding(.top, 14)
@@ -1140,7 +1154,7 @@ struct SearchView: View {
                 Button {
                     expanded?.wrappedValue = true
                 } label: {
-                    Text("View all \(visible.count) songs")
+                    Text(String(format: String(localized: "View all %d songs"), visible.count))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color.sjAmber)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1242,7 +1256,7 @@ struct SongRow: View {
                         .background(Color.sjBlue.opacity(0.1))
                         .clipShape(RoundedRectangle(cornerRadius: 3))
                 }
-                Text("\(song.releases.title) · \(song.artists ?? song.releases.artist)")
+                Text(song.releases.title + " · " + (song.artists ?? song.releases.artist))
                     .font(.system(size: 12))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
@@ -1323,7 +1337,7 @@ struct ArtistPageView: View {
         struct CRProfile: Codable {
             let username: String?; let displayName: String?
             enum CodingKeys: String, CodingKey { case username; case displayName = "display_name" }
-            var handle: String { username ?? displayName ?? "someone" }
+            var handle: String { username ?? displayName ?? String(localized: "someone") }
             var initial: String { String((username ?? displayName ?? "?").prefix(1)).uppercased() }
         }
         enum CodingKeys: String, CodingKey {
@@ -1337,7 +1351,7 @@ struct ArtistPageView: View {
         }
     }
 
-    private let tabLabels = ["Albums", "Songs", "Community", "Stats"]
+    private let tabLabels: [LocalizedStringKey] = ["Albums", "Songs", "Community", "Stats"]
 
     private var myRatedCount: Int { myRatings.values.filter { $0 > 0 }.count }
     private var myAvg: Double? {
@@ -1390,7 +1404,7 @@ struct ArtistPageView: View {
                             .font(.system(size: 10, weight: .semibold))
                             .tracking(0.5)
                             .foregroundStyle(Color.sjMuted)
-                        Text("\(myRatedCount) rated · \(String(format: "%.1f", avg)) avg")
+                        Text(String(format: String(localized: "%d rated · %@ avg"), myRatedCount, String(format: "%.1f", avg)))
                             .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(Color.sjInk)
                     }
@@ -1486,7 +1500,7 @@ struct ArtistPageView: View {
     }
 
     @ViewBuilder
-    private func artistStat(value: String, label: String) -> some View {
+    private func artistStat(value: String, label: LocalizedStringKey) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value).font(.system(size: 22, weight: .heavy)).foregroundStyle(Color.sjInk)
             Text(label).font(.system(size: 10)).foregroundStyle(Color.sjMuted)
@@ -1674,7 +1688,7 @@ struct ArtistPageView: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
-                    Text("@\(entry.profiles?.handle ?? "someone")")
+                    Text("@" + (entry.profiles?.handle ?? String(localized: "someone")))
                         .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.sjInk)
                     Text("·").foregroundStyle(Color.sjBorder)
                     Text(entry.createdAt.relativeTimeString)
@@ -1731,7 +1745,7 @@ struct ArtistPageView: View {
         }
     }
 
-    private func statsSectionView(_ title: String, @ViewBuilder content: () -> some View) -> some View {
+    private func statsSectionView(_ title: LocalizedStringKey, @ViewBuilder content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.system(size: 11, weight: .semibold))
@@ -1802,7 +1816,7 @@ struct ArtistPageView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(release.displayTitle)
                                 .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.sjInk).lineLimit(1)
-                            Text("\(count) rating\(count == 1 ? "" : "s")")
+                            Text(count == 1 ? String(localized: "1 rating") : String(format: String(localized: "%d ratings"), count))
                                 .font(.system(size: 10)).foregroundStyle(Color.sjMuted)
                         }
                         Spacer()
@@ -1872,7 +1886,7 @@ struct ArtistPageView: View {
         VStack(spacing: 8) {
             ForEach(typeStats, id: \.type) { stat in
                 HStack {
-                    Text(stat.type)
+                    Text(LocalizedStringKey(stat.type))
                         .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.sjInk)
                     Text("(\(stat.count))")
                         .font(.system(size: 11)).foregroundStyle(Color.sjMuted)
@@ -1946,7 +1960,7 @@ private struct ArtistReleaseRow: View {
                         .foregroundStyle(Color.sjInk).lineLimit(1)
                     HStack(spacing: 3) {
                         if let t = release.releaseType {
-                            Text(t.lowercased() == "ep" ? "EP" : t.capitalized)
+                            Text(LocalizedStringKey(t.lowercased() == "ep" ? "EP" : t.capitalized))
                         }
                         if let y = year { Text("·"); Text(y) }
                     }
