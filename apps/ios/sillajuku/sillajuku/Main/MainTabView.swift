@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum AppTab: Hashable { case home, rankings, add, taste, profile }
 
@@ -10,6 +11,22 @@ struct MainTabView: View {
 
     @State private var selectedTab: AppTab = .home
     @State private var homeScrollTrigger   = UUID()
+
+    // Rendered once: a black rounded rect (wider than tall) with a white plus,
+    // used for the Add tab so it reads as an action button, not a destination.
+    private static let addTabImage: UIImage = {
+        let shape = ZStack {
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(Color.black)
+            Rectangle().fill(Color.white).frame(width: 16, height: 3)
+            Rectangle().fill(Color.white).frame(width: 3, height: 16)
+        }
+        .frame(width: 40, height: 26)
+        let renderer = ImageRenderer(content: shape)
+        renderer.scale = 3
+        let image = renderer.uiImage ?? UIImage()
+        return image.withRenderingMode(.alwaysOriginal)
+    }()
 
     // Custom binding that detects re-tapping the current tab
     private var tabSelection: Binding<AppTab> {
@@ -46,10 +63,8 @@ struct MainTabView: View {
 
                     SearchView(discoveryVM: discoveryVM)
                         .tabItem {
-                            Image(systemName: "plus.app.fill")
+                            Image(uiImage: MainTabView.addTabImage)
                                 .renderingMode(.original)
-                                .symbolRenderingMode(.palette)
-                                .foregroundStyle(.white, .black)
                         }
                         .accessibilityLabel(String(localized: "Add"))
                         .tag(AppTab.add)
