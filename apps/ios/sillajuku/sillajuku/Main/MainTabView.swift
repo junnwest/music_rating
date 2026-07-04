@@ -45,7 +45,12 @@ struct MainTabView: View {
                         .tag(AppTab.rankings)
 
                     SearchView(discoveryVM: discoveryVM)
-                        .tabItem { Image(systemName: "plus") }
+                        .tabItem {
+                            Image(systemName: "plus.app.fill")
+                                .renderingMode(.original)
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, .black)
+                        }
                         .accessibilityLabel(String(localized: "Add"))
                         .tag(AppTab.add)
 
