@@ -180,6 +180,12 @@ Picked "zero automated tests" off the same audit list next — the highest-sever
 
 ---
 
+**2026-07-04 (Mac) — icon-only bottom tab bar:**
+
+User request: remove all text labels from the 5-tab bottom `TabView`, icons only. Reverted from the modern `Tab(_:systemImage:value:)` struct API (which always renders a text label under the icon, no way to suppress it) back to the classic `.tabItem { Image(systemName:) }` + `.tag()` pattern — omitting `Text` from `.tabItem`'s content is the reliable way to get icon-only tabs. Added `.accessibilityLabel(String(localized:))` per tab reusing the already-translated catalog keys (Home/Charts/Add/Taste/Profile → 홈/차트/추가/취향/프로필) so VoiceOver isn't regressed by the switch. Verified: `xcodebuild build` clean, screenshot confirmed no text under any of the 5 icons, and tab-switching re-tested (tapped Charts icon → correct tab highlighted + content loaded) since the selection binding moved from the `Tab` struct's `value:` to `.tag()`.
+
+---
+
 **2026-07-04 (Mac) — iOS accessibility, first pass:**
 
 Picked "iOS has no accessibility support" off the audit list next. Confirmed the finding first — `grep -rc "accessibilityLabel\|accessibilityHint\|dynamicTypeSize" --include="*.swift" .` across all 37 Swift files returned nothing. Scoped deliberately to purely additive, low-risk fixes (icon-only controls, meaningful images) — explicitly NOT a Dynamic Type / font-size overhaul, since the app's layouts are tuned to fixed point sizes throughout this whole session and blanket-converting to scalable text risks breaking many screens without dedicated per-screen visual testing. That's a real, separate, bigger follow-up, not something to fold in here.
