@@ -15,7 +15,7 @@ const sections = [
   {
     icon: Globe,
     title: '3. Information Sharing',
-    body: "We do not sell your personal data. Your ratings and reviews are public by default and visible to all users. We may share anonymized, aggregated data for research purposes. We use Supabase for database and authentication, and Spotify for music metadata.",
+    body: 'We do not sell your personal data. Your ratings and reviews are public by default and visible to all users. We may share anonymized, aggregated data for research purposes. We use Supabase for database and authentication. Music metadata, cover art, and related information are sourced from a combination of third-party catalogs, including MusicBrainz, the Cover Art Archive, Deezer, Last.fm, and Apple/iTunes.',
   },
   {
     icon: Trash2,
@@ -28,18 +28,28 @@ const sections = [
     body: 'You have the right to access, correct, or delete your personal data. Most settings can be managed directly from your profile. For account deletion or data export, contact admin@sillajuku.com.',
   },
   {
+    icon: Globe,
+    title: '6. GDPR (European Users)',
+    body: 'If you are located in the European Economic Area or UK, we process your data under the following lawful bases: performance of a contract (operating your account and the core service), legitimate interests (improving the product, security, abuse prevention), and consent (where you opt in, e.g. push notifications). You have the right to access, rectify, erase, restrict, or port your data, and to object to processing based on legitimate interests. Contact admin@sillajuku.com to exercise any of these rights; we will respond within 30 days. You also have the right to lodge a complaint with your local data protection supervisory authority.',
+  },
+  {
+    icon: Globe,
+    title: '7. CCPA (California Residents)',
+    body: 'California residents have the right to know what personal information we collect, request deletion of that information, and opt out of its "sale" — we do not sell personal information as defined by the CCPA, so there is nothing to opt out of. To exercise any of these rights, contact admin@sillajuku.com; we will not discriminate against you for making a request.',
+  },
+  {
     icon: Cookie,
-    title: '6. Cookies',
-    body: 'We use cookies to maintain your session and remember preferences. We do not use cookies for advertising tracking.',
+    title: '8. Cookies',
+    body: 'We use only strictly-necessary, functional cookies — to maintain your login session and remember your language preference. We do not use cookies for advertising, cross-site tracking, or analytics profiling. Because these cookies are strictly necessary for the service to function, no cookie-consent banner is shown; this will change if we ever introduce non-essential cookies.',
   },
   {
     icon: FileText,
-    title: '7. Changes to This Policy',
+    title: '9. Changes to This Policy',
     body: 'We may update this policy from time to time. Significant changes will be posted on the site or emailed to you. Continued use after changes constitutes acceptance.',
   },
   {
     icon: Mail,
-    title: '8. Contact',
+    title: '10. Contact',
     body: 'For privacy questions, contact admin@sillajuku.com. We typically respond within 24–48 hours.',
   },
 ];
@@ -57,7 +67,7 @@ export default function PrivacyPage() {
             <Shield size={28} className="text-ink" strokeWidth={1.8} />
             <h1 className="text-[28px] md:text-[34px] font-extrabold text-ink tracking-tight">Privacy Policy</h1>
           </div>
-          <p className="text-[13px] text-muted">Last updated: January 2026</p>
+          <p className="text-[13px] text-muted">Last updated: July 2026</p>
         </div>
       </div>
 

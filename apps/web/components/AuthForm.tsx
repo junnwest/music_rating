@@ -184,7 +184,7 @@ export default function AuthForm() {
           Reset your password.
         </h1>
         <p className="text-[14px] text-muted mb-[30px] leading-relaxed">
-          Enter your email and we'll send you a link to set a new password.
+          Enter your email and we&apos;ll send you a link to set a new password.
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">

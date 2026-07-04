@@ -43,8 +43,13 @@ const sections = [
     body: 'If you believe content on sillajuku infringes your copyright, send a written notice to admin@sillajuku.com including: (1) a description of the copyrighted work you claim is infringed; (2) the specific URL or location of the material on sillajuku; (3) your contact information (name, address, phone, email); (4) a statement that you have a good-faith belief the use is not authorized by the copyright owner, its agent, or the law; (5) a statement, under penalty of perjury, that the notice is accurate and that you are authorized to act on the copyright owner’s behalf; and (6) your physical or electronic signature. We will review valid notices and remove or disable access to the identified material where appropriate. Accounts found to be repeat infringers may be terminated.',
   },
   {
+    icon: FileText,
+    title: '9. Governing Law',
+    body: 'These Terms are governed by the laws of the Republic of Korea, without regard to conflict-of-law principles. Any dispute arising out of or relating to these Terms or your use of sillajuku will be subject to the exclusive jurisdiction of the courts of the Republic of Korea.',
+  },
+  {
     icon: Mail,
-    title: '9. Contact',
+    title: '10. Contact',
     body: 'For legal questions, contact admin@sillajuku.com.',
   },
 ];
@@ -62,7 +67,7 @@ export default function TermsPage() {
             <FileText size={28} className="text-ink" strokeWidth={1.8} />
             <h1 className="text-[28px] md:text-[34px] font-extrabold text-ink tracking-tight">Terms of Service</h1>
           </div>
-          <p className="text-[13px] text-muted">Last updated: January 2026</p>
+          <p className="text-[13px] text-muted">Last updated: July 2026</p>
         </div>
       </div>
 

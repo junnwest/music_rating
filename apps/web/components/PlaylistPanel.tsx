@@ -508,7 +508,7 @@ export default function PlaylistPanel() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-divider">
-              <p className="text-[15px] font-bold text-ink">Export "{activeListName}"</p>
+              <p className="text-[15px] font-bold text-ink">Export &quot;{activeListName}&quot;</p>
               <button onClick={() => setShowExportModal(false)} className="text-muted hover:text-ink transition p-1">
                 <X size={18} />
               </button>
@@ -581,7 +581,7 @@ export default function PlaylistPanel() {
                 <div className="min-w-0">
                   <p className="text-[13px] font-semibold text-ink">YouTube Music</p>
                   <p className="text-[11px] text-muted mt-0.5 leading-relaxed">
-                    No public write API exists. Use "Copy tracklist" to paste manually, or search each album in the app.
+                    No public write API exists. Use &quot;Copy tracklist&quot; to paste manually, or search each album in the app.
                   </p>
                 </div>
               </div>

@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  web:
+    name: Web (lint, typecheck, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm install
+
+      - name: Lint
+        working-directory: apps/web
+        run: npx next lint
+
+      - name: Typecheck
+        working-directory: apps/web
+        run: npx tsc --noEmit
+
+      - name: Build
+        working-directory: apps/web
+        run: npx next build
+
+  ios:
+    name: iOS (build)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build for iOS Simulator
+        working-directory: apps/ios
+        run: |
+          xcodebuild -project sillajuku.xcodeproj -scheme sillajuku \
+            -destination 'generic/platform=iOS Simulator' \
+            -quiet build

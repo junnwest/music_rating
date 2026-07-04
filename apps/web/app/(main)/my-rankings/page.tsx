@@ -308,7 +308,7 @@ export default function MyRankingsPage() {
         {recs.length > 0 && (
           <div>
             <h2 className="text-[17px] font-bold text-ink mb-1">Recommended for You</h2>
-            <p className="text-[12px] text-muted mb-4">Based on your top-rated genres — albums you haven't rated yet</p>
+            <p className="text-[12px] text-muted mb-4">Based on your top-rated genres — albums you haven&apos;t rated yet</p>
 
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">
               {recs.map(r => (

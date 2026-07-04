@@ -1086,6 +1086,7 @@
       }
     },
     "Feed" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -1630,6 +1631,7 @@
       }
     },
     "No activity yet." : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
