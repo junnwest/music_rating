@@ -30,25 +30,34 @@ struct MainTabView: View {
                 AppLoadingView()
             } else {
                 TabView(selection: tabSelection) {
-                    Tab("Home", systemImage: "house.fill", value: AppTab.home) {
-                        HomeView(
-                            viewModel: homeVM,
-                            scrollToTopTrigger: homeScrollTrigger,
-                            onOwnProfileTap: { selectedTab = .profile }
-                        )
-                    }
-                    Tab("Charts", systemImage: "trophy.fill", value: AppTab.rankings) {
-                        ChartsView(viewModel: chartsVM)
-                    }
-                    Tab("Add", systemImage: "plus", value: AppTab.add) {
-                        SearchView(discoveryVM: discoveryVM)
-                    }
-                    Tab("Taste", systemImage: "sparkles", value: AppTab.taste) {
-                        TasteView(onGoToAdd: { selectedTab = .add })
-                    }
-                    Tab("Profile", systemImage: "person.fill", value: AppTab.profile) {
-                        ProfileView(viewModel: profileVM)
-                    }
+                    HomeView(
+                        viewModel: homeVM,
+                        scrollToTopTrigger: homeScrollTrigger,
+                        onOwnProfileTap: { selectedTab = .profile }
+                    )
+                    .tabItem { Image(systemName: "house.fill") }
+                    .accessibilityLabel(String(localized: "Home"))
+                    .tag(AppTab.home)
+
+                    ChartsView(viewModel: chartsVM)
+                        .tabItem { Image(systemName: "trophy.fill") }
+                        .accessibilityLabel(String(localized: "Charts"))
+                        .tag(AppTab.rankings)
+
+                    SearchView(discoveryVM: discoveryVM)
+                        .tabItem { Image(systemName: "plus") }
+                        .accessibilityLabel(String(localized: "Add"))
+                        .tag(AppTab.add)
+
+                    TasteView(onGoToAdd: { selectedTab = .add })
+                        .tabItem { Image(systemName: "sparkles") }
+                        .accessibilityLabel(String(localized: "Taste"))
+                        .tag(AppTab.taste)
+
+                    ProfileView(viewModel: profileVM)
+                        .tabItem { Image(systemName: "person.fill") }
+                        .accessibilityLabel(String(localized: "Profile"))
+                        .tag(AppTab.profile)
                 }
                 .tint(Color.sjAmber)
             }
