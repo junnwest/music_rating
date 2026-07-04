@@ -118,11 +118,14 @@ async function main() {
   const PAGE = 1000;
   let rows: { id: string; name: string }[] = [];
   for (let from = 0; ; from += PAGE) {
+    // Stable PK order → correct pagination (the filter column is written during the run, but the
+    // full fetch completes before any write). Popularity is mostly null for MB-ingested artists, so
+    // it can't prioritize the famous ones — a full pass covers everyone regardless.
     const { data, error } = await db.from('artists')
-      .select('id, name, popularity')
+      .select('id, name')
       .is('name_phonetic_ko', null)
       .or('native_language.is.null,native_language.neq.ko')
-      .order('popularity', { ascending: false, nullsFirst: false })
+      .order('id', { ascending: true })
       .range(from, from + PAGE - 1);
     if (error) { console.error('fetch error:', error.message); break; }
     if (!data?.length) break;
