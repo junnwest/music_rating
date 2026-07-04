@@ -22,7 +22,7 @@ Everything above is committed and pushed to `main` (`0da5e69`, `548cca0`).
 Four items were on the table; split by which machine is naturally suited to each so both can move in parallel instead of one waiting on the other.
 
 **Windows (this doc — pick up here):** the two open-ended data-sourcing problems below.
-**Mac — done:** `get_charts_most_rated`'s intermittent 500 root-caused (missing indexes on `ratings.release_group_id`/`track_ratings.recording_id` since the schema renovation dropped the old ones and never replaced them — migration `20260703000006`, applied) and `ActivityView` deleted (confirmed redundant with `HomeView`'s Explore tab, not just unreachable). See `SESSIONS.md` for the full trace. Neither blocks anything below.
+**Mac — done:** `get_charts_most_rated`'s intermittent 500 root-caused (missing indexes on `ratings.release_group_id`/`track_ratings.recording_id` since the schema renovation dropped the old ones and never replaced them — migration `20260703000007`, renumbered from a same-day collision with Windows's `20260703000006_artist_phonetic_ko.sql`) and `ActivityView` deleted (confirmed redundant with `HomeView`'s Explore tab, not just unreachable). See `SESSIONS.md` for the full trace. Neither blocks anything below.
 
 ### 1. Korean release title backfill (research + implement)
 
