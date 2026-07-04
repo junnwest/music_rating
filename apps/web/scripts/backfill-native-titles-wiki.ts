@@ -38,7 +38,21 @@ const hasHangul = (s: string) => /[가-힣]/.test(s);
 // loose norm (word chars + single spaces) for title comparison; tight norm (alnum only) for cats.
 const normLoose = (s: string) => (s ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').replace(/\s+/g, ' ').trim();
 const normTight = (s: string) => (s ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
-const stripDisambig = (t: string) => t.replace(/\s*\([^)]+\)\s*$/, '').trim();
+// Balanced-paren aware so NESTED disambiguators are stripped — "I am ((여자)아이들의 EP)" → "I am"
+// (which then fails the Hangul guard and is correctly rejected, not written as a dirty native title).
+function stripDisambig(t: string): string {
+  let s = (t ?? '').trim();
+  while (s.endsWith(')')) {
+    let depth = 0, i = s.length - 1;
+    for (; i >= 0; i--) {
+      if (s[i] === ')') depth++;
+      else if (s[i] === '(') { depth--; if (depth === 0) break; }
+    }
+    if (i <= 0 || !/\s$/.test(s.slice(0, i))) break;
+    s = s.slice(0, i).trim();
+  }
+  return s;
+}
 // Our DB titles sometimes carry a format suffix; try both forms when matching.
 const stripFormat = (t: string) => t.replace(/\s*[-–—]\s*(EP|Single|LP|Album)\s*$/i, '').trim();
 

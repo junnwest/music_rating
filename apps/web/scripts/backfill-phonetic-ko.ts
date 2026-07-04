@@ -36,7 +36,21 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const hasHangul = (s: string) => /[가-힣]/.test(s);
 const normalizeStr = (s: string) => s.toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
 // Strip Wikipedia disambiguation suffixes: "드레이크 (음악가)" → "드레이크", "위켄드 (가수)" → "위켄드".
-const stripDisambig = (t: string) => t.replace(/\s*\([^)]+\)\s*$/, '').trim();
+// Balanced-paren aware so NESTED disambiguators are removed too — "I am ((여자)아이들의 EP)" → "I am"
+// (which then fails the Hangul guard and is correctly rejected, not written as a dirty native value).
+function stripDisambig(t: string): string {
+  let s = (t ?? '').trim();
+  while (s.endsWith(')')) {
+    let depth = 0, i = s.length - 1;
+    for (; i >= 0; i--) {
+      if (s[i] === ')') depth++;
+      else if (s[i] === '(') { depth--; if (depth === 0) break; }
+    }
+    if (i <= 0 || !/\s$/.test(s.slice(0, i))) break; // no matching '(' or it isn't a trailing suffix
+    s = s.slice(0, i).trim();
+  }
+  return s;
+}
 
 function loadState(): Set<string> { try { return new Set(existsSync(STATE) ? JSON.parse(readFileSync(STATE, 'utf8')).done : []); } catch { return new Set(); } }
 function saveState(s: Set<string>) { writeFileSync(STATE, JSON.stringify({ done: [...s] }, null, 0)); }
