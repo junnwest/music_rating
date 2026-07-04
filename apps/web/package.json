@@ -23,6 +23,8 @@
     "seed:missing-from-external:dry": "tsx --env-file=.env.local scripts/seed-missing-from-external.ts --dry-run",
     "backfill:external-mbids": "tsx --env-file=.env.local scripts/backfill-external-mbids.ts",
     "backfill:external-mbids:dry": "tsx --env-file=.env.local scripts/backfill-external-mbids.ts --dry-run",
+    "backfill:phonetic-ko": "tsx --env-file=.env.local scripts/backfill-phonetic-ko.ts",
+    "backfill:phonetic-ko:dry": "tsx --env-file=.env.local scripts/backfill-phonetic-ko.ts --dry-run",
     "queue:stubs": "tsx --env-file=.env.local scripts/queue-stubs.ts",
     "queue:stubs:dry": "tsx --env-file=.env.local scripts/queue-stubs.ts --dry-run",
     "queue:names": "tsx --env-file=.env.local scripts/queue-by-name.ts",

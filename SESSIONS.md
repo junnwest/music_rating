@@ -6,6 +6,22 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-07-03 (Windows) — Korean phonetic search built + native-title source research (HANDOFF-WINDOWS.md):**
+
+Picked up the two open-ended data-sourcing tasks from `HANDOFF-WINDOWS.md`. Reviewed the plan against the live DB first (found schema drift worth catching), then executed the one with a clean source and escalated the one that needs a decision.
+
+**Task 2 — Korean phonetic search (`드레이크`→Drake): built, pending apply+run.**
+- Design per handoff: a **separate** `artists.name_phonetic_ko` column, *not* an overload of `name_native`. `name_native` means "this artist's actual native-script identity" (IU = 아이유); `name_phonetic_ko` means "the standard Korean spelling a Korean would type to find this artist" (Drake = 드레이크). Conflating them would reintroduce exactly the ambiguity the 07-03 Mac native-name cleanup removed.
+- Migration `20260703000006_artist_phonetic_ko.sql`: adds the column + a functional trigram index, and rebuilds `search_artists` to match/rank `name_phonetic_ko` in WHERE + ORDER BY. **RETURN signature is unchanged** (phonetic participates only in matching, never the projection) → no iOS/web client changes needed.
+- Backfill `scripts/backfill-phonetic-ko.ts` (`npm run backfill:phonetic-ko`, `:dry` variant): sources the rendering from **Korean Wikipedia interlanguage links** (the EN article's `ko` langlink — public API, no scraping). Reuses the proven `backfill-native-names.ts` structure (direct-title → music-biased-search fallback, disambig-suffix stripping, music-category guard) but keeps only the `ko` link and only if it's actually Hangul. Scope: non-Korean-native artists (`native_language IS DISTINCT FROM 'ko'`), famous-first, resumable/idempotent. DB writes are single-row UPDATEs (negligible IO vs the ingest pipeline; the cost is Wikipedia round-trips).
+- Validated the resolver live before handoff: Drake→드레이크, Taylor Swift→테일러 스위프트, The Weeknd→위켄드, Kendrick Lamar→켄드릭 라마, Radiohead→라디오헤드, Coldplay→콜드플레이. Correctly returns no-match for nonexistent artists and for ambiguous pages (Nirvana, YOASOBI) — conservative by design (a wrong phonetic spelling is worse than none). Zico correctly no-matches (Korean-native → out of scope).
+- **⏳ Remaining:** apply migration `20260703000006` via SQL editor, then `npm run backfill:phonetic-ko` (~21k artists; can run alongside the pipeline — Wikipedia-bound, not Supabase-IO-bound).
+
+**Task 1 — Korean native album titles: research complete, escalated (needs a decision).**
+- Schema-drift finding: the old `backfill-native-names.ts` Phase 2 wrote to `releases.title_native`, which post-renovation holds **0 rows** — that data never migrated to the rated entity. The live field is `release_groups.native_title` (12,382 / 208,570 set, mostly Japanese from MB ingest). The Korean gap is **6,464 / 7,425 (87%)** of Korean-artist release groups.
+- Re-confirmed the handoff's two dead-ends empirically: **iTunes KR** returns the Korean *artist* name but *English* album titles (뉴진스 :: "NewJeans 2nd EP 'Get Up'", "Supernatural"; 아이브 :: "REVIVE+", "I've IVE"); **MusicBrainz** carries no Korean RG titles. Ruled out the clean alternatives too: **Wikidata** has ~0 K-pop album coverage; **Deezer**'s Korean search is unreliable (searching 아이유 returns "아이스 (I.C.E)"/민재; 이무진 returns 이진욱 — wrong artists, partial titles).
+- Conclusion: the only reliable source is the Korean streaming platforms (**Melon / Bugs / Genie**), all requiring **scraping with ToS implications**. Per the handoff ("flag if scraping looks like the only option, don't just proceed"), escalated rather than proceeding. Awaiting a decision on scrape-vs-defer.
+
 **2026-07-03 (Mac) — New device setup + Terms of Service link + operational readiness audit + Start Here fixes:**
 
 First session on a new MacBook Pro (M5 Pro, 24 GB RAM).
