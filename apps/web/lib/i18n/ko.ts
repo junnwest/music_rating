@@ -211,7 +211,7 @@ const ko: Translations = {
     prompt: '앨범과 아티스트를 검색하세요',
     promptDesc: '위 검색창을 사용하여 평가할 음악을 찾아보세요.',
     filterAll: '전체',
-    filterAlbums: '앨범',
+    filterAlbums: '정규',
     filterEPs: 'EP',
     filterSingles: '싱글',
     filterLive: '라이브',
