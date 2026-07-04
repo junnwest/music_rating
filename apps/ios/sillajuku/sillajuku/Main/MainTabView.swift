@@ -52,31 +52,39 @@ struct MainTabView: View {
                         scrollToTopTrigger: homeScrollTrigger,
                         onOwnProfileTap: { selectedTab = .profile }
                     )
-                    .tabItem { Image(systemName: "house.fill") }
-                    .accessibilityLabel(String(localized: "Home"))
+                    .tabItem {
+                        Image(systemName: "house.fill")
+                        Text(String(localized: "Home"))
+                    }
                     .tag(AppTab.home)
 
                     ChartsView(viewModel: chartsVM)
-                        .tabItem { Image(systemName: "trophy.fill") }
-                        .accessibilityLabel(String(localized: "Charts"))
+                        .tabItem {
+                            Image(systemName: "trophy.fill")
+                            Text(String(localized: "Charts"))
+                        }
                         .tag(AppTab.rankings)
 
                     SearchView(discoveryVM: discoveryVM)
                         .tabItem {
                             Image(uiImage: MainTabView.addTabImage)
                                 .renderingMode(.original)
+                            Text(String(localized: "Add"))
                         }
-                        .accessibilityLabel(String(localized: "Add"))
                         .tag(AppTab.add)
 
                     TasteView(onGoToAdd: { selectedTab = .add })
-                        .tabItem { Image(systemName: "sparkles") }
-                        .accessibilityLabel(String(localized: "Taste"))
+                        .tabItem {
+                            Image(systemName: "sparkles")
+                            Text(String(localized: "Taste"))
+                        }
                         .tag(AppTab.taste)
 
                     ProfileView(viewModel: profileVM)
-                        .tabItem { Image(systemName: "person.fill") }
-                        .accessibilityLabel(String(localized: "Profile"))
+                        .tabItem {
+                            Image(systemName: "person.fill")
+                            Text(String(localized: "Profile"))
+                        }
                         .tag(AppTab.profile)
                 }
                 .tint(Color.sjAmber)
