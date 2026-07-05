@@ -205,8 +205,8 @@ class ProfileViewModel {
 
     func load() async {
         guard !hasLoaded else { return }
-        hasLoaded = true
         guard let user = supabase.auth.currentUser else { isLoading = false; return }
+        hasLoaded = true
         isLoading = true
 
         profile = try? await supabase
@@ -332,12 +332,12 @@ class ProfileViewModel {
         }
 
         if let r = try? await supabase.from("follows")
-            .select("*", head: true, count: .exact)
+            .select("*", count: .exact)
             .eq("follower_id", value: user.id).execute() {
             followingCount = r.count ?? 0
         }
         if let r = try? await supabase.from("follows")
-            .select("*", head: true, count: .exact)
+            .select("*", count: .exact)
             .eq("following_id", value: user.id).execute() {
             followerCount = r.count ?? 0
         }

@@ -6,6 +6,18 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-07-05 (Mac) — two-track session kicked off: bot population (Windows) + Instagram share card (Mac):**
+
+Product push to solve the cold-start problem (empty app at launch → bad first impression → fewer real users → stays empty) plus a new share-to-Instagram-Stories feature. Split by machine: Windows owns bot population (100% backend/data, zero iOS surface), Mac owns the share card (100% native iOS). Wrote `HANDOFF-WINDOWS.md` (replacing the now-completed native-title/phonetic-search handoff) with the full bot-population task: flagged the existing `create-bot-user.ts`/`bot-actions.ts` as stale (still writes pre-renovation `ratings.release_id`), proposed building bot personas on the already-existing `lib/genre-categories.ts` taxonomy (26 categories, korean/japanese/western/global origins — same vocabulary the onboarding picker uses) rather than inventing a new one, and named the open product tension explicitly: the "serious listener" positioning argues for over-indexing hip-hop/indie/R&B, but the real userbase is Korea-first, so bot proportions shouldn't drift too far from actual Korean listening habits. Recommended adding `profiles.is_bot` before creating any accounts (cheap now, keeps every future option open). Widget/share-card work deliberately not started yet — talking through the design first per user request.
+
+---
+
+**2026-07-05 (Mac) — iOS Profile tab Following/Followers showing 0:**
+
+User report: Profile tab's Following/Followers stat cells showed 0 despite real follow relationships existing. Live-verified the DB and REST protocol are both fine (account `junnwest` correctly has 2 followers / 3 following via both anon-role and service-role queries; a raw HEAD request with `Prefer: count=exact` correctly returns `Content-Range` from PostgREST). Isolated the difference to `ProfileView.swift`'s `ProfileViewModel.load()`: its two follows-count queries were the only ones in the whole function using `head: true` (every other working count-query pattern in the codebase, e.g. `UserProfileView.swift`'s `loadCounts()`, omits it), wrapped in `try?` that silently swallows any failure to a default of `0` with no logging. Removed `head: true` from both queries to match the established working pattern. Also fixed a related but distinct correctness issue in the same function: `hasLoaded = true` was set *before* the `guard let user = supabase.auth.currentUser` check, so if the auth session hadn't finished restoring when the Profile tab first loads (a real race on cold launch), the guard would fail once and `load()` would never retry (only a follow/rating-change notification calls `reload()`) — reordered so `hasLoaded` is only set after a real user is confirmed. **Not yet verified live in the simulator** — `xcodebuild` CLI is known-broken on this machine (see Build note above), so this needs a Cmd+B/Cmd+R pass in Xcode GUI to confirm the fix before considering it fully closed.
+
+---
+
 **2026-07-05 (Mac) — get_silla_leaderboard timeout fixed (iOS "랭킹" card showed "no data"):**
 
 User report: the Charts page's Silla leaderboard card showed "아직 랭킹 데이터가 없습니다." (no ranking data yet). Not a data gap — the RPC was hitting the anon role's statement timeout against `release_groups` (grown to ~290k rows), silently swallowed to an empty array by the iOS client's `try?`, so the failure was invisible from the app side.
