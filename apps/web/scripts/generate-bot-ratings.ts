@@ -1,18 +1,19 @@
 /**
  * Generates persona-weighted ratings for the bot population (HANDOFF-WINDOWS.md item 4).
  *
- * For each bot: sample ~80 albums from its persona's content pool (× prestige affinity), score each
- * from the persona's harshness curve, and insert into `ratings` with status='Listened' and an
- * explicit BACKDATED created_at spread across weeks (service role can set created_at directly, unlike
- * the app). Resumable/checkpointed per bot.
+ * RANKING-AWARE DESIGN (locked with the user 2026-07-05) — so the charts make sense afterward:
+ *   • NOTABLE-ONLY universe: bots rate only the prestige canon (RGs with prestige_score) + all
+ *     Korean/Japanese album-EPs (by artist origin). The obscure Western long-tail gets ZERO bot
+ *     ratings, so it can never top a chart on a lucky rating. Notable albums accumulate real counts.
+ *   • QUALITY-ANCHORED scores: each album has a latent quality q∈[0,1] — the real prestige_score
+ *     where we have it, else a deterministic per-album value (stable across bots). Bot score =
+ *     base(q) + persona harshness bias + noise. So acclaimed albums are rated consistently higher
+ *     by everyone → they rise in top_rated (which is now Bayesian, migration 20260705000005);
+ *     persona character (stan vs critic) is preserved as a bias + spread, not as random level.
+ *   • Cover-only; status='Listened'; created_at backdated from signup→now (a natural ~15% land in
+ *     the last 7 days, so `trending` populates too). Resumable/checkpointed per bot.
  *
- * Content pools (per the catalog-composition finding — origin for K/J, genre tags for Western):
- *   • ko / ja  → release_groups whose primary artist is native_language ko/ja (reliable), cover set.
- *   • western  → release_groups whose genres[] match the persona's genre-tag substrings, cover set.
- *   • prestige → RGs with prestige_score (canon), used per-pick with probability = prestigeAffinity.
- * Only albums WITH a cover are sampled, so bot-rated cards never render broken.
- *
- *   npx tsx --env-file=.env.local scripts/generate-bot-ratings.ts --dry-run --limit=5
+ *   npx tsx --env-file=.env.local scripts/generate-bot-ratings.ts --dry-run --limit=8
  *   npx tsx --env-file=.env.local scripts/generate-bot-ratings.ts --limit=8   # pilot
  *   npx tsx --env-file=.env.local scripts/generate-bot-ratings.ts
  */
@@ -34,11 +35,14 @@ const personaByKey = new Map(PERSONAS.map(p => [p.key, p]));
 const loadState = (): Set<string> => { try { return new Set(existsSync(STATE) ? JSON.parse(readFileSync(STATE, 'utf8')).done : []); } catch { return new Set(); } };
 const saveState = (s: Set<string>) => writeFileSync(STATE, JSON.stringify({ done: [...s] }, null, 0));
 
-// Seeded PRNG + gaussian, so a bot's ratings are reproducible across resumes.
+// Seeded PRNG + gaussian → a bot's ratings are reproducible across resumes.
 function rng(seed: number) { return () => { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 function gauss(rand: () => number, mean: number, sd: number) { const u = Math.max(1e-9, rand()), v = rand(); return mean + sd * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
 const halfStar = (x: number) => Math.min(5, Math.max(0.5, Math.round(x * 2) / 2));
 function seedFrom(s: string) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+// Deterministic latent quality for albums with no prestige signal (K/J): stable across all bots,
+// skewed so most notable albums are "decent" (0.35–0.85) rather than uniform.
+function latentQuality(id: string) { const u = seedFrom(id) / 4294967296; return 0.30 + 0.60 * (0.5 * u + 0.5 * u * u); }
 
 async function pageAll<T>(build: (from: number) => any): Promise<T[]> {
   const out: T[] = [];
@@ -50,46 +54,45 @@ async function pageAll<T>(build: (from: number) => any): Promise<T[]> {
   }
   return out;
 }
-
-async function artistIdsByLang(lang: string): Promise<Set<string>> {
-  const rows = await pageAll<{ id: string }>((from) => db.from('artists').select('id').eq('native_language', lang));
-  return new Set(rows.map(r => r.id));
+async function artistIds(lang: string): Promise<string[]> {
+  return (await pageAll<{ id: string }>((f) => db.from('artists').select('id').eq('native_language', lang))).map(r => r.id);
 }
+async function poolByArtist(ids: string[]): Promise<RG[]> {
+  const out: RG[] = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    out.push(...await pageAll<RG>((f) => db.from('release_groups').select('id, prestige_score, genres')
+      .in('primary_artist_id', ids.slice(i, i + 100)).not('cover_url', 'is', null).in('release_group_type', ['album', 'ep'])));
+  }
+  return out;
+}
+
+const matchGenre = (r: RG, filters: string[]) => Array.isArray(r.genres) && r.genres.some(g => filters.some(f => g.toLowerCase().includes(f)));
 
 async function main() {
   if (!existsSync(ROSTER)) { console.error('No bot-roster.json — run create-bots.ts first.'); process.exit(1); }
   const roster: RosterEntry[] = JSON.parse(readFileSync(ROSTER, 'utf8'));
-  console.log(`\n  Bot ratings — ${roster.length} bots${DRY ? '  [DRY RUN]' : ''}${LIMIT < Infinity ? `  [limit ${LIMIT}]` : ''}\n`);
+  console.log(`\n  Bot ratings (notable-only, quality-anchored) — ${roster.length} bots${DRY ? '  [DRY RUN]' : ''}${LIMIT < Infinity ? `  [limit ${LIMIT}]` : ''}\n`);
 
-  // ── Build content pools once ──
-  console.log('  building content pools…');
-  const [koIds, jaIds] = [await artistIdsByLang('ko'), await artistIdsByLang('ja')];
-  const koArr = [...koIds], jaArr = [...jaIds];
-  const poolByArtist = async (ids: string[]): Promise<RG[]> => {
-    const out: RG[] = [];
-    for (let i = 0; i < ids.length; i += 100) {
-      const slice = ids.slice(i, i + 100);
-      const rows = await pageAll<RG>((from) => db.from('release_groups').select('id, prestige_score, genres')
-        .in('primary_artist_id', slice).not('cover_url', 'is', null).in('release_group_type', ['album', 'ep']));
-      out.push(...rows);
-    }
-    return out;
-  };
-  const koPool = await poolByArtist(koArr);
-  const jaPool = await poolByArtist(jaArr);
-  // Western pool: album/EP with cover + genres; filtered per-persona in JS by genre-tag substring.
-  const westPool = await pageAll<RG & { primary_artist_id: string }>((from) => db.from('release_groups')
-    .select('id, prestige_score, genres, primary_artist_id')
-    .not('cover_url', 'is', null).not('genres', 'is', null).in('release_group_type', ['album', 'ep']));
-  const westOnly = westPool.filter(r => !koIds.has((r as any).primary_artist_id) && !jaIds.has((r as any).primary_artist_id));
-  const prestigePool = (rgs: RG[]) => rgs.filter(r => r.prestige_score != null);
-  console.log(`  pools: ko=${koPool.length} ja=${jaPool.length} west=${westOnly.length} (prestige-in-west=${prestigePool(westOnly).length})\n`);
+  console.log('  building notable universe…');
+  const koPool = await poolByArtist(await artistIds('ko'));
+  const jaPool = await poolByArtist(await artistIds('ja'));
+  const prestigePool = await pageAll<RG>((f) => db.from('release_groups').select('id, prestige_score, genres')
+    .not('prestige_score', 'is', null).not('cover_url', 'is', null).in('release_group_type', ['album', 'ep']));
+  console.log(`  pools: prestige=${prestigePool.length} ko=${koPool.length} ja=${jaPool.length}\n`);
 
-  const matchGenre = (r: RG, filters: string[]) => Array.isArray(r.genres) && r.genres.some(g => filters.some(f => g.toLowerCase().includes(f)));
+  // Persona → its slice of the notable universe.
   function personaPool(p: Persona): RG[] {
-    if (p.bucket === 'ko') { const sub = p.genreSubFilter ? koPool.filter(r => matchGenre(r, p.genreSubFilter!)) : []; return sub.length >= 60 ? sub : koPool; }
-    if (p.bucket === 'ja') { const sub = p.genreSubFilter ? jaPool.filter(r => matchGenre(r, p.genreSubFilter!)) : []; return sub.length >= 60 ? sub : jaPool; }
-    return westOnly.filter(r => matchGenre(r, p.genreFilters!));
+    if (p.bucket === 'ko') { const sub = p.genreSubFilter ? koPool.filter(r => matchGenre(r, p.genreSubFilter!)) : []; return sub.length >= 40 ? sub : koPool; }
+    if (p.bucket === 'ja') { const sub = p.genreSubFilter ? jaPool.filter(r => matchGenre(r, p.genreSubFilter!)) : []; return sub.length >= 40 ? sub : jaPool; }
+    const g = prestigePool.filter(r => matchGenre(r, p.genreFilters!));  // western: acclaimed canon in-genre
+    return g.length >= 30 ? g : prestigePool;
+  }
+  // Score an album for a persona: anchored to quality, shifted by persona harshness, plus noise.
+  function scoreFor(p: Persona, r: RG, rand: () => number): number {
+    const q = r.prestige_score != null ? r.prestige_score : latentQuality(r.id);
+    const base = 2.3 + q * 2.2;                       // [2.3, 4.5]
+    const bias = p.harshness.mean - 3.95;             // stan ≈ +0.45, critic ≈ −0.45
+    return halfStar(base + bias + gauss(rand, 0, p.harshness.sd * 0.55));
   }
 
   const done = loadState();
@@ -98,34 +101,28 @@ async function main() {
     if (processed >= LIMIT) break;
     if (done.has(bot.user_id)) continue;
     const p = personaByKey.get(bot.persona); if (!p) continue;
-    const pool = personaPool(p), pres = prestigePool(pool);
+    const pool = personaPool(p);
     if (!pool.length) { console.warn(`  ! ${bot.username}: empty pool (${p.key})`); done.add(bot.user_id); processed++; continue; }
 
     const rand = rng(seedFrom(bot.user_id));
-    const nRatings = Math.round(gauss(rand, 80, 18));
-    const target = Math.max(30, Math.min(140, nRatings));
-    const picks = new Set<string>();
+    const target = Math.max(30, Math.min(140, Math.round(gauss(rand, 80, 18))));
+    const picks = new Map<string, RG>();
     let guard = 0;
-    while (picks.size < target && guard++ < target * 20) {
-      const usePres = pres.length > 5 && rand() < p.prestigeAffinity;
-      const src = usePres ? pres : pool;
-      picks.add(src[Math.floor(rand() * src.length)].id);
+    while (picks.size < target && picks.size < pool.length && guard++ < target * 25) {
+      const r = pool[Math.floor(rand() * pool.length)];
+      if (!picks.has(r.id)) picks.set(r.id, r);
     }
-    // Ratings backdated between the bot's signup and ~now, spread (not one burst).
-    const start = new Date(bot.created_at).getTime();
-    const span = Math.max(1, Date.now() - start);
-    const rows = [...picks].map(rgId => ({
-      user_id: bot.user_id, release_group_id: rgId,
-      score: halfStar(gauss(rand, p.harshness.mean, p.harshness.sd)),
-      status: 'Listened', elo_games: 0,
-      created_at: new Date(start + rand() * span).toISOString(),
+    const start = new Date(bot.created_at).getTime(), span = Math.max(1, Date.now() - start);
+    const rows = [...picks.values()].map(r => ({
+      user_id: bot.user_id, release_group_id: r.id, score: scoreFor(p, r, rand),
+      status: 'Listened', elo_games: 0, created_at: new Date(start + rand() * span).toISOString(),
     }));
 
     if (DRY) {
       const dist = rows.reduce((m: Record<string, number>, r) => (m[r.score] = (m[r.score] ?? 0) + 1, m), {});
-      console.log(`  [${p.key}] ${bot.username}: ${rows.length} ratings, score dist ${JSON.stringify(dist)}`);
+      const avg = (rows.reduce((s, r) => s + r.score, 0) / rows.length).toFixed(2);
+      console.log(`  [${p.key}] ${bot.username}: ${rows.length} ratings, avg ${avg}, dist ${JSON.stringify(dist)}`);
     } else {
-      // insert in chunks; ignore unique (user,rg) conflicts so a partial prior run is safe
       for (let i = 0; i < rows.length; i += 500) {
         const { error } = await db.from('ratings').upsert(rows.slice(i, i + 500), { onConflict: 'user_id,release_group_id', ignoreDuplicates: true });
         if (error) { console.warn(`  ! ${bot.username}: ${error.message}`); break; }
