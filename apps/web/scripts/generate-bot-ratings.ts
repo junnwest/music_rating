@@ -38,7 +38,7 @@ const saveState = (s: Set<string>) => writeFileSync(STATE, JSON.stringify({ done
 // Seeded PRNG + gaussian → a bot's ratings are reproducible across resumes.
 function rng(seed: number) { return () => { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 function gauss(rand: () => number, mean: number, sd: number) { const u = Math.max(1e-9, rand()), v = rand(); return mean + sd * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
-const halfStar = (x: number) => Math.min(5, Math.max(0.5, Math.round(x * 2) / 2));
+const decScore = (x: number) => Math.min(5, Math.max(1, Math.round(x * 10) / 10)); // 0.1 granularity, not half-stars
 function seedFrom(s: string) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
 // Deterministic latent quality for albums with no prestige signal (K/J): stable across all bots,
 // skewed so most notable albums are "decent" (0.35–0.85) rather than uniform.
@@ -87,16 +87,27 @@ async function main() {
     const g = prestigePool.filter(r => matchGenre(r, p.genreFilters!));  // western: acclaimed canon in-genre
     return g.length >= 30 ? g : prestigePool;
   }
-  // Quality-weighted sampler (memoized per persona). Real listeners rate notable albums far more
-  // than obscure ones, so selection probability ∝ quality^2.6 — this concentrates ratings on the
-  // better albums, giving them enough ratings to clear the chart's min-3 floor AND rise sensibly.
-  const qOf = (r: RG) => r.prestige_score != null ? r.prestige_score : latentQuality(r.id);
+  // Effective quality for a (persona, album). Western prestige = critical acclaim (good for all).
+  // Korean/Japanese prestige = COMMERCIAL chart success: mainstream personas embrace it, but
+  // anti-commercial personas ignore it (use latent quality) so they don't pile onto BTS/EXO.
+  const qFor = (p: Persona, r: RG) => {
+    if (p.bucket === 'western' || p.mainstream) return r.prestige_score != null ? r.prestige_score : latentQuality(r.id);
+    return latentQuality(r.id); // anti-commercial K/J persona → ignore commercial prestige
+  };
+  // Quality-weighted sampler (memoized). P(pick) ∝ quality^2.6 concentrates ratings on notable
+  // albums (clears the chart's min-3 floor + ranks sensibly). Anti-commercial K/J personas also
+  // PENALIZE prestige-bearing (commercial) albums so mainstream K-pop stays a minority in the feed.
+  const weightFor = (p: Persona, r: RG) => {
+    let w = Math.pow(0.12 + qFor(p, r), 2.6);
+    if ((p.bucket === 'ko' || p.bucket === 'ja') && !p.mainstream && r.prestige_score != null) w *= 0.18;
+    return w;
+  };
   const weighted = new Map<string, { pool: RG[]; cum: number[]; total: number }>();
   function weightedFor(p: Persona) {
     let w = weighted.get(p.key);
     if (!w) {
       const pool = personaPool(p); const cum: number[] = []; let s = 0;
-      for (const r of pool) { s += Math.pow(0.12 + qOf(r), 2.6); cum.push(s); }
+      for (const r of pool) { s += weightFor(p, r); cum.push(s); }
       w = { pool, cum, total: s }; weighted.set(p.key, w);
     }
     return w;
@@ -108,10 +119,10 @@ async function main() {
   }
   // Score an album for a persona: anchored to quality, shifted by persona harshness, plus noise.
   function scoreFor(p: Persona, r: RG, rand: () => number): number {
-    const q = r.prestige_score != null ? r.prestige_score : latentQuality(r.id);
+    const q = qFor(p, r);                             // acclaim (W/mainstream) or latent (anti-commercial K/J)
     const base = 2.3 + q * 2.2;                       // [2.3, 4.5]
-    const bias = p.harshness.mean - 3.95;             // stan ≈ +0.45, critic ≈ −0.45
-    return halfStar(base + bias + gauss(rand, 0, p.harshness.sd * 0.55));
+    const bias = p.harshness.mean - 3.95;             // stan ≈ +0.35, critic ≈ −0.55
+    return decScore(base + bias + gauss(rand, 0, p.harshness.sd * 0.55));
   }
 
   const done = loadState();

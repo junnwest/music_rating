@@ -25,6 +25,8 @@ const args = process.argv.slice(2);
 const DRY = args.includes('--dry-run');
 if (!PW && !DRY) { console.error('Missing BOT_PASSWORD in .env.local (see .env.example)'); process.exit(1); }
 const LIMIT = (() => { const a = args.find(x => x.startsWith('--limit=')); return a ? parseInt(a.split('=')[1], 10) : Infinity; })();
+// --per-persona=N caps each persona at N this run (a representative cross-persona pilot).
+const PER_PERSONA = (() => { const a = args.find(x => x.startsWith('--per-persona=')); return a ? parseInt(a.split('=')[1], 10) : Infinity; })();
 const ROSTER = `${__dirname}/bot-roster.json`;
 
 const admin = createClient(URL, KEY, { auth: { autoRefreshToken: false, persistSession: false } });
@@ -62,7 +64,8 @@ async function main() {
   outer:
   for (const p of PERSONAS) {
     const already = doneByPersona.get(p.key) ?? 0;
-    for (let i = already; i < p.count; i++) {
+    const upTo = Math.min(p.count, PER_PERSONA);
+    for (let i = already; i < upTo; i++) {
       if (created >= LIMIT) break outer;
       const rand = rng(seed++);
       const country = COUNTRY[p.bucket][Math.floor(rand() * COUNTRY[p.bucket].length)];
