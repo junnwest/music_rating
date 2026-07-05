@@ -79,9 +79,11 @@ async function main() {
       if (ae || !au?.user) { console.warn(`  ! auth ${username}: ${ae?.message}`); continue; }
       const { error: pe } = await admin.from('profiles').insert({
         id: au.user.id, username, display_name, is_bot: true, country,
-        rating_mode: 'star', created_at,
+        rating_mode: 'manual', created_at,
       });
-      if (pe) { console.warn(`  ! profile ${username}: ${pe.message}`); continue; }
+      // If the profile insert fails, delete the just-created auth user so a failure can never orphan
+      // auth rows (and never silently spin past --limit without counting).
+      if (pe) { console.warn(`  ! profile ${username}: ${pe.message}`); await admin.auth.admin.deleteUser(au.user.id).catch(() => {}); continue; }
       const entry: RosterEntry = { user_id: au.user.id, username, persona: p.key, bucket: p.bucket, created_at };
       roster.push(entry); created++;
       if (created % 10 === 0) { saveRoster(roster); console.log(`  … ${created} created`); }

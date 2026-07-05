@@ -87,6 +87,25 @@ async function main() {
     const g = prestigePool.filter(r => matchGenre(r, p.genreFilters!));  // western: acclaimed canon in-genre
     return g.length >= 30 ? g : prestigePool;
   }
+  // Quality-weighted sampler (memoized per persona). Real listeners rate notable albums far more
+  // than obscure ones, so selection probability ∝ quality^2.6 — this concentrates ratings on the
+  // better albums, giving them enough ratings to clear the chart's min-3 floor AND rise sensibly.
+  const qOf = (r: RG) => r.prestige_score != null ? r.prestige_score : latentQuality(r.id);
+  const weighted = new Map<string, { pool: RG[]; cum: number[]; total: number }>();
+  function weightedFor(p: Persona) {
+    let w = weighted.get(p.key);
+    if (!w) {
+      const pool = personaPool(p); const cum: number[] = []; let s = 0;
+      for (const r of pool) { s += Math.pow(0.12 + qOf(r), 2.6); cum.push(s); }
+      w = { pool, cum, total: s }; weighted.set(p.key, w);
+    }
+    return w;
+  }
+  function wpick(w: { pool: RG[]; cum: number[]; total: number }, rand: () => number): RG {
+    const x = rand() * w.total; let lo = 0, hi = w.cum.length - 1;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (w.cum[m] < x) lo = m + 1; else hi = m; }
+    return w.pool[lo];
+  }
   // Score an album for a persona: anchored to quality, shifted by persona harshness, plus noise.
   function scoreFor(p: Persona, r: RG, rand: () => number): number {
     const q = r.prestige_score != null ? r.prestige_score : latentQuality(r.id);
@@ -101,15 +120,15 @@ async function main() {
     if (processed >= LIMIT) break;
     if (done.has(bot.user_id)) continue;
     const p = personaByKey.get(bot.persona); if (!p) continue;
-    const pool = personaPool(p);
-    if (!pool.length) { console.warn(`  ! ${bot.username}: empty pool (${p.key})`); done.add(bot.user_id); processed++; continue; }
+    const w = weightedFor(p);
+    if (!w.pool.length) { console.warn(`  ! ${bot.username}: empty pool (${p.key})`); done.add(bot.user_id); processed++; continue; }
 
     const rand = rng(seedFrom(bot.user_id));
     const target = Math.max(30, Math.min(140, Math.round(gauss(rand, 80, 18))));
     const picks = new Map<string, RG>();
     let guard = 0;
-    while (picks.size < target && picks.size < pool.length && guard++ < target * 25) {
-      const r = pool[Math.floor(rand() * pool.length)];
+    while (picks.size < target && picks.size < w.pool.length && guard++ < target * 25) {
+      const r = wpick(w, rand);            // quality-weighted → concentrates on notable albums
       if (!picks.has(r.id)) picks.set(r.id, r);
     }
     const start = new Date(bot.created_at).getTime(), span = Math.max(1, Date.now() - start);
