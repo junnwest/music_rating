@@ -6,6 +6,17 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-07-04 (Mac) — bug reports from testing: tab bar caption revert, chart translations, Taste unlock count:**
+
+Four items reported after testing the app directly.
+
+- **Tab bar captions reverted**: user decided against the icon-only tab bar from earlier today — reverted to `.tabItem { Image(...); Text(...) }` for all 5 tabs, keeping the custom black/white Add badge design (that part was a separate, still-wanted change, not being undone).
+- **"Hidden Gems"/"Controversial" insight cards weren't translating**: `InsightCard`'s `title`/`subtitle` fields were plain `String`, and `Text(String)` never does a catalog lookup (only `Text(LocalizedStringKey)`/`String(localized:)` does) — so even though Korean translations already existed in `Localizable.xcstrings` (숨은 명반/호불호 갈림 + both subtitles), they were never used. Fixed by wrapping the call-site literals in `String(localized:)`. Verified live via simulator (temporarily defaulted `selectedTab` to `.rankings` for a one-off build since simulator coordinate-tap automation was unreliable this session — reverted after screenshotting).
+- **Taste unlock progress bug ("15 ratings but need 20 more")**: root-caused. `TasteViewModel.load()`'s query only selected `score` (not `elo_score`) from `ratings`, then filtered to `rows.filter { $0.score != nil }` for the count — silently dropping any album rated via Instinct/Elo mode (no manual star score) from the unlock-progress count. It also never counted song ratings (`track_ratings`) at all, unlike `ProfileView`'s `totalRatings = ratings.count + songRatings.count`. Fixed `ratingCount` to `rows.count + songRows.count` (mode-agnostic, matches Profile's definition) — the `scored`-filtered subset is still used separately for building insight cards (top album, rating style, etc.), unchanged.
+- **Trending 전체 vs 맞춤 (open question, not actioned)**: confirmed what each does — 전체 is `get_charts_trending` (global), 맞춤 is `get_charts_trending_for_genres` filtered by the user's top-3 rated genres (falls back to global if no session/genres). User's intuition was that 맞춤 might not be needed; flagged as a real product judgment call (with sparse per-user rating data pre-launch, 맞춤 often falls back to the same list as 전체) rather than removed outright — no code change made, awaiting user's call.
+
+---
+
 **2026-07-03 (Windows) — Korean phonetic search built + native-title source research (HANDOFF-WINDOWS.md):**
 
 Picked up the two open-ended data-sourcing tasks from `HANDOFF-WINDOWS.md`. Reviewed the plan against the live DB first (found schema drift worth catching), then executed the one with a clean source and escalated the one that needs a decision.
