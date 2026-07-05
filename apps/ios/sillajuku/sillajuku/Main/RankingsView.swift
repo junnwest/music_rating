@@ -1386,14 +1386,14 @@ private struct InsightCardRow: View {
         HStack(spacing: 10) {
             InsightCard(
                 symbol: "diamond.fill",
-                title: "Hidden Gems",
-                subtitle: "High scores, small audiences",
+                title: String(localized: "Hidden Gems"),
+                subtitle: String(localized: "High scores, small audiences"),
                 destination: ChartDetailType.hiddenGems
             )
             InsightCard(
                 symbol: "bolt.fill",
-                title: "Controversial",
-                subtitle: "The community can't agree",
+                title: String(localized: "Controversial"),
+                subtitle: String(localized: "The community can't agree"),
                 destination: ChartDetailType.controversial
             )
         }

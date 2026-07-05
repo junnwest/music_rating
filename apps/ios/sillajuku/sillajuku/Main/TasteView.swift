@@ -93,8 +93,22 @@ final class TasteViewModel {
             .execute()
             .value) ?? []
 
+        struct SongRatingIdRow: Codable { let recordingId: UUID
+            enum CodingKeys: String, CodingKey { case recordingId = "recording_id" }
+        }
+        let songRows: [SongRatingIdRow] = (try? await supabase
+            .from("track_ratings")
+            .select("recording_id")
+            .eq("user_id", value: user.id)
+            .execute()
+            .value) ?? []
+
+        // Total ratings (any mode — manual score or Instinct/Elo) + song ratings,
+        // matching ProfileView's `totalRatings` so the unlock progress agrees with
+        // the "Rated" stat shown on the profile.
+        ratingCount = rows.count + songRows.count
+
         let scored = rows.filter { $0.score != nil }
-        ratingCount = scored.count
 
         if isUnlocked {
             var built = buildLocalCards(scored)
