@@ -115,7 +115,10 @@ async function main() {
     const start = new Date(bot.created_at).getTime(), span = Math.max(1, Date.now() - start);
     const rows = [...picks.values()].map(r => ({
       user_id: bot.user_id, release_group_id: r.id, score: scoreFor(p, r, rand),
-      status: 'Listened', elo_games: 0, created_at: new Date(start + rand() * span).toISOString(),
+      status: 'Listened', elo_games: 0,
+      // Backdated signup→now, gently biased toward recent (rand^0.65) so the population reads as an
+      // app gaining traction, not a uniform dump — and the feed/trending have fresh activity.
+      created_at: new Date(start + span * Math.pow(rand(), 0.65)).toISOString(),
     }));
 
     if (DRY) {
