@@ -6,6 +6,32 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-07-05 (Mac) — get_silla_leaderboard timeout fixed (iOS "랭킹" card showed "no data"):**
+
+User report: the Charts page's Silla leaderboard card showed "아직 랭킹 데이터가 없습니다." (no ranking data yet). Not a data gap — the RPC was hitting the anon role's statement timeout against `release_groups` (grown to ~290k rows), silently swallowed to an empty array by the iOS client's `try?`, so the failure was invisible from the app side.
+
+Root-caused via direct RPC timing tests (service-role key, confirmed `57014 canceling statement due to statement timeout` while sibling chart RPCs returned in ~1s) and then `EXPLAIN (ANALYZE, BUFFERS)` — first on the wrapped function call (only showed an opaque "Function Scan", since `SECURITY DEFINER` functions are never inlined by Postgres) then on the raw query body run directly (parameters substituted as literals) to see the actual internal plan.
+
+Took 4 rounds to land a durable fix, each round diagnosed from a fresh `EXPLAIN ANALYZE` the user ran in the SQL editor and pasted back:
+1. **`20260704000000`** — restructured the `scored` CTE to start FROM the small (~1,823-row) prestige-derived set and JOIN into `release_groups`, instead of the reverse (`release_groups LEFT JOIN prestige ... WHERE prestige IS NOT NULL`, which is logically an inner join but defeated the planner's outer-join elimination against the now much-bigger table). Helped, but still ~40% failure rate — root cause remained.
+2. **`20260705000000`** (`enable_nestloop=off`) — the actual bottleneck: Postgres was doing 1,823 individual random-access index lookups into `release_groups` (~5ms each, ~9 of 16.4 total seconds) instead of a batched join. Disabling nested loop fixed the country-scoped path (669-719ms) but the global path still failed 100%.
+3. **`20260705000001`** (also `enable_mergejoin=off`) — with nested loop off, the planner picked a Merge Join instead, which needs both sides sorted — satisfied via a full *ordered index scan of all ~294,000 rows* (10.3s). Forcing hash join (only option left) fixed the global path (7.5-7.9s) but now broke the country path (2/3 timeouts) — confirmed the two call shapes (global vs. country-scoped) genuinely need different plans, not one GUC setting.
+4. **`20260705000002`** (durable fix) — stepped back from GUC tuning entirely. `release_groups` already had a precomputed, indexed `prestige_score` column from the original (June 28) design, abandoned for live computation once country-scoping needs (June 30) required a per-request calculation. Restructured so the **global path reads `rg.prestige_score` directly** (no join needed at all — exactly the condition its supporting partial index was built for) while the **country path keeps live computation** with just `enable_nestloop=off` (the one setting that helped it, without the merge-join toggle that broke it in round 3). Also dropped a redundant final self-join that re-fetched columns `scored` already had. Verified stable: 359-913ms across repeated calls, both paths, zero timeouts.
+
+**Found in passing**: `reconcile_prestige_scores()` — the function meant to keep `prestige_score` fresh — was never in a tracked migration (created directly via the SQL editor at some point) and still implemented the *old* weighted-average prestige formula, the one `prestige_formula_v2` (2026-06-30) explicitly replaced on the live-computation side because it let a weak source dilute a strong one. Rewrote it to match (`20260705000002`/`20260705000003`) — same per-tier-max/floor-guarantee/diversity-bonus formula as `global_prestige`/`all_prestige`.
+
+**Left incomplete, deliberately**: the actual data refresh (`SELECT * FROM reconcile_prestige_scores(5000)`, ~234 stale-formula rows out of 1,589) hasn't run — its own `UPDATE ... release_groups` join hit the same lock/plan issues, and further investigation found it's colliding with the pipeline's `embeddings` lane, which is *itself* actively erroring against `release_groups` (`err=474 «canceling statement due to statement timeout»` per `pipeline:status`). Confirmed via `pg_stat_activity` this is genuine concurrent write contention, not a bug in the reconcile query. This is the same recurring category logged in `PIPELINE_CHECKS.md` on 2026-06-29/07-01 (reconcile timing out under ingest write-load) — not new, and expected to clear once the embeddings lane's error rate settles. `PIPELINE_CHECKS.md` updated with a new dated entry.
+
+**Also fixed this session** (reported together with the leaderboard bug):
+- **"Hidden Gems"/"Controversial" insight cards weren't translating** in Korean despite the translations already existing in the catalog — `InsightCard`'s `title`/`subtitle` were plain `String`, and `Text(String)` never does a catalog lookup (only `Text(LocalizedStringKey)`/`String(localized:)` does). Fixed at the call site.
+- **Tab bar text captions reverted** — user decided against the icon-only tab bar from the prior session; restored `Text` labels under all 5 icons, kept the custom black/white Add badge (a separate, still-wanted change).
+- **Taste unlock progress bug** ("15 ratings, but told 20 more needed") — `TasteViewModel` only counted album ratings with a manual `score` set, silently excluding Instinct/Elo-only ratings and all song ratings. Fixed to match `ProfileView`'s `totalRatings` definition (mode-agnostic, albums + songs).
+- **Trending 전체 vs 맞춤** — clarified what each does (global vs. genre-personalized); flagged as a real product judgment call given sparse per-user rating data pre-launch, not actioned.
+
+Noticed but **not touched**: `Localizable.xcstrings` has an uncommitted diff (208 insertions/206 deletions, new keys with existing Korean translations already present) that wasn't made by any edit in this conversation — likely Xcode re-syncing the catalog during one of today's several builds. Left alone and flagged to the user, per scope discipline (out of scope for this task).
+
+---
+
 **2026-07-04 (Mac) — bug reports from testing: tab bar caption revert, chart translations, Taste unlock count:**
 
 Four items reported after testing the app directly.
