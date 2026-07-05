@@ -97,26 +97,36 @@ export const TOTAL_BOTS = PERSONAS.reduce((n, p) => n + p.count, 0); // 150
 const KO_NAMES = ['jiwoo', 'seoyeon', 'minho', 'hyejin', 'jaehyun', 'yuna', 'doyoung', 'soyeon', 'hyunwoo', 'jieun', 'nari', 'seojin', 'minji', 'jihoon', 'eunbi', 'dahye', 'woojin', 'yerim', 'subin', 'jinwoo', 'sora', 'haeun', 'junho', 'yeji', 'minseo', 'chanwoo', 'soobin', 'hyewon', 'jimin', 'taeyang'];
 const JA_NAMES = ['yuki', 'haruto', 'rin', 'aoi', 'ren', 'hina', 'kaito', 'mei', 'yuto', 'saki', 'riku', 'nao', 'akira', 'yui', 'sho', 'mio', 'kenta', 'emi', 'takumi', 'hikari', 'kana', 'daiki', 'miku', 'ryo', 'ayaka', 'natsu', 'kou', 'sana'];
 const WEST_NAMES = ['daniel', 'chloe', 'marcus', 'elena', 'liam', 'sofia', 'noah', 'mia', 'oliver', 'ava', 'ethan', 'zoe', 'lucas', 'emma', 'leo', 'ivy', 'sam', 'nora', 'theo', 'iris', 'max', 'june', 'eli', 'remy', 'cole', 'ruby', 'jonas', 'clara', 'miles', 'esme'];
-const WORDS = ['moonlit', 'velvet', 'slowbloom', 'bluehour', 'reverie', 'driftwood', 'papermoon', 'amberwave', 'mellowgold', 'nightswim', 'sodapop', 'goldenhour', 'seaglass', 'lowtide', 'afterglow', 'coastline', 'paperbird', 'stillwater', 'foxglove', 'cloudline'];
+// Handle-building vocab. Most usernames are word/aesthetic-based and UNRELATED to the display name —
+// like real people, whose @handle is rarely their actual name.
+const WORDS = ['moonlit', 'lowtide', 'papermoon', 'afterglow', 'seaglass', 'coastline', 'stillwater', 'foxglove', 'cloudline', 'nightswim', 'sodapop', 'driftwood', 'reverie', 'amberwave', 'mellowgold', 'paperbird', 'bluehour', 'goldenhour', 'slowbloom', 'velvetine'];
+const ADJ = ['soft', 'slow', 'quiet', 'blue', 'pale', 'warm', 'dim', 'late', 'faded', 'golden', 'misty', 'hazy', 'velvet', 'lone', 'still', 'moody', 'muted', 'ghost', 'plush', 'wired'];
+const NOUN = ['moon', 'tide', 'static', 'ember', 'fern', 'cove', 'drift', 'haze', 'echo', 'bloom', 'fog', 'dusk', 'harbor', 'signal', 'orbit', 'wren', 'otter', 'comet', 'maple', 'raccoon'];
+const INTEREST = ['bside', 'noskips', 'tapedeck', 'deepcuts', 'wrongspeed', 'runout', 'needle', 'crackle', 'runtime', '4amradio', 'liner', 'gatefold'];
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const pick = <T>(a: readonly T[], r: () => number) => a[Math.floor(r() * a.length)];
 const yearNum = (r: () => number) => String(1994 + Math.floor(r() * 13)).slice(2); // '94'..'06'
+const smallNum = (r: () => number) => String(Math.floor(r() * 89) + 10);            // 10..98
 
-/** Believable {username, displayName} for a bot, seeded by the caller's rng. */
+/** Believable {username, displayName}. The username is USUALLY not the person's name. */
 export function makeIdentity(country: string, persona: Persona, r: () => number): { username: string; displayName: string } {
   const bank = country === 'KR' ? KO_NAMES : country === 'JP' ? JA_NAMES : WEST_NAMES;
-  const name = pick(bank, r);
+  const name = pick(bank, r);            // the person's given name → drives the DISPLAY name
+  const sep = () => (r() < 0.3 ? (r() < 0.5 ? '_' : '.') : '');
   const t = r();
   let username: string;
-  if (t < 0.34)      username = name;                                              // jiwoo
-  else if (t < 0.56) username = name + (r() < 0.4 ? '_' : '') + yearNum(r);         // marcus94 / sora_02
-  else if (t < 0.69) username = name + pick(['k', 'j', 'h', 'm', 's', 'w', 'y'], r); // seoyeonk
-  else if (t < 0.83) username = (r() < 0.35 ? pick(persona.handleBank, r) : pick(WORDS, r)); // moonlit / (subtle flavor)
-  else if (t < 0.93) username = name + '.' + pick(WORDS, r).slice(0, 7);            // sora.velvet
-  else               username = pick(WORDS, r) + yearNum(r);                        // bluehour02
+  // ~30% name-derived, ~70% word/aesthetic/interest — decoupled from the display name.
+  if (t < 0.14)      username = name + (r() < 0.5 ? sep() + yearNum(r) : '');        // jinwoo / woojin_00
+  else if (t < 0.20) username = name + pick(['k', 'j', 'h', 'm', 's', 'w'], r);      // oliverw
+  else if (t < 0.42) username = pick(ADJ, r) + pick(NOUN, r);                        // bluetide, latehaze
+  else if (t < 0.56) username = pick(NOUN, r) + sep() + smallNum(r);                 // static88, echo_12
+  else if (t < 0.70) username = pick(WORDS, r) + (r() < 0.35 ? sep() + smallNum(r) : ''); // moonlit, lowtide_88
+  else if (t < 0.80) username = pick(NOUN, r) + pick(NOUN, r);                        // moontide, embercove
+  else if (t < 0.90) username = (r() < 0.5 ? pick(INTEREST, r) : pick(persona.handleBank, r)); // bside / subtle flavor
+  else               username = pick(ADJ, r) + pick(NOUN, r) + (r() < 0.4 ? smallNum(r) : ''); // bluetide07
   username = username.toLowerCase().replace(/[^a-z0-9._]/g, '').slice(0, 20);
-  // Display name: mostly the cased first name (human); occasionally a lowercase/word variant.
-  const displayName = r() < 0.72 ? cap(name) : (r() < 0.5 ? name : cap(pick(WORDS, r)));
+  // Display name is the actual person: cased given name (mostly), sometimes lowercase, rarely a word.
+  const displayName = r() < 0.74 ? cap(name) : (r() < 0.6 ? name : cap(pick(WORDS, r)));
   return { username, displayName };
 }
