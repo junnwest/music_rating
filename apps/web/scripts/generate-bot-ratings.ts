@@ -29,7 +29,7 @@ const ROSTER = `${__dirname}/bot-roster.json`;
 const STATE = `${__dirname}/generate-bot-ratings-state.json`;
 
 interface RosterEntry { user_id: string; username: string; persona: string; bucket: string; created_at: string }
-interface RG { id: string; prestige_score: number | null; genres: string[] | null }
+interface RG { id: string; prestige_score: number | null; genres: string[] | null; primary_artist_id?: string }
 
 const personaByKey = new Map(PERSONAS.map(p => [p.key, p]));
 const loadState = (): Set<string> => { try { return new Set(existsSync(STATE) ? JSON.parse(readFileSync(STATE, 'utf8')).done : []); } catch { return new Set(); } };
@@ -60,7 +60,7 @@ async function artistIds(lang: string): Promise<string[]> {
 async function poolByArtist(ids: string[]): Promise<RG[]> {
   const out: RG[] = [];
   for (let i = 0; i < ids.length; i += 100) {
-    out.push(...await pageAll<RG>((f) => db.from('release_groups').select('id, prestige_score, genres')
+    out.push(...await pageAll<RG>((f) => db.from('release_groups').select('id, prestige_score, genres, primary_artist_id')
       .in('primary_artist_id', ids.slice(i, i + 100)).not('cover_url', 'is', null).in('release_group_type', ['album', 'ep'])));
   }
   return out;
@@ -73,19 +73,31 @@ async function main() {
   const roster: RosterEntry[] = JSON.parse(readFileSync(ROSTER, 'utf8'));
   console.log(`\n  Bot ratings (notable-only, quality-anchored) — ${roster.length} bots${DRY ? '  [DRY RUN]' : ''}${LIMIT < Infinity ? `  [limit ${LIMIT}]` : ''}\n`);
 
-  console.log('  building notable universe…');
-  const koPool = await poolByArtist(await artistIds('ko'));
-  const jaPool = await poolByArtist(await artistIds('ja'));
-  const prestigePool = await pageAll<RG>((f) => db.from('release_groups').select('id, prestige_score, genres')
-    .not('prestige_score', 'is', null).not('cover_url', 'is', null).in('release_group_type', ['album', 'ep']));
-  console.log(`  pools: prestige=${prestigePool.length} ko=${koPool.length} ja=${jaPool.length}\n`);
+  console.log('  building content pools…');
+  const koIds = new Set(await artistIds('ko'));
+  const jaIds = new Set(await artistIds('ja'));
+  const koPool = await poolByArtist([...koIds]);
+  const jaPool = await poolByArtist([...jaIds]);
+  // BROAD western pool: all non-K/J album/EP with a cover + genres — prestige AND the underground
+  // long-tail (the balanced-coverage requirement). Weighting keeps prestige prominent; the tail adds
+  // discovery. Exclude K/J primary artists (they belong to the ko/ja pools).
+  const westRaw = await pageAll<RG & { primary_artist_id: string }>((f) => db.from('release_groups')
+    .select('id, prestige_score, genres, primary_artist_id')
+    .not('cover_url', 'is', null).not('genres', 'is', null).in('release_group_type', ['album', 'ep']));
+  const westPool: RG[] = westRaw.filter(r => !koIds.has((r as any).primary_artist_id) && !jaIds.has((r as any).primary_artist_id));
+  // Korean/Japanese artists who have ANY commercial-prestige album = idol/commercial acts. Their
+  // WHOLE catalog (incl. non-prestige EPs) is down-weighted for anti-commercial personas — otherwise
+  // prolific idols dominate by album count even after per-album prestige penalties.
+  const commercialArtists = new Set<string>();
+  for (const r of [...koPool, ...jaPool]) if (r.prestige_score != null && r.primary_artist_id) commercialArtists.add(r.primary_artist_id);
+  console.log(`  pools: west=${westPool.length} ko=${koPool.length} ja=${jaPool.length} | commercial K/J artists=${commercialArtists.size}\n`);
 
-  // Persona → its slice of the notable universe.
+  // Persona → its slice of the pools.
   function personaPool(p: Persona): RG[] {
     if (p.bucket === 'ko') { const sub = p.genreSubFilter ? koPool.filter(r => matchGenre(r, p.genreSubFilter!)) : []; return sub.length >= 40 ? sub : koPool; }
     if (p.bucket === 'ja') { const sub = p.genreSubFilter ? jaPool.filter(r => matchGenre(r, p.genreSubFilter!)) : []; return sub.length >= 40 ? sub : jaPool; }
-    const g = prestigePool.filter(r => matchGenre(r, p.genreFilters!));  // western: acclaimed canon in-genre
-    return g.length >= 30 ? g : prestigePool;
+    const g = westPool.filter(r => matchGenre(r, p.genreFilters!));       // western: full genre catalog (prestige + tail)
+    return g.length >= 50 ? g : westPool;
   }
   // Effective quality for a (persona, album). Western prestige = critical acclaim (good for all).
   // Korean/Japanese prestige = COMMERCIAL chart success: mainstream personas embrace it, but
@@ -94,28 +106,40 @@ async function main() {
     if (p.bucket === 'western' || p.mainstream) return r.prestige_score != null ? r.prestige_score : latentQuality(r.id);
     return latentQuality(r.id); // anti-commercial K/J persona → ignore commercial prestige
   };
-  // Quality-weighted sampler (memoized). P(pick) ∝ quality^2.6 concentrates ratings on notable
-  // albums (clears the chart's min-3 floor + ranks sensibly). Anti-commercial K/J personas also
-  // PENALIZE prestige-bearing (commercial) albums so mainstream K-pop stays a minority in the feed.
-  const weightFor = (p: Persona, r: RG) => {
-    let w = Math.pow(0.12 + qFor(p, r), 2.6);
-    if ((p.bucket === 'ko' || p.bucket === 'ja') && !p.mainstream && r.prestige_score != null) w *= 0.18;
-    return w;
-  };
-  const weighted = new Map<string, { pool: RG[]; cum: number[]; total: number }>();
-  function weightedFor(p: Persona) {
+  // TWO-TIER BALANCED sampler (memoized). Each pick is either the PRESTIGE tier (recognizable/
+  // acclaimed, weighted by prestige) or the DISCOVERY tier (the whole pool, weighted by latent
+  // quality → underground long-tail). `prestigeShare` sets the mix per bucket:
+  //   • Western  0.55 — prestige = critical acclaim (RS500/Pitchfork), which this audience likes.
+  //   • K/J      0.18 — Korean/Japanese prestige = commercial chart success → keep it a minority.
+  //   • mainstream (kpop-stan) 0.70 — embraces the commercial hits.
+  // So prestige "somewhat holds" (leads charts) while ~half+ of the feed is discovery.
+  const prestigeShare = (p: Persona) => p.mainstream ? 0.70 : p.bucket === 'western' ? 0.55 : 0.18;
+  type WT = { pool: RG[]; pres: RG[]; presCum: number[]; presTot: number; fullCum: number[]; fullTot: number };
+  const weighted = new Map<string, WT>();
+  function weightedFor(p: Persona): WT {
     let w = weighted.get(p.key);
     if (!w) {
-      const pool = personaPool(p); const cum: number[] = []; let s = 0;
-      for (const r of pool) { s += weightFor(p, r); cum.push(s); }
-      w = { pool, cum, total: s }; weighted.set(p.key, w);
+      const pool = personaPool(p);
+      const pres = pool.filter(r => r.prestige_score != null);
+      const presCum: number[] = []; let ps = 0;
+      for (const r of pres) { ps += Math.pow(0.2 + (r.prestige_score || 0), 1.5); presCum.push(ps); }
+      const fullCum: number[] = []; let fs = 0;
+      const acKJ = (p.bucket === 'ko' || p.bucket === 'ja') && !p.mainstream;
+      for (const r of pool) {
+        let lw = Math.pow(0.2 + latentQuality(r.id), 1.4);
+        // anti-commercial: down-weight the WHOLE catalog of any commercial/idol artist (not just their hits)
+        if (acKJ && (r.prestige_score != null || (r.primary_artist_id && commercialArtists.has(r.primary_artist_id)))) lw *= 0.2;
+        fullCum.push(fs += lw);
+      }
+      w = { pool, pres, presCum, presTot: ps, fullCum, fullTot: fs };
+      weighted.set(p.key, w);
     }
     return w;
   }
-  function wpick(w: { pool: RG[]; cum: number[]; total: number }, rand: () => number): RG {
-    const x = rand() * w.total; let lo = 0, hi = w.cum.length - 1;
-    while (lo < hi) { const m = (lo + hi) >> 1; if (w.cum[m] < x) lo = m + 1; else hi = m; }
-    return w.pool[lo];
+  const bsearch = (cum: number[], x: number) => { let lo = 0, hi = cum.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (cum[m] < x) lo = m + 1; else hi = m; } return lo; };
+  function wpick(p: Persona, w: WT, rand: () => number): RG {
+    if (w.pres.length && rand() < prestigeShare(p)) return w.pres[bsearch(w.presCum, rand() * w.presTot)];
+    return w.pool[bsearch(w.fullCum, rand() * w.fullTot)];
   }
   // Score an album for a persona: anchored to quality, shifted by persona harshness, plus noise.
   function scoreFor(p: Persona, r: RG, rand: () => number): number {
@@ -139,7 +163,7 @@ async function main() {
     const picks = new Map<string, RG>();
     let guard = 0;
     while (picks.size < target && picks.size < w.pool.length && guard++ < target * 25) {
-      const r = wpick(w, rand);            // quality-weighted → concentrates on notable albums
+      const r = wpick(p, w, rand);         // two-tier: prestige (recognizable) + discovery (underground)
       if (!picks.has(r.id)) picks.set(r.id, r);
     }
     const start = new Date(bot.created_at).getTime(), span = Math.max(1, Date.now() - start);
