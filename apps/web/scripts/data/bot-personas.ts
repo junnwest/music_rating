@@ -90,13 +90,33 @@ export const PERSONAS: Persona[] = [...KO, ...JA, ...WEST];
 
 export const TOTAL_BOTS = PERSONAS.reduce((n, p) => n + p.count, 0); // 150
 
-// Deterministic-ish handle generator (no Math.random at import time; caller passes an index-seeded rng).
-const SUFFIXES = ['', '_', 'x', 'xo', '__', '01', '99', '00', '_kr', '_fm', 'hq', 'tapes', 'wav', 'zone'];
-const PREFIXES = ['', 'the', 'dj', 'lil', 'mr', 'ms', 'yr', 'real'];
-export function makeHandle(p: Persona, rng: () => number): string {
-  const w = p.handleBank[Math.floor(rng() * p.handleBank.length)];
-  const pre = PREFIXES[Math.floor(rng() * PREFIXES.length)];
-  const suf = SUFFIXES[Math.floor(rng() * SUFFIXES.length)];
-  const num = rng() < 0.35 ? String(Math.floor(rng() * 900 + 10)) : '';
-  return [pre, w].filter(Boolean).join('') + suf + num;
+// ── Identity generation — real given names by country, varied structures, human display names ─────
+// Goal: bots should NOT read as bots. Most handles are just a real first name (sometimes + a
+// birth-year-ish number or a word); only occasionally a subtle music word from the persona's bank.
+// Given-name banks are romanized and matched to the bot's assigned country.
+const KO_NAMES = ['jiwoo', 'seoyeon', 'minho', 'hyejin', 'jaehyun', 'yuna', 'doyoung', 'soyeon', 'hyunwoo', 'jieun', 'nari', 'seojin', 'minji', 'jihoon', 'eunbi', 'dahye', 'woojin', 'yerim', 'subin', 'jinwoo', 'sora', 'haeun', 'junho', 'yeji', 'minseo', 'chanwoo', 'soobin', 'hyewon', 'jimin', 'taeyang'];
+const JA_NAMES = ['yuki', 'haruto', 'rin', 'aoi', 'ren', 'hina', 'kaito', 'mei', 'yuto', 'saki', 'riku', 'nao', 'akira', 'yui', 'sho', 'mio', 'kenta', 'emi', 'takumi', 'hikari', 'kana', 'daiki', 'miku', 'ryo', 'ayaka', 'natsu', 'kou', 'sana'];
+const WEST_NAMES = ['daniel', 'chloe', 'marcus', 'elena', 'liam', 'sofia', 'noah', 'mia', 'oliver', 'ava', 'ethan', 'zoe', 'lucas', 'emma', 'leo', 'ivy', 'sam', 'nora', 'theo', 'iris', 'max', 'june', 'eli', 'remy', 'cole', 'ruby', 'jonas', 'clara', 'miles', 'esme'];
+const WORDS = ['moonlit', 'velvet', 'slowbloom', 'bluehour', 'reverie', 'driftwood', 'papermoon', 'amberwave', 'mellowgold', 'nightswim', 'sodapop', 'goldenhour', 'seaglass', 'lowtide', 'afterglow', 'coastline', 'paperbird', 'stillwater', 'foxglove', 'cloudline'];
+
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const pick = <T>(a: readonly T[], r: () => number) => a[Math.floor(r() * a.length)];
+const yearNum = (r: () => number) => String(1994 + Math.floor(r() * 13)).slice(2); // '94'..'06'
+
+/** Believable {username, displayName} for a bot, seeded by the caller's rng. */
+export function makeIdentity(country: string, persona: Persona, r: () => number): { username: string; displayName: string } {
+  const bank = country === 'KR' ? KO_NAMES : country === 'JP' ? JA_NAMES : WEST_NAMES;
+  const name = pick(bank, r);
+  const t = r();
+  let username: string;
+  if (t < 0.34)      username = name;                                              // jiwoo
+  else if (t < 0.56) username = name + (r() < 0.4 ? '_' : '') + yearNum(r);         // marcus94 / sora_02
+  else if (t < 0.69) username = name + pick(['k', 'j', 'h', 'm', 's', 'w', 'y'], r); // seoyeonk
+  else if (t < 0.83) username = (r() < 0.35 ? pick(persona.handleBank, r) : pick(WORDS, r)); // moonlit / (subtle flavor)
+  else if (t < 0.93) username = name + '.' + pick(WORDS, r).slice(0, 7);            // sora.velvet
+  else               username = pick(WORDS, r) + yearNum(r);                        // bluehour02
+  username = username.toLowerCase().replace(/[^a-z0-9._]/g, '').slice(0, 20);
+  // Display name: mostly the cased first name (human); occasionally a lowercase/word variant.
+  const displayName = r() < 0.72 ? cap(name) : (r() < 0.5 ? name : cap(pick(WORDS, r)));
+  return { username, displayName };
 }

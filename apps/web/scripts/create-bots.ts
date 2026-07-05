@@ -14,7 +14,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { writeFileSync, readFileSync, existsSync } from 'fs';
-import { PERSONAS, makeHandle, TOTAL_BOTS, type Persona } from './data/bot-personas';
+import { PERSONAS, makeIdentity, TOTAL_BOTS, type Persona } from './data/bot-personas';
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -33,7 +33,6 @@ const admin = createClient(URL, KEY, { auth: { autoRefreshToken: false, persistS
 function rng(seed: number) { return () => { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 
 const COUNTRY: Record<Persona['bucket'], string[]> = { ko: ['KR'], ja: ['JP'], western: ['US', 'GB', 'CA', 'KR', 'AU'] };
-const FIRST = ['jae','min','sora','yuna','haru','ren','alex','sam','noah','emma','leo','mia','kai','rin','joon','hana','theo','ivy','eli','luca','nari','seo','yuki','dani','remy','coco','bel','ash'];
 
 interface RosterEntry { user_id: string; username: string; persona: string; bucket: string; created_at: string }
 
@@ -66,11 +65,11 @@ async function main() {
     for (let i = already; i < p.count; i++) {
       if (created >= LIMIT) break outer;
       const rand = rng(seed++);
-      // find a free handle
-      let username = '', tries = 0;
-      do { username = makeHandle(p, rand).slice(0, 24); tries++; } while ((roster.some(e => e.username === username) || (!DRY && await usernameTaken(username))) && tries < 12);
-      const display_name = rand() < 0.5 ? FIRST[Math.floor(rand() * FIRST.length)] : username;
       const country = COUNTRY[p.bucket][Math.floor(rand() * COUNTRY[p.bucket].length)];
+      // believable name/handle, matched to country; retry until the handle is free
+      let username = '', display_name = '', tries = 0;
+      do { const id = makeIdentity(country, p, rand); username = id.username; display_name = id.displayName; tries++; }
+      while ((!username || roster.some(e => e.username === username) || (!DRY && await usernameTaken(username))) && tries < 15);
       const created_at = backdate(rand);
       const email = `${username}.${p.key}@bots.sillajuku.app`;
 
