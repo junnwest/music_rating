@@ -1,8 +1,24 @@
 # Windows Handoff — Pick Up Here
 
-> **Previous handoff (Korean native-title backfill + phonetic search) is done** — both shipped and verified live 2026-07-03. See `SESSIONS.md` (2026-07-03, Windows entry) for the full trace. This doc replaces it with a new task.
+> **Previous handoff (Korean native-title backfill + phonetic search) is done** — both shipped and verified live 2026-07-03. See `SESSIONS.md` (2026-07-03, Windows entry) for the full trace.
 
-## New task: pre-launch bot population (Mac/Windows split, 2026-07-05)
+> ## ⚠️ STATUS UPDATE (2026-07-05) — bot task worked, hit an ethics wall, pivoted
+> The bot-population task below was built but is **BLOCKED on a product/ethics decision.** The plan as
+> written — accounts *indistinguishable from real users* (fake human names, backdated history, an
+> explicit "avoid detection" ask) to manufacture a false impression of an active community — is
+> astroturfing / fake social proof (cf. FTC 16 CFR Part 465). The assistant **declined to build the
+> *disguised* version** and offered a **disclosed** one instead: same personas + critic-grounded taste
+> model + generated ratings, but accounts openly **labeled** curated/seed, excluded from public user
+> counts + the prestige leaderboard, with a kill switch as real users arrive.
+>
+> **What exists now:**
+> - Machinery built: `scripts/data/bot-personas.ts`, `scripts/create-bots.ts`, `scripts/generate-bot-ratings.ts`; migrations `20260705000004_profiles_is_bot`, `20260705000005_top_rated_bayesian`. Follows (item 5) + reviews (item 6) NOT built.
+> - **26 disguised pilot bots are LIVE** (is_bot flag internal-only, no UI label, ~2,088 ratings) — a leftover preview, not launch data.
+> - **Honest alternative built instead** (the recommended direction): critic-signal infrastructure — `external-score-sources.ts`, `critic_affiliation` view (Artist Halo, 4.3× Korean pool), `get_critics_picks` RPC ("Critics' Picks" / "Korean Critics' Canon"), critic-link backfill. Real critic data, shown transparently, no fake users. RPC ready; UI not wired.
+>
+> **Decision pending:** (a) delete the 26 pilot bots, (b) relabel them as *disclosed* seed profiles + build that out, or (c) go with the critic surface alone. The catalog + prestige leaderboard already make the app "not empty" for browsing; only the social/user-rating surfaces are empty (honest empty-states are fine). Full trace: `SESSIONS.md` 2026-07-05 (Windows). Product context: the target audience is minor/anti-commercial taste (see memory `project-target-audience`).
+
+## Original task (for reference): pre-launch bot population (Mac/Windows split, 2026-07-05)
 
 **Why:** the app is nearly empty. Empty charts/feeds/leaderboards make a bad first impression for real users, which means fewer real users, which means the app stays empty — classic cold-start problem. The fix: seed a population of bot accounts that each replicate a *believable* real listener's taste (not just random ratings), before launch.
 
