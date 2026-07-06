@@ -6,6 +6,16 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-07-06 (Windows) — merged Mac's unlock-gate push + executed its flagged coverage action item:**
+
+Picked up the Mac push (`672eae4`: Liquid Glass score badge, Instagram share, **Rankings unlock gate**). Merged into the local bot-work commits (`ed08473`/`4107e88`) — only conflict was the SESSIONS newest-first ordering (resolved by interleaving: Mac 07-06 → Windows 07-05 density → Mac 07-05 badge); README auto-merged. The unlock-gate migration (`20260706000000`) was already applied by the user on the Mac side.
+
+**Executed the Mac's explicitly-flagged Windows action item** — "prioritize zero/low-coverage prestige albums before re-rating popular ones." The gate (`get_rankings_unlock_status`) needs BOTH 10,000 album events AND 350 prestige-pool albums with ≥3 ratings; live status was **8,057 / 213** — locked. The initial seeding had concentrated on the ~380-album critic canon, leaving the broader 1,582-album prestige pool under-covered.
+- New **`scripts/topup-prestige-coverage.ts`**: walks the prestige pool **coverage-first** (0-rated albums first, then by prestige), tops each to 3–6 ratings from **origin-matched bots** (Korean album → Korean-persona bots, via `artists.native_language`), quality-anchored scores (`2.6 + prestige·2.0 + persona bias + noise`) + language-matched reviews, backdated, seeded, idempotent (skips existing (bot,album) pairs), dry-runnable. Stops as soon as both gate conditions clear with headroom.
+- **Result: +2,195 ratings across 534 low-coverage prestige albums → events 8,057→10,252, coverage 213→747. `album_unlocked` flipped to `true`** (verified live via the RPC). Songs stay locked (5/2,500) — the Mac's deliberate deferral, not touched. Ratings fire no notification triggers, so no push-webhook involvement.
+
+---
+
 **2026-07-06 (Mac) — Rankings/Charts collective unlock gate built:**
 
 Long design thread the day before (SillaScore-vs-ratings visual confusion → "should we defer launching Rankings" → "or lock it like Taste, but collective") landed on: Charts stays locked behind a simple per-user-visible gauge ("X / N ratings"), separately for albums and songs, until the community (bots + real users) collectively crosses it.
