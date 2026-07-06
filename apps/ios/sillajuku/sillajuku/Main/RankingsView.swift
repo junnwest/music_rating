@@ -10,6 +10,30 @@ struct ChartsPulse {
     let todayCount: Int
 }
 
+/// The gauge shown to users is deliberately just "X / target ratings" — a
+/// single simple counter. The RPC behind it (`get_rankings_unlock_status`)
+/// also enforces a hidden leaderboard-coverage floor so the unlock can't
+/// fire on skewed data (see the migration for why), but that condition is
+/// never decoded here — this struct only carries what the UI is allowed to
+/// know about.
+struct RankingsUnlockStatus: Codable {
+    let albumEvents: Int
+    let albumEventsTarget: Int
+    let albumUnlocked: Bool
+    let songEvents: Int
+    let songEventsTarget: Int
+    let songUnlocked: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case albumEvents       = "album_events"
+        case albumEventsTarget = "album_events_target"
+        case albumUnlocked     = "album_unlocked"
+        case songEvents        = "song_events"
+        case songEventsTarget  = "song_events_target"
+        case songUnlocked      = "song_unlocked"
+    }
+}
+
 struct ChartEntry: Identifiable, Hashable {
     let id: UUID
     let title: String
@@ -203,6 +227,7 @@ struct ChartSongEntry: Identifiable, Hashable {
 @Observable
 class ChartsViewModel {
     var pulse: ChartsPulse?
+    var unlockStatus: RankingsUnlockStatus?
     var trendingGlobal: [ChartEntry] = []
     var trendingForYou: [ChartEntry] = []
     var topRated: [ChartEntry] = []
@@ -226,6 +251,7 @@ class ChartsViewModel {
         isLoading = true
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.loadPulse() }
+            group.addTask { await self.loadUnlockStatus() }
             group.addTask { await self.loadTopRated() }
             group.addTask { await self.loadMostRated() }
             group.addTask { await self.loadTrendingGlobal() }
@@ -259,6 +285,12 @@ class ChartsViewModel {
                 todayCount:   row.todayCount   ?? 0
             )
         }
+    }
+
+    private func loadUnlockStatus() async {
+        let rows: [RankingsUnlockStatus] = (try? await supabase
+            .rpc("get_rankings_unlock_status").execute().value) ?? []
+        unlockStatus = rows.first
     }
 
     private func loadTopRated() async {
@@ -415,6 +447,8 @@ struct ChartsView: View {
         Group {
             if viewModel.isLoading {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let status = viewModel.unlockStatus, !status.albumUnlocked {
+                RankingsLockedView(events: status.albumEvents, target: status.albumEventsTarget, kind: "album")
             } else {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
@@ -450,6 +484,8 @@ struct ChartsView: View {
         Group {
             if viewModel.isLoading {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let status = viewModel.unlockStatus, !status.songUnlocked {
+                RankingsLockedView(events: status.songEvents, target: status.songEventsTarget, kind: "song")
             } else {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
@@ -474,6 +510,87 @@ struct ChartsView: View {
                 .contentMargins(.top, 64, for: .scrollContent)
             }
         }
+    }
+}
+
+// MARK: - Collective unlock gauge
+
+/// Shown in place of chart content until the community collectively rates
+/// enough albums/songs. Deliberately a single plain counter — the server
+/// also enforces a hidden leaderboard-coverage floor (see
+/// get_rankings_unlock_status), but nothing about that ever surfaces here.
+private struct RankingsLockedView: View {
+    let events: Int
+    let target: Int
+    let kind: String // "album" or "song"
+
+    private var fraction: Double {
+        min(max(Double(events) / Double(max(target, 1)), 0), 1)
+    }
+
+    // Text(String) never does a catalog lookup — only String(localized:)
+    // does — so each branch must resolve through String(localized:) itself
+    // rather than passing a runtime ternary/interpolation straight to Text.
+    private var headline: String {
+        kind == "album"
+            ? String(localized: "Building the Albums chart together")
+            : String(localized: "Building the Songs chart together")
+    }
+
+    private var subtitle: String {
+        kind == "album"
+            ? String(localized: "Once the community rates enough albums, this unlocks for everyone.")
+            : String(localized: "Once the community rates enough songs, this unlocks for everyone.")
+    }
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Spacer(minLength: 0)
+
+            Image("icon-flower")
+                .renderingMode(.template).resizable().scaledToFit()
+                .frame(width: 36, height: 36)
+                .foregroundStyle(Color.sjBlue)
+
+            VStack(spacing: 6) {
+                Text(headline)
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(Color.sjInk)
+                    .multilineTextAlignment(.center)
+                Text(subtitle)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.sjMuted)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 32)
+
+            VStack(spacing: 8) {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.sjBorder)
+                        Capsule().fill(Color.sjBlue)
+                            .frame(width: geo.size.width * fraction)
+                    }
+                }
+                .frame(height: 10)
+                .padding(.horizontal, 40)
+
+                Text(String(format: String(localized: "%@ / %@ ratings"), formatCount(events), formatCount(target)))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.sjInk)
+                    .monospacedDigit()
+            }
+            .padding(.top, 8)
+
+            Spacer(minLength: 0)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.top, 64)
+    }
+
+    private func formatCount(_ n: Int) -> String {
+        n >= 1_000 ? String(format: "%.1fk", Double(n) / 1_000) : "\(n)"
     }
 }
 
@@ -1068,14 +1185,14 @@ private struct PulseCard: View {
     var body: some View {
         HStack(spacing: 0) {
             PulseStat(value: formatCount(pulse?.totalRatings), label: "total ratings")
-            Divider().frame(height: 28).overlay(Color.white.opacity(0.15))
+            Divider().frame(height: 28).overlay(Color.sjBorder)
             PulseStat(value: pulse.map { String(format: "%.2f", $0.avgScore) } ?? "—", label: "community avg")
-            Divider().frame(height: 28).overlay(Color.white.opacity(0.15))
+            Divider().frame(height: 28).overlay(Color.sjBorder)
             PulseStat(value: formatCount(pulse?.todayCount), label: "rated today")
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
-        .background(Color(red: 0.10, green: 0.10, blue: 0.10))
+        .background(Color.sjSurface)
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
@@ -1098,7 +1215,7 @@ private struct PulseStat: View {
                 .monospacedDigit()
             Text(label)
                 .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.45))
+                .foregroundStyle(Color.sjMuted)
         }
         .frame(maxWidth: .infinity)
     }

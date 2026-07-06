@@ -992,17 +992,7 @@ private struct FeedCard: View {
     @ViewBuilder
     private var scoreView: some View {
         if let score = item.displayScore {
-            HStack(spacing: 5) {
-                Image("icon-flower")
-                    .renderingMode(.template).resizable().scaledToFit()
-                    .frame(width: 12, height: 12).foregroundStyle(Color.sjAmber)
-                Text(scoreLabel(score))
-                    .font(.system(size: 14, weight: .bold)).foregroundStyle(Color.sjAmber)
-            }
-            .frame(minHeight: 26)
-            .padding(.horizontal, 9).padding(.vertical, 4)
-            .background(Color.sjAmber.opacity(0.1))
-            .clipShape(RoundedRectangle(cornerRadius: 7))
+            ScoreBadge(score: score)
         } else {
             EmptyView()
         }
@@ -1016,8 +1006,8 @@ private struct FeedCard: View {
             HStack(spacing: 5) {
                 Button { Task { await onLike() } } label: {
                     Image(systemName: isLiked ? "heart.fill" : "heart")
-                        .font(.system(size: 19))
-                        .foregroundStyle(isLiked ? .red : Color.sjMuted)
+                        .font(.system(size: 19, weight: .medium))
+                        .foregroundStyle(isLiked ? .red : Color.sjInk)
                 }
                 .buttonStyle(.plain)
                 .animation(.easeInOut(duration: 0.15), value: isLiked)
@@ -1036,8 +1026,8 @@ private struct FeedCard: View {
             HStack(spacing: 5) {
                 Button { activeSheet = .comments } label: {
                     Image(systemName: "bubble.left")
-                        .font(.system(size: 19))
-                        .foregroundStyle(Color.sjMuted)
+                        .font(.system(size: 19, weight: .medium))
+                        .foregroundStyle(Color.sjInk)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(String(localized: "View comments"))
@@ -1051,10 +1041,6 @@ private struct FeedCard: View {
         }
         .padding(.leading, 14)
         .padding(.vertical, 6)
-    }
-
-    private func scoreLabel(_ s: Double) -> String {
-        s.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(s)) : String(format: "%.1f", s)
     }
 }
 
