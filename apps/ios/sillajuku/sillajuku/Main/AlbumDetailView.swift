@@ -609,6 +609,8 @@ struct AlbumDetailView: View {
     @State private var trackInstinctTarget: TrackEntry? = nil
     @State private var selectedSong: TrackEntry? = nil
     @State private var credits: [Credit] = []
+    @State private var isPreparingShare = false
+    @State private var pendingShare: PendingShare? = nil
 
     private struct Credit: Codable, Identifiable {
         let artistId: UUID
@@ -625,6 +627,52 @@ struct AlbumDetailView: View {
     private var releaseYear: String {
         guard let d = release.releaseDate, d.count >= 4 else { return "" }
         return String(d.prefix(4))
+    }
+
+    /// Resolves the real data the share card needs (cover image downloaded,
+    /// username fetched) and opens the preview sheet — never hands off to
+    /// Instagram directly. The user picks a destination there.
+    private func prepareShare(score: Double) async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        isPreparingShare = true
+        defer { isPreparingShare = false }
+
+        struct ProfileRow: Decodable { let username: String? }
+        let profile: ProfileRow? = try? await supabase
+            .from("profiles").select("username")
+            .eq("id", value: userId).single().execute().value
+
+        let coverImage: UIImage? = await {
+            guard let coverUrl = release.coverUrl, let url = URL(string: coverUrl) else { return nil }
+            return try? await InstagramShare.downloadImage(from: url)
+        }()
+
+        pendingShare = PendingShare(
+            username: profile?.username ?? "someone",
+            coverImage: coverImage,
+            title: release.displayTitle,
+            typeAndArtist: release.typeLabel + " · " + release.displayArtist,
+            score: score,
+            reviewText: nil
+        )
+    }
+
+    @ViewBuilder
+    private func shareButton(score: Double) -> some View {
+        Button {
+            Task { await prepareShare(score: score) }
+        } label: {
+            if isPreparingShare {
+                ProgressView().scaleEffect(0.8)
+            } else {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.sjBlue)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(isPreparingShare)
+        .accessibilityLabel(String(localized: "Share to Instagram"))
     }
 
     var body: some View {
@@ -675,6 +723,11 @@ struct AlbumDetailView: View {
                 viewModel.isLoadingInstinctScore = true
                 Task { await viewModel.loadAfterInstinct(releaseGroupId: release.id) }
             }, onDone: { showInstinctSheet = false })
+        }
+        .sheet(item: $pendingShare) { pending in
+            SharePreviewSheet(pending: pending)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
         }
         .sheet(item: $trackRatingTarget) { track in
             TrackRatingSheet(
@@ -827,6 +880,8 @@ struct AlbumDetailView: View {
 
                     Spacer()
 
+                    shareButton(score: score)
+
                     Button("Edit") { showManualSheet = true }
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color.sjBlue)
@@ -879,6 +934,8 @@ struct AlbumDetailView: View {
                         .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
 
                     Spacer()
+
+                    shareButton(score: score)
 
                     Button("Re-rank") { showInstinctSheet = true }
                         .font(.system(size: 13, weight: .semibold))

@@ -12,21 +12,39 @@ struct MainTabView: View {
     @State private var selectedTab: AppTab = .home
     @State private var homeScrollTrigger   = UUID()
 
-    // Rendered once: a black rounded rect (wider than tall) with a white plus,
-    // used for the Add tab so it reads as an action button, not a destination.
-    private static let addTabImage: UIImage = {
+    // Rendered once per appearance: a rounded rect (wider than tall) with a
+    // plus *cut out* of it — the plus is a transparent hole (via
+    // .destinationOut), not a colored fill, and the rect's own fill is the
+    // inverse of the current color scheme (black rect in light mode, white
+    // rect in dark mode) so it always reads as a punched-through action
+    // button rather than just another tab icon.
+    private static func addTabImage(dark: Bool) -> UIImage {
+        let fillColor: Color = dark ? .white : .black
         let shape = ZStack {
             RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .fill(Color.black)
-            Rectangle().fill(Color.white).frame(width: 16, height: 3)
-            Rectangle().fill(Color.white).frame(width: 3, height: 16)
+                .fill(fillColor)
+            Group {
+                Rectangle().frame(width: 11, height: 2.2)
+                Rectangle().frame(width: 2.2, height: 11)
+            }
+            .blendMode(.destinationOut)
         }
+        .compositingGroup()
         .frame(width: 40, height: 26)
         let renderer = ImageRenderer(content: shape)
         renderer.scale = 3
+        renderer.isOpaque = false
         let image = renderer.uiImage ?? UIImage()
         return image.withRenderingMode(.alwaysOriginal)
-    }()
+    }
+
+    // Two pre-rendered variants — picked per-appearance at the call site via
+    // @Environment(\.colorScheme) below. (UIImage has no dynamicProvider
+    // initializer the way UIColor does; that's UIColor-only.)
+    private static let addTabImageLight = addTabImage(dark: false)
+    private static let addTabImageDark  = addTabImage(dark: true)
+
+    @Environment(\.colorScheme) private var colorScheme
 
     // Custom binding that detects re-tapping the current tab
     private var tabSelection: Binding<AppTab> {
@@ -67,7 +85,7 @@ struct MainTabView: View {
 
                     SearchView(discoveryVM: discoveryVM)
                         .tabItem {
-                            Image(uiImage: MainTabView.addTabImage)
+                            Image(uiImage: colorScheme == .dark ? MainTabView.addTabImageDark : MainTabView.addTabImageLight)
                                 .renderingMode(.original)
                             Text(String(localized: "Add"))
                         }

@@ -88,7 +88,6 @@
 				A468003E574580928A3A4E37 /* ReleaseTests.swift */,
 				64829FFB75985254C5D80F6B /* DateFormattingTests.swift */,
 			);
-			name = sillajukuTests;
 			path = sillajukuTests;
 			sourceTree = "<group>";
 		};

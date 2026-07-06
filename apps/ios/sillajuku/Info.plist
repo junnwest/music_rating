@@ -4,6 +4,8 @@
 <dict>
 	<key>NSAppleMusicUsageDescription</key>
 	<string>sillajuku uses your Apple Music library and listening history to suggest albums for you to rate.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>sillajuku saves the share card image you choose to export to your Photos library.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -14,6 +16,10 @@
 				<string>sillajuku</string>
 			</array>
 		</dict>
+	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>instagram-stories</string>
 	</array>
 </dict>
 </plist>

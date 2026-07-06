@@ -146,6 +146,7 @@ class ProfileViewModel {
     var instinctAlbumCount: Int { ratings.filter { $0.eloScore != nil }.count }
     var manualRatingCount:  Int { ratings.filter { $0.score != nil }.count }
     var instinctRatingCount: Int { ratings.filter { $0.eloScore != nil }.count }
+    var instinctSongCount:  Int { songRatings.filter { $0.eloScore != nil }.count }
 
     var totalRatings: Int { ratings.count + songRatings.count }
     var avgScore: Double {
@@ -183,9 +184,40 @@ class ProfileViewModel {
 
     var likeCounts:    [UUID: Int] = [:]
     var commentCounts: [UUID: Int] = [:]
+    var likedRatingIds: Set<UUID> = []
 
     var followingCount = 0
     var followerCount  = 0
+
+    func toggleLike(ratingId: UUID) async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        let wasLiked = likedRatingIds.contains(ratingId)
+        if wasLiked {
+            likedRatingIds.remove(ratingId)
+            likeCounts[ratingId] = max(0, (likeCounts[ratingId] ?? 1) - 1)
+        } else {
+            likedRatingIds.insert(ratingId)
+            likeCounts[ratingId] = (likeCounts[ratingId] ?? 0) + 1
+        }
+        do {
+            if wasLiked {
+                try await supabase.from("rating_likes").delete()
+                    .eq("user_id", value: userId).eq("rating_id", value: ratingId).execute()
+            } else {
+                struct Payload: Encodable {
+                    let userId: UUID; let ratingId: UUID
+                    enum CodingKeys: String, CodingKey {
+                        case userId = "user_id"; case ratingId = "rating_id"
+                    }
+                }
+                try await supabase.from("rating_likes")
+                    .insert(Payload(userId: userId, ratingId: ratingId)).execute()
+            }
+        } catch {
+            if wasLiked { likedRatingIds.insert(ratingId); likeCounts[ratingId] = (likeCounts[ratingId] ?? 0) + 1 }
+            else { likedRatingIds.remove(ratingId); likeCounts[ratingId] = max(0, (likeCounts[ratingId] ?? 1) - 1) }
+        }
+    }
 
     func deleteRating(_ item: ProfileRatedItem) async {
         guard let userId = supabase.auth.currentUser?.id else { return }
@@ -247,12 +279,23 @@ class ProfileViewModel {
                 for r in rows { counts[r.ratingId, default: 0] += 1 }
                 commentCounts = counts
             }
+            if let rows: [RatingIdRow] = try? await supabase
+                .from("rating_likes").select("rating_id")
+                .eq("user_id", value: user.id)
+                .in("rating_id", values: ratingIds).execute().value {
+                likedRatingIds = Set(rows.map(\.ratingId))
+            }
         }
 
-        // Song ratings — Step 1: recording_id + score + recording title/artist
+        // Song ratings — Step 1: recording_id + score/elo_score + recording title/artist.
+        // elo_score is read here too: Instinct-mode song ratings only get their
+        // manual `score` column backfilled once the user has rated 5+ songs
+        // (see InstinctTrackRatingViewModel.finalize()) — before that threshold,
+        // elo_score is the only place the rating actually lives.
         struct TrackRatingNew: Codable {
             let recordingId: UUID
             let score: Double?
+            let eloScore: Double?
             let recordings: RecordingInfo
             struct RecordingInfo: Codable {
                 let id: UUID; let title: String; let artistDisplay: String?
@@ -261,12 +304,13 @@ class ProfileViewModel {
                 }
             }
             enum CodingKeys: String, CodingKey {
-                case recordingId = "recording_id"; case score; case recordings
+                case recordingId = "recording_id"; case score
+                case eloScore = "elo_score"; case recordings
             }
         }
         let rawSongs: [TrackRatingNew] = (try? await supabase
             .from("track_ratings")
-            .select("recording_id, score, recordings(id, title, artist_display)")
+            .select("recording_id, score, elo_score, recordings(id, title, artist_display)")
             .eq("user_id", value: user.id)
             .order("created_at", ascending: false)
             .limit(60)
@@ -324,7 +368,7 @@ class ProfileViewModel {
                 return SongRatingRow(
                     recordingId: r.recordingId,
                     score:       r.score,
-                    eloScore:    nil,
+                    eloScore:    r.eloScore,
                     trackTitle:  r.recordings.title,
                     release:     ref
                 )
@@ -784,7 +828,7 @@ struct ProfileView: View {
                                 artistLine: item.artistLine,
                                 score: item.score,
                                 eloScore: item.eloScore,
-                                instinctCount: viewModel.instinctAlbumCount,
+                                instinctCount: item.isSong ? viewModel.instinctSongCount : viewModel.instinctAlbumCount,
                                 isSong: item.isSong,
                                 releaseType: item.releaseType
                             )
@@ -813,15 +857,14 @@ struct ProfileView: View {
                     } else {
                         ForEach(albumItems) { item in
                             if case .album(let rating) = item {
-                                NavigationLink(value: rating.releases.asRelease) {
-                                    ProfilePostCard(
-                                        rating: rating,
-                                        likesCount: viewModel.likeCounts[rating.id] ?? 0,
-                                        commentsCount: viewModel.commentCounts[rating.id] ?? 0,
-                                        instinctAlbumCount: viewModel.instinctAlbumCount
-                                    )
-                                }
-                                .buttonStyle(.plain)
+                                ProfilePostCard(
+                                    rating: rating,
+                                    likesCount: viewModel.likeCounts[rating.id] ?? 0,
+                                    commentsCount: viewModel.commentCounts[rating.id] ?? 0,
+                                    instinctAlbumCount: viewModel.instinctAlbumCount,
+                                    isLiked: viewModel.likedRatingIds.contains(rating.id),
+                                    onLike: { await viewModel.toggleLike(ratingId: rating.id) }
+                                )
                                 .padding(.horizontal, 12)
                                 .padding(.top, 8)
                                 .contextMenu {
@@ -1573,6 +1616,10 @@ private struct ProfilePostCard: View {
     let likesCount: Int
     let commentsCount: Int
     let instinctAlbumCount: Int
+    let isLiked: Bool
+    let onLike: () async -> Void
+
+    @State private var showComments = false
 
     private var displayScore: Double? {
         if let s = rating.score { return s }
@@ -1584,43 +1631,37 @@ private struct ProfilePostCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Album row
-            HStack(spacing: 13) {
-                CoverImage(url: rating.releases.coverUrl)
-                    .frame(width: 72, height: 72)
-                    .accessibilityHidden(true) // title/artist text alongside already describes it
+            // Album row — tappable, scoped to just this row (not the whole
+            // card) so the action-bar buttons below aren't nested inside a
+            // NavigationLink, matching FeedCard's albumSection pattern.
+            NavigationLink(value: rating.releases.asRelease) {
+                HStack(spacing: 13) {
+                    CoverImage(url: rating.releases.coverUrl)
+                        .frame(width: 80, height: 80)
+                        .accessibilityHidden(true) // title/artist text alongside already describes it
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(rating.releases.displayTitle)
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(Color.sjInk)
-                        .lineLimit(2)
-                    Text(rating.releases.typeLabel + " · " + rating.releases.displayArtist)
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color.sjMuted)
-                        .lineLimit(1)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(rating.releases.displayTitle)
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(Color.sjInk)
+                            .lineLimit(2)
+                        Text(rating.releases.typeLabel + " · " + rating.releases.displayArtist)
+                            .font(.system(size: 14))
+                            .foregroundStyle(Color.sjMuted)
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
                     if let score = displayScore {
-                        HStack(spacing: 5) {
-                            Image("icon-flower")
-                                .renderingMode(.template).resizable().scaledToFit()
-                                .frame(width: 11, height: 11).foregroundStyle(Color.sjAmber)
-                            Text(scoreLabel(score))
-                                .font(.system(size: 13, weight: .bold)).foregroundStyle(Color.sjAmber)
-                        }
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(Color.sjAmber.opacity(0.1))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                        .padding(.top, 2)
+                        ScoreBadge(score: score)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.sjBorder)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             .padding(.horizontal, 14)
-            .padding(.vertical, 14)
+            .padding(.top, 14)
+            .padding(.bottom, 10)
 
             // Review text
             if let text = rating.reviewText, !text.isEmpty {
@@ -1633,33 +1674,47 @@ private struct ProfilePostCard: View {
             }
 
             // Action bar: likes · comments · date
-            HStack(spacing: 14) {
+            HStack(spacing: 16) {
                 HStack(spacing: 5) {
-                    Image(systemName: "heart")
-                        .font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                    Button { Task { await onLike() } } label: {
+                        Image(systemName: isLiked ? "heart.fill" : "heart")
+                            .font(.system(size: 19, weight: .medium))
+                            .foregroundStyle(isLiked ? .red : Color.sjInk)
+                    }
+                    .buttonStyle(.plain)
+                    .animation(.easeInOut(duration: 0.15), value: isLiked)
+                    .accessibilityLabel(isLiked ? String(localized: "Unlike") : String(localized: "Like"))
+
                     Text("\(likesCount)")
-                        .font(.system(size: 13, weight: .medium)).foregroundStyle(Color.sjMuted)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(isLiked ? .red : Color.sjMuted)
                 }
                 HStack(spacing: 5) {
-                    Image(systemName: "bubble.right")
-                        .font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                    Button { showComments = true } label: {
+                        Image(systemName: "bubble.left")
+                            .font(.system(size: 19, weight: .medium)).foregroundStyle(Color.sjInk)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(String(localized: "View comments"))
+
                     Text("\(commentsCount)")
-                        .font(.system(size: 13, weight: .medium)).foregroundStyle(Color.sjMuted)
+                        .font(.system(size: 14, weight: .medium)).foregroundStyle(Color.sjMuted)
                 }
                 Spacer()
                 Text(rating.createdAt.relativeTimeString)
                     .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
             }
             .padding(.horizontal, 14)
-            .padding(.bottom, 12)
+            .padding(.vertical, 6)
         }
         .background(Color.sjSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
         .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 1)
-    }
-
-    private func scoreLabel(_ s: Double) -> String {
-        s.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(s))" : String(format: "%.1f", s)
+        .sheet(isPresented: $showComments) {
+            CommentSheetView(ratingId: rating.id)
+                .presentationDetents([.fraction(0.67), .large])
+                .presentationDragIndicator(.visible)
+        }
     }
 }
 
