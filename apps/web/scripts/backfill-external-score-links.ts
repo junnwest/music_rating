@@ -48,9 +48,13 @@ async function main() {
     const titleHits = (cands ?? []).filter((c: any) =>
       (norm(c.title) === nt || norm(c.native_title) === nt) &&
       (isNaN(e.year) || isNaN(yearOf(c.first_release_date)) || Math.abs(yearOf(c.first_release_date) - e.year) <= 1));
-    // prefer an artist match; else accept a unique title+year hit
+    // prefer an artist match; else accept a unique title+year hit ONLY for a distinctive CJK title
+    // (English titles like "Dirt"/"Love" collide across artists — require an artist match for those).
     const artistHits = titleHits.filter((c: any) => na && (norm(c.artist_display).includes(na) || na.includes(norm(c.artist_display))));
-    const pick = artistHits.length === 1 ? artistHits[0] : (titleHits.length === 1 ? titleHits[0] : null);
+    const cjkTitle = /[가-힣぀-ヿ㐀-鿿]/u.test(e.album_title ?? '');
+    const pick = artistHits.length === 1 ? artistHits[0]
+               : (titleHits.length === 1 && cjkTitle) ? titleHits[0]
+               : null;
     if (!pick) { if (titleHits.length > 1) ambiguous++; else none++; continue; }
 
     // need the RG's MBID to link via mb_release_group_id
