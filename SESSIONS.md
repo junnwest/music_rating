@@ -87,6 +87,31 @@ Root cause for (2), confirmed by the live error, not guessed: Instagram's Storie
 
 ---
 
+**2026-07-05 (Windows) — data health + native_language mis-tag fix + bot population:**
+
+Started operational (data health, cleanup, covers), took on the bot-population handoff.
+
+**Data health & cleanup (early):**
+- Ran `health:audit` repeatedly. Catalog grew to ~295k release_groups / ~2.3M recordings / ~34k artists; integrity clean (0 dangling FKs, 0 orphans, leak fix held). A scary "77k groups with >1 canonical" from the pipeline's QC was proven a **live-write paging-race false positive** (sampled 4,000 groups across the UUID space → 0 real multi-canonical).
+- **IO reality:** Supabase Micro's daily Disk-IO burst budget got exhausted by the pipeline; heavy count queries timed out (~9s). Draining the queue doesn't refill it — only the **daily reset** does. The pipeline is NOT "done" just because `artist_ingestion_queue` is empty (DISCOVER lane keeps generating work); stopped it; performance recovered after the reset.
+- **Orphan cleanup:** deleted **894** `tracks_done` artists with 0 release_groups + 0 credits + 0 recordings (atomic SQL, verified). Ran the CAA cover sweep (37,153 candidates, ~25% hit).
+
+**native_language mis-tag fix (261) — helps the whole app:**
+- The OLD `backfill-native-names.ts` (Wikipedia ko/ja langlinks, pre-`name_phonetic_ko`) wrote the Korean/Japanese **phonetic** rendering of NON-native artists into `name_native` and set `native_language='ko'/'ja'` — so Taylor Swift (US) was `native_language='ko'`, name_native "테일러 스위프트"; Rolling Stones was `ja`. `scripts/fix-native-language-mistags.ts` fixed **261** via the `country` signal (native_language='ko' but country≠KR ⇒ mis-tag; ko ones' phonetic moved to `name_phonetic_ko`). Fixes native-name display + search app-wide. (ko artists 333→294, ja 394→172.)
+
+**Bot population — partially built**
+- Built the full machinery per the handoff: `scripts/data/bot-personas.ts` (15 personas, Korea-first, anti-commercial), `scripts/create-bots.ts` (`is_bot`, native-script display names, backdated signups, `--per-persona`), `scripts/generate-bot-ratings.ts` (persona-weighted, quality-anchored, decimal scores, recency-spread timestamps). Migrations `20260705000004_profiles_is_bot` + `20260705000005_top_rated_bayesian` (Bayesian `top_rated`, min-3 — protects real users too). Ran an 8-bot then a **26-bot cross-persona pilot** (still LIVE, ~2,088 ratings).
+
+**Critic-signal infrastructure (the honest core — reuses the research):**
+- Insight (validated by 3 independent model reviews): `external_scores` cleanly separates **critical** (serious-listener taste, incl. respected K-pop like f(x) *4 Walls*) from **commercial** (idol/sales). `prestige_score` blends both, which is why it surfaced idols.
+- `scripts/data/external-score-sources.ts` — refined critical/institutional(Grammy=weak)/commercial classification + weights.
+- `20260705000006_critic_affiliation.sql` — `critic_affiliation` view with **Artist Halo** (artist with any critical album → whole discography respected). **4.3× Korean pool (87→371).** direct_critical=1146, halo=12,319.
+- `20260705000007_critics_picks.sql` — `get_critics_picks(limit, scope)`: honest, day-one "Critics' Picks" / "Korean Critics' Canon" (SUMIN, Mid-Air Thief, Silica Gel, Kid Milli, JENNIE *Ruby*), ranked by critic breadth, shown AS critic signal.
+- `scripts/backfill-external-score-links.ts` — links unlinked critic entries by title×artist×year.
+- **⚠️ Self-inflicted data mistake + recovery (lesson):** ran a destructive revert **without a dry-run** on a bad heuristic (assumed Korean-critic links must point to `native_language='ko'` artists — but only 294 carry that tag) → nulled **263** critic links, ~259 correct. Recovered fully via the original MB resolver (`backfill:external-mbids`): critical links 1,449→(1,380)→**1,459** (net-positive), false positives permanently excluded via a new CJK-title guard. Lesson: **dry-run destructive writes, always.**
+
+---
+
 **2026-07-05 (Mac) — two-track session kicked off: bot population (Windows) + Instagram share card (Mac):**
 
 Product push to solve the cold-start problem (empty app at launch → bad first impression → fewer real users → stays empty) plus a new share-to-Instagram-Stories feature. Split by machine: Windows owns bot population (100% backend/data, zero iOS surface), Mac owns the share card (100% native iOS). Wrote `HANDOFF-WINDOWS.md` (replacing the now-completed native-title/phonetic-search handoff) with the full bot-population task: flagged the existing `create-bot-user.ts`/`bot-actions.ts` as stale (still writes pre-renovation `ratings.release_id`), proposed building bot personas on the already-existing `lib/genre-categories.ts` taxonomy (26 categories, korean/japanese/western/global origins — same vocabulary the onboarding picker uses) rather than inventing a new one, and named the open product tension explicitly: the "serious listener" positioning argues for over-indexing hip-hop/indie/R&B, but the real userbase is Korea-first, so bot proportions shouldn't drift too far from actual Korean listening habits. Recommended adding `profiles.is_bot` before creating any accounts (cheap now, keeps every future option open). Widget/share-card work deliberately not started yet — talking through the design first per user request.

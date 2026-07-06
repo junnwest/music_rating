@@ -30,6 +30,8 @@ apps/mobile/ios
 
 # Catalog script run-state (per-machine progress; already-tracked ones kept as-is)
 apps/web/scripts/*-state.json
+apps/web/scripts/*-state-*.json
+apps/web/scripts/bot-roster.json
 
 # Tooling scratch
 .understand-anything/
