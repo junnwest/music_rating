@@ -6,6 +6,21 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-07-05 (Windows) — bot community-density pass (concentration + multilingual reviews + scale to 150):**
+
+Follow-on to the bot-population work below, driven by a "would a new user feel this is an active community?" data review. Measured the pilot's actual signals and found the answer was **no beyond a first glance**: 2,106 album ratings but only **18 from real humans**; **1 review in the whole app**; ratings smeared across 1,516 albums with **1,110 rated exactly once and a max of 7** — so the feed looked busy but every *album page* (the thing a user actually opens) was a ghost town. Social was near-zero (6 follows / 8 likes / 1 comment).
+
+Root cause: `generate-bot-ratings.ts` sampled each bot's ~80 ratings independently from huge pools (west=50k), so two bots in the same persona had ~zero overlap. Fix = **shared-canon concentration**:
+- New sampler: **canon core + discovery tail**. Each bot rates a high fraction (55–80%) of its bucket's *shared* canon, drawn from the CRITICAL `external_scores` via `get_critics_picks` (ko=86, ja=14, western capped at 280 so it stays concentrated), plus a smaller individual discovery tail for feed variety. Many bots converge on the same canon albums → real depth. Thin niche intersections top up from the pool's prestige tier. Removed the now-dead two-tier `wpick`/`prestigeShare`.
+- **`scripts/data/bot-reviews.ts`** (new) — persona-voiced, **language-matched** short reviews: bucket `ko`→Korean, `ja`→Japanese, `western`→English (Korean bots with Hangul display names now write Korean, per user note). Sentiment-conditioned (LOVE/LIKE/MID/PAN banks per language), ~25–30% of ratings (biased to strong scores), never names tracks/years (can't state a false fact). Positive persona-flavor clauses only lead *positive* reviews (killed "guitar tone is gorgeous — more hype than substance" contradictions); repeats deduped within a bot.
+- Scaled the roster **26 → 150** (`create-bots.ts`, the full persona-defined counts). Deleted the old 2,088 spread/review-less bot ratings (real users' 18 untouched; likes/comments cascade), cleared state, regenerated.
+
+**Result (re-measured live):** album ratings 2,106→**8,057**; reviews 1→**1,425** (language-matched); albums with ≥5 ratings 7→**457**, ≥10 → **254**, ≥20 → **50** (max 42); **Korean critic-canon 84/86 albums rated, avg ~18.8 each** (was ~1). `get_charts_top_rated` (Bayesian min-3) returns a full board. Dry-run + `tsc --noEmit` verified before the prod run.
+
+**Still open (deliberately deferred):** the **social pass** (bot→bot follows / likes / a few comments) to fix the 6/8/1 interaction numbers — flagged because `rating_likes`/`rating_comments`/`follows` inserts fire notification triggers which fire a **pg_net→APNs push webhook**; needs to be bot-on-bot-only (don't push-notify the 17 real users with fake engagement), bounded, and verified against null `push_token`. Code changes (`bot-reviews.ts`, `generate-bot-ratings.ts`) are **not yet committed**.
+
+---
+
 **2026-07-05 (Windows) — data health + native_language mis-tag fix + bot population:**
 
 Started operational (data health, cleanup, covers), took on the bot-population handoff.
