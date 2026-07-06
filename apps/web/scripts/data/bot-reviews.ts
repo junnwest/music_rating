@@ -81,3 +81,15 @@ export function reviewFor(p: Persona, score: number, rand: () => number): string
   if (positive && flav && rand() < 0.4) s = pick(flav, rand) + pack.sep + s;
   return s;
 }
+
+// Short language-matched COMMENTS (a reply to someone else's rating — agreement / reaction, a
+// different register than a review). Language follows the COMMENTER's bucket.
+const COMMENTS: Record<'ko' | 'ja' | 'western', string[]> = {
+  ko: ['이거 완전 동의', '명반 인정', '취향 저격이네요', '저도 요즘 이거 계속 들어요', '리스트에 담아둘게요', '이 앨범 진짜 좋죠', '점수 후하시네 ㅋㅋ', '오 이건 몰랐는데 들어봐야겠다'],
+  ja: ['完全に同意', '名盤ですよね', '自分も最近これずっと聴いてる', 'リストに追加した', 'このアルバム本当に good', 'わかる、これは良い', 'これ知らなかった、聴いてみる'],
+  western: ['completely agree', 'certified classic', 'been on my rotation too', 'adding this to my list', 'great pick', 'this one is so underrated', 'yeah this album rules', 'slept on this, need to revisit'],
+};
+
+export function commentFor(p: Persona, rand: () => number): string {
+  return pick(COMMENTS[p.bucket], rand);
+}
