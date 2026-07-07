@@ -6,6 +6,18 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-07-06 (Windows) — genre hierarchy: primary_genre to stop k-pop polluting the style charts:**
+
+User flagged that a k-pop album tagged both k-pop and hip-hop shows up in the Hip-Hop ranking. Confirmed the leak in data: genre charts filter by array MEMBERSHIP (`_rg_has_genre(rg.genres, p_genre)`), and **~60% of k-pop albums carry a generic style co-tag** (193/400 tagged `pop`, 60 `hip hop`, 44 `electronic`, 13 `contemporary r&b`) — so they leak into Pop/Hip-Hop/Electronic/R&B.
+
+Decision (asked the user): **scene-first** hierarchy — national scenes (Korean, then Japanese) outrank cross-cutting styles; each album gets ONE `primary_genre`, and charts match against it only. Chosen so the stored value substring-matches the existing client slugs (k-pop/hip-hop/rock/electronic/indie/r&b), so **no iOS/web change** and the RPC signatures are unchanged.
+- **`scripts/backfill-primary-genre.ts`** — ordered scene-first precedence (specific Korean scenes → k-pop umbrella → Japanese → Western styles specific→generic; fallback to the album's own first tag). Validated on an 8k sample: clean distribution, and **all 261 k-pop-primary albums that still carry a style tag now leave the Hip-Hop/R&B/Electronic charts.** IO-safe writes (50-chunk + retry).
+- **Migration `20260706000001_primary_genre.sql`** — adds `primary_genre` column + `_rg_primary_matches()` helper (falls back to whole-array while null, so no empty-chart window), and swaps the genre filter in the 4 genre charts (`get_charts_top_rated`/`most_rated`/`hidden_gems`/`trending_for_genres`) to match primary only. Reproduced from each RPC's *live* body (top_rated from `20260705000005`, rest from `20260626000002`).
+- ⚠️ **`get_silla_leaderboard` deferred** — same leak, but its live definition (the 2026-07-05 durable timeout fix) was applied via SQL editor and never committed as a migration file, so it can't be safely reproduced here. Needs the same one-line `_rg_has_genre → _rg_primary_matches` swap applied to its live body (pull via `pg_get_functiondef`). Flagged.
+- **Sequencing (not yet run):** genre backfills finish → apply `20260706000001` (SQL editor) → run `backfill:primary-genre` → charts filter on primary. Also flagged for a future client pass: iOS RankingsView only has 6 coarse genre slugs (no K-Rap/K-R&B/K-Indie charts), so Korean underground content that's now correctly distinguishable in `primary_genre` has no dedicated iOS chart yet.
+
+---
+
 **2026-07-06 (Windows) — merged Mac's unlock-gate push + executed its flagged coverage action item:**
 
 Picked up the Mac push (`672eae4`: Liquid Glass score badge, Instagram share, **Rankings unlock gate**). Merged into the local bot-work commits (`ed08473`/`4107e88`) — only conflict was the SESSIONS newest-first ordering (resolved by interleaving: Mac 07-06 → Windows 07-05 density → Mac 07-05 badge); README auto-merged. The unlock-gate migration (`20260706000000`) was already applied by the user on the Mac side.
