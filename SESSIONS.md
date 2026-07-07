@@ -43,6 +43,16 @@ Not yet live-tested (code complete, unverified in practice): Universal Links tap
 
 Five new migrations this session: `20260706000008` (referral trigger search_path), `20260706000009` (disconnect_phone), `20260706000010` (avatars bucket + RLS), `20260706000011` (avatars RLS uuid-cast fix). All applied live by the user via the SQL editor.
 
+**2026-07-06 (Windows) — merged Mac's unlock-gate push + executed its flagged coverage action item:**
+
+Picked up the Mac push (`672eae4`: Liquid Glass score badge, Instagram share, **Rankings unlock gate**). Merged into the local bot-work commits (`ed08473`/`4107e88`) — only conflict was the SESSIONS newest-first ordering (resolved by interleaving: Mac 07-06 → Windows 07-05 density → Mac 07-05 badge); README auto-merged. The unlock-gate migration (`20260706000000`) was already applied by the user on the Mac side.
+
+**Executed the Mac's explicitly-flagged Windows action item** — "prioritize zero/low-coverage prestige albums before re-rating popular ones." The gate (`get_rankings_unlock_status`) needs BOTH 10,000 album events AND 350 prestige-pool albums with ≥3 ratings; live status was **8,057 / 213** — locked. The initial seeding had concentrated on the ~380-album critic canon, leaving the broader 1,582-album prestige pool under-covered.
+- New **`scripts/topup-prestige-coverage.ts`**: walks the prestige pool **coverage-first** (0-rated albums first, then by prestige), tops each to 3–6 ratings from **origin-matched bots** (Korean album → Korean-persona bots, via `artists.native_language`), quality-anchored scores (`2.6 + prestige·2.0 + persona bias + noise`) + language-matched reviews, backdated, seeded, idempotent (skips existing (bot,album) pairs), dry-runnable. Stops as soon as both gate conditions clear with headroom.
+- **Result: +2,195 ratings across 534 low-coverage prestige albums → events 8,057→10,252, coverage 213→747. `album_unlocked` flipped to `true`** (verified live via the RPC). Songs stay locked (5/2,500) — the Mac's deliberate deferral, not touched. Ratings fire no notification triggers, so no push-webhook involvement.
+
+---
+
 **2026-07-06 (Mac) — Rankings/Charts collective unlock gate built:**
 
 Long design thread the day before (SillaScore-vs-ratings visual confusion → "should we defer launching Rankings" → "or lock it like Taste, but collective") landed on: Charts stays locked behind a simple per-user-visible gauge ("X / N ratings"), separately for albums and songs, until the community (bots + real users) collectively crosses it.
@@ -71,6 +81,23 @@ Drafted a review prompt with the real numbers and sent it to 3 external LLMs for
 Confirmed unverifiable for now, both correctly deferred rather than chased: pulse-card dark mode (screen is locked, matching the new gate — can't be seen until real data crosses the threshold) and the add-tab icon dark mode (visually confirmed done).
 
 One more round: heart/comment icons bumped from default (regular) to `.medium` weight in both `FeedCard` and `ProfilePostCard`, per user feedback that they read too thin. Korean localization confirmed done by the user.
+
+---
+
+**2026-07-05 (Windows) — bot community-density pass (concentration + multilingual reviews + scale to 150):**
+
+Follow-on to the bot-population work below, driven by a "would a new user feel this is an active community?" data review. Measured the pilot's actual signals and found the answer was **no beyond a first glance**: 2,106 album ratings but only **18 from real humans**; **1 review in the whole app**; ratings smeared across 1,516 albums with **1,110 rated exactly once and a max of 7** — so the feed looked busy but every *album page* (the thing a user actually opens) was a ghost town. Social was near-zero (6 follows / 8 likes / 1 comment).
+
+Root cause: `generate-bot-ratings.ts` sampled each bot's ~80 ratings independently from huge pools (west=50k), so two bots in the same persona had ~zero overlap. Fix = **shared-canon concentration**:
+- New sampler: **canon core + discovery tail**. Each bot rates a high fraction (55–80%) of its bucket's *shared* canon, drawn from the CRITICAL `external_scores` via `get_critics_picks` (ko=86, ja=14, western capped at 280 so it stays concentrated), plus a smaller individual discovery tail for feed variety. Many bots converge on the same canon albums → real depth. Thin niche intersections top up from the pool's prestige tier. Removed the now-dead two-tier `wpick`/`prestigeShare`.
+- **`scripts/data/bot-reviews.ts`** (new) — persona-voiced, **language-matched** short reviews: bucket `ko`→Korean, `ja`→Japanese, `western`→English (Korean bots with Hangul display names now write Korean, per user note). Sentiment-conditioned (LOVE/LIKE/MID/PAN banks per language), ~25–30% of ratings (biased to strong scores), never names tracks/years (can't state a false fact). Positive persona-flavor clauses only lead *positive* reviews (killed "guitar tone is gorgeous — more hype than substance" contradictions); repeats deduped within a bot.
+- Scaled the roster **26 → 150** (`create-bots.ts`, the full persona-defined counts). Deleted the old 2,088 spread/review-less bot ratings (real users' 18 untouched; likes/comments cascade), cleared state, regenerated.
+
+**Result (re-measured live):** album ratings 2,106→**8,057**; reviews 1→**1,425** (language-matched); albums with ≥5 ratings 7→**457**, ≥10 → **254**, ≥20 → **50** (max 42); **Korean critic-canon 84/86 albums rated, avg ~18.8 each** (was ~1). `get_charts_top_rated` (Bayesian min-3) returns a full board. Dry-run + `tsc --noEmit` verified before the prod run.
+
+**Social pass — done (same session).** New **`scripts/generate-bot-social.ts`** — **bot-on-bot-only** follows / likes / comments. Follows are taste-biased (50% same-persona, 30% same-bucket, 20% any); likes concentrate on canon / high-score posts (weighted); comments are sparse + **language-matched to the commenter** (`commentFor` added to `bot-reviews.ts`). All backdated into the signup→now window, seeded, `ignoreDuplicates` on the composite-PK tables, and gated against double-runs (`--force` to override). Inserted **842 follows / 850 likes / 55 comments** → feed engagement is no longer 0/0 (774 posts have ≥1 like; all 150 bots have a follower).
+
+**Safety verified:** every `like`/`comment`/`follow` insert fires a notification trigger → a **pg_net→APNs push webhook** (confirmed live/configured). Kept strictly bot-on-bot so real users are never targeted. Post-run leak check: **0** bot→real follows, **0** bot likes/comments on real ratings, and the only 12 real-user notifications are all pre-existing (newest 2026-07-03, predating the run) — **the 17 real users got zero fake notifications.** (Likes tunable: max 3 per post currently — realistic for a young community; tighten the like pool if more "hot post" social proof is wanted.)
 
 ---
 
