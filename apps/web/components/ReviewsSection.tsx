@@ -279,7 +279,7 @@ export default function ReviewsSection({ releaseId }: { releaseId: string }) {
                 <div className="flex items-center gap-2 mb-2">
                   <UserAvatar size={28} />
                   {c.username ? (
-                    <Link href={`/profile/${c.username}`} className="text-[13px] font-semibold text-ink hover:text-mid transition">
+                    <Link href={`/profile/${c.username}`} className="text-[13px] font-semibold text-ink hover:text-mid transition truncate inline-block max-w-[140px]">
                       {c.username}
                     </Link>
                   ) : (

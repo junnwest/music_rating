@@ -592,12 +592,12 @@ export default function ProfilePanel({ targetUserId, targetUsername }: Props) {
             {/* LEFT: identity */}
             <div className="flex gap-8 items-start p-9">
               <UserAvatar size={88} />
-              <div>
-                <h1 className="text-[20px] font-extrabold text-ink" style={{ letterSpacing: '-0.5px' }}>
+              <div className="min-w-0">
+                <h1 className="text-[20px] font-extrabold text-ink truncate" style={{ letterSpacing: '-0.5px' }}>
                   {username}
                 </h1>
                 {displayName && displayName !== username && (
-                  <p className="text-[13px] text-muted mt-1">{displayName}</p>
+                  <p className="text-[13px] text-muted mt-1 truncate">{displayName}</p>
                 )}
                 {bioText && (
                   <p className="text-[12px] text-muted mt-3 leading-relaxed max-w-[220px]">{bioText}</p>

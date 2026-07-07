@@ -1701,6 +1701,7 @@ struct ArtistPageView: View {
                 HStack(spacing: 4) {
                     Text("@" + (entry.profiles?.handle ?? String(localized: "someone")))
                         .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.sjInk)
+                        .lineLimit(1)
                     Text("·").foregroundStyle(Color.sjBorder)
                     Text(entry.createdAt.relativeTimeString)
                         .font(.system(size: 11)).foregroundStyle(Color.sjMuted)

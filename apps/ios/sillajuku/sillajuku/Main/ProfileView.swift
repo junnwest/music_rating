@@ -622,6 +622,7 @@ struct ProfileView: View {
             Text(viewModel.profile.flatMap { $0.username }.map { "@\($0)" } ?? "Profile")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(Color.sjInk)
+                .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .center)
 
             HStack {
@@ -1559,11 +1560,13 @@ private struct FollowProfileRow: View {
                     Text(name)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Color.sjInk)
+                        .lineLimit(1)
                 }
                 if let username = profile.username {
                     Text("@" + username)
                         .font(.system(size: 13))
                         .foregroundStyle(Color.sjMuted)
+                        .lineLimit(1)
                 }
             }
         }
@@ -1704,6 +1707,7 @@ struct ProfilePostCard: View {
     let onLike: () async -> Void
 
     @State private var showComments = false
+    @State private var showLikers = false
 
     private var displayScore: Double? {
         if let s = rating.score { return s }
@@ -1769,9 +1773,13 @@ struct ProfilePostCard: View {
                     .animation(.easeInOut(duration: 0.15), value: isLiked)
                     .accessibilityLabel(isLiked ? String(localized: "Unlike") : String(localized: "Like"))
 
-                    Text("\(likesCount)")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(isLiked ? .red : Color.sjMuted)
+                    Button { showLikers = true } label: {
+                        Text("\(likesCount)")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(isLiked ? .red : Color.sjMuted)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
                 HStack(spacing: 5) {
                     Button { showComments = true } label: {
@@ -1797,6 +1805,11 @@ struct ProfilePostCard: View {
         .sheet(isPresented: $showComments) {
             CommentSheetView(ratingId: rating.id)
                 .presentationDetents([.fraction(0.67), .large])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showLikers) {
+            LikersSheetView(ratingId: rating.id)
+                .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
     }

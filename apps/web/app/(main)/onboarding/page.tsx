@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
+import { USERNAME_MAX_LENGTH, USERNAME_REGEX, normalizeUsername } from '../../../lib/username';
 
 const FALLBACK_GENRES = [
   'K-Pop', 'K-Indie', 'K-R&B', 'K-Rap', 'Korean Ballad', 'Korean Folk',
@@ -74,13 +75,11 @@ function StepIdentity({
   const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const usernameRegex = /^[a-z0-9_]{3,20}$/;
-
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     const val = username.toLowerCase().trim();
     if (!val) { setUsernameStatus('idle'); return; }
-    if (!usernameRegex.test(val)) { setUsernameStatus('invalid'); return; }
+    if (!USERNAME_REGEX.test(val)) { setUsernameStatus('invalid'); return; }
     setUsernameStatus('checking');
     debounceRef.current = setTimeout(async () => {
       const res = await fetch(`/api/check-username?username=${encodeURIComponent(val)}`);
@@ -108,7 +107,7 @@ function StepIdentity({
   const canProceed =
     displayName.trim().length >= 1 &&
     (usernameStatus === 'available' || (usernameStatus === 'idle' && defaultUsername === username)) &&
-    usernameRegex.test(username.toLowerCase().trim());
+    USERNAME_REGEX.test(username.toLowerCase().trim());
 
   return (
     <div>
@@ -139,9 +138,9 @@ function StepIdentity({
             <input
               type="text"
               value={username}
-              onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+              onChange={(e) => setUsername(normalizeUsername(e.target.value))}
               placeholder={t('onboarding.usernamePlaceholder')}
-              maxLength={20}
+              maxLength={USERNAME_MAX_LENGTH}
               className="w-full bg-surface border border-divider rounded-lg pl-8 pr-4 py-[10px] text-[14px] text-ink placeholder:text-muted outline-none focus:border-ink transition"
             />
           </div>
@@ -437,7 +436,7 @@ export default function OnboardingPage() {
       const user = data.session?.user;
       if (!user) { router.replace('/login'); return; }
       if (user.user_metadata?.onboarding_completed) { router.replace('/'); return; }
-      setDefaultUsername(user.email?.split('@')[0]?.replace(/[^a-z0-9_]/g, '') ?? '');
+      setDefaultUsername(normalizeUsername(user.email?.split('@')[0] ?? ''));
       setReady(true);
     });
   }, []);

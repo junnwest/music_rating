@@ -214,6 +214,7 @@ private struct CommentRow: View {
                     Text("@" + (comment.profiles?.handle ?? String(localized: "someone")))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color.sjInk)
+                        .lineLimit(1)
                     Text(comment.createdAt.relativeTimeString)
                         .font(.system(size: 12))
                         .foregroundStyle(Color.sjMuted)

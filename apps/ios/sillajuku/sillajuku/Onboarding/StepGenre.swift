@@ -11,7 +11,7 @@ struct StepUsername: View {
     @State private var checkTask: Task<Void, Never>? = nil
 
     var canContinue: Bool {
-        data.username.count >= 3 &&
+        Username.isValid(data.username) &&
         usernameAvailable == true &&
         !isChecking
     }
@@ -28,7 +28,10 @@ struct StepUsername: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    TextField("username", text: $data.username)
+                    TextField("username", text: Binding(
+                        get: { data.username },
+                        set: { data.username = Username.normalize($0) }
+                    ))
                         .textFieldStyle(.plain)
                         .font(.system(size: 16))
                         .foregroundStyle(Color.sjInk)
@@ -82,7 +85,7 @@ struct StepUsername: View {
         usernameAvailable = nil
         checkTask?.cancel()
         let username = data.username
-        guard username.count >= 3 else { return }
+        guard Username.isValid(username) else { return }
         isChecking = true
         checkTask = Task {
             try? await Task.sleep(for: .milliseconds(500))

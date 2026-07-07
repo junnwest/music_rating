@@ -12,6 +12,7 @@ import UserAvatar from '../../../components/UserAvatar';
 import InstinctImportModal from '../../../components/InstinctImportModal';
 import { useLanguage, type Lang } from '../../../lib/i18n';
 import { useStreamingPlatform, type StreamingPlatform } from '../../../components/StreamingPlatformContext';
+import { isValidUsername, normalizeUsername } from '../../../lib/username';
 
 type TabKey = 'account' | 'preferences' | 'notifications' | 'privacy' | 'danger';
 
@@ -108,6 +109,10 @@ function SettingsContent() {
 
   const handleSave = async () => {
     if (!supabase || !userId) return;
+    if (!isValidUsername(username)) {
+      setError('Username must be 3-20 characters and can only contain lowercase letters, numbers, and underscores.');
+      return;
+    }
     setSaving(true);
     setError(null);
 
@@ -384,7 +389,7 @@ function SettingsContent() {
                   </button>
                 </div>
                 <Field label={t('settings.account.displayName')} value={displayName} onChange={setDisplayName} />
-                <Field label={t('settings.account.username')} value={username} onChange={setUsername} hint={username ? `@${username}` : undefined} />
+                <Field label={t('settings.account.username')} value={username} onChange={(v) => setUsername(normalizeUsername(v))} hint={username ? `@${username}` : undefined} />
                 <Field label={t('settings.account.bio')} value={bio} onChange={setBio} textarea />
                 {error && <p className="text-[12px] text-red-500 mb-3">{error}</p>}
                 <div className="flex gap-3 mt-6">

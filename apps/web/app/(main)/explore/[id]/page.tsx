@@ -57,10 +57,10 @@ export default async function ListDetailPage({ params }: { params: { id: string 
           {list.description && (
             <p className="text-[13px] text-muted mt-1">{list.description}</p>
           )}
-          <div className="flex items-center gap-2 mt-3">
+          <div className="flex items-center gap-2 mt-3 min-w-0">
             <UserAvatar size={20} />
-            <span className="text-[12px] text-muted">{list.username ?? 'user'}</span>
-            <span className="text-[12px] text-[#D0D0CE]">·</span>
+            <span className="text-[12px] text-muted truncate inline-block max-w-[160px]">{list.username ?? 'user'}</span>
+            <span className="text-[12px] text-[#D0D0CE] shrink-0">·</span>
             <span className="text-[12px] text-muted">{albums.length} {albums.length === 1 ? 'album' : 'albums'}</span>
             <span className="text-[12px] text-[#D0D0CE]">·</span>
             <span className="text-[12px] text-muted">Created {timeAgo(list.created_at)}</span>

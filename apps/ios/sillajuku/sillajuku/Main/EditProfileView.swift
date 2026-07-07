@@ -69,7 +69,10 @@ struct EditProfileView: View {
                     HStack(spacing: 2) {
                         Text("@")
                             .foregroundStyle(Color.sjMuted)
-                        TextField("username", text: $username)
+                        TextField("username", text: Binding(
+                            get: { username },
+                            set: { username = Username.normalize($0) }
+                        ))
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
                     }
@@ -159,8 +162,8 @@ struct EditProfileView: View {
     private func save() async {
         guard let user = supabase.auth.currentUser else { return }
         let trimmedUsername = username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !trimmedUsername.isEmpty else {
-            errorMessage = String(localized: "Username cannot be empty.")
+        guard Username.isValid(trimmedUsername) else {
+            errorMessage = String(localized: "Username must be 3-20 characters and can only contain lowercase letters, numbers, and underscores.")
             return
         }
 

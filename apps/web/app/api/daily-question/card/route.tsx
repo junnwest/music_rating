@@ -1,5 +1,6 @@
 import { ImageResponse } from 'next/og';
 import type { NextRequest } from 'next/server';
+import { truncateUsernameForDisplay } from '../../../../lib/username';
 
 export const runtime = 'edge';
 
@@ -11,7 +12,7 @@ export async function GET(req: NextRequest) {
   const title    = searchParams.get('title')    ?? '';
   const artist   = searchParams.get('artist')   ?? '';
   const cover    = searchParams.get('cover')    ?? '';
-  const username = searchParams.get('username') ?? '';
+  const username = truncateUsernameForDisplay(searchParams.get('username') ?? '');
   const date     = searchParams.get('date')     ?? '';
   const format   = searchParams.get('format')   ?? 'story';
 
