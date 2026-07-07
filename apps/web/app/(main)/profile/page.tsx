@@ -1,9 +1,5 @@
-﻿import ProfilePanel from '../../../components/ProfilePanel';
+import ProfileView from '../../../components/sj/ProfileView';
 
 export default function ProfilePage() {
-  return (
-    <main className="min-h-screen bg-page">
-      <ProfilePanel />
-    </main>
-  );
+  return <ProfileView />;
 }

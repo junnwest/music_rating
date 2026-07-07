@@ -4,7 +4,8 @@ import Supabase
 
 // MARK: - Shared Elo helper (Instinct mode: converts Elo → 0–5 display score)
 
-private func eloToDisplayScore(_ elo: Double) -> Double {
+// Not private -- UserProfileView.swift's itemScore(_:) also needs this now.
+func eloToDisplayScore(_ elo: Double) -> Double {
     let raw = 5.0 / (1.0 + pow(10.0, (1500.0 - elo) / 250.0))
     return (raw * 10).rounded() / 10.0
 }
@@ -48,6 +49,69 @@ struct ArtistCount: Identifiable {
     let artist: String
     let count: Int
     var id: String { artist }
+}
+
+// Extracted from ProfileViewModel's own computed properties (copied
+// verbatim, not reimplemented) so UserProfileViewModel's Stats tab can
+// compute the exact same numbers for someone else's ratings without
+// duplicating the math. ProfileViewModel's own properties below now just
+// delegate here -- output-identical, zero behavior change for the owner's
+// own Stats tab.
+struct RatingStatsSnapshot {
+    let albumCount: Int
+    let songCount: Int
+    let instinctAlbumCount: Int
+    let manualRatingCount: Int
+    let instinctRatingCount: Int
+    let instinctSongCount: Int
+    let totalRatings: Int
+    let avgScore: Double
+    let scoreDistribution: [ScoreBucket]
+    let topArtists: [ArtistCount]
+
+    static func compute(ratings: [UserRating], songRatings: [SongRatingRow]) -> RatingStatsSnapshot {
+        let instinctAlbumCount = ratings.filter { $0.eloScore != nil }.count
+        let manualRatingCount  = ratings.filter { $0.score != nil }.count
+        let instinctSongCount  = songRatings.filter { $0.eloScore != nil }.count
+
+        let albumScores: [Double] = ratings.compactMap { r in
+            if let s = r.score { return s }
+            if let e = r.eloScore, instinctAlbumCount >= 5 { return eloToDisplayScore(e) }
+            return nil
+        }
+        let songScores: [Double] = songRatings.compactMap(\.score)
+        let allScores = albumScores + songScores
+
+        let avgScore: Double = allScores.isEmpty ? 0 : allScores.reduce(0, +) / Double(allScores.count)
+
+        var bucketCounts: [Double: Int] = [:]
+        for s in allScores {
+            let bucket = max(0.5, min(5.0, (s * 2).rounded() / 2))
+            bucketCounts[bucket, default: 0] += 1
+        }
+        let scoreDistribution = stride(from: 0.5, through: 5.0, by: 0.5).map { b in
+            ScoreBucket(score: b, count: bucketCounts[b] ?? 0)
+        }
+
+        var artistCounts: [String: Int] = [:]
+        for r in ratings { artistCounts[r.releases.artist, default: 0] += 1 }
+        let topArtists = artistCounts.sorted { $0.value > $1.value }.prefix(5).map {
+            ArtistCount(artist: $0.key, count: $0.value)
+        }
+
+        return RatingStatsSnapshot(
+            albumCount: ratings.count,
+            songCount: songRatings.count,
+            instinctAlbumCount: instinctAlbumCount,
+            manualRatingCount: manualRatingCount,
+            instinctRatingCount: instinctAlbumCount,
+            instinctSongCount: instinctSongCount,
+            totalRatings: ratings.count + songRatings.count,
+            avgScore: avgScore,
+            scoreDistribution: scoreDistribution,
+            topArtists: topArtists
+        )
+    }
 }
 
 struct ReleaseRef: Codable, Identifiable {
@@ -143,48 +207,25 @@ class ProfileViewModel {
     var isLoading = true
     private var hasLoaded = false
 
-    var instinctAlbumCount: Int { ratings.filter { $0.eloScore != nil }.count }
-    var manualRatingCount:  Int { ratings.filter { $0.score != nil }.count }
-    var instinctRatingCount: Int { ratings.filter { $0.eloScore != nil }.count }
-    var instinctSongCount:  Int { songRatings.filter { $0.eloScore != nil }.count }
-
-    var totalRatings: Int { ratings.count + songRatings.count }
-    var avgScore: Double {
-        let albumScores = ratings.compactMap(\.score)
-        let songScores  = songRatings.compactMap(\.score)
-        let all = albumScores + songScores
-        guard !all.isEmpty else { return 0 }
-        return all.reduce(0, +) / Double(all.count)
+    // Delegates to RatingStatsSnapshot (shared with UserProfileViewModel's
+    // Stats tab) -- output-identical to the previous inline implementation.
+    private var statsSnapshot: RatingStatsSnapshot {
+        RatingStatsSnapshot.compute(ratings: ratings, songRatings: songRatings)
     }
-
-    var scoreDistribution: [ScoreBucket] {
-        let albumScores: [Double] = ratings.compactMap { r in
-            if let s = r.score { return s }
-            if let e = r.eloScore, instinctAlbumCount >= 5 { return eloToDisplayScore(e) }
-            return nil
-        }
-        let songScores: [Double] = songRatings.compactMap(\.score)
-        var counts: [Double: Int] = [:]
-        for s in albumScores + songScores {
-            let bucket = max(0.5, min(5.0, (s * 2).rounded() / 2))
-            counts[bucket, default: 0] += 1
-        }
-        return stride(from: 0.5, through: 5.0, by: 0.5).map { b in
-            ScoreBucket(score: b, count: counts[b] ?? 0)
-        }
-    }
-
-    var topArtists: [ArtistCount] {
-        var counts: [String: Int] = [:]
-        for r in ratings { counts[r.releases.artist, default: 0] += 1 }
-        return counts.sorted { $0.value > $1.value }.prefix(5).map {
-            ArtistCount(artist: $0.key, count: $0.value)
-        }
-    }
+    var instinctAlbumCount: Int { statsSnapshot.instinctAlbumCount }
+    var manualRatingCount:  Int { statsSnapshot.manualRatingCount }
+    var instinctRatingCount: Int { statsSnapshot.instinctRatingCount }
+    var instinctSongCount:  Int { statsSnapshot.instinctSongCount }
+    var totalRatings: Int { statsSnapshot.totalRatings }
+    var avgScore: Double { statsSnapshot.avgScore }
+    var scoreDistribution: [ScoreBucket] { statsSnapshot.scoreDistribution }
+    var topArtists: [ArtistCount] { statsSnapshot.topArtists }
 
     var likeCounts:    [UUID: Int] = [:]
     var commentCounts: [UUID: Int] = [:]
     var likedRatingIds: Set<UUID> = []
+    var mixShares: [MixSharePost] = []
+    var likedMixShareIds: Set<UUID> = []
 
     var followingCount = 0
     var followerCount  = 0
@@ -243,7 +284,7 @@ class ProfileViewModel {
 
         profile = try? await supabase
             .from("profiles")
-            .select("id, display_name, username, rating_mode, manual_rating_step, bio, avatar_url, notify_likes, notify_replies, notify_followers, notify_rankings, notify_capsule, profile_visibility, catalog_visibility, listen_later_visibility")
+            .select("id, display_name, username, rating_mode, manual_rating_step, bio, avatar_url, notify_likes, notify_replies, notify_followers, notify_rankings, notify_capsule, profile_visibility, catalog_visibility, library_visibility, stats_visibility, referral_code")
             .eq("id", value: user.id)
             .single()
             .execute()
@@ -386,7 +427,76 @@ class ProfileViewModel {
             followerCount = r.count ?? 0
         }
 
+        // Own mix shares -- merged into the posts feed below so a just-shared
+        // mix shows up alongside rating posts instead of only in the Home feed.
+        let shareRows: [HomeViewModel.MixShareRow] = (try? await supabase
+            .from("mix_shares").select(HomeViewModel.mixShareSelect)
+            .eq("user_id", value: user.id)
+            .order("created_at", ascending: false)
+            .limit(30)
+            .execute()
+            .value) ?? []
+        mixShares = await HomeViewModel.hydrateCovers(shareRows)
+        await loadMixShareSocialData()
+
         isLoading = false
+    }
+
+    private func loadMixShareSocialData() async {
+        guard !mixShares.isEmpty, let userId = supabase.auth.currentUser?.id else { return }
+        let shareIds = mixShares.map(\.id.uuidString)
+        struct IdRow: Codable {
+            let mixShareId: UUID
+            enum CodingKeys: String, CodingKey { case mixShareId = "mix_share_id" }
+        }
+        if let rows: [IdRow] = try? await supabase
+            .from("mix_share_likes").select("mix_share_id")
+            .in("mix_share_id", values: shareIds).execute().value {
+            var counts: [UUID: Int] = [:]
+            for r in rows { counts[r.mixShareId, default: 0] += 1 }
+            for (k, v) in counts { likeCounts[k] = v }
+        }
+        if let rows: [IdRow] = try? await supabase
+            .from("mix_share_comments").select("mix_share_id")
+            .in("mix_share_id", values: shareIds).execute().value {
+            var counts: [UUID: Int] = [:]
+            for r in rows { counts[r.mixShareId, default: 0] += 1 }
+            for (k, v) in counts { commentCounts[k] = v }
+        }
+        if let rows: [IdRow] = try? await supabase
+            .from("mix_share_likes").select("mix_share_id")
+            .eq("user_id", value: userId)
+            .in("mix_share_id", values: shareIds).execute().value {
+            likedMixShareIds = Set(rows.map(\.mixShareId))
+        }
+    }
+
+    func toggleMixShareLike(for post: MixSharePost) async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        let wasLiked = likedMixShareIds.contains(post.id)
+        if wasLiked {
+            likedMixShareIds.remove(post.id)
+            likeCounts[post.id] = max(0, (likeCounts[post.id] ?? 1) - 1)
+        } else {
+            likedMixShareIds.insert(post.id)
+            likeCounts[post.id] = (likeCounts[post.id] ?? 0) + 1
+        }
+        do {
+            if wasLiked {
+                try await supabase.from("mix_share_likes").delete()
+                    .eq("user_id", value: userId).eq("mix_share_id", value: post.id).execute()
+            } else {
+                struct Payload: Encodable {
+                    let userId: UUID; let mixShareId: UUID
+                    enum CodingKeys: String, CodingKey { case userId = "user_id"; case mixShareId = "mix_share_id" }
+                }
+                try await supabase.from("mix_share_likes")
+                    .insert(Payload(userId: userId, mixShareId: post.id)).execute()
+            }
+        } catch {
+            if wasLiked { likedMixShareIds.insert(post.id); likeCounts[post.id] = (likeCounts[post.id] ?? 0) + 1 }
+            else { likedMixShareIds.remove(post.id); likeCounts[post.id] = max(0, (likeCounts[post.id] ?? 1) - 1) }
+        }
     }
 
     func reload() async {
@@ -469,23 +579,57 @@ enum ProfileRatedItem: Identifiable {
     }
 }
 
+// Posts display mode merges album-rating posts with mix-share posts into one
+// chronological feed (mirrors HomeView's FeedPost) so a just-shared mix shows
+// up here too instead of only in the Home feed.
+enum ProfilePost: Identifiable {
+    case rating(UserRating)
+    case mixShare(MixSharePost)
+
+    var id: String {
+        switch self {
+        case .rating(let r):   return "rating-\(r.id.uuidString)"
+        case .mixShare(let s): return "mixshare-\(s.id.uuidString)"
+        }
+    }
+    var createdAt: Date {
+        switch self {
+        case .rating(let r):   return r.createdAt
+        case .mixShare(let s): return s.createdAt
+        }
+    }
+}
+
 struct ProfileView: View {
     var viewModel: ProfileViewModel
+    // Hoisted in MainTabView, not owned here -- the same instance backs the
+    // Profile tab's badge, this view's nav-bar dot, and the checklist sheet's
+    // content, so all three always agree on actual completion state.
+    var questVM: QuestChecklistViewModel
+    // Matches TasteView's own onGoToAdd convention -- lets a quest row switch
+    // to the Add tab (to rate/find something to rate) after dismissing this
+    // sheet, owned by MainTabView where `selectedTab` actually lives.
+    var onGoToAdd: () -> Void
     @State private var activeTab: ProfileTab = .rated
     @State private var showSettings       = false
     @State private var showEditProfile    = false
     @State private var showShareSheet     = false
     @State private var showFollowModal    = false
     @State private var showUserSearch     = false
+    @State private var showQuestChecklist = false
     @State private var followModalInitTab: FollowMode = .following
     @State private var mixLibVM           = MixLibraryViewModel()
     @State private var ratingSortOrder:    RatingSortOrder = .recent
     @State private var ratingTypeFilter:   RatingTypeFilter = .all
     @State private var ratingDisplayMode:  RatingDisplayMode = .list
     @State private var pendingDeleteItem:  ProfileRatedItem? = nil
+    // Explicit path (rather than a plain NavigationStack {}) so a mix share
+    // posted from deep in this stack (e.g. Lists tab -> MixDetailView) can be
+    // popped back to the profile root once the share succeeds.
+    @State private var navPath = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navPath) {
             Group {
                 if viewModel.isLoading {
                     ProgressView()
@@ -517,12 +661,25 @@ struct ProfileView: View {
             .sheet(isPresented: $showUserSearch) {
                 UserSearchSheet()
             }
+            .sheet(isPresented: $showQuestChecklist) {
+                QuestChecklistView(vm: questVM, onGoToAdd: onGoToAdd)
+            }
         }
         .task { await viewModel.load() }
         .onReceive(NotificationCenter.default.publisher(for: .ratingChanged)) { _ in
             Task { await viewModel.reload() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .followChanged)) { _ in
+            Task { await viewModel.reload() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .sjProfileUpdated)) { _ in
+            Task { await viewModel.reload() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .mixShared)) { _ in
+            navPath = NavigationPath()
+            activeTab = .rated
+            ratingDisplayMode = .posts
+            ratingSortOrder = .recent
             Task { await viewModel.reload() }
         }
     }
@@ -568,6 +725,7 @@ struct ProfileView: View {
             Text(viewModel.profile.flatMap { $0.username }.map { "@\($0)" } ?? "Profile")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(Color.sjInk)
+                .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .center)
 
             HStack {
@@ -578,6 +736,22 @@ struct ProfileView: View {
                 }
                 .accessibilityLabel(String(localized: "Find people"))
                 Spacer()
+                Button {
+                    showQuestChecklist = true
+                } label: {
+                    Image(systemName: "checklist")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Color.sjInk)
+                        .overlay(alignment: .topTrailing) {
+                            if !questVM.personalQuestsComplete {
+                                Circle()
+                                    .fill(Color.red)
+                                    .frame(width: 4, height: 4)
+                                    .offset(x: 3, y: -1)
+                            }
+                        }
+                }
+                .accessibilityLabel(String(localized: "Getting Started"))
                 Button { showSettings = true } label: {
                     Image(systemName: "gearshape")
                         .font(.system(size: 16))
@@ -721,6 +895,20 @@ struct ProfileView: View {
         }
     }
 
+    // Album ratings, in whatever order/filter the user picked, plus own mix
+    // shares merged in by recency -- only under the default "Recent" sort,
+    // since "top/bottom rated" and "A-Z" don't have a sensible place for a
+    // score-less mix share to slot into.
+    private var postsFeed: [ProfilePost] {
+        let ratingPosts: [ProfilePost] = filteredItems.compactMap {
+            if case .album(let r) = $0 { return .rating(r) }
+            return nil
+        }
+        guard ratingSortOrder == .recent else { return ratingPosts }
+        let sharePosts: [ProfilePost] = viewModel.mixShares.map { .mixShare($0) }
+        return (ratingPosts + sharePosts).sorted { $0.createdAt > $1.createdAt }
+    }
+
     private func itemScore(_ item: ProfileRatedItem) -> Double {
         if let s = item.score { return s }
         if let e = item.eloScore { return eloToDisplayScore(e) }
@@ -844,37 +1032,19 @@ struct ProfileView: View {
                         Divider().padding(.leading, 70)
                     }
                 } else {
-                    // Posts display — album ratings only
-                    let albumItems = items.filter { !$0.isSong }
-                    if albumItems.isEmpty {
+                    // Posts display — album ratings + own mix shares, merged by recency
+                    let posts = postsFeed
+                    if posts.isEmpty {
                         VStack(spacing: 10) {
                             Image(systemName: "newspaper")
                                 .font(.system(size: 28)).foregroundStyle(Color.sjMuted)
-                            Text("No album ratings yet")
+                            Text("No posts yet")
                                 .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
                         }
                         .frame(maxWidth: .infinity).padding(.top, 40)
                     } else {
-                        ForEach(albumItems) { item in
-                            if case .album(let rating) = item {
-                                ProfilePostCard(
-                                    rating: rating,
-                                    likesCount: viewModel.likeCounts[rating.id] ?? 0,
-                                    commentsCount: viewModel.commentCounts[rating.id] ?? 0,
-                                    instinctAlbumCount: viewModel.instinctAlbumCount,
-                                    isLiked: viewModel.likedRatingIds.contains(rating.id),
-                                    onLike: { await viewModel.toggleLike(ratingId: rating.id) }
-                                )
-                                .padding(.horizontal, 12)
-                                .padding(.top, 8)
-                                .contextMenu {
-                                    Button(role: .destructive) {
-                                        pendingDeleteItem = item
-                                    } label: {
-                                        Label("Delete Rating", systemImage: "trash")
-                                    }
-                                }
-                            }
+                        ForEach(posts) { post in
+                            postCard(post)
                         }
                         .padding(.bottom, 8)
                     }
@@ -902,6 +1072,54 @@ struct ProfileView: View {
         }
     }
 
+    // Extracted out of the posts-mode ForEach -- a switch with two multi-arg
+    // view initializers written inline inside a ForEach/LazyVStack closure is
+    // a known Swift type-checker explosion trigger (caused a 133GB Xcode RAM
+    // blowup in HomeView's equivalent feed once). Named function bodies
+    // type-check independently instead.
+    @ViewBuilder
+    private func postCard(_ post: ProfilePost) -> some View {
+        switch post {
+        case .rating(let rating):     ratingCard(rating)
+        case .mixShare(let share):    mixShareCard(share)
+        }
+    }
+
+    private func ratingCard(_ rating: UserRating) -> some View {
+        ProfilePostCard(
+            rating: rating,
+            likesCount: viewModel.likeCounts[rating.id] ?? 0,
+            commentsCount: viewModel.commentCounts[rating.id] ?? 0,
+            instinctAlbumCount: viewModel.instinctAlbumCount,
+            isLiked: viewModel.likedRatingIds.contains(rating.id),
+            onLike: { await viewModel.toggleLike(ratingId: rating.id) }
+        )
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .contextMenu {
+            Button(role: .destructive) {
+                pendingDeleteItem = .album(rating)
+            } label: {
+                Label("Delete Rating", systemImage: "trash")
+            }
+        }
+    }
+
+    private func mixShareCard(_ share: MixSharePost) -> some View {
+        MixShareCard(
+            post: share,
+            currentUserId: supabase.auth.currentUser?.id,
+            isLiked: viewModel.likedMixShareIds.contains(share.id),
+            likesCount: viewModel.likeCounts[share.id] ?? 0,
+            commentsCount: viewModel.commentCounts[share.id] ?? 0,
+            onLike: { await viewModel.toggleMixShareLike(for: share) },
+            onBlock: {},
+            onOwnProfileTap: {}
+        )
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+    }
+
     @ViewBuilder
     private var listsPlaceholder: some View {
         if let profile = viewModel.profile {
@@ -910,8 +1128,21 @@ struct ProfileView: View {
     }
 
     private var statsContent: some View {
+        RatingStatsView(snapshot: RatingStatsSnapshot.compute(ratings: viewModel.ratings, songRatings: viewModel.songRatings))
+    }
+}
+
+// MARK: - Rating stats view
+
+// Not private, not owner-specific -- shared verbatim between ProfileView's
+// own Stats tab and UserProfileView's Stats tab (fed by a
+// RatingStatsSnapshot computed from someone else's ratings instead).
+struct RatingStatsView: View {
+    let snapshot: RatingStatsSnapshot
+
+    var body: some View {
         Group {
-            if viewModel.totalRatings == 0 {
+            if snapshot.totalRatings == 0 {
                 VStack(spacing: 12) {
                     Image(systemName: "chart.bar")
                         .font(.system(size: 36))
@@ -927,10 +1158,10 @@ struct ProfileView: View {
                 VStack(alignment: .leading, spacing: 24) {
                     statsNumbersRow
                     scoreHistogramSection
-                    if !viewModel.topArtists.isEmpty {
+                    if !snapshot.topArtists.isEmpty {
                         topArtistsSection
                     }
-                    if viewModel.instinctRatingCount > 0 || viewModel.manualRatingCount > 0 {
+                    if snapshot.instinctRatingCount > 0 || snapshot.manualRatingCount > 0 {
                         ratingModeSection
                     }
                 }
@@ -942,11 +1173,11 @@ struct ProfileView: View {
 
     private var statsNumbersRow: some View {
         HStack(spacing: 0) {
-            statsCell(value: "\(viewModel.ratings.count)", label: "Albums")
+            statsCell(value: "\(snapshot.albumCount)", label: "Albums")
             Divider().frame(height: 30)
-            statsCell(value: "\(viewModel.songRatings.count)", label: "Songs")
+            statsCell(value: "\(snapshot.songCount)", label: "Songs")
             Divider().frame(height: 30)
-            statsCell(value: String(format: "%.2f", viewModel.avgScore), label: "Avg Score")
+            statsCell(value: String(format: "%.2f", snapshot.avgScore), label: "Avg Score")
         }
         .padding(.vertical, 14)
         .background(Color.sjInk.opacity(0.05))
@@ -966,7 +1197,7 @@ struct ProfileView: View {
     }
 
     private var scoreHistogramSection: some View {
-        let buckets = viewModel.scoreDistribution
+        let buckets = snapshot.scoreDistribution
         let maxCount = max(1, buckets.map(\.count).max() ?? 1)
         return VStack(alignment: .leading, spacing: 10) {
             statSectionHeader("Score Distribution")
@@ -1007,7 +1238,7 @@ struct ProfileView: View {
     }
 
     private var topArtistsSection: some View {
-        let artists = viewModel.topArtists
+        let artists = snapshot.topArtists
         let maxCount = CGFloat(artists.first?.count ?? 1)
         return VStack(alignment: .leading, spacing: 10) {
             statSectionHeader("Top Artists")
@@ -1043,11 +1274,11 @@ struct ProfileView: View {
         VStack(alignment: .leading, spacing: 10) {
             statSectionHeader("Rating Mode")
             HStack(spacing: 10) {
-                if viewModel.instinctRatingCount > 0 {
-                    modePill(label: "Instinct", count: viewModel.instinctRatingCount)
+                if snapshot.instinctRatingCount > 0 {
+                    modePill(label: "Instinct", count: snapshot.instinctRatingCount)
                 }
-                if viewModel.manualRatingCount > 0 {
-                    modePill(label: "Manual", count: viewModel.manualRatingCount)
+                if snapshot.manualRatingCount > 0 {
+                    modePill(label: "Manual", count: snapshot.manualRatingCount)
                 }
             }
         }
@@ -1476,11 +1707,13 @@ private struct FollowProfileRow: View {
                     Text(name)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Color.sjInk)
+                        .lineLimit(1)
                 }
                 if let username = profile.username {
                     Text("@" + username)
                         .font(.system(size: 13))
                         .foregroundStyle(Color.sjMuted)
+                        .lineLimit(1)
                 }
             }
         }
@@ -1611,7 +1844,8 @@ struct UserSearchSheet: View {
 
 // MARK: - Profile Post Card (posts display mode)
 
-private struct ProfilePostCard: View {
+// Not private -- reused by UserProfileView's posts-mode Rated tab.
+struct ProfilePostCard: View {
     let rating: UserRating
     let likesCount: Int
     let commentsCount: Int
@@ -1620,6 +1854,7 @@ private struct ProfilePostCard: View {
     let onLike: () async -> Void
 
     @State private var showComments = false
+    @State private var showLikers = false
 
     private var displayScore: Double? {
         if let s = rating.score { return s }
@@ -1685,9 +1920,13 @@ private struct ProfilePostCard: View {
                     .animation(.easeInOut(duration: 0.15), value: isLiked)
                     .accessibilityLabel(isLiked ? String(localized: "Unlike") : String(localized: "Like"))
 
-                    Text("\(likesCount)")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(isLiked ? .red : Color.sjMuted)
+                    Button { showLikers = true } label: {
+                        Text("\(likesCount)")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(isLiked ? .red : Color.sjMuted)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
                 HStack(spacing: 5) {
                     Button { showComments = true } label: {
@@ -1715,9 +1954,14 @@ private struct ProfilePostCard: View {
                 .presentationDetents([.fraction(0.67), .large])
                 .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $showLikers) {
+            LikersSheetView(ratingId: rating.id)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
     }
 }
 
 #Preview {
-    ProfileView(viewModel: ProfileViewModel())
+    ProfileView(viewModel: ProfileViewModel(), questVM: QuestChecklistViewModel(), onGoToAdd: {})
 }

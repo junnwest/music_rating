@@ -1,5 +1,26 @@
 import SwiftUI
 import Supabase
+import UIKit
+
+// A per-subtab visibility override: .inherit stores NULL in the DB (falls
+// back to profileVisibility), .pub/.priv store an explicit value that wins
+// over the general setting.
+enum VisibilityOverride: String, CaseIterable {
+    case inherit = "Same as profile"
+    case pub     = "Public"
+    case priv    = "Private"
+
+    var dbValue: String? { self == .inherit ? nil : rawValue }
+    var label: LocalizedStringKey { LocalizedStringKey(rawValue) }
+
+    static func from(_ value: String?) -> VisibilityOverride {
+        switch value {
+        case "Public":  return .pub
+        case "Private": return .priv
+        default:        return .inherit
+        }
+    }
+}
 
 struct SettingsView: View {
     var viewModel: ProfileViewModel
@@ -17,10 +38,17 @@ struct SettingsView: View {
     @State private var notifyRankings    = true
     @State private var notifyCapsule     = true
 
-    // Privacy
-    @State private var profileVisibility  = "Public"
-    @State private var catalogVisibility  = "Public"
-    @State private var listenLaterVisible = "Public"
+    // Privacy -- profileVisibility is the general Public/Private account
+    // toggle; the three Advanced overrides default to .inherit (NULL in the
+    // DB, meaning "same as profileVisibility") until explicitly set.
+    @State private var profileVisibility = "Public"
+    @State private var catalogOverride: VisibilityOverride = .inherit
+    @State private var libraryOverride: VisibilityOverride = .inherit
+    @State private var statsOverride:   VisibilityOverride = .inherit
+
+    // App icon (unlocked at 5 verified invites)
+    @State private var verifiedInviteCount = 0
+    @State private var currentIconName: String? = UIApplication.shared.alternateIconName
 
     // Sign out
     @State private var showSignOutConfirm = false
@@ -40,6 +68,9 @@ struct SettingsView: View {
                         EditProfileView(profile: viewModel.profile)
                             .onDisappear { Task { await viewModel.reload() } }
                     }
+                    NavigationLink("Connected Accounts") {
+                        ConnectedAccountsView()
+                    }
                 }
 
                 // MARK: Preferences
@@ -47,6 +78,13 @@ struct SettingsView: View {
                     appearancePicker
                     ratingModePicker
                     if ratingMode == "manual" { ratingPrecisionPicker }
+                }
+
+                // MARK: App Icon (unlocked at 5 verified invites)
+                if verifiedInviteCount >= 5 {
+                    Section("App Icon") {
+                        appIconPicker
+                    }
                 }
 
                 // MARK: Notifications
@@ -65,13 +103,21 @@ struct SettingsView: View {
                 .tint(Color.sjAmber)
 
                 // MARK: Privacy
-                Section("Privacy") {
-                    Picker("Profile",      selection: $profileVisibility)  { visibilityOptions }
-                        .onChange(of: profileVisibility)  { _, v in saveText("profile_visibility",       v) }
-                    Picker("Catalog",      selection: $catalogVisibility)  { visibilityOptions }
-                        .onChange(of: catalogVisibility)  { _, v in saveText("catalog_visibility",       v) }
-                    Picker("Listen Later", selection: $listenLaterVisible) { visibilityOptions }
-                        .onChange(of: listenLaterVisible) { _, v in saveText("listen_later_visibility",  v) }
+                Section {
+                    Picker("Account", selection: $profileVisibility) { generalVisibilityOptions }
+                        .onChange(of: profileVisibility) { _, v in saveText("profile_visibility", v) }
+
+                    DisclosureGroup("Advanced") {
+                        overrideRow("Catalog", $catalogOverride, column: "catalog_visibility")
+                        overrideRow("Library", $libraryOverride, column: "library_visibility")
+                        overrideRow("Stats",   $statsOverride,   column: "stats_visibility")
+                    }
+                } header: {
+                    Text("Privacy")
+                } footer: {
+                    Text(profileVisibility == "Private"
+                         ? "Private accounts are only visible to followers."
+                         : "Public accounts are visible to everyone.")
                 }
 
                 // MARK: Support
@@ -146,6 +192,7 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showDeleteConfirm) { deleteAccountSheet }
             .onAppear { loadPreferences() }
+            .task { await loadVerifiedInviteCount() }
             .onChange(of: viewModel.profile?.ratingMode)          { _, _ in loadPreferences() }
             .onChange(of: viewModel.profile?.ratingStep)          { _, _ in loadPreferences() }
             .onChange(of: viewModel.profile?.notifyLikes)         { _, _ in loadPreferences() }
@@ -224,11 +271,91 @@ struct SettingsView: View {
         .padding(.vertical, 6)
     }
 
+    // Unlocked once verifiedInviteCount >= 5 (checked at the call site above).
+    // Flower artwork is unchanged from the shipped icon — only the background
+    // color differs per option, matching the palette chosen when this reward
+    // was designed.
+    // `id` is a separate, always-non-nil field from `name` -- `name` is what
+    // gets passed to setAlternateIconName (nil means "the default icon"), but
+    // ForEach needs a Hashable identity, and LocalizedStringKey (the `label`
+    // type) doesn't conform to Hashable.
+    private static let iconOptions: [(id: String, name: String?, label: LocalizedStringKey, swatch: Color)] = [
+        ("default",     nil,           "Default",    Color(red: 0.957, green: 0.945, blue: 0.914)),
+        ("sand",        "Sand",        "Sand",       Color(red: 0.929, green: 0.890, blue: 0.827)),
+        ("blush",       "Blush",       "Blush",      Color(red: 0.953, green: 0.863, blue: 0.878)),
+        ("powderBlue",  "PowderBlue",  "Powder Blue", Color(red: 0.847, green: 0.902, blue: 0.941)),
+        ("lavender",    "Lavender",    "Lavender",   Color(red: 0.890, green: 0.863, blue: 0.933)),
+        ("mint",        "Mint",        "Mint",       Color(red: 0.843, green: 0.937, blue: 0.882)),
+        ("terracotta",  "Terracotta",  "Terracotta", Color(red: 0.910, green: 0.765, blue: 0.659)),
+        ("black",       "Black",       "Black",      Color(red: 0, green: 0, blue: 0)),
+    ]
+
+    private var appIconPicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                ForEach(Self.iconOptions, id: \.id) { option in
+                    Button {
+                        setIcon(option.name)
+                    } label: {
+                        VStack(spacing: 6) {
+                            Circle()
+                                .fill(option.swatch)
+                                .frame(width: 44, height: 44)
+                                .overlay(
+                                    Circle().stroke(
+                                        currentIconName == option.name ? Color.sjAmber : Color.sjBorder,
+                                        lineWidth: currentIconName == option.name ? 2 : 1
+                                    )
+                                )
+                                .overlay {
+                                    if currentIconName == option.name {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 14, weight: .bold))
+                                            .foregroundStyle(option.name == "Black" ? .white : Color.sjInk)
+                                    }
+                                }
+                            Text(option.label)
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(Color.sjMuted)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 6)
+        }
+    }
+
+    private func setIcon(_ name: String?) {
+        guard currentIconName != name else { return }
+        UIApplication.shared.setAlternateIconName(name) { error in
+            if error == nil { currentIconName = name }
+        }
+    }
+
+    private func loadVerifiedInviteCount() async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        async let resp = supabase.from("referrals").select("*", count: .exact)
+            .eq("referrer_id", value: userId)
+            .not("verified_at", operator: .is, value: AnyJSON.null)
+            .execute()
+        verifiedInviteCount = (try? await resp)?.count ?? 0
+    }
+
     @ViewBuilder
-    private var visibilityOptions: some View {
-        ForEach([("Public", "Public"), ("Followers only", "Followers only"), ("Private", "Private")] as [(LocalizedStringKey, String)], id: \.1) { label, value in
+    private var generalVisibilityOptions: some View {
+        ForEach([("Public", "Public"), ("Private", "Private")] as [(LocalizedStringKey, String)], id: \.1) { label, value in
             Text(label).tag(value)
         }
+    }
+
+    private func overrideRow(_ label: LocalizedStringKey, _ selection: Binding<VisibilityOverride>, column: String) -> some View {
+        Picker(label, selection: selection) {
+            ForEach(VisibilityOverride.allCases, id: \.self) { option in
+                Text(option.label).tag(option)
+            }
+        }
+        .onChange(of: selection.wrappedValue) { _, v in saveNullableText(column, v.dbValue) }
     }
 
     private func segmentButton(icon: String, label: LocalizedStringKey, selected: Bool, action: @escaping () -> Void) -> some View {
@@ -331,8 +458,9 @@ struct SettingsView: View {
         notifyRankings       = p.notifyRankings ?? true
         notifyCapsule        = p.notifyCapsule ?? true
         profileVisibility    = p.profileVisibility ?? "Public"
-        catalogVisibility    = p.catalogVisibility ?? "Public"
-        listenLaterVisible   = p.listenLaterVisibility ?? "Public"
+        catalogOverride      = .from(p.catalogVisibility)
+        libraryOverride      = .from(p.libraryVisibility)
+        statsOverride        = .from(p.statsVisibility)
     }
 
     private func saveRatingMode(_ value: String) {
@@ -363,6 +491,19 @@ struct SettingsView: View {
     }
 
     private func saveText(_ column: String, _ value: String) {
+        guard let user = supabase.auth.currentUser else { return }
+        Task {
+            try? await supabase.from("profiles")
+                .update([column: value])
+                .eq("id", value: user.id).execute()
+        }
+    }
+
+    // nil serializes as JSON `null` (verified against the vendored
+    // PostgrestQueryBuilder.update() + Swift's Optional: Encodable
+    // conformance), correctly clearing an override column back to "inherit
+    // from profileVisibility" rather than merely omitting the field.
+    private func saveNullableText(_ column: String, _ value: String?) {
         guard let user = supabase.auth.currentUser else { return }
         Task {
             try? await supabase.from("profiles")

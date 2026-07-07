@@ -1,5 +1,14 @@
 # Web Parity Checklist
 
+> **✅ SUPERSEDED (2026-07-06):** the web reconstruction session rebuilt `apps/web` against the *current*
+> iOS app and schema, which covers (and in places supersedes) everything below — §1 OAuth-only login ✅,
+> §2 onboarding ✅ (current iOS steps: name → username → rating mode → notifications; the Google-only
+> genre step described below no longer exists on iOS either), §3 essentials removal ✅, §4 both rating
+> modes incl. per-track Instinct ✅ (note: post-renovation the keys are `release_group_id`/`recording_id`,
+> not the `release_id` shown in the SQL sketch below), §5 login redesign ✅, §7 i18n ✅ (as the `sj.*`
+> namespace). §6 (Spotify/Apple data sync surfacing discovery rows on web) is the one remaining open item.
+> Kept for historical context — details below reflect 2026-06-17, before the DB renovation.
+
 Changes designed and built in the iOS (Swift) app during the 2026-06-17 session that must be mirrored on the web (`apps/web`) in a follow-up session.
 
 > **Rule:** all user-facing features must behave identically on web and mobile. Use this file as the task list when starting the web parity session.

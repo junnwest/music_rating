@@ -12,7 +12,7 @@ const securityHeaders = [
       "default-src 'self'",
       "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://us-assets.i.posthog.com",
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: https://i.scdn.co https://*.scdn.co https://*.supabase.co https://coverartarchive.org https://archive.org https://lh3.googleusercontent.com https://*.mzstatic.com",
+      "img-src 'self' data: https://i.scdn.co https://*.scdn.co https://*.supabase.co https://coverartarchive.org https://archive.org https://lh3.googleusercontent.com https://*.mzstatic.com https://*.dzcdn.net",
       "font-src 'self' data:",
       "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://us.i.posthog.com https://us-assets.i.posthog.com https://app.posthog.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io",
       "frame-ancestors 'none'",
@@ -30,11 +30,16 @@ const nextConfig = {
   async redirects() {
     return [
       { source: '/@:username', destination: '/profile/:username', permanent: true },
-      { source: '/rankings', destination: '/leaderboard', permanent: true },
-      { source: '/rankings/build', destination: '/leaderboard/build', permanent: true },
-      { source: '/rankings/build/rank', destination: '/leaderboard/build', permanent: true },
-      { source: '/rankings/:slug/rank', destination: '/leaderboard/:slug/rank', permanent: true },
-      { source: '/rankings/:slug', destination: '/leaderboard/:slug', permanent: true },
+      // Legacy IA (pre-reconstruction, 2026-07) → current surfaces
+      { source: '/rankings/:path*', destination: '/charts', permanent: false },
+      { source: '/leaderboard/:path*', destination: '/charts', permanent: false },
+      { source: '/my-rankings/:path*', destination: '/profile', permanent: false },
+      { source: '/activity', destination: '/', permanent: false },
+      { source: '/explore/:path*', destination: '/search', permanent: false },
+      { source: '/friends', destination: '/search', permanent: false },
+      { source: '/listen-later', destination: '/profile', permanent: false },
+      { source: '/collection/:id', destination: '/profile', permanent: false },
+      { source: '/genre/:key', destination: '/charts', permanent: false },
     ];
   },
   async headers() {
@@ -48,6 +53,7 @@ const nextConfig = {
       { protocol: 'https', hostname: 'coverartarchive.org' },
       { protocol: 'https', hostname: 'archive.org' },
       { protocol: 'https', hostname: '*.mzstatic.com' },
+      { protocol: 'https', hostname: '*.dzcdn.net' },
     ],
   },
 };

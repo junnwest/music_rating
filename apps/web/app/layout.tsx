@@ -35,7 +35,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={jakarta.variable} suppressHydrationWarning>
       <body className="bg-page text-ink font-sans">
-        <NextTopLoader color="#E8A020" height={2} showSpinner={false} />
+        <NextTopLoader color="#2979B7" height={2} showSpinner={false} />
         <ThemeProvider>
           <LanguageProvider>
             <PostHogProvider>{children}</PostHogProvider>

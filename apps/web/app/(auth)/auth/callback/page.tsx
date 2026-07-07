@@ -10,33 +10,48 @@ function CallbackHandler() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    if (!supabase) { router.replace('/'); return; }
+    if (!supabase) {
+      router.replace('/');
+      return;
+    }
 
     const code = searchParams.get('code');
     const error = searchParams.get('error');
     const errorCode = searchParams.get('error_code');
     const errorDescription = searchParams.get('error_description');
-    const next = searchParams.get('next') ?? '/profile';
+    const next = searchParams.get('next') ?? '/';
 
     if (error) {
-      const message = errorCode === 'identity_already_exists'
-        ? 'That account is already linked to a different user.'
-        : errorDescription ?? 'Something went wrong.';
-      router.replace(`${next}?error=${encodeURIComponent(message)}`);
+      const message =
+        errorCode === 'identity_already_exists'
+          ? 'That account is already linked to a different user.'
+          : errorDescription ?? 'Something went wrong.';
+      router.replace(`/login?error=${encodeURIComponent(message)}`);
       return;
     }
 
-    if (code) {
-      supabase.auth.exchangeCodeForSession(code).then(() => {
-        router.replace(next);
-      });
-    } else {
-      router.replace(next);
+    async function finish() {
+      if (code) await supabase!.auth.exchangeCodeForSession(code);
+      // First sign-in → no profile row yet → onboarding (mirrors iOS AppState)
+      const { data: sessionData } = await supabase!.auth.getSession();
+      const uid = sessionData.session?.user?.id;
+      if (!uid) {
+        router.replace('/login');
+        return;
+      }
+      const { data: profile } = await supabase!
+        .from('profiles')
+        .select('username')
+        .eq('id', uid)
+        .maybeSingle();
+      router.replace(profile?.username ? next : '/onboarding');
     }
+    finish();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <div className="flex min-h-[calc(100vh-60px)] items-center justify-center">
+    <div className="flex min-h-screen items-center justify-center bg-page">
       <p className="text-sm text-muted">Signing you in…</p>
     </div>
   );

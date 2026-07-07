@@ -1,256 +1,581 @@
-import { notFound } from 'next/navigation';
-import { getSpotifyArtist, getSpotifyArtistAlbums } from '../../../../lib/spotify';
-import { getCachedArtist, getArtistFromDb, cacheArtist, getArtistReleases } from '../../../../lib/dbCache';
-import { createServerClient } from '../../../../lib/supabaseServer';
-import DiscographyGrid, { type ReleaseStats } from '../../../../components/DiscographyGrid';
-import TopReleases from '../../../../components/TopReleases';
-import { getServerT } from '../../../../lib/i18n/server';
+'use client';
 
-export const revalidate = 3600;
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { Plus } from 'lucide-react';
+import Cover from '../../../../components/sj/Cover';
+import FlowerGlyph from '../../../../components/sj/FlowerGlyph';
+import { useSession } from '../../../../components/sj/SessionContext';
+import { supabase } from '../../../../lib/supabaseClient';
+import { useLanguage } from '../../../../lib/i18n';
+import { eloToScore } from '../../../../lib/elo';
+import {
+  displayName,
+  formatScore,
+  relativeTime,
+  yearOf,
+} from '../../../../lib/sj/display';
+import { RG_COLS, type SJRelease } from '../../../../lib/sj/data';
 
-function formatFollowers(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
-  return String(n);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+interface CommunityEntry {
+  id: string;
+  userId: string;
+  releaseGroupId: string;
+  score: number | null;
+  eloScore: number | null;
+  createdAt: string;
+  handle: string;
+  username: string | null;
 }
 
-export default async function ArtistPage({ params }: { params: { id: string } }) {
-  const t = getServerT();
-  let artist = await getCachedArtist(params.id);
-  if (!artist) {
-    const spotifyArtist = await getSpotifyArtist(params.id);
-    if (spotifyArtist) {
-      artist = spotifyArtist;
-      cacheArtist(artist);
-    } else {
-      artist = await getArtistFromDb(params.id);
-      if (!artist) notFound();
-    }
-  }
+type Tab = 'albums' | 'songs' | 'community' | 'stats';
 
-  const dbReleases = await getArtistReleases(params.id, artist.name);
-  let rawReleases: typeof dbReleases;
-  let nextCursor: string | null = null;
-  if (dbReleases.length > 0) {
-    rawReleases = dbReleases;
-  } else {
-    const fromSpotify = await getSpotifyArtistAlbums(params.id, artist.name);
-    rawReleases = fromSpotify.releases;
-    nextCursor = fromSpotify.nextCursor;
-  }
+interface ArtistSong {
+  id: string;
+  title: string;
+  albumId: string | null;
+  albumTitle: string;
+  albumCoverUrl: string | null;
+}
 
-  const seen = new Set<string>();
-  const releases = rawReleases
-    .filter((r) => {
-      const key = `${r.title.toLowerCase()}::${r.releaseType}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
+/**
+ * Artist page — web sibling of iOS ArtistPageView. `[id]` is a uuid
+ * (identity-aware via get_artist_release_groups) or a URL-encoded artist
+ * name fallback (artist_display match), same duality as iOS ArtistDestination.
+ */
+export default function ArtistPage() {
+  const params = useParams<{ id: string }>();
+  const rawId = decodeURIComponent(params.id);
+  const isId = UUID_RE.test(rawId);
+  const { t, lang } = useLanguage();
+  const { userId } = useSession();
 
-  // ── Fetch native name + per-release ratings ────────────────────────────────
-  let nameNative: string | null = null;
-  const statsMap = new Map<string, ReleaseStats>();
+  const [name, setName] = useState(isId ? '' : rawId);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [releases, setReleases] = useState<SJRelease[]>([]);
+  const [songs, setSongs] = useState<ArtistSong[]>([]);
+  const [releaseScores, setReleaseScores] = useState<Record<string, number>>({});
+  const [releaseCounts, setReleaseCounts] = useState<Record<string, number>>({});
+  const [myRatings, setMyRatings] = useState<Record<string, number>>({});
+  const [allScores, setAllScores] = useState<number[]>([]);
+  const [communityCount, setCommunityCount] = useState(0);
+  const [communityFeed, setCommunityFeed] = useState<CommunityEntry[]>([]);
+  const [tab, setTab] = useState<Tab>('albums');
+  const [loading, setLoading] = useState(true);
 
-  const supabase = createServerClient();
-  if (supabase) {
-    const { data: artistRow } = await supabase
-      .from('artists')
-      .select('name_native')
-      .eq('id', params.id)
-      .maybeSingle();
-    nameNative = artistRow?.name_native ?? null;
+  useEffect(() => {
+    if (!supabase) return;
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
 
-    const releaseIds = releases.map((r) => r.id);
-    if (releaseIds.length > 0) {
-      const { data: ratingRows } = await supabase
-        .from('ratings')
-        .select('release_id, score')
-        .in('release_id', releaseIds);
-
-      if (ratingRows) {
-        const grouped = new Map<string, number[]>();
-        for (const r of ratingRows) {
-          if (!grouped.has(r.release_id)) grouped.set(r.release_id, []);
-          grouped.get(r.release_id)!.push(r.score);
+      let loaded: SJRelease[] = [];
+      if (isId) {
+        const [{ data: rgs }, { data: artistRows }] = await Promise.all([
+          supabase!.rpc('get_artist_release_groups', { p_artist_id: rawId, lim: 60 }),
+          supabase!.from('artists').select('name, cover_url').eq('id', rawId).limit(1),
+        ]);
+        loaded = ((rgs as any[] | null) ?? []).map((r) => ({
+          id: r.id,
+          title: r.title,
+          artist: r.artist_display,
+          coverUrl: r.cover_url,
+          releaseType: r.release_group_type,
+          releaseDate: r.first_release_date,
+          titleNative: r.native_title,
+          artistNative: null,
+        }));
+        const artist = (artistRows as any[] | null)?.[0];
+        if (artist && !cancelled) {
+          setName(artist.name);
+          setAvatarUrl(artist.cover_url);
         }
-        for (const [releaseId, scores] of grouped) {
-          const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-          statsMap.set(releaseId, {
-            avgScore: Math.round(avg * 10) / 10,
-            count: scores.length,
-          });
-        }
+      } else {
+        const { data } = await supabase!
+          .from('release_groups')
+          .select(RG_COLS)
+          .ilike('artist_display', rawId)
+          .order('first_release_date', { ascending: false, nullsFirst: false })
+          .limit(60);
+        loaded = ((data as any[] | null) ?? []).map((r) => ({
+          id: r.id,
+          title: r.title,
+          artist: r.artist_display,
+          coverUrl: r.cover_url,
+          releaseType: r.release_group_type,
+          releaseDate: r.first_release_date,
+          titleNative: r.native_title,
+          artistNative: null,
+        }));
       }
-    }
-  }
+      if (cancelled) return;
+      setReleases(loaded);
 
-  // ── Aggregate artist-level stats ──────────────────────────────────────────
-  let totalRatings = 0;
-  let overallAvg: number | null = null;
-  if (statsMap.size > 0) {
-    let totalSum = 0;
-    let totalCount = 0;
-    for (const s of statsMap.values()) {
-      totalRatings += s.count;
-      totalSum += (s.avgScore ?? 0) * s.count;
-      totalCount += s.count;
-    }
-    if (totalCount > 0) overallAvg = Math.round((totalSum / totalCount) * 10) / 10;
-  }
+      // Songs (title-sorted recordings by this artist)
+      const songsP = (async () => {
+        const artistName = isId ? undefined : rawId;
+        const nameForSongs = artistName ?? loaded[0]?.artist;
+        if (!nameForSongs) return;
+        const { data: hits } = await supabase!
+          .from('recordings')
+          .select('id, title')
+          .ilike('artist_display', nameForSongs)
+          .order('title')
+          .limit(200);
+        const hitRows = (hits as { id: string; title: string }[] | null) ?? [];
+        if (hitRows.length === 0 || cancelled) return;
+        const { data: rt } = await supabase!
+          .from('release_tracks')
+          .select('recording_id, releases(is_canonical, release_groups(id, title, cover_url))')
+          .in('recording_id', hitRows.map((h) => h.id));
+        const rgMap: Record<string, any> = {};
+        for (const row of (rt as any[] | null) ?? []) {
+          const rg = row.releases?.release_groups;
+          if (!rg) continue;
+          if (row.releases?.is_canonical || !rgMap[row.recording_id]) {
+            rgMap[row.recording_id] = rg;
+          }
+        }
+        if (cancelled) return;
+        setSongs(
+          hitRows.map((h) => ({
+            id: h.id,
+            title: h.title,
+            albumId: rgMap[h.id]?.id ?? null,
+            albumTitle: rgMap[h.id]?.title ?? '',
+            albumCoverUrl: rgMap[h.id]?.cover_url ?? null,
+          })),
+        );
+      })();
 
-  // Top-rated releases: need at least 2 ratings, sorted by avg desc
-  const topReleases = releases
-    .filter((r) => (statsMap.get(r.id)?.count ?? 0) >= 2)
-    .sort((a, b) => (statsMap.get(b.id)?.avgScore ?? 0) - (statsMap.get(a.id)?.avgScore ?? 0))
-    .slice(0, 5);
+      // Ratings across this artist's release groups
+      const ratingsP = (async () => {
+        const ids = loaded.map((r) => r.id);
+        if (ids.length === 0) return;
+        const { data: rows } = await supabase!
+          .from('ratings')
+          .select('release_group_id, user_id, score')
+          .in('release_group_id', ids);
+        if (cancelled) return;
+        const sums: Record<string, { sum: number; count: number }> = {};
+        const mine: Record<string, number> = {};
+        const scores: number[] = [];
+        const all = (rows as { release_group_id: string; user_id: string; score: number | null }[] | null) ?? [];
+        for (const r of all) {
+          if (r.score != null) {
+            const e = sums[r.release_group_id] ?? { sum: 0, count: 0 };
+            sums[r.release_group_id] = { sum: e.sum + r.score, count: e.count + 1 };
+            scores.push(r.score);
+            if (r.user_id === userId) mine[r.release_group_id] = r.score;
+          }
+        }
+        setReleaseScores(
+          Object.fromEntries(Object.entries(sums).map(([k, v]) => [k, v.sum / v.count])),
+        );
+        setReleaseCounts(
+          Object.fromEntries(Object.entries(sums).map(([k, v]) => [k, v.count])),
+        );
+        setMyRatings(mine);
+        setAllScores(scores);
+        setCommunityCount(all.length);
 
-  const statsObj: Record<string, ReleaseStats> = Object.fromEntries(statsMap);
+        // Community feed
+        const { data: cf } = await supabase!
+          .from('ratings')
+          .select('id, user_id, release_group_id, score, elo_score, created_at, profiles(username, display_name)')
+          .in('release_group_id', ids)
+          .order('created_at', { ascending: false })
+          .limit(60);
+        if (cancelled) return;
+        setCommunityFeed(
+          ((cf as any[] | null) ?? []).map((r) => ({
+            id: r.id,
+            userId: r.user_id,
+            releaseGroupId: r.release_group_id,
+            score: r.score,
+            eloScore: r.elo_score,
+            createdAt: r.created_at,
+            handle: r.profiles?.username ?? r.profiles?.display_name ?? 'someone',
+            username: r.profiles?.username ?? null,
+          })),
+        );
+      })();
 
-  const albumCount  = releases.filter((r) => r.releaseType === 'Album').length;
-  const epCount     = releases.filter((r) => r.releaseType === 'EP').length;
-  const singleCount = releases.filter((r) => r.releaseType === 'Single').length;
+      await Promise.all([songsP, ratingsP]);
+      if (!cancelled) setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [rawId, isId, userId]);
+
+  const communityAvg = allScores.length
+    ? allScores.reduce((a, b) => a + b, 0) / allScores.length
+    : null;
+  const myRated = Object.values(myRatings).filter((s) => s > 0);
+  const myAvg = myRated.length ? myRated.reduce((a, b) => a + b, 0) / myRated.length : null;
+
+  const tabs: { key: Tab; label: string }[] = [
+    { key: 'albums', label: t('sj.artist.albums') },
+    { key: 'songs', label: t('sj.artist.songs') },
+    { key: 'community', label: t('sj.artist.community') },
+    { key: 'stats', label: t('sj.artist.stats') },
+  ];
+
+  const releaseById = useMemo(
+    () => Object.fromEntries(releases.map((r) => [r.id, r])),
+    [releases],
+  );
 
   return (
-    <div className="bg-page min-h-screen">
-
-      {/* ── HERO ─────────────────────────────────────────────────────────────── */}
-      <div className="relative">
-        <div className="absolute inset-0 overflow-hidden">
-          {artist.coverUrl && (
-            <div
-              className="absolute inset-0 scale-110"
-              style={{
-                backgroundImage: `url(${artist.coverUrl})`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                filter: 'blur(70px) saturate(1.3)',
-              }}
-            />
-          )}
-          <div className="absolute inset-0 bg-black/60" />
-        </div>
-
-        <div className="relative max-w-[1440px] mx-auto px-5 py-10 sm:py-14 flex flex-col sm:flex-row gap-6 sm:gap-10 items-start sm:items-end">
-          {/* Avatar */}
-          <div
-            className="w-[90px] h-[90px] sm:w-[140px] sm:h-[140px] rounded-full flex-shrink-0 overflow-hidden border-2 border-white/20 flex items-center justify-center font-bold text-[#E8A020] text-[38px] sm:text-[56px]"
-            style={{ background: '#221a0e', boxShadow: '0 8px 40px rgba(0,0,0,0.45)' }}
-          >
-            {artist.coverUrl ? (
-              <img src={artist.coverUrl} alt={artist.name} className="w-full h-full object-cover" />
-            ) : (
-              artist.name[0].toUpperCase()
-            )}
-          </div>
-
-          {/* Info */}
-          <div className="flex-1 min-w-0 pb-1">
-            <p className="text-[11px] font-semibold text-white/50 uppercase tracking-[0.7px] mb-2">
-              {t('artist.artistLabel')}
-            </p>
-            <h1
-              className="text-[28px] sm:text-[42px] font-extrabold text-white leading-[1.05]"
-              style={{ letterSpacing: '-1.3px' }}
-            >
-              {artist.name}
-            </h1>
-            {nameNative && nameNative !== artist.name && (
-              <p className="text-[18px] text-white/55 mt-1 font-medium">{nameNative}</p>
-            )}
-            {artist.genres.length > 0 && (
-              <div className="flex flex-wrap gap-[6px] mt-3">
-                {artist.genres.slice(0, 5).map((g) => (
-                  <span
-                    key={g}
-                    className="px-[10px] py-[3px] rounded-full text-[11px] font-medium text-white/70 border border-white/15"
-                    style={{ background: 'rgba(255,255,255,0.08)' }}
-                  >
-                    {g}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {/* Stats row */}
-            <div className="flex flex-wrap items-stretch gap-0 mt-6 pt-5 border-t border-white/15">
-              {artist.followers > 0 && (
-                <div className="pr-6">
-                  <div className="text-[22px] sm:text-[26px] font-extrabold text-white" style={{ letterSpacing: '-0.5px' }}>
-                    {formatFollowers(artist.followers)}
-                  </div>
-                  <div className="text-[11px] text-white/45 mt-0.5">{t('artist.spotifyFollowers')}</div>
-                </div>
-              )}
-              {overallAvg !== null && (
-                <>
-                  <div className="w-px bg-white/15 mx-4 self-stretch hidden sm:block" />
-                  <div className="pr-6 sm:pr-0 sm:px-6">
-                    <div className="text-[22px] sm:text-[26px] font-extrabold text-white" style={{ letterSpacing: '-0.5px' }}>
-                      {overallAvg.toFixed(1)}
-                    </div>
-                    <div className="text-[11px] text-white/45 mt-0.5">avg rating</div>
-                  </div>
-                </>
-              )}
-              {totalRatings > 0 && (
-                <>
-                  <div className="w-px bg-white/15 mx-4 self-stretch hidden sm:block" />
-                  <div className="pr-6 sm:pr-0 sm:px-6">
-                    <div className="text-[22px] sm:text-[26px] font-extrabold text-white" style={{ letterSpacing: '-0.5px' }}>
-                      {totalRatings}
-                    </div>
-                    <div className="text-[11px] text-white/45 mt-0.5">community ratings</div>
-                  </div>
-                </>
-              )}
-              {releases.length > 0 && (
-                <>
-                  <div className="w-px bg-white/15 mx-4 self-stretch hidden sm:block" />
-                  <div className="sm:px-6">
-                    <div className="text-[22px] sm:text-[26px] font-extrabold text-white" style={{ letterSpacing: '-0.5px' }}>
-                      {releases.length}
-                    </div>
-                    <div className="text-[11px] text-white/45 mt-0.5">
-                      {[
-                        albumCount > 0 && `${albumCount} album${albumCount !== 1 ? 's' : ''}`,
-                        epCount > 0    && `${epCount} EP${epCount !== 1 ? 's' : ''}`,
-                        singleCount > 0 && `${singleCount} single${singleCount !== 1 ? 's' : ''}`,
-                      ].filter(Boolean).join(' · ')}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
+    <div className="mx-auto max-w-4xl px-4 md:px-6 py-8">
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        {avatarUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={avatarUrl} alt="" className="w-16 h-16 rounded-full object-cover" />
+        )}
+        <div>
+          <p className="text-[10px] font-semibold tracking-[0.14em] uppercase text-muted">
+            {t('sj.artist.artist')}
+          </p>
+          <h1 className="text-[30px] font-extrabold text-ink leading-tight">
+            {name || rawId}
+          </h1>
         </div>
       </div>
 
-      {/* ── TOP RATED ───────────────────────────────────────────────────────── */}
-      {topReleases.length > 0 && (
-        <div className="max-w-[1440px] mx-auto px-5 pt-10">
-          <h2
-            className="text-[11px] font-bold text-muted uppercase mb-5"
-            style={{ letterSpacing: '0.7px' }}
-          >
-            Top Rated
-          </h2>
-          <TopReleases releases={topReleases} statsMap={statsObj} />
-        </div>
+      {/* Stats row */}
+      <div className="flex gap-8 mt-5">
+        <Stat value={communityAvg != null ? communityAvg.toFixed(1) : '—'} label={t('sj.artist.communityAvg')} />
+        <Stat value={`${communityCount}`} label={t('sj.album.ratings')} />
+        <Stat value={`${releases.length}`} label={t('sj.artist.releases')} />
+      </div>
+
+      {myRated.length > 0 && myAvg != null && (
+        <p className="inline-flex items-center gap-1.5 mt-4 px-2.5 py-1.5 rounded-lg bg-accent/[0.12] border border-accent/40 text-[12px] font-bold text-ink">
+          <span className="text-[10px] font-semibold text-muted tracking-[0.04em]">
+            {t('sj.artist.you')}
+          </span>
+          {t('sj.artist.youStats')
+            .replace('{n}', String(myRated.length))
+            .replace('{avg}', myAvg.toFixed(1))}
+        </p>
       )}
 
-      <hr className="border-t border-divider mx-5 mt-10" />
-
-      {/* ── DISCOGRAPHY ─────────────────────────────────────────────────────── */}
-      <div className="max-w-[1440px] mx-auto px-5 py-9 pb-14">
-        <h2 className="text-[17px] font-bold text-ink mb-5">{t('artist.discography')}</h2>
-        <DiscographyGrid
-          initialReleases={releases}
-          initialNextCursor={nextCursor}
-          stats={statsObj}
-        />
+      {/* Tabs */}
+      <div className="flex border-b border-divider mt-6">
+        {tabs.map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={`px-1 mr-7 pb-2.5 text-[13px] transition border-b-2 -mb-px ${
+              tab === key
+                ? 'border-ink text-ink font-bold'
+                : 'border-transparent text-muted hover:text-ink font-medium'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
+
+      {loading ? (
+        <div className="py-16 text-center text-muted text-[13px]">…</div>
+      ) : (
+        <div className="mt-2">
+          {tab === 'albums' &&
+            (releases.length === 0 ? (
+              <Empty label={t('sj.artist.noReleases')} />
+            ) : (
+              <ul className="divide-y divide-divider">
+                {releases.map((r) => {
+                  const my = myRatings[r.id];
+                  const community = releaseScores[r.id];
+                  return (
+                    <li key={r.id}>
+                      <Link
+                        href={`/album/${r.id}`}
+                        className="flex items-center gap-3 py-2.5 px-1 hover:bg-surface/70 rounded-lg transition"
+                      >
+                        <Cover url={r.coverUrl} className="w-11 h-11" rounded="rounded-md" />
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-[13.5px] font-semibold text-ink truncate">
+                            {displayName(r.title, r.titleNative)}
+                          </span>
+                          <span className="block text-[11.5px] text-muted">
+                            {r.releaseType?.toLowerCase() === 'ep'
+                              ? 'EP'
+                              : (r.releaseType ?? '').charAt(0).toUpperCase() +
+                                (r.releaseType ?? '').slice(1)}
+                            {yearOf(r.releaseDate) && ` · ${yearOf(r.releaseDate)}`}
+                          </span>
+                        </span>
+                        {my != null ? (
+                          <ScoreChip score={my} accent />
+                        ) : community != null ? (
+                          <ScoreChip score={community} />
+                        ) : (
+                          <span className="flex w-6 h-6 rounded-full border-[1.5px] border-divider items-center justify-center">
+                            <Plus size={10} className="text-muted" />
+                          </span>
+                        )}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            ))}
+
+          {tab === 'songs' &&
+            (songs.length === 0 ? (
+              <Empty label={t('sj.artist.noSongs')} />
+            ) : (
+              <ul className="divide-y divide-divider">
+                {songs.map((s) => (
+                  <li key={s.id}>
+                    <Link
+                      href={`/song/${s.id}${s.albumId ? `?rg=${s.albumId}` : ''}`}
+                      className="flex items-center gap-3 py-2.5 px-1 hover:bg-surface/70 rounded-lg transition"
+                    >
+                      <Cover url={s.albumCoverUrl} className="w-11 h-11" rounded="rounded-md" />
+                      <span className="min-w-0">
+                        <span className="block text-[13px] font-semibold text-ink truncate">
+                          {s.title}
+                        </span>
+                        <span className="block text-[11px] text-muted truncate">
+                          {s.albumTitle}
+                        </span>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ))}
+
+          {tab === 'community' &&
+            (communityFeed.length === 0 ? (
+              <Empty label={t('sj.artist.noCommunity')} />
+            ) : (
+              <ul className="divide-y divide-divider">
+                {communityFeed.map((entry) => {
+                  const release = releaseById[entry.releaseGroupId];
+                  const score =
+                    entry.score ?? (entry.eloScore != null ? eloToScore(entry.eloScore) : null);
+                  return (
+                    <li key={entry.id} className="flex items-center gap-2.5 py-2.5 px-1">
+                      <span className="flex w-9 h-9 rounded-full bg-accent/[0.15] text-accent items-center justify-center text-[13px] font-bold shrink-0">
+                        {entry.handle.slice(0, 1).toUpperCase()}
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="flex items-center gap-1.5 text-[12px]">
+                          <Link
+                            href={`/profile/${entry.username ?? ''}`}
+                            className="font-semibold text-ink hover:underline"
+                          >
+                            @{entry.handle}
+                          </Link>
+                          <span className="text-divider">·</span>
+                          <span className="text-muted">
+                            {relativeTime(entry.createdAt, lang)}
+                          </span>
+                        </span>
+                        {release && (
+                          <span className="block text-[12px] text-muted truncate">
+                            {displayName(release.title, release.titleNative)}
+                          </span>
+                        )}
+                      </span>
+                      {score != null && (
+                        <span className="flex items-center gap-1 text-accent">
+                          <FlowerGlyph size={10} />
+                          <span className="text-[12px] font-bold">{formatScore(score)}</span>
+                        </span>
+                      )}
+                      {release && (
+                        <Cover url={release.coverUrl} className="w-9 h-9" rounded="rounded-md" />
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            ))}
+
+          {tab === 'stats' && (
+            <ArtistStats
+              allScores={allScores}
+              releases={releases}
+              releaseScores={releaseScores}
+              releaseCounts={releaseCounts}
+              myRatings={myRatings}
+              communityAvg={communityAvg}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Stat({ value, label }: { value: string; label: string }) {
+  return (
+    <div>
+      <p className="text-[22px] font-extrabold text-ink leading-tight">{value}</p>
+      <p className="text-[11px] text-muted">{label}</p>
+    </div>
+  );
+}
+
+function Empty({ label }: { label: string }) {
+  return <p className="py-14 text-center text-[13.5px] text-muted">{label}</p>;
+}
+
+function ScoreChip({ score, accent = false }: { score: number; accent?: boolean }) {
+  return (
+    <span
+      className={`flex items-center gap-1 ${accent ? 'text-accent' : 'text-accent-deep/70'}`}
+    >
+      <FlowerGlyph size={11} />
+      <span className="text-[12px] font-bold tabular-nums">{score.toFixed(1)}</span>
+    </span>
+  );
+}
+
+function ArtistStats({
+  allScores,
+  releases,
+  releaseScores,
+  releaseCounts,
+  myRatings,
+  communityAvg,
+}: {
+  allScores: number[];
+  releases: SJRelease[];
+  releaseScores: Record<string, number>;
+  releaseCounts: Record<string, number>;
+  myRatings: Record<string, number>;
+  communityAvg: number | null;
+}) {
+  const { t } = useLanguage();
+
+  if (allScores.length === 0 && Object.keys(myRatings).length === 0) {
+    return <Empty label={t('sj.artist.noRatings')} />;
+  }
+
+  // 0.5-bucket distribution
+  const bins: Record<number, number> = {};
+  for (const s of allScores) {
+    const key = Math.round(s * 2);
+    bins[key] = (bins[key] ?? 0) + 1;
+  }
+  const binEntries = [];
+  for (let key = 10; key >= 1; key--) {
+    if (bins[key]) binEntries.push({ key, count: bins[key] });
+  }
+  const maxCount = Math.max(1, ...binEntries.map((b) => b.count));
+
+  const top = releases
+    .map((r) => ({
+      release: r,
+      score: releaseScores[r.id],
+      count: releaseCounts[r.id],
+    }))
+    .filter((x) => x.score != null)
+    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+    .slice(0, 3);
+
+  const myRated = Object.values(myRatings).filter((s) => s > 0);
+  const myAvg = myRated.length ? myRated.reduce((a, b) => a + b, 0) / myRated.length : null;
+
+  return (
+    <div className="py-5 space-y-8 max-w-lg">
+      {binEntries.length > 0 && (
+        <section>
+          <h3 className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted mb-3">
+            {t('sj.artist.scoreDistribution')}
+          </h3>
+          <div className="space-y-1.5">
+            {binEntries.map(({ key, count }) => {
+              const val = key / 2;
+              return (
+                <div key={key} className="flex items-center gap-2">
+                  <span className="w-7 text-right text-[11px] font-medium text-muted tabular-nums">
+                    {Number.isInteger(val) ? val : val.toFixed(1)}
+                  </span>
+                  <span className="flex-1 h-3.5">
+                    <span
+                      className="block h-full rounded bg-accent/75"
+                      style={{ width: `${(count / maxCount) * 100}%` }}
+                    />
+                  </span>
+                  <span className="text-[11px] text-muted tabular-nums">{count}</span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {top.length > 0 && (
+        <section>
+          <h3 className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted mb-2">
+            {t('sj.artist.topReleases')}
+          </h3>
+          <ul className="divide-y divide-divider">
+            {top.map(({ release, score, count }, i) => (
+              <li key={release.id}>
+                <Link
+                  href={`/album/${release.id}`}
+                  className="flex items-center gap-2.5 py-2 hover:bg-surface/70 rounded-lg px-1 transition"
+                >
+                  <span className="w-5 text-[11px] font-bold text-muted">#{i + 1}</span>
+                  <Cover url={release.coverUrl} className="w-9 h-9" rounded="rounded" />
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[12px] font-semibold text-ink truncate">
+                      {displayName(release.title, release.titleNative)}
+                    </span>
+                    <span className="block text-[10px] text-muted">
+                      {count === 1
+                        ? t('sj.artist.oneRating')
+                        : t('sj.artist.nRatings').replace('{n}', String(count))}
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-1 text-accent">
+                    <FlowerGlyph size={10} />
+                    <span className="text-[12px] font-bold">{(score ?? 0).toFixed(1)}</span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {myRated.length > 0 && (
+        <section>
+          <h3 className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted mb-3">
+            {t('sj.artist.yourCoverage')}
+          </h3>
+          <div className="flex gap-8">
+            <Stat
+              value={`${myRated.length}/${releases.length}`}
+              label={t('sj.artist.releasesRated')}
+            />
+            {myAvg != null && (
+              <Stat value={myAvg.toFixed(1)} label={t('sj.artist.yourAvg')} />
+            )}
+            {myAvg != null && communityAvg != null && (
+              <Stat
+                value={`${myAvg - communityAvg >= 0 ? '+' : ''}${(myAvg - communityAvg).toFixed(1)}`}
+                label={t('sj.artist.vsCommunity')}
+              />
+            )}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

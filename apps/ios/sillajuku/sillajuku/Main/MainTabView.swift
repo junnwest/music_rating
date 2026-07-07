@@ -8,6 +8,12 @@ struct MainTabView: View {
     @State private var chartsVM    = ChartsViewModel()
     @State private var profileVM   = ProfileViewModel()
     @State private var discoveryVM = DiscoveryViewModel()
+    // Hoisted (not owned by ProfileView) so the tab badge, the nav-bar dot in
+    // Profile, and the checklist sheet itself all read the SAME loaded state --
+    // the badge/dot show based on actual completion (isFullyComplete), not a
+    // one-time "have you opened this" flag, so they need real quest data, not
+    // just a local UserDefaults bool.
+    @State private var questVM = QuestChecklistViewModel()
 
     @State private var selectedTab: AppTab = .home
     @State private var homeScrollTrigger   = UUID()
@@ -98,7 +104,10 @@ struct MainTabView: View {
                         }
                         .tag(AppTab.taste)
 
-                    ProfileView(viewModel: profileVM)
+                    // No tab badge here -- SwiftUI's .badge() has no size control, and it
+                    // rendered too large. The nudge lives solely on the checklist icon in
+                    // Profile's own nav bar (small, size fully under our control there).
+                    ProfileView(viewModel: profileVM, questVM: questVM, onGoToAdd: { selectedTab = .add })
                         .tabItem {
                             Image(systemName: "person.fill")
                             Text(String(localized: "Profile"))
@@ -113,7 +122,11 @@ struct MainTabView: View {
                 group.addTask { await self.homeVM.load() }
                 group.addTask { await self.chartsVM.load() }
                 group.addTask { await self.discoveryVM.load() }
+                group.addTask { await self.questVM.load() }
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .mixShared)) { _ in
+            selectedTab = .profile
         }
     }
 }
@@ -126,7 +139,9 @@ private struct AppLoadingView: View {
 
     var body: some View {
         ZStack {
-            Color.sjCream.ignoresSafeArea()
+            // Deliberately literal white, not the adaptive sjCream — stays white even in
+            // dark mode (user request; a prior attempt at this apparently never landed).
+            Color.white.ignoresSafeArea()
             VStack(spacing: 14) {
                 Image("logo-flower")
                     .resizable()
@@ -161,5 +176,9 @@ private struct AppLoadingView: View {
             }
         }
         .onAppear { breathing = true; dotPhase = true }
+        // sjInk/sjMuted are adaptive (sjInk's dark value is near-white) — force this whole
+        // subtree to resolve light-mode colors so the wordmark stays legible against the
+        // literal-white background above regardless of system/app dark mode.
+        .colorScheme(.light)
     }
 }
