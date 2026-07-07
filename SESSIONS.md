@@ -6,6 +6,17 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-07-06 (Windows) — slow album covers: root-caused + caching edge proxy:**
+
+User: some covers still load slowly despite an earlier "fix." Root cause found in data: **~95% of album/EP covers are Cover Art Archive** (`coverartarchive.org/.../front-500`), only ~4% iTunes. CAA URLs **307-redirect to archive.org** — measured a real one at **5.3s** first-load for a 29 KB image (the redirect + archive.org origin, not bytes). The earlier `thumbnailUrl` fix only shrank *dimensions* (`front-500`→`front-250`, `600x600bb`→`300x300bb`); it never touched the redirect, which is the dominant latency for 95% of covers. The instant ones are either already-URLCache-cached or the ~4% direct-from-iTunes-CDN covers.
+
+Fix (option chosen over the pre-built `backfill-fast-covers.ts`, which needs a huge IO-blocked DB rewrite + reintroduces iTunes dependency): a **caching edge proxy**, no DB write.
+- **`apps/web/app/api/img/route.ts`** (new, edge runtime) — follows the CAA→archive.org redirect once server-side, returns the bytes with `Cache-Control: public, max-age=31536000, s-maxage=31536000, immutable` → the Vercel edge caches each image; every client after the first gets an instant CDN hit. SSRF-guarded host allowlist (coverartarchive.org / archive.org / mzstatic.com / dzcdn.net).
+- **iOS `Theme.swift` `thumbnailUrl`** — one edit routes only CAA/archive.org URLs through `{webBaseURL}/api/img?url=…` (iTunes/Deezer already fast → left direct). Because nearly every cover flows through the shared `CoverImage` → `thumbnailUrl`, this one change covers the whole app (all `CoverImage` sites + the RankingsView/SearchView prefetchers) with no per-site edits.
+- **⏳ To activate:** deploy web (route goes live) + build iOS on Mac (xcodebuild broken on this Windows box). Optional follow-up: pre-warm the edge cache for charted/popular covers so real users rarely hit the ~5s cold miss; longer-term, uploading covers to Supabase Storage / a real CDN would beat archive.org's origin entirely.
+
+---
+
 **2026-07-06 (Windows) — genre hierarchy: primary_genre to stop k-pop polluting the style charts:**
 
 User flagged that a k-pop album tagged both k-pop and hip-hop shows up in the Hip-Hop ranking. Confirmed the leak in data: genre charts filter by array MEMBERSHIP (`_rg_has_genre(rg.genres, p_genre)`), and **~60% of k-pop albums carry a generic style co-tag** (193/400 tagged `pop`, 60 `hip hop`, 44 `electronic`, 13 `contemporary r&b`) — so they leak into Pop/Hip-Hop/Electronic/R&B.

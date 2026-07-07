@@ -10,14 +10,21 @@ extension Color {
 }
 
 extension String {
-    // Returns a downscaled URL for thumbnails (≤128pt).
-    // iTunes:           600x600bb / 1200x1200bb → 300x300bb (~4× smaller)
-    // Cover Art Archive: front-500 → front-250   (~4× smaller, no redirect overhead)
+    // Returns a fast, downscaled cover URL.
+    // 1. Downsize:  iTunes 600x600bb / 1200x1200bb → 300x300bb; CAA front-500 → front-250.
+    // 2. De-redirect: ~95% of covers are Cover Art Archive, whose URLs 307-redirect to
+    //    archive.org (~1.5–2.5s on first load). Route those through our caching edge proxy
+    //    (/api/img) so the redirect happens once server-side and every client after the
+    //    first gets an instant CDN hit. iTunes/Deezer are already fast CDNs → left direct.
     var thumbnailUrl: String {
-        self
+        let sized = self
             .replacingOccurrences(of: "600x600bb",   with: "300x300bb")
             .replacingOccurrences(of: "1200x1200bb", with: "300x300bb")
             .replacingOccurrences(of: "front-500",   with: "front-250")
+        guard sized.contains("coverartarchive.org") || sized.contains("archive.org"),
+              let enc = sized.addingPercentEncoding(withAllowedCharacters: .alphanumerics)
+        else { return sized }
+        return "\(Config.webBaseURL.absoluteString)/api/img?url=\(enc)"
     }
 }
 
