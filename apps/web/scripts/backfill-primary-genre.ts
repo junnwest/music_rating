@@ -81,7 +81,11 @@ type RG = { id: string; genres: string[] | null; primary_genre?: string | null }
 async function pageAll(sample: number): Promise<RG[]> {
   const out: RG[] = []; const page = 1000;
   for (let from = 0; ; from += page) {
-    const { data, error } = await s.from("release_groups").select("id,genres").not("genres", "is", null).range(from, from + page - 1);
+    // Resumable: skip rows already assigned a primary_genre (a re-run only processes the remainder).
+    // In --dry-run mode we don't filter, so the reported distribution reflects the whole catalog.
+    let q = s.from("release_groups").select("id,genres").not("genres", "is", null);
+    if (!DRY) q = q.is("primary_genre", null);
+    const { data, error } = await q.range(from, from + page - 1);
     if (error) throw new Error(error.message);
     if (!data?.length) break;
     out.push(...(data as RG[]));
@@ -130,7 +134,7 @@ async function pageAll(sample: number): Promise<RG[]> {
       let ok = false;
       for (let attempt = 0; attempt < 4 && !ok; attempt++) {
         if (attempt > 0) await sleep(400 * attempt);
-        const { error } = await s.from("release_groups").update({ primary_genre: val }).in("id", chunk);
+        const { error } = await s.from("release_groups").update({ primary_genre: val }).in("id", chunk).is("primary_genre", null);
         if (!error) { ok = true; written += chunk.length; }
         else if (!/timeout|57014|canceling statement/i.test(error.message)) { console.log("  update error:", error.message); break; }
       }
