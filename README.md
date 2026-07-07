@@ -37,6 +37,16 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 > **iOS (Mac):** build per [`DATA_FIXES_IOS.md`](DATA_FIXES_IOS.md) — RPC contracts `search_release_groups` /
 > `search_artists` / `get_artist_release_groups` / `get_release_group_credits` go live once step 1 is applied.
 >
+> **⚑ WEB RECONSTRUCTION SHIPPED (2026-07-06, Windows):** `apps/web` was rebuilt from scratch around the
+> current schema (`release_groups`/`recordings`) and the current iOS product — new IA (Home feed · Charts ·
+> Search/Add · Taste · Profile), OAuth-only login, iOS-style onboarding, Manual + Instinct rating for albums
+> AND songs, mixes, charts w/ unlock gates + Silla ranking, Taste reel, blue `#2979B7` theme + near-black dark
+> mode, full en/ko. Old leaderboard/tierlist/essentials-era pages and components deleted; all API routes kept.
+> Build/lint/tests clean. **⏳ Not yet deployed to Vercel** — deploy when ready (the old blocker was the
+> `20260630000000` search migration; it should already be applied — verify). Follow-ups in SESSIONS.md
+> (2026-07-06 web entry): `supabase gen types` replacement for `lib/db/types.ts`, SSR/SEO pass, avatar upload,
+> Spotify discovery rows on web, delete stale `packages/shared`.
+>
 > **⚑ NEXT SESSION — PICK UP HERE (session left off 2026-07-06, Mac):**
 >
 > **What was built 2026-07-06 (Mac — score badge polish, Instagram share feature, Rankings/Charts collective unlock gate):**
