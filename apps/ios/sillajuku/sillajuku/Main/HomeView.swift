@@ -348,10 +348,12 @@ class HomeViewModel {
         return try await humanTask + botTask
     }
 
-    private static let mixShareSelect =
+    // Not private -- reused by ProfileViewModel to fetch the current user's
+    // own mix shares for the profile posts feed.
+    static let mixShareSelect =
         "id, user_id, mix_id, caption, created_at, mixes(id, name, description), profiles!mix_shares_user_id_fkey(username, display_name, is_bot)"
 
-    private struct MixShareRow: Codable {
+    struct MixShareRow: Codable {
         let id: UUID
         let userId: UUID
         let mixId: UUID
@@ -368,8 +370,9 @@ class HomeViewModel {
 
     /// Bulk-resolves up to 10 cover URLs per mix via get_mix_covers (a single
     /// window-function RPC call regardless of how many/large the mixes are)
-    /// and stitches them onto the already-fetched share rows.
-    private func hydrateCovers(_ rows: [MixShareRow]) async -> [MixSharePost] {
+    /// and stitches them onto the already-fetched share rows. Static (no
+    /// instance state used) so ProfileViewModel can call it too.
+    static func hydrateCovers(_ rows: [MixShareRow]) async -> [MixSharePost] {
         guard !rows.isEmpty else { return [] }
         struct CoverRow: Decodable {
             let mixId: UUID
@@ -399,7 +402,7 @@ class HomeViewModel {
             .from("mix_shares").select(Self.mixShareSelect)
             .order("created_at", ascending: false).limit(limit)
             .execute().value
-        return await hydrateCovers(rows)
+        return await Self.hydrateCovers(rows)
     }
 
     private func fetchFollowingMixShares(userIds: [String], limit: Int = 60) async -> [MixSharePost] {
@@ -409,7 +412,7 @@ class HomeViewModel {
             .in("user_id", values: userIds)
             .order("created_at", ascending: false).limit(limit)
             .execute().value) ?? []
-        return await hydrateCovers(rows)
+        return await Self.hydrateCovers(rows)
     }
 
     private func loadMixShareSocialData(for shares: [MixSharePost]) async {

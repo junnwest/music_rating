@@ -403,11 +403,12 @@ struct MixDetailView: View {
                 }
                 Spacer(minLength: 0)
                 if isOwnMix {
-                    // A distinct catalog key from the app's existing "Edit"
-                    // string (→ 수정, used for rating edit buttons elsewhere)
-                    // so this button's own translation doesn't change theirs.
+                    // A distinct catalog key from the app's existing "Edit" string --
+                    // the toolbar's system EditButton() below (reorder/delete the
+                    // tracklist) always reads "Edit"/편집, so this one reads
+                    // "Edit Mix"/수정 instead or the two buttons look like duplicates.
                     Button { showEditSheet = true } label: {
-                        Text(String(localized: "mix.editButton", defaultValue: "Edit"))
+                        Text(String(localized: "mix.editButton", defaultValue: "Edit Mix"))
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(Color.sjMuted)
                     }
@@ -522,7 +523,14 @@ struct MixDetailView: View {
             .limit(20)
             .execute()
             .value) ?? []
-        (likeCount, isLiked, sharePosts) = await (countTask, likedTask, sharesTask)
+        let (count, liked, shares) = await (countTask, likedTask, sharesTask)
+        // Sharing the same mix more than once inserts a new mix_shares row each time
+        // (each is its own feed post) -- but "Shared by" is about *who*, not how many
+        // times, so keep only the first (most recent, since the query above is
+        // already created_at-desc) row per user.
+        var seenUserIds = Set<UUID>()
+        let dedupedShares = shares.filter { seenUserIds.insert($0.userId).inserted }
+        (likeCount, isLiked, sharePosts) = (count, liked, dedupedShares)
     }
 
     private func toggleMixLike() async {

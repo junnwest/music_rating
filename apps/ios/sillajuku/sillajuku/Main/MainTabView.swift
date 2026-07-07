@@ -125,6 +125,9 @@ struct MainTabView: View {
                 group.addTask { await self.questVM.load() }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .mixShared)) { _ in
+            selectedTab = .profile
+        }
     }
 }
 

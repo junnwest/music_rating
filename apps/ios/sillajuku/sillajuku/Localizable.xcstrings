@@ -2142,19 +2142,19 @@
       }
     },
     "mix.editButton" : {
-      "comment" : "Button on the mix hero that opens the edit-mix sheet (owner only). Uses a distinct key from the app-wide \"Edit\" string (which is 수정, used for rating edits) so this can read 편집 without affecting those.",
+      "comment" : "Button on the mix hero that opens the edit-mix sheet (owner only). Distinct from the same screen's toolbar EditButton() (reorder/delete the tracklist), a system control that always reads \"Edit\"/편집 -- both buttons read as duplicates otherwise, so this one uses \"Edit Mix\"/수정 instead.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Edit"
+            "value" : "Edit Mix"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "편집"
+            "value" : "수정"
           }
         }
       }
@@ -2357,6 +2357,9 @@
           }
         }
       }
+    },
+    "No posts yet" : {
+
     },
     "No public mixes" : {
       "localizations" : {
