@@ -95,22 +95,34 @@ async function pageAll(): Promise<RG[]> {
     return;
   }
 
-  let written = 0;
+  // Supabase Micro's disk-IO budget makes large UPDATEs time out (57014) under load. Keep each
+  // statement small, retry timeouts with backoff, and pace gently so a re-run mops up rather than
+  // fail-storms. Idempotent (genres IS NULL guard), so retries/re-runs never double-write.
+  const CHUNK = 50;
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const isTimeout = (msg: string) => /timeout|57014|canceling statement/i.test(msg);
+
+  let written = 0, failed = 0;
   for (const u of updates) {
-    // chunk .in() to keep URLs sane, guard on genres IS NULL (idempotent + race-safe)
-    for (let i = 0; i < u.ids.length; i += 200) {
-      const chunk = u.ids.slice(i, i + 200);
-      const { error } = await s
-        .from("release_groups")
-        .update({ genres: u.genres })
-        .in("id", chunk)
-        .is("genres", null);
-      if (error) { console.log("  update error:", error.message); continue; }
-      written += chunk.length;
+    for (let i = 0; i < u.ids.length; i += CHUNK) {
+      const chunk = u.ids.slice(i, i + CHUNK);
+      let ok = false;
+      for (let attempt = 0; attempt < 4 && !ok; attempt++) {
+        if (attempt > 0) await sleep(400 * attempt); // back off before a retry
+        const { error } = await s
+          .from("release_groups")
+          .update({ genres: u.genres })
+          .in("id", chunk)
+          .is("genres", null);
+        if (!error) { ok = true; written += chunk.length; }
+        else if (!isTimeout(error.message)) { console.log("  update error:", error.message); break; }
+      }
+      if (!ok) failed += chunk.length;
+      await sleep(15); // gentle pacing to spare the IO budget
     }
-    if (written % 1000 < 200) process.stdout.write(`\r  written ~${written}/${fillRGs}`);
+    if (written % 1000 < CHUNK) process.stdout.write(`\r  written ~${written}/${fillRGs}  (failed ${failed})`);
   }
-  console.log(`\n  done — wrote genres to ${written} release_groups.`);
+  console.log(`\n  done — wrote genres to ${written} release_groups${failed ? ` (${failed} still failed after retries)` : ""}.`);
 
   // final coverage
   const { count: nowTagged } = await s.from("release_groups").select("*", { count: "exact", head: true }).not("genres", "is", null);
