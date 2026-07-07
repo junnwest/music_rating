@@ -14,10 +14,14 @@ struct Profile: Codable, Identifiable {
     var notifyFollowers: Bool?
     var notifyRankings: Bool?
     var notifyCapsule: Bool?
-    // Privacy settings (default "Public")
+    // Privacy settings -- profileVisibility is the general Public/Private
+    // toggle and default for the three subtab overrides below; NULL on an
+    // override means "same as profileVisibility."
     var profileVisibility: String?
     var catalogVisibility: String?
-    var listenLaterVisibility: String?
+    var libraryVisibility: String?
+    var statsVisibility: String?
+    var referralCode: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -34,7 +38,9 @@ struct Profile: Codable, Identifiable {
         case notifyCapsule        = "notify_capsule"
         case profileVisibility    = "profile_visibility"
         case catalogVisibility    = "catalog_visibility"
-        case listenLaterVisibility = "listen_later_visibility"
+        case libraryVisibility    = "library_visibility"
+        case statsVisibility      = "stats_visibility"
+        case referralCode = "referral_code"
     }
 }
 

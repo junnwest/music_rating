@@ -44,6 +44,7 @@ struct ChartEntry: Identifiable, Hashable {
     var newCount: Int?
     var titleNative: String? = nil
     var artistNative: String? = nil
+    var releaseType: String? = nil
 
     static func == (lhs: ChartEntry, rhs: ChartEntry) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
@@ -53,7 +54,7 @@ struct ChartEntry: Identifiable, Hashable {
 
     var asRelease: Release {
         Release(id: id, title: title, artist: artist, coverUrl: coverUrl,
-                releaseType: nil, releaseDate: nil, titleNative: titleNative, artistNative: artistNative,
+                releaseType: releaseType, releaseDate: nil, titleNative: titleNative, artistNative: artistNative,
                 tracklist: nil, totalTracks: nil)
     }
 }
@@ -119,6 +120,7 @@ private struct SillaLeaderboardRow: Codable {
     let ratingCount:  Int?
     let titleNative:  String?
     let artistNative: String?
+    let releaseType:  String?
     enum CodingKeys: String, CodingKey {
         case releaseId   = "release_id"; case title; case artist
         case coverUrl    = "cover_url"
@@ -126,6 +128,7 @@ private struct SillaLeaderboardRow: Codable {
         case ratingCount = "rating_count"
         case titleNative = "native_title"
         case artistNative = "artist_native"
+        case releaseType = "release_group_type"
     }
 }
 
@@ -140,7 +143,7 @@ private struct SillaLeaderboardParams: Encodable {
 private struct RankedRPCRow: Codable {
     let releaseId: UUID; let title: String; let artist: String
     let coverUrl: String?; let avgScore: Double?; let ratingCount: Int?
-    let titleNative: String?; let artistNative: String?
+    let titleNative: String?; let artistNative: String?; let releaseType: String?
     enum CodingKeys: String, CodingKey {
         case releaseId   = "release_id"; case title; case artist
         case coverUrl    = "cover_url"
@@ -148,18 +151,20 @@ private struct RankedRPCRow: Codable {
         case ratingCount = "rating_count"
         case titleNative = "native_title"
         case artistNative = "artist_native"
+        case releaseType = "release_group_type"
     }
 }
 
 private struct TrendingRPCRow: Codable {
     let releaseId: UUID; let title: String; let artist: String
     let coverUrl: String?; let newCount: Int?
-    let titleNative: String?; let artistNative: String?
+    let titleNative: String?; let artistNative: String?; let releaseType: String?
     enum CodingKeys: String, CodingKey {
         case releaseId = "release_id"; case title; case artist
         case coverUrl  = "cover_url";  case newCount = "new_count"
         case titleNative = "native_title"
         case artistNative = "artist_native"
+        case releaseType = "release_group_type"
     }
 }
 
@@ -167,7 +172,7 @@ private struct SongRPCRow: Codable {
     let releaseId: UUID; let trackPosition: Int; let trackTitle: String
     let artist: String; let albumTitle: String; let coverUrl: String?
     let avgScore: Double?; let ratingCount: Int?
-    let albumTitleNative: String?; let artistNative: String?
+    let albumTitleNative: String?; let artistNative: String?; let albumReleaseType: String?
     enum CodingKeys: String, CodingKey {
         case releaseId    = "release_id"; case trackPosition = "track_position"
         case trackTitle   = "track_title"; case artist; case albumTitle = "album_title"
@@ -175,19 +180,21 @@ private struct SongRPCRow: Codable {
         case ratingCount  = "rating_count"
         case albumTitleNative = "album_title_native"
         case artistNative = "artist_native"
+        case albumReleaseType = "album_release_type"
     }
 }
 
 private struct TrendingSongRPCRow: Codable {
     let releaseId: UUID; let trackPosition: Int; let trackTitle: String
     let artist: String; let albumTitle: String; let coverUrl: String?; let newCount: Int?
-    let albumTitleNative: String?; let artistNative: String?
+    let albumTitleNative: String?; let artistNative: String?; let albumReleaseType: String?
     enum CodingKeys: String, CodingKey {
         case releaseId    = "release_id"; case trackPosition = "track_position"
         case trackTitle   = "track_title"; case artist; case albumTitle = "album_title"
         case coverUrl     = "cover_url"; case newCount = "new_count"
         case albumTitleNative = "album_title_native"
         case artistNative = "artist_native"
+        case albumReleaseType = "album_release_type"
     }
 }
 
@@ -206,6 +213,7 @@ struct ChartSongEntry: Identifiable, Hashable {
     var newCount: Int?
     var albumTitleNative: String? = nil
     var artistNative: String? = nil
+    var albumReleaseType: String? = nil
 
     // Track titles have no native-script column anywhere in the schema — only the album
     // title and artist name can show a native form here.
@@ -214,7 +222,7 @@ struct ChartSongEntry: Identifiable, Hashable {
 
     var asRelease: Release {
         Release(id: releaseId, title: albumTitle, artist: artist, coverUrl: coverUrl,
-                releaseType: nil, releaseDate: nil, titleNative: albumTitleNative, artistNative: artistNative,
+                releaseType: albumReleaseType, releaseDate: nil, titleNative: albumTitleNative, artistNative: artistNative,
                 tracklist: nil, totalTracks: nil)
     }
 
@@ -348,7 +356,8 @@ class ChartsViewModel {
                            trackTitle: $0.trackTitle, artist: $0.artist,
                            albumTitle: $0.albumTitle, coverUrl: $0.coverUrl,
                            avgScore: nil, ratingCount: nil, newCount: $0.newCount,
-                           albumTitleNative: $0.albumTitleNative, artistNative: $0.artistNative)
+                           albumTitleNative: $0.albumTitleNative, artistNative: $0.artistNative,
+                           albumReleaseType: $0.albumReleaseType)
         }
     }
 
@@ -357,7 +366,8 @@ class ChartsViewModel {
                        trackTitle: r.trackTitle, artist: r.artist,
                        albumTitle: r.albumTitle, coverUrl: r.coverUrl,
                        avgScore: r.avgScore, ratingCount: r.ratingCount, newCount: nil,
-                       albumTitleNative: r.albumTitleNative, artistNative: r.artistNative)
+                       albumTitleNative: r.albumTitleNative, artistNative: r.artistNative,
+                       albumReleaseType: r.albumReleaseType)
     }
 
     // MARK: Generic fetch helpers
@@ -368,7 +378,8 @@ class ChartsViewModel {
             ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
                        coverUrl: $0.coverUrl, avgScore: $0.avgScore,
                        ratingCount: $0.ratingCount, newCount: nil,
-                       titleNative: $0.titleNative, artistNative: $0.artistNative)
+                       titleNative: $0.titleNative, artistNative: $0.artistNative,
+                       releaseType: $0.releaseType)
         }
     }
 
@@ -377,7 +388,8 @@ class ChartsViewModel {
         return rows.map {
             ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
                        coverUrl: $0.coverUrl, avgScore: nil, ratingCount: nil, newCount: $0.newCount,
-                       titleNative: $0.titleNative, artistNative: $0.artistNative)
+                       titleNative: $0.titleNative, artistNative: $0.artistNative,
+                       releaseType: $0.releaseType)
         }
     }
 }
@@ -590,7 +602,10 @@ private struct RankingsLockedView: View {
     }
 
     private func formatCount(_ n: Int) -> String {
-        n >= 1_000 ? String(format: "%.1fk", Double(n) / 1_000) : "\(n)"
+        // Floor, not round — 2,991 should read "2.9k", not "3.0k" (rounding up implies
+        // more progress toward the target than actually exists).
+        guard n >= 1_000 else { return "\(n)" }
+        return String(format: "%.1fk", Double(n / 100) / 10)
     }
 }
 
@@ -846,7 +861,8 @@ private struct RankingBlock: View {
             ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
                        coverUrl: $0.coverUrl, avgScore: $0.sillaScore * 5.0,
                        ratingCount: $0.ratingCount, newCount: nil,
-                       titleNative: $0.titleNative, artistNative: $0.artistNative)
+                       titleNative: $0.titleNative, artistNative: $0.artistNative,
+                       releaseType: $0.releaseType)
         }
         isLoading = false
         let prefetchUrls = entries.compactMap { URL(string: $0.coverUrl?.thumbnailUrl ?? "") }
@@ -1169,7 +1185,8 @@ struct RankingDetailView: View {
             ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
                        coverUrl: $0.coverUrl, avgScore: $0.sillaScore * 5.0,
                        ratingCount: $0.ratingCount, newCount: nil,
-                       titleNative: $0.titleNative, artistNative: $0.artistNative)
+                       titleNative: $0.titleNative, artistNative: $0.artistNative,
+                       releaseType: $0.releaseType)
         }
         isLoading = false
         let prefetchUrls = entries.compactMap { URL(string: $0.coverUrl?.thumbnailUrl ?? "") }
@@ -1653,7 +1670,8 @@ private class ChartDetailViewModel {
             ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
                        coverUrl: $0.coverUrl, avgScore: $0.avgScore,
                        ratingCount: $0.ratingCount, newCount: nil,
-                       titleNative: $0.titleNative, artistNative: $0.artistNative)
+                       titleNative: $0.titleNative, artistNative: $0.artistNative,
+                       releaseType: $0.releaseType)
         }
     }
 
@@ -1664,7 +1682,8 @@ private class ChartDetailViewModel {
         return rows.map {
             ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
                        coverUrl: $0.coverUrl, avgScore: nil, ratingCount: nil, newCount: $0.newCount,
-                       titleNative: $0.titleNative, artistNative: $0.artistNative)
+                       titleNative: $0.titleNative, artistNative: $0.artistNative,
+                       releaseType: $0.releaseType)
         }
     }
 }
@@ -1889,7 +1908,7 @@ private class GenreDetailViewModel {
         struct RankedRow: Codable {
             let releaseId: UUID; let title: String; let artist: String
             let coverUrl: String?; let avgScore: Double?; let ratingCount: Int?
-            let titleNative: String?; let artistNative: String?
+            let titleNative: String?; let artistNative: String?; let releaseType: String?
             enum CodingKeys: String, CodingKey {
                 case releaseId   = "release_id"; case title; case artist
                 case coverUrl    = "cover_url"
@@ -1897,17 +1916,19 @@ private class GenreDetailViewModel {
                 case ratingCount = "rating_count"
                 case titleNative = "native_title"
                 case artistNative = "artist_native"
+                case releaseType = "release_group_type"
             }
         }
         struct TrendRow: Codable {
             let releaseId: UUID; let title: String; let artist: String
             let coverUrl: String?; let newCount: Int?
-            let titleNative: String?; let artistNative: String?
+            let titleNative: String?; let artistNative: String?; let releaseType: String?
             enum CodingKeys: String, CodingKey {
                 case releaseId = "release_id"; case title; case artist
                 case coverUrl  = "cover_url";  case newCount = "new_count"
                 case titleNative = "native_title"
                 case artistNative = "artist_native"
+                case releaseType = "release_group_type"
             }
         }
         struct GenreLimit: Encodable { let p_limit: Int; let p_genre: String }
@@ -1923,7 +1944,8 @@ private class GenreDetailViewModel {
                 ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
                            coverUrl: $0.coverUrl, avgScore: $0.avgScore,
                            ratingCount: $0.ratingCount, newCount: nil,
-                           titleNative: $0.titleNative, artistNative: $0.artistNative)
+                           titleNative: $0.titleNative, artistNative: $0.artistNative,
+                           releaseType: $0.releaseType)
             }
             avgScore = entries.compactMap(\.avgScore).first
 
@@ -1936,7 +1958,8 @@ private class GenreDetailViewModel {
                 ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
                            coverUrl: $0.coverUrl, avgScore: $0.avgScore,
                            ratingCount: $0.ratingCount, newCount: nil,
-                           titleNative: $0.titleNative, artistNative: $0.artistNative)
+                           titleNative: $0.titleNative, artistNative: $0.artistNative,
+                           releaseType: $0.releaseType)
             }
 
         case .trending:
@@ -1948,7 +1971,8 @@ private class GenreDetailViewModel {
                 ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
                            coverUrl: $0.coverUrl, avgScore: nil,
                            ratingCount: nil, newCount: $0.newCount,
-                           titleNative: $0.titleNative, artistNative: $0.artistNative)
+                           titleNative: $0.titleNative, artistNative: $0.artistNative,
+                           releaseType: $0.releaseType)
             }
 
         case .gems:
@@ -1960,7 +1984,8 @@ private class GenreDetailViewModel {
                 ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
                            coverUrl: $0.coverUrl, avgScore: $0.avgScore,
                            ratingCount: $0.ratingCount, newCount: nil,
-                           titleNative: $0.titleNative, artistNative: $0.artistNative)
+                           titleNative: $0.titleNative, artistNative: $0.artistNative,
+                           releaseType: $0.releaseType)
             }
         }
     }

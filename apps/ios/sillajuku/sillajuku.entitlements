@@ -8,5 +8,10 @@
 	<array>
 		<string>Default</string>
 	</array>
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:sillajuku.com</string>
+		<string>applinks:www.sillajuku.com</string>
+	</array>
 </dict>
 </plist>

@@ -197,7 +197,9 @@ struct MixLibraryView: View {
 
 // MARK: - Mix row
 
-private struct MixRow: View {
+// Not private -- reused by ForeignMixLibraryView (UserProfileView.swift) to
+// render another user's public mixes with the exact same row look.
+struct MixRow: View {
     let mix: Mix
     let count: Int
 
@@ -257,6 +259,23 @@ struct MixDetailView: View {
     @State private var items: [MixItem] = []
     @State private var isLoading = true
 
+    // This view is reached both from the owner's own MixLibraryView AND from
+    // another user's public Lists tab (ForeignMixLibraryView, in
+    // UserProfileView.swift) -- RLS would block the actual mutation for a
+    // foreign mix regardless, but showing edit/delete affordances at all for
+    // content that isn't yours is a real UX bug, not just a redundant check.
+    private var isOwnMix: Bool { mix.userId == supabase.auth.currentUser?.id }
+
+    // An explicit closure literal, not a `isOwnMix ? deleteItems : nil`
+    // ternary -- combining a bare method reference with `nil` in a ternary
+    // genuinely confused the type checker (crashed the compiler's own
+    // diagnostic generation rather than just erroring), even though the
+    // target type is spelled out below.
+    private var deleteAction: ((IndexSet) -> Void)? {
+        guard isOwnMix else { return nil }
+        return { offsets in deleteItems(at: offsets) }
+    }
+
     var body: some View {
         Group {
             if isLoading {
@@ -286,7 +305,7 @@ struct MixDetailView: View {
                         .listRowBackground(Color.sjSurface)
                         .listRowSeparatorTint(Color.sjBorder.opacity(0.5))
                     }
-                    .onDelete(perform: deleteItems)
+                    .onDelete(perform: deleteAction)
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
@@ -296,7 +315,7 @@ struct MixDetailView: View {
         .navigationTitle(mix.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if !items.isEmpty {
+            if isOwnMix && !items.isEmpty {
                 EditButton()
                     .foregroundStyle(Color.sjAmber)
             }

@@ -7,15 +7,49 @@ struct UserProfileDestination: Hashable {
     let handle: String
 }
 
-// MARK: - View
+// MARK: - Access status
 
-struct UserProfileView: View {
+// Mirrors get_profile_subtab_access's return shape exactly. Defaults
+// (allVisible) are used only until the real RPC result arrives, so the page
+// doesn't flash a locked state for a split second on every load.
+struct ProfileSubtabAccess: Codable {
+    let profileVisible: Bool
+    let catalogVisible: Bool
+    let libraryVisible: Bool
+    let statsVisible: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case profileVisible = "profile_visible"
+        case catalogVisible = "catalog_visible"
+        case libraryVisible = "library_visible"
+        case statsVisible   = "stats_visible"
+    }
+
+    static let allVisible = ProfileSubtabAccess(
+        profileVisible: true, catalogVisible: true, libraryVisible: true, statsVisible: true
+    )
+
+    // Fail-closed fallback for when the access RPC itself errors (network
+    // failure, etc.) -- distinct from `allVisible` above, which is only ever
+    // the pre-load placeholder while isLoading gates the whole view and is
+    // never actually rendered. A transient failure should hide content, not
+    // expose it.
+    static let allHidden = ProfileSubtabAccess(
+        profileVisible: false, catalogVisible: false, libraryVisible: false, statsVisible: false
+    )
+}
+
+// MARK: - View model
+
+@Observable
+final class UserProfileViewModel {
     let userId: UUID
-    let initialHandle: String
+    init(userId: UUID) { self.userId = userId }
 
-    // MARK: Local models
+    private(set) var isLoading = true
+    private(set) var access = ProfileSubtabAccess.allVisible
 
-    private struct OtherProfile: Codable {
+    struct OtherProfile: Codable {
         let id: UUID
         let username: String?
         let displayName: String?
@@ -30,348 +64,188 @@ struct UserProfileView: View {
         var displayLabel: String { displayName ?? username ?? String(localized: "someone") }
     }
 
-    struct ProfileRating: Codable, Identifiable {
-        let id: UUID
-        let score: Double?
-        let createdAt: Date
-        let releases: FeedRelease
+    private(set) var profile: OtherProfile?
 
-        enum CodingKeys: String, CodingKey {
-            case id, score; case releases = "release_groups"; case createdAt = "created_at"
-        }
+    // Catalog and Stats are fetched SEPARATELY (not shared) -- they can have
+    // independently different effective visibility (see migration
+    // 20260706000013), so a single shared array can't represent "visible on
+    // one tab, locked on the other."
+    private(set) var catalogAlbums: [UserRating] = []
+    private(set) var catalogSongs: [SongRatingRow] = []
+    private(set) var statsAlbums: [UserRating] = []
+    private(set) var statsSongs: [SongRatingRow] = []
+
+    private(set) var mixes: [Mix] = []
+    private(set) var mixItemCounts: [UUID: Int] = [:]
+
+    private(set) var followerCount  = 0
+    private(set) var followingCount = 0
+    private(set) var isFollowing = false
+    private(set) var isBlocked   = false
+    var isTogglingFollow = false
+    var isTogglingBlock  = false
+
+    // Posts-mode (Rated tab, list/posts toggle) needs like/comment state for
+    // catalogAlbums specifically -- mirrors ProfileViewModel's own load().
+    var likeCounts: [UUID: Int] = [:]
+    var commentCounts: [UUID: Int] = [:]
+    var likedRatingIds: Set<UUID> = []
+
+    var statsSnapshot: RatingStatsSnapshot {
+        RatingStatsSnapshot.compute(ratings: statsAlbums, songRatings: statsSongs)
     }
 
-    private struct SongRating: Identifiable {
-        let recordingId: UUID
-        let score: Double?
-        let trackTitle: String?
-        let release: FeedRelease
-        var id: String { recordingId.uuidString }
+    // Instinct-mode reveal thresholds (elo score only shows once this
+    // person has rated >= 5 in that mode) must use THIS person's own
+    // catalog counts, not the viewer's -- separate from statsSnapshot since
+    // Catalog and Stats are independently-visible arrays.
+    var catalogSnapshot: RatingStatsSnapshot {
+        RatingStatsSnapshot.compute(ratings: catalogAlbums, songRatings: catalogSongs)
     }
-
-    private enum RatedItem: Identifiable {
-        case album(ProfileRating)
-        case song(SongRating)
-
-        var id: String {
-            switch self {
-            case .album(let r): return "a-\(r.id.uuidString)"
-            case .song(let s):  return "s-\(s.id)"
-            }
-        }
-        var score: Double? {
-            switch self { case .album(let r): return r.score; case .song(let s): return s.score }
-        }
-        var displayTitle: String {
-            switch self {
-            case .album(let r): return r.releases.title
-            case .song(let s):  return s.trackTitle ?? "Unknown Track"
-            }
-        }
-        var artistLine: String {
-            switch self {
-            case .album(let r): return "\(r.releases.typeLabel) · \(r.releases.artist)"
-            case .song(let s):  return "\(s.release.title) · \(s.release.artist)"
-            }
-        }
-        var coverUrl: String? {
-            switch self {
-            case .album(let r): return r.releases.coverUrl
-            case .song(let s):  return s.release.coverUrl
-            }
-        }
-        var asRelease: Release {
-            switch self {
-            case .album(let r): return r.releases.asRelease
-            case .song(let s):  return s.release.asRelease
-            }
-        }
-        var isSong: Bool { if case .song = self { return true }; return false }
-    }
-
-    // MARK: State
-
-    @State private var profile: OtherProfile?
-    @State private var ratings: [ProfileRating] = []
-    @State private var songRatings: [SongRating] = []
-    @State private var ratingCount    = 0
-    @State private var followerCount  = 0
-    @State private var followingCount = 0
-    @State private var isFollowing      = false
-    @State private var isBlocked        = false
-    @State private var isLoading        = true
-    @State private var isTogglingFollow = false
-    @State private var isTogglingBlock  = false
-
-    @State private var ratingSortOrder:  RatingSortOrder  = .recent
-    @State private var ratingTypeFilter: RatingTypeFilter = .all
-    @State private var showFollowModal     = false
-    @State private var followModalInitTab: FollowMode = .followers
 
     private var currentUserId: UUID? { supabase.auth.currentUser?.id }
 
-    // MARK: Filtered + sorted items
-
-    private var filteredItems: [RatedItem] {
-        let albums = ratings.map { RatedItem.album($0) }
-        let songs  = songRatings.map { RatedItem.song($0) }
-        let base: [RatedItem]
-        switch ratingTypeFilter {
-        case .all:    base = albums + songs
-        case .albums: base = albums
-        case .songs:  base = songs
-        }
-        switch ratingSortOrder {
-        case .recent:       return base
-        case .topRated:     return base.sorted { ($0.score ?? 0) > ($1.score ?? 0) }
-        case .bottomRated:  return base.sorted { ($0.score ?? 0) < ($1.score ?? 0) }
-        case .alphabetical: return base.sorted { $0.displayTitle < $1.displayTitle }
-        }
-    }
-
-    // MARK: Body
-
-    var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(spacing: 0) {
-                profileHeader
-                Divider().padding(.top, 20)
-                ratingsSection
-            }
-        }
-        .background(Color.sjCream.ignoresSafeArea())
-        .navigationTitle("@" + (profile?.handle ?? initialHandle))
-        .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $showFollowModal) {
-            FollowListModal(userId: userId, initialTab: followModalInitTab)
-        }
-        .task { await loadAll() }
-    }
-
-    // MARK: Header
-
-    private var profileHeader: some View {
-        VStack(spacing: 14) {
-            Group {
-                if let url = profile?.avatarUrl {
-                    CoverImage(url: url, cornerRadius: 40)
-                        .frame(width: 80, height: 80)
-                } else {
-                    Image(systemName: "person.circle.fill")
-                        .font(.system(size: 80))
-                        .foregroundStyle(Color(uiColor: .systemGray3))
-                }
-            }
-            .padding(.top, 24)
-            .accessibilityHidden(true) // name/handle text below already describes it
-
-            VStack(spacing: 4) {
-                Text(profile?.displayLabel ?? initialHandle)
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundStyle(Color.sjInk)
-
-                Text("@" + (profile?.handle ?? initialHandle))
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color.sjMuted)
-            }
-
-            if let bio = profile?.bio, !bio.isEmpty {
-                Text(bio)
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color.sjMuted)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-            }
-
-            statsRow
-
-            if let cid = currentUserId, cid != userId {
-                if isBlocked {
-                    unblockButton
-                } else {
-                    followButton
-                }
-            }
-        }
-        .padding(.bottom, 20)
-        .frame(maxWidth: .infinity)
-    }
-
-    private var statsRow: some View {
-        HStack(spacing: 24) {
-            statCell(value: ratingCount, label: "Ratings")
-
-            Button {
-                followModalInitTab = .followers
-                showFollowModal = true
-            } label: {
-                statCell(value: followerCount, label: "Followers")
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                followModalInitTab = .following
-                showFollowModal = true
-            } label: {
-                statCell(value: followingCount, label: "Following")
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    private func statCell(value: Int, label: LocalizedStringKey) -> some View {
-        VStack(spacing: 3) {
-            Text("\(value)")
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(Color.sjInk)
-            Text(label)
-                .font(.system(size: 12))
-                .foregroundStyle(Color.sjMuted)
-        }
-    }
-
-    private var unblockButton: some View {
-        Button {
-            Task { await toggleBlock() }
-        } label: {
-            if isTogglingBlock {
-                ProgressView().scaleEffect(0.8)
-                    .frame(width: 130, height: 36)
-            } else {
-                Text("Unblock")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 130, height: 36)
-                    .background(Color.red.opacity(0.8))
-                    .clipShape(RoundedRectangle(cornerRadius: 18))
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var followButton: some View {
-        Button {
-            Task { await toggleFollow() }
-        } label: {
-            if isTogglingFollow {
-                ProgressView().scaleEffect(0.8)
-                    .frame(width: 130, height: 36)
-            } else {
-                Text(isFollowing ? "Following" : "Follow")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(isFollowing ? Color.sjInk : .white)
-                    .frame(width: 130, height: 36)
-                    .background(isFollowing ? Color.sjBorder.opacity(0.4) : Color.sjAmber)
-                    .clipShape(RoundedRectangle(cornerRadius: 18))
-            }
-        }
-        .buttonStyle(.plain)
-        .animation(.easeInOut(duration: 0.15), value: isFollowing)
-    }
-
-    // MARK: Ratings section
-
-    @ViewBuilder
-    private var ratingsSection: some View {
-        if isLoading {
-            ProgressView().padding(.top, 40)
-        } else if ratings.isEmpty && songRatings.isEmpty {
-            VStack(spacing: 12) {
-                Image(systemName: "music.note.list")
-                    .font(.system(size: 40))
-                    .foregroundStyle(Color.sjBorder)
-                Text("No ratings yet")
-                    .font(.system(size: 15))
-                    .foregroundStyle(Color.sjMuted)
-            }
-            .padding(.top, 48)
-        } else {
-            let items = filteredItems
-            LazyVStack(spacing: 0) {
-                // Filter tabs + sort row
-                HStack(spacing: 4) {
-                    ForEach(RatingTypeFilter.allCases, id: \.self) { filter in
-                        Button { ratingTypeFilter = filter } label: {
-                            Text(LocalizedStringKey(filter.rawValue))
-                                .font(.system(size: 12,
-                                              weight: ratingTypeFilter == filter ? .semibold : .regular))
-                                .foregroundStyle(ratingTypeFilter == filter ? Color.sjBlue : Color.sjMuted)
-                                .padding(.horizontal, 12).padding(.vertical, 6)
-                                .background(ratingTypeFilter == filter
-                                            ? Color.sjBlue.opacity(0.1) : Color.clear)
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    Spacer()
-                    Menu {
-                        ForEach(RatingSortOrder.allCases, id: \.self) { order in
-                            Button { ratingSortOrder = order } label: {
-                                Label(LocalizedStringKey(order.rawValue),
-                                      systemImage: ratingSortOrder == order ? "checkmark" : "")
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "line.3.horizontal.decrease")
-                            Text(LocalizedStringKey(ratingSortOrder.rawValue))
-                        }
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Color.sjAmber)
-                    }
-                }
-                .padding(.horizontal, 16).padding(.vertical, 10)
-
-                if items.isEmpty {
-                    VStack(spacing: 10) {
-                        Image(systemName: ratingTypeFilter == .songs ? "music.note" : "square.grid.2x2")
-                            .font(.system(size: 28)).foregroundStyle(Color.sjMuted)
-                        Text(String(format: String(localized: "No %@ rated yet"), String(localized: String.LocalizationValue(ratingTypeFilter.rawValue)).lowercased()))
-                            .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
-                    }
-                    .frame(maxWidth: .infinity).padding(.top, 40)
-                } else {
-                    ForEach(items) { item in
-                        NavigationLink(value: item.asRelease) {
-                            UserRatedItemRow(
-                                coverUrl: item.coverUrl,
-                                title: item.displayTitle,
-                                artistLine: item.artistLine,
-                                score: item.score,
-                                isSong: item.isSong
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        Divider().padding(.leading, 74)
-                    }
-                }
-            }
-            .padding(.top, 4)
-        }
-    }
-
-    // MARK: Data loading
-
-    private func loadAll() async {
+    func load() async {
         isLoading = true
 
-        async let profileFetch: OtherProfile?               = loadProfile()
-        async let ratingsFetch: [ProfileRating]             = loadRatings()
-        async let countsFetch: (Int, Int, Int, Bool, Bool)  = loadCounts()
-        async let songFetch: [SongRating]                   = loadSongRatings()
+        async let profileFetch: OtherProfile? = loadProfile()
+        async let accessFetch: ProfileSubtabAccess = loadAccess()
+        async let countsFetch: (Int, Int, Bool, Bool) = loadCounts()
 
-        let (p, r, (rc, fwer, fwing, following, blocked), songs) =
-            await (profileFetch, ratingsFetch, countsFetch, songFetch)
-
+        let (p, a, (fwer, fwing, following, blocked)) = await (profileFetch, accessFetch, countsFetch)
         profile        = p
-        ratings        = r
-        songRatings    = songs
-        ratingCount    = rc + songs.count
+        access         = a
         followerCount  = fwer
         followingCount = fwing
         isFollowing    = following
         isBlocked      = blocked
-        isLoading      = false
+
+        // Each RPC re-checks visibility itself (returns empty if disallowed)
+        // -- gating on `access` here too is just avoiding pointless network
+        // calls, not the actual security boundary.
+        async let catalogTask: Void = access.catalogVisible ? loadCatalog() : noop()
+        async let statsTask: Void   = access.statsVisible   ? loadStats()   : noop()
+        async let mixesTask: Void   = access.libraryVisible ? loadMixes()   : noop()
+        _ = await (catalogTask, statsTask, mixesTask)
+
+        isLoading = false
+    }
+
+    private func noop() async {}
+
+    private struct SubtabParams: Encodable {
+        let pUserId: UUID
+        let pSubtab: String
+        enum CodingKeys: String, CodingKey { case pUserId = "p_user_id"; case pSubtab = "p_subtab" }
+    }
+
+    // The song-ratings RPC's shape (recording_id/track_title/nullable
+    // release_groups) doesn't match SongRatingRow directly (that struct
+    // isn't Codable -- it's built client-side elsewhere too), so this
+    // decodes the raw RPC row and maps it below.
+    private struct SongRatingRPCRow: Codable {
+        let recordingId: UUID
+        let score: Double?
+        let eloScore: Double?
+        let trackTitle: String?
+        let releaseGroups: ReleaseRef?
+        enum CodingKeys: String, CodingKey {
+            case recordingId = "recording_id", score
+            case eloScore = "elo_score", trackTitle = "track_title"
+            case releaseGroups = "release_groups"
+        }
+
+        // Synthesizes a placeholder ReleaseRef when no release match exists
+        // -- mirrors the fallback the old client-side 2-step fetch used
+        // (`rg?.id ?? UUID()`, `rg?.title ?? ""`, etc.) rather than making
+        // SongRatingRow.release Optional.
+        func toRow() -> SongRatingRow {
+            let ref = releaseGroups ?? ReleaseRef(
+                id: UUID(), title: "", artist: "", coverUrl: nil,
+                releaseType: nil, titleNative: nil, primaryArtist: nil
+            )
+            return SongRatingRow(recordingId: recordingId, score: score, eloScore: eloScore,
+                                  trackTitle: trackTitle, release: ref)
+        }
+    }
+
+    private func loadCatalog() async {
+        async let albumsResp: [UserRating] = (try? await supabase
+            .rpc("get_profile_album_ratings", params: SubtabParams(pUserId: userId, pSubtab: "catalog"))
+            .execute().value) ?? []
+        async let songsResp: [SongRatingRPCRow] = (try? await supabase
+            .rpc("get_profile_song_ratings", params: SubtabParams(pUserId: userId, pSubtab: "catalog"))
+            .execute().value) ?? []
+        let (albums, songs) = await (albumsResp, songsResp)
+        catalogAlbums = albums
+        catalogSongs  = songs.map { $0.toRow() }
+
+        let ratingIds = albums.map(\.id.uuidString)
+        guard !ratingIds.isEmpty else { return }
+        struct RatingIdRow: Codable {
+            let ratingId: UUID
+            enum CodingKeys: String, CodingKey { case ratingId = "rating_id" }
+        }
+        if let rows: [RatingIdRow] = try? await supabase
+            .from("rating_likes").select("rating_id")
+            .in("rating_id", values: ratingIds).execute().value {
+            var counts: [UUID: Int] = [:]
+            for r in rows { counts[r.ratingId, default: 0] += 1 }
+            likeCounts = counts
+        }
+        if let rows: [RatingIdRow] = try? await supabase
+            .from("rating_comments").select("rating_id")
+            .in("rating_id", values: ratingIds).execute().value {
+            var counts: [UUID: Int] = [:]
+            for r in rows { counts[r.ratingId, default: 0] += 1 }
+            commentCounts = counts
+        }
+        if let uid = currentUserId,
+           let rows: [RatingIdRow] = try? await supabase
+            .from("rating_likes").select("rating_id")
+            .eq("user_id", value: uid)
+            .in("rating_id", values: ratingIds).execute().value {
+            likedRatingIds = Set(rows.map(\.ratingId))
+        }
+    }
+
+    private func loadStats() async {
+        async let albumsResp: [UserRating] = (try? await supabase
+            .rpc("get_profile_album_ratings", params: SubtabParams(pUserId: userId, pSubtab: "stats"))
+            .execute().value) ?? []
+        async let songsResp: [SongRatingRPCRow] = (try? await supabase
+            .rpc("get_profile_song_ratings", params: SubtabParams(pUserId: userId, pSubtab: "stats"))
+            .execute().value) ?? []
+        let (albums, songs) = await (albumsResp, songsResp)
+        statsAlbums = albums
+        statsSongs  = songs.map { $0.toRow() }
+    }
+
+    private struct MixParams: Encodable {
+        let pUserId: UUID
+        enum CodingKeys: String, CodingKey { case pUserId = "p_user_id" }
+    }
+
+    private func loadMixes() async {
+        struct MixRow: Codable {
+            let id: UUID, userId: UUID, name: String
+            let isPublic: Bool, isDefault: Bool, createdAt: Date
+            let itemCount: Int
+            enum CodingKeys: String, CodingKey {
+                case id, name
+                case userId = "user_id", isPublic = "is_public"
+                case isDefault = "is_default", createdAt = "created_at"
+                case itemCount = "item_count"
+            }
+        }
+        let rows: [MixRow] = (try? await supabase
+            .rpc("get_profile_mixes", params: MixParams(pUserId: userId))
+            .execute().value) ?? []
+        mixes = rows.map { Mix(id: $0.id, userId: $0.userId, name: $0.name, isPublic: $0.isPublic,
+                                isDefault: $0.isDefault, createdAt: $0.createdAt) }
+        var counts: [UUID: Int] = [:]
+        for r in rows { counts[r.id] = r.itemCount }
+        mixItemCounts = counts
     }
 
     private func loadProfile() async -> OtherProfile? {
@@ -384,104 +258,23 @@ struct UserProfileView: View {
             .value
     }
 
-    private func loadRatings() async -> [ProfileRating] {
+    private struct AccessParams: Encodable {
+        let pUserId: UUID
+        enum CodingKeys: String, CodingKey { case pUserId = "p_user_id" }
+    }
+
+    private func loadAccess() async -> ProfileSubtabAccess {
         (try? await supabase
-            .from("ratings")
-            .select("id, score, created_at, release_groups(id, title, artist_display, cover_url, release_group_type)")
-            .eq("user_id", value: userId)
-            .order("created_at", ascending: false)
-            .limit(60)
+            .rpc("get_profile_subtab_access", params: AccessParams(pUserId: userId))
+            .single()
             .execute()
-            .value) ?? []
+            .value) ?? .allHidden
     }
 
-    private func loadSongRatings() async -> [SongRating] {
-        // Step 1: recording_id + score + recording title
-        struct TrackRatingNew: Codable {
-            let recordingId: UUID
-            let score: Double?
-            let recordings: RecordingInfo
-            struct RecordingInfo: Codable {
-                let id: UUID; let title: String; let artistDisplay: String?
-                enum CodingKeys: String, CodingKey {
-                    case id, title; case artistDisplay = "artist_display"
-                }
-            }
-            enum CodingKeys: String, CodingKey {
-                case recordingId = "recording_id"; case score; case recordings
-            }
-        }
-        let raw: [TrackRatingNew] = (try? await supabase
-            .from("track_ratings")
-            .select("recording_id, score, recordings(id, title, artist_display)")
-            .eq("user_id", value: userId)
-            .order("created_at", ascending: false)
-            .limit(60)
-            .execute()
-            .value) ?? []
-
-        guard !raw.isEmpty else { return [] }
-
-        // Step 2: cover art via release_tracks → releases → release_groups
-        struct RTCoverRow: Codable {
-            let recordingId: UUID
-            let releases: CoverRelRow?
-            struct CoverRelRow: Codable {
-                let isCanonical: Bool?
-                let releaseGroups: RGCover?
-                struct RGCover: Codable {
-                    let id: UUID; let title: String; let artistDisplay: String?; let coverUrl: String?
-                    enum CodingKeys: String, CodingKey {
-                        case id, title; case artistDisplay = "artist_display"; case coverUrl = "cover_url"
-                    }
-                }
-                enum CodingKeys: String, CodingKey {
-                    case isCanonical = "is_canonical"; case releaseGroups = "release_groups"
-                }
-            }
-            enum CodingKeys: String, CodingKey {
-                case recordingId = "recording_id"; case releases
-            }
-        }
-        let coverRows: [RTCoverRow] = (try? await supabase
-            .from("release_tracks")
-            .select("recording_id, releases(is_canonical, release_groups(id, title, artist_display, cover_url))")
-            .in("recording_id", values: raw.map(\.recordingId.uuidString))
-            .execute()
-            .value) ?? []
-
-        var rgMap: [UUID: RTCoverRow.CoverRelRow.RGCover] = [:]
-        for row in coverRows {
-            guard let rel = row.releases, let rg = rel.releaseGroups else { continue }
-            if rel.isCanonical == true || rgMap[row.recordingId] == nil { rgMap[row.recordingId] = rg }
-        }
-
-        return raw.map { r in
-            let rg = rgMap[r.recordingId]
-            let feedRelease = FeedRelease(
-                id:            rg?.id ?? UUID(),
-                title:         rg?.title ?? "",
-                artist:        rg?.artistDisplay ?? r.recordings.artistDisplay ?? "",
-                coverUrl:      rg?.coverUrl,
-                releaseType:   nil,
-                titleNative:   nil,
-                primaryArtist: nil
-            )
-            return SongRating(
-                recordingId: r.recordingId,
-                score:       r.score,
-                trackTitle:  r.recordings.title,
-                release:     feedRelease
-            )
-        }
-    }
-
-    private func loadCounts() async -> (Int, Int, Int, Bool, Bool) {
-        async let ratingsResp   = supabase.from("ratings").select("*", count: .exact).eq("user_id", value: userId).execute()
+    private func loadCounts() async -> (Int, Int, Bool, Bool) {
         async let followersResp = supabase.from("follows").select("*", count: .exact).eq("following_id", value: userId).execute()
         async let followingResp = supabase.from("follows").select("*", count: .exact).eq("follower_id", value: userId).execute()
 
-        let rc    = (try? await ratingsResp)?.count  ?? 0
         let fwer  = (try? await followersResp)?.count ?? 0
         let fwing = (try? await followingResp)?.count ?? 0
 
@@ -490,7 +283,6 @@ struct UserProfileView: View {
         if let cid = currentUserId {
             struct FollowRow: Codable { let followerId: UUID; enum CodingKeys: String, CodingKey { case followerId = "follower_id" } }
             struct BlockRow:  Codable { let blockedId: UUID;  enum CodingKeys: String, CodingKey { case blockedId  = "blocked_id"  } }
-            // Sequential awaits — async let with try? inside can silently misfire
             let followRows: [FollowRow] = (try? await supabase.from("follows").select("follower_id")
                 .eq("follower_id", value: cid).eq("following_id", value: userId).execute().value) ?? []
             following = !followRows.isEmpty
@@ -498,10 +290,10 @@ struct UserProfileView: View {
                 .eq("blocker_id", value: cid).eq("blocked_id", value: userId).execute().value) ?? []
             blocked = !blockRows.isEmpty
         }
-        return (rc, fwer, fwing, following, blocked)
+        return (fwer, fwing, following, blocked)
     }
 
-    private func toggleBlock() async {
+    func toggleBlock() async {
         guard let cid = currentUserId else { return }
         isTogglingBlock = true
         defer { isTogglingBlock = false }
@@ -522,7 +314,7 @@ struct UserProfileView: View {
         }
     }
 
-    private func toggleFollow() async {
+    func toggleFollow() async {
         guard let cid = currentUserId else { return }
         isTogglingFollow = true
         defer { isTogglingFollow = false }
@@ -548,83 +340,510 @@ struct UserProfileView: View {
                 followerCount += 1
             }
             NotificationCenter.default.post(name: .followChanged, object: nil)
+            // A follow/unfollow can change what's visible (Private ==
+            // followers-only) -- reload access + whatever just unlocked.
+            await load()
         } catch { /* silently handle */ }
+    }
+
+    func toggleLike(ratingId: UUID) async {
+        guard let userId = currentUserId else { return }
+        let wasLiked = likedRatingIds.contains(ratingId)
+        if wasLiked {
+            likedRatingIds.remove(ratingId)
+            likeCounts[ratingId] = max(0, (likeCounts[ratingId] ?? 1) - 1)
+        } else {
+            likedRatingIds.insert(ratingId)
+            likeCounts[ratingId] = (likeCounts[ratingId] ?? 0) + 1
+        }
+        do {
+            if wasLiked {
+                try await supabase.from("rating_likes").delete()
+                    .eq("user_id", value: userId).eq("rating_id", value: ratingId).execute()
+            } else {
+                struct Payload: Encodable {
+                    let userId: UUID; let ratingId: UUID
+                    enum CodingKeys: String, CodingKey { case userId = "user_id"; case ratingId = "rating_id" }
+                }
+                try await supabase.from("rating_likes")
+                    .insert(Payload(userId: userId, ratingId: ratingId)).execute()
+            }
+        } catch { /* best-effort, matches ProfileViewModel's own toggleLike */ }
     }
 }
 
-// MARK: - Unified rated item row
+// MARK: - View
 
-private struct UserRatedItemRow: View {
-    let coverUrl: String?
-    let title: String
-    let artistLine: String
-    let score: Double?
-    var isSong: Bool = false
+struct UserProfileView: View {
+    let userId: UUID
+    let initialHandle: String
+
+    @State private var vm: UserProfileViewModel
+    @State private var activeTab: ProfileTab = .rated
+    @State private var ratingSortOrder:   RatingSortOrder  = .recent
+    @State private var ratingTypeFilter:  RatingTypeFilter = .all
+    @State private var ratingDisplayMode: RatingDisplayMode = .list
+    @State private var showFollowModal = false
+    @State private var followModalInitTab: FollowMode = .followers
+
+    init(userId: UUID, initialHandle: String) {
+        self.userId = userId
+        self.initialHandle = initialHandle
+        _vm = State(initialValue: UserProfileViewModel(userId: userId))
+    }
+
+    private var currentUserId: UUID? { supabase.auth.currentUser?.id }
 
     var body: some View {
-        HStack(spacing: 12) {
-            CoverImage(url: coverUrl, cornerRadius: 8)
-                .frame(width: 54, height: 54)
-                .accessibilityHidden(true) // title text alongside already describes it
-
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(title)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.sjInk)
-                        .lineLimit(1)
-                    if isSong {
-                        Text("Song")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(Color.sjAmber)
-                            .padding(.horizontal, 5).padding(.vertical, 2)
-                            .background(Color.sjAmber.opacity(0.12))
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
+        Group {
+            if vm.isLoading {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if !vm.access.profileVisible {
+                ScrollView {
+                    profileHeaderCore
+                    SubtabLockedView(
+                        headline: String(format: String(localized: "@%@'s profile is private"), vm.profile?.handle ?? initialHandle),
+                        isFollowing: vm.isFollowing,
+                        onFollow: { Task { await vm.toggleFollow() } }
+                    )
+                    .padding(.top, 20)
+                }
+            } else {
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        profileHeaderCore
+                        Divider().padding(.top, 20)
+                        tabBar
+                        tabContent
                     }
                 }
-                Text(artistLine)
-                    .font(.system(size: 12))
+            }
+        }
+        .background(Color.sjCream.ignoresSafeArea())
+        .navigationTitle("@" + (vm.profile?.handle ?? initialHandle))
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showFollowModal) {
+            FollowListModal(userId: userId, initialTab: followModalInitTab)
+        }
+        .task { await vm.load() }
+    }
+
+    // MARK: Header
+
+    private var profileHeaderCore: some View {
+        VStack(spacing: 14) {
+            Group {
+                if let url = vm.profile?.avatarUrl {
+                    CoverImage(url: url, cornerRadius: 40)
+                        .frame(width: 80, height: 80)
+                } else {
+                    Image(systemName: "person.circle.fill")
+                        .font(.system(size: 80))
+                        .foregroundStyle(Color(uiColor: .systemGray3))
+                }
+            }
+            .padding(.top, 24)
+            .accessibilityHidden(true)
+
+            VStack(spacing: 4) {
+                Text(vm.profile?.displayLabel ?? initialHandle)
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(Color.sjInk)
+                Text("@" + (vm.profile?.handle ?? initialHandle))
+                    .font(.system(size: 14))
                     .foregroundStyle(Color.sjMuted)
-                    .lineLimit(1)
             }
 
-            Spacer(minLength: 0)
+            if vm.access.profileVisible, let bio = vm.profile?.bio, !bio.isEmpty {
+                Text(bio)
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color.sjMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+            }
 
-            scoreChip
+            if vm.access.profileVisible { statsRow }
 
-            Image(systemName: "chevron.right")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(Color.sjBorder)
+            if let cid = currentUserId, cid != userId {
+                if vm.isBlocked {
+                    unblockButton
+                } else {
+                    followButton
+                }
+            }
         }
-        .padding(.horizontal, 16).padding(.vertical, 12)
-        .contentShape(Rectangle())
+        .padding(.bottom, 20)
+        .frame(maxWidth: .infinity)
+    }
+
+    private var statsRow: some View {
+        HStack(spacing: 24) {
+            statCell(value: vm.catalogAlbums.count + vm.catalogSongs.count, label: "Ratings")
+            Button {
+                followModalInitTab = .followers
+                showFollowModal = true
+            } label: {
+                statCell(value: vm.followerCount, label: "Followers")
+            }
+            .buttonStyle(.plain)
+            Button {
+                followModalInitTab = .following
+                showFollowModal = true
+            } label: {
+                statCell(value: vm.followingCount, label: "Following")
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func statCell(value: Int, label: LocalizedStringKey) -> some View {
+        VStack(spacing: 3) {
+            Text("\(value)")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(Color.sjInk)
+            Text(label)
+                .font(.system(size: 12))
+                .foregroundStyle(Color.sjMuted)
+        }
+    }
+
+    private var unblockButton: some View {
+        Button {
+            Task { await vm.toggleBlock() }
+        } label: {
+            if vm.isTogglingBlock {
+                ProgressView().scaleEffect(0.8).frame(width: 130, height: 36)
+            } else {
+                Text("Unblock")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 130, height: 36)
+                    .background(Color.red.opacity(0.8))
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var followButton: some View {
+        Button {
+            Task { await vm.toggleFollow() }
+        } label: {
+            if vm.isTogglingFollow {
+                ProgressView().scaleEffect(0.8).frame(width: 130, height: 36)
+            } else {
+                Text(vm.isFollowing ? "Following" : "Follow")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(vm.isFollowing ? Color.sjInk : .white)
+                    .frame(width: 130, height: 36)
+                    .background(vm.isFollowing ? Color.sjBorder.opacity(0.4) : Color.sjAmber)
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
+            }
+        }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.15), value: vm.isFollowing)
+    }
+
+    // MARK: Tab bar (mirrors ProfileView's own icon tab bar)
+
+    private var tabBar: some View {
+        HStack(spacing: 0) {
+            ForEach(ProfileTab.allCases, id: \.self) { tab in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) { activeTab = tab }
+                } label: {
+                    VStack(spacing: 0) {
+                        Image(systemName: activeTab == tab ? tab.activeIcon : tab.icon)
+                            .font(.system(size: 20))
+                            .foregroundStyle(activeTab == tab ? Color.sjInk : Color.sjMuted)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                        Rectangle()
+                            .fill(activeTab == tab ? Color.sjAmber : Color.clear)
+                            .frame(height: 1.5)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(tab.label)
+            }
+        }
+        .padding(.top, 14)
     }
 
     @ViewBuilder
-    private var scoreChip: some View {
-        if let score {
-            HStack(spacing: 3) {
-                Image("icon-flower")
-                    .renderingMode(.template).resizable().scaledToFit()
-                    .frame(width: 10, height: 10).foregroundStyle(Color.sjAmber)
-                Text(score.truncatingRemainder(dividingBy: 1) == 0
-                     ? String(Int(score)) : String(format: "%.1f", score))
-                    .font(.system(size: 12, weight: .bold)).foregroundStyle(Color.sjAmber)
+    private var tabContent: some View {
+        switch activeTab {
+        case .rated:
+            if vm.access.catalogVisible {
+                ratedTabContent
+            } else {
+                SubtabLockedView(
+                    headline: String(localized: "This person's Catalog is private"),
+                    isFollowing: vm.isFollowing,
+                    onFollow: { Task { await vm.toggleFollow() } }
+                )
             }
-            .padding(.horizontal, 7).padding(.vertical, 3)
-            .background(Color.sjAmber.opacity(0.1))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-        } else {
-            HStack(spacing: 3) {
-                Image("icon-flower")
-                    .renderingMode(.template).resizable().scaledToFit()
-                    .frame(width: 10, height: 10)
-                Image(systemName: "lock.fill").font(.system(size: 9))
+        case .lists:
+            if vm.access.libraryVisible {
+                foreignMixList
+            } else {
+                SubtabLockedView(
+                    headline: String(localized: "This person's Library is private"),
+                    isFollowing: vm.isFollowing,
+                    onFollow: { Task { await vm.toggleFollow() } }
+                )
             }
-            .foregroundStyle(Color.sjMuted)
-            .padding(.horizontal, 7).padding(.vertical, 3)
-            .background(Color.sjMuted.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+        case .stats:
+            if vm.access.statsVisible {
+                RatingStatsView(snapshot: vm.statsSnapshot)
+                    .padding(.bottom, 32)
+            } else {
+                SubtabLockedView(
+                    headline: String(localized: "This person's Stats are private"),
+                    isFollowing: vm.isFollowing,
+                    onFollow: { Task { await vm.toggleFollow() } }
+                )
+            }
         }
+    }
+
+    // MARK: Rated tab -- same filter/sort/display-mode controls as ProfileView
+
+    private var filteredItems: [ProfileRatedItem] {
+        let albums = vm.catalogAlbums.map { ProfileRatedItem.album($0) }
+        let songs  = vm.catalogSongs.map { ProfileRatedItem.song($0) }
+        let base: [ProfileRatedItem]
+        switch ratingTypeFilter {
+        case .all:    base = albums + songs
+        case .albums: base = albums
+        case .songs:  base = songs
+        }
+        switch ratingSortOrder {
+        case .recent:       return base
+        case .topRated:     return base.sorted { itemScore($0) > itemScore($1) }
+        case .bottomRated:  return base.sorted { itemScore($0) < itemScore($1) }
+        case .alphabetical: return base.sorted { $0.displayTitle < $1.displayTitle }
+        }
+    }
+
+    private func itemScore(_ item: ProfileRatedItem) -> Double {
+        if let s = item.score { return s }
+        if let e = item.eloScore { return eloToDisplayScore(e) }
+        return 0
+    }
+
+    @ViewBuilder
+    private var ratedTabContent: some View {
+        let items = filteredItems
+        let hasAny = !vm.catalogAlbums.isEmpty || !vm.catalogSongs.isEmpty
+
+        if !hasAny {
+            VStack(spacing: 12) {
+                Image(systemName: "square.grid.2x2")
+                    .font(.system(size: 36))
+                    .foregroundStyle(Color.sjMuted)
+                Text("No ratings yet")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color.sjMuted)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 60)
+        } else {
+            LazyVStack(spacing: 0) {
+                HStack(spacing: 4) {
+                    ForEach(RatingTypeFilter.allCases, id: \.self) { filter in
+                        Button { ratingTypeFilter = filter } label: {
+                            Text(LocalizedStringKey(filter.rawValue))
+                                .font(.system(size: 12, weight: ratingTypeFilter == filter ? .semibold : .regular))
+                                .foregroundStyle(ratingTypeFilter == filter ? Color.sjBlue : Color.sjMuted)
+                                .padding(.horizontal, 12).padding(.vertical, 6)
+                                .background(ratingTypeFilter == filter ? Color.sjBlue.opacity(0.1) : Color.clear)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Spacer()
+                    HStack(spacing: 2) {
+                        ForEach([RatingDisplayMode.list, .posts], id: \.self) { mode in
+                            Button { ratingDisplayMode = mode } label: {
+                                Image(systemName: mode == .list ? "list.bullet" : "newspaper")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(ratingDisplayMode == mode ? Color.sjBlue : Color.sjMuted)
+                                    .frame(width: 32, height: 28)
+                                    .background(ratingDisplayMode == mode ? Color.sjBlue.opacity(0.1) : Color.clear)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(mode == .list ? String(localized: "List view") : String(localized: "Post view"))
+                        }
+                    }
+                }
+                .padding(.horizontal, 12).padding(.top, 8)
+
+                HStack {
+                    Text(String(format: String(localized: "%d %@"), items.count, ratingTypeFilter == .all ? String(localized: "ratings") : String(localized: String.LocalizationValue(ratingTypeFilter.rawValue)).lowercased()))
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.sjMuted)
+                    Spacer()
+                    Menu {
+                        ForEach(RatingSortOrder.allCases, id: \.self) { order in
+                            Button { ratingSortOrder = order } label: {
+                                Label(LocalizedStringKey(order.rawValue),
+                                      systemImage: ratingSortOrder == order ? "checkmark" : "")
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "line.3.horizontal.decrease")
+                            Text(LocalizedStringKey(ratingSortOrder.rawValue))
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.sjAmber)
+                    }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 8)
+
+                if items.isEmpty {
+                    VStack(spacing: 10) {
+                        Image(systemName: ratingTypeFilter == .songs ? "music.note" : "square.grid.2x2")
+                            .font(.system(size: 28)).foregroundStyle(Color.sjMuted)
+                        Text(String(format: String(localized: "No %@ rated yet"), String(localized: String.LocalizationValue(ratingTypeFilter.rawValue)).lowercased()))
+                            .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                    }
+                    .frame(maxWidth: .infinity).padding(.top, 40)
+                } else if ratingDisplayMode == .list {
+                    ForEach(items) { item in
+                        NavigationLink(value: item.asRelease) {
+                            RatingListRow(
+                                coverUrl: item.coverUrl,
+                                title: item.displayTitle,
+                                artistLine: item.artistLine,
+                                score: item.score,
+                                eloScore: item.eloScore,
+                                instinctCount: item.isSong ? vm.catalogSnapshot.instinctSongCount : vm.catalogSnapshot.instinctAlbumCount,
+                                isSong: item.isSong,
+                                releaseType: item.releaseType
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        // No delete/edit affordance -- viewer isn't the owner.
+                        Divider().padding(.leading, 70)
+                    }
+                } else {
+                    let albumItems = items.filter { !$0.isSong }
+                    if albumItems.isEmpty {
+                        VStack(spacing: 10) {
+                            Image(systemName: "newspaper")
+                                .font(.system(size: 28)).foregroundStyle(Color.sjMuted)
+                            Text("No album ratings yet")
+                                .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                        }
+                        .frame(maxWidth: .infinity).padding(.top, 40)
+                    } else {
+                        ForEach(albumItems) { item in
+                            if case .album(let rating) = item {
+                                ProfilePostCard(
+                                    rating: rating,
+                                    likesCount: vm.likeCounts[rating.id] ?? 0,
+                                    commentsCount: vm.commentCounts[rating.id] ?? 0,
+                                    instinctAlbumCount: vm.catalogSnapshot.instinctAlbumCount,
+                                    isLiked: vm.likedRatingIds.contains(rating.id),
+                                    onLike: { await vm.toggleLike(ratingId: rating.id) }
+                                )
+                                .padding(.horizontal, 12)
+                                .padding(.top, 8)
+                            }
+                        }
+                        .padding(.bottom, 8)
+                    }
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    // MARK: Lists tab -- read-only, public mixes only
+
+    private var foreignMixList: some View {
+        Group {
+            if vm.mixes.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "music.note.list")
+                        .font(.system(size: 36))
+                        .foregroundStyle(Color.sjBorder)
+                    Text("No public mixes")
+                        .font(.system(size: 15))
+                        .foregroundStyle(Color.sjMuted)
+                }
+                .frame(maxWidth: .infinity, alignment: .top)
+                .padding(.top, 40)
+            } else {
+                LazyVStack(spacing: 0) {
+                    ForEach(vm.mixes) { mix in
+                        // Direct destination, not NavigationLink(value:) --
+                        // this view is pushed from several different
+                        // NavigationStacks (Home, Search, comments, etc.)
+                        // and only ProfileView.swift's own stack registers
+                        // navigationDestination(for: Mix.self); a direct
+                        // destination works regardless of which stack
+                        // presented this page.
+                        NavigationLink(destination: MixDetailView(mix: mix)) {
+                            MixRow(mix: mix, count: vm.mixItemCounts[mix.id] ?? 0)
+                        }
+                        .buttonStyle(.plain)
+                        Divider().padding(.leading, 18)
+                    }
+                }
+                .padding(.top, 8)
+            }
+        }
+    }
+}
+
+// MARK: - Locked-state placeholder
+
+// Mirrors RankingsView.swift's RankingsLockedView convention (flower/lock
+// glyph, bold headline, muted subtitle) but simpler -- no progress gauge,
+// since this isn't a collective threshold. Private == followers-only, so
+// following is the literal unlock path, hence the Follow button.
+struct SubtabLockedView: View {
+    let headline: String
+    let isFollowing: Bool
+    let onFollow: () -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image("icon-flower")
+                .renderingMode(.template).resizable().scaledToFit()
+                .frame(width: 32, height: 32)
+                .foregroundStyle(Color.sjBlue)
+
+            Text(headline)
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(Color.sjInk)
+                .multilineTextAlignment(.center)
+
+            Text("Private accounts are only visible to followers.")
+                .font(.system(size: 13))
+                .foregroundStyle(Color.sjMuted)
+                .multilineTextAlignment(.center)
+
+            if !isFollowing {
+                Button(action: onFollow) {
+                    Text("Follow")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 130, height: 36)
+                        .background(Color.sjAmber)
+                        .clipShape(RoundedRectangle(cornerRadius: 18))
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 32)
+        .padding(.top, 48)
+        .padding(.bottom, 40)
     }
 }

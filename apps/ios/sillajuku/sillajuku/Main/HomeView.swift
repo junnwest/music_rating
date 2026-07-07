@@ -77,7 +77,8 @@ struct NativeArtistRef: Codable {
 struct FeedProfile: Codable {
     let username: String?
     let displayName: String?
-    enum CodingKeys: String, CodingKey { case username; case displayName = "display_name" }
+    let isBot: Bool?
+    enum CodingKeys: String, CodingKey { case username; case displayName = "display_name"; case isBot = "is_bot" }
     var handle: String { username ?? displayName ?? String(localized: "someone") }
 }
 
@@ -102,7 +103,19 @@ class HomeViewModel {
     private var hasLoadedFollowing = false
 
     private static let feedSelect =
-        "id, user_id, score, elo_score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey(username, display_name)"
+        "id, user_id, score, elo_score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey(username, display_name, is_bot)"
+
+    // Explore's fetch is split by is_bot BEFORE ranking, not just re-ranked after — with
+    // bot ratings' recency-biased backdating, a human rating usually wouldn't survive into
+    // a single latest-150 window at all, so re-ranking downstream of an already-all-bot pool
+    // wouldn't help. Slots sized so a thin real-user base still shows every human item that
+    // exists; humanSlotEvery below governs how those get interleaved into the visible order.
+    private static let exploreHumanFetchLimit = 40
+    private static let exploreBotFetchLimit   = 110
+    // Ratio used when interleaving humanItems/botItems back together in ranked() — 1 human
+    // slot per N bot slots. Named/tunable here since it'll want revisiting as the real user
+    // base grows relative to the bot population.
+    private static let humanSlotEvery = 3
 
     // Personalization signals (populated before explore loads)
     private var followingIds:  Set<UUID>   = []
@@ -179,7 +192,7 @@ class HomeViewModel {
     }
 
     private func ranked(_ items: [FeedItem]) -> [FeedItem] {
-        items
+        let scored = items
             .map { item -> (FeedItem, Double) in
                 var s = 0.0
                 if followingIds.contains(item.userId)      { s += 8 }
@@ -194,6 +207,24 @@ class HomeViewModel {
             }
             .sorted { $0.1 > $1.1 }
             .map(\.0)
+
+        // Guarantee human presence near the top rather than relying on the score bonuses
+        // above to overcome a large bot:human volume ratio on their own — split the
+        // already-scored order into humans/bots (each stays internally sorted by score,
+        // since filter preserves order) and interleave at a fixed ratio. Unknown/missing
+        // is_bot defaults to the bot lane, never the guaranteed-human one. Degrades to
+        // today's all-bot order when the fetched pool has no human items.
+        let humans = scored.filter { $0.profiles?.isBot == false }
+        guard !humans.isEmpty else { return scored }
+        let bots = scored.filter { $0.profiles?.isBot != false }
+
+        var result: [FeedItem] = []
+        var hi = 0, bi = 0
+        while hi < humans.count || bi < bots.count {
+            if hi < humans.count { result.append(humans[hi]); hi += 1 }
+            for _ in 0..<Self.humanSlotEvery where bi < bots.count { result.append(bots[bi]); bi += 1 }
+        }
+        return result
     }
 
     func refreshNotificationBadge() async {
@@ -222,11 +253,33 @@ class HomeViewModel {
         hasUnreadNotifications = count > 0
     }
 
+    // Same select as feedSelect but with an inner-joined profiles relation, so
+    // .eq("profiles.is_bot", ...) actually filters the parent `ratings` rows
+    // (PostgREST only lets an embedded-column filter narrow the parent when
+    // the embed is !inner — a plain left-join embed can't be filtered on).
+    private static let feedSelectBotFilterable =
+        "id, user_id, score, elo_score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey!inner(username, display_name, is_bot)"
+
+    /// Fetches the Explore pool split by is_bot BEFORE any ranking — see the comment on
+    /// exploreHumanFetchLimit/exploreBotFetchLimit for why this has to happen at fetch time.
+    /// Throws (rather than swallowing per-query) so callers keep their existing try?/guard
+    /// failure semantics instead of silently treating a real fetch failure as "zero results".
+    private func fetchExplorePool() async throws -> [FeedItem] {
+        async let humanTask: [FeedItem] = try await supabase
+            .from("ratings").select(Self.feedSelectBotFilterable)
+            .eq("profiles.is_bot", value: false)
+            .order("created_at", ascending: false).limit(Self.exploreHumanFetchLimit)
+            .execute().value
+        async let botTask: [FeedItem] = try await supabase
+            .from("ratings").select(Self.feedSelectBotFilterable)
+            .eq("profiles.is_bot", value: true)
+            .order("created_at", ascending: false).limit(Self.exploreBotFetchLimit)
+            .execute().value
+        return try await humanTask + botTask
+    }
+
     func refreshExplore() async {
-        guard let pool: [FeedItem] = try? await supabase
-            .from("ratings").select(Self.feedSelect)
-            .order("created_at", ascending: false).limit(150)
-            .execute().value else { return }
+        guard let pool = try? await fetchExplorePool() else { return }
         likedRatingIds = []
         savedReleaseIds = []
         likeCounts = [:]
@@ -242,10 +295,7 @@ class HomeViewModel {
         guard !hasLoadedExplore else { return }
         hasLoadedExplore = true
         isLoadingExplore = true
-        let pool: [FeedItem] = (try? await supabase
-            .from("ratings").select(Self.feedSelect)
-            .order("created_at", ascending: false).limit(150)
-            .execute().value) ?? []
+        let pool = (try? await fetchExplorePool()) ?? []
         let filtered = pool.filter { !blockedUserIds.contains($0.userId) }
         await loadSocialData(for: filtered)
         exploreItems = Array(ranked(filtered).prefix(60))
