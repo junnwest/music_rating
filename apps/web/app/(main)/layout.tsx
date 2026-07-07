@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import MainLayout from '../../components/MainLayout';
+import AppShell from '../../components/sj/AppShell';
 
 export default function Layout({ children }: { children: ReactNode }) {
-  return <MainLayout>{children}</MainLayout>;
+  return <AppShell>{children}</AppShell>;
 }
