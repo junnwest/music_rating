@@ -16,6 +16,8 @@ Web bounced every signed-in user to `/onboarding` and all tab pages were blank. 
 
 Verified with a live-DB probe (exact `PROFILE_COLS` select, anon + service): failed 42703 before, passes both roles after. `tsc --noEmit` clean. Full visibility-overhaul web parity (general toggle + Advanced inherit-when-NULL overrides + RPC enforcement) remains open — this was the minimal unbreak. Env vars were checked first and were NOT the issue (`.env.local` already complete on this device).
 
+Follow-up (same day): user reported still stuck — because they were testing **production** (www.sillajuku.com), which it turns out HAD auto-deployed the rebuild from main (README's "not yet deployed" was stale) *with* the bug, while the fix sat uncommitted locally. Confirmed by grepping the deployed JS chunks for `listen_later_visibility` (present). Also end-to-end-verified the full onboarding `finish()` path with a throwaway auth user (sign-in → select → upsert → re-select: all pass; profiles RLS is fine — insert `auth.uid() = id`, select open). Committed + pushed (`b79212b`); polled prod until the new layout chunk went live — stale column gone, `library_visibility` present. **Do NOT revert to the pre-rebuild web** (user floated it): the old UI queries columns the 2026-06-24 renovation dropped; it is strictly more broken. Note: the `primary_genre` backfill incident was still running at this point (4 workers, 15,968/294,797 filled) — feed/trending/most-rated/silla/search still intermittently 57014 under anon until that Mac-side process is stopped; that is a separate issue from the onboarding lockout.
+
 ---
 
 **2026-07-07 (Windows) — both timeout-fix migrations APPLIED live (new Management-API path); found an out-of-repo `primary_genre` backfill IO-starving the DB:**
