@@ -19,9 +19,14 @@
 -- 20260703000004 rebuild (adds artist_native) kept the same shape.
 --
 -- Fix — make every OR arm index-backed, preserving match semantics:
---   * word_similarity(...) > 0.5  →  ql <% lower(col), with the function-level
---     SET pg_trgm.word_similarity_threshold = 0.5 (operator is >=, was >; the
---     boundary case is negligible). GIN gin_trgm_ops supports <%.
+--   * word_similarity(...) > 0.5  →  ql <% lower(col). GIN gin_trgm_ops
+--     supports <%. The operator compares against pg_trgm.word_similarity_
+--     threshold, which stays at its DEFAULT 0.6 (was 0.5): hosted Supabase
+--     denies setting that GUC ("permission denied to set parameter", verified
+--     live — a function-level SET clause both fails to CREATE and would be a
+--     runtime hazard in backends that haven't loaded pg_trgm yet). Net effect:
+--     the fuzzy-typo arm is slightly stricter; the substring/normalized arms
+--     (the primary match path) and the ORDER BY ranking are unchanged.
 --   * New GIN trgm indexes: lower(title), lower(artist_display),
 --     normalize_text(native_title) (the coalesce is dropped from the SQL —
 --     normalize_text() already coalesces NULL to '' internally).
@@ -65,7 +70,6 @@ RETURNS TABLE (
   artist_native      text
 )
 LANGUAGE sql STABLE
-SET pg_trgm.word_similarity_threshold = 0.5
 AS $$
   WITH nq AS (SELECT normalize_text(q) AS qn, lower(btrim(q)) AS ql)
   SELECT rg.id, rg.title, rg.artist_display, rg.cover_url,

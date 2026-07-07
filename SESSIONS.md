@@ -6,6 +6,18 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-07-07 (Windows) — both timeout-fix migrations APPLIED live (new Management-API path); found an out-of-repo `primary_genre` backfill IO-starving the DB:**
+
+Continuation of the 07-06 session-2 debugging. User supplied a Supabase personal access token (`SUPABASE_ACCESS_TOKEN` in `.env.local`, placeholder added to `.env.example` — **copy to the Mac's `.env.local`**), which unblocked applying SQL from this machine for the first time: new **`scripts/db-exec.ts`** posts a migration file (or `--sql "…"`) to the Management API `database/query` endpoint. No more SQL-editor-only bottleneck.
+
+- ✅ **`20260706000016` (silla precomputed restore) applied + functionally verified** — `get_silla_leaderboard` returns rows again on both the global and country paths (was: never completed at any timeout).
+- ✅ **`20260706000017` (search trgm indexes) applied + verified under anon** — the 3 GIN indexes were built with `CREATE INDEX CONCURRENTLY` (Management API runs them fine, ~37–48s each) to avoid blocking live writers. One live correction to the migration as written: hosted Supabase **denies `SET pg_trgm.word_similarity_threshold`** ("permission denied to set parameter" — extension-GUC grants, PG 15+), so the function keeps the operator's default threshold 0.6 instead of 0.5 (fuzzy-typo arm slightly stricter; substring arms + ranking unchanged). `search_release_groups` now passes under anon (~2.9s **during** the load incident below; expect far less on a quiet DB — was: hard 57014 always).
+- **Why mobile "worked" while web was blank, confirmed empirically** (throwaway authenticated user, timed): `authenticated` gets the 8s statement timeout (like service), `anon` gets 3s — and the old search RPC sat at ~7.4–8.6s, i.e. on the knife's edge: iOS (authenticated, sequential queries, `try?` fallbacks) usually squeaked through warm; web (parallel queries, sometimes anon) died.
+- ⚠️ **Open incident: an out-of-repo PostgREST client is bulk-updating `release_groups.primary_genre`** — a column that exists live but appears in **no migration in this repo** (nothing in the codebase references it at all; not pg_cron; no local process → likely a Mac-side script). `pg_stat_statements`: each UPDATE modifies **exactly 1 row in ~3.8s** (267 calls → 267 rows), 4 workers concurrent, 15,166 filled / **279,646 remaining** — days of runway. Every update rewrites a row in the index-heaviest table (HNSW embedding + 5+ GIN trgm indexes → non-HOT churn), IO-starving the Micro instance. This is what's behind today's across-the-board slowness (trivial PK-join embeds, feed, charts trending/most-rated intermittently 57014 under anon; `pipeline:status`'s own counts read 0 because its count(*)s time out). **Not killed** — terminating DB-side statements is whack-a-mole while the client retries; needs the source process stopped (user action) or a deliberate decision to let it run.
+- Verification snapshot (anon, during the incident): search ✅ 2.9s, search_artists ✅ 1.3s, pulse/unlock ✅; silla/feed/trending/most-rated still 57014 — all load-victims now, not plan problems (silla completes in seconds via the API role). **Re-run `scripts/debug-web-queries.ts` once the backfill is stopped** — expect all green.
+
+---
+
 **2026-07-07 (Mac, session 5) — First TestFlight build shipped, own-profile mix-share feed, two small mix-page bugs:**
 
 Started from "I shared a mix but can't confirm it worked" and ended up covering the whole rest of the mix-social loop plus the app's first real TestFlight upload.
