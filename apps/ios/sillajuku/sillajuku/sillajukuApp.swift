@@ -91,6 +91,19 @@ struct sillajukuApp: App {
                 .onOpenURL { url in
                     Task { try? await supabase.auth.session(from: url) }
                 }
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    // Universal Link path — only relevant when the app is already
+                    // installed (the rare case for an invite; the clipboard handoff
+                    // in ReferralClipboardHandoff.swift covers the common one).
+                    // Saved unconditionally, not just attempted directly — if this
+                    // fires while signed out (no auth.uid() for the RPC to key on),
+                    // a direct attempt would just throw and be lost. Persisting it
+                    // lets observeAuth() retry once a real session shows up, rather
+                    // than silently dropping a genuine link tap.
+                    guard let url = activity.webpageURL, let code = InviteLink.code(from: url) else { return }
+                    PendingReferralStore.save(code)
+                    Task { await PendingReferralStore.consumeAndRedeem() }
+                }
         }
     }
 
@@ -138,6 +151,12 @@ struct RootView: View {
             if let refresh = session.providerRefreshToken {
                 UserDefaults.standard.set(refresh, forKey: "sj_spotify_provider_refresh_token")
             }
+            // Best-effort, never blocks the auth transition above/below it —
+            // a valid session is confirmed at this point, so it's safe to
+            // attempt the once-per-device clipboard check here, and to retry
+            // any Universal-Link code that arrived before a session existed.
+            Task { await ReferralClipboardHandoff.checkAndRedeemOnce() }
+            Task { await PendingReferralStore.consumeAndRedeem() }
             let onboarded = await checkOnboarded(userId: session.user.id)
             if onboarded {
                 appState.authState = .authenticated

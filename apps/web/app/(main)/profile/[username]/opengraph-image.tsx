@@ -1,4 +1,5 @@
 import { ImageResponse } from 'next/og';
+import { truncateUsernameForDisplay } from '../../../../lib/username';
 
 export const runtime = 'edge';
 export const alt = 'sillajuku profile';
@@ -133,7 +134,7 @@ export default async function ProfileOgImage({ params }: Props) {
               display: 'flex',
             }}
           >
-            @{username}
+            @{truncateUsernameForDisplay(username)}
           </div>
 
           {ratingCount > 0 && (

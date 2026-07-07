@@ -2,6 +2,17 @@ import SwiftUI
 import PhotosUI
 import Supabase
 
+// EditProfileView is presented from multiple places (Settings, the quest
+// checklist) that each own their own separate profile-fetching view model --
+// ProfileViewModel (the actual Profile tab, avatar/bio display) has no
+// reference to whichever one presented this sheet, so a save here can't just
+// call a reload closure the way single-owner sheets do. Same fix this
+// codebase already uses for the Spotify-token-refresh case in
+// sillajukuApp.swift/SearchView.swift: broadcast, let whoever cares listen.
+extension Notification.Name {
+    static let sjProfileUpdated = Notification.Name("sjProfileUpdated")
+}
+
 struct EditProfileView: View {
     let profile: Profile?
     @Environment(\.dismiss) private var dismiss
@@ -58,7 +69,10 @@ struct EditProfileView: View {
                     HStack(spacing: 2) {
                         Text("@")
                             .foregroundStyle(Color.sjMuted)
-                        TextField("username", text: $username)
+                        TextField("username", text: Binding(
+                            get: { username },
+                            set: { username = Username.normalize($0) }
+                        ))
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
                     }
@@ -148,8 +162,8 @@ struct EditProfileView: View {
     private func save() async {
         guard let user = supabase.auth.currentUser else { return }
         let trimmedUsername = username.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !trimmedUsername.isEmpty else {
-            errorMessage = String(localized: "Username cannot be empty.")
+        guard Username.isValid(trimmedUsername) else {
+            errorMessage = String(localized: "Username must be 3-20 characters and can only contain lowercase letters, numbers, and underscores.")
             return
         }
 
@@ -176,6 +190,10 @@ struct EditProfileView: View {
                     // the old avatar stays cached until the app is restarted).
                     newAvatarUrl = base.map { "\($0)?t=\(Int(Date().timeIntervalSince1970))" }
                 } catch {
+                    // Printed, not just swallowed -- a missing bucket, an RLS policy
+                    // blocking the upload, and a real network failure all land here
+                    // identically otherwise, with no way to tell them apart.
+                    print("EditProfileView.save avatar upload failed for path \(path): \(error)")
                     // avatars bucket not set up yet — skip avatar, continue saving other fields
                 }
             }
@@ -195,6 +213,7 @@ struct EditProfileView: View {
                 .eq("id", value: user.id)
                 .execute()
 
+            NotificationCenter.default.post(name: .sjProfileUpdated, object: nil)
             dismiss()
         } catch {
             errorMessage = String(localized: "Failed to save. Please try again.")

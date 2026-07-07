@@ -3,8 +3,9 @@ import Observation
 import Supabase
 
 extension Notification.Name {
-    static let ratingChanged = Notification.Name("com.sillajuku.ratingChanged")
-    static let followChanged = Notification.Name("com.sillajuku.followChanged")
+    static let ratingChanged     = Notification.Name("com.sillajuku.ratingChanged")
+    static let followChanged     = Notification.Name("com.sillajuku.followChanged")
+    static let mixLibraryChanged = Notification.Name("com.sillajuku.mixLibraryChanged")
 }
 
 // MARK: - Models
@@ -40,6 +41,9 @@ struct AlbumPublicMix: Identifiable {
     let name: String
     let authorHandle: String
     let authorId: UUID?
+    let isDefault: Bool
+    let createdAt: Date
+    let description: String?
 }
 
 // MARK: - Track entry (loaded via release_tracks → recordings)
@@ -359,7 +363,15 @@ class AlbumDetailViewModel {
         struct MixRow: Codable, Identifiable {
             let id: UUID
             let name: String
+            let isDefault: Bool
+            let createdAt: Date
+            let description: String?
             let profiles: MixProfile?
+            enum CodingKeys: String, CodingKey {
+                case id, name, profiles, description
+                case isDefault = "is_default"
+                case createdAt = "created_at"
+            }
             struct MixProfile: Codable {
                 let id: UUID
                 let username: String?
@@ -371,7 +383,7 @@ class AlbumDetailViewModel {
         }
         let rows: [MixRow] = (try? await supabase
             .from("mixes")
-            .select("id, name, profiles(id, username, display_name)")
+            .select("id, name, is_default, created_at, description, profiles(id, username, display_name)")
             .in("id", values: mixIds)
             .eq("is_public", value: true)
             .limit(10)
@@ -380,7 +392,7 @@ class AlbumDetailViewModel {
 
         publicMixes = rows.map { row in
             let handle = row.profiles.flatMap { $0.username.map { "@\($0)" } ?? $0.displayName } ?? String(localized: "someone")
-            return AlbumPublicMix(id: row.id, name: row.name, authorHandle: handle, authorId: row.profiles?.id)
+            return AlbumPublicMix(id: row.id, name: row.name, authorHandle: handle, authorId: row.profiles?.id, isDefault: row.isDefault, createdAt: row.createdAt, description: row.description)
         }
     }
 }
@@ -1053,7 +1065,18 @@ struct AlbumDetailView: View {
             ForEach(Array(viewModel.publicMixes.enumerated()), id: \.element.id) { i, mix in
                 Group {
                     if let authorId = mix.authorId {
-                        NavigationLink(value: UserProfileDestination(userId: authorId, handle: mix.authorHandle)) {
+                        // Direct destination, not NavigationLink(value:) -- this view is
+                        // pushed from several different NavigationStacks, so a registered
+                        // navigationDestination(for: Mix.self) can't be relied on here.
+                        NavigationLink(destination: MixDetailView(mix: Mix(
+                            id: mix.id,
+                            userId: authorId,
+                            name: mix.name,
+                            isPublic: true,
+                            isDefault: mix.isDefault,
+                            createdAt: mix.createdAt,
+                            description: mix.description
+                        ))) {
                             mixRow(mix)
                         }
                         .buttonStyle(.plain)

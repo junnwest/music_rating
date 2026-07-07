@@ -408,7 +408,7 @@ const ko: Translations = {
       usernameTitle: '사용자 이름을 만드세요.',
       usernamePlaceholder: 'username',
       usernameTaken: '이미 사용 중인 이름입니다.',
-      usernameRules: '3–24자: 영문, 숫자, _ 또는 .',
+      usernameRules: '3–20자: 영문 소문자, 숫자 또는 _',
       usernameAvailable: '사용 가능합니다!',
       ratingModeTitle: '평가 방식을 선택하세요.',
       ratingModeSubtitle: '나중에 변경할 수 있어요.',

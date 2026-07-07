@@ -406,7 +406,7 @@ const en = {
       usernameTitle: 'Create a username.',
       usernamePlaceholder: 'username',
       usernameTaken: 'That username is taken.',
-      usernameRules: '3–24 characters: letters, numbers, _ or .',
+      usernameRules: '3–20 characters: lowercase letters, numbers, or _',
       usernameAvailable: 'Available!',
       ratingModeTitle: 'Select a rating style.',
       ratingModeSubtitle: 'You can change this later.',

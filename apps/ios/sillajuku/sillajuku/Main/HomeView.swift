@@ -77,21 +77,92 @@ struct NativeArtistRef: Codable {
 struct FeedProfile: Codable {
     let username: String?
     let displayName: String?
-    enum CodingKeys: String, CodingKey { case username; case displayName = "display_name" }
+    let isBot: Bool?
+    enum CodingKeys: String, CodingKey { case username; case displayName = "display_name"; case isBot = "is_bot" }
     var handle: String { username ?? displayName ?? String(localized: "someone") }
+}
+
+// A mix shared to the feed as a post (a "repost" -- anyone viewing a public
+// mix can share it, not just its owner). Distinct from a rating post but
+// rendered in the same merged feed via FeedPost.
+struct MixSharePost: Identifiable {
+    let id: UUID
+    let userId: UUID
+    let mixId: UUID
+    let caption: String?
+    let createdAt: Date
+    let mixName: String
+    let mixDescription: String?
+    let profile: FeedProfile?
+    var coverUrls: [String?] = []
+}
+
+// The feed mixes two kinds of posts (ratings + mix shares) sorted together
+// -- the first time this feed needs more than one source, so this enum is
+// the discriminator rather than adding a `postType` flag to FeedItem itself.
+enum FeedPost: Identifiable {
+    case rating(FeedItem)
+    case mixShare(MixSharePost)
+
+    var id: String {
+        switch self {
+        case .rating(let i):   return "rating-\(i.id.uuidString)"
+        case .mixShare(let s): return "mixshare-\(s.id.uuidString)"
+        }
+    }
+
+    // Key into HomeViewModel's shared likeCounts/commentCounts/likedPostIds --
+    // safe across both rating_likes and mix_share_likes since UUIDs are
+    // globally unique regardless of source table.
+    var socialKey: UUID {
+        switch self {
+        case .rating(let i):   return i.id
+        case .mixShare(let s): return s.id
+        }
+    }
+
+    var userId: UUID {
+        switch self {
+        case .rating(let i):   return i.userId
+        case .mixShare(let s): return s.userId
+        }
+    }
+
+    var createdAt: Date {
+        switch self {
+        case .rating(let i):   return i.createdAt
+        case .mixShare(let s): return s.createdAt
+        }
+    }
+
+    var isBot: Bool? {
+        switch self {
+        case .rating(let i):   return i.profiles?.isBot
+        case .mixShare(let s): return s.profile?.isBot
+        }
+    }
+
+    // Used only by ranked()'s artist-affinity bonus; mix shares have no
+    // single release, so that scoring term simply doesn't fire for them.
+    var releaseArtist: String? {
+        switch self {
+        case .rating(let i): return i.releases.artist
+        case .mixShare:      return nil
+        }
+    }
 }
 
 // MARK: - ViewModel
 
 @Observable
 class HomeViewModel {
-    var exploreItems:   [FeedItem] = []
-    var followingItems: [FeedItem] = []
+    var exploreFeed:   [FeedPost] = []
+    var followingFeed: [FeedPost] = []
     var isLoadingExplore   = true
     var isLoadingFollowing = true
     var isLoading: Bool { isLoadingExplore }
 
-    var likedRatingIds:         Set<UUID>  = []
+    var likedPostIds:           Set<UUID>  = []
     var savedReleaseIds:        Set<UUID>  = []
     var likeCounts:            [UUID: Int] = [:]
     var commentCounts:         [UUID: Int] = [:]
@@ -102,7 +173,19 @@ class HomeViewModel {
     private var hasLoadedFollowing = false
 
     private static let feedSelect =
-        "id, user_id, score, elo_score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey(username, display_name)"
+        "id, user_id, score, elo_score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey(username, display_name, is_bot)"
+
+    // Explore's fetch is split by is_bot BEFORE ranking, not just re-ranked after — with
+    // bot ratings' recency-biased backdating, a human rating usually wouldn't survive into
+    // a single latest-150 window at all, so re-ranking downstream of an already-all-bot pool
+    // wouldn't help. Slots sized so a thin real-user base still shows every human item that
+    // exists; humanSlotEvery below governs how those get interleaved into the visible order.
+    private static let exploreHumanFetchLimit = 40
+    private static let exploreBotFetchLimit   = 110
+    // Ratio used when interleaving humanItems/botItems back together in ranked() — 1 human
+    // slot per N bot slots. Named/tunable here since it'll want revisiting as the real user
+    // base grows relative to the bot population.
+    private static let humanSlotEvery = 3
 
     // Personalization signals (populated before explore loads)
     private var followingIds:  Set<UUID>   = []
@@ -165,8 +248,8 @@ class HomeViewModel {
     func blockUser(userId: UUID) async {
         guard let me = currentUserId, userId != me else { return }
         blockedUserIds.insert(userId)
-        exploreItems.removeAll   { $0.userId == userId }
-        followingItems.removeAll { $0.userId == userId }
+        exploreFeed.removeAll   { $0.userId == userId }
+        followingFeed.removeAll { $0.userId == userId }
         struct Payload: Encodable {
             let blockerId: UUID; let blockedId: UUID
             enum CodingKeys: String, CodingKey {
@@ -178,22 +261,40 @@ class HomeViewModel {
             .execute()
     }
 
-    private func ranked(_ items: [FeedItem]) -> [FeedItem] {
-        items
-            .map { item -> (FeedItem, Double) in
+    private func ranked(_ posts: [FeedPost]) -> [FeedPost] {
+        let scored = posts
+            .map { post -> (FeedPost, Double) in
                 var s = 0.0
-                if followingIds.contains(item.userId)      { s += 8 }
-                if likedArtists.contains(item.releases.artist) { s += 5 }
-                s += log(Double((likeCounts[item.id]    ?? 0) + 1)) * 5
-                s += log(Double((commentCounts[item.id] ?? 0) + 1)) * 3
-                let ageHours = -item.createdAt.timeIntervalSinceNow / 3600
+                if followingIds.contains(post.userId) { s += 8 }
+                if let artist = post.releaseArtist, likedArtists.contains(artist) { s += 5 }
+                s += log(Double((likeCounts[post.socialKey]    ?? 0) + 1)) * 5
+                s += log(Double((commentCounts[post.socialKey] ?? 0) + 1)) * 3
+                let ageHours = -post.createdAt.timeIntervalSinceNow / 3600
                 if ageHours < 12       { s += 3 }
                 else if ageHours < 72  { s += 1.5 }
                 else if ageHours < 336 { s += 0.5 }
-                return (item, s)
+                return (post, s)
             }
             .sorted { $0.1 > $1.1 }
             .map(\.0)
+
+        // Guarantee human presence near the top rather than relying on the score bonuses
+        // above to overcome a large bot:human volume ratio on their own — split the
+        // already-scored order into humans/bots (each stays internally sorted by score,
+        // since filter preserves order) and interleave at a fixed ratio. Unknown/missing
+        // is_bot defaults to the bot lane, never the guaranteed-human one. Degrades to
+        // today's all-bot order when the fetched pool has no human items.
+        let humans = scored.filter { $0.isBot == false }
+        guard !humans.isEmpty else { return scored }
+        let bots = scored.filter { $0.isBot != false }
+
+        var result: [FeedPost] = []
+        var hi = 0, bi = 0
+        while hi < humans.count || bi < bots.count {
+            if hi < humans.count { result.append(humans[hi]); hi += 1 }
+            for _ in 0..<Self.humanSlotEvery where bi < bots.count { result.append(bots[bi]); bi += 1 }
+        }
+        return result
     }
 
     func refreshNotificationBadge() async {
@@ -222,18 +323,167 @@ class HomeViewModel {
         hasUnreadNotifications = count > 0
     }
 
+    // Same select as feedSelect but with an inner-joined profiles relation, so
+    // .eq("profiles.is_bot", ...) actually filters the parent `ratings` rows
+    // (PostgREST only lets an embedded-column filter narrow the parent when
+    // the embed is !inner — a plain left-join embed can't be filtered on).
+    private static let feedSelectBotFilterable =
+        "id, user_id, score, elo_score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey!inner(username, display_name, is_bot)"
+
+    /// Fetches the Explore pool split by is_bot BEFORE any ranking — see the comment on
+    /// exploreHumanFetchLimit/exploreBotFetchLimit for why this has to happen at fetch time.
+    /// Throws (rather than swallowing per-query) so callers keep their existing try?/guard
+    /// failure semantics instead of silently treating a real fetch failure as "zero results".
+    private func fetchExplorePool() async throws -> [FeedItem] {
+        async let humanTask: [FeedItem] = try await supabase
+            .from("ratings").select(Self.feedSelectBotFilterable)
+            .eq("profiles.is_bot", value: false)
+            .order("created_at", ascending: false).limit(Self.exploreHumanFetchLimit)
+            .execute().value
+        async let botTask: [FeedItem] = try await supabase
+            .from("ratings").select(Self.feedSelectBotFilterable)
+            .eq("profiles.is_bot", value: true)
+            .order("created_at", ascending: false).limit(Self.exploreBotFetchLimit)
+            .execute().value
+        return try await humanTask + botTask
+    }
+
+    private static let mixShareSelect =
+        "id, user_id, mix_id, caption, created_at, mixes(id, name, description), profiles!mix_shares_user_id_fkey(username, display_name, is_bot)"
+
+    private struct MixShareRow: Codable {
+        let id: UUID
+        let userId: UUID
+        let mixId: UUID
+        let caption: String?
+        let createdAt: Date
+        let mixes: MixRef
+        let profiles: FeedProfile?
+        struct MixRef: Codable { let id: UUID; let name: String; let description: String? }
+        enum CodingKeys: String, CodingKey {
+            case id, caption, profiles, mixes
+            case userId = "user_id"; case mixId = "mix_id"; case createdAt = "created_at"
+        }
+    }
+
+    /// Bulk-resolves up to 10 cover URLs per mix via get_mix_covers (a single
+    /// window-function RPC call regardless of how many/large the mixes are)
+    /// and stitches them onto the already-fetched share rows.
+    private func hydrateCovers(_ rows: [MixShareRow]) async -> [MixSharePost] {
+        guard !rows.isEmpty else { return [] }
+        struct CoverRow: Decodable {
+            let mixId: UUID
+            let coverUrl: String?
+            enum CodingKeys: String, CodingKey { case mixId = "mix_id"; case coverUrl = "cover_url" }
+        }
+        struct Params: Encodable {
+            let pMixIds: [String]
+            let pLimit: Int
+            enum CodingKeys: String, CodingKey { case pMixIds = "p_mix_ids"; case pLimit = "p_limit" }
+        }
+        let mixIds = Array(Set(rows.map(\.mixId.uuidString)))
+        let covers: [CoverRow] = (try? await supabase
+            .rpc("get_mix_covers", params: Params(pMixIds: mixIds, pLimit: 10))
+            .execute().value) ?? []
+        var byMix: [UUID: [String?]] = [:]
+        for c in covers { byMix[c.mixId, default: []].append(c.coverUrl) }
+        return rows.map {
+            MixSharePost(id: $0.id, userId: $0.userId, mixId: $0.mixId, caption: $0.caption,
+                         createdAt: $0.createdAt, mixName: $0.mixes.name, mixDescription: $0.mixes.description,
+                         profile: $0.profiles, coverUrls: byMix[$0.mixId] ?? [])
+        }
+    }
+
+    private func fetchExploreMixShares(limit: Int = 30) async throws -> [MixSharePost] {
+        let rows: [MixShareRow] = try await supabase
+            .from("mix_shares").select(Self.mixShareSelect)
+            .order("created_at", ascending: false).limit(limit)
+            .execute().value
+        return await hydrateCovers(rows)
+    }
+
+    private func fetchFollowingMixShares(userIds: [String], limit: Int = 60) async -> [MixSharePost] {
+        guard !userIds.isEmpty else { return [] }
+        let rows: [MixShareRow] = (try? await supabase
+            .from("mix_shares").select(Self.mixShareSelect)
+            .in("user_id", values: userIds)
+            .order("created_at", ascending: false).limit(limit)
+            .execute().value) ?? []
+        return await hydrateCovers(rows)
+    }
+
+    private func loadMixShareSocialData(for shares: [MixSharePost]) async {
+        guard !shares.isEmpty else { return }
+        let shareIds = shares.map(\.id.uuidString)
+        struct IdRow: Codable {
+            let mixShareId: UUID
+            enum CodingKeys: String, CodingKey { case mixShareId = "mix_share_id" }
+        }
+        if let rows: [IdRow] = try? await supabase
+            .from("mix_share_likes").select("mix_share_id")
+            .in("mix_share_id", values: shareIds).execute().value {
+            var counts: [UUID: Int] = [:]
+            for r in rows { counts[r.mixShareId, default: 0] += 1 }
+            for (k, v) in counts { likeCounts[k] = v }
+        }
+        if let rows: [IdRow] = try? await supabase
+            .from("mix_share_comments").select("mix_share_id")
+            .in("mix_share_id", values: shareIds).execute().value {
+            var counts: [UUID: Int] = [:]
+            for r in rows { counts[r.mixShareId, default: 0] += 1 }
+            for (k, v) in counts { commentCounts[k] = v }
+        }
+        guard let userId = currentUserId else { return }
+        if let rows: [IdRow] = try? await supabase
+            .from("mix_share_likes").select("mix_share_id")
+            .eq("user_id", value: userId)
+            .in("mix_share_id", values: shareIds).execute().value {
+            for r in rows { likedPostIds.insert(r.mixShareId) }
+        }
+    }
+
+    func toggleMixShareLike(for post: MixSharePost) async {
+        guard let userId = currentUserId else { return }
+        let wasLiked = likedPostIds.contains(post.id)
+        if wasLiked {
+            likedPostIds.remove(post.id)
+            likeCounts[post.id] = max(0, (likeCounts[post.id] ?? 1) - 1)
+        } else {
+            likedPostIds.insert(post.id)
+            likeCounts[post.id] = (likeCounts[post.id] ?? 0) + 1
+        }
+        do {
+            if wasLiked {
+                try await supabase.from("mix_share_likes").delete()
+                    .eq("user_id", value: userId).eq("mix_share_id", value: post.id).execute()
+            } else {
+                struct Payload: Encodable {
+                    let userId: UUID; let mixShareId: UUID
+                    enum CodingKeys: String, CodingKey { case userId = "user_id"; case mixShareId = "mix_share_id" }
+                }
+                try await supabase.from("mix_share_likes")
+                    .insert(Payload(userId: userId, mixShareId: post.id)).execute()
+            }
+        } catch {
+            print("HomeViewModel.toggleMixShareLike failed for share \(post.id): \(error)")
+            if wasLiked { likedPostIds.insert(post.id); likeCounts[post.id] = (likeCounts[post.id] ?? 0) + 1 }
+            else { likedPostIds.remove(post.id); likeCounts[post.id] = max(0, (likeCounts[post.id] ?? 1) - 1) }
+        }
+    }
+
     func refreshExplore() async {
-        guard let pool: [FeedItem] = try? await supabase
-            .from("ratings").select(Self.feedSelect)
-            .order("created_at", ascending: false).limit(150)
-            .execute().value else { return }
-        likedRatingIds = []
+        guard let ratingPool = try? await fetchExplorePool() else { return }
+        let sharePool = (try? await fetchExploreMixShares()) ?? []
+        likedPostIds = []
         savedReleaseIds = []
         likeCounts = [:]
         commentCounts = [:]
-        let filtered = pool.filter { !blockedUserIds.contains($0.userId) }
-        await loadSocialData(for: filtered)
-        exploreItems = Array(ranked(filtered).prefix(60))
+        let filteredRatings = ratingPool.filter { !blockedUserIds.contains($0.userId) }
+        let filteredShares  = sharePool.filter  { !blockedUserIds.contains($0.userId) }
+        await loadSocialData(for: filteredRatings)
+        await loadMixShareSocialData(for: filteredShares)
+        let combined = filteredRatings.map(FeedPost.rating) + filteredShares.map(FeedPost.mixShare)
+        exploreFeed = Array(ranked(combined).prefix(60))
         hasLoadedExplore = true
         await refreshNotificationBadge()
     }
@@ -242,13 +492,16 @@ class HomeViewModel {
         guard !hasLoadedExplore else { return }
         hasLoadedExplore = true
         isLoadingExplore = true
-        let pool: [FeedItem] = (try? await supabase
-            .from("ratings").select(Self.feedSelect)
-            .order("created_at", ascending: false).limit(150)
-            .execute().value) ?? []
-        let filtered = pool.filter { !blockedUserIds.contains($0.userId) }
-        await loadSocialData(for: filtered)
-        exploreItems = Array(ranked(filtered).prefix(60))
+        async let ratingPoolTask = fetchExplorePool()
+        async let sharePoolTask  = fetchExploreMixShares()
+        let ratingPool = (try? await ratingPoolTask) ?? []
+        let sharePool  = (try? await sharePoolTask) ?? []
+        let filteredRatings = ratingPool.filter { !blockedUserIds.contains($0.userId) }
+        let filteredShares  = sharePool.filter  { !blockedUserIds.contains($0.userId) }
+        await loadSocialData(for: filteredRatings)
+        await loadMixShareSocialData(for: filteredShares)
+        let combined = filteredRatings.map(FeedPost.rating) + filteredShares.map(FeedPost.mixShare)
+        exploreFeed = Array(ranked(combined).prefix(60))
         isLoadingExplore = false
     }
 
@@ -262,12 +515,17 @@ class HomeViewModel {
             .from("follows").select("following_id")
             .eq("follower_id", value: userId).execute().value) ?? []
         let ids = rows.map(\.followingId.uuidString)
-        guard !ids.isEmpty else { followingItems = []; return }
-        let items: [FeedItem] = (try? await supabase
+        guard !ids.isEmpty else { followingFeed = []; return }
+        async let itemsTask: [FeedItem] = (try? await supabase
             .from("ratings").select(Self.feedSelect)
             .in("user_id", values: ids)
             .order("created_at", ascending: false).limit(60).execute().value) ?? []
-        followingItems = items.filter { !blockedUserIds.contains($0.userId) }
+        async let sharesTask = fetchFollowingMixShares(userIds: ids)
+        let (items, shares) = await (itemsTask, sharesTask)
+        let filteredRatings = items.filter  { !blockedUserIds.contains($0.userId) }
+        let filteredShares  = shares.filter { !blockedUserIds.contains($0.userId) }
+        followingFeed = (filteredRatings.map(FeedPost.rating) + filteredShares.map(FeedPost.mixShare))
+            .sorted { $0.createdAt > $1.createdAt }
         hasLoadedFollowing = true
     }
 
@@ -287,14 +545,20 @@ class HomeViewModel {
         let ids = rows.map(\.followingId.uuidString)
         guard !ids.isEmpty else { isLoadingFollowing = false; return }
 
-        let items: [FeedItem] = (try? await supabase
+        async let itemsTask: [FeedItem] = (try? await supabase
             .from("ratings").select(Self.feedSelect)
             .in("user_id", values: ids)
             .order("created_at", ascending: false).limit(60).execute().value) ?? []
-        let filtered = items.filter { !blockedUserIds.contains($0.userId) }
-        followingItems = filtered
+        async let sharesTask = fetchFollowingMixShares(userIds: ids)
+        let (items, shares) = await (itemsTask, sharesTask)
+
+        let filteredRatings = items.filter  { !blockedUserIds.contains($0.userId) }
+        let filteredShares  = shares.filter { !blockedUserIds.contains($0.userId) }
+        followingFeed = (filteredRatings.map(FeedPost.rating) + filteredShares.map(FeedPost.mixShare))
+            .sorted { $0.createdAt > $1.createdAt }
         isLoadingFollowing = false
-        await loadSocialData(for: filtered)
+        await loadSocialData(for: filteredRatings)
+        await loadMixShareSocialData(for: filteredShares)
     }
 
     private func loadSocialData(for items: [FeedItem]) async {
@@ -333,7 +597,7 @@ class HomeViewModel {
             .from("rating_likes").select("rating_id")
             .eq("user_id", value: userId)
             .in("rating_id", values: ratingIds).execute().value {
-            for r in rows { likedRatingIds.insert(r.ratingId) }
+            for r in rows { likedPostIds.insert(r.ratingId) }
         }
 
         if let rows: [ReleaseIdRow] = try? await supabase
@@ -346,12 +610,12 @@ class HomeViewModel {
 
     func toggleLike(for item: FeedItem) async {
         guard let userId = currentUserId else { return }
-        let wasLiked = likedRatingIds.contains(item.id)
+        let wasLiked = likedPostIds.contains(item.id)
         if wasLiked {
-            likedRatingIds.remove(item.id)
+            likedPostIds.remove(item.id)
             likeCounts[item.id] = max(0, (likeCounts[item.id] ?? 1) - 1)
         } else {
-            likedRatingIds.insert(item.id)
+            likedPostIds.insert(item.id)
             likeCounts[item.id] = (likeCounts[item.id] ?? 0) + 1
         }
         do {
@@ -369,8 +633,8 @@ class HomeViewModel {
                     .insert(Payload(userId: userId, ratingId: item.id)).execute()
             }
         } catch {
-            if wasLiked { likedRatingIds.insert(item.id); likeCounts[item.id] = (likeCounts[item.id] ?? 0) + 1 }
-            else { likedRatingIds.remove(item.id); likeCounts[item.id] = max(0, (likeCounts[item.id] ?? 1) - 1) }
+            if wasLiked { likedPostIds.insert(item.id); likeCounts[item.id] = (likeCounts[item.id] ?? 0) + 1 }
+            else { likedPostIds.remove(item.id); likeCounts[item.id] = max(0, (likeCounts[item.id] ?? 1) - 1) }
         }
     }
 
@@ -515,12 +779,12 @@ struct HomeView: View {
 
     private var feedContent: some View {
         TabView(selection: $activeTab) {
-            feedList(items: viewModel.exploreItems, isLoading: viewModel.isLoadingExplore,
+            feedList(posts: viewModel.exploreFeed, isLoading: viewModel.isLoadingExplore,
                      emptyMessage: "No ratings yet — be the first!",
                      scrollTrigger: exploreScrollTrigger, isExplore: true)
                 .tag(FeedTab.explore)
 
-            feedList(items: viewModel.followingItems, isLoading: viewModel.isLoadingFollowing,
+            feedList(posts: viewModel.followingFeed, isLoading: viewModel.isLoadingFollowing,
                      emptyMessage: "Follow people to see their ratings here.",
                      scrollTrigger: followingScrollTrigger, isExplore: false)
                 .tag(FeedTab.following)
@@ -533,10 +797,10 @@ struct HomeView: View {
     }
 
     @ViewBuilder
-    private func feedList(items: [FeedItem], isLoading: Bool, emptyMessage: LocalizedStringKey, scrollTrigger: UUID, isExplore: Bool) -> some View {
+    private func feedList(posts: [FeedPost], isLoading: Bool, emptyMessage: LocalizedStringKey, scrollTrigger: UUID, isExplore: Bool) -> some View {
         if isLoading {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if items.isEmpty {
+        } else if posts.isEmpty {
             VStack(spacing: 14) {
                 Image(systemName: "music.note.list")
                     .font(.system(size: 44)).foregroundStyle(Color.sjBorder)
@@ -550,19 +814,8 @@ struct HomeView: View {
                 ScrollView(showsIndicators: false) {
                     LazyVStack(spacing: 10) {
                         Color.clear.frame(height: 0).id("feed-top")
-                        ForEach(items) { item in
-                            FeedCard(
-                                item: item,
-                                currentUserId: viewModel.currentUserId,
-                                isLiked: viewModel.likedRatingIds.contains(item.id),
-                                isSaved: viewModel.savedReleaseIds.contains(item.releases.id),
-                                likesCount: viewModel.likeCounts[item.id] ?? 0,
-                                commentsCount: viewModel.commentCounts[item.id] ?? 0,
-                                onLike: { await viewModel.toggleLike(for: item) },
-                                onSave: { await viewModel.toggleSave(for: item) },
-                                onBlock: { await viewModel.blockUser(userId: item.userId) },
-                                onOwnProfileTap: onOwnProfileTap
-                            )
+                        ForEach(posts) { post in
+                            postCard(post)
                         }
                         if !isExplore {
                             followingFeedFooter
@@ -583,6 +836,50 @@ struct HomeView: View {
                 }
             }
         }
+    }
+
+    // Split out of feedList's ForEach closure and further split by case --
+    // a switch with multiple many-argument view initializers inline inside
+    // a ForEach/LazyVStack/ScrollView closure is a known trigger for the
+    // Swift type-checker to blow up (runaway memory instead of a fast
+    // error). Named functions type-check independently, so this keeps each
+    // branch cheap to solve.
+    @ViewBuilder
+    private func postCard(_ post: FeedPost) -> some View {
+        switch post {
+        case .rating(let item):
+            ratingCard(item)
+        case .mixShare(let share):
+            mixShareCard(share)
+        }
+    }
+
+    private func ratingCard(_ item: FeedItem) -> some View {
+        FeedCard(
+            item: item,
+            currentUserId: viewModel.currentUserId,
+            isLiked: viewModel.likedPostIds.contains(item.id),
+            isSaved: viewModel.savedReleaseIds.contains(item.releases.id),
+            likesCount: viewModel.likeCounts[item.id] ?? 0,
+            commentsCount: viewModel.commentCounts[item.id] ?? 0,
+            onLike: { await viewModel.toggleLike(for: item) },
+            onSave: { await viewModel.toggleSave(for: item) },
+            onBlock: { await viewModel.blockUser(userId: item.userId) },
+            onOwnProfileTap: onOwnProfileTap
+        )
+    }
+
+    private func mixShareCard(_ share: MixSharePost) -> some View {
+        MixShareCard(
+            post: share,
+            currentUserId: viewModel.currentUserId,
+            isLiked: viewModel.likedPostIds.contains(share.id),
+            likesCount: viewModel.likeCounts[share.id] ?? 0,
+            commentsCount: viewModel.commentCounts[share.id] ?? 0,
+            onLike: { await viewModel.toggleMixShareLike(for: share) },
+            onBlock: { await viewModel.blockUser(userId: share.userId) },
+            onOwnProfileTap: onOwnProfileTap
+        )
     }
 }
 
@@ -726,10 +1023,12 @@ private struct SuggestedUserRow: View {
                         Text(user.displayName ?? user.username ?? String(localized: "User"))
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(Color.sjInk)
+                            .lineLimit(1)
                         if let u = user.username {
                             Text("@" + u)
                                 .font(.system(size: 12))
                                 .foregroundStyle(Color.sjMuted)
+                                .lineLimit(1)
                         }
                         Text(String(format: String(localized: "%d ratings"), user.ratingCount))
                             .font(.system(size: 11))

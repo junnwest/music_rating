@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Star, ArrowLeftRight, CheckCircle2, Circle, Bell } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
+import { USERNAME_REGEX, normalizeUsername } from '../../../lib/username';
 
 type Step = 'name' | 'username' | 'ratingMode' | 'notifications';
 const STEPS: Step[] = ['name', 'username', 'ratingMode', 'notifications'];
@@ -51,7 +52,7 @@ export default function OnboardingPage() {
       setUsernameStatus('idle');
       return;
     }
-    if (!/^[a-z0-9_.]{3,24}$/.test(u)) {
+    if (!USERNAME_REGEX.test(u)) {
       setUsernameStatus('invalid');
       return;
     }
@@ -161,7 +162,7 @@ export default function OnboardingPage() {
               <input
                 ref={usernameInput}
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                onChange={(e) => setUsername(normalizeUsername(e.target.value))}
                 onKeyDown={(e) => e.key === 'Enter' && canContinue && advance()}
                 placeholder={t('sj.onboarding.usernamePlaceholder')}
                 autoCapitalize="none"
