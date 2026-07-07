@@ -14,10 +14,13 @@
 -- Transition-safe: _rg_primary_matches falls back to the old whole-array behavior while
 -- primary_genre IS NULL (i.e. before/while the backfill runs), so charts never go empty.
 --
--- NOTE: get_silla_leaderboard also genre-filters via _rg_has_genre and has the SAME leak, but its
--- live definition (the 2026-07-05 durable timeout fix) was applied via the SQL editor and never
--- committed as a migration file — reproducing it here would regress that fix. It needs the same
--- one-line swap applied to its live body separately (follow-up).
+-- The 4 chart function bodies below are reproduced VERBATIM from their live definitions
+-- (pg_get_functiondef, 2026-07-06 — incl. native_title / artist_native / release_group_type, which
+-- were added via the SQL editor and never committed to a migration file) with ONLY the genre-filter
+-- predicate swapped from _rg_has_genre(rg.genres, …) to _rg_primary_matches(rg.primary_genre, …).
+--
+-- NOTE: get_silla_leaderboard genre-filters the same way and has the same leak; its live body wasn't
+-- provided here, so its one-line swap is a separate follow-up.
 
 ALTER TABLE release_groups ADD COLUMN IF NOT EXISTS primary_genre text;
 
@@ -30,19 +33,15 @@ RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
   END;
 $$;
 
--- ── genre charts: filter on primary_genre instead of the whole genres[] array ──
--- (bodies reproduced from their live definitions — 20260705000005 for top_rated, 20260626000002
---  for the rest — with ONLY the genre-filter predicate changed.)
-
-CREATE OR REPLACE FUNCTION get_charts_top_rated(
-  p_limit int DEFAULT 20, p_genre text DEFAULT NULL,
-  p_year_start int DEFAULT NULL, p_year_end int DEFAULT NULL)
-RETURNS TABLE(release_id uuid, title text, artist text, cover_url text, avg_score numeric,
-              rating_count bigint, native_title text, artist_native text)
-LANGUAGE sql STABLE SECURITY DEFINER AS $$
+-- ── get_charts_top_rated ──
+CREATE OR REPLACE FUNCTION public.get_charts_top_rated(p_limit integer DEFAULT 20, p_genre text DEFAULT NULL::text, p_year_start integer DEFAULT NULL::integer, p_year_end integer DEFAULT NULL::integer)
+ RETURNS TABLE(release_id uuid, title text, artist text, cover_url text, avg_score numeric, rating_count bigint, native_title text, artist_native text, release_group_type text)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+AS $function$
   SELECT rg.id, rg.title, rg.artist_display, rg.cover_url,
          ROUND(AVG(rt.score)::numeric, 2), COUNT(rt.id),
-         rg.native_title, a.name_native
+         rg.native_title, a.name_native, rg.release_group_type
   FROM release_groups rg
   JOIN ratings rt ON rt.release_group_id = rg.id
   LEFT JOIN artists a ON a.id = rg.primary_artist_id
@@ -50,53 +49,67 @@ LANGUAGE sql STABLE SECURITY DEFINER AS $$
     AND (p_genre IS NULL OR _rg_primary_matches(rg.primary_genre, rg.genres, p_genre))
     AND (p_year_start IS NULL OR NULLIF(LEFT(rg.first_release_date::text, 4), '')::int >= p_year_start)
     AND (p_year_end   IS NULL OR NULLIF(LEFT(rg.first_release_date::text, 4), '')::int <= p_year_end)
-  GROUP BY rg.id, rg.title, rg.artist_display, rg.cover_url, rg.native_title, a.name_native
+  GROUP BY rg.id, rg.title, rg.artist_display, rg.cover_url, rg.native_title, a.name_native, rg.release_group_type
   HAVING COUNT(rt.id) >= 3
+  -- Bayesian average: (C·μ + Σscore) / (C + n), C=8, μ=2.75
   ORDER BY (8 * 2.75 + SUM(rt.score)) / (8 + COUNT(rt.id)) DESC, COUNT(rt.id) DESC
   LIMIT p_limit;
-$$;
+$function$;
 
-CREATE OR REPLACE FUNCTION get_charts_most_rated(
-  p_limit int DEFAULT 20, p_genre text DEFAULT NULL,
-  p_year_start int DEFAULT NULL, p_year_end int DEFAULT NULL)
-RETURNS TABLE(release_id uuid, title text, artist text, cover_url text, avg_score numeric, rating_count bigint)
-LANGUAGE sql STABLE SECURITY DEFINER AS $$
+-- ── get_charts_most_rated ──
+CREATE OR REPLACE FUNCTION public.get_charts_most_rated(p_limit integer DEFAULT 20, p_genre text DEFAULT NULL::text, p_year_start integer DEFAULT NULL::integer, p_year_end integer DEFAULT NULL::integer)
+ RETURNS TABLE(release_id uuid, title text, artist text, cover_url text, avg_score numeric, rating_count bigint, native_title text, artist_native text, release_group_type text)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+AS $function$
   SELECT rg.id, rg.title, rg.artist_display, rg.cover_url,
-         ROUND(AVG(rt.score) FILTER (WHERE rt.score IS NOT NULL)::numeric, 2), COUNT(rt.id)
+         ROUND(AVG(rt.score) FILTER (WHERE rt.score IS NOT NULL)::numeric, 2), COUNT(rt.id),
+         rg.native_title, a.name_native, rg.release_group_type
   FROM release_groups rg
   JOIN ratings rt ON rt.release_group_id = rg.id
+  LEFT JOIN artists a ON a.id = rg.primary_artist_id
   WHERE (p_genre IS NULL OR _rg_primary_matches(rg.primary_genre, rg.genres, p_genre))
     AND (p_year_start IS NULL OR NULLIF(LEFT(rg.first_release_date::text, 4), '')::int >= p_year_start)
     AND (p_year_end   IS NULL OR NULLIF(LEFT(rg.first_release_date::text, 4), '')::int <= p_year_end)
-  GROUP BY rg.id, rg.title, rg.artist_display, rg.cover_url
+  GROUP BY rg.id, rg.title, rg.artist_display, rg.cover_url, rg.native_title, a.name_native, rg.release_group_type
   ORDER BY COUNT(rt.id) DESC
   LIMIT p_limit;
-$$;
+$function$;
 
-CREATE OR REPLACE FUNCTION get_charts_trending_for_genres(p_genres text[], p_limit int DEFAULT 10)
-RETURNS TABLE(release_id uuid, title text, artist text, cover_url text, new_count bigint)
-LANGUAGE sql STABLE SECURITY DEFINER AS $$
-  SELECT rg.id, rg.title, rg.artist_display, rg.cover_url, COUNT(rt.id)
-  FROM release_groups rg
-  JOIN ratings rt ON rt.release_group_id = rg.id
-  WHERE rt.created_at > now() - interval '7 days'
-    AND EXISTS (SELECT 1 FROM unnest(p_genres) gg WHERE _rg_primary_matches(rg.primary_genre, rg.genres, gg))
-  GROUP BY rg.id, rg.title, rg.artist_display, rg.cover_url
-  ORDER BY COUNT(rt.id) DESC
-  LIMIT p_limit;
-$$;
-
-CREATE OR REPLACE FUNCTION get_charts_hidden_gems(p_limit int DEFAULT 20, p_genre text DEFAULT NULL)
-RETURNS TABLE(release_id uuid, title text, artist text, cover_url text, avg_score numeric, rating_count bigint)
-LANGUAGE sql STABLE SECURITY DEFINER AS $$
+-- ── get_charts_hidden_gems ──
+CREATE OR REPLACE FUNCTION public.get_charts_hidden_gems(p_limit integer DEFAULT 20, p_genre text DEFAULT NULL::text)
+ RETURNS TABLE(release_id uuid, title text, artist text, cover_url text, avg_score numeric, rating_count bigint, native_title text, artist_native text, release_group_type text)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+AS $function$
   SELECT rg.id, rg.title, rg.artist_display, rg.cover_url,
-         ROUND(AVG(rt.score)::numeric, 2), COUNT(rt.id)
+         ROUND(AVG(rt.score)::numeric, 2), COUNT(rt.id),
+         rg.native_title, a.name_native, rg.release_group_type
   FROM release_groups rg
   JOIN ratings rt ON rt.release_group_id = rg.id
+  LEFT JOIN artists a ON a.id = rg.primary_artist_id
   WHERE rt.score IS NOT NULL
     AND (p_genre IS NULL OR _rg_primary_matches(rg.primary_genre, rg.genres, p_genre))
-  GROUP BY rg.id, rg.title, rg.artist_display, rg.cover_url
+  GROUP BY rg.id, rg.title, rg.artist_display, rg.cover_url, rg.native_title, a.name_native, rg.release_group_type
   HAVING COUNT(rt.id) BETWEEN 3 AND 9 AND AVG(rt.score) >= 4.0
   ORDER BY AVG(rt.score) DESC
   LIMIT p_limit;
-$$;
+$function$;
+
+-- ── get_charts_trending_for_genres ──
+CREATE OR REPLACE FUNCTION public.get_charts_trending_for_genres(p_genres text[], p_limit integer DEFAULT 10)
+ RETURNS TABLE(release_id uuid, title text, artist text, cover_url text, new_count bigint, native_title text, artist_native text, release_group_type text)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+AS $function$
+  SELECT rg.id, rg.title, rg.artist_display, rg.cover_url, COUNT(rt.id),
+         rg.native_title, a.name_native, rg.release_group_type
+  FROM release_groups rg
+  JOIN ratings rt ON rt.release_group_id = rg.id
+  LEFT JOIN artists a ON a.id = rg.primary_artist_id
+  WHERE rt.created_at > now() - interval '7 days'
+    AND EXISTS (SELECT 1 FROM unnest(p_genres) gg WHERE _rg_primary_matches(rg.primary_genre, rg.genres, gg))
+  GROUP BY rg.id, rg.title, rg.artist_display, rg.cover_url, rg.native_title, a.name_native, rg.release_group_type
+  ORDER BY COUNT(rt.id) DESC
+  LIMIT p_limit;
+$function$;
