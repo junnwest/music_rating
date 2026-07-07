@@ -1,4 +1,4 @@
-# Session history
+﻿# Session history
 
 Historical record of shipped features and session notes. Not needed at conversation start — only useful for tracing why something was built a certain way.
 
@@ -19,6 +19,33 @@ Started from "I shared a mix but can't confirm it worked" and ended up covering 
 - **First-ever TestFlight build uploaded (Build 2).** `CURRENT_PROJECT_VERSION` had literally never been bumped past `1` since the project was created — bumped to `2` in `project.pbxproj` (both Debug/Release configs) since App Store Connect requires a unique build number per upload; verified with a full Release `xcodebuild archive` (signing resolved fine, automatic signing + team `GGJ5HX3A4M`). User did the actual Archive → Organizer → Upload in Xcode themselves (needs interactive Apple ID/2FA, no App Store Connect API key configured in this repo — discussed Xcode Cloud as a future automation option, not set up).
   - Delivery succeeded but flagged two informational-only warnings: **Sentry symbols upload failed** (Sentry's SPM product is a precompiled XCFramework with no bundled dSYM — only affects Apple's ability to symbolicate frames inside Sentry's own SDK, not this app's own crashes; widely reported elsewhere as benign, e.g. `getsentry/sentry-cocoa#6813`) and **ITMS-90892 missing 152×152 iPad icon** (cosmetic quirk of the modern single-1024px-icon asset catalog workflow — icon renders fine on iPad regardless).
   - The actual blocker for teammates (internal testers) was **"Missing Compliance"** — the export-compliance/encryption question had never been answered. Confirmed via code read that the app only does standard HTTPS (`URLSession`) plus one `SHA256` hash (`CryptoKit`, for the Sign in with Apple nonce) — no custom/proprietary crypto — so the correct App Store Connect answer is "None of the algorithms mentioned above." Also added `ITSAppUsesNonExemptEncryption = false` to `Info.plist` so **future** uploads skip this question automatically (doesn't retroactively fix Build 2 — that needed the one-time manual answer in App Store Connect, which the user did).
+
+---
+
+**2026-07-06 (Windows) — WEB RECONSTRUCTION: rebuilt `apps/web` around the current schema + iOS product:**
+
+Full rebuild of the web app per the reconstruction brief — the web UI was still the pre-renovation product (leaderboard seed-rankings, tierlists, essentials remnants, email/password auth, amber accent, `releases`-keyed queries against columns the 2026-06-24 renovation dropped). Discarded that UI wholesale and rebuilt it as the desktop sibling of `apps/ios`, reading every iOS screen + the live migrations first rather than trusting the (partly stale) written specs.
+
+**Step 0 findings (mobile/web disagreements, all resolved toward iOS):** accent is blue `#2979B7` (iOS `Theme.swift` aliases `sjAmber → sjBlue` — the "amber theme" in older docs is stale); data paths were all pre-renovation; IA was pre-pivot; web still had email/password + reset-password; no Instinct mode, no song ratings, no mixes/charts/taste/unlock-gate on web; CSP didn't allow the Deezer-hosted artist avatars backfilled 07-01.
+
+**What was built:**
+- **Foundation** — `lib/db/types.ts` (canonical schema + RPC row types, hand-derived from migrations and cross-checked against iOS decode structs; `supabase gen types` can't run here — no DB URL/access token in `.env.local`); `lib/sj/display.ts` + `lib/sj/data.ts` (TS mirrors of `Release.swift`'s `isPredominantlyHangul`/display-name guards, `relativeTimeString`, `thumbnailUrl`, the ScoreSpectrum HSL math, and the iOS feed select strings); sj palette in `globals.css`/Tailwind (page/surface/ink/muted/divider from the iOS asset catalog, light + near-black dark, `accent` = sjBlue; legacy `mint*` tokens aliased to accent so retained pages restyle for free); `*.dzcdn.net` added to CSP img-src + image remotePatterns; legacy-route redirects.
+- **Shell** — persistent sidebar (Home/Charts/Search/Taste/Profile + Settings) + top bar (global search box, notification bell with unread dot, avatar) on desktop, iOS-style bottom tab bar under `md`. `SessionContext` resolves session+profile once and redirects signed-in-but-unonboarded users to `/onboarding` (mirror of iOS `AppState`).
+- **Auth/onboarding** — OAuth-only login (Spotify primary w/ taste scopes, Apple/Google behind "More options", decorative flowers, same layout personality as `AuthView`); onboarding rewritten to iOS's 4 one-question steps (name → username w/ live availability check → rating style → notifications), provider-name prefill; auth callback routes to onboarding when no profile row exists.
+- **Rating flows** — `ManualRateModal` (slider 0.5–5.0 honoring `manual_rating_step`, post-rating comment + add-to-list step) and `InstinctModal` (bucket soft-seed → post-rating → ≤3 binary-search comparisons against the Elo-sorted list → reveal at 5 rated), both working for albums (`ratings`/`pairwise_comparisons`) *and* tracks (`track_ratings`/`track_pairwise_comparisons`), using the existing `lib/elo.ts` math verbatim.
+- **Pages** — Home (Explore/Following feed with the iOS ranking heuristic, like/comment/save/report/block, desktop right rail = trending + suggested users); Search/Add (debounced `search_release_groups`/`search_artists` + recordings, quick-rate buttons, discovery sections From Your Taste/For You/Popular/Trending when empty); Album `[id]` (sticky cover column, credits via `get_release_group_credits`, mode-aware rating section, canonical-edition tracklist w/ per-track rating, community posts, public mixes); Song `[id]`; Artist `[id]` (uuid or name fallback, Albums/Songs/Community/Stats tabs); Charts (Albums/Songs modes behind `get_rankings_unlock_status` gauges, Silla RankingBlock w/ genre+country chips, Trending Global/For You, Most Rated, Hidden Gems/Controversial, Pulse) + `/charts/[slug]` drilldowns w/ podium; Taste (25-rating lock → full-bleed snap-scroll insight reel: Top Album/Activity/Style/Genre DNA via `get_user_genre_standings`); Profile (own + `/profile/[username]`: header stats, Rated list/posts modes w/ filters+sort+delete, Lists = mixes w/ create, Stats tab, follow lists modal, follow/block); Mix detail; Notifications (marks seen via `notifications_last_seen_at`); Settings (appearance/language/rating mode/precision/notification toggles/privacy visibility/legal/sign-out/delete via `/api/account/delete`).
+- **i18n** — new `sj.*` namespace, full en + ko (~230 keys each), reusing the iOS glossary conventions (정규/EP/싱글, 인스팅트, etc.).
+- **Deleted** — 12 legacy route trees (activity, explore, friends, leaderboard, my-rankings, rankings, listen-later, collection, genre, reset-password, old album/[mbid] + song/[trackId]) and 45 orphaned components; kept terms/privacy/help/admin pages and **all** API routes untouched (iOS calls `/api/search` and `/api/account/delete`).
+
+**Deliberate desktop translations (not transplants):** bottom tab bar → sidebar; iOS sheets → centered modals reserved for transient actions; long-press context menus → hover-revealed buttons + explicit overflow menus; Home gains a right rail; Album page becomes a split layout; Taste's paging reel becomes scroll-snap sections; global search lives in the top bar instead of a tab.
+
+**Verified:** `tsc --noEmit` clean, `next build` clean (54 routes), `next lint` clean (2 pre-existing warnings in `opengraph-image.tsx`), vitest 31/31.
+
+**Known follow-ups (deliberately not guessed at):** replace `lib/db/types.ts` with `supabase gen types` output once a linked environment exists; web SEO/SSR for album/artist pages (rebuilt pages are client components mirroring iOS query paths — correctness first); avatar upload UI (profiles.avatar_url renders but no uploader — matches needing storage-bucket verification); Spotify top-artists discovery rows on web (`spotify_data_cache` exists, not yet wired); `packages/shared` is still the stale pre-renovation types (nothing imports it — superseded by `lib/db/types.ts`, left for a deliberate deletion); web push notifications UI beyond the permission prompt.
+
+Also ran the due pipeline health check (separate commit): pipeline **not running** (heartbeats ~39h stale), queue fully drained (0 pending / 12,797 done), catalog at 295k release groups; moved cadence to weekly per the schedule.
+
+---
 
 **2026-07-06 (Mac, session 4) — Mix social features (like/share/edit), username format hardening, plus two live bug fixes and a build-memory scare:**
 
@@ -84,6 +111,8 @@ Confirmed already fully built from the earlier session's plan (re-verified again
 Not yet live-tested (code complete, unverified in practice): Universal Links tap-through on a device with the app already installed, clipboard handoff on a genuinely fresh install, the 5-verified-invite icon unlock (needs real invite volume), the new Connected Accounts screen (built this session, not yet rebuilt/clicked through).
 
 Five new migrations this session: `20260706000008` (referral trigger search_path), `20260706000009` (disconnect_phone), `20260706000010` (avatars bucket + RLS), `20260706000011` (avatars RLS uuid-cast fix). All applied live by the user via the SQL editor.
+
+---
 
 **2026-07-06 (Windows) — merged Mac's unlock-gate push + executed its flagged coverage action item:**
 

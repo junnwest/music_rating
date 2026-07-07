@@ -56,6 +56,21 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 > 6. Re-verify mix-like (heart on the hero) actually persists.
 > 7. Confirm the Edit button (hero, "Edit Mix"/수정) opens `EditMixView` and rename/description/public-toggle/delete all work.
 >
+> **⚑ WEB RECONSTRUCTION SHIPPED (2026-07-06, Windows):** `apps/web` was rebuilt from scratch around the
+> current schema (`release_groups`/`recordings`) and the current iOS product — new IA (Home feed · Charts ·
+> Search/Add · Taste · Profile), OAuth-only login, iOS-style onboarding, Manual + Instinct rating for albums
+> AND songs, mixes, charts w/ unlock gates + Silla ranking, Taste reel, blue `#2979B7` theme + near-black dark
+> mode, full en/ko. Old leaderboard/tierlist/essentials-era pages and components deleted; all API routes kept.
+> Build/lint/tests clean. **⏳ Not yet deployed to Vercel** — deploy when ready (the old blocker was the
+> `20260630000000` search migration; it should already be applied — verify). Follow-ups in SESSIONS.md
+> (2026-07-06 web entry): `supabase gen types` replacement for `lib/db/types.ts`, SSR/SEO pass, avatar upload,
+> Spotify discovery rows on web, delete stale `packages/shared`. **Merge note:** this landed in parallel with
+> the Mac's session-4 push (quests/referrals, Connected Accounts, mix social, username hardening, visibility
+> overhaul) — web parity for those new iOS features (quest checklist, referral UI beyond `/i/[code]`, mix
+> social posts, visibility RPC enforcement) is now the top open web item; username format IS already unified
+> (web onboarding uses the shared `lib/username.ts`). Web has no Mixes UI yet, so this session's mix-share
+> Profile-feed work (session 5, Mac) has no web-parity item to track — it doesn't exist there to be behind on.
+>
 > **What was built 2026-07-06 (Mac, session 4 — mix social features):**
 >
 > Mix social features shipped (iOS only, web deferred by design — user explicitly scoped this out since web has zero Mixes UI today). Mixes are now likeable, shareable as feed posts (caption + stacked-cover art), and `MixDetailView` has a real hero (bio/description, like, share, owner-only edit). Migration `20260706000015_mix_social.sql` — **applied**: adds `mixes.description`, `mix_likes`, `mix_shares`, `mix_share_likes`, `mix_share_comments`, 3 new notification types + triggers, `get_mix_covers` RPC, rebuilds `get_profile_mixes`. Mix-share posts merge into the Home feed alongside rating posts via a new `FeedPost` enum (Explore: ranked together with the existing algorithm; Following: recency-sorted). New files: `EditMixView.swift`, `MixShareComposerView.swift`, `MixShareCard.swift` (+ its own likers/comment sheets), `Components/StackedCoversView.swift`. **Report/abuse flow deliberately deferred** for mix-share posts (only Block offered in v1, not Report — `ReportSheet` is `private` to `HomeView.swift` and hardcodes `ratingId`; widening it + a `reports.mix_share_id` column is a small fast-follow, not done).

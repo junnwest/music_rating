@@ -2,32 +2,45 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * sillajuku web palette — mirrors apps/ios Assets.xcassets exactly:
+ *   page    = sjCream   (#F8F8F5 light / #050505 dark)
+ *   surface = sjSurface (#FFFFFF / #111111)
+ *   ink     = sjInk     (#1A1A18 / #F0F0EE)
+ *   muted   = sjMuted   (#8C8C8A / #999997)
+ *   divider = sjBorder  (#E8E8E6 / #1E1E1E)
+ *   accent  = sjBlue    (#2979B7) — the current theme color (amber was retired;
+ *             iOS Theme.swift aliases sjAmber → sjBlue)
+ */
+
 :root {
   color-scheme: light;
-  --color-ink:         17 17 17;
-  --color-mid:         68 68 68;
-  --color-muted:       136 136 136;
-  --color-surface:     247 247 245;
-  --color-divider:     235 235 235;
-  --color-placeholder: 192 192 190;
-  --color-subtle:      221 221 216;
-  --color-mint-bg:     254 243 220;
-  --color-mint-dark:   122 79 10;
-  --color-page:        255 255 255;
+  --color-page:        248 248 245;
+  --color-surface:     255 255 255;
+  --color-ink:         26 26 24;
+  --color-mid:         90 90 88;
+  --color-muted:       140 140 138;
+  --color-divider:     232 232 230;
+  --color-placeholder: 196 196 194;
+  --color-subtle:      224 224 220;
+  --color-accent:      41 121 183;
+  --color-accent-soft: 233 241 248;
+  --color-accent-deep: 27 84 129;
 }
 
 .dark {
   color-scheme: dark;
+  --color-page:        5 5 5;
+  --color-surface:     17 17 17;
   --color-ink:         240 240 238;
-  --color-mid:         168 168 166;
-  --color-muted:       104 104 102;
-  --color-surface:     36 36 34;
-  --color-divider:     46 46 44;
-  --color-placeholder: 72 72 70;
-  --color-subtle:      60 60 58;
-  --color-mint-bg:     41 24 0;
-  --color-mint-dark:   245 192 96;
-  --color-page:        25 25 23;
+  --color-mid:         178 178 176;
+  --color-muted:       153 153 151;
+  --color-divider:     30 30 30;
+  --color-placeholder: 82 82 80;
+  --color-subtle:      44 44 42;
+  --color-accent:      66 141 197;
+  --color-accent-soft: 14 27 38;
+  --color-accent-deep: 132 181 219;
 }
 
 @layer base {
@@ -58,18 +71,4 @@ body {
 
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
-}
-
-.pin-shine::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.28) 0%,
-    rgba(255, 255, 255, 0.10) 35%,
-    transparent 60%
-  );
-  pointer-events: none;
-  z-index: 2;
 }
