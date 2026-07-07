@@ -115,11 +115,15 @@ async function artistTopTags(artist: string, attempt = 0): Promise<{ name: strin
     matchedArtists++; matchedRGs += e.ids.length;
     process.stdout.write(`  [${i}/${residual.size}] ${e.name} → [${genres.join(", ")}] ×${e.ids.length}\n`);
     if (!DRY) {
-      for (let j = 0; j < e.ids.length; j += 200) {
-        const chunk = e.ids.slice(j, j + 200);
-        const { error } = await s.from("release_groups").update({ genres }).in("id", chunk).is("genres", null);
-        if (error) { console.log("    update error:", error.message); continue; }
-        written += chunk.length;
+      for (let j = 0; j < e.ids.length; j += 100) {
+        const chunk = e.ids.slice(j, j + 100);
+        let ok = false;
+        for (let attempt = 0; attempt < 4 && !ok; attempt++) {
+          if (attempt > 0) await sleep(400 * attempt); // back off, then retry a timed-out chunk
+          const { error } = await s.from("release_groups").update({ genres }).in("id", chunk).is("genres", null);
+          if (!error) { ok = true; written += chunk.length; }
+          else if (!/timeout|57014|canceling statement/i.test(error.message)) { console.log("    update error:", error.message); break; }
+        }
       }
     }
   }
