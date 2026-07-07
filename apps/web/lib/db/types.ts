@@ -82,7 +82,8 @@ export interface ProfileRow {
   notify_capsule: boolean | null;
   profile_visibility: string | null;
   catalog_visibility: string | null;
-  listen_later_visibility: string | null;
+  library_visibility: string | null; // renamed from listen_later_visibility (20260706000012)
+  stats_visibility: string | null; // 20260706000012
   is_bot: boolean | null; // 20260705000004
 }
 

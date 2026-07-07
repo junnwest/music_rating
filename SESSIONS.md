@@ -6,6 +6,18 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-07-07 (Windows, session 2) — web "stuck on onboarding / blank tabs" root-caused and fixed (schema drift from the Mac's visibility overhaul):**
+
+Web bounced every signed-in user to `/onboarding` and all tab pages were blank. Root cause: `SessionContext`'s `PROFILE_COLS` still selected `profiles.listen_later_visibility`, but the Mac session-4 migration `20260706000012_profile_visibility_overhaul.sql` (applied live) renamed it to `library_visibility` — the select failed with 42703, `loadProfile` **silently ignored the error**, so `profile` stayed `null` and the "no username → /onboarding" redirect fired for everyone. Classic parallel-session merge casualty: web was rebuilt (Windows 07-06) against the pre-overhaul schema while the Mac shipped the rename the same day. Fixes, all in `apps/web`:
+
+- `SessionContext.tsx` — `PROFILE_COLS` now selects `library_visibility, stats_visibility`; `loadProfile` logs errors and sets a `profileError` flag; the onboarding redirect is skipped when the fetch *failed* (fetch-failed ≠ never-onboarded — this is what made the bug a lockout instead of a console error).
+- `lib/db/types.ts` — `ProfileRow.listen_later_visibility` → `library_visibility`, added `stats_visibility`.
+- `settings/page.tsx` — privacy picker writes `library_visibility`; dropped the `'Followers only'` option (000012's new check constraint only allows Public/Private — saving it would 23514).
+
+Verified with a live-DB probe (exact `PROFILE_COLS` select, anon + service): failed 42703 before, passes both roles after. `tsc --noEmit` clean. Full visibility-overhaul web parity (general toggle + Advanced inherit-when-NULL overrides + RPC enforcement) remains open — this was the minimal unbreak. Env vars were checked first and were NOT the issue (`.env.local` already complete on this device).
+
+---
+
 **2026-07-07 (Windows) — both timeout-fix migrations APPLIED live (new Management-API path); found an out-of-repo `primary_genre` backfill IO-starving the DB:**
 
 Continuation of the 07-06 session-2 debugging. User supplied a Supabase personal access token (`SUPABASE_ACCESS_TOKEN` in `.env.local`, placeholder added to `.env.example` — **copy to the Mac's `.env.local`**), which unblocked applying SQL from this machine for the first time: new **`scripts/db-exec.ts`** posts a migration file (or `--sql "…"`) to the Management API `database/query` endpoint. No more SQL-editor-only bottleneck.

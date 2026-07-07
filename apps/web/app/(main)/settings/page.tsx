@@ -238,8 +238,8 @@ export default function SettingsPage() {
           />
           <VisibilityRow
             label={t('sj.settings.listenLaterVisibility')}
-            value={profile.listen_later_visibility ?? 'Public'}
-            onChange={(v) => patch({ listen_later_visibility: v })}
+            value={profile.library_visibility ?? 'Public'}
+            onChange={(v) => patch({ library_visibility: v })}
           />
         </div>
       </Section>
@@ -434,9 +434,10 @@ function VisibilityRow({
   onChange: (v: string) => void;
 }) {
   const { t } = useLanguage();
+  // 20260706000012 folded 'Followers only' into 'Private' (Private = followers
+  // only now); the live check constraint rejects 'Followers only' writes.
   const options: [string, string][] = [
     ['Public', t('sj.settings.visPublic')],
-    ['Followers only', t('sj.settings.visFollowers')],
     ['Private', t('sj.settings.visPrivate')],
   ];
   return (

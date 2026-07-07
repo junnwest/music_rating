@@ -34,7 +34,7 @@ const PROFILE_COLS =
   'id, username, display_name, bio, avatar_url, rating_mode, manual_rating_step, ' +
   'notifications_last_seen_at, notify_likes, notify_replies, notify_followers, ' +
   'notify_rankings, notify_capsule, profile_visibility, catalog_visibility, ' +
-  'listen_later_visibility, is_bot';
+  'library_visibility, stats_visibility, is_bot';
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [userId, setUserId] = useState<string | null | undefined>(undefined);
@@ -43,13 +43,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
+  const [profileError, setProfileError] = useState(false);
+
   const loadProfile = useCallback(async (uid: string) => {
     if (!supabase) return null;
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select(PROFILE_COLS)
       .eq('id', uid)
       .maybeSingle();
+    // A failed fetch (bad column, RLS, timeout) must not be conflated with
+    // "no profile row" — that would bounce an onboarded user to /onboarding.
+    setProfileError(!!error);
+    if (error) console.error('[SessionContext] profile fetch failed:', error.message);
     return (data as ProfileRow | null) ?? null;
   }, []);
 
@@ -86,11 +92,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   // Signed-in but never finished onboarding (no profile row / no username) →
   // route to /onboarding, mirroring iOS AppState.onboarding.
   useEffect(() => {
-    if (!ready || !userId) return;
+    if (!ready || !userId || profileError) return;
     if (!profile?.username && pathname !== '/onboarding') {
       router.replace('/onboarding');
     }
-  }, [ready, userId, profile, pathname, router]);
+  }, [ready, userId, profile, profileError, pathname, router]);
 
   const refreshProfile = useCallback(async () => {
     if (userId) setProfile(await loadProfile(userId));

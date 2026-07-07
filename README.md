@@ -61,14 +61,21 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 > Search/Add · Taste · Profile), OAuth-only login, iOS-style onboarding, Manual + Instinct rating for albums
 > AND songs, mixes, charts w/ unlock gates + Silla ranking, Taste reel, blue `#2979B7` theme + near-black dark
 > mode, full en/ko. Old leaderboard/tierlist/essentials-era pages and components deleted; all API routes kept.
-> Build/lint/tests clean. **⏳ Not yet deployed to Vercel** — deploy when ready (the old blocker was the
-> `20260630000000` search migration; it should already be applied — verify). **✅ Post-rebuild QA (07-06/07)
+> Build/lint/tests clean. **✅ Deployed to Vercel** (confirmed live on www.sillajuku.com 07-07 — it
+> auto-deployed from main; the README previously said "not yet deployed", which was stale). **✅ Post-rebuild QA (07-06/07)
 > found + fixed 2 RPC timeouts (57014) that blanked Charts-ranking + Search:** `20260706000016` (000002 had
 > clobbered the 07-05 precomputed silla fix) and `20260706000017` (search seq-scanned 295k rows; every OR arm
 > now index-backed, 3 new GIN trgm indexes) — **both APPLIED live 07-07** via the new
 > `scripts/db-exec.ts` + `SUPABASE_ACCESS_TOKEN` (Management API; ends the manual-SQL-editor-only era —
 > **copy that env var to the other device's `.env.local`**). Verify with
 > `npx tsx --env-file=.env.local scripts/debug-web-queries.ts` (anon + `--service`) from `apps/web/`.
+> **✅ FIXED 07-07 (session 2): web was stuck on onboarding + blank tabs** — `SessionContext`'s profile
+> select still used `listen_later_visibility`, which the Mac's applied migration `20260706000012` renamed
+> to `library_visibility`; the silently-swallowed 42703 made `profile` null → everyone redirected to
+> `/onboarding`. Fixed: `SessionContext.tsx` (new cols + fetch-error no longer triggers the redirect),
+> `lib/db/types.ts`, `settings/page.tsx` (writes `library_visibility`; `'Followers only'` option removed —
+> live constraint is Public/Private only). Full visibility-overhaul parity (inherit-when-NULL overrides,
+> RPC enforcement) still open.
 > **⚠ OPEN DB-LOAD INCIDENT (07-07):** an out-of-repo PostgREST client (Mac script?) is bulk-updating
 > `release_groups.primary_genre` (a column no migration defines) at ~1 row / 3.8 s × 4 workers, 279k rows
 > to go — it IO-starves the Micro instance, so feed/charts/embeds still intermittently time out under anon
