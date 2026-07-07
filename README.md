@@ -43,7 +43,13 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 > AND songs, mixes, charts w/ unlock gates + Silla ranking, Taste reel, blue `#2979B7` theme + near-black dark
 > mode, full en/ko. Old leaderboard/tierlist/essentials-era pages and components deleted; all API routes kept.
 > Build/lint/tests clean. **⏳ Not yet deployed to Vercel** — deploy when ready (the old blocker was the
-> `20260630000000` search migration; it should already be applied — verify). Follow-ups in SESSIONS.md
+> `20260630000000` search migration; it should already be applied — verify). **⚠ Post-rebuild QA (07-06,
+> session 2) found 2 RPC timeouts (57014) blanking Charts-ranking + Search — root causes found, fixes
+> written, ⏳ APPLY IN SQL EDITOR:** `20260706000016_silla_leaderboard_precomputed_type.sql` (000002
+> clobbered the 07-05 precomputed silla fix) then `20260706000017_search_rg_trgm_indexed.sql` (search
+> seq-scanned 295k rows — makes every OR arm index-backed; builds 3 GIN indexes, run when DB is quiet).
+> Then verify: `npx tsx --env-file=.env.local scripts/debug-web-queries.ts` (anon + `--service`) from
+> `apps/web/` — details in the SESSIONS.md 07-06 session-2 entry. Follow-ups in SESSIONS.md
 > (2026-07-06 web entry): `supabase gen types` replacement for `lib/db/types.ts`, SSR/SEO pass, avatar upload,
 > Spotify discovery rows on web, delete stale `packages/shared`. **Merge note:** this landed in parallel with
 > the Mac's session-4 push (quests/referrals, Connected Accounts, mix social, username hardening, visibility

@@ -6,6 +6,19 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-07-06 (Windows, session 2) — web RPC timeout debugging: 2 root causes found, 2 fix migrations written (⏳ both need applying):**
+
+Post-reconstruction QA on the rebuilt web app found blank Charts-ranking and Search results. New probe script `apps/web/scripts/debug-web-queries.ts` (runs the exact browser-side queries under anon and `--service`) isolated two hard 57014 timeouts:
+
+1. **`get_silla_leaderboard`** — a regression, not a new bug: `20260706000002_charts_release_type.sql` rebuilt every chart RPC "from its live definition" to add `release_group_type`, but for silla it copied `20260703000004`'s live-computation body — re-introducing the exact full-catalog shape the 07-05 timeout saga took 4 rounds to eliminate. Easy to miss because the durable fix (`20260705000002_silla_leaderboard_precomputed.sql`) lives only in the **root** `supabase/migrations/`, which `apps/web/supabase/migrations/` doesn't mirror. Fix: **`20260706000016_silla_leaderboard_precomputed_type.sql`** — re-applies the precomputed body verbatim (global path reads indexed `release_groups.prestige_score`, no join; country path keeps `enable_nestloop=off`) + adds `release_group_type` to the return, preserving 000002's intent.
+2. **`search_release_groups`** — not a regression; a scale cliff. The WHERE is an OR of 5 branches and two were never index-backed (`word_similarity(...) > 0.5` as a bare function call is never an index qual; the `native_title` branch's `coalesce` wrapper matches no index) — one non-indexable arm forces the whole OR to seq-scan all ~295k release_groups computing `normalize_text()`×3 + `word_similarity()`×2 per row (~7.4s; anon's 3s timeout kills it, so the 20260630000000 trigram indexes were likely *never* used by this RPC — it was just tolerable at the 73k catalog it was written against). Fix: **`20260706000017_search_rg_trgm_indexed.sql`** — every OR arm becomes index-backed (`word_similarity` → the GIN-supported `<%` operator + function-level `SET pg_trgm.word_similarity_threshold = 0.5`; 3 new GIN trgm indexes: `lower(title)`, `lower(artist_display)`, `normalize_text(native_title)`). Same signature/return — no client changes. **Known caveat:** normalized queries < 3 chars ("iu") extract no trigram and still seq-scan; needs a separate short-query path someday.
+
+Also observed, not yet explained: *intermittent* 57014s under service_role on trivial queries (`ratings` + `release_groups` embed, the feed select) that pass instantly under anon seconds later — smells like instance-level pressure (Micro Disk-IO burst / a concurrent heavy query), not a plan problem. Re-check after the two fixes land; if still flaky, look at the Supabase dashboard IO budget. `search_artists` passes but sits at 0.7–1.2s of a 3s anon budget with the same unindexable-OR disease (alias EXISTS + `word_similarity` arm) — flagged as at-risk, deliberately not touched.
+
+**⏳ Next step: apply `20260706000016` + `20260706000017` in the Supabase SQL editor** (000017 builds 3 GIN indexes over 295k rows — run when quiet, ~30–90s each on Micro), then re-run `npx tsx --env-file=.env.local scripts/debug-web-queries.ts` (both roles) to verify.
+
+---
+
 **2026-07-06 (Windows) — WEB RECONSTRUCTION: rebuilt `apps/web` around the current schema + iOS product:**
 
 Full rebuild of the web app per the reconstruction brief — the web UI was still the pre-renovation product (leaderboard seed-rankings, tierlists, essentials remnants, email/password auth, amber accent, `releases`-keyed queries against columns the 2026-06-24 renovation dropped). Discarded that UI wholesale and rebuilt it as the desktop sibling of `apps/ios`, reading every iOS screen + the live migrations first rather than trusting the (partly stale) written specs.
