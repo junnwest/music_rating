@@ -109,6 +109,10 @@ struct MixShareComposerView: View {
                 .insert(Payload(userId: userId, mixId: mix.id, caption: trimmed.isEmpty ? nil : trimmed))
                 .execute()
             dismiss()
+            // Tells MainTabView to switch to Profile and ProfileView to refresh + show
+            // the Posts tab -- otherwise there's no way to confirm the share worked
+            // (it doesn't appear anywhere in the sheet's own navigation stack).
+            NotificationCenter.default.post(name: .mixShared, object: nil)
         } catch {
             errorMessage = error.localizedDescription
         }

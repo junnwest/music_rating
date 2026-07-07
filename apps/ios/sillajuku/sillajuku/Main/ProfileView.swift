@@ -224,6 +224,8 @@ class ProfileViewModel {
     var likeCounts:    [UUID: Int] = [:]
     var commentCounts: [UUID: Int] = [:]
     var likedRatingIds: Set<UUID> = []
+    var mixShares: [MixSharePost] = []
+    var likedMixShareIds: Set<UUID> = []
 
     var followingCount = 0
     var followerCount  = 0
@@ -425,7 +427,76 @@ class ProfileViewModel {
             followerCount = r.count ?? 0
         }
 
+        // Own mix shares -- merged into the posts feed below so a just-shared
+        // mix shows up alongside rating posts instead of only in the Home feed.
+        let shareRows: [HomeViewModel.MixShareRow] = (try? await supabase
+            .from("mix_shares").select(HomeViewModel.mixShareSelect)
+            .eq("user_id", value: user.id)
+            .order("created_at", ascending: false)
+            .limit(30)
+            .execute()
+            .value) ?? []
+        mixShares = await HomeViewModel.hydrateCovers(shareRows)
+        await loadMixShareSocialData()
+
         isLoading = false
+    }
+
+    private func loadMixShareSocialData() async {
+        guard !mixShares.isEmpty, let userId = supabase.auth.currentUser?.id else { return }
+        let shareIds = mixShares.map(\.id.uuidString)
+        struct IdRow: Codable {
+            let mixShareId: UUID
+            enum CodingKeys: String, CodingKey { case mixShareId = "mix_share_id" }
+        }
+        if let rows: [IdRow] = try? await supabase
+            .from("mix_share_likes").select("mix_share_id")
+            .in("mix_share_id", values: shareIds).execute().value {
+            var counts: [UUID: Int] = [:]
+            for r in rows { counts[r.mixShareId, default: 0] += 1 }
+            for (k, v) in counts { likeCounts[k] = v }
+        }
+        if let rows: [IdRow] = try? await supabase
+            .from("mix_share_comments").select("mix_share_id")
+            .in("mix_share_id", values: shareIds).execute().value {
+            var counts: [UUID: Int] = [:]
+            for r in rows { counts[r.mixShareId, default: 0] += 1 }
+            for (k, v) in counts { commentCounts[k] = v }
+        }
+        if let rows: [IdRow] = try? await supabase
+            .from("mix_share_likes").select("mix_share_id")
+            .eq("user_id", value: userId)
+            .in("mix_share_id", values: shareIds).execute().value {
+            likedMixShareIds = Set(rows.map(\.mixShareId))
+        }
+    }
+
+    func toggleMixShareLike(for post: MixSharePost) async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        let wasLiked = likedMixShareIds.contains(post.id)
+        if wasLiked {
+            likedMixShareIds.remove(post.id)
+            likeCounts[post.id] = max(0, (likeCounts[post.id] ?? 1) - 1)
+        } else {
+            likedMixShareIds.insert(post.id)
+            likeCounts[post.id] = (likeCounts[post.id] ?? 0) + 1
+        }
+        do {
+            if wasLiked {
+                try await supabase.from("mix_share_likes").delete()
+                    .eq("user_id", value: userId).eq("mix_share_id", value: post.id).execute()
+            } else {
+                struct Payload: Encodable {
+                    let userId: UUID; let mixShareId: UUID
+                    enum CodingKeys: String, CodingKey { case userId = "user_id"; case mixShareId = "mix_share_id" }
+                }
+                try await supabase.from("mix_share_likes")
+                    .insert(Payload(userId: userId, mixShareId: post.id)).execute()
+            }
+        } catch {
+            if wasLiked { likedMixShareIds.insert(post.id); likeCounts[post.id] = (likeCounts[post.id] ?? 0) + 1 }
+            else { likedMixShareIds.remove(post.id); likeCounts[post.id] = max(0, (likeCounts[post.id] ?? 1) - 1) }
+        }
     }
 
     func reload() async {
@@ -508,6 +579,27 @@ enum ProfileRatedItem: Identifiable {
     }
 }
 
+// Posts display mode merges album-rating posts with mix-share posts into one
+// chronological feed (mirrors HomeView's FeedPost) so a just-shared mix shows
+// up here too instead of only in the Home feed.
+enum ProfilePost: Identifiable {
+    case rating(UserRating)
+    case mixShare(MixSharePost)
+
+    var id: String {
+        switch self {
+        case .rating(let r):   return "rating-\(r.id.uuidString)"
+        case .mixShare(let s): return "mixshare-\(s.id.uuidString)"
+        }
+    }
+    var createdAt: Date {
+        switch self {
+        case .rating(let r):   return r.createdAt
+        case .mixShare(let s): return s.createdAt
+        }
+    }
+}
+
 struct ProfileView: View {
     var viewModel: ProfileViewModel
     // Hoisted in MainTabView, not owned here -- the same instance backs the
@@ -531,9 +623,13 @@ struct ProfileView: View {
     @State private var ratingTypeFilter:   RatingTypeFilter = .all
     @State private var ratingDisplayMode:  RatingDisplayMode = .list
     @State private var pendingDeleteItem:  ProfileRatedItem? = nil
+    // Explicit path (rather than a plain NavigationStack {}) so a mix share
+    // posted from deep in this stack (e.g. Lists tab -> MixDetailView) can be
+    // popped back to the profile root once the share succeeds.
+    @State private var navPath = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navPath) {
             Group {
                 if viewModel.isLoading {
                     ProgressView()
@@ -577,6 +673,13 @@ struct ProfileView: View {
             Task { await viewModel.reload() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .sjProfileUpdated)) { _ in
+            Task { await viewModel.reload() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .mixShared)) { _ in
+            navPath = NavigationPath()
+            activeTab = .rated
+            ratingDisplayMode = .posts
+            ratingSortOrder = .recent
             Task { await viewModel.reload() }
         }
     }
@@ -792,6 +895,20 @@ struct ProfileView: View {
         }
     }
 
+    // Album ratings, in whatever order/filter the user picked, plus own mix
+    // shares merged in by recency -- only under the default "Recent" sort,
+    // since "top/bottom rated" and "A-Z" don't have a sensible place for a
+    // score-less mix share to slot into.
+    private var postsFeed: [ProfilePost] {
+        let ratingPosts: [ProfilePost] = filteredItems.compactMap {
+            if case .album(let r) = $0 { return .rating(r) }
+            return nil
+        }
+        guard ratingSortOrder == .recent else { return ratingPosts }
+        let sharePosts: [ProfilePost] = viewModel.mixShares.map { .mixShare($0) }
+        return (ratingPosts + sharePosts).sorted { $0.createdAt > $1.createdAt }
+    }
+
     private func itemScore(_ item: ProfileRatedItem) -> Double {
         if let s = item.score { return s }
         if let e = item.eloScore { return eloToDisplayScore(e) }
@@ -915,37 +1032,19 @@ struct ProfileView: View {
                         Divider().padding(.leading, 70)
                     }
                 } else {
-                    // Posts display — album ratings only
-                    let albumItems = items.filter { !$0.isSong }
-                    if albumItems.isEmpty {
+                    // Posts display — album ratings + own mix shares, merged by recency
+                    let posts = postsFeed
+                    if posts.isEmpty {
                         VStack(spacing: 10) {
                             Image(systemName: "newspaper")
                                 .font(.system(size: 28)).foregroundStyle(Color.sjMuted)
-                            Text("No album ratings yet")
+                            Text("No posts yet")
                                 .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
                         }
                         .frame(maxWidth: .infinity).padding(.top, 40)
                     } else {
-                        ForEach(albumItems) { item in
-                            if case .album(let rating) = item {
-                                ProfilePostCard(
-                                    rating: rating,
-                                    likesCount: viewModel.likeCounts[rating.id] ?? 0,
-                                    commentsCount: viewModel.commentCounts[rating.id] ?? 0,
-                                    instinctAlbumCount: viewModel.instinctAlbumCount,
-                                    isLiked: viewModel.likedRatingIds.contains(rating.id),
-                                    onLike: { await viewModel.toggleLike(ratingId: rating.id) }
-                                )
-                                .padding(.horizontal, 12)
-                                .padding(.top, 8)
-                                .contextMenu {
-                                    Button(role: .destructive) {
-                                        pendingDeleteItem = item
-                                    } label: {
-                                        Label("Delete Rating", systemImage: "trash")
-                                    }
-                                }
-                            }
+                        ForEach(posts) { post in
+                            postCard(post)
                         }
                         .padding(.bottom, 8)
                     }
@@ -971,6 +1070,54 @@ struct ProfileView: View {
                 Text("This will permanently remove this rating.")
             }
         }
+    }
+
+    // Extracted out of the posts-mode ForEach -- a switch with two multi-arg
+    // view initializers written inline inside a ForEach/LazyVStack closure is
+    // a known Swift type-checker explosion trigger (caused a 133GB Xcode RAM
+    // blowup in HomeView's equivalent feed once). Named function bodies
+    // type-check independently instead.
+    @ViewBuilder
+    private func postCard(_ post: ProfilePost) -> some View {
+        switch post {
+        case .rating(let rating):     ratingCard(rating)
+        case .mixShare(let share):    mixShareCard(share)
+        }
+    }
+
+    private func ratingCard(_ rating: UserRating) -> some View {
+        ProfilePostCard(
+            rating: rating,
+            likesCount: viewModel.likeCounts[rating.id] ?? 0,
+            commentsCount: viewModel.commentCounts[rating.id] ?? 0,
+            instinctAlbumCount: viewModel.instinctAlbumCount,
+            isLiked: viewModel.likedRatingIds.contains(rating.id),
+            onLike: { await viewModel.toggleLike(ratingId: rating.id) }
+        )
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .contextMenu {
+            Button(role: .destructive) {
+                pendingDeleteItem = .album(rating)
+            } label: {
+                Label("Delete Rating", systemImage: "trash")
+            }
+        }
+    }
+
+    private func mixShareCard(_ share: MixSharePost) -> some View {
+        MixShareCard(
+            post: share,
+            currentUserId: supabase.auth.currentUser?.id,
+            isLiked: viewModel.likedMixShareIds.contains(share.id),
+            likesCount: viewModel.likeCounts[share.id] ?? 0,
+            commentsCount: viewModel.commentCounts[share.id] ?? 0,
+            onLike: { await viewModel.toggleMixShareLike(for: share) },
+            onBlock: {},
+            onOwnProfileTap: {}
+        )
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
     }
 
     @ViewBuilder

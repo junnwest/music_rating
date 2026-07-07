@@ -6,6 +6,7 @@ extension Notification.Name {
     static let ratingChanged     = Notification.Name("com.sillajuku.ratingChanged")
     static let followChanged     = Notification.Name("com.sillajuku.followChanged")
     static let mixLibraryChanged = Notification.Name("com.sillajuku.mixLibraryChanged")
+    static let mixShared         = Notification.Name("com.sillajuku.mixShared")
 }
 
 // MARK: - Models
