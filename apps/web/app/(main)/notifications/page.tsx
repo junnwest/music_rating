@@ -1,236 +1,159 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import {
-  UserPlus, Check, Trash2, Bell, Star, Trophy, type LucideIcon
-} from 'lucide-react';
+import Link from 'next/link';
+import { Bell, Heart, MessageSquare, UserPlus } from 'lucide-react';
+import { useSession } from '../../../components/sj/SessionContext';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
+import { displayName, relativeTime } from '../../../lib/sj/display';
 
-type NotifType = 'follow' | 'rate' | 'badge';
-
-interface Notification {
+interface NotificationEntry {
   id: string;
-  type: NotifType;
-  title: string;
-  body: string;
-  timeAgo: string;
-  read: boolean;
-  link?: string;
+  type: string;
+  created_at: string;
+  rating_id: string | null;
+  actor_id: string | null;
+  actor: { username: string | null; display_name: string | null } | null;
+  rating: {
+    release_groups: {
+      id: string;
+      title: string;
+      artist_display: string;
+      native_title: string | null;
+      artists: { name_native: string | null } | null;
+    } | null;
+  } | null;
 }
 
-const iconMap: Record<NotifType, LucideIcon> = {
-  follow: UserPlus,
-  rate: Star,
-  badge: Trophy,
-};
-
-const colorMap: Record<NotifType, string> = {
-  follow: 'bg-violet-50 text-violet-500 border-violet-100',
-  rate: 'bg-amber-50 text-amber-500 border-amber-100',
-  badge: 'bg-yellow-50 text-yellow-600 border-yellow-100',
-};
-
-
+/** Notifications — web sibling of iOS NotificationsView (marks all read on open). */
 export default function NotificationsPage() {
-  const { t } = useLanguage();
-  const [notifs, setNotifs] = useState<Notification[]>([]);
-  const [filter, setFilter] = useState<'all' | 'unread'>('all');
+  const { t, lang } = useLanguage();
+  const { userId, ready, refreshProfile } = useSession();
+  const [notifications, setNotifications] = useState<NotificationEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [signedIn, setSignedIn] = useState(false);
 
   useEffect(() => {
-    if (!supabase) { setLoading(false); return; }
-    supabase.auth.getSession().then(({ data }) => {
-      const uid = data.session?.user?.id;
-      const token = data.session?.access_token;
-      if (!uid) { setLoading(false); return; }
-      setSignedIn(true);
-      fetch(`/api/notifications?userId=${uid}`)
-        .then(r => r.json())
-        .then(json => {
-          setNotifs(json.notifications ?? []);
-          fetch('/api/notifications', {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            body: JSON.stringify({ userId: uid }),
-          });
-        })
-        .catch(() => {})
-        .finally(() => setLoading(false));
-    });
-  }, []);
+    if (!ready || !supabase) return;
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase!
+        .from('notifications')
+        .select(
+          'id, type, created_at, rating_id, actor_id, actor:actor_id(username, display_name), rating:rating_id(release_groups(id, title, artist_display, native_title, artists!release_groups_primary_artist_id_fkey(name_native)))',
+        )
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(60);
+      if (cancelled) return;
+      setNotifications((data as unknown as NotificationEntry[] | null) ?? []);
+      setLoading(false);
+      // Mark all read
+      await supabase!
+        .from('profiles')
+        .update({ notifications_last_seen_at: new Date().toISOString() })
+        .eq('id', userId);
+      refreshProfile();
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, userId]);
 
-  const unreadCount = notifs.filter(n => !n.read).length;
-  const filtered = filter === 'unread' ? notifs.filter(n => !n.read) : notifs;
+  function bodyText(n: NotificationEntry): string {
+    const who = `@${n.actor?.username ?? n.actor?.display_name ?? 'someone'}`;
+    const rg = n.rating?.release_groups;
+    const title = rg ? displayName(rg.title, rg.native_title) : null;
+    switch (n.type) {
+      case 'like':
+        return title
+          ? t('sj.notifications.likedOf').replace('{who}', who).replace('{title}', title)
+          : t('sj.notifications.liked').replace('{who}', who);
+      case 'comment':
+        return title
+          ? t('sj.notifications.commentedOn').replace('{who}', who).replace('{title}', title)
+          : t('sj.notifications.commented').replace('{who}', who);
+      case 'follow':
+        return t('sj.notifications.followed').replace('{who}', who);
+      default:
+        return t('sj.notifications.interacted').replace('{who}', who);
+    }
+  }
 
-  const markRead = (id: string) => {
-    setNotifs(prev => {
-      const next = prev.map(n => n.id === id ? { ...n, read: true } : n);
-      if (next.every(n => n.read)) window.dispatchEvent(new Event('sillajuku:notifs-read'));
-      return next;
-    });
-  };
-
-  const markAllRead = () => {
-    setNotifs(prev => prev.map(n => ({ ...n, read: true })));
-    window.dispatchEvent(new Event('sillajuku:notifs-read'));
-  };
-
-  const clearAll = () => {
-    setNotifs([]);
-    window.dispatchEvent(new Event('sillajuku:notifs-read'));
-  };
-
-  const today = filtered.filter(n => n.timeAgo.includes('min') || n.timeAgo.includes('hr'));
-  const thisWeek = filtered.filter(n => n.timeAgo.includes('Yesterday') || n.timeAgo.includes('days') || n.timeAgo.includes('week'));
-  const earlier = filtered.filter(n => !today.includes(n) && !thisWeek.includes(n));
-
-  const heroSubtitle = loading
-    ? t('notifications.loading')
-    : unreadCount > 0
-    ? `${unreadCount} ${t('notifications.unread').toLowerCase()}`
-    : t('notifications.allCaughtUp');
+  function href(n: NotificationEntry): string | null {
+    if ((n.type === 'like' || n.type === 'comment') && n.rating?.release_groups) {
+      return `/album/${n.rating.release_groups.id}`;
+    }
+    if (n.type === 'follow' && n.actor?.username) {
+      return `/profile/${n.actor.username}`;
+    }
+    return null;
+  }
 
   return (
-    <div className="bg-page min-h-screen">
-      <div className="bg-surface border-b border-divider">
-        <div className="max-w-[1440px] mx-auto px-5 py-12">
-          <p className="text-[11px] font-semibold text-muted uppercase mb-3" style={{ letterSpacing: '0.7px' }}>
-            {t('notifications.activity')}
-          </p>
-          <h1 className="text-[28px] sm:text-[38px] font-extrabold text-ink leading-[1.06]" style={{ letterSpacing: '-1.2px' }}>
-            {t('notifications.title')}
-          </h1>
-          <p className="text-[15px] text-muted mt-3 max-w-[500px] leading-relaxed">
-            {heroSubtitle}
-          </p>
+    <div className="mx-auto max-w-2xl px-4 md:px-6 py-7">
+      <h1 className="text-[20px] font-bold text-ink mb-4">{t('sj.nav.notifications')}</h1>
+      {loading ? (
+        <p className="py-16 text-center text-[13px] text-muted">…</p>
+      ) : notifications.length === 0 ? (
+        <div className="py-24 flex flex-col items-center gap-3">
+          <Bell size={38} className="text-divider" />
+          <p className="text-[14.5px] text-muted">{t('sj.notifications.empty')}</p>
         </div>
-      </div>
-
-      <div className="max-w-[1440px] mx-auto px-5 py-10 pb-16">
-
-        {!loading && !signedIn && (
-          <div className="flex flex-col items-center py-20 text-center">
-            <Bell size={36} className="text-subtle mb-3" />
-            <p className="text-[15px] font-semibold text-ink">{t('notifications.signIn')}</p>
-            <p className="text-[13px] text-muted mt-1 max-w-[260px]">
-              {t('notifications.signInDesc')}
-            </p>
-            <Link href="/login" className="mt-6 bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111] text-[13px] font-bold px-5 py-2.5 rounded-lg hover:opacity-80 transition">
-              {t('notifications.signInBtn')}
-            </Link>
-          </div>
-        )}
-
-        {signedIn && (
-          <>
-            <div className="flex items-center justify-between mb-5 max-w-[760px] mx-auto">
-              <div className="flex gap-1">
-                <button
-                  onClick={() => setFilter('all')}
-                  className={`px-3 py-1.5 rounded-lg text-[12px] font-semibold transition ${filter === 'all' ? 'bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111]' : 'text-muted hover:bg-surface'}`}
+      ) : (
+        <ul className="rounded-2xl bg-surface border border-divider/60 divide-y divide-divider overflow-hidden">
+          {notifications.map((n) => {
+            const to = href(n);
+            const inner = (
+              <span className="flex items-start gap-3 px-4 py-3">
+                <span
+                  className={`flex w-9 h-9 rounded-full items-center justify-center shrink-0 ${
+                    n.type === 'like'
+                      ? 'bg-red-500/[0.12] text-red-500'
+                      : n.type === 'comment'
+                        ? 'bg-accent/[0.12] text-accent'
+                        : n.type === 'follow'
+                          ? 'bg-accent/[0.12] text-accent'
+                          : 'bg-muted/[0.12] text-muted'
+                  }`}
                 >
-                  {t('notifications.all')}
-                </button>
-                <button
-                  onClick={() => setFilter('unread')}
-                  className={`px-3 py-1.5 rounded-lg text-[12px] font-semibold transition ${filter === 'unread' ? 'bg-ink text-white dark:bg-[#F0F0EE] dark:text-[#111111]' : 'text-muted hover:bg-surface'}`}
-                >
-                  {t('notifications.unread')} {unreadCount > 0 && `(${unreadCount})`}
-                </button>
-              </div>
-              <div className="flex gap-2">
-                {unreadCount > 0 && (
-                  <button onClick={markAllRead} className="flex items-center gap-1.5 text-[12px] font-semibold text-muted hover:text-ink transition px-2 py-1">
-                    <Check size={14} /> {t('notifications.markAllRead')}
-                  </button>
+                  {n.type === 'like' ? (
+                    <Heart size={15} className="fill-current" />
+                  ) : n.type === 'comment' ? (
+                    <MessageSquare size={15} />
+                  ) : n.type === 'follow' ? (
+                    <UserPlus size={15} />
+                  ) : (
+                    <Bell size={15} />
+                  )}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[13.5px] text-ink">{bodyText(n)}</span>
+                  <span className="block text-[12px] text-muted mt-0.5">
+                    {relativeTime(n.created_at, lang)}
+                  </span>
+                </span>
+              </span>
+            );
+            return (
+              <li key={n.id}>
+                {to ? (
+                  <Link href={to} className="block hover:bg-page/60 transition">
+                    {inner}
+                  </Link>
+                ) : (
+                  inner
                 )}
-                {notifs.length > 0 && (
-                  <button onClick={clearAll} className="flex items-center gap-1.5 text-[12px] font-semibold text-muted hover:text-red-500 transition px-2 py-1">
-                    <Trash2 size={14} /> {t('notifications.clear')}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {!loading && filtered.length === 0 && (
-              <div className="flex flex-col items-center py-20 text-center">
-                <Bell size={36} className="text-subtle mb-3" />
-                <p className="text-[15px] font-semibold text-ink">
-                  {filter === 'unread' ? t('notifications.noUnread') : t('notifications.noNotifs')}
-                </p>
-                <p className="text-[13px] text-muted mt-1 max-w-[260px]">
-                  {t('notifications.noNotifsDesc')}
-                </p>
-              </div>
-            )}
-
-            <div className="flex flex-col gap-1 max-w-[760px] mx-auto">
-              {today.length > 0 && <NotifGroup title={t('notifications.today')} items={today} onMarkRead={markRead} />}
-              {thisWeek.length > 0 && <NotifGroup title={t('notifications.thisWeek')} items={thisWeek} onMarkRead={markRead} />}
-              {earlier.length > 0 && <NotifGroup title={t('notifications.earlier')} items={earlier} onMarkRead={markRead} />}
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function NotifGroup({ title, items, onMarkRead }: {
-  title: string;
-  items: Notification[];
-  onMarkRead: (id: string) => void;
-}) {
-  return (
-    <div className="mb-4">
-      <h3
-        className="text-[11px] font-bold text-muted uppercase mb-2 px-1"
-        style={{ letterSpacing: '0.7px' }}
-      >
-        {title}
-      </h3>
-      <div className="flex flex-col gap-1.5">
-        {items.map(n => {
-          const Icon = iconMap[n.type] ?? UserPlus;
-          const cardClass = `flex items-start gap-3 rounded-xl border p-3.5 transition ${
-            n.read
-              ? 'border-divider bg-page hover:border-mid'
-              : 'border-mint bg-mint-bg/30 hover:bg-mint-bg/50'
-          }`;
-
-          const inner = (
-            <>
-              <div className={`w-9 h-9 rounded-lg border flex items-center justify-center flex-shrink-0 ${colorMap[n.type] ?? colorMap.follow}`}>
-                <Icon size={15} strokeWidth={2} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className={`text-[13px] leading-snug ${n.read ? 'font-medium text-mid' : 'font-bold text-ink'}`}>
-                  {n.title}
-                </p>
-                <p className="text-[12px] text-muted mt-0.5 leading-relaxed">{n.body}</p>
-                <p className="text-[11px] text-subtle mt-1">{n.timeAgo}</p>
-              </div>
-              {!n.read && (
-                <span className="w-2 h-2 rounded-full bg-mint flex-shrink-0 mt-1.5" />
-              )}
-            </>
-          );
-
-          return n.link ? (
-            <Link key={n.id} href={n.link} onClick={() => onMarkRead(n.id)} className="block">
-              <div className={cardClass}>{inner}</div>
-            </Link>
-          ) : (
-            <div key={n.id} className={cardClass} onClick={() => onMarkRead(n.id)}>{inner}</div>
-          );
-        })}
-      </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }
