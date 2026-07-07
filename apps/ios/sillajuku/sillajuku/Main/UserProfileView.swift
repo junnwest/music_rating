@@ -228,11 +228,11 @@ final class UserProfileViewModel {
 
     private func loadMixes() async {
         struct MixRow: Codable {
-            let id: UUID, userId: UUID, name: String
+            let id: UUID, userId: UUID, name: String, description: String?
             let isPublic: Bool, isDefault: Bool, createdAt: Date
             let itemCount: Int
             enum CodingKeys: String, CodingKey {
-                case id, name
+                case id, name, description
                 case userId = "user_id", isPublic = "is_public"
                 case isDefault = "is_default", createdAt = "created_at"
                 case itemCount = "item_count"
@@ -242,7 +242,7 @@ final class UserProfileViewModel {
             .rpc("get_profile_mixes", params: MixParams(pUserId: userId))
             .execute().value) ?? []
         mixes = rows.map { Mix(id: $0.id, userId: $0.userId, name: $0.name, isPublic: $0.isPublic,
-                                isDefault: $0.isDefault, createdAt: $0.createdAt) }
+                                isDefault: $0.isDefault, createdAt: $0.createdAt, description: $0.description) }
         var counts: [UUID: Int] = [:]
         for r in rows { counts[r.id] = r.itemCount }
         mixItemCounts = counts

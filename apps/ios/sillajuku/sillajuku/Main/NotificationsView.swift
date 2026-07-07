@@ -8,9 +8,13 @@ struct AppNotification: Codable, Identifiable {
     let type: String
     let createdAt: Date
     let ratingId: UUID?
+    let mixId: UUID?
+    let mixShareId: UUID?
     let actorId: UUID?
     let actor: Actor?
     let rating: RatingInfo?
+    let mix: MixInfo?
+    let mixShare: MixShareInfo?
 
     struct Actor: Codable {
         let username: String?
@@ -43,11 +47,33 @@ struct AppNotification: Codable, Identifiable {
         }
     }
 
+    struct MixInfo: Codable {
+        let id: UUID
+        let userId: UUID
+        let name: String
+        let description: String?
+        let isPublic: Bool
+        let isDefault: Bool
+        let createdAt: Date
+        enum CodingKeys: String, CodingKey {
+            case id, name, description
+            case userId = "user_id"; case isPublic = "is_public"
+            case isDefault = "is_default"; case createdAt = "created_at"
+        }
+    }
+
+    struct MixShareInfo: Codable {
+        let mixes: MixInfo?
+    }
+
     enum CodingKeys: String, CodingKey {
-        case id, type, actor, rating
-        case createdAt = "created_at"
-        case ratingId  = "rating_id"
-        case actorId   = "actor_id"
+        case id, type, actor, rating, mix
+        case createdAt  = "created_at"
+        case ratingId   = "rating_id"
+        case mixId      = "mix_id"
+        case mixShareId = "mix_share_id"
+        case actorId    = "actor_id"
+        case mixShare   = "mix_share"
     }
 
     var albumRelease: Release? {
@@ -60,6 +86,18 @@ struct AppNotification: Codable, Identifiable {
     var actorDestination: UserProfileDestination? {
         guard type == "follow", let actorId else { return nil }
         return UserProfileDestination(userId: actorId, handle: actor?.handle ?? String(localized: "someone"))
+    }
+
+    var mixDestination: Mix? {
+        if type == "mix_like", let m = mix {
+            return Mix(id: m.id, userId: m.userId, name: m.name, isPublic: m.isPublic,
+                       isDefault: m.isDefault, createdAt: m.createdAt, description: m.description)
+        }
+        if (type == "mix_share_like" || type == "mix_share_comment"), let m = mixShare?.mixes {
+            return Mix(id: m.id, userId: m.userId, name: m.name, isPublic: m.isPublic,
+                       isDefault: m.isDefault, createdAt: m.createdAt, description: m.description)
+        }
+        return nil
     }
 
     var bodyText: String {
@@ -77,6 +115,15 @@ struct AppNotification: Codable, Identifiable {
             return String(format: String(localized: "%@ commented on your rating"), who)
         case "follow":
             return String(format: String(localized: "%@ started following you"), who)
+        case "mix_like":
+            if let name = mix?.name {
+                return String(format: String(localized: "%@ liked your mix \"%@\""), who, name)
+            }
+            return String(format: String(localized: "%@ liked your mix"), who)
+        case "mix_share_like":
+            return String(format: String(localized: "%@ liked your shared mix"), who)
+        case "mix_share_comment":
+            return String(format: String(localized: "%@ commented on your shared mix"), who)
         default:
             return String(format: String(localized: "%@ interacted with your content"), who)
         }
@@ -84,19 +131,19 @@ struct AppNotification: Codable, Identifiable {
 
     var iconName: String {
         switch type {
-        case "like":    return "heart.fill"
-        case "comment": return "bubble.right.fill"
-        case "follow":  return "person.fill.badge.plus"
-        default:        return "bell.fill"
+        case "like", "mix_like", "mix_share_like": return "heart.fill"
+        case "comment", "mix_share_comment":       return "bubble.right.fill"
+        case "follow":                             return "person.fill.badge.plus"
+        default:                                   return "bell.fill"
         }
     }
 
     var iconColor: Color {
         switch type {
-        case "like":    return .red
-        case "comment": return Color.sjAmber
-        case "follow":  return Color.sjAmber
-        default:        return Color.sjMuted
+        case "like", "mix_like", "mix_share_like": return .red
+        case "comment", "mix_share_comment":       return Color.sjAmber
+        case "follow":                             return Color.sjAmber
+        default:                                   return Color.sjMuted
         }
     }
 }
@@ -133,6 +180,13 @@ struct NotificationsView: View {
                             NavigationLink(value: dest) {
                                 NotificationRow(notif: notif)
                             }
+                        } else if let mix = notif.mixDestination {
+                            // Direct destination, not NavigationLink(value:) -- this
+                            // view is its own distinct navigation stack, matching the
+                            // convention already used for MixDetailView elsewhere.
+                            NavigationLink(destination: MixDetailView(mix: mix)) {
+                                NotificationRow(notif: notif)
+                            }
                         } else {
                             NotificationRow(notif: notif)
                         }
@@ -158,7 +212,7 @@ struct NotificationsView: View {
         isLoading = true
         notifications = (try? await supabase
             .from("notifications")
-            .select("id, type, created_at, rating_id, actor_id, actor:actor_id(username, display_name), rating:rating_id(release_groups(id, title, artist_display, native_title, artists!release_groups_primary_artist_id_fkey(name_native)))")
+            .select("id, type, created_at, rating_id, mix_id, mix_share_id, actor_id, actor:actor_id(username, display_name), rating:rating_id(release_groups(id, title, artist_display, native_title, artists!release_groups_primary_artist_id_fkey(name_native))), mix:mix_id(id, user_id, name, description, is_public, is_default, created_at), mix_share:mix_share_id(mixes(id, user_id, name, description, is_public, is_default, created_at))")
             .eq("user_id", value: userId)
             .order("created_at", ascending: false)
             .limit(60)
