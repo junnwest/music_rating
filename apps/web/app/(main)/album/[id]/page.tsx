@@ -16,6 +16,7 @@ import FlowerGlyph from '../../../../components/sj/FlowerGlyph';
 import ManualRateModal from '../../../../components/sj/ManualRateModal';
 import InstinctModal from '../../../../components/sj/InstinctModal';
 import ScoreBadge from '../../../../components/sj/ScoreBadge';
+import RatingHistogram from '../../../../components/sj/RatingHistogram';
 import { useSession } from '../../../../components/sj/SessionContext';
 import { supabase } from '../../../../lib/supabaseClient';
 import { useLanguage } from '../../../../lib/i18n';
@@ -78,6 +79,7 @@ export default function AlbumPage() {
   const [eloRatedTracks, setEloRatedTracks] = useState<Set<string>>(new Set());
   const [communityAvg, setCommunityAvg] = useState<number | null>(null);
   const [communityCount, setCommunityCount] = useState(0);
+  const [scoreDist, setScoreDist] = useState<number[]>([]);
   const [userScore, setUserScore] = useState<number | null>(null);
   const [userElo, setUserElo] = useState<number | null>(null);
   const [posts, setPosts] = useState<PostRow[]>([]);
@@ -106,6 +108,12 @@ export default function AlbumPage() {
       .map((r) => (r.score != null ? r.score : r.elo_score != null ? eloToScore(r.elo_score) : null))
       .filter((s): s is number => s != null);
     setCommunityAvg(scored.length ? scored.reduce((a, b) => a + b, 0) / scored.length : null);
+    // Distribution: ten 0.5-wide buckets (0.5 … 5.0)
+    const dist = new Array(10).fill(0) as number[];
+    for (const s of scored) {
+      dist[Math.min(Math.max(Math.round(s * 2) - 1, 0), 9)] += 1;
+    }
+    setScoreDist(dist);
     if (userId) {
       const mine = rows.find((r) => r.user_id === userId);
       setUserScore(mine?.score ?? null);
@@ -508,6 +516,19 @@ export default function AlbumPage() {
                 <p className="text-[10px] text-muted">{t('sj.album.ratings')}</p>
               </div>
             </div>
+          )}
+
+          {scoreDist.some((n) => n > 0) && (
+            <RatingHistogram
+              dist={scoreDist}
+              userBucket={
+                userScore != null
+                  ? Math.min(Math.max(Math.round(userScore * 2) - 1, 0), 9)
+                  : userElo != null
+                    ? Math.min(Math.max(Math.round(eloToScore(userElo) * 2) - 1, 0), 9)
+                    : null
+              }
+            />
           )}
         </section>
 

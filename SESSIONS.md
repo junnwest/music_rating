@@ -6,6 +6,23 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-07-08 (Windows, session 2) — UX pass 2: everything else from the review (Library, header menus, error states, histogram, table view, peek cards, ranking filters):**
+
+All remaining items from the 07-08 UX review, shipped in one pass:
+
+- **Library tab on Profile** (`ProfileExtras.tsx` → `SavedLibrary`) — the feed's bookmark button finally has a surface: saved albums as a cover grid with hover-remove, own-profile only until `library_visibility` enforcement lands on web. Mock seeds + a `saved_releases` hydrator added so save→Library works offline too.
+- **Rated table view** (`ProfileExtras.tsx` → `RatedTable`) — third display mode on Profile→Rated (desktop-only toggle): sortable columns (title/artist/type/score/date, aria-sort semantics), Excel-safe **CSV export** (BOM + quoting), rows link to album/song pages. The old sort dropdown hides in table mode since headers do the job.
+- **Header menus** (`HeaderMenus.tsx`): avatar now opens an account menu (identity header, Profile, Settings, Sign out) instead of duplicating the Profile tab; the bell opens a **notifications popover** (recent 8, marks read on open, skeletons, View all → page). Notification row/select/body logic extracted to shared `components/sj/notifications.tsx`; the page reuses it.
+- **Error ≠ empty** — Home feed tracks the pool-query error and shows "couldn't load" + Retry instead of the lying "No ratings yet"; the Charts Ranking block got the same failed-state + retry (which also busts the client memo).
+- **Album rating histogram** (`RatingHistogram.tsx`, dataviz-skill-guided) — ten 0.5-wide buckets under the community stats, single-hue accent bars with rounded data ends and 2px gaps, per-bar hover values, the viewer's own bucket highlighted, `role=img` aria summary. Distribution computed from the ratings the page already fetches — zero new queries.
+- **Hover peek cards** (`AlbumPeek.tsx`) — desktop answer to iOS long-press: hovering any album card/row on Charts (horizontal rails + Trending) or the Home trending rail shows a fixed-position card (cover, title/artist, live community avg + count, session-cached one query per album). Fixed positioning escapes `overflow-x-auto` clipping; any scroll dismisses.
+- **Ranking drilldown filters** — `/charts/ranking` gains release-type (All/Album/EP) and era (2020s→1990s/Older) chips, filtering client-side on the fetched 100 (the silla RPC returns `release_group_type` + `release_date` since `20260706000018`; `SillaLeaderboardRPC` type extended, mock updated).
+- **Tab a11y refits** — Artist page and Profile tab rows get `role=tablist/tab`, `aria-selected`, focus-visible rings; Artist's active underline switched from ink to accent to match the rest.
+
+New i18n keys for all of it (en + ko). Verified: `tsc` clean, ESLint clean on all touched files, vitest 31/31, all 8 main routes 200 in mock mode.
+
+---
+
 **2026-07-08 (Windows) — UX pass 1: unified search omnibox (Search tab → Add), Silla badge trust fix, empty-state CTAs, accessible TitleTabs:**
 
 Full web UX review done first (findings live in README → Known issues fix list + this entry), then implemented the top slice:

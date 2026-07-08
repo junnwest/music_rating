@@ -993,10 +993,11 @@ npm run expand:genre        # Spotify genre sweep — still works
 > 5. **Web parity for Mac session-4 features:** quests/referrals UI, mix social posts, Connected Accounts.
 > 6. **`search_artists` at-risk:** same unindexable-OR shape the album search RPC had; passes today at
 >    0.7–1.2s of the 3s anon budget. Also: normalized queries under 3 chars ("iu") still seq-scan.
-> 7. **UX review follow-ups (2026-07-08 pass 1 shipped: omnibox typeahead + Add retab + Silla label +
->    empty-state CTAs + TitleTabs):** still open — **Library surface for `saved_releases`** (the feed's
->    bookmark button writes to a table no page reads), avatar → dropdown menu, bell → notifications
->    popover, album-page rating histogram, profile Rated sortable table view, hover peek cards,
->    charts year/release-type filters, TitleTabs on Artist/Profile tab rows.
+> 7. **UX review — ✅ both passes shipped (2026-07-08).** Pass 1: omnibox typeahead + Add retab + Silla
+>    label + empty-state CTAs + TitleTabs. Pass 2: Profile Library tab (saved_releases), Rated table view
+>    w/ CSV export, avatar account menu, bell notifications popover, error-vs-empty states w/ Retry
+>    (feed + ranking), album rating histogram, hover peek cards (charts/home rails), ranking type/era
+>    filters, Artist/Profile tab a11y. Still open from the review: web visibility RPC enforcement
+>    (Library is own-profile-only until then) and showing others' libraries once enforced.
 
 - **`notFound()` returns HTTP 200 instead of 404** on `/album/[mbid]` and `/rankings/[slug]`. The `not-found.tsx` body renders correctly (user sees the friendly "Page not found" page); only the HTTP status code is wrong. Reproduced in both dev and prod with Next.js 14.2.35. Truly nonexistent routes (no `page.tsx` at all) return 404 correctly. Other pages with `notFound()` but without cookie reads (`/artist`, `/genre`, `/explore`) also return 404 correctly. Removing `export const revalidate` and adding `export const dynamic = 'force-dynamic'` did not fix it. Affects SEO and analytics, not user-visible UX. Post-launch fix candidates: (a) Next.js 15/16 upgrade with breaking-change migration, (b) refactor album page to defer all cookie-reading code into a child Server Component that mounts only after `notFound()` check.

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Flame, ListMusic, UserPlus } from 'lucide-react';
 import FeedCard from '../../components/sj/FeedCard';
 import TitleTabs from '../../components/sj/TitleTabs';
+import AlbumPeek from '../../components/sj/AlbumPeek';
 import Cover from '../../components/sj/Cover';
 import { useSession } from '../../components/sj/SessionContext';
 import { supabase } from '../../lib/supabaseClient';
@@ -27,6 +28,7 @@ export default function HomePage() {
   const [exploreItems, setExploreItems] = useState<FeedItemRow[]>([]);
   const [followingItems, setFollowingItems] = useState<FeedItemRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
@@ -67,12 +69,14 @@ export default function HomePage() {
       );
     }
 
-    // Explore pool
-    const { data: poolData } = await supabase
+    // Explore pool. A failed query is an error state, NOT an empty catalog —
+    // don't let a timeout masquerade as "no ratings yet".
+    const { data: poolData, error: poolError } = await supabase
       .from('ratings')
       .select(FEED_SELECT)
       .order('created_at', { ascending: false })
       .limit(150);
+    setLoadFailed(!!poolError && !poolData);
     const pool = ((poolData as unknown as FeedItemRow[] | null) ?? []).filter(
       (i) => !blocked.has(i.user_id),
     );
@@ -238,6 +242,17 @@ export default function HomePage() {
 
         {loading ? (
           <FeedSkeleton />
+        ) : loadFailed && items.length === 0 ? (
+          <div className="py-24 flex flex-col items-center gap-4 text-center">
+            <ListMusic size={40} className="text-divider" />
+            <p className="text-[15px] text-muted max-w-[280px]">{t('sj.common.loadError')}</p>
+            <button
+              onClick={() => load()}
+              className="px-4 py-2 rounded-[10px] bg-accent text-white text-[13.5px] font-semibold hover:opacity-90 transition"
+            >
+              {t('sj.common.retry')}
+            </button>
+          </div>
         ) : items.length === 0 ? (
           <div className="py-24 flex flex-col items-center gap-4 text-center">
             <ListMusic size={40} className="text-divider" />
@@ -324,22 +339,29 @@ function TrendingRail() {
       <ol className="flex flex-col gap-2.5">
         {entries.map((e, i) => (
           <li key={e.release_id}>
-            <Link
-              href={`/album/${e.release_id}`}
-              className="flex items-center gap-2.5 group"
+            <AlbumPeek
+              releaseId={e.release_id}
+              title={displayName(e.title, e.native_title)}
+              artist={displayName(e.artist, e.artist_native)}
+              coverUrl={e.cover_url}
             >
-              <span className="w-4 text-[12px] font-bold text-muted text-right">{i + 1}</span>
-              <Cover url={e.cover_url} className="w-10 h-10" rounded="rounded-md" />
-              <span className="min-w-0">
-                <span className="block text-[12.5px] font-semibold text-ink truncate group-hover:underline">
-                  {displayName(e.title, e.native_title)}
+              <Link
+                href={`/album/${e.release_id}`}
+                className="flex items-center gap-2.5 group"
+              >
+                <span className="w-4 text-[12px] font-bold text-muted text-right">{i + 1}</span>
+                <Cover url={e.cover_url} className="w-10 h-10" rounded="rounded-md" />
+                <span className="min-w-0">
+                  <span className="block text-[12.5px] font-semibold text-ink truncate group-hover:underline">
+                    {displayName(e.title, e.native_title)}
+                  </span>
+                  <span className="block text-[11px] text-muted truncate">
+                    {displayName(e.artist, e.artist_native)}
+                    {e.new_count != null && ` · +${e.new_count}`}
+                  </span>
                 </span>
-                <span className="block text-[11px] text-muted truncate">
-                  {displayName(e.artist, e.artist_native)}
-                  {e.new_count != null && ` · +${e.new_count}`}
-                </span>
-              </span>
-            </Link>
+              </Link>
+            </AlbumPeek>
           </li>
         ))}
       </ol>

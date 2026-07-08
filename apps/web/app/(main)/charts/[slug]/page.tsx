@@ -34,6 +34,8 @@ interface Entry {
   avgScore: number | null;
   ratingCount: number | null;
   newCount: number | null;
+  releaseType: string | null;
+  releaseDate: string | null;
 }
 
 type Slug = 'top-rated' | 'most-rated' | 'hidden-gems' | 'controversial' | 'trending' | 'ranking';
@@ -51,6 +53,8 @@ export default function ChartDetailPage() {
   const [loading, setLoading] = useState(true);
   const [genre, setGenre] = useState<string | null>(null);
   const [country, setCountry] = useState<string | null>(null);
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [era, setEra] = useState<string | null>(null);
 
   const isRanking = slug === 'ranking';
   const isTrending = slug === 'trending';
@@ -84,6 +88,8 @@ export default function ChartDetailPage() {
           avgScore: r.silla_score * 5,
           ratingCount: r.rating_count,
           newCount: null,
+          releaseType: r.release_group_type ?? null,
+          releaseDate: r.release_date ?? null,
         }));
       } else if (isTrending) {
         const { data } = await supabase!.rpc('get_charts_trending', { p_limit: 50 });
@@ -95,6 +101,8 @@ export default function ChartDetailPage() {
           avgScore: null,
           ratingCount: null,
           newCount: r.new_count,
+          releaseType: null,
+          releaseDate: null,
         }));
       } else {
         const rpc =
@@ -114,6 +122,8 @@ export default function ChartDetailPage() {
           avgScore: r.avg_score,
           ratingCount: r.rating_count,
           newCount: null,
+          releaseType: null,
+          releaseDate: null,
         }));
       }
       if (!cancelled) {
@@ -126,7 +136,26 @@ export default function ChartDetailPage() {
     };
   }, [slug, genre, country, isRanking, isTrending]);
 
-  const showPodium = entries.length >= 3 && !isTrending;
+  // Client-side refinements on the fetched ranking (the RPC returns
+  // release_group_type + release_date since 20260706000018)
+  const visible = !isRanking
+    ? entries
+    : entries.filter((e) => {
+        if (typeFilter && (e.releaseType ?? '').toLowerCase() !== typeFilter) return false;
+        if (era) {
+          const year = e.releaseDate ? parseInt(e.releaseDate.slice(0, 4), 10) : NaN;
+          if (Number.isNaN(year)) return false;
+          if (era === 'old') {
+            if (year >= 1990) return false;
+          } else {
+            const start = parseInt(era, 10);
+            if (year < start || year > start + 9) return false;
+          }
+        }
+        return true;
+      });
+
+  const showPodium = visible.length >= 3 && !isTrending;
   const listOffset = showPodium ? 3 : 0;
 
   return (
@@ -147,21 +176,42 @@ export default function ChartDetailPage() {
             onChange={setGenre}
           />
           <FilterChips options={COUNTRIES} value={country} onChange={setCountry} />
+          <FilterChips
+            options={[
+              [t('sj.charts.all'), null],
+              [t('sj.type.album'), 'album'],
+              [t('sj.type.ep'), 'ep'],
+            ]}
+            value={typeFilter}
+            onChange={setTypeFilter}
+          />
+          <FilterChips
+            options={[
+              [t('sj.charts.all'), null],
+              ['2020s', '2020'],
+              ['2010s', '2010'],
+              ['2000s', '2000'],
+              ['1990s', '1990'],
+              [t('sj.charts.older'), 'old'],
+            ]}
+            value={era}
+            onChange={setEra}
+          />
         </div>
       )}
 
       {loading ? (
         <div className="py-20 text-center text-muted text-[13px]">…</div>
-      ) : entries.length === 0 ? (
+      ) : visible.length === 0 ? (
         <div className="py-24 flex flex-col items-center gap-3">
           <Trophy size={36} className="text-divider" />
           <p className="text-[14px] text-muted">{t('sj.charts.noData')}</p>
         </div>
       ) : (
         <>
-          {showPodium && <Podium entries={entries.slice(0, 3)} />}
+          {showPodium && <Podium entries={visible.slice(0, 3)} />}
           <ol className="mt-4 rounded-2xl bg-surface border border-divider/60 divide-y divide-divider overflow-hidden">
-            {entries.slice(listOffset).map((e, i) => (
+            {visible.slice(listOffset).map((e, i) => (
               <li key={e.id}>
                 <Link
                   href={`/album/${e.id}`}

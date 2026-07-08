@@ -308,7 +308,10 @@ const follows = [
   { follower_id: uid(5), following_id: uid(2) },
 ];
 
-const saved_releases = [{ user_id: uid(1), release_group_id: uid(206) }];
+const saved_releases = [
+  { user_id: uid(1), release_group_id: uid(206), release_groups: rgEmbed(uid(206)) },
+  { user_id: uid(1), release_group_id: uid(207), release_groups: rgEmbed(uid(207)) },
+];
 
 const mixes = [
   {
@@ -467,6 +470,9 @@ export const hydrators: Record<string, (row: any) => void> = {
   mix_items: (row) => {
     if (row.release_group_id && !row.release_groups) row.release_groups = rgEmbed(row.release_group_id);
   },
+  saved_releases: (row) => {
+    if (row.release_group_id && !row.release_groups) row.release_groups = rgEmbed(row.release_group_id);
+  },
 };
 
 // Upsert conflict keys per table (PostgREST on_conflict).
@@ -559,6 +565,8 @@ export const rpcs: Record<string, (args: any) => unknown> = {
         chartRow(rg, {
           silla_score: rg.prestige_score ?? 0.5,
           rating_count: ratingStats()[rg.id]?.n ?? 0,
+          release_date: rg.first_release_date,
+          release_group_type: rg.release_group_type,
         }),
       ),
   get_charts_pulse: () => [
