@@ -211,6 +211,9 @@ const server = createServer(async (req, res) => {
 
   if (method === 'OPTIONS') {
     cors(res);
+    // Echo whatever headers the browser asks for — more robust than a fixed list.
+    const wanted = req.headers['access-control-request-headers'];
+    if (wanted) res.setHeader('Access-Control-Allow-Headers', wanted);
     res.writeHead(204);
     res.end();
     return;

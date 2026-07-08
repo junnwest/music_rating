@@ -1,5 +1,11 @@
 import { withSentryConfig } from '@sentry/nextjs';
 
+// Mock mode (.env.mock) points NEXT_PUBLIC_SUPABASE_URL at http://localhost:54321;
+// that origin must be in connect-src or the browser blocks every query.
+// Production uses https://…supabase.co, so this stays empty there.
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+const localSupabase = supabaseUrl.startsWith('http://localhost') ? ` ${supabaseUrl}` : '';
+
 const securityHeaders = [
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
@@ -14,7 +20,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: https://i.scdn.co https://*.scdn.co https://*.supabase.co https://coverartarchive.org https://archive.org https://lh3.googleusercontent.com https://*.mzstatic.com https://*.dzcdn.net",
       "font-src 'self' data:",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://us.i.posthog.com https://us-assets.i.posthog.com https://app.posthog.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io",
+      `connect-src 'self' https://*.supabase.co wss://*.supabase.co${localSupabase} https://us.i.posthog.com https://us-assets.i.posthog.com https://app.posthog.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io`,
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
