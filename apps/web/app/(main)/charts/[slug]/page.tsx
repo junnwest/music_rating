@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { Trophy } from 'lucide-react';
 import Cover from '../../../../components/sj/Cover';
 import { supabase } from '../../../../lib/supabaseClient';
@@ -46,12 +46,22 @@ type Slug = 'top-rated' | 'most-rated' | 'hidden-gems' | 'controversial' | 'tren
  * rest are the community chart RPCs. Podium for the top 3, list below.
  */
 export default function ChartDetailPage() {
+  return (
+    <Suspense>
+      <ChartDetailInner />
+    </Suspense>
+  );
+}
+
+function ChartDetailInner() {
   const params = useParams<{ slug: string }>();
   const slug = params.slug as Slug;
   const { t } = useLanguage();
+  const searchParams = useSearchParams();
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [genre, setGenre] = useState<string | null>(null);
+  // Deep-linkable genre (album pages link their genre pills here)
+  const [genre, setGenre] = useState<string | null>(searchParams.get('genre'));
   const [country, setCountry] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [era, setEra] = useState<string | null>(null);
@@ -171,7 +181,11 @@ export default function ChartDetailPage() {
       {isRanking && (
         <div className="mb-4 space-y-2">
           <FilterChips
-            options={[[t('sj.charts.all'), null], ...GENRES.map((g) => [g, g] as [string, string])]}
+            options={[
+              [t('sj.charts.all'), null],
+              ...GENRES.map((g) => [g, g] as [string, string]),
+              ...(genre && !GENRES.includes(genre) ? [[genre, genre] as [string, string]] : []),
+            ]}
             value={genre}
             onChange={setGenre}
           />

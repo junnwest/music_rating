@@ -73,7 +73,7 @@ export default function ProfilePostCard({
             aria-label={isLiked ? t('sj.feed.unlike') : t('sj.feed.like')}
             className={`transition ${isLiked ? 'text-red-500' : 'text-ink hover:text-red-500'}`}
           >
-            <Heart size={19} className={isLiked ? 'fill-current' : ''} strokeWidth={1.9} />
+            <Heart size={19} className={isLiked ? 'fill-current sj-heart-pop' : ''} strokeWidth={1.9} />
           </button>
           <span className={`text-[13.5px] font-medium ${isLiked ? 'text-red-500' : 'text-muted'}`}>
             {likesCount}

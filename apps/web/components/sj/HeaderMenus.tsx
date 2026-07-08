@@ -95,7 +95,7 @@ export function NotificationsBell({ hasUnread }: { hasUnread: boolean }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-11 z-50 w-[340px] max-w-[calc(100vw-2rem)] rounded-xl bg-surface border border-divider shadow-lg overflow-hidden">
+        <div className="absolute right-0 top-11 z-50 w-[340px] max-w-[calc(100vw-2rem)] rounded-xl bg-surface border border-divider shadow-lg overflow-hidden sj-pop-in">
           <p className="px-3.5 pt-3 pb-2 text-[13px] font-bold text-ink">
             {t('sj.nav.notifications')}
           </p>
@@ -161,7 +161,7 @@ export function AvatarMenu() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-11 z-50 w-52 rounded-xl bg-surface border border-divider shadow-lg overflow-hidden py-1">
+        <div className="absolute right-0 top-11 z-50 w-52 rounded-xl bg-surface border border-divider shadow-lg overflow-hidden py-1 sj-pop-in">
           <div className="px-3.5 py-2.5 border-b border-divider">
             <p className="text-[13.5px] font-bold text-ink truncate">
               {profile?.display_name ?? profile?.username ?? ''}

@@ -171,7 +171,7 @@ export default function SearchOmnibox() {
         <div
           id="sj-omnibox-listbox"
           role="listbox"
-          className="absolute left-0 right-0 top-11 z-50 rounded-xl bg-surface border border-divider shadow-lg overflow-hidden"
+          className="absolute left-0 right-0 top-11 z-50 rounded-xl bg-surface border border-divider shadow-lg overflow-hidden sj-pop-in"
         >
           {items.map((item, i) => {
             const active = i === activeIndex;

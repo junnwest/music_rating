@@ -45,9 +45,9 @@ export default function Modal({
       role="dialog"
       aria-modal="true"
     >
-      <div className="absolute inset-0 bg-black/45" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/45 sj-fade-in" onClick={onClose} />
       <div
-        className={`relative w-full ${maxWidth} bg-page rounded-t-2xl sm:rounded-2xl shadow-2xl border border-divider max-h-[88vh] overflow-y-auto scrollbar-hide`}
+        className={`relative w-full ${maxWidth} bg-page rounded-t-2xl sm:rounded-2xl shadow-2xl border border-divider max-h-[88vh] overflow-y-auto scrollbar-hide sj-modal-in`}
       >
         {(title || showClose) && (
           <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-3.5 bg-page border-b border-divider">

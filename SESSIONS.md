@@ -6,6 +6,19 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-07-08 (Windows, session 3) — pre-rebuild feature audit (3 revived, 1 declined) + micro-interaction pass:**
+
+Audited everything the 07-06 reconstruction deleted (45 components + 12 route trees, from git history) for what still fits the current product:
+
+- **Revived — written reviews on the album page:** the old `ReviewsSection`'s job. The Ratings & reviews section only showed avatar + score; `review_text` is now selected and rendered under each post. (It was already visible in the Home feed — the album page was the gap.)
+- **Revived — "Listen" links on the album page:** the old streaming-platform feature's utility, minus the dead `preferred_platform` column (didn't survive the renovation — verified live). Three compact search deep-links (Spotify / Apple Music / YouTube Music) under the hero meta; no DB, no API.
+- **Revived — genre navigation:** album-page genre text is now pill links to `/charts/ranking?genre=<g>`; the ranking drilldown reads the query param (Suspense-wrapped `useSearchParams`) and appends a custom chip when the genre isn't one of the fixed 8.
+- **Declined — Daily Question:** API routes survive but the data is dead (latest `daily_questions` row 2026-06-29, 3 answers ever; nothing seeds questions). Not rebuilding UI on a stale pipeline — needs a question-seeding cron first if ever revived. Also declined: leaderboard/tierlist/essentials-era structures (superseded by Charts/Silla and mixes by design).
+
+**Micro-interactions** (strict scope: transient surfaces only, all no-ops under `prefers-reduced-motion`): `sj-pop-in` (140ms) on the omnibox dropdown, avatar menu, bell popover, and peek card (inner wrapper — the outer element's positioning transform must not be clobbered by keyframes); `sj-modal-in`/`sj-fade-in` (180/150ms) on Modal panel + backdrop; `sj-heart-pop` scale bounce on like in FeedCard + ProfilePostCard. Deliberately NOT animated: page transitions, feed cards, list items — content should not move.
+
+---
+
 **2026-07-08 (Windows, session 2) — UX pass 2: everything else from the review (Library, header menus, error states, histogram, table view, peek cards, ranking filters):**
 
 All remaining items from the 07-08 UX review, shipped in one pass:

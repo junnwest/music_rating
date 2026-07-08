@@ -8,6 +8,7 @@ import {
   ArrowUpDown,
   Trash2,
   ChevronRight,
+  ExternalLink,
   ListMusic,
   Star,
 } from 'lucide-react';
@@ -45,6 +46,7 @@ interface PostRow {
   user_id: string;
   score: number | null;
   elo_score: number | null;
+  review_text: string | null;
   created_at: string;
   profiles: {
     username: string | null;
@@ -164,7 +166,7 @@ export default function AlbumPage() {
       const postsP = supabase!
         .from('ratings')
         .select(
-          'id, user_id, score, elo_score, created_at, profiles(username, display_name, avatar_url)',
+          'id, user_id, score, elo_score, review_text, created_at, profiles(username, display_name, avatar_url)',
         )
         .eq('release_group_id', releaseGroupId)
         .order('created_at', { ascending: false })
@@ -374,8 +376,45 @@ export default function AlbumPage() {
               )}
             </div>
             {genres.length > 0 && (
-              <p className="mt-2.5 text-[12px] text-muted">{genres.join(' · ')}</p>
+              <div className="flex flex-wrap gap-1.5 mt-2.5">
+                {genres.map((g) => (
+                  <Link
+                    key={g}
+                    href={`/charts/ranking?genre=${encodeURIComponent(g)}`}
+                    className="px-2 py-0.5 rounded-full border border-divider text-[11px] text-muted hover:text-accent hover:border-accent/50 transition"
+                  >
+                    {g}
+                  </Link>
+                ))}
+              </div>
             )}
+
+            {/* Listen on … (search deep-links; no stored platform preference post-renovation) */}
+            <div className="mt-4">
+              <p className="text-[10px] font-semibold tracking-[0.05em] uppercase text-muted mb-1.5">
+                {t('sj.album.listenOn')}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {(
+                  [
+                    ['Spotify', `https://open.spotify.com/search/${encodeURIComponent(`${release.artist} ${release.title}`)}`],
+                    ['Apple Music', `https://music.apple.com/search?term=${encodeURIComponent(`${release.artist} ${release.title}`)}`],
+                    ['YouTube Music', `https://music.youtube.com/search?q=${encodeURIComponent(`${release.artist} ${release.title}`)}`],
+                  ] as [string, string][]
+                ).map(([name, url]) => (
+                  <a
+                    key={name}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface border border-divider text-[11.5px] font-medium text-mid hover:text-ink hover:border-muted transition"
+                  >
+                    {name}
+                    <ExternalLink size={10} className="text-muted" />
+                  </a>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -602,24 +641,31 @@ export default function AlbumPage() {
                 const handle =
                   post.profiles?.username ?? post.profiles?.display_name ?? 'someone';
                 return (
-                  <div key={post.id} className="flex items-center gap-3 px-4 py-3">
-                    <Link
-                      href={`/profile/${post.profiles?.username ?? ''}`}
-                      className="flex items-center gap-3 min-w-0 flex-1 group"
-                    >
-                      <span className="flex w-8 h-8 rounded-full bg-accent-soft text-accent-deep items-center justify-center text-[12px] font-bold shrink-0">
-                        {handle.slice(0, 1).toUpperCase()}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block text-[13px] font-medium text-ink truncate group-hover:underline">
-                          @{handle}
+                  <div key={post.id} className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <Link
+                        href={`/profile/${post.profiles?.username ?? ''}`}
+                        className="flex items-center gap-3 min-w-0 flex-1 group"
+                      >
+                        <span className="flex w-8 h-8 rounded-full bg-accent-soft text-accent-deep items-center justify-center text-[12px] font-bold shrink-0">
+                          {handle.slice(0, 1).toUpperCase()}
                         </span>
-                        <span className="block text-[11px] text-muted">
-                          {relativeTime(post.created_at, lang)}
+                        <span className="min-w-0">
+                          <span className="block text-[13px] font-medium text-ink truncate group-hover:underline">
+                            @{handle}
+                          </span>
+                          <span className="block text-[11px] text-muted">
+                            {relativeTime(post.created_at, lang)}
+                          </span>
                         </span>
-                      </span>
-                    </Link>
-                    {score != null && <ScoreBadge score={score} size={34} ringStroke={2.5} />}
+                      </Link>
+                      {score != null && <ScoreBadge score={score} size={34} ringStroke={2.5} />}
+                    </div>
+                    {post.review_text && (
+                      <p className="mt-2 ml-11 text-[13px] leading-relaxed text-ink/90 whitespace-pre-wrap break-words">
+                        {post.review_text}
+                      </p>
+                    )}
                   </div>
                 );
               })}

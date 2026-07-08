@@ -106,13 +106,16 @@ export default function AlbumPeek({
       {pos && (
         <div
           role="tooltip"
-          className="hidden md:block fixed z-50 w-56 pointer-events-none rounded-xl bg-surface border border-divider shadow-xl p-3"
+          className="hidden md:block fixed z-50 w-56 pointer-events-none"
           style={{
             left: pos.left,
             top: pos.top,
             transform: pos.above ? 'translateY(-100%)' : undefined,
           }}
         >
+          {/* animation lives on an inner element — the outer one's transform
+              is positional and must not be clobbered by keyframes */}
+          <div className="rounded-xl bg-surface border border-divider shadow-xl p-3 sj-pop-in">
           <Cover url={coverUrl} className="w-full aspect-square" />
           <p className="mt-2 text-[13.5px] font-bold text-ink leading-snug line-clamp-2">
             {title}
@@ -137,6 +140,7 @@ export default function AlbumPeek({
                 </span>
               </>
             )}
+          </div>
           </div>
         </div>
       )}

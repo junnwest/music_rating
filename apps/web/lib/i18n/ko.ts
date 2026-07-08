@@ -525,6 +525,7 @@ const ko: Translations = {
       rateThisAlbum: '이 앨범 평가하기',
       communityAvg: '커뮤니티 평균',
       distribution: '평점 분포',
+      listenOn: '듣기',
       ratings: '평가',
       tracklist: '트랙리스트',
       rateTrack: '평가',

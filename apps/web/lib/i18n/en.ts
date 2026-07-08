@@ -523,6 +523,7 @@ const en = {
       rateThisAlbum: 'Rate this Album',
       communityAvg: 'Community Avg',
       distribution: 'Rating distribution',
+      listenOn: 'Listen',
       ratings: 'Ratings',
       tracklist: 'Tracklist',
       rateTrack: 'Rate',
