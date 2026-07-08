@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Flame, Trophy, Gem, Zap } from 'lucide-react';
 import Cover from '../../../components/sj/Cover';
 import FlowerGlyph from '../../../components/sj/FlowerGlyph';
+import TitleTabs from '../../../components/sj/TitleTabs';
 import { useSession } from '../../../components/sj/SessionContext';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
@@ -130,18 +131,15 @@ export default function ChartsPage() {
   return (
     <div className="mx-auto max-w-6xl px-4 md:px-6 py-6">
       {/* Mode switch */}
-      <div className="flex items-center gap-6 mb-6">
-        {(['albums', 'songs'] as ChartMode[]).map((m) => (
-          <button
-            key={m}
-            onClick={() => setMode(m)}
-            className={`text-[17px] transition ${
-              mode === m ? 'font-bold text-ink' : 'font-normal text-muted hover:text-ink'
-            }`}
-          >
-            {m === 'albums' ? t('sj.charts.albums') : t('sj.charts.songs')}
-          </button>
-        ))}
+      <div className="mb-6">
+        <TitleTabs
+          tabs={[
+            { key: 'albums' as ChartMode, label: t('sj.charts.albums') },
+            { key: 'songs' as ChartMode, label: t('sj.charts.songs') },
+          ]}
+          value={mode}
+          onChange={setMode}
+        />
       </div>
 
       {loading ? (
@@ -375,11 +373,14 @@ function RankingBlock() {
                       {displayName(e.artist, e.artist_native)}
                     </span>
                   </span>
-                  <span className="flex flex-col items-end gap-0.5">
+                  <span
+                    className="flex flex-col items-end gap-0.5 cursor-help"
+                    title={t('sj.charts.sillaExplainer')}
+                  >
                     <span className="px-2 py-0.5 rounded-full bg-accent text-white text-[11px] font-bold tabular-nums">
                       {score.toFixed(1)}
                     </span>
-                    <span className="text-[9.5px] text-muted">{t('sj.charts.avg')}</span>
+                    <span className="text-[9.5px] text-muted">{t('sj.charts.silla')}</span>
                   </span>
                 </Link>
               </li>

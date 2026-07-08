@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Flame, ListMusic, UserPlus } from 'lucide-react';
 import FeedCard from '../../components/sj/FeedCard';
+import TitleTabs from '../../components/sj/TitleTabs';
 import Cover from '../../components/sj/Cover';
 import { useSession } from '../../components/sj/SessionContext';
 import { supabase } from '../../lib/supabaseClient';
@@ -224,28 +225,40 @@ export default function HomePage() {
     <div className="mx-auto max-w-6xl px-4 md:px-6 py-5 flex gap-8">
       {/* ── Feed column ── */}
       <div className="flex-1 min-w-0 max-w-2xl">
-        <div className="flex items-center gap-6 mb-4">
-          {(['explore', 'following'] as FeedTab[]).map((ft) => (
-            <button
-              key={ft}
-              onClick={() => setTab(ft)}
-              className={`text-[17px] transition ${
-                tab === ft ? 'font-bold text-ink' : 'font-normal text-muted hover:text-ink'
-              }`}
-            >
-              {ft === 'explore' ? t('sj.home.explore') : t('sj.home.following')}
-            </button>
-          ))}
+        <div className="mb-4">
+          <TitleTabs
+            tabs={[
+              { key: 'explore' as FeedTab, label: t('sj.home.explore') },
+              { key: 'following' as FeedTab, label: t('sj.home.following') },
+            ]}
+            value={tab}
+            onChange={setTab}
+          />
         </div>
 
         {loading ? (
           <FeedSkeleton />
         ) : items.length === 0 ? (
-          <div className="py-24 flex flex-col items-center gap-3 text-center">
+          <div className="py-24 flex flex-col items-center gap-4 text-center">
             <ListMusic size={40} className="text-divider" />
             <p className="text-[15px] text-muted max-w-[260px]">
               {tab === 'explore' ? t('sj.home.emptyExplore') : t('sj.home.emptyFollowing')}
             </p>
+            {tab === 'explore' ? (
+              <Link
+                href="/search"
+                className="px-4 py-2 rounded-[10px] bg-accent text-white text-[13.5px] font-semibold hover:opacity-90 transition"
+              >
+                {t('sj.home.emptyExploreCta')}
+              </Link>
+            ) : (
+              <button
+                onClick={() => setTab('explore')}
+                className="px-4 py-2 rounded-[10px] bg-accent text-white text-[13.5px] font-semibold hover:opacity-90 transition"
+              >
+                {t('sj.home.emptyFollowingCta')}
+              </button>
+            )}
           </div>
         ) : (
           <div className="flex flex-col gap-2.5 pb-10">

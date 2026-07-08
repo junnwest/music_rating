@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useState, type ReactNode, type FormEvent } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import {
   Home,
   Trophy,
-  Search,
+  CirclePlus,
   Sparkles,
   User,
   Settings,
@@ -16,6 +16,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
 import { SessionProvider, useSession } from './SessionContext';
 import FlowerGlyph from './FlowerGlyph';
+import SearchOmnibox from './SearchOmnibox';
 
 /**
  * Desktop-first app shell: persistent left sidebar (nav) + top bar (global
@@ -34,17 +35,17 @@ function ShellInner({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { t } = useLanguage();
   const { userId, profile } = useSession();
-  const router = useRouter();
-  const [query, setQuery] = useState('');
   const [hasUnread, setHasUnread] = useState(false);
 
   // Bare pages render without chrome
   const bare = pathname === '/onboarding';
 
+  // "Add" = the rate-something flow (discovery + quick-rate), like iOS.
+  // Global search lives solely in the top-bar omnibox.
   const nav = [
     { icon: Home, label: t('sj.nav.home'), path: '/' },
     { icon: Trophy, label: t('sj.nav.charts'), path: '/charts' },
-    { icon: Search, label: t('sj.nav.search'), path: '/search' },
+    { icon: CirclePlus, label: t('sj.nav.add'), path: '/search' },
     { icon: Sparkles, label: t('sj.nav.taste'), path: '/taste' },
     { icon: User, label: t('sj.nav.profile'), path: '/profile' },
   ];
@@ -72,12 +73,6 @@ function ShellInner({ children }: { children: ReactNode }) {
 
   const isActive = (path: string) =>
     path === '/' ? pathname === '/' : pathname.startsWith(path);
-
-  function onSearchSubmit(e: FormEvent) {
-    e.preventDefault();
-    const q = query.trim();
-    router.push(q ? `/search?q=${encodeURIComponent(q)}` : '/search');
-  }
 
   return (
     <div className="min-h-screen flex">
@@ -128,17 +123,7 @@ function ShellInner({ children }: { children: ReactNode }) {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo-flower.svg" alt="sillajuku" className="w-7 h-7" />
           </Link>
-          <form onSubmit={onSearchSubmit} className="flex-1 max-w-md">
-            <div className="flex items-center gap-2 px-3 h-9 rounded-[10px] bg-surface border border-divider focus-within:border-accent/60 transition">
-              <Search size={15} className="text-muted shrink-0" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={t('sj.nav.searchPlaceholder')}
-                className="w-full bg-transparent text-[13.5px] text-ink placeholder-placeholder outline-none"
-              />
-            </div>
-          </form>
+          <SearchOmnibox />
           <div className="flex items-center gap-1.5 ml-auto">
             <Link
               href="/notifications"
