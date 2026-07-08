@@ -16,6 +16,7 @@ import { useLanguage } from '../../lib/i18n';
 import { SessionProvider, useSession } from './SessionContext';
 import FlowerGlyph from './FlowerGlyph';
 import SearchOmnibox from './SearchOmnibox';
+import CursorTip from './CursorTip';
 import { AvatarMenu, NotificationsBell } from './HeaderMenus';
 
 /**
@@ -69,7 +70,13 @@ function ShellInner({ children }: { children: ReactNode }) {
     };
   }, [userId, profile?.notifications_last_seen_at, pathname]);
 
-  if (bare) return <main className="min-h-screen">{children}</main>;
+  if (bare)
+    return (
+      <main className="min-h-screen">
+        {children}
+        <CursorTip />
+      </main>
+    );
 
   const isActive = (path: string) =>
     path === '/' ? pathname === '/' : pathname.startsWith(path);
@@ -156,6 +163,8 @@ function ShellInner({ children }: { children: ReactNode }) {
           </Link>
         </footer>
       </div>
+
+      <CursorTip />
 
       {/* ── Bottom bar (<md) ── */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 flex items-stretch bg-page/95 backdrop-blur border-t border-divider">

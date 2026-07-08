@@ -6,6 +6,24 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-07-08 (Windows, session 4) — album rating UX rework: inline auto-save editor replaces the modal; global cursor tooltips:**
+
+The album page's manual rating flow no longer uses a modal at all — new `InlineRatingEditor.tsx`:
+
+- **Collapsed row has one anatomy rated or not**: 5 stars (empty at 25% opacity when unrated, filled by score when rated — the old "Rate this album" button is gone) + an edit glyph. Clicking a star opens the editor preloaded with that value; hovering previews the fill.
+- **The editor is an in-flow dropdown panel** (`sj-pop-in`, pushes content, no overlay/backdrop — editing never displaces the page). **No Save button: every change auto-saves** (500ms debounce, "Saved ✓" flash, pending edits flush on close/outside-click/Enter/Esc).
+- **Undo** reverts to the value the session started with (session started unrated → undo deletes the rating). Trash removes outright.
+- **Scroll wheel** anywhere over the panel nudges by one step (native non-passive listener — React synthetic wheel can't preventDefault).
+- **The number is focused + selected on entry** so digits type straight in; "43" and "4.3" both become 4.3 (period auto-inserted after the first digit); values clamp to 0.5–5 and snap to the user's step.
+- **Comment box is always visible** once rated (placeholder "Add a comment") — replaces the modal's post-rating comment step; debounce+blur auto-saves `review_text`, and `loadRatings` won't clobber in-progress typing (activeElement check).
+- **Add to a list** is now its own `ListPlus` icon in the section header → `MixPickerModal` directly.
+- Two modal bugs fixed while at it: `ManualRateModal`'s reset effect had `existingScore` as a dep, so saving (which refreshes the parent's score) re-ran the reset and yanked users out of the post-rating step mid-flow (the reported "save doesn't work when editing"); and the search page's quick-rate `onSave(null)` (Remove Rating) silently no-op'd — now deletes the row and clears the rated badges. The modal itself remains for search quick-rate and track rating.
+- **Global `CursorTip.tsx`** (mounted once in AppShell, incl. bare pages): any element with an `aria-label`, no visible text, and no native `title` gets its label shown under the cursor after 400ms hover — covers every icon-only button app-wide (undo/trash/bookmark/bell/edit/…), hover-capable pointers only, dismisses on click/scroll.
+
+New keys `sj.rate.undo`/`sj.rate.saved` (en/ko). `tsc` clean, ESLint clean, album/search/home 200 in mock.
+
+---
+
 **2026-07-08 (Windows, session 3) — pre-rebuild feature audit (3 revived, 1 declined) + micro-interaction pass:**
 
 Audited everything the 07-06 reconstruction deleted (45 components + 12 route trees, from git history) for what still fits the current product:

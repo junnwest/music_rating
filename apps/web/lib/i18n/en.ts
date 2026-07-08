@@ -482,6 +482,8 @@ const en = {
       saveRating: 'Save Rating',
       removeRating: 'Remove Rating',
       yourRating: 'Your rating',
+      undo: 'Undo',
+      saved: 'Saved',
     },
     instinct: {
       howWasIt: 'How was it?',

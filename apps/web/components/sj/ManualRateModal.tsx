@@ -38,13 +38,17 @@ export default function ManualRateModal({
   const [draft, setDraft] = useState(existingScore ?? 2.5);
   const [ratingId, setRatingId] = useState<string | null>(null);
 
+  // Reset only when the modal (re)opens. existingScore must NOT be a dep:
+  // saving refreshes the parent's score mid-flow, and re-running this reset
+  // yanked the user out of the post-rating step (the "edit save" bug).
   useEffect(() => {
     if (open) {
       setPhase('rating');
       setDraft(existingScore ?? 2.5);
       setRatingId(null);
     }
-  }, [open, existingScore]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const isTrack = !!track;
   const title = isTrack ? track!.title : releaseDisplayTitle(release);

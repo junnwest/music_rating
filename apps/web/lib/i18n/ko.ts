@@ -483,6 +483,8 @@ const ko: Translations = {
       continue: '계속',
       saveRating: '평가 저장',
       removeRating: '평가 삭제',
+      undo: '실행 취소',
+      saved: '저장됨',
       yourRating: '내 평가',
     },
     instinct: {

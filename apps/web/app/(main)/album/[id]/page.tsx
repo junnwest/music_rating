@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
@@ -10,12 +10,14 @@ import {
   ChevronRight,
   ExternalLink,
   ListMusic,
-  Star,
+  ListPlus,
 } from 'lucide-react';
 import Cover from '../../../../components/sj/Cover';
 import FlowerGlyph from '../../../../components/sj/FlowerGlyph';
 import ManualRateModal from '../../../../components/sj/ManualRateModal';
 import InstinctModal from '../../../../components/sj/InstinctModal';
+import InlineRatingEditor from '../../../../components/sj/InlineRatingEditor';
+import MixPickerModal from '../../../../components/sj/MixPickerModal';
 import ScoreBadge from '../../../../components/sj/ScoreBadge';
 import RatingHistogram from '../../../../components/sj/RatingHistogram';
 import { useSession } from '../../../../components/sj/SessionContext';
@@ -89,11 +91,17 @@ export default function AlbumPage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
-  const [showManual, setShowManual] = useState(false);
   const [showInstinct, setShowInstinct] = useState(false);
+  const [showMixPicker, setShowMixPicker] = useState(false);
   const [trackManualTarget, setTrackManualTarget] = useState<TrackEntry | null>(null);
   const [trackInstinctTarget, setTrackInstinctTarget] = useState<TrackEntry | null>(null);
   const [confirmDeleteRanking, setConfirmDeleteRanking] = useState(false);
+
+  // Inline comment (review_text on the user's rating row)
+  const [reviewDraft, setReviewDraft] = useState('');
+  const myReviewRef = useRef<string | null>(null);
+  const reviewBoxRef = useRef<HTMLTextAreaElement>(null);
+  const reviewTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const ratingMode = profile?.rating_mode ?? 'manual';
   const ratingStep = profile?.manual_rating_step ?? 0.5;
@@ -102,9 +110,12 @@ export default function AlbumPage() {
     if (!supabase) return;
     const { data } = await supabase
       .from('ratings')
-      .select('score, elo_score, user_id')
+      .select('score, elo_score, user_id, review_text')
       .eq('release_group_id', releaseGroupId);
-    const rows = (data as { score: number | null; elo_score: number | null; user_id: string }[] | null) ?? [];
+    const rows =
+      (data as
+        | { score: number | null; elo_score: number | null; user_id: string; review_text: string | null }[]
+        | null) ?? [];
     setCommunityCount(rows.length);
     const scored = rows
       .map((r) => (r.score != null ? r.score : r.elo_score != null ? eloToScore(r.elo_score) : null))
@@ -120,8 +131,34 @@ export default function AlbumPage() {
       const mine = rows.find((r) => r.user_id === userId);
       setUserScore(mine?.score ?? null);
       setUserElo(mine?.elo_score ?? null);
+      myReviewRef.current = mine?.review_text ?? null;
+      // Don't clobber in-progress typing
+      if (document.activeElement !== reviewBoxRef.current) {
+        setReviewDraft(mine?.review_text ?? '');
+      }
     }
   }, [releaseGroupId, userId]);
+
+  const saveReview = useCallback(
+    async (text: string) => {
+      if (!supabase || !userId) return;
+      const next = text.trim() || null;
+      if (next === myReviewRef.current) return;
+      myReviewRef.current = next;
+      await supabase
+        .from('ratings')
+        .update({ review_text: next })
+        .eq('user_id', userId)
+        .eq('release_group_id', releaseGroupId);
+    },
+    [userId, releaseGroupId],
+  );
+
+  function onReviewChange(text: string) {
+    setReviewDraft(text);
+    clearTimeout(reviewTimer.current);
+    reviewTimer.current = setTimeout(() => saveReview(text), 1000);
+  }
 
   useEffect(() => {
     if (!supabase) return;
@@ -423,9 +460,20 @@ export default function AlbumPage() {
       <div className="flex-1 min-w-0">
         {/* Rating section (mode-aware) */}
         <section className="rounded-2xl bg-surface border border-divider/60 p-5">
-          <h2 className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted mb-4">
-            {ratingMode === 'instinct' ? t('sj.album.yourInstinct') : t('sj.album.yourRating')}
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted">
+              {ratingMode === 'instinct' ? t('sj.album.yourInstinct') : t('sj.album.yourRating')}
+            </h2>
+            {userId && (
+              <button
+                onClick={() => setShowMixPicker(true)}
+                aria-label={t('sj.rate.addToList')}
+                className="p-1.5 -my-1.5 rounded-lg text-muted hover:text-accent hover:bg-page transition"
+              >
+                <ListPlus size={17} />
+              </button>
+            )}
+          </div>
 
           {!userId ? (
             <Link
@@ -471,50 +519,8 @@ export default function AlbumPage() {
                 {t('sj.album.addToRankings')}
               </button>
             )
-          ) : userScore != null ? (
-            <div className="flex items-center gap-3 flex-wrap">
-              <button
-                onClick={() => setShowManual(true)}
-                className="flex items-center gap-2.5 group"
-              >
-                <span className="flex items-center gap-0.5 text-accent">
-                  {[1, 2, 3, 4, 5].map((s) => (
-                    <Star
-                      key={s}
-                      size={20}
-                      className={
-                        userScore >= s
-                          ? 'fill-current'
-                          : userScore >= s - 0.5
-                            ? 'fill-current opacity-50'
-                            : 'opacity-25'
-                      }
-                    />
-                  ))}
-                </span>
-                <span className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-accent/10 group-hover:bg-accent/[0.16] transition">
-                  <FlowerGlyph size={12} className="text-accent" />
-                  <span className="text-[14px] font-bold text-accent">
-                    {formatScore(userScore)}
-                  </span>
-                </span>
-              </button>
-              <span className="flex-1" />
-              <button
-                onClick={() => setShowManual(true)}
-                className="text-[13px] font-semibold text-accent hover:opacity-80"
-              >
-                {t('sj.common.edit')}
-              </button>
-            </div>
           ) : (
-            <button
-              onClick={() => setShowManual(true)}
-              className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-accent text-white text-[15px] font-semibold hover:opacity-90 transition"
-            >
-              <Plus size={16} />
-              {t('sj.album.rateThisAlbum')}
-            </button>
+            <InlineRatingEditor score={userScore} step={ratingStep} onSave={setRating} />
           )}
 
           {confirmDeleteRanking && (
@@ -535,6 +541,22 @@ export default function AlbumPage() {
                 </button>
               </div>
             </div>
+          )}
+
+          {/* Inline comment — visible whenever the user has a rating row */}
+          {userId && (userScore != null || userElo != null) && (
+            <textarea
+              ref={reviewBoxRef}
+              value={reviewDraft}
+              onChange={(e) => onReviewChange(e.target.value)}
+              onBlur={() => {
+                clearTimeout(reviewTimer.current);
+                saveReview(reviewDraft);
+              }}
+              placeholder={t('sj.rate.addComment')}
+              rows={2}
+              className="w-full mt-4 px-3.5 py-2.5 rounded-xl bg-page border border-divider text-[13.5px] leading-relaxed text-ink placeholder-placeholder outline-none focus:border-accent/60 transition resize-none"
+            />
           )}
 
           {communityCount > 0 && (
@@ -702,13 +724,10 @@ export default function AlbumPage() {
       </div>
 
       {/* ── Modals ── */}
-      <ManualRateModal
-        open={showManual}
-        onClose={() => setShowManual(false)}
-        release={release}
-        existingScore={userScore}
-        ratingStep={ratingStep}
-        onSave={setRating}
+      <MixPickerModal
+        open={showMixPicker}
+        onClose={() => setShowMixPicker(false)}
+        releaseGroupId={releaseGroupId}
       />
       <InstinctModal
         open={showInstinct}
