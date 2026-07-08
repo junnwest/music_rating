@@ -519,6 +519,23 @@ If the **Vercel free tier** is hiding old logs, just wait for the next 429 — i
    npm run dev:web
    ```
 
+#### Mock mode (offline — no database, no secrets)
+
+Runs the whole web app against a local fake Supabase with dummy data (12 albums, 6 users,
+~24 feed ratings, charts, tracklists, notifications). Useful for UI work and for testing
+while the real DB is down/slow. From `apps/web/`, in two terminals:
+
+```bash
+npm run mock       # fake Supabase (GoTrue + PostgREST) on http://localhost:54321
+npm run dev:mock   # Next dev on http://localhost:3100, env from .env.mock
+```
+
+Then open http://localhost:3100 — **Continue with Spotify/Apple** signs in as the seeded
+`demo` user (already onboarded, has ratings/mixes/notifications); **Continue with Google**
+signs in as a fresh user with no profile row, which exercises the full onboarding flow.
+Data is in-memory (`apps/web/scripts/mock/data.ts`) — restart `npm run mock` to reset.
+Writes work too: rating an album from the album page shows up in the feed immediately.
+
 ### Mobile (React Native / Expo)
 
 1. Install dependencies:
@@ -947,5 +964,26 @@ npm run expand:genre        # Spotify genre sweep — still works
 - **Next.js route groups** — all pages live under `app/(main)/` or `app/(auth)/`. Never create directories directly under `app/` without a route group — empty ghost directories cause "No default component for parallel route" errors.
 
 ## Known issues
+
+> **⚑ FIX LIST (2026-07-07)** — current open problems, in priority order:
+>
+> 1. **Stop the out-of-repo `primary_genre` backfill (URGENT, user action — likely a Mac-side script).**
+>    4 PostgREST workers are bulk-updating `release_groups.primary_genre` (~1 row/3.8s each, ~279k rows
+>    to go) and IO-starving the Micro instance. Until it's stopped, feed / trending / most-rated / silla /
+>    search intermittently 57014 under anon — this is why pages look empty on prod right now.
+> 2. **Query errors render as empty states.** The Home feed shows *"No ratings yet — be the first!"* when
+>    the feed query *fails* (timeout), because pages destructure `{ data }` and ignore `error`
+>    (`app/(main)/page.tsx` explore pool; same pattern on charts/search). Needs a distinct error state +
+>    retry, so a DB incident doesn't masquerade as an empty catalog.
+> 3. **Visibility-overhaul web parity.** Migration `20260706000012/13` redesigned privacy (general
+>    Public/Private + nullable per-subtab overrides + `_sj_can_view` RPCs). Web settings still shows the
+>    legacy three independent pickers (minimally patched 07-07 to write `library_visibility` and drop
+>    'Followers only'), and web profile subtabs don't call the visibility RPCs at all.
+> 4. **`lib/db/types.ts` is hand-maintained and drifts.** The 07-07 prod outage (everyone locked to
+>    /onboarding) was schema drift: web selected a column a live migration had renamed. Replace with
+>    `supabase gen types` output (now possible — `SUPABASE_ACCESS_TOKEN` exists) and consider a CI drift check.
+> 5. **Web parity for Mac session-4 features:** quests/referrals UI, mix social posts, Connected Accounts.
+> 6. **`search_artists` at-risk:** same unindexable-OR shape the album search RPC had; passes today at
+>    0.7–1.2s of the 3s anon budget. Also: normalized queries under 3 chars ("iu") still seq-scan.
 
 - **`notFound()` returns HTTP 200 instead of 404** on `/album/[mbid]` and `/rankings/[slug]`. The `not-found.tsx` body renders correctly (user sees the friendly "Page not found" page); only the HTTP status code is wrong. Reproduced in both dev and prod with Next.js 14.2.35. Truly nonexistent routes (no `page.tsx` at all) return 404 correctly. Other pages with `notFound()` but without cookie reads (`/artist`, `/genre`, `/explore`) also return 404 correctly. Removing `export const revalidate` and adding `export const dynamic = 'force-dynamic'` did not fix it. Affects SEO and analytics, not user-visible UX. Post-launch fix candidates: (a) Next.js 15/16 upgrade with breaking-change migration, (b) refactor album page to defer all cookie-reading code into a child Server Component that mounts only after `notFound()` check.
