@@ -141,6 +141,17 @@ export default function ChartsPage() {
           />
         ) : (
           <div className="grid lg:grid-cols-[1fr_340px] gap-6 items-start">
+            {/* Below lg the grid stacks in DOM order and the 10-row Ranking
+                block would push Trending below the fold — so Trending renders
+                first when stacked, and in the right rail on lg instead. */}
+            <div className="lg:hidden">
+              <TrendingCard
+                entries={activeTrending}
+                mode={trendingMode}
+                onMode={setTrendingMode}
+                hasForYou={trendingForYou.length > 0}
+              />
+            </div>
             <div className="space-y-6">
               <RankingBlock />
               <ChartHorizSection
@@ -151,12 +162,14 @@ export default function ChartsPage() {
               />
             </div>
             <div className="space-y-5">
-              <TrendingCard
-                entries={activeTrending}
-                mode={trendingMode}
-                onMode={setTrendingMode}
-                hasForYou={trendingForYou.length > 0}
-              />
+              <div className="hidden lg:block">
+                <TrendingCard
+                  entries={activeTrending}
+                  mode={trendingMode}
+                  onMode={setTrendingMode}
+                  hasForYou={trendingForYou.length > 0}
+                />
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <InsightCard
                   icon={<Gem size={17} className="text-accent" />}
