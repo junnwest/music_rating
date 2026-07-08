@@ -24,6 +24,12 @@ import { createClient } from "@supabase/supabase-js";
 const s = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 const DRY = process.argv.includes("--dry-run");
 const SAMPLE = (() => { const a = process.argv.find((x) => x.startsWith("--sample=")); return a ? parseInt(a.split("=")[1], 10) : 0; })();
+const argNum = (name: string, def: number) => { const a = process.argv.find((x) => x.startsWith(`--${name}=`)); return a ? parseInt(a.split("=")[1], 10) : def; };
+// Throttle: keep the SUSTAINED write rate under the IO baseline (like the rate-limited pipeline) so
+// the bulk backfill never depletes the burst budget / disrupts live traffic. Small batch + a real
+// inter-batch sleep. Defaults are gentle; tune with --batch / --sleep after watching read latency.
+const BATCH = argNum("batch", 60);
+const PACE_MS = argNum("sleep", 1500);
 
 const norm = (g: string) => g.toLowerCase().replace(/-/g, " ").replace(/&/g, " and ").replace(/\s+/g, " ").trim();
 
@@ -128,9 +134,10 @@ async function pageAll(sample: number): Promise<RG[]> {
   // group by primary so we can update in bulk per value with the same IO-safe retry pattern
   const byVal = new Map<string, string[]>();
   for (const r of rows) (byVal.get(r.primary_genre) ?? byVal.set(r.primary_genre, []).get(r.primary_genre)!).push(r.id);
+  console.log(`  throttle: batch=${BATCH}, sleep=${PACE_MS}ms between batches`);
   for (const [val, ids] of byVal) {
-    for (let i = 0; i < ids.length; i += 50) {
-      const chunk = ids.slice(i, i + 50);
+    for (let i = 0; i < ids.length; i += BATCH) {
+      const chunk = ids.slice(i, i + BATCH);
       let ok = false;
       for (let attempt = 0; attempt < 4 && !ok; attempt++) {
         if (attempt > 0) await sleep(400 * attempt);
@@ -139,7 +146,7 @@ async function pageAll(sample: number): Promise<RG[]> {
         else if (!/timeout|57014|canceling statement/i.test(error.message)) { console.log("  update error:", error.message); break; }
       }
       if (!ok) failed += chunk.length;
-      await sleep(15);
+      await sleep(PACE_MS);
     }
     process.stdout.write(`\r  written ~${written}/${rows.length}  (failed ${failed})`);
   }
