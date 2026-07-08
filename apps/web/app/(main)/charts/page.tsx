@@ -9,6 +9,7 @@ import { useSession } from '../../../components/sj/SessionContext';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
 import { displayName, formatCount } from '../../../lib/sj/display';
+import { fetchSillaLeaderboard } from '../../../lib/sj/sillaClient';
 import type {
   ChartRankedRPC,
   ChartTrendingRPC,
@@ -50,62 +51,78 @@ export default function ChartsPage() {
   const [topSongs, setTopSongs] = useState<SongChartRPC[]>([]);
   const [mostRatedSongs, setMostRatedSongs] = useState<SongChartRPC[]>([]);
   const [trendingSongs, setTrendingSongs] = useState<TrendingSongRPC[]>([]);
+  // Only the unlock gauge gates the layout — every section streams in on its
+  // own as its RPC resolves, instead of the whole page waiting on the slowest.
   const [loading, setLoading] = useState(true);
+  const [songsLoaded, setSongsLoaded] = useState(false);
+  const [songsLoading, setSongsLoading] = useState(false);
 
   useEffect(() => {
     if (!supabase) return;
     let cancelled = false;
-    (async () => {
-      const tasks: PromiseLike<unknown>[] = [
-        supabase!.rpc('get_rankings_unlock_status').then(({ data }) => {
-          if (!cancelled) setUnlock(((data as RankingsUnlockStatusRPC[] | null) ?? [])[0] ?? null);
-        }),
-        supabase!.rpc('get_charts_pulse').then(({ data }) => {
-          if (!cancelled) setPulse(((data as ChartsPulseRPC[] | null) ?? [])[0] ?? null);
-        }),
-        supabase!.rpc('get_charts_most_rated', { p_limit: 20 }).then(({ data }) => {
-          if (!cancelled) setMostRated((data as ChartRankedRPC[] | null) ?? []);
-        }),
-        supabase!.rpc('get_charts_trending', { p_limit: 5 }).then(({ data }) => {
-          if (!cancelled) setTrendingGlobal((data as ChartTrendingRPC[] | null) ?? []);
-        }),
-        supabase!.rpc('get_charts_top_rated_songs', { p_limit: 20 }).then(({ data }) => {
-          if (!cancelled) setTopSongs((data as SongChartRPC[] | null) ?? []);
-        }),
-        supabase!.rpc('get_charts_most_rated_songs', { p_limit: 20 }).then(({ data }) => {
-          if (!cancelled) setMostRatedSongs((data as SongChartRPC[] | null) ?? []);
-        }),
-        supabase!.rpc('get_charts_trending_songs', { p_limit: 10 }).then(({ data }) => {
-          if (!cancelled) setTrendingSongs((data as TrendingSongRPC[] | null) ?? []);
-        }),
-      ];
-      // "For You" trending via top genres
-      if (userId) {
-        tasks.push(
-          (async () => {
-            const { data: genreRows } = await supabase!.rpc('get_user_top_genres', {
-              p_user_id: userId,
-              p_limit: 3,
-            });
-            const genres = ((genreRows as { genre: string }[] | null) ?? [])
-              .map((g) => g.genre.trim())
-              .filter(Boolean);
-            if (genres.length === 0) return;
-            const { data } = await supabase!.rpc('get_charts_trending_for_genres', {
-              p_genres: genres,
-              p_limit: 5,
-            });
-            if (!cancelled) setTrendingForYou((data as ChartTrendingRPC[] | null) ?? []);
-          })(),
-        );
-      }
-      await Promise.all(tasks);
-      if (!cancelled) setLoading(false);
-    })();
+    supabase.rpc('get_rankings_unlock_status').then(({ data }) => {
+      if (cancelled) return;
+      setUnlock(((data as RankingsUnlockStatusRPC[] | null) ?? [])[0] ?? null);
+      setLoading(false);
+    });
+    supabase.rpc('get_charts_pulse').then(({ data }) => {
+      if (!cancelled) setPulse(((data as ChartsPulseRPC[] | null) ?? [])[0] ?? null);
+    });
+    supabase.rpc('get_charts_most_rated', { p_limit: 20 }).then(({ data }) => {
+      if (!cancelled) setMostRated((data as ChartRankedRPC[] | null) ?? []);
+    });
+    supabase.rpc('get_charts_trending', { p_limit: 5 }).then(({ data }) => {
+      if (!cancelled) setTrendingGlobal((data as ChartTrendingRPC[] | null) ?? []);
+    });
+    // "For You" trending via top genres
+    if (userId) {
+      (async () => {
+        const { data: genreRows } = await supabase!.rpc('get_user_top_genres', {
+          p_user_id: userId,
+          p_limit: 3,
+        });
+        const genres = ((genreRows as { genre: string }[] | null) ?? [])
+          .map((g) => g.genre.trim())
+          .filter(Boolean);
+        if (genres.length === 0) return;
+        const { data } = await supabase!.rpc('get_charts_trending_for_genres', {
+          p_genres: genres,
+          p_limit: 5,
+        });
+        if (!cancelled) setTrendingForYou((data as ChartTrendingRPC[] | null) ?? []);
+      })();
+    }
     return () => {
       cancelled = true;
     };
   }, [userId]);
+
+  // Songs charts are fetched only when the Songs tab is first opened —
+  // they're 3 extra RPCs the default Albums view never needs.
+  useEffect(() => {
+    if (!supabase || mode !== 'songs' || songsLoaded || songsLoading) return;
+    let cancelled = false;
+    setSongsLoading(true);
+    Promise.all([
+      supabase.rpc('get_charts_top_rated_songs', { p_limit: 20 }).then(({ data }) => {
+        if (!cancelled) setTopSongs((data as SongChartRPC[] | null) ?? []);
+      }),
+      supabase.rpc('get_charts_most_rated_songs', { p_limit: 20 }).then(({ data }) => {
+        if (!cancelled) setMostRatedSongs((data as SongChartRPC[] | null) ?? []);
+      }),
+      supabase.rpc('get_charts_trending_songs', { p_limit: 10 }).then(({ data }) => {
+        if (!cancelled) setTrendingSongs((data as TrendingSongRPC[] | null) ?? []);
+      }),
+    ]).then(() => {
+      if (!cancelled) {
+        setSongsLoaded(true);
+        setSongsLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, songsLoaded, songsLoading]);
 
   const activeTrending =
     trendingMode === 'forYou' && trendingForYou.length > 0 ? trendingForYou : trendingGlobal;
@@ -194,6 +211,12 @@ export default function ChartsPage() {
           target={unlock.song_events_target}
           kind="song"
         />
+      ) : songsLoading ? (
+        <div className="space-y-8 animate-pulse">
+          <div className="h-44 rounded-2xl bg-surface" />
+          <div className="h-44 rounded-2xl bg-surface" />
+          <div className="h-64 max-w-2xl rounded-2xl bg-surface" />
+        </div>
       ) : (
         <div className="space-y-8">
           <SongHorizSection
@@ -262,19 +285,17 @@ function RankingBlock() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!supabase) return;
     let cancelled = false;
     setLoading(true);
-    supabase
-      .rpc('get_silla_leaderboard', {
-        p_genre: genre,
-        p_country: country,
-        p_limit: 10,
-        p_offset: 0,
-      })
-      .then(({ data }) => {
+    fetchSillaLeaderboard(genre, country, 10)
+      .then((rows) => {
         if (cancelled) return;
-        setEntries((data as SillaLeaderboardRPC[] | null) ?? []);
+        setEntries(rows);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setEntries([]);
         setLoading(false);
       });
     return () => {
@@ -307,12 +328,29 @@ function RankingBlock() {
 
       <div className="h-px bg-divider mt-3" />
 
-      {loading ? (
-        <p className="py-10 text-center text-[13px] text-muted">…</p>
+      {loading && entries.length === 0 ? (
+        <ol className="divide-y divide-divider animate-pulse" aria-hidden>
+          {Array.from({ length: 10 }).map((_, i) => (
+            <li key={i} className="flex items-center gap-3 px-4 py-2.5">
+              <span className="w-6 text-center text-[15px] font-black text-divider tabular-nums">
+                {i + 1}
+              </span>
+              <span className="w-11 h-11 rounded-lg bg-divider shrink-0" />
+              <span className="flex-1 min-w-0 space-y-1.5">
+                <span className="block h-3 w-2/5 rounded bg-divider" />
+                <span className="block h-2.5 w-1/4 rounded bg-divider" />
+              </span>
+            </li>
+          ))}
+        </ol>
       ) : entries.length === 0 ? (
         <p className="py-10 text-center text-[13px] text-muted">{t('sj.charts.noData')}</p>
       ) : (
-        <ol className="divide-y divide-divider">
+        <ol
+          className={`divide-y divide-divider transition-opacity ${
+            loading ? 'opacity-40 pointer-events-none' : ''
+          }`}
+        >
           {entries.map((e, i) => {
             const score = e.silla_score * 5;
             return (

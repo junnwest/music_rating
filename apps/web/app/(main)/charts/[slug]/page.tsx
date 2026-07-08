@@ -8,6 +8,7 @@ import Cover from '../../../../components/sj/Cover';
 import { supabase } from '../../../../lib/supabaseClient';
 import { useLanguage } from '../../../../lib/i18n';
 import { displayName, formatCount } from '../../../../lib/sj/display';
+import { fetchSillaLeaderboard } from '../../../../lib/sj/sillaClient';
 import type {
   ChartRankedRPC,
   ChartTrendingRPC,
@@ -70,13 +71,11 @@ export default function ChartDetailPage() {
     (async () => {
       let loaded: Entry[] = [];
       if (isRanking) {
-        const { data } = await supabase!.rpc('get_silla_leaderboard', {
-          p_genre: genre,
-          p_country: country,
-          p_limit: 100,
-          p_offset: 0,
-        });
-        loaded = ((data as SillaLeaderboardRPC[] | null) ?? []).map((r) => ({
+        // Via the cached API route — the RPC itself outruns the anon timeout.
+        const data = await fetchSillaLeaderboard(genre, country, 100).catch(
+          () => [] as SillaLeaderboardRPC[],
+        );
+        loaded = data.map((r) => ({
           id: r.release_id,
           title: displayName(r.title, r.native_title),
           artist: displayName(r.artist, r.artist_native),
