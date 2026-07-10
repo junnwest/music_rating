@@ -11,7 +11,11 @@ import type { NextRequest } from 'next/server';
 // round-trip). iTunes/Deezer are already fast CDNs and are left direct on the
 // client — only CAA/archive.org URLs are routed here (see iOS `thumbnailUrl`).
 
-export const runtime = 'edge';
+// Node runtime, not edge: archive.org rejects requests from Vercel's edge
+// POPs (hard 502s in prod — flagged 2026-07-08); the serverless egress IPs
+// get through. Edge caching of the response is unaffected (s-maxage below).
+export const runtime = 'nodejs';
+export const maxDuration = 15;
 
 // SSRF guard: only proxy the known cover-art image hosts.
 const ALLOWED = ['coverartarchive.org', 'archive.org', 'mzstatic.com', 'dzcdn.net'];
@@ -31,18 +35,27 @@ export async function GET(request: NextRequest) {
     return new Response('forbidden host', { status: 403 });
   }
 
-  let upstream: Response;
-  try {
-    upstream = await fetch(u.toString(), {
-      headers: { 'User-Agent': 'sillajuku-cover-proxy/1.0' },
-      // follows the CAA 307 -> archive.org redirect automatically
-    });
-  } catch {
-    return new Response('fetch failed', { status: 502 });
+  // CAA/archive.org fails transiently on cold requests (observed: first hit
+  // 502s, the immediate retry returns the image) — retry once. With the
+  // year-long edge cache below, each image only ever needs to succeed once.
+  let upstream: Response | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(u.toString(), {
+        headers: { 'User-Agent': 'sillajuku-cover-proxy/1.0', Accept: 'image/*' },
+        // follows the CAA 307 -> archive.org redirect automatically
+      });
+      if (res.ok) {
+        upstream = res;
+        break;
+      }
+      if (res.status === 404) return new Response('not found', { status: 404 });
+    } catch {
+      /* retry */
+    }
+    if (attempt === 0) await new Promise((r) => setTimeout(r, 250));
   }
-  if (!upstream.ok) {
-    return new Response('upstream error', { status: upstream.status === 404 ? 404 : 502 });
-  }
+  if (!upstream) return new Response('upstream error', { status: 502 });
 
   const contentType = upstream.headers.get('content-type') ?? 'image/jpeg';
   if (!contentType.startsWith('image/')) {

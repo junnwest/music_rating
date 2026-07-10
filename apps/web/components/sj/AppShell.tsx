@@ -41,6 +41,15 @@ function ShellInner({ children }: { children: ReactNode }) {
   // Bare pages render without chrome
   const bare = pathname === '/onboarding';
 
+  // A successful shell render clears the chunk-skew reload guard (app/error.tsx)
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem('sj-chunk-reload');
+    } catch {
+      /* private mode */
+    }
+  }, []);
+
   // "Add" = the rate-something flow (discovery + quick-rate), like iOS.
   // Global search lives solely in the top-bar omnibox.
   const nav = [

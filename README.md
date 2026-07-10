@@ -84,10 +84,10 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 > `lib/db/types.ts`, `settings/page.tsx` (writes `library_visibility`; `'Followers only'` option removed —
 > live constraint is Public/Private only). Full visibility-overhaul parity (inherit-when-NULL overrides,
 > RPC enforcement) still open.
-> **⚠ OPEN DB-LOAD INCIDENT (07-07):** an out-of-repo PostgREST client (Mac script?) is bulk-updating
-> `release_groups.primary_genre` (a column no migration defines) at ~1 row / 3.8 s × 4 workers, 279k rows
-> to go — it IO-starves the Micro instance, so feed/charts/embeds still intermittently time out under anon
-> until it's stopped or finishes. Details in SESSIONS.md 07-07 entry. Follow-ups in SESSIONS.md
+> **✅ DB-LOAD INCIDENT RESOLVED (07-08):** the `primary_genre` bulk-updater was the Mac's backfill script;
+> the Mac moved `primary_genre` to a side table (`ade9f20`, migrations 20260706000018–20) since a
+> `release_groups` UPDATE was unfillable, and committed the script (`backfill-primary-genre.ts`). Measured
+> 07-08 (two probe runs, anon): every query green, `get_silla_leaderboard` now 0.5–0.9 s under anon. Follow-ups in SESSIONS.md
 > (2026-07-06 web entry): `supabase gen types` replacement for `lib/db/types.ts`, SSR/SEO pass, avatar upload,
 > Spotify discovery rows on web, delete stale `packages/shared`. **Merge note:** this landed in parallel with
 > the Mac's session-4 push (quests/referrals, Connected Accounts, mix social, username hardening, visibility
@@ -975,14 +975,17 @@ npm run expand:genre        # Spotify genre sweep — still works
 
 > **⚑ FIX LIST (2026-07-07)** — current open problems, in priority order:
 >
-> 1. **Stop the out-of-repo `primary_genre` backfill (URGENT, user action — likely a Mac-side script).**
->    4 PostgREST workers are bulk-updating `release_groups.primary_genre` (~1 row/3.8s each, ~279k rows
->    to go) and IO-starving the Micro instance. Until it's stopped, feed / trending / most-rated / silla /
->    search intermittently 57014 under anon — this is why pages look empty on prod right now.
-> 2. **Query errors render as empty states.** The Home feed shows *"No ratings yet — be the first!"* when
->    the feed query *fails* (timeout), because pages destructure `{ data }` and ignore `error`
->    (`app/(main)/page.tsx` explore pool; same pattern on charts/search). Needs a distinct error state +
->    retry, so a DB incident doesn't masquerade as an empty catalog.
+> 1. ~~Stop the `primary_genre` backfill~~ **✅ resolved 07-08** — Mac moved it to a side table
+>    (20260706000018–20); anon queries all green, silla 0.5–0.9 s.
+> 2. **Query errors render as empty states — ✅ feed + Charts Ranking fixed 07-08** (error state + Retry);
+>    the same pattern still exists on the remaining charts sections and search results (lower urgency now
+>    that the DB is healthy).
+> 2b. **✅ Album covers fixed 07-08** — CAA art (95% of catalog) never rendered on web: CSP `img-src`
+>    lacked `https://*.archive.org`, and CAA redirects end at `ia…/dn….archive.org` hosts, so browsers
+>    blocked the final hop. Also: web CAA covers now route through the `/api/img` caching proxy (edge-cached
+>    a year; falls back to the direct URL on proxy error), and the proxy moved edge→nodejs runtime because
+>    archive.org 502s Vercel edge egress (the Mac-flagged "cover proxy 502"). Chunk-skew auto-reload added
+>    to `app/error.tsx` (rapid deploys made stale clients need 2–3 manual reloads).
 > 3. **Visibility-overhaul web parity.** Migration `20260706000012/13` redesigned privacy (general
 >    Public/Private + nullable per-subtab overrides + `_sj_can_view` RPCs). Web settings still shows the
 >    legacy three independent pickers (minimally patched 07-07 to write `library_visibility` and drop

@@ -6,6 +6,18 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-07-08 (Windows, session 5) — covers-never-loaded root cause (CSP redirect hop) + img-proxy 502 fix + chunk-skew auto-reload; DB measured healthy:**
+
+User reported covers never load on web and pages needing 2–3 reloads. Three separate root causes found:
+
+1. **Covers: CSP blocked the CAA redirect chain.** `coverartarchive.org` art (≈95% of the catalog) 307-redirects to `archive.org/download/…` which 302s again to `ia…us.archive.org` / `dn…ca.archive.org` — and img-src only allowed the bare `https://archive.org` host, so browsers blocked the final hop and every CAA cover silently placeholder'd (broken since the rebuild wrote this CSP; direct curl always worked, which is why probes never caught it). Fixed: `https://*.archive.org` added to img-src + remotePatterns.
+2. **`/api/img` proxy 502 (the Mac-flagged one) had TWO causes:** archive.org rejects Vercel *edge* egress (mzstatic proxied fine, CAA always 502'd) → runtime switched edge→nodejs (`maxDuration 15`); AND CAA/archive.org fails transiently on cold requests even from residential IPs (observed: first hit 502, immediate retry 200) → the route now retries once (250ms gap), passes 404 through, sends `Accept: image/*`. With the 1-year immutable edge cache each image only ever needs to succeed once. **Web `Cover.tsx` now routes CAA art through the proxy** (instant edge hits after first load instead of 1.5–3s per image through the redirect chain) with a graceful ladder: proxy → direct URL → placeholder, reset when the url prop changes. iOS gets the proxy fix for free.
+3. **2–3-reloads instability = deployment chunk skew, not the DB** — measured twice under anon: every query green, `get_silla_leaderboard` 0.5–0.9s (the Mac's `primary_genre` side-table fix ended the load incident — closed in README). Eight deploys in one day meant clients holding an old HTML shell requested chunk hashes the new deploy doesn't serve → ChunkLoadError → manual reloads. `app/error.tsx` now detects chunk-load errors and reloads once automatically (sessionStorage guard against loops, cleared by a successful shell render). Consider enabling Vercel Skew Protection in the dashboard as the infra-level fix.
+
+README updated: DB-load incident closed, fix-list item 1 struck, covers + skew items added.
+
+---
+
 **2026-07-08 (Windows, session 4) — album rating UX rework: inline auto-save editor replaces the modal; global cursor tooltips:**
 
 The album page's manual rating flow no longer uses a modal at all — new `InlineRatingEditor.tsx`:

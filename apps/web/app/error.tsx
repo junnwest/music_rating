@@ -1,13 +1,32 @@
 ﻿'use client';
 
+import { useEffect } from 'react';
 import Link from 'next/link';
 
 export default function GlobalError({
+  error,
   reset,
 }: {
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  // Deployment skew: a client holding the previous deploy's HTML requests
+  // chunk hashes the new deploy no longer serves (ChunkLoadError). A reload
+  // fetches the fresh shell — do it automatically, once, instead of making
+  // the user reload 2–3 times themselves.
+  useEffect(() => {
+    const chunkError =
+      error?.name === 'ChunkLoadError' ||
+      /Loading chunk .+ failed|Failed to fetch dynamically imported module|Importing a module script failed/i.test(
+        error?.message ?? '',
+      );
+    if (!chunkError) return;
+    const KEY = 'sj-chunk-reload';
+    if (sessionStorage.getItem(KEY)) return; // one attempt — never loop
+    sessionStorage.setItem(KEY, '1');
+    window.location.reload();
+  }, [error]);
+
   return (
     <div className="min-h-screen bg-page flex flex-col items-center justify-center px-5 text-center">
       <p className="text-[11px] font-semibold text-muted uppercase mb-4" style={{ letterSpacing: '0.7px' }}>
