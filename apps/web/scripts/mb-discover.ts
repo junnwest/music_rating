@@ -63,12 +63,27 @@ export async function listenBrainzTopUp(db: DB, opts: ListenBrainzTopUpOpts = {}
   const LIMIT = opts.limit ?? 500;
   if (LIMIT <= 0) return 0;
 
+  // CRITICAL: a bare PostgREST .select() is capped at 1000 rows. These two sets are the
+  // dedup that stops discovery from re-queuing artists we already own (and haveMbids is also
+  // the snowball SEED set below). Un-paginated, they saw only the first 1000 of ~34k artists,
+  // so ~97% of the catalog was invisible to the dedup and every top-up re-queued famous
+  // already-owned artists (measured 2026-07-10: 323/523 = 62% of a top-up was already-owned).
+  // Page through the full set in 1000-row windows.
+  async function allColumn(table: string, column: string, source: string): Promise<string[]> {
+    const out: string[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await db.from(table).select(column).eq('source', source).range(from, from + 999);
+      if (error) throw new Error(`${table}.${column} page@${from}: ${error.message}`);
+      if (!data?.length) break;
+      out.push(...data.map((r: any) => r[column] as string));
+      if (data.length < 1000) break;
+    }
+    return out;
+  }
   // Artists we already have (MBID) — both the snowball sources and the dedup set.
-  const { data: ext } = await db.from('artist_external_ids').select('external_id').eq('source', 'musicbrainz');
-  const haveMbids = new Set((ext ?? []).map((r: any) => r.external_id as string));
+  const haveMbids = new Set(await allColumn('artist_external_ids', 'external_id', 'musicbrainz'));
   // Already-queued ListenBrainz MBIDs (avoid re-queuing across runs).
-  const { data: q } = await db.from('artist_ingestion_queue').select('source_id').eq('source', 'listenbrainz');
-  const queued = new Set((q ?? []).map((r: any) => r.source_id as string).filter(Boolean));
+  const queued = new Set((await allColumn('artist_ingestion_queue', 'source_id', 'listenbrainz')).filter(Boolean));
 
   // Random sample of FROM sources (not the first N): a fixed window dries up once its
   // neighbours are queued, so we vary it each call to keep discovery productive as the
