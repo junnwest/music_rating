@@ -324,9 +324,13 @@ struct SearchArtist: Codable, Identifiable {
     let nameNative: String?
     let coverUrl: String?
     let releaseCount: Int
+    // Romanization aliases (e.g. "HYUKOH" for the Hangul-named 혁오). search_artists matches on
+    // these but its canonical `name` may be native-script, so the resolve gate checks them too.
+    let aliases: [String]?
     enum CodingKeys: String, CodingKey {
         case id; case name; case nameNative = "name_native"
         case coverUrl = "cover_url"; case releaseCount = "release_count"
+        case aliases
     }
 
     // name_native is mixed-provenance (some rows hold a non-Korean transliteration instead
@@ -1034,23 +1038,31 @@ struct SearchView: View {
     // that instead of the honest "not in catalog" alert. Only trust a result whose artist matches.
     private func fetchRelease(name: String, artist: String) async -> Release? {
         let al = artist.lowercased()
+        // Resolve the artist first (romanization-aware, via search_artists aliases) so we can
+        // accept an album by artist-id equality when its native artist_display ("혁오") can't
+        // string-overlap a romanized external artist name ("Hyukoh"). One extra RPC, per tap.
+        let artistId = await resolveArtist(name: artist).artistId
+        func accept(_ r: Release) -> Bool {
+            let ra = r.artist.lowercased()
+            if ra.contains(al) || al.contains(ra) { return true }
+            if let aid = artistId, r.primaryArtistId == aid { return true }
+            return false
+        }
 
         let exact: [Release] = (try? await supabase
             .from("release_groups")
-            .select("id, title, artist_display, cover_url, release_group_type, first_release_date, native_title")
+            .select("id, title, artist_display, cover_url, release_group_type, first_release_date, native_title, primary_artist_id")
             .ilike("title", value: name)
             .limit(5)
             .execute()
             .value) ?? []
-        if let match = exact.first(where: { $0.artist.lowercased().contains(al) || al.contains($0.artist.lowercased()) }) {
-            return match
-        }
+        if let match = exact.first(where: accept) { return match }
 
         let fuzzy: [Release] = (try? await supabase
             .rpc("search_release_groups", params: SearchParams(q: name, lim: 10))
             .execute()
             .value) ?? []
-        return fuzzy.first { $0.artist.lowercased().contains(al) || al.contains($0.artist.lowercased()) }
+        return fuzzy.first(where: accept)
     }
 
     // Same reasoning as fetchRelease -- Spotify's artist name string rarely matches our
@@ -1069,11 +1081,16 @@ struct SearchView: View {
             .execute()
             .value) ?? []
         let target = name.lowercased()
+        func overlaps(_ s: String) -> Bool {
+            let l = s.lowercased()
+            return !l.isEmpty && (l == target || l.contains(target) || target.contains(l))
+        }
         let match = rows.first { row in
-            let n = row.name.lowercased()
-            let native = row.nameNative?.lowercased() ?? ""
-            return n == target || n.contains(target) || target.contains(n)
-                || (!native.isEmpty && (native == target || native.contains(target) || target.contains(native)))
+            // name / native as before, PLUS any romanized alias — the RPC can match a native-
+            // named artist (혁오) via its "HYUKOH" alias, which name/native can't string-overlap.
+            overlaps(row.name)
+                || (row.nameNative.map(overlaps) ?? false)
+                || (row.aliases ?? []).contains(where: overlaps)
         }
         return ArtistDestination(artistId: match?.id, name: name)
     }

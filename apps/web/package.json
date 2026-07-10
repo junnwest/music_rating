@@ -102,6 +102,7 @@
     "backfill:tracks:dry": "tsx --env-file=.env.local scripts/backfill-tracks.ts --dry-run",
     "catalog:status": "tsx --env-file=.env.local scripts/catalog-status.ts",
     "analyze:coverage": "tsx --env-file=.env.local scripts/analyze-coverage.ts",
+    "verify:coverage": "tsx --env-file=.env.local scripts/verify-coverage.ts",
     "analyze:coverage:albums": "tsx --env-file=.env.local scripts/analyze-coverage.ts --albums-only",
     "queue:build:global": "tsx --env-file=.env.local scripts/build-global-queue.ts",
     "queue:build:global:dry": "tsx --env-file=.env.local scripts/build-global-queue.ts --dry-run",

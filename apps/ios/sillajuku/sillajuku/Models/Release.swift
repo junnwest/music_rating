@@ -39,6 +39,12 @@ struct Release: Codable, Identifiable, Hashable {
     let artistNative: String?
     let tracklist: [TrackItem]?
     let totalTracks: Int?
+    // var (not let) + default so the many memberwise Release(...) call sites AND the Codable
+    // decoder both keep working without threading this field through each one. Present only
+    // when the query/RPC selects primary_artist_id (fetchRelease's gate + search_release_groups);
+    // decodes as nil otherwise. Lets album matching fall back to artist-id equality when the
+    // native artist_display can't string-overlap a romanized external artist name.
+    var primaryArtistId: UUID? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, title
@@ -50,6 +56,7 @@ struct Release: Codable, Identifiable, Hashable {
         case artistNative = "artist_native"    // only present when the query/RPC joins artists explicitly; decodes as nil otherwise
         case tracklist                         // not on release_groups; decodes as nil
         case totalTracks = "total_tracks"      // not on release_groups; decodes as nil
+        case primaryArtistId = "primary_artist_id" // only when selected; decodes as nil otherwise
     }
 
     // native_title/name_native are mixed-provenance across backfill eras — many non-Korean
