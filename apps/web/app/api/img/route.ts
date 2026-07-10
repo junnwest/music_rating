@@ -36,26 +36,46 @@ export async function GET(request: NextRequest) {
   }
 
   // CAA/archive.org fails transiently on cold requests (observed: first hit
-  // 502s, the immediate retry returns the image) — retry once. With the
-  // year-long edge cache below, each image only ever needs to succeed once.
+  // 502s, the immediate retry returns the image) — retry twice with backoff,
+  // and cap each attempt so one hung socket can't eat the whole maxDuration.
+  // With the year-long edge cache below, each image only ever needs to
+  // succeed once.
   let upstream: Response | null = null;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  const backoff = [250, 750];
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const res = await fetch(u.toString(), {
         headers: { 'User-Agent': 'sillajuku-cover-proxy/1.0', Accept: 'image/*' },
         // follows the CAA 307 -> archive.org redirect automatically
+        signal: AbortSignal.timeout(6000),
       });
       if (res.ok) {
         upstream = res;
         break;
       }
-      if (res.status === 404) return new Response('not found', { status: 404 });
+      if (res.status === 404) {
+        // No art exists — cache the miss at the edge so repeat views of the
+        // same coverless release don't re-hit CAA (client falls back anyway).
+        return new Response('not found', {
+          status: 404,
+          headers: { 'Cache-Control': 'public, s-maxage=86400' },
+        });
+      }
     } catch {
       /* retry */
     }
-    if (attempt === 0) await new Promise((r) => setTimeout(r, 250));
+    if (attempt < 2) await new Promise((r) => setTimeout(r, backoff[attempt]));
   }
-  if (!upstream) return new Response('upstream error', { status: 502 });
+  if (!upstream) {
+    // All attempts failed — hand the browser the direct URL instead of a dead
+    // 502. CSP/remotePatterns already allow *.archive.org, so the <img> still
+    // renders (slower) without waiting for the client-side onError ladder.
+    // Not cached: the next viewer should retry the proxy path.
+    return new Response(null, {
+      status: 302,
+      headers: { Location: u.toString(), 'Cache-Control': 'no-store' },
+    });
+  }
 
   const contentType = upstream.headers.get('content-type') ?? 'image/jpeg';
   if (!contentType.startsWith('image/')) {

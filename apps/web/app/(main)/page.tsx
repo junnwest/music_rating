@@ -11,6 +11,7 @@ import { useSession } from '../../components/sj/SessionContext';
 import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
 import { FEED_SELECT, type FeedItemRow } from '../../lib/sj/data';
+import { fetchFeed, fetchChartsSummary } from '../../lib/sj/apiClient';
 import { displayName } from '../../lib/sj/display';
 import type { ChartTrendingRPC, SuggestedUserRPC } from '../../lib/db/types';
 
@@ -42,6 +43,12 @@ export default function HomePage() {
     }
     setLoading(true);
 
+    // The global explore pool + its like/comment counts come from the cached
+    // /api/feed route (service role + Redis/CDN) — started first so it races
+    // the per-user signal queries below. Falls back to the direct query if
+    // the route is down.
+    const cachedFeedPromise = fetchFeed().catch(() => null);
+
     // Personalization signals (must resolve before ranking)
     let followingIds = new Set<string>();
     let likedArtists = new Set<string>();
@@ -71,15 +78,27 @@ export default function HomePage() {
 
     // Explore pool. A failed query is an error state, NOT an empty catalog —
     // don't let a timeout masquerade as "no ratings yet".
-    const { data: poolData, error: poolError } = await supabase
-      .from('ratings')
-      .select(FEED_SELECT)
-      .order('created_at', { ascending: false })
-      .limit(150);
-    setLoadFailed(!!poolError && !poolData);
-    const pool = ((poolData as unknown as FeedItemRow[] | null) ?? []).filter(
-      (i) => !blocked.has(i.user_id),
-    );
+    const cachedFeed = await cachedFeedPromise;
+    const lCounts: Record<string, number> = {};
+    const cCounts: Record<string, number> = {};
+    let pool: FeedItemRow[];
+    let poolFailed = false;
+    if (cachedFeed) {
+      pool = cachedFeed.items.filter((i) => !blocked.has(i.user_id));
+      Object.assign(lCounts, cachedFeed.likeCounts);
+      Object.assign(cCounts, cachedFeed.commentCounts);
+    } else {
+      const { data: poolData, error: poolError } = await supabase
+        .from('ratings')
+        .select(FEED_SELECT)
+        .order('created_at', { ascending: false })
+        .limit(150);
+      poolFailed = !!poolError && !poolData;
+      pool = ((poolData as unknown as FeedItemRow[] | null) ?? []).filter(
+        (i) => !blocked.has(i.user_id),
+      );
+    }
+    setLoadFailed(poolFailed);
 
     // Following feed
     let following: FeedItemRow[] = [];
@@ -95,18 +114,25 @@ export default function HomePage() {
       );
     }
 
-    // Social data for all visible items
+    // Social data. The cached payload already carries counts for the pool —
+    // only items it doesn't cover (following feed; whole pool on fallback)
+    // need a live count query. My-likes/saves are always per-user.
     const allItems = [...pool, ...following];
     const ratingIds = Array.from(new Set(allItems.map((i) => i.id)));
     const releaseIds = Array.from(new Set(allItems.map((i) => i.release_groups.id)));
-    const lCounts: Record<string, number> = {};
-    const cCounts: Record<string, number> = {};
+    const liveCountIds = Array.from(
+      new Set([...(cachedFeed ? [] : pool.map((i) => i.id)), ...following.map((i) => i.id)]),
+    );
     const liked = new Set<string>();
     const saved = new Set<string>();
     if (ratingIds.length > 0) {
       const [likesRes, commentsRes, myLikesRes, mySavesRes] = await Promise.all([
-        supabase.from('rating_likes').select('rating_id').in('rating_id', ratingIds),
-        supabase.from('rating_comments').select('rating_id').in('rating_id', ratingIds),
+        liveCountIds.length > 0
+          ? supabase.from('rating_likes').select('rating_id').in('rating_id', liveCountIds)
+          : Promise.resolve({ data: null }),
+        liveCountIds.length > 0
+          ? supabase.from('rating_comments').select('rating_id').in('rating_id', liveCountIds)
+          : Promise.resolve({ data: null }),
         userId
           ? supabase
               .from('rating_likes')
@@ -122,11 +148,18 @@ export default function HomePage() {
               .in('release_group_id', releaseIds)
           : Promise.resolve({ data: null }),
       ]);
+      // Live counts overwrite (not add to) any cached values for the same ids
+      const freshL: Record<string, number> = {};
+      const freshC: Record<string, number> = {};
       for (const r of (likesRes.data as { rating_id: string }[] | null) ?? []) {
-        lCounts[r.rating_id] = (lCounts[r.rating_id] ?? 0) + 1;
+        freshL[r.rating_id] = (freshL[r.rating_id] ?? 0) + 1;
       }
       for (const r of (commentsRes.data as { rating_id: string }[] | null) ?? []) {
-        cCounts[r.rating_id] = (cCounts[r.rating_id] ?? 0) + 1;
+        freshC[r.rating_id] = (freshC[r.rating_id] ?? 0) + 1;
+      }
+      for (const id of liveCountIds) {
+        lCounts[id] = freshL[id] ?? 0;
+        cCounts[id] = freshC[id] ?? 0;
       }
       for (const r of (myLikesRes.data as { rating_id: string }[] | null) ?? []) {
         liked.add(r.rating_id);
@@ -322,10 +355,23 @@ function TrendingRail() {
   const [entries, setEntries] = useState<ChartTrendingRPC[]>([]);
 
   useEffect(() => {
-    if (!supabase) return;
-    supabase
-      .rpc('get_charts_trending', { p_limit: 5 })
-      .then(({ data }) => setEntries((data as ChartTrendingRPC[] | null) ?? []));
+    let cancelled = false;
+    // Cached charts bundle; falls back to the direct RPC if the route is down
+    fetchChartsSummary()
+      .then((s) => {
+        if (!cancelled) setEntries(s.trending);
+      })
+      .catch(() => {
+        if (!supabase) return;
+        supabase
+          .rpc('get_charts_trending', { p_limit: 5 })
+          .then(({ data }) => {
+            if (!cancelled) setEntries((data as ChartTrendingRPC[] | null) ?? []);
+          });
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (entries.length === 0) return null;

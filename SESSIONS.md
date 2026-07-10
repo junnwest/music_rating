@@ -6,6 +6,19 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-07-10 (Windows) — backend caching layer: cached feed/charts routes + img-proxy hardening (the "blank squares" fix):**
+
+User reported loading still "a bit unstable — blank squares for data." Probed live (all anon queries green, 0.2–2.6s), so the instability wasn't an outage — it's architectural: every visitor's browser ran the full query set live under the anon role's 3s statement-timeout budget (Home = ~8 queries including a 150-row ratings select with two embeds + full-row like/comment scans; Charts = 4–7 RPCs), so any DB hiccup blanked a section, and cold CAA covers took seconds through the proxy. Fixes, all backend:
+
+1. **Three new cached service-role routes** (the `/api/charts/silla` pattern generalized): `/api/feed` (explore pool + like/comment counts computed server-side; Redis 60s, CDN `s-maxage=30 swr=300`), `/api/charts/summary` (unlock + pulse + most-rated(20) + trending(5); Redis 300s), `/api/charts/songs` (top/most-rated/trending songs; Redis 600s). All rate-limited; none caches a payload containing an errored section (a transient RPC error must not pin a blank section for the TTL). New typed fetchers in `lib/sj/apiClient.ts`.
+2. **Home + Charts + home TrendingRail repointed** to the routes, with the previous direct-RPC path kept as an explicit fallback on route failure — a route outage degrades to today's behavior instead of a blank page. Cached feed counts merge with live counts for the per-user Following feed (live overwrites cached by id, no double-count). Per-user signals (follows/blocks/my-likes/my-saves) stay client-side and now race the cached fetch instead of serializing before it.
+3. **`/api/img` proxy hardened:** per-attempt 6s `AbortSignal.timeout` (one hung socket can't eat the whole 15s budget), 3 attempts with 250/750ms backoff, 404s edge-cached a day (no re-hammering CAA for coverless releases), and total failure returns a **302 to the direct upstream URL** instead of a 502 — the browser retries directly (CSP already allows `*.archive.org`), so a proxy failure means a slower cover, not a blank square.
+4. **Songs-tab RPCs no longer fire while the songs gate is locked** — measured all three timing out (57014) even under the service role's 8s budget; they aggregate over ~2.3M recordings and need index/precompute work before the gate can unlock (flagged in README). Data invisible behind LockedView anyway.
+
+Also confirmed: `get_rankings_unlock_status` reading ~2,987/10,000 (charts locked) is **by design** — the 20260706000003 bot-decay gauge, not a data regression. Verified: `tsc` clean, ESLint clean (pre-existing warnings only), 31/31 vitest, all three routes probed live (feed warm 0.5s; summary warm 0.4s; img proxy 200 image/jpeg, SSRF 403, 404 pass-through). README: cover-proxy OPEN bullet closed (was stale — fixed 07-09), fix-list item 2 updated, 07-10 session block added.
+
+---
+
 **2026-07-08 (Windows, session 5) — covers-never-loaded root cause (CSP redirect hop) + img-proxy 502 fix + chunk-skew auto-reload; DB measured healthy:**
 
 User reported covers never load on web and pages needing 2–3 reloads. Three separate root causes found:
