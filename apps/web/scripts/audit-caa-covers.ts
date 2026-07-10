@@ -23,6 +23,17 @@
  * Perceptual hash (jimp pHash + Hamming distance, 0 = identical … ~0.5 = unrelated):
  *   distance ≲ THRESHOLD → "agree" (same artwork, resolution/compression aside)
  *   CAA flagged only when dist(Deezer,iTunes) ≤ THRESHOLD AND both CAA distances > THRESHOLD
+ *
+ * INTERPRETING THE FLAG DISTANCE (learned from the 2026-07-10 prestige run):
+ *   ~0.25–0.45  → usually a DIFFERENT EDITION, not a wrong cover — CAA often has the
+ *                 original pressing while Deezer+iTunes both serve the modern remaster,
+ *                 so they coincidentally agree and CAA looks like the outlier. Review,
+ *                 but do NOT assume CAA is wrong (a prestige run flagged 7 iconic albums
+ *                 here — Kind of Blue, Born to Run, MBDTF — all correct, just older art).
+ *   ≳ 0.45      → near-random → the images are genuinely UNRELATED → likely a real CAA
+ *                 error (the YANGHONGWON/오보에 class). This is the actionable signal.
+ *   Raise --threshold to ~0.45 to hunt only genuine errors; keep 0.25 to also survey
+ *   edition inconsistency. Either way this NEVER auto-repoints — a human confirms.
  */
 import { Jimp, distance } from 'jimp';
 import { writeFileSync, mkdirSync } from 'node:fs';
