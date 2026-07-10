@@ -56,7 +56,7 @@ function overlap(a: string, b: string): boolean {
   return !!x && !!y && (x.includes(y) || y.includes(x));
 }
 
-async function readImage(url: string): Promise<InstanceType<typeof Jimp> | null> {
+async function readImage(url: string): Promise<Awaited<ReturnType<typeof Jimp.read>> | null> {
   try {
     const res = await fetch(url, { headers: { 'User-Agent': 'sillajuku-cover-qc/1.0' }, signal: AbortSignal.timeout(20000) });
     if (!res.ok) return null;
