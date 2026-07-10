@@ -70,6 +70,36 @@ final class QuestChecklistViewModel {
         personalQuestsComplete && albumsChartsUnlocked && songsChartsUnlocked
     }
 
+    var hasClaimedBadge: Bool { profile?.badgeColor != nil }
+
+    // Gates the redeem sheet MainTabView auto-presents on every launch: done
+    // with quests, but the one-time color choice hasn't happened yet.
+    var shouldOfferBadgeRedeem: Bool { personalQuestsComplete && !hasClaimedBadge }
+
+    // The DB trigger (prevent_badge_color_change) is the real guarantee this
+    // can't be changed later -- the `!hasClaimedBadge` guard here just avoids
+    // a doomed round-trip, not a security boundary.
+    @discardableResult
+    func claimBadge(_ color: QuestBadgeColor) async -> Bool {
+        guard let userId = supabase.auth.currentUser?.id, !hasClaimedBadge else { return false }
+        struct Patch: Encodable {
+            let badgeColor: String
+            enum CodingKeys: String, CodingKey { case badgeColor = "badge_color" }
+        }
+        do {
+            try await supabase
+                .from("profiles")
+                .update(Patch(badgeColor: color.rawValue))
+                .eq("id", value: userId)
+                .execute()
+            profile?.badgeColor = color.rawValue
+            return true
+        } catch {
+            print("QuestChecklistViewModel.claimBadge failed for user \(userId): \(error)")
+            return false
+        }
+    }
+
     func load() async {
         guard let userId = supabase.auth.currentUser?.id else { isLoading = false; return }
         isLoading = true
@@ -91,7 +121,7 @@ final class QuestChecklistViewModel {
     private func loadProfile(userId: UUID) async {
         let row: Profile? = try? await supabase
             .from("profiles")
-            .select("id, display_name, username, rating_mode, bio, avatar_url, referral_code")
+            .select("id, display_name, username, rating_mode, bio, avatar_url, referral_code, badge_color")
             .eq("id", value: userId)
             .single()
             .execute()

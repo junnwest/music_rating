@@ -22,6 +22,13 @@ struct Profile: Codable, Identifiable {
     var libraryVisibility: String?
     var statsVisibility: String?
     var referralCode: String?
+    // Non-nil = the user has claimed their quest-completion flower badge, and
+    // this is its permanent color (raw values match QuestBadgeColor + the DB
+    // check constraint) -- a DB trigger blocks changing it once set, so this
+    // is safe to treat as immutable once non-nil.
+    var badgeColor: String?
+    // Manually granted (no self-serve flow) -- see `is_verified` migration.
+    var isVerified: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -41,6 +48,8 @@ struct Profile: Codable, Identifiable {
         case libraryVisibility    = "library_visibility"
         case statsVisibility      = "stats_visibility"
         case referralCode = "referral_code"
+        case badgeColor   = "badge_color"
+        case isVerified   = "is_verified"
     }
 }
 

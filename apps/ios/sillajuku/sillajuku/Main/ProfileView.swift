@@ -95,9 +95,15 @@ struct RatingStatsSnapshot {
 
         var artistCounts: [String: Int] = [:]
         for r in ratings { artistCounts[r.releases.artist, default: 0] += 1 }
-        let topArtists = artistCounts.sorted { $0.value > $1.value }.prefix(5).map {
-            ArtistCount(artist: $0.key, count: $0.value)
-        }
+        // Dictionary iteration order is non-deterministic, so ties on count
+        // alone re-sort randomly on every recompute (visible as the list
+        // "scrambling" between renders) -- artist name is a stable secondary
+        // key purely to make repeat calls deterministic, not a meaningful
+        // ranking signal on its own.
+        let topArtists = artistCounts
+            .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
+            .prefix(5)
+            .map { ArtistCount(artist: $0.key, count: $0.value) }
 
         return RatingStatsSnapshot(
             albumCount: ratings.count,
@@ -284,7 +290,7 @@ class ProfileViewModel {
 
         profile = try? await supabase
             .from("profiles")
-            .select("id, display_name, username, rating_mode, manual_rating_step, bio, avatar_url, notify_likes, notify_replies, notify_followers, notify_rankings, notify_capsule, profile_visibility, catalog_visibility, library_visibility, stats_visibility, referral_code")
+            .select("id, display_name, username, rating_mode, manual_rating_step, bio, avatar_url, notify_likes, notify_replies, notify_followers, notify_rankings, notify_capsule, profile_visibility, catalog_visibility, library_visibility, stats_visibility, referral_code, badge_color, is_verified")
             .eq("id", value: user.id)
             .single()
             .execute()
@@ -611,6 +617,24 @@ struct ProfileView: View {
     // sheet, owned by MainTabView where `selectedTab` actually lives.
     var onGoToAdd: () -> Void
     @State private var activeTab: ProfileTab = .rated
+    // Live swipe-tracking state for tabContent -- dragTranslation is set
+    // directly (unanimated) in onChanged, so the content visually follows
+    // the finger 1:1 and holds wherever the finger stops. contentWidth is
+    // measured once via a width-only GeometryReader (safe -- the parent
+    // already determines width, unlike height).
+    @State private var dragTranslation: CGFloat = 0
+    @State private var contentWidth: CGFloat = UIScreen.main.bounds.width
+    // Lists/Stats tabs are often shorter than the screen (e.g. 2 mixes) --
+    // without a height floor, tabContent's hit-test area (contentShape +
+    // gesture) only covers its actual short content, so swiping over the
+    // blank space below it does nothing. tabMinHeight (outer viewport height
+    // minus the hero's actual height, recomputed via onAppear/onChange --
+    // NOT PreferenceKey, which measured 0 here for reasons not fully
+    // understood, bubbling cross-view through the VStack/ScrollView instead
+    // of resolving to a real GeometryReader size) lets tabContent claim the
+    // rest of the visible screen even when its own content doesn't fill it.
+    @State private var heroHeight: CGFloat = 0
+    @State private var tabMinHeight: CGFloat = 0
     @State private var showSettings       = false
     @State private var showEditProfile    = false
     @State private var showShareSheet     = false
@@ -621,7 +645,7 @@ struct ProfileView: View {
     @State private var mixLibVM           = MixLibraryViewModel()
     @State private var ratingSortOrder:    RatingSortOrder = .recent
     @State private var ratingTypeFilter:   RatingTypeFilter = .all
-    @State private var ratingDisplayMode:  RatingDisplayMode = .list
+    @State private var ratingDisplayMode:  RatingDisplayMode = .posts
     @State private var pendingDeleteItem:  ProfileRatedItem? = nil
     // Explicit path (rather than a plain NavigationStack {}) so a mix share
     // posted from deep in this stack (e.g. Lists tab -> MixDetailView) can be
@@ -641,6 +665,7 @@ struct ProfileView: View {
             .background(Color.sjCream.ignoresSafeArea())
             .navigationBarHidden(true)
             .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
+            .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
             .navigationDestination(for: Mix.self) { MixDetailView(mix: $0) }
             .sheet(isPresented: $showSettings) {
                 SettingsView(viewModel: viewModel)
@@ -692,41 +717,180 @@ struct ProfileView: View {
 
     // MARK: - Content
 
+    // One ScrollView, hero + whichever tab is active, both scrolling as a
+    // single unit. Only one tab's content ever exists in the tree at a time
+    // (a plain switch, not 3 pages laid out side by side) -- so there's no
+    // shared-height/alignment gotcha to fight: each tab is simply its own
+    // natural size. The swipe gesture is attached only to `tabContent`, not
+    // the hero, so dragging over the avatar/stats/bio/buttons area does
+    // nothing; dragging over the grid/list/stats area below switches tabs.
     private var profileContent: some View {
+        GeometryReader { outerGeo in
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    heroContent
+                        .background(
+                            GeometryReader { heroGeo in
+                                Color.clear
+                                    .onAppear { heroHeight = heroGeo.size.height }
+                                    .onChange(of: heroGeo.size.height) { _, newValue in
+                                        heroHeight = newValue
+                                    }
+                            }
+                        )
+                    tabContent
+                        .padding(.bottom, 32)
+                }
+            }
+            .onAppear { tabMinHeight = max(0, outerGeo.size.height - heroHeight) }
+            .onChange(of: outerGeo.size.height) { _, newValue in
+                tabMinHeight = max(0, newValue - heroHeight)
+            }
+            .onChange(of: heroHeight) { _, newValue in
+                tabMinHeight = max(0, outerGeo.size.height - newValue)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func tabPage(_ tab: ProfileTab) -> some View {
+        switch tab {
+        case .rated: ratedGrid
+        case .lists: listsPlaceholder
+        case .stats: statsContent
+        }
+    }
+
+    // Which tab is being dragged into view alongside the active one -- only
+    // non-nil while actively dragging (dragTranslation != 0), so at rest
+    // this is still just one page, same as before.
+    private var adjacentTab: ProfileTab? {
+        guard dragTranslation != 0, let idx = ProfileTab.allCases.firstIndex(of: activeTab) else { return nil }
+        if dragTranslation < 0 {
+            return idx < ProfileTab.allCases.count - 1 ? ProfileTab.allCases[idx + 1] : nil
+        } else {
+            return idx > 0 ? ProfileTab.allCases[idx - 1] : nil
+        }
+    }
+
+    private struct TabContentWidthKey: PreferenceKey {
+        static var defaultValue: CGFloat = 0
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+    }
+
+    // Real 1:1 finger tracking: the active page is offset by dragTranslation
+    // exactly as set in onChanged (no animation applied to that write), so
+    // holding the finger still mid-drag leaves the content exactly where it
+    // is. The adjacent page (only rendered while dragging) slides in from
+    // the correct side in lockstep. Only on release does anything animate --
+    // either finishing the page turn or springing back.
+    private var tabContent: some View {
+        ZStack(alignment: .top) {
+            tabPage(activeTab)
+                .frame(width: contentWidth, alignment: .top)
+                .offset(x: dragTranslation)
+            if let adjacentTab {
+                tabPage(adjacentTab)
+                    .frame(width: contentWidth, alignment: .top)
+                    .offset(x: dragTranslation + (dragTranslation < 0 ? contentWidth : -contentWidth))
+            }
+        }
+        // Floor, not a cap -- short tabs (e.g. Lists with 2 mixes) still
+        // claim the rest of the visible screen so the swipe gesture below
+        // works there too; tabs taller than the viewport are unaffected.
+        .frame(minHeight: tabMinHeight, alignment: .top)
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(key: TabContentWidthKey.self, value: geo.size.width)
+            }
+        )
+        .onPreferenceChange(TabContentWidthKey.self) { width in
+            if width > 0 { contentWidth = width }
+        }
+        .clipped()
+        .contentShape(Rectangle())
+        .highPriorityGesture(tabSwipeGesture)
+    }
+
+    // Verified directly (via idb swipe + screenshot) that plain .gesture()
+    // does NOT out-prioritize a child's own tap gesture -- a swipe here was
+    // still being read as a tap on a NavigationLink underneath and pushed
+    // into its destination instead of switching tabs. Only
+    // .highPriorityGesture forces this to win once it actually recognizes a
+    // drag. It only "wins" after minimumDistance is crossed -- a real tap
+    // (released before that) never triggers this gesture at all, so it
+    // still falls through to the view underneath normally.
+    private var tabSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 15)
+            .onChanged { value in
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                let idx = ProfileTab.allCases.firstIndex(of: activeTab) ?? 0
+                var t = value.translation.width
+                if t > 0, idx == 0 { t = 0 }                                    // can't go before the first tab
+                if t < 0, idx == ProfileTab.allCases.count - 1 { t = 0 }         // or past the last one
+                dragTranslation = t
+            }
+            .onEnded { value in
+                let idx = ProfileTab.allCases.firstIndex(of: activeTab) ?? 0
+                let threshold = contentWidth * 0.33
+                var newIdx = idx
+                if dragTranslation < -threshold, idx < ProfileTab.allCases.count - 1 {
+                    newIdx = idx + 1
+                } else if dragTranslation > threshold, idx > 0 {
+                    newIdx = idx - 1
+                }
+                if newIdx != idx {
+                    // Finish the page turn in the same direction the finger
+                    // was already moving, then swap activeTab and zero the
+                    // offset at the exact instant it completes -- the new
+                    // page is already sitting at that same visual position,
+                    // so the swap itself is imperceptible.
+                    withAnimation(.easeOut(duration: 0.22)) {
+                        dragTranslation = dragTranslation < 0 ? -contentWidth : contentWidth
+                    } completion: {
+                        activeTab = ProfileTab.allCases[newIdx]
+                        dragTranslation = 0
+                    }
+                } else {
+                    withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.82)) {
+                        dragTranslation = 0
+                    }
+                }
+            }
+    }
+
+    private var heroContent: some View {
         VStack(spacing: 0) {
             customNavBar
             headerRow
             nameRow
             actionButtons
             tabBar
-
-            TabView(selection: $activeTab) {
-                ScrollView(showsIndicators: false) {
-                    ratedGrid.padding(.bottom, 32)
-                }
-                .tag(ProfileTab.rated)
-
-                ScrollView(showsIndicators: false) {
-                    listsPlaceholder.padding(.bottom, 32)
-                }
-                .tag(ProfileTab.lists)
-
-                ScrollView(showsIndicators: false) {
-                    statsContent.padding(.bottom, 32)
-                }
-                .tag(ProfileTab.stats)
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
         }
     }
 
     private var customNavBar: some View {
         ZStack {
-            Text(viewModel.profile.flatMap { $0.username }.map { "@\($0)" } ?? "Profile")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color.sjInk)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .center)
+            // Badges sit next to the @handle (the account's actual identity),
+            // not the display name -- the whole group centers together so
+            // adding badges doesn't throw off the title's centering.
+            HStack(spacing: 4) {
+                Text(viewModel.profile.flatMap { $0.username }.map { "@\($0)" } ?? "Profile")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color.sjInk)
+                    .lineLimit(1)
+                if let raw = viewModel.profile?.badgeColor, let badge = QuestBadgeColor(rawValue: raw) {
+                    QuestBadgeView(color: badge.color)
+                        .frame(width: 14, height: 14)
+                        .accessibilityLabel(String(localized: "Quests complete"))
+                }
+                if viewModel.profile?.isVerified == true {
+                    VerifiedBadgeView()
+                        .frame(width: 14, height: 14)
+                        .accessibilityLabel(String(localized: "Verified"))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
 
             HStack {
                 Button { showUserSearch = true } label: {
@@ -1022,7 +1186,8 @@ struct ProfileView: View {
                             )
                         }
                         .buttonStyle(.plain)
-                        .contextMenu {
+                        .albumContextMenu(item.asRelease) {
+                            Divider()
                             Button(role: .destructive) {
                                 pendingDeleteItem = item
                             } label: {
@@ -1734,7 +1899,12 @@ struct UserSearchSheet: View {
         let id: UUID
         let username: String?
         let displayName: String?
-        enum CodingKeys: String, CodingKey { case id, username; case displayName = "display_name" }
+        let isVerified: Bool?
+        enum CodingKeys: String, CodingKey {
+            case id, username
+            case displayName = "display_name"
+            case isVerified  = "is_verified"
+        }
         var handle: String  { username ?? displayName ?? String(localized: "someone") }
         var label: String   { displayName ?? username ?? String(localized: "someone") }
         var initial: String { String(handle.prefix(1)).uppercased() }
@@ -1783,8 +1953,15 @@ struct UserSearchSheet: View {
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text(profile.label)
                                                 .font(.system(size: 14, weight: .semibold)).foregroundStyle(Color.sjInk)
-                                            Text("@" + profile.handle)
-                                                .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                                            HStack(spacing: 4) {
+                                                Text("@" + profile.handle)
+                                                    .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                                                if profile.isVerified == true {
+                                                    VerifiedBadgeView()
+                                                        .frame(width: 12, height: 12)
+                                                        .accessibilityLabel(String(localized: "Verified"))
+                                                }
+                                            }
                                         }
                                         Spacer()
                                         Image(systemName: "chevron.right")
@@ -1820,6 +1997,7 @@ struct UserSearchSheet: View {
                 UserProfileView(userId: dest.userId, initialHandle: dest.handle)
             }
             .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
+            .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
         }
         .onChange(of: query) { _, new in
             searchTask?.cancel()
@@ -1831,7 +2009,7 @@ struct UserSearchSheet: View {
                 isSearching = true
                 results = (try? await supabase
                     .from("profiles")
-                    .select("id, username, display_name")
+                    .select("id, username, display_name, is_verified")
                     .ilike("username", value: "%\(trimmed)%")
                     .limit(25)
                     .execute()

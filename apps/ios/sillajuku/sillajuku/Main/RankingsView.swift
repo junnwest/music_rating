@@ -408,6 +408,7 @@ struct ChartsView: View {
             }
             .navigationBarHidden(true)
             .navigationDestination(for: Release.self)              { AlbumDetailView(release: $0) }
+            .navigationDestination(for: ArtistDestination.self)    { ArtistPageView(artist: $0) }
             .navigationDestination(for: ChartDetailType.self)      { ChartDetailView(type: $0) }
             .navigationDestination(for: ChartGenre.self)           { GenreDetailView(genre: $0) }
             .navigationDestination(for: RankingDetailDestination.self) { _ in
@@ -459,8 +460,14 @@ struct ChartsView: View {
         Group {
             if viewModel.isLoading {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let status = viewModel.unlockStatus, !status.albumUnlocked {
-                RankingsLockedView(events: status.albumEvents, target: status.albumEventsTarget, kind: "album")
+            } else if viewModel.unlockStatus?.albumUnlocked != true {
+                // Fail locked, not open: a nil status (RPC failure/timeout) must
+                // not fall through to the unlocked branch below.
+                RankingsLockedView(
+                    events: viewModel.unlockStatus?.albumEvents ?? 0,
+                    target: viewModel.unlockStatus?.albumEventsTarget ?? 10000,
+                    kind: "album"
+                )
             } else {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
@@ -496,8 +503,13 @@ struct ChartsView: View {
         Group {
             if viewModel.isLoading {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let status = viewModel.unlockStatus, !status.songUnlocked {
-                RankingsLockedView(events: status.songEvents, target: status.songEventsTarget, kind: "song")
+            } else if viewModel.unlockStatus?.songUnlocked != true {
+                // Fail locked, not open -- see albumsTab's identical guard.
+                RankingsLockedView(
+                    events: viewModel.unlockStatus?.songEvents ?? 0,
+                    target: viewModel.unlockStatus?.songEventsTarget ?? 2500,
+                    kind: "song"
+                )
             } else {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
@@ -636,6 +648,7 @@ private struct SongHorizSection: View {
                                 HorizSongCard(rank: idx + 1, entry: entry, showScore: showScore)
                             }
                             .buttonStyle(.plain)
+                            .albumContextMenu(entry.asRelease)
                         }
                     }
                     .padding(.horizontal, 16)
@@ -733,6 +746,7 @@ private struct TrendingSongsSection: View {
                             TrendingSongRow(rank: idx + 1, entry: entry)
                         }
                         .buttonStyle(.plain)
+                        .albumContextMenu(entry.asRelease)
                         if idx < min(10, entries.count) - 1 {
                             Divider().padding(.leading, 16)
                         }
@@ -913,6 +927,7 @@ private struct RankingBlock: View {
                                 }
                             }
                             .buttonStyle(.plain)
+                            .albumContextMenu(entry.asRelease)
                         }
                     }
                 }
@@ -968,6 +983,7 @@ private struct RankingBlock: View {
                         rankRow(rank: idx + 1, entry: entry)
                     }
                     .buttonStyle(.plain)
+                    .albumContextMenu(entry.asRelease)
                     if idx < min(4, entries.count - 1) {
                         Divider().padding(.leading, 16 + 24 + 8 + 44 + 8)
                     }
@@ -1112,6 +1128,7 @@ struct RankingDetailView: View {
                                     RankedListRow(rank: idx + offset + 1, entry: entry, isTrending: false)
                                 }
                                 .buttonStyle(.plain)
+                                .albumContextMenu(entry.asRelease)
                                 Divider().padding(.leading, 16)
                             }
                         }
@@ -1284,6 +1301,7 @@ private struct TrendingCard: View {
                             TrendingRow(rank: idx + 1, entry: entry)
                         }
                         .buttonStyle(.plain)
+                        .albumContextMenu(entry.asRelease)
                         if idx < entries.prefix(5).count - 1 {
                             Divider().padding(.leading, 16 + 14 + 8 + 38 + 8)
                         }
@@ -1405,6 +1423,7 @@ private struct ChartHorizSection: View {
                                 HorizAlbumCard(rank: idx + 1, entry: entry, showScore: showScore)
                             }
                             .buttonStyle(.plain)
+                            .albumContextMenu(entry.asRelease)
                         }
                     }
                     .padding(.horizontal, 16)
@@ -1721,6 +1740,7 @@ struct ChartDetailView: View {
                                 RankedListRow(rank: idx + offset + 1, entry: entry, isTrending: type == .trending)
                             }
                             .buttonStyle(.plain)
+                            .albumContextMenu(entry.asRelease)
                             Divider().padding(.leading, 16)
                         }
                     }
@@ -1808,6 +1828,7 @@ private struct PodiumItem: View {
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)
+        .albumContextMenu(entry.asRelease)
     }
 }
 
@@ -2051,6 +2072,7 @@ struct GenreDetailView: View {
                                     )
                                 }
                                 .buttonStyle(.plain)
+                                .albumContextMenu(entry.asRelease)
                                 Divider().padding(.leading, 16)
                             }
                         }

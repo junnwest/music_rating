@@ -10,21 +10,22 @@ extension Color {
 }
 
 extension String {
-    // Returns a fast, downscaled cover URL.
-    // 1. Downsize:  iTunes 600x600bb / 1200x1200bb → 300x300bb; CAA front-500 → front-250.
-    // 2. De-redirect: ~95% of covers are Cover Art Archive, whose URLs 307-redirect to
-    //    archive.org (~1.5–2.5s on first load). Route those through our caching edge proxy
-    //    (/api/img) so the redirect happens once server-side and every client after the
-    //    first gets an instant CDN hit. iTunes/Deezer are already fast CDNs → left direct.
+    // Returns a downscaled cover URL (iTunes 600x600bb / 1200x1200bb → 300x300bb;
+    // CAA front-500 → front-250).
+    //
+    // NOTE: this used to also route CAA/archive.org URLs (~95% of covers) through
+    // a caching edge proxy (`/api/img`) to skip CAA's redirect-to-archive.org hop.
+    // That proxy returns 502 in production -- archive.org blocks Vercel's
+    // datacenter IPs -- so every CAA cover was failing outright instead of just
+    // loading slowly (confirmed live 2026-07-08: covers stuck on the placeholder
+    // indefinitely, not just delayed). Reverted to direct CAA URLs until the
+    // proxy is fixed server-side (see SESSIONS.md 2026-07-06/07-08 cover entries
+    // for the planned side-table resolver).
     var thumbnailUrl: String {
-        let sized = self
+        self
             .replacingOccurrences(of: "600x600bb",   with: "300x300bb")
             .replacingOccurrences(of: "1200x1200bb", with: "300x300bb")
             .replacingOccurrences(of: "front-500",   with: "front-250")
-        guard sized.contains("coverartarchive.org") || sized.contains("archive.org"),
-              let enc = sized.addingPercentEncoding(withAllowedCharacters: .alphanumerics)
-        else { return sized }
-        return "\(Config.webBaseURL.absoluteString)/api/img?url=\(enc)"
     }
 }
 

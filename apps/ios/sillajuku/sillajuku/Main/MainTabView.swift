@@ -17,6 +17,7 @@ struct MainTabView: View {
 
     @State private var selectedTab: AppTab = .home
     @State private var homeScrollTrigger   = UUID()
+    @State private var showBadgeRedeem     = false
 
     // Rendered once per appearance: a rounded rect (wider than tall) with a
     // plus *cut out* of it — the plus is a transparent hole (via
@@ -124,6 +125,16 @@ struct MainTabView: View {
                 group.addTask { await self.discoveryVM.load() }
                 group.addTask { await self.questVM.load() }
             }
+            // Every launch, not once-ever -- there's no dismiss-and-forget
+            // state to track. If quests are done and the badge is still
+            // unclaimed, this fires again next session until the user
+            // actually picks a color.
+            if questVM.shouldOfferBadgeRedeem {
+                showBadgeRedeem = true
+            }
+        }
+        .sheet(isPresented: $showBadgeRedeem) {
+            BadgeRedeemView(vm: questVM)
         }
         .onReceive(NotificationCenter.default.publisher(for: .mixShared)) { _ in
             selectedTab = .profile

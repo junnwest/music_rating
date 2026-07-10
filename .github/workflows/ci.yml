@@ -38,17 +38,23 @@ jobs:
 
   ios:
     name: iOS (build + test)
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
+      # macos-26 required (not macos-15): the app's deployment target is iOS 26.0 and uses
+      # .glassEffect() (ScoreBadge.swift), a real Xcode 26 / iOS 26 SDK API that doesn't exist
+      # on macos-15's Xcode 16.4 (max SDK iOS 18.5) — confirmed live, every push had been
+      # failing to even compile since ScoreBadge.swift was added, not a flake. macos-26's
+      # default Xcode is 26.5, matching local dev.
+      #
       # Concrete simulator required for the test action ('generic/platform=iOS
-      # Simulator' only works for a build-only destination). iPhone 16 Pro is a
-      # reasonable default for a recent macOS runner image — adjust the name if
-      # the runner's pre-installed simulator set doesn't include it.
+      # Simulator' only works for a build-only destination). iPhone 16 Pro isn't in
+      # macos-26's simulator runtime at all (iPhone 17-series only) — iPhone 17 Pro
+      # matches what's used locally.
       - name: Build and run unit tests
         working-directory: apps/ios
         run: |
           xcodebuild -project sillajuku.xcodeproj -scheme sillajuku \
-            -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+            -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
             -quiet test

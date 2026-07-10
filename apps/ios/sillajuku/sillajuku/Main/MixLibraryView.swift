@@ -260,6 +260,7 @@ struct MixRow: View {
 struct MixDetailView: View {
     @State private var mix: Mix
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.editMode) private var editMode
 
     @State private var items: [MixItem] = []
     @State private var isLoading = true
@@ -267,8 +268,18 @@ struct MixDetailView: View {
     @State private var isLiked = false
     @State private var likeCount = 0
     @State private var sharePosts: [MixShareSharerRow] = []
-    @State private var showEditSheet = false
     @State private var showShareComposer = false
+    @State private var showDeleteConfirm = false
+
+    // Live-edited while the system EditButton() is active -- populated from
+    // `mix` on entering edit mode, written back to `mix` + the DB on Done.
+    // Replaces the old EditMixView sheet's explicit Save/Cancel: reordering
+    // and deleting tracklist rows already auto-commit the moment you tap
+    // Done, so name/description/visibility now follow the same convention
+    // instead of being the one thing behind a separate sheet.
+    @State private var editableName = ""
+    @State private var editableDescription = ""
+    @State private var editableIsPublic = false
 
     init(mix: Mix) {
         _mix = State(initialValue: mix)
@@ -323,6 +334,7 @@ struct MixDetailView: View {
                                 NavigationLink(value: item.releases.asRelease) {
                                     MixItemRow(item: item)
                                 }
+                                .albumContextMenu(item.releases.asRelease)
                                 .listRowBackground(Color.sjSurface)
                                 .listRowSeparatorTint(Color.sjBorder.opacity(0.5))
                             }
@@ -338,21 +350,27 @@ struct MixDetailView: View {
         .navigationTitle(mix.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if isOwnMix && !items.isEmpty {
+            // Not gated on !items.isEmpty anymore -- edit mode now also
+            // drives the name/description/visibility fields in heroSection,
+            // which an empty mix still needs to be able to edit.
+            if isOwnMix {
                 EditButton()
                     .foregroundStyle(Color.sjAmber)
             }
         }
         .task { await load() }
-        .sheet(isPresented: $showEditSheet) {
-            EditMixView(mix: mix, onSaved: { updated in
-                mix = updated
-                NotificationCenter.default.post(name: .mixLibraryChanged, object: nil)
-            }, onDeleted: {
-                showEditSheet = false
-                NotificationCenter.default.post(name: .mixLibraryChanged, object: nil)
-                dismiss()
-            })
+        .onChange(of: editMode?.wrappedValue) { oldValue, newValue in
+            if newValue == .active {
+                editableName = mix.name
+                editableDescription = mix.description ?? ""
+                editableIsPublic = mix.isPublic
+            } else if oldValue == .active {
+                Task { await saveMixEdits() }
+            }
+        }
+        .confirmationDialog("Delete this mix? This can't be undone.", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { Task { await deleteMix() } }
+            Button("Cancel", role: .cancel) {}
         }
         .sheet(isPresented: $showShareComposer) {
             MixShareComposerView(mix: mix)
@@ -382,37 +400,69 @@ struct MixDetailView: View {
     private var heroSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 8) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(mix.name)
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundStyle(Color.sjInk)
-                    if let d = mix.description, !d.isEmpty {
-                        Text(d)
+                if isOwnMix, editMode?.wrappedValue == .active {
+                    VStack(alignment: .leading, spacing: 8) {
+                        // Plain TextFields look identical to static Text until
+                        // focused -- a visible box is the only thing that tells
+                        // the user these are tappable, not just labels.
+                        TextField("Mix name", text: $editableName)
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundStyle(Color.sjInk)
+                            .textFieldStyle(.plain)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .background(Color.sjSurface)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.sjBorder, lineWidth: 1)
+                            }
+                        TextField("Add a description…", text: $editableDescription, axis: .vertical)
                             .font(.system(size: 14))
                             .foregroundStyle(Color.sjMuted)
-                    }
-                    if mix.isPublic {
-                        HStack(spacing: 3) {
+                            .textFieldStyle(.plain)
+                            .lineLimit(1...4)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .background(Color.sjSurface)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.sjBorder, lineWidth: 1)
+                            }
+                        HStack(spacing: 6) {
                             Image(systemName: "globe")
                                 .font(.system(size: 10))
                             Text("Public")
                                 .font(.system(size: 12))
+                            Toggle("", isOn: $editableIsPublic)
+                                .labelsHidden()
+                                .tint(Color.sjAmber)
                         }
                         .foregroundStyle(Color.sjMuted)
                     }
-                }
-                Spacer(minLength: 0)
-                if isOwnMix {
-                    // A distinct catalog key from the app's existing "Edit" string --
-                    // the toolbar's system EditButton() below (reorder/delete the
-                    // tracklist) always reads "Edit"/편집, so this one reads
-                    // "Edit Mix"/수정 instead or the two buttons look like duplicates.
-                    Button { showEditSheet = true } label: {
-                        Text(String(localized: "mix.editButton", defaultValue: "Edit Mix"))
-                            .font(.system(size: 14, weight: .semibold))
+                } else {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(mix.name)
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundStyle(Color.sjInk)
+                        if let d = mix.description, !d.isEmpty {
+                            Text(d)
+                                .font(.system(size: 14))
+                                .foregroundStyle(Color.sjMuted)
+                        }
+                        if mix.isPublic {
+                            HStack(spacing: 3) {
+                                Image(systemName: "globe")
+                                    .font(.system(size: 10))
+                                Text("Public")
+                                    .font(.system(size: 12))
+                            }
                             .foregroundStyle(Color.sjMuted)
+                        }
                     }
                 }
+                Spacer(minLength: 0)
             }
 
             HStack(spacing: 20) {
@@ -434,6 +484,14 @@ struct MixDetailView: View {
                             Text("Share")
                                 .foregroundStyle(Color.sjBlue)
                         }
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if isOwnMix, !mix.isDefault {
+                    Button { showDeleteConfirm = true } label: {
+                        Image(systemName: "trash")
+                            .foregroundStyle(.red)
                     }
                     .buttonStyle(.plain)
                 }
@@ -564,6 +622,41 @@ struct MixDetailView: View {
             isLiked = wasLiked
             likeCount += wasLiked ? 1 : -1
         }
+    }
+
+    private func saveMixEdits() async {
+        let trimmedName = editableName.trimmingCharacters(in: .whitespaces)
+        // An emptied name is left uncommitted (silently keeps the old value)
+        // rather than writing it -- `mixes.name` has a non-empty DB check,
+        // and there's no separate Save button anymore to disable/validate
+        // against the way EditMixView's sheet used to.
+        guard !trimmedName.isEmpty else { return }
+        let trimmedDescription = editableDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        struct Patch: Encodable {
+            let name: String
+            let description: String?
+            let isPublic: Bool
+            enum CodingKeys: String, CodingKey { case name, description; case isPublic = "is_public" }
+        }
+        do {
+            try await supabase
+                .from("mixes")
+                .update(Patch(name: trimmedName, description: trimmedDescription.isEmpty ? nil : trimmedDescription, isPublic: editableIsPublic))
+                .eq("id", value: mix.id)
+                .execute()
+            mix.name = trimmedName
+            mix.description = trimmedDescription.isEmpty ? nil : trimmedDescription
+            mix.isPublic = editableIsPublic
+            NotificationCenter.default.post(name: .mixLibraryChanged, object: nil)
+        } catch {
+            print("MixDetailView.saveMixEdits failed for mix \(mix.id): \(error)")
+        }
+    }
+
+    private func deleteMix() async {
+        _ = try? await supabase.from("mixes").delete().eq("id", value: mix.id).execute()
+        NotificationCenter.default.post(name: .mixLibraryChanged, object: nil)
+        dismiss()
     }
 
     private func deleteItems(at offsets: IndexSet) {
