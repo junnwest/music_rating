@@ -6,6 +6,22 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-07-10 (Windows) — Pipeline expansion, a real discovery bug fix, and a backlog sweep (K-pop wrapper titles, releases RLS, CAA cover QC tool):**
+
+- **Pipeline (#3) started + monitored.** Ran `npm run pipeline --no-embed` (single process, killed-by-PID discipline). Overnight health check: +222 artists / +2.9k release_groups / +23k recordings / +2.3k covers, 49/hr, no IO starvation — logged to PIPELINE_CHECKS.md. `CRON_SECRET` set on Vercel + verified live (cron returns 200, taste refresh working in prod).
+- **Discovery dedup bug found + fixed (the big one this half).** User noticed famous already-owned artists (Eminem, Maroon 5…) churning through the ingest log. Root cause: `listenBrainzTopUp`/`wikipediaTopUp` built their "already own this artist" dedup set with a bare PostgREST `.select()` — capped at **1000 rows** of ~34,360 artists, so 97% of the catalog was invisible to the dedup and every top-up re-queued owned artists (measured 62%: 323/523). Fixed by paginating in 1000-row `.range()` windows **with a stable `ORDER BY`** (first pass without ORDER BY silently skipped ~1,900 rows — caught + fixed; verified paginate now returns 34,360/34,360). No data cleanup needed (ingest is MBID-idempotent → zero duplicate artists/release_groups confirmed); swept 81 redundant pending rows to `skipped`. Also added a durable stale-name self-heal to `mb-ingest.ts` (refreshes `artists.name` from MB's current primary on re-poll, guarded).
+- **Backlog sweep (all committed):**
+  - **K-pop wrapper titles** (`20260710000003`): `strip_edition_decorations` now also extracts the quoted title from "NewJeans 2nd EP 'Get Up'" / "TAEYEON The 3rd Album 'INVU'" wrappers before the edition strip. Query-side, no client change. Validated live + against a control set. (Note: Postgres regex word boundary is `\y`, not `\b`.)
+  - **`releases` RLS consolidation** (`20260710000004`): dropped 3 untracked "Allow authenticated users to …" policies. SELECT/INSERT were redundant subsets of the tracked `true` policies; the lone authenticated UPDATE was safe to drop because every app write is service-role (bypasses RLS) and iOS is read-only on `releases`. This was also the last bare-auth in `public` → a full `pg_policies` scan now returns zero unwrapped auth calls there.
+  - **CAA cover QC tool** (`scripts/audit-caa-covers.ts`, `npm run audit:caa-covers`): READ-ONLY. Samples CAA-covered releases (prestige first), fetches the same album's Deezer cover, perceptual-hashes both (jimp pHash + Hamming distance), flags visually-different pairs for review. Addresses handoff systemic-gap #2 (231k/295k covers are CAA, trusted unconditionally). Smoke-tested: identical d=0.000, threshold 0.25 separates same-vs-different. Added `jimp` dependency.
+- **Deliberately DEFERRED (documented, need a maintenance window or bigger design — NOT skipped by oversight):**
+  - **Accent folding** (Blase vs BLASÉ): requires adding `unaccent` to `normalize_text`, but that function backs the functional GIN trigram indexes on `release_groups`/`artists` — changing it without a **REINDEX** would corrupt them (index built on old output, queries use new). Reindexing multiple GIN indexes on the 300k-row `release_groups` is heavy and unsafe under the live pipeline's IO load. Needs a maintenance window (drop/rebuild indexes).
+  - **HNSW embeddings rebuild**: the embeddings lane is off/erroring (statement timeout); ~18% of albums+EPs lack embeddings and the HNSW rebuild is owed. Same class — needs a drop-index → bulk-embed → rebuild window.
+  - **MB "marketed titles"** (durable `marketed_title` column): the release-vs-release-group title divergence (handoff gap #1) needs a real column that ingest populates + preserves, plus a decision on whether search should prefer it. Touches the shared ingest pipeline broadly — a design task, not a mechanical fix.
+- **Singles/compilations behind the album/ep RPC type filter: intentionally NOT widened** — the client `fetchRelease` exact-match step already rescues real single lookups, and widening `search_release_groups` would flood the main search bar with singles. Left as-is.
+
+---
+
 **2026-07-10 (Mac, session 7 cont'd) — App Store submission prep: CI fixed (was broken for days), archived builds 3–5, and iPad support pulled for launch after finding it was genuinely broken, not just unpolished:**
 
 Push toward submitting today surfaced two real, unrelated problems along the way.
