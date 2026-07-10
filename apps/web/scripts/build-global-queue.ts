@@ -291,11 +291,23 @@ export async function wikipediaTopUp(db: SupabaseClient, opts: WikipediaTopUpOpt
   if (limit <= 0 || groups.length === 0) return 0;
 
   // Skip names already queued under any wikipedia_* source (so `limit` counts genuine new).
-  const { data: existing } = await db
-    .from('artist_ingestion_queue')
-    .select('name, source')
-    .like('source', 'wikipedia_%');
-  const have = new Set((existing ?? []).map((r: any) => `${r.source}::${r.name.toLowerCase()}`));
+  // Paginate — a bare PostgREST .select() caps at 1000 rows, and there are already several
+  // thousand wikipedia_* rows, so an un-paged fetch would silently re-process names past the
+  // first 1000 (same 1000-row-cap class as the listenBrainzTopUp dedup fix).
+  // .order('id') is required: pagination without a stable sort skips/double-counts across pages.
+  const have = new Set<string>();
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db
+      .from('artist_ingestion_queue')
+      .select('name, source')
+      .like('source', 'wikipedia_%')
+      .order('id')
+      .range(from, from + 999);
+    if (error) throw new Error(`wikipedia dedup page@${from}: ${error.message}`);
+    if (!data?.length) break;
+    for (const r of data as any[]) have.add(`${r.source}::${(r.name as string).toLowerCase()}`);
+    if (data.length < 1000) break;
+  }
 
   const seen = new Set<string>();
   let queued = 0;
