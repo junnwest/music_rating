@@ -91,7 +91,9 @@ ALTER POLICY list_items_delete ON list_items
 -- Verified directly against supabase/migrations/20260601000002_list_item_tracks.sql
 -- -- this one joins list_items -> lists (not a direct lists.id lookup like
 -- list_items' own policies above), so its clause shape is different.
-ALTER POLICY list_item_tracks_insert ON list_item_tracks
+-- Live policy names are lit_insert/lit_delete (not list_item_tracks_*) --
+-- verified against pg_policies 2026-07-10; clause shape matches below.
+ALTER POLICY lit_insert ON list_item_tracks
   WITH CHECK (
     EXISTS (
       SELECT 1 FROM list_items li
@@ -99,7 +101,7 @@ ALTER POLICY list_item_tracks_insert ON list_item_tracks
       WHERE li.id = list_item_id AND l.user_id = (select auth.uid())
     )
   );
-ALTER POLICY list_item_tracks_delete ON list_item_tracks
+ALTER POLICY lit_delete ON list_item_tracks
   USING (
     EXISTS (
       SELECT 1 FROM list_items li
@@ -167,6 +169,7 @@ ALTER POLICY daily_answers_insert_own ON daily_answers WITH CHECK ((select auth.
 ALTER POLICY daily_answers_update_own ON daily_answers
   USING ((select auth.uid()) = user_id)
   WITH CHECK ((select auth.uid()) = user_id);
+ALTER POLICY daily_answers_delete_own ON daily_answers USING ((select auth.uid()) = user_id);
 
 -- ── pairwise_comparisons / track_pairwise_comparisons ───────────────────────
 -- FOR ALL, originally USING-only -- WITH CHECK must be restated explicitly
@@ -242,7 +245,9 @@ ALTER POLICY "users can delete own mix share comments" ON mix_share_comments
   USING ((select auth.uid()) = user_id);
 
 -- ── reports / blocked_users ──────────────────────────────────────────────
-ALTER POLICY reports_insert ON reports WITH CHECK ((select auth.uid()) = reporter_id);
+-- Live policy name is "users can report" (not reports_insert) -- verified
+-- against pg_policies 2026-07-10; clause targets reporter_id as below.
+ALTER POLICY "users can report" ON reports WITH CHECK ((select auth.uid()) = reporter_id);
 ALTER POLICY blocked_users_select ON blocked_users USING ((select auth.uid()) = blocker_id);
 ALTER POLICY blocked_users_insert ON blocked_users WITH CHECK ((select auth.uid()) = blocker_id);
 ALTER POLICY blocked_users_delete ON blocked_users USING ((select auth.uid()) = blocker_id);

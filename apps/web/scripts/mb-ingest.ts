@@ -203,7 +203,19 @@ async function findOrCreateArtistByMbid(db: DB, detail: MbArtistDetail): Promise
   // Fast path / idempotent re-run: already linked?
   const { data: existing } = await db.from('artist_external_ids')
     .select('artist_id').eq('source', 'musicbrainz').eq('external_id', detail.id).maybeSingle();
-  if (existing?.artist_id) return { id: existing.artist_id as string, isNew: false };
+  if (existing?.artist_id) {
+    // Self-heal a drifted canonical name from MB's CURRENT primary (e.g. "Young B" →
+    // "YANGHONGWON"). artists.name was captured once at creation and otherwise never
+    // revisited, so a renamed artist silently stayed findable only under the stale name,
+    // fully breaking search_artists() for the current one. The `.neq` guard means this is
+    // a no-op write when the name is unchanged (no churn on re-polls). name_native/aliases
+    // drift is a separate, rarer case left for a dedicated pass.
+    if (detail.name) {
+      await db.from('artists').update({ name: detail.name })
+        .eq('id', existing.artist_id).neq('name', detail.name);
+    }
+    return { id: existing.artist_id as string, isNew: false };
+  }
 
   // Create the artist row FIRST (artist_external_ids.artist_id has a FK to it), then
   // claim the MBID — PK(source, external_id) arbitrates concurrent claims.
