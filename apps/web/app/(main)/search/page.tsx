@@ -169,7 +169,26 @@ function SearchPageInner() {
   }
 
   async function saveQuickRating(score: number | null, release: SJRelease) {
-    if (!supabase || !userId || score == null) return;
+    if (!supabase || !userId) return;
+    if (score == null) {
+      // "Remove rating" from the modal used to silently no-op here
+      await supabase
+        .from('ratings')
+        .delete()
+        .eq('user_id', userId)
+        .eq('release_group_id', release.id);
+      setRatedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(release.id);
+        return next;
+      });
+      setSessionRatedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(release.id);
+        return next;
+      });
+      return;
+    }
     await supabase
       .from('ratings')
       .upsert(

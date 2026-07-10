@@ -118,6 +118,66 @@ Four related asks on `ArtistPageView` (`SearchView.swift`), all verified live vi
 
 ---
 
+**2026-07-08 (Windows, session 5) — covers-never-loaded root cause (CSP redirect hop) + img-proxy 502 fix + chunk-skew auto-reload; DB measured healthy:**
+
+User reported covers never load on web and pages needing 2–3 reloads. Three separate root causes found:
+
+1. **Covers: CSP blocked the CAA redirect chain.** `coverartarchive.org` art (≈95% of the catalog) 307-redirects to `archive.org/download/…` which 302s again to `ia…us.archive.org` / `dn…ca.archive.org` — and img-src only allowed the bare `https://archive.org` host, so browsers blocked the final hop and every CAA cover silently placeholder'd (broken since the rebuild wrote this CSP; direct curl always worked, which is why probes never caught it). Fixed: `https://*.archive.org` added to img-src + remotePatterns.
+2. **`/api/img` proxy 502 (the Mac-flagged one) had TWO causes:** archive.org rejects Vercel *edge* egress (mzstatic proxied fine, CAA always 502'd) → runtime switched edge→nodejs (`maxDuration 15`); AND CAA/archive.org fails transiently on cold requests even from residential IPs (observed: first hit 502, immediate retry 200) → the route now retries once (250ms gap), passes 404 through, sends `Accept: image/*`. With the 1-year immutable edge cache each image only ever needs to succeed once. **Web `Cover.tsx` now routes CAA art through the proxy** (instant edge hits after first load instead of 1.5–3s per image through the redirect chain) with a graceful ladder: proxy → direct URL → placeholder, reset when the url prop changes. iOS gets the proxy fix for free.
+3. **2–3-reloads instability = deployment chunk skew, not the DB** — measured twice under anon: every query green, `get_silla_leaderboard` 0.5–0.9s (the Mac's `primary_genre` side-table fix ended the load incident — closed in README). Eight deploys in one day meant clients holding an old HTML shell requested chunk hashes the new deploy doesn't serve → ChunkLoadError → manual reloads. `app/error.tsx` now detects chunk-load errors and reloads once automatically (sessionStorage guard against loops, cleared by a successful shell render). Consider enabling Vercel Skew Protection in the dashboard as the infra-level fix.
+
+README updated: DB-load incident closed, fix-list item 1 struck, covers + skew items added.
+
+---
+
+**2026-07-08 (Windows, session 4) — album rating UX rework: inline auto-save editor replaces the modal; global cursor tooltips:**
+
+The album page's manual rating flow no longer uses a modal at all — new `InlineRatingEditor.tsx`:
+
+- **Collapsed row has one anatomy rated or not**: 5 stars (empty at 25% opacity when unrated, filled by score when rated — the old "Rate this album" button is gone) + an edit glyph. Clicking a star opens the editor preloaded with that value; hovering previews the fill.
+- **The editor is an in-flow dropdown panel** (`sj-pop-in`, pushes content, no overlay/backdrop — editing never displaces the page). **No Save button: every change auto-saves** (500ms debounce, "Saved ✓" flash, pending edits flush on close/outside-click/Enter/Esc).
+- **Undo** reverts to the value the session started with (session started unrated → undo deletes the rating). Trash removes outright.
+- **Scroll wheel** anywhere over the panel nudges by one step (native non-passive listener — React synthetic wheel can't preventDefault).
+- **The number is focused + selected on entry** so digits type straight in; "43" and "4.3" both become 4.3 (period auto-inserted after the first digit); values clamp to 0.5–5 and snap to the user's step.
+- **Comment box is always visible** once rated (placeholder "Add a comment") — replaces the modal's post-rating comment step; debounce+blur auto-saves `review_text`, and `loadRatings` won't clobber in-progress typing (activeElement check).
+- **Add to a list** is now its own `ListPlus` icon in the section header → `MixPickerModal` directly.
+- Two modal bugs fixed while at it: `ManualRateModal`'s reset effect had `existingScore` as a dep, so saving (which refreshes the parent's score) re-ran the reset and yanked users out of the post-rating step mid-flow (the reported "save doesn't work when editing"); and the search page's quick-rate `onSave(null)` (Remove Rating) silently no-op'd — now deletes the row and clears the rated badges. The modal itself remains for search quick-rate and track rating.
+- **Global `CursorTip.tsx`** (mounted once in AppShell, incl. bare pages): any element with an `aria-label`, no visible text, and no native `title` gets its label shown under the cursor after 400ms hover — covers every icon-only button app-wide (undo/trash/bookmark/bell/edit/…), hover-capable pointers only, dismisses on click/scroll.
+
+New keys `sj.rate.undo`/`sj.rate.saved` (en/ko). `tsc` clean, ESLint clean, album/search/home 200 in mock.
+
+---
+
+**2026-07-08 (Windows, session 3) — pre-rebuild feature audit (3 revived, 1 declined) + micro-interaction pass:**
+
+Audited everything the 07-06 reconstruction deleted (45 components + 12 route trees, from git history) for what still fits the current product:
+
+- **Revived — written reviews on the album page:** the old `ReviewsSection`'s job. The Ratings & reviews section only showed avatar + score; `review_text` is now selected and rendered under each post. (It was already visible in the Home feed — the album page was the gap.)
+- **Revived — "Listen" links on the album page:** the old streaming-platform feature's utility, minus the dead `preferred_platform` column (didn't survive the renovation — verified live). Three compact search deep-links (Spotify / Apple Music / YouTube Music) under the hero meta; no DB, no API.
+- **Revived — genre navigation:** album-page genre text is now pill links to `/charts/ranking?genre=<g>`; the ranking drilldown reads the query param (Suspense-wrapped `useSearchParams`) and appends a custom chip when the genre isn't one of the fixed 8.
+- **Declined — Daily Question:** API routes survive but the data is dead (latest `daily_questions` row 2026-06-29, 3 answers ever; nothing seeds questions). Not rebuilding UI on a stale pipeline — needs a question-seeding cron first if ever revived. Also declined: leaderboard/tierlist/essentials-era structures (superseded by Charts/Silla and mixes by design).
+
+**Micro-interactions** (strict scope: transient surfaces only, all no-ops under `prefers-reduced-motion`): `sj-pop-in` (140ms) on the omnibox dropdown, avatar menu, bell popover, and peek card (inner wrapper — the outer element's positioning transform must not be clobbered by keyframes); `sj-modal-in`/`sj-fade-in` (180/150ms) on Modal panel + backdrop; `sj-heart-pop` scale bounce on like in FeedCard + ProfilePostCard. Deliberately NOT animated: page transitions, feed cards, list items — content should not move.
+
+---
+
+**2026-07-08 (Windows, session 2) — UX pass 2: everything else from the review (Library, header menus, error states, histogram, table view, peek cards, ranking filters):**
+
+All remaining items from the 07-08 UX review, shipped in one pass:
+
+- **Library tab on Profile** (`ProfileExtras.tsx` → `SavedLibrary`) — the feed's bookmark button finally has a surface: saved albums as a cover grid with hover-remove, own-profile only until `library_visibility` enforcement lands on web. Mock seeds + a `saved_releases` hydrator added so save→Library works offline too.
+- **Rated table view** (`ProfileExtras.tsx` → `RatedTable`) — third display mode on Profile→Rated (desktop-only toggle): sortable columns (title/artist/type/score/date, aria-sort semantics), Excel-safe **CSV export** (BOM + quoting), rows link to album/song pages. The old sort dropdown hides in table mode since headers do the job.
+- **Header menus** (`HeaderMenus.tsx`): avatar now opens an account menu (identity header, Profile, Settings, Sign out) instead of duplicating the Profile tab; the bell opens a **notifications popover** (recent 8, marks read on open, skeletons, View all → page). Notification row/select/body logic extracted to shared `components/sj/notifications.tsx`; the page reuses it.
+- **Error ≠ empty** — Home feed tracks the pool-query error and shows "couldn't load" + Retry instead of the lying "No ratings yet"; the Charts Ranking block got the same failed-state + retry (which also busts the client memo).
+- **Album rating histogram** (`RatingHistogram.tsx`, dataviz-skill-guided) — ten 0.5-wide buckets under the community stats, single-hue accent bars with rounded data ends and 2px gaps, per-bar hover values, the viewer's own bucket highlighted, `role=img` aria summary. Distribution computed from the ratings the page already fetches — zero new queries.
+- **Hover peek cards** (`AlbumPeek.tsx`) — desktop answer to iOS long-press: hovering any album card/row on Charts (horizontal rails + Trending) or the Home trending rail shows a fixed-position card (cover, title/artist, live community avg + count, session-cached one query per album). Fixed positioning escapes `overflow-x-auto` clipping; any scroll dismisses.
+- **Ranking drilldown filters** — `/charts/ranking` gains release-type (All/Album/EP) and era (2020s→1990s/Older) chips, filtering client-side on the fetched 100 (the silla RPC returns `release_group_type` + `release_date` since `20260706000018`; `SillaLeaderboardRPC` type extended, mock updated).
+- **Tab a11y refits** — Artist page and Profile tab rows get `role=tablist/tab`, `aria-selected`, focus-visible rings; Artist's active underline switched from ink to accent to match the rest.
+
+New i18n keys for all of it (en + ko). Verified: `tsc` clean, ESLint clean on all touched files, vitest 31/31, all 8 main routes 200 in mock mode.
+
+---
+
 **2026-07-08 (Windows) — UX pass 1: unified search omnibox (Search tab → Add), Silla badge trust fix, empty-state CTAs, accessible TitleTabs:**
 
 Full web UX review done first (findings live in README → Known issues fix list + this entry), then implemented the top slice:

@@ -18,7 +18,10 @@ const securityHeaders = [
       "default-src 'self'",
       "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://us-assets.i.posthog.com",
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: https://i.scdn.co https://*.scdn.co https://*.supabase.co https://coverartarchive.org https://archive.org https://lh3.googleusercontent.com https://*.mzstatic.com https://*.dzcdn.net",
+      // NB: CAA covers redirect coverartarchive.org → archive.org/download →
+      // ia…/dn….archive.org — the wildcard is required or browsers block the
+      // final hop and covers never render.
+      "img-src 'self' data: https://i.scdn.co https://*.scdn.co https://*.supabase.co https://coverartarchive.org https://archive.org https://*.archive.org https://lh3.googleusercontent.com https://*.mzstatic.com https://*.dzcdn.net",
       "font-src 'self' data:",
       `connect-src 'self' https://*.supabase.co wss://*.supabase.co${localSupabase} https://us.i.posthog.com https://us-assets.i.posthog.com https://app.posthog.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io`,
       "frame-ancestors 'none'",
@@ -58,6 +61,7 @@ const nextConfig = {
       { protocol: 'https', hostname: '*.supabase.co' },
       { protocol: 'https', hostname: 'coverartarchive.org' },
       { protocol: 'https', hostname: 'archive.org' },
+      { protocol: 'https', hostname: '*.archive.org' },
       { protocol: 'https', hostname: '*.mzstatic.com' },
       { protocol: 'https', hostname: '*.dzcdn.net' },
     ],

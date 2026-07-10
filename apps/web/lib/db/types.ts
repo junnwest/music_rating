@@ -282,6 +282,8 @@ export interface SillaLeaderboardRPC {
   rating_count: number | null;
   native_title: string | null;
   artist_native: string | null;
+  release_date?: string | null; // returned live (20260706000018); used for era filters
+  release_group_type?: string | null;
 }
 
 /** get_charts_pulse() */

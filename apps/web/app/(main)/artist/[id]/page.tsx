@@ -267,14 +267,19 @@ export default function ArtistPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex border-b border-divider mt-6">
+      <div
+        role="tablist"
+        className="flex border-b border-divider mt-6 overflow-x-auto scrollbar-hide"
+      >
         {tabs.map(({ key, label }) => (
           <button
             key={key}
+            role="tab"
+            aria-selected={tab === key}
             onClick={() => setTab(key)}
-            className={`px-1 mr-7 pb-2.5 text-[13px] transition border-b-2 -mb-px ${
+            className={`px-1 mr-7 pb-2.5 text-[13px] whitespace-nowrap transition border-b-2 -mb-px outline-none focus-visible:ring-2 focus-visible:ring-accent/50 rounded-sm ${
               tab === key
-                ? 'border-ink text-ink font-bold'
+                ? 'border-accent text-ink font-bold'
                 : 'border-transparent text-muted hover:text-ink font-medium'
             }`}
           >

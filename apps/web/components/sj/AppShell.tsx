@@ -10,13 +10,14 @@ import {
   Sparkles,
   User,
   Settings,
-  Bell,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
 import { SessionProvider, useSession } from './SessionContext';
 import FlowerGlyph from './FlowerGlyph';
 import SearchOmnibox from './SearchOmnibox';
+import CursorTip from './CursorTip';
+import { AvatarMenu, NotificationsBell } from './HeaderMenus';
 
 /**
  * Desktop-first app shell: persistent left sidebar (nav) + top bar (global
@@ -39,6 +40,15 @@ function ShellInner({ children }: { children: ReactNode }) {
 
   // Bare pages render without chrome
   const bare = pathname === '/onboarding';
+
+  // A successful shell render clears the chunk-skew reload guard (app/error.tsx)
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem('sj-chunk-reload');
+    } catch {
+      /* private mode */
+    }
+  }, []);
 
   // "Add" = the rate-something flow (discovery + quick-rate), like iOS.
   // Global search lives solely in the top-bar omnibox.
@@ -69,7 +79,13 @@ function ShellInner({ children }: { children: ReactNode }) {
     };
   }, [userId, profile?.notifications_last_seen_at, pathname]);
 
-  if (bare) return <main className="min-h-screen">{children}</main>;
+  if (bare)
+    return (
+      <main className="min-h-screen">
+        {children}
+        <CursorTip />
+      </main>
+    );
 
   const isActive = (path: string) =>
     path === '/' ? pathname === '/' : pathname.startsWith(path);
@@ -125,16 +141,7 @@ function ShellInner({ children }: { children: ReactNode }) {
           </Link>
           <SearchOmnibox />
           <div className="flex items-center gap-1.5 ml-auto">
-            <Link
-              href="/notifications"
-              aria-label={t('sj.nav.notifications')}
-              className="relative p-2 rounded-lg text-ink hover:bg-surface transition"
-            >
-              <Bell size={19} strokeWidth={1.9} />
-              {hasUnread && (
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500" />
-              )}
-            </Link>
+            <NotificationsBell hasUnread={hasUnread} />
             {userId === null ? (
               <Link
                 href="/login"
@@ -143,24 +150,7 @@ function ShellInner({ children }: { children: ReactNode }) {
                 {t('sj.nav.logIn')}
               </Link>
             ) : (
-              <Link
-                href="/profile"
-                aria-label={t('sj.nav.profile')}
-                className="p-1 rounded-full hover:bg-surface transition"
-              >
-                {profile?.avatar_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={profile.avatar_url}
-                    alt=""
-                    className="w-7 h-7 rounded-full object-cover"
-                  />
-                ) : (
-                  <span className="flex w-7 h-7 rounded-full bg-accent-soft text-accent-deep items-center justify-center text-[12px] font-bold">
-                    {(profile?.username ?? '?').slice(0, 1).toUpperCase()}
-                  </span>
-                )}
-              </Link>
+              <AvatarMenu />
             )}
           </div>
         </header>
@@ -182,6 +172,8 @@ function ShellInner({ children }: { children: ReactNode }) {
           </Link>
         </footer>
       </div>
+
+      <CursorTip />
 
       {/* ── Bottom bar (<md) ── */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 flex items-stretch bg-page/95 backdrop-blur border-t border-divider">

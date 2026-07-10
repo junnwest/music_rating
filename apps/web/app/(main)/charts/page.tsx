@@ -6,6 +6,7 @@ import { Flame, Trophy, Gem, Zap } from 'lucide-react';
 import Cover from '../../../components/sj/Cover';
 import FlowerGlyph from '../../../components/sj/FlowerGlyph';
 import TitleTabs from '../../../components/sj/TitleTabs';
+import AlbumPeek from '../../../components/sj/AlbumPeek';
 import { useSession } from '../../../components/sj/SessionContext';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
@@ -281,10 +282,13 @@ function RankingBlock() {
   const [genre, setGenre] = useState<string | null>(null);
   const [country, setCountry] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setFailed(false);
     fetchSillaLeaderboard(genre, country, 10)
       .then((rows) => {
         if (cancelled) return;
@@ -294,12 +298,13 @@ function RankingBlock() {
       .catch(() => {
         if (cancelled) return;
         setEntries([]);
+        setFailed(true);
         setLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [genre, country]);
+  }, [genre, country, reloadKey]);
 
   return (
     <section className="rounded-2xl bg-surface border border-divider/60 overflow-hidden">
@@ -341,6 +346,16 @@ function RankingBlock() {
             </li>
           ))}
         </ol>
+      ) : failed ? (
+        <div className="py-10 flex flex-col items-center gap-3">
+          <p className="text-[13px] text-muted">{t('sj.common.loadError')}</p>
+          <button
+            onClick={() => setReloadKey((k) => k + 1)}
+            className="px-3.5 py-1.5 rounded-lg bg-accent text-white text-[12.5px] font-semibold hover:opacity-90 transition"
+          >
+            {t('sj.common.retry')}
+          </button>
+        </div>
       ) : entries.length === 0 ? (
         <p className="py-10 text-center text-[13px] text-muted">{t('sj.charts.noData')}</p>
       ) : (
@@ -481,6 +496,12 @@ function TrendingCard({
         <ol className="divide-y divide-divider">
           {entries.slice(0, 5).map((e, i) => (
             <li key={e.release_id}>
+              <AlbumPeek
+                releaseId={e.release_id}
+                title={displayName(e.title, e.native_title)}
+                artist={displayName(e.artist, e.artist_native)}
+                coverUrl={e.cover_url}
+              >
               <Link
                 href={`/album/${e.release_id}`}
                 className="flex items-center gap-2.5 py-2 group"
@@ -498,6 +519,7 @@ function TrendingCard({
                   </span>
                 </span>
               </Link>
+              </AlbumPeek>
             </li>
           ))}
         </ol>
@@ -592,25 +614,34 @@ function ChartHorizSection({
       </div>
       <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-1">
         {entries.slice(0, 20).map((e, i) => (
-          <Link key={e.release_id} href={`/album/${e.release_id}`} className="w-28 shrink-0 group">
-            <div className="relative">
-              <Cover url={e.cover_url} className="w-28 h-28" rounded="rounded-[10px]" />
-              <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/60 text-white text-[9px] font-black">
-                #{i + 1}
-              </span>
-              {showScore && e.avg_score != null && (
-                <span className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-accent text-white text-[10px] font-black tabular-nums">
-                  {e.avg_score.toFixed(1)}
+          <AlbumPeek
+            key={e.release_id}
+            releaseId={e.release_id}
+            title={displayName(e.title, e.native_title)}
+            artist={displayName(e.artist, e.artist_native)}
+            coverUrl={e.cover_url}
+            className="w-28 shrink-0"
+          >
+            <Link href={`/album/${e.release_id}`} className="block group">
+              <div className="relative">
+                <Cover url={e.cover_url} className="w-28 h-28" rounded="rounded-[10px]" />
+                <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/60 text-white text-[9px] font-black">
+                  #{i + 1}
                 </span>
-              )}
-            </div>
-            <p className="mt-1 text-[11px] font-semibold text-ink truncate group-hover:underline">
-              {displayName(e.title, e.native_title)}
-            </p>
-            <p className="text-[10px] text-muted truncate">
-              {displayName(e.artist, e.artist_native)}
-            </p>
-          </Link>
+                {showScore && e.avg_score != null && (
+                  <span className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded bg-accent text-white text-[10px] font-black tabular-nums">
+                    {e.avg_score.toFixed(1)}
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-[11px] font-semibold text-ink truncate group-hover:underline">
+                {displayName(e.title, e.native_title)}
+              </p>
+              <p className="text-[10px] text-muted truncate">
+                {displayName(e.artist, e.artist_native)}
+              </p>
+            </Link>
+          </AlbumPeek>
         ))}
       </div>
     </section>

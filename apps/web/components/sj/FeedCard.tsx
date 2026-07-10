@@ -187,7 +187,7 @@ export default function FeedCard({
             aria-label={isLiked ? t('sj.feed.unlike') : t('sj.feed.like')}
             className={`transition ${isLiked ? 'text-red-500' : 'text-ink hover:text-red-500'}`}
           >
-            <Heart size={19} className={isLiked ? 'fill-current' : ''} strokeWidth={1.9} />
+            <Heart size={19} className={isLiked ? 'fill-current sj-heart-pop' : ''} strokeWidth={1.9} />
           </button>
           <button
             onClick={() => setShowLikers(true)}

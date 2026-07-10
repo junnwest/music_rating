@@ -8,6 +8,7 @@ import {
   LayoutGrid,
   ListMusic,
   BarChart3,
+  Bookmark,
   Clock,
   Globe,
   ChevronRight,
@@ -15,6 +16,7 @@ import {
   Newspaper,
   List as ListIcon,
   Plus,
+  Table2,
 } from 'lucide-react';
 import Cover from './Cover';
 import FlowerGlyph from './FlowerGlyph';
@@ -25,6 +27,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
 import { eloToScore, INSTINCT_REVEAL_THRESHOLD } from '../../lib/elo';
 import { displayName, formatScore } from '../../lib/sj/display';
+import { RatedTable, SavedLibrary } from './ProfileExtras';
 import { RG_EMBED_NATIVE } from '../../lib/sj/data';
 import type { MixRow } from '../../lib/db/types';
 
@@ -46,7 +49,7 @@ export interface ProfileRatingItem {
   releaseArtist: string;
 }
 
-type ProfileTab = 'rated' | 'lists' | 'stats';
+type ProfileTab = 'rated' | 'library' | 'lists' | 'stats';
 type TypeFilter = 'all' | 'albums' | 'songs';
 type SortOrder = 'recent' | 'top' | 'bottom' | 'az';
 
@@ -83,7 +86,7 @@ export default function ProfileView({ username }: { username?: string }) {
   const [tab, setTab] = useState<ProfileTab>('rated');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [sortOrder, setSortOrder] = useState<SortOrder>('recent');
-  const [displayMode, setDisplayMode] = useState<'list' | 'posts'>('list');
+  const [displayMode, setDisplayMode] = useState<'list' | 'posts' | 'table'>('list');
   const [followModal, setFollowModal] = useState<null | 'following' | 'followers'>(null);
   const [pendingDelete, setPendingDelete] = useState<ProfileRatingItem | null>(null);
 
@@ -386,6 +389,11 @@ export default function ProfileView({ username }: { username?: string }) {
   const handle = display?.username ?? '';
   const tabs: { key: ProfileTab; icon: typeof LayoutGrid; label: string }[] = [
     { key: 'rated', icon: LayoutGrid, label: t('sj.profile.rated') },
+    // Library (saved-to-listen-later) is own-profile only until visibility
+    // enforcement (library_visibility) lands on web.
+    ...(isSelf
+      ? [{ key: 'library' as ProfileTab, icon: Bookmark, label: t('sj.profile.library') }]
+      : []),
     { key: 'lists', icon: ListMusic, label: t('sj.profile.lists') },
     { key: 'stats', icon: BarChart3, label: t('sj.profile.stats') },
   ];
@@ -461,13 +469,15 @@ export default function ProfileView({ username }: { username?: string }) {
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-divider mt-6">
+      <div role="tablist" className="flex border-b border-divider mt-6">
         {tabs.map(({ key, icon: Icon, label }) => (
           <button
             key={key}
+            role="tab"
+            aria-selected={tab === key}
             onClick={() => setTab(key)}
             aria-label={label}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 border-b-2 -mb-px transition ${
+            className={`flex-1 flex items-center justify-center gap-2 py-3 border-b-2 -mb-px transition outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
               tab === key
                 ? 'border-accent text-ink'
                 : 'border-transparent text-muted hover:text-ink'
@@ -525,23 +535,36 @@ export default function ProfileView({ username }: { username?: string }) {
                     >
                       <Newspaper size={15} />
                     </button>
+                    <button
+                      onClick={() => setDisplayMode('table')}
+                      aria-label={t('sj.profile.tableView')}
+                      className={`hidden md:inline-flex p-1.5 rounded-md transition ${
+                        displayMode === 'table' ? 'bg-accent/10 text-accent' : 'text-muted'
+                      }`}
+                    >
+                      <Table2 size={15} />
+                    </button>
                   </span>
                 )}
-                <select
-                  value={sortOrder}
-                  onChange={(e) => setSortOrder(e.target.value as SortOrder)}
-                  aria-label={t('sj.profile.sort')}
-                  className="ml-1 bg-transparent text-[12px] font-medium text-accent outline-none cursor-pointer"
-                >
-                  <option value="recent">{t('sj.profile.sortRecent')}</option>
-                  <option value="top">{t('sj.profile.sortTop')}</option>
-                  <option value="bottom">{t('sj.profile.sortBottom')}</option>
-                  <option value="az">{t('sj.profile.sortAz')}</option>
-                </select>
+                {displayMode !== 'table' && (
+                  <select
+                    value={sortOrder}
+                    onChange={(e) => setSortOrder(e.target.value as SortOrder)}
+                    aria-label={t('sj.profile.sort')}
+                    className="ml-1 bg-transparent text-[12px] font-medium text-accent outline-none cursor-pointer"
+                  >
+                    <option value="recent">{t('sj.profile.sortRecent')}</option>
+                    <option value="top">{t('sj.profile.sortTop')}</option>
+                    <option value="bottom">{t('sj.profile.sortBottom')}</option>
+                    <option value="az">{t('sj.profile.sortAz')}</option>
+                  </select>
+                )}
               </div>
 
               {filtered.length === 0 ? (
                 <Empty label={t('sj.profile.noneOfType')} />
+              ) : displayMode === 'table' && isSelf ? (
+                <RatedTable items={filtered} />
               ) : displayMode === 'posts' && isSelf ? (
                 <div className="mt-3 flex flex-col gap-2.5">
                   {filtered
@@ -576,6 +599,9 @@ export default function ProfileView({ username }: { username?: string }) {
           )}
         </div>
       )}
+
+      {/* ── Library tab (saved albums) ── */}
+      {tab === 'library' && targetId && isSelf && <SavedLibrary userId={targetId} />}
 
       {/* ── Lists tab ── */}
       {tab === 'lists' && targetId && <MixLibrary userId={targetId} isSelf={isSelf} />}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
@@ -8,14 +8,18 @@ import {
   ArrowUpDown,
   Trash2,
   ChevronRight,
+  ExternalLink,
   ListMusic,
-  Star,
+  ListPlus,
 } from 'lucide-react';
 import Cover from '../../../../components/sj/Cover';
 import FlowerGlyph from '../../../../components/sj/FlowerGlyph';
 import ManualRateModal from '../../../../components/sj/ManualRateModal';
 import InstinctModal from '../../../../components/sj/InstinctModal';
+import InlineRatingEditor from '../../../../components/sj/InlineRatingEditor';
+import MixPickerModal from '../../../../components/sj/MixPickerModal';
 import ScoreBadge from '../../../../components/sj/ScoreBadge';
+import RatingHistogram from '../../../../components/sj/RatingHistogram';
 import { useSession } from '../../../../components/sj/SessionContext';
 import { supabase } from '../../../../lib/supabaseClient';
 import { useLanguage } from '../../../../lib/i18n';
@@ -44,6 +48,7 @@ interface PostRow {
   user_id: string;
   score: number | null;
   elo_score: number | null;
+  review_text: string | null;
   created_at: string;
   profiles: {
     username: string | null;
@@ -78,6 +83,7 @@ export default function AlbumPage() {
   const [eloRatedTracks, setEloRatedTracks] = useState<Set<string>>(new Set());
   const [communityAvg, setCommunityAvg] = useState<number | null>(null);
   const [communityCount, setCommunityCount] = useState(0);
+  const [scoreDist, setScoreDist] = useState<number[]>([]);
   const [userScore, setUserScore] = useState<number | null>(null);
   const [userElo, setUserElo] = useState<number | null>(null);
   const [posts, setPosts] = useState<PostRow[]>([]);
@@ -85,11 +91,17 @@ export default function AlbumPage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
-  const [showManual, setShowManual] = useState(false);
   const [showInstinct, setShowInstinct] = useState(false);
+  const [showMixPicker, setShowMixPicker] = useState(false);
   const [trackManualTarget, setTrackManualTarget] = useState<TrackEntry | null>(null);
   const [trackInstinctTarget, setTrackInstinctTarget] = useState<TrackEntry | null>(null);
   const [confirmDeleteRanking, setConfirmDeleteRanking] = useState(false);
+
+  // Inline comment (review_text on the user's rating row)
+  const [reviewDraft, setReviewDraft] = useState('');
+  const myReviewRef = useRef<string | null>(null);
+  const reviewBoxRef = useRef<HTMLTextAreaElement>(null);
+  const reviewTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const ratingMode = profile?.rating_mode ?? 'manual';
   const ratingStep = profile?.manual_rating_step ?? 0.5;
@@ -98,20 +110,55 @@ export default function AlbumPage() {
     if (!supabase) return;
     const { data } = await supabase
       .from('ratings')
-      .select('score, elo_score, user_id')
+      .select('score, elo_score, user_id, review_text')
       .eq('release_group_id', releaseGroupId);
-    const rows = (data as { score: number | null; elo_score: number | null; user_id: string }[] | null) ?? [];
+    const rows =
+      (data as
+        | { score: number | null; elo_score: number | null; user_id: string; review_text: string | null }[]
+        | null) ?? [];
     setCommunityCount(rows.length);
     const scored = rows
       .map((r) => (r.score != null ? r.score : r.elo_score != null ? eloToScore(r.elo_score) : null))
       .filter((s): s is number => s != null);
     setCommunityAvg(scored.length ? scored.reduce((a, b) => a + b, 0) / scored.length : null);
+    // Distribution: ten 0.5-wide buckets (0.5 … 5.0)
+    const dist = new Array(10).fill(0) as number[];
+    for (const s of scored) {
+      dist[Math.min(Math.max(Math.round(s * 2) - 1, 0), 9)] += 1;
+    }
+    setScoreDist(dist);
     if (userId) {
       const mine = rows.find((r) => r.user_id === userId);
       setUserScore(mine?.score ?? null);
       setUserElo(mine?.elo_score ?? null);
+      myReviewRef.current = mine?.review_text ?? null;
+      // Don't clobber in-progress typing
+      if (document.activeElement !== reviewBoxRef.current) {
+        setReviewDraft(mine?.review_text ?? '');
+      }
     }
   }, [releaseGroupId, userId]);
+
+  const saveReview = useCallback(
+    async (text: string) => {
+      if (!supabase || !userId) return;
+      const next = text.trim() || null;
+      if (next === myReviewRef.current) return;
+      myReviewRef.current = next;
+      await supabase
+        .from('ratings')
+        .update({ review_text: next })
+        .eq('user_id', userId)
+        .eq('release_group_id', releaseGroupId);
+    },
+    [userId, releaseGroupId],
+  );
+
+  function onReviewChange(text: string) {
+    setReviewDraft(text);
+    clearTimeout(reviewTimer.current);
+    reviewTimer.current = setTimeout(() => saveReview(text), 1000);
+  }
 
   useEffect(() => {
     if (!supabase) return;
@@ -156,7 +203,7 @@ export default function AlbumPage() {
       const postsP = supabase!
         .from('ratings')
         .select(
-          'id, user_id, score, elo_score, created_at, profiles(username, display_name, avatar_url)',
+          'id, user_id, score, elo_score, review_text, created_at, profiles(username, display_name, avatar_url)',
         )
         .eq('release_group_id', releaseGroupId)
         .order('created_at', { ascending: false })
@@ -366,8 +413,45 @@ export default function AlbumPage() {
               )}
             </div>
             {genres.length > 0 && (
-              <p className="mt-2.5 text-[12px] text-muted">{genres.join(' · ')}</p>
+              <div className="flex flex-wrap gap-1.5 mt-2.5">
+                {genres.map((g) => (
+                  <Link
+                    key={g}
+                    href={`/charts/ranking?genre=${encodeURIComponent(g)}`}
+                    className="px-2 py-0.5 rounded-full border border-divider text-[11px] text-muted hover:text-accent hover:border-accent/50 transition"
+                  >
+                    {g}
+                  </Link>
+                ))}
+              </div>
             )}
+
+            {/* Listen on … (search deep-links; no stored platform preference post-renovation) */}
+            <div className="mt-4">
+              <p className="text-[10px] font-semibold tracking-[0.05em] uppercase text-muted mb-1.5">
+                {t('sj.album.listenOn')}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {(
+                  [
+                    ['Spotify', `https://open.spotify.com/search/${encodeURIComponent(`${release.artist} ${release.title}`)}`],
+                    ['Apple Music', `https://music.apple.com/search?term=${encodeURIComponent(`${release.artist} ${release.title}`)}`],
+                    ['YouTube Music', `https://music.youtube.com/search?q=${encodeURIComponent(`${release.artist} ${release.title}`)}`],
+                  ] as [string, string][]
+                ).map(([name, url]) => (
+                  <a
+                    key={name}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface border border-divider text-[11.5px] font-medium text-mid hover:text-ink hover:border-muted transition"
+                  >
+                    {name}
+                    <ExternalLink size={10} className="text-muted" />
+                  </a>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -376,9 +460,20 @@ export default function AlbumPage() {
       <div className="flex-1 min-w-0">
         {/* Rating section (mode-aware) */}
         <section className="rounded-2xl bg-surface border border-divider/60 p-5">
-          <h2 className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted mb-4">
-            {ratingMode === 'instinct' ? t('sj.album.yourInstinct') : t('sj.album.yourRating')}
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted">
+              {ratingMode === 'instinct' ? t('sj.album.yourInstinct') : t('sj.album.yourRating')}
+            </h2>
+            {userId && (
+              <button
+                onClick={() => setShowMixPicker(true)}
+                aria-label={t('sj.rate.addToList')}
+                className="p-1.5 -my-1.5 rounded-lg text-muted hover:text-accent hover:bg-page transition"
+              >
+                <ListPlus size={17} />
+              </button>
+            )}
+          </div>
 
           {!userId ? (
             <Link
@@ -424,50 +519,8 @@ export default function AlbumPage() {
                 {t('sj.album.addToRankings')}
               </button>
             )
-          ) : userScore != null ? (
-            <div className="flex items-center gap-3 flex-wrap">
-              <button
-                onClick={() => setShowManual(true)}
-                className="flex items-center gap-2.5 group"
-              >
-                <span className="flex items-center gap-0.5 text-accent">
-                  {[1, 2, 3, 4, 5].map((s) => (
-                    <Star
-                      key={s}
-                      size={20}
-                      className={
-                        userScore >= s
-                          ? 'fill-current'
-                          : userScore >= s - 0.5
-                            ? 'fill-current opacity-50'
-                            : 'opacity-25'
-                      }
-                    />
-                  ))}
-                </span>
-                <span className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-accent/10 group-hover:bg-accent/[0.16] transition">
-                  <FlowerGlyph size={12} className="text-accent" />
-                  <span className="text-[14px] font-bold text-accent">
-                    {formatScore(userScore)}
-                  </span>
-                </span>
-              </button>
-              <span className="flex-1" />
-              <button
-                onClick={() => setShowManual(true)}
-                className="text-[13px] font-semibold text-accent hover:opacity-80"
-              >
-                {t('sj.common.edit')}
-              </button>
-            </div>
           ) : (
-            <button
-              onClick={() => setShowManual(true)}
-              className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-accent text-white text-[15px] font-semibold hover:opacity-90 transition"
-            >
-              <Plus size={16} />
-              {t('sj.album.rateThisAlbum')}
-            </button>
+            <InlineRatingEditor score={userScore} step={ratingStep} onSave={setRating} />
           )}
 
           {confirmDeleteRanking && (
@@ -490,6 +543,22 @@ export default function AlbumPage() {
             </div>
           )}
 
+          {/* Inline comment — visible whenever the user has a rating row */}
+          {userId && (userScore != null || userElo != null) && (
+            <textarea
+              ref={reviewBoxRef}
+              value={reviewDraft}
+              onChange={(e) => onReviewChange(e.target.value)}
+              onBlur={() => {
+                clearTimeout(reviewTimer.current);
+                saveReview(reviewDraft);
+              }}
+              placeholder={t('sj.rate.addComment')}
+              rows={2}
+              className="w-full mt-4 px-3.5 py-2.5 rounded-xl bg-page border border-divider text-[13.5px] leading-relaxed text-ink placeholder-placeholder outline-none focus:border-accent/60 transition resize-none"
+            />
+          )}
+
           {communityCount > 0 && (
             <div className="flex gap-2.5 mt-4">
               {communityAvg != null && (
@@ -508,6 +577,19 @@ export default function AlbumPage() {
                 <p className="text-[10px] text-muted">{t('sj.album.ratings')}</p>
               </div>
             </div>
+          )}
+
+          {scoreDist.some((n) => n > 0) && (
+            <RatingHistogram
+              dist={scoreDist}
+              userBucket={
+                userScore != null
+                  ? Math.min(Math.max(Math.round(userScore * 2) - 1, 0), 9)
+                  : userElo != null
+                    ? Math.min(Math.max(Math.round(eloToScore(userElo) * 2) - 1, 0), 9)
+                    : null
+              }
+            />
           )}
         </section>
 
@@ -581,24 +663,31 @@ export default function AlbumPage() {
                 const handle =
                   post.profiles?.username ?? post.profiles?.display_name ?? 'someone';
                 return (
-                  <div key={post.id} className="flex items-center gap-3 px-4 py-3">
-                    <Link
-                      href={`/profile/${post.profiles?.username ?? ''}`}
-                      className="flex items-center gap-3 min-w-0 flex-1 group"
-                    >
-                      <span className="flex w-8 h-8 rounded-full bg-accent-soft text-accent-deep items-center justify-center text-[12px] font-bold shrink-0">
-                        {handle.slice(0, 1).toUpperCase()}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block text-[13px] font-medium text-ink truncate group-hover:underline">
-                          @{handle}
+                  <div key={post.id} className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <Link
+                        href={`/profile/${post.profiles?.username ?? ''}`}
+                        className="flex items-center gap-3 min-w-0 flex-1 group"
+                      >
+                        <span className="flex w-8 h-8 rounded-full bg-accent-soft text-accent-deep items-center justify-center text-[12px] font-bold shrink-0">
+                          {handle.slice(0, 1).toUpperCase()}
                         </span>
-                        <span className="block text-[11px] text-muted">
-                          {relativeTime(post.created_at, lang)}
+                        <span className="min-w-0">
+                          <span className="block text-[13px] font-medium text-ink truncate group-hover:underline">
+                            @{handle}
+                          </span>
+                          <span className="block text-[11px] text-muted">
+                            {relativeTime(post.created_at, lang)}
+                          </span>
                         </span>
-                      </span>
-                    </Link>
-                    {score != null && <ScoreBadge score={score} size={34} ringStroke={2.5} />}
+                      </Link>
+                      {score != null && <ScoreBadge score={score} size={34} ringStroke={2.5} />}
+                    </div>
+                    {post.review_text && (
+                      <p className="mt-2 ml-11 text-[13px] leading-relaxed text-ink/90 whitespace-pre-wrap break-words">
+                        {post.review_text}
+                      </p>
+                    )}
                   </div>
                 );
               })}
@@ -635,13 +724,10 @@ export default function AlbumPage() {
       </div>
 
       {/* ── Modals ── */}
-      <ManualRateModal
-        open={showManual}
-        onClose={() => setShowManual(false)}
-        release={release}
-        existingScore={userScore}
-        ratingStep={ratingStep}
-        onSave={setRating}
+      <MixPickerModal
+        open={showMixPicker}
+        onClose={() => setShowMixPicker(false)}
+        releaseGroupId={releaseGroupId}
       />
       <InstinctModal
         open={showInstinct}
