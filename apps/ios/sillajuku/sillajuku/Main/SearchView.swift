@@ -66,12 +66,7 @@ class DiscoveryViewModel {
                 g.addTask { await self.loadSpotify() }
                 g.addTask { await self.loadAppleMusic() }
             }
-            await withTaskGroup(of: Void.self) { g in
-                g.addTask { await self.loadPopular() }
-                g.addTask { await self.loadPersonalized() }
-                g.addTask { await self.loadTasteAlbums() }
-                g.addTask { await self.loadTrending() }
-            }
+            await reloadDiscoverySections()
         } else {
             // Retried on every subsequent load() call (e.g. switching back to this tab) --
             // unlike the full first-load branch above, this only re-attempts whichever
@@ -81,6 +76,28 @@ class DiscoveryViewModel {
             if !hasAppleMusicData { await loadAppleMusic() }
         }
         isLoading = false
+        prefetchDiscoveryCovers()
+    }
+
+    // Pull-to-refresh on the Add tab -- load() only runs the personalized/popular/taste/trending
+    // batch once per app launch (by design, so switching tabs never re-triggers a reload), which
+    // means the section otherwise never changes for the rest of the session. This re-runs that
+    // same batch on demand.
+    func refresh() async {
+        await reloadDiscoverySections()
+        prefetchDiscoveryCovers()
+    }
+
+    private func reloadDiscoverySections() async {
+        await withTaskGroup(of: Void.self) { g in
+            g.addTask { await self.loadPopular() }
+            g.addTask { await self.loadPersonalized() }
+            g.addTask { await self.loadTasteAlbums() }
+            g.addTask { await self.loadTrending() }
+        }
+    }
+
+    private func prefetchDiscoveryCovers() {
         // Kick off background downloads for all album art so covers are ready before the user scrolls
         let prefetchUrls = (personalizedAlbums + trendingAlbums + popularAlbums + tasteAlbums)
             .compactMap { URL(string: $0.coverUrl?.thumbnailUrl ?? "") }
@@ -188,25 +205,36 @@ class DiscoveryViewModel {
 
         var dbArtists = Set<String>()
 
-        // Primary seeds: exact artist_display values from the user's own ratings.
+        // Primary seeds: artist_display values from ratings the user actually liked
+        // (score/elo >= 3.5) -- previously every rating counted equally regardless of score,
+        // so an album rated 1 star seeded "For You" just as strongly as one rated 5 stars.
         struct RatedRelease: Codable {
+            let score: Double?
+            let eloScore: Double?
             let releaseGroups: ArtistOnly
             struct ArtistOnly: Codable {
                 let artist: String
                 enum CodingKeys: String, CodingKey { case artist = "artist_display" }
             }
-            enum CodingKeys: String, CodingKey { case releaseGroups = "release_groups" }
+            enum CodingKeys: String, CodingKey {
+                case score; case eloScore = "elo_score"; case releaseGroups = "release_groups"
+            }
         }
         let ratedReleases: [RatedRelease] = (try? await supabase
             .from("ratings")
-            .select("release_groups(artist_display)")
+            .select("score, elo_score, release_groups(artist_display)")
             .eq("user_id", value: userId)
             .limit(200)
             .execute()
             .value) ?? []
-        ratedReleases.forEach { dbArtists.insert($0.releaseGroups.artist) }
+        for r in ratedReleases {
+            let display = r.score ?? r.eloScore.map(Elo.toScore)
+            if let d = display, d >= 3.5 { dbArtists.insert(r.releaseGroups.artist) }
+        }
 
-        // Supplement with Spotify artists when available.
+        // Supplement with Spotify artists when available -- independent listening signal
+        // (not a rating), so no score filter applies here; filtering it would hurt cold-start
+        // users who have real streaming history but haven't rated much yet.
         for a in spotifyArtists { dbArtists.insert(a.name) }
         for a in recentlyPlayed  { dbArtists.insert(a.artistName) }
 
@@ -215,20 +243,85 @@ class DiscoveryViewModel {
         for a in appleMusicRecentlyPlayed { dbArtists.insert(a.artistName) }
         for a in appleMusicLibraryAlbums  { dbArtists.insert(a.artistName) }
 
-        guard !dbArtists.isEmpty else { return }
+        // Exploit slice: more albums by artists already in the seed set, capped per artist
+        // (matches loadTasteAlbums()'s existing anti-flood cap -- this section had none before).
+        var exploit: [Release] = []
+        if !dbArtists.isEmpty {
+            let seeds = Array(dbArtists.prefix(50))
+            let raw: [Release] = (try? await supabase
+                .from("release_groups")
+                .select("id, title, artist_display, cover_url, native_title, release_group_type, first_release_date")
+                .not("cover_url", operator: .is, value: AnyJSON.null)
+                .in("release_group_type", values: ["album", "ep"])
+                .in("artist_display", values: seeds)
+                .order("first_release_date", ascending: false, nullsFirst: false)
+                .limit(120)
+                .execute()
+                .value) ?? []
+            var countPerArtist: [String: Int] = [:]
+            for album in raw {
+                let n = countPerArtist[album.displayArtist, default: 0]
+                if n < 3 { exploit.append(album); countPerArtist[album.displayArtist] = n + 1 }
+            }
+        }
 
-        let seeds = Array(dbArtists.prefix(50))
-
-        personalizedAlbums = (try? await supabase
-            .from("release_groups")
-            .select("id, title, artist_display, cover_url, native_title, release_group_type, first_release_date")
-            .not("cover_url", operator: .is, value: AnyJSON.null)
-            .in("release_group_type", values: ["album", "ep"])
-            .in("artist_display", values: seeds)
-            .order("first_release_date", ascending: false, nullsFirst: false)
-            .limit(60)
+        // Explore slice: content-based discovery via release_groups.embedding -- surfaces new
+        // artists musically similar to the user's own highest-rated albums, instead of only
+        // ever resurfacing artists already in the user's history. Seeded independently (its own
+        // small top-rated lookup) rather than reusing loadTasteAlbums()'s pool, so both loaders
+        // can still run fully concurrently in the outer TaskGroup.
+        var explore: [Release] = []
+        struct TopRated: Codable {
+            let releaseGroupId: UUID; let score: Double?; let eloScore: Double?
+            let releaseGroups: ArtistOnly
+            struct ArtistOnly: Codable {
+                let artist: String
+                enum CodingKeys: String, CodingKey { case artist = "artist_display" }
+            }
+            enum CodingKeys: String, CodingKey {
+                case releaseGroupId = "release_group_id"; case score; case eloScore = "elo_score"
+                case releaseGroups = "release_groups"
+            }
+        }
+        let topRatedRows: [TopRated] = (try? await supabase
+            .from("ratings")
+            .select("release_group_id, score, elo_score, release_groups(artist_display)")
+            .eq("user_id", value: userId)
+            .limit(200)
             .execute()
             .value) ?? []
+        // Capped at 3, not 5 -- confirmed live that RPC cost scales with seed count more than
+        // with p_per_seed's final LIMIT: 4 seeds completed in ~3.3s, 5 reliably hit the
+        // statement timeout. Deduped by artist first so e.g. three 5-star NewJeans albums don't
+        // burn all 3 seed slots on one artist, leaving no room for genre diversity in the query.
+        var seenArtists = Set<String>()
+        let seedIds: [UUID] = topRatedRows
+            .compactMap { row -> (UUID, String, Double)? in
+                guard let d = row.score ?? row.eloScore.map(Elo.toScore), d >= 4.0 else { return nil }
+                return (row.releaseGroupId, row.releaseGroups.artist, d)
+            }
+            .sorted { $0.2 > $1.2 }
+            .filter { seenArtists.insert($0.1).inserted }
+            .prefix(3)
+            .map(\.0)
+
+        if !seedIds.isEmpty {
+            struct SimilarReleasesParams: Encodable {
+                let p_seed_ids: [String]
+                let p_exclude_artists: [String]?
+            }
+            explore = (try? await supabase
+                .rpc("get_taste_similar_releases", params: SimilarReleasesParams(
+                    p_seed_ids: seedIds.map(\.uuidString),
+                    p_exclude_artists: dbArtists.isEmpty ? nil : Array(dbArtists)))
+                .execute()
+                .value) ?? []
+        }
+
+        var combined = exploit + explore
+        var seen = Set<UUID>()
+        combined = combined.filter { seen.insert($0.id).inserted }
+        personalizedAlbums = Array(combined.shuffled().prefix(60))
 
         hasPersonalized = !personalizedAlbums.isEmpty
         personalizedSongs = []  // deferred until Windows rebuilds search RPCs
@@ -908,6 +1001,9 @@ struct SearchView: View {
                     Spacer().frame(height: 36)
                 }
                 .padding(.top, 4)
+            }
+            .refreshable {
+                await discoveryVM.refresh()
             }
         }
     }
@@ -1875,47 +1971,41 @@ struct ArtistPageView: View {
     }
 
     private var albumFilterSortBar: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 4) {
-                ForEach(ArtistAlbumTypeFilter.allCases, id: \.self) { filter in
-                    Button { albumTypeFilter = filter } label: {
-                        Text(LocalizedStringKey(filter.rawValue))
-                            .font(.system(size: 12, weight: albumTypeFilter == filter ? .semibold : .regular))
-                            .foregroundStyle(albumTypeFilter == filter ? Color.sjBlue : Color.sjMuted)
-                            .padding(.horizontal, 12).padding(.vertical, 6)
-                            .background(albumTypeFilter == filter ? Color.sjBlue.opacity(0.1) : Color.clear)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                    }
-                    .buttonStyle(.plain)
+        HStack(spacing: 4) {
+            ForEach(ArtistAlbumTypeFilter.allCases, id: \.self) { filter in
+                Button { albumTypeFilter = filter } label: {
+                    Text(LocalizedStringKey(filter.rawValue))
+                        .font(.system(size: 12, weight: albumTypeFilter == filter ? .semibold : .regular))
+                        .foregroundStyle(albumTypeFilter == filter ? Color.sjBlue : Color.sjMuted)
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(albumTypeFilter == filter ? Color.sjBlue.opacity(0.1) : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
-                Spacer()
+                .buttonStyle(.plain)
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 8)
 
-            HStack {
-                Spacer()
-                Menu {
-                    ForEach(ArtistAlbumSortOrder.allCases, id: \.self) { order in
-                        Button {
-                            albumSortOrder = order
-                        } label: {
-                            Label(LocalizedStringKey(order.rawValue),
-                                  systemImage: albumSortOrder == order ? "checkmark" : "")
-                        }
+            Spacer()
+
+            Menu {
+                ForEach(ArtistAlbumSortOrder.allCases, id: \.self) { order in
+                    Button {
+                        albumSortOrder = order
+                    } label: {
+                        Label(LocalizedStringKey(order.rawValue),
+                              systemImage: albumSortOrder == order ? "checkmark" : "")
                     }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "line.3.horizontal.decrease")
-                        Text(LocalizedStringKey(albumSortOrder.rawValue))
-                    }
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.sjAmber)
                 }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "line.3.horizontal.decrease")
+                    Text(LocalizedStringKey(albumSortOrder.rawValue))
+                }
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color.sjAmber)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
     // MARK: - Community tab
