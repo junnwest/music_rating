@@ -11,32 +11,6 @@ extension Notification.Name {
 
 // MARK: - Models
 
-struct AlbumPost: Codable, Identifiable {
-    let id: UUID
-    let userId: UUID
-    let score: Double?
-    let eloScore: Double?
-    let createdAt: Date
-    let profiles: PostProfile?
-
-    struct PostProfile: Codable {
-        let username: String?
-        let displayName: String?
-        let avatarUrl: String?
-        enum CodingKeys: String, CodingKey {
-            case username; case displayName = "display_name"; case avatarUrl = "avatar_url"
-        }
-        var handle: String { username.map { "@\($0)" } ?? displayName ?? String(localized: "someone") }
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case id; case score; case profiles
-        case userId    = "user_id"
-        case eloScore  = "elo_score"
-        case createdAt = "created_at"
-    }
-}
-
 struct AlbumPublicMix: Identifiable {
     let id: UUID
     let name: String
@@ -103,16 +77,32 @@ class AlbumDetailViewModel {
     var communityCount: Int = 0
     var userScore: Double?
     var userEloScore: Double?
+    var reviewText: String?
+    var currentRatingId: UUID?
     var ratingMode = "manual"
     var ratingStep: Double = 0.5
-    var posts: [AlbumPost] = []
+    var posts: [FeedItem] = []
+    var likedPostIds: Set<UUID> = []
+    var savedReleaseIds: Set<UUID> = []
+    var likeCounts: [UUID: Int] = [:]
+    var commentCounts: [UUID: Int] = [:]
     var publicMixes: [AlbumPublicMix] = []
     var isLoading = true
     var isSaving = false
     var isLoadingInstinctScore = false
     private(set) var releaseGroupId: UUID?
 
+    var currentUserId: UUID? { supabase.auth.currentUser?.id }
+
     var isRated: Bool { userScore != nil || userEloScore != nil || isLoadingInstinctScore }
+
+    /// Unified display score for either rating mode -- manual stores a plain
+    /// score, instinct stores only an Elo rating that must be converted.
+    var displayScore: Double? {
+        if let s = userScore { return s }
+        if let e = userEloScore { return Elo.toScore(e) }
+        return nil
+    }
 
     func load(releaseGroupId: UUID) async {
         self.releaseGroupId = releaseGroupId
@@ -218,32 +208,33 @@ class AlbumDetailViewModel {
 
     func loadRatings(releaseGroupId: UUID) async {
         struct Row: Decodable {
+            let id: UUID
             let score: Double?
             let eloScore: Double?
             let userId: UUID
+            let reviewText: String?
             enum CodingKeys: String, CodingKey {
-                case score; case eloScore = "elo_score"; case userId = "user_id"
+                case id, score; case eloScore = "elo_score"; case userId = "user_id"; case reviewText = "review_text"
             }
         }
         let rows: [Row] = (try? await supabase
-            .from("ratings").select("score, elo_score, user_id")
+            .from("ratings").select("id, score, elo_score, user_id, review_text")
             .eq("release_group_id", value: releaseGroupId).execute().value) ?? []
 
         communityCount = rows.count
         let scored = rows.compactMap { row -> Double? in
             if let s = row.score { return s }
-            if let elo = row.eloScore {
-                let raw = 5.0 / (1.0 + pow(10.0, (1500.0 - elo) / 250.0))
-                return (raw * 10).rounded() / 10.0
-            }
+            if let elo = row.eloScore { return Elo.toScore(elo) }
             return nil
         }
         communityAvg = scored.isEmpty ? nil : scored.reduce(0, +) / Double(scored.count)
 
         if let userId = supabase.auth.currentUser?.id {
             let mine = rows.first(where: { $0.userId == userId })
-            userScore    = mine?.score
-            userEloScore = mine?.eloScore
+            userScore       = mine?.score
+            userEloScore    = mine?.eloScore
+            currentRatingId = mine?.id
+            reviewText      = mine?.reviewText
         }
         isLoadingInstinctScore = false
     }
@@ -252,12 +243,36 @@ class AlbumDetailViewModel {
         guard let userId = supabase.auth.currentUser?.id,
               let rgId = releaseGroupId else { return }
         userEloScore = nil
+        currentRatingId = nil
+        reviewText = nil
         _ = try? await supabase.from("ratings")
             .delete()
             .eq("user_id", value: userId)
             .eq("release_group_id", value: rgId)
             .execute()
         NotificationCenter.default.post(name: .ratingChanged, object: nil)
+    }
+
+    /// Updates only the review text of the user's existing rating (manual or
+    /// instinct) -- used by the unified "Edit" action, which never touches
+    /// the score itself. Uses an explicit encode so an empty edit correctly
+    /// writes SQL NULL rather than Codable's default of omitting nil keys.
+    func updateReviewText(_ text: String?) async {
+        guard let rid = currentRatingId else { return }
+        reviewText = text
+        struct Update: Encodable {
+            let reviewText: String?
+            enum CodingKeys: String, CodingKey { case reviewText = "review_text" }
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                if let reviewText { try container.encode(reviewText, forKey: .reviewText) }
+                else { try container.encodeNil(forKey: .reviewText) }
+            }
+        }
+        try? await supabase.from("ratings")
+            .update(Update(reviewText: text))
+            .eq("id", value: rid)
+            .execute()
     }
 
     private func loadRatingMode() async {
@@ -313,36 +328,71 @@ class AlbumDetailViewModel {
 
     private func reloadCommunityStats(releaseGroupId: UUID, currentUserId: UUID) async {
         struct Row: Decodable {
-            let score: Double?; let eloScore: Double?; let userId: UUID
+            let id: UUID; let score: Double?; let eloScore: Double?; let userId: UUID; let reviewText: String?
             enum CodingKeys: String, CodingKey {
-                case score; case eloScore = "elo_score"; case userId = "user_id"
+                case id, score; case eloScore = "elo_score"; case userId = "user_id"; case reviewText = "review_text"
             }
         }
         let rows: [Row] = (try? await supabase
-            .from("ratings").select("score, elo_score, user_id")
+            .from("ratings").select("id, score, elo_score, user_id, review_text")
             .eq("release_group_id", value: releaseGroupId).execute().value) ?? []
         communityCount = rows.count
         let scored = rows.compactMap { row -> Double? in
             if let s = row.score { return s }
-            if let elo = row.eloScore {
-                let raw = 5.0 / (1.0 + pow(10.0, (1500.0 - elo) / 250.0))
-                return (raw * 10).rounded() / 10.0
-            }
+            if let elo = row.eloScore { return Elo.toScore(elo) }
             return nil
         }
         communityAvg = scored.isEmpty ? nil : scored.reduce(0, +) / Double(scored.count)
-        userScore = rows.first(where: { $0.userId == currentUserId })?.score
+        let mine = rows.first(where: { $0.userId == currentUserId })
+        userScore       = mine?.score
+        currentRatingId = mine?.id
+        reviewText      = mine?.reviewText
     }
 
+    // Not private -- reused by AlbumAllRatingsListViewModel for the "View All" screen.
+    static let postsSelect =
+        "id, user_id, score, elo_score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey(username, display_name, is_bot)"
+
     private func loadPosts(releaseGroupId: UUID) async {
-        posts = (try? await supabase
+        let myId = supabase.auth.currentUser?.id
+        var query = supabase
             .from("ratings")
-            .select("id, score, elo_score, created_at, user_id, profiles(username, display_name, avatar_url)")
+            .select(Self.postsSelect)
             .eq("release_group_id", value: releaseGroupId)
+        if let myId { query = query.neq("user_id", value: myId) }
+        posts = (try? await query
             .order("created_at", ascending: false)
             .limit(20)
             .execute()
             .value) ?? []
+        await loadPostSocialData()
+    }
+
+    private func loadPostSocialData() async {
+        guard !posts.isEmpty else { return }
+        let counts = await AlbumSocial.loadCounts(for: posts)
+        for (k, v) in counts.likeCounts { likeCounts[k] = v }
+        for (k, v) in counts.commentCounts { commentCounts[k] = v }
+        guard let userId = currentUserId else { return }
+        let mine = await AlbumSocial.loadMyLikesAndSaves(posts: posts, userId: userId)
+        likedPostIds.formUnion(mine.likedPostIds)
+        savedReleaseIds.formUnion(mine.savedReleaseIds)
+    }
+
+    func toggleLike(for item: FeedItem) async {
+        let result = await AlbumSocial.toggleLike(item: item, likedPostIds: likedPostIds, likeCounts: likeCounts)
+        likedPostIds = result.likedPostIds
+        likeCounts = result.likeCounts
+    }
+
+    func toggleSave(for item: FeedItem) async {
+        let result = await AlbumSocial.toggleSave(item: item, savedReleaseIds: savedReleaseIds)
+        savedReleaseIds = result.savedReleaseIds
+    }
+
+    func blockUser(userId: UUID) async {
+        await AlbumSocial.blockUser(userId: userId)
+        posts.removeAll { $0.userId == userId }
     }
 
     private func loadPublicMixes(releaseGroupId: UUID) async {
@@ -387,82 +437,179 @@ class AlbumDetailViewModel {
             .select("id, name, is_default, created_at, description, profiles(id, username, display_name)")
             .in("id", values: mixIds)
             .eq("is_public", value: true)
-            .limit(10)
+            .limit(30)
             .execute()
             .value) ?? []
+        guard !rows.isEmpty else { return }
 
-        publicMixes = rows.map { row in
-            let handle = row.profiles.flatMap { $0.username.map { "@\($0)" } ?? $0.displayName } ?? String(localized: "someone")
-            return AlbumPublicMix(id: row.id, name: row.name, authorHandle: handle, authorId: row.profiles?.id, isDefault: row.isDefault, createdAt: row.createdAt, description: row.description)
+        // Popularity = mix likes (direct engagement with this mix) plus the
+        // owner's follower count (general reach), likes weighted higher since
+        // they're a more direct signal of the mix's own quality.
+        let rowMixIds = rows.map(\.id.uuidString)
+        struct MixLikeRow: Decodable {
+            let mixId: UUID
+            enum CodingKeys: String, CodingKey { case mixId = "mix_id" }
         }
+        let likeRows: [MixLikeRow] = (try? await supabase
+            .from("mix_likes").select("mix_id")
+            .in("mix_id", values: rowMixIds).execute().value) ?? []
+        var likeCounts: [UUID: Int] = [:]
+        for r in likeRows { likeCounts[r.mixId, default: 0] += 1 }
+
+        let ownerIds = Array(Set(rows.compactMap { $0.profiles?.id.uuidString }))
+        struct FollowRow: Decodable {
+            let followingId: UUID
+            enum CodingKeys: String, CodingKey { case followingId = "following_id" }
+        }
+        let followRows: [FollowRow] = ownerIds.isEmpty ? [] : ((try? await supabase
+            .from("follows").select("following_id")
+            .in("following_id", values: ownerIds).execute().value) ?? [])
+        var followerCounts: [UUID: Int] = [:]
+        for r in followRows { followerCounts[r.followingId, default: 0] += 1 }
+
+        func popularity(_ row: MixRow) -> Int {
+            let likes = likeCounts[row.id] ?? 0
+            let followers = row.profiles.flatMap { followerCounts[$0.id] } ?? 0
+            return likes * 3 + followers
+        }
+
+        publicMixes = rows
+            .sorted { popularity($0) > popularity($1) }
+            .map { row in
+                let handle = row.profiles.flatMap { $0.username.map { "@\($0)" } ?? $0.displayName } ?? String(localized: "someone")
+                return AlbumPublicMix(id: row.id, name: row.name, authorHandle: handle, authorId: row.profiles?.id, isDefault: row.isDefault, createdAt: row.createdAt, description: row.description)
+            }
     }
 }
 
-// MARK: - Star Rating View (display-only from outside; interactive inside ManualRatingSheet)
+// MARK: - Shared social helpers (likes/saves/block) for FeedItem-based posts
+// Used by both AlbumDetailViewModel (the album page's horizontal preview) and
+// AlbumAllRatingsListViewModel (its "View All" screen) -- same tables/logic
+// against a differently-scoped post array, so it's factored out once instead
+// of duplicated twice.
+// Return-based rather than inout -- an @Observable class's stored properties
+// are actor-isolated, and an inout binding to one can't be held across an
+// `await` suspension, so callers merge these results back in themselves.
+enum AlbumSocial {
+    struct Counts { var likeCounts: [UUID: Int] = [:]; var commentCounts: [UUID: Int] = [:] }
+    struct MyState { var likedPostIds: Set<UUID> = []; var savedReleaseIds: Set<UUID> = [] }
+    struct LikeResult { var likedPostIds: Set<UUID>; var likeCounts: [UUID: Int] }
+    struct SaveResult { var savedReleaseIds: Set<UUID> }
 
-struct StarRatingView: View {
-    let score: Double?
-    let interactive: Bool
-    let onRate: (Double?) -> Void
-    var starSize: CGFloat = 34
-
-    var body: some View {
-        // The 5 stars are individually meaningless to VoiceOver (half/full tap zones
-        // don't map to swipe navigation) — expose this as one element with a spoken
-        // value instead, matching how a native slider is accessible.
-        let stars = HStack(spacing: 2) {
-            ForEach(1...5, id: \.self) { star in
-                ZStack {
-                    Image(systemName: symbolName(for: star))
-                        .font(.system(size: starSize))
-                        .foregroundStyle(Color.sjAmber)
-
-                    if interactive {
-                        HStack(spacing: 0) {
-                            Color.clear.contentShape(Rectangle())
-                                .onTapGesture {
-                                    let half = Double(star) - 0.5
-                                    onRate(score == half ? nil : half)
-                                }
-                            Color.clear.contentShape(Rectangle())
-                                .onTapGesture {
-                                    let full = Double(star)
-                                    onRate(score == full ? nil : full)
-                                }
-                        }
-                    }
-                }
-                .frame(width: starSize + 14, height: starSize + 14)
-            }
+    static func loadCounts(for posts: [FeedItem]) async -> Counts {
+        let ratingIds = posts.map(\.id.uuidString)
+        struct RatingIdRow: Codable {
+            let ratingId: UUID
+            enum CodingKeys: String, CodingKey { case ratingId = "rating_id" }
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(String(localized: "Rating"))
-        .accessibilityValue(accessibilityScoreDescription)
+        var result = Counts()
+        if let rows: [RatingIdRow] = try? await supabase
+            .from("rating_likes").select("rating_id")
+            .in("rating_id", values: ratingIds).execute().value {
+            for r in rows { result.likeCounts[r.ratingId, default: 0] += 1 }
+        }
+        if let rows: [RatingIdRow] = try? await supabase
+            .from("rating_comments").select("rating_id")
+            .in("rating_id", values: ratingIds).execute().value {
+            for r in rows { result.commentCounts[r.ratingId, default: 0] += 1 }
+        }
+        return result
+    }
 
-        if interactive {
-            stars.accessibilityAdjustableAction { direction in
-                let current = score ?? 0
-                switch direction {
-                case .increment: onRate(min(5.0, current + 0.5))
-                case .decrement: onRate(max(0.0, current - 0.5))
-                @unknown default: break
-                }
-            }
+    static func loadMyLikesAndSaves(posts: [FeedItem], userId: UUID) async -> MyState {
+        let ratingIds = posts.map(\.id.uuidString)
+        let releaseIds = Array(Set(posts.map(\.releases.id.uuidString)))
+        struct RatingIdRow: Codable {
+            let ratingId: UUID
+            enum CodingKeys: String, CodingKey { case ratingId = "rating_id" }
+        }
+        struct ReleaseIdRow: Codable {
+            let releaseId: UUID
+            enum CodingKeys: String, CodingKey { case releaseId = "release_id" }
+        }
+        var result = MyState()
+        if let rows: [RatingIdRow] = try? await supabase
+            .from("rating_likes").select("rating_id")
+            .eq("user_id", value: userId)
+            .in("rating_id", values: ratingIds).execute().value {
+            for r in rows { result.likedPostIds.insert(r.ratingId) }
+        }
+        if let rows: [ReleaseIdRow] = try? await supabase
+            .from("saved_releases").select("release_id")
+            .eq("user_id", value: userId)
+            .in("release_id", values: releaseIds).execute().value {
+            for r in rows { result.savedReleaseIds.insert(r.releaseId) }
+        }
+        return result
+    }
+
+    static func toggleLike(item: FeedItem, likedPostIds: Set<UUID>, likeCounts: [UUID: Int]) async -> LikeResult {
+        var likedPostIds = likedPostIds
+        var likeCounts = likeCounts
+        guard let userId = supabase.auth.currentUser?.id else {
+            return LikeResult(likedPostIds: likedPostIds, likeCounts: likeCounts)
+        }
+        let wasLiked = likedPostIds.contains(item.id)
+        if wasLiked {
+            likedPostIds.remove(item.id)
+            likeCounts[item.id] = max(0, (likeCounts[item.id] ?? 1) - 1)
         } else {
-            stars
+            likedPostIds.insert(item.id)
+            likeCounts[item.id] = (likeCounts[item.id] ?? 0) + 1
         }
+        do {
+            if wasLiked {
+                try await supabase.from("rating_likes").delete()
+                    .eq("user_id", value: userId).eq("rating_id", value: item.id).execute()
+            } else {
+                struct Payload: Encodable {
+                    let userId: UUID; let ratingId: UUID
+                    enum CodingKeys: String, CodingKey { case userId = "user_id"; case ratingId = "rating_id" }
+                }
+                try await supabase.from("rating_likes")
+                    .insert(Payload(userId: userId, ratingId: item.id)).execute()
+            }
+        } catch {
+            if wasLiked { likedPostIds.insert(item.id); likeCounts[item.id] = (likeCounts[item.id] ?? 0) + 1 }
+            else { likedPostIds.remove(item.id); likeCounts[item.id] = max(0, (likeCounts[item.id] ?? 1) - 1) }
+        }
+        return LikeResult(likedPostIds: likedPostIds, likeCounts: likeCounts)
     }
 
-    private var accessibilityScoreDescription: String {
-        guard let score else { return String(localized: "Not rated") }
-        return String(format: String(localized: "%.1f out of 5 stars"), score)
+    static func toggleSave(item: FeedItem, savedReleaseIds: Set<UUID>) async -> SaveResult {
+        var savedReleaseIds = savedReleaseIds
+        guard let userId = supabase.auth.currentUser?.id else {
+            return SaveResult(savedReleaseIds: savedReleaseIds)
+        }
+        let releaseId = item.releases.id
+        let wasSaved = savedReleaseIds.contains(releaseId)
+        if wasSaved { savedReleaseIds.remove(releaseId) } else { savedReleaseIds.insert(releaseId) }
+        do {
+            if wasSaved {
+                try await supabase.from("saved_releases").delete()
+                    .eq("user_id", value: userId).eq("release_id", value: releaseId).execute()
+            } else {
+                struct Payload: Encodable {
+                    let userId: UUID; let releaseId: UUID
+                    enum CodingKeys: String, CodingKey { case userId = "user_id"; case releaseId = "release_id" }
+                }
+                try await supabase.from("saved_releases")
+                    .insert(Payload(userId: userId, releaseId: releaseId)).execute()
+            }
+        } catch {
+            if wasSaved { savedReleaseIds.insert(releaseId) } else { savedReleaseIds.remove(releaseId) }
+        }
+        return SaveResult(savedReleaseIds: savedReleaseIds)
     }
 
-    private func symbolName(for star: Int) -> String {
-        guard let s = score else { return "star" }
-        if Double(star) <= s            { return "star.fill" }
-        if Double(star) - 0.5 <= s     { return "star.leadinghalf.filled" }
-        return "star"
+    static func blockUser(userId: UUID) async {
+        guard let me = supabase.auth.currentUser?.id, userId != me else { return }
+        struct Payload: Encodable {
+            let blockerId: UUID; let blockedId: UUID
+            enum CodingKeys: String, CodingKey { case blockerId = "blocker_id"; case blockedId = "blocked_id" }
+        }
+        _ = try? await supabase.from("blocked_users")
+            .insert(Payload(blockerId: me, blockedId: userId)).execute()
     }
 }
 
@@ -479,6 +626,10 @@ struct ManualRatingSheet: View {
     @State private var draftScore: Double
     @State private var ratingId: UUID? = nil
     @State private var sheetDetent: PresentationDetent = .fraction(0.33)
+    // Measured live from PostRatingOptionsView's real content height (via
+    // onHeightChange) so the sheet grows when the comment TextEditor expands,
+    // instead of staying pinned to a fixed .medium that clips the content.
+    @State private var postRatingHeight: CGFloat = 420
     @Environment(\.dismiss) private var dismiss
 
     init(release: Release, existingScore: Binding<Double?>, ratingStep: Double = 0.5, onSave: @escaping (Double?) -> Void) {
@@ -498,12 +649,21 @@ struct ManualRatingSheet: View {
                     release: release,
                     continueLabel: "Done",
                     onBack: { withAnimation { phase = .rating; sheetDetent = .fraction(0.33) } },
+                    onHeightChange: { height in
+                        postRatingHeight = height
+                        if phase == .postRating {
+                            withAnimation(.easeInOut(duration: 0.2)) { sheetDetent = .height(height) }
+                        }
+                    },
                     onContinue: { text in Task { await saveReviewAndDismiss(text: text) } }
                 )
             }
         }
         .presentationBackground(Color.sjCream)
-        .presentationDetents([.fraction(0.33), .medium], selection: $sheetDetent)
+        .presentationDetents(
+            phase == .rating ? [.fraction(0.33)] : [.height(postRatingHeight)],
+            selection: $sheetDetent
+        )
         .presentationDragIndicator(phase == .postRating ? .visible : .hidden)
     }
 
@@ -583,7 +743,7 @@ struct ManualRatingSheet: View {
                 .execute()
                 .value as IdRow)?.id
         }
-        withAnimation { sheetDetent = .medium }
+        withAnimation { sheetDetent = .height(postRatingHeight) }
         phase = .postRating
     }
 
@@ -617,7 +777,8 @@ struct AlbumDetailView: View {
     @State private var viewModel = AlbumDetailViewModel()
     @State private var showManualSheet = false
     @State private var showInstinctSheet = false
-    @State private var showDeleteRankingConfirm = false
+    @State private var showEditSheet = false
+    @State private var showDeleteConfirm = false
     @State private var trackRatingTarget: TrackEntry? = nil
     @State private var trackInstinctTarget: TrackEntry? = nil
     @State private var selectedSong: TrackEntry? = nil
@@ -700,7 +861,7 @@ struct AlbumDetailView: View {
                 }
                 if !viewModel.posts.isEmpty {
                     Divider().padding(.horizontal, 20)
-                    postsSection
+                    otherRatingsSection
                 }
                 if !viewModel.publicMixes.isEmpty {
                     Divider().padding(.horizontal, 20)
@@ -737,6 +898,42 @@ struct AlbumDetailView: View {
                 Task { await viewModel.loadAfterInstinct(releaseGroupId: release.id) }
             }, onDone: { showInstinctSheet = false })
         }
+        .sheet(isPresented: $showEditSheet) {
+            // Mode-agnostic: editing never touches the score, just the
+            // review text / mix membership, so the same sheet serves both
+            // manual and instinct ratings.
+            PostRatingOptionsView(
+                release: release,
+                continueLabel: "Save",
+                initialComment: viewModel.reviewText ?? ""
+            ) { text in
+                Task {
+                    await viewModel.updateReviewText(text)
+                    showEditSheet = false
+                }
+            }
+            .presentationBackground(Color.sjCream)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+        .confirmationDialog(
+            "Delete Rating?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                Task {
+                    if viewModel.ratingMode == "instinct" {
+                        await viewModel.deleteInstinctRating()
+                    } else {
+                        await viewModel.setRating(releaseGroupId: release.id, score: nil)
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will permanently remove this rating.")
+        }
         .sheet(item: $pendingShare) { pending in
             SharePreviewSheet(pending: pending)
                 .presentationDetents([.large])
@@ -755,10 +952,17 @@ struct AlbumDetailView: View {
                 }
             }
         }
+        // Reset on disappear -- a stale non-nil item binding can get spuriously re-presented
+        // on top of a later push made from within its own destination (e.g. tapping the artist
+        // name inside SongDetailView re-showing this album on top of the artist page).
         .navigationDestination(item: $selectedSong) { track in
             SongDetailView(track: track, release: release, ratingMode: viewModel.ratingMode)
+                .onDisappear { if selectedSong == track { selectedSong = nil } }
         }
-        .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
+        // No Release/ArtistDestination navigationDestination here -- every stack that hosts
+        // this view (Home/Rankings/Profile/Search) declares both at its own root. A second
+        // declaration for the same type within one NavigationStack causes SwiftUI to
+        // double-push (confirmed live: tapping the artist name re-showed the album page).
         .navigationDestination(for: UserProfileDestination.self) { dest in
             UserProfileView(userId: dest.userId, initialHandle: dest.handle)
         }
@@ -835,22 +1039,18 @@ struct AlbumDetailView: View {
         .padding(.vertical, 18)
     }
 
-    // MARK: Rating section (mode-aware)
+    // MARK: Rating section (unified — manual and instinct share one UI, only
+    // the "not yet rated" icon/label and which sheet gets opened differ)
+
+    private func openRatingSheet() {
+        if viewModel.ratingMode == "instinct" { showInstinctSheet = true }
+        else { showManualSheet = true }
+    }
 
     private var ratingSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(viewModel.ratingMode == "instinct" ? "Your Instinct Ranking" : "Your Rating")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Color.sjMuted)
-                .textCase(.uppercase)
-                .tracking(0.6)
-
-            if viewModel.ratingMode == "instinct" {
-                instinctRatingBody
-            } else {
-                manualRatingBody
-            }
-
+            // Community summary at the top, integrated with the section
+            // rather than tucked below the user's own rating controls.
             if viewModel.communityCount > 0 {
                 HStack(spacing: 10) {
                     if let avg = viewModel.communityAvg {
@@ -858,65 +1058,23 @@ struct AlbumDetailView: View {
                                          label: "Community Avg", showIcon: true)
                     }
                     communityStatBox(value: "\(viewModel.communityCount)",
-                                     label: "Ratings", showIcon: false)
+                                     label: viewModel.communityCount == 1 ? "Rating" : "Ratings", showIcon: false)
                 }
             }
+
+            Text("Your Rating")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.sjMuted)
+                .textCase(.uppercase)
+                .tracking(0.6)
+
+            ratingBody
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 18)
     }
 
-    // Manual mode rating body
-    private var manualRatingBody: some View {
-        Group {
-            if let score = viewModel.userScore {
-                // Already rated
-                HStack(spacing: 12) {
-                    Button { showManualSheet = true } label: {
-                        HStack(spacing: 8) {
-                            StarRatingView(score: score, interactive: false, onRate: { _ in }, starSize: 22)
-
-                            HStack(spacing: 4) {
-                                Image("icon-flower")
-                                    .renderingMode(.template).resizable().scaledToFit()
-                                    .frame(width: 12, height: 12).foregroundStyle(Color.sjBlue)
-                                Text(score.truncatingRemainder(dividingBy: 1) == 0
-                                     ? "\(Int(score))" : String(format: "%.1f", score))
-                                    .font(.system(size: 14, weight: .bold)).foregroundStyle(Color.sjBlue)
-                            }
-                            .padding(.horizontal, 10).padding(.vertical, 5)
-                            .background(Color.sjBlue.opacity(0.1))
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                        }
-                    }
-                    .buttonStyle(.plain)
-
-                    Spacer()
-
-                    shareButton(score: score)
-
-                    Button("Edit") { showManualSheet = true }
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.sjBlue)
-                }
-            } else {
-                // Not yet rated
-                Button { showManualSheet = true } label: {
-                    Label("Rate this Album", systemImage: "plus")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 13)
-                        .background(Color.sjBlue)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
-    // Instinct mode rating body
-    private var instinctRatingBody: some View {
+    private var ratingBody: some View {
         Group {
             if viewModel.isLoadingInstinctScore {
                 HStack {
@@ -926,74 +1084,77 @@ struct AlbumDetailView: View {
                         .foregroundStyle(Color.sjMuted)
                     Spacer()
                 }
-            } else if let elo = viewModel.userEloScore {
-                let score = instinctEloToScore(elo)
-                HStack(spacing: 12) {
-                    Button { showInstinctSheet = true } label: {
-                        HStack(spacing: 4) {
-                            Image("icon-flower")
-                                .renderingMode(.template).resizable().scaledToFit()
-                                .frame(width: 14, height: 14).foregroundStyle(Color.sjBlue)
-                            Text(String(format: "%.1f", score))
-                                .font(.system(size: 18, weight: .bold)).foregroundStyle(Color.sjBlue)
-                        }
-                        .padding(.horizontal, 14).padding(.vertical, 8)
-                        .background(Color.sjBlue.opacity(0.1))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                    }
-                    .buttonStyle(.plain)
-
-                    Text("Instinct Score")
-                        .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
-
-                    Spacer()
-
-                    shareButton(score: score)
-
-                    Button("Re-rank") { showInstinctSheet = true }
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.sjBlue)
-
-                    Button {
-                        showDeleteRankingConfirm = true
-                    } label: {
-                        Image(systemName: "trash")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Color.sjMuted)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(String(localized: "Delete ranking"))
-                    .confirmationDialog(
-                        "Delete Ranking?",
-                        isPresented: $showDeleteRankingConfirm,
-                        titleVisibility: .visible
-                    ) {
-                        Button("Delete", role: .destructive) {
-                            Task { await viewModel.deleteInstinctRating() }
-                        }
-                        Button("Cancel", role: .cancel) {}
-                    } message: {
-                        Text("This will permanently remove this instinct ranking.")
-                    }
-                }
+            } else if let score = viewModel.displayScore {
+                ratedBody(score: score)
             } else {
-                Button { showInstinctSheet = true } label: {
-                    Label("Add to Rankings", systemImage: "arrow.up.arrow.down")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 13)
-                        .background(Color.sjBlue)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                Button { openRatingSheet() } label: {
+                    Label(
+                        viewModel.ratingMode == "instinct" ? "Add to Rankings" : "Rate this Album",
+                        systemImage: viewModel.ratingMode == "instinct" ? "arrow.up.arrow.down" : "plus"
+                    )
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                    .background(Color.sjBlue)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
             }
         }
     }
 
-    private func instinctEloToScore(_ elo: Double) -> Double {
-        let raw = 5.0 / (1.0 + pow(10.0, (1500.0 - elo) / 250.0))
-        return (raw * 10).rounded() / 10.0
+    private func ratedBody(score: Double) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                // Tapping the score itself re-rates, same as the explicit
+                // Re-rate button below -- it's the most natural tap target
+                // for "I want to redo this."
+                Button { openRatingSheet() } label: {
+                    HStack(spacing: 4) {
+                        Image("icon-flower")
+                            .renderingMode(.template).resizable().scaledToFit()
+                            .frame(width: 14, height: 14).foregroundStyle(Color.sjBlue)
+                        Text(String(format: "%.1f", score))
+                            .font(.system(size: 18, weight: .bold)).foregroundStyle(Color.sjBlue)
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(Color.sjBlue.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+
+                Text("My Score")
+                    .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+
+                Spacer()
+
+                shareButton(score: score)
+            }
+
+            HStack(spacing: 8) {
+                ratingActionButton("Re-rate", icon: "arrow.triangle.2.circlepath") { openRatingSheet() }
+                ratingActionButton("Edit", icon: "square.and.pencil") { showEditSheet = true }
+                ratingActionButton("Delete", icon: "trash", isDestructive: true) { showDeleteConfirm = true }
+            }
+        }
+    }
+
+    private func ratingActionButton(_ label: LocalizedStringKey, icon: String, isDestructive: Bool = false,
+                                     action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.system(size: 12, weight: .semibold))
+                Text(label).font(.system(size: 13, weight: .semibold))
+            }
+            .foregroundStyle(isDestructive ? Color.red : Color.sjInk)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 9)
+            .background(Color.sjSurface)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.sjBorder, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     private func communityStatBox(value: String, label: LocalizedStringKey, showIcon: Bool) -> some View {
@@ -1043,15 +1204,31 @@ struct AlbumDetailView: View {
 
     // MARK: Posts
 
-    private var postsSection: some View {
+    private var otherRatingsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionLabel("Ratings & Reviews")
+            sectionHeader("Ratings & Reviews") {
+                AlbumAllRatingsView(release: release)
+            }
 
-            ForEach(Array(viewModel.posts.enumerated()), id: \.element.id) { i, post in
-                PostRow(post: post)
-                if i < viewModel.posts.count - 1 {
-                    Divider().padding(.leading, 52)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(viewModel.posts) { item in
+                        FeedCard(
+                            item: item,
+                            currentUserId: viewModel.currentUserId,
+                            isLiked: viewModel.likedPostIds.contains(item.id),
+                            isSaved: viewModel.savedReleaseIds.contains(item.releases.id),
+                            likesCount: viewModel.likeCounts[item.id] ?? 0,
+                            commentsCount: viewModel.commentCounts[item.id] ?? 0,
+                            onLike: { await viewModel.toggleLike(for: item) },
+                            onSave: { await viewModel.toggleSave(for: item) },
+                            onBlock: { await viewModel.blockUser(userId: item.userId) },
+                            onOwnProfileTap: {}
+                        )
+                        .frame(width: 300)
+                    }
                 }
+                .padding(.horizontal, 20)
             }
         }
         .padding(.bottom, 20)
@@ -1061,31 +1238,13 @@ struct AlbumDetailView: View {
 
     private var mixesSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionLabel("In Public Mixes")
+            sectionHeader("In Public Mixes") {
+                AlbumAllMixesView(mixes: viewModel.publicMixes)
+            }
 
-            ForEach(Array(viewModel.publicMixes.enumerated()), id: \.element.id) { i, mix in
-                Group {
-                    if let authorId = mix.authorId {
-                        // Direct destination, not NavigationLink(value:) -- this view is
-                        // pushed from several different NavigationStacks, so a registered
-                        // navigationDestination(for: Mix.self) can't be relied on here.
-                        NavigationLink(destination: MixDetailView(mix: Mix(
-                            id: mix.id,
-                            userId: authorId,
-                            name: mix.name,
-                            isPublic: true,
-                            isDefault: mix.isDefault,
-                            createdAt: mix.createdAt,
-                            description: mix.description
-                        ))) {
-                            mixRow(mix)
-                        }
-                        .buttonStyle(.plain)
-                    } else {
-                        mixRow(mix)
-                    }
-                }
-                if i < viewModel.publicMixes.count - 1 {
+            ForEach(Array(viewModel.publicMixes.prefix(5).enumerated()), id: \.element.id) { i, mix in
+                MixListRow(mix: mix)
+                if i < min(5, viewModel.publicMixes.count) - 1 {
                     Divider().padding(.leading, 52)
                 }
             }
@@ -1095,28 +1254,26 @@ struct AlbumDetailView: View {
 
     // MARK: Helpers
 
-    private func mixRow(_ mix: AlbumPublicMix) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "music.note.list")
-                .font(.system(size: 16))
-                .foregroundStyle(Color.sjBlue)
-                .frame(width: 32)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(mix.name)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(Color.sjInk)
-                    .lineLimit(1)
-                Text(mix.authorHandle)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.sjMuted)
-            }
-            Spacer()
-            Image(systemName: "chevron.right")
-                .font(.system(size: 12))
+    /// A section label with a trailing "View All" link, shown only when
+    /// there's a dedicated destination to see more in.
+    @ViewBuilder
+    private func sectionHeader<Destination: View>(_ text: LocalizedStringKey, @ViewBuilder destination: () -> Destination) -> some View {
+        HStack {
+            Text(text)
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Color.sjMuted)
+                .textCase(.uppercase)
+                .tracking(0.6)
+            Spacer()
+            NavigationLink(destination: destination()) {
+                Text("View All")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.sjBlue)
+            }
         }
-        .padding(.vertical, 11)
         .padding(.horizontal, 20)
+        .padding(.top, 18)
+        .padding(.bottom, 12)
     }
 
     private func sectionLabel(_ text: LocalizedStringKey) -> some View {
@@ -1139,82 +1296,184 @@ extension AlbumDetailViewModel {
     }
 }
 
-// MARK: - Post Row
+// MARK: - Mix row (shared by the album page's preview list and its "View All")
 
-private struct PostRow: View {
-    let post: AlbumPost
-
-    private var relativeDate: String {
-        let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .abbreviated
-        return f.localizedString(for: post.createdAt, relativeTo: Date())
-    }
+private struct MixRowContent: View {
+    let mix: AlbumPublicMix
 
     var body: some View {
         HStack(spacing: 12) {
-            NavigationLink(value: UserProfileDestination(
-                userId: post.userId,
-                handle: post.profiles?.handle ?? String(localized: "someone")
-            )) {
-                HStack(spacing: 12) {
-                    Circle()
-                        .fill(Color.sjBorder)
-                        .frame(width: 32, height: 32)
-                        .overlay(
-                            Text(String((post.profiles?.handle ?? "?").prefix(1)).uppercased())
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(Color.sjMuted)
-                        )
+            Image(systemName: "music.note.list")
+                .font(.system(size: 16))
+                .foregroundStyle(Color.sjBlue)
+                .frame(width: 32)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(mix.name)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.sjInk)
+                    .lineLimit(1)
+                Text(mix.authorHandle)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.sjMuted)
+            }
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12))
+                .foregroundStyle(Color.sjMuted)
+        }
+        .padding(.vertical, 11)
+        .padding(.horizontal, 20)
+    }
+}
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(post.profiles?.handle ?? String(localized: "someone"))
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(Color.sjInk)
-                        Text(relativeDate)
-                            .font(.system(size: 11))
-                            .foregroundStyle(Color.sjMuted)
+private struct MixListRow: View {
+    let mix: AlbumPublicMix
+
+    var body: some View {
+        Group {
+            if let authorId = mix.authorId {
+                // Direct destination, not NavigationLink(value:) -- this view is
+                // pushed from several different NavigationStacks, so a registered
+                // navigationDestination(for: Mix.self) can't be relied on here.
+                NavigationLink(destination: MixDetailView(mix: Mix(
+                    id: mix.id,
+                    userId: authorId,
+                    name: mix.name,
+                    isPublic: true,
+                    isDefault: mix.isDefault,
+                    createdAt: mix.createdAt,
+                    description: mix.description
+                ))) {
+                    MixRowContent(mix: mix)
+                }
+                .buttonStyle(.plain)
+            } else {
+                MixRowContent(mix: mix)
+            }
+        }
+    }
+}
+
+// MARK: - View All: public mixes
+
+struct AlbumAllMixesView: View {
+    let mixes: [AlbumPublicMix]
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(Array(mixes.enumerated()), id: \.element.id) { i, mix in
+                    MixListRow(mix: mix)
+                    if i < mixes.count - 1 {
+                        Divider().padding(.leading, 52)
                     }
                 }
             }
-            .buttonStyle(.plain)
+        }
+        .background(Color.sjCream.ignoresSafeArea())
+        .navigationTitle("Public Mixes")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
 
-            Spacer()
+// MARK: - View All: other users' ratings
 
-            if let score = post.score {
-                scoreBadge(score, isElo: false)
-            } else if let elo = post.eloScore {
-                scoreBadge(eloToDisplay(elo), isElo: true)
+@Observable
+private class AlbumRatingsListViewModel {
+    var posts: [FeedItem] = []
+    var likedPostIds: Set<UUID> = []
+    var savedReleaseIds: Set<UUID> = []
+    var likeCounts: [UUID: Int] = [:]
+    var commentCounts: [UUID: Int] = [:]
+    var isLoading = true
+
+    var currentUserId: UUID? { supabase.auth.currentUser?.id }
+
+    func load(releaseGroupId: UUID) async {
+        let myId = currentUserId
+        var query = supabase
+            .from("ratings")
+            .select(AlbumDetailViewModel.postsSelect)
+            .eq("release_group_id", value: releaseGroupId)
+        if let myId { query = query.neq("user_id", value: myId) }
+        posts = (try? await query
+            .order("created_at", ascending: false)
+            .limit(200)
+            .execute()
+            .value) ?? []
+
+        if !posts.isEmpty {
+            let counts = await AlbumSocial.loadCounts(for: posts)
+            for (k, v) in counts.likeCounts { likeCounts[k] = v }
+            for (k, v) in counts.commentCounts { commentCounts[k] = v }
+            if let myId {
+                let mine = await AlbumSocial.loadMyLikesAndSaves(posts: posts, userId: myId)
+                likedPostIds.formUnion(mine.likedPostIds)
+                savedReleaseIds.formUnion(mine.savedReleaseIds)
             }
         }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 20)
+        isLoading = false
     }
 
-    private func scoreBadge(_ value: Double, isElo: Bool) -> some View {
-        HStack(spacing: 3) {
-            if isElo {
-                Image(systemName: "arrow.up.arrow.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(Color.sjBlue)
+    func toggleLike(for item: FeedItem) async {
+        let result = await AlbumSocial.toggleLike(item: item, likedPostIds: likedPostIds, likeCounts: likeCounts)
+        likedPostIds = result.likedPostIds
+        likeCounts = result.likeCounts
+    }
+
+    func toggleSave(for item: FeedItem) async {
+        let result = await AlbumSocial.toggleSave(item: item, savedReleaseIds: savedReleaseIds)
+        savedReleaseIds = result.savedReleaseIds
+    }
+
+    func blockUser(userId: UUID) async {
+        await AlbumSocial.blockUser(userId: userId)
+        posts.removeAll { $0.userId == userId }
+    }
+}
+
+struct AlbumAllRatingsView: View {
+    let release: Release
+    @State private var vm = AlbumRatingsListViewModel()
+
+    var body: some View {
+        Group {
+            if vm.isLoading {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if vm.posts.isEmpty {
+                VStack(spacing: 14) {
+                    Image(systemName: "bubble.left.and.bubble.right")
+                        .font(.system(size: 44)).foregroundStyle(Color.sjBorder)
+                    Text("No ratings from other users yet.")
+                        .font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                Image(systemName: "star.fill")
-                    .font(.system(size: 9))
-                    .foregroundStyle(Color.sjAmber)
+                ScrollView {
+                    LazyVStack(spacing: 10) {
+                        ForEach(vm.posts) { item in
+                            FeedCard(
+                                item: item,
+                                currentUserId: vm.currentUserId,
+                                isLiked: vm.likedPostIds.contains(item.id),
+                                isSaved: vm.savedReleaseIds.contains(item.releases.id),
+                                likesCount: vm.likeCounts[item.id] ?? 0,
+                                commentsCount: vm.commentCounts[item.id] ?? 0,
+                                onLike: { await vm.toggleLike(for: item) },
+                                onSave: { await vm.toggleSave(for: item) },
+                                onBlock: { await vm.blockUser(userId: item.userId) },
+                                onOwnProfileTap: {}
+                            )
+                        }
+                    }
+                    .padding(16)
+                }
             }
-            Text(value.truncatingRemainder(dividingBy: 1) == 0
-                 ? "\(Int(value))" : String(format: "%.1f", value))
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(isElo ? Color.sjBlue : Color.sjAmber)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background((isElo ? Color.sjBlue : Color.sjAmber).opacity(0.1))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-    }
-
-    private func eloToDisplay(_ elo: Double) -> Double {
-        let raw = 5.0 / (1.0 + pow(10.0, (1500.0 - elo) / 250.0))
-        return (raw * 10).rounded() / 10.0
+        .background(Color.sjCream.ignoresSafeArea())
+        .navigationTitle("Ratings & Reviews")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await vm.load(releaseGroupId: release.id) }
     }
 }
 

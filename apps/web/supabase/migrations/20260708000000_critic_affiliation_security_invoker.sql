@@ -1,0 +1,20 @@
+-- Fixes Supabase's "Security Definer View" advisor warning (Critical) on
+-- public.critic_affiliation. Postgres views default to enforcing the VIEW
+-- OWNER's permissions/RLS against the underlying tables, not the querying
+-- user's -- functionally equivalent to a SECURITY DEFINER function, and the
+-- same risk class: a role that shouldn't see certain release_groups/
+-- external_scores rows directly could still see them through this view.
+--
+-- security_invoker = true (Postgres 15+) flips that: the view now checks
+-- the QUERYING user's own permissions/RLS against release_groups and
+-- external_scores, same as if they'd run the view's query themselves.
+--
+-- Both underlying tables are public catalog data with permissive read
+-- policies (this view powers a public-facing critic-signal feature), so
+-- this is not expected to change what anyone can actually see through it --
+-- it just makes the enforcement path correct instead of coincidentally safe.
+--
+-- CREATE OR REPLACE VIEW can't add a WITH (...) clause to an existing view
+-- definition in one statement in all Postgres versions reliably -- ALTER
+-- VIEW ... SET is the direct, minimal way to flip just this option.
+ALTER VIEW critic_affiliation SET (security_invoker = true);

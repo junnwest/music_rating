@@ -78,7 +78,11 @@ struct FeedProfile: Codable {
     let username: String?
     let displayName: String?
     let isBot: Bool?
-    enum CodingKeys: String, CodingKey { case username; case displayName = "display_name"; case isBot = "is_bot" }
+    let isVerified: Bool?
+    enum CodingKeys: String, CodingKey {
+        case username; case displayName = "display_name"; case isBot = "is_bot"
+        case isVerified = "is_verified"
+    }
     var handle: String { username ?? displayName ?? String(localized: "someone") }
 }
 
@@ -173,7 +177,7 @@ class HomeViewModel {
     private var hasLoadedFollowing = false
 
     private static let feedSelect =
-        "id, user_id, score, elo_score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey(username, display_name, is_bot)"
+        "id, user_id, score, elo_score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey(username, display_name, is_bot, is_verified)"
 
     // Explore's fetch is split by is_bot BEFORE ranking, not just re-ranked after — with
     // bot ratings' recency-biased backdating, a human rating usually wouldn't survive into
@@ -323,35 +327,75 @@ class HomeViewModel {
         hasUnreadNotifications = count > 0
     }
 
-    // Same select as feedSelect but with an inner-joined profiles relation, so
-    // .eq("profiles.is_bot", ...) actually filters the parent `ratings` rows
-    // (PostgREST only lets an embedded-column filter narrow the parent when
-    // the embed is !inner — a plain left-join embed can't be filtered on).
-    private static let feedSelectBotFilterable =
-        "id, user_id, score, elo_score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey!inner(username, display_name, is_bot)"
+    // Same relations as feedSelect but WITHOUT the release_groups/artists embed
+    // -- with ~10k bot-authored ratings (>99% of the table), adding that embed
+    // to a query that also does ORDER BY created_at + an inner-joined is_bot
+    // filter makes Postgres blow its statement timeout (57014), confirmed live:
+    // the identical query with the embed removed returns in <1s. release_groups
+    // are fetched separately below and stitched back in client-side instead.
+    private static let feedSelectLiteBotFilterable =
+        "id, user_id, score, elo_score, review_text, created_at, release_group_id, profiles!ratings_user_id_fkey!inner(username, display_name, is_bot, is_verified)"
+
+    private struct FeedItemLite: Codable {
+        let id: UUID
+        let userId: UUID
+        let score: Double?
+        let eloScore: Double?
+        let reviewText: String?
+        let createdAt: Date
+        let releaseGroupId: UUID
+        let profiles: FeedProfile?
+        enum CodingKeys: String, CodingKey {
+            case id, score, profiles
+            case userId        = "user_id"
+            case eloScore       = "elo_score"
+            case reviewText     = "review_text"
+            case createdAt      = "created_at"
+            case releaseGroupId = "release_group_id"
+        }
+    }
+
+    private static let releaseGroupSelect =
+        "id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)"
+
+    private func fetchReleaseGroups(ids: [String]) async -> [UUID: FeedRelease] {
+        guard !ids.isEmpty else { return [:] }
+        let rows: [FeedRelease] = (try? await supabase
+            .from("release_groups").select(Self.releaseGroupSelect)
+            .in("id", values: ids)
+            .execute().value) ?? []
+        return Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
+    }
 
     /// Fetches the Explore pool split by is_bot BEFORE any ranking — see the comment on
     /// exploreHumanFetchLimit/exploreBotFetchLimit for why this has to happen at fetch time.
     /// Throws (rather than swallowing per-query) so callers keep their existing try?/guard
     /// failure semantics instead of silently treating a real fetch failure as "zero results".
     private func fetchExplorePool() async throws -> [FeedItem] {
-        async let humanTask: [FeedItem] = try await supabase
-            .from("ratings").select(Self.feedSelectBotFilterable)
+        async let humanTask: [FeedItemLite] = try await supabase
+            .from("ratings").select(Self.feedSelectLiteBotFilterable)
             .eq("profiles.is_bot", value: false)
             .order("created_at", ascending: false).limit(Self.exploreHumanFetchLimit)
             .execute().value
-        async let botTask: [FeedItem] = try await supabase
-            .from("ratings").select(Self.feedSelectBotFilterable)
+        async let botTask: [FeedItemLite] = try await supabase
+            .from("ratings").select(Self.feedSelectLiteBotFilterable)
             .eq("profiles.is_bot", value: true)
             .order("created_at", ascending: false).limit(Self.exploreBotFetchLimit)
             .execute().value
-        return try await humanTask + botTask
+        let lite = try await (humanTask + botTask)
+        let releaseGroups = await fetchReleaseGroups(ids: Array(Set(lite.map(\.releaseGroupId.uuidString))))
+        return lite.compactMap { item in
+            guard let release = releaseGroups[item.releaseGroupId] else { return nil }
+            return FeedItem(id: item.id, userId: item.userId, score: item.score, eloScore: item.eloScore,
+                             reviewText: item.reviewText, createdAt: item.createdAt,
+                             releases: release, profiles: item.profiles)
+        }
     }
 
     // Not private -- reused by ProfileViewModel to fetch the current user's
     // own mix shares for the profile posts feed.
     static let mixShareSelect =
-        "id, user_id, mix_id, caption, created_at, mixes(id, name, description), profiles!mix_shares_user_id_fkey(username, display_name, is_bot)"
+        "id, user_id, mix_id, caption, created_at, mixes(id, name, description), profiles!mix_shares_user_id_fkey(username, display_name, is_bot, is_verified)"
 
     struct MixShareRow: Codable {
         let id: UUID
@@ -683,7 +727,6 @@ struct HomeView: View {
     @State private var activeTab: FeedTab = .explore
     @State private var exploreScrollTrigger   = UUID()
     @State private var followingScrollTrigger = UUID()
-    @State private var showNotifications      = false
 
     var body: some View {
         NavigationStack {
@@ -692,11 +735,17 @@ struct HomeView: View {
                 .background(Color.sjCream.ignoresSafeArea())
                 .navigationBarHidden(true)
             .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
+            .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
             .navigationDestination(for: UserProfileDestination.self) { dest in
                 UserProfileView(userId: dest.userId, initialHandle: dest.handle)
             }
             .navigationDestination(for: FindPeopleDestination.self) { _ in FindPeopleView() }
-            .navigationDestination(isPresented: $showNotifications) {
+            // Value-based push (not `.navigationDestination(isPresented:)`) --
+            // isPresented mixed with the for:-based pushes above left this
+            // NavigationStack in a broken state where NotificationsView's own
+            // NavigationLinks (to a release/profile/mix) updated the back
+            // button's title but never actually completed the visual push.
+            .navigationDestination(for: NotificationsDestination.self) { _ in
                 NotificationsView()
                     .onDisappear { Task { await viewModel.refreshNotificationBadge() } }
             }
@@ -743,7 +792,7 @@ struct HomeView: View {
     }
 
     private var bellButton: some View {
-        Button { showNotifications = true } label: {
+        NavigationLink(value: NotificationsDestination()) {
             Image(systemName: "bell")
                 .font(.system(size: 19, weight: .medium))
                 .foregroundStyle(Color.sjInk)
@@ -889,6 +938,8 @@ struct HomeView: View {
 // MARK: - Find people
 
 struct FindPeopleDestination: Hashable {}
+
+struct NotificationsDestination: Hashable {}
 
 struct FindPeopleView: View {
     @State private var suggestions: [SuggestedUser] = []
@@ -1069,7 +1120,10 @@ private enum CardSheet: Identifiable {
     var id: Self { self }
 }
 
-private struct FeedCard: View {
+// Not private -- reused by AlbumDetailView's "other ratings" section, which
+// renders posts scoped to a single release in the same visual format as the
+// home feed.
+struct FeedCard: View {
     let item: FeedItem
     let currentUserId: UUID?
     let isLiked: Bool
@@ -1120,6 +1174,8 @@ private struct FeedCard: View {
                     .presentationDragIndicator(.visible)
             case .addRating:
                 NavigationStack { AlbumDetailView(release: item.releases.asRelease) }
+                    .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
+                    .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
                     .presentationDragIndicator(.visible)
             case .mixPicker:
                 MixPickerView(releaseId: item.releases.id, releaseTitle: item.releases.title)
@@ -1247,9 +1303,16 @@ private struct FeedCard: View {
 
     @ViewBuilder
     private var usernameLink: some View {
-        let label = Text("@" + (item.profiles?.handle ?? String(localized: "someone")))
-            .font(.system(size: 13.5, weight: .semibold))
-            .foregroundStyle(Color.sjInk)
+        let label = HStack(spacing: 4) {
+            Text("@" + (item.profiles?.handle ?? String(localized: "someone")))
+                .font(.system(size: 13.5, weight: .semibold))
+                .foregroundStyle(Color.sjInk)
+            if item.profiles?.isVerified == true {
+                VerifiedBadgeView()
+                    .frame(width: 13, height: 13)
+                    .accessibilityLabel(String(localized: "Verified"))
+            }
+        }
 
         if isOwnPost {
             Button { onOwnProfileTap() } label: { label }

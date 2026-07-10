@@ -55,10 +55,14 @@ final class UserProfileViewModel {
         let displayName: String?
         let bio: String?
         let avatarUrl: String?
+        let badgeColor: String?
+        let isVerified: Bool?
         enum CodingKeys: String, CodingKey {
             case id, username, bio
             case displayName = "display_name"
             case avatarUrl   = "avatar_url"
+            case badgeColor  = "badge_color"
+            case isVerified  = "is_verified"
         }
         var handle: String { username ?? displayName ?? String(localized: "someone") }
         var displayLabel: String { displayName ?? username ?? String(localized: "someone") }
@@ -251,7 +255,7 @@ final class UserProfileViewModel {
     private func loadProfile() async -> OtherProfile? {
         try? await supabase
             .from("profiles")
-            .select("id, username, display_name, bio, avatar_url")
+            .select("id, username, display_name, bio, avatar_url, badge_color, is_verified")
             .eq("id", value: userId)
             .single()
             .execute()
@@ -382,7 +386,7 @@ struct UserProfileView: View {
     @State private var activeTab: ProfileTab = .rated
     @State private var ratingSortOrder:   RatingSortOrder  = .recent
     @State private var ratingTypeFilter:  RatingTypeFilter = .all
-    @State private var ratingDisplayMode: RatingDisplayMode = .list
+    @State private var ratingDisplayMode: RatingDisplayMode = .posts
     @State private var showFollowModal = false
     @State private var followModalInitTab: FollowMode = .followers
 
@@ -449,9 +453,23 @@ struct UserProfileView: View {
                 Text(vm.profile?.displayLabel ?? initialHandle)
                     .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(Color.sjInk)
-                Text("@" + (vm.profile?.handle ?? initialHandle))
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color.sjMuted)
+                // Badges sit next to the @handle (the account's actual
+                // identity), not the display name.
+                HStack(spacing: 5) {
+                    Text("@" + (vm.profile?.handle ?? initialHandle))
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.sjMuted)
+                    if let raw = vm.profile?.badgeColor, let badge = QuestBadgeColor(rawValue: raw) {
+                        QuestBadgeView(color: badge.color)
+                            .frame(width: 15, height: 15)
+                            .accessibilityLabel(String(localized: "Quests complete"))
+                    }
+                    if vm.profile?.isVerified == true {
+                        VerifiedBadgeView()
+                            .frame(width: 15, height: 15)
+                            .accessibilityLabel(String(localized: "Verified"))
+                    }
+                }
             }
 
             if vm.access.profileVisible, let bio = vm.profile?.bio, !bio.isEmpty {
@@ -726,7 +744,9 @@ struct UserProfileView: View {
                             )
                         }
                         .buttonStyle(.plain)
-                        // No delete/edit affordance -- viewer isn't the owner.
+                        // No delete/edit affordance -- viewer isn't the owner --
+                        // but the standard long-press quick actions still apply.
+                        .albumContextMenu(item.asRelease)
                         Divider().padding(.leading, 70)
                     }
                 } else {

@@ -1,0 +1,135 @@
+import SwiftUI
+import Supabase
+
+// Shared long-press quick actions for bare album cover art (grids, carousels,
+// chart rows) -- surfaces that today require navigating all the way into
+// AlbumDetailView just to rate or save something. Not used on full post
+// cards (FeedCard, ProfilePostCard, MixShareCard), which already have their
+// own ellipsis menu with an overlapping action set.
+enum AlbumQuickRate {
+    static func currentUserRatingMode() async -> String {
+        guard let userId = supabase.auth.currentUser?.id else { return "manual" }
+        struct P: Decodable {
+            let ratingMode: String?
+            enum CodingKeys: String, CodingKey { case ratingMode = "rating_mode" }
+        }
+        let p: P? = try? await supabase
+            .from("profiles").select("rating_mode")
+            .eq("id", value: userId).single().execute().value
+        return p?.ratingMode ?? "manual"
+    }
+
+    static func saveManualScore(releaseGroupId: UUID, score: Double) async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        struct Payload: Encodable {
+            let userId: UUID; let releaseGroupId: UUID; let score: Double
+            enum CodingKeys: String, CodingKey {
+                case userId = "user_id"; case releaseGroupId = "release_group_id"; case score
+            }
+        }
+        try? await supabase.from("ratings")
+            .upsert(Payload(userId: userId, releaseGroupId: releaseGroupId, score: score),
+                    onConflict: "user_id,release_group_id")
+            .execute()
+        NotificationCenter.default.post(name: .ratingChanged, object: nil)
+    }
+}
+
+private struct AlbumMenuPreview: View {
+    let release: Release
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            CoverImage(url: release.coverUrl, cornerRadius: 12)
+                .frame(width: 220, height: 220)
+            Text(release.displayTitle)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(Color.sjInk)
+                .lineLimit(2)
+            Text(release.displayArtist)
+                .font(.system(size: 13))
+                .foregroundStyle(Color.sjMuted)
+                .lineLimit(1)
+        }
+        .padding(14)
+        .background(Color.sjSurface)
+    }
+}
+
+struct AlbumContextMenu<ExtraItems: View>: ViewModifier {
+    let release: Release
+    @ViewBuilder var extraItems: () -> ExtraItems
+
+    @State private var showManualSheet = false
+    @State private var showInstinctSheet = false
+    @State private var showMixPicker = false
+    @State private var quickScore: Double? = nil
+    @State private var artistDestination: ArtistDestination? = nil
+
+    private var shareURL: URL { URL(string: "https://sillajuku.com/album/\(release.id.uuidString)")! }
+
+    func body(content: Content) -> some View {
+        content
+            .contextMenu {
+                Button {
+                    Task { await openRateSheet() }
+                } label: {
+                    Label("Rate", systemImage: "star")
+                }
+                Button {
+                    showMixPicker = true
+                } label: {
+                    Label("Add to Mix", systemImage: "text.badge.plus")
+                }
+                ShareLink(item: shareURL, subject: Text(release.displayTitle + " · " + release.displayArtist)) {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                }
+                Button {
+                    artistDestination = ArtistDestination(artistId: nil, name: release.displayArtist)
+                } label: {
+                    Label("View Artist", systemImage: "music.mic")
+                }
+                extraItems()
+            } preview: {
+                AlbumMenuPreview(release: release)
+            }
+            .sheet(isPresented: $showManualSheet) {
+                ManualRatingSheet(release: release, existingScore: $quickScore) { score in
+                    guard let score else { return }
+                    Task { await AlbumQuickRate.saveManualScore(releaseGroupId: release.id, score: score) }
+                }
+            }
+            .sheet(isPresented: $showInstinctSheet) {
+                InstinctRatingView(release: release)
+            }
+            .sheet(isPresented: $showMixPicker) {
+                MixPickerView(releaseId: release.id, releaseTitle: release.displayTitle)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+            }
+            .navigationDestination(item: $artistDestination) { ArtistPageView(artist: $0) }
+    }
+
+    private func openRateSheet() async {
+        let mode = await AlbumQuickRate.currentUserRatingMode()
+        if mode == "instinct" {
+            showInstinctSheet = true
+        } else {
+            quickScore = nil
+            showManualSheet = true
+        }
+    }
+}
+
+extension View {
+    /// Long-press quick actions (Rate / Add to Mix / Share / View Artist) for
+    /// a bare album cover. `extraItems` lets a specific screen append its own
+    /// menu rows (e.g. Profile's "Delete Rating") after the standard four.
+    func albumContextMenu<Extra: View>(_ release: Release, @ViewBuilder extraItems: @escaping () -> Extra) -> some View {
+        modifier(AlbumContextMenu(release: release, extraItems: extraItems))
+    }
+
+    func albumContextMenu(_ release: Release) -> some View {
+        modifier(AlbumContextMenu(release: release, extraItems: { EmptyView() }))
+    }
+}

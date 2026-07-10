@@ -163,6 +163,25 @@ enum SpotifyService {
             .execute()
     }
 
+    // Persists the OAuth refresh token captured at login so a server-side cron can pull
+    // fresh top-artists/recently-played data independent of this device ever reopening
+    // the app or the short-lived access token still being valid.
+    private struct TasteTokenUpsert: Encodable {
+        let userId: UUID; let refreshToken: String; let updatedAt: String
+        enum CodingKeys: String, CodingKey {
+            case userId = "user_id"; case refreshToken = "refresh_token"; case updatedAt = "updated_at"
+        }
+    }
+
+    static func saveTasteRefreshToken(_ token: String) async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        let ts = ISO8601DateFormatter().string(from: Date())
+        try? await supabase
+            .from("spotify_taste_tokens")
+            .upsert(TasteTokenUpsert(userId: userId, refreshToken: token, updatedAt: ts))
+            .execute()
+    }
+
     static func loadArtistsFromDB() async -> [SpotifyArtistDisplay] {
         guard let userId = supabase.auth.currentUser?.id else { return [] }
         struct Row: Decodable {

@@ -311,6 +311,10 @@ struct InstinctRatingView: View {
     @State private var vm = InstinctRatingViewModel()
     @State private var selectedSide: Bool? = nil
     @State private var sheetDetent: PresentationDetent = .fraction(0.36)
+    // Measured live from PostRatingOptionsView's real content height (via
+    // onHeightChange) so the sheet grows when the comment TextEditor expands,
+    // instead of staying pinned to a fixed detent that clips the content.
+    @State private var postRatingHeight: CGFloat = 420
     @Environment(\.dismiss) private var dismiss
 
     private func close() {
@@ -331,9 +335,13 @@ struct InstinctRatingView: View {
             }
         }
         .presentationBackground(Color.sjCream)
-        .presentationDetents([.fraction(0.36), .medium], selection: $sheetDetent)
+        .presentationDetents(
+            vm.phase == .postRating ? [.height(postRatingHeight)] : [.fraction(0.36), .medium],
+            selection: $sheetDetent
+        )
         .presentationDragIndicator(.visible)
-        .onChange(of: vm.phase) { _, _ in
+        .onChange(of: vm.phase) { _, newPhase in
+            guard newPhase != .postRating else { return }
             withAnimation { sheetDetent = .fraction(0.36) }
         }
         .task {
@@ -348,6 +356,12 @@ struct InstinctRatingView: View {
         PostRatingOptionsView(
             release: release,
             onBack: { withAnimation { vm.phase = .bucket; sheetDetent = .fraction(0.36) } },
+            onHeightChange: { height in
+                postRatingHeight = height
+                if vm.phase == .postRating {
+                    withAnimation(.easeInOut(duration: 0.2)) { sheetDetent = .height(height) }
+                }
+            },
             onContinue: { text in Task { await vm.continueFromPostRating(reviewText: text) } }
         )
     }
@@ -806,6 +820,10 @@ struct InstinctTrackRatingView: View {
     @State private var vm = InstinctTrackRatingViewModel()
     @State private var selectedSide: Bool? = nil
     @State private var sheetDetent: PresentationDetent = .fraction(0.36)
+    // Measured live from PostRatingOptionsView's real content height (via
+    // onHeightChange) so the sheet grows when the comment TextEditor expands,
+    // instead of staying pinned to a fixed detent that clips the content.
+    @State private var postRatingHeight: CGFloat = 420
     @Environment(\.dismiss) private var dismiss
 
     private func close() {
@@ -822,9 +840,13 @@ struct InstinctTrackRatingView: View {
             }
         }
         .presentationBackground(Color.sjCream)
-        .presentationDetents([.fraction(0.36), .medium], selection: $sheetDetent)
+        .presentationDetents(
+            vm.phase == .postRating ? [.height(postRatingHeight)] : [.fraction(0.36), .medium],
+            selection: $sheetDetent
+        )
         .presentationDragIndicator(.visible)
-        .onChange(of: vm.phase) { _, _ in
+        .onChange(of: vm.phase) { _, newPhase in
+            guard newPhase != .postRating else { return }
             withAnimation { sheetDetent = .fraction(0.36) }
         }
         .task {
@@ -840,6 +862,12 @@ struct InstinctTrackRatingView: View {
         PostRatingOptionsView(
             release: release,
             onBack: { withAnimation { vm.phase = .bucket; sheetDetent = .fraction(0.36) } },
+            onHeightChange: { height in
+                postRatingHeight = height
+                if vm.phase == .postRating {
+                    withAnimation(.easeInOut(duration: 0.2)) { sheetDetent = .height(height) }
+                }
+            },
             onContinue: { text in Task { await vm.continueFromPostRating(reviewText: text) } }
         )
     }

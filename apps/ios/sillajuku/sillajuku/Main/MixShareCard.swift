@@ -157,9 +157,16 @@ struct MixShareCard: View {
 
     @ViewBuilder
     private var usernameLink: some View {
-        let label = Text("@" + (post.profile?.handle ?? String(localized: "someone")))
-            .font(.system(size: 13.5, weight: .semibold))
-            .foregroundStyle(Color.sjInk)
+        let label = HStack(spacing: 4) {
+            Text("@" + (post.profile?.handle ?? String(localized: "someone")))
+                .font(.system(size: 13.5, weight: .semibold))
+                .foregroundStyle(Color.sjInk)
+            if post.profile?.isVerified == true {
+                VerifiedBadgeView()
+                    .frame(width: 13, height: 13)
+                    .accessibilityLabel(String(localized: "Verified"))
+            }
+        }
 
         if isOwnPost {
             Button { onOwnProfileTap() } label: { label }

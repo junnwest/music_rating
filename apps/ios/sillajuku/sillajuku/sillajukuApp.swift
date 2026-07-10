@@ -150,6 +150,7 @@ struct RootView: View {
             }
             if let refresh = session.providerRefreshToken {
                 UserDefaults.standard.set(refresh, forKey: "sj_spotify_provider_refresh_token")
+                Task { await SpotifyService.saveTasteRefreshToken(refresh) }
             }
             // Best-effort, never blocks the auth transition above/below it —
             // a valid session is confirmed at this point, so it's safe to

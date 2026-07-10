@@ -3,13 +3,29 @@ import Supabase
 
 struct PostRatingOptionsView: View {
     let release: Release
-    var continueLabel: LocalizedStringKey = "Continue"
-    var onBack: (() -> Void)? = nil
+    var continueLabel: LocalizedStringKey
+    var onBack: (() -> Void)?
     let onContinue: (String?) -> Void
+    // Optional -- lets a host sheet track this view's real content height (e.g. to
+    // grow its presentationDetents when the comment TextEditor expands) without
+    // every call site needing to opt in.
+    var onHeightChange: ((CGFloat) -> Void)? = nil
 
-    @State private var isAddingComment = false
-    @State private var commentText = ""
+    @State private var isAddingComment: Bool
+    @State private var commentText: String
     @State private var showMixPicker = false
+
+    init(release: Release, continueLabel: LocalizedStringKey = "Continue", initialComment: String = "",
+         onBack: (() -> Void)? = nil, onHeightChange: ((CGFloat) -> Void)? = nil,
+         onContinue: @escaping (String?) -> Void) {
+        self.release = release
+        self.continueLabel = continueLabel
+        self.onBack = onBack
+        self.onHeightChange = onHeightChange
+        self.onContinue = onContinue
+        self._commentText = State(initialValue: initialComment)
+        self._isAddingComment = State(initialValue: !initialComment.isEmpty)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,6 +37,13 @@ struct PostRatingOptionsView: View {
             Divider().padding(.horizontal, 20)
             bottomButtons
         }
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { onHeightChange?(geo.size.height) }
+                    .onChange(of: geo.size.height) { _, newValue in onHeightChange?(newValue) }
+            }
+        )
         .sheet(isPresented: $showMixPicker) {
             MixPickerView(releaseId: release.id, releaseTitle: release.displayTitle)
                 .presentationDetents([.medium, .large])
