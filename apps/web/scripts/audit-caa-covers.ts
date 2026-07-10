@@ -9,20 +9,26 @@
  * confirmed case (YANGHONGWON / 오보에) had a completely unrelated image ship as the
  * canonical cover. Nothing cross-checks CAA against another source.
  *
- * This samples CAA-covered releases (prestige pool first — the most user-visible),
- * fetches the SAME album's cover from Deezer (an independent source), perceptually
- * hashes both, and flags pairs whose images are visually DIFFERENT (one is likely
- * wrong). It does NOT write anything — it produces a review worklist. Deciding which
- * source is correct, and repointing cover_url, is a human/follow-up call.
+ * This samples CAA-covered releases (prestige pool first — the most user-visible)
+ * and cross-checks each against TWO independent sources (Deezer + iTunes), because
+ * a single source can't tell a WRONG cover from a merely DIFFERENT EDITION: famous
+ * albums have many editions (remaster/deluxe/regional) with different art, so a lone
+ * Deezer mismatch is usually just a different edition, not an error (v1 of this tool
+ * over-flagged canonical albums for exactly this reason). So we flag CAA as the
+ * likely-wrong outlier ONLY when Deezer and iTunes agree WITH EACH OTHER but both
+ * disagree with CAA. When the two sources disagree with each other, it's edition
+ * variance → inconclusive, not flagged. READ-ONLY — produces a review worklist;
+ * which source is correct and whether to repoint cover_url is a human call.
  *
  * Perceptual hash (jimp pHash + Hamming distance, 0 = identical … ~0.5 = unrelated):
- *   distance ≲ 0.15  → same image (resolution/compression differences only)
- *   distance ≳ 0.25  → likely a DIFFERENT image → FLAG for review
+ *   distance ≲ THRESHOLD → "agree" (same artwork, resolution/compression aside)
+ *   CAA flagged only when dist(Deezer,iTunes) ≤ THRESHOLD AND both CAA distances > THRESHOLD
  */
 import { Jimp, distance } from 'jimp';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { getDB } from './itunes-ingest-core';
 import { searchAlbums } from './deezer-client';
+import { searchAlbum as itunesSearchAlbum } from './itunes-client';
 
 const argv = process.argv.slice(2);
 const arg = (f: string, d?: string) => { const i = argv.indexOf(f); return i >= 0 && argv[i + 1] ? argv[i + 1] : d; };
@@ -64,48 +70,58 @@ async function main() {
   const rows = (data ?? []) as RgRow[];
   console.log(`  ${rows.length} releases to check\n`);
 
-  const flagged: any[] = [];
-  let agree = 0, noDeezer = 0, imgErr = 0;
+  const flagged: any[] = [];       // CAA is the outlier — Deezer≈iTunes but both differ from CAA
+  const inconclusive: any[] = [];  // the two sources disagree with each other → edition variance
+  let agree = 0, insufficient = 0, imgErr = 0;
 
   for (let i = 0; i < rows.length; i++) {
     const rg = rows[i];
-    process.stdout.write(`  [${String(i + 1).padStart(3)}/${rows.length}] ${rg.artist_display.slice(0, 20).padEnd(20)} ${rg.title.slice(0, 26).padEnd(26)} `);
-    // Deezer cross-source cover for the same album.
-    const hits = await searchAlbums(rg.artist_display, rg.title, 5);
-    const hit = hits.find(h => overlap(h.artist, rg.artist_display) && (overlap(h.title, rg.title) || overlap(h.title, rg.native_title ?? '')));
-    if (!hit?.cover) { noDeezer++; console.log('no deezer match'); continue; }
+    process.stdout.write(`  [${String(i + 1).padStart(3)}/${rows.length}] ${rg.artist_display.slice(0, 18).padEnd(18)} ${rg.title.slice(0, 24).padEnd(24)} `);
+    // Two INDEPENDENT cross-source covers for the same album.
+    const dzHits = await searchAlbums(rg.artist_display, rg.title, 5);
+    const dzHit = dzHits.find(h => overlap(h.artist, rg.artist_display) && (overlap(h.title, rg.title) || overlap(h.title, rg.native_title ?? '')));
+    const itAlbum = await itunesSearchAlbum(rg.title, rg.artist_display, null);
+    const itCover = itAlbum?.artworkUrl100 ? itAlbum.artworkUrl100.replace('100x100bb', '600x600bb') : null;
+    if (!dzHit?.cover || !itCover) { insufficient++; console.log('need 2 sources — skip'); continue; }
 
-    const [caaImg, dzImg] = await Promise.all([readImage(rg.cover_url), readImage(hit.cover)]);
-    if (!caaImg || !dzImg) { imgErr++; console.log('image fetch failed'); continue; }
+    const [caaImg, dzImg, itImg] = await Promise.all([readImage(rg.cover_url), readImage(dzHit.cover), readImage(itCover)]);
+    if (!caaImg || !dzImg || !itImg) { imgErr++; console.log('image fetch failed'); continue; }
 
-    const d = distance(caaImg, dzImg); // 0 = identical, ~0.5 = unrelated
-    if (d > THRESHOLD) {
-      flagged.push({ id: rg.id, artist: rg.artist_display, title: rg.title, prestige: rg.prestige_score, distance: +d.toFixed(3), caa: rg.cover_url, deezer: hit.cover });
-      console.log(`⚠ FLAG  d=${d.toFixed(3)}`);
+    const dCaaDz = distance(caaImg, dzImg), dCaaIt = distance(caaImg, itImg), dDzIt = distance(dzImg, itImg);
+    if (dDzIt > THRESHOLD) {
+      // Independent sources disagree with EACH OTHER → edition variance; can't isolate CAA.
+      inconclusive.push({ id: rg.id, artist: rg.artist_display, title: rg.title, dCaaDz: +dCaaDz.toFixed(3), dCaaIt: +dCaaIt.toFixed(3), dDzIt: +dDzIt.toFixed(3) });
+      console.log(`~ sources differ (dz≁it=${dDzIt.toFixed(2)})`);
+    } else if (dCaaDz > THRESHOLD && dCaaIt > THRESHOLD) {
+      // Deezer≈iTunes yet both differ from CAA → CAA is the outlier → likely wrong.
+      flagged.push({ id: rg.id, artist: rg.artist_display, title: rg.title, prestige: rg.prestige_score, dCaaDz: +dCaaDz.toFixed(3), dCaaIt: +dCaaIt.toFixed(3), caa: rg.cover_url, deezer: dzHit.cover, itunes: itCover });
+      console.log(`⚠ CAA OUTLIER  caa≁dz=${dCaaDz.toFixed(2)} caa≁it=${dCaaIt.toFixed(2)}`);
     } else {
-      agree++; console.log(`ok  d=${d.toFixed(3)}`);
+      agree++; console.log('ok');
     }
   }
 
-  const checked = agree + flagged.length;
+  const checked = agree + flagged.length + inconclusive.length;
   console.log('\n  ── SUMMARY ─────────────────────────────────────────────');
-  console.log(`  Sampled:               ${rows.length}`);
-  console.log(`  Cross-checked (Deezer): ${checked}   (${noDeezer} no deezer match · ${imgErr} image errors)`);
-  console.log(`  Agree (same cover):    ${agree}`);
-  console.log(`  ►FLAGGED (different):  ${flagged.length}${checked ? `  (${(100 * flagged.length / checked).toFixed(1)}% of cross-checked)` : ''}`);
+  console.log(`  Sampled:                  ${rows.length}`);
+  console.log(`  Cross-checked (2 sources): ${checked}   (${insufficient} lacked 2 sources · ${imgErr} image errors)`);
+  console.log(`  All 3 agree:              ${agree}`);
+  console.log(`  Edition variance (dz≠it): ${inconclusive.length}  (not flagged — can't tell wrong-cover from different-edition)`);
+  console.log(`  ►CAA OUTLIER (likely wrong): ${flagged.length}${checked ? `  (${(100 * flagged.length / checked).toFixed(1)}% of cross-checked)` : ''}`);
   if (flagged.length) {
-    console.log('\n  FLAGGED — CAA vs Deezer disagree (review; higher distance = more different):');
-    for (const f of [...flagged].sort((a, b) => b.distance - a.distance)) {
-      console.log(`    d=${f.distance}  ${f.artist} — "${f.title}"`);
+    console.log('\n  CAA OUTLIERS — Deezer & iTunes agree, CAA differs from both (review these):');
+    for (const f of [...flagged].sort((a, b) => (b.dCaaDz + b.dCaaIt) - (a.dCaaDz + a.dCaaIt))) {
+      console.log(`    caa≁dz=${f.dCaaDz} caa≁it=${f.dCaaIt}  ${f.artist} — "${f.title}"`);
       console.log(`             CAA:    ${f.caa}`);
       console.log(`             Deezer: ${f.deezer}`);
+      console.log(`             iTunes: ${f.itunes}`);
     }
   }
 
   try { mkdirSync(JSON_OUT.replace(/[/\\][^/\\]+$/, ''), { recursive: true }); } catch { /* exists */ }
-  writeFileSync(JSON_OUT, JSON.stringify({ threshold: THRESHOLD, sampled: rows.length, crossChecked: checked, agree, noDeezer, imgErr, flagged }, null, 2));
+  writeFileSync(JSON_OUT, JSON.stringify({ threshold: THRESHOLD, sampled: rows.length, crossChecked: checked, agree, editionVariance: inconclusive.length, insufficient, imgErr, flagged, inconclusive }, null, 2));
   console.log(`\n  Full report → ${JSON_OUT}`);
-  console.log('  (READ-ONLY — flags for review; a human decides which source is correct before repointing cover_url.)\n');
+  console.log('  (READ-ONLY — CAA outliers are cross-verified by 2 independent sources; a human confirms before repointing cover_url.)\n');
 }
 
 main().catch(e => { console.error(e); process.exit(1); });
