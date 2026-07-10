@@ -294,12 +294,14 @@ export async function wikipediaTopUp(db: SupabaseClient, opts: WikipediaTopUpOpt
   // Paginate — a bare PostgREST .select() caps at 1000 rows, and there are already several
   // thousand wikipedia_* rows, so an un-paged fetch would silently re-process names past the
   // first 1000 (same 1000-row-cap class as the listenBrainzTopUp dedup fix).
+  // .order('id') is required: pagination without a stable sort skips/double-counts across pages.
   const have = new Set<string>();
   for (let from = 0; ; from += 1000) {
     const { data, error } = await db
       .from('artist_ingestion_queue')
       .select('name, source')
       .like('source', 'wikipedia_%')
+      .order('id')
       .range(from, from + 999);
     if (error) throw new Error(`wikipedia dedup page@${from}: ${error.message}`);
     if (!data?.length) break;

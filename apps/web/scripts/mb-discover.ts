@@ -69,10 +69,14 @@ export async function listenBrainzTopUp(db: DB, opts: ListenBrainzTopUpOpts = {}
   // so ~97% of the catalog was invisible to the dedup and every top-up re-queued famous
   // already-owned artists (measured 2026-07-10: 323/523 = 62% of a top-up was already-owned).
   // Page through the full set in 1000-row windows.
-  async function allColumn(table: string, column: string, source: string): Promise<string[]> {
+  // orderBy MUST be a stable (unique) column: PostgREST gives no ordering guarantee across
+  // .range() pages without an explicit sort, so an unsorted paginate silently skips AND
+  // double-counts rows (verified: it returned 32,476 of 34,359 real rows). Sorting by a
+  // unique key makes each page a clean, non-overlapping window.
+  async function allColumn(table: string, column: string, source: string, orderBy: string): Promise<string[]> {
     const out: string[] = [];
     for (let from = 0; ; from += 1000) {
-      const { data, error } = await db.from(table).select(column).eq('source', source).range(from, from + 999);
+      const { data, error } = await db.from(table).select(column).eq('source', source).order(orderBy).range(from, from + 999);
       if (error) throw new Error(`${table}.${column} page@${from}: ${error.message}`);
       if (!data?.length) break;
       out.push(...data.map((r: any) => r[column] as string));
@@ -81,9 +85,11 @@ export async function listenBrainzTopUp(db: DB, opts: ListenBrainzTopUpOpts = {}
     return out;
   }
   // Artists we already have (MBID) — both the snowball sources and the dedup set.
-  const haveMbids = new Set(await allColumn('artist_external_ids', 'external_id', 'musicbrainz'));
-  // Already-queued ListenBrainz MBIDs (avoid re-queuing across runs).
-  const queued = new Set((await allColumn('artist_ingestion_queue', 'source_id', 'listenbrainz')).filter(Boolean));
+  // (source,external_id) is unique → external_id is a stable sort key within source.
+  const haveMbids = new Set(await allColumn('artist_external_ids', 'external_id', 'musicbrainz', 'external_id'));
+  // Already-queued ListenBrainz MBIDs (avoid re-queuing across runs). source_id can repeat
+  // across name variants, so sort by the row's unique id instead.
+  const queued = new Set((await allColumn('artist_ingestion_queue', 'source_id', 'listenbrainz', 'id')).filter(Boolean));
 
   // Random sample of FROM sources (not the first N): a fixed window dries up once its
   // neighbours are queued, so we vary it each call to keep discovery productive as the
