@@ -82,6 +82,11 @@ const FRESHNESS_EVERY = envInt('FRESHNESS_EVERY', 20);          // 1 re-poll per
 // on (set MISS_DEEZER_FALLBACK=0 to disable). This is the standing answer to "we can't rely
 // 100% on MusicBrainz" — it fills MB's gaps with what real users actually look for.
 const MISS_DEEZER_FALLBACK = process.env.MISS_DEEZER_FALLBACK !== '0';
+// The Deezer miss-fallback only fires on GENUINE, REPEATED demand for something we truly lack:
+//   • db_count = 0 (the catalog returned NOTHING — a low-but-nonzero count usually means we DO
+//     have it under a variant, i.e. a matching bug, not a data gap), and
+//   • the same query missed >= this many times (a one-off typo shouldn't trigger an ingest).
+const MISS_MIN_DEMAND = envInt('MISS_MIN_DEMAND', 2);
 const QC_POLL_MS      = envInt('QC_POLL_MS', 3_600_000);        // QC cadence (default 1h)
 const QC_MAX_ATTEMPTS = envInt('QC_MAX_ATTEMPTS', 5);           // give up requeuing a row after N tries
 const TIER_INTERVAL_MS= envInt('TIER_INTERVAL_MS', 86_400_000); // re-derive freshness tiers daily
@@ -248,9 +253,9 @@ async function ingestLoop(db: DB) {
   const tryMisses = async (): Promise<boolean> => {
     if (DRAIN_ONCE) return false;
     const { data, error } = await db.from('search_misses')
-      .select('id, query').is('queued_at', null).order('searched_at').limit(5);
+      .select('id, query, db_count').is('queued_at', null).order('searched_at').limit(5);
     if (error || !data?.length) return false; // table without queued_at → migration not applied yet
-    for (const m of data as { id: string; query: string }[]) {
+    for (const m of data as { id: string; query: string; db_count: number | null }[]) {
       try {
         const r = await resolveArtist(m.query, null);
         if (r.best && !r.ambiguous) {
@@ -258,13 +263,17 @@ async function ingestLoop(db: DB) {
             { name: m.query, source: 'mbid', source_id: r.best.id, status: 'pending' },
             { onConflict: 'name,source', ignoreDuplicates: true });
           console.log(`  [misses] ${m.query} → ${r.best.name} [${r.best.country ?? '--'}]`);
-        } else if (MISS_DEEZER_FALLBACK) {
-          // MB has no confident match → the artist may simply not be in MusicBrainz. Recover it
-          // from Deezer so real user demand is served, not dropped. Confident-match only.
-          const hit = pickArtist(await dzSearchArtists(m.query, 8), m.query);
-          if (hit) {
-            const g = await ingestDeezerArtist(db, hit, null); // -1 = already in catalog (cross-source guard)
-            if (g >= 0) console.log(`  [misses] ${m.query} → Deezer "${hit.name}" (${hit.nbFan} fans) — ${g} groups [MB-missing]`);
+        } else if (MISS_DEEZER_FALLBACK && (m.db_count ?? 0) === 0) {
+          // MB has no confident match AND the catalog returned NOTHING → the artist may simply
+          // not be in MusicBrainz. Recover it from Deezer — but only on REPEATED demand (guards
+          // against a one-off typo) and confident-match only (guards against wrong artist).
+          const { count } = await db.from('search_misses').select('id', { count: 'exact', head: true }).eq('query', m.query);
+          if ((count ?? 0) >= MISS_MIN_DEMAND) {
+            const hit = pickArtist(await dzSearchArtists(m.query, 8), m.query);
+            if (hit) {
+              const g = await ingestDeezerArtist(db, hit, null); // -1 = already in catalog (cross-source guard)
+              if (g >= 0) console.log(`  [misses] ${m.query} → Deezer "${hit.name}" (${hit.nbFan} fans) — ${g} groups [MB-missing, ${count}× demand]`);
+            }
           }
         }
       } catch { /* transient → leave queued_at null, retry next idle */ continue; }
