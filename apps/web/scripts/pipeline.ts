@@ -263,8 +263,8 @@ async function ingestLoop(db: DB) {
           // from Deezer so real user demand is served, not dropped. Confident-match only.
           const hit = pickArtist(await dzSearchArtists(m.query, 8), m.query);
           if (hit) {
-            const g = await ingestDeezerArtist(db, hit, null);
-            console.log(`  [misses] ${m.query} → Deezer "${hit.name}" (${hit.nbFan} fans) — ${g} groups [MB-missing]`);
+            const g = await ingestDeezerArtist(db, hit, null); // -1 = already in catalog (cross-source guard)
+            if (g >= 0) console.log(`  [misses] ${m.query} → Deezer "${hit.name}" (${hit.nbFan} fans) — ${g} groups [MB-missing]`);
           }
         }
       } catch { /* transient → leave queued_at null, retry next idle */ continue; }

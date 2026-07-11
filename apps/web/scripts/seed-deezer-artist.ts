@@ -34,7 +34,11 @@ async function main() {
 
   if (!WRITE) { console.log('\n  [dry-run] no writes — re-run with --write to ingest.\n'); return; }
   const groups = await ingestDeezerArtist(db, hit, COUNTRY);
-  console.log(`\n  ingested ${groups} release group(s) from Deezer (source='deezer', ISRC kept for later MB upgrade).\n`);
+  if (groups < 0) {
+    console.log(`\n  already in catalog under another source (MusicBrainz) — skipped to avoid a duplicate.\n`);
+  } else {
+    console.log(`\n  ingested ${groups} release group(s) from Deezer (source='deezer', ISRC kept for later MB upgrade).\n`);
+  }
 }
 
 main().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); });
