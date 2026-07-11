@@ -12,6 +12,7 @@ import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
 import { displayName, formatCount } from '../../../lib/sj/display';
 import { fetchSillaLeaderboard } from '../../../lib/sj/sillaClient';
+import { fetchChartsSummary, fetchChartsSongs } from '../../../lib/sj/apiClient';
 import type {
   ChartRankedRPC,
   ChartTrendingRPC,
@@ -62,20 +63,34 @@ export default function ChartsPage() {
   useEffect(() => {
     if (!supabase) return;
     let cancelled = false;
-    supabase.rpc('get_rankings_unlock_status').then(({ data }) => {
-      if (cancelled) return;
-      setUnlock(((data as RankingsUnlockStatusRPC[] | null) ?? [])[0] ?? null);
-      setLoading(false);
-    });
-    supabase.rpc('get_charts_pulse').then(({ data }) => {
-      if (!cancelled) setPulse(((data as ChartsPulseRPC[] | null) ?? [])[0] ?? null);
-    });
-    supabase.rpc('get_charts_most_rated', { p_limit: 20 }).then(({ data }) => {
-      if (!cancelled) setMostRated((data as ChartRankedRPC[] | null) ?? []);
-    });
-    supabase.rpc('get_charts_trending', { p_limit: 5 }).then(({ data }) => {
-      if (!cancelled) setTrendingGlobal((data as ChartTrendingRPC[] | null) ?? []);
-    });
+    // One cached bundle (unlock + pulse + most-rated + trending) from
+    // /api/charts/summary; falls back to the four direct RPCs if it's down.
+    fetchChartsSummary()
+      .then((s) => {
+        if (cancelled) return;
+        setUnlock(s.unlock);
+        setPulse(s.pulse);
+        setMostRated(s.mostRated);
+        setTrendingGlobal(s.trending);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (cancelled || !supabase) return;
+        supabase.rpc('get_rankings_unlock_status').then(({ data }) => {
+          if (cancelled) return;
+          setUnlock(((data as RankingsUnlockStatusRPC[] | null) ?? [])[0] ?? null);
+          setLoading(false);
+        });
+        supabase.rpc('get_charts_pulse').then(({ data }) => {
+          if (!cancelled) setPulse(((data as ChartsPulseRPC[] | null) ?? [])[0] ?? null);
+        });
+        supabase.rpc('get_charts_most_rated', { p_limit: 20 }).then(({ data }) => {
+          if (!cancelled) setMostRated((data as ChartRankedRPC[] | null) ?? []);
+        });
+        supabase.rpc('get_charts_trending', { p_limit: 5 }).then(({ data }) => {
+          if (!cancelled) setTrendingGlobal((data as ChartTrendingRPC[] | null) ?? []);
+        });
+      });
     // "For You" trending via top genres
     if (userId) {
       (async () => {
@@ -103,28 +118,45 @@ export default function ChartsPage() {
   // they're 3 extra RPCs the default Albums view never needs.
   useEffect(() => {
     if (!supabase || mode !== 'songs' || songsLoaded || songsLoading) return;
+    // Locked songs charts render LockedView — don't fire three heavy RPCs
+    // (57014-prone aggregations over ~2.3M recordings) for data nobody sees.
+    if (unlock && !unlock.song_unlocked) return;
     let cancelled = false;
     setSongsLoading(true);
-    Promise.all([
-      supabase.rpc('get_charts_top_rated_songs', { p_limit: 20 }).then(({ data }) => {
-        if (!cancelled) setTopSongs((data as SongChartRPC[] | null) ?? []);
-      }),
-      supabase.rpc('get_charts_most_rated_songs', { p_limit: 20 }).then(({ data }) => {
-        if (!cancelled) setMostRatedSongs((data as SongChartRPC[] | null) ?? []);
-      }),
-      supabase.rpc('get_charts_trending_songs', { p_limit: 10 }).then(({ data }) => {
-        if (!cancelled) setTrendingSongs((data as TrendingSongRPC[] | null) ?? []);
-      }),
-    ]).then(() => {
-      if (!cancelled) {
-        setSongsLoaded(true);
-        setSongsLoading(false);
-      }
-    });
+    // Cached bundle from /api/charts/songs (the songs RPCs aggregate over
+    // ~2.3M recordings and have a 57014-timeout history under anon); falls
+    // back to the three direct RPCs if the route is down.
+    fetchChartsSongs()
+      .then((s) => {
+        if (cancelled) return;
+        setTopSongs(s.topRated);
+        setMostRatedSongs(s.mostRated);
+        setTrendingSongs(s.trending);
+      })
+      .catch(async () => {
+        if (cancelled || !supabase) return;
+        await Promise.all([
+          supabase.rpc('get_charts_top_rated_songs', { p_limit: 20 }).then(({ data }) => {
+            if (!cancelled) setTopSongs((data as SongChartRPC[] | null) ?? []);
+          }),
+          supabase.rpc('get_charts_most_rated_songs', { p_limit: 20 }).then(({ data }) => {
+            if (!cancelled) setMostRatedSongs((data as SongChartRPC[] | null) ?? []);
+          }),
+          supabase.rpc('get_charts_trending_songs', { p_limit: 10 }).then(({ data }) => {
+            if (!cancelled) setTrendingSongs((data as TrendingSongRPC[] | null) ?? []);
+          }),
+        ]);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setSongsLoaded(true);
+          setSongsLoading(false);
+        }
+      });
     return () => {
       cancelled = true;
     };
-  }, [mode, songsLoaded, songsLoading]);
+  }, [mode, songsLoaded, songsLoading, unlock]);
 
   const activeTrending =
     trendingMode === 'forYou' && trendingForYou.length > 0 ? trendingForYou : trendingGlobal;
