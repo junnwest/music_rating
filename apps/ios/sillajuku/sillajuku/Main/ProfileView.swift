@@ -616,6 +616,10 @@ struct ProfileView: View {
     // to the Add tab (to rate/find something to rate) after dismissing this
     // sheet, owned by MainTabView where `selectedTab` actually lives.
     var onGoToAdd: () -> Void
+    // Set true by SearchView's Quick Add mode-gate popup ("Go to Settings"), owned by
+    // MainTabView where the tab switch to .profile also happens. Watched below to
+    // auto-open the existing showSettings sheet, then reset to false.
+    @Binding var openSettingsTrigger: Bool
     @State private var activeTab: ProfileTab = .rated
     // Live swipe-tracking state for tabContent -- dragTranslation is set
     // directly (unanimated) in onChanged, so the content visually follows
@@ -669,6 +673,24 @@ struct ProfileView: View {
             .navigationDestination(for: Mix.self) { MixDetailView(mix: $0) }
             .sheet(isPresented: $showSettings) {
                 SettingsView(viewModel: viewModel)
+            }
+            .onChange(of: openSettingsTrigger) { _, newVal in
+                if newVal {
+                    showSettings = true
+                    openSettingsTrigger = false
+                }
+            }
+            // onChange alone misses the case where this is the tab's first-ever mount this
+            // session (e.g. jumping here directly from Quick Add's mode-gate popup on a launch
+            // that never visited Profile before) -- the trigger is already true by the time this
+            // view starts observing it, so no false→true transition ever fires. onAppear catches
+            // that initial-already-true case; onChange above covers every later trigger while
+            // already mounted.
+            .onAppear {
+                if openSettingsTrigger {
+                    showSettings = true
+                    openSettingsTrigger = false
+                }
             }
             .sheet(isPresented: $showEditProfile, onDismiss: {
                 Task { await viewModel.reload() }
@@ -2141,5 +2163,5 @@ struct ProfilePostCard: View {
 }
 
 #Preview {
-    ProfileView(viewModel: ProfileViewModel(), questVM: QuestChecklistViewModel(), onGoToAdd: {})
+    ProfileView(viewModel: ProfileViewModel(), questVM: QuestChecklistViewModel(), onGoToAdd: {}, openSettingsTrigger: .constant(false))
 }

@@ -564,6 +564,9 @@ class SearchViewModel {
 
 struct SearchView: View {
     let discoveryVM: DiscoveryViewModel
+    let onGoToSettings: () -> Void
+    @State private var showQuickAdd          = false
+    @State private var showQuickAddModeGate  = false
     @State private var searchVM           = SearchViewModel()
     @State private var searchTask: Task<Void, Never>?
     @State private var quickRateRelease: Release?
@@ -626,6 +629,15 @@ struct SearchView: View {
             } message: {
                 Text("This album isn't in sillajuku's catalog yet.")
             }
+            .alert("Switch to Manual mode", isPresented: $showQuickAddModeGate) {
+                Button("Cancel", role: .cancel) {}
+                Button("Go to Settings") { onGoToSettings() }
+            } message: {
+                Text("Quick Add's half-star rating only works in Manual mode. Switch modes in Settings to use it.")
+            }
+            .navigationDestination(isPresented: $showQuickAdd) {
+                QuickAddView(discoveryVM: discoveryVM)
+            }
             .sheet(item: $quickRateRelease) { release in
                 ManualRatingSheet(
                     release: release,
@@ -659,6 +671,17 @@ struct SearchView: View {
             // Auth observer saved a fresh provider token — reload Spotify data now.
             // This fires after linkIdentity completes, which is later than scenePhase.active.
             Task { await discoveryVM.refreshSpotifyIfNeeded() }
+        }
+    }
+
+    private func quickAddTapped() {
+        Task {
+            let mode = await AlbumQuickRate.currentUserRatingMode()
+            if mode == "instinct" {
+                showQuickAddModeGate = true
+            } else {
+                showQuickAdd = true
+            }
         }
     }
 
@@ -923,6 +946,11 @@ struct SearchView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
 
+                    quickAddBanner
+                        .padding(.horizontal, 16)
+                        .padding(.top, 4)
+                        .padding(.bottom, 20)
+
                     // ── Spotify: Your Top Artists ─────────────
                     if !discoveryVM.spotifyArtists.isEmpty {
                         discoverySectionTitle("Your Top Artists")
@@ -1010,6 +1038,40 @@ struct SearchView: View {
                 await discoveryVM.refresh()
             }
         }
+    }
+
+    private var quickAddBanner: some View {
+        Button { quickAddTapped() } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle().fill(Color.sjAmber.opacity(0.15))
+                    Image(systemName: "star.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(Color.sjAmber)
+                }
+                .frame(width: 40, height: 40)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Quick Add")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Color.sjInk)
+                    Text("Half-star rate albums you've probably already heard")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.sjMuted)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.sjMuted)
+            }
+            .padding(12)
+            .background(Color.sjSurface)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Helpers
@@ -2542,5 +2604,5 @@ private struct ArtistReleaseRow: View {
 
 
 #Preview {
-    SearchView(discoveryVM: DiscoveryViewModel())
+    SearchView(discoveryVM: DiscoveryViewModel(), onGoToSettings: {})
 }
