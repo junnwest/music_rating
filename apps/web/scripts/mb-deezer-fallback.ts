@@ -55,7 +55,7 @@ function tokenSetEqual(a: string, b: string): boolean {
  * any order — catches "Hoshino Gen" ↔ "Gen Hoshino"); prefer most fans. Pure romanization
  * variants (e.g. "shik" vs "sik") are intentionally NOT matched — missing > wrong.
  */
-function pickArtist(cands: DzArtist[], rawName: string): DzArtist | null {
+export function pickArtist(cands: DzArtist[], rawName: string): DzArtist | null {
   const want = normalizeStr(rawName);
   const exact = cands.filter(c => normalizeStr(c.name) === want).sort((a, b) => b.nbFan - a.nbFan);
   if (exact[0]) return exact[0];
@@ -82,7 +82,7 @@ async function findOrCreateArtist(db: DB, dz: DzArtist, country: string | null):
   return id;
 }
 
-async function ingestArtist(db: DB, dz: DzArtist, country: string | null): Promise<number> {
+export async function ingestDeezerArtist(db: DB, dz: DzArtist, country: string | null): Promise<number> {
   const artistId = await findOrCreateArtist(db, dz, country);
   const albums = (await artistAlbums(dz.id)).filter(a => a.recordType !== 'compilation'); // skip VA comps
   const seenKey = new Set<string>();
@@ -159,7 +159,7 @@ export async function runDeezerFallback(db: DB, opts: { limit?: number; write?: 
     log(`  ✓ ${(r as any).name.padEnd(26)} → Deezer ${hit.id} "${hit.name}" (${hit.nbFan} fans, ${hit.nbAlbum} albums)${country ? ` [${country}]` : ''}`);
     if (write) {
       try {
-        const g = await ingestArtist(db, hit, country);
+        const g = await ingestDeezerArtist(db, hit, country);
         await db.from('artist_ingestion_queue').update({ status: 'done', processed_at: now(), error: 'deezer-fallback', releases_added: g }).eq('id', (r as any).id);
         res.ingested += g; log(`      ingested ${g} groups`);
       } catch (e) { log(`      ERROR: ${(e as Error).message}`); await bump(r); }
