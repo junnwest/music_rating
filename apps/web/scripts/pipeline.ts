@@ -35,7 +35,8 @@ import { listenBrainzTopUp } from './mb-discover';
 import { wikipediaTopUp, REGIONS } from './build-global-queue';
 import { integrityCheck, requeueFailures, recomputePriorities } from './mb-qc';
 import { gapfillGroups, gapfillSkippedArtists, MigrationNeeded } from './mb-gapfill';
-import { runDeezerFallback } from './mb-deezer-fallback';
+import { runDeezerFallback, pickArtist, ingestDeezerArtist } from './mb-deezer-fallback';
+import { searchArtists as dzSearchArtists } from './deezer-client';
 import { ItunesBlockedError, resetBlock } from './itunes-client';
 import { mbLastActivityAt } from './mb-client';
 import { SEED } from './seed-artists';
@@ -75,6 +76,12 @@ const INGEST_STALE_MS    = envInt('INGEST_STALE_MS', 600_000); // 10 min
 // plus whenever the queue is empty) so growth never fully starves re-checks. QC is
 // DB-only, so it runs as its own concurrent lane.
 const FRESHNESS_EVERY = envInt('FRESHNESS_EVERY', 20);          // 1 re-poll per N new ingests (0 = off)
+// When a user searches for an artist MusicBrainz doesn't have (common for niche/underground
+// acts — MB's coverage is thinnest exactly there), recover it from Deezer instead of dropping
+// the miss. Demand-driven + confident-match-only, so it's naturally bounded and clean. Default
+// on (set MISS_DEEZER_FALLBACK=0 to disable). This is the standing answer to "we can't rely
+// 100% on MusicBrainz" — it fills MB's gaps with what real users actually look for.
+const MISS_DEEZER_FALLBACK = process.env.MISS_DEEZER_FALLBACK !== '0';
 const QC_POLL_MS      = envInt('QC_POLL_MS', 3_600_000);        // QC cadence (default 1h)
 const QC_MAX_ATTEMPTS = envInt('QC_MAX_ATTEMPTS', 5);           // give up requeuing a row after N tries
 const TIER_INTERVAL_MS= envInt('TIER_INTERVAL_MS', 86_400_000); // re-derive freshness tiers daily
@@ -251,6 +258,14 @@ async function ingestLoop(db: DB) {
             { name: m.query, source: 'mbid', source_id: r.best.id, status: 'pending' },
             { onConflict: 'name,source', ignoreDuplicates: true });
           console.log(`  [misses] ${m.query} → ${r.best.name} [${r.best.country ?? '--'}]`);
+        } else if (MISS_DEEZER_FALLBACK) {
+          // MB has no confident match → the artist may simply not be in MusicBrainz. Recover it
+          // from Deezer so real user demand is served, not dropped. Confident-match only.
+          const hit = pickArtist(await dzSearchArtists(m.query, 8), m.query);
+          if (hit) {
+            const g = await ingestDeezerArtist(db, hit, null);
+            console.log(`  [misses] ${m.query} → Deezer "${hit.name}" (${hit.nbFan} fans) — ${g} groups [MB-missing]`);
+          }
         }
       } catch { /* transient → leave queued_at null, retry next idle */ continue; }
       await db.from('search_misses').update({ queued_at: now() }).eq('id', m.id);
