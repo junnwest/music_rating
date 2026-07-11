@@ -55,11 +55,16 @@ function tokenSetEqual(a: string, b: string): boolean {
  * any order — catches "Hoshino Gen" ↔ "Gen Hoshino"); prefer most fans. Pure romanization
  * variants (e.g. "shik" vs "sik") are intentionally NOT matched — missing > wrong.
  */
+// VA/classical-tier guard: an artist with hundreds of Deezer "albums" is a composer / Various-
+// Artists-style entity (Mozart=432, Rachmaninov=394) — the Deezer analogue of the MB "Mozart
+// clog", and virtually always already in MB anyway. Never Deezer-ingest those (they'd pollute).
+const MAX_DEEZER_ALBUMS = 100;
 export function pickArtist(cands: DzArtist[], rawName: string): DzArtist | null {
   const want = normalizeStr(rawName);
-  const exact = cands.filter(c => normalizeStr(c.name) === want).sort((a, b) => b.nbFan - a.nbFan);
+  const pool = cands.filter(c => c.nbAlbum <= MAX_DEEZER_ALBUMS);
+  const exact = pool.filter(c => normalizeStr(c.name) === want).sort((a, b) => b.nbFan - a.nbFan);
   if (exact[0]) return exact[0];
-  const ts = cands.filter(c => tokenSetEqual(c.name, rawName)).sort((a, b) => b.nbFan - a.nbFan);
+  const ts = pool.filter(c => tokenSetEqual(c.name, rawName)).sort((a, b) => b.nbFan - a.nbFan);
   return ts[0] ?? null;
 }
 
