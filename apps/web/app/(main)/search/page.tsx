@@ -416,6 +416,7 @@ function Discovery({
   const [worlds, setWorlds] = useState<{ label: string; albums: SJRelease[] }[]>([]);
   const [blockedArtists, setBlockedArtists] = useState<Set<string>>(new Set());
   const [popular, setPopular] = useState<SJRelease[]>([]);
+  const [newReleases, setNewReleases] = useState<SJRelease[]>([]);
   const [trending, setTrending] = useState<SJRelease[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -436,44 +437,35 @@ function Discovery({
       }));
 
     (async () => {
-      // Popular: recent albums/EPs with covers (matches iOS loadPopular)
-      const popularP = supabase!
-        .from('release_groups')
-        .select(RG_COLS)
-        .in('release_group_type', ['album', 'ep'])
-        .not('cover_url', 'is', null)
-        .order('first_release_date', { ascending: false, nullsFirst: false })
-        .limit(50)
-        .then(({ data }) => {
-          if (!cancelled) setPopular(mapRows(data as any[]));
-        });
-
-      // Trending: most-rated in last 30 days
-      const trendingP = (async () => {
-        const cutoff = new Date(Date.now() - 30 * 86400e3).toISOString();
-        const { data } = await supabase!
-          .from('ratings')
-          .select(`release_group_id, release_groups(${RG_COLS})`)
-          .gt('created_at', cutoff)
-          .order('created_at', { ascending: false })
-          .limit(500);
-        if (cancelled) return;
-        const counts: Record<string, { count: number; release: SJRelease }> = {};
-        for (const row of (data as any[] | null) ?? []) {
-          const rg = row.release_groups;
-          if (!rg || rg.release_group_type === 'single') continue;
-          const mapped = mapRows([rg])[0];
-          counts[row.release_group_id] = {
-            count: (counts[row.release_group_id]?.count ?? 0) + 1,
-            release: mapped,
-          };
+      // Popular (prestige-ranked) / New Releases / Trending (bot-weighted) —
+      // one globally-cached service-role route (/api/discovery). Falls back to
+      // the old client-side queries if it fails, so a route outage degrades
+      // rather than blanks the rows.
+      const globalP = (async () => {
+        try {
+          const res = await fetch('/api/discovery');
+          if (!res.ok) throw new Error(`discovery ${res.status}`);
+          const payload: { popular: any[]; newReleases: any[]; trending: any[] } =
+            await res.json();
+          if (cancelled) return;
+          setPopular(mapRows(payload.popular));
+          setNewReleases(mapRows(payload.newReleases));
+          setTrending(mapRows(payload.trending));
+          return;
+        } catch (err) {
+          console.warn('[search] discovery route failed, using fallback:', err);
         }
-        setTrending(
-          Object.values(counts)
-            .sort((a, b) => b.count - a.count)
-            .map((c) => c.release)
-            .slice(0, 25),
-        );
+
+        // Fallback: newest-first list (the old "Popular") only — the old
+        // client-side trending had no bot filter, so it's not worth keeping.
+        const { data } = await supabase!
+          .from('release_groups')
+          .select(RG_COLS)
+          .in('release_group_type', ['album', 'ep'])
+          .not('cover_url', 'is', null)
+          .order('first_release_date', { ascending: false, nullsFirst: false })
+          .limit(50);
+        if (!cancelled) setNewReleases(mapRows(data as any[]));
       })();
 
       // From Your Taste (loved artists) + For You (taste-cluster reranked
@@ -557,7 +549,7 @@ function Discovery({
         }
       })();
 
-      await Promise.all([popularP, trendingP, personalP]);
+      await Promise.all([globalP, personalP]);
       if (!cancelled) setLoading(false);
     })();
     return () => {
@@ -597,6 +589,7 @@ function Discovery({
     })),
     { title: t('sj.search.popular'), albums: visible(popular) },
     { title: t('sj.search.trending'), albums: visible(trending) },
+    { title: t('sj.search.newReleases'), albums: visible(newReleases) },
   ].filter((s) => s.albums.length > 0);
 
   return (

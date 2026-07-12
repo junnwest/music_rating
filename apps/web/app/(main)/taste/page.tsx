@@ -7,21 +7,8 @@ import Cover from '../../../components/sj/Cover';
 import { useSession } from '../../../components/sj/SessionContext';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
-import { displayName } from '../../../lib/sj/display';
-import type { GenreStandingRPC } from '../../../lib/db/types';
 
 const UNLOCK_THRESHOLD = 25;
-
-interface TasteRating {
-  score: number | null;
-  createdAt: string;
-  release: {
-    id: string;
-    title: string;
-    artist: string;
-    coverUrl: string | null;
-  } | null;
-}
 
 interface WorldTag {
   display: string;
@@ -35,24 +22,41 @@ interface TasteWorld {
   tags: WorldTag[];
 }
 
-type Card =
-  | { kind: 'topAlbum'; releaseId: string; title: string; artist: string; coverUrl: string | null; score: number }
-  | { kind: 'activity'; monthIndex: number; count: number; months: number[] }
-  | { kind: 'style'; fives: number; total: number }
-  | { kind: 'worldsIntro'; names: string[] }
-  | { kind: 'world'; index: number; world: TasteWorld }
-  | { kind: 'genre'; genre: string; userAvg: number; communityAvg: number; userCount: number };
+interface TasteReport {
+  ratingCount: number;
+  albumRatingCount: number;
+  totalTags: number;
+  type: { code: string; adjectiveKey: string; nounKey: string };
+  axes: { breadth: number; era: number; reach: number; judgment: number };
+  clusters: TasteWorld[];
+  disliked: { tag: string; display: string }[];
+  standings: { genre: string; userAvg: number; communityAvg: number; userCount: number }[];
+  stats: {
+    avgScore: number | null;
+    fiveStars: number;
+    months: number[];
+    peakMonthIndex: number | null;
+    peakMonthCount: number;
+  };
+  topAlbum: {
+    id: string;
+    title: string;
+    artist: string;
+    coverUrl: string | null;
+    score: number;
+  } | null;
+}
 
 /**
- * Taste — web sibling of iOS TasteView: locked until 25 ratings, then a
- * vertical snap-scroll reel of full-bleed insight cards (Top Album,
- * Activity, Rating Style, Genre DNA).
+ * Taste — a single-page analysis report of the user's rating history
+ * (restructured 2026-07-12 from the old snap-scroll card reel): an MBTI-style
+ * taste type, four axis spectrums, taste-world clusters, stats, and community
+ * comparison, all from one /api/taste/profile payload. Locked until 25
+ * ratings, matching iOS.
  */
 export default function TastePage() {
-  const { t } = useLanguage();
   const { userId, ready } = useSession();
-  const [ratingCount, setRatingCount] = useState(0);
-  const [cards, setCards] = useState<Card[]>([]);
+  const [report, setReport] = useState<TasteReport | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -63,118 +67,18 @@ export default function TastePage() {
     }
     let cancelled = false;
     (async () => {
-      const [{ data: albumRows }, { data: songRows }] = await Promise.all([
-        supabase!
-          .from('ratings')
-          .select(
-            'score, created_at, release_groups(id, title, artist_display, cover_url, native_title, artists!release_groups_primary_artist_id_fkey(name_native))',
-          )
-          .eq('user_id', userId),
-        supabase!.from('track_ratings').select('recording_id').eq('user_id', userId),
-      ]);
-      if (cancelled) return;
-
-      const ratings: TasteRating[] = ((albumRows as any[] | null) ?? []).map((r) => ({
-        score: r.score,
-        createdAt: r.created_at,
-        release: r.release_groups
-          ? {
-              id: r.release_groups.id,
-              title: displayName(r.release_groups.title, r.release_groups.native_title),
-              artist: displayName(
-                r.release_groups.artist_display,
-                r.release_groups.artists?.name_native,
-              ),
-              coverUrl: r.release_groups.cover_url,
-            }
-          : null,
-      }));
-      const total = ratings.length + (((songRows as any[] | null) ?? []).length);
-      setRatingCount(total);
-
-      if (total >= UNLOCK_THRESHOLD) {
-        const built: Card[] = [];
-        const scored = ratings.filter((r) => r.score != null);
-
-        // Top album by score
-        const top = scored.reduce<TasteRating | null>(
-          (best, r) => (best == null || (r.score ?? 0) > (best.score ?? 0) ? r : best),
-          null,
-        );
-        if (top?.release && top.score != null) {
-          built.push({
-            kind: 'topAlbum',
-            releaseId: top.release.id,
-            title: top.release.title,
-            artist: top.release.artist,
-            coverUrl: top.release.coverUrl,
-            score: top.score,
-          });
-        }
-
-        // Most active month (all-time)
-        const byMonth = Array.from({ length: 12 }, () => 0);
-        for (const r of ratings) byMonth[new Date(r.createdAt).getMonth()] += 1;
-        const peakCount = Math.max(...byMonth);
-        if (peakCount > 0) {
-          built.push({
-            kind: 'activity',
-            monthIndex: byMonth.indexOf(peakCount),
-            count: peakCount,
-            months: byMonth,
-          });
-        }
-
-        // Rating style
-        built.push({
-          kind: 'style',
-          fives: ratings.filter((r) => r.score === 5).length,
-          total: ratings.length,
+      try {
+        const { data: sessionData } = await supabase!.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (!token) throw new Error('no session');
+        const res = await fetch('/api/taste/profile?refresh=1', {
+          headers: { Authorization: `Bearer ${token}` },
         });
-
-        // Taste worlds — genre clusters from the taste vector (embedding-based,
-        // served by /api/taste/profile). Degrades silently if the route fails:
-        // the reel just skips these cards.
-        try {
-          const { data: sessionData } = await supabase!.auth.getSession();
-          const token = sessionData.session?.access_token;
-          if (token) {
-            const res = await fetch('/api/taste/profile?refresh=1', {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (res.ok) {
-              const profile: { clusters: TasteWorld[] } = await res.json();
-              const worlds = (profile.clusters ?? []).filter((c) => c.tags.length > 0).slice(0, 3);
-              if (worlds.length >= 2) {
-                built.push({
-                  kind: 'worldsIntro',
-                  names: worlds.map((w) => w.tags[0].display),
-                });
-              }
-              worlds.forEach((world, index) => {
-                built.push({ kind: 'world', index, world });
-              });
-            }
-          }
-        } catch {
-          // taste worlds unavailable — reel renders without them
-        }
-
-        // Genre DNA (server RPC)
-        const { data: standings } = await supabase!.rpc('get_user_genre_standings', {
-          p_user_id: userId,
-        });
-        const topStanding = ((standings as GenreStandingRPC[] | null) ?? [])[0];
-        if (topStanding) {
-          built.push({
-            kind: 'genre',
-            genre: topStanding.genre,
-            userAvg: Number(topStanding.user_avg),
-            communityAvg: Number(topStanding.community_avg),
-            userCount: Number(topStanding.user_count),
-          });
-        }
-        if (!cancelled) setCards(built);
+        if (!res.ok) throw new Error(`taste ${res.status}`);
+        const payload: TasteReport = await res.json();
+        if (!cancelled) setReport(payload);
+      } catch {
+        // report unavailable — lock view renders with count 0
       }
       if (!cancelled) setLoading(false);
     })();
@@ -184,21 +88,304 @@ export default function TastePage() {
   }, [ready, userId]);
 
   if (loading) {
-    return <div className="py-32 text-center text-muted text-[13px]">…</div>;
+    return (
+      <div className="mx-auto max-w-3xl px-4 md:px-6 py-8 animate-pulse space-y-5">
+        <div className="h-40 rounded-2xl bg-surface" />
+        <div className="h-64 rounded-2xl bg-surface" />
+        <div className="h-40 rounded-2xl bg-surface" />
+      </div>
+    );
   }
 
-  if (!userId || ratingCount < UNLOCK_THRESHOLD) {
-    return <LockView ratingCount={ratingCount} signedIn={!!userId} />;
+  if (!userId || !report || report.ratingCount < UNLOCK_THRESHOLD) {
+    return <LockView ratingCount={report?.ratingCount ?? 0} signedIn={!!userId} />;
   }
+
+  return <ReportView report={report} />;
+}
+
+// ── Report ──────────────────────────────────────────────────────────────────
+
+const AXES: {
+  key: keyof TasteReport['axes'];
+  labelKey: string;
+  lowKey: string; // pole at value 0
+  highKey: string; // pole at value 1
+}[] = [
+  { key: 'breadth', labelKey: 'sj.taste.axisBreadth', lowKey: 'sj.taste.poleFocused', highKey: 'sj.taste.poleEclectic' },
+  { key: 'era', labelKey: 'sj.taste.axisEra', lowKey: 'sj.taste.poleTimeless', highKey: 'sj.taste.poleCurrent' },
+  { key: 'reach', labelKey: 'sj.taste.axisReach', lowKey: 'sj.taste.poleUnderground', highKey: 'sj.taste.poleMainstream' },
+  { key: 'judgment', labelKey: 'sj.taste.axisJudgment', lowKey: 'sj.taste.poleSharp', highKey: 'sj.taste.poleWarm' },
+];
+
+function ReportView({ report }: { report: TasteReport }) {
+  const { t, lang } = useLanguage();
+
+  const typeName = t('sj.taste.typeName')
+    .replace('{adj}', t(`sj.taste.${report.type.adjectiveKey}`))
+    .replace('{noun}', t(`sj.taste.${report.type.nounKey}`));
+
+  const leanings = AXES.map(({ key, lowKey, highKey }) =>
+    t(report.axes[key] >= 0.5 ? highKey : lowKey),
+  ).join(' · ');
 
   return (
-    <div className="h-[calc(100vh-56px)] overflow-y-auto snap-y snap-mandatory scrollbar-hide">
-      {cards.map((card, i) => (
-        <InsightCard key={i} card={card} isLast={i === cards.length - 1} />
-      ))}
+    <div className="mx-auto max-w-3xl px-4 md:px-6 py-7 space-y-5">
+      {/* ── Type hero ── */}
+      <section className="rounded-2xl bg-accent-soft/60 border border-accent/15 px-6 py-7 text-center">
+        <p className="text-[10px] font-black tracking-[0.12em] uppercase text-accent-deep/70">
+          {t('sj.taste.typeEyebrow')}
+        </p>
+        <div className="flex justify-center gap-1.5 mt-4">
+          {report.type.code.split('').map((letter, i) => (
+            <span
+              key={i}
+              className="w-9 h-9 rounded-lg bg-accent text-white text-[17px] font-black flex items-center justify-center"
+            >
+              {letter}
+            </span>
+          ))}
+        </div>
+        <h1 className="mt-4 text-[26px] font-black text-ink leading-tight">{typeName}</h1>
+        <p className="mt-1.5 text-[13px] text-muted">{leanings}</p>
+        <p className="mt-3 text-[12px] text-muted/70">
+          {t('sj.taste.fromNRatings').replace('{n}', String(report.ratingCount))}
+        </p>
+      </section>
+
+      {/* ── Axes ── */}
+      <section className="rounded-2xl bg-surface px-5 py-5">
+        <h2 className="text-[15px] font-bold text-ink mb-4">{t('sj.taste.axesHeader')}</h2>
+        <div className="space-y-5">
+          {AXES.map(({ key, labelKey, lowKey, highKey }) => {
+            const value = report.axes[key];
+            const leansHigh = value >= 0.5;
+            return (
+              <div key={key}>
+                <div className="flex items-baseline justify-between mb-1.5">
+                  <span className={`text-[12px] font-semibold ${!leansHigh ? 'text-accent-deep' : 'text-muted/60'}`}>
+                    {t(lowKey)}
+                  </span>
+                  <span className="text-[10px] uppercase tracking-[0.08em] text-muted/50 font-bold">
+                    {t(labelKey)}
+                  </span>
+                  <span className={`text-[12px] font-semibold ${leansHigh ? 'text-accent-deep' : 'text-muted/60'}`}>
+                    {t(highKey)}
+                  </span>
+                </div>
+                <div className="relative h-[7px] rounded-full bg-divider/60">
+                  <span
+                    className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-[15px] h-[15px] rounded-full bg-accent border-2 border-page shadow"
+                    style={{ left: `${Math.max(4, Math.min(96, value * 100))}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ── Worlds ── */}
+      {report.clusters.length > 0 && (
+        <section className="rounded-2xl bg-surface px-5 py-5">
+          <h2 className="text-[15px] font-bold text-ink mb-1">{t('sj.taste.yourWorlds')}</h2>
+          <p className="text-[12px] text-muted mb-4">{t('sj.taste.worldsDesc')}</p>
+          <div className="space-y-5">
+            {report.clusters.slice(0, 4).map((world, i) => {
+              const headline =
+                world.tags.length > 1
+                  ? `${world.tags[0].display} × ${world.tags[1].display}`
+                  : world.tags[0]?.display ?? '';
+              return (
+                <div key={i}>
+                  <div className="flex items-baseline justify-between">
+                    <h3 className="text-[14px] font-bold text-ink">{headline}</h3>
+                    <span className="text-[12px] font-semibold text-accent-deep tabular-nums">
+                      {t('sj.taste.worldShare').replace(
+                        '{share}',
+                        String(Math.round(world.share * 100)),
+                      )}
+                    </span>
+                  </div>
+                  <div className="mt-2 space-y-1.5">
+                    {world.tags.map((tag) => (
+                      <div key={tag.display} className="flex items-center gap-2.5">
+                        <span className="w-28 shrink-0 text-right text-[11.5px] text-muted truncate">
+                          {tag.display}
+                        </span>
+                        <span className="flex-1 h-[6px] rounded-full bg-divider/60 overflow-hidden">
+                          <span
+                            className="block h-full rounded-full bg-accent"
+                            style={{ width: `${(tag.avg / 5) * 100}%` }}
+                          />
+                        </span>
+                        <span className="w-8 text-[11.5px] font-bold text-accent-deep tabular-nums">
+                          {tag.avg.toFixed(1)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* ── Numbers: #1 album + stat tiles ── */}
+      <section className="rounded-2xl bg-surface px-5 py-5">
+        <h2 className="text-[15px] font-bold text-ink mb-4">{t('sj.taste.statsHeader')}</h2>
+        <div className="flex flex-col sm:flex-row gap-5">
+          {report.topAlbum && (
+            <Link
+              href={`/album/${report.topAlbum.id}`}
+              className="flex sm:flex-col items-center sm:items-start gap-4 sm:gap-2 sm:w-40 shrink-0 group"
+            >
+              <Cover
+                url={report.topAlbum.coverUrl}
+                thumb={false}
+                className="w-24 h-24 sm:w-40 sm:h-40"
+                rounded="rounded-xl"
+              />
+              <span>
+                <span className="block text-[10px] font-black tracking-[0.1em] uppercase text-accent-deep/70">
+                  {t('sj.taste.topAlbum')}
+                </span>
+                <span className="block mt-0.5 text-[13.5px] font-bold text-ink line-clamp-2 group-hover:underline">
+                  {report.topAlbum.title}
+                </span>
+                <span className="block text-[12px] text-muted">{report.topAlbum.artist}</span>
+                <span className="block mt-0.5 text-[15px] font-black text-accent-deep">
+                  {report.topAlbum.score.toFixed(1)}
+                </span>
+              </span>
+            </Link>
+          )}
+          <div className="flex-1 grid grid-cols-2 gap-3">
+            <StatTile value={String(report.ratingCount)} label={t('sj.taste.statRated')} />
+            <StatTile
+              value={report.stats.avgScore != null ? report.stats.avgScore.toFixed(2) : '—'}
+              label={t('sj.taste.statAvg')}
+            />
+            <StatTile value={String(report.stats.fiveStars)} label={t('sj.taste.perfectScores')} />
+            <StatTile
+              value={
+                report.stats.peakMonthIndex != null
+                  ? monthName(report.stats.peakMonthIndex, lang)
+                  : '—'
+              }
+              label={t('sj.taste.statPeak')}
+            >
+              <div className="flex items-end gap-[2px] h-6 mt-1">
+                {report.stats.months.map((count, i) => {
+                  const max = Math.max(1, ...report.stats.months);
+                  const isPeak = i === report.stats.peakMonthIndex;
+                  return (
+                    <span
+                      key={i}
+                      className={`flex-1 rounded-sm ${isPeak ? 'bg-accent' : 'bg-divider'}`}
+                      style={{ height: Math.max(2, (count / max) * 24) }}
+                    />
+                  );
+                })}
+              </div>
+            </StatTile>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Community comparison ── */}
+      {report.standings.length > 0 && (
+        <section className="rounded-2xl bg-surface px-5 py-5">
+          <h2 className="text-[15px] font-bold text-ink mb-4">{t('sj.taste.standingsHeader')}</h2>
+          <div className="space-y-4">
+            {report.standings.map((s) => {
+              const diff = s.userAvg - s.communityAvg;
+              return (
+                <div key={s.genre}>
+                  <div className="flex items-baseline justify-between mb-1.5">
+                    <span className="text-[13px] font-bold text-ink">{s.genre}</span>
+                    <span
+                      className={`text-[11.5px] font-semibold ${diff >= 0 ? 'text-accent-deep' : 'text-muted'}`}
+                    >
+                      {diff >= 0 ? '↑' : '↓'} {Math.abs(diff).toFixed(2)}{' '}
+                      {t(diff >= 0 ? 'sj.taste.aboveAverage' : 'sj.taste.belowAverage')}
+                    </span>
+                  </div>
+                  <CompareBar label={t('sj.taste.you')} value={s.userAvg} accent />
+                  <CompareBar label={t('sj.taste.community')} value={s.communityAvg} />
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* ── Not your thing ── */}
+      {report.disliked.length > 0 && (
+        <section className="rounded-2xl bg-surface px-5 py-5">
+          <h2 className="text-[15px] font-bold text-ink mb-3">{t('sj.taste.notYourThing')}</h2>
+          <div className="flex flex-wrap gap-2">
+            {report.disliked.map((d) => (
+              <span
+                key={d.tag}
+                className="px-3 py-1.5 rounded-full bg-divider/50 text-[12.5px] text-muted line-through decoration-muted/50"
+              >
+                {d.display}
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <p className="text-center text-[11.5px] text-muted/50 pb-6">{t('sj.taste.snapshotEnd')}</p>
     </div>
   );
 }
+
+function StatTile({
+  value,
+  label,
+  children,
+}: {
+  value: string;
+  label: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl bg-page border border-divider/60 px-3.5 py-3">
+      <p className="text-[19px] font-black text-ink leading-tight">{value}</p>
+      <p className="text-[11px] text-muted mt-0.5">{label}</p>
+      {children}
+    </div>
+  );
+}
+
+function CompareBar({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
+  return (
+    <div className="flex items-center gap-2.5 mt-1">
+      <span className="w-20 shrink-0 text-right text-[11px] font-semibold text-muted">{label}</span>
+      <span className="flex-1 h-[6px] rounded-full bg-divider/60 overflow-hidden">
+        <span
+          className={`block h-full rounded-full ${accent ? 'bg-accent' : 'bg-muted/40'}`}
+          style={{ width: `${(value / 5) * 100}%` }}
+        />
+      </span>
+      <span
+        className={`w-9 text-[11.5px] font-bold tabular-nums ${accent ? 'text-accent-deep' : 'text-muted'}`}
+      >
+        {value.toFixed(2)}
+      </span>
+    </div>
+  );
+}
+
+function monthName(index: number, lang: string): string {
+  if (lang === 'ko') return `${index + 1}월`;
+  return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][index];
+}
+
+// ── Lock screen (unchanged from the reel version) ───────────────────────────
 
 function LockView({ ratingCount, signedIn }: { ratingCount: number; signedIn: boolean }) {
   const { t } = useLanguage();
@@ -251,294 +438,6 @@ function LockView({ ratingCount, signedIn }: { ratingCount: number; signedIn: bo
           ))}
         </div>
       </div>
-    </div>
-  );
-}
-
-// ── Insight cards (full-bleed, dark, snap-scrolled) ────────────────────────
-
-// Accent + background per taste-world card, extending the reel's existing
-// palette (amber/red/blue cards each pair an accent with a tinted near-black).
-const WORLD_ACCENTS = ['#E8A020', '#61adff', '#b98ae8'];
-const WORLD_BGS = ['#1a1408', '#0a1220', '#150e1f'];
-
-function InsightCard({ card, isLast }: { card: Card; isLast: boolean }) {
-  const { t, lang } = useLanguage();
-
-  const shell = (bg: string, children: React.ReactNode) => (
-    <section
-      className="snap-start h-[calc(100vh-56px)] flex flex-col items-center justify-center px-6 relative"
-      style={{ background: bg }}
-    >
-      {children}
-      {!isLast && (
-        <span className="absolute bottom-10 flex flex-col items-center gap-0.5 text-white/20 text-[10px]">
-          <span className="rotate-180 text-[11px]">⌄</span>
-          {t('sj.taste.scroll')}
-        </span>
-      )}
-    </section>
-  );
-
-  const eyebrow = (label: string, color: string) => (
-    <span
-      className="px-3 py-1.5 rounded-full text-[9px] font-black tracking-[0.08em] uppercase"
-      style={{ color, background: `${color}24`, border: `0.5px solid ${color}4d` }}
-    >
-      {label}
-    </span>
-  );
-
-  const AMBER = '#E8A020';
-
-  if (card.kind === 'topAlbum') {
-    return shell(
-      '#12121a',
-      <>
-        {eyebrow(t('sj.taste.topAlbum'), AMBER)}
-        <div className="mt-6 shadow-2xl rounded-2xl">
-          <Cover url={card.coverUrl} thumb={false} className="w-40 h-40" rounded="rounded-2xl" />
-        </div>
-        <h2 className="mt-6 text-[20px] font-bold text-white text-center max-w-sm line-clamp-2">
-          <Link href={`/album/${card.releaseId}`} className="hover:underline">
-            {card.title}
-          </Link>
-        </h2>
-        <p className="mt-1 text-[14px] text-white/45">{card.artist}</p>
-        <p className="mt-6 text-[64px] font-black leading-none tracking-tight" style={{ color: AMBER }}>
-          {card.score.toFixed(1)}
-        </p>
-        <p className="mt-1 text-[12px] text-white/30">{t('sj.taste.outOf')}</p>
-      </>,
-    );
-  }
-
-  if (card.kind === 'activity') {
-    const monthNames =
-      lang === 'ko'
-        ? ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월']
-        : ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-    const shortNames = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
-    const maxCount = Math.max(1, ...card.months);
-    return shell(
-      '#1f1705',
-      <>
-        {eyebrow(t('sj.taste.yourMonth'), AMBER)}
-        <h2 className="mt-5 text-[26px] font-bold text-white text-center whitespace-pre-line">
-          {t('sj.taste.activityTitle').replace('{month}', monthNames[card.monthIndex])}
-        </h2>
-        <p className="mt-2 text-[14px]" style={{ color: `${AMBER}b3` }}>
-          {t('sj.taste.albumsRated').replace('{n}', String(card.count))}
-        </p>
-        <div className="flex items-end gap-1.5 mt-9 w-full max-w-sm h-20">
-          {card.months.map((count, i) => {
-            const isPeak = count === maxCount && count > 0;
-            return (
-              <span key={i} className="flex-1 flex flex-col items-center gap-1 self-end">
-                <span
-                  className="w-full rounded-sm"
-                  style={{
-                    height: Math.max(3, (count / maxCount) * 60),
-                    background: isPeak ? AMBER : 'rgba(255,255,255,0.12)',
-                  }}
-                />
-                <span
-                  className="text-[7px]"
-                  style={{ color: isPeak ? AMBER : 'rgba(255,255,255,0.25)' }}
-                >
-                  {shortNames[i]}
-                </span>
-              </span>
-            );
-          })}
-        </div>
-      </>,
-    );
-  }
-
-  if (card.kind === 'style') {
-    const RED = '#d96161';
-    const pct = card.total > 0 ? card.fives / card.total : 0;
-    const label =
-      card.fives === 0
-        ? t('sj.taste.styleSkeptic')
-        : pct < 0.05
-          ? t('sj.taste.stylePurist')
-          : pct < 0.15
-            ? t('sj.taste.styleEnthusiast')
-            : pct < 0.3
-              ? t('sj.taste.styleGenerous')
-              : t('sj.taste.styleChampion');
-    const desc =
-      card.fives === 0
-        ? t('sj.taste.styleSkepticDesc')
-        : pct < 0.05
-          ? t('sj.taste.stylePuristDesc')
-          : pct < 0.15
-            ? t('sj.taste.styleEnthusiastDesc')
-            : pct < 0.3
-              ? t('sj.taste.styleGenerousDesc')
-              : t('sj.taste.styleChampionDesc');
-    return shell(
-      '#210f0f',
-      <>
-        {eyebrow(t('sj.taste.yourStyle'), RED)}
-        <h2 className="mt-5 text-[34px] font-black text-white">{label}</h2>
-        <p className="mt-2 text-[16px] text-white/45 text-center max-w-xs">{desc}</p>
-        <div className="flex items-center gap-9 mt-10">
-          <span className="text-center">
-            <span className="block text-[38px] font-black" style={{ color: AMBER }}>
-              {card.fives}
-            </span>
-            <span className="block text-[11px] text-white/30">{t('sj.taste.perfectScores')}</span>
-          </span>
-          <span className="w-px h-11 bg-white/10" />
-          <span className="text-center">
-            <span className="block text-[38px] font-black" style={{ color: RED }}>
-              {Math.round(pct * 100)}%
-            </span>
-            <span className="block text-[11px] text-white/30">{t('sj.taste.ofYourRatings')}</span>
-          </span>
-        </div>
-      </>,
-    );
-  }
-
-  if (card.kind === 'worldsIntro') {
-    const GREEN = '#5fbf8a';
-    return shell(
-      '#0c1712',
-      <>
-        {eyebrow(t('sj.taste.yourWorlds'), GREEN)}
-        <h2 className="mt-5 text-[26px] font-bold text-white text-center whitespace-pre-line max-w-sm">
-          {t('sj.taste.worldsTitle').replace('{n}', String(card.names.length))}
-        </h2>
-        <p className="mt-2 text-[14px] text-white/40 text-center max-w-xs">
-          {t('sj.taste.worldsDesc')}
-        </p>
-        <div className="flex flex-col items-center gap-2.5 mt-9">
-          {card.names.map((name, i) => (
-            <span
-              key={name}
-              className="px-4 py-2 rounded-full text-[15px] font-bold"
-              style={{
-                color: WORLD_ACCENTS[i % WORLD_ACCENTS.length],
-                background: `${WORLD_ACCENTS[i % WORLD_ACCENTS.length]}1f`,
-                border: `0.5px solid ${WORLD_ACCENTS[i % WORLD_ACCENTS.length]}4d`,
-              }}
-            >
-              {name}
-            </span>
-          ))}
-        </div>
-      </>,
-    );
-  }
-
-  if (card.kind === 'world') {
-    const accent = WORLD_ACCENTS[card.index % WORLD_ACCENTS.length];
-    const bg = WORLD_BGS[card.index % WORLD_BGS.length];
-    const { world } = card;
-    const headline =
-      world.tags.length > 1
-        ? `${world.tags[0].display} × ${world.tags[1].display}`
-        : world.tags[0].display;
-    return shell(
-      bg,
-      <>
-        {eyebrow(t('sj.taste.worldEyebrow').replace('{i}', String(card.index + 1)), accent)}
-        <h2 className="mt-5 text-[28px] font-black text-white text-center max-w-sm leading-tight">
-          {headline}
-        </h2>
-        <p className="mt-2 text-[14px]" style={{ color: `${accent}b3` }}>
-          {t('sj.taste.worldShare').replace('{share}', String(Math.round(world.share * 100)))}
-          {world.avgScore != null && (
-            <> · {t('sj.taste.worldAvg').replace('{avg}', world.avgScore.toFixed(1))}</>
-          )}
-        </p>
-        <div className="w-full max-w-sm mt-9 space-y-3">
-          {world.tags.map((tag) => (
-            <div key={tag.display} className="flex items-center gap-2.5">
-              <span className="w-28 text-right text-[12px] font-semibold text-white/50 truncate">
-                {tag.display}
-              </span>
-              <span className="flex-1 h-[7px] rounded-full bg-white/[0.07] overflow-hidden">
-                <span
-                  className="block h-full rounded-full"
-                  style={{ width: `${(tag.avg / 5) * 100}%`, background: accent }}
-                />
-              </span>
-              <span className="w-9 text-[12px] font-bold tabular-nums" style={{ color: accent }}>
-                {tag.avg.toFixed(1)}
-              </span>
-            </div>
-          ))}
-        </div>
-        <p className="mt-5 text-[11px] text-white/25">
-          {t('sj.taste.fromNRatings').replace(
-            '{n}',
-            String(world.tags.reduce((max, tg) => Math.max(max, tg.n), 0)),
-          )}
-        </p>
-      </>,
-    );
-  }
-
-  // genre
-  const BLUE = '#61adff';
-  const diff = card.userAvg - card.communityAvg;
-  return shell(
-    '#0d1429',
-    <>
-      {eyebrow(t('sj.taste.genreDna'), BLUE)}
-      <h2 className="mt-5 text-[26px] font-bold text-white text-center whitespace-pre-line">
-        {t('sj.taste.genreTitle')
-          .replace('{genre}', card.genre)
-          .replace(
-            '{dir}',
-            diff >= 0 ? t('sj.taste.higher') : t('sj.taste.lower'),
-          )}
-      </h2>
-      <p className="mt-1.5 text-[13px] text-white/30">
-        {t('sj.taste.fromNRatings').replace('{n}', String(card.userCount))}
-      </p>
-      <div className="w-full max-w-sm mt-9 space-y-3">
-        <GenreBar label={t('sj.taste.you')} value={card.userAvg} color={AMBER} />
-        <GenreBar
-          label={t('sj.taste.community')}
-          value={card.communityAvg}
-          color="rgba(255,255,255,0.25)"
-        />
-      </div>
-      <span
-        className="mt-5 px-3.5 py-1.5 rounded-full bg-white/[0.07] text-[13px] font-semibold"
-        style={{ color: diff >= 0 ? AMBER : 'rgba(255,255,255,0.45)' }}
-      >
-        {diff >= 0 ? '↑' : '↓'} {Math.abs(diff).toFixed(2)}{' '}
-        {diff >= 0 ? t('sj.taste.aboveAverage') : t('sj.taste.belowAverage')}
-      </span>
-      {isLast && (
-        <p className="absolute bottom-12 text-[12px] text-white/[0.18]">
-          {t('sj.taste.snapshotEnd')}
-        </p>
-      )}
-    </>,
-  );
-}
-
-function GenreBar({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div className="flex items-center gap-2.5">
-      <span className="w-20 text-right text-[12px] font-semibold text-white/40">{label}</span>
-      <span className="flex-1 h-[7px] rounded-full bg-white/[0.07] overflow-hidden">
-        <span
-          className="block h-full rounded-full"
-          style={{ width: `${(value / 5) * 100}%`, background: color }}
-        />
-      </span>
-      <span className="w-9 text-[12px] font-bold tabular-nums" style={{ color }}>
-        {value.toFixed(2)}
-      </span>
     </div>
   );
 }
