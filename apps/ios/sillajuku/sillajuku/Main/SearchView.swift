@@ -437,6 +437,9 @@ struct SearchArtist: Codable, Identifiable {
 // RPC param payloads. supabase-swift's `params:` takes `some Encodable`, so a heterogeneous
 // dictionary literal (["q": q, "lim": 30] — String + Int) doesn't type-check; use a struct.
 private struct SearchParams: Encodable { let q: String; let lim: Int }
+// Telemetry row logged when a search returns nothing — feeds the MB-gap recovery signal
+// (the pipeline recovers repeatedly-missed, truly-absent artists from Deezer).
+private struct SearchMiss: Encodable { let query: String; let type: String; let db_count: Int }
 private struct ArtistReleasesParams: Encodable { let p_artist_id: String; let lim: Int }
 
 @Observable
@@ -478,6 +481,17 @@ class SearchViewModel {
             .value) ?? []
 
         (albumResults, songResults, artistResults) = await (albumsTask, songsTask, artistsTask)
+
+        // When the catalog returns NOTHING for a real query, log a search miss. This is the
+        // demand signal that drives MB-gap recovery: the pipeline recovers an artist from Deezer
+        // once the same truly-absent (db_count 0) query has been searched enough times and it
+        // exact-matches a real Deezer artist. Fire-and-forget telemetry; failure is harmless.
+        if albumResults.isEmpty && artistResults.isEmpty && songResults.isEmpty {
+            let missQuery = q.lowercased()
+            Task { try? await supabase.from("search_misses")
+                .insert(SearchMiss(query: missQuery, type: "ios_search", db_count: 0))
+                .execute() }
+        }
     }
 
     // Raced against a timeout below -- this step alone has no dedicated
@@ -564,6 +578,9 @@ class SearchViewModel {
 
 struct SearchView: View {
     let discoveryVM: DiscoveryViewModel
+    let onGoToSettings: () -> Void
+    @State private var showQuickAdd          = false
+    @State private var showQuickAddModeGate  = false
     @State private var searchVM           = SearchViewModel()
     @State private var searchTask: Task<Void, Never>?
     @State private var quickRateRelease: Release?
@@ -626,6 +643,15 @@ struct SearchView: View {
             } message: {
                 Text("This album isn't in sillajuku's catalog yet.")
             }
+            .alert("Switch to Manual mode", isPresented: $showQuickAddModeGate) {
+                Button("Cancel", role: .cancel) {}
+                Button("Go to Settings") { onGoToSettings() }
+            } message: {
+                Text("Quick Add's half-star rating only works in Manual mode. Switch modes in Settings to use it.")
+            }
+            .navigationDestination(isPresented: $showQuickAdd) {
+                QuickAddView(discoveryVM: discoveryVM)
+            }
             .sheet(item: $quickRateRelease) { release in
                 ManualRatingSheet(
                     release: release,
@@ -659,6 +685,17 @@ struct SearchView: View {
             // Auth observer saved a fresh provider token — reload Spotify data now.
             // This fires after linkIdentity completes, which is later than scenePhase.active.
             Task { await discoveryVM.refreshSpotifyIfNeeded() }
+        }
+    }
+
+    private func quickAddTapped() {
+        Task {
+            let mode = await AlbumQuickRate.currentUserRatingMode()
+            if mode == "instinct" {
+                showQuickAddModeGate = true
+            } else {
+                showQuickAdd = true
+            }
         }
     }
 
@@ -923,6 +960,11 @@ struct SearchView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
 
+                    quickAddBanner
+                        .padding(.horizontal, 16)
+                        .padding(.top, 4)
+                        .padding(.bottom, 20)
+
                     // ── Spotify: Your Top Artists ─────────────
                     if !discoveryVM.spotifyArtists.isEmpty {
                         discoverySectionTitle("Your Top Artists")
@@ -1010,6 +1052,40 @@ struct SearchView: View {
                 await discoveryVM.refresh()
             }
         }
+    }
+
+    private var quickAddBanner: some View {
+        Button { quickAddTapped() } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle().fill(Color.sjAmber.opacity(0.15))
+                    Image(systemName: "star.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(Color.sjAmber)
+                }
+                .frame(width: 40, height: 40)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Quick Add")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Color.sjInk)
+                    Text("Half-star rate albums you've probably already heard")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.sjMuted)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.sjMuted)
+            }
+            .padding(12)
+            .background(Color.sjSurface)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Helpers
@@ -2542,5 +2618,5 @@ private struct ArtistReleaseRow: View {
 
 
 #Preview {
-    SearchView(discoveryVM: DiscoveryViewModel())
+    SearchView(discoveryVM: DiscoveryViewModel(), onGoToSettings: {})
 }

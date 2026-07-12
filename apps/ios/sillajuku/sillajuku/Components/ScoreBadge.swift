@@ -22,6 +22,17 @@ enum ScoreSpectrum {
     static func ringColor(for score: Double) -> Color {
         Color(hslHue: hue(for: score), saturation: 0.70, lightness: 0.45)
     }
+
+    /// Non-linear visibility: a great score should pop, a mediocre one
+    /// shouldn't compete for attention. Power curve (not three flat bands)
+    /// so there's no visible snap crossing 4.0/4.5 — it stays near-zero well
+    /// under 4.0, becomes noticeable through 4.0–4.5, and closes in on fully
+    /// opaque by 5.0. Floor keeps even a 0.5 badge faintly present rather
+    /// than fully gone (reads as "de-emphasized," not "missing asset").
+    static func opacity(for score: Double) -> Double {
+        let x = min(max((score - 0.5) / 4.5, 0), 1)
+        return max(pow(x, 9), 0.06)
+    }
 }
 
 private extension Color {
@@ -85,6 +96,7 @@ struct ScoreBadge: View {
                     .frame(width: flowerSize, height: flowerSize)
                     .foregroundStyle(.white.opacity(0.9))
                     .shadow(color: .black.opacity(0.3), radius: 1, y: 1)
+                    .opacity(ScoreSpectrum.opacity(for: score))
 
                 // Different digit glyphs render at slightly different widths
                 // at this weight/condensed-width combo (e.g. "4.5" vs "1.0"),
@@ -108,12 +120,20 @@ struct ScoreBadge: View {
 }
 
 #Preview {
-    HStack(spacing: 20) {
-        ScoreBadge(score: 2.0)
-        ScoreBadge(score: 2.5)
-        ScoreBadge(score: 3.5)
-        ScoreBadge(score: 4.5)
-        ScoreBadge(score: 5.0)
+    VStack(spacing: 20) {
+        HStack(spacing: 16) {
+            ScoreBadge(score: 2.0)
+            ScoreBadge(score: 3.0)
+            ScoreBadge(score: 3.5)
+            ScoreBadge(score: 3.8)
+        }
+        HStack(spacing: 16) {
+            ScoreBadge(score: 4.0)
+            ScoreBadge(score: 4.2)
+            ScoreBadge(score: 4.5)
+            ScoreBadge(score: 4.7)
+            ScoreBadge(score: 5.0)
+        }
     }
     .padding()
     .background(Color.sjCream)

@@ -20,6 +20,7 @@
     "seed:prestige:dry": "tsx --env-file=.env.local scripts/seed-prestige.ts --dry-run",
     "seed:external": "tsx --env-file=.env.local scripts/seed-external-scores.ts",
     "seed:external:dry": "tsx --env-file=.env.local scripts/seed-external-scores.ts --dry-run",
+    "seed:deezer-artist": "tsx --env-file=.env.local scripts/seed-deezer-artist.ts",
     "seed:missing": "tsx --env-file=.env.local scripts/seed-missing-artists.ts",
     "seed:missing:dry": "tsx --env-file=.env.local scripts/seed-missing-artists.ts --dry-run",
     "seed:missing-from-external": "tsx --env-file=.env.local scripts/seed-missing-from-external.ts",

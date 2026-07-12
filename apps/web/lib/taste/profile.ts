@@ -2,7 +2,7 @@
  * Per-user taste profile math: genre weights → taste clusters.
  *
  * genre_weights (maintained incrementally by the ratings trigger in migration
- * 20260712000000, format { "<tag>": { w, n } } where w = Σ(display_score − 3.0))
+ * 20260712000009, format { "<tag>": { w, n } } where w = Σ(display_score − 3.0))
  * is the persistent part; everything here derives from it in-memory.
  *
  * Users are assumed MULTI-MODAL: instead of collapsing taste into one mushy mean

@@ -18,6 +18,9 @@ struct MainTabView: View {
     @State private var selectedTab: AppTab = .home
     @State private var homeScrollTrigger   = UUID()
     @State private var showBadgeRedeem     = false
+    // Set true by SearchView's Quick Add mode-gate popup ("Go to Settings"); ProfileView
+    // watches this binding and auto-opens its own Settings sheet, then resets it to false.
+    @State private var pendingOpenSettings = false
 
     // Rendered once per appearance: a rounded rect (wider than tall) with a
     // plus *cut out* of it — the plus is a transparent hole (via
@@ -90,7 +93,10 @@ struct MainTabView: View {
                         }
                         .tag(AppTab.rankings)
 
-                    SearchView(discoveryVM: discoveryVM)
+                    SearchView(discoveryVM: discoveryVM, onGoToSettings: {
+                        selectedTab = .profile
+                        pendingOpenSettings = true
+                    })
                         .tabItem {
                             Image(uiImage: colorScheme == .dark ? MainTabView.addTabImageDark : MainTabView.addTabImageLight)
                                 .renderingMode(.original)
@@ -108,7 +114,7 @@ struct MainTabView: View {
                     // No tab badge here -- SwiftUI's .badge() has no size control, and it
                     // rendered too large. The nudge lives solely on the checklist icon in
                     // Profile's own nav bar (small, size fully under our control there).
-                    ProfileView(viewModel: profileVM, questVM: questVM, onGoToAdd: { selectedTab = .add })
+                    ProfileView(viewModel: profileVM, questVM: questVM, onGoToAdd: { selectedTab = .add }, openSettingsTrigger: $pendingOpenSettings)
                         .tabItem {
                             Image(systemName: "person.fill")
                             Text(String(localized: "Profile"))
