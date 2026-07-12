@@ -96,6 +96,7 @@ struct ScoreBadge: View {
                     .frame(width: flowerSize, height: flowerSize)
                     .foregroundStyle(.white.opacity(0.9))
                     .shadow(color: .black.opacity(0.3), radius: 1, y: 1)
+                    .opacity(ScoreSpectrum.opacity(for: score))
 
                 // Different digit glyphs render at slightly different widths
                 // at this weight/condensed-width combo (e.g. "4.5" vs "1.0"),
@@ -115,7 +116,6 @@ struct ScoreBadge: View {
             .glassEffect(.regular.tint(ScoreSpectrum.fill(for: score)), in: Circle())
         }
         .frame(width: ringDiameter, height: ringDiameter)
-        .opacity(ScoreSpectrum.opacity(for: score))
     }
 }
 
