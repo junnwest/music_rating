@@ -26,6 +26,8 @@ User asked how search currently works, believing genre/semantic search had been 
 
 Migrations: `20260712000000` (table + first version) → `000001` (GIN array index, dead weight for this feature, harmless) → `000002` (indexed JOIN + `_genres_text()`) → `000003` (trigram index) → `000004` (country gate) → `000005` (LATERAL bound) → `000006` (drop inner sort) → `000007` (score boost) → `000008` (wider sample, current live version).
 
+**Found, not fixed (flagged for Windows) — a meaningful slice of Korean artists have no Hangul name anywhere.** User reported "시스템서울" (SYSTEM SEOUL's actual Korean name) returned zero results even though "System Seoul" finds the artist fine. Confirmed: `name_native IS NULL` and zero `artist_aliases` rows for that artist. Measured the real scope rather than guessing: 352/743 (47%) of `country = 'KR'` artists have `name_native IS NULL`, but that overcounts the real problem — many already store the Korean spelling directly in `name` itself (나훈아, 잔나비, 우원재 — already findable). The actually-broken subset is Latin-name-only artists with zero Hangul anywhere (SYSTEM SEOUL, Suzy confirmed from a small sample); true count needs a script that checks whether `name` itself contains Hangul before counting `name_native IS NULL` as a real gap. Added as item 5 on the FOR WINDOWS systemic-risk list in README rather than patching this one artist, per user's explicit choice.
+
 ---
 
 **2026-07-10 (Windows) — backend caching layer: cached feed/charts routes + img-proxy hardening (the "blank squares" fix):**
