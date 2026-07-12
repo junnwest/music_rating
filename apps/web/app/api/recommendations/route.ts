@@ -4,6 +4,7 @@ import { getAuthedUserId } from '../../../lib/authGuard';
 import { rateLimit } from '../../../lib/rateLimit';
 import { cacheGet, cacheSet } from '../../../lib/cache';
 import { eloToScore } from '../../../lib/elo';
+import { albumCentroid, cosine, displayGenre } from '../../../lib/taste/embeddings';
 import {
   weightsFromRatings,
   buildClusters,
@@ -12,21 +13,30 @@ import {
   type TasteCluster,
 } from '../../../lib/taste/profile';
 
-// Personalized recommendations for the Add tab's "From Your Taste" / "For You"
-// rows. Full rewrite (2026-07-12) — the previous version of this route was
-// orphaned (nothing called it) and still queried the pre-renovation `releases`
-// table, while the search page ran its own client-side queries that seeded
-// from EVERY rated artist regardless of score (a 0.5★ artist seeded as
-// strongly as a 5★ one) and never excluded already-rated albums.
+// Personalized recommendations powering the Add page's discovery sections.
+// Full rewrite (2026-07-12) — the previous version of this route was orphaned
+// (nothing called it) and still queried the pre-renovation `releases` table,
+// while the search page ran its own client-side queries that seeded from
+// EVERY rated artist regardless of score (a 0.5★ artist seeded as strongly as
+// a 5★ one) and never excluded already-rated albums.
 //
-// Now: service-role candidate queries (cheap, all index-backed) + in-memory
+// Service-role candidate queries (cheap, all index-backed) + in-memory
 // genre-embedding rerank (lib/taste — zero extra DB load on the Micro
 // instance), Redis-cached per user. Guarantees:
 //   * nothing the user already rated is ever suggested;
-//   * artists with any rating ≤ BLOCK_SCORE (1.5) are suppressed entirely;
+//   * artists with any rating ≤ BLOCK_SCORE (1.5) are suppressed entirely —
+//     and `blockedArtists` ships in the payload so the client can filter the
+//     globally-cached rows (Popular/Trending) it assembles itself;
 //   * candidates are ranked against the user's taste clusters (multi-modal),
 //     with profiles.recommendation_adventurousness mixing how far from the
 //     clusters the "For You" row is allowed to roam.
+//
+// Response sections (2026-07-12 restructure, same shape iOS should adopt):
+//   fromYourTaste  — newest albums by artists the user loves (exploit)
+//   forYou         — cross-cluster discovery blend (adventurousness-mixed)
+//   worlds[]       — one cluster-pure row per taste world ("Because you love
+//                    Shoegaze"), scored against THAT cluster's centroid only,
+//                    deduped against the rows above
 export const dynamic = 'force-dynamic';
 export const maxDuration = 15;
 
@@ -36,6 +46,8 @@ const LOVED_SCORE = 3.5; // ≥ this → artist eligible to seed "From Your Tast
 const SEED_SCORE = 4.0; //  ≥ this → album eligible to seed the similarity RPC
 const FOR_YOU_SIZE = 40;
 const FROM_TASTE_SIZE = 40;
+const WORLD_ROW_SIZE = 20;
+const MAX_WORLD_ROWS = 3;
 
 interface CandidateRow {
   id: string;
@@ -92,7 +104,7 @@ export async function GET(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   const refresh = req.nextUrl.searchParams.get('refresh') === '1';
-  const cacheKey = `recs:v1:${userId}`;
+  const cacheKey = `recs:v2:${userId}`;
   if (!refresh) {
     const cached = await cacheGet<object>(cacheKey);
     if (cached) return NextResponse.json(cached);
@@ -210,28 +222,18 @@ export async function GET(req: NextRequest) {
     if (res.error) console.error('[recs] candidate query error:', res.error.message);
   }
 
-  const exploit = ((exploitRes.data as CandidateRow[] | null) ?? []).filter(
-    (r) => !ratedIds.has(r.id) && !blockedArtists.has(r.artist_display),
-  );
+  const usable = (r: CandidateRow) => !ratedIds.has(r.id) && !blockedArtists.has(r.artist_display);
+  const exploit = ((exploitRes.data as CandidateRow[] | null) ?? []).filter(usable);
   // The RPC result lacks `genres` — affinity scoring treats missing genres as
   // neutral, which is fine: these already passed the RPC's own genre gate.
-  const explore = ((exploreRes.data as CandidateRow[] | null) ?? []).filter(
-    (r) => !ratedIds.has(r.id) && !blockedArtists.has(r.artist_display),
+  const explore = ((exploreRes.data as CandidateRow[] | null) ?? []).filter(usable);
+  // Kept per-cluster: the world rows need to know which pool belongs to which
+  // taste world; forYou blends across all of them.
+  const poolsByCluster = poolResults.map(
+    (res) => ((res.data as CandidateRow[] | null) ?? []).filter(usable),
   );
-  const pools = poolResults
-    .flatMap((res) => (res.data as CandidateRow[] | null) ?? [])
-    .filter((r) => !ratedIds.has(r.id) && !blockedArtists.has(r.artist_display));
 
-  // ── 4. Rerank "For You" in-memory ───────────────────────────────────────────
-  const forYou = rankForYou({
-    explore,
-    pools,
-    clusters,
-    disliked,
-    lovedArtists,
-    adventurousness,
-  });
-
+  // ── 4. Assemble sections in-memory ─────────────────────────────────────────
   // "From Your Taste": newest-first per loved artist, cap 3 per artist.
   const perArtist: Record<string, number> = {};
   const fromYourTaste: CandidateRow[] = [];
@@ -243,12 +245,79 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const forYou = rankForYou({
+    explore,
+    pools: poolsByCluster.flat(),
+    clusters,
+    disliked,
+    lovedArtists,
+    adventurousness,
+  });
+
+  // World rows: cluster-pure, deduped against everything already shown above.
+  const usedIds = new Set<string>([
+    ...fromYourTaste.slice(0, FROM_TASTE_SIZE).map((r) => r.id),
+    ...forYou.map((r) => r.id),
+  ]);
+  const worlds = buildWorldRows(clusters, poolsByCluster, usedIds, disliked);
+
   const payload = {
     fromYourTaste: shuffle(fromYourTaste).slice(0, FROM_TASTE_SIZE).map(strip),
     forYou: forYou.map(strip),
+    worlds: worlds.map((w) => ({ label: w.label, albums: w.albums.map(strip) })),
+    blockedArtists: Array.from(blockedArtists),
   };
   await cacheSet(cacheKey, payload, TTL_SECONDS);
   return NextResponse.json(payload);
+}
+
+/**
+ * One row per taste world: pool candidates scored against that cluster's own
+ * centroid (not the best-of-all-clusters blend forYou uses), so each row stays
+ * stylistically pure — a k-pop+shoegaze listener gets one row of each instead
+ * of two half-mixed ones. Rows that end up too thin (< 6 albums after dedupe)
+ * are dropped rather than rendered sparse.
+ */
+function buildWorldRows(
+  clusters: TasteCluster[],
+  poolsByCluster: CandidateRow[][],
+  usedIds: Set<string>,
+  disliked: Set<string>,
+): { label: string; albums: CandidateRow[] }[] {
+  const rows: { label: string; albums: CandidateRow[] }[] = [];
+  clusters.slice(0, MAX_WORLD_ROWS).forEach((cluster, i) => {
+    const pool = poolsByCluster[i] ?? [];
+    const scored = pool
+      .filter((r) => !usedIds.has(r.id))
+      .map((row) => {
+        const vec = albumCentroid(row.genres);
+        let sim = vec ? cosine(vec, cluster.centroid) : 0;
+        sim -= Math.min(0.6, (row.genres ?? []).filter((g) => disliked.has(g)).length * 0.3);
+        return { row, sim };
+      })
+      .sort((a, b) => b.sim - a.sim);
+
+    const albums: CandidateRow[] = [];
+    const artistCount: Record<string, number> = {};
+    for (const { row } of scored) {
+      if (albums.length >= WORLD_ROW_SIZE) break;
+      const n = artistCount[row.artist_display] ?? 0;
+      if (n >= 2) continue;
+      albums.push(row);
+      artistCount[row.artist_display] = n + 1;
+      usedIds.add(row.id);
+    }
+    if (albums.length >= 6) {
+      const top = cluster.tags[0];
+      const second = cluster.tags[1];
+      const label =
+        second && second.w >= top.w * 0.5
+          ? `${displayGenre(top.tag)} × ${displayGenre(second.tag)}`
+          : displayGenre(top.tag);
+      rows.push({ label, albums });
+    }
+  });
+  return rows;
 }
 
 function rankForYou(args: {

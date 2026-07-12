@@ -575,6 +575,7 @@ const ko: Translations = {
       nReleases: '릴리스 {n}개',
       add: '추가',
       fromYourTaste: '내 취향에서',
+      becauseYouLove: '{genre} 팬이라면',
       forYou: '추천',
       popular: '인기',
       trending: '트렌딩',

@@ -413,6 +413,8 @@ function Discovery({
   const { userId, ready } = useSession();
   const [tasteAlbums, setTasteAlbums] = useState<SJRelease[]>([]);
   const [personalized, setPersonalized] = useState<SJRelease[]>([]);
+  const [worlds, setWorlds] = useState<{ label: string; albums: SJRelease[] }[]>([]);
+  const [blockedArtists, setBlockedArtists] = useState<Set<string>>(new Set());
   const [popular, setPopular] = useState<SJRelease[]>([]);
   const [trending, setTrending] = useState<SJRelease[]>([]);
   const [loading, setLoading] = useState(true);
@@ -489,10 +491,21 @@ function Discovery({
             headers: { Authorization: `Bearer ${token}` },
           });
           if (!res.ok) throw new Error(`recs ${res.status}`);
-          const payload: { fromYourTaste: any[]; forYou: any[] } = await res.json();
+          const payload: {
+            fromYourTaste: any[];
+            forYou: any[];
+            worlds?: { label: string; albums: any[] }[];
+            blockedArtists?: string[];
+          } = await res.json();
           if (cancelled) return;
           setTasteAlbums(mapRows(payload.fromYourTaste));
           setPersonalized(mapRows(payload.forYou));
+          setWorlds(
+            (payload.worlds ?? []).map((w) => ({ label: w.label, albums: mapRows(w.albums) })),
+          );
+          // Popular/Trending are assembled from globally-shared queries — the
+          // per-user ≤1.5★ artist suppression is applied to them client-side.
+          setBlockedArtists(new Set(payload.blockedArtists ?? []));
           return;
         } catch (err) {
           console.warn('[search] recommendations route failed, using fallback:', err);
@@ -553,7 +566,10 @@ function Discovery({
   }, [ready, userId]);
 
   const visible = (albums: SJRelease[]) =>
-    albums.filter((a) => !ratedIds.has(a.id) || sessionRatedIds.has(a.id));
+    albums.filter(
+      (a) =>
+        (!ratedIds.has(a.id) || sessionRatedIds.has(a.id)) && !blockedArtists.has(a.artist),
+    );
 
   if (loading) {
     return (
@@ -575,6 +591,10 @@ function Discovery({
   const sections: { title: string; albums: SJRelease[] }[] = [
     { title: t('sj.search.fromYourTaste'), albums: visible(tasteAlbums) },
     { title: t('sj.search.forYou'), albums: visible(personalized) },
+    ...worlds.map((w) => ({
+      title: t('sj.search.becauseYouLove').replace('{genre}', w.label),
+      albums: visible(w.albums),
+    })),
     { title: t('sj.search.popular'), albums: visible(popular) },
     { title: t('sj.search.trending'), albums: visible(trending) },
   ].filter((s) => s.albums.length > 0);

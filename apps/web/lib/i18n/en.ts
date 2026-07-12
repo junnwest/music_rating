@@ -573,6 +573,7 @@ const en = {
       nReleases: '{n} releases',
       add: 'Add',
       fromYourTaste: 'From Your Taste',
+      becauseYouLove: 'Because you love {genre}',
       forYou: 'For You',
       popular: 'Popular',
       trending: 'Trending',
