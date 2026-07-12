@@ -1,6 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../lib/supabaseServer';
-import type { AlbumRelease } from '../../../types';
+import { getAuthedUserId } from '../../../lib/authGuard';
+import { rateLimit } from '../../../lib/rateLimit';
+import { cacheGet, cacheSet } from '../../../lib/cache';
+import { eloToScore } from '../../../lib/elo';
+import {
+  weightsFromRatings,
+  buildClusters,
+  dislikedTags,
+  albumAffinity,
+  type TasteCluster,
+} from '../../../lib/taste/profile';
+
+// Personalized recommendations for the Add tab's "From Your Taste" / "For You"
+// rows. Full rewrite (2026-07-12) — the previous version of this route was
+// orphaned (nothing called it) and still queried the pre-renovation `releases`
+// table, while the search page ran its own client-side queries that seeded
+// from EVERY rated artist regardless of score (a 0.5★ artist seeded as
+// strongly as a 5★ one) and never excluded already-rated albums.
+//
+// Now: service-role candidate queries (cheap, all index-backed) + in-memory
+// genre-embedding rerank (lib/taste — zero extra DB load on the Micro
+// instance), Redis-cached per user. Guarantees:
+//   * nothing the user already rated is ever suggested;
+//   * artists with any rating ≤ BLOCK_SCORE (1.5) are suppressed entirely;
+//   * candidates are ranked against the user's taste clusters (multi-modal),
+//     with profiles.recommendation_adventurousness mixing how far from the
+//     clusters the "For You" row is allowed to roam.
+export const dynamic = 'force-dynamic';
+export const maxDuration = 15;
+
+const TTL_SECONDS = 120;
+const BLOCK_SCORE = 1.5; // ≤ this → artist suppressed from all suggestion rows
+const LOVED_SCORE = 3.5; // ≥ this → artist eligible to seed "From Your Taste"
+const SEED_SCORE = 4.0; //  ≥ this → album eligible to seed the similarity RPC
+const FOR_YOU_SIZE = 40;
+const FROM_TASTE_SIZE = 40;
+
+interface CandidateRow {
+  id: string;
+  title: string;
+  artist_display: string;
+  cover_url: string | null;
+  release_group_type: string | null;
+  first_release_date: string | null;
+  native_title: string | null;
+  genres?: string[] | null;
+}
+
+const CAND_COLS =
+  'id, title, artist_display, cover_url, release_group_type, first_release_date, native_title, genres';
+
+/** Response rows keep the RG_COLS shape the search page already maps. */
+function strip(r: CandidateRow) {
+  return {
+    id: r.id,
+    title: r.title,
+    artist_display: r.artist_display,
+    cover_url: r.cover_url,
+    release_group_type: r.release_group_type,
+    first_release_date: r.first_release_date,
+    native_title: r.native_title,
+  };
+}
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -11,195 +73,248 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-const PAGE_SIZE = 20;
-
-function toRelease(r: any): AlbumRelease {
-  return {
-    id: r.id,
-    title: r.title,
-    artist: r.artist,
-    date: r.release_date ?? null,
-    country: null,
-    releaseType: r.release_type ?? 'Album',
-    coverUrl: r.cover_url ?? null,
-  };
-}
-
-// Interpolate bucket proportions from adventurousness (0–100).
-// Conservative (0):  90% in-taste / 8% adjacent / 2% discovery
-// Default (50):      70% in-taste / 20% adjacent / 10% discovery
-// Adventurous (100): 45% in-taste / 30% adjacent / 25% discovery
-function bucketSizes(adventurousness: number, total: number): { inTaste: number; adjacent: number; discovery: number } {
+// Bucket proportions from adventurousness (0–100), carried over from the old
+// route: conservative 90/8/2, default 70/20/10, adventurous 45/30/25.
+function bucketSizes(adventurousness: number, total: number) {
   const t = Math.max(0, Math.min(100, adventurousness)) / 100;
-  const inTastePct  = 0.90 - 0.45 * t;
+  const inTastePct = 0.9 - 0.45 * t;
   const adjacentPct = 0.08 + 0.22 * t;
-  const inTaste  = Math.round(inTastePct  * total);
+  const inTaste = Math.round(inTastePct * total);
   const adjacent = Math.round(adjacentPct * total);
-  const discovery = Math.max(0, total - inTaste - adjacent);
-  return { inTaste, adjacent, discovery };
+  return { inTaste, adjacent, discovery: Math.max(0, total - inTaste - adjacent) };
 }
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = req.nextUrl;
-  const artistsParam      = searchParams.get('artists')         ?? '';
-  const genresParam       = searchParams.get('genres')          ?? '';
-  const excludeIdsParam   = searchParams.get('excludeIds')      ?? '';
-  const page              = parseInt(searchParams.get('page')   ?? '0', 10);
-  const adventurousness   = parseInt(searchParams.get('adventurousness') ?? '50', 10);
-  const userId            = searchParams.get('userId')          ?? '';
-  // Active browse filters — when set, constrain ALL buckets to these values
-  const filterGenre  = searchParams.get('filterGenre')  ?? '';
-  const filterType   = searchParams.get('filterType')   ?? '';  // 'Album' | 'EP' | ''
-  const filterDecade = searchParams.get('filterDecade') ?? '';  // e.g. '1990' → 1990–1999
+  const limited = await rateLimit(req, 'recs', 30, 60);
+  if (limited) return limited;
 
-  const artistNames = artistsParam.split(',').filter(Boolean);
-  const genreNames  = genresParam.split(',').filter(Boolean);
-  const excludeIds  = new Set(excludeIdsParam.split(',').filter(Boolean));
-  const seen        = new Set(excludeIds);
+  const userId = await getAuthedUserId(req.headers.get('Authorization'));
+  if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+
+  const refresh = req.nextUrl.searchParams.get('refresh') === '1';
+  const cacheKey = `recs:v1:${userId}`;
+  if (!refresh) {
+    const cached = await cacheGet<object>(cacheKey);
+    if (cached) return NextResponse.json(cached);
+  }
 
   const supabase = createServerClient();
+  if (!supabase) return NextResponse.json({ error: 'not configured' }, { status: 503 });
 
-  const { inTaste: inTasteN, adjacent: adjacentN, discovery: discoveryN } = bucketSizes(adventurousness, PAGE_SIZE);
-
-  // Helper: apply active browse filters to any query builder
-  function applyBrowseFilters<T>(q: T): T {
-    let query = q as any;
-    if (filterGenre)  query = query.ilike('genres', `%${filterGenre}%`);
-    if (filterType)   query = query.eq('release_type', filterType);
-    if (filterDecade) {
-      const yr = parseInt(filterDecade, 10);
-      query = query.gte('release_date', `${yr}-01-01`).lte('release_date', `${yr + 9}-12-31`);
-    }
-    return query as T;
-  }
-
-  // ── Artists the user rated ≤2★ (excluded from in-taste + adjacent buckets) ─
-  const negativeArtists = new Set<string>();
-  if (userId && supabase) {
-    const { data: negRatings } = await supabase
+  // ── 1. The user's rating history + adventurousness ─────────────────────────
+  const [ratingsRes, profileRes] = await Promise.all([
+    supabase
       .from('ratings')
-      .select('releases(artist)')
+      .select('release_group_id, score, elo_score, release_groups(id, artist_display, genres)')
       .eq('user_id', userId)
-      .lte('score', 2.0);
-    for (const r of negRatings ?? []) {
-      const artist = (r.releases as any)?.artist as string | undefined;
-      if (artist) negativeArtists.add(artist.split(',')[0].trim().toLowerCase());
+      .order('created_at', { ascending: false })
+      .limit(500),
+    supabase.from('profiles').select('recommendation_adventurousness').eq('id', userId).single(),
+  ]);
+  if (ratingsRes.error) {
+    console.error('[recs] ratings query error:', ratingsRes.error.message);
+    return NextResponse.json({ error: ratingsRes.error.message }, { status: 503 });
+  }
+
+  interface RatingRow {
+    release_group_id: string;
+    score: number | null;
+    elo_score: number | null;
+    release_groups: { id: string; artist_display: string; genres: string[] | null } | null;
+  }
+  const ratings = ((ratingsRes.data as unknown as RatingRow[] | null) ?? []).filter(
+    (r) => r.release_groups,
+  );
+  const adventurousness =
+    (profileRes.data as { recommendation_adventurousness: number | null } | null)
+      ?.recommendation_adventurousness ?? 50;
+
+  // ── 2. Signals ──────────────────────────────────────────────────────────────
+  const ratedIds = new Set<string>(ratings.map((r) => r.release_group_id));
+  const blockedArtists = new Set<string>();
+  const lovedArtists = new Set<string>();
+  const seedCandidates: { id: string; artist: string; display: number }[] = [];
+
+  for (const r of ratings) {
+    const display = r.score ?? (r.elo_score != null ? eloToScore(r.elo_score) : null);
+    if (display == null) continue;
+    const artist = r.release_groups!.artist_display;
+    if (display <= BLOCK_SCORE) blockedArtists.add(artist);
+    if (display >= LOVED_SCORE) lovedArtists.add(artist);
+    if (display >= SEED_SCORE) {
+      seedCandidates.push({ id: r.release_group_id, artist, display });
+    }
+  }
+  for (const a of blockedArtists) lovedArtists.delete(a);
+
+  // Top-rated seeds for the similarity RPC — max 3, distinct artists (RPC cost
+  // scales with seed count; see migration 20260710000000's notes).
+  const seenSeedArtists = new Set<string>();
+  const seedIds = seedCandidates
+    .filter((s) => !blockedArtists.has(s.artist))
+    .sort((a, b) => b.display - a.display)
+    .filter((s) => (seenSeedArtists.has(s.artist) ? false : (seenSeedArtists.add(s.artist), true)))
+    .slice(0, 3)
+    .map((s) => s.id);
+
+  const weights = weightsFromRatings(
+    ratings.map((r) => ({
+      score: r.score,
+      elo_score: r.elo_score,
+      genres: r.release_groups!.genres,
+    })),
+  );
+  const clusters = buildClusters(weights);
+  const disliked = dislikedTags(weights);
+
+  // ── 3. Candidate pools (parallel, all index-backed) ────────────────────────
+  const lovedList = Array.from(lovedArtists).slice(0, 30);
+  const clusterTagSets = clusters
+    .slice(0, 3)
+    .map((c) => c.tags.slice(0, 6).map((t) => t.tag));
+
+  const [exploitRes, exploreRes, ...poolResults] = await Promise.all([
+    // (a) more albums by artists the user loves — "From Your Taste"
+    lovedList.length > 0
+      ? supabase
+          .from('release_groups')
+          .select(CAND_COLS)
+          .in('artist_display', lovedList)
+          .in('release_group_type', ['album', 'ep'])
+          .not('cover_url', 'is', null)
+          .order('first_release_date', { ascending: false, nullsFirst: false })
+          .limit(150)
+      : Promise.resolve({ data: [] as CandidateRow[], error: null }),
+    // (b) embedding-similar new artists (existing HNSW RPC)
+    seedIds.length > 0
+      ? supabase.rpc('get_taste_similar_releases', {
+          p_seed_ids: seedIds,
+          p_exclude_artists: Array.from(new Set([...lovedArtists, ...blockedArtists])),
+        })
+      : Promise.resolve({ data: [] as CandidateRow[], error: null }),
+    // (c) per-cluster prestige pools — quality discovery inside each taste world
+    ...clusterTagSets.map((tags) =>
+      supabase
+        .from('release_groups')
+        .select(CAND_COLS)
+        .overlaps('genres', tags)
+        .not('prestige_score', 'is', null)
+        .in('release_group_type', ['album', 'ep'])
+        .not('cover_url', 'is', null)
+        .order('prestige_score', { ascending: false })
+        .limit(80),
+    ),
+  ]);
+
+  for (const res of [exploitRes, exploreRes, ...poolResults]) {
+    if (res.error) console.error('[recs] candidate query error:', res.error.message);
+  }
+
+  const exploit = ((exploitRes.data as CandidateRow[] | null) ?? []).filter(
+    (r) => !ratedIds.has(r.id) && !blockedArtists.has(r.artist_display),
+  );
+  // The RPC result lacks `genres` — affinity scoring treats missing genres as
+  // neutral, which is fine: these already passed the RPC's own genre gate.
+  const explore = ((exploreRes.data as CandidateRow[] | null) ?? []).filter(
+    (r) => !ratedIds.has(r.id) && !blockedArtists.has(r.artist_display),
+  );
+  const pools = poolResults
+    .flatMap((res) => (res.data as CandidateRow[] | null) ?? [])
+    .filter((r) => !ratedIds.has(r.id) && !blockedArtists.has(r.artist_display));
+
+  // ── 4. Rerank "For You" in-memory ───────────────────────────────────────────
+  const forYou = rankForYou({
+    explore,
+    pools,
+    clusters,
+    disliked,
+    lovedArtists,
+    adventurousness,
+  });
+
+  // "From Your Taste": newest-first per loved artist, cap 3 per artist.
+  const perArtist: Record<string, number> = {};
+  const fromYourTaste: CandidateRow[] = [];
+  for (const r of exploit) {
+    const n = perArtist[r.artist_display] ?? 0;
+    if (n < 3) {
+      fromYourTaste.push(r);
+      perArtist[r.artist_display] = n + 1;
     }
   }
 
-  const albums: AlbumRelease[] = [];
+  const payload = {
+    fromYourTaste: shuffle(fromYourTaste).slice(0, FROM_TASTE_SIZE).map(strip),
+    forYou: forYou.map(strip),
+  };
+  await cacheSet(cacheKey, payload, TTL_SECONDS);
+  return NextResponse.json(payload);
+}
 
-  // ── IN-TASTE: artist-matching releases ─────────────────────────────────────
-  if (supabase && inTasteN > 0 && artistNames.length > 0) {
-    const orClause = artistNames.map((n) => `artist.ilike.%${n}%`).join(',');
-    let q = supabase
-      .from('releases')
-      .select('id, title, artist, cover_url, release_type, release_date')
-      .or(orClause)
-      .not('cover_url', 'is', null)
-      .not('release_type', 'ilike', 'single');
+function rankForYou(args: {
+  explore: CandidateRow[];
+  pools: CandidateRow[];
+  clusters: TasteCluster[];
+  disliked: Set<string>;
+  lovedArtists: Set<string>;
+  adventurousness: number;
+}): CandidateRow[] {
+  const { explore, pools, clusters, disliked, lovedArtists, adventurousness } = args;
 
-    q = applyBrowseFilters(q);
-    if (excludeIds.size > 0) q = q.not('id', 'in', `(${[...excludeIds].join(',')})`);
-
-    const { data: rows } = await q
-      .order('release_date', { ascending: false })
-      .range(page * inTasteN, page * inTasteN + inTasteN * 3 - 1);
-
-    let count = 0;
-    for (const r of shuffle(rows ?? [])) {
-      if (seen.has(r.id)) continue;
-      if (negativeArtists.has(r.artist?.split(',')[0]?.trim().toLowerCase() ?? '')) continue;
-      seen.add(r.id);
-      albums.push(toRelease(r));
-      if (++count >= inTasteN) break;
-    }
+  const seen = new Set<string>();
+  const candidates: { row: CandidateRow; affinity: number; fromRpc: boolean }[] = [];
+  for (const row of [...explore, ...pools]) {
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
+    let affinity = albumAffinity(row.genres, clusters);
+    const hitDisliked = (row.genres ?? []).filter((g) => disliked.has(g)).length;
+    affinity -= Math.min(0.6, hitDisliked * 0.3);
+    candidates.push({ row, affinity, fromRpc: explore.some((e) => e.id === row.id) });
   }
 
-  // ── ADJACENT: genre-matching releases (not already covered by in-taste) ────
-  if (supabase && adjacentN > 0 && genreNames.length > 0) {
-    const orClause = genreNames.map((g) => `genres.ilike.%${g}%`).join(',');
-    let q = supabase
-      .from('releases')
-      .select('id, title, artist, cover_url, release_type, release_date')
-      .or(orClause)
-      .not('cover_url', 'is', null)
-      .not('release_type', 'ilike', 'single');
+  // Buckets: in-taste = close to a cluster (or straight from the similarity
+  // RPC), adjacent = mid-similarity, discovery = far/unknown territory.
+  const inTaste = candidates.filter((c) => c.fromRpc || c.affinity >= 0.55);
+  const adjacent = candidates.filter((c) => !c.fromRpc && c.affinity >= 0.35 && c.affinity < 0.55);
+  const discovery = candidates.filter((c) => !c.fromRpc && c.affinity < 0.35);
 
-    q = applyBrowseFilters(q);
-    if (excludeIds.size > 0) q = q.not('id', 'in', `(${[...excludeIds].join(',')})`);
+  const sizes = bucketSizes(adventurousness, FOR_YOU_SIZE);
+  const byAffinity = (a: { affinity: number }, b: { affinity: number }) => b.affinity - a.affinity;
 
-    const { data: rows } = await q
-      .order('release_date', { ascending: false })
-      .range(page * adjacentN, page * adjacentN + adjacentN * 3 - 1);
-
-    let count = 0;
-    for (const r of shuffle(rows ?? [])) {
-      if (seen.has(r.id)) continue;
-      if (negativeArtists.has(r.artist?.split(',')[0]?.trim().toLowerCase() ?? '')) continue;
-      seen.add(r.id);
-      albums.push(toRelease(r));
-      if (++count >= adjacentN) break;
+  const picked: CandidateRow[] = [];
+  const artistCount: Record<string, number> = {};
+  const take = (
+    pool: { row: CandidateRow; affinity: number }[],
+    n: number,
+    shuffled = false,
+  ) => {
+    const ordered = shuffled ? shuffle(pool) : [...pool].sort(byAffinity);
+    let taken = 0;
+    for (const c of ordered) {
+      if (taken >= n) break;
+      const a = c.row.artist_display;
+      // Cap 2 per artist — discovery rows shouldn't be one artist's discography.
+      if ((artistCount[a] ?? 0) >= 2) continue;
+      if (picked.some((p) => p.id === c.row.id)) continue;
+      // New-to-you bias: an artist the user already loves belongs in
+      // "From Your Taste", not "For You".
+      if (lovedArtists.has(a)) continue;
+      picked.push(c.row);
+      artistCount[a] = (artistCount[a] ?? 0) + 1;
+      taken++;
     }
+    return taken;
+  };
+
+  let filled = take(inTaste, sizes.inTaste);
+  filled += take(adjacent, sizes.adjacent + (sizes.inTaste - filled));
+  take(discovery, FOR_YOU_SIZE - filled, true);
+
+  // Light shuffle so consecutive loads don't render an identical row, while
+  // keeping roughly affinity-descending order (swap within a small window).
+  for (let i = picked.length - 1; i > 0; i--) {
+    const j = Math.max(0, i - Math.floor(Math.random() * 4));
+    [picked[i], picked[j]] = [picked[j], picked[i]];
   }
-
-  // ── DISCOVERY: community-loved albums outside user's usual artists ──────────
-  if (supabase && discoveryN > 0) {
-    let q = supabase
-      .from('releases')
-      .select('id, title, artist, cover_url, release_type, release_date, ratings_count')
-      .not('cover_url', 'is', null)
-      .not('release_type', 'ilike', 'single')
-      .gt('ratings_count', 0);
-
-    q = applyBrowseFilters(q);
-    if (excludeIds.size > 0) q = q.not('id', 'in', `(${[...excludeIds].join(',')})`);
-
-    const { data: rows } = await q
-      .order('ratings_count', { ascending: false, nullsFirst: false })
-      .range(page * discoveryN, page * discoveryN + discoveryN * 4 - 1);
-
-    // Prefer albums from artists the user hasn't seen (true discovery)
-    const knownArtists = new Set(artistNames.map((a) => a.toLowerCase()));
-    const unknown  = (rows ?? []).filter((r) => !knownArtists.has(r.artist?.split(',')[0]?.trim().toLowerCase() ?? ''));
-    const familiar = (rows ?? []).filter((r) =>  knownArtists.has(r.artist?.split(',')[0]?.trim().toLowerCase() ?? ''));
-    let count = 0;
-    for (const r of [...shuffle(unknown), ...shuffle(familiar)]) {
-      if (seen.has(r.id)) continue;
-      seen.add(r.id);
-      albums.push(toRelease(r));
-      if (++count >= discoveryN) break;
-    }
-  }
-
-  // ── Prestige fallback when buckets don't fill the page ────────────────────
-  let hasMoreResults = albums.length > 0;
-  if (supabase && albums.length < PAGE_SIZE) {
-    let q = supabase
-      .from('releases')
-      .select('id, title, artist, cover_url, release_type, release_date')
-      .not('cover_url', 'is', null)
-      .not('release_type', 'ilike', 'single');
-
-    q = applyBrowseFilters(q);
-    const seenIds = [...seen];
-    if (seenIds.length > 0) q = q.not('id', 'in', `(${seenIds.join(',')})`);
-
-    const { data: fallback } = await q
-      .order('prestige', { ascending: true, nullsFirst: false })
-      .order('release_date', { ascending: false })
-      .limit(PAGE_SIZE - albums.length + 10);
-
-    if (fallback && fallback.length > 0) {
-      hasMoreResults = true;
-      for (const r of fallback) {
-        if (!seen.has(r.id)) {
-          seen.add(r.id);
-          albums.push(toRelease(r));
-        }
-      }
-    }
-  }
-
-  return NextResponse.json({ albums, hasMore: hasMoreResults });
+  return picked;
 }

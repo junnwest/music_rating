@@ -94,6 +94,7 @@
     "backfill:native:dry": "tsx --env-file=.env.local scripts/backfill-native-names.ts --dry-run",
     "backfill:native:artists": "tsx --env-file=.env.local scripts/backfill-native-names.ts --phase=1",
     "backfill:native:releases": "tsx --env-file=.env.local scripts/backfill-native-names.ts --phase=2",
+    "build:genre-embeddings": "tsx --env-file=.env.local scripts/build-genre-embeddings.ts",
     "backfill:embeddings": "tsx --env-file=.env.local scripts/backfill-embeddings.ts",
     "backfill:embeddings:dry": "tsx --env-file=.env.local scripts/backfill-embeddings.ts --dry-run",
     "backfill:tracklists": "tsx --env-file=.env.local scripts/backfill-tracklists.ts",

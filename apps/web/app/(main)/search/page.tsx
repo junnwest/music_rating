@@ -474,9 +474,31 @@ function Discovery({
         );
       })();
 
-      // From Your Taste (artists rated ≥4) + For You (all rated artists)
+      // From Your Taste (loved artists) + For You (taste-cluster reranked
+      // discovery) — served by /api/recommendations (server-side, low-rated
+      // artists suppressed, already-rated albums excluded). Falls back to the
+      // old client-side loved-artist queries if the route fails, so a route
+      // outage degrades rather than blanks the rows.
       const personalP = (async () => {
         if (!userId) return;
+        try {
+          const { data: sessionData } = await supabase!.auth.getSession();
+          const token = sessionData.session?.access_token;
+          if (!token) throw new Error('no session');
+          const res = await fetch('/api/recommendations', {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (!res.ok) throw new Error(`recs ${res.status}`);
+          const payload: { fromYourTaste: any[]; forYou: any[] } = await res.json();
+          if (cancelled) return;
+          setTasteAlbums(mapRows(payload.fromYourTaste));
+          setPersonalized(mapRows(payload.forYou));
+          return;
+        } catch (err) {
+          console.warn('[search] recommendations route failed, using fallback:', err);
+        }
+
+        // Fallback: albums by artists the user rated ≥ 4 (client-side).
         const { data: ratedRows } = await supabase!
           .from('ratings')
           .select('score, release_groups(artist_display)')
@@ -484,9 +506,6 @@ function Discovery({
           .limit(200);
         if (cancelled) return;
         const all = (ratedRows as any[] | null) ?? [];
-        const allArtists = Array.from(
-          new Set(all.map((r) => r.release_groups?.artist_display).filter(Boolean)),
-        ).slice(0, 50);
         const lovedArtists = Array.from(
           new Set(
             all
@@ -496,17 +515,6 @@ function Discovery({
           ),
         ).slice(0, 30);
 
-        if (allArtists.length > 0) {
-          const { data } = await supabase!
-            .from('release_groups')
-            .select(RG_COLS)
-            .in('artist_display', allArtists)
-            .in('release_group_type', ['album', 'ep'])
-            .not('cover_url', 'is', null)
-            .order('first_release_date', { ascending: false, nullsFirst: false })
-            .limit(60);
-          if (!cancelled) setPersonalized(mapRows(data as any[]));
-        }
         if (lovedArtists.length > 0) {
           const { data } = await supabase!
             .from('release_groups')

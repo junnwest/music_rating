@@ -23,10 +23,24 @@ interface TasteRating {
   } | null;
 }
 
+interface WorldTag {
+  display: string;
+  avg: number;
+  n: number;
+}
+
+interface TasteWorld {
+  share: number;
+  avgScore: number | null;
+  tags: WorldTag[];
+}
+
 type Card =
   | { kind: 'topAlbum'; releaseId: string; title: string; artist: string; coverUrl: string | null; score: number }
   | { kind: 'activity'; monthIndex: number; count: number; months: number[] }
   | { kind: 'style'; fives: number; total: number }
+  | { kind: 'worldsIntro'; names: string[] }
+  | { kind: 'world'; index: number; world: TasteWorld }
   | { kind: 'genre'; genre: string; userAvg: number; communityAvg: number; userCount: number };
 
 /**
@@ -117,6 +131,34 @@ export default function TastePage() {
           fives: ratings.filter((r) => r.score === 5).length,
           total: ratings.length,
         });
+
+        // Taste worlds — genre clusters from the taste vector (embedding-based,
+        // served by /api/taste/profile). Degrades silently if the route fails:
+        // the reel just skips these cards.
+        try {
+          const { data: sessionData } = await supabase!.auth.getSession();
+          const token = sessionData.session?.access_token;
+          if (token) {
+            const res = await fetch('/api/taste/profile?refresh=1', {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+              const profile: { clusters: TasteWorld[] } = await res.json();
+              const worlds = (profile.clusters ?? []).filter((c) => c.tags.length > 0).slice(0, 3);
+              if (worlds.length >= 2) {
+                built.push({
+                  kind: 'worldsIntro',
+                  names: worlds.map((w) => w.tags[0].display),
+                });
+              }
+              worlds.forEach((world, index) => {
+                built.push({ kind: 'world', index, world });
+              });
+            }
+          }
+        } catch {
+          // taste worlds unavailable — reel renders without them
+        }
 
         // Genre DNA (server RPC)
         const { data: standings } = await supabase!.rpc('get_user_genre_standings', {
@@ -214,6 +256,11 @@ function LockView({ ratingCount, signedIn }: { ratingCount: number; signedIn: bo
 }
 
 // ── Insight cards (full-bleed, dark, snap-scrolled) ────────────────────────
+
+// Accent + background per taste-world card, extending the reel's existing
+// palette (amber/red/blue cards each pair an accent with a tinted near-black).
+const WORLD_ACCENTS = ['#E8A020', '#61adff', '#b98ae8'];
+const WORLD_BGS = ['#1a1408', '#0a1220', '#150e1f'];
 
 function InsightCard({ card, isLast }: { card: Card; isLast: boolean }) {
   const { t, lang } = useLanguage();
@@ -353,6 +400,86 @@ function InsightCard({ card, isLast }: { card: Card; isLast: boolean }) {
             <span className="block text-[11px] text-white/30">{t('sj.taste.ofYourRatings')}</span>
           </span>
         </div>
+      </>,
+    );
+  }
+
+  if (card.kind === 'worldsIntro') {
+    const GREEN = '#5fbf8a';
+    return shell(
+      '#0c1712',
+      <>
+        {eyebrow(t('sj.taste.yourWorlds'), GREEN)}
+        <h2 className="mt-5 text-[26px] font-bold text-white text-center whitespace-pre-line max-w-sm">
+          {t('sj.taste.worldsTitle').replace('{n}', String(card.names.length))}
+        </h2>
+        <p className="mt-2 text-[14px] text-white/40 text-center max-w-xs">
+          {t('sj.taste.worldsDesc')}
+        </p>
+        <div className="flex flex-col items-center gap-2.5 mt-9">
+          {card.names.map((name, i) => (
+            <span
+              key={name}
+              className="px-4 py-2 rounded-full text-[15px] font-bold"
+              style={{
+                color: WORLD_ACCENTS[i % WORLD_ACCENTS.length],
+                background: `${WORLD_ACCENTS[i % WORLD_ACCENTS.length]}1f`,
+                border: `0.5px solid ${WORLD_ACCENTS[i % WORLD_ACCENTS.length]}4d`,
+              }}
+            >
+              {name}
+            </span>
+          ))}
+        </div>
+      </>,
+    );
+  }
+
+  if (card.kind === 'world') {
+    const accent = WORLD_ACCENTS[card.index % WORLD_ACCENTS.length];
+    const bg = WORLD_BGS[card.index % WORLD_BGS.length];
+    const { world } = card;
+    const headline =
+      world.tags.length > 1
+        ? `${world.tags[0].display} × ${world.tags[1].display}`
+        : world.tags[0].display;
+    return shell(
+      bg,
+      <>
+        {eyebrow(t('sj.taste.worldEyebrow').replace('{i}', String(card.index + 1)), accent)}
+        <h2 className="mt-5 text-[28px] font-black text-white text-center max-w-sm leading-tight">
+          {headline}
+        </h2>
+        <p className="mt-2 text-[14px]" style={{ color: `${accent}b3` }}>
+          {t('sj.taste.worldShare').replace('{share}', String(Math.round(world.share * 100)))}
+          {world.avgScore != null && (
+            <> · {t('sj.taste.worldAvg').replace('{avg}', world.avgScore.toFixed(1))}</>
+          )}
+        </p>
+        <div className="w-full max-w-sm mt-9 space-y-3">
+          {world.tags.map((tag) => (
+            <div key={tag.display} className="flex items-center gap-2.5">
+              <span className="w-28 text-right text-[12px] font-semibold text-white/50 truncate">
+                {tag.display}
+              </span>
+              <span className="flex-1 h-[7px] rounded-full bg-white/[0.07] overflow-hidden">
+                <span
+                  className="block h-full rounded-full"
+                  style={{ width: `${(tag.avg / 5) * 100}%`, background: accent }}
+                />
+              </span>
+              <span className="w-9 text-[12px] font-bold tabular-nums" style={{ color: accent }}>
+                {tag.avg.toFixed(1)}
+              </span>
+            </div>
+          ))}
+        </div>
+        <p className="mt-5 text-[11px] text-white/25">
+          {t('sj.taste.fromNRatings').replace(
+            '{n}',
+            String(world.tags.reduce((max, tg) => Math.max(max, tg.n), 0)),
+          )}
+        </p>
       </>,
     );
   }
