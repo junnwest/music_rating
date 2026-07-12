@@ -437,6 +437,9 @@ struct SearchArtist: Codable, Identifiable {
 // RPC param payloads. supabase-swift's `params:` takes `some Encodable`, so a heterogeneous
 // dictionary literal (["q": q, "lim": 30] — String + Int) doesn't type-check; use a struct.
 private struct SearchParams: Encodable { let q: String; let lim: Int }
+// Telemetry row logged when a search returns nothing — feeds the MB-gap recovery signal
+// (the pipeline recovers repeatedly-missed, truly-absent artists from Deezer).
+private struct SearchMiss: Encodable { let query: String; let type: String; let db_count: Int }
 private struct ArtistReleasesParams: Encodable { let p_artist_id: String; let lim: Int }
 
 @Observable
@@ -478,6 +481,17 @@ class SearchViewModel {
             .value) ?? []
 
         (albumResults, songResults, artistResults) = await (albumsTask, songsTask, artistsTask)
+
+        // When the catalog returns NOTHING for a real query, log a search miss. This is the
+        // demand signal that drives MB-gap recovery: the pipeline recovers an artist from Deezer
+        // once the same truly-absent (db_count 0) query has been searched enough times and it
+        // exact-matches a real Deezer artist. Fire-and-forget telemetry; failure is harmless.
+        if albumResults.isEmpty && artistResults.isEmpty && songResults.isEmpty {
+            let missQuery = q.lowercased()
+            Task { try? await supabase.from("search_misses")
+                .insert(SearchMiss(query: missQuery, type: "ios_search", db_count: 0))
+                .execute() }
+        }
     }
 
     // Raced against a timeout below -- this step alone has no dedicated

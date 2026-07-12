@@ -55,11 +55,16 @@ function tokenSetEqual(a: string, b: string): boolean {
  * any order — catches "Hoshino Gen" ↔ "Gen Hoshino"); prefer most fans. Pure romanization
  * variants (e.g. "shik" vs "sik") are intentionally NOT matched — missing > wrong.
  */
-function pickArtist(cands: DzArtist[], rawName: string): DzArtist | null {
+// VA/classical-tier guard: an artist with hundreds of Deezer "albums" is a composer / Various-
+// Artists-style entity (Mozart=432, Rachmaninov=394) — the Deezer analogue of the MB "Mozart
+// clog", and virtually always already in MB anyway. Never Deezer-ingest those (they'd pollute).
+const MAX_DEEZER_ALBUMS = 100;
+export function pickArtist(cands: DzArtist[], rawName: string): DzArtist | null {
   const want = normalizeStr(rawName);
-  const exact = cands.filter(c => normalizeStr(c.name) === want).sort((a, b) => b.nbFan - a.nbFan);
+  const pool = cands.filter(c => c.nbAlbum <= MAX_DEEZER_ALBUMS);
+  const exact = pool.filter(c => normalizeStr(c.name) === want).sort((a, b) => b.nbFan - a.nbFan);
   if (exact[0]) return exact[0];
-  const ts = cands.filter(c => tokenSetEqual(c.name, rawName)).sort((a, b) => b.nbFan - a.nbFan);
+  const ts = pool.filter(c => tokenSetEqual(c.name, rawName)).sort((a, b) => b.nbFan - a.nbFan);
   return ts[0] ?? null;
 }
 
@@ -82,14 +87,44 @@ async function findOrCreateArtist(db: DB, dz: DzArtist, country: string | null):
   return id;
 }
 
-async function ingestArtist(db: DB, dz: DzArtist, country: string | null): Promise<number> {
+// Cross-source dedup: is this Deezer artist ALREADY in our catalog under any other source
+// (almost always MusicBrainz)? Checks the search_artists RPC for an exact normalized match on
+// name / native name / alias. Prevents the same real artist getting two rows (one MB, one
+// Deezer) — the failure mode that already produced 5 dupes (Stromae, Damso, …) because MB's
+// name-resolve failed on the queue string even though the artist was in the catalog.
+async function existingCatalogArtist(db: DB, name: string): Promise<string | null> {
+  const { data } = await db.rpc('search_artists', { q: name, lim: 6 });
+  const norm = normalizeStr(name);
+  const hit = (data ?? []).find((c: any) =>
+    normalizeStr(c.name ?? '') === norm ||
+    normalizeStr(c.name_native ?? '') === norm ||
+    (c.aliases ?? []).some((a: string) => normalizeStr(a) === norm));
+  return (hit?.id as string) ?? null;
+}
+
+/**
+ * Ingest a Deezer artist. Returns the number of release groups added, or -1 if SKIPPED because
+ * the artist is already in the catalog under another source (cross-source dedup guard).
+ */
+export async function ingestDeezerArtist(db: DB, dz: DzArtist, country: string | null): Promise<number> {
+  // Already Deezer-ingested (this exact Deezer id)? → reuse that row (a re-run must not duplicate).
+  const { data: priorDz } = await db.from('artist_external_ids')
+    .select('artist_id').eq('source', 'deezer').eq('external_id', String(dz.id)).maybeSingle();
+  if (!priorDz?.artist_id) {
+    // New Deezer artist → refuse if a same-named artist already exists (MB or other source).
+    if (await existingCatalogArtist(db, dz.name)) return -1;
+  }
   const artistId = await findOrCreateArtist(db, dz, country);
   const albums = (await artistAlbums(dz.id)).filter(a => a.recordType !== 'compilation'); // skip VA comps
-  const seenKey = new Set<string>();
+  // Release-group idempotency: Deezer RGs have no stable external key (random-UUID insert), so
+  // seed the seen-set with the artist's EXISTING album keys — otherwise a re-ingest (or an
+  // artist that already had albums from another source) duplicates every release group.
+  const { data: existingRgs } = await db.from('release_groups').select('title').eq('primary_artist_id', artistId);
+  const seenKey = new Set<string>((existingRgs ?? []).map((r: any) => releaseGroupKey(r.title as string)));
   let groups = 0;
   for (const al of albums) {
     const key = releaseGroupKey(al.title);
-    if (seenKey.has(key)) continue;        // collapse editions within this artist
+    if (seenKey.has(key)) continue;        // collapse editions + skip already-present albums
     seenKey.add(key);
     const detail = await albumWithTracks(al.id, true);
     if (!detail || detail.tracks.length === 0) continue;
@@ -159,9 +194,14 @@ export async function runDeezerFallback(db: DB, opts: { limit?: number; write?: 
     log(`  ✓ ${(r as any).name.padEnd(26)} → Deezer ${hit.id} "${hit.name}" (${hit.nbFan} fans, ${hit.nbAlbum} albums)${country ? ` [${country}]` : ''}`);
     if (write) {
       try {
-        const g = await ingestArtist(db, hit, country);
-        await db.from('artist_ingestion_queue').update({ status: 'done', processed_at: now(), error: 'deezer-fallback', releases_added: g }).eq('id', (r as any).id);
-        res.ingested += g; log(`      ingested ${g} groups`);
+        const g = await ingestDeezerArtist(db, hit, country);
+        if (g < 0) {
+          await db.from('artist_ingestion_queue').update({ status: 'done', processed_at: now(), error: 'already-in-catalog' }).eq('id', (r as any).id);
+          log(`      already in catalog under another source — skipped (no duplicate)`);
+        } else {
+          await db.from('artist_ingestion_queue').update({ status: 'done', processed_at: now(), error: 'deezer-fallback', releases_added: g }).eq('id', (r as any).id);
+          res.ingested += g; log(`      ingested ${g} groups`);
+        }
       } catch (e) { log(`      ERROR: ${(e as Error).message}`); await bump(r); }
     }
   }

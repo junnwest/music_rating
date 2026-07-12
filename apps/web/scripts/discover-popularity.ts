@@ -14,16 +14,29 @@
  * Hits Last.fm (fast) + MusicBrainz for the minority of chart entries without an MBID → run during
  * a pipeline pause to avoid MB throttling.
  *
+ * SOURCE-AGNOSTIC (2026-07-11): a charting artist MusicBrainz doesn't have is no longer dropped —
+ * it's recovered from Deezer (famous-first), so collection priority is POPULARITY, not source.
+ * The Deezer ingest is cross-source-dedup + album-cap guarded, so it can't duplicate an MB artist.
+ * (Being anti-commercial in taste doesn't mean it's OK to be missing artists people actually look
+ * for.) --no-deezer disables that step; --deezer-limit caps it.
+ *
  *   npx tsx --env-file=.env.local scripts/discover-popularity.ts --dry-run
- *   npx tsx --env-file=.env.local scripts/discover-popularity.ts --limit=3000
+ *   npx tsx --env-file=.env.local scripts/discover-popularity.ts --limit=3000 --deezer-limit=200
  */
 import { getDB, resolveArtist } from './mb-ingest';
+import { pickArtist, ingestDeezerArtist } from './mb-deezer-fallback';
+import { searchArtists as dzSearchArtists } from './deezer-client';
 
 const KEY = process.env.LASTFM_API_KEY;
 const args = process.argv.slice(2);
 const DRY = args.includes('--dry-run');
 const arg = (f: string) => args.find(a => a.startsWith(`${f}=`))?.split('=').slice(1).join('=');
 const LIMIT = arg('--limit') ? parseInt(arg('--limit')!, 10) : 3000;
+// Source-agnostic popularity: charting artists MB doesn't have are recovered from Deezer, so
+// collection priority is POPULARITY, not source. Bounded + confident-match + cross-source-dedup
+// guarded (in ingestDeezerArtist). --no-deezer disables; --deezer-limit caps the Deezer work.
+const DEEZER = !args.includes('--no-deezer');
+const DEEZER_LIMIT = arg('--deezer-limit') ? parseInt(arg('--deezer-limit')!, 10) : 200;
 const GLOBAL_PAGES = arg('--global-pages') ? parseInt(arg('--global-pages')!, 10) : 4; // 500/page
 const GEO_PAGES = arg('--geo-pages') ? parseInt(arg('--geo-pages')!, 10) : 1;
 const BASE = arg('--base') ?? '2018-01-01T00:00:00Z'; // earlier than seed/prestige/tail → famous first
@@ -82,9 +95,10 @@ async function main() {
   const needResolve = cands.filter(c => !c.mbid);
   console.log(`  resolving ${needResolve.length} without MBID via MusicBrainz…`);
   let resolved = 0, dropped = 0;
+  const nonMb: Cand[] = []; // charting but NOT in MusicBrainz → Deezer-recovery candidates (step 5)
   for (const c of needResolve) {
     const r = await resolveArtist(c.name, null);
-    if (r.best && !r.ambiguous) { c.mbid = r.best.id; resolved++; } else dropped++;
+    if (r.best && !r.ambiguous) { c.mbid = r.best.id; resolved++; } else { dropped++; nonMb.push(c); }
   }
   cands = cands.filter(c => c.mbid);
   // dedupe by MBID (an artist can chart globally AND in several countries / under name+mbid both)
@@ -117,13 +131,32 @@ async function main() {
     return { name, source: 'mbid', source_id: c.mbid!, status: 'pending', created_at: new Date(base + i * 1000).toISOString() };
   });
 
-  console.log(`[popularity] to queue: ${rows.length} (famous-first)${DRY ? '  [DRY RUN]' : ''}`);
-  if (DRY) { console.log('  top 15:', ranked.slice(0, 15).map(c => `${c.name}(${(c.listeners/1000).toFixed(0)}k)`).join(', ')); return; }
-  for (let i = 0; i < rows.length; i += 500) {
-    const { error } = await db.from('artist_ingestion_queue').upsert(rows.slice(i, i + 500), { onConflict: 'name,source', ignoreDuplicates: true });
-    if (error) { console.error(`  ! batch ${i}: ${error.message}`); process.exit(1); }
+  console.log(`[popularity] to queue (MusicBrainz): ${rows.length} (famous-first)${DRY ? '  [DRY RUN]' : ''}`);
+  if (DRY) console.log('  top 15:', ranked.slice(0, 15).map(c => `${c.name}(${(c.listeners / 1000).toFixed(0)}k)`).join(', '));
+  if (!DRY) {
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await db.from('artist_ingestion_queue').upsert(rows.slice(i, i + 500), { onConflict: 'name,source', ignoreDuplicates: true });
+      if (error) { console.error(`  ! batch ${i}: ${error.message}`); process.exit(1); }
+    }
+    const { count } = await db.from('artist_ingestion_queue').select('id', { count: 'exact', head: true }).eq('source', 'mbid').eq('status', 'pending');
+    console.log(`[popularity] queued ${rows.length}. Total source='mbid' pending: ${count}. Most-famous drain first.`);
   }
-  const { count } = await db.from('artist_ingestion_queue').select('id', { count: 'exact', head: true }).eq('source', 'mbid').eq('status', 'pending');
-  console.log(`[popularity] queued ${rows.length}. Total source='mbid' pending: ${count}. Most-famous drain first.`);
+
+  // ── 5. source-agnostic: charting artists MusicBrainz DOESN'T have → recover from Deezer,
+  //       famous-first, so collection priority is popularity (not source). The ingest is
+  //       cross-source-dedup + album-cap guarded, so this can't duplicate an MB artist. ──
+  if (DEEZER && nonMb.length) {
+    const dzRanked = [...nonMb].sort((a, b) => b.listeners - a.listeners).slice(0, DEEZER_LIMIT);
+    console.log(`[popularity] ${nonMb.length} charting artists not in MB → trying Deezer (top ${dzRanked.length})${DRY ? '  [DRY RUN]' : ''}…`);
+    let dz = 0, skip = 0, none = 0;
+    for (const c of dzRanked) {
+      const hit = pickArtist(await dzSearchArtists(c.name), c.name);
+      if (!hit) { none++; continue; }
+      if (DRY) { console.log(`  [dz] ${c.name} (${(c.listeners / 1000).toFixed(0)}k) → Deezer "${hit.name}" (${hit.nbFan} fans, ${hit.nbAlbum} albums)`); dz++; continue; }
+      const g = await ingestDeezerArtist(db, hit, null);
+      if (g < 0) skip++; else { dz++; console.log(`  [dz] ${c.name} → "${hit.name}" — ${g} groups`); }
+    }
+    console.log(`[popularity] Deezer: ${dz} ${DRY ? 'matched' : 'ingested/matched'} · ${skip} already in catalog · ${none} no Deezer match`);
+  }
 }
 main().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); });
