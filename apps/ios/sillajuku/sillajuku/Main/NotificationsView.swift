@@ -25,7 +25,10 @@ struct AppNotification: Codable, Identifiable {
     struct Actor: Codable {
         let username: String?
         let displayName: String?
-        enum CodingKeys: String, CodingKey { case username; case displayName = "display_name" }
+        let avatarUrl: String?
+        enum CodingKeys: String, CodingKey {
+            case username; case displayName = "display_name"; case avatarUrl = "avatar_url"
+        }
         var handle: String { username ?? displayName ?? String(localized: "someone") }
     }
 
@@ -225,7 +228,7 @@ struct NotificationsView: View {
         isLoading = true
         notifications = (try? await supabase
             .from("notifications")
-            .select("id, type, created_at, rating_id, mix_id, mix_share_id, actor_id, track_rating_id, actor:actor_id(username, display_name), rating:rating_id(release_groups(id, title, artist_display, native_title, cover_url, artists!release_groups_primary_artist_id_fkey(name_native))), mix:mix_id(id, user_id, name, description, is_public, is_default, created_at), mix_share:mix_share_id(mixes(id, user_id, name, description, is_public, is_default, created_at))")
+            .select("id, type, created_at, rating_id, mix_id, mix_share_id, actor_id, track_rating_id, actor:actor_id(username, display_name, avatar_url), rating:rating_id(release_groups(id, title, artist_display, native_title, cover_url, artists!release_groups_primary_artist_id_fkey(name_native))), mix:mix_id(id, user_id, name, description, is_public, is_default, created_at), mix_share:mix_share_id(mixes(id, user_id, name, description, is_public, is_default, created_at))")
             .eq("user_id", value: userId)
             .order("created_at", ascending: false)
             .limit(60)
@@ -255,17 +258,51 @@ struct NotificationsView: View {
 private struct NotificationRow: View {
     let notif: AppNotification
 
+    // Every notification type in this system is actor-driven (like/comment/follow/mix_like/
+    // mix_share_like/mix_share_comment/track_rating_like/track_rating_comment all set actor_id
+    // to the acting user) -- so the actor's own avatar is always the more informative image, with
+    // the old icon-only circle demoted to a small type badge in the corner (who did it + what
+    // they did, instead of just what).
+    private var avatar: some View {
+        Group {
+            if let urlStr = notif.actor?.avatarUrl, let url = URL(string: urlStr) {
+                CachedImage(url: url) { defaultAvatar }
+                    .scaledToFill()
+            } else {
+                defaultAvatar
+            }
+        }
+        .frame(width: 38, height: 38)
+        .clipShape(Circle())
+    }
+
+    private var defaultAvatar: some View {
+        Image(systemName: "person.circle.fill")
+            .resizable()
+            .scaledToFit()
+            .foregroundStyle(Color(uiColor: .systemGray3))
+    }
+
+    private var typeBadge: some View {
+        ZStack {
+            Circle()
+                .fill(notif.iconColor)
+                .frame(width: 18, height: 18)
+            Image(systemName: notif.iconName)
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(.white)
+        }
+        .overlay(Circle().stroke(Color.sjCream, lineWidth: 2))
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 13) {
-            // Icon
-            ZStack {
-                Circle()
-                    .fill(notif.iconColor.opacity(0.12))
-                    .frame(width: 38, height: 38)
-                Image(systemName: notif.iconName)
-                    .font(.system(size: 15))
-                    .foregroundStyle(notif.iconColor)
+            ZStack(alignment: .bottomTrailing) {
+                avatar
+                typeBadge
+                    .offset(x: 3, y: 3)
             }
+            .accessibilityHidden(true) // bodyText alongside already names the actor and the action
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(notif.bodyText)
