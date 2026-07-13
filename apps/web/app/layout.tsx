@@ -36,10 +36,30 @@ export const metadata: Metadata = {
   },
 };
 
+// Site-wide Organization markup (not homepage-only) -- this represents the publisher/brand
+// itself, not any one page's content, so it's static and cheap to include everywhere. Feeds
+// Google's Knowledge Panel. logo must be genuinely transparent, not just visually square --
+// Google renders it on its own white UI chrome, and logo-flower.png (unlike app/icon.png, which
+// has the App Store icon's cream background baked in) was confirmed via Pillow to have real
+// alpha-transparent corners. Sitelinks Searchbox (WebSite + SearchAction) deliberately omitted --
+// confirmed via Google's own docs that this was deprecated Nov 2024 and produces no visible
+// result anymore.
+const organizationJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  name: 'sillajuku',
+  url: 'https://www.sillajuku.com',
+  logo: 'https://www.sillajuku.com/logo-flower.png',
+};
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={jakarta.variable} suppressHydrationWarning>
       <body className="bg-page text-ink font-sans">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd).replace(/</g, '\\u003c') }}
+        />
         <NextTopLoader color="#2979B7" height={2} showSpinner={false} />
         <ThemeProvider>
           <LanguageProvider>
