@@ -413,7 +413,10 @@ function Discovery({
   const { userId, ready } = useSession();
   const [tasteAlbums, setTasteAlbums] = useState<SJRelease[]>([]);
   const [personalized, setPersonalized] = useState<SJRelease[]>([]);
+  const [worlds, setWorlds] = useState<{ label: string; albums: SJRelease[] }[]>([]);
+  const [blockedArtists, setBlockedArtists] = useState<Set<string>>(new Set());
   const [popular, setPopular] = useState<SJRelease[]>([]);
+  const [newReleases, setNewReleases] = useState<SJRelease[]>([]);
   const [trending, setTrending] = useState<SJRelease[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -434,49 +437,73 @@ function Discovery({
       }));
 
     (async () => {
-      // Popular: recent albums/EPs with covers (matches iOS loadPopular)
-      const popularP = supabase!
-        .from('release_groups')
-        .select(RG_COLS)
-        .in('release_group_type', ['album', 'ep'])
-        .not('cover_url', 'is', null)
-        .order('first_release_date', { ascending: false, nullsFirst: false })
-        .limit(50)
-        .then(({ data }) => {
-          if (!cancelled) setPopular(mapRows(data as any[]));
-        });
-
-      // Trending: most-rated in last 30 days
-      const trendingP = (async () => {
-        const cutoff = new Date(Date.now() - 30 * 86400e3).toISOString();
-        const { data } = await supabase!
-          .from('ratings')
-          .select(`release_group_id, release_groups(${RG_COLS})`)
-          .gt('created_at', cutoff)
-          .order('created_at', { ascending: false })
-          .limit(500);
-        if (cancelled) return;
-        const counts: Record<string, { count: number; release: SJRelease }> = {};
-        for (const row of (data as any[] | null) ?? []) {
-          const rg = row.release_groups;
-          if (!rg || rg.release_group_type === 'single') continue;
-          const mapped = mapRows([rg])[0];
-          counts[row.release_group_id] = {
-            count: (counts[row.release_group_id]?.count ?? 0) + 1,
-            release: mapped,
-          };
+      // Popular (prestige-ranked) / New Releases / Trending (bot-weighted) —
+      // one globally-cached service-role route (/api/discovery). Falls back to
+      // the old client-side queries if it fails, so a route outage degrades
+      // rather than blanks the rows.
+      const globalP = (async () => {
+        try {
+          const res = await fetch('/api/discovery');
+          if (!res.ok) throw new Error(`discovery ${res.status}`);
+          const payload: { popular: any[]; newReleases: any[]; trending: any[] } =
+            await res.json();
+          if (cancelled) return;
+          setPopular(mapRows(payload.popular));
+          setNewReleases(mapRows(payload.newReleases));
+          setTrending(mapRows(payload.trending));
+          return;
+        } catch (err) {
+          console.warn('[search] discovery route failed, using fallback:', err);
         }
-        setTrending(
-          Object.values(counts)
-            .sort((a, b) => b.count - a.count)
-            .map((c) => c.release)
-            .slice(0, 25),
-        );
+
+        // Fallback: newest-first list (the old "Popular") only — the old
+        // client-side trending had no bot filter, so it's not worth keeping.
+        const { data } = await supabase!
+          .from('release_groups')
+          .select(RG_COLS)
+          .in('release_group_type', ['album', 'ep'])
+          .not('cover_url', 'is', null)
+          .order('first_release_date', { ascending: false, nullsFirst: false })
+          .limit(50);
+        if (!cancelled) setNewReleases(mapRows(data as any[]));
       })();
 
-      // From Your Taste (artists rated ≥4) + For You (all rated artists)
+      // From Your Taste (loved artists) + For You (taste-cluster reranked
+      // discovery) — served by /api/recommendations (server-side, low-rated
+      // artists suppressed, already-rated albums excluded). Falls back to the
+      // old client-side loved-artist queries if the route fails, so a route
+      // outage degrades rather than blanks the rows.
       const personalP = (async () => {
         if (!userId) return;
+        try {
+          const { data: sessionData } = await supabase!.auth.getSession();
+          const token = sessionData.session?.access_token;
+          if (!token) throw new Error('no session');
+          const res = await fetch('/api/recommendations', {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (!res.ok) throw new Error(`recs ${res.status}`);
+          const payload: {
+            fromYourTaste: any[];
+            forYou: any[];
+            worlds?: { label: string; albums: any[] }[];
+            blockedArtists?: string[];
+          } = await res.json();
+          if (cancelled) return;
+          setTasteAlbums(mapRows(payload.fromYourTaste));
+          setPersonalized(mapRows(payload.forYou));
+          setWorlds(
+            (payload.worlds ?? []).map((w) => ({ label: w.label, albums: mapRows(w.albums) })),
+          );
+          // Popular/Trending are assembled from globally-shared queries — the
+          // per-user ≤1.5★ artist suppression is applied to them client-side.
+          setBlockedArtists(new Set(payload.blockedArtists ?? []));
+          return;
+        } catch (err) {
+          console.warn('[search] recommendations route failed, using fallback:', err);
+        }
+
+        // Fallback: albums by artists the user rated ≥ 4 (client-side).
         const { data: ratedRows } = await supabase!
           .from('ratings')
           .select('score, release_groups(artist_display)')
@@ -484,9 +511,6 @@ function Discovery({
           .limit(200);
         if (cancelled) return;
         const all = (ratedRows as any[] | null) ?? [];
-        const allArtists = Array.from(
-          new Set(all.map((r) => r.release_groups?.artist_display).filter(Boolean)),
-        ).slice(0, 50);
         const lovedArtists = Array.from(
           new Set(
             all
@@ -496,17 +520,6 @@ function Discovery({
           ),
         ).slice(0, 30);
 
-        if (allArtists.length > 0) {
-          const { data } = await supabase!
-            .from('release_groups')
-            .select(RG_COLS)
-            .in('artist_display', allArtists)
-            .in('release_group_type', ['album', 'ep'])
-            .not('cover_url', 'is', null)
-            .order('first_release_date', { ascending: false, nullsFirst: false })
-            .limit(60);
-          if (!cancelled) setPersonalized(mapRows(data as any[]));
-        }
         if (lovedArtists.length > 0) {
           const { data } = await supabase!
             .from('release_groups')
@@ -536,7 +549,7 @@ function Discovery({
         }
       })();
 
-      await Promise.all([popularP, trendingP, personalP]);
+      await Promise.all([globalP, personalP]);
       if (!cancelled) setLoading(false);
     })();
     return () => {
@@ -545,7 +558,10 @@ function Discovery({
   }, [ready, userId]);
 
   const visible = (albums: SJRelease[]) =>
-    albums.filter((a) => !ratedIds.has(a.id) || sessionRatedIds.has(a.id));
+    albums.filter(
+      (a) =>
+        (!ratedIds.has(a.id) || sessionRatedIds.has(a.id)) && !blockedArtists.has(a.artist),
+    );
 
   if (loading) {
     return (
@@ -567,8 +583,13 @@ function Discovery({
   const sections: { title: string; albums: SJRelease[] }[] = [
     { title: t('sj.search.fromYourTaste'), albums: visible(tasteAlbums) },
     { title: t('sj.search.forYou'), albums: visible(personalized) },
+    ...worlds.map((w) => ({
+      title: t('sj.search.becauseYouLove').replace('{genre}', w.label),
+      albums: visible(w.albums),
+    })),
     { title: t('sj.search.popular'), albums: visible(popular) },
     { title: t('sj.search.trending'), albums: visible(trending) },
+    { title: t('sj.search.newReleases'), albums: visible(newReleases) },
   ].filter((s) => s.albums.length > 0);
 
   return (
