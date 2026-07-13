@@ -30,11 +30,17 @@ struct UserRating: Codable, Identifiable {
 }
 
 struct SongRatingRow: Identifiable {
+    // The track_ratings row's own uuid -- distinct from `id` (String, keyed on recordingId,
+    // used throughout for view identity/diffing). This is what track_rating_likes/
+    // track_rating_comments/notifications.track_rating_id actually reference.
+    let ratingId: UUID
     let recordingId: UUID
     let score: Double?
     let eloScore: Double?
+    let reviewText: String?
     let trackTitle: String?
     let release: ReleaseRef
+    let createdAt: Date
 
     var id: String { recordingId.uuidString }
 }
@@ -232,6 +238,7 @@ class ProfileViewModel {
     var likedRatingIds: Set<UUID> = []
     var mixShares: [MixSharePost] = []
     var likedMixShareIds: Set<UUID> = []
+    var likedSongRatingIds: Set<UUID> = []
 
     var followingCount = 0
     var followerCount  = 0
@@ -340,9 +347,12 @@ class ProfileViewModel {
         // (see InstinctTrackRatingViewModel.finalize()) — before that threshold,
         // elo_score is the only place the rating actually lives.
         struct TrackRatingNew: Codable {
+            let id: UUID
             let recordingId: UUID
             let score: Double?
             let eloScore: Double?
+            let reviewText: String?
+            let createdAt: Date
             let recordings: RecordingInfo
             struct RecordingInfo: Codable {
                 let id: UUID; let title: String; let artistDisplay: String?
@@ -351,13 +361,14 @@ class ProfileViewModel {
                 }
             }
             enum CodingKeys: String, CodingKey {
-                case recordingId = "recording_id"; case score
-                case eloScore = "elo_score"; case recordings
+                case id, recordingId = "recording_id"; case score
+                case eloScore = "elo_score"; case reviewText = "review_text"
+                case createdAt = "created_at"; case recordings
             }
         }
         let rawSongs: [TrackRatingNew] = (try? await supabase
             .from("track_ratings")
-            .select("recording_id, score, elo_score, recordings(id, title, artist_display)")
+            .select("id, recording_id, score, elo_score, review_text, created_at, recordings(id, title, artist_display)")
             .eq("user_id", value: user.id)
             .order("created_at", ascending: false)
             .limit(60)
@@ -413,13 +424,17 @@ class ProfileViewModel {
                     primaryArtist: rg?.primaryArtist
                 )
                 return SongRatingRow(
+                    ratingId:    r.id,
                     recordingId: r.recordingId,
                     score:       r.score,
                     eloScore:    r.eloScore,
+                    reviewText:  r.reviewText,
                     trackTitle:  r.recordings.title,
-                    release:     ref
+                    release:     ref,
+                    createdAt:   r.createdAt
                 )
             }
+            await loadSongRatingSocialData()
         }
 
         if let r = try? await supabase.from("follows")
@@ -502,6 +517,68 @@ class ProfileViewModel {
         } catch {
             if wasLiked { likedMixShareIds.insert(post.id); likeCounts[post.id] = (likeCounts[post.id] ?? 0) + 1 }
             else { likedMixShareIds.remove(post.id); likeCounts[post.id] = max(0, (likeCounts[post.id] ?? 1) - 1) }
+        }
+    }
+
+    // Song-rating counterpart to loadMixShareSocialData -- same shape, keyed on
+    // SongRatingRow.ratingId (the track_ratings row's own id, what track_rating_likes/
+    // track_rating_comments actually reference) rather than recordingId.
+    private func loadSongRatingSocialData() async {
+        guard !songRatings.isEmpty, let userId = supabase.auth.currentUser?.id else { return }
+        let songRatingIds = songRatings.map(\.ratingId.uuidString)
+        struct IdRow: Codable {
+            let trackRatingId: UUID
+            enum CodingKeys: String, CodingKey { case trackRatingId = "track_rating_id" }
+        }
+        if let rows: [IdRow] = try? await supabase
+            .from("track_rating_likes").select("track_rating_id")
+            .in("track_rating_id", values: songRatingIds).execute().value {
+            var counts: [UUID: Int] = [:]
+            for r in rows { counts[r.trackRatingId, default: 0] += 1 }
+            for (k, v) in counts { likeCounts[k] = v }
+        }
+        if let rows: [IdRow] = try? await supabase
+            .from("track_rating_comments").select("track_rating_id")
+            .in("track_rating_id", values: songRatingIds).execute().value {
+            var counts: [UUID: Int] = [:]
+            for r in rows { counts[r.trackRatingId, default: 0] += 1 }
+            for (k, v) in counts { commentCounts[k] = v }
+        }
+        if let rows: [IdRow] = try? await supabase
+            .from("track_rating_likes").select("track_rating_id")
+            .eq("user_id", value: userId)
+            .in("track_rating_id", values: songRatingIds).execute().value {
+            likedSongRatingIds = Set(rows.map(\.trackRatingId))
+        }
+    }
+
+    func toggleSongLike(ratingId: UUID) async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        let wasLiked = likedSongRatingIds.contains(ratingId)
+        if wasLiked {
+            likedSongRatingIds.remove(ratingId)
+            likeCounts[ratingId] = max(0, (likeCounts[ratingId] ?? 1) - 1)
+        } else {
+            likedSongRatingIds.insert(ratingId)
+            likeCounts[ratingId] = (likeCounts[ratingId] ?? 0) + 1
+        }
+        do {
+            if wasLiked {
+                try await supabase.from("track_rating_likes").delete()
+                    .eq("user_id", value: userId).eq("track_rating_id", value: ratingId).execute()
+            } else {
+                struct Payload: Encodable {
+                    let userId: UUID; let trackRatingId: UUID
+                    enum CodingKeys: String, CodingKey {
+                        case userId = "user_id"; case trackRatingId = "track_rating_id"
+                    }
+                }
+                try await supabase.from("track_rating_likes")
+                    .insert(Payload(userId: userId, trackRatingId: ratingId)).execute()
+            }
+        } catch {
+            if wasLiked { likedSongRatingIds.insert(ratingId); likeCounts[ratingId] = (likeCounts[ratingId] ?? 0) + 1 }
+            else { likedSongRatingIds.remove(ratingId); likeCounts[ratingId] = max(0, (likeCounts[ratingId] ?? 1) - 1) }
         }
     }
 
@@ -590,17 +667,20 @@ enum ProfileRatedItem: Identifiable {
 // up here too instead of only in the Home feed.
 enum ProfilePost: Identifiable {
     case rating(UserRating)
+    case song(SongRatingRow)
     case mixShare(MixSharePost)
 
     var id: String {
         switch self {
         case .rating(let r):   return "rating-\(r.id.uuidString)"
+        case .song(let s):     return "song-\(s.id)"
         case .mixShare(let s): return "mixshare-\(s.id.uuidString)"
         }
     }
     var createdAt: Date {
         switch self {
         case .rating(let r):   return r.createdAt
+        case .song(let s):     return s.createdAt
         case .mixShare(let s): return s.createdAt
         }
     }
@@ -621,13 +701,6 @@ struct ProfileView: View {
     // auto-open the existing showSettings sheet, then reset to false.
     @Binding var openSettingsTrigger: Bool
     @State private var activeTab: ProfileTab = .rated
-    // Live swipe-tracking state for tabContent -- dragTranslation is set
-    // directly (unanimated) in onChanged, so the content visually follows
-    // the finger 1:1 and holds wherever the finger stops. contentWidth is
-    // measured once via a width-only GeometryReader (safe -- the parent
-    // already determines width, unlike height).
-    @State private var dragTranslation: CGFloat = 0
-    @State private var contentWidth: CGFloat = UIScreen.main.bounds.width
     // Lists/Stats tabs are often shorter than the screen (e.g. 2 mixes) --
     // without a height floor, tabContent's hit-test area (contentShape +
     // gesture) only covers its actual short content, so swiping over the
@@ -783,102 +856,11 @@ struct ProfileView: View {
         }
     }
 
-    // Which tab is being dragged into view alongside the active one -- only
-    // non-nil while actively dragging (dragTranslation != 0), so at rest
-    // this is still just one page, same as before.
-    private var adjacentTab: ProfileTab? {
-        guard dragTranslation != 0, let idx = ProfileTab.allCases.firstIndex(of: activeTab) else { return nil }
-        if dragTranslation < 0 {
-            return idx < ProfileTab.allCases.count - 1 ? ProfileTab.allCases[idx + 1] : nil
-        } else {
-            return idx > 0 ? ProfileTab.allCases[idx - 1] : nil
-        }
-    }
-
-    private struct TabContentWidthKey: PreferenceKey {
-        static var defaultValue: CGFloat = 0
-        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-    }
-
-    // Real 1:1 finger tracking: the active page is offset by dragTranslation
-    // exactly as set in onChanged (no animation applied to that write), so
-    // holding the finger still mid-drag leaves the content exactly where it
-    // is. The adjacent page (only rendered while dragging) slides in from
-    // the correct side in lockstep. Only on release does anything animate --
-    // either finishing the page turn or springing back.
+    // Floor, not a cap -- short tabs (e.g. Lists with 2 mixes) still claim the rest of the
+    // visible screen so the swipe gesture works there too; tabs taller than the viewport are
+    // unaffected. See SwipeableTabPager for the swipe/sensitivity/anti-navigation behavior.
     private var tabContent: some View {
-        ZStack(alignment: .top) {
-            tabPage(activeTab)
-                .frame(width: contentWidth, alignment: .top)
-                .offset(x: dragTranslation)
-            if let adjacentTab {
-                tabPage(adjacentTab)
-                    .frame(width: contentWidth, alignment: .top)
-                    .offset(x: dragTranslation + (dragTranslation < 0 ? contentWidth : -contentWidth))
-            }
-        }
-        // Floor, not a cap -- short tabs (e.g. Lists with 2 mixes) still
-        // claim the rest of the visible screen so the swipe gesture below
-        // works there too; tabs taller than the viewport are unaffected.
-        .frame(minHeight: tabMinHeight, alignment: .top)
-        .background(
-            GeometryReader { geo in
-                Color.clear.preference(key: TabContentWidthKey.self, value: geo.size.width)
-            }
-        )
-        .onPreferenceChange(TabContentWidthKey.self) { width in
-            if width > 0 { contentWidth = width }
-        }
-        .clipped()
-        .contentShape(Rectangle())
-        .highPriorityGesture(tabSwipeGesture)
-    }
-
-    // Verified directly (via idb swipe + screenshot) that plain .gesture()
-    // does NOT out-prioritize a child's own tap gesture -- a swipe here was
-    // still being read as a tap on a NavigationLink underneath and pushed
-    // into its destination instead of switching tabs. Only
-    // .highPriorityGesture forces this to win once it actually recognizes a
-    // drag. It only "wins" after minimumDistance is crossed -- a real tap
-    // (released before that) never triggers this gesture at all, so it
-    // still falls through to the view underneath normally.
-    private var tabSwipeGesture: some Gesture {
-        DragGesture(minimumDistance: 15)
-            .onChanged { value in
-                guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                let idx = ProfileTab.allCases.firstIndex(of: activeTab) ?? 0
-                var t = value.translation.width
-                if t > 0, idx == 0 { t = 0 }                                    // can't go before the first tab
-                if t < 0, idx == ProfileTab.allCases.count - 1 { t = 0 }         // or past the last one
-                dragTranslation = t
-            }
-            .onEnded { value in
-                let idx = ProfileTab.allCases.firstIndex(of: activeTab) ?? 0
-                let threshold = contentWidth * 0.33
-                var newIdx = idx
-                if dragTranslation < -threshold, idx < ProfileTab.allCases.count - 1 {
-                    newIdx = idx + 1
-                } else if dragTranslation > threshold, idx > 0 {
-                    newIdx = idx - 1
-                }
-                if newIdx != idx {
-                    // Finish the page turn in the same direction the finger
-                    // was already moving, then swap activeTab and zero the
-                    // offset at the exact instant it completes -- the new
-                    // page is already sitting at that same visual position,
-                    // so the swap itself is imperceptible.
-                    withAnimation(.easeOut(duration: 0.22)) {
-                        dragTranslation = dragTranslation < 0 ? -contentWidth : contentWidth
-                    } completion: {
-                        activeTab = ProfileTab.allCases[newIdx]
-                        dragTranslation = 0
-                    }
-                } else {
-                    withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.82)) {
-                        dragTranslation = 0
-                    }
-                }
-            }
+        SwipeableTabPager(selection: $activeTab, minHeight: tabMinHeight, content: tabPage)
     }
 
     private var heroContent: some View {
@@ -1081,16 +1063,23 @@ struct ProfileView: View {
         }
     }
 
-    // Album ratings, in whatever order/filter the user picked, plus own mix
-    // shares merged in by recency -- only under the default "Recent" sort,
-    // since "top/bottom rated" and "A-Z" don't have a sensible place for a
-    // score-less mix share to slot into.
+    // Album + song ratings, in whatever order/filter the user picked, plus own mix shares merged
+    // in by recency -- only under the default "Recent" sort, since "top/bottom rated" and "A-Z"
+    // don't have a sensible place for a score-less mix share to slot into. Previously this
+    // compactMap only ever matched the .album case, so filtering to Songs in Posts view showed
+    // nothing but mix shares -- filteredItems already has exactly two cases, so a plain map
+    // covering both is exhaustive.
     private var postsFeed: [ProfilePost] {
-        let ratingPosts: [ProfilePost] = filteredItems.compactMap {
-            if case .album(let r) = $0 { return .rating(r) }
-            return nil
+        let ratingPosts: [ProfilePost] = filteredItems.map {
+            switch $0 {
+            case .album(let r): return .rating(r)
+            case .song(let s):  return .song(s)
+            }
         }
-        guard ratingSortOrder == .recent else { return ratingPosts }
+        // Mix shares are neither an album nor a song rating -- only belong in the unfiltered
+        // "All" view. This guard previously only checked sort order, so a mix share kept showing
+        // up even while filtered to Albums or Songs specifically.
+        guard ratingSortOrder == .recent, ratingTypeFilter == .all else { return ratingPosts }
         let sharePosts: [ProfilePost] = viewModel.mixShares.map { .mixShare($0) }
         return (ratingPosts + sharePosts).sorted { $0.createdAt > $1.createdAt }
     }
@@ -1202,7 +1191,14 @@ struct ProfileView: View {
                                 artistLine: item.artistLine,
                                 score: item.score,
                                 eloScore: item.eloScore,
-                                instinctCount: item.isSong ? viewModel.instinctSongCount : viewModel.instinctAlbumCount,
+                                // Total ratings of this type, not viewModel.instinctSongCount/
+                                // instinctAlbumCount (those only count rows that still carry an
+                                // elo_score) -- using the elo-only count undercounts as soon as
+                                // any manual-mode rating of the same type exists, since manual
+                                // ratings never carry elo_score, permanently stalling the reveal
+                                // for older Instinct-mode ratings even after the user has clearly
+                                // rated several more since.
+                                instinctCount: item.isSong ? viewModel.songRatings.count : viewModel.ratings.count,
                                 isSong: item.isSong,
                                 releaseType: item.releaseType
                             )
@@ -1268,7 +1264,28 @@ struct ProfileView: View {
     private func postCard(_ post: ProfilePost) -> some View {
         switch post {
         case .rating(let rating):     ratingCard(rating)
+        case .song(let song):         songCard(song)
         case .mixShare(let share):    mixShareCard(share)
+        }
+    }
+
+    private func songCard(_ song: SongRatingRow) -> some View {
+        ProfileSongPostCard(
+            song: song,
+            totalSongRatingsCount: viewModel.songRatings.count,
+            likesCount: viewModel.likeCounts[song.ratingId] ?? 0,
+            commentsCount: viewModel.commentCounts[song.ratingId] ?? 0,
+            isLiked: viewModel.likedSongRatingIds.contains(song.ratingId),
+            onLike: { await viewModel.toggleSongLike(ratingId: song.ratingId) }
+        )
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .contextMenu {
+            Button(role: .destructive) {
+                pendingDeleteItem = .song(song)
+            } label: {
+                Label("Delete Rating", systemImage: "trash")
+            }
         }
     }
 
@@ -1277,7 +1294,9 @@ struct ProfileView: View {
             rating: rating,
             likesCount: viewModel.likeCounts[rating.id] ?? 0,
             commentsCount: viewModel.commentCounts[rating.id] ?? 0,
-            instinctAlbumCount: viewModel.instinctAlbumCount,
+            // Total album ratings, not viewModel.instinctAlbumCount -- see the matching comment
+            // on the List-mode RatingListRow call above for why the elo-only count undercounts.
+            instinctAlbumCount: viewModel.ratings.count,
             isLiked: viewModel.likedRatingIds.contains(rating.id),
             onLike: { await viewModel.toggleLike(ratingId: rating.id) }
         )
@@ -2156,6 +2175,131 @@ struct ProfilePostCard: View {
         }
         .sheet(isPresented: $showLikers) {
             LikersSheetView(ratingId: rating.id)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+    }
+}
+
+// Song-rating counterpart to ProfilePostCard -- full parity now (migration 20260713000001 added
+// track_ratings.review_text + the track_rating_likes/track_rating_comments tables song ratings
+// were previously missing entirely). totalSongRatingsCount gates the elo-derived score reveal the
+// same way ProfilePostCard does for albums, but counts ALL of the user's song ratings rather than
+// only the ones that still carry an elo_score -- using an elo-only count undercounts once a user
+// has any manual-mode song ratings mixed in (those never carry elo_score), which was stalling the
+// reveal for older Instinct-mode ratings even after the user had clearly rated several more since.
+struct ProfileSongPostCard: View {
+    let song: SongRatingRow
+    let totalSongRatingsCount: Int
+    let likesCount: Int
+    let commentsCount: Int
+    let isLiked: Bool
+    let onLike: () async -> Void
+
+    @State private var showComments = false
+    @State private var showLikers = false
+
+    private var displayScore: Double? {
+        if let s = song.score { return s }
+        if let e = song.eloScore, totalSongRatingsCount >= 5 { return eloToDisplayScore(e) }
+        return nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationLink(value: song.release.asRelease) {
+                HStack(spacing: 13) {
+                    CoverImage(url: song.release.coverUrl)
+                        .frame(width: 80, height: 80)
+                        .accessibilityHidden(true) // title/artist text alongside already describes it
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Text(song.trackTitle ?? "Unknown Track")
+                                .font(.system(size: 17, weight: .bold))
+                                .foregroundStyle(Color.sjInk)
+                                .lineLimit(2)
+                            Text("Song")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(Color.sjAmber)
+                                .padding(.horizontal, 5).padding(.vertical, 2)
+                                .background(Color.sjAmber.opacity(0.12))
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                        }
+                        Text("\(song.release.displayTitle) · \(song.release.displayArtist)")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Color.sjMuted)
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if let score = displayScore {
+                        ScoreBadge(score: score)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 14)
+            .padding(.top, 14)
+            .padding(.bottom, 10)
+
+            if let text = song.reviewText, !text.isEmpty {
+                Text(text)
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color.sjInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 10)
+            }
+
+            HStack(spacing: 16) {
+                HStack(spacing: 5) {
+                    Button { Task { await onLike() } } label: {
+                        Image(systemName: isLiked ? "heart.fill" : "heart")
+                            .font(.system(size: 19, weight: .medium))
+                            .foregroundStyle(isLiked ? .red : Color.sjInk)
+                    }
+                    .buttonStyle(.plain)
+                    .animation(.easeInOut(duration: 0.15), value: isLiked)
+                    .accessibilityLabel(isLiked ? String(localized: "Unlike") : String(localized: "Like"))
+
+                    Button { showLikers = true } label: {
+                        Text("\(likesCount)")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(isLiked ? .red : Color.sjMuted)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                HStack(spacing: 5) {
+                    Button { showComments = true } label: {
+                        Image(systemName: "bubble.left")
+                            .font(.system(size: 19, weight: .medium)).foregroundStyle(Color.sjInk)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(String(localized: "View comments"))
+
+                    Text("\(commentsCount)")
+                        .font(.system(size: 14, weight: .medium)).foregroundStyle(Color.sjMuted)
+                }
+                Spacer()
+                Text(song.createdAt.relativeTimeString)
+                    .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+        }
+        .background(Color.sjSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 1)
+        .sheet(isPresented: $showComments) {
+            SongCommentSheetView(trackRatingId: song.ratingId)
+                .presentationDetents([.fraction(0.67), .large])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showLikers) {
+            SongLikersSheetView(trackRatingId: song.ratingId)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }

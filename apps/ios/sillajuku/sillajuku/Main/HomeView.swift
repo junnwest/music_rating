@@ -1488,6 +1488,85 @@ struct LikersSheetView: View {
     }
 }
 
+// 1:1 mirror of LikersSheetView, targeting track_rating_likes/track_rating_id instead of
+// rating_likes/rating_id -- song ratings have their own likes table (migration 20260713000001).
+struct SongLikersSheetView: View {
+    let trackRatingId: UUID
+
+    private struct LikerRow: Codable {
+        let userId: UUID
+        let profiles: LikerProfile?
+        struct LikerProfile: Codable {
+            let id: UUID
+            let username: String?
+            let displayName: String?
+            enum CodingKeys: String, CodingKey {
+                case id, username
+                case displayName = "display_name"
+            }
+            var handle: String { username ?? displayName ?? String(localized: "someone") }
+        }
+        enum CodingKeys: String, CodingKey {
+            case userId = "user_id"; case profiles
+        }
+    }
+
+    @State private var likers: [LikerRow] = []
+    @State private var isLoading = true
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if isLoading {
+                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if likers.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "heart").font(.system(size: 36)).foregroundStyle(Color.sjBorder)
+                        Text("No likes yet").font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.sjCream.ignoresSafeArea())
+                } else {
+                    List(Array(likers.enumerated()), id: \.offset) { _, liker in
+                        NavigationLink(value: UserProfileDestination(
+                            userId: liker.profiles?.id ?? liker.userId,
+                            handle: liker.profiles?.handle ?? String(localized: "someone")
+                        )) {
+                            HStack(spacing: 11) {
+                                Image(systemName: "person.circle.fill")
+                                    .font(.system(size: 32))
+                                    .foregroundStyle(Color(uiColor: .systemGray3))
+                                Text("@" + (liker.profiles?.handle ?? String(localized: "someone")))
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(Color.sjInk)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .listRowBackground(Color.sjSurface)
+                    }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .background(Color.sjCream.ignoresSafeArea())
+                }
+            }
+            .navigationTitle(likers.count == 1 ? String(localized: "1 Like") : String(format: String(localized: "%d Likes"), likers.count))
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: UserProfileDestination.self) { dest in
+                UserProfileView(userId: dest.userId, initialHandle: dest.handle)
+            }
+        }
+        .task { await load() }
+    }
+
+    private func load() async {
+        isLoading = true
+        likers = (try? await supabase
+            .from("track_rating_likes").select("user_id, profiles!track_rating_likes_user_id_fkey(id, username, display_name)")
+            .eq("track_rating_id", value: trackRatingId).execute().value) ?? []
+        isLoading = false
+    }
+}
+
 // MARK: - Shared Find People button
 
 struct FindPeopleLinkButton: View {

@@ -44,6 +44,11 @@ class DiscoveryViewModel {
     var personalizedSongs:  [SongResult] = []
     var hasPersonalized = false
 
+    // Artists behind ratings >= 3.5, ordered best-first -- the in-app signal QuickAddViewModel
+    // supplements Spotify/Apple Music with. Populated alongside personalizedAlbums in
+    // loadPersonalized() since it's derived from the same ratedReleases query.
+    var ratedArtists: [String] = []
+
     // High-confidence taste recommendations (artists user rated 4+)
     var tasteAlbums: [Release] = []
 
@@ -231,6 +236,15 @@ class DiscoveryViewModel {
             let display = r.score ?? r.eloScore.map(Elo.toScore)
             if let d = display, d >= 3.5 { dbArtists.insert(r.releaseGroups.artist) }
         }
+        var seenRatedArtists = Set<String>()
+        ratedArtists = ratedReleases
+            .compactMap { r -> (String, Double)? in
+                guard let d = r.score ?? r.eloScore.map(Elo.toScore), d >= 3.5 else { return nil }
+                return (r.releaseGroups.artist, d)
+            }
+            .sorted { $0.1 > $1.1 }
+            .map(\.0)
+            .filter { seenRatedArtists.insert($0).inserted }
 
         // Supplement with Spotify artists when available -- independent listening signal
         // (not a rating), so no score filter applies here; filtering it would hurt cold-start
@@ -1055,37 +1069,33 @@ struct SearchView: View {
     }
 
     private var quickAddBanner: some View {
-        Button { quickAddTapped() } label: {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle().fill(Color.sjAmber.opacity(0.15))
-                    Image(systemName: "star.circle.fill")
-                        .font(.system(size: 20))
-                        .foregroundStyle(Color.sjAmber)
-                }
-                .frame(width: 40, height: 40)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Quick Add")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(Color.sjInk)
-                    Text("Half-star rate albums you've probably already heard")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color.sjMuted)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 8)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Setting up?")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(Color.sjInk)
+                Text("Half-star rate albums you've probably already heard")
+                    .font(.system(size: 12))
                     .foregroundStyle(Color.sjMuted)
+                    .lineLimit(1)
             }
-            .padding(12)
-            .background(Color.sjSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+
+            Spacer(minLength: 8)
+
+            Button { quickAddTapped() } label: {
+                Text("Quick Add")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Color.sjInk)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
+        .padding(12)
+        .background(Color.sjSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
     // MARK: - Helpers
