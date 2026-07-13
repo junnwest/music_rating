@@ -8,6 +8,7 @@
  * Server-only: ~600 KB — do not import from client components.
  */
 import raw from './genre-embeddings.json';
+import { primaryTagOf, tagWeight } from './primaryGenre';
 
 interface GenreEmbeddingData {
   version: number;
@@ -60,10 +61,16 @@ export function centroid(tags: { tag: string; weight: number }[]): number[] | nu
   return acc.map((x) => x / norm);
 }
 
-/** Plain centroid of an album's genre tags (equal weights). */
+/**
+ * Centroid of an album's genre tags, weighted by importance: the album's
+ * primary genre (scene-first precedence — see primaryGenre.ts) counts 1.0,
+ * co-tags 0.5, so a [k-pop, hip hop, pop] album sits nearer k-pop than a
+ * plain mean of the three would.
+ */
 export function albumCentroid(genres: string[] | null | undefined): number[] | null {
   if (!genres?.length) return null;
-  return centroid(genres.map((tag) => ({ tag, weight: 1 })));
+  const primary = primaryTagOf(genres);
+  return centroid(genres.map((tag) => ({ tag, weight: tagWeight(tag, primary) })));
 }
 
 /**
