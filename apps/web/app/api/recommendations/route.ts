@@ -104,7 +104,8 @@ export async function GET(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   const refresh = req.nextUrl.searchParams.get('refresh') === '1';
-  const cacheKey = `recs:v2:${userId}`;
+  // v3: 2026-07-12 primary-genre weighting changed the affinity math
+  const cacheKey = `recs:v3:${userId}`;
   if (!refresh) {
     const cached = await cacheGet<object>(cacheKey);
     if (cached) return NextResponse.json(cached);

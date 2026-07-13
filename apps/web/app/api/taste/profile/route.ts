@@ -26,8 +26,6 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 15;
 
 const TTL_SECONDS = 60;
-/** Albums released within this many years count toward the "Current" era pole. */
-const ERA_YEARS = 10;
 
 interface RatingRow {
   score: number | null;
@@ -77,7 +75,7 @@ export async function GET(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   const refresh = req.nextUrl.searchParams.get('refresh') === '1';
-  const cacheKey = `taste:profile:v2:${userId}`;
+  const cacheKey = `taste:profile:v3:${userId}`;
   if (!refresh) {
     const cached = await cacheGet<object>(cacheKey);
     if (cached) return NextResponse.json(cached);
@@ -126,45 +124,72 @@ export async function GET(req: NextRequest) {
   });
   if (upsertErr) console.error('[taste] profile upsert error:', upsertErr.message);
 
-  // ── stats ──
-  const avgScore =
-    scored.length > 0
-      ? scored.reduce((s, r) => s + (display(r) ?? 0), 0) / scored.length
+  // ── stats (means + population std devs — the report shows ±1σ bands) ──
+  const scores = scored.map((r) => display(r)!);
+  const avgScore = scores.length > 0 ? scores.reduce((s, x) => s + x, 0) / scores.length : null;
+  const sdScore =
+    avgScore != null && scores.length > 1
+      ? Math.sqrt(scores.reduce((s, x) => s + (x - avgScore) ** 2, 0) / scores.length)
       : null;
-  const fiveStars = scored.filter((r) => (display(r) ?? 0) >= 5).length;
+  const fiveStars = scores.filter((x) => x >= 5).length;
   const months = Array.from({ length: 12 }, () => 0);
   for (const r of rows) months[new Date(r.created_at).getMonth()] += 1;
   const peakCount = Math.max(...months);
+
+  const years = rows
+    .map((r) => r.release_groups!.first_release_date)
+    .filter((d): d is string => !!d)
+    .map((d) => parseInt(d.slice(0, 4), 10))
+    .filter((y) => y >= 1900);
+  const meanYear = years.length > 0 ? years.reduce((s, y) => s + y, 0) / years.length : null;
+  const sdYears =
+    meanYear != null && years.length > 1
+      ? Math.sqrt(years.reduce((s, y) => s + (y - meanYear) ** 2, 0) / years.length)
+      : null;
 
   const top = scored.reduce<RatingRow | null>(
     (best, r) => (best == null || (display(r) ?? 0) > (display(best) ?? 0) ? r : best),
     null,
   );
 
-  // ── axes (each 0..1; ≥ 0.5 leans toward the first-listed pole) ──
+  const clamp = (x: number) => Math.max(0, Math.min(1, x));
+
+  // ── axes (each value 0..1; ≥ 0.5 leans toward the first-listed pole).
+  // era and judgment carry a ±1σ band (low/high) — breadth and reach are
+  // share-based, where a std dev isn't meaningful.
   // breadth: how evenly taste spreads across worlds (1 − dominant share).
-  const breadth = clusters.length >= 2 ? 1 - clusters[0].share : 0.25;
-  // era: share of rated albums released in the last ERA_YEARS years.
-  const cutoffYear = new Date().getFullYear() - ERA_YEARS;
-  const dated = rows.filter((r) => r.release_groups!.first_release_date);
-  const era =
-    dated.length > 0
-      ? dated.filter(
-          (r) => parseInt(r.release_groups!.first_release_date!.slice(0, 4), 10) >= cutoffYear,
-        ).length / dated.length
-      : 0.5;
+  const breadthValue = clusters.length >= 2 ? 1 - clusters[0].share : 0.25;
+  // era: mean release year on a 50-year window ending now (0.5 = 25y ago).
+  const nowYear = new Date().getFullYear();
+  const eraValue = meanYear != null ? clamp((meanYear - (nowYear - 50)) / 50) : 0.5;
+  const eraLow = meanYear != null && sdYears != null ? clamp((meanYear - sdYears - (nowYear - 50)) / 50) : null;
+  const eraHigh = meanYear != null && sdYears != null ? clamp((meanYear + sdYears - (nowYear - 50)) / 50) : null;
   // reach: share of rated albums in the prestige canon (proxy for mainstream/
   // canonical listening — prestige covers curated canon lists, ~1.6k rows).
-  const reach =
+  const prestigeShare =
     rows.length > 0
-      ? Math.min(1, (rows.filter((r) => r.release_groups!.prestige_score != null).length / rows.length) * 2)
-      : 0.5;
-  // judgment: warmth of scoring — 2.5★ avg → 0, 4.5★ avg → 1.
-  const judgment =
-    avgScore != null ? Math.max(0, Math.min(1, (avgScore - 2.5) / 2)) : 0.5;
+      ? rows.filter((r) => r.release_groups!.prestige_score != null).length / rows.length
+      : 0;
+  const reachValue = rows.length > 0 ? Math.min(1, prestigeShare * 2) : 0.5;
+  // judgment: warmth of scoring — 2.5★ avg → 0, 4.5★ avg → 1; band = ±1σ.
+  const judgmentValue = avgScore != null ? clamp((avgScore - 2.5) / 2) : 0.5;
+  const judgmentLow = avgScore != null && sdScore != null ? clamp((avgScore - sdScore - 2.5) / 2) : null;
+  const judgmentHigh = avgScore != null && sdScore != null ? clamp((avgScore + sdScore - 2.5) / 2) : null;
 
-  const axes = { breadth, era, reach, judgment };
-  const type = typeFromAxes(axes);
+  const type = typeFromAxes({
+    breadth: breadthValue,
+    era: eraValue,
+    reach: reachValue,
+    judgment: judgmentValue,
+  });
+
+  const r2 = (x: number | null) => (x != null ? Math.round(x * 100) / 100 : null);
+  const axes = {
+    breadth: { value: r2(breadthValue), clusterCount: clusters.length, topShare: r2(clusters[0]?.share ?? 1) },
+    era: { value: r2(eraValue), low: r2(eraLow), high: r2(eraHigh), meanYear: meanYear != null ? Math.round(meanYear) : null, sdYears: r2(sdYears) },
+    reach: { value: r2(reachValue), prestigeShare: r2(prestigeShare) },
+    judgment: { value: r2(judgmentValue), low: r2(judgmentLow), high: r2(judgmentHigh), mean: r2(avgScore), sd: r2(sdScore) },
+  };
 
   interface StandingRow {
     genre: string;
@@ -184,21 +209,18 @@ export async function GET(req: NextRequest) {
     albumRatingCount: rows.length,
     totalTags: Object.keys(weights).length,
     type,
-    axes: Object.fromEntries(
-      Object.entries(axes).map(([k, v]) => [k, Math.round(v * 100) / 100]),
-    ),
+    axes,
     clusters: clusters.map((c) => {
       const sumW = c.tags.reduce((s, t) => s + t.w, 0);
       const sumN = c.tags.reduce((s, t) => s + t.n, 0);
       return {
         share: c.share,
         avgScore: sumN > 0 ? Math.round((3 + sumW / sumN) * 100) / 100 : null,
-        ratingCount: Math.max(...c.tags.map((t) => t.n)),
-        tags: c.tags.slice(0, 5).map((t) => ({
+        tags: c.tags.slice(0, 8).map((t) => ({
           tag: t.tag,
           display: displayGenre(t.tag),
           avg: t.avg,
-          n: t.n,
+          n: Math.round(t.n * 10) / 10,
         })),
       };
     }),
@@ -207,7 +229,8 @@ export async function GET(req: NextRequest) {
       .map((tag) => ({ tag, display: displayGenre(tag) })),
     standings,
     stats: {
-      avgScore: avgScore != null ? Math.round(avgScore * 100) / 100 : null,
+      avgScore: r2(avgScore),
+      sdScore: r2(sdScore),
       fiveStars,
       months,
       peakMonthIndex: peakCount > 0 ? months.indexOf(peakCount) : null,

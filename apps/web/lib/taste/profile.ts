@@ -14,11 +14,19 @@
  * Server-only (pulls in the embeddings artifact).
  */
 import { eloToScore } from '../elo';
-import { centroid, cosine, genreVector } from './embeddings';
+import { albumCentroid, centroid, cosine, genreVector } from './embeddings';
+import { primaryTagOf, tagWeight } from './primaryGenre';
 
 export interface GenreWeightEntry {
-  w: number; // Σ (display_score − 3.0) across this user's ratings tagged with this genre
-  n: number; // number of such ratings
+  /**
+   * Σ (display_score − 3.0) × tag-weight across this user's ratings tagged
+   * with this genre — the tag-weight is 1.0 when the genre is the album's
+   * PRIMARY genre (scene-first precedence, see primaryGenre.ts), 0.5 for
+   * co-tags, so a k-pop album's [k-pop, hip hop, pop] pulls k-pop hardest.
+   */
+  w: number;
+  /** Σ of the same tag-weights (so 3 + w/n stays a true weighted average). */
+  n: number;
 }
 
 export type GenreWeights = Record<string, GenreWeightEntry>;
@@ -58,15 +66,20 @@ export function weightsFromRatings(
   for (const r of rows) {
     const display = r.score ?? (r.elo_score != null ? eloToScore(r.elo_score) : null);
     if (display == null || !r.genres) continue;
+    const primary = primaryTagOf(r.genres);
     for (const raw of r.genres) {
       const tag = raw.trim();
       if (!tag) continue;
+      const wt = tagWeight(raw, primary);
       const e = (weights[tag] ??= { w: 0, n: 0 });
-      e.w += display - 3.0;
-      e.n += 1;
+      e.w += (display - 3.0) * wt;
+      e.n += wt;
     }
   }
-  for (const e of Object.values(weights)) e.w = Math.round(e.w * 1000) / 1000;
+  for (const e of Object.values(weights)) {
+    e.w = Math.round(e.w * 1000) / 1000;
+    e.n = Math.round(e.n * 1000) / 1000;
+  }
   return weights;
 }
 
@@ -123,13 +136,15 @@ export function buildClusters(weights: GenreWeights): TasteCluster[] {
 }
 
 /**
- * Tags the user demonstrably dislikes (average ≤ 2.0 across 2+ ratings) — used
- * by the reranker as a soft penalty on candidate albums carrying them.
+ * Tags the user demonstrably dislikes (weighted average ≤ 2.0 across enough
+ * weighted evidence) — used by the reranker as a soft penalty on candidate
+ * albums carrying them. Threshold 1.5 in weighted-n units ≈ two albums where
+ * the tag was primary+co-tag, or three co-tags.
  */
 export function dislikedTags(weights: GenreWeights): Set<string> {
   const out = new Set<string>();
   for (const [tag, e] of Object.entries(weights)) {
-    if (e.n >= 2 && 3 + e.w / e.n <= 2.0) out.add(tag);
+    if (e.n >= 1.5 && 3 + e.w / e.n <= 2.0) out.add(tag);
   }
   return out;
 }
@@ -144,7 +159,7 @@ export function albumAffinity(
   clusters: TasteCluster[],
 ): number {
   if (!genres?.length || clusters.length === 0) return 0;
-  const vec = centroid(genres.map((tag) => ({ tag, weight: 1 })));
+  const vec = albumCentroid(genres);
   if (!vec) return 0;
   let best = 0;
   for (const c of clusters) {
