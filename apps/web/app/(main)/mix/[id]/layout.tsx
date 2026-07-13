@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 
 // See album/[id]/layout.tsx for why this exists.
@@ -48,6 +49,11 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
   };
 }
 
-export default function MixLayout({ children }: { children: ReactNode }) {
+// See album/[id]/layout.tsx's matching comment -- same soft-404 fix. Also correctly covers a
+// private mix (fetchMix returns null there too, per RLS on the anon key) -- a private mix should
+// look like "not found" to an anonymous crawler, not leak that it exists.
+export default async function MixLayout({ children, params }: { children: ReactNode; params: { id: string } }) {
+  const mix = await fetchMix(params.id);
+  if (!mix) notFound();
   return children;
 }

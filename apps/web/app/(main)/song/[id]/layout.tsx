@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 
 // See album/[id]/layout.tsx for why this exists -- same pattern, song-specific tables.
@@ -71,6 +72,9 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
   };
 }
 
-export default function SongLayout({ children }: { children: ReactNode }) {
+// See album/[id]/layout.tsx's matching comment -- same soft-404 fix.
+export default async function SongLayout({ children, params }: { children: ReactNode; params: { id: string } }) {
+  const rec = await fetchRecording(params.id);
+  if (!rec) notFound();
   return children;
 }

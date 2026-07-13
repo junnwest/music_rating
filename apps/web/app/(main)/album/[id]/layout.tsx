@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 
 // Every page on the site previously shared the root layout's static title/description
@@ -86,6 +87,14 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
   };
 }
 
-export default function AlbumLayout({ children }: { children: ReactNode }) {
+// Confirmed live: /album/<anything-that-isn't-a-real-id> (e.g. a raw Spotify id someone linked
+// to instead of our own uuid) returns HTTP 200 with a client-rendered "isn't in sillajuku's
+// catalog yet" message -- a soft 404. Crawlers have no signal that the page is actually invalid,
+// so it stays indexed indefinitely with a "doesn't exist" description forever. fetchRelease is
+// already called in generateMetadata above; Next dedupes the identical fetch() call within the
+// same request, so this is a cache hit, not a second real round-trip.
+export default async function AlbumLayout({ children, params }: { children: ReactNode; params: { id: string } }) {
+  const release = await fetchRelease(params.id);
+  if (!release) notFound();
   return children;
 }

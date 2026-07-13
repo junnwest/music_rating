@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 
 // See album/[id]/layout.tsx for why this exists. Profile already has a per-route
@@ -81,6 +82,12 @@ export async function generateMetadata({ params }: { params: { username: string 
   };
 }
 
-export default function ProfileLayout({ children }: { children: ReactNode }) {
+// See album/[id]/layout.tsx's matching comment -- same soft-404 fix. profiles_select is
+// unconditionally public (USING (true)) -- privacy settings gate sub-resources (catalog/stats/
+// library), not the base row -- so this can't misfire on a real but private profile.
+export default async function ProfileLayout({ children, params }: { children: ReactNode; params: { username: string } }) {
+  const username = decodeURIComponent(params.username);
+  const profile = await fetchProfile(username);
+  if (!profile) notFound();
   return children;
 }
