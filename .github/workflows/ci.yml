@@ -49,12 +49,29 @@ jobs:
       # default Xcode is 26.5, matching local dev.
       #
       # Concrete simulator required for the test action ('generic/platform=iOS
-      # Simulator' only works for a build-only destination). iPhone 16 Pro isn't in
-      # macos-26's simulator runtime at all (iPhone 17-series only) — iPhone 17 Pro
-      # matches what's used locally.
+      # Simulator' only works for a build-only destination). A hardcoded device name has
+      # broken CI twice now as GitHub's runner image shifted its bundled simulator lineup
+      # (iPhone 16 Pro -> iPhone 17 Pro -> iPhone 17 Pro itself going missing) -- picking
+      # whatever iPhone simulator is actually available at run time instead of guessing
+      # another fixed name that will just break again on the next image bump.
+      - name: Find an available iPhone simulator
+        id: sim
+        run: |
+          echo "Available iOS Simulator runtimes/devices on this runner:"
+          xcrun simctl list devices available
+          NAME=$(xcrun simctl list devices available -j \
+            | jq -r '.devices | to_entries[] | select(.key | contains("iOS")) | .value[] | select(.name | startswith("iPhone")) | .name' \
+            | sort -V | tail -1)
+          if [ -z "$NAME" ]; then
+            echo "::error::No available iPhone simulator found on this runner"
+            exit 1
+          fi
+          echo "Using simulator: $NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
       - name: Build and run unit tests
         working-directory: apps/ios
         run: |
           xcodebuild -project sillajuku.xcodeproj -scheme sillajuku \
-            -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+            -destination 'platform=iOS Simulator,name=${{ steps.sim.outputs.name }}' \
             -quiet test
