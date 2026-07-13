@@ -33,6 +33,24 @@ enum AlbumQuickRate {
             .execute()
         NotificationCenter.default.post(name: .ratingChanged, object: nil)
     }
+
+    /// Standalone version of AlbumDetailView's `rateTrack(recordingId:score:)` -- same table,
+    /// same upsert columns/onConflict target -- for surfaces (Quick Add) that need to write a
+    /// song rating without a full AlbumDetailViewModel instance.
+    static func saveManualTrackScore(recordingId: UUID, score: Double) async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        struct Payload: Encodable {
+            let userId: UUID; let recordingId: UUID; let score: Double
+            enum CodingKeys: String, CodingKey {
+                case userId = "user_id"; case recordingId = "recording_id"; case score
+            }
+        }
+        try? await supabase.from("track_ratings")
+            .upsert(Payload(userId: userId, recordingId: recordingId, score: score),
+                    onConflict: "user_id,recording_id")
+            .execute()
+        NotificationCenter.default.post(name: .ratingChanged, object: nil)
+    }
 }
 
 private struct AlbumMenuPreview: View {
