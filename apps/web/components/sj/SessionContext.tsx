@@ -59,35 +59,47 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return (data as ProfileRow | null) ?? null;
   }, []);
 
+  // Resolve the session only. The onAuthStateChange callback fires while
+  // auth-js holds the session lock (navigator.locks), so it must NOT await any
+  // Supabase call — a query inside would re-acquire the same lock and deadlock,
+  // leaving the promise (and `ready`, and the whole app) hung on the loading
+  // skeleton. We only setState here; the profile fetch happens in the effect
+  // below, outside the lock. INITIAL_SESSION delivers the current session on
+  // subscribe, so no separate getSession() call is needed.
   useEffect(() => {
     if (!supabase) {
       setUserId(null);
+      return;
+    }
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserId(session?.user?.id ?? null);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  // Fetch the profile whenever the signed-in user changes. `ready` flips true
+  // here — once the session is known and (if signed in) the profile fetch has
+  // settled — so the onboarding redirect below never runs against a
+  // not-yet-loaded profile. Running the query in a normal effect keeps it off
+  // the auth-state-change lock.
+  useEffect(() => {
+    if (userId === undefined) return; // session still resolving
+    if (userId === null) {
+      setProfile(null);
+      setProfileError(false);
       setReady(true);
       return;
     }
     let cancelled = false;
-
-    supabase.auth.getSession().then(async ({ data }) => {
+    loadProfile(userId).then((p) => {
       if (cancelled) return;
-      const uid = data.session?.user?.id ?? null;
-      setUserId(uid);
-      if (uid) setProfile(await loadProfile(uid));
+      setProfile(p);
       setReady(true);
     });
-
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (cancelled) return;
-      const uid = session?.user?.id ?? null;
-      setUserId(uid);
-      setProfile(uid ? await loadProfile(uid) : null);
-      setReady(true);
-    });
-
     return () => {
       cancelled = true;
-      sub.subscription.unsubscribe();
     };
-  }, [loadProfile]);
+  }, [userId, loadProfile]);
 
   // Signed-in but never finished onboarding (no profile row / no username) →
   // route to /onboarding, mirroring iOS AppState.onboarding.
