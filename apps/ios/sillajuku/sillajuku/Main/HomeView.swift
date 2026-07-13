@@ -740,6 +740,8 @@ struct HomeView: View {
                 UserProfileView(userId: dest.userId, initialHandle: dest.handle)
             }
             .navigationDestination(for: FindPeopleDestination.self) { _ in FindPeopleView() }
+            .navigationDestination(for: AlbumPostDestination.self) { AlbumPostDetailView(ratingId: $0.ratingId) }
+            .navigationDestination(for: SongPostDestination.self) { SongPostDetailView(ratingId: $0.ratingId) }
             // Value-based push (not `.navigationDestination(isPresented:)`) --
             // isPresented mixed with the for:-based pushes above left this
             // NavigationStack in a broken state where NotificationsView's own

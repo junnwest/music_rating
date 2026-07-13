@@ -88,11 +88,18 @@ struct AppNotification: Codable, Identifiable {
         case trackRatingId = "track_rating_id"
     }
 
-    var albumRelease: Release? {
-        guard (type == "like" || type == "comment"), let rg = rating?.releaseGroups else { return nil }
-        return Release(id: rg.id, title: rg.title, artist: rg.artistDisplay,
-                       coverUrl: rg.coverUrl, releaseType: nil, releaseDate: nil,
-                       titleNative: rg.titleNative, artistNative: rg.artistNative, tracklist: nil, totalTracks: nil)
+    // A like/comment notification is about a specific post (the rating, with its own review
+    // text/like-comment thread) -- linking to the bare release page loses that entirely
+    // (AlbumDetailView only shows aggregate community stats, never individual posts). These
+    // route to a real single-post screen instead.
+    var albumPostDestination: AlbumPostDestination? {
+        guard (type == "like" || type == "comment"), let ratingId else { return nil }
+        return AlbumPostDestination(ratingId: ratingId)
+    }
+
+    var songPostDestination: SongPostDestination? {
+        guard (type == "track_rating_like" || type == "track_rating_comment"), let trackRatingId else { return nil }
+        return SongPostDestination(ratingId: trackRatingId)
     }
 
     var actorDestination: UserProfileDestination? {
@@ -188,8 +195,12 @@ struct NotificationsView: View {
             } else {
                 List(notifications) { notif in
                     Group {
-                        if let release = notif.albumRelease {
-                            NavigationLink(value: release) {
+                        if let dest = notif.albumPostDestination {
+                            NavigationLink(value: dest) {
+                                NotificationRow(notif: notif)
+                            }
+                        } else if let dest = notif.songPostDestination {
+                            NavigationLink(value: dest) {
                                 NotificationRow(notif: notif)
                             }
                         } else if let dest = notif.actorDestination {
@@ -317,5 +328,304 @@ private struct NotificationRow: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 10)
+    }
+}
+
+// MARK: - Single-post destinations
+
+// A notification's rating_id/track_rating_id always belongs to the CURRENT signed-in user --
+// the notify triggers explicitly set the recipient to the rating's owner and exclude self-
+// notifications (owner_id <> actor), so "the post this notification is about" is always one of
+// my own ratings, never someone else's. That's what makes a plain ratingId-keyed fetch safe here
+// without an extra ownership check.
+struct AlbumPostDestination: Hashable {
+    let ratingId: UUID
+}
+
+struct SongPostDestination: Hashable {
+    let ratingId: UUID
+}
+
+// MARK: - Album post detail
+
+// Single-post screen for an album-rating like/comment notification -- reuses ProfilePostCard
+// exactly (Main/ProfileView.swift), just fed by a fresh fetch keyed on one rating id instead of
+// the owning ProfileViewModel's whole in-memory list, since a notification can point at a rating
+// from well before whatever page ProfileViewModel currently has loaded.
+struct AlbumPostDetailView: View {
+    let ratingId: UUID
+
+    @State private var rating: UserRating?
+    @State private var isLoading = true
+    @State private var totalRatingsCount = 0
+    @State private var likesCount = 0
+    @State private var commentsCount = 0
+    @State private var isLiked = false
+
+    var body: some View {
+        Group {
+            if isLoading {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let rating {
+                ScrollView(showsIndicators: false) {
+                    ProfilePostCard(
+                        rating: rating,
+                        likesCount: likesCount,
+                        commentsCount: commentsCount,
+                        instinctAlbumCount: totalRatingsCount,
+                        isLiked: isLiked,
+                        onLike: toggleLike
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.top, 12)
+                }
+            } else {
+                VStack(spacing: 12) {
+                    Image(systemName: "exclamationmark.circle")
+                        .font(.system(size: 36)).foregroundStyle(Color.sjBorder)
+                    Text("This rating is no longer available")
+                        .font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .background(Color.sjCream.ignoresSafeArea())
+        .navigationTitle("Post")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await load() }
+    }
+
+    private func load() async {
+        guard let userId = supabase.auth.currentUser?.id else { isLoading = false; return }
+
+        rating = try? await supabase
+            .from("ratings")
+            .select("id, score, elo_score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native))")
+            .eq("id", value: ratingId)
+            .single()
+            .execute()
+            .value
+
+        if let r = try? await supabase.from("ratings").select("*", count: .exact)
+            .eq("user_id", value: userId).execute() {
+            totalRatingsCount = r.count ?? 0
+        }
+        if let r = try? await supabase.from("rating_likes").select("*", count: .exact)
+            .eq("rating_id", value: ratingId).execute() {
+            likesCount = r.count ?? 0
+        }
+        if let r = try? await supabase.from("rating_comments").select("*", count: .exact)
+            .eq("rating_id", value: ratingId).execute() {
+            commentsCount = r.count ?? 0
+        }
+        struct IdRow: Decodable {
+            let ratingId: UUID
+            enum CodingKeys: String, CodingKey { case ratingId = "rating_id" }
+        }
+        if let rows: [IdRow] = try? await supabase
+            .from("rating_likes").select("rating_id")
+            .eq("user_id", value: userId).eq("rating_id", value: ratingId)
+            .execute().value {
+            isLiked = !rows.isEmpty
+        }
+        isLoading = false
+    }
+
+    private func toggleLike() async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        let wasLiked = isLiked
+        isLiked.toggle()
+        likesCount = max(0, likesCount + (wasLiked ? -1 : 1))
+        do {
+            if wasLiked {
+                try await supabase.from("rating_likes").delete()
+                    .eq("user_id", value: userId).eq("rating_id", value: ratingId).execute()
+            } else {
+                struct Payload: Encodable {
+                    let userId: UUID; let ratingId: UUID
+                    enum CodingKeys: String, CodingKey { case userId = "user_id"; case ratingId = "rating_id" }
+                }
+                try await supabase.from("rating_likes")
+                    .insert(Payload(userId: userId, ratingId: ratingId)).execute()
+            }
+        } catch {
+            isLiked = wasLiked
+            likesCount = max(0, likesCount + (wasLiked ? 1 : -1))
+        }
+    }
+}
+
+// MARK: - Song post detail
+
+// Single-post screen for a song-rating like/comment notification -- reuses ProfileSongPostCard
+// exactly (Main/ProfileView.swift), same shape as AlbumPostDetailView above.
+struct SongPostDetailView: View {
+    let ratingId: UUID
+
+    @State private var song: SongRatingRow?
+    @State private var isLoading = true
+    @State private var totalSongRatingsCount = 0
+    @State private var likesCount = 0
+    @State private var commentsCount = 0
+    @State private var isLiked = false
+
+    var body: some View {
+        Group {
+            if isLoading {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let song {
+                ScrollView(showsIndicators: false) {
+                    ProfileSongPostCard(
+                        song: song,
+                        totalSongRatingsCount: totalSongRatingsCount,
+                        likesCount: likesCount,
+                        commentsCount: commentsCount,
+                        isLiked: isLiked,
+                        onLike: toggleLike
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.top, 12)
+                }
+            } else {
+                VStack(spacing: 12) {
+                    Image(systemName: "exclamationmark.circle")
+                        .font(.system(size: 36)).foregroundStyle(Color.sjBorder)
+                    Text("This rating is no longer available")
+                        .font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .background(Color.sjCream.ignoresSafeArea())
+        .navigationTitle("Post")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await load() }
+    }
+
+    private func load() async {
+        guard let userId = supabase.auth.currentUser?.id else { isLoading = false; return }
+
+        struct TrackRatingRow: Codable {
+            let id: UUID
+            let recordingId: UUID
+            let score: Double?
+            let eloScore: Double?
+            let reviewText: String?
+            let createdAt: Date
+            let recordings: RecordingInfo
+            struct RecordingInfo: Codable {
+                let id: UUID; let title: String; let artistDisplay: String?
+                enum CodingKeys: String, CodingKey {
+                    case id, title; case artistDisplay = "artist_display"
+                }
+            }
+            enum CodingKeys: String, CodingKey {
+                case id, recordingId = "recording_id"; case score
+                case eloScore = "elo_score"; case reviewText = "review_text"
+                case createdAt = "created_at"; case recordings
+            }
+        }
+        guard let raw: TrackRatingRow = try? await supabase
+            .from("track_ratings")
+            .select("id, recording_id, score, elo_score, review_text, created_at, recordings(id, title, artist_display)")
+            .eq("id", value: ratingId)
+            .single()
+            .execute()
+            .value else {
+            isLoading = false
+            return
+        }
+
+        struct RTCoverRow: Codable {
+            let releases: CoverRelRow?
+            struct CoverRelRow: Codable {
+                let isCanonical: Bool?
+                let releaseGroups: RGCover?
+                struct RGCover: Codable {
+                    let id: UUID; let title: String; let artistDisplay: String?; let coverUrl: String?
+                    let titleNative: String?; let primaryArtist: NativeArtistRef?
+                    enum CodingKeys: String, CodingKey {
+                        case id, title; case artistDisplay = "artist_display"; case coverUrl = "cover_url"
+                        case titleNative = "native_title"; case primaryArtist = "artists"
+                    }
+                }
+                enum CodingKeys: String, CodingKey {
+                    case isCanonical = "is_canonical"; case releaseGroups = "release_groups"
+                }
+            }
+        }
+        let coverRows: [RTCoverRow] = (try? await supabase
+            .from("release_tracks")
+            .select("releases(is_canonical, release_groups(id, title, artist_display, cover_url, native_title, artists!release_groups_primary_artist_id_fkey(name_native)))")
+            .eq("recording_id", value: raw.recordingId)
+            .execute()
+            .value) ?? []
+        var rg: RTCoverRow.CoverRelRow.RGCover?
+        for row in coverRows {
+            guard let rel = row.releases, let candidate = rel.releaseGroups else { continue }
+            if rel.isCanonical == true || rg == nil { rg = candidate }
+        }
+        let ref = ReleaseRef(
+            id:            rg?.id ?? UUID(),
+            title:         rg?.title ?? "",
+            artist:        rg?.artistDisplay ?? raw.recordings.artistDisplay ?? "",
+            coverUrl:      rg?.coverUrl,
+            releaseType:   nil,
+            titleNative:   rg?.titleNative,
+            primaryArtist: rg?.primaryArtist
+        )
+        song = SongRatingRow(
+            ratingId: raw.id, recordingId: raw.recordingId, score: raw.score, eloScore: raw.eloScore,
+            reviewText: raw.reviewText, trackTitle: raw.recordings.title, release: ref, createdAt: raw.createdAt
+        )
+
+        if let r = try? await supabase.from("track_ratings").select("*", count: .exact)
+            .eq("user_id", value: userId).execute() {
+            totalSongRatingsCount = r.count ?? 0
+        }
+        if let r = try? await supabase.from("track_rating_likes").select("*", count: .exact)
+            .eq("track_rating_id", value: ratingId).execute() {
+            likesCount = r.count ?? 0
+        }
+        if let r = try? await supabase.from("track_rating_comments").select("*", count: .exact)
+            .eq("track_rating_id", value: ratingId).execute() {
+            commentsCount = r.count ?? 0
+        }
+        struct IdRow: Decodable {
+            let trackRatingId: UUID
+            enum CodingKeys: String, CodingKey { case trackRatingId = "track_rating_id" }
+        }
+        if let rows: [IdRow] = try? await supabase
+            .from("track_rating_likes").select("track_rating_id")
+            .eq("user_id", value: userId).eq("track_rating_id", value: ratingId)
+            .execute().value {
+            isLiked = !rows.isEmpty
+        }
+        isLoading = false
+    }
+
+    private func toggleLike() async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        let wasLiked = isLiked
+        isLiked.toggle()
+        likesCount = max(0, likesCount + (wasLiked ? -1 : 1))
+        do {
+            if wasLiked {
+                try await supabase.from("track_rating_likes").delete()
+                    .eq("user_id", value: userId).eq("track_rating_id", value: ratingId).execute()
+            } else {
+                struct Payload: Encodable {
+                    let userId: UUID; let trackRatingId: UUID
+                    enum CodingKeys: String, CodingKey {
+                        case userId = "user_id"; case trackRatingId = "track_rating_id"
+                    }
+                }
+                try await supabase.from("track_rating_likes")
+                    .insert(Payload(userId: userId, trackRatingId: ratingId)).execute()
+            }
+        } catch {
+            isLiked = wasLiked
+            likesCount = max(0, likesCount + (wasLiked ? 1 : -1))
+        }
     }
 }
