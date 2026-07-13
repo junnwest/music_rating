@@ -9,6 +9,7 @@ import { displayGenre } from '../../../../lib/taste/embeddings';
 import {
   weightsFromRatings,
   buildClusters,
+  clusterProfiles,
   dislikedTags,
 } from '../../../../lib/taste/profile';
 
@@ -40,7 +41,7 @@ interface RatingRow {
     genres: string[] | null;
     first_release_date: string | null;
     prestige_score: number | null;
-    artists: { name_native: string | null } | null;
+    artists: { name_native: string | null; country: string | null } | null;
   } | null;
 }
 
@@ -88,7 +89,7 @@ export async function GET(req: NextRequest) {
     supabase
       .from('ratings')
       .select(
-        'score, elo_score, created_at, release_groups(id, title, artist_display, cover_url, native_title, genres, first_release_date, prestige_score, artists!release_groups_primary_artist_id_fkey(name_native))',
+        'score, elo_score, created_at, release_groups(id, title, artist_display, cover_url, native_title, genres, first_release_date, prestige_score, artists!release_groups_primary_artist_id_fkey(name_native, country))',
       )
       .eq('user_id', userId)
       .limit(500),
@@ -116,6 +117,15 @@ export async function GET(req: NextRequest) {
   );
   const clusters = buildClusters(weights);
   const disliked = dislikedTags(weights);
+  // Per-world era + scene profiles ("2020s · Korean scene") for the report.
+  const worldProfiles = clusterProfiles(
+    rows.map((r) => ({
+      genres: r.release_groups!.genres,
+      first_release_date: r.release_groups!.first_release_date,
+      country: r.release_groups!.artists?.country ?? null,
+    })),
+    clusters,
+  );
   const { error: upsertErr } = await supabase.from('user_taste_profiles').upsert({
     user_id: userId,
     genre_weights: weights,
@@ -210,12 +220,16 @@ export async function GET(req: NextRequest) {
     totalTags: Object.keys(weights).length,
     type,
     axes,
-    clusters: clusters.map((c) => {
+    clusters: clusters.map((c, i) => {
       const sumW = c.tags.reduce((s, t) => s + t.w, 0);
       const sumN = c.tags.reduce((s, t) => s + t.n, 0);
+      const p = worldProfiles[i];
       return {
         share: c.share,
         avgScore: sumN > 0 ? Math.round((3 + sumW / sumN) * 100) / 100 : null,
+        meanYear: p?.meanYear ?? null,
+        sdYears: p?.sdYears ?? null,
+        dominantScene: p?.dominantScene ?? null,
         tags: c.tags.slice(0, 8).map((t) => ({
           tag: t.tag,
           display: displayGenre(t.tag),

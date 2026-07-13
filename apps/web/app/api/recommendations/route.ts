@@ -6,10 +6,21 @@ import { cacheGet, cacheSet } from '../../../lib/cache';
 import { eloToScore } from '../../../lib/elo';
 import { albumCentroid, cosine, displayGenre } from '../../../lib/taste/embeddings';
 import {
+  W_GENRE,
+  W_ERA,
+  W_SCENE,
+  eraAffinity,
+  sceneAffinity,
+  sceneOf,
+  yearOf,
+} from '../../../lib/taste/albumVector';
+import {
   weightsFromRatings,
   buildClusters,
+  clusterProfiles,
+  blobAffinity,
   dislikedTags,
-  albumAffinity,
+  type ClusterProfile,
   type TasteCluster,
 } from '../../../lib/taste/profile';
 
@@ -58,10 +69,11 @@ interface CandidateRow {
   first_release_date: string | null;
   native_title: string | null;
   genres?: string[] | null;
+  artists?: { country: string | null } | null;
 }
 
 const CAND_COLS =
-  'id, title, artist_display, cover_url, release_group_type, first_release_date, native_title, genres';
+  'id, title, artist_display, cover_url, release_group_type, first_release_date, native_title, genres, artists!release_groups_primary_artist_id_fkey(country)';
 
 /** Response rows keep the RG_COLS shape the search page already maps. */
 function strip(r: CandidateRow) {
@@ -104,8 +116,8 @@ export async function GET(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   const refresh = req.nextUrl.searchParams.get('refresh') === '1';
-  // v3: 2026-07-12 primary-genre weighting changed the affinity math
-  const cacheKey = `recs:v3:${userId}`;
+  // v4: 2026-07-12 blob scoring (genre ⊕ era ⊕ scene) changed the affinity math
+  const cacheKey = `recs:v4:${userId}`;
   if (!refresh) {
     const cached = await cacheGet<object>(cacheKey);
     if (cached) return NextResponse.json(cached);
@@ -118,7 +130,9 @@ export async function GET(req: NextRequest) {
   const [ratingsRes, profileRes] = await Promise.all([
     supabase
       .from('ratings')
-      .select('release_group_id, score, elo_score, release_groups(id, artist_display, genres)')
+      .select(
+        'release_group_id, score, elo_score, release_groups(id, artist_display, genres, first_release_date, artists!release_groups_primary_artist_id_fkey(country))',
+      )
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(500),
@@ -133,7 +147,13 @@ export async function GET(req: NextRequest) {
     release_group_id: string;
     score: number | null;
     elo_score: number | null;
-    release_groups: { id: string; artist_display: string; genres: string[] | null } | null;
+    release_groups: {
+      id: string;
+      artist_display: string;
+      genres: string[] | null;
+      first_release_date: string | null;
+      artists: { country: string | null } | null;
+    } | null;
   }
   const ratings = ((ratingsRes.data as unknown as RatingRow[] | null) ?? []).filter(
     (r) => r.release_groups,
@@ -179,6 +199,16 @@ export async function GET(req: NextRequest) {
   );
   const clusters = buildClusters(weights);
   const disliked = dislikedTags(weights);
+  // Per-world era + scene profiles: the blob scoring judges a candidate's
+  // year/country against the era/scene of the SPECIFIC world it genre-matches.
+  const profiles = clusterProfiles(
+    ratings.map((r) => ({
+      genres: r.release_groups!.genres,
+      first_release_date: r.release_groups!.first_release_date,
+      country: r.release_groups!.artists?.country ?? null,
+    })),
+    clusters,
+  );
 
   // ── 3. Candidate pools (parallel, all index-backed) ────────────────────────
   const lovedList = Array.from(lovedArtists).slice(0, 30);
@@ -250,6 +280,7 @@ export async function GET(req: NextRequest) {
     explore,
     pools: poolsByCluster.flat(),
     clusters,
+    profiles,
     disliked,
     lovedArtists,
     adventurousness,
@@ -260,7 +291,7 @@ export async function GET(req: NextRequest) {
     ...fromYourTaste.slice(0, FROM_TASTE_SIZE).map((r) => r.id),
     ...forYou.map((r) => r.id),
   ]);
-  const worlds = buildWorldRows(clusters, poolsByCluster, usedIds, disliked);
+  const worlds = buildWorldRows(clusters, profiles, poolsByCluster, usedIds, disliked);
 
   const payload = {
     fromYourTaste: shuffle(fromYourTaste).slice(0, FROM_TASTE_SIZE).map(strip),
@@ -281,18 +312,28 @@ export async function GET(req: NextRequest) {
  */
 function buildWorldRows(
   clusters: TasteCluster[],
+  profiles: ClusterProfile[],
   poolsByCluster: CandidateRow[][],
   usedIds: Set<string>,
   disliked: Set<string>,
 ): { label: string; albums: CandidateRow[] }[] {
   const rows: { label: string; albums: CandidateRow[] }[] = [];
   clusters.slice(0, MAX_WORLD_ROWS).forEach((cluster, i) => {
+    // A sliver of co-tag residue isn't a world — don't give it a whole row.
+    if (cluster.share < 0.1) return;
     const pool = poolsByCluster[i] ?? [];
+    const p = profiles[i];
     const scored = pool
       .filter((r) => !usedIds.has(r.id))
       .map((row) => {
         const vec = albumCentroid(row.genres);
-        let sim = vec ? cosine(vec, cluster.centroid) : 0;
+        const genre = vec ? cosine(vec, cluster.centroid) : 0;
+        // Same blob blend as forYou, but pinned to THIS world's era/scene.
+        let sim = p
+          ? W_GENRE * genre +
+            W_ERA * eraAffinity(yearOf(row.first_release_date), { meanYear: p.meanYear, sdYears: p.sdYears }) +
+            W_SCENE * sceneAffinity(sceneOf(row.artists?.country), p.sceneShares)
+          : genre;
         sim -= Math.min(0.6, (row.genres ?? []).filter((g) => disliked.has(g)).length * 0.3);
         return { row, sim };
       })
@@ -325,18 +366,27 @@ function rankForYou(args: {
   explore: CandidateRow[];
   pools: CandidateRow[];
   clusters: TasteCluster[];
+  profiles: ClusterProfile[];
   disliked: Set<string>;
   lovedArtists: Set<string>;
   adventurousness: number;
 }): CandidateRow[] {
-  const { explore, pools, clusters, disliked, lovedArtists, adventurousness } = args;
+  const { explore, pools, clusters, profiles, disliked, lovedArtists, adventurousness } = args;
 
   const seen = new Set<string>();
   const candidates: { row: CandidateRow; affinity: number; fromRpc: boolean }[] = [];
   for (const row of [...explore, ...pools]) {
     if (seen.has(row.id)) continue;
     seen.add(row.id);
-    let affinity = albumAffinity(row.genres, clusters);
+    let affinity = blobAffinity(
+      {
+        genres: row.genres,
+        year: yearOf(row.first_release_date),
+        scene: sceneOf(row.artists?.country),
+      },
+      clusters,
+      profiles,
+    );
     const hitDisliked = (row.genres ?? []).filter((g) => disliked.has(g)).length;
     affinity -= Math.min(0.6, hitDisliked * 0.3);
     candidates.push({ row, affinity, fromRpc: explore.some((e) => e.id === row.id) });
