@@ -389,6 +389,10 @@ struct UserProfileView: View {
     @State private var ratingDisplayMode: RatingDisplayMode = .posts
     @State private var showFollowModal = false
     @State private var followModalInitTab: FollowMode = .followers
+    // Same height-floor purpose as ProfileView's identical pair -- see SwipeableTabPager's
+    // minHeight parameter.
+    @State private var heroHeight: CGFloat = 0
+    @State private var tabMinHeight: CGFloat = 0
 
     init(userId: UUID, initialHandle: String) {
         self.userId = userId
@@ -413,12 +417,32 @@ struct UserProfileView: View {
                     .padding(.top, 20)
                 }
             } else {
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 0) {
-                        profileHeaderCore
-                        Divider().padding(.top, 20)
-                        tabBar
-                        tabContent
+                GeometryReader { outerGeo in
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 0) {
+                            VStack(spacing: 0) {
+                                profileHeaderCore
+                                Divider().padding(.top, 20)
+                                tabBar
+                            }
+                            .background(
+                                GeometryReader { heroGeo in
+                                    Color.clear
+                                        .onAppear { heroHeight = heroGeo.size.height }
+                                        .onChange(of: heroGeo.size.height) { _, newValue in
+                                            heroHeight = newValue
+                                        }
+                                }
+                            )
+                            swipeableTabContent
+                        }
+                    }
+                    .onAppear { tabMinHeight = max(0, outerGeo.size.height - heroHeight) }
+                    .onChange(of: outerGeo.size.height) { _, newValue in
+                        tabMinHeight = max(0, newValue - heroHeight)
+                    }
+                    .onChange(of: heroHeight) { _, newValue in
+                        tabMinHeight = max(0, outerGeo.size.height - newValue)
                     }
                 }
             }
@@ -588,9 +612,14 @@ struct UserProfileView: View {
         .padding(.top, 14)
     }
 
+    // Floor, not a cap -- see ProfileView's identical comment on its own tabContent.
+    private var swipeableTabContent: some View {
+        SwipeableTabPager(selection: $activeTab, minHeight: tabMinHeight, content: tabPage)
+    }
+
     @ViewBuilder
-    private var tabContent: some View {
-        switch activeTab {
+    private func tabPage(_ tab: ProfileTab) -> some View {
+        switch tab {
         case .rated:
             if vm.access.catalogVisible {
                 ratedTabContent

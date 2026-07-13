@@ -621,13 +621,6 @@ struct ProfileView: View {
     // auto-open the existing showSettings sheet, then reset to false.
     @Binding var openSettingsTrigger: Bool
     @State private var activeTab: ProfileTab = .rated
-    // Live swipe-tracking state for tabContent -- dragTranslation is set
-    // directly (unanimated) in onChanged, so the content visually follows
-    // the finger 1:1 and holds wherever the finger stops. contentWidth is
-    // measured once via a width-only GeometryReader (safe -- the parent
-    // already determines width, unlike height).
-    @State private var dragTranslation: CGFloat = 0
-    @State private var contentWidth: CGFloat = UIScreen.main.bounds.width
     // Lists/Stats tabs are often shorter than the screen (e.g. 2 mixes) --
     // without a height floor, tabContent's hit-test area (contentShape +
     // gesture) only covers its actual short content, so swiping over the
@@ -783,102 +776,11 @@ struct ProfileView: View {
         }
     }
 
-    // Which tab is being dragged into view alongside the active one -- only
-    // non-nil while actively dragging (dragTranslation != 0), so at rest
-    // this is still just one page, same as before.
-    private var adjacentTab: ProfileTab? {
-        guard dragTranslation != 0, let idx = ProfileTab.allCases.firstIndex(of: activeTab) else { return nil }
-        if dragTranslation < 0 {
-            return idx < ProfileTab.allCases.count - 1 ? ProfileTab.allCases[idx + 1] : nil
-        } else {
-            return idx > 0 ? ProfileTab.allCases[idx - 1] : nil
-        }
-    }
-
-    private struct TabContentWidthKey: PreferenceKey {
-        static var defaultValue: CGFloat = 0
-        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-    }
-
-    // Real 1:1 finger tracking: the active page is offset by dragTranslation
-    // exactly as set in onChanged (no animation applied to that write), so
-    // holding the finger still mid-drag leaves the content exactly where it
-    // is. The adjacent page (only rendered while dragging) slides in from
-    // the correct side in lockstep. Only on release does anything animate --
-    // either finishing the page turn or springing back.
+    // Floor, not a cap -- short tabs (e.g. Lists with 2 mixes) still claim the rest of the
+    // visible screen so the swipe gesture works there too; tabs taller than the viewport are
+    // unaffected. See SwipeableTabPager for the swipe/sensitivity/anti-navigation behavior.
     private var tabContent: some View {
-        ZStack(alignment: .top) {
-            tabPage(activeTab)
-                .frame(width: contentWidth, alignment: .top)
-                .offset(x: dragTranslation)
-            if let adjacentTab {
-                tabPage(adjacentTab)
-                    .frame(width: contentWidth, alignment: .top)
-                    .offset(x: dragTranslation + (dragTranslation < 0 ? contentWidth : -contentWidth))
-            }
-        }
-        // Floor, not a cap -- short tabs (e.g. Lists with 2 mixes) still
-        // claim the rest of the visible screen so the swipe gesture below
-        // works there too; tabs taller than the viewport are unaffected.
-        .frame(minHeight: tabMinHeight, alignment: .top)
-        .background(
-            GeometryReader { geo in
-                Color.clear.preference(key: TabContentWidthKey.self, value: geo.size.width)
-            }
-        )
-        .onPreferenceChange(TabContentWidthKey.self) { width in
-            if width > 0 { contentWidth = width }
-        }
-        .clipped()
-        .contentShape(Rectangle())
-        .highPriorityGesture(tabSwipeGesture)
-    }
-
-    // Verified directly (via idb swipe + screenshot) that plain .gesture()
-    // does NOT out-prioritize a child's own tap gesture -- a swipe here was
-    // still being read as a tap on a NavigationLink underneath and pushed
-    // into its destination instead of switching tabs. Only
-    // .highPriorityGesture forces this to win once it actually recognizes a
-    // drag. It only "wins" after minimumDistance is crossed -- a real tap
-    // (released before that) never triggers this gesture at all, so it
-    // still falls through to the view underneath normally.
-    private var tabSwipeGesture: some Gesture {
-        DragGesture(minimumDistance: 15)
-            .onChanged { value in
-                guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                let idx = ProfileTab.allCases.firstIndex(of: activeTab) ?? 0
-                var t = value.translation.width
-                if t > 0, idx == 0 { t = 0 }                                    // can't go before the first tab
-                if t < 0, idx == ProfileTab.allCases.count - 1 { t = 0 }         // or past the last one
-                dragTranslation = t
-            }
-            .onEnded { value in
-                let idx = ProfileTab.allCases.firstIndex(of: activeTab) ?? 0
-                let threshold = contentWidth * 0.33
-                var newIdx = idx
-                if dragTranslation < -threshold, idx < ProfileTab.allCases.count - 1 {
-                    newIdx = idx + 1
-                } else if dragTranslation > threshold, idx > 0 {
-                    newIdx = idx - 1
-                }
-                if newIdx != idx {
-                    // Finish the page turn in the same direction the finger
-                    // was already moving, then swap activeTab and zero the
-                    // offset at the exact instant it completes -- the new
-                    // page is already sitting at that same visual position,
-                    // so the swap itself is imperceptible.
-                    withAnimation(.easeOut(duration: 0.22)) {
-                        dragTranslation = dragTranslation < 0 ? -contentWidth : contentWidth
-                    } completion: {
-                        activeTab = ProfileTab.allCases[newIdx]
-                        dragTranslation = 0
-                    }
-                } else {
-                    withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.82)) {
-                        dragTranslation = 0
-                    }
-                }
-            }
+        SwipeableTabPager(selection: $activeTab, minHeight: tabMinHeight, content: tabPage)
     }
 
     private var heroContent: some View {
