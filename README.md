@@ -541,6 +541,22 @@ All pipeline steps done including HNSW index rebuild (2026-06-09). **Next action
 - ✅ Dedup bug recovery (2026-06-04) — 0 data loss confirmed; `find-duplicate-releases.ts` fixed
 - ✅ discover → ingest loop stable (2026-06-04) — runs 3–6 complete
 
+## 🔁 Periodic maintenance (run these on a schedule)
+
+All commands run from `apps/web/` unless noted. Sessions: check this list when picking up work — most items are cheap and silent-drift is the failure mode.
+
+| What | How | When | Why |
+|---|---|---|---|
+| **Pipeline health checks** | `npm run pipeline:status` / `npm run pipeline:verify` per [`PIPELINE_CHECKS.md`](PIPELINE_CHECKS.md) | Weekly steady-state; **always** after a pipeline restart, migration, or pipeline code change | Catches stalls, IO starvation, structural drift. Follow that file's cadence log. |
+| **Taste maintenance trio** (run in this order) | 1. `npm run enrich:subgenres` 2. `npm run build:genre-embeddings` 3. `npx tsx --env-file=.env.local scripts/db-exec.ts supabase/migrations/20260712000010_taste_primary_weights.sql` (safe to re-run — replaces functions idempotently + fully rebuilds `user_taste_profiles`) | Monthly, or after a burst of new users/ratings | Newly rated albums have no album-level Last.fm sub-genre tags until the next enrich pass; embeddings go stale as the catalog's tag co-occurrence grows; profiles derive from `genres[]` so they must be re-derived after enrichment changes tags. |
+| **`rg_primary_genre` refresh** | `npx tsx --env-file=.env.local scripts/db-exec.ts --sql "WITH fresh AS MATERIALIZED (SELECT s.release_group_id, _compute_primary_genre(rg.genres) AS pg_new, s.primary_genre AS pg_old FROM rg_primary_genre s JOIN release_groups rg ON rg.id = s.release_group_id) UPDATE rg_primary_genre s SET primary_genre = f.pg_new FROM fresh f WHERE f.release_group_id = s.release_group_id AND f.pg_new IS DISTINCT FROM f.pg_old"` (~6s) | After ANY bulk edit to `release_groups.genres` (incl. the enrich pass above) | Its sync trigger only fires on rating INSERT — genre-array edits silently never update chart classification otherwise. |
+| **Coverage verification** | `npm run verify:coverage` (READ-ONLY) | Occasionally, after significant catalog/matching work | Measures catalog match quality vs real iTunes/Spotify discographies; classifies misses as catalog-gap vs match-bug. |
+
+Gotchas learned the hard way (all hit live in this repo):
+- **PostgREST silently clamps any `.limit()` to 1000 rows** — bulk reads must page with `.range()` + a stable `ORDER BY` (broke the pipeline dedup set once and the enrichment target set once).
+- **Long crawls die with the harness/tool timeout** — launch anything >10 min detached (`Start-Process`, log to a file) and kill by PID, never TaskStop.
+- The genre **family table lives in 3 copies that must stay in sync**: `lib/taste/primaryGenre.ts`, SQL `_primary_genre_tag()`/`_compute_primary_genre()`, `scripts/backfill-primary-genre.ts`.
+
 ### Catalog normalization — done
 
 `normalize-releases.ts` fixed three historical inconsistencies across all 5,421 Spotify-sourced rows:
