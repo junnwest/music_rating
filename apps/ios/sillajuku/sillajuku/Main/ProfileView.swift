@@ -1002,7 +1002,10 @@ struct ProfileView: View {
             case .song(let s):  return .song(s)
             }
         }
-        guard ratingSortOrder == .recent else { return ratingPosts }
+        // Mix shares are neither an album nor a song rating -- only belong in the unfiltered
+        // "All" view. This guard previously only checked sort order, so a mix share kept showing
+        // up even while filtered to Albums or Songs specifically.
+        guard ratingSortOrder == .recent, ratingTypeFilter == .all else { return ratingPosts }
         let sharePosts: [ProfilePost] = viewModel.mixShares.map { .mixShare($0) }
         return (ratingPosts + sharePosts).sorted { $0.createdAt > $1.createdAt }
     }
