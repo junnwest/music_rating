@@ -670,6 +670,7 @@ struct MixDetailView: View {
                     .eq("id", value: item.id)
                     .execute()
             }
+            NotificationCenter.default.post(name: .mixLibraryChanged, object: nil)
         }
     }
 }
@@ -959,6 +960,11 @@ struct MixPickerView: View {
                 .eq("release_group_id", value: releaseId)
                 .execute()
         }
+        // The Profile > Mix tab's item counts are loaded once and cached for the tab's
+        // lifetime (MixLibraryViewModel.hasLoaded) -- without this, adding/removing a
+        // release here never invalidates that cache, so counts silently go stale (this
+        // is what caused every mix to show "0 releases" even when populated).
+        NotificationCenter.default.post(name: .mixLibraryChanged, object: nil)
         isSaving = false
         dismiss()
     }
