@@ -34,6 +34,12 @@ final class QuickAddViewModel {
     var isLoadingMoreSongs = false
     var hasMoreAlbums = true
     var hasMoreSongs = true
+    // Rated this session but not yet removed from view -- keyed by release/song id, shared
+    // across both modes (safe: these are real DB row ids, not a shared id space that could
+    // collide). A row with an entry here renders its held score instead of the star control;
+    // the item itself is only actually dropped from albumCandidates/songCandidates on the next
+    // refresh or cold load, once the server-side NOT EXISTS exclusion naturally leaves it out.
+    var ratedScores: [UUID: Double] = [:]
 
     private let pageSize = 20
     private let artistNames: [String]
@@ -81,6 +87,15 @@ final class QuickAddViewModel {
         isLoadingMoreAlbums = false
     }
 
+    /// Pull-to-refresh: re-fetches page 1 rather than appending. The server-side NOT EXISTS
+    /// exclusion naturally drops anything rated since the last load (same as a fresh app launch
+    /// would), and fetchAlbumPage shuffles offset-0 pages so the top of the list doesn't look
+    /// identical every time.
+    func refreshAlbums() async {
+        albumCandidates = await fetchAlbumPage(offset: 0)
+        hasMoreAlbums = albumCandidates.count == pageSize
+    }
+
     private func fetchAlbumPage(offset: Int) async -> [Release] {
         guard let userId = supabase.auth.currentUser?.id, !artistNames.isEmpty else { return [] }
         struct Params: Encodable {
@@ -89,7 +104,7 @@ final class QuickAddViewModel {
             let p_lim: Int
             let p_offset: Int
         }
-        return (try? await supabase
+        let page: [Release] = (try? await supabase
             .rpc("get_quick_add_candidates", params: Params(
                 p_user_id: userId.uuidString,
                 p_artist_names: artistNames,
@@ -97,15 +112,20 @@ final class QuickAddViewModel {
                 p_offset: offset))
             .execute()
             .value) ?? []
+        // Only the first page of a fresh load/refresh gets shuffled -- the RPC's own
+        // array_position/prestige ORDER BY has to stay stable for offset-based pagination to
+        // work at all (a shuffled order server-side would skip/repeat rows across pages).
+        return offset == 0 ? page.shuffled() : page
     }
 
-    /// Optimistic: removes the row immediately rather than waiting on the write, matching the
-    /// "tap a star, it's gone, move to the next one" feel the half-star control implies. Reuses
-    /// AlbumQuickRate.saveManualScore (Components/AlbumContextMenu.swift) -- same write path
-    /// (upsert into `ratings`, ratingChanged notification) as every other rating surface in the
-    /// app, not a parallel one.
+    /// Holds the row in place with the rated score shown instead of removing it immediately --
+    /// per the user's request, a just-rated item should stay visible (showing what it was rated)
+    /// until the next refresh or app relaunch actually re-fetches and server-side excludes it,
+    /// not disappear the instant a star is tapped. Reuses AlbumQuickRate.saveManualScore
+    /// (Components/AlbumContextMenu.swift) -- same write path (upsert into `ratings`,
+    /// ratingChanged notification) as every other rating surface in the app, not a parallel one.
     func rate(_ release: Release, score: Double) {
-        albumCandidates.removeAll { $0.id == release.id }
+        ratedScores[release.id] = score
         Task { await AlbumQuickRate.saveManualScore(releaseGroupId: release.id, score: score) }
     }
 
@@ -127,6 +147,12 @@ final class QuickAddViewModel {
         isLoadingMoreSongs = false
     }
 
+    /// Same pull-to-refresh shape as refreshAlbums().
+    func refreshSongs() async {
+        songCandidates = await fetchSongPage(offset: 0)
+        hasMoreSongs = songCandidates.count == pageSize
+    }
+
     private func fetchSongPage(offset: Int) async -> [SongCandidate] {
         guard let userId = supabase.auth.currentUser?.id, !artistNames.isEmpty else { return [] }
         struct Params: Encodable {
@@ -135,7 +161,7 @@ final class QuickAddViewModel {
             let p_lim: Int
             let p_offset: Int
         }
-        return (try? await supabase
+        let page: [SongCandidate] = (try? await supabase
             .rpc("get_quick_add_song_candidates", params: Params(
                 p_user_id: userId.uuidString,
                 p_artist_names: artistNames,
@@ -143,50 +169,86 @@ final class QuickAddViewModel {
                 p_offset: offset))
             .execute()
             .value) ?? []
+        return offset == 0 ? page.shuffled() : page
     }
 
-    /// Same optimistic-removal shape as `rate(_:score:)`, writing to `track_ratings` via
+    /// Same hold-in-place shape as `rate(_:score:)`, writing to `track_ratings` via
     /// AlbumQuickRate.saveManualTrackScore instead of `ratings`.
     func rateSong(_ song: SongCandidate, score: Double) {
-        songCandidates.removeAll { $0.id == song.id }
+        ratedScores[song.id] = score
         Task { await AlbumQuickRate.saveManualTrackScore(recordingId: song.id, score: score) }
     }
 }
 
-// MARK: - Half-star tap control
+// MARK: - Half-star drag control
 
-/// Five flower traces (the same `icon-flower` mark ScoreBadge/ManualRatingSheet use elsewhere
-/// in the app, outlined rather than the SF Symbol star this replaced -- stars didn't match any
-/// other rating control in the app), each split into a left/right tap half (X.5 vs X.0). Always
-/// renders empty/outline -- Quick Add only ever shows unrated candidates, so there's never an
-/// existing score to reflect. Tapping commits immediately, no confirm step, matching the "quick"
-/// premise.
+/// Five flower traces (the same `icon-flower` mark ScoreBadge/ManualRatingSheet use elsewhere in
+/// the app). A single drag gesture spans the whole row (not one gesture per star -- a per-star
+/// gesture can't track a drag that moves past the star it started on, since the touch stays
+/// bound to whichever view's gesture recognizer first claimed it), continuously previewing the
+/// fill up to wherever the finger currently is; the rating only actually commits in onEnded, not
+/// per-frame during the drag. Always starts fully empty/outline -- Quick Add only ever shows
+/// unrated candidates, so there's never an existing score to reflect at rest.
 struct HalfStarRow: View {
     var starSize: CGFloat = 20
     var spacing: CGFloat = 3
     let onRate: (Double) -> Void
 
+    @State private var liveRating: Double? = nil
+
+    private var totalWidth: CGFloat { CGFloat(5) * starSize + CGFloat(4) * spacing }
+
     var body: some View {
-        HStack(spacing: spacing) {
-            ForEach(1...5, id: \.self) { position in
-                GeometryReader { geo in
-                    Image("icon-flower")
-                        .renderingMode(.template)
-                        .resizable()
-                        .scaledToFit()
-                        .foregroundStyle(Color.sjBorder)
-                        .contentShape(Rectangle())
-                        .gesture(
-                            DragGesture(minimumDistance: 0)
-                                .onEnded { value in
-                                    let isLeftHalf = value.location.x < geo.size.width / 2
-                                    onRate(Double(position) - (isLeftHalf ? 0.5 : 0))
-                                }
-                        )
+        GeometryReader { geo in
+            HStack(spacing: spacing) {
+                ForEach(1...5, id: \.self) { position in
+                    star(for: position)
                 }
-                .frame(width: starSize, height: starSize)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        liveRating = rating(atX: value.location.x, rowWidth: geo.size.width)
+                    }
+                    .onEnded { value in
+                        let final = rating(atX: value.location.x, rowWidth: geo.size.width)
+                        liveRating = nil
+                        onRate(final)
+                    }
+            )
+        }
+        .frame(width: totalWidth, height: starSize)
+    }
+
+    @ViewBuilder
+    private func star(for position: Int) -> some View {
+        let fillFraction = liveRating.map { min(max($0 - Double(position - 1), 0), 1) } ?? 0
+        ZStack {
+            Image("icon-flower")
+                .renderingMode(.template).resizable().scaledToFit()
+                .foregroundStyle(Color.sjBorder)
+            if fillFraction > 0 {
+                Image("icon-flower")
+                    .renderingMode(.template).resizable().scaledToFit()
+                    .foregroundStyle(Color.sjBlue)
+                    .mask(
+                        HStack(spacing: 0) {
+                            Rectangle().frame(width: starSize * fillFraction)
+                            Spacer(minLength: 0)
+                        }
+                    )
             }
         }
+        .frame(width: starSize, height: starSize)
+    }
+
+    private func rating(atX x: CGFloat, rowWidth: CGFloat) -> Double {
+        guard rowWidth > 0 else { return 0.5 }
+        let clampedX = min(max(x, 0), rowWidth)
+        let raw = (clampedX / rowWidth) * 5
+        let roundedToHalf = (raw * 2).rounded() / 2
+        return min(max(roundedToHalf, 0.5), 5.0)
     }
 }
 
@@ -194,6 +256,7 @@ struct HalfStarRow: View {
 
 private struct QuickAddRow: View {
     let release: Release
+    let ratedScore: Double?
     let onRate: (Double) -> Void
 
     var body: some View {
@@ -214,7 +277,11 @@ private struct QuickAddRow: View {
 
             Spacer(minLength: 8)
 
-            HalfStarRow(onRate: onRate)
+            if let ratedScore {
+                ScoreBadge(score: ratedScore, badgeSize: 32)
+            } else {
+                HalfStarRow(onRate: onRate)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
@@ -223,6 +290,7 @@ private struct QuickAddRow: View {
 
 private struct QuickAddSongRow: View {
     let song: SongCandidate
+    let ratedScore: Double?
     let onRate: (Double) -> Void
 
     var body: some View {
@@ -243,7 +311,11 @@ private struct QuickAddSongRow: View {
 
             Spacer(minLength: 8)
 
-            HalfStarRow(onRate: onRate)
+            if let ratedScore {
+                ScoreBadge(score: ratedScore, badgeSize: 32)
+            } else {
+                HalfStarRow(onRate: onRate)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
@@ -327,7 +399,7 @@ struct QuickAddView: View {
                     LazyVStack(spacing: 4) {
                         Color.clear.frame(height: 0).id("album-top")
                         ForEach(vm.albumCandidates) { release in
-                            QuickAddRow(release: release) { score in
+                            QuickAddRow(release: release, ratedScore: vm.ratedScores[release.id]) { score in
                                 withAnimation(.easeOut(duration: 0.2)) {
                                     vm.rate(release, score: score)
                                 }
@@ -344,6 +416,7 @@ struct QuickAddView: View {
                     }
                     .padding(.vertical, 8)
                 }
+                .refreshable { await vm.refreshAlbums() }
                 .onChange(of: albumScrollTrigger) { _, _ in
                     withAnimation { proxy.scrollTo("album-top", anchor: .top) }
                 }
@@ -363,7 +436,7 @@ struct QuickAddView: View {
                     LazyVStack(spacing: 4) {
                         Color.clear.frame(height: 0).id("song-top")
                         ForEach(vm.songCandidates) { song in
-                            QuickAddSongRow(song: song) { score in
+                            QuickAddSongRow(song: song, ratedScore: vm.ratedScores[song.id]) { score in
                                 withAnimation(.easeOut(duration: 0.2)) {
                                     vm.rateSong(song, score: score)
                                 }
@@ -380,6 +453,7 @@ struct QuickAddView: View {
                     }
                     .padding(.vertical, 8)
                 }
+                .refreshable { await vm.refreshSongs() }
                 .onChange(of: songScrollTrigger) { _, _ in
                     withAnimation { proxy.scrollTo("song-top", anchor: .top) }
                 }
