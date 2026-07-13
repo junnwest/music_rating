@@ -42,10 +42,13 @@ async function albumPageCount(): Promise<number> {
 }
 
 export default async function robots(): Promise<MetadataRoute.Robots> {
+  // www, not the bare apex -- see layout.tsx's matching comment. Confirmed live: submitting the
+  // apex version to Search Console showed "Couldn't fetch" (sillajuku.com 307-redirects to
+  // www.sillajuku.com, and Google's sitemap fetcher doesn't reliably follow that hop).
   const pageCount = await albumPageCount();
-  const sitemaps = ['https://sillajuku.com/sitemap/0.xml'];
+  const sitemaps = ['https://www.sillajuku.com/sitemap/0.xml'];
   for (let i = 1; i <= pageCount; i++) {
-    sitemaps.push(`https://sillajuku.com/sitemap/${i}.xml`);
+    sitemaps.push(`https://www.sillajuku.com/sitemap/${i}.xml`);
   }
 
   return {

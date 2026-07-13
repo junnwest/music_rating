@@ -15,7 +15,9 @@ import type { MetadataRoute } from 'next';
 // Revisit if per-song search traffic turns out to matter once there's real Search Console data.
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const BASE_URL = 'https://sillajuku.com';
+// www, not the bare apex -- see layout.tsx's matching comment. Every URL listed in these
+// sitemaps needs to resolve directly, with no redirect hop, for Google's sitemap fetcher.
+const BASE_URL = 'https://www.sillajuku.com';
 const PAGE_SIZE = 45000; // headroom under Google's 50,000-URL-per-sitemap-file limit
 const REST_CHUNK = 1000; // conservative assumption for PostgREST's default max rows/request
 

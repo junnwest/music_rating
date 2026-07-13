@@ -16,11 +16,16 @@ const jakarta = Plus_Jakarta_Sans({
 export const metadata: Metadata = {
   title: 'sillajuku',
   description: 'Every record you\'ve loved.',
-  metadataBase: new URL('https://sillajuku.com'),
+  // www, not the bare apex -- sillajuku.com 307-redirects to www.sillajuku.com at the
+  // infrastructure level, so the bare apex is never actually where content is served from.
+  // Matters beyond cosmetics: Google's sitemap fetcher (unlike a browser) doesn't reliably
+  // follow that redirect, which is why the submitted sitemap showed "Couldn't fetch" in Search
+  // Console -- confirmed live (apex returns 307, www returns 200 directly, no hop).
+  metadataBase: new URL('https://www.sillajuku.com'),
   openGraph: {
     title: 'sillajuku',
     description: 'Every record you\'ve loved.',
-    url: 'https://sillajuku.com',
+    url: 'https://www.sillajuku.com',
     siteName: 'sillajuku',
     type: 'website',
   },
