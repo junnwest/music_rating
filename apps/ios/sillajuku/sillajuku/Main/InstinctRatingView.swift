@@ -654,6 +654,11 @@ private class InstinctTrackRatingViewModel {
     private(set) var userRatingsCount = 0
     private(set) var finalScore: Double?
     private var pendingReviewText: String? = nil
+    // Fetched after the elo upsert in continueFromPostRating -- track_ratings.review_text
+    // (migration 20260713000001) didn't exist until this session, so this was previously
+    // captured in pendingReviewText and silently discarded in finalize(). Mirrors the album
+    // InstinctRatingViewModel's ratingId (line ~176) exactly.
+    private var trackRatingId: UUID?
 
     var currentOpponent: TrackOpponent? {
         let mid = (lo + hi) / 2
@@ -730,6 +735,15 @@ private class InstinctTrackRatingViewModel {
                     onConflict: "user_id,recording_id")
             .execute()
 
+        struct IdRow: Decodable { let id: UUID }
+        trackRatingId = (try? await supabase.from("track_ratings")
+            .select("id")
+            .eq("user_id", value: userId)
+            .eq("recording_id", value: recordingId)
+            .single()
+            .execute()
+            .value as IdRow)?.id
+
         if !opponents.isEmpty && lo < hi && totalComparisons > 0 {
             phase = .comparing
         } else {
@@ -803,6 +817,16 @@ private class InstinctTrackRatingViewModel {
             if let recordingId, let userId {
                 await writeScore(userId: userId, recordingId: recordingId, score: finalScore!)
             }
+        }
+        if let text = pendingReviewText, !text.isEmpty, let rid = trackRatingId {
+            struct Update: Encodable {
+                let reviewText: String
+                enum CodingKeys: String, CodingKey { case reviewText = "review_text" }
+            }
+            try? await supabase.from("track_ratings")
+                .update(Update(reviewText: text))
+                .eq("id", value: rid)
+                .execute()
         }
         phase = .done
         NotificationCenter.default.post(name: .ratingChanged, object: nil)

@@ -30,9 +30,14 @@ struct UserRating: Codable, Identifiable {
 }
 
 struct SongRatingRow: Identifiable {
+    // The track_ratings row's own uuid -- distinct from `id` (String, keyed on recordingId,
+    // used throughout for view identity/diffing). This is what track_rating_likes/
+    // track_rating_comments/notifications.track_rating_id actually reference.
+    let ratingId: UUID
     let recordingId: UUID
     let score: Double?
     let eloScore: Double?
+    let reviewText: String?
     let trackTitle: String?
     let release: ReleaseRef
     let createdAt: Date
@@ -233,6 +238,7 @@ class ProfileViewModel {
     var likedRatingIds: Set<UUID> = []
     var mixShares: [MixSharePost] = []
     var likedMixShareIds: Set<UUID> = []
+    var likedSongRatingIds: Set<UUID> = []
 
     var followingCount = 0
     var followerCount  = 0
@@ -341,9 +347,11 @@ class ProfileViewModel {
         // (see InstinctTrackRatingViewModel.finalize()) — before that threshold,
         // elo_score is the only place the rating actually lives.
         struct TrackRatingNew: Codable {
+            let id: UUID
             let recordingId: UUID
             let score: Double?
             let eloScore: Double?
+            let reviewText: String?
             let createdAt: Date
             let recordings: RecordingInfo
             struct RecordingInfo: Codable {
@@ -353,13 +361,14 @@ class ProfileViewModel {
                 }
             }
             enum CodingKeys: String, CodingKey {
-                case recordingId = "recording_id"; case score
-                case eloScore = "elo_score"; case createdAt = "created_at"; case recordings
+                case id, recordingId = "recording_id"; case score
+                case eloScore = "elo_score"; case reviewText = "review_text"
+                case createdAt = "created_at"; case recordings
             }
         }
         let rawSongs: [TrackRatingNew] = (try? await supabase
             .from("track_ratings")
-            .select("recording_id, score, elo_score, created_at, recordings(id, title, artist_display)")
+            .select("id, recording_id, score, elo_score, review_text, created_at, recordings(id, title, artist_display)")
             .eq("user_id", value: user.id)
             .order("created_at", ascending: false)
             .limit(60)
@@ -415,14 +424,17 @@ class ProfileViewModel {
                     primaryArtist: rg?.primaryArtist
                 )
                 return SongRatingRow(
+                    ratingId:    r.id,
                     recordingId: r.recordingId,
                     score:       r.score,
                     eloScore:    r.eloScore,
+                    reviewText:  r.reviewText,
                     trackTitle:  r.recordings.title,
                     release:     ref,
                     createdAt:   r.createdAt
                 )
             }
+            await loadSongRatingSocialData()
         }
 
         if let r = try? await supabase.from("follows")
@@ -505,6 +517,68 @@ class ProfileViewModel {
         } catch {
             if wasLiked { likedMixShareIds.insert(post.id); likeCounts[post.id] = (likeCounts[post.id] ?? 0) + 1 }
             else { likedMixShareIds.remove(post.id); likeCounts[post.id] = max(0, (likeCounts[post.id] ?? 1) - 1) }
+        }
+    }
+
+    // Song-rating counterpart to loadMixShareSocialData -- same shape, keyed on
+    // SongRatingRow.ratingId (the track_ratings row's own id, what track_rating_likes/
+    // track_rating_comments actually reference) rather than recordingId.
+    private func loadSongRatingSocialData() async {
+        guard !songRatings.isEmpty, let userId = supabase.auth.currentUser?.id else { return }
+        let songRatingIds = songRatings.map(\.ratingId.uuidString)
+        struct IdRow: Codable {
+            let trackRatingId: UUID
+            enum CodingKeys: String, CodingKey { case trackRatingId = "track_rating_id" }
+        }
+        if let rows: [IdRow] = try? await supabase
+            .from("track_rating_likes").select("track_rating_id")
+            .in("track_rating_id", values: songRatingIds).execute().value {
+            var counts: [UUID: Int] = [:]
+            for r in rows { counts[r.trackRatingId, default: 0] += 1 }
+            for (k, v) in counts { likeCounts[k] = v }
+        }
+        if let rows: [IdRow] = try? await supabase
+            .from("track_rating_comments").select("track_rating_id")
+            .in("track_rating_id", values: songRatingIds).execute().value {
+            var counts: [UUID: Int] = [:]
+            for r in rows { counts[r.trackRatingId, default: 0] += 1 }
+            for (k, v) in counts { commentCounts[k] = v }
+        }
+        if let rows: [IdRow] = try? await supabase
+            .from("track_rating_likes").select("track_rating_id")
+            .eq("user_id", value: userId)
+            .in("track_rating_id", values: songRatingIds).execute().value {
+            likedSongRatingIds = Set(rows.map(\.trackRatingId))
+        }
+    }
+
+    func toggleSongLike(ratingId: UUID) async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        let wasLiked = likedSongRatingIds.contains(ratingId)
+        if wasLiked {
+            likedSongRatingIds.remove(ratingId)
+            likeCounts[ratingId] = max(0, (likeCounts[ratingId] ?? 1) - 1)
+        } else {
+            likedSongRatingIds.insert(ratingId)
+            likeCounts[ratingId] = (likeCounts[ratingId] ?? 0) + 1
+        }
+        do {
+            if wasLiked {
+                try await supabase.from("track_rating_likes").delete()
+                    .eq("user_id", value: userId).eq("track_rating_id", value: ratingId).execute()
+            } else {
+                struct Payload: Encodable {
+                    let userId: UUID; let trackRatingId: UUID
+                    enum CodingKeys: String, CodingKey {
+                        case userId = "user_id"; case trackRatingId = "track_rating_id"
+                    }
+                }
+                try await supabase.from("track_rating_likes")
+                    .insert(Payload(userId: userId, trackRatingId: ratingId)).execute()
+            }
+        } catch {
+            if wasLiked { likedSongRatingIds.insert(ratingId); likeCounts[ratingId] = (likeCounts[ratingId] ?? 0) + 1 }
+            else { likedSongRatingIds.remove(ratingId); likeCounts[ratingId] = max(0, (likeCounts[ratingId] ?? 1) - 1) }
         }
     }
 
@@ -1195,13 +1269,14 @@ struct ProfileView: View {
         }
     }
 
-    // No likes/comments bar here -- track_ratings has no review_text column and no backing
-    // like/comment tables the way album ratings (`ratings`/`rating_likes`) do, so this is a
-    // simpler read-only card rather than a cut-down copy of ProfilePostCard's action bar.
     private func songCard(_ song: SongRatingRow) -> some View {
         ProfileSongPostCard(
             song: song,
-            totalSongRatingsCount: viewModel.songRatings.count
+            totalSongRatingsCount: viewModel.songRatings.count,
+            likesCount: viewModel.likeCounts[song.ratingId] ?? 0,
+            commentsCount: viewModel.commentCounts[song.ratingId] ?? 0,
+            isLiked: viewModel.likedSongRatingIds.contains(song.ratingId),
+            onLike: { await viewModel.toggleSongLike(ratingId: song.ratingId) }
         )
         .padding(.horizontal, 12)
         .padding(.top, 8)
@@ -2106,16 +2181,23 @@ struct ProfilePostCard: View {
     }
 }
 
-// Song-rating counterpart to ProfilePostCard -- no likes/comments bar (track_ratings has no
-// review_text and no backing like/comment tables), so just cover/title/album context/score/date.
-// totalSongRatingsCount gates the elo-derived score reveal the same way ProfilePostCard does for
-// albums, but counts ALL of the user's song ratings rather than only the ones that still carry
-// an elo_score -- using an elo-only count undercounts once a user has any manual-mode song
-// ratings mixed in (those never carry elo_score), which was stalling the reveal for older
-// Instinct-mode ratings even after the user had clearly rated several more songs since.
+// Song-rating counterpart to ProfilePostCard -- full parity now (migration 20260713000001 added
+// track_ratings.review_text + the track_rating_likes/track_rating_comments tables song ratings
+// were previously missing entirely). totalSongRatingsCount gates the elo-derived score reveal the
+// same way ProfilePostCard does for albums, but counts ALL of the user's song ratings rather than
+// only the ones that still carry an elo_score -- using an elo-only count undercounts once a user
+// has any manual-mode song ratings mixed in (those never carry elo_score), which was stalling the
+// reveal for older Instinct-mode ratings even after the user had clearly rated several more since.
 struct ProfileSongPostCard: View {
     let song: SongRatingRow
     let totalSongRatingsCount: Int
+    let likesCount: Int
+    let commentsCount: Int
+    let isLiked: Bool
+    let onLike: () async -> Void
+
+    @State private var showComments = false
+    @State private var showLikers = false
 
     private var displayScore: Double? {
         if let s = song.score { return s }
@@ -2162,17 +2244,65 @@ struct ProfileSongPostCard: View {
             .padding(.top, 14)
             .padding(.bottom, 10)
 
-            HStack {
+            if let text = song.reviewText, !text.isEmpty {
+                Text(text)
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color.sjInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 10)
+            }
+
+            HStack(spacing: 16) {
+                HStack(spacing: 5) {
+                    Button { Task { await onLike() } } label: {
+                        Image(systemName: isLiked ? "heart.fill" : "heart")
+                            .font(.system(size: 19, weight: .medium))
+                            .foregroundStyle(isLiked ? .red : Color.sjInk)
+                    }
+                    .buttonStyle(.plain)
+                    .animation(.easeInOut(duration: 0.15), value: isLiked)
+                    .accessibilityLabel(isLiked ? String(localized: "Unlike") : String(localized: "Like"))
+
+                    Button { showLikers = true } label: {
+                        Text("\(likesCount)")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(isLiked ? .red : Color.sjMuted)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                HStack(spacing: 5) {
+                    Button { showComments = true } label: {
+                        Image(systemName: "bubble.left")
+                            .font(.system(size: 19, weight: .medium)).foregroundStyle(Color.sjInk)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(String(localized: "View comments"))
+
+                    Text("\(commentsCount)")
+                        .font(.system(size: 14, weight: .medium)).foregroundStyle(Color.sjMuted)
+                }
                 Spacer()
                 Text(song.createdAt.relativeTimeString)
                     .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
             }
             .padding(.horizontal, 14)
-            .padding(.bottom, 10)
+            .padding(.vertical, 6)
         }
         .background(Color.sjSurface)
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 1)
+        .sheet(isPresented: $showComments) {
+            SongCommentSheetView(trackRatingId: song.ratingId)
+                .presentationDetents([.fraction(0.67), .large])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showLikers) {
+            SongLikersSheetView(trackRatingId: song.ratingId)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
     }
 }
 

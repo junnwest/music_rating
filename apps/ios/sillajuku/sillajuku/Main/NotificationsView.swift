@@ -15,6 +15,12 @@ struct AppNotification: Codable, Identifiable {
     let rating: RatingInfo?
     let mix: MixInfo?
     let mixShare: MixShareInfo?
+    // No embedded song/release info yet (unlike `rating`/`mix`/`mixShare`) -- recordings aren't
+    // directly joinable to release_groups via a single FK the way ratings/mixes are, so a
+    // track_rating_like/comment notification degrades to generic text + no tap target for now,
+    // same as any other notification type this model doesn't recognize (see the `default:` cases
+    // below). Revisit if that's worth the extra nested-embed complexity.
+    let trackRatingId: UUID?
 
     struct Actor: Codable {
         let username: String?
@@ -70,12 +76,13 @@ struct AppNotification: Codable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case id, type, actor, rating, mix
-        case createdAt  = "created_at"
-        case ratingId   = "rating_id"
-        case mixId      = "mix_id"
-        case mixShareId = "mix_share_id"
-        case actorId    = "actor_id"
-        case mixShare   = "mix_share"
+        case createdAt     = "created_at"
+        case ratingId      = "rating_id"
+        case mixId         = "mix_id"
+        case mixShareId    = "mix_share_id"
+        case actorId       = "actor_id"
+        case mixShare      = "mix_share"
+        case trackRatingId = "track_rating_id"
     }
 
     var albumRelease: Release? {
@@ -126,6 +133,10 @@ struct AppNotification: Codable, Identifiable {
             return String(format: String(localized: "%@ liked your shared mix"), who)
         case "mix_share_comment":
             return String(format: String(localized: "%@ commented on your shared mix"), who)
+        case "track_rating_like":
+            return String(format: String(localized: "%@ liked your song rating"), who)
+        case "track_rating_comment":
+            return String(format: String(localized: "%@ commented on your song rating"), who)
         default:
             return String(format: String(localized: "%@ interacted with your content"), who)
         }
@@ -133,19 +144,19 @@ struct AppNotification: Codable, Identifiable {
 
     var iconName: String {
         switch type {
-        case "like", "mix_like", "mix_share_like": return "heart.fill"
-        case "comment", "mix_share_comment":       return "bubble.right.fill"
-        case "follow":                             return "person.fill.badge.plus"
-        default:                                   return "bell.fill"
+        case "like", "mix_like", "mix_share_like", "track_rating_like": return "heart.fill"
+        case "comment", "mix_share_comment", "track_rating_comment":    return "bubble.right.fill"
+        case "follow":                                                  return "person.fill.badge.plus"
+        default:                                                        return "bell.fill"
         }
     }
 
     var iconColor: Color {
         switch type {
-        case "like", "mix_like", "mix_share_like": return .red
-        case "comment", "mix_share_comment":       return Color.sjAmber
-        case "follow":                             return Color.sjAmber
-        default:                                   return Color.sjMuted
+        case "like", "mix_like", "mix_share_like", "track_rating_like": return .red
+        case "comment", "mix_share_comment", "track_rating_comment":    return Color.sjAmber
+        case "follow":                                                  return Color.sjAmber
+        default:                                                        return Color.sjMuted
         }
     }
 }
@@ -214,7 +225,7 @@ struct NotificationsView: View {
         isLoading = true
         notifications = (try? await supabase
             .from("notifications")
-            .select("id, type, created_at, rating_id, mix_id, mix_share_id, actor_id, actor:actor_id(username, display_name), rating:rating_id(release_groups(id, title, artist_display, native_title, cover_url, artists!release_groups_primary_artist_id_fkey(name_native))), mix:mix_id(id, user_id, name, description, is_public, is_default, created_at), mix_share:mix_share_id(mixes(id, user_id, name, description, is_public, is_default, created_at))")
+            .select("id, type, created_at, rating_id, mix_id, mix_share_id, actor_id, track_rating_id, actor:actor_id(username, display_name), rating:rating_id(release_groups(id, title, artist_display, native_title, cover_url, artists!release_groups_primary_artist_id_fkey(name_native))), mix:mix_id(id, user_id, name, description, is_public, is_default, created_at), mix_share:mix_share_id(mixes(id, user_id, name, description, is_public, is_default, created_at))")
             .eq("user_id", value: userId)
             .order("created_at", ascending: false)
             .limit(60)

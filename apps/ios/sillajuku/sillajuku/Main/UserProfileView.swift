@@ -168,11 +168,13 @@ final class UserProfileViewModel {
                 id: UUID(), title: "", artist: "", coverUrl: nil,
                 releaseType: nil, titleNative: nil, primaryArtist: nil
             )
-            // get_profile_song_ratings doesn't return created_at -- this view has no
-            // posts-mode/mix-share date merge that needs it (unlike ProfileView's own feed), so a
-            // placeholder is safe for now. Add created_at to the RPC if that ever changes.
-            return SongRatingRow(recordingId: recordingId, score: score, eloScore: eloScore,
-                                  trackTitle: trackTitle, release: ref, createdAt: Date())
+            // get_profile_song_ratings doesn't return the track_ratings row id, review_text, or
+            // created_at -- this view's Posts mode excludes songs entirely (album-only, by
+            // design) and its List mode has no like/comment/date affordance for any item, so none
+            // of these are ever actually read here. Placeholders are safe for now; add the real
+            // columns to the RPC if this view ever needs song-post parity too.
+            return SongRatingRow(ratingId: UUID(), recordingId: recordingId, score: score, eloScore: eloScore,
+                                  reviewText: nil, trackTitle: trackTitle, release: ref, createdAt: Date())
         }
     }
 
