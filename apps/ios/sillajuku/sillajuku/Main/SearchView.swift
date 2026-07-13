@@ -44,6 +44,11 @@ class DiscoveryViewModel {
     var personalizedSongs:  [SongResult] = []
     var hasPersonalized = false
 
+    // Artists behind ratings >= 3.5, ordered best-first -- the in-app signal QuickAddViewModel
+    // supplements Spotify/Apple Music with. Populated alongside personalizedAlbums in
+    // loadPersonalized() since it's derived from the same ratedReleases query.
+    var ratedArtists: [String] = []
+
     // High-confidence taste recommendations (artists user rated 4+)
     var tasteAlbums: [Release] = []
 
@@ -231,6 +236,15 @@ class DiscoveryViewModel {
             let display = r.score ?? r.eloScore.map(Elo.toScore)
             if let d = display, d >= 3.5 { dbArtists.insert(r.releaseGroups.artist) }
         }
+        var seenRatedArtists = Set<String>()
+        ratedArtists = ratedReleases
+            .compactMap { r -> (String, Double)? in
+                guard let d = r.score ?? r.eloScore.map(Elo.toScore), d >= 3.5 else { return nil }
+                return (r.releaseGroups.artist, d)
+            }
+            .sorted { $0.1 > $1.1 }
+            .map(\.0)
+            .filter { seenRatedArtists.insert($0).inserted }
 
         // Supplement with Spotify artists when available -- independent listening signal
         // (not a rating), so no score filter applies here; filtering it would hurt cold-start

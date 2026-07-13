@@ -59,6 +59,7 @@ final class QuickAddViewModel {
         for a in discoveryVM.appleMusicArtists { add(a.name) }
         for a in discoveryVM.appleMusicRecentlyPlayed { add(a.artistName) }
         for a in discoveryVM.appleMusicLibraryAlbums { add(a.artistName) }
+        for a in discoveryVM.ratedArtists { add(a) }
         artistNames = ordered
     }
 
@@ -154,9 +155,12 @@ final class QuickAddViewModel {
 
 // MARK: - Half-star tap control
 
-/// Five stars, each split into a left/right tap half (X.5 vs X.0). Always renders empty/outline
-/// -- Quick Add only ever shows unrated candidates, so there's never an existing score to
-/// reflect. Tapping commits immediately, no confirm step, matching the "quick" premise.
+/// Five flower traces (the same `icon-flower` mark ScoreBadge/ManualRatingSheet use elsewhere
+/// in the app, outlined rather than the SF Symbol star this replaced -- stars didn't match any
+/// other rating control in the app), each split into a left/right tap half (X.5 vs X.0). Always
+/// renders empty/outline -- Quick Add only ever shows unrated candidates, so there's never an
+/// existing score to reflect. Tapping commits immediately, no confirm step, matching the "quick"
+/// premise.
 struct HalfStarRow: View {
     var starSize: CGFloat = 20
     var spacing: CGFloat = 3
@@ -166,8 +170,10 @@ struct HalfStarRow: View {
         HStack(spacing: spacing) {
             ForEach(1...5, id: \.self) { position in
                 GeometryReader { geo in
-                    Image(systemName: "star")
-                        .font(.system(size: starSize))
+                    Image("icon-flower")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
                         .foregroundStyle(Color.sjBorder)
                         .contentShape(Rectangle())
                         .gesture(
