@@ -35,6 +35,7 @@ struct SongRatingRow: Identifiable {
     let eloScore: Double?
     let trackTitle: String?
     let release: ReleaseRef
+    let createdAt: Date
 
     var id: String { recordingId.uuidString }
 }
@@ -343,6 +344,7 @@ class ProfileViewModel {
             let recordingId: UUID
             let score: Double?
             let eloScore: Double?
+            let createdAt: Date
             let recordings: RecordingInfo
             struct RecordingInfo: Codable {
                 let id: UUID; let title: String; let artistDisplay: String?
@@ -352,12 +354,12 @@ class ProfileViewModel {
             }
             enum CodingKeys: String, CodingKey {
                 case recordingId = "recording_id"; case score
-                case eloScore = "elo_score"; case recordings
+                case eloScore = "elo_score"; case createdAt = "created_at"; case recordings
             }
         }
         let rawSongs: [TrackRatingNew] = (try? await supabase
             .from("track_ratings")
-            .select("recording_id, score, elo_score, recordings(id, title, artist_display)")
+            .select("recording_id, score, elo_score, created_at, recordings(id, title, artist_display)")
             .eq("user_id", value: user.id)
             .order("created_at", ascending: false)
             .limit(60)
@@ -417,7 +419,8 @@ class ProfileViewModel {
                     score:       r.score,
                     eloScore:    r.eloScore,
                     trackTitle:  r.recordings.title,
-                    release:     ref
+                    release:     ref,
+                    createdAt:   r.createdAt
                 )
             }
         }
@@ -590,17 +593,20 @@ enum ProfileRatedItem: Identifiable {
 // up here too instead of only in the Home feed.
 enum ProfilePost: Identifiable {
     case rating(UserRating)
+    case song(SongRatingRow)
     case mixShare(MixSharePost)
 
     var id: String {
         switch self {
         case .rating(let r):   return "rating-\(r.id.uuidString)"
+        case .song(let s):     return "song-\(s.id)"
         case .mixShare(let s): return "mixshare-\(s.id.uuidString)"
         }
     }
     var createdAt: Date {
         switch self {
         case .rating(let r):   return r.createdAt
+        case .song(let s):     return s.createdAt
         case .mixShare(let s): return s.createdAt
         }
     }
@@ -983,14 +989,18 @@ struct ProfileView: View {
         }
     }
 
-    // Album ratings, in whatever order/filter the user picked, plus own mix
-    // shares merged in by recency -- only under the default "Recent" sort,
-    // since "top/bottom rated" and "A-Z" don't have a sensible place for a
-    // score-less mix share to slot into.
+    // Album + song ratings, in whatever order/filter the user picked, plus own mix shares merged
+    // in by recency -- only under the default "Recent" sort, since "top/bottom rated" and "A-Z"
+    // don't have a sensible place for a score-less mix share to slot into. Previously this
+    // compactMap only ever matched the .album case, so filtering to Songs in Posts view showed
+    // nothing but mix shares -- filteredItems already has exactly two cases, so a plain map
+    // covering both is exhaustive.
     private var postsFeed: [ProfilePost] {
-        let ratingPosts: [ProfilePost] = filteredItems.compactMap {
-            if case .album(let r) = $0 { return .rating(r) }
-            return nil
+        let ratingPosts: [ProfilePost] = filteredItems.map {
+            switch $0 {
+            case .album(let r): return .rating(r)
+            case .song(let s):  return .song(s)
+            }
         }
         guard ratingSortOrder == .recent else { return ratingPosts }
         let sharePosts: [ProfilePost] = viewModel.mixShares.map { .mixShare($0) }
@@ -1104,7 +1114,14 @@ struct ProfileView: View {
                                 artistLine: item.artistLine,
                                 score: item.score,
                                 eloScore: item.eloScore,
-                                instinctCount: item.isSong ? viewModel.instinctSongCount : viewModel.instinctAlbumCount,
+                                // Total ratings of this type, not viewModel.instinctSongCount/
+                                // instinctAlbumCount (those only count rows that still carry an
+                                // elo_score) -- using the elo-only count undercounts as soon as
+                                // any manual-mode rating of the same type exists, since manual
+                                // ratings never carry elo_score, permanently stalling the reveal
+                                // for older Instinct-mode ratings even after the user has clearly
+                                // rated several more since.
+                                instinctCount: item.isSong ? viewModel.songRatings.count : viewModel.ratings.count,
                                 isSong: item.isSong,
                                 releaseType: item.releaseType
                             )
@@ -1170,7 +1187,27 @@ struct ProfileView: View {
     private func postCard(_ post: ProfilePost) -> some View {
         switch post {
         case .rating(let rating):     ratingCard(rating)
+        case .song(let song):         songCard(song)
         case .mixShare(let share):    mixShareCard(share)
+        }
+    }
+
+    // No likes/comments bar here -- track_ratings has no review_text column and no backing
+    // like/comment tables the way album ratings (`ratings`/`rating_likes`) do, so this is a
+    // simpler read-only card rather than a cut-down copy of ProfilePostCard's action bar.
+    private func songCard(_ song: SongRatingRow) -> some View {
+        ProfileSongPostCard(
+            song: song,
+            totalSongRatingsCount: viewModel.songRatings.count
+        )
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .contextMenu {
+            Button(role: .destructive) {
+                pendingDeleteItem = .song(song)
+            } label: {
+                Label("Delete Rating", systemImage: "trash")
+            }
         }
     }
 
@@ -1179,7 +1216,9 @@ struct ProfileView: View {
             rating: rating,
             likesCount: viewModel.likeCounts[rating.id] ?? 0,
             commentsCount: viewModel.commentCounts[rating.id] ?? 0,
-            instinctAlbumCount: viewModel.instinctAlbumCount,
+            // Total album ratings, not viewModel.instinctAlbumCount -- see the matching comment
+            // on the List-mode RatingListRow call above for why the elo-only count undercounts.
+            instinctAlbumCount: viewModel.ratings.count,
             isLiked: viewModel.likedRatingIds.contains(rating.id),
             onLike: { await viewModel.toggleLike(ratingId: rating.id) }
         )
@@ -2061,6 +2100,76 @@ struct ProfilePostCard: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
+    }
+}
+
+// Song-rating counterpart to ProfilePostCard -- no likes/comments bar (track_ratings has no
+// review_text and no backing like/comment tables), so just cover/title/album context/score/date.
+// totalSongRatingsCount gates the elo-derived score reveal the same way ProfilePostCard does for
+// albums, but counts ALL of the user's song ratings rather than only the ones that still carry
+// an elo_score -- using an elo-only count undercounts once a user has any manual-mode song
+// ratings mixed in (those never carry elo_score), which was stalling the reveal for older
+// Instinct-mode ratings even after the user had clearly rated several more songs since.
+struct ProfileSongPostCard: View {
+    let song: SongRatingRow
+    let totalSongRatingsCount: Int
+
+    private var displayScore: Double? {
+        if let s = song.score { return s }
+        if let e = song.eloScore, totalSongRatingsCount >= 5 { return eloToDisplayScore(e) }
+        return nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationLink(value: song.release.asRelease) {
+                HStack(spacing: 13) {
+                    CoverImage(url: song.release.coverUrl)
+                        .frame(width: 80, height: 80)
+                        .accessibilityHidden(true) // title/artist text alongside already describes it
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Text(song.trackTitle ?? "Unknown Track")
+                                .font(.system(size: 17, weight: .bold))
+                                .foregroundStyle(Color.sjInk)
+                                .lineLimit(2)
+                            Text("Song")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(Color.sjAmber)
+                                .padding(.horizontal, 5).padding(.vertical, 2)
+                                .background(Color.sjAmber.opacity(0.12))
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                        }
+                        Text("\(song.release.displayTitle) · \(song.release.displayArtist)")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Color.sjMuted)
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if let score = displayScore {
+                        ScoreBadge(score: score)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 14)
+            .padding(.top, 14)
+            .padding(.bottom, 10)
+
+            HStack {
+                Spacer()
+                Text(song.createdAt.relativeTimeString)
+                    .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+            }
+            .padding(.horizontal, 14)
+            .padding(.bottom, 10)
+        }
+        .background(Color.sjSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 1)
     }
 }
 

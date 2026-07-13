@@ -168,8 +168,11 @@ final class UserProfileViewModel {
                 id: UUID(), title: "", artist: "", coverUrl: nil,
                 releaseType: nil, titleNative: nil, primaryArtist: nil
             )
+            // get_profile_song_ratings doesn't return created_at -- this view has no
+            // posts-mode/mix-share date merge that needs it (unlike ProfileView's own feed), so a
+            // placeholder is safe for now. Add created_at to the RPC if that ever changes.
             return SongRatingRow(recordingId: recordingId, score: score, eloScore: eloScore,
-                                  trackTitle: trackTitle, release: ref)
+                                  trackTitle: trackTitle, release: ref, createdAt: Date())
         }
     }
 
