@@ -16,6 +16,17 @@
 import { eloToScore } from '../elo';
 import { albumCentroid, centroid, cosine, genreVector } from './embeddings';
 import { primaryTagOf, tagWeight } from './primaryGenre';
+import {
+  W_GENRE,
+  W_ERA,
+  W_SCENE,
+  eraAffinity,
+  sceneAffinity,
+  sceneOf,
+  yearOf,
+  type Scene,
+  type SceneShares,
+} from './albumVector';
 
 export interface GenreWeightEntry {
   /**
@@ -133,6 +144,108 @@ export function buildClusters(weights: GenreWeights): TasteCluster[] {
       share: round2(c.weight / total),
       centroid: c.centroid,
     }));
+}
+
+export interface ClusterProfile {
+  /** Mean release year of the user's ratings assigned to this cluster. */
+  meanYear: number | null;
+  sdYears: number | null;
+  /** Share of this cluster's ratings per scene (sums to 1 over known scenes). */
+  sceneShares: SceneShares | null;
+  /** Dominant scene if one holds ≥ 0.5 share. */
+  dominantScene: Scene | null;
+  ratingCount: number;
+}
+
+/**
+ * Era + scene profile per taste cluster: each rated album is assigned to its
+ * best-matching cluster (genre-centroid cosine), then per-cluster release-year
+ * stats and scene shares are computed. This is what makes the blob scoring
+ * multi-modal — the k-pop world can be "2020s Korean" while the rock world is
+ * "1990s Western", and candidates are judged against the right one.
+ */
+export function clusterProfiles(
+  rows: {
+    genres: string[] | null;
+    first_release_date: string | null;
+    country: string | null;
+  }[],
+  clusters: TasteCluster[],
+): ClusterProfile[] {
+  const buckets: { years: number[]; scenes: Scene[] }[] = clusters.map(() => ({
+    years: [],
+    scenes: [],
+  }));
+  for (const r of rows) {
+    const vec = albumCentroid(r.genres);
+    if (!vec || clusters.length === 0) continue;
+    let best = 0;
+    let bestSim = -1;
+    for (let i = 0; i < clusters.length; i++) {
+      const sim = cosine(vec, clusters[i].centroid);
+      if (sim > bestSim) {
+        bestSim = sim;
+        best = i;
+      }
+    }
+    const year = yearOf(r.first_release_date);
+    if (year != null) buckets[best].years.push(year);
+    const scene = sceneOf(r.country);
+    if (scene != null) buckets[best].scenes.push(scene);
+  }
+  return buckets.map((b) => {
+    const meanYear =
+      b.years.length > 0 ? b.years.reduce((s, y) => s + y, 0) / b.years.length : null;
+    const sdYears =
+      meanYear != null && b.years.length > 1
+        ? Math.sqrt(b.years.reduce((s, y) => s + (y - meanYear) ** 2, 0) / b.years.length)
+        : null;
+    let sceneShares: SceneShares | null = null;
+    let dominantScene: Scene | null = null;
+    if (b.scenes.length > 0) {
+      sceneShares = { kr: 0, jp: 0, west: 0, other: 0 };
+      for (const sc of b.scenes) sceneShares[sc] += 1 / b.scenes.length;
+      const top = (Object.entries(sceneShares) as [Scene, number][]).sort((a, x) => x[1] - a[1])[0];
+      if (top[1] >= 0.5) dominantScene = top[0];
+    }
+    return {
+      meanYear: meanYear != null ? Math.round(meanYear) : null,
+      sdYears: sdYears != null ? Math.round(sdYears * 10) / 10 : null,
+      sceneShares,
+      dominantScene,
+      ratingCount: Math.max(b.years.length, b.scenes.length),
+    };
+  });
+}
+
+/**
+ * Composite blob affinity of a candidate album against the user's worlds:
+ * per cluster, genre cosine + era gaussian + scene share (weighted), maxed
+ * across clusters — so a candidate only needs to fit ONE world well, judged
+ * on that world's own era/scene profile. Falls back to pure genre affinity
+ * when profiles are absent.
+ */
+export function blobAffinity(
+  album: { genres: string[] | null | undefined; year: number | null; scene: Scene | null },
+  clusters: TasteCluster[],
+  profiles: ClusterProfile[] | null,
+): number {
+  if (!album.genres?.length || clusters.length === 0) return 0;
+  const vec = albumCentroid(album.genres);
+  if (!vec) return 0;
+  let best = 0;
+  for (let i = 0; i < clusters.length; i++) {
+    const c = clusters[i];
+    const genre = cosine(vec, c.centroid) * (0.75 + 0.25 * c.share);
+    const p = profiles?.[i];
+    const score = p
+      ? W_GENRE * genre +
+        W_ERA * eraAffinity(album.year, { meanYear: p.meanYear, sdYears: p.sdYears }) +
+        W_SCENE * sceneAffinity(album.scene, p.sceneShares)
+      : genre;
+    if (score > best) best = score;
+  }
+  return best;
 }
 
 /**

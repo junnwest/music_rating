@@ -19,6 +19,9 @@ interface WorldTag {
 interface TasteWorld {
   share: number;
   avgScore: number | null;
+  meanYear: number | null;
+  sdYears: number | null;
+  dominantScene: 'kr' | 'jp' | 'west' | 'other' | null;
   tags: WorldTag[];
 }
 
@@ -263,6 +266,7 @@ function ReportView({ report }: { report: TasteReport }) {
                 {t('sj.taste.worldShare').replace('{share}', String(Math.round(world.share * 100)))}
               </span>
             </div>
+            <WorldClassification world={world} />
             {world.avgScore != null && (
               <p className="mt-1 text-[12.5px] text-muted">
                 {t('sj.taste.worldAvgLine').replace('{avg}', world.avgScore.toFixed(2))} {diffText}
@@ -441,6 +445,30 @@ function ReportView({ report }: { report: TasteReport }) {
 
       <p className="text-center text-[11.5px] text-muted/50 pb-6">{t('sj.taste.snapshotEnd')}</p>
     </div>
+  );
+}
+
+/** "Mostly 2010s · Korean scene" chips under a world's header. */
+function WorldClassification({ world }: { world: TasteWorld }) {
+  const { t } = useLanguage();
+  const parts: string[] = [];
+  if (world.meanYear != null) {
+    const decade = Math.floor(world.meanYear / 10) * 10;
+    parts.push(
+      (world.sdYears ?? 0) >= 12
+        ? t('sj.taste.worldEraSpread')
+        : t('sj.taste.worldEraDecade').replace('{decade}', String(decade)),
+    );
+  }
+  const sceneKey = world.dominantScene
+    ? { kr: 'sj.taste.sceneKr', jp: 'sj.taste.sceneJp', west: 'sj.taste.sceneWest', other: 'sj.taste.sceneOther' }[world.dominantScene]
+    : 'sj.taste.sceneMixed';
+  parts.push(t(sceneKey));
+  if (parts.length === 0) return null;
+  return (
+    <p className="mt-1 text-[11.5px] font-semibold text-muted/80 tracking-wide">
+      {parts.join(' · ')}
+    </p>
   );
 }
 

@@ -54,6 +54,8 @@
     "backfill:genres:dry": "tsx --env-file=.env.local scripts/backfill-genres-itunes.ts --dry-run",
     "backfill:genres:lastfm": "tsx --env-file=.env.local scripts/backfill-genres-lastfm.ts",
     "backfill:genres:lastfm:dry": "tsx --env-file=.env.local scripts/backfill-genres-lastfm.ts --dry-run",
+    "enrich:subgenres": "tsx --env-file=.env.local scripts/enrich-subgenres-lastfm.ts",
+    "enrich:subgenres:dry": "tsx --env-file=.env.local scripts/enrich-subgenres-lastfm.ts --dry-run --limit=60",
     "enrich:genres:lastfm": "tsx --env-file=.env.local scripts/enrich-genres-lastfm.ts",
     "enrich:genres:lastfm:dry": "tsx --env-file=.env.local scripts/enrich-genres-lastfm.ts --dry-run",
     "backfill:genres:rg": "tsx --env-file=.env.local scripts/backfill-genres-rg.ts",
