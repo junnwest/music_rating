@@ -45,19 +45,32 @@ class DiscoveryViewModel {
     var hasPersonalized = false
 
     // Artists behind ratings >= 3.5, ordered best-first -- the in-app signal QuickAddViewModel
-    // supplements Spotify/Apple Music with. Populated alongside personalizedAlbums in
-    // loadPersonalized() since it's derived from the same ratedReleases query.
+    // supplements Spotify/Apple Music with. Populated by loadRatedArtists() below.
     var ratedArtists: [String] = []
 
     // High-confidence taste recommendations (artists user rated 4+)
     var tasteAlbums: [Release] = []
 
-    // Trending on the platform (most-rated recent releases)
+    // Genre-cluster "worlds" from /api/recommendations -- one row per taste cluster, e.g.
+    // "Because you love {label}". New this session (web sibling: search/page.tsx's worlds[]).
+    var worlds: [(label: String, albums: [Release])] = []
+
+    // Trending on the platform (most-rated recent releases, real ratings weighted over bot ones)
     var trendingAlbums: [Release] = []
 
-    // General popular
+    // Newest albums/EPs with cover art -- a genuine "New Releases" row, distinct from Popular
+    // now that Popular is actually prestige-ranked (was previously the same newest-first query
+    // mislabeled "Popular").
+    var newReleaseAlbums: [Release] = []
+
+    // Popular (prestige-ranked)
     var popularAlbums: [Release] = []
     var popularSongs:  [SongResult] = []
+
+    // Artists with any rating <=1.5 -- suppressed from every section above. Populated by
+    // loadRecommendations() (the only endpoint that knows this), applied there and retroactively
+    // to Discovery's own concurrently-fetched sections.
+    var blockedArtists: Set<String> = []
 
     var isLoading = true
     var needsSpotifyReconnect = false  // no cached data AND token is gone
@@ -95,16 +108,16 @@ class DiscoveryViewModel {
 
     private func reloadDiscoverySections() async {
         await withTaskGroup(of: Void.self) { g in
-            g.addTask { await self.loadPopular() }
-            g.addTask { await self.loadPersonalized() }
-            g.addTask { await self.loadTasteAlbums() }
-            g.addTask { await self.loadTrending() }
+            g.addTask { await self.loadRatedArtists() }
+            g.addTask { await self.loadDiscovery() }
+            g.addTask { await self.loadRecommendations() }
         }
     }
 
     private func prefetchDiscoveryCovers() {
         // Kick off background downloads for all album art so covers are ready before the user scrolls
-        let prefetchUrls = (personalizedAlbums + trendingAlbums + popularAlbums + tasteAlbums)
+        let prefetchUrls = (personalizedAlbums + trendingAlbums + popularAlbums + tasteAlbums
+            + newReleaseAlbums + worlds.flatMap(\.albums))
             .compactMap { URL(string: $0.coverUrl?.thumbnailUrl ?? "") }
         ImageCache.prefetch(prefetchUrls)
     }
@@ -192,27 +205,11 @@ class DiscoveryViewModel {
         await loadSpotify()
     }
 
-    private func loadPopular() async {
-        popularAlbums = (try? await supabase
-            .from("release_groups")
-            .select("id, title, artist_display, cover_url, native_title, release_group_type, first_release_date")
-            .in("release_group_type", values: ["album", "ep"])
-            .not("cover_url", operator: .is, value: AnyJSON.null)
-            .order("first_release_date", ascending: false, nullsFirst: false)
-            .limit(50)
-            .execute()
-            .value) ?? []
-        popularSongs = []  // songs in discovery deferred until Windows rebuilds search RPCs
-    }
-
-    private func loadPersonalized() async {
+    // Artists behind ratings >= 3.5, best-first -- QuickAddViewModel's seed source. Kept as its
+    // own small loader (previously a side effect of loadPersonalized(), now that that's gone in
+    // favor of calling web's own /api/recommendations directly).
+    private func loadRatedArtists() async {
         guard let userId = supabase.auth.currentUser?.id else { return }
-
-        var dbArtists = Set<String>()
-
-        // Primary seeds: artist_display values from ratings the user actually liked
-        // (score/elo >= 3.5) -- previously every rating counted equally regardless of score,
-        // so an album rated 1 star seeded "For You" just as strongly as one rated 5 stars.
         struct RatedRelease: Codable {
             let score: Double?
             let eloScore: Double?
@@ -232,10 +229,6 @@ class DiscoveryViewModel {
             .limit(200)
             .execute()
             .value) ?? []
-        for r in ratedReleases {
-            let display = r.score ?? r.eloScore.map(Elo.toScore)
-            if let d = display, d >= 3.5 { dbArtists.insert(r.releaseGroups.artist) }
-        }
         var seenRatedArtists = Set<String>()
         ratedArtists = ratedReleases
             .compactMap { r -> (String, Double)? in
@@ -245,181 +238,44 @@ class DiscoveryViewModel {
             .sorted { $0.1 > $1.1 }
             .map(\.0)
             .filter { seenRatedArtists.insert($0).inserted }
+    }
 
-        // Supplement with Spotify artists when available -- independent listening signal
-        // (not a rating), so no score filter applies here; filtering it would hurt cold-start
-        // users who have real streaming history but haven't rated much yet.
-        for a in spotifyArtists { dbArtists.insert(a.name) }
-        for a in recentlyPlayed  { dbArtists.insert(a.artistName) }
+    // Popular (prestige-ranked, not just newest), New Releases, and bot-weighted Trending --
+    // calls web's own /api/discovery directly instead of the old client-side queries (which had
+    // "Popular" mislabeled newest-first, and Trending counting every rating equally regardless
+    // of is_bot). Same algorithm as web, no local reimplementation to drift out of sync. See
+    // Services/WebAPI.swift.
+    private func loadDiscovery() async {
+        guard let resp: DiscoveryResponse = await WebAPI.get("/api/discovery", authed: false) else { return }
+        popularAlbums = filterBlocked(resp.popular)
+        newReleaseAlbums = filterBlocked(resp.newReleases)
+        trendingAlbums = filterBlocked(resp.trending)
+        popularSongs = []  // songs in discovery deferred until Windows rebuilds search RPCs
+    }
 
-        // Supplement with Apple Music library when available.
-        for a in appleMusicArtists        { dbArtists.insert(a.name) }
-        for a in appleMusicRecentlyPlayed { dbArtists.insert(a.artistName) }
-        for a in appleMusicLibraryAlbums  { dbArtists.insert(a.artistName) }
-
-        // Exploit slice: more albums by artists already in the seed set, capped per artist
-        // (matches loadTasteAlbums()'s existing anti-flood cap -- this section had none before).
-        var exploit: [Release] = []
-        if !dbArtists.isEmpty {
-            let seeds = Array(dbArtists.prefix(50))
-            let raw: [Release] = (try? await supabase
-                .from("release_groups")
-                .select("id, title, artist_display, cover_url, native_title, release_group_type, first_release_date")
-                .not("cover_url", operator: .is, value: AnyJSON.null)
-                .in("release_group_type", values: ["album", "ep"])
-                .in("artist_display", values: seeds)
-                .order("first_release_date", ascending: false, nullsFirst: false)
-                .limit(120)
-                .execute()
-                .value) ?? []
-            var countPerArtist: [String: Int] = [:]
-            for album in raw {
-                let n = countPerArtist[album.displayArtist, default: 0]
-                if n < 3 { exploit.append(album); countPerArtist[album.displayArtist] = n + 1 }
-            }
-        }
-
-        // Explore slice: content-based discovery via release_groups.embedding -- surfaces new
-        // artists musically similar to the user's own highest-rated albums, instead of only
-        // ever resurfacing artists already in the user's history. Seeded independently (its own
-        // small top-rated lookup) rather than reusing loadTasteAlbums()'s pool, so both loaders
-        // can still run fully concurrently in the outer TaskGroup.
-        var explore: [Release] = []
-        struct TopRated: Codable {
-            let releaseGroupId: UUID; let score: Double?; let eloScore: Double?
-            let releaseGroups: ArtistOnly
-            struct ArtistOnly: Codable {
-                let artist: String
-                enum CodingKeys: String, CodingKey { case artist = "artist_display" }
-            }
-            enum CodingKeys: String, CodingKey {
-                case releaseGroupId = "release_group_id"; case score; case eloScore = "elo_score"
-                case releaseGroups = "release_groups"
-            }
-        }
-        let topRatedRows: [TopRated] = (try? await supabase
-            .from("ratings")
-            .select("release_group_id, score, elo_score, release_groups(artist_display)")
-            .eq("user_id", value: userId)
-            .limit(200)
-            .execute()
-            .value) ?? []
-        // Capped at 3, not 5 -- confirmed live that RPC cost scales with seed count more than
-        // with p_per_seed's final LIMIT: 4 seeds completed in ~3.3s, 5 reliably hit the
-        // statement timeout. Deduped by artist first so e.g. three 5-star NewJeans albums don't
-        // burn all 3 seed slots on one artist, leaving no room for genre diversity in the query.
-        var seenArtists = Set<String>()
-        let seedIds: [UUID] = topRatedRows
-            .compactMap { row -> (UUID, String, Double)? in
-                guard let d = row.score ?? row.eloScore.map(Elo.toScore), d >= 4.0 else { return nil }
-                return (row.releaseGroupId, row.releaseGroups.artist, d)
-            }
-            .sorted { $0.2 > $1.2 }
-            .filter { seenArtists.insert($0.1).inserted }
-            .prefix(3)
-            .map(\.0)
-
-        if !seedIds.isEmpty {
-            struct SimilarReleasesParams: Encodable {
-                let p_seed_ids: [String]
-                let p_exclude_artists: [String]?
-            }
-            explore = (try? await supabase
-                .rpc("get_taste_similar_releases", params: SimilarReleasesParams(
-                    p_seed_ids: seedIds.map(\.uuidString),
-                    p_exclude_artists: dbArtists.isEmpty ? nil : Array(dbArtists)))
-                .execute()
-                .value) ?? []
-        }
-
-        var combined = exploit + explore
-        var seen = Set<UUID>()
-        combined = combined.filter { seen.insert($0.id).inserted }
-        personalizedAlbums = Array(combined.shuffled().prefix(60))
-
+    // "From Your Taste" / "For You" / genre-cluster "worlds" -- calls web's own
+    // /api/recommendations directly instead of the old client-side exploit+explore blend, so iOS
+    // gets the same taste-vector/genre-embedding clustering web has (see Services/WebAPI.swift).
+    // Also the only source of blockedArtists (any artist rated <=1.5), applied here and
+    // retroactively to Discovery below since that fetch runs concurrently and can't wait on this.
+    private func loadRecommendations() async {
+        guard let resp: RecommendationsResponse = await WebAPI.get("/api/recommendations", authed: true) else { return }
+        blockedArtists = Set(resp.blockedArtists)
+        tasteAlbums = filterBlocked(resp.fromYourTaste)
+        personalizedAlbums = filterBlocked(resp.forYou)
+        worlds = resp.worlds.map { (label: $0.label, albums: filterBlocked($0.albums)) }
         hasPersonalized = !personalizedAlbums.isEmpty
         personalizedSongs = []  // deferred until Windows rebuilds search RPCs
+
+        // Discovery's own fetch runs concurrently and may have already populated these before
+        // blockedArtists was known -- re-apply now that it is.
+        popularAlbums = filterBlocked(popularAlbums)
+        newReleaseAlbums = filterBlocked(newReleaseAlbums)
+        trendingAlbums = filterBlocked(trendingAlbums)
     }
 
-    // Albums by artists the user has explicitly loved (rated ≥ 4.0).
-    private func loadTasteAlbums() async {
-        guard let userId = supabase.auth.currentUser?.id else { return }
-
-        struct HighRated: Codable {
-            let releaseGroups: AR
-            struct AR: Codable {
-                let artist: String
-                enum CodingKeys: String, CodingKey { case artist = "artist_display" }
-            }
-            enum CodingKeys: String, CodingKey { case releaseGroups = "release_groups" }
-        }
-        let rows: [HighRated] = (try? await supabase
-            .from("ratings")
-            .select("release_groups(artist_display)")
-            .eq("user_id", value: userId)
-            .gte("score", value: 4.0)
-            .execute()
-            .value) ?? []
-
-        let lovedArtists = Array(Set(rows.map(\.releaseGroups.artist)).prefix(30))
-        guard !lovedArtists.isEmpty else { return }
-
-        let all: [Release] = (try? await supabase
-            .from("release_groups")
-            .select("id, title, artist_display, cover_url, native_title, release_group_type, first_release_date")
-            .in("artist_display", values: lovedArtists)
-            .in("release_group_type", values: ["album", "ep"])
-            .not("cover_url", operator: .is, value: AnyJSON.null)
-            .order("first_release_date", ascending: false, nullsFirst: false)
-            .limit(200)
-            .execute()
-            .value) ?? []
-
-        // Cap at 3 albums per artist so no single prolific artist floods the section.
-        var countPerArtist: [String: Int] = [:]
-        var capped: [Release] = []
-        for album in all {
-            let n = countPerArtist[album.displayArtist, default: 0]
-            if n < 3 { capped.append(album); countPerArtist[album.displayArtist] = n + 1 }
-        }
-        tasteAlbums = capped.shuffled()
-    }
-
-    // Most-rated release groups on the platform in the last 30 days.
-    private func loadTrending() async {
-        let cutoff = ISO8601DateFormatter().string(
-            from: Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
-        )
-
-        struct Row: Codable {
-            let releaseGroupId: UUID
-            let releaseGroups: Release
-            enum CodingKeys: String, CodingKey {
-                case releaseGroupId = "release_group_id"
-                case releaseGroups  = "release_groups"
-            }
-        }
-
-        let rows: [Row] = (try? await supabase
-            .from("ratings")
-            .select("release_group_id, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, first_release_date)")
-            .gt("created_at", value: cutoff)
-            .order("created_at", ascending: false)
-            .limit(500)
-            .execute()
-            .value) ?? []
-
-        var counts: [UUID: (count: Int, release: Release)] = [:]
-        for row in rows {
-            guard row.releaseGroups.releaseType != "single" else { continue }
-            counts[row.releaseGroupId] = ((counts[row.releaseGroupId]?.count ?? 0) + 1, row.releaseGroups)
-        }
-
-        trendingAlbums = counts.values
-            .sorted { $0.count > $1.count }
-            .map(\.release)
-            .prefix(25)
-            .map { $0 }
+    private func filterBlocked(_ albums: [Release]) -> [Release] {
+        blockedArtists.isEmpty ? albums : albums.filter { !blockedArtists.contains($0.artist) }
     }
 }
 
@@ -1035,6 +891,20 @@ struct SearchView: View {
                         Spacer().frame(height: 28)
                     }
 
+                    // ── Worlds (genre-cluster rows, e.g. "Because you love Dream Pop") ──
+                    ForEach(Array(discoveryVM.worlds.enumerated()), id: \.offset) { _, world in
+                        let visibleWorld = world.albums.filter {
+                            !ratedReleaseIds.contains($0.id) || sessionRatedIds.contains($0.id)
+                        }
+                        if !visibleWorld.isEmpty {
+                            discoverySectionTitle(
+                                LocalizedStringKey(String(format: String(localized: "Because you love %@"), world.label))
+                            )
+                            albumScroll(visibleWorld)
+                            Spacer().frame(height: 24)
+                        }
+                    }
+
                     // ── Popular ───────────────────────────────
                     if !discoveryVM.popularAlbums.isEmpty || !discoveryVM.popularSongs.isEmpty {
                         discoverySectionTitle("Popular")
@@ -1046,6 +916,16 @@ struct SearchView: View {
                     if !discoveryVM.popularSongs.isEmpty {
                         discoverySubheader("Songs")
                         songList(discoveryVM.popularSongs, expanded: $showAllPopularSongs)
+                    }
+
+                    // ── New Releases ──────────────────────────
+                    let visibleNewReleases = discoveryVM.newReleaseAlbums.filter {
+                        !ratedReleaseIds.contains($0.id) || sessionRatedIds.contains($0.id)
+                    }
+                    if !visibleNewReleases.isEmpty {
+                        discoverySectionTitle("New Releases")
+                        albumScroll(visibleNewReleases)
+                        Spacer().frame(height: 24)
                     }
 
                     // ── Trending ──────────────────────────────

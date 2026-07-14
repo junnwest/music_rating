@@ -2,69 +2,19 @@ import SwiftUI
 import Observation
 import Supabase
 
-// MARK: - Private data models
-
-private struct TasteRatingRow: Codable {
-    let score: Double?
-    let createdAt: Date
-    let releases: ReleaseEmbed?
-
-    struct ReleaseEmbed: Codable {
-        let id: UUID
-        let title: String
-        let artist: String
-        let coverUrl: String?
-        let genres: [String]?
-        let titleNative: String?
-        let primaryArtist: NativeArtistRef?
-        enum CodingKeys: String, CodingKey {
-            case id, title, genres
-            case artist       = "artist_display"
-            case coverUrl     = "cover_url"
-            case titleNative  = "native_title"
-            case primaryArtist = "artists"
-        }
-
-        var artistNative: String? { primaryArtist?.nameNative }
-        var displayTitle: String { titleNative?.isPredominantlyHangul == true ? titleNative! : title }
-        var displayArtist: String { artistNative?.isPredominantlyHangul == true ? artistNative! : artist }
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case score
-        case createdAt = "created_at"
-        case releases  = "release_groups"
-    }
-}
-
-private struct GenreStandingRow: Codable {
-    let genre: String
-    let userAvg: Double
-    let communityAvg: Double
-    let userCount: Int
-    let communityCount: Int
-    enum CodingKeys: String, CodingKey {
-        case genre
-        case userAvg        = "user_avg"
-        case communityAvg   = "community_avg"
-        case userCount      = "user_count"
-        case communityCount = "community_count"
-    }
-}
-
 // MARK: - Insight card model
 
 enum TasteInsightCard: Identifiable {
     case topAlbum(releaseId: UUID, title: String, artist: String, coverUrl: String?, score: Double)
     case activityPeak(monthName: String, count: Int, allMonths: [(month: Int, count: Int)])
-    case ratingStyle(fiveStarCount: Int, totalCount: Int)
+    case tasteType(code: String, adjectiveKey: String, nounKey: String)
     case genreStanding(genre: String, userAvg: Double, communityAvg: Double, userCount: Int)
 
     var id: String {
         switch self {
         case .topAlbum(let rid, _, _, _, _):    return "top_\(rid)"
         case .activityPeak(let m, _, _):         return "activity_\(m)"
-        case .ratingStyle:                        return "style"
+        case .tasteType(let code, _, _):         return "type_\(code)"
         case .genreStanding(let g, _, _, _):     return "genre_\(g)"
         }
     }
@@ -86,80 +36,63 @@ final class TasteViewModel {
     func load() async {
         guard let user = supabase.auth.currentUser else { isLoading = false; return }
 
-        let rows: [TasteRatingRow] = (try? await supabase
-            .from("ratings")
-            .select("score, created_at, release_groups(id, title, artist_display, cover_url, genres, native_title, artists!release_groups_primary_artist_id_fkey(name_native))")
-            .eq("user_id", value: user.id)
-            .execute()
-            .value) ?? []
-
-        struct SongRatingIdRow: Codable { let recordingId: UUID
-            enum CodingKeys: String, CodingKey { case recordingId = "recording_id" }
-        }
-        let songRows: [SongRatingIdRow] = (try? await supabase
-            .from("track_ratings")
-            .select("recording_id")
-            .eq("user_id", value: user.id)
-            .execute()
-            .value) ?? []
-
-        // Total ratings (any mode — manual score or Instinct/Elo) + song ratings,
-        // matching ProfileView's `totalRatings` so the unlock progress agrees with
-        // the "Rated" stat shown on the profile.
-        ratingCount = rows.count + songRows.count
-
-        let scored = rows.filter { $0.score != nil }
+        // Cheap counts only, just to decide the unlock gate -- matching ProfileView's
+        // `totalRatings` so the unlock progress agrees with the "Rated" stat on the profile.
+        // The actual card data (once unlocked) comes from web's own /api/taste/profile below,
+        // rather than a second, separately-maintained local computation.
+        let albumCount = (try? await supabase.from("ratings")
+            .select("*", head: true, count: .exact).eq("user_id", value: user.id).execute())?.count ?? 0
+        let songCount = (try? await supabase.from("track_ratings")
+            .select("*", head: true, count: .exact).eq("user_id", value: user.id).execute())?.count ?? 0
+        ratingCount = albumCount + songCount
 
         if isUnlocked {
-            var built = buildLocalCards(scored)
-
-            struct Params: Encodable { let p_user_id: UUID }
-            let standings: [GenreStandingRow] = (try? await supabase
-                .rpc("get_user_genre_standings", params: Params(p_user_id: user.id))
-                .execute()
-                .value) ?? []
-
-            if let top = standings.first {
-                built.append(.genreStanding(
-                    genre: top.genre,
-                    userAvg: top.userAvg,
-                    communityAvg: top.communityAvg,
-                    userCount: top.userCount
-                ))
-            }
-
-            cards = built
+            cards = await buildCards()
         }
 
         isLoading = false
     }
 
-    private func buildLocalCards(_ rows: [TasteRatingRow]) -> [TasteInsightCard] {
+    // Calls web's own /api/taste/profile directly (same taste-vector/genre-embedding algorithm
+    // web's Taste page uses) instead of the old single get_user_genre_standings RPC call + local
+    // top-album/activity-month computation -- one algorithm, one source of truth. Builds the same
+    // 4-ish card shapes the reel already had (per this session's "algorithm only, keep the
+    // existing card-reel UI" scope decision), just fed by richer data: a real composite taste
+    // type instead of a single 5-star-frequency heuristic, and up to 3 genre standings instead of
+    // just the first one.
+    private func buildCards() async -> [TasteInsightCard] {
+        guard let resp: TasteProfileResponse = await WebAPI.get(
+            "/api/taste/profile", authed: true, query: ["refresh": "1"]
+        ) else { return [] }
+
         var result: [TasteInsightCard] = []
 
-        // Top album by score
-        if let top = rows.max(by: { ($0.score ?? 0) < ($1.score ?? 0) }),
-           let rel = top.releases,
-           let score = top.score {
+        if let top = resp.topAlbum {
             result.append(.topAlbum(
-                releaseId: rel.id, title: rel.displayTitle,
-                artist: rel.displayArtist, coverUrl: rel.coverUrl, score: score
+                releaseId: top.id, title: top.title, artist: top.artist,
+                coverUrl: top.coverUrl, score: top.score
             ))
         }
 
-        // Most active month (all-time)
-        let byMonth = Dictionary(grouping: rows) {
-            Calendar.current.component(.month, from: $0.createdAt)
-        }.mapValues { $0.count }
-        if let peak = byMonth.max(by: { $0.value < $1.value }) {
-            let name = Calendar.current.monthSymbols[peak.key - 1]
-            let all  = (1...12).map { (month: $0, count: byMonth[$0] ?? 0) }
-            result.append(.activityPeak(monthName: name, count: peak.value, allMonths: all))
+        // months/peakMonthIndex are 0-indexed (JS Date.getMonth()) -- monthSymbols is also
+        // 0-indexed, so peakMonthIndex needs no adjustment; allMonths converts to the 1-indexed
+        // `month` field ActivityCard's existing view code already expects.
+        if let peakIndex = resp.stats.peakMonthIndex, resp.stats.peakMonthCount > 0 {
+            let name = Calendar.current.monthSymbols[peakIndex]
+            let allMonths = resp.stats.months.enumerated().map { (month: $0.offset + 1, count: $0.element) }
+            result.append(.activityPeak(monthName: name, count: resp.stats.peakMonthCount, allMonths: allMonths))
         }
 
-        // Rating style
-        let fiveStars = rows.filter { $0.score == 5.0 }.count
-        result.append(.ratingStyle(fiveStarCount: fiveStars, totalCount: rows.count))
+        result.append(.tasteType(
+            code: resp.type.code, adjectiveKey: resp.type.adjectiveKey, nounKey: resp.type.nounKey
+        ))
+
+        for standing in resp.standings.prefix(3) {
+            result.append(.genreStanding(
+                genre: standing.genre, userAvg: standing.userAvg,
+                communityAvg: standing.communityAvg, userCount: standing.userCount
+            ))
+        }
 
         return result
     }
@@ -366,8 +299,8 @@ private struct InsightCardView: View {
             )
         case .activityPeak(let name, let count, let months):
             ActivityCard(monthName: name, count: count, allMonths: months, isLast: isLast)
-        case .ratingStyle(let fives, let total):
-            RatingStyleCard(fiveStarCount: fives, totalCount: total, isLast: isLast)
+        case .tasteType(let code, let adjectiveKey, let nounKey):
+            TasteTypeCard(code: code, adjectiveKey: adjectiveKey, nounKey: nounKey, isLast: isLast)
         case .genreStanding(let genre, let userAvg, let communityAvg, let userCount):
             GenreStandingCard(
                 genre: genre, userAvg: userAvg,
@@ -486,32 +419,31 @@ private struct ActivityCard: View {
     }
 }
 
-// MARK: - Rating Style card
+// MARK: - Taste Type card
 
-private struct RatingStyleCard: View {
-    let fiveStarCount: Int
-    let totalCount: Int
+private struct TasteTypeCard: View {
+    let code: String
+    let adjectiveKey: String
+    let nounKey: String
     let isLast: Bool
 
-    private var pct: Double { totalCount > 0 ? Double(fiveStarCount) / Double(totalCount) : 0 }
-
-    private var label: String {
-        if fiveStarCount == 0 { return String(localized: "The Skeptic") }
-        switch pct {
-        case ..<0.05: return String(localized: "The Purist")
-        case ..<0.15: return String(localized: "The Enthusiast")
-        case ..<0.30: return String(localized: "The Generous Ear")
-        default:      return String(localized: "The Champion")
+    private var adjective: String {
+        switch adjectiveKey {
+        case "adjWE": return String(localized: "Open-Hearted")
+        case "adjSE": return String(localized: "Discerning")
+        case "adjWF": return String(localized: "Devoted")
+        case "adjSF": return String(localized: "Exacting")
+        default:      return ""
         }
     }
 
-    private var desc: String {
-        if fiveStarCount == 0 { return String(localized: "A 5.0 from you would mean everything.") }
-        switch pct {
-        case ..<0.05: return String(localized: "You save perfect scores for the truly special.")
-        case ..<0.15: return String(localized: "You know great music when you hear it.")
-        case ..<0.30: return String(localized: "You lead with love.")
-        default:      return String(localized: "Music makes you generous.")
+    private var noun: String {
+        switch nounKey {
+        case "nounMN": return String(localized: "Wave Rider")
+        case "nounUN": return String(localized: "Scene Digger")
+        case "nounMT": return String(localized: "Canon Keeper")
+        case "nounUT": return String(localized: "Crate Digger")
+        default:       return ""
         }
     }
 
@@ -522,41 +454,21 @@ private struct RatingStyleCard: View {
             Color(red: 0.13, green: 0.06, blue: 0.06).ignoresSafeArea()
             VStack(spacing: 0) {
                 Spacer()
-                TasteEyebrow(label: "Your Style", color: accentColor)
+                TasteEyebrow(label: "Your Type", color: accentColor)
                     .padding(.bottom, 20)
-                Text(label)
-                    .font(.system(size: 34, weight: .black))
+                Text(String(format: String(localized: "The %@ %@"), adjective, noun))
+                    .font(.system(size: 30, weight: .black))
                     .foregroundStyle(.white)
-                    .padding(.bottom, 8)
-                Text(desc)
-                    .font(.system(size: 16))
-                    .foregroundStyle(Color.white.opacity(0.45))
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 44)
-                    .padding(.bottom, 40)
-                HStack(spacing: 36) {
-                    statBlock(value: "\(fiveStarCount)", label: "perfect scores", color: .sjAmber)
-                    Color.white.opacity(0.1).frame(width: 1, height: 44)
-                    statBlock(
-                        value: String(format: "%.0f%%", pct * 100),
-                        label: "of your ratings",
-                        color: accentColor
-                    )
-                }
+                    .padding(.horizontal, 32)
+                    .padding(.bottom, 12)
+                Text(code.map(String.init).joined(separator: " · "))
+                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(accentColor.opacity(0.8))
+                    .kerning(1)
                 Spacer()
                 if !isLast { TasteSwipeHint() }
             }
-        }
-    }
-
-    private func statBlock(value: String, label: LocalizedStringKey, color: Color) -> some View {
-        VStack(spacing: 4) {
-            Text(value)
-                .font(.system(size: 38, weight: .black))
-                .foregroundStyle(color)
-            Text(label)
-                .font(.system(size: 11))
-                .foregroundStyle(Color.white.opacity(0.3))
         }
     }
 }
