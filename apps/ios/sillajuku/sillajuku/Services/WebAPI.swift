@@ -19,13 +19,33 @@ enum WebAPI {
 
         var request = URLRequest(url: url)
         if authed {
-            guard let session = try? await supabase.auth.session else { return nil }
+            guard let session = try? await supabase.auth.session else {
+                print("WebAPI.get(\(path)): no auth session available")
+                return nil
+            }
             request.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
         }
 
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
-              (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
-        return try? JSONDecoder().decode(T.self, from: data)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            print("WebAPI.get(\(path)): network error: \(error)")
+            return nil
+        }
+        let statusCode = (response as? HTTPURLResponse)?.statusCode
+        guard statusCode == 200 else {
+            let body = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+            print("WebAPI.get(\(path)): HTTP \(statusCode.map(String.init) ?? "?") -- \(body)")
+            return nil
+        }
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            print("WebAPI.get(\(path)): decode error: \(error)")
+            return nil
+        }
     }
 }
 
