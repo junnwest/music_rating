@@ -53,18 +53,18 @@ struct RecommendationsResponse: Decodable {
 
 // MARK: - /api/taste/profile (authenticated)
 
+// v4 (2026-07-13 web rebuild, MBTI 4-letter type removed in favor of a graphical chart report --
+// decade/score-distribution histograms, scene mix, canon reach, 12-month timeline). Only the
+// fields iOS's card-reel actually uses are decoded; `charts`/`disliked`/most of `clusters` are
+// omitted since this session's "algorithm only, keep the existing card UI" scope doesn't build
+// the chart-based report web now has.
 struct TasteProfileResponse: Decodable {
     let ratingCount: Int
-    let type: TasteType
+    let albumRatingCount: Int
     let standings: [GenreStandingRow]
     let stats: TasteStats
+    let charts: TasteCharts
     let topAlbum: TasteTopAlbum?
-
-    struct TasteType: Decodable {
-        let code: String
-        let adjectiveKey: String
-        let nounKey: String
-    }
 
     struct GenreStandingRow: Decodable {
         let genre: String
@@ -74,9 +74,18 @@ struct TasteProfileResponse: Decodable {
     }
 
     struct TasteStats: Decodable {
-        let months: [Int]
+        let fiveStars: Int
+    }
+
+    struct TasteCharts: Decodable {
+        // "YYYY-MM", oldest first, 12 entries (a rolling window, not fixed Jan-Dec).
+        let timeline: [TimelineEntry]
         let peakMonthIndex: Int?
-        let peakMonthCount: Int
+
+        struct TimelineEntry: Decodable {
+            let month: String
+            let count: Int
+        }
     }
 
     struct TasteTopAlbum: Decodable {
