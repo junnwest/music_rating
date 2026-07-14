@@ -205,7 +205,15 @@ class DiscoveryViewModel {
     // means the section otherwise never changes for the rest of the session. This re-runs that
     // same batch on demand.
     func refresh() async {
+        // Recently Listened's catalog resolution is otherwise a load()-once-per-session guard
+        // (resolveRecentlyPlayedIfNeeded) -- reset it here so refresh actually re-attempts
+        // matching too, same as every other section already does. Matters because the catalog
+        // itself can change independent of the (unrefreshed) underlying Spotify/Apple data --
+        // e.g. a search-matching fix landing server-side wouldn't otherwise show up without a
+        // full app relaunch.
+        hasResolvedRecentlyPlayed = false
         await reloadDiscoverySections()
+        await resolveRecentlyPlayedIfNeeded()
         prefetchDiscoveryCovers()
     }
 
@@ -220,7 +228,8 @@ class DiscoveryViewModel {
     private func prefetchDiscoveryCovers() {
         // Kick off background downloads for all album art so covers are ready before the user scrolls
         let prefetchUrls = (personalizedAlbums + trendingAlbums + popularAlbums + tasteAlbums
-            + newReleaseAlbums + worlds.flatMap(\.albums))
+            + newReleaseAlbums + worlds.flatMap(\.albums)
+            + recentlyPlayedReleases + appleMusicRecentlyPlayedReleases)
             .compactMap { URL(string: $0.coverUrl?.thumbnailUrl ?? "") }
         ImageCache.prefetch(prefetchUrls)
     }
