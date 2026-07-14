@@ -72,9 +72,17 @@ class DiscoveryViewModel {
     // to Discovery's own concurrently-fetched sections.
     var blockedArtists: Set<String> = []
 
+    // Spotify/Apple "Recently Listened" resolved against the catalog -- see
+    // resolveRecentlyPlayedIfNeeded() below. Rendered via the same albumScroll/DiscoveryAlbumCard
+    // every other section uses (proper cover size, add button, context menu) instead of the old
+    // raw-metadata row that couldn't offer any of that since it had no Release until tap.
+    var recentlyPlayedReleases: [Release] = []
+    var appleMusicRecentlyPlayedReleases: [Release] = []
+
     var isLoading = true
     var needsSpotifyReconnect = false  // no cached data AND token is gone
     private var hasLoaded = false
+    private var hasResolvedRecentlyPlayed = false
 
     func load() async {
         if !hasLoaded {
@@ -93,8 +101,103 @@ class DiscoveryViewModel {
             if !hasSpotifyData { await loadSpotify() }
             if !hasAppleMusicData { await loadAppleMusic() }
         }
+        await resolveRecentlyPlayedIfNeeded()
         isLoading = false
         prefetchDiscoveryCovers()
+    }
+
+    // Recently-played rows come back as raw Spotify/Apple Music metadata (name + artist string),
+    // not a catalog release -- previously resolved lazily per-row on tap, which meant the row
+    // itself could never show a proper cover size or add button (there was no Release to give
+    // one), and a miss only surfaced as a dead-end "not in catalog" alert after the tap. Resolves
+    // once, up front, against the same matching logic (exact title match, fuzzy fallback,
+    // artist-name/id acceptance gate) SearchView.fetchRelease already had tuned for this exact
+    // problem -- unmatched entries are just dropped instead of rendered as a broken-looking row.
+    // Capped at 24 for Spotify (of up to 50 fetched) since eagerly resolving all of them means
+    // that many concurrent catalog lookups for a horizontally-scrolled list most users won't
+    // scroll all the way through anyway; Apple's own fetch is already capped at 20.
+    private func resolveRecentlyPlayedIfNeeded() async {
+        guard !hasResolvedRecentlyPlayed else { return }
+        guard !recentlyPlayed.isEmpty || !appleMusicRecentlyPlayed.isEmpty else { return }
+        hasResolvedRecentlyPlayed = true
+        async let spotifyMatches = Self.resolveCatalogMatches(
+            Array(recentlyPlayed.prefix(24)).map { (name: $0.name, artist: $0.artistName) }
+        )
+        async let appleMatches = Self.resolveCatalogMatches(
+            appleMusicRecentlyPlayed.map { (name: $0.name, artist: $0.artistName) }
+        )
+        recentlyPlayedReleases = await spotifyMatches
+        appleMusicRecentlyPlayedReleases = await appleMatches
+    }
+
+    // Batches concurrency at 8 rather than firing every lookup at once -- confirmed elsewhere
+    // this session (the web sitemap's pagination fetch) that a burst of many simultaneous
+    // PostgREST requests can silently drop results from otherwise-valid concurrent requests in
+    // the same batch. Preserves input order (task completion order isn't submission order).
+    private static func resolveCatalogMatches(_ items: [(name: String, artist: String)]) async -> [Release] {
+        var resolved = [Int: Release]()
+        var i = 0
+        while i < items.count {
+            let batch = items[i..<min(i + 8, items.count)]
+            await withTaskGroup(of: (Int, Release?).self) { g in
+                for (offset, item) in batch.enumerated() {
+                    let index = i + offset
+                    g.addTask { (index, await fetchRelease(name: item.name, artist: item.artist)) }
+                }
+                for await (index, release) in g {
+                    if let release { resolved[index] = release }
+                }
+            }
+            i += 8
+        }
+        return (0..<items.count).compactMap { resolved[$0] }
+    }
+
+    // Same matching logic as SearchView's own fetchRelease (tuned live against real misses --
+    // see that function's comment for why exact-first + gated-fuzzy, no blind closest-title
+    // fallback). Kept here too since this now needs to run eagerly at load time rather than
+    // lazily per-tap from the view.
+    private static func fetchRelease(name: String, artist: String) async -> Release? {
+        let al = artist.lowercased()
+        let artistId = await resolveArtistId(name: artist)
+        func accept(_ r: Release) -> Bool {
+            let ra = r.artist.lowercased()
+            if ra.contains(al) || al.contains(ra) { return true }
+            if let aid = artistId, r.primaryArtistId == aid { return true }
+            return false
+        }
+
+        let exact: [Release] = (try? await supabase
+            .from("release_groups")
+            .select("id, title, artist_display, cover_url, release_group_type, first_release_date, native_title, primary_artist_id")
+            .ilike("title", value: name)
+            .limit(5)
+            .execute()
+            .value) ?? []
+        if let match = exact.first(where: accept) { return match }
+
+        let fuzzy: [Release] = (try? await supabase
+            .rpc("search_release_groups", params: SearchParams(q: name, lim: 10))
+            .execute()
+            .value) ?? []
+        return fuzzy.first(where: accept)
+    }
+
+    private static func resolveArtistId(name: String) async -> UUID? {
+        let rows: [SearchArtist] = (try? await supabase
+            .rpc("search_artists", params: SearchParams(q: name, lim: 3))
+            .execute()
+            .value) ?? []
+        let target = name.lowercased()
+        func overlaps(_ s: String) -> Bool {
+            let l = s.lowercased()
+            return !l.isEmpty && (l == target || l.contains(target) || target.contains(l))
+        }
+        return rows.first { row in
+            overlaps(row.name)
+                || (row.nameNative.map(overlaps) ?? false)
+                || (row.aliases ?? []).contains(where: overlaps)
+        }?.id
     }
 
     // Pull-to-refresh on the Add tab -- load() only runs the personalized/popular/taste/trending
@@ -462,9 +565,7 @@ struct SearchView: View {
     @State private var sessionRatedIds: Set<UUID>  = []   // tapped in this session — shows checkmark
     @State private var showAllPersonalizedSongs = false
     @State private var showAllPopularSongs      = false
-    @State private var recentlyPlayedNavTarget: Release?
     @State private var spotifyArtistNavTarget: ArtistDestination?
-    @State private var showNotInCatalog = false
     @Environment(\.scenePhase) private var scenePhase
 
     private let threeColumns = [GridItem(.flexible(), spacing: 12),
@@ -500,18 +601,9 @@ struct SearchView: View {
             // of a later, unrelated push made from further inside that same destination (e.g.
             // tapping the artist name on an album opened via this row double-pushed the album
             // again on top of the artist page). Clearing it once actually popped prevents that.
-            .navigationDestination(item: $recentlyPlayedNavTarget) { release in
-                AlbumDetailView(release: release)
-                    .onDisappear { if recentlyPlayedNavTarget == release { recentlyPlayedNavTarget = nil } }
-            }
             .navigationDestination(item: $spotifyArtistNavTarget) { artist in
                 ArtistPageView(artist: artist)
                     .onDisappear { if spotifyArtistNavTarget == artist { spotifyArtistNavTarget = nil } }
-            }
-            .alert("Not in catalog", isPresented: $showNotInCatalog) {
-                Button("OK") {}
-            } message: {
-                Text("This album isn't in sillajuku's catalog yet.")
             }
             .alert("Switch to Manual mode", isPresented: $showQuickAddModeGate) {
                 Button("Cancel", role: .cancel) {}
@@ -843,9 +935,14 @@ struct SearchView: View {
                     }
 
                     // ── Spotify: Recently Listened ────────────
-                    if !discoveryVM.recentlyPlayed.isEmpty {
+                    // Resolved against the catalog up front (resolveRecentlyPlayedIfNeeded) --
+                    // renders through the same albumScroll every other section uses, so a real
+                    // cover size, add button, and context menu all come for free, and anything
+                    // that didn't resolve to a real release is simply not shown instead of
+                    // leading to a dead-end "not in catalog" tap.
+                    if !discoveryVM.recentlyPlayedReleases.isEmpty {
                         discoverySectionTitle("Recently Listened")
-                        spotifyAlbumScroll(discoveryVM.recentlyPlayed)
+                        albumScroll(discoveryVM.recentlyPlayedReleases)
                         Spacer().frame(height: 24)
                     }
 
@@ -857,11 +954,11 @@ struct SearchView: View {
                     }
 
                     // ── Apple Music: Recently Listened ────────
-                    if !discoveryVM.appleMusicRecentlyPlayed.isEmpty {
+                    if !discoveryVM.appleMusicRecentlyPlayedReleases.isEmpty {
                         discoverySectionTitle(
-                            discoveryVM.recentlyPlayed.isEmpty ? "Recently Listened" : "Recently Listened (Apple)"
+                            discoveryVM.recentlyPlayedReleases.isEmpty ? "Recently Listened" : "Recently Listened (Apple)"
                         )
-                        appleMusicAlbumScroll(discoveryVM.appleMusicRecentlyPlayed)
+                        albumScroll(discoveryVM.appleMusicRecentlyPlayedReleases)
                         Spacer().frame(height: 24)
                     }
 
@@ -1047,87 +1144,8 @@ struct SearchView: View {
         }
     }
 
-    private func spotifyAlbumScroll(_ albums: [SpotifyAlbumDisplay]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                ForEach(albums) { album in
-                    Button {
-                        Task {
-                            if let r = await fetchRelease(name: album.name, artist: album.artistName) {
-                                recentlyPlayedNavTarget = r
-                            } else {
-                                showNotInCatalog = true
-                            }
-                        }
-                    } label: {
-                        VStack(alignment: .leading, spacing: 6) {
-                            CoverImage(url: album.imageUrl)
-                                .frame(width: 112, height: 112)
-                                .accessibilityHidden(true) // name text below already describes it
-
-                            Text(album.name)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(Color.sjInk)
-                                .lineLimit(1)
-                                .frame(width: 112, alignment: .leading)
-
-                            Text(album.artistName)
-                                .font(.system(size: 11))
-                                .foregroundStyle(Color.sjMuted)
-                                .lineLimit(1)
-                                .frame(width: 112, alignment: .leading)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-        }
-    }
-
-    // Spotify/Apple Music album titles rarely match our catalog byte-for-byte (punctuation,
-    // capitalization, romanization), so an exact ILIKE alone was missing real catalog hits and
-    // showing a false "not in catalog" alert. But fuzzy search alone isn't reliable either --
-    // confirmed live that short/generic titles ("USB", 3 letters) get flooded with unrelated
-    // trigram matches and the real row (which DOES exist) doesn't surface in the top 10 at all.
-    // Try the exact match first (cheap, precise when it hits), fall back to fuzzy only if that
-    // finds nothing.
-    //
-    // No blind "closest title" fallback on the fuzzy path -- confirmed live that it actively
-    // backfires: searching "Father EP" (Masta Wu, genuinely not in the catalog) fuzzy-matched
-    // Vampire Weekend's "Father of the Bride" as the top title hit and would have silently shown
-    // that instead of the honest "not in catalog" alert. Only trust a result whose artist matches.
-    private func fetchRelease(name: String, artist: String) async -> Release? {
-        let al = artist.lowercased()
-        // Resolve the artist first (romanization-aware, via search_artists aliases) so we can
-        // accept an album by artist-id equality when its native artist_display ("혁오") can't
-        // string-overlap a romanized external artist name ("Hyukoh"). One extra RPC, per tap.
-        let artistId = await resolveArtist(name: artist).artistId
-        func accept(_ r: Release) -> Bool {
-            let ra = r.artist.lowercased()
-            if ra.contains(al) || al.contains(ra) { return true }
-            if let aid = artistId, r.primaryArtistId == aid { return true }
-            return false
-        }
-
-        let exact: [Release] = (try? await supabase
-            .from("release_groups")
-            .select("id, title, artist_display, cover_url, release_group_type, first_release_date, native_title, primary_artist_id")
-            .ilike("title", value: name)
-            .limit(5)
-            .execute()
-            .value) ?? []
-        if let match = exact.first(where: accept) { return match }
-
-        let fuzzy: [Release] = (try? await supabase
-            .rpc("search_release_groups", params: SearchParams(q: name, lim: 10))
-            .execute()
-            .value) ?? []
-        return fuzzy.first(where: accept)
-    }
-
-    // Same reasoning as fetchRelease -- Spotify's artist name string rarely matches our
+    // Same reasoning as DiscoveryViewModel.fetchRelease (which now does this eagerly at load
+    // time for Recently Listened) -- Spotify's artist name string rarely matches our
     // artist_display exactly, so the old artistId: nil fallback (a bare ILIKE deep inside
     // ArtistPageView) frequently showed an empty or wrong artist. Resolving the real catalog
     // id up front via search_artists lets navigation use the identity-aware RPC path instead.
@@ -1181,47 +1199,6 @@ struct SearchView: View {
                                 .lineLimit(2)
                                 .multilineTextAlignment(.center)
                                 .frame(width: 72)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-        }
-    }
-
-    private func appleMusicAlbumScroll(_ albums: [AppleMusicAlbumDisplay]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                ForEach(albums) { album in
-                    Button {
-                        Task {
-                            if let r = await fetchRelease(name: album.name, artist: album.artistName) {
-                                recentlyPlayedNavTarget = r
-                            } else {
-                                showNotInCatalog = true
-                            }
-                        }
-                    } label: {
-                        VStack(alignment: .leading, spacing: 6) {
-                            CachedImage(url: album.artworkURL) { Color.sjBorder }
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 112, height: 112)
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                                .accessibilityHidden(true) // name text below already describes it
-
-                            Text(album.name)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(Color.sjInk)
-                                .lineLimit(1)
-                                .frame(width: 112, alignment: .leading)
-
-                            Text(album.artistName)
-                                .font(.system(size: 11))
-                                .foregroundStyle(Color.sjMuted)
-                                .lineLimit(1)
-                                .frame(width: 112, alignment: .leading)
                         }
                     }
                     .buttonStyle(.plain)
