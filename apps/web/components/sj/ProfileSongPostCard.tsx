@@ -5,20 +5,23 @@ import Link from 'next/link';
 import { Heart, MessageCircle, Trash2 } from 'lucide-react';
 import Cover from './Cover';
 import ScoreBadge from './ScoreBadge';
-import CommentsModal from './CommentsModal';
-import LikersModal from './LikersModal';
+import TrackCommentsModal from './TrackCommentsModal';
+import TrackLikersModal from './TrackLikersModal';
 import { useLanguage } from '../../lib/i18n';
 import { eloToScore, INSTINCT_REVEAL_THRESHOLD } from '../../lib/elo';
-import { relativeTime, typeLabelKey } from '../../lib/sj/display';
+import { relativeTime } from '../../lib/sj/display';
 import type { ProfileRatingItem } from './ProfileView';
 
 /**
- * Posts display mode on the own profile — mirrors iOS ProfilePostCard
- * (cover + score badge + review text + like/comment bar + date).
+ * Posts display mode for song ratings -- mirrors iOS ProfileSongPostCard exactly (same
+ * cover + score badge + review text + like/comment bar + date shape as ProfilePostCard, plus
+ * a small "Song" badge next to the title). Song ratings only got likes/comments/review_text in
+ * the schema recently (track_rating_likes/track_rating_comments) -- this is the first web UI to
+ * surface any of it.
  */
-export default function ProfilePostCard({
+export default function ProfileSongPostCard({
   item,
-  instinctAlbumCount,
+  instinctSongCount,
   likesCount,
   commentsCount,
   isLiked,
@@ -26,7 +29,7 @@ export default function ProfilePostCard({
   onDelete,
 }: {
   item: ProfileRatingItem;
-  instinctAlbumCount: number;
+  instinctSongCount: number;
   likesCount: number;
   commentsCount: number;
   isLiked: boolean;
@@ -40,23 +43,26 @@ export default function ProfilePostCard({
   const score =
     item.score != null
       ? item.score
-      : item.eloScore != null && instinctAlbumCount >= INSTINCT_REVEAL_THRESHOLD
+      : item.eloScore != null && instinctSongCount >= INSTINCT_REVEAL_THRESHOLD
         ? eloToScore(item.eloScore)
         : null;
 
   return (
     <article className="bg-surface rounded-2xl shadow-[0_1px_4px_rgba(0,0,0,0.05)] border border-divider/60 group">
       <Link
-        href={`/album/${item.releaseGroupId}`}
+        href={`/song/${item.recordingId}${item.releaseGroupId ? `?rg=${item.releaseGroupId}` : ''}`}
         className="flex items-center gap-3.5 px-3.5 pt-3.5 pb-2.5"
       >
         <Cover url={item.coverUrl} className="w-20 h-20" />
         <span className="flex-1 min-w-0">
-          <span className="block text-[16.5px] font-bold text-ink line-clamp-2">
-            {item.title}
+          <span className="flex items-center gap-1.5">
+            <span className="text-[16.5px] font-bold text-ink line-clamp-2">{item.title}</span>
+            <span className="px-1.5 py-0.5 rounded bg-accent/[0.12] text-accent text-[10px] font-medium shrink-0">
+              {t('sj.type.song')}
+            </span>
           </span>
           <span className="block text-[13.5px] text-muted truncate mt-0.5">
-            {t(typeLabelKey(item.releaseType))} · {item.artistLine}
+            {item.artistLine}
           </span>
         </span>
         {score != null && <ScoreBadge score={score} size={44} />}
@@ -108,12 +114,16 @@ export default function ProfilePostCard({
         </button>
       </div>
 
-      <CommentsModal
+      <TrackCommentsModal
         open={showComments}
         onClose={() => setShowComments(false)}
-        ratingId={item.ratingId}
+        trackRatingId={item.ratingId}
       />
-      <LikersModal open={showLikers} onClose={() => setShowLikers(false)} ratingId={item.ratingId} />
+      <TrackLikersModal
+        open={showLikers}
+        onClose={() => setShowLikers(false)}
+        trackRatingId={item.ratingId}
+      />
     </article>
   );
 }

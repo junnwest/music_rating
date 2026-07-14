@@ -6,6 +6,7 @@ import { Bell, LogOut, Settings, User } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
 import { useSession } from './SessionContext';
+import Avatar from './Avatar';
 import {
   NOTIFICATION_SELECT,
   NotificationRow,
@@ -150,14 +151,7 @@ export function AvatarMenu() {
         onClick={() => setOpen(!open)}
         className="p-1 rounded-full hover:bg-surface transition"
       >
-        {profile?.avatar_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={profile.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover" />
-        ) : (
-          <span className="flex w-7 h-7 rounded-full bg-accent-soft text-accent-deep items-center justify-center text-[12px] font-bold">
-            {(profile?.username ?? '?').slice(0, 1).toUpperCase()}
-          </span>
-        )}
+        <Avatar url={profile?.avatar_url} size={28} />
       </button>
 
       {open && (

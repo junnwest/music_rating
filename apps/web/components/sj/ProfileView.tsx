@@ -21,7 +21,9 @@ import {
 import Cover from './Cover';
 import FlowerGlyph from './FlowerGlyph';
 import Modal from './Modal';
+import Avatar from './Avatar';
 import ProfilePostCard from './ProfilePostCard';
+import ProfileSongPostCard from './ProfileSongPostCard';
 import { useSession } from './SessionContext';
 import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
@@ -61,7 +63,7 @@ type SortOrder = 'recent' | 'top' | 'bottom' | 'az';
 export default function ProfileView({ username }: { username?: string }) {
   const { t } = useLanguage();
   const router = useRouter();
-  const { userId: myId, profile: myProfile, ready, signOut } = useSession();
+  const { userId: myId, profile: myProfile, ready, signOut, requireAuth } = useSession();
 
   const isSelf = !username;
 
@@ -144,7 +146,9 @@ export default function ProfileView({ username }: { username?: string }) {
     const songP = (async (): Promise<ProfileRatingItem[]> => {
       const { data: raw } = await supabase!
         .from('track_ratings')
-        .select('id, recording_id, score, elo_score, created_at, recordings(id, title, artist_display)')
+        .select(
+          'id, recording_id, score, elo_score, review_text, created_at, recordings(id, title, artist_display)',
+        )
         .eq('user_id', uid)
         .order('created_at', { ascending: false })
         .limit(60);
@@ -176,7 +180,7 @@ export default function ProfileView({ username }: { username?: string }) {
           releaseType: null,
           score: r.score,
           eloScore: r.elo_score,
-          reviewText: null,
+          reviewText: r.review_text,
           createdAt: r.created_at,
           releaseTitle: rg?.title ?? '',
           releaseArtist: rg?.artist_display ?? '',
@@ -234,32 +238,66 @@ export default function ProfileView({ username }: { username?: string }) {
     setIsFollowing((((relRes as any).data as any[] | null) ?? []).length > 0);
     setIsBlocked((((blockRes as any).data as any[] | null) ?? []).length > 0);
 
-    // Like/comment counts for posts mode (albums only)
+    // Like/comment counts for posts mode -- albums (rating_id) and songs (track_rating_id)
+    // merged into the same dicts, keyed by item.ratingId either way. Safe to merge: album
+    // ratingIds and song ratingIds come from two different tables' own uuid PKs, so collision
+    // isn't possible.
     const ratingIds = albumItems.map((i) => i.ratingId);
-    if (ratingIds.length > 0) {
-      const [likesRes, commentsRes, myLikesRes] = await Promise.all([
-        supabase.from('rating_likes').select('rating_id').in('rating_id', ratingIds),
-        supabase.from('rating_comments').select('rating_id').in('rating_id', ratingIds),
-        myId
-          ? supabase
-              .from('rating_likes')
-              .select('rating_id')
-              .eq('user_id', myId)
-              .in('rating_id', ratingIds)
-          : Promise.resolve({ data: null }),
-      ]);
-      const lc: Record<string, number> = {};
-      for (const r of (likesRes.data as any[] | null) ?? []) {
-        lc[r.rating_id] = (lc[r.rating_id] ?? 0) + 1;
-      }
-      const cc: Record<string, number> = {};
-      for (const r of (commentsRes.data as any[] | null) ?? []) {
-        cc[r.rating_id] = (cc[r.rating_id] ?? 0) + 1;
-      }
-      setLikeCounts(lc);
-      setCommentCounts(cc);
-      setLikedIds(new Set(((myLikesRes.data as any[] | null) ?? []).map((r) => r.rating_id)));
+    const songRatingIds = songItems.map((i) => i.ratingId);
+    const lc: Record<string, number> = {};
+    const cc: Record<string, number> = {};
+    const liked = new Set<string>();
+
+    const albumCountsP =
+      ratingIds.length > 0
+        ? Promise.all([
+            supabase.from('rating_likes').select('rating_id').in('rating_id', ratingIds),
+            supabase.from('rating_comments').select('rating_id').in('rating_id', ratingIds),
+            myId
+              ? supabase
+                  .from('rating_likes')
+                  .select('rating_id')
+                  .eq('user_id', myId)
+                  .in('rating_id', ratingIds)
+              : Promise.resolve({ data: null }),
+          ])
+        : null;
+    const songCountsP =
+      songRatingIds.length > 0
+        ? Promise.all([
+            supabase.from('track_rating_likes').select('track_rating_id').in('track_rating_id', songRatingIds),
+            supabase
+              .from('track_rating_comments')
+              .select('track_rating_id')
+              .in('track_rating_id', songRatingIds),
+            myId
+              ? supabase
+                  .from('track_rating_likes')
+                  .select('track_rating_id')
+                  .eq('user_id', myId)
+                  .in('track_rating_id', songRatingIds)
+              : Promise.resolve({ data: null }),
+          ])
+        : null;
+
+    const [albumCounts, songCounts] = await Promise.all([albumCountsP, songCountsP]);
+    if (albumCounts) {
+      const [likesRes, commentsRes, myLikesRes] = albumCounts;
+      for (const r of (likesRes.data as any[] | null) ?? []) lc[r.rating_id] = (lc[r.rating_id] ?? 0) + 1;
+      for (const r of (commentsRes.data as any[] | null) ?? []) cc[r.rating_id] = (cc[r.rating_id] ?? 0) + 1;
+      for (const r of (myLikesRes.data as any[] | null) ?? []) liked.add(r.rating_id);
     }
+    if (songCounts) {
+      const [likesRes, commentsRes, myLikesRes] = songCounts;
+      for (const r of (likesRes.data as any[] | null) ?? [])
+        lc[r.track_rating_id] = (lc[r.track_rating_id] ?? 0) + 1;
+      for (const r of (commentsRes.data as any[] | null) ?? [])
+        cc[r.track_rating_id] = (cc[r.track_rating_id] ?? 0) + 1;
+      for (const r of (myLikesRes.data as any[] | null) ?? []) liked.add(r.track_rating_id);
+    }
+    setLikeCounts(lc);
+    setCommentCounts(cc);
+    setLikedIds(liked);
     setLoading(false);
   }, [isSelf, myId, myProfile, username]);
 
@@ -348,7 +386,8 @@ export default function ProfileView({ username }: { username?: string }) {
   }
 
   async function toggleLike(ratingId: string) {
-    if (!supabase || !myId) return;
+    if (!supabase) return;
+    if (!requireAuth() || !myId) return;
     const wasLiked = likedIds.has(ratingId);
     setLikedIds((prev) => {
       const next = new Set(prev);
@@ -368,6 +407,33 @@ export default function ProfileView({ username }: { username?: string }) {
         .eq('rating_id', ratingId);
     } else {
       await supabase.from('rating_likes').insert({ user_id: myId, rating_id: ratingId });
+    }
+  }
+
+  async function toggleSongLike(trackRatingId: string) {
+    if (!supabase) return;
+    if (!requireAuth() || !myId) return;
+    const wasLiked = likedIds.has(trackRatingId);
+    setLikedIds((prev) => {
+      const next = new Set(prev);
+      if (wasLiked) next.delete(trackRatingId);
+      else next.add(trackRatingId);
+      return next;
+    });
+    setLikeCounts((prev) => ({
+      ...prev,
+      [trackRatingId]: Math.max(0, (prev[trackRatingId] ?? 0) + (wasLiked ? -1 : 1)),
+    }));
+    if (wasLiked) {
+      await supabase
+        .from('track_rating_likes')
+        .delete()
+        .eq('user_id', myId)
+        .eq('track_rating_id', trackRatingId);
+    } else {
+      await supabase
+        .from('track_rating_likes')
+        .insert({ user_id: myId, track_rating_id: trackRatingId });
     }
   }
 
@@ -402,18 +468,7 @@ export default function ProfileView({ username }: { username?: string }) {
     <div className="mx-auto max-w-3xl px-4 md:px-6 py-7">
       {/* Header */}
       <div className="flex items-center gap-6">
-        {display?.avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={display.avatarUrl}
-            alt=""
-            className="w-[76px] h-[76px] rounded-full object-cover shrink-0"
-          />
-        ) : (
-          <span className="flex w-[76px] h-[76px] rounded-full bg-accent-soft text-accent-deep items-center justify-center text-[26px] font-bold shrink-0">
-            {(handle || '?').slice(0, 1).toUpperCase()}
-          </span>
-        )}
+        <Avatar url={display?.avatarUrl} size={76} />
         <div className="flex-1 flex items-center gap-2">
           <StatCell value={items.length} label={t('sj.profile.ratedStat')} />
           <button onClick={() => setFollowModal('following')} className="flex-1">
@@ -567,9 +622,19 @@ export default function ProfileView({ username }: { username?: string }) {
                 <RatedTable items={filtered} />
               ) : displayMode === 'posts' && isSelf ? (
                 <div className="mt-3 flex flex-col gap-2.5">
-                  {filtered
-                    .filter((i) => !i.isSong)
-                    .map((item) => (
+                  {filtered.map((item) =>
+                    item.isSong ? (
+                      <ProfileSongPostCard
+                        key={item.key}
+                        item={item}
+                        instinctSongCount={instinctSongCount}
+                        likesCount={likeCounts[item.ratingId] ?? 0}
+                        commentsCount={commentCounts[item.ratingId] ?? 0}
+                        isLiked={likedIds.has(item.ratingId)}
+                        onLike={() => toggleSongLike(item.ratingId)}
+                        onDelete={() => setPendingDelete(item)}
+                      />
+                    ) : (
                       <ProfilePostCard
                         key={item.key}
                         item={item}
@@ -580,7 +645,8 @@ export default function ProfileView({ username }: { username?: string }) {
                         onLike={() => toggleLike(item.ratingId)}
                         onDelete={() => setPendingDelete(item)}
                       />
-                    ))}
+                    ),
+                  )}
                 </div>
               ) : (
                 <ul className="mt-2 divide-y divide-divider">
@@ -1141,18 +1207,7 @@ function FollowListModal({
                   onClick={onClose}
                   className="flex items-center gap-3 py-2.5 hover:bg-surface/60 rounded-lg px-1 transition"
                 >
-                  {p.avatar_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={p.avatar_url}
-                      alt=""
-                      className="w-10 h-10 rounded-full object-cover"
-                    />
-                  ) : (
-                    <span className="flex w-10 h-10 rounded-full bg-accent-soft text-accent-deep items-center justify-center text-[13px] font-bold">
-                      {(p.username ?? p.display_name ?? '?').slice(0, 1).toUpperCase()}
-                    </span>
-                  )}
+                  <Avatar url={p.avatar_url} size={40} />
                   <span className="min-w-0">
                     {p.display_name && (
                       <span className="block text-[13.5px] font-semibold text-ink truncate">

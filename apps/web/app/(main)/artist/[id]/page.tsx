@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Plus } from 'lucide-react';
+import Avatar from '../../../../components/sj/Avatar';
 import Cover from '../../../../components/sj/Cover';
 import FlowerGlyph from '../../../../components/sj/FlowerGlyph';
 import { useSession } from '../../../../components/sj/SessionContext';
@@ -372,9 +373,7 @@ export default function ArtistPage() {
                     entry.score ?? (entry.eloScore != null ? eloToScore(entry.eloScore) : null);
                   return (
                     <li key={entry.id} className="flex items-center gap-2.5 py-2.5 px-1">
-                      <span className="flex w-9 h-9 rounded-full bg-accent/[0.15] text-accent items-center justify-center text-[13px] font-bold shrink-0">
-                        {entry.handle.slice(0, 1).toUpperCase()}
-                      </span>
+                      <Avatar url={null} size={36} />
                       <span className="flex-1 min-w-0">
                         <span className="flex items-center gap-1.5 text-[12px]">
                           <Link

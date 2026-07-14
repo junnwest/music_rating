@@ -19,15 +19,15 @@ interface LikerRow {
   } | null;
 }
 
-/** Who liked a rating — mirrors iOS LikersSheetView. */
-export default function LikersModal({
+/** Who liked a track (song) rating -- mirrors LikersModal, pointed at track_rating_likes. */
+export default function TrackLikersModal({
   open,
   onClose,
-  ratingId,
+  trackRatingId,
 }: {
   open: boolean;
   onClose: () => void;
-  ratingId: string;
+  trackRatingId: string;
 }) {
   const { t } = useLanguage();
   const [likers, setLikers] = useState<LikerRow[]>([]);
@@ -37,14 +37,14 @@ export default function LikersModal({
     if (!open || !supabase) return;
     setLoading(true);
     supabase
-      .from('rating_likes')
-      .select('user_id, profiles!rating_likes_user_id_fkey(id, username, display_name, avatar_url)')
-      .eq('rating_id', ratingId)
+      .from('track_rating_likes')
+      .select('user_id, profiles!track_rating_likes_user_id_fkey(id, username, display_name, avatar_url)')
+      .eq('track_rating_id', trackRatingId)
       .then(({ data }) => {
         setLikers((data as unknown as LikerRow[] | null) ?? []);
         setLoading(false);
       });
-  }, [open, ratingId]);
+  }, [open, trackRatingId]);
 
   const title = loading
     ? t('sj.likes.title')

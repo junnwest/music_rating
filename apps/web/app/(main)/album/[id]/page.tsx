@@ -12,6 +12,7 @@ import {
   ListMusic,
   ListPlus,
 } from 'lucide-react';
+import Avatar from '../../../../components/sj/Avatar';
 import Cover from '../../../../components/sj/Cover';
 import FlowerGlyph from '../../../../components/sj/FlowerGlyph';
 import ManualRateModal from '../../../../components/sj/ManualRateModal';
@@ -669,9 +670,7 @@ export default function AlbumPage() {
                         href={`/profile/${post.profiles?.username ?? ''}`}
                         className="flex items-center gap-3 min-w-0 flex-1 group"
                       >
-                        <span className="flex w-8 h-8 rounded-full bg-accent-soft text-accent-deep items-center justify-center text-[12px] font-bold shrink-0">
-                          {handle.slice(0, 1).toUpperCase()}
-                        </span>
+                        <Avatar url={null} size={32} />
                         <span className="min-w-0">
                           <span className="block text-[13px] font-medium text-ink truncate group-hover:underline">
                             @{handle}

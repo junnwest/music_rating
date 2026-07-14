@@ -19,16 +19,20 @@ interface CommentRow {
   profiles: { username: string | null; display_name: string | null; avatar_url: string | null } | null;
 }
 
-/** Comment thread on a rating — mirrors iOS CommentSheetView. */
-export default function CommentsModal({
+/** Comment thread on a track (song) rating -- mirrors CommentsModal, pointed at
+ * track_rating_comments/track_rating_id instead of rating_comments/rating_id. Kept as its own
+ * component rather than a generalized prop on CommentsModal, matching this codebase's existing
+ * precedent of separate components per social-object type (MixShareCommentSheetView vs.
+ * CommentSheetView on iOS) instead of retrofitting the album one. */
+export default function TrackCommentsModal({
   open,
   onClose,
-  ratingId,
+  trackRatingId,
   onCountChange,
 }: {
   open: boolean;
   onClose: () => void;
-  ratingId: string;
+  trackRatingId: string;
   onCountChange?: (count: number) => void;
 }) {
   const { t, lang } = useLanguage();
@@ -42,11 +46,11 @@ export default function CommentsModal({
   async function load() {
     if (!supabase) return;
     const { data } = await supabase
-      .from('rating_comments')
+      .from('track_rating_comments')
       .select(
-        'id, user_id, content, created_at, profiles!rating_comments_user_id_fkey(username, display_name, avatar_url)',
+        'id, user_id, content, created_at, profiles!track_rating_comments_user_id_fkey(username, display_name, avatar_url)',
       )
-      .eq('rating_id', ratingId)
+      .eq('track_rating_id', trackRatingId)
       .order('created_at', { ascending: true });
     const rows = (data as unknown as CommentRow[] | null) ?? [];
     setComments(rows);
@@ -59,7 +63,7 @@ export default function CommentsModal({
     setLoading(true);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, ratingId]);
+  }, [open, trackRatingId]);
 
   async function send() {
     if (!supabase) return;
@@ -68,8 +72,8 @@ export default function CommentsModal({
     if (!requireAuth() || !userId) return;
     setSending(true);
     const { error: insertError } = await supabase
-      .from('rating_comments')
-      .insert({ user_id: userId, rating_id: ratingId, content: trimmed });
+      .from('track_rating_comments')
+      .insert({ user_id: userId, track_rating_id: trackRatingId, content: trimmed });
     if (insertError) {
       setError(insertError.message);
     } else {

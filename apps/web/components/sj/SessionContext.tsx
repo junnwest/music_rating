@@ -11,6 +11,7 @@ import {
 import { usePathname, useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabaseClient';
 import type { ProfileRow } from '../../lib/db/types';
+import AuthPromptModal from './AuthPromptModal';
 
 interface SessionValue {
   /** undefined = still resolving; null = signed out */
@@ -20,6 +21,10 @@ interface SessionValue {
   ready: boolean;
   refreshProfile: () => Promise<void>;
   signOut: () => Promise<void>;
+  /** Guard for write actions (like, comment, etc). Returns true when signed in; when signed
+   * out it opens the sign-in nudge modal and returns false, so callers can write
+   * `if (!requireAuth()) return;` in place of the old silent `if (!userId) return;`. */
+  requireAuth: () => boolean;
 }
 
 const SessionContext = createContext<SessionValue>({
@@ -28,6 +33,7 @@ const SessionContext = createContext<SessionValue>({
   ready: false,
   refreshProfile: async () => {},
   signOut: async () => {},
+  requireAuth: () => false,
 });
 
 const PROFILE_COLS =
@@ -44,6 +50,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
   const [profileError, setProfileError] = useState(false);
+  const [authPromptOpen, setAuthPromptOpen] = useState(false);
+
+  const requireAuth = useCallback(() => {
+    if (userId) return true;
+    setAuthPromptOpen(true);
+    return false;
+  }, [userId]);
 
   const loadProfile = useCallback(async (uid: string) => {
     if (!supabase) return null;
@@ -120,8 +133,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [router]);
 
   return (
-    <SessionContext.Provider value={{ userId, profile, ready, refreshProfile, signOut }}>
+    <SessionContext.Provider value={{ userId, profile, ready, refreshProfile, signOut, requireAuth }}>
       {children}
+      <AuthPromptModal open={authPromptOpen} onClose={() => setAuthPromptOpen(false)} />
     </SessionContext.Provider>
   );
 }
