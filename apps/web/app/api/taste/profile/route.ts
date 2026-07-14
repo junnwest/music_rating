@@ -6,6 +6,7 @@ import { cacheGet, cacheSet } from '../../../../lib/cache';
 import { eloToScore } from '../../../../lib/elo';
 import { displayName } from '../../../../lib/sj/display';
 import { displayGenre } from '../../../../lib/taste/embeddings';
+import { sceneOf, type Scene } from '../../../../lib/taste/albumVector';
 import {
   weightsFromRatings,
   buildClusters,
@@ -13,16 +14,16 @@ import {
   dislikedTags,
 } from '../../../../lib/taste/profile';
 
-// Full taste analysis for the Taste page (2026-07-12 restructure: one report
-// page instead of a card reel). Everything is computed here from a single
-// ratings fetch — clusters, the MBTI-style type, axes, stats — so the client
-// renders one payload. Clustering/vector math stays in Node against the
-// bundled embeddings (Micro-instance rule); the only extra DB work vs the old
-// version is the genre-standings RPC the page previously called itself.
+// Full taste analysis for the Taste page (2026-07-13 rebuild: a graphical
+// analysis report — world composition, release-decade and score-distribution
+// histograms, scene mix, canon reach, 12-month activity — the MBTI-style
+// 4-letter type is gone). Everything is computed here from a single ratings
+// fetch so the client renders one payload. Clustering/vector math stays in
+// Node against the bundled embeddings (Micro-instance rule).
 //
 // The user's stored profile row (user_taste_profiles) is still upserted when
 // it drifts, since iOS/other consumers read it — but this route derives from
-// the ratings directly, which it needs anyway for stats/axes.
+// the ratings directly, which it needs anyway for the charts.
 export const dynamic = 'force-dynamic';
 export const maxDuration = 15;
 
@@ -45,29 +46,6 @@ interface RatingRow {
   } | null;
 }
 
-// Taste-type letters, one per axis (value ≥ 0.5 → first letter):
-//   breadth    E Eclectic   / F Focused
-//   era        N Current    / T Timeless
-//   reach      M Mainstream / U Underground
-//   judgment   W Warm       / S Sharp
-// The display name composes an adjective (judgment × breadth) and a noun
-// (reach × era) — 8 i18n strings cover all 16 types.
-function typeFromAxes(axes: Record<string, number>): {
-  code: string;
-  adjectiveKey: string;
-  nounKey: string;
-} {
-  const breadth = axes.breadth >= 0.5 ? 'E' : 'F';
-  const era = axes.era >= 0.5 ? 'N' : 'T';
-  const reach = axes.reach >= 0.5 ? 'M' : 'U';
-  const judgment = axes.judgment >= 0.5 ? 'W' : 'S';
-  return {
-    code: `${breadth}${era}${reach}${judgment}`,
-    adjectiveKey: `adj${judgment}${breadth}`, // adjWE | adjSE | adjWF | adjSF
-    nounKey: `noun${reach}${era}`, //            nounMN | nounUN | nounMT | nounUT
-  };
-}
-
 export async function GET(req: NextRequest) {
   const limited = await rateLimit(req, 'taste-profile', 30, 60);
   if (limited) return limited;
@@ -76,7 +54,7 @@ export async function GET(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   const refresh = req.nextUrl.searchParams.get('refresh') === '1';
-  const cacheKey = `taste:profile:v3:${userId}`;
+  const cacheKey = `taste:profile:v4:${userId}`;
   if (!refresh) {
     const cached = await cacheGet<object>(cacheKey);
     if (cached) return NextResponse.json(cached);
@@ -134,7 +112,7 @@ export async function GET(req: NextRequest) {
   });
   if (upsertErr) console.error('[taste] profile upsert error:', upsertErr.message);
 
-  // ── stats (means + population std devs — the report shows ±1σ bands) ──
+  // ── headline stats (means + population std devs) ──
   const scores = scored.map((r) => display(r)!);
   const avgScore = scores.length > 0 ? scores.reduce((s, x) => s + x, 0) / scores.length : null;
   const sdScore =
@@ -142,9 +120,6 @@ export async function GET(req: NextRequest) {
       ? Math.sqrt(scores.reduce((s, x) => s + (x - avgScore) ** 2, 0) / scores.length)
       : null;
   const fiveStars = scores.filter((x) => x >= 5).length;
-  const months = Array.from({ length: 12 }, () => 0);
-  for (const r of rows) months[new Date(r.created_at).getMonth()] += 1;
-  const peakCount = Math.max(...months);
 
   const years = rows
     .map((r) => r.release_groups!.first_release_date)
@@ -162,44 +137,59 @@ export async function GET(req: NextRequest) {
     null,
   );
 
-  const clamp = (x: number) => Math.max(0, Math.min(1, x));
+  // ── chart data ──
+  // Release decades (contiguous, zero-filled between first and last).
+  const decadeMap = new Map<number, number>();
+  for (const y of years) {
+    const d = Math.floor(y / 10) * 10;
+    decadeMap.set(d, (decadeMap.get(d) ?? 0) + 1);
+  }
+  const decades: { decade: number; count: number }[] = [];
+  if (decadeMap.size > 0) {
+    const first = Math.min(...decadeMap.keys());
+    const last = Math.max(...decadeMap.keys());
+    for (let d = first; d <= last; d += 10) decades.push({ decade: d, count: decadeMap.get(d) ?? 0 });
+  }
 
-  // ── axes (each value 0..1; ≥ 0.5 leans toward the first-listed pole).
-  // era and judgment carry a ±1σ band (low/high) — breadth and reach are
-  // share-based, where a std dev isn't meaningful.
-  // breadth: how evenly taste spreads across worlds (1 − dominant share).
-  const breadthValue = clusters.length >= 2 ? 1 - clusters[0].share : 0.25;
-  // era: mean release year on a 50-year window ending now (0.5 = 25y ago).
-  const nowYear = new Date().getFullYear();
-  const eraValue = meanYear != null ? clamp((meanYear - (nowYear - 50)) / 50) : 0.5;
-  const eraLow = meanYear != null && sdYears != null ? clamp((meanYear - sdYears - (nowYear - 50)) / 50) : null;
-  const eraHigh = meanYear != null && sdYears != null ? clamp((meanYear + sdYears - (nowYear - 50)) / 50) : null;
-  // reach: share of rated albums in the prestige canon (proxy for mainstream/
-  // canonical listening — prestige covers curated canon lists, ~1.6k rows).
+  // Score distribution in half-star buckets (index 0 = 0.5★ … 9 = 5.0★).
+  const scoreDist = Array.from({ length: 10 }, () => 0);
+  for (const x of scores) scoreDist[Math.max(0, Math.min(9, Math.round(x * 2) - 1))] += 1;
+
+  // Scene mix across all rated albums, by primary artist country.
+  const sceneCounts: Record<Scene, number> = { kr: 0, jp: 0, west: 0, other: 0 };
+  let sceneTotal = 0;
+  for (const r of rows) {
+    const s = sceneOf(r.release_groups!.artists?.country ?? null);
+    if (s) {
+      sceneCounts[s] += 1;
+      sceneTotal += 1;
+    }
+  }
+
+  // Rating activity over the last 12 calendar months (oldest first).
+  const timeline: { month: string; count: number }[] = [];
+  const now = new Date();
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    timeline.push({ month: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, count: 0 });
+  }
+  const monthIndex = new Map(timeline.map((t, i) => [t.month, i]));
+  for (const r of rows) {
+    const d = new Date(r.created_at);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const i = monthIndex.get(key);
+    if (i != null) timeline[i].count += 1;
+  }
+  const peakCount = Math.max(...timeline.map((t) => t.count));
+
+  // Canon reach: share of rated albums in the prestige canon (proxy for
+  // mainstream/canonical listening — prestige covers curated canon lists).
   const prestigeShare =
     rows.length > 0
       ? rows.filter((r) => r.release_groups!.prestige_score != null).length / rows.length
       : 0;
-  const reachValue = rows.length > 0 ? Math.min(1, prestigeShare * 2) : 0.5;
-  // judgment: warmth of scoring — 2.5★ avg → 0, 4.5★ avg → 1; band = ±1σ.
-  const judgmentValue = avgScore != null ? clamp((avgScore - 2.5) / 2) : 0.5;
-  const judgmentLow = avgScore != null && sdScore != null ? clamp((avgScore - sdScore - 2.5) / 2) : null;
-  const judgmentHigh = avgScore != null && sdScore != null ? clamp((avgScore + sdScore - 2.5) / 2) : null;
-
-  const type = typeFromAxes({
-    breadth: breadthValue,
-    era: eraValue,
-    reach: reachValue,
-    judgment: judgmentValue,
-  });
 
   const r2 = (x: number | null) => (x != null ? Math.round(x * 100) / 100 : null);
-  const axes = {
-    breadth: { value: r2(breadthValue), clusterCount: clusters.length, topShare: r2(clusters[0]?.share ?? 1) },
-    era: { value: r2(eraValue), low: r2(eraLow), high: r2(eraHigh), meanYear: meanYear != null ? Math.round(meanYear) : null, sdYears: r2(sdYears) },
-    reach: { value: r2(reachValue), prestigeShare: r2(prestigeShare) },
-    judgment: { value: r2(judgmentValue), low: r2(judgmentLow), high: r2(judgmentHigh), mean: r2(avgScore), sd: r2(sdScore) },
-  };
 
   interface StandingRow {
     genre: string;
@@ -218,8 +208,6 @@ export async function GET(req: NextRequest) {
     ratingCount: rows.length + (trackCountRes.count ?? 0),
     albumRatingCount: rows.length,
     totalTags: Object.keys(weights).length,
-    type,
-    axes,
     clusters: clusters.map((c, i) => {
       const sumW = c.tags.reduce((s, t) => s + t.w, 0);
       const sumN = c.tags.reduce((s, t) => s + t.n, 0);
@@ -242,13 +230,20 @@ export async function GET(req: NextRequest) {
       .slice(0, 6)
       .map((tag) => ({ tag, display: displayGenre(tag) })),
     standings,
+    charts: {
+      decades,
+      scoreDist,
+      scenes: sceneTotal > 0 ? { counts: sceneCounts, total: sceneTotal } : null,
+      timeline,
+      peakMonthIndex: peakCount > 0 ? timeline.findIndex((t) => t.count === peakCount) : null,
+    },
     stats: {
       avgScore: r2(avgScore),
       sdScore: r2(sdScore),
       fiveStars,
-      months,
-      peakMonthIndex: peakCount > 0 ? months.indexOf(peakCount) : null,
-      peakMonthCount: peakCount,
+      meanYear: meanYear != null ? Math.round(meanYear) : null,
+      sdYears: r2(sdYears),
+      prestigeShare: r2(prestigeShare),
     },
     topAlbum: top?.release_groups
       ? {

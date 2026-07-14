@@ -6,6 +6,18 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-07-13 (Windows) — Taste page rebuilt as a graphical analysis report, MBTI 4-letter type scrapped:**
+
+User request: "rebuild the taste page… scrap the 4 alphabet mbti reference, I was thinking of a graphical analysis report of musical taste."
+
+- **API (`/api/taste/profile`, cache `taste:profile:v4`).** Dropped `type` (the 16-type E/F–N/T–M/U–W/S code + composable name) and the `axes` object. Added a `charts` block computed from the same single ratings fetch (no new DB work): `decades` (release-decade histogram, contiguous zero-filled), `scoreDist` (10 half-star buckets), `scenes` (kr/jp/west/other counts by primary-artist country via `sceneOf`), `timeline` (last 12 *calendar* months of rating activity — the old `months` array bucketed by month-of-year across all years, so "peak month" mixed 2025 Jan with 2026 Jan). `stats` gained `meanYear/sdYears/prestigeShare` (previously buried inside `axes`). Worlds/standings/disliked/topAlbum/upsert unchanged — iOS reads `user_taste_profiles`, not this route, so the payload change is web-only.
+- **Page (`app/(main)/taste/page.tsx`).** Report is now: header ("Your taste lives in N worlds"), composition stacked bar + legend, per-world sub-genre cards (kept), **decade histogram** and **score-distribution histogram** (single-hue columns, ≤24px w/ 4px rounded tops, 2px gaps, hairline baseline, peak column direct-labeled, "avg" marker line), **scene-mix stacked bar + canon-reach meter** side by side, stat tiles with the true 12-month sparkline, **you-vs-community dumbbells** (accent = you, gray = community, 2px surface rings, section legend), disliked chips. Each chart keeps a rule-based plain-language sentence (reused `eraWide/Narrow`, `scoreWide/Narrow`, `reachText` strings; new `sceneLeadText`).
+- **Chart discipline (dataviz skill).** The old `WORLD_COLORS` hexes **failed CVD-separation validation** (worst adjacent pair ΔE 7.8 under protanopia; also out of the dark lightness band). Replaced with the validated fixed-order 5-slot palette, separate light/dark steps, swapped via `.taste-report{--viz-1..5}` / `.dark .taste-report{...}` CSS vars; scenes use fixed slots 1–4 (color follows the entity). Both modes re-validated against the app's real surfaces (#fff / #111): pass (light-mode aqua/yellow are sub-3:1 contrast, which is legal here because every series is also named in a legend or direct label). Colored text on values removed ("text never wears the data color") — values are ink/muted, identity comes from the colored dot next to them.
+- **i18n.** Removed the MBTI keys (`typeEyebrow/typeName/adj*/noun*`), the axes/pole keys (`axesHeader/axis*/pole*`), `bandCaption`, `range*Text` from en+ko. Added `worldsTitleOne`, `eraHeader`, `scoreHeader`, `sceneHeader`, `sceneLeadText`, `canonHeader`, `meanLabel`. Grep confirms no other consumer of the removed keys or the removed payload fields.
+- **Verified:** `tsc --noEmit` clean, `next build` clean (only pre-existing img/alt lint warnings). **Not visually spot-checked** — needs a signed-in browser session with a ≥25-rating account; worth a quick look next session (chart geometry, label collisions, dark mode).
+
+---
+
 **2026-07-13 (Windows) — web infinite-loading root cause: auth-lock deadlock in `SessionContext` (NOT a cache problem):**
 
 User report: web content "takes infinite time to load; on hard refresh it sometimes works but breaks again next load." Diagnosed as a Supabase auth-lock **deadlock**, not caching.

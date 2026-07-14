@@ -10,6 +10,8 @@ import { useLanguage } from '../../../lib/i18n';
 
 const UNLOCK_THRESHOLD = 25;
 
+type Scene = 'kr' | 'jp' | 'west' | 'other';
+
 interface WorldTag {
   display: string;
   avg: number;
@@ -21,7 +23,7 @@ interface TasteWorld {
   avgScore: number | null;
   meanYear: number | null;
   sdYears: number | null;
-  dominantScene: 'kr' | 'jp' | 'west' | 'other' | null;
+  dominantScene: Scene | null;
   tags: WorldTag[];
 }
 
@@ -29,23 +31,23 @@ interface TasteReport {
   ratingCount: number;
   albumRatingCount: number;
   totalTags: number;
-  type: { code: string; adjectiveKey: string; nounKey: string };
-  axes: {
-    breadth: { value: number | null; clusterCount: number; topShare: number | null };
-    era: { value: number | null; low: number | null; high: number | null; meanYear: number | null; sdYears: number | null };
-    reach: { value: number | null; prestigeShare: number | null };
-    judgment: { value: number | null; low: number | null; high: number | null; mean: number | null; sd: number | null };
-  };
   clusters: TasteWorld[];
   disliked: { tag: string; display: string }[];
   standings: { genre: string; userAvg: number; communityAvg: number; userCount: number }[];
+  charts: {
+    decades: { decade: number; count: number }[];
+    scoreDist: number[];
+    scenes: { counts: Record<Scene, number>; total: number } | null;
+    timeline: { month: string; count: number }[];
+    peakMonthIndex: number | null;
+  };
   stats: {
     avgScore: number | null;
     sdScore: number | null;
     fiveStars: number;
-    months: number[];
-    peakMonthIndex: number | null;
-    peakMonthCount: number;
+    meanYear: number | null;
+    sdYears: number | null;
+    prestigeShare: number | null;
   };
   topAlbum: {
     id: string;
@@ -56,16 +58,31 @@ interface TasteReport {
   } | null;
 }
 
-// One color per taste world, used consistently in the composition bar,
-// world cards, and legend (accent first, then the app's chart hues).
-const WORLD_COLORS = ['#E8A020', '#61adff', '#b98ae8', '#5fbf8a', '#d96161'];
+// Categorical series slots for worlds and scenes — a fixed-order palette
+// validated (CVD separation, lightness band, contrast) against both app
+// surfaces; light/dark steps swap via the .taste-report CSS vars below.
+// Identity never rides on color alone: every use is paired with a named
+// legend or a direct label.
+const SERIES = ['var(--viz-1)', 'var(--viz-2)', 'var(--viz-3)', 'var(--viz-4)', 'var(--viz-5)'];
+const VIZ_VARS = `
+.taste-report{--viz-1:#2a78d6;--viz-2:#1baf7a;--viz-3:#eda100;--viz-4:#008300;--viz-5:#4a3aa7;}
+.dark .taste-report{--viz-1:#3987e5;--viz-2:#199e70;--viz-3:#c98500;--viz-4:#008300;--viz-5:#9085e9;}
+`;
+/** Scenes keep fixed slots (color follows the entity, not its rank). */
+const SCENE_ORDER: Scene[] = ['kr', 'jp', 'west', 'other'];
+const SCENE_KEYS: Record<Scene, string> = {
+  kr: 'sj.taste.sceneKr',
+  jp: 'sj.taste.sceneJp',
+  west: 'sj.taste.sceneWest',
+  other: 'sj.taste.sceneOther',
+};
 
 /**
  * Taste — a graphical analysis report of the user's rating history: how the
- * taste splits into worlds (multi-modal, with sub-genre breakdowns), four
- * interpreted dials (with ±1σ ranges where the underlying stat has a spread),
- * headline numbers, and community comparison. Every chart carries a plain-
- * language sentence explaining what the stat says. Locked until 25 ratings.
+ * taste splits into worlds (with sub-genre breakdowns), a release-decade
+ * histogram, the score distribution, scene mix, canon reach, activity, and
+ * community comparison. Every chart carries a plain-language sentence
+ * explaining what it says. Locked until 25 ratings.
  */
 export default function TastePage() {
   const { userId, ready } = useSession();
@@ -121,94 +138,82 @@ export default function TastePage() {
 
 function ReportView({ report }: { report: TasteReport }) {
   const { t, lang } = useLanguage();
-  const { axes, stats, clusters } = report;
-
-  const typeName = t('sj.taste.typeName')
-    .replace('{adj}', t(`sj.taste.${report.type.adjectiveKey}`))
-    .replace('{noun}', t(`sj.taste.${report.type.nounKey}`));
+  const { stats, clusters, charts } = report;
 
   const worldName = (w: TasteWorld) =>
     w.tags.length > 1 ? `${w.tags[0].display} × ${w.tags[1].display}` : w.tags[0]?.display ?? '';
 
-  // ── per-axis interpretation sentences (rule-based) ──
-  const rangeText =
-    (axes.breadth.value ?? 0) >= 0.5
-      ? t('sj.taste.rangeEclecticText')
-          .replace('{n}', String(axes.breadth.clusterCount))
-          .replace('{share}', String(Math.round((axes.breadth.topShare ?? 0) * 100)))
-      : t('sj.taste.rangeFocusedText')
-          .replace('{name}', worldName(clusters[0] ?? { share: 0, avgScore: null, tags: [] }))
-          .replace('{share}', String(Math.round((axes.breadth.topShare ?? 1) * 100)));
-
-  const eraText =
-    axes.era.meanYear == null
-      ? ''
-      : ((axes.era.sdYears ?? 0) >= 12 ? t('sj.taste.eraWideText') : t('sj.taste.eraNarrowText'))
-          .replace('{year}', String(axes.era.meanYear))
-          .replace('{sd}', String(Math.round(axes.era.sdYears ?? 0)));
-
-  const reachText = t('sj.taste.reachText').replace(
-    '{pct}',
-    String(Math.round((axes.reach.prestigeShare ?? 0) * 100)),
-  );
-
-  const scoreText =
-    axes.judgment.mean == null
-      ? ''
-      : ((axes.judgment.sd ?? 0) >= 0.9 ? t('sj.taste.scoreWideText') : t('sj.taste.scoreNarrowText'))
-          .replace('{avg}', axes.judgment.mean.toFixed(2))
-          .replace('{sd}', (axes.judgment.sd ?? 0).toFixed(2));
-
-  const dials: {
-    labelKey: string;
-    lowKey: string;
-    highKey: string;
-    value: number | null;
-    low?: number | null;
-    high?: number | null;
-    text: string;
-  }[] = [
-    { labelKey: 'sj.taste.axisBreadth', lowKey: 'sj.taste.poleFocused', highKey: 'sj.taste.poleEclectic', value: axes.breadth.value, text: rangeText },
-    { labelKey: 'sj.taste.axisEra', lowKey: 'sj.taste.poleTimeless', highKey: 'sj.taste.poleCurrent', value: axes.era.value, low: axes.era.low, high: axes.era.high, text: eraText },
-    { labelKey: 'sj.taste.axisReach', lowKey: 'sj.taste.poleUnderground', highKey: 'sj.taste.poleMainstream', value: axes.reach.value, text: reachText },
-    { labelKey: 'sj.taste.axisJudgment', lowKey: 'sj.taste.poleSharp', highKey: 'sj.taste.poleWarm', value: axes.judgment.value, low: axes.judgment.low, high: axes.judgment.high, text: scoreText },
-  ];
+  const headline =
+    clusters.length >= 2
+      ? t('sj.taste.worldsTitle').replace('{n}', String(clusters.length))
+      : t('sj.taste.worldsTitleOne');
 
   const compositionText = (
     clusters.length >= 2 ? t('sj.taste.compositionMulti') : t('sj.taste.compositionFocused')
   )
     .replace('{n}', String(clusters.length))
-    .replace('{name}', worldName(clusters[0] ?? { share: 0, avgScore: null, tags: [] }))
+    .replace('{name}', worldName(clusters[0] ?? { share: 0, avgScore: null, meanYear: null, sdYears: null, dominantScene: null, tags: [] }))
     .replace('{share}', String(Math.round((clusters[0]?.share ?? 0) * 100)));
 
+  // ── era histogram ──
+  const decades = charts.decades;
+  const eraText =
+    stats.meanYear == null
+      ? ''
+      : ((stats.sdYears ?? 0) >= 12 ? t('sj.taste.eraWideText') : t('sj.taste.eraNarrowText'))
+          .replace('{year}', String(stats.meanYear))
+          .replace('{sd}', String(Math.round(stats.sdYears ?? 0)));
+  const decadeSpan = decades.length > 0 ? decades[decades.length - 1].decade + 10 - decades[0].decade : 0;
+  const decadePeak = decades.reduce((best, d, i) => (d.count > decades[best]?.count ? i : best), 0);
+
+  // ── score distribution ──
+  const scoreDist = charts.scoreDist;
+  const scoreTotal = scoreDist.reduce((s, x) => s + x, 0);
+  const scorePeak = scoreDist.reduce((best, x, i) => (x > scoreDist[best] ? i : best), 0);
+  const scoreText =
+    stats.avgScore == null
+      ? ''
+      : ((stats.sdScore ?? 0) >= 0.9 ? t('sj.taste.scoreWideText') : t('sj.taste.scoreNarrowText'))
+          .replace('{avg}', stats.avgScore.toFixed(2))
+          .replace('{sd}', (stats.sdScore ?? 0).toFixed(2));
+
+  // ── scene mix ──
+  const scenes = charts.scenes;
+  const sceneShares = scenes
+    ? SCENE_ORDER.map((s, i) => ({
+        scene: s,
+        share: scenes.counts[s] / scenes.total,
+        color: SERIES[i],
+      })).filter((s) => s.share > 0)
+    : [];
+  const sceneLead = sceneShares.length > 0 ? sceneShares.reduce((a, b) => (b.share > a.share ? b : a)) : null;
+
+  const reachText = t('sj.taste.reachText').replace(
+    '{pct}',
+    String(Math.round((stats.prestigeShare ?? 0) * 100)),
+  );
+
+  const peakMonth =
+    charts.peakMonthIndex != null ? charts.timeline[charts.peakMonthIndex] : null;
+
   return (
-    <div className="mx-auto max-w-3xl px-4 md:px-6 py-7 space-y-5">
-      {/* ── Header + type ── */}
+    <div className="taste-report mx-auto max-w-3xl px-4 md:px-6 py-7 space-y-5">
+      <style>{VIZ_VARS}</style>
+
+      {/* ── Header ── */}
       <section className="rounded-2xl bg-accent-soft/60 border border-accent/15 px-6 py-6">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-          <div className="flex-1">
-            <p className="text-[10px] font-black tracking-[0.12em] uppercase text-accent-deep/70">
-              {t('sj.taste.analysisTitle')}
-            </p>
-            <h1 className="mt-2 text-[24px] font-black text-ink leading-tight">{typeName}</h1>
-            <p className="mt-1.5 text-[12.5px] text-muted">
-              {t('sj.taste.analysisMeta')
-                .replace('{n}', String(report.ratingCount))
-                .replace('{g}', String(report.totalTags))
-                .replace('{w}', String(clusters.length))}
-            </p>
-          </div>
-          <div className="flex gap-1.5 shrink-0">
-            {report.type.code.split('').map((letter, i) => (
-              <span
-                key={i}
-                className="w-9 h-9 rounded-lg bg-accent text-white text-[17px] font-black flex items-center justify-center"
-              >
-                {letter}
-              </span>
-            ))}
-          </div>
-        </div>
+        <p className="text-[10px] font-black tracking-[0.12em] uppercase text-accent-deep/70">
+          {t('sj.taste.analysisTitle')}
+        </p>
+        <h1 className="mt-2 text-[24px] font-black text-ink leading-tight whitespace-pre-line">
+          {headline}
+        </h1>
+        <p className="mt-1.5 text-[12.5px] text-muted">
+          {t('sj.taste.analysisMeta')
+            .replace('{n}', String(report.ratingCount))
+            .replace('{g}', String(report.totalTags))
+            .replace('{w}', String(clusters.length))}
+        </p>
       </section>
 
       {/* ── Composition: the multi-modal split ── */}
@@ -216,23 +221,19 @@ function ReportView({ report }: { report: TasteReport }) {
         <section className="rounded-2xl bg-surface px-5 py-5">
           <h2 className="text-[15px] font-bold text-ink">{t('sj.taste.compositionHeader')}</h2>
           <p className="mt-1 text-[12.5px] text-muted">{compositionText}</p>
-          <div className="mt-4 flex h-[14px] rounded-full overflow-hidden">
-            {clusters.map((w, i) => (
-              <span
-                key={i}
-                style={{
-                  width: `${Math.max(3, w.share * 100)}%`,
-                  background: WORLD_COLORS[i % WORLD_COLORS.length],
-                }}
-              />
-            ))}
-          </div>
+          <StackedBar
+            segments={clusters.map((w, i) => ({
+              share: w.share,
+              color: SERIES[i % SERIES.length],
+              title: `${worldName(w)} · ${Math.round(w.share * 100)}%`,
+            }))}
+          />
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
             {clusters.map((w, i) => (
               <span key={i} className="flex items-center gap-1.5 text-[12px] text-muted">
                 <span
                   className="w-2.5 h-2.5 rounded-full shrink-0"
-                  style={{ background: WORLD_COLORS[i % WORLD_COLORS.length] }}
+                  style={{ background: SERIES[i % SERIES.length] }}
                 />
                 <span className="font-semibold text-ink">{worldName(w)}</span>
                 <span className="tabular-nums">{Math.round(w.share * 100)}%</span>
@@ -244,7 +245,7 @@ function ReportView({ report }: { report: TasteReport }) {
 
       {/* ── World cards: sub-genre breakdowns ── */}
       {clusters.map((world, i) => {
-        const color = WORLD_COLORS[i % WORLD_COLORS.length];
+        const color = SERIES[i % SERIES.length];
         const diff = world.avgScore != null && stats.avgScore != null ? world.avgScore - stats.avgScore : null;
         const diffText =
           diff == null
@@ -262,7 +263,7 @@ function ReportView({ report }: { report: TasteReport }) {
                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />
                 {worldName(world)}
               </h2>
-              <span className="text-[12px] font-semibold tabular-nums" style={{ color }}>
+              <span className="text-[12px] font-semibold tabular-nums text-muted">
                 {t('sj.taste.worldShare').replace('{share}', String(Math.round(world.share * 100)))}
               </span>
             </div>
@@ -287,7 +288,7 @@ function ReportView({ report }: { report: TasteReport }) {
                       style={{ width: `${(tag.avg / 5) * 100}%`, background: color }}
                     />
                   </span>
-                  <span className="w-8 text-[11.5px] font-bold tabular-nums" style={{ color }}>
+                  <span className="w-8 text-[11.5px] font-bold tabular-nums text-ink">
                     {tag.avg.toFixed(1)}
                   </span>
                 </div>
@@ -297,45 +298,90 @@ function ReportView({ report }: { report: TasteReport }) {
         );
       })}
 
-      {/* ── Dials: interpreted axes with ±1σ bands ── */}
-      <section className="rounded-2xl bg-surface px-5 py-5">
-        <h2 className="text-[15px] font-bold text-ink">{t('sj.taste.axesHeader')}</h2>
-        <p className="mt-1 text-[11.5px] text-muted/70">{t('sj.taste.bandCaption')}</p>
-        <div className="mt-5 space-y-6">
-          {dials.map(({ labelKey, lowKey, highKey, value, low, high, text }) => {
-            const v = value ?? 0.5;
-            const leansHigh = v >= 0.5;
-            return (
-              <div key={labelKey}>
-                <div className="flex items-baseline justify-between mb-1.5">
-                  <span className={`text-[12px] font-semibold ${!leansHigh ? 'text-accent-deep' : 'text-muted/60'}`}>
-                    {t(lowKey)}
-                  </span>
-                  <span className="text-[10px] uppercase tracking-[0.08em] text-muted/50 font-bold">
-                    {t(labelKey)}
-                  </span>
-                  <span className={`text-[12px] font-semibold ${leansHigh ? 'text-accent-deep' : 'text-muted/60'}`}>
-                    {t(highKey)}
-                  </span>
-                </div>
-                <div className="relative h-[7px] rounded-full bg-divider/60">
-                  {low != null && high != null && high > low && (
-                    <span
-                      className="absolute top-0 h-full rounded-full bg-accent/25"
-                      style={{ left: `${low * 100}%`, width: `${(high - low) * 100}%` }}
-                    />
-                  )}
-                  <span
-                    className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-[15px] h-[15px] rounded-full bg-accent border-2 border-page shadow"
-                    style={{ left: `${Math.max(4, Math.min(96, v * 100))}%` }}
-                  />
-                </div>
-                {text && <p className="mt-2 text-[12.5px] text-muted">{text}</p>}
-              </div>
-            );
-          })}
-        </div>
-      </section>
+      {/* ── Across the decades ── */}
+      {decades.length > 0 && stats.meanYear != null && (
+        <section className="rounded-2xl bg-surface px-5 py-5">
+          <h2 className="text-[15px] font-bold text-ink">{t('sj.taste.eraHeader')}</h2>
+          <p className="mt-1 text-[12.5px] text-muted">{eraText}</p>
+          <ColumnChart
+            bins={decades.map((d) => d.count)}
+            xLabels={decades.map((d, i) =>
+              decades.length <= 7 || i % 2 === 0 ? String(d.decade) : null,
+            )}
+            peakIndex={decadePeak}
+            mean={
+              decadeSpan > 0
+                ? {
+                    pos: (stats.meanYear - decades[0].decade) / decadeSpan,
+                    label: `${t('sj.taste.meanLabel')} ${stats.meanYear}`,
+                  }
+                : null
+            }
+            titleFor={(i) => `${decades[i].decade}s · ${decades[i].count}`}
+          />
+        </section>
+      )}
+
+      {/* ── Score distribution ── */}
+      {scoreTotal > 0 && stats.avgScore != null && (
+        <section className="rounded-2xl bg-surface px-5 py-5">
+          <h2 className="text-[15px] font-bold text-ink">{t('sj.taste.scoreHeader')}</h2>
+          <p className="mt-1 text-[12.5px] text-muted">{scoreText}</p>
+          <ColumnChart
+            bins={scoreDist}
+            xLabels={scoreDist.map((_, i) => (i % 2 === 1 ? String((i + 1) / 2) : null))}
+            peakIndex={scorePeak}
+            mean={{
+              pos: (stats.avgScore - 0.25) / 5,
+              label: `${t('sj.taste.meanLabel')} ${stats.avgScore.toFixed(2)}`,
+            }}
+            titleFor={(i) => `${((i + 1) / 2).toFixed(1)}★ · ${scoreDist[i]}`}
+          />
+        </section>
+      )}
+
+      {/* ── Scene mix + canon reach ── */}
+      <div className="grid sm:grid-cols-2 gap-5">
+        {scenes && sceneLead && (
+          <section className="rounded-2xl bg-surface px-5 py-5">
+            <h2 className="text-[15px] font-bold text-ink">{t('sj.taste.sceneHeader')}</h2>
+            <p className="mt-1 text-[12.5px] text-muted">
+              {t('sj.taste.sceneLeadText')
+                .replace('{scene}', t(SCENE_KEYS[sceneLead.scene]))
+                .replace('{pct}', String(Math.round(sceneLead.share * 100)))}
+            </p>
+            <StackedBar
+              segments={sceneShares.map((s) => ({
+                share: s.share,
+                color: s.color,
+                title: `${t(SCENE_KEYS[s.scene])} · ${Math.round(s.share * 100)}%`,
+              }))}
+            />
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
+              {sceneShares.map((s) => (
+                <span key={s.scene} className="flex items-center gap-1.5 text-[12px] text-muted">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: s.color }} />
+                  <span className="font-semibold text-ink">{t(SCENE_KEYS[s.scene])}</span>
+                  <span className="tabular-nums">{Math.round(s.share * 100)}%</span>
+                </span>
+              ))}
+            </div>
+          </section>
+        )}
+        <section className="rounded-2xl bg-surface px-5 py-5">
+          <h2 className="text-[15px] font-bold text-ink">{t('sj.taste.canonHeader')}</h2>
+          <p className="mt-3 text-[28px] font-black text-ink leading-none">
+            {Math.round((stats.prestigeShare ?? 0) * 100)}%
+          </p>
+          <div className="mt-3 h-[10px] rounded-full bg-accent-soft overflow-hidden">
+            <div
+              className="h-full rounded-full bg-accent"
+              style={{ width: `${Math.min(100, (stats.prestigeShare ?? 0) * 100)}%` }}
+            />
+          </div>
+          <p className="mt-2 text-[12.5px] text-muted">{reachText}</p>
+        </section>
+      </div>
 
       {/* ── Numbers: #1 album + stat tiles ── */}
       <section className="rounded-2xl bg-surface px-5 py-5">
@@ -378,18 +424,19 @@ function ReportView({ report }: { report: TasteReport }) {
             />
             <StatTile value={String(stats.fiveStars)} label={t('sj.taste.perfectScores')} />
             <StatTile
-              value={stats.peakMonthIndex != null ? monthName(stats.peakMonthIndex, lang) : '—'}
+              value={peakMonth ? monthName(parseInt(peakMonth.month.slice(5), 10) - 1, lang) : '—'}
               label={t('sj.taste.statPeak')}
             >
               <div className="flex items-end gap-[2px] h-6 mt-1">
-                {stats.months.map((count, i) => {
-                  const max = Math.max(1, ...stats.months);
-                  const isPeak = i === stats.peakMonthIndex;
+                {charts.timeline.map((m, i) => {
+                  const max = Math.max(1, ...charts.timeline.map((x) => x.count));
+                  const isPeak = i === charts.peakMonthIndex;
                   return (
                     <span
-                      key={i}
+                      key={m.month}
+                      title={`${m.month} · ${m.count}`}
                       className={`flex-1 rounded-sm ${isPeak ? 'bg-accent' : 'bg-divider'}`}
-                      style={{ height: Math.max(2, (count / max) * 24) }}
+                      style={{ height: Math.max(2, (m.count / max) * 24) }}
                     />
                   );
                 })}
@@ -399,10 +446,22 @@ function ReportView({ report }: { report: TasteReport }) {
         </div>
       </section>
 
-      {/* ── Community comparison ── */}
+      {/* ── Community comparison (dumbbell per genre) ── */}
       {report.standings.length > 0 && (
         <section className="rounded-2xl bg-surface px-5 py-5">
-          <h2 className="text-[15px] font-bold text-ink mb-4">{t('sj.taste.standingsHeader')}</h2>
+          <div className="flex items-baseline justify-between mb-4">
+            <h2 className="text-[15px] font-bold text-ink">{t('sj.taste.standingsHeader')}</h2>
+            <span className="flex items-center gap-3 text-[11px] text-muted">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-accent shrink-0" />
+                {t('sj.taste.you')}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-muted/50 shrink-0" />
+                {t('sj.taste.community')}
+              </span>
+            </span>
+          </div>
           <div className="space-y-4">
             {report.standings.map((s) => {
               const diff = s.userAvg - s.communityAvg;
@@ -417,8 +476,11 @@ function ReportView({ report }: { report: TasteReport }) {
                       {t(diff >= 0 ? 'sj.taste.aboveAverage' : 'sj.taste.belowAverage')}
                     </span>
                   </div>
-                  <CompareBar label={t('sj.taste.you')} value={s.userAvg} accent />
-                  <CompareBar label={t('sj.taste.community')} value={s.communityAvg} />
+                  <Dumbbell
+                    user={s.userAvg}
+                    community={s.communityAvg}
+                    title={`${t('sj.taste.you')} ${s.userAvg.toFixed(2)} · ${t('sj.taste.community')} ${s.communityAvg.toFixed(2)}`}
+                  />
                 </div>
               );
             })}
@@ -448,6 +510,122 @@ function ReportView({ report }: { report: TasteReport }) {
   );
 }
 
+// ── Chart primitives ────────────────────────────────────────────────────────
+
+/**
+ * Single-hue column chart: ≤24px columns with a 4px rounded top and square
+ * baseline, 2px gaps, hairline baseline, the peak column direct-labeled, an
+ * optional mean marker, and per-column native tooltips.
+ */
+function ColumnChart({
+  bins,
+  xLabels,
+  peakIndex,
+  mean,
+  titleFor,
+}: {
+  bins: number[];
+  xLabels: (string | null)[];
+  peakIndex: number | null;
+  mean: { pos: number; label: string } | null;
+  titleFor: (i: number) => string;
+}) {
+  const max = Math.max(1, ...bins);
+  return (
+    <div className={mean ? 'mt-8' : 'mt-3'}>
+      <div className="relative">
+        <div className="flex items-end gap-[2px] h-24 border-b border-divider">
+          {bins.map((count, i) => (
+            <div
+              key={i}
+              title={titleFor(i)}
+              className="flex-1 h-full flex flex-col items-center justify-end min-w-0"
+            >
+              {i === peakIndex && count > 0 && (
+                <span className="text-[10px] font-semibold text-muted mb-0.5 tabular-nums">
+                  {count}
+                </span>
+              )}
+              <span
+                className="w-full max-w-[24px] rounded-t bg-accent"
+                style={{ height: count > 0 ? Math.max(3, Math.round((count / max) * 76)) : 0 }}
+              />
+            </div>
+          ))}
+        </div>
+        {mean && (
+          <>
+            <span
+              className="absolute -top-1 bottom-0 w-px bg-ink/35 pointer-events-none"
+              style={{ left: `${Math.max(2, Math.min(98, mean.pos * 100))}%` }}
+            />
+            <span
+              className="absolute -top-6 -translate-x-1/2 text-[10px] font-semibold text-muted whitespace-nowrap pointer-events-none"
+              style={{ left: `${Math.max(10, Math.min(90, mean.pos * 100))}%` }}
+            >
+              {mean.label}
+            </span>
+          </>
+        )}
+      </div>
+      <div className="flex gap-[2px] mt-1">
+        {xLabels.map((label, i) => (
+          <span
+            key={i}
+            className="flex-1 min-w-0 text-center text-[10px] text-muted/70 tabular-nums"
+          >
+            {label ?? ''}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Part-to-whole stacked bar with 2px surface gaps between segments. */
+function StackedBar({
+  segments,
+}: {
+  segments: { share: number; color: string; title: string }[];
+}) {
+  return (
+    <div className="mt-4 flex h-[14px] rounded-full overflow-hidden gap-[2px]">
+      {segments.map((s, i) => (
+        <span
+          key={i}
+          title={s.title}
+          className="min-w-[6px]"
+          style={{ flex: `${s.share} 1 0px`, background: s.color }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** You-vs-community dumbbell on a fixed 0.5–5.0 track; dots wear surface rings. */
+function Dumbbell({ user, community, title }: { user: number; community: number; title: string }) {
+  const pos = (v: number) => Math.max(2, Math.min(98, ((v - 0.5) / 4.5) * 100));
+  const lo = Math.min(pos(user), pos(community));
+  const hi = Math.max(pos(user), pos(community));
+  return (
+    <div className="relative h-[18px]" title={title}>
+      <span className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[2px] rounded-full bg-divider/70" />
+      <span
+        className="absolute top-1/2 -translate-y-1/2 h-[2px] bg-muted/40"
+        style={{ left: `${lo}%`, width: `${hi - lo}%` }}
+      />
+      <span
+        className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-[10px] h-[10px] rounded-full bg-muted/50 ring-2 ring-surface"
+        style={{ left: `${pos(community)}%` }}
+      />
+      <span
+        className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-[10px] h-[10px] rounded-full bg-accent ring-2 ring-surface"
+        style={{ left: `${pos(user)}%` }}
+      />
+    </div>
+  );
+}
+
 /** "Mostly 2010s · Korean scene" chips under a world's header. */
 function WorldClassification({ world }: { world: TasteWorld }) {
   const { t } = useLanguage();
@@ -460,9 +638,7 @@ function WorldClassification({ world }: { world: TasteWorld }) {
         : t('sj.taste.worldEraDecade').replace('{decade}', String(decade)),
     );
   }
-  const sceneKey = world.dominantScene
-    ? { kr: 'sj.taste.sceneKr', jp: 'sj.taste.sceneJp', west: 'sj.taste.sceneWest', other: 'sj.taste.sceneOther' }[world.dominantScene]
-    : 'sj.taste.sceneMixed';
+  const sceneKey = world.dominantScene ? SCENE_KEYS[world.dominantScene] : 'sj.taste.sceneMixed';
   parts.push(t(sceneKey));
   if (parts.length === 0) return null;
   return (
@@ -486,25 +662,6 @@ function StatTile({
       <p className="text-[19px] font-black text-ink leading-tight">{value}</p>
       <p className="text-[11px] text-muted mt-0.5">{label}</p>
       {children}
-    </div>
-  );
-}
-
-function CompareBar({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
-  return (
-    <div className="flex items-center gap-2.5 mt-1">
-      <span className="w-20 shrink-0 text-right text-[11px] font-semibold text-muted">{label}</span>
-      <span className="flex-1 h-[6px] rounded-full bg-divider/60 overflow-hidden">
-        <span
-          className={`block h-full rounded-full ${accent ? 'bg-accent' : 'bg-muted/40'}`}
-          style={{ width: `${(value / 5) * 100}%` }}
-        />
-      </span>
-      <span
-        className={`w-9 text-[11.5px] font-bold tabular-nums ${accent ? 'text-accent-deep' : 'text-muted'}`}
-      >
-        {value.toFixed(2)}
-      </span>
     </div>
   );
 }
