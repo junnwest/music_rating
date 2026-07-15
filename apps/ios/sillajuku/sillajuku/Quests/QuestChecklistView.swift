@@ -237,9 +237,19 @@ private struct QuestTimeline: View {
     let items: [QuestTimelineItem]
 
     var body: some View {
-        VStack(spacing: 0) {
+        // The line below a dot represents an unbroken completed streak reaching back to the
+        // very first item, not just "this one item happens to be done" -- e.g. items 1, 2, 4
+        // done but 3 not done should only show blue between 1 and 2, since 4 isn't actually
+        // connected to the start once 3 breaks the chain. A running AND over the prefix gives
+        // exactly that: chainDone[i] is true only when every item from 0...i is done.
+        var runningDone = true
+        let chainDone: [Bool] = items.map { item in
+            runningDone = runningDone && item.isDone
+            return runningDone
+        }
+        return VStack(spacing: 0) {
             ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                QuestTimelineRow(item: item, isLast: index == items.count - 1)
+                QuestTimelineRow(item: item, isLast: index == items.count - 1, isChainDone: chainDone[index])
             }
         }
     }
@@ -248,6 +258,7 @@ private struct QuestTimeline: View {
 private struct QuestTimelineRow: View {
     let item: QuestTimelineItem
     let isLast: Bool
+    let isChainDone: Bool
 
     @State private var showRewardInfo = false
     private let dotSize: CGFloat = 22
@@ -269,7 +280,7 @@ private struct QuestTimelineRow: View {
 
                 if !isLast {
                     Rectangle()
-                        .fill(item.isDone ? Color.sjBlue : Color.sjBorder)
+                        .fill(isChainDone ? Color.sjBlue : Color.sjBorder)
                         .frame(width: 2)
                         .frame(maxHeight: .infinity)
                 }
