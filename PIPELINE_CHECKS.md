@@ -27,6 +27,7 @@ npm run mb:audit          # deeper data view: sample eyeball, skipped list, sour
 - `pipeline:verify` → **7/7, "structurally clean"**. The `N empty artist(s) to review` note is **benign** — features-only acts (e.g. SEHUN) legitimately have 0 core releases after the composition filter, plus a few known generic-name false-matches (kai/dean/gray class, 0 release_groups = no bad data).
 - `pipeline:status` throughput: healthy is **≳ 25 artists/hr**. A reading taken right after a restart is **understated** (downtime sits in the 60-min window) — re-check before reacting.
 - The `qc` **lane** heartbeat in `pipeline:status` can lag the live truth (it re-runs hourly and reflects the running process's code). **Trust `pipeline:verify` over a stale qc heartbeat.**
+- Two lanes added 2026-07-15 (iTunes recency bridge) are **expected** in `pipeline:status`: **`recency`** (auto-ingests recent KR releases MB lacks; `idle (swept)` = finished a full ~783-artist sweep, normal; `blocked (iTunes 403)` = shared GAPFILL cooldown, transient) and **`reconcile`** (daily; links `source='itunes'` rows to MB once it catches up). Both ON by default; `RECENCY=0` disables both. A slow but nonzero `recency` ingest rate is normal (5 artists/30m). If `reconcile` reports "merge-needed", that's a genuine cross-source dup to look at (rare).
 
 **REAL problems → tell the user / investigate:**
 - `pipeline:status` shows `last 60m 0/hr` while `ingest` says `running` → **stalled** (machine asleep? MB unreachable? supervisor stuck).

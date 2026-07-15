@@ -13,52 +13,52 @@
  * run). If MB already created its own separate row (mbid already present in our DB), that's a real
  * pre-existing duplicate we do NOT auto-merge — we report it for a deliberate manual merge.
  *
+ * Runs as a scheduled pipeline lane (reconcileLoop in pipeline.ts) and as this CLI:
  *   npx tsx --env-file=.env.local scripts/reconcile-itunes-mb.ts            # dry — report only
  *   npx tsx --env-file=.env.local scripts/reconcile-itunes-mb.ts --apply    # writes mb_release_group_id
  */
-import { getDB, releaseGroupKey } from './itunes-ingest-core';
+import { getDB, releaseGroupKey, type DB } from './itunes-ingest-core';
 import { browseReleaseGroups } from './mb-client';
 
-const args = process.argv.slice(2);
-const APPLY = args.includes('--apply');
-const LIMIT = args.find(a => a.startsWith('--limit='))?.split('=')[1];
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+export interface ReconcileResult { linked: number; dupNeedsMerge: number; noMatch: number; noMbArtist: number }
 
-// MB "album"/"single"/"ep" primary-type → our release_group_type vocabulary.
-const mbType = (t: string | null) => (t ?? '').toLowerCase();
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const daysApart = (a: string | null, b: string | null) => {
   if (!a || !b) return Infinity;
   return Math.abs((Date.parse(a) - Date.parse(b)) / 86_400_000);
 };
 
-async function main() {
-  const db = getDB();
+/**
+ * Link source='itunes' groups to their MB mbid once MB has the release. Reused by the CLI and the
+ * pipeline reconcileLoop. `log` lets the caller route output (console for CLI, lane logger for the
+ * pipeline). Gentle on MB (browses each artist's release groups once).
+ */
+export async function reconcileItunesMb(
+  db: DB, opts: { apply: boolean; limit?: number; log?: (m: string) => void },
+): Promise<ReconcileResult> {
+  const log = opts.log ?? (() => {});
+  const res: ReconcileResult = { linked: 0, dupNeedsMerge: 0, noMatch: 0, noMbArtist: 0 };
 
-  // iTunes-sourced groups still missing an MB linkage.
   let q = db.from('release_groups')
     .select('id, primary_artist_id, title, native_title, release_group_type, first_release_date')
     .eq('source', 'itunes').is('mb_release_group_id', null).order('first_release_date', { ascending: false });
-  if (LIMIT) q = q.limit(parseInt(LIMIT, 10));
+  if (opts.limit) q = q.limit(opts.limit);
   const { data: rows, error } = await q;
   if (error) throw new Error(error.message);
-  if (!rows?.length) { console.log('No unreconciled iTunes-sourced groups. Nothing to do.'); return; }
+  if (!rows?.length) return res;
 
-  // Group by artist so we browse each artist's MB catalog once.
   const byArtist = new Map<string, typeof rows>();
-  for (const r of rows) (byArtist.get(r.primary_artist_id as string) ?? byArtist.set(r.primary_artist_id as string, []).get(r.primary_artist_id as string)!).push(r);
-
-  console.log(`${APPLY ? 'APPLY' : 'DRY'} — ${rows.length} iTunes-sourced group(s) across ${byArtist.size} artist(s)\n`);
-
-  let linked = 0, dupNeedsMerge = 0, noMatch = 0, noMbArtist = 0;
+  for (const r of rows) {
+    const k = r.primary_artist_id as string;
+    (byArtist.get(k) ?? byArtist.set(k, []).get(k)!).push(r);
+  }
 
   for (const [artistId, groups] of byArtist) {
-    // The artist's MB id (needed to browse their MB release groups).
     const { data: ext } = await db.from('artist_external_ids')
       .select('external_id').eq('artist_id', artistId).eq('source', 'musicbrainz').maybeSingle();
-    if (!ext?.external_id) { noMbArtist += groups.length; continue; }
+    if (!ext?.external_id) { res.noMbArtist += groups.length; continue; }
 
     const mbRgs = await browseReleaseGroups(ext.external_id as string);
-    // Index MB groups by title-key → {mbid, date, type}.
     const mbByKey = new Map<string, { mbid: string; date: string | null; type: string }>();
     for (const rg of mbRgs as any[]) {
       const title = rg.title ?? '';
@@ -67,46 +67,55 @@ async function main() {
       mbByKey.set(releaseGroupKey(title), {
         mbid,
         date: rg['first-release-date'] ?? rg.firstReleaseDate ?? null,
-        type: mbType(rg['primary-type'] ?? rg.primaryType ?? null),
+        type: (rg['primary-type'] ?? rg.primaryType ?? '').toLowerCase(),
       });
     }
 
     for (const g of groups) {
-      // Match on our title OR native_title key.
       const cand = mbByKey.get(releaseGroupKey(g.title as string))
         ?? (g.native_title ? mbByKey.get(releaseGroupKey(g.native_title as string)) : undefined);
-      if (!cand) { noMatch++; continue; }
-      // Confidence: title-key already matches; require type agreement OR release dates within a week
-      // (guards against a same-titled but different release).
+      if (!cand) { res.noMatch++; continue; }
       const typeOk = cand.type === (g.release_group_type as string) || cand.type === '';
       const dateOk = daysApart(cand.date, g.first_release_date as string | null) <= 7;
-      if (!typeOk && !dateOk) { noMatch++; continue; }
+      if (!typeOk && !dateOk) { res.noMatch++; continue; }
 
-      // Is that mbid already on another row in our catalog? Then a real dup already exists → merge.
       const { data: existing } = await db.from('release_groups')
         .select('id').eq('mb_release_group_id', cand.mbid).maybeSingle();
       if (existing) {
-        dupNeedsMerge++;
-        console.log(`  ⚠ MERGE NEEDED: "${g.title}" — MB row ${cand.mbid.slice(0, 8)} already exists (${existing.id.slice(0, 8)}) alongside our iTunes row ${(g.id as string).slice(0, 8)}`);
+        res.dupNeedsMerge++;
+        log(`⚠ MERGE NEEDED: "${g.title}" — MB row ${cand.mbid.slice(0, 8)} already exists (${(existing.id as string).slice(0, 8)}) alongside iTunes row ${(g.id as string).slice(0, 8)}`);
         continue;
       }
 
-      console.log(`  ${APPLY ? '✓ linked' : '→ would link'}: "${g.title}" → mbid ${cand.mbid.slice(0, 8)}`);
-      if (APPLY) {
+      log(`${opts.apply ? '✓ linked' : '→ would link'}: "${g.title}" → mbid ${cand.mbid.slice(0, 8)}`);
+      if (opts.apply) {
         const { error: upErr } = await db.from('release_groups')
           .update({ mb_release_group_id: cand.mbid }).eq('id', g.id).is('mb_release_group_id', null);
-        if (upErr) { console.error(`     ! ${upErr.message}`); continue; }
+        if (upErr) { log(`  ! ${upErr.message}`); continue; }
       }
-      linked++;
+      res.linked++;
     }
-    await sleep(300); // gentle on MB
+    await sleep(300);
   }
-
-  console.log(`\n=== SUMMARY (${APPLY ? 'APPLIED' : 'DRY'}) ===`);
-  console.log(`Linked to MB (dup prevented): ${linked}`);
-  console.log(`Already-duplicated, manual merge needed: ${dupNeedsMerge}`);
-  console.log(`No MB match yet (MB hasn't caught up): ${noMatch}`);
-  console.log(`Artist has no MB id (can't reconcile): ${noMbArtist}`);
-  if (!APPLY && linked) console.log(`\nRe-run with --apply to write the mb_release_group_id links.`);
+  return res;
 }
-main().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); });
+
+// ── CLI ─────────────────────────────────────────────────────────────────────────
+async function main() {
+  const args = process.argv.slice(2);
+  const APPLY = args.includes('--apply');
+  const LIMIT = args.find(a => a.startsWith('--limit='))?.split('=')[1];
+  const db = getDB();
+  console.log(`${APPLY ? 'APPLY' : 'DRY'} — reconciling iTunes-sourced groups against MusicBrainz…\n`);
+  const r = await reconcileItunesMb(db, { apply: APPLY, limit: LIMIT ? parseInt(LIMIT, 10) : undefined, log: (m) => console.log('  ' + m) });
+  console.log(`\n=== SUMMARY (${APPLY ? 'APPLIED' : 'DRY'}) ===`);
+  console.log(`Linked to MB (dup prevented): ${r.linked}`);
+  console.log(`Already-duplicated, manual merge needed: ${r.dupNeedsMerge}`);
+  console.log(`No MB match yet (MB hasn't caught up): ${r.noMatch}`);
+  console.log(`Artist has no MB id (can't reconcile): ${r.noMbArtist}`);
+  if (!APPLY && r.linked) console.log(`\nRe-run with --apply to write the mb_release_group_id links.`);
+}
+
+if (process.argv[1]?.endsWith('reconcile-itunes-mb.ts')) {
+  main().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); });
+}

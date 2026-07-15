@@ -37,9 +37,13 @@ import { integrityCheck, requeueFailures, recomputePriorities } from './mb-qc';
 import { gapfillGroups, gapfillSkippedArtists, MigrationNeeded } from './mb-gapfill';
 import { runDeezerFallback, pickArtist, ingestDeezerArtist } from './mb-deezer-fallback';
 import { searchArtists as dzSearchArtists } from './deezer-client';
-import { ItunesBlockedError, resetBlock } from './itunes-client';
+import { ItunesBlockedError, resetBlock, itunesBlocked } from './itunes-client';
 import { mbLastActivityAt } from './mb-client';
 import { SEED } from './seed-artists';
+import { scanArtistRecency, type RecencyArtist } from './discover-itunes-recency';
+import { reconcileItunesMb } from './reconcile-itunes-mb';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const ONCE = process.argv.includes('--once');
 const DISCOVER_ONLY = process.argv.includes('--discover-only');
@@ -102,6 +106,20 @@ const GAPFILL_GROUP_BATCH= envInt('GAPFILL_GROUP_BATCH', 25);        // cover/tr
 const GAPFILL_ARTIST_BATCH = envInt('GAPFILL_ARTIST_BATCH', 3);      // MB-skipped artists per cycle
 const GAPFILL_BLOCK_COOLDOWN_MS = envInt('GAPFILL_BLOCK_COOLDOWN_MS', 7_200_000); // back off 2h on a 403 block
 const GAPFILL_RECOVER_ARTISTS = process.env.GAPFILL_RECOVER_ARTISTS === '1'; // job C (iTunes skipped-artist recovery) — OFF: pollutes with shadow artists
+
+// ── RECENCY + RECONCILE lanes (iTunes) — bridge MB's lag on recent KR releases ──
+// RECENCY sweeps owned artists in small batches, auto-ingesting recent releases iTunes has but MB
+// doesn't yet, through the multi-signal dedup gate (see discover-itunes-recency.ts — "auto but
+// safe"). RECONCILE fills mb_release_group_id on those rows once MB catches up so MB's upsert
+// dedups against them. Both bounded + gentle (iTunes IP-blocks on volume; shares the block state
+// with GAPFILL). ON by default; set RECENCY=0 to disable both.
+const RECENCY = process.env.RECENCY !== '0';
+const RECENCY_COUNTRY   = process.env.RECENCY_COUNTRY ?? 'KR';
+const RECENCY_BATCH     = envInt('RECENCY_BATCH', 5);            // artists scanned per cycle
+const RECENCY_POLL_MS   = envInt('RECENCY_POLL_MS', 1_800_000); // 30m between cycles (slow full sweep)
+const RECENCY_SINCE_MONTHS = envInt('RECENCY_SINCE_MONTHS', 12);
+const RECONCILE_POLL_MS = envInt('RECONCILE_POLL_MS', 86_400_000); // daily
+const RECENCY_STATE = path.resolve('scripts/pipeline-recency-state.json');
 
 // ── DEEZER fallback lane (recover genuinely MB-missing artists from Deezer) — OFF by
 // default; opt in with DEEZER_FALLBACK=1 once standalone runs prove it clean. Clean by
@@ -464,6 +482,80 @@ async function deezerLoop(db: DB) {
   }
 }
 
+// ── RECENCY lane: sweep owned artists for recent iTunes releases MB lacks, auto-ingest the
+// confidently-missing (multi-signal dedup gate inside scanArtistRecency). Rotates through the
+// whole COUNTRY set via a persisted id cursor, then wraps and re-sweeps. iTunes-only (no MB
+// contention); shares the iTunes block state with GAPFILL. ──
+function recencyCursor(): string { try { return JSON.parse(fs.readFileSync(RECENCY_STATE, 'utf8')).afterId ?? ''; } catch { return ''; } }
+function saveRecencyCursor(id: string) { try { fs.writeFileSync(RECENCY_STATE, JSON.stringify({ afterId: id })); } catch { /* best-effort */ } }
+
+async function recencyLoop(db: DB) {
+  if (!RECENCY) { await beat(db, 'recency', { status: 'off', last_active: now() }); return; }
+  let ingested = 0, scanned = 0, errs = 0;
+  for (;;) {
+    try {
+      if (itunesBlocked()) { // shared with GAPFILL — either lane tripping a 403 backs both off
+        await beat(db, 'recency', { status: 'blocked (iTunes 403)', last_active: now(), errors: errs });
+        await sleep(GAPFILL_BLOCK_COOLDOWN_MS); continue;
+      }
+      const after = recencyCursor();
+      const { data: artists } = await db.from('artists')
+        .select('id, name, name_native, native_language')
+        .eq('country', RECENCY_COUNTRY).eq('ingest_state', 'tracks_done')
+        .gt('id', after).order('id').limit(RECENCY_BATCH);
+      if (!artists?.length) { // swept the whole set → wrap and re-sweep next cycle
+        saveRecencyCursor('');
+        await beat(db, 'recency', { status: 'idle (swept)', last_active: now(), items_done: ingested, current_item: `full sweep done · ${ingested} ingested` });
+        await sleep(RECENCY_POLL_MS); continue;
+      }
+      let batch = 0;
+      for (const a of artists) {
+        const r = await scanArtistRecency(db, a as RecencyArtist, { sinceMonths: RECENCY_SINCE_MONTHS, ingest: true, country: RECENCY_COUNTRY });
+        scanned++; batch += r.ingested; ingested += r.ingested;
+        for (const g of r.gaps) console.log(`  [recency] +"${(a as any).name}" — ${g.date} ${g.title}`);
+        saveRecencyCursor(a.id as string); // advance per-artist so a crash resumes mid-batch
+      }
+      await beat(db, 'recency', { status: batch ? 'running' : 'idle', last_active: now(), items_done: ingested, errors: errs, current_item: `scanned ${scanned} · +${batch} batch · ${ingested} total` });
+      await sleep(RECENCY_POLL_MS);
+    } catch (e) {
+      if (e instanceof ItunesBlockedError) {
+        errs++; resetBlock();
+        await beat(db, 'recency', { status: 'blocked (iTunes 403)', last_active: now(), errors: errs, current_item: `cooldown ${Math.round(GAPFILL_BLOCK_COOLDOWN_MS / 60000)}m` });
+        console.log(`  [recency] iTunes IP-blocked — backing off ${Math.round(GAPFILL_BLOCK_COOLDOWN_MS / 60000)}m`);
+        await sleep(GAPFILL_BLOCK_COOLDOWN_MS); continue;
+      }
+      errs++;
+      await beat(db, 'recency', { status: 'error', last_active: now(), errors: errs, current_item: (e as Error).message.slice(0, 120) });
+      console.log(`  [recency] ERROR: ${(e as Error).message}`);
+      await sleep(RECENCY_POLL_MS);
+    }
+  }
+}
+
+// ── RECONCILE lane: fill mb_release_group_id on source='itunes' groups MB has now caught up on, so
+// MB's upsert-by-mbid dedups against them (the MB-later duplicate never forms). Daily; MB-scoped
+// (browse), so it touches the global MB-activity clock only in a brief burst — negligible vs the
+// ingest watchdog, which also requires a stale heartbeat before firing. ──
+async function reconcileLoop(db: DB) {
+  if (!RECENCY) { await beat(db, 'reconcile', { status: 'off', last_active: now() }); return; }
+  let linked = 0, errs = 0;
+  for (;;) {
+    try {
+      const r = await reconcileItunesMb(db, { apply: true, limit: 200, log: (m) => console.log(`  [reconcile] ${m}`) });
+      linked += r.linked;
+      const worked = r.linked > 0 || r.dupNeedsMerge > 0;
+      if (worked) console.log(`  [reconcile] linked +${r.linked}, merge-needed ${r.dupNeedsMerge}, no-match ${r.noMatch}`);
+      await beat(db, 'reconcile', { status: worked ? 'running' : 'idle', last_active: now(), items_done: linked, errors: errs, current_item: `linked ${linked} total` });
+      await sleep(RECONCILE_POLL_MS);
+    } catch (e) {
+      errs++;
+      await beat(db, 'reconcile', { status: 'error', last_active: now(), errors: errs, current_item: (e as Error).message.slice(0, 120) });
+      console.log(`  [reconcile] ERROR: ${(e as Error).message}`);
+      await sleep(RECONCILE_POLL_MS);
+    }
+  }
+}
+
 // ── startup: reset stale 'processing' (from a prior crash) back to 'pending' ────
 async function resetStale(db: DB) {
   const { count } = await db.from('artist_ingestion_queue')
@@ -584,6 +676,8 @@ async function main() {
     supervise(db, 'qc', qcLoop),
     supervise(db, 'gapfill', gapfillLoop),
     supervise(db, 'deezer', deezerLoop),
+    supervise(db, 'recency', recencyLoop),     // iTunes — recent KR releases MB lacks (auto but safe)
+    supervise(db, 'reconcile', reconcileLoop), // link source='itunes' rows to MB once it catches up
   ]);
 }
 
