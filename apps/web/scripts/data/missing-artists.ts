@@ -23,6 +23,11 @@ export const MISSING_ARTISTS: MissingArtist[] = [
   // Woo Won Jae/Sole/George/Hate the Sun) are KR-stored under Hangul → captured by `discover:area --country=KR`.
   { name: 'BLASÉ',         mbid: '2f96c1ae-0671-4d48-9507-670892a2ac67', note: 'KR rapper; accent broke the name match' },
   { name: 'Jasmine Sokko', mbid: '19f820c2-9d82-4079-990a-5ab24e36924d', note: 'SG (not KR → not in the country:KR sweep)' },
+  // 2026-07-14 (Windows): OG KR rapper. Never discovered — only ever appeared as a track-level
+  // `feat.` on artists we already own (E-Sens/PSY/Wheesung/GroovyRoom/Lexy), which stores a
+  // denormalized artist_display string but creates no artist row and no queue entry. The
+  // ListenBrainz/Wikipedia discovery lanes don't mine our own credit graph, so he stayed invisible.
+  { name: 'Masta Wu',      mbid: '554de746-8f43-49ea-bd1f-6e5b6a212b75', note: 'KR rapper (YG/OG); feat-only in catalog, never discovered as primary' },
 ];
 
 // Not in MusicBrainz at all → cannot be MBID-seeded. Recover via the Deezer fallback lane
