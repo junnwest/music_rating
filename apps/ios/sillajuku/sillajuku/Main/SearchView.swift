@@ -951,7 +951,7 @@ struct SearchView: View {
                     // leading to a dead-end "not in catalog" tap.
                     if !discoveryVM.recentlyPlayedReleases.isEmpty {
                         discoverySectionTitle("Recently Listened")
-                        albumScroll(discoveryVM.recentlyPlayedReleases)
+                        albumScroll(discoveryVM.recentlyPlayedReleases, hideRated: false)
                         Spacer().frame(height: 24)
                     }
 
@@ -967,7 +967,7 @@ struct SearchView: View {
                         discoverySectionTitle(
                             discoveryVM.recentlyPlayedReleases.isEmpty ? "Recently Listened" : "Recently Listened (Apple)"
                         )
-                        albumScroll(discoveryVM.appleMusicRecentlyPlayedReleases)
+                        albumScroll(discoveryVM.appleMusicRecentlyPlayedReleases, hideRated: false)
                         Spacer().frame(height: 24)
                     }
 
@@ -1226,13 +1226,23 @@ struct SearchView: View {
                 tracklist: nil, totalTracks: nil)
     }
 
-    private func albumScroll(_ albums: [Release]) -> some View {
-        // Hide pre-session rated items; show session-rated ones with a checkmark.
-        let visible = albums.filter { !ratedReleaseIds.contains($0.id) || sessionRatedIds.contains($0.id) }
+    // hideRated: recommendation-style sections (Popular/Trending/For You/etc.) hide releases the
+    // user already rated -- no point recommending something they've already done. Recently
+    // Listened is a listening *history*, not a recommendation, so it passes false: you should
+    // still see what you recently played whether you've rated it or not (was silently dropping
+    // already-rated albums, e.g. one rated 4 days before ever showing up here, when this was
+    // switched onto the shared component).
+    private func albumScroll(_ albums: [Release], hideRated: Bool = true) -> some View {
+        let visible = hideRated
+            ? albums.filter { !ratedReleaseIds.contains($0.id) || sessionRatedIds.contains($0.id) }
+            : albums
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 12) {
                 ForEach(visible) { release in
-                    let checked = sessionRatedIds.contains(release.id)
+                    // Not just session-rated -- an unfiltered list (hideRated: false) can include
+                    // releases rated in an earlier session too, which should also show the
+                    // checkmark rather than a misleading "add" button.
+                    let checked = sessionRatedIds.contains(release.id) || ratedReleaseIds.contains(release.id)
                     NavigationLink(value: release) {
                         DiscoveryAlbumCard(release: release,
                                            onAdd: checked ? nil : { addRelease(release) },
