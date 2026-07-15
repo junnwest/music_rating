@@ -19,6 +19,7 @@
  *   npx tsx --env-file=.env.local scripts/discover-credit-graph.ts --dry-run
  *   npx tsx --env-file=.env.local scripts/discover-credit-graph.ts --min-count=3
  *   npx tsx --env-file=.env.local scripts/discover-credit-graph.ts --country=KR --limit=200
+ *   npx tsx --env-file=.env.local scripts/discover-credit-graph.ts --backdate   # claim ahead of the pending tail
  *
  * Resumable: MBID resolution is the slow part (MusicBrainz ~1 req/s). Every resolved name — hit or
  * miss — is persisted to the state file, so a re-run only re-hits MB for names it hasn't seen.
@@ -36,6 +37,10 @@ const arg = (f: string) => args.find(a => a.startsWith(`${f}=`))?.split('=').sli
 const COUNTRY = arg('--country') ?? 'KR';
 const MIN_COUNT = arg('--min-count') ? parseInt(arg('--min-count')!, 10) : 3;
 const LIMIT = arg('--limit') ? parseInt(arg('--limit')!, 10) : Infinity;
+// --backdate: stamp queued rows with an early created_at so the INGEST lane claims these
+// on-target KR credit-graph artists ahead of the long pending tail (same 2019-01-01 seed:missing
+// uses to claim before the 2020 prestige backfill). Off by default → they queue at 'now'.
+const BACKDATE = args.includes('--backdate') ? '2019-01-01T00:00:00Z' : null;
 
 const STATE_PATH = path.resolve('scripts/discover-credit-graph-state.json');
 
@@ -203,7 +208,7 @@ async function main() {
   }
 
   const usedNames = new Set<string>();
-  const toQueue: { name: string; source: string; source_id: string; status: string }[] = [];
+  const toQueue: { name: string; source: string; source_id: string; status: string; created_at?: string }[] = [];
   let skipHave = 0, skipQueued = 0;
   for (const [mbid, display] of wantByMbid) {
     if (have.has(mbid)) { skipHave++; continue; }
@@ -211,10 +216,10 @@ async function main() {
     let n = display;
     if (usedNames.has(n.toLowerCase())) n = `${display} (${mbid.slice(0, 6)})`;
     usedNames.add(n.toLowerCase());
-    toQueue.push({ name: n, source: 'mbid', source_id: mbid, status: 'pending' });
+    toQueue.push({ name: n, source: 'mbid', source_id: mbid, status: 'pending', ...(BACKDATE ? { created_at: BACKDATE } : {}) });
   }
 
-  console.log(`To queue: ${toQueue.length}  (skipped ${skipHave} already-in-catalog, ${skipQueued} already-queued)${DRY ? '  [DRY RUN]' : ''}`);
+  console.log(`To queue: ${toQueue.length}  (skipped ${skipHave} already-in-catalog, ${skipQueued} already-queued)${BACKDATE ? '  [BACKDATED → claims first]' : ''}${DRY ? '  [DRY RUN]' : ''}`);
   if (DRY) { console.log('  sample:', toQueue.slice(0, 20).map(r => r.name).join(', ')); return; }
 
   for (let i = 0; i < toQueue.length; i += 500) {

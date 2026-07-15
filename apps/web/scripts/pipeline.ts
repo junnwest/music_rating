@@ -70,6 +70,11 @@ const DISCOVER_POLL_MS   = envInt('DISCOVER_POLL_MS', 60_000); // re-check caden
 // BOTH no heartbeat AND no MB request dispatch, so a slow/throttled artist (still making MB
 // calls between beats) is never mistaken for a hang. 0 disables it.
 const INGEST_STALE_MS    = envInt('INGEST_STALE_MS', 600_000); // 10 min
+// A permanently-hung artist would otherwise restart-loop forever: watchdog fires → the stranded
+// row resets to pending → claimNext re-serves the same (oldest) row → hangs again, blocking the
+// whole queue. Auto-skip it after this many watchdog-forced hangs (0 disables). 3 is chosen so a
+// merely-slow artist that recovers within a couple of transient MB stalls is NOT skipped.
+const INGEST_MAX_HANGS   = envInt('INGEST_MAX_HANGS', 3);
 
 // ── FRESHNESS + QC tuning (env-overridable) ────────────────────────────────────
 // FRESHNESS shares the single MB worker (one re-poll every FRESHNESS_EVERY new ingests,
@@ -469,6 +474,41 @@ async function resetStale(db: DB) {
   }
 }
 
+// ── watchdog restart: reset the stranded row, and auto-skip a repeat offender ────
+// Unlike the startup resetStale (a clean-shutdown recovery — no blame), a watchdog-forced restart
+// means the row we were processing genuinely stalled the MB worker. We count hangs per row IN
+// MEMORY — deliberately NOT `attempt_count`, which is the shared cap budget the QC/gapfill/deezer
+// fallback lanes spend (bumping it here would starve them). In-memory also self-forgives: a full
+// process restart clears the counts, so only a within-run repeat offender is penalized. Once a row
+// has hung INGEST_MAX_HANGS times, flip it to 'skipped' (NOT 'failed' — QC would requeue a failed
+// row straight back into the same hang) so claimNext (pending-only) stops re-serving it. The row
+// isn't lost: it's set aside, error-annotated, and re-queueable by hand. This is what stops one
+// poison-pill artist from restart-looping forever and blocking the entire queue behind it.
+const ingestHangs = new Map<string, number>();
+async function penalizeStaleAndReset(db: DB, maxHangs: number) {
+  const { data } = await db.from('artist_ingestion_queue')
+    .select('id, name').eq('status', 'processing');
+  if (!data?.length) return;
+  let reset = 0, skipped = 0;
+  for (const row of data as { id: string; name: string }[]) {
+    const c = (ingestHangs.get(row.id) ?? 0) + 1;
+    if (maxHangs > 0 && c >= maxHangs) {
+      await db.from('artist_ingestion_queue')
+        .update({ status: 'skipped', error: `auto-skipped: hung the MB worker ${c}x this run (watchdog)` })
+        .eq('id', row.id).eq('status', 'processing');
+      ingestHangs.delete(row.id);
+      skipped++;
+      console.log(`  [ingest] auto-skipped "${row.name}" after ${c} hangs → set aside (unblocks the queue; re-queueable)`);
+    } else {
+      await db.from('artist_ingestion_queue')
+        .update({ status: 'pending' }).eq('id', row.id).eq('status', 'processing');
+      ingestHangs.set(row.id, c);
+      reset++;
+    }
+  }
+  if (reset || skipped) console.log(`  [ingest] watchdog reset ${reset} stale row(s)${skipped ? `, auto-skipped ${skipped} poison-pill(s)` : ''}`);
+}
+
 // ── startup: give legacy tracks_done artists (ingested before freshness scheduling) a
 // next_check_at so the FRESHNESS lane can pick them up. Idempotent: only touches nulls. ──
 async function bootstrapFreshness(db: DB) {
@@ -538,7 +578,7 @@ async function main() {
   // nothing contends with INGEST's 1-req/s MB limit. Each is supervised so a transient
   // error in one lane never takes the others down.
   await Promise.all([
-    supervise(db, 'ingest', ingestLoop, () => resetStale(db), INGEST_STALE_MS), // watchdog-armed; re-claim a row stranded by the crash/hang
+    supervise(db, 'ingest', ingestLoop, () => penalizeStaleAndReset(db, INGEST_MAX_HANGS), INGEST_STALE_MS), // watchdog-armed; re-claim the stranded row, auto-skip a repeat offender
     supervise(db, 'embeddings', embeddingsLoop),
     supervise(db, 'discover', discoverLoop),
     supervise(db, 'qc', qcLoop),
