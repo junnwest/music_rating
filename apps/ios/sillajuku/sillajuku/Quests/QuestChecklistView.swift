@@ -237,11 +237,14 @@ private struct QuestTimeline: View {
     let items: [QuestTimelineItem]
 
     var body: some View {
-        // The line below a dot represents an unbroken completed streak reaching back to the
-        // very first item, not just "this one item happens to be done" -- e.g. items 1, 2, 4
-        // done but 3 not done should only show blue between 1 and 2, since 4 isn't actually
-        // connected to the start once 3 breaks the chain. A running AND over the prefix gives
-        // exactly that: chainDone[i] is true only when every item from 0...i is done.
+        // chainDone[i] is true only when every item from 0...i is done -- an unbroken completed
+        // streak reaching back to the very first item, not just "this one item happens to be
+        // done". The line BELOW item i connects it to item i+1, so it needs the chain to still
+        // be unbroken THROUGH i+1, not just through i -- otherwise the last completed item's
+        // own line reads as connected even when the very next (incomplete) item breaks the
+        // chain right there (confirmed live: all of Set Profile Picture...Connect Phone Number
+        // done colored every line blue including the one leading into the not-yet-done Invite a
+        // Friend, since that line only checked Connect Phone Number's own chain state).
         var runningDone = true
         let chainDone: [Bool] = items.map { item in
             runningDone = runningDone && item.isDone
@@ -249,7 +252,8 @@ private struct QuestTimeline: View {
         }
         return VStack(spacing: 0) {
             ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                QuestTimelineRow(item: item, isLast: index == items.count - 1, isChainDone: chainDone[index])
+                let lineDone = index + 1 < chainDone.count ? chainDone[index + 1] : chainDone[index]
+                QuestTimelineRow(item: item, isLast: index == items.count - 1, isChainDone: lineDone)
             }
         }
     }
