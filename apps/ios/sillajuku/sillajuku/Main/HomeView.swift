@@ -727,12 +727,18 @@ struct HomeView: View {
     @State private var activeTab: FeedTab = .explore
     @State private var exploreScrollTrigger   = UUID()
     @State private var followingScrollTrigger = UUID()
+    @Namespace private var tabBubbleNamespace
+    @State private var topSafeAreaInset: CGFloat = 0
 
     var body: some View {
         NavigationStack {
             feedContent
                 .overlay(alignment: .top) { floatingHeader }
                 .background(Color.sjCream.ignoresSafeArea())
+                // Lets scrolled cards actually pass behind the glass header/status bar
+                // instead of stopping dead at the safe-area line (see topSafeAreaInset,
+                // captured below, which keeps the header/content resting position unchanged).
+                .ignoresSafeArea(edges: .top)
                 .navigationBarHidden(true)
             .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
             .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
@@ -752,6 +758,15 @@ struct HomeView: View {
                     .onDisappear { Task { await viewModel.refreshNotificationBadge() } }
             }
         }
+        // Captured here (outside the .ignoresSafeArea(edges: .top) chain above, so it
+        // still sees the real device safe area) and reused to keep the header/feed's
+        // resting position identical across devices while letting scrolled content
+        // pass up behind the status bar.
+        .background {
+            GeometryReader { geo in
+                Color.clear.onAppear { topSafeAreaInset = geo.safeAreaInsets.top }
+            }
+        }
         .onChange(of: scrollToTopTrigger) { _, _ in
             if activeTab == .explore { exploreScrollTrigger = UUID() }
             else { followingScrollTrigger = UUID() }
@@ -763,7 +778,7 @@ struct HomeView: View {
     private var floatingHeader: some View {
         ZStack {
             // Centered tab switcher
-            HStack(spacing: 28) {
+            HStack(spacing: 4) {
                 feedTabButton(.explore,   label: "Explore")
                 feedTabButton(.following, label: "Following")
             }
@@ -775,9 +790,33 @@ struct HomeView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 12)
+        // feedContent now ignores the top safe area (see body), so this has to
+        // account for it manually to keep the tab row sitting where it always did.
+        .padding(.top, topSafeAreaInset + 12)
         .padding(.bottom, 10)
         .contentShape(Rectangle())
+        // iOS 26's automatic scroll-edge effect (.scrollEdgeEffectStyle) only engages
+        // behind real system chrome (native toolbar/tab bar) -- verified on-device that
+        // it produces zero blur/dim behind this custom overlay header. So this is a
+        // manual material, tapered via a gradient mask (fully opaque right at the status
+        // bar, fading to nothing by the row's midpoint) rather than a flat block, so it
+        // reads as a soft graduated melt instead of a hard-edged panel.
+        .background {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .mask {
+                    LinearGradient(
+                        stops: [
+                            .init(color: .black,            location: 0.0),
+                            .init(color: .black.opacity(0.5), location: 0.35),
+                            .init(color: .clear,             location: 0.75)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                }
+                .ignoresSafeArea(edges: .top)
+        }
     }
 
     private var followingFeedFooter: some View {
@@ -799,6 +838,11 @@ struct HomeView: View {
                 .font(.system(size: 19, weight: .medium))
                 .foregroundStyle(Color.sjInk)
                 .frame(width: 36, height: 36)
+                .background {
+                    Circle()
+                        .fill(Color.clear)
+                        .glassEffect(.regular, in: Circle())
+                }
                 .overlay(alignment: .topTrailing) {
                     if viewModel.hasUnreadNotifications {
                         Circle()
@@ -825,6 +869,16 @@ struct HomeView: View {
             Text(label)
                 .font(.system(size: 17, weight: activeTab == tab ? .bold : .regular))
                 .foregroundStyle(activeTab == tab ? Color.sjInk : Color.sjMuted)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background {
+                    if activeTab == tab {
+                        Capsule()
+                            .fill(Color.clear)
+                            .glassEffect(.regular, in: Capsule())
+                            .matchedGeometryEffect(id: "activeTabBubble", in: tabBubbleNamespace)
+                    }
+                }
         }
         .buttonStyle(.plain)
     }
@@ -879,8 +933,10 @@ struct HomeView: View {
                     // Extra space so the last card is fully above the glass tab bar
                     .padding(.bottom, 100)
                 }
-                // Top margin pushes PTR spinner below the floating header
-                .contentMargins(.top, 52, for: .scrollContent)
+                // feedContent ignores the top safe area so cards can scroll up behind
+                // the glass header (see body); this keeps their resting position exactly
+                // where it'd be if the ScrollView still respected the safe area normally.
+                .contentMargins(.top, topSafeAreaInset + 52, for: .scrollContent)
                 .refreshable {
                     if isExplore { await viewModel.refreshExplore() }
                     else { await viewModel.refreshFollowing() }
@@ -1125,6 +1181,17 @@ private enum CardSheet: Identifiable {
 // Not private -- reused by AlbumDetailView's "other ratings" section, which
 // renders posts scoped to a single release in the same visual format as the
 // home feed.
+/// Menu actions for rendering the current user's own rating as a card on the
+/// album detail page -- when set, FeedCard's ellipsis menu shows these instead
+/// of the feed actions (Add/Save/Share-link), which don't make sense there.
+struct OwnRatingMenuActions {
+    let onShare: () -> Void
+    let onEdit: () -> Void
+    let onAddToMix: () -> Void
+    let onEditComment: () -> Void
+    let onDelete: () -> Void
+}
+
 struct FeedCard: View {
     let item: FeedItem
     let currentUserId: UUID?
@@ -1136,6 +1203,7 @@ struct FeedCard: View {
     let onSave: () async -> Void
     let onBlock: () async -> Void
     let onOwnProfileTap: () -> Void
+    var ownRatingActions: OwnRatingMenuActions? = nil
 
     @State private var activeSheet: CardSheet?
     @State private var showBlockConfirm = false
@@ -1238,33 +1306,42 @@ struct FeedCard: View {
             Spacer(minLength: 0)
 
             Menu {
-                Button { activeSheet = .addRating } label: {
-                    Label("Add", systemImage: "plus")
-                }
-                Button {
-                    // If user has only the default Listen Later mix, save immediately.
-                    // If they have custom mixes (count > 1), show the mix picker.
-                    let count = userMixCount ?? 0
-                    if count > 1 {
-                        activeSheet = .mixPicker
-                    } else {
-                        Task { await onSave() }
-                    }
-                } label: {
-                    Label(isSaved ? "Saved" : "Save",
-                          systemImage: isSaved ? "bookmark.fill" : "bookmark")
-                }
-                ShareLink(
-                    item: URL(string: "https://sillajuku.com/r/\(item.id)")!,
-                    subject: Text(item.releases.displayTitle + " · " + item.releases.displayArtist),
-                    message: Text("Check out this rating on sillajuku")
-                ) {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                }
-                if !isOwnPost {
+                if let own = ownRatingActions {
+                    Button { own.onShare() } label: { Label("Share", systemImage: "square.and.arrow.up") }
+                    Button { own.onEdit() } label: { Label("Edit", systemImage: "square.and.pencil") }
+                    Button { own.onAddToMix() } label: { Label("Add to Mix", systemImage: "plus.square") }
+                    Button { own.onEditComment() } label: { Label("Edit Comment", systemImage: "bubble.right") }
                     Divider()
-                    Button(role: .destructive) { activeSheet = .report } label: { Label("Report", systemImage: "flag") }
-                    Button(role: .destructive) { showBlockConfirm = true } label: { Label("Block this user", systemImage: "hand.raised") }
+                    Button(role: .destructive) { own.onDelete() } label: { Label("Delete", systemImage: "trash") }
+                } else {
+                    Button { activeSheet = .addRating } label: {
+                        Label("Add", systemImage: "plus")
+                    }
+                    Button {
+                        // If user has only the default Listen Later mix, save immediately.
+                        // If they have custom mixes (count > 1), show the mix picker.
+                        let count = userMixCount ?? 0
+                        if count > 1 {
+                            activeSheet = .mixPicker
+                        } else {
+                            Task { await onSave() }
+                        }
+                    } label: {
+                        Label(isSaved ? "Saved" : "Save",
+                              systemImage: isSaved ? "bookmark.fill" : "bookmark")
+                    }
+                    ShareLink(
+                        item: URL(string: "https://sillajuku.com/r/\(item.id)")!,
+                        subject: Text(item.releases.displayTitle + " · " + item.releases.displayArtist),
+                        message: Text("Check out this rating on sillajuku")
+                    ) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
+                    if !isOwnPost {
+                        Divider()
+                        Button(role: .destructive) { activeSheet = .report } label: { Label("Report", systemImage: "flag") }
+                        Button(role: .destructive) { showBlockConfirm = true } label: { Label("Block this user", systemImage: "hand.raised") }
+                    }
                 }
             } label: {
                 Image(systemName: "ellipsis")

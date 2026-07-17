@@ -1071,7 +1071,10 @@ struct SearchView: View {
             Button { quickAddTapped() } label: {
                 Text("Quick Add")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
+                    // sjCream, not .white -- sjInk flips light in dark mode, so a hardcoded
+                    // white label disappears there (cream flips dark in step, like the
+                    // other sjInk-background buttons: InviteView, onboarding steps).
+                    .foregroundStyle(Color.sjCream)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
                     .background(Color.sjInk)
@@ -1348,6 +1351,7 @@ private struct DiscoveryAlbumCard: View {
                 Text(release.typeLabel)
                     .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(Color.sjBlue)
+                    .lineLimit(1)
                     .padding(.horizontal, 4).padding(.vertical, 2)
                     .background(Color.sjBlue.opacity(0.1))
                     .clipShape(RoundedRectangle(cornerRadius: 3))

@@ -187,11 +187,19 @@ final class QuickAddViewModel {
 /// gesture can't track a drag that moves past the star it started on, since the touch stays
 /// bound to whichever view's gesture recognizer first claimed it), continuously previewing the
 /// fill up to wherever the finger currently is; the rating only actually commits in onEnded, not
-/// per-frame during the drag. Always starts fully empty/outline -- Quick Add only ever shows
-/// unrated candidates, so there's never an existing score to reflect at rest.
+/// per-frame during the drag. `rating` is the resting fill: nil for unrated candidates (fully
+/// empty/outline), or the already-committed score for a just-rated row -- the row stays as
+/// draggable flowers after rating (not a ScoreBadge) so the user can immediately fix a rating.
+/// `step` controls snapping (0.5 for Quick Add; the manual rating sheet passes the user's
+/// profile ratingStep, which can be 0.1), and `onLiveChange` streams the snapped value during
+/// the drag for hosts that show a numeric readout -- at 0.1 steps the fill difference is
+/// invisible, so the number is the only readable feedback.
 struct HalfStarRow: View {
     var starSize: CGFloat = 20
     var spacing: CGFloat = 3
+    var rating: Double? = nil
+    var step: Double = 0.5
+    var onLiveChange: ((Double) -> Void)? = nil
     let onRate: (Double) -> Void
 
     @State private var liveRating: Double? = nil
@@ -209,7 +217,9 @@ struct HalfStarRow: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
-                        liveRating = rating(atX: value.location.x, rowWidth: geo.size.width)
+                        let v = rating(atX: value.location.x, rowWidth: geo.size.width)
+                        liveRating = v
+                        onLiveChange?(v)
                     }
                     .onEnded { value in
                         let final = rating(atX: value.location.x, rowWidth: geo.size.width)
@@ -223,7 +233,7 @@ struct HalfStarRow: View {
 
     @ViewBuilder
     private func star(for position: Int) -> some View {
-        let fillFraction = liveRating.map { min(max($0 - Double(position - 1), 0), 1) } ?? 0
+        let fillFraction = (liveRating ?? rating).map { min(max($0 - Double(position - 1), 0), 1) } ?? 0
         ZStack {
             Image("icon-flower")
                 .renderingMode(.template).resizable().scaledToFit()
@@ -247,8 +257,11 @@ struct HalfStarRow: View {
         guard rowWidth > 0 else { return 0.5 }
         let clampedX = min(max(x, 0), rowWidth)
         let raw = (clampedX / rowWidth) * 5
-        let roundedToHalf = (raw * 2).rounded() / 2
-        return min(max(roundedToHalf, 0.5), 5.0)
+        let snapped = (raw / step).rounded() * step
+        // 0.1 steps accumulate float drift (e.g. 4.300000000000001) -- round to
+        // 2 decimals so comparisons and %.1f display stay exact.
+        let cleaned = (snapped * 100).rounded() / 100
+        return min(max(cleaned, 0.5), 5.0)
     }
 }
 
@@ -277,11 +290,10 @@ private struct QuickAddRow: View {
 
             Spacer(minLength: 8)
 
-            if let ratedScore {
-                ScoreBadge(score: ratedScore, badgeSize: 32)
-            } else {
-                HalfStarRow(onRate: onRate)
-            }
+            // Stays a draggable flower row even after rating (filled at the committed
+            // score) so a slip can be fixed in place -- swapping to a ScoreBadge here
+            // made just-rated rows read-only until the next refresh.
+            HalfStarRow(rating: ratedScore, onRate: onRate)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
@@ -311,11 +323,8 @@ private struct QuickAddSongRow: View {
 
             Spacer(minLength: 8)
 
-            if let ratedScore {
-                ScoreBadge(score: ratedScore, badgeSize: 32)
-            } else {
-                HalfStarRow(onRate: onRate)
-            }
+            // Same as QuickAddRow: stays draggable after rating so it can be fixed in place.
+            HalfStarRow(rating: ratedScore, onRate: onRate)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)

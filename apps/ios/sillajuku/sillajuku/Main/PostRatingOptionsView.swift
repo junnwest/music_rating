@@ -135,7 +135,7 @@ struct PostRatingOptionsView: View {
         }
     }
 
-    // MARK: List row
+    // MARK: Mix row
 
     private var listRow: some View {
         Button { showMixPicker = true } label: {
@@ -144,7 +144,7 @@ struct PostRatingOptionsView: View {
                     .font(.system(size: 17))
                     .foregroundStyle(Color.sjInk)
                     .frame(width: 24)
-                Text("Add to a list")
+                Text("Add to a Mix")
                     .font(.system(size: 15))
                     .foregroundStyle(Color.sjInk)
                 Spacer()
@@ -190,5 +190,100 @@ struct PostRatingOptionsView: View {
         .padding(.horizontal, 20)
         .padding(.top, 12)
         .padding(.bottom, 22)
+    }
+}
+
+// MARK: - Comment-only edit sheet
+
+/// Dedicated modal for the album/song pages' "Edit Comment" action: header +
+/// comment editor + Save, nothing else -- unlike PostRatingOptionsView it
+/// deliberately has no "Add to a Mix" row (that action has its own menu entry
+/// on those pages).
+struct CommentEditSheet: View {
+    let release: Release
+    /// Song pages pass the track title so the header names what's being commented on.
+    let trackTitle: String?
+    let onSave: (String?) -> Void
+
+    @State private var commentText: String
+
+    init(release: Release, trackTitle: String? = nil, initialComment: String = "",
+         onSave: @escaping (String?) -> Void) {
+        self.release = release
+        self.trackTitle = trackTitle
+        self.onSave = onSave
+        self._commentText = State(initialValue: initialComment)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                CoverImage(url: release.coverUrl, cornerRadius: 8)
+                    .frame(width: 44, height: 44)
+                    .accessibilityHidden(true) // title text alongside already describes it
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(trackTitle ?? release.displayTitle)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.sjInk)
+                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(trackTitle != nil ? "Song" : release.typeLabel)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color.sjBlue)
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(Color.sjBlue.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                        Text(release.displayArtist)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.sjMuted)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+
+            Divider().padding(.vertical, 12)
+
+            ZStack(alignment: .topLeading) {
+                if commentText.isEmpty {
+                    Text("What did you think?")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.sjMuted)
+                        .padding(.horizontal, 14)
+                        .padding(.top, 10)
+                }
+                TextEditor(text: $commentText)
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color.sjInk)
+                    .scrollContentBackground(.hidden)
+                    .frame(height: 110)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+            }
+            .background(Color.sjSurface)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.sjBorder, lineWidth: 1))
+            .padding(.horizontal, 20)
+
+            Button {
+                let text = commentText.trimmingCharacters(in: .whitespaces)
+                onSave(text.isEmpty ? nil : text)
+            } label: {
+                Text("Save")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                    .background(Color.sjBlue)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 20)
+            .padding(.top, 14)
+
+            Spacer(minLength: 0)
+        }
     }
 }

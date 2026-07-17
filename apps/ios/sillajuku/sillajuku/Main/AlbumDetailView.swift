@@ -75,6 +75,7 @@ class AlbumDetailViewModel {
     var eloRatedTrackIds: Set<UUID> = []        // tracks rated via instinct (may have no score yet)
     var communityAvg: Double?
     var communityCount: Int = 0
+    var communitySD: Double?
     var userScore: Double?
     var userEloScore: Double?
     var reviewText: String?
@@ -82,6 +83,10 @@ class AlbumDetailViewModel {
     var ratingMode = "manual"
     var ratingStep: Double = 0.5
     var posts: [FeedItem] = []
+    // The signed-in user's own rating on this album, in feed-post shape --
+    // loadPosts deliberately excludes it from `posts`, but the rated state
+    // renders it as a regular FeedCard under "Your Rating".
+    var myPost: FeedItem? = nil
     var likedPostIds: Set<UUID> = []
     var savedReleaseIds: Set<UUID> = []
     var likeCounts: [UUID: Int] = [:]
@@ -228,6 +233,7 @@ class AlbumDetailViewModel {
             return nil
         }
         communityAvg = scored.isEmpty ? nil : scored.reduce(0, +) / Double(scored.count)
+        communitySD = Self.spread(of: scored)
 
         if let userId = supabase.auth.currentUser?.id {
             let mine = rows.first(where: { $0.userId == userId })
@@ -239,12 +245,23 @@ class AlbumDetailViewModel {
         isLoadingInstinctScore = false
     }
 
+    /// Population standard deviation of the community's scores -- surfaced in
+    /// the UI as "Split"/편차 (how divided listeners are). Nil below 3 scores,
+    /// where a deviation is statistically meaningless.
+    static func spread(of scores: [Double]) -> Double? {
+        guard scores.count >= 3 else { return nil }
+        let mean = scores.reduce(0, +) / Double(scores.count)
+        let variance = scores.reduce(0) { $0 + ($1 - mean) * ($1 - mean) } / Double(scores.count)
+        return (variance).squareRoot()
+    }
+
     func deleteInstinctRating() async {
         guard let userId = supabase.auth.currentUser?.id,
               let rgId = releaseGroupId else { return }
         userEloScore = nil
         currentRatingId = nil
         reviewText = nil
+        myPost = nil
         _ = try? await supabase.from("ratings")
             .delete()
             .eq("user_id", value: userId)
@@ -273,6 +290,7 @@ class AlbumDetailViewModel {
             .update(Update(reviewText: text))
             .eq("id", value: rid)
             .execute()
+        await loadMyPost()
     }
 
     private func loadRatingMode() async {
@@ -320,6 +338,7 @@ class AlbumDetailViewModel {
                 userEloScore = nil
             }
             await reloadCommunityStats(releaseGroupId: releaseGroupId, currentUserId: userId)
+            await loadMyPost()
             NotificationCenter.default.post(name: .ratingChanged, object: nil)
         } catch {
             userScore = old
@@ -343,6 +362,7 @@ class AlbumDetailViewModel {
             return nil
         }
         communityAvg = scored.isEmpty ? nil : scored.reduce(0, +) / Double(scored.count)
+        communitySD = Self.spread(of: scored)
         let mine = rows.first(where: { $0.userId == currentUserId })
         userScore       = mine?.score
         currentRatingId = mine?.id
@@ -365,16 +385,34 @@ class AlbumDetailViewModel {
             .limit(20)
             .execute()
             .value) ?? []
+        await loadMyPost()
         await loadPostSocialData()
     }
 
+    /// Refreshes the user's own rating in feed-post shape. Called from the
+    /// initial load and again after any action that changes what the card
+    /// shows (re-rate, comment edit, delete).
+    func loadMyPost() async {
+        guard let myId = currentUserId, let rgId = releaseGroupId else { return }
+        let mine: [FeedItem] = (try? await supabase
+            .from("ratings")
+            .select(Self.postsSelect)
+            .eq("release_group_id", value: rgId)
+            .eq("user_id", value: myId)
+            .limit(1)
+            .execute()
+            .value) ?? []
+        myPost = mine.first
+    }
+
     private func loadPostSocialData() async {
-        guard !posts.isEmpty else { return }
-        let counts = await AlbumSocial.loadCounts(for: posts)
+        let all = posts + (myPost.map { [$0] } ?? [])
+        guard !all.isEmpty else { return }
+        let counts = await AlbumSocial.loadCounts(for: all)
         for (k, v) in counts.likeCounts { likeCounts[k] = v }
         for (k, v) in counts.commentCounts { commentCounts[k] = v }
         guard let userId = currentUserId else { return }
-        let mine = await AlbumSocial.loadMyLikesAndSaves(posts: posts, userId: userId)
+        let mine = await AlbumSocial.loadMyLikesAndSaves(posts: all, userId: userId)
         likedPostIds.formUnion(mine.likedPostIds)
         savedReleaseIds.formUnion(mine.savedReleaseIds)
     }
@@ -700,14 +738,13 @@ struct ManualRatingSheet: View {
                 .font(.system(size: 26, weight: .bold))
                 .foregroundStyle(Color.sjBlue).monospacedDigit()
 
-            Slider(value: $draftScore, in: 0.5...5.0, step: ratingStep)
-                .tint(Color.sjBlue)
-                .padding(.horizontal, 24).padding(.top, 8)
+            // Drag/tap directly on the flowers (same control as Quick Add); the
+            // numeric label above is the precise readout -- at 0.1 steps a tenth
+            // of a flower isn't a readable difference.
+            HalfStarRow(starSize: 38, spacing: 8, rating: draftScore, step: ratingStep,
+                        onLiveChange: { draftScore = $0 }, onRate: { draftScore = $0 })
+                .padding(.top, 10)
                 .sensoryFeedback(.selection, trigger: draftScore)
-
-            HStack { Text("0.5"); Spacer(); Text("5.0") }
-                .font(.system(size: 10)).foregroundStyle(Color.sjMuted)
-                .padding(.horizontal, 26).padding(.top, 2)
 
             VStack(spacing: 8) {
                 Button {
@@ -777,7 +814,8 @@ struct AlbumDetailView: View {
     @State private var viewModel = AlbumDetailViewModel()
     @State private var showManualSheet = false
     @State private var showInstinctSheet = false
-    @State private var showEditSheet = false
+    @State private var showMixPicker = false
+    @State private var showEditCommentSheet = false
     @State private var showDeleteConfirm = false
     @State private var trackRatingTarget: TrackEntry? = nil
     @State private var trackInstinctTarget: TrackEntry? = nil
@@ -831,24 +869,6 @@ struct AlbumDetailView: View {
         )
     }
 
-    @ViewBuilder
-    private func shareButton(score: Double) -> some View {
-        Button {
-            Task { await prepareShare(score: score) }
-        } label: {
-            if isPreparingShare {
-                ProgressView().scaleEffect(0.8)
-            } else {
-                Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(Color.sjBlue)
-            }
-        }
-        .buttonStyle(.plain)
-        .disabled(isPreparingShare)
-        .accessibilityLabel(String(localized: "Share to Instagram"))
-    }
-
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
@@ -898,18 +918,20 @@ struct AlbumDetailView: View {
                 Task { await viewModel.loadAfterInstinct(releaseGroupId: release.id) }
             }, onDone: { showInstinctSheet = false })
         }
-        .sheet(isPresented: $showEditSheet) {
-            // Mode-agnostic: editing never touches the score, just the
-            // review text / mix membership, so the same sheet serves both
-            // manual and instinct ratings.
-            PostRatingOptionsView(
+        .sheet(isPresented: $showMixPicker) {
+            MixPickerView(releaseId: release.id, releaseTitle: release.displayTitle)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showEditCommentSheet) {
+            // Comment-only edit; never touches the score (that's the Edit action).
+            CommentEditSheet(
                 release: release,
-                continueLabel: "Save",
                 initialComment: viewModel.reviewText ?? ""
             ) { text in
                 Task {
                     await viewModel.updateReviewText(text)
-                    showEditSheet = false
+                    showEditCommentSheet = false
                 }
             }
             .presentationBackground(Color.sjCream)
@@ -1051,14 +1073,16 @@ struct AlbumDetailView: View {
         VStack(alignment: .leading, spacing: 16) {
             // Community summary at the top, integrated with the section
             // rather than tucked below the user's own rating controls.
+            // Three equal columns: average, count, and "Split" (population SD,
+            // surfaced as ±X.X -- how divided listeners are; "—" under 3 scores).
             if viewModel.communityCount > 0 {
                 HStack(spacing: 10) {
-                    if let avg = viewModel.communityAvg {
-                        communityStatBox(value: String(format: "%.1f", avg),
-                                         label: "Community Avg", showIcon: true)
-                    }
+                    communityStatBox(value: viewModel.communityAvg.map { String(format: "%.1f", $0) } ?? "—",
+                                     label: "Community Avg", showIcon: true)
                     communityStatBox(value: "\(viewModel.communityCount)",
                                      label: viewModel.communityCount == 1 ? "Rating" : "Ratings", showIcon: false)
+                    communityStatBox(value: viewModel.communitySD.map { String(format: "±%.1f", $0) } ?? "—",
+                                     label: "Split", showIcon: false)
                 }
             }
 
@@ -1104,57 +1128,39 @@ struct AlbumDetailView: View {
         }
     }
 
+    /// The user's own rating rendered as a regular feed post card, with an
+    /// ellipsis menu carrying all the rated-state actions (share / edit /
+    /// add to mix / edit comment / delete).
+    @ViewBuilder
     private func ratedBody(score: Double) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                // Tapping the score itself re-rates, same as the explicit
-                // Re-rate button below -- it's the most natural tap target
-                // for "I want to redo this."
-                Button { openRatingSheet() } label: {
-                    HStack(spacing: 4) {
-                        Image("icon-flower")
-                            .renderingMode(.template).resizable().scaledToFit()
-                            .frame(width: 14, height: 14).foregroundStyle(Color.sjBlue)
-                        Text(String(format: "%.1f", score))
-                            .font(.system(size: 18, weight: .bold)).foregroundStyle(Color.sjBlue)
-                    }
-                    .padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(Color.sjBlue.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
-                .buttonStyle(.plain)
-
-                Text("My Score")
-                    .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
-
+        if let myPost = viewModel.myPost {
+            FeedCard(
+                item: myPost,
+                currentUserId: viewModel.currentUserId,
+                isLiked: viewModel.likedPostIds.contains(myPost.id),
+                isSaved: viewModel.savedReleaseIds.contains(myPost.releases.id),
+                likesCount: viewModel.likeCounts[myPost.id] ?? 0,
+                commentsCount: viewModel.commentCounts[myPost.id] ?? 0,
+                onLike: { await viewModel.toggleLike(for: myPost) },
+                onSave: { await viewModel.toggleSave(for: myPost) },
+                onBlock: {},
+                onOwnProfileTap: {},
+                ownRatingActions: OwnRatingMenuActions(
+                    onShare: { Task { await prepareShare(score: score) } },
+                    onEdit: { openRatingSheet() },
+                    onAddToMix: { showMixPicker = true },
+                    onEditComment: { showEditCommentSheet = true },
+                    onDelete: { showDeleteConfirm = true }
+                )
+            )
+        } else {
+            // Rated (score is known from the lightweight ratings fetch) but the
+            // post-shaped row hasn't arrived yet.
+            HStack {
+                ProgressView().scaleEffect(0.9)
                 Spacer()
-
-                shareButton(score: score)
-            }
-
-            HStack(spacing: 8) {
-                ratingActionButton("Re-rate", icon: "arrow.triangle.2.circlepath") { openRatingSheet() }
-                ratingActionButton("Edit", icon: "square.and.pencil") { showEditSheet = true }
-                ratingActionButton("Delete", icon: "trash", isDestructive: true) { showDeleteConfirm = true }
             }
         }
-    }
-
-    private func ratingActionButton(_ label: LocalizedStringKey, icon: String, isDestructive: Bool = false,
-                                     action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: icon).font(.system(size: 12, weight: .semibold))
-                Text(label).font(.system(size: 13, weight: .semibold))
-            }
-            .foregroundStyle(isDestructive ? Color.red : Color.sjInk)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 9)
-            .background(Color.sjSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.sjBorder, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
     }
 
     private func communityStatBox(value: String, label: LocalizedStringKey, showIcon: Bool) -> some View {
@@ -1169,8 +1175,12 @@ struct AlbumDetailView: View {
                     .font(.system(size: 16, weight: .bold)).foregroundStyle(Color.sjInk)
                 Text(label)
                     .font(.system(size: 10)).foregroundStyle(Color.sjMuted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
         }
+        // Equal thirds across the row (was intrinsic width when there were two).
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14).padding(.vertical, 10)
         .background(Color.sjSurface)
         .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -1293,6 +1303,7 @@ struct AlbumDetailView: View {
 extension AlbumDetailViewModel {
     func loadAfterInstinct(releaseGroupId: UUID) async {
         await loadRatings(releaseGroupId: releaseGroupId)
+        await loadMyPost()
     }
 }
 
@@ -1602,13 +1613,11 @@ private struct TrackRatingSheet: View {
                 .font(.system(size: 26, weight: .bold))
                 .foregroundStyle(Color.sjBlue).monospacedDigit()
 
-            Slider(value: $draftScore, in: 0.5...5.0, step: 0.5)
-                .tint(Color.sjBlue)
-                .padding(.horizontal, 24).padding(.top, 8)
+            // Same flower control as the album manual sheet / Quick Add.
+            HalfStarRow(starSize: 38, spacing: 8, rating: draftScore,
+                        onLiveChange: { draftScore = $0 }, onRate: { draftScore = $0 })
+                .padding(.top, 10)
                 .sensoryFeedback(.selection, trigger: draftScore)
-            HStack { Text("0.5"); Spacer(); Text("5.0") }
-                .font(.system(size: 10)).foregroundStyle(Color.sjMuted)
-                .padding(.horizontal, 26).padding(.top, 2)
 
             VStack(spacing: 8) {
                 Button {
@@ -1649,6 +1658,17 @@ struct SongDetailView: View {
     @State private var isLoaded = false
     @State private var showRatingSheet = false
     @State private var showInstinctSheet = false
+    // Own rating in post-card shape (same card the profile's Songs tab uses),
+    // plus the social state that card renders.
+    @State private var myRow: SongRatingRow? = nil
+    @State private var myRowLikes = 0
+    @State private var myRowComments = 0
+    @State private var myRowLiked = false
+    @State private var totalSongRatingsCount = 0
+    @State private var myHandle: String? = nil
+    @State private var myVerified = false
+    @State private var showEditCommentSheet = false
+    @State private var showDeleteConfirm = false
 
     private var durationString: String {
         guard let ms = track.durationMs, ms > 0 else { return "" }
@@ -1680,10 +1700,40 @@ struct SongDetailView: View {
         .sheet(isPresented: $showRatingSheet) {
             TrackRatingSheet(track: track, release: release, existingScore: userScore) { _, score in
                 userScore = score
+                Task { await loadMyRow() }
             }
         }
         .sheet(isPresented: $showInstinctSheet) {
-            InstinctTrackRatingView(track: track, release: release, onDone: { showInstinctSheet = false })
+            InstinctTrackRatingView(track: track, release: release, onDone: {
+                showInstinctSheet = false
+                Task { await loadMyRow() }
+            })
+        }
+        .sheet(isPresented: $showEditCommentSheet) {
+            // Comment-only edit; the header names the track being commented on.
+            CommentEditSheet(
+                release: release,
+                trackTitle: track.title,
+                initialComment: myRow?.reviewText ?? ""
+            ) { text in
+                Task {
+                    await updateTrackReviewText(text)
+                    showEditCommentSheet = false
+                }
+            }
+            .presentationBackground(Color.sjCream)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+        .confirmationDialog(
+            "Delete Rating?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) { Task { await deleteTrackRating() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your rating for this track will be removed.")
         }
     }
 
@@ -1755,19 +1805,27 @@ struct SongDetailView: View {
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Color.sjMuted)
                 .tracking(0.8)
-            if let score = userScore {
-                HStack(spacing: 8) {
-                    Text(score.truncatingRemainder(dividingBy: 1) == 0
-                         ? "\(Int(score))" : String(format: "%.1f", score))
-                    .font(.system(size: 22, weight: .bold)).foregroundStyle(Color.sjBlue)
-                    Text("/ 5")
-                        .font(.system(size: 16)).foregroundStyle(Color.sjMuted)
-                    Spacer()
-                    Button("Edit") { showRatingSheet = true }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.sjBlue)
-                }
+            if let myRow {
+                // Own rating as the regular song post card (same one the profile's
+                // Songs tab renders), with the rated-state actions in its ⋯ menu.
+                ProfileSongPostCard(
+                    song: myRow,
+                    totalSongRatingsCount: totalSongRatingsCount,
+                    likesCount: myRowLikes,
+                    commentsCount: myRowComments,
+                    isLiked: myRowLiked,
+                    onLike: { await toggleMyRowLike() },
+                    ownActions: SongOwnRatingMenuActions(
+                        onEdit: {
+                            if ratingMode == "instinct" { showInstinctSheet = true }
+                            else { showRatingSheet = true }
+                        },
+                        onEditComment: { showEditCommentSheet = true },
+                        onDelete: { showDeleteConfirm = true }
+                    ),
+                    headerHandle: myHandle,
+                    headerVerified: myVerified
+                )
             } else {
                 Button {
                     if ratingMode == "instinct" { showInstinctSheet = true }
@@ -1829,16 +1887,152 @@ struct SongDetailView: View {
         communityCount = scores.count
         communityAvg = scores.isEmpty ? nil : scores.reduce(0, +) / Double(scores.count)
 
-        guard let userId = supabase.auth.currentUser?.id else { return }
-        struct UserRow: Decodable { let score: Double? }
-        let rows: [UserRow] = (try? await supabase
-            .from("track_ratings").select("score")
+        await loadMyRow()
+    }
+
+    /// Fetches the user's own track_ratings row in full and rebuilds the
+    /// post-card state from it. Also called after rating/comment/delete
+    /// actions so the card always reflects what's stored.
+    private func loadMyRow() async {
+        guard let recordingId = track.trackId,
+              let userId = supabase.auth.currentUser?.id else { return }
+        struct OwnRow: Decodable {
+            let id: UUID
+            let score: Double?
+            let eloScore: Double?
+            let reviewText: String?
+            let createdAt: Date
+            enum CodingKeys: String, CodingKey {
+                case id, score
+                case eloScore = "elo_score"
+                case reviewText = "review_text"
+                case createdAt = "created_at"
+            }
+        }
+        let rows: [OwnRow] = (try? await supabase
+            .from("track_ratings")
+            .select("id, score, elo_score, review_text, created_at")
             .eq("user_id", value: userId)
             .eq("recording_id", value: recordingId)
             .limit(1)
             .execute()
             .value) ?? []
-        userScore = rows.first?.score
+        guard let own = rows.first else {
+            myRow = nil
+            userScore = nil
+            return
+        }
+        userScore = own.score
+        myRow = SongRatingRow(
+            ratingId: own.id,
+            recordingId: recordingId,
+            score: own.score,
+            eloScore: own.eloScore,
+            reviewText: own.reviewText,
+            trackTitle: track.title,
+            release: ReleaseRef(
+                id: release.id, title: release.title, artist: release.artist,
+                coverUrl: release.coverUrl, releaseType: release.releaseType,
+                titleNative: release.titleNative,
+                primaryArtist: NativeArtistRef(nameNative: release.artistNative)
+            ),
+            createdAt: own.createdAt
+        )
+
+        // Social state for the card + the elo-reveal gate count (mirrors the
+        // profile Songs tab's gating -- counts ALL of the user's song ratings).
+        struct CountRow: Decodable {
+            let userId: UUID?
+            enum CodingKeys: String, CodingKey { case userId = "user_id" }
+        }
+        let likeRows: [CountRow] = (try? await supabase
+            .from("track_rating_likes").select("user_id")
+            .eq("track_rating_id", value: own.id)
+            .execute().value) ?? []
+        myRowLikes = likeRows.count
+        myRowLiked = likeRows.contains { $0.userId == userId }
+        let commentResp = try? await supabase
+            .from("track_rating_comments").select("id", head: true, count: .exact)
+            .eq("track_rating_id", value: own.id)
+            .execute()
+        myRowComments = commentResp?.count ?? 0
+        let totalResp = try? await supabase
+            .from("track_ratings").select("id", head: true, count: .exact)
+            .eq("user_id", value: userId)
+            .execute()
+        totalSongRatingsCount = totalResp?.count ?? 0
+
+        // Header identity for the post card (fetch once).
+        if myHandle == nil {
+            struct MyProfile: Decodable {
+                let username: String?
+                let isVerified: Bool?
+                enum CodingKeys: String, CodingKey { case username; case isVerified = "is_verified" }
+            }
+            if let p: MyProfile = try? await supabase.from("profiles")
+                .select("username, is_verified").eq("id", value: userId)
+                .single().execute().value {
+                myHandle = p.username
+                myVerified = p.isVerified == true
+            }
+        }
+    }
+
+    private func toggleMyRowLike() async {
+        guard let myRow, let userId = supabase.auth.currentUser?.id else { return }
+        let wasLiked = myRowLiked
+        myRowLiked.toggle()
+        myRowLikes += wasLiked ? -1 : 1
+        do {
+            if wasLiked {
+                try await supabase.from("track_rating_likes").delete()
+                    .eq("user_id", value: userId).eq("track_rating_id", value: myRow.ratingId).execute()
+            } else {
+                struct Payload: Encodable {
+                    let userId: UUID; let trackRatingId: UUID
+                    enum CodingKeys: String, CodingKey {
+                        case userId = "user_id"; case trackRatingId = "track_rating_id"
+                    }
+                }
+                try await supabase.from("track_rating_likes")
+                    .insert(Payload(userId: userId, trackRatingId: myRow.ratingId)).execute()
+            }
+        } catch {
+            myRowLiked = wasLiked
+            myRowLikes += wasLiked ? 1 : -1
+        }
+    }
+
+    /// Same explicit-null encode as AlbumDetailViewModel.updateReviewText, so
+    /// clearing the comment writes SQL NULL instead of silently omitting the key.
+    private func updateTrackReviewText(_ text: String?) async {
+        guard let myRow else { return }
+        struct Update: Encodable {
+            let reviewText: String?
+            enum CodingKeys: String, CodingKey { case reviewText = "review_text" }
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                if let reviewText { try container.encode(reviewText, forKey: .reviewText) }
+                else { try container.encodeNil(forKey: .reviewText) }
+            }
+        }
+        try? await supabase.from("track_ratings")
+            .update(Update(reviewText: text))
+            .eq("id", value: myRow.ratingId)
+            .execute()
+        await loadMyRow()
+    }
+
+    private func deleteTrackRating() async {
+        guard let myRow else { return }
+        _ = try? await supabase.from("track_ratings")
+            .delete()
+            .eq("id", value: myRow.ratingId)
+            .execute()
+        self.myRow = nil
+        userScore = nil
+        NotificationCenter.default.post(name: .ratingChanged, object: nil)
+        await loadStats()
     }
 }
 
