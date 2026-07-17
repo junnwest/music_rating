@@ -8,7 +8,6 @@ import {
   LayoutGrid,
   ListMusic,
   BarChart3,
-  Bookmark,
   Clock,
   Globe,
   ChevronRight,
@@ -27,7 +26,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
 import { eloToScore, INSTINCT_REVEAL_THRESHOLD } from '../../lib/elo';
 import { displayName, formatScore } from '../../lib/sj/display';
-import { RatedTable, SavedLibrary } from './ProfileExtras';
+import { RatedTable } from './ProfileExtras';
 import { RG_EMBED_NATIVE } from '../../lib/sj/data';
 import type { MixRow } from '../../lib/db/types';
 
@@ -49,7 +48,7 @@ export interface ProfileRatingItem {
   releaseArtist: string;
 }
 
-type ProfileTab = 'rated' | 'library' | 'lists' | 'stats';
+type ProfileTab = 'rated' | 'lists' | 'stats';
 type TypeFilter = 'all' | 'albums' | 'songs';
 type SortOrder = 'recent' | 'top' | 'bottom' | 'az';
 
@@ -387,14 +386,11 @@ export default function ProfileView({ username }: { username?: string }) {
   }
 
   const handle = display?.username ?? '';
+  // Everything the user saves lives in Mixes now — the separate "Library"
+  // (saved-to-listen-later) tab was removed and unified into Mix.
   const tabs: { key: ProfileTab; icon: typeof LayoutGrid; label: string }[] = [
     { key: 'rated', icon: LayoutGrid, label: t('sj.profile.rated') },
-    // Library (saved-to-listen-later) is own-profile only until visibility
-    // enforcement (library_visibility) lands on web.
-    ...(isSelf
-      ? [{ key: 'library' as ProfileTab, icon: Bookmark, label: t('sj.profile.library') }]
-      : []),
-    { key: 'lists', icon: ListMusic, label: t('sj.profile.lists') },
+    { key: 'lists', icon: ListMusic, label: t('sj.profile.mixes') },
     { key: 'stats', icon: BarChart3, label: t('sj.profile.stats') },
   ];
 
@@ -600,10 +596,7 @@ export default function ProfileView({ username }: { username?: string }) {
         </div>
       )}
 
-      {/* ── Library tab (saved albums) ── */}
-      {tab === 'library' && targetId && isSelf && <SavedLibrary userId={targetId} />}
-
-      {/* ── Lists tab ── */}
+      {/* ── Mix tab ── */}
       {tab === 'lists' && targetId && <MixLibrary userId={targetId} isSelf={isSelf} />}
 
       {/* ── Stats tab ── */}

@@ -3,10 +3,12 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Search as SearchIcon, X, Plus, Check, ChevronRight } from 'lucide-react';
+import { Search as SearchIcon, X, Check, ChevronRight } from 'lucide-react';
 import Cover from '../../../components/sj/Cover';
 import ManualRateModal from '../../../components/sj/ManualRateModal';
 import InstinctModal from '../../../components/sj/InstinctModal';
+import FlowerRateControl from '../../../components/sj/FlowerRateControl';
+import FlowerGlyph from '../../../components/sj/FlowerGlyph';
 import { useSession } from '../../../components/sj/SessionContext';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
@@ -47,6 +49,7 @@ function SearchPageInner() {
   const [albums, setAlbums] = useState<SJRelease[]>([]);
   const [songs, setSongs] = useState<SongResult[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const runSeqRef = useRef(0);
 
   // Quick-rate state
   const [ratedIds, setRatedIds] = useState<Set<string>>(new Set());
@@ -85,46 +88,60 @@ function SearchPageInner() {
       setSongs([]);
       return;
     }
+    // Stale-request guard: a slower earlier query must never overwrite a newer
+    // one's results (types faster than the network responds).
+    const seq = ++runSeqRef.current;
+    const fresh = () => seq === runSeqRef.current;
     setSearching(true);
 
-    const [albumsRes, artistsRes, recordingsRes] = await Promise.all([
-      supabase.rpc('search_release_groups', { q: trimmed, lim: 30 }),
-      supabase.rpc('search_artists', { q: trimmed, lim: 10 }),
-      supabase
+    // Albums and artists each render the moment their own RPC returns — the
+    // slower song lookup (a recordings scan + a release_tracks join) no longer
+    // holds them up. Results now stream in instead of appearing all at once.
+    const albumsP = supabase
+      .rpc('search_release_groups', { q: trimmed, lim: 30 })
+      .then(({ data }) => {
+        if (!fresh()) return;
+        const albumRows = (data as SearchReleaseGroupRPC[] | null) ?? [];
+        setAlbums(
+          albumRows.map((r) => ({
+            id: r.id,
+            title: r.title,
+            artist: r.artist_display,
+            coverUrl: r.cover_url,
+            releaseType: r.release_group_type,
+            releaseDate: r.first_release_date,
+            titleNative: r.native_title,
+            artistNative: r.artist_native,
+          })),
+        );
+      });
+
+    const artistsP = supabase
+      .rpc('search_artists', { q: trimmed, lim: 10 })
+      .then(({ data }) => {
+        if (fresh()) setArtists((data as SearchArtistRPC[] | null) ?? []);
+      });
+
+    // Song hits → parent release group (canonical preferred), like iOS
+    const songsP = (async () => {
+      const { data: recData } = await supabase!
         .from('recordings')
         .select('id, title, artist_display')
         .ilike('title', `%${trimmed}%`)
-        .limit(30),
-    ]);
-
-    const albumRows = (albumsRes.data as SearchReleaseGroupRPC[] | null) ?? [];
-    setAlbums(
-      albumRows.map((r) => ({
-        id: r.id,
-        title: r.title,
-        artist: r.artist_display,
-        coverUrl: r.cover_url,
-        releaseType: r.release_group_type,
-        releaseDate: r.first_release_date,
-        titleNative: r.native_title,
-        artistNative: r.artist_native,
-      })),
-    );
-    setArtists((artistsRes.data as SearchArtistRPC[] | null) ?? []);
-
-    // Song hits → parent release group (canonical preferred), like iOS
-    const hits =
-      (recordingsRes.data as { id: string; title: string; artist_display: string | null }[] | null) ??
-      [];
-    if (hits.length === 0) {
-      setSongs([]);
-    } else {
-      const { data: rtRows } = await supabase
+        .limit(30);
+      const hits =
+        (recData as { id: string; title: string; artist_display: string | null }[] | null) ?? [];
+      if (hits.length === 0) {
+        if (fresh()) setSongs([]);
+        return;
+      }
+      const { data: rtRows } = await supabase!
         .from('release_tracks')
         .select(
           'recording_id, releases(is_canonical, release_groups(id, title, artist_display, cover_url))',
         )
         .in('recording_id', hits.map((h) => h.id));
+      if (!fresh()) return;
       const rgMap: Record<string, any> = {};
       for (const row of (rtRows as any[] | null) ?? []) {
         const rg = row.releases?.release_groups;
@@ -152,8 +169,10 @@ function SearchPageInner() {
             },
           })),
       );
-    }
-    setSearching(false);
+    })();
+
+    await Promise.allSettled([albumsP, artistsP, songsP]);
+    if (fresh()) setSearching(false);
   }, []);
 
   // Debounced search on query change (300ms, like iOS)
@@ -203,6 +222,13 @@ function SearchPageInner() {
     setSessionRatedIds((prev) => new Set(prev).add(id));
   }
 
+  // Drag-to-rate: commit a quick score without opening the modal. Optimistically
+  // marks the release rated so the card flips to its "rated" state immediately.
+  function quickRate(release: SJRelease, score: number) {
+    markRated(release.id);
+    void saveQuickRating(score, release);
+  }
+
   return (
     <div className="mx-auto max-w-5xl px-4 md:px-6 py-6">
       {/* Search bar */}
@@ -240,12 +266,14 @@ function SearchPageInner() {
           ratedIds={ratedIds}
           sessionRatedIds={sessionRatedIds}
           onAdd={addRelease}
+          onRate={quickRate}
         />
       ) : (
         <Discovery
           ratedIds={ratedIds}
           sessionRatedIds={sessionRatedIds}
           onAdd={addRelease}
+          onRate={quickRate}
         />
       )}
 
@@ -282,6 +310,7 @@ function SearchResults({
   ratedIds,
   sessionRatedIds,
   onAdd,
+  onRate,
 }: {
   artists: SearchArtistRPC[];
   albums: SJRelease[];
@@ -291,6 +320,7 @@ function SearchResults({
   ratedIds: Set<string>;
   sessionRatedIds: Set<string>;
   onAdd: (release: SJRelease) => void;
+  onRate: (release: SJRelease, score: number) => void;
 }) {
   const { t } = useLanguage();
   const hasAny = artists.length > 0 || albums.length > 0 || songs.length > 0;
@@ -370,6 +400,7 @@ function SearchResults({
                   rated={ratedIds.has(release.id)}
                   sessionRated={sessionRatedIds.has(release.id)}
                   onAdd={() => onAdd(release)}
+                  onRate={(score) => onRate(release, score)}
                 />
               ))}
             </div>
@@ -388,6 +419,7 @@ function SearchResults({
                   rated={ratedIds.has(song.release.id)}
                   sessionRated={sessionRatedIds.has(song.release.id)}
                   onAdd={() => onAdd(song.release)}
+                  onRate={(score) => onRate(song.release, score)}
                 />
               ))}
             </ul>
@@ -404,10 +436,12 @@ function Discovery({
   ratedIds,
   sessionRatedIds,
   onAdd,
+  onRate,
 }: {
   ratedIds: Set<string>;
   sessionRatedIds: Set<string>;
   onAdd: (release: SJRelease) => void;
+  onRate: (release: SJRelease, score: number) => void;
 }) {
   const { t } = useLanguage();
   const { userId, ready } = useSession();
@@ -594,6 +628,21 @@ function Discovery({
 
   return (
     <div className="mt-8 space-y-9 pb-10">
+      {/* Quick Add entry — rate albums you already know, fast */}
+      <Link
+        href="/quick-add"
+        className="flex items-center gap-3 rounded-2xl bg-accent-soft/70 border border-accent/15 px-4 py-3.5 hover:bg-accent-soft transition"
+      >
+        <span className="flex w-9 h-9 rounded-full bg-white items-center justify-center shadow-sm shrink-0 text-accent">
+          <FlowerGlyph size={18} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[14px] font-bold text-ink">{t('sj.quickAdd.entryTitle')}</span>
+          <span className="block text-[12.5px] text-muted truncate">{t('sj.quickAdd.entrySub')}</span>
+        </span>
+        <ChevronRight size={16} className="text-accent shrink-0" />
+      </Link>
+
       {sections.map(({ title, albums }) => (
         <section key={title}>
           <h2 className="text-[19px] font-bold text-ink mb-3">{title}</h2>
@@ -605,6 +654,7 @@ function Discovery({
                   rated={ratedIds.has(release.id)}
                   sessionRated={sessionRatedIds.has(release.id)}
                   onAdd={() => onAdd(release)}
+                  onRate={(score) => onRate(release, score)}
                 />
               </div>
             ))}
@@ -630,11 +680,13 @@ function AlbumCard({
   rated,
   sessionRated,
   onAdd,
+  onRate,
 }: {
   release: SJRelease;
   rated: boolean;
   sessionRated: boolean;
   onAdd: () => void;
+  onRate: (score: number) => void;
 }) {
   const { t } = useLanguage();
   const showCheck = sessionRated;
@@ -652,16 +704,13 @@ function AlbumCard({
           </span>
         )}
         {showAdd && (
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              onAdd();
-            }}
-            aria-label={`${t('sj.search.add')} ${release.title}`}
-            className="absolute bottom-2 right-2 flex w-7 h-7 rounded-full bg-white items-center justify-center shadow opacity-0 group-hover:opacity-100 focus:opacity-100 transition"
-          >
-            <Plus size={13} strokeWidth={2.8} className="text-accent" />
-          </button>
+          <FlowerRateControl
+            ariaLabel={`${t('sj.search.add')} ${release.title}`}
+            onRate={onRate}
+            onRequestPrecise={onAdd}
+            size={30}
+            className="absolute bottom-2 right-2 opacity-90 group-hover:opacity-100 transition"
+          />
         )}
       </div>
       <Link href={`/album/${release.id}`} className="block mt-1.5">
@@ -684,11 +733,13 @@ function SongRow({
   rated,
   sessionRated,
   onAdd,
+  onRate,
 }: {
   song: SongResult;
   rated: boolean;
   sessionRated: boolean;
   onAdd: () => void;
+  onRate: (score: number) => void;
 }) {
   const { t } = useLanguage();
   return (
@@ -715,13 +766,13 @@ function SongRow({
           <Check size={12} strokeWidth={3} className="text-white" />
         </span>
       ) : !rated ? (
-        <button
-          onClick={onAdd}
-          aria-label={`${t('sj.search.add')} ${song.title}`}
-          className="flex w-[30px] h-[30px] rounded-full bg-accent/[0.12] items-center justify-center shrink-0 hover:bg-accent/20 transition"
-        >
-          <Plus size={13} strokeWidth={2.8} className="text-accent" />
-        </button>
+        <FlowerRateControl
+          ariaLabel={`${t('sj.search.add')} ${song.title}`}
+          onRate={onRate}
+          onRequestPrecise={onAdd}
+          size={30}
+          className="shrink-0 !bg-accent/[0.12] !shadow-none"
+        />
       ) : null}
     </li>
   );

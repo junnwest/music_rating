@@ -6,7 +6,7 @@ import {
   Heart,
   MessageCircle,
   MoreHorizontal,
-  Bookmark,
+  ListMusic,
   Share2,
   Flag,
   Ban,
@@ -16,6 +16,7 @@ import ScoreBadge from './ScoreBadge';
 import CommentsModal from './CommentsModal';
 import LikersModal from './LikersModal';
 import ReportModal from './ReportModal';
+import MixPickerModal from './MixPickerModal';
 import { useLanguage } from '../../lib/i18n';
 import {
   profileHandle,
@@ -34,21 +35,17 @@ export default function FeedCard({
   item,
   currentUserId,
   isLiked,
-  isSaved,
   likesCount,
   commentsCount,
   onLike,
-  onSave,
   onBlock,
 }: {
   item: FeedItemRow;
   currentUserId: string | null;
   isLiked: boolean;
-  isSaved: boolean;
   likesCount: number;
   commentsCount: number;
   onLike: () => void;
-  onSave: () => void;
   onBlock: () => void;
 }) {
   const { t, lang } = useLanguage();
@@ -56,6 +53,7 @@ export default function FeedCard({
   const [showComments, setShowComments] = useState(false);
   const [showLikers, setShowLikers] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [showMixPicker, setShowMixPicker] = useState(false);
   const [confirmBlock, setConfirmBlock] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -118,10 +116,10 @@ export default function FeedCard({
           {menuOpen && (
             <div className="absolute right-0 top-9 z-20 w-52 py-1.5 rounded-xl bg-surface border border-divider shadow-xl">
               <MenuItem
-                icon={<Bookmark size={15} className={isSaved ? 'fill-current' : ''} />}
-                label={isSaved ? t('sj.feed.saved') : t('sj.feed.save')}
+                icon={<ListMusic size={15} />}
+                label={t('sj.mix.saveToMix')}
                 onClick={() => {
-                  onSave();
+                  setShowMixPicker(true);
                   setMenuOpen(false);
                 }}
               />
@@ -245,6 +243,11 @@ export default function FeedCard({
         onClose={() => setShowReport(false)}
         reportedUserId={item.user_id}
         ratingId={item.id}
+      />
+      <MixPickerModal
+        open={showMixPicker}
+        onClose={() => setShowMixPicker(false)}
+        releaseGroupId={rg.id}
       />
     </article>
   );

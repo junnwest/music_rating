@@ -32,7 +32,6 @@ export default function HomePage() {
   const [loadFailed, setLoadFailed] = useState(false);
 
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
-  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
 
@@ -119,14 +118,12 @@ export default function HomePage() {
     // need a live count query. My-likes/saves are always per-user.
     const allItems = [...pool, ...following];
     const ratingIds = Array.from(new Set(allItems.map((i) => i.id)));
-    const releaseIds = Array.from(new Set(allItems.map((i) => i.release_groups.id)));
     const liveCountIds = Array.from(
       new Set([...(cachedFeed ? [] : pool.map((i) => i.id)), ...following.map((i) => i.id)]),
     );
     const liked = new Set<string>();
-    const saved = new Set<string>();
     if (ratingIds.length > 0) {
-      const [likesRes, commentsRes, myLikesRes, mySavesRes] = await Promise.all([
+      const [likesRes, commentsRes, myLikesRes] = await Promise.all([
         liveCountIds.length > 0
           ? supabase.from('rating_likes').select('rating_id').in('rating_id', liveCountIds)
           : Promise.resolve({ data: null }),
@@ -139,13 +136,6 @@ export default function HomePage() {
               .select('rating_id')
               .eq('user_id', userId)
               .in('rating_id', ratingIds)
-          : Promise.resolve({ data: null }),
-        userId
-          ? supabase
-              .from('saved_releases')
-              .select('release_group_id')
-              .eq('user_id', userId)
-              .in('release_group_id', releaseIds)
           : Promise.resolve({ data: null }),
       ]);
       // Live counts overwrite (not add to) any cached values for the same ids
@@ -163,9 +153,6 @@ export default function HomePage() {
       }
       for (const r of (myLikesRes.data as { rating_id: string }[] | null) ?? []) {
         liked.add(r.rating_id);
-      }
-      for (const r of (mySavesRes.data as { release_group_id: string }[] | null) ?? []) {
-        saved.add(r.release_group_id);
       }
     }
 
@@ -192,7 +179,6 @@ export default function HomePage() {
     setLikeCounts(lCounts);
     setCommentCounts(cCounts);
     setLikedIds(liked);
-    setSavedIds(saved);
     setLoading(false);
   }, [userId]);
 
@@ -221,29 +207,6 @@ export default function HomePage() {
         .eq('rating_id', item.id);
     } else {
       await supabase.from('rating_likes').insert({ user_id: userId, rating_id: item.id });
-    }
-  }
-
-  async function toggleSave(item: FeedItemRow) {
-    if (!supabase || !userId) return;
-    const releaseId = item.release_groups.id;
-    const wasSaved = savedIds.has(releaseId);
-    setSavedIds((prev) => {
-      const next = new Set(prev);
-      if (wasSaved) next.delete(releaseId);
-      else next.add(releaseId);
-      return next;
-    });
-    if (wasSaved) {
-      await supabase
-        .from('saved_releases')
-        .delete()
-        .eq('user_id', userId)
-        .eq('release_group_id', releaseId);
-    } else {
-      await supabase
-        .from('saved_releases')
-        .insert({ user_id: userId, release_group_id: releaseId });
     }
   }
 
@@ -316,11 +279,9 @@ export default function HomePage() {
                 item={item}
                 currentUserId={userId ?? null}
                 isLiked={likedIds.has(item.id)}
-                isSaved={savedIds.has(item.release_groups.id)}
                 likesCount={likeCounts[item.id] ?? 0}
                 commentsCount={commentCounts[item.id] ?? 0}
                 onLike={() => toggleLike(item)}
-                onSave={() => toggleSave(item)}
                 onBlock={() => blockUser(item.user_id)}
               />
             ))}

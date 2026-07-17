@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Lock, Star, BarChart3, Drama, AudioWaveform } from 'lucide-react';
 import Cover from '../../../components/sj/Cover';
@@ -148,13 +148,6 @@ function ReportView({ report }: { report: TasteReport }) {
       ? t('sj.taste.worldsTitle').replace('{n}', String(clusters.length))
       : t('sj.taste.worldsTitleOne');
 
-  const compositionText = (
-    clusters.length >= 2 ? t('sj.taste.compositionMulti') : t('sj.taste.compositionFocused')
-  )
-    .replace('{n}', String(clusters.length))
-    .replace('{name}', worldName(clusters[0] ?? { share: 0, avgScore: null, meanYear: null, sdYears: null, dominantScene: null, tags: [] }))
-    .replace('{share}', String(Math.round((clusters[0]?.share ?? 0) * 100)));
-
   // ── era histogram ──
   const decades = charts.decades;
   const eraText =
@@ -216,30 +209,20 @@ function ReportView({ report }: { report: TasteReport }) {
         </p>
       </section>
 
-      {/* ── Composition: the multi-modal split ── */}
+      {/* ── Taste territory: worlds as area-scaled bubbles competing for space ── */}
       {clusters.length > 0 && (
         <section className="rounded-2xl bg-surface px-5 py-5">
-          <h2 className="text-[15px] font-bold text-ink">{t('sj.taste.compositionHeader')}</h2>
-          <p className="mt-1 text-[12.5px] text-muted">{compositionText}</p>
-          <StackedBar
-            segments={clusters.map((w, i) => ({
+          <h2 className="text-[15px] font-bold text-ink">{t('sj.taste.territoryHeader')}</h2>
+          <p className="mt-1 text-[12.5px] text-muted">{t('sj.taste.territorySub')}</p>
+          <TasteTerritory
+            worlds={clusters.map((w, i) => ({
               share: w.share,
-              color: SERIES[i % SERIES.length],
-              title: `${worldName(w)} · ${Math.round(w.share * 100)}%`,
+              primary: w.tags[0]?.display ?? '',
+              full: worldName(w),
+              avg: w.avgScore,
             }))}
+            colorFor={(i) => SERIES[i % SERIES.length]}
           />
-          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
-            {clusters.map((w, i) => (
-              <span key={i} className="flex items-center gap-1.5 text-[12px] text-muted">
-                <span
-                  className="w-2.5 h-2.5 rounded-full shrink-0"
-                  style={{ background: SERIES[i % SERIES.length] }}
-                />
-                <span className="font-semibold text-ink">{worldName(w)}</span>
-                <span className="tabular-nums">{Math.round(w.share * 100)}%</span>
-              </span>
-            ))}
-          </div>
         </section>
       )}
 
@@ -622,6 +605,162 @@ function Dumbbell({ user, community, title }: { user: number; community: number;
         className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-[10px] h-[10px] rounded-full bg-accent ring-2 ring-surface"
         style={{ left: `${pos(user)}%` }}
       />
+    </div>
+  );
+}
+
+// ── Taste territory (packed bubbles) ─────────────────────────────────────────
+
+interface Packed<T> {
+  item: T;
+  x: number;
+  y: number;
+}
+
+/**
+ * Greedy circle packing for a handful of bubbles: largest at the centre, then
+ * each next placed at the free spot (tangent to an existing bubble) closest to
+ * the centre — so they cluster tight and "compete for land". Deterministic:
+ * same shares in → same layout out, no jitter between renders. O(n² · angles),
+ * trivial for the ≤8 worlds a taste profile ever has.
+ */
+function packCircles<T extends { r: number }>(items: T[]): Packed<T>[] {
+  const placed: Packed<T>[] = [];
+  const order = [...items].sort((a, b) => b.r - a.r);
+  const EPS = 0.5;
+  const overlaps = (x: number, y: number, r: number) =>
+    placed.some((p) => Math.hypot(p.x - x, p.y - y) < p.item.r + r - EPS);
+
+  order.forEach((item, idx) => {
+    if (idx === 0) {
+      placed.push({ item, x: 0, y: 0 });
+      return;
+    }
+    let best: { x: number; y: number; d: number } | null = null;
+    for (const p of placed) {
+      const ring = p.item.r + item.r;
+      for (let a = 0; a < 360; a += 6) {
+        const rad = (a * Math.PI) / 180;
+        const x = p.x + ring * Math.cos(rad);
+        const y = p.y + ring * Math.sin(rad);
+        if (overlaps(x, y, item.r)) continue;
+        const d = Math.hypot(x, y);
+        if (!best || d < best.d) best = { x, y, d };
+      }
+    }
+    placed.push(best ? { item, x: best.x, y: best.y } : { item, x: 0, y: 0 });
+  });
+  return placed;
+}
+
+interface TerritoryWorld {
+  share: number;
+  primary: string;
+  full: string;
+  avg: number | null;
+}
+
+/** Each world is a bubble whose AREA is its share of your ratings (r ∝ √share),
+ *  packed so the big worlds crowd out the small ones. */
+function TasteTerritory({
+  worlds,
+  colorFor,
+}: {
+  worlds: TerritoryWorld[];
+  colorFor: (i: number) => string;
+}) {
+  const layout = useMemo(() => {
+    const items = worlds.map((w, i) => ({ r: Math.sqrt(Math.max(w.share, 0.0001)) * 100, i, w }));
+    const placed = packCircles(items);
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const p of placed) {
+      minX = Math.min(minX, p.x - p.item.r);
+      minY = Math.min(minY, p.y - p.item.r);
+      maxX = Math.max(maxX, p.x + p.item.r);
+      maxY = Math.max(maxY, p.y + p.item.r);
+    }
+    const pad = 5;
+    return {
+      placed,
+      viewBox: `${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}`,
+    };
+  }, [worlds]);
+
+  return (
+    <div>
+      <svg
+        viewBox={layout.viewBox}
+        preserveAspectRatio="xMidYMid meet"
+        className="mt-4 w-full"
+        style={{ maxHeight: 320 }}
+        role="img"
+      >
+        {layout.placed.map((p) => {
+          const { i, w } = p.item;
+          const color = colorFor(i);
+          const pct = Math.round(w.share * 100);
+          const showName = p.item.r > 26;
+          return (
+            <g key={i}>
+              <title>{`${w.full} · ${pct}%${w.avg != null ? ` · ${w.avg.toFixed(2)}★` : ''}`}</title>
+              <circle
+                cx={p.x}
+                cy={p.y}
+                r={p.item.r}
+                fill={color}
+                className="stroke-surface"
+                strokeWidth={2}
+              />
+              {showName ? (
+                <text
+                  x={p.x}
+                  y={p.y}
+                  textAnchor="middle"
+                  fill="#fff"
+                  stroke="rgba(0,0,0,0.22)"
+                  strokeWidth={2.5}
+                  paintOrder="stroke"
+                  strokeLinejoin="round"
+                >
+                  <tspan x={p.x} dy="-0.15em" style={{ fontSize: Math.min(p.item.r * 0.32, 15), fontWeight: 800 }}>
+                    {w.primary}
+                  </tspan>
+                  <tspan x={p.x} dy="1.2em" style={{ fontSize: Math.min(p.item.r * 0.3, 13), fontWeight: 800 }} opacity={0.9}>
+                    {pct}%
+                  </tspan>
+                </text>
+              ) : p.item.r > 11 ? (
+                <text
+                  x={p.x}
+                  y={p.y}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fill="#fff"
+                  stroke="rgba(0,0,0,0.22)"
+                  strokeWidth={2.5}
+                  paintOrder="stroke"
+                  strokeLinejoin="round"
+                  style={{ fontSize: Math.min(p.item.r * 0.5, 13), fontWeight: 800 }}
+                >
+                  {pct}%
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
+      </svg>
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
+        {worlds.map((w, i) => (
+          <span key={i} className="flex items-center gap-1.5 text-[12px] text-muted">
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: colorFor(i) }} />
+            <span className="font-semibold text-ink">{w.full}</span>
+            <span className="tabular-nums">{Math.round(w.share * 100)}%</span>
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

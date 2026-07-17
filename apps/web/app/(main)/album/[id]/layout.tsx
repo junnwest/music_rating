@@ -12,6 +12,7 @@ import { eloToScore } from '../../../../lib/elo';
 // generateMetadata has a place to run -- it renders nothing but `children`.
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const BASE_URL = 'https://www.sillajuku.com';
 
 interface ReleaseRow {
   title: string;
@@ -117,7 +118,14 @@ export default async function AlbumLayout({ children, params }: { children: Reac
           '@context': 'https://schema.org',
           '@type': 'MusicAlbum',
           name: release.native_title || release.title,
+          url: `${BASE_URL}/album/${params.id}`,
           byArtist: { '@type': 'MusicGroup', name: release.artist_display },
+          ...(release.first_release_date ? { datePublished: release.first_release_date } : {}),
+          ...(release.release_group_type === 'ep'
+            ? { albumReleaseType: 'https://schema.org/EPRelease' }
+            : release.release_group_type === 'album'
+              ? { albumReleaseType: 'https://schema.org/AlbumRelease' }
+              : {}),
           aggregateRating: {
             '@type': 'AggregateRating',
             ratingValue: average,

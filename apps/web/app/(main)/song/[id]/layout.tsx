@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 // See album/[id]/layout.tsx for why this exists -- same pattern, song-specific tables.
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const BASE_URL = 'https://www.sillajuku.com';
 
 interface RecordingRow {
   title: string;
@@ -86,6 +87,7 @@ export default async function SongLayout({ children, params }: { children: React
           '@context': 'https://schema.org',
           '@type': 'MusicRecording',
           name: rec.title,
+          url: `${BASE_URL}/song/${params.id}`,
           byArtist: { '@type': 'MusicGroup', name: rec.artist_display },
           aggregateRating: {
             '@type': 'AggregateRating',
