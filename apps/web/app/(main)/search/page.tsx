@@ -242,11 +242,29 @@ function SearchPageInner() {
           onAdd={addRelease}
         />
       ) : (
-        <Discovery
-          ratedIds={ratedIds}
-          sessionRatedIds={sessionRatedIds}
-          onAdd={addRelease}
-        />
+        <>
+          {/* Quick Add entry banner — mirrors iOS SearchView's quickAddBanner.
+              Manual-mode gating happens on the Quick Add page itself. */}
+          {userId && (
+            <div className="flex items-center gap-3 mt-4 p-3 rounded-2xl bg-surface border border-divider/60">
+              <div className="min-w-0 flex-1">
+                <p className="text-[15px] font-bold text-ink">{t('sj.quickAdd.settingUp')}</p>
+                <p className="text-[12px] text-muted truncate">{t('sj.quickAdd.bannerBody')}</p>
+              </div>
+              <Link
+                href="/quick-add"
+                className="shrink-0 px-3.5 py-2 rounded-full bg-ink text-page text-[13.5px] font-semibold hover:opacity-85 transition"
+              >
+                {t('sj.quickAdd.title')}
+              </Link>
+            </div>
+          )}
+          <Discovery
+            ratedIds={ratedIds}
+            sessionRatedIds={sessionRatedIds}
+            onAdd={addRelease}
+          />
+        </>
       )}
 
       {manualTarget && (
