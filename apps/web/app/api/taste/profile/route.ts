@@ -4,7 +4,7 @@ import { getAuthedUserId } from '../../../../lib/authGuard';
 import { rateLimit } from '../../../../lib/rateLimit';
 import { cacheGet, cacheSet } from '../../../../lib/cache';
 import { eloToScore } from '../../../../lib/elo';
-import { displayName } from '../../../../lib/sj/display';
+import { preferHangulName } from '../../../../lib/sj/display';
 import { displayGenre } from '../../../../lib/taste/embeddings';
 import { sceneOf, type Scene } from '../../../../lib/taste/albumVector';
 import {
@@ -248,8 +248,8 @@ export async function GET(req: NextRequest) {
     topAlbum: top?.release_groups
       ? {
           id: top.release_groups.id,
-          title: displayName(top.release_groups.title, top.release_groups.native_title),
-          artist: displayName(
+          title: preferHangulName(top.release_groups.title, top.release_groups.native_title),
+          artist: preferHangulName(
             top.release_groups.artist_display,
             top.release_groups.artists?.name_native,
           ),
