@@ -7,6 +7,7 @@ import { Trophy } from 'lucide-react';
 import Cover from '../../../../components/sj/Cover';
 import AlbumRateButton from '../../../../components/sj/AlbumRateButton';
 import AlbumBookmarkButton from '../../../../components/sj/AlbumBookmarkButton';
+import AlbumPeek from '../../../../components/sj/AlbumPeek';
 import { supabase } from '../../../../lib/supabaseClient';
 import { useLanguage } from '../../../../lib/i18n';
 import { displayName, formatCount } from '../../../../lib/sj/display';
@@ -236,7 +237,12 @@ function ChartDetailInner() {
                   <span className="w-7 text-right text-[12px] font-bold text-muted tabular-nums">
                     {i + listOffset + 1}
                   </span>
-                  <span className="relative shrink-0">
+                  <AlbumPeek
+                    releaseId={e.id}
+                    title={e.title}
+                    artist={e.artist}
+                    className="relative shrink-0"
+                  >
                     <Cover url={e.coverUrl} className="w-10 h-10" rounded="rounded-md" />
                     <AlbumBookmarkButton
                       releaseGroupId={e.id}
@@ -257,7 +263,7 @@ function ChartDetailInner() {
                       size={20}
                       className="absolute -bottom-1 -right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
                     />
-                  </span>
+                  </AlbumPeek>
                   <span className="flex-1 min-w-0">
                     <span className="block text-[13px] font-semibold text-ink truncate">
                       {e.title}

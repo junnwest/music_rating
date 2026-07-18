@@ -5,6 +5,7 @@ import { CheckCircle2 } from 'lucide-react';
 import Cover from '../../../components/sj/Cover';
 import FlowerRateControl from '../../../components/sj/FlowerRateControl';
 import AlbumBookmarkButton from '../../../components/sj/AlbumBookmarkButton';
+import AlbumPeek from '../../../components/sj/AlbumPeek';
 import ManualRateModal from '../../../components/sj/ManualRateModal';
 import { useSession } from '../../../components/sj/SessionContext';
 import { supabase } from '../../../lib/supabaseClient';
@@ -378,16 +379,20 @@ function Row({
 }) {
   return (
     <li className="flex items-center gap-3 py-2.5">
-      <span className="relative shrink-0 group">
-        <Cover url={coverUrl} className="w-[52px] h-[52px]" rounded="rounded-lg" />
-        {bookmarkId && (
+      {bookmarkId ? (
+        <AlbumPeek releaseId={bookmarkId} title={title} artist={subtitle} className="relative shrink-0 group">
+          <Cover url={coverUrl} className="w-[52px] h-[52px]" rounded="rounded-lg" />
           <AlbumBookmarkButton
             releaseGroupId={bookmarkId}
             size={22}
             className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
           />
-        )}
-      </span>
+        </AlbumPeek>
+      ) : (
+        <span className="relative shrink-0">
+          <Cover url={coverUrl} className="w-[52px] h-[52px]" rounded="rounded-lg" />
+        </span>
+      )}
       <div className="min-w-0 flex-1">
         <p className="text-[14px] font-semibold text-ink truncate">{title}</p>
         <p className="text-[12.5px] text-muted truncate">{subtitle}</p>

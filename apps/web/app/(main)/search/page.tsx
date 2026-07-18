@@ -9,6 +9,7 @@ import ManualRateModal from '../../../components/sj/ManualRateModal';
 import InstinctModal from '../../../components/sj/InstinctModal';
 import FlowerRateControl from '../../../components/sj/FlowerRateControl';
 import AlbumBookmarkButton from '../../../components/sj/AlbumBookmarkButton';
+import AlbumPeek from '../../../components/sj/AlbumPeek';
 import { useSession } from '../../../components/sj/SessionContext';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
@@ -697,7 +698,12 @@ function AlbumCard({
 
   return (
     <div className="group">
-      <div className="relative">
+      <AlbumPeek
+        releaseId={release.id}
+        title={displayName(release.title, release.titleNative)}
+        artist={displayName(release.artist, release.artistNative)}
+        className="relative"
+      >
         <Link href={`/album/${release.id}`}>
           <Cover url={release.coverUrl} className="w-full aspect-square" rounded="rounded-xl" />
         </Link>
@@ -720,7 +726,7 @@ function AlbumCard({
             className="absolute bottom-2 right-2 opacity-90 group-hover:opacity-100 transition"
           />
         )}
-      </div>
+      </AlbumPeek>
       <Link href={`/album/${release.id}`} className="block mt-1.5">
         <p className="text-[13px] font-semibold text-ink truncate group-hover:underline">
           {displayName(release.title, release.titleNative)}

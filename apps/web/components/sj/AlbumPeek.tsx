@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import FlowerGlyph from './FlowerGlyph';
-import Cover from './Cover';
 import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
 import { eloToScore } from '../../lib/elo';
@@ -11,21 +11,37 @@ interface PeekStats {
   avg: number | null;
   count: number;
 }
+interface PeekTrack {
+  position: number;
+  title: string;
+  durationMs: number | null;
+}
 
 const statsCache = new Map<string, PeekStats>();
+const tracksCache = new Map<string, PeekTrack[]>();
+
+const CARD_W = 300;
+const CARD_H = 380; // approximate, for vertical clamping only
+const MAX_TRACKS = 14;
+
+function fmtDur(ms: number | null): string {
+  if (ms == null || ms <= 0) return '';
+  const s = Math.round(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
 
 /**
- * Desktop hover peek — the web's answer to iOS long-press. Wrap any album
- * card/row; after a short hover a small card shows the cover, title/artist,
- * and live community stats (fetched once per album, cached for the session).
- * Fixed-position so it escapes overflow-clipping scroll rails; hidden on
- * touch/small screens (hover: none never triggers it).
+ * Desktop hover peek — wrap any album card/row. After a short hover a large,
+ * translucent rounded bezel appears in the blank space to the LEFT of the cover
+ * (flipping right only if there's no room), showing the album's info, community
+ * rating, and tracklist. Data is fetched once per album and cached for the
+ * session. Fixed-position + portalled so it escapes overflow-clipping rails;
+ * desktop only (hover: none never triggers it) and never intercepts clicks.
  */
 export default function AlbumPeek({
   releaseId,
   title,
   artist,
-  coverUrl,
   meta,
   className = '',
   children,
@@ -33,48 +49,46 @@ export default function AlbumPeek({
   releaseId: string;
   title: string;
   artist: string;
-  coverUrl: string | null;
+  coverUrl?: string | null;
   /** Small third line, e.g. "Album · 2023". */
   meta?: string | null;
   className?: string;
   children: ReactNode;
 }) {
   const { t } = useLanguage();
-  const [pos, setPos] = useState<{ left: number; top: number; above: boolean } | null>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const [stats, setStats] = useState<PeekStats | null>(null);
+  const [tracks, setTracks] = useState<PeekTrack[] | null>(null);
   const anchorRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
-
-  const CARD_W = 224;
-  const CARD_H = 300; // approximate; used only to pick above/below
 
   function enter() {
     clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       const rect = anchorRef.current?.getBoundingClientRect();
       if (!rect) return;
-      const above = rect.top > CARD_H + 72;
-      const left = Math.min(
-        Math.max(rect.left + rect.width / 2 - CARD_W / 2, 8),
-        window.innerWidth - CARD_W - 8,
+      // Prefer the blank space to the LEFT of the cover; flip right if cramped.
+      let left = rect.left - CARD_W - 14;
+      if (left < 8) left = Math.min(rect.right + 14, window.innerWidth - CARD_W - 8);
+      const top = Math.min(
+        Math.max(rect.top + rect.height / 2 - CARD_H / 2, 8),
+        window.innerHeight - CARD_H - 8,
       );
-      setPos({ left, top: above ? rect.top - 8 : rect.bottom + 8, above });
-      const hit = statsCache.get(releaseId);
-      if (hit) {
-        setStats(hit);
-      } else {
+      setPos({ left, top });
+
+      // Community stats (cached)
+      const sHit = statsCache.get(releaseId);
+      if (sHit) setStats(sHit);
+      else {
         setStats(null);
         supabase
           ?.from('ratings')
           .select('score, elo_score')
           .eq('release_group_id', releaseId)
           .then(({ data }) => {
-            const rows =
-              (data as { score: number | null; elo_score: number | null }[] | null) ?? [];
+            const rows = (data as { score: number | null; elo_score: number | null }[] | null) ?? [];
             const scored = rows
-              .map((r) =>
-                r.score != null ? r.score : r.elo_score != null ? eloToScore(r.elo_score) : null,
-              )
+              .map((r) => (r.score != null ? r.score : r.elo_score != null ? eloToScore(r.elo_score) : null))
               .filter((s): s is number => s != null);
             const next: PeekStats = {
               avg: scored.length ? scored.reduce((a, b) => a + b, 0) / scored.length : null,
@@ -84,7 +98,42 @@ export default function AlbumPeek({
             setStats(next);
           });
       }
-    }, 450);
+
+      // Tracklist (cached): canonical release → its tracks, like the album page
+      const tHit = tracksCache.get(releaseId);
+      if (tHit) setTracks(tHit);
+      else {
+        setTracks(null);
+        (async () => {
+          if (!supabase) return;
+          const { data: canonical } = await supabase
+            .from('releases')
+            .select('id')
+            .eq('release_group_id', releaseId)
+            .eq('is_canonical', true)
+            .limit(1);
+          const cid = (canonical as { id: string }[] | null)?.[0]?.id;
+          if (!cid) {
+            tracksCache.set(releaseId, []);
+            setTracks([]);
+            return;
+          }
+          const { data: rows } = await supabase
+            .from('release_tracks')
+            .select('position, recordings(title, duration_ms)')
+            .eq('release_id', cid)
+            .order('position')
+            .limit(60);
+          const loaded: PeekTrack[] = ((rows as any[] | null) ?? []).map((r) => ({
+            position: r.position,
+            title: r.recordings?.title ?? '',
+            durationMs: r.recordings?.duration_ms ?? null,
+          }));
+          tracksCache.set(releaseId, loaded);
+          setTracks(loaded);
+        })();
+      }
+    }, 400);
   }
 
   function leave() {
@@ -100,50 +149,82 @@ export default function AlbumPeek({
     return () => window.removeEventListener('scroll', close, true);
   }, [pos]);
 
+  const shown = tracks ? tracks.slice(0, MAX_TRACKS) : [];
+  const extra = tracks ? tracks.length - shown.length : 0;
+
   return (
     <div ref={anchorRef} onMouseEnter={enter} onMouseLeave={leave} className={className}>
       {children}
-      {pos && (
-        <div
-          role="tooltip"
-          className="hidden md:block fixed z-50 w-56 pointer-events-none"
-          style={{
-            left: pos.left,
-            top: pos.top,
-            transform: pos.above ? 'translateY(-100%)' : undefined,
-          }}
-        >
-          {/* animation lives on an inner element — the outer one's transform
-              is positional and must not be clobbered by keyframes */}
-          <div className="rounded-xl bg-surface border border-divider shadow-xl p-3 sj-pop-in">
-          <Cover url={coverUrl} className="w-full aspect-square" />
-          <p className="mt-2 text-[13.5px] font-bold text-ink leading-snug line-clamp-2">
-            {title}
-          </p>
-          <p className="text-[12px] text-muted truncate">{artist}</p>
-          {meta && <p className="text-[11px] text-muted/80 mt-0.5">{meta}</p>}
-          <div className="flex items-center gap-1.5 mt-2 min-h-[18px]">
-            {stats === null ? (
-              <span className="h-3 w-24 rounded bg-divider animate-pulse" />
-            ) : stats.count === 0 ? (
-              <span className="text-[11.5px] text-muted">{t('sj.peek.noRatings')}</span>
-            ) : (
-              <>
-                <FlowerGlyph size={11} className="text-accent" />
-                {stats.avg != null && (
-                  <span className="text-[13px] font-bold text-accent tabular-nums">
-                    {stats.avg.toFixed(1)}
-                  </span>
+      {pos &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            role="tooltip"
+            className="hidden md:block fixed z-[90] pointer-events-none"
+            style={{ left: pos.left, top: pos.top, width: CARD_W }}
+          >
+            {/* Translucent glass bezel — both the panel and its text are see-through */}
+            <div className="sj-pop-in rounded-2xl border border-white/25 dark:border-white/10 bg-white/70 dark:bg-neutral-900/60 backdrop-blur-xl shadow-2xl overflow-hidden">
+              <div className="p-4 opacity-90" style={{ maxHeight: CARD_H }}>
+                <p className="text-[15px] font-black text-ink leading-tight line-clamp-2">{title}</p>
+                <p className="text-[12.5px] text-muted truncate">{artist}</p>
+                {meta && <p className="text-[11px] text-muted/80 mt-0.5">{meta}</p>}
+
+                <div className="flex items-center gap-1.5 mt-2 min-h-[18px]">
+                  {stats === null ? (
+                    <span className="h-3 w-24 rounded bg-divider/60 animate-pulse" />
+                  ) : stats.count === 0 ? (
+                    <span className="text-[11.5px] text-muted">{t('sj.peek.noRatings')}</span>
+                  ) : (
+                    <>
+                      <FlowerGlyph size={11} className="text-accent" />
+                      {stats.avg != null && (
+                        <span className="text-[13px] font-bold text-accent tabular-nums">
+                          {stats.avg.toFixed(1)}
+                        </span>
+                      )}
+                      <span className="text-[11.5px] text-muted">
+                        · {t('sj.peek.ratings').replace('{n}', String(stats.count))}
+                      </span>
+                    </>
+                  )}
+                </div>
+
+                <div className="h-px bg-ink/10 my-2.5" />
+
+                {tracks === null ? (
+                  <div className="space-y-1.5">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <span key={i} className="block h-3 rounded bg-divider/50 animate-pulse" />
+                    ))}
+                  </div>
+                ) : tracks.length === 0 ? (
+                  <p className="text-[11.5px] text-muted/80">{artist}</p>
+                ) : (
+                  <ol className="space-y-1">
+                    {shown.map((tr) => (
+                      <li key={tr.position} className="flex items-baseline gap-2 text-[12px]">
+                        <span className="w-4 shrink-0 text-right text-muted/70 tabular-nums">
+                          {tr.position}
+                        </span>
+                        <span className="flex-1 min-w-0 truncate text-ink/90">{tr.title}</span>
+                        {fmtDur(tr.durationMs) && (
+                          <span className="shrink-0 text-muted/70 tabular-nums">
+                            {fmtDur(tr.durationMs)}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                    {extra > 0 && (
+                      <li className="pl-6 pt-0.5 text-[11px] text-muted/70">+{extra}</li>
+                    )}
+                  </ol>
                 )}
-                <span className="text-[11.5px] text-muted">
-                  · {t('sj.peek.ratings').replace('{n}', String(stats.count))}
-                </span>
-              </>
-            )}
-          </div>
-          </div>
-        </div>
-      )}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

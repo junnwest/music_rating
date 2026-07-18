@@ -413,7 +413,12 @@ function RankingBlock() {
                   >
                     {i + 1}
                   </span>
-                  <span className="relative shrink-0">
+                  <AlbumPeek
+                    releaseId={e.release_id}
+                    title={displayName(e.title, e.native_title)}
+                    artist={displayName(e.artist, e.artist_native)}
+                    className="relative shrink-0"
+                  >
                     <Cover url={e.cover_url} className="w-11 h-11" rounded="rounded-lg" />
                     <AlbumBookmarkButton
                       releaseGroupId={e.release_id}
@@ -434,7 +439,7 @@ function RankingBlock() {
                       size={22}
                       className="absolute -bottom-1 -right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
                     />
-                  </span>
+                  </AlbumPeek>
                   <span className="flex-1 min-w-0">
                     <span className="block text-[13px] font-semibold text-ink truncate">
                       {displayName(e.title, e.native_title)}

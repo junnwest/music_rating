@@ -16,6 +16,7 @@ import Cover from './Cover';
 import ScoreBadge from './ScoreBadge';
 import AlbumRateButton from './AlbumRateButton';
 import AlbumBookmarkButton from './AlbumBookmarkButton';
+import AlbumPeek from './AlbumPeek';
 import CommentsModal from './CommentsModal';
 import LikersModal from './LikersModal';
 import ReportModal from './ReportModal';
@@ -158,7 +159,12 @@ export default function FeedCard({
         href={`/album/${rg.id}`}
         className="flex items-center gap-3.5 px-3.5 pb-2.5 hover:opacity-95 transition"
       >
-        <span className="relative shrink-0 group">
+        <AlbumPeek
+          releaseId={rg.id}
+          title={displayName(rg.title, rg.native_title)}
+          artist={displayName(rg.artist_display, rg.artists?.name_native)}
+          className="relative shrink-0 group"
+        >
           <Cover url={rg.cover_url} className="w-20 h-20" />
           <AlbumBookmarkButton
             releaseGroupId={rg.id}
@@ -170,7 +176,7 @@ export default function FeedCard({
             size={26}
             className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
           />
-        </span>
+        </AlbumPeek>
         <div className="flex-1 min-w-0">
           <p className="text-[16.5px] font-bold text-ink line-clamp-2">
             {displayName(rg.title, rg.native_title)}
