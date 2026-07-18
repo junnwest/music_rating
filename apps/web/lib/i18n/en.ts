@@ -601,6 +601,12 @@ const en = {
       popular: 'Popular',
       trending: 'Trending',
     },
+    bookmark: {
+      save: 'Save to {mix}',
+      savedTo: 'Saved to {mix}',
+      addToMix: 'Add to another Mix',
+      remove: 'Remove from {mix}',
+    },
     charts: {
       title: 'Charts',
       albums: 'Albums',

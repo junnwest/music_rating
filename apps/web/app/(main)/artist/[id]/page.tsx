@@ -7,6 +7,7 @@ import { Plus } from 'lucide-react';
 import Avatar from '../../../../components/sj/Avatar';
 import Cover from '../../../../components/sj/Cover';
 import AlbumRateButton from '../../../../components/sj/AlbumRateButton';
+import AlbumBookmarkButton from '../../../../components/sj/AlbumBookmarkButton';
 import FlowerGlyph from '../../../../components/sj/FlowerGlyph';
 import { useSession } from '../../../../components/sj/SessionContext';
 import { supabase } from '../../../../lib/supabaseClient';
@@ -310,6 +311,11 @@ export default function ArtistPage() {
                       >
                         <span className="relative shrink-0">
                           <Cover url={r.coverUrl} className="w-11 h-11" rounded="rounded-md" />
+                          <AlbumBookmarkButton
+                            releaseGroupId={r.id}
+                            size={20}
+                            className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
+                          />
                           <AlbumRateButton
                             release={r}
                             initialScore={my ?? null}

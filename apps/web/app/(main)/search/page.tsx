@@ -8,6 +8,7 @@ import Cover from '../../../components/sj/Cover';
 import ManualRateModal from '../../../components/sj/ManualRateModal';
 import InstinctModal from '../../../components/sj/InstinctModal';
 import FlowerRateControl from '../../../components/sj/FlowerRateControl';
+import AlbumBookmarkButton from '../../../components/sj/AlbumBookmarkButton';
 import { useSession } from '../../../components/sj/SessionContext';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
@@ -700,6 +701,11 @@ function AlbumCard({
         <Link href={`/album/${release.id}`}>
           <Cover url={release.coverUrl} className="w-full aspect-square" rounded="rounded-xl" />
         </Link>
+        <AlbumBookmarkButton
+          releaseGroupId={release.id}
+          size={26}
+          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
+        />
         {showCheck && (
           <span className="absolute bottom-2 right-2 flex w-7 h-7 rounded-full bg-accent items-center justify-center shadow">
             <Check size={12} strokeWidth={3} className="text-white" />

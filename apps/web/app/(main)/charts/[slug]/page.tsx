@@ -6,6 +6,7 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { Trophy } from 'lucide-react';
 import Cover from '../../../../components/sj/Cover';
 import AlbumRateButton from '../../../../components/sj/AlbumRateButton';
+import AlbumBookmarkButton from '../../../../components/sj/AlbumBookmarkButton';
 import { supabase } from '../../../../lib/supabaseClient';
 import { useLanguage } from '../../../../lib/i18n';
 import { displayName, formatCount } from '../../../../lib/sj/display';
@@ -237,6 +238,11 @@ function ChartDetailInner() {
                   </span>
                   <span className="relative shrink-0">
                     <Cover url={e.coverUrl} className="w-10 h-10" rounded="rounded-md" />
+                    <AlbumBookmarkButton
+                      releaseGroupId={e.id}
+                      size={18}
+                      className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
+                    />
                     <AlbumRateButton
                       release={{
                         id: e.id,

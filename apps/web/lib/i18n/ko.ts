@@ -603,6 +603,12 @@ const ko: Translations = {
       popular: '인기',
       trending: '트렌딩',
     },
+    bookmark: {
+      save: '{mix}에 저장',
+      savedTo: '{mix}에 저장됨',
+      addToMix: '다른 믹스에 추가',
+      remove: '{mix}에서 제거',
+    },
     charts: {
       title: '차트',
       albums: '앨범',
