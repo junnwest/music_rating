@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Trophy } from 'lucide-react';
 import Cover from '../../../../components/sj/Cover';
+import AlbumRateButton from '../../../../components/sj/AlbumRateButton';
 import { supabase } from '../../../../lib/supabaseClient';
 import { useLanguage } from '../../../../lib/i18n';
 import { displayName, formatCount } from '../../../../lib/sj/display';
@@ -229,12 +230,28 @@ function ChartDetailInner() {
               <li key={e.id}>
                 <Link
                   href={`/album/${e.id}`}
-                  className="flex items-center gap-3 px-4 py-2.5 hover:bg-page/60 transition"
+                  className="group flex items-center gap-3 px-4 py-2.5 hover:bg-page/60 transition"
                 >
                   <span className="w-7 text-right text-[12px] font-bold text-muted tabular-nums">
                     {i + listOffset + 1}
                   </span>
-                  <Cover url={e.coverUrl} className="w-10 h-10" rounded="rounded-md" />
+                  <span className="relative shrink-0">
+                    <Cover url={e.coverUrl} className="w-10 h-10" rounded="rounded-md" />
+                    <AlbumRateButton
+                      release={{
+                        id: e.id,
+                        title: e.title,
+                        artist: e.artist,
+                        coverUrl: e.coverUrl,
+                        releaseType: null,
+                        releaseDate: null,
+                        titleNative: null,
+                        artistNative: null,
+                      }}
+                      size={20}
+                      className="absolute -bottom-1 -right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
+                    />
+                  </span>
                   <span className="flex-1 min-w-0">
                     <span className="block text-[13px] font-semibold text-ink truncate">
                       {e.title}

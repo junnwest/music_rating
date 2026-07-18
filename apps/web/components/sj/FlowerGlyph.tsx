@@ -5,9 +5,13 @@
 export default function FlowerGlyph({
   size = 12,
   className = '',
+  src = '/logo-flower.svg',
 }: {
   size?: number;
   className?: string;
+  /** Mask source. `/logo-flower.svg` is the halftone brand logo;
+   *  `/icon-flower.svg` is the clean rounded flower used for rating marks. */
+  src?: string;
 }) {
   return (
     <span
@@ -16,8 +20,8 @@ export default function FlowerGlyph({
       style={{
         width: size,
         height: size,
-        WebkitMaskImage: 'url(/logo-flower.svg)',
-        maskImage: 'url(/logo-flower.svg)',
+        WebkitMaskImage: `url(${src})`,
+        maskImage: `url(${src})`,
         WebkitMaskRepeat: 'no-repeat',
         maskRepeat: 'no-repeat',
         WebkitMaskSize: 'contain',

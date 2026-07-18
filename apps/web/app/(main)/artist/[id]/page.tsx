@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { Plus } from 'lucide-react';
 import Avatar from '../../../../components/sj/Avatar';
 import Cover from '../../../../components/sj/Cover';
+import AlbumRateButton from '../../../../components/sj/AlbumRateButton';
 import FlowerGlyph from '../../../../components/sj/FlowerGlyph';
 import { useSession } from '../../../../components/sj/SessionContext';
 import { supabase } from '../../../../lib/supabaseClient';
@@ -305,9 +306,17 @@ export default function ArtistPage() {
                     <li key={r.id}>
                       <Link
                         href={`/album/${r.id}`}
-                        className="flex items-center gap-3 py-2.5 px-1 hover:bg-surface/70 rounded-lg transition"
+                        className="group flex items-center gap-3 py-2.5 px-1 hover:bg-surface/70 rounded-lg transition"
                       >
-                        <Cover url={r.coverUrl} className="w-11 h-11" rounded="rounded-md" />
+                        <span className="relative shrink-0">
+                          <Cover url={r.coverUrl} className="w-11 h-11" rounded="rounded-md" />
+                          <AlbumRateButton
+                            release={r}
+                            initialScore={my ?? null}
+                            size={22}
+                            className="absolute -bottom-1 -right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
+                          />
+                        </span>
                         <span className="flex-1 min-w-0">
                           <span className="block text-[13.5px] font-semibold text-ink truncate">
                             {displayName(r.title, r.titleNative)}
