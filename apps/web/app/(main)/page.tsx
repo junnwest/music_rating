@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Flame, ListMusic, UserPlus } from 'lucide-react';
+import Avatar from '../../components/sj/Avatar';
 import FeedCard from '../../components/sj/FeedCard';
 import TitleTabs from '../../components/sj/TitleTabs';
 import AlbumPeek from '../../components/sj/AlbumPeek';
@@ -24,7 +25,7 @@ type FeedTab = 'explore' | 'following';
  */
 export default function HomePage() {
   const { t } = useLanguage();
-  const { userId, ready } = useSession();
+  const { userId, ready, requireAuth } = useSession();
   const [tab, setTab] = useState<FeedTab>('explore');
   const [exploreItems, setExploreItems] = useState<FeedItemRow[]>([]);
   const [followingItems, setFollowingItems] = useState<FeedItemRow[]>([]);
@@ -187,7 +188,8 @@ export default function HomePage() {
   }, [ready, load]);
 
   async function toggleLike(item: FeedItemRow) {
-    if (!supabase || !userId) return;
+    if (!supabase) return;
+    if (!requireAuth() || !userId) return;
     const wasLiked = likedIds.has(item.id);
     setLikedIds((prev) => {
       const next = new Set(prev);
@@ -433,18 +435,7 @@ function SuggestedRail() {
                 href={`/profile/${u.username ?? ''}`}
                 className="flex items-center gap-2.5 min-w-0 flex-1 group"
               >
-                {u.avatar_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={u.avatar_url}
-                    alt=""
-                    className="w-9 h-9 rounded-full object-cover shrink-0"
-                  />
-                ) : (
-                  <span className="flex w-9 h-9 rounded-full bg-accent-soft text-accent-deep items-center justify-center text-[13px] font-bold shrink-0">
-                    {handle.slice(0, 1).toUpperCase()}
-                  </span>
-                )}
+                <Avatar url={u.avatar_url} size={36} />
                 <span className="min-w-0">
                   <span className="block text-[13px] font-semibold text-ink truncate group-hover:underline">
                     {u.display_name ?? handle}

@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowUpCircle, MessageSquare } from 'lucide-react';
+import Avatar from './Avatar';
 import Modal from './Modal';
+import { useSession } from './SessionContext';
 import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
 import { profileHandle } from '../../lib/sj/data';
@@ -14,7 +16,7 @@ interface CommentRow {
   user_id: string;
   content: string;
   created_at: string;
-  profiles: { username: string | null; display_name: string | null } | null;
+  profiles: { username: string | null; display_name: string | null; avatar_url: string | null } | null;
 }
 
 /** Comment thread on a rating — mirrors iOS CommentSheetView. */
@@ -30,6 +32,7 @@ export default function CommentsModal({
   onCountChange?: (count: number) => void;
 }) {
   const { t, lang } = useLanguage();
+  const { userId, requireAuth } = useSession();
   const [comments, setComments] = useState<CommentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
@@ -41,7 +44,7 @@ export default function CommentsModal({
     const { data } = await supabase
       .from('rating_comments')
       .select(
-        'id, user_id, content, created_at, profiles!rating_comments_user_id_fkey(username, display_name)',
+        'id, user_id, content, created_at, profiles!rating_comments_user_id_fkey(username, display_name, avatar_url)',
       )
       .eq('rating_id', ratingId)
       .order('created_at', { ascending: true });
@@ -62,16 +65,11 @@ export default function CommentsModal({
     if (!supabase) return;
     const trimmed = text.trim();
     if (!trimmed) return;
-    const { data: userData } = await supabase.auth.getUser();
-    const uid = userData.user?.id;
-    if (!uid) {
-      setError(t('sj.comments.signInRequired'));
-      return;
-    }
+    if (!requireAuth() || !userId) return;
     setSending(true);
     const { error: insertError } = await supabase
       .from('rating_comments')
-      .insert({ user_id: uid, rating_id: ratingId, content: trimmed });
+      .insert({ user_id: userId, rating_id: ratingId, content: trimmed });
     if (insertError) {
       setError(insertError.message);
     } else {
@@ -105,9 +103,7 @@ export default function CommentsModal({
             <ul className="divide-y divide-divider">
               {comments.map((c) => (
                 <li key={c.id} className="flex items-start gap-3 px-5 py-3.5">
-                  <span className="flex w-8 h-8 rounded-full bg-accent-soft text-accent-deep items-center justify-center text-[12px] font-bold shrink-0">
-                    {profileHandle(c.profiles).slice(0, 1).toUpperCase()}
-                  </span>
+                  <Avatar url={c.profiles?.avatar_url} size={32} />
                   <div className="min-w-0">
                     <p className="flex items-baseline gap-2">
                       <Link

@@ -101,7 +101,7 @@ export default function TastePage() {
         const { data: sessionData } = await supabase!.auth.getSession();
         const token = sessionData.session?.access_token;
         if (!token) throw new Error('no session');
-        const res = await fetch('/api/taste/profile?refresh=1', {
+        const res = await fetch('/api/taste/profile', {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) throw new Error(`taste ${res.status}`);

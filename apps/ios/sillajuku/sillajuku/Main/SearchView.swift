@@ -45,23 +45,44 @@ class DiscoveryViewModel {
     var hasPersonalized = false
 
     // Artists behind ratings >= 3.5, ordered best-first -- the in-app signal QuickAddViewModel
-    // supplements Spotify/Apple Music with. Populated alongside personalizedAlbums in
-    // loadPersonalized() since it's derived from the same ratedReleases query.
+    // supplements Spotify/Apple Music with. Populated by loadRatedArtists() below.
     var ratedArtists: [String] = []
 
     // High-confidence taste recommendations (artists user rated 4+)
     var tasteAlbums: [Release] = []
 
-    // Trending on the platform (most-rated recent releases)
+    // Genre-cluster "worlds" from /api/recommendations -- one row per taste cluster, e.g.
+    // "Because you love {label}". New this session (web sibling: search/page.tsx's worlds[]).
+    var worlds: [(label: String, albums: [Release])] = []
+
+    // Trending on the platform (most-rated recent releases, real ratings weighted over bot ones)
     var trendingAlbums: [Release] = []
 
-    // General popular
+    // Newest albums/EPs with cover art -- a genuine "New Releases" row, distinct from Popular
+    // now that Popular is actually prestige-ranked (was previously the same newest-first query
+    // mislabeled "Popular").
+    var newReleaseAlbums: [Release] = []
+
+    // Popular (prestige-ranked)
     var popularAlbums: [Release] = []
     var popularSongs:  [SongResult] = []
+
+    // Artists with any rating <=1.5 -- suppressed from every section above. Populated by
+    // loadRecommendations() (the only endpoint that knows this), applied there and retroactively
+    // to Discovery's own concurrently-fetched sections.
+    var blockedArtists: Set<String> = []
+
+    // Spotify/Apple "Recently Listened" resolved against the catalog -- see
+    // resolveRecentlyPlayedIfNeeded() below. Rendered via the same albumScroll/DiscoveryAlbumCard
+    // every other section uses (proper cover size, add button, context menu) instead of the old
+    // raw-metadata row that couldn't offer any of that since it had no Release until tap.
+    var recentlyPlayedReleases: [Release] = []
+    var appleMusicRecentlyPlayedReleases: [Release] = []
 
     var isLoading = true
     var needsSpotifyReconnect = false  // no cached data AND token is gone
     private var hasLoaded = false
+    private var hasResolvedRecentlyPlayed = false
 
     func load() async {
         if !hasLoaded {
@@ -80,8 +101,103 @@ class DiscoveryViewModel {
             if !hasSpotifyData { await loadSpotify() }
             if !hasAppleMusicData { await loadAppleMusic() }
         }
+        await resolveRecentlyPlayedIfNeeded()
         isLoading = false
         prefetchDiscoveryCovers()
+    }
+
+    // Recently-played rows come back as raw Spotify/Apple Music metadata (name + artist string),
+    // not a catalog release -- previously resolved lazily per-row on tap, which meant the row
+    // itself could never show a proper cover size or add button (there was no Release to give
+    // one), and a miss only surfaced as a dead-end "not in catalog" alert after the tap. Resolves
+    // once, up front, against the same matching logic (exact title match, fuzzy fallback,
+    // artist-name/id acceptance gate) SearchView.fetchRelease already had tuned for this exact
+    // problem -- unmatched entries are just dropped instead of rendered as a broken-looking row.
+    // Capped at 24 for Spotify (of up to 50 fetched) since eagerly resolving all of them means
+    // that many concurrent catalog lookups for a horizontally-scrolled list most users won't
+    // scroll all the way through anyway; Apple's own fetch is already capped at 20.
+    private func resolveRecentlyPlayedIfNeeded() async {
+        guard !hasResolvedRecentlyPlayed else { return }
+        guard !recentlyPlayed.isEmpty || !appleMusicRecentlyPlayed.isEmpty else { return }
+        hasResolvedRecentlyPlayed = true
+        async let spotifyMatches = Self.resolveCatalogMatches(
+            Array(recentlyPlayed.prefix(24)).map { (name: $0.name, artist: $0.artistName) }
+        )
+        async let appleMatches = Self.resolveCatalogMatches(
+            appleMusicRecentlyPlayed.map { (name: $0.name, artist: $0.artistName) }
+        )
+        recentlyPlayedReleases = await spotifyMatches
+        appleMusicRecentlyPlayedReleases = await appleMatches
+    }
+
+    // Batches concurrency at 8 rather than firing every lookup at once -- confirmed elsewhere
+    // this session (the web sitemap's pagination fetch) that a burst of many simultaneous
+    // PostgREST requests can silently drop results from otherwise-valid concurrent requests in
+    // the same batch. Preserves input order (task completion order isn't submission order).
+    private static func resolveCatalogMatches(_ items: [(name: String, artist: String)]) async -> [Release] {
+        var resolved = [Int: Release]()
+        var i = 0
+        while i < items.count {
+            let batch = items[i..<min(i + 8, items.count)]
+            await withTaskGroup(of: (Int, Release?).self) { g in
+                for (offset, item) in batch.enumerated() {
+                    let index = i + offset
+                    g.addTask { (index, await fetchRelease(name: item.name, artist: item.artist)) }
+                }
+                for await (index, release) in g {
+                    if let release { resolved[index] = release }
+                }
+            }
+            i += 8
+        }
+        return (0..<items.count).compactMap { resolved[$0] }
+    }
+
+    // Same matching logic as SearchView's own fetchRelease (tuned live against real misses --
+    // see that function's comment for why exact-first + gated-fuzzy, no blind closest-title
+    // fallback). Kept here too since this now needs to run eagerly at load time rather than
+    // lazily per-tap from the view.
+    private static func fetchRelease(name: String, artist: String) async -> Release? {
+        let al = artist.lowercased()
+        let artistId = await resolveArtistId(name: artist)
+        func accept(_ r: Release) -> Bool {
+            let ra = r.artist.lowercased()
+            if ra.contains(al) || al.contains(ra) { return true }
+            if let aid = artistId, r.primaryArtistId == aid { return true }
+            return false
+        }
+
+        let exact: [Release] = (try? await supabase
+            .from("release_groups")
+            .select("id, title, artist_display, cover_url, release_group_type, first_release_date, native_title, primary_artist_id")
+            .ilike("title", value: name)
+            .limit(5)
+            .execute()
+            .value) ?? []
+        if let match = exact.first(where: accept) { return match }
+
+        let fuzzy: [Release] = (try? await supabase
+            .rpc("search_release_groups", params: SearchParams(q: name, lim: 10))
+            .execute()
+            .value) ?? []
+        return fuzzy.first(where: accept)
+    }
+
+    private static func resolveArtistId(name: String) async -> UUID? {
+        let rows: [SearchArtist] = (try? await supabase
+            .rpc("search_artists", params: SearchParams(q: name, lim: 3))
+            .execute()
+            .value) ?? []
+        let target = name.lowercased()
+        func overlaps(_ s: String) -> Bool {
+            let l = s.lowercased()
+            return !l.isEmpty && (l == target || l.contains(target) || target.contains(l))
+        }
+        return rows.first { row in
+            overlaps(row.name)
+                || (row.nameNative.map(overlaps) ?? false)
+                || (row.aliases ?? []).contains(where: overlaps)
+        }?.id
     }
 
     // Pull-to-refresh on the Add tab -- load() only runs the personalized/popular/taste/trending
@@ -89,22 +205,31 @@ class DiscoveryViewModel {
     // means the section otherwise never changes for the rest of the session. This re-runs that
     // same batch on demand.
     func refresh() async {
+        // Recently Listened's catalog resolution is otherwise a load()-once-per-session guard
+        // (resolveRecentlyPlayedIfNeeded) -- reset it here so refresh actually re-attempts
+        // matching too, same as every other section already does. Matters because the catalog
+        // itself can change independent of the (unrefreshed) underlying Spotify/Apple data --
+        // e.g. a search-matching fix landing server-side wouldn't otherwise show up without a
+        // full app relaunch.
+        hasResolvedRecentlyPlayed = false
         await reloadDiscoverySections()
+        await resolveRecentlyPlayedIfNeeded()
         prefetchDiscoveryCovers()
     }
 
     private func reloadDiscoverySections() async {
         await withTaskGroup(of: Void.self) { g in
-            g.addTask { await self.loadPopular() }
-            g.addTask { await self.loadPersonalized() }
-            g.addTask { await self.loadTasteAlbums() }
-            g.addTask { await self.loadTrending() }
+            g.addTask { await self.loadRatedArtists() }
+            g.addTask { await self.loadDiscovery() }
+            g.addTask { await self.loadRecommendations() }
         }
     }
 
     private func prefetchDiscoveryCovers() {
         // Kick off background downloads for all album art so covers are ready before the user scrolls
-        let prefetchUrls = (personalizedAlbums + trendingAlbums + popularAlbums + tasteAlbums)
+        let prefetchUrls = (personalizedAlbums + trendingAlbums + popularAlbums + tasteAlbums
+            + newReleaseAlbums + worlds.flatMap(\.albums)
+            + recentlyPlayedReleases + appleMusicRecentlyPlayedReleases)
             .compactMap { URL(string: $0.coverUrl?.thumbnailUrl ?? "") }
         ImageCache.prefetch(prefetchUrls)
     }
@@ -192,27 +317,11 @@ class DiscoveryViewModel {
         await loadSpotify()
     }
 
-    private func loadPopular() async {
-        popularAlbums = (try? await supabase
-            .from("release_groups")
-            .select("id, title, artist_display, cover_url, native_title, release_group_type, first_release_date")
-            .in("release_group_type", values: ["album", "ep"])
-            .not("cover_url", operator: .is, value: AnyJSON.null)
-            .order("first_release_date", ascending: false, nullsFirst: false)
-            .limit(50)
-            .execute()
-            .value) ?? []
-        popularSongs = []  // songs in discovery deferred until Windows rebuilds search RPCs
-    }
-
-    private func loadPersonalized() async {
+    // Artists behind ratings >= 3.5, best-first -- QuickAddViewModel's seed source. Kept as its
+    // own small loader (previously a side effect of loadPersonalized(), now that that's gone in
+    // favor of calling web's own /api/recommendations directly).
+    private func loadRatedArtists() async {
         guard let userId = supabase.auth.currentUser?.id else { return }
-
-        var dbArtists = Set<String>()
-
-        // Primary seeds: artist_display values from ratings the user actually liked
-        // (score/elo >= 3.5) -- previously every rating counted equally regardless of score,
-        // so an album rated 1 star seeded "For You" just as strongly as one rated 5 stars.
         struct RatedRelease: Codable {
             let score: Double?
             let eloScore: Double?
@@ -232,10 +341,6 @@ class DiscoveryViewModel {
             .limit(200)
             .execute()
             .value) ?? []
-        for r in ratedReleases {
-            let display = r.score ?? r.eloScore.map(Elo.toScore)
-            if let d = display, d >= 3.5 { dbArtists.insert(r.releaseGroups.artist) }
-        }
         var seenRatedArtists = Set<String>()
         ratedArtists = ratedReleases
             .compactMap { r -> (String, Double)? in
@@ -245,181 +350,44 @@ class DiscoveryViewModel {
             .sorted { $0.1 > $1.1 }
             .map(\.0)
             .filter { seenRatedArtists.insert($0).inserted }
+    }
 
-        // Supplement with Spotify artists when available -- independent listening signal
-        // (not a rating), so no score filter applies here; filtering it would hurt cold-start
-        // users who have real streaming history but haven't rated much yet.
-        for a in spotifyArtists { dbArtists.insert(a.name) }
-        for a in recentlyPlayed  { dbArtists.insert(a.artistName) }
+    // Popular (prestige-ranked, not just newest), New Releases, and bot-weighted Trending --
+    // calls web's own /api/discovery directly instead of the old client-side queries (which had
+    // "Popular" mislabeled newest-first, and Trending counting every rating equally regardless
+    // of is_bot). Same algorithm as web, no local reimplementation to drift out of sync. See
+    // Services/WebAPI.swift.
+    private func loadDiscovery() async {
+        guard let resp: DiscoveryResponse = await WebAPI.get("/api/discovery", authed: false) else { return }
+        popularAlbums = filterBlocked(resp.popular)
+        newReleaseAlbums = filterBlocked(resp.newReleases)
+        trendingAlbums = filterBlocked(resp.trending)
+        popularSongs = []  // songs in discovery deferred until Windows rebuilds search RPCs
+    }
 
-        // Supplement with Apple Music library when available.
-        for a in appleMusicArtists        { dbArtists.insert(a.name) }
-        for a in appleMusicRecentlyPlayed { dbArtists.insert(a.artistName) }
-        for a in appleMusicLibraryAlbums  { dbArtists.insert(a.artistName) }
-
-        // Exploit slice: more albums by artists already in the seed set, capped per artist
-        // (matches loadTasteAlbums()'s existing anti-flood cap -- this section had none before).
-        var exploit: [Release] = []
-        if !dbArtists.isEmpty {
-            let seeds = Array(dbArtists.prefix(50))
-            let raw: [Release] = (try? await supabase
-                .from("release_groups")
-                .select("id, title, artist_display, cover_url, native_title, release_group_type, first_release_date")
-                .not("cover_url", operator: .is, value: AnyJSON.null)
-                .in("release_group_type", values: ["album", "ep"])
-                .in("artist_display", values: seeds)
-                .order("first_release_date", ascending: false, nullsFirst: false)
-                .limit(120)
-                .execute()
-                .value) ?? []
-            var countPerArtist: [String: Int] = [:]
-            for album in raw {
-                let n = countPerArtist[album.displayArtist, default: 0]
-                if n < 3 { exploit.append(album); countPerArtist[album.displayArtist] = n + 1 }
-            }
-        }
-
-        // Explore slice: content-based discovery via release_groups.embedding -- surfaces new
-        // artists musically similar to the user's own highest-rated albums, instead of only
-        // ever resurfacing artists already in the user's history. Seeded independently (its own
-        // small top-rated lookup) rather than reusing loadTasteAlbums()'s pool, so both loaders
-        // can still run fully concurrently in the outer TaskGroup.
-        var explore: [Release] = []
-        struct TopRated: Codable {
-            let releaseGroupId: UUID; let score: Double?; let eloScore: Double?
-            let releaseGroups: ArtistOnly
-            struct ArtistOnly: Codable {
-                let artist: String
-                enum CodingKeys: String, CodingKey { case artist = "artist_display" }
-            }
-            enum CodingKeys: String, CodingKey {
-                case releaseGroupId = "release_group_id"; case score; case eloScore = "elo_score"
-                case releaseGroups = "release_groups"
-            }
-        }
-        let topRatedRows: [TopRated] = (try? await supabase
-            .from("ratings")
-            .select("release_group_id, score, elo_score, release_groups(artist_display)")
-            .eq("user_id", value: userId)
-            .limit(200)
-            .execute()
-            .value) ?? []
-        // Capped at 3, not 5 -- confirmed live that RPC cost scales with seed count more than
-        // with p_per_seed's final LIMIT: 4 seeds completed in ~3.3s, 5 reliably hit the
-        // statement timeout. Deduped by artist first so e.g. three 5-star NewJeans albums don't
-        // burn all 3 seed slots on one artist, leaving no room for genre diversity in the query.
-        var seenArtists = Set<String>()
-        let seedIds: [UUID] = topRatedRows
-            .compactMap { row -> (UUID, String, Double)? in
-                guard let d = row.score ?? row.eloScore.map(Elo.toScore), d >= 4.0 else { return nil }
-                return (row.releaseGroupId, row.releaseGroups.artist, d)
-            }
-            .sorted { $0.2 > $1.2 }
-            .filter { seenArtists.insert($0.1).inserted }
-            .prefix(3)
-            .map(\.0)
-
-        if !seedIds.isEmpty {
-            struct SimilarReleasesParams: Encodable {
-                let p_seed_ids: [String]
-                let p_exclude_artists: [String]?
-            }
-            explore = (try? await supabase
-                .rpc("get_taste_similar_releases", params: SimilarReleasesParams(
-                    p_seed_ids: seedIds.map(\.uuidString),
-                    p_exclude_artists: dbArtists.isEmpty ? nil : Array(dbArtists)))
-                .execute()
-                .value) ?? []
-        }
-
-        var combined = exploit + explore
-        var seen = Set<UUID>()
-        combined = combined.filter { seen.insert($0.id).inserted }
-        personalizedAlbums = Array(combined.shuffled().prefix(60))
-
+    // "From Your Taste" / "For You" / genre-cluster "worlds" -- calls web's own
+    // /api/recommendations directly instead of the old client-side exploit+explore blend, so iOS
+    // gets the same taste-vector/genre-embedding clustering web has (see Services/WebAPI.swift).
+    // Also the only source of blockedArtists (any artist rated <=1.5), applied here and
+    // retroactively to Discovery below since that fetch runs concurrently and can't wait on this.
+    private func loadRecommendations() async {
+        guard let resp: RecommendationsResponse = await WebAPI.get("/api/recommendations", authed: true) else { return }
+        blockedArtists = Set(resp.blockedArtists)
+        tasteAlbums = filterBlocked(resp.fromYourTaste)
+        personalizedAlbums = filterBlocked(resp.forYou)
+        worlds = resp.worlds.map { (label: $0.label, albums: filterBlocked($0.albums)) }
         hasPersonalized = !personalizedAlbums.isEmpty
         personalizedSongs = []  // deferred until Windows rebuilds search RPCs
+
+        // Discovery's own fetch runs concurrently and may have already populated these before
+        // blockedArtists was known -- re-apply now that it is.
+        popularAlbums = filterBlocked(popularAlbums)
+        newReleaseAlbums = filterBlocked(newReleaseAlbums)
+        trendingAlbums = filterBlocked(trendingAlbums)
     }
 
-    // Albums by artists the user has explicitly loved (rated ≥ 4.0).
-    private func loadTasteAlbums() async {
-        guard let userId = supabase.auth.currentUser?.id else { return }
-
-        struct HighRated: Codable {
-            let releaseGroups: AR
-            struct AR: Codable {
-                let artist: String
-                enum CodingKeys: String, CodingKey { case artist = "artist_display" }
-            }
-            enum CodingKeys: String, CodingKey { case releaseGroups = "release_groups" }
-        }
-        let rows: [HighRated] = (try? await supabase
-            .from("ratings")
-            .select("release_groups(artist_display)")
-            .eq("user_id", value: userId)
-            .gte("score", value: 4.0)
-            .execute()
-            .value) ?? []
-
-        let lovedArtists = Array(Set(rows.map(\.releaseGroups.artist)).prefix(30))
-        guard !lovedArtists.isEmpty else { return }
-
-        let all: [Release] = (try? await supabase
-            .from("release_groups")
-            .select("id, title, artist_display, cover_url, native_title, release_group_type, first_release_date")
-            .in("artist_display", values: lovedArtists)
-            .in("release_group_type", values: ["album", "ep"])
-            .not("cover_url", operator: .is, value: AnyJSON.null)
-            .order("first_release_date", ascending: false, nullsFirst: false)
-            .limit(200)
-            .execute()
-            .value) ?? []
-
-        // Cap at 3 albums per artist so no single prolific artist floods the section.
-        var countPerArtist: [String: Int] = [:]
-        var capped: [Release] = []
-        for album in all {
-            let n = countPerArtist[album.displayArtist, default: 0]
-            if n < 3 { capped.append(album); countPerArtist[album.displayArtist] = n + 1 }
-        }
-        tasteAlbums = capped.shuffled()
-    }
-
-    // Most-rated release groups on the platform in the last 30 days.
-    private func loadTrending() async {
-        let cutoff = ISO8601DateFormatter().string(
-            from: Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
-        )
-
-        struct Row: Codable {
-            let releaseGroupId: UUID
-            let releaseGroups: Release
-            enum CodingKeys: String, CodingKey {
-                case releaseGroupId = "release_group_id"
-                case releaseGroups  = "release_groups"
-            }
-        }
-
-        let rows: [Row] = (try? await supabase
-            .from("ratings")
-            .select("release_group_id, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, first_release_date)")
-            .gt("created_at", value: cutoff)
-            .order("created_at", ascending: false)
-            .limit(500)
-            .execute()
-            .value) ?? []
-
-        var counts: [UUID: (count: Int, release: Release)] = [:]
-        for row in rows {
-            guard row.releaseGroups.releaseType != "single" else { continue }
-            counts[row.releaseGroupId] = ((counts[row.releaseGroupId]?.count ?? 0) + 1, row.releaseGroups)
-        }
-
-        trendingAlbums = counts.values
-            .sorted { $0.count > $1.count }
-            .map(\.release)
-            .prefix(25)
-            .map { $0 }
+    private func filterBlocked(_ albums: [Release]) -> [Release] {
+        blockedArtists.isEmpty ? albums : albums.filter { !blockedArtists.contains($0.artist) }
     }
 }
 
@@ -606,9 +574,7 @@ struct SearchView: View {
     @State private var sessionRatedIds: Set<UUID>  = []   // tapped in this session — shows checkmark
     @State private var showAllPersonalizedSongs = false
     @State private var showAllPopularSongs      = false
-    @State private var recentlyPlayedNavTarget: Release?
     @State private var spotifyArtistNavTarget: ArtistDestination?
-    @State private var showNotInCatalog = false
     @Environment(\.scenePhase) private var scenePhase
 
     private let threeColumns = [GridItem(.flexible(), spacing: 12),
@@ -644,18 +610,9 @@ struct SearchView: View {
             // of a later, unrelated push made from further inside that same destination (e.g.
             // tapping the artist name on an album opened via this row double-pushed the album
             // again on top of the artist page). Clearing it once actually popped prevents that.
-            .navigationDestination(item: $recentlyPlayedNavTarget) { release in
-                AlbumDetailView(release: release)
-                    .onDisappear { if recentlyPlayedNavTarget == release { recentlyPlayedNavTarget = nil } }
-            }
             .navigationDestination(item: $spotifyArtistNavTarget) { artist in
                 ArtistPageView(artist: artist)
                     .onDisappear { if spotifyArtistNavTarget == artist { spotifyArtistNavTarget = nil } }
-            }
-            .alert("Not in catalog", isPresented: $showNotInCatalog) {
-                Button("OK") {}
-            } message: {
-                Text("This album isn't in sillajuku's catalog yet.")
             }
             .alert("Switch to Manual mode", isPresented: $showQuickAddModeGate) {
                 Button("Cancel", role: .cancel) {}
@@ -987,9 +944,14 @@ struct SearchView: View {
                     }
 
                     // ── Spotify: Recently Listened ────────────
-                    if !discoveryVM.recentlyPlayed.isEmpty {
+                    // Resolved against the catalog up front (resolveRecentlyPlayedIfNeeded) --
+                    // renders through the same albumScroll every other section uses, so a real
+                    // cover size, add button, and context menu all come for free, and anything
+                    // that didn't resolve to a real release is simply not shown instead of
+                    // leading to a dead-end "not in catalog" tap.
+                    if !discoveryVM.recentlyPlayedReleases.isEmpty {
                         discoverySectionTitle("Recently Listened")
-                        spotifyAlbumScroll(discoveryVM.recentlyPlayed)
+                        albumScroll(discoveryVM.recentlyPlayedReleases, hideRated: false)
                         Spacer().frame(height: 24)
                     }
 
@@ -1001,11 +963,11 @@ struct SearchView: View {
                     }
 
                     // ── Apple Music: Recently Listened ────────
-                    if !discoveryVM.appleMusicRecentlyPlayed.isEmpty {
+                    if !discoveryVM.appleMusicRecentlyPlayedReleases.isEmpty {
                         discoverySectionTitle(
-                            discoveryVM.recentlyPlayed.isEmpty ? "Recently Listened" : "Recently Listened (Apple)"
+                            discoveryVM.recentlyPlayedReleases.isEmpty ? "Recently Listened" : "Recently Listened (Apple)"
                         )
-                        appleMusicAlbumScroll(discoveryVM.appleMusicRecentlyPlayed)
+                        albumScroll(discoveryVM.appleMusicRecentlyPlayedReleases, hideRated: false)
                         Spacer().frame(height: 24)
                     }
 
@@ -1035,6 +997,20 @@ struct SearchView: View {
                         Spacer().frame(height: 28)
                     }
 
+                    // ── Worlds (genre-cluster rows, e.g. "Because you love Dream Pop") ──
+                    ForEach(Array(discoveryVM.worlds.enumerated()), id: \.offset) { _, world in
+                        let visibleWorld = world.albums.filter {
+                            !ratedReleaseIds.contains($0.id) || sessionRatedIds.contains($0.id)
+                        }
+                        if !visibleWorld.isEmpty {
+                            discoverySectionTitle(
+                                LocalizedStringKey(String(format: String(localized: "Because you love %@"), world.label))
+                            )
+                            albumScroll(visibleWorld)
+                            Spacer().frame(height: 24)
+                        }
+                    }
+
                     // ── Popular ───────────────────────────────
                     if !discoveryVM.popularAlbums.isEmpty || !discoveryVM.popularSongs.isEmpty {
                         discoverySectionTitle("Popular")
@@ -1046,6 +1022,16 @@ struct SearchView: View {
                     if !discoveryVM.popularSongs.isEmpty {
                         discoverySubheader("Songs")
                         songList(discoveryVM.popularSongs, expanded: $showAllPopularSongs)
+                    }
+
+                    // ── New Releases ──────────────────────────
+                    let visibleNewReleases = discoveryVM.newReleaseAlbums.filter {
+                        !ratedReleaseIds.contains($0.id) || sessionRatedIds.contains($0.id)
+                    }
+                    if !visibleNewReleases.isEmpty {
+                        discoverySectionTitle("New Releases")
+                        albumScroll(visibleNewReleases)
+                        Spacer().frame(height: 24)
                     }
 
                     // ── Trending ──────────────────────────────
@@ -1085,7 +1071,10 @@ struct SearchView: View {
             Button { quickAddTapped() } label: {
                 Text("Quick Add")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
+                    // sjCream, not .white -- sjInk flips light in dark mode, so a hardcoded
+                    // white label disappears there (cream flips dark in step, like the
+                    // other sjInk-background buttons: InviteView, onboarding steps).
+                    .foregroundStyle(Color.sjCream)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
                     .background(Color.sjInk)
@@ -1167,87 +1156,8 @@ struct SearchView: View {
         }
     }
 
-    private func spotifyAlbumScroll(_ albums: [SpotifyAlbumDisplay]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                ForEach(albums) { album in
-                    Button {
-                        Task {
-                            if let r = await fetchRelease(name: album.name, artist: album.artistName) {
-                                recentlyPlayedNavTarget = r
-                            } else {
-                                showNotInCatalog = true
-                            }
-                        }
-                    } label: {
-                        VStack(alignment: .leading, spacing: 6) {
-                            CoverImage(url: album.imageUrl)
-                                .frame(width: 112, height: 112)
-                                .accessibilityHidden(true) // name text below already describes it
-
-                            Text(album.name)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(Color.sjInk)
-                                .lineLimit(1)
-                                .frame(width: 112, alignment: .leading)
-
-                            Text(album.artistName)
-                                .font(.system(size: 11))
-                                .foregroundStyle(Color.sjMuted)
-                                .lineLimit(1)
-                                .frame(width: 112, alignment: .leading)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-        }
-    }
-
-    // Spotify/Apple Music album titles rarely match our catalog byte-for-byte (punctuation,
-    // capitalization, romanization), so an exact ILIKE alone was missing real catalog hits and
-    // showing a false "not in catalog" alert. But fuzzy search alone isn't reliable either --
-    // confirmed live that short/generic titles ("USB", 3 letters) get flooded with unrelated
-    // trigram matches and the real row (which DOES exist) doesn't surface in the top 10 at all.
-    // Try the exact match first (cheap, precise when it hits), fall back to fuzzy only if that
-    // finds nothing.
-    //
-    // No blind "closest title" fallback on the fuzzy path -- confirmed live that it actively
-    // backfires: searching "Father EP" (Masta Wu, genuinely not in the catalog) fuzzy-matched
-    // Vampire Weekend's "Father of the Bride" as the top title hit and would have silently shown
-    // that instead of the honest "not in catalog" alert. Only trust a result whose artist matches.
-    private func fetchRelease(name: String, artist: String) async -> Release? {
-        let al = artist.lowercased()
-        // Resolve the artist first (romanization-aware, via search_artists aliases) so we can
-        // accept an album by artist-id equality when its native artist_display ("혁오") can't
-        // string-overlap a romanized external artist name ("Hyukoh"). One extra RPC, per tap.
-        let artistId = await resolveArtist(name: artist).artistId
-        func accept(_ r: Release) -> Bool {
-            let ra = r.artist.lowercased()
-            if ra.contains(al) || al.contains(ra) { return true }
-            if let aid = artistId, r.primaryArtistId == aid { return true }
-            return false
-        }
-
-        let exact: [Release] = (try? await supabase
-            .from("release_groups")
-            .select("id, title, artist_display, cover_url, release_group_type, first_release_date, native_title, primary_artist_id")
-            .ilike("title", value: name)
-            .limit(5)
-            .execute()
-            .value) ?? []
-        if let match = exact.first(where: accept) { return match }
-
-        let fuzzy: [Release] = (try? await supabase
-            .rpc("search_release_groups", params: SearchParams(q: name, lim: 10))
-            .execute()
-            .value) ?? []
-        return fuzzy.first(where: accept)
-    }
-
-    // Same reasoning as fetchRelease -- Spotify's artist name string rarely matches our
+    // Same reasoning as DiscoveryViewModel.fetchRelease (which now does this eagerly at load
+    // time for Recently Listened) -- Spotify's artist name string rarely matches our
     // artist_display exactly, so the old artistId: nil fallback (a bare ILIKE deep inside
     // ArtistPageView) frequently showed an empty or wrong artist. Resolving the real catalog
     // id up front via search_artists lets navigation use the identity-aware RPC path instead.
@@ -1311,47 +1221,6 @@ struct SearchView: View {
         }
     }
 
-    private func appleMusicAlbumScroll(_ albums: [AppleMusicAlbumDisplay]) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                ForEach(albums) { album in
-                    Button {
-                        Task {
-                            if let r = await fetchRelease(name: album.name, artist: album.artistName) {
-                                recentlyPlayedNavTarget = r
-                            } else {
-                                showNotInCatalog = true
-                            }
-                        }
-                    } label: {
-                        VStack(alignment: .leading, spacing: 6) {
-                            CachedImage(url: album.artworkURL) { Color.sjBorder }
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 112, height: 112)
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                                .accessibilityHidden(true) // name text below already describes it
-
-                            Text(album.name)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(Color.sjInk)
-                                .lineLimit(1)
-                                .frame(width: 112, alignment: .leading)
-
-                            Text(album.artistName)
-                                .font(.system(size: 11))
-                                .foregroundStyle(Color.sjMuted)
-                                .lineLimit(1)
-                                .frame(width: 112, alignment: .leading)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-        }
-    }
-
     private func songParentRelease(_ song: SongResult) -> Release {
         Release(id: song.releases.id, title: song.releases.title,
                 artist: song.releases.artist, coverUrl: song.releases.coverUrl,
@@ -1360,13 +1229,23 @@ struct SearchView: View {
                 tracklist: nil, totalTracks: nil)
     }
 
-    private func albumScroll(_ albums: [Release]) -> some View {
-        // Hide pre-session rated items; show session-rated ones with a checkmark.
-        let visible = albums.filter { !ratedReleaseIds.contains($0.id) || sessionRatedIds.contains($0.id) }
+    // hideRated: recommendation-style sections (Popular/Trending/For You/etc.) hide releases the
+    // user already rated -- no point recommending something they've already done. Recently
+    // Listened is a listening *history*, not a recommendation, so it passes false: you should
+    // still see what you recently played whether you've rated it or not (was silently dropping
+    // already-rated albums, e.g. one rated 4 days before ever showing up here, when this was
+    // switched onto the shared component).
+    private func albumScroll(_ albums: [Release], hideRated: Bool = true) -> some View {
+        let visible = hideRated
+            ? albums.filter { !ratedReleaseIds.contains($0.id) || sessionRatedIds.contains($0.id) }
+            : albums
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 12) {
                 ForEach(visible) { release in
-                    let checked = sessionRatedIds.contains(release.id)
+                    // Not just session-rated -- an unfiltered list (hideRated: false) can include
+                    // releases rated in an earlier session too, which should also show the
+                    // checkmark rather than a misleading "add" button.
+                    let checked = sessionRatedIds.contains(release.id) || ratedReleaseIds.contains(release.id)
                     NavigationLink(value: release) {
                         DiscoveryAlbumCard(release: release,
                                            onAdd: checked ? nil : { addRelease(release) },
@@ -1472,6 +1351,7 @@ private struct DiscoveryAlbumCard: View {
                 Text(release.typeLabel)
                     .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(Color.sjBlue)
+                    .lineLimit(1)
                     .padding(.horizontal, 4).padding(.vertical, 2)
                     .background(Color.sjBlue.opacity(0.1))
                     .clipShape(RoundedRectangle(cornerRadius: 3))

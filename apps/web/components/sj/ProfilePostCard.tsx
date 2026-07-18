@@ -6,6 +6,7 @@ import { Heart, MessageCircle, Trash2 } from 'lucide-react';
 import Cover from './Cover';
 import ScoreBadge from './ScoreBadge';
 import CommentsModal from './CommentsModal';
+import LikersModal from './LikersModal';
 import { useLanguage } from '../../lib/i18n';
 import { eloToScore, INSTINCT_REVEAL_THRESHOLD } from '../../lib/elo';
 import { relativeTime, typeLabelKey } from '../../lib/sj/display';
@@ -34,6 +35,7 @@ export default function ProfilePostCard({
 }) {
   const { t, lang } = useLanguage();
   const [showComments, setShowComments] = useState(false);
+  const [showLikers, setShowLikers] = useState(false);
 
   const score =
     item.score != null
@@ -75,9 +77,13 @@ export default function ProfilePostCard({
           >
             <Heart size={19} className={isLiked ? 'fill-current sj-heart-pop' : ''} strokeWidth={1.9} />
           </button>
-          <span className={`text-[13.5px] font-medium ${isLiked ? 'text-red-500' : 'text-muted'}`}>
+          <button
+            onClick={() => setShowLikers(true)}
+            aria-label={t('sj.likes.title')}
+            className={`text-[13.5px] font-medium hover:underline ${isLiked ? 'text-red-500' : 'text-muted'}`}
+          >
             {likesCount}
-          </span>
+          </button>
         </span>
         <span className="flex items-center gap-1.5">
           <button
@@ -107,6 +113,7 @@ export default function ProfilePostCard({
         onClose={() => setShowComments(false)}
         ratingId={item.ratingId}
       />
+      <LikersModal open={showLikers} onClose={() => setShowLikers(false)} ratingId={item.ratingId} />
     </article>
   );
 }

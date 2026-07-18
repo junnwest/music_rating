@@ -1276,7 +1276,9 @@ struct ProfileView: View {
             likesCount: viewModel.likeCounts[song.ratingId] ?? 0,
             commentsCount: viewModel.commentCounts[song.ratingId] ?? 0,
             isLiked: viewModel.likedSongRatingIds.contains(song.ratingId),
-            onLike: { await viewModel.toggleSongLike(ratingId: song.ratingId) }
+            onLike: { await viewModel.toggleSongLike(ratingId: song.ratingId) },
+            headerHandle: viewModel.profile?.username ?? "me",
+            headerVerified: viewModel.profile?.isVerified == true
         )
         .padding(.horizontal, 12)
         .padding(.top, 8)
@@ -1298,7 +1300,9 @@ struct ProfileView: View {
             // on the List-mode RatingListRow call above for why the elo-only count undercounts.
             instinctAlbumCount: viewModel.ratings.count,
             isLiked: viewModel.likedRatingIds.contains(rating.id),
-            onLike: { await viewModel.toggleLike(ratingId: rating.id) }
+            onLike: { await viewModel.toggleLike(ratingId: rating.id) },
+            headerHandle: viewModel.profile?.username ?? "me",
+            headerVerified: viewModel.profile?.isVerified == true
         )
         .padding(.horizontal, 12)
         .padding(.top, 8)
@@ -2064,6 +2068,50 @@ struct UserSearchSheet: View {
 // MARK: - Profile Post Card (posts display mode)
 
 // Not private -- reused by UserProfileView's posts-mode Rated tab.
+/// The header row posts carry everywhere else (FeedCard's cardHeader):
+/// avatar + @handle (+ verified badge) + · + relative time, with an optional
+/// trailing view (e.g. the song card's ⋯ menu). Non-navigating -- on profile
+/// surfaces you're already looking at the author.
+struct PostCardHeader<Trailing: View>: View {
+    let handle: String
+    let isVerified: Bool
+    let createdAt: Date
+    @ViewBuilder var trailing: () -> Trailing
+
+    init(handle: String, isVerified: Bool, createdAt: Date,
+         @ViewBuilder trailing: @escaping () -> Trailing = { EmptyView() }) {
+        self.handle = handle
+        self.isVerified = isVerified
+        self.createdAt = createdAt
+        self.trailing = trailing
+    }
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: "person.circle.fill")
+                .font(.system(size: 30))
+                .foregroundStyle(Color(uiColor: .systemGray3))
+            HStack(spacing: 4) {
+                Text("@" + handle)
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .foregroundStyle(Color.sjInk)
+                if isVerified {
+                    VerifiedBadgeView()
+                        .frame(width: 13, height: 13)
+                        .accessibilityLabel(String(localized: "Verified"))
+                }
+            }
+            Text("·").font(.system(size: 13)).foregroundStyle(Color.sjBorder)
+            Text(createdAt.relativeTimeString)
+                .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+            Spacer(minLength: 0)
+            trailing()
+        }
+        .padding(.leading, 14).padding(.trailing, 4)
+        .padding(.top, 10).padding(.bottom, 6)
+    }
+}
+
 struct ProfilePostCard: View {
     let rating: UserRating
     let likesCount: Int
@@ -2071,6 +2119,11 @@ struct ProfilePostCard: View {
     let instinctAlbumCount: Int
     let isLiked: Bool
     let onLike: () async -> Void
+    // FeedCard-style header row (avatar + @handle + · + time). When set, the
+    // timestamp moves up here from the action bar so the card reads exactly
+    // like posts everywhere else (feed, album page).
+    var headerHandle: String? = nil
+    var headerVerified: Bool = false
 
     @State private var showComments = false
     @State private var showLikers = false
@@ -2085,6 +2138,11 @@ struct ProfilePostCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if let handle = headerHandle {
+                PostCardHeader(handle: handle, isVerified: headerVerified,
+                               createdAt: rating.createdAt)
+            }
+
             // Album row — tappable, scoped to just this row (not the whole
             // card) so the action-bar buttons below aren't nested inside a
             // NavigationLink, matching FeedCard's albumSection pattern.
@@ -2114,7 +2172,9 @@ struct ProfilePostCard: View {
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 14)
-            .padding(.top, 14)
+            // With a header above, the header's own bottom padding provides the gap
+            // (same as FeedCard's albumSection, which has no top padding).
+            .padding(.top, headerHandle == nil ? 14 : 0)
             .padding(.bottom, 10)
 
             // Review text
@@ -2159,8 +2219,10 @@ struct ProfilePostCard: View {
                         .font(.system(size: 14, weight: .medium)).foregroundStyle(Color.sjMuted)
                 }
                 Spacer()
-                Text(rating.createdAt.relativeTimeString)
-                    .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                if headerHandle == nil {
+                    Text(rating.createdAt.relativeTimeString)
+                        .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 6)
@@ -2188,6 +2250,15 @@ struct ProfilePostCard: View {
 // only the ones that still carry an elo_score -- using an elo-only count undercounts once a user
 // has any manual-mode song ratings mixed in (those never carry elo_score), which was stalling the
 // reveal for older Instinct-mode ratings even after the user had clearly rated several more since.
+/// Menu actions for rendering the current user's own song rating as a card on
+/// the song detail page. Songs have no share URL or mix membership anywhere in
+/// the app, so unlike the album card's menu this carries only edit/comment/delete.
+struct SongOwnRatingMenuActions {
+    let onEdit: () -> Void
+    let onEditComment: () -> Void
+    let onDelete: () -> Void
+}
+
 struct ProfileSongPostCard: View {
     let song: SongRatingRow
     let totalSongRatingsCount: Int
@@ -2195,6 +2266,11 @@ struct ProfileSongPostCard: View {
     let commentsCount: Int
     let isLiked: Bool
     let onLike: () async -> Void
+    var ownActions: SongOwnRatingMenuActions? = nil
+    // FeedCard-style header row; when set, the ⋯ menu (if any) renders inside
+    // it instead of as a corner overlay, and the action-bar timestamp moves up.
+    var headerHandle: String? = nil
+    var headerVerified: Bool = false
 
     @State private var showComments = false
     @State private var showLikers = false
@@ -2207,6 +2283,13 @@ struct ProfileSongPostCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if let handle = headerHandle {
+                PostCardHeader(handle: handle, isVerified: headerVerified,
+                               createdAt: song.createdAt) {
+                    if let own = ownActions { ownMenu(own) }
+                }
+            }
+
             NavigationLink(value: song.release.asRelease) {
                 HStack(spacing: 13) {
                     CoverImage(url: song.release.coverUrl)
@@ -2240,8 +2323,12 @@ struct ProfileSongPostCard: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .padding(.horizontal, 14)
-            .padding(.top, 14)
+            .padding(.leading, 14)
+            // Extra trailing room when the own-rating ellipsis menu overlays the
+            // top-right corner (headerless variant only), so the score badge
+            // doesn't sit underneath it.
+            .padding(.trailing, ownActions != nil && headerHandle == nil ? 44 : 14)
+            .padding(.top, headerHandle == nil ? 14 : 0)
             .padding(.bottom, 10)
 
             if let text = song.reviewText, !text.isEmpty {
@@ -2284,8 +2371,10 @@ struct ProfileSongPostCard: View {
                         .font(.system(size: 14, weight: .medium)).foregroundStyle(Color.sjMuted)
                 }
                 Spacer()
-                Text(song.createdAt.relativeTimeString)
-                    .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                if headerHandle == nil {
+                    Text(song.createdAt.relativeTimeString)
+                        .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 6)
@@ -2293,6 +2382,14 @@ struct ProfileSongPostCard: View {
         .background(Color.sjSurface)
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 1)
+        .overlay(alignment: .topTrailing) {
+            // Headerless variant only -- with a header, the menu lives inside it.
+            if let own = ownActions, headerHandle == nil {
+                ownMenu(own)
+                    .padding(.top, 4)
+                    .padding(.trailing, 4)
+            }
+        }
         .sheet(isPresented: $showComments) {
             SongCommentSheetView(trackRatingId: song.ratingId)
                 .presentationDetents([.fraction(0.67), .large])
@@ -2303,6 +2400,22 @@ struct ProfileSongPostCard: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
+    }
+
+    private func ownMenu(_ own: SongOwnRatingMenuActions) -> some View {
+        Menu {
+            Button { own.onEdit() } label: { Label("Edit", systemImage: "square.and.pencil") }
+            Button { own.onEditComment() } label: { Label("Edit Comment", systemImage: "bubble.right") }
+            Divider()
+            Button(role: .destructive) { own.onDelete() } label: { Label("Delete", systemImage: "trash") }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color.sjMuted)
+                .frame(width: 34, height: 34)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel(String(localized: "More options"))
     }
 }
 

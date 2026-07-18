@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { Bell, Heart, MessageSquare, UserPlus } from 'lucide-react';
+import Avatar from './Avatar';
 import { displayName, relativeTime } from '../../lib/sj/display';
 
 /** Shared between the notifications page and the top-bar popover. */
@@ -11,8 +12,11 @@ export interface NotificationEntry {
   type: string;
   created_at: string;
   rating_id: string | null;
+  mix_id: string | null;
+  mix_share_id: string | null;
+  track_rating_id: string | null;
   actor_id: string | null;
-  actor: { username: string | null; display_name: string | null } | null;
+  actor: { username: string | null; display_name: string | null; avatar_url: string | null } | null;
   rating: {
     release_groups: {
       id: string;
@@ -22,12 +26,17 @@ export interface NotificationEntry {
       artists: { name_native: string | null } | null;
     } | null;
   } | null;
+  mix: { id: string; name: string } | null;
+  mix_share: { mixes: { id: string; name: string } | null } | null;
 }
 
 export const NOTIFICATION_SELECT =
-  'id, type, created_at, rating_id, actor_id, actor:actor_id(username, display_name), ' +
+  'id, type, created_at, rating_id, mix_id, mix_share_id, track_rating_id, actor_id, ' +
+  'actor:actor_id(username, display_name, avatar_url), ' +
   'rating:rating_id(release_groups(id, title, artist_display, native_title, ' +
-  'artists!release_groups_primary_artist_id_fkey(name_native)))';
+  'artists!release_groups_primary_artist_id_fkey(name_native))), ' +
+  'mix:mix_id(id, name), ' +
+  'mix_share:mix_share_id(mixes(id, name))';
 
 export function notificationBody(
   n: NotificationEntry,
@@ -47,19 +56,62 @@ export function notificationBody(
         : t('sj.notifications.commented').replace('{who}', who);
     case 'follow':
       return t('sj.notifications.followed').replace('{who}', who);
+    case 'mix_like':
+      return n.mix?.name
+        ? t('sj.notifications.mixLikedNamed').replace('{who}', who).replace('{title}', n.mix.name)
+        : t('sj.notifications.mixLiked').replace('{who}', who);
+    case 'mix_share_like':
+      return t('sj.notifications.mixShareLiked').replace('{who}', who);
+    case 'mix_share_comment':
+      return t('sj.notifications.mixShareCommented').replace('{who}', who);
+    case 'track_rating_like':
+      return t('sj.notifications.songLiked').replace('{who}', who);
+    case 'track_rating_comment':
+      return t('sj.notifications.songCommented').replace('{who}', who);
     default:
       return t('sj.notifications.interacted').replace('{who}', who);
   }
 }
 
+// A like/comment notification is about a specific post (the rating, with its own review
+// text/like-comment thread) -- linking to the bare album/song page loses that entirely (those
+// pages only show aggregate community stats, never individual posts). These route to the
+// dedicated /post page instead -- web sibling of iOS's albumPostDestination/songPostDestination.
 export function notificationHref(n: NotificationEntry): string | null {
-  if ((n.type === 'like' || n.type === 'comment') && n.rating?.release_groups) {
-    return `/album/${n.rating.release_groups.id}`;
+  if ((n.type === 'like' || n.type === 'comment') && n.rating_id) {
+    return `/post/${n.rating_id}`;
+  }
+  if ((n.type === 'track_rating_like' || n.type === 'track_rating_comment') && n.track_rating_id) {
+    return `/post/${n.track_rating_id}?song=1`;
   }
   if (n.type === 'follow' && n.actor?.username) {
     return `/profile/${n.actor.username}`;
   }
+  if (n.type === 'mix_like' && n.mix) {
+    return `/mix/${n.mix.id}`;
+  }
+  if ((n.type === 'mix_share_like' || n.type === 'mix_share_comment') && n.mix_share?.mixes) {
+    return `/mix/${n.mix_share.mixes.id}`;
+  }
   return null;
+}
+
+function typeBadgeStyle(type: string): { icon: typeof Heart; className: string } {
+  switch (type) {
+    case 'like':
+    case 'mix_like':
+    case 'mix_share_like':
+    case 'track_rating_like':
+      return { icon: Heart, className: 'bg-red-500 text-white' };
+    case 'comment':
+    case 'mix_share_comment':
+    case 'track_rating_comment':
+      return { icon: MessageSquare, className: 'bg-accent text-white' };
+    case 'follow':
+      return { icon: UserPlus, className: 'bg-accent text-white' };
+    default:
+      return { icon: Bell, className: 'bg-muted text-white' };
+  }
 }
 
 export function NotificationRow({
@@ -76,26 +128,19 @@ export function NotificationRow({
   compact?: boolean;
 }) {
   const to = notificationHref(n);
+  const avatarSize = compact ? 32 : 36;
+  const badge = typeBadgeStyle(n.type);
+  const Icon = badge.icon;
+
   const inner = (
     <span className={`flex items-start gap-3 ${compact ? 'px-3.5 py-2.5' : 'px-4 py-3'}`}>
-      <span
-        className={`flex ${compact ? 'w-8 h-8' : 'w-9 h-9'} rounded-full items-center justify-center shrink-0 ${
-          n.type === 'like'
-            ? 'bg-red-500/[0.12] text-red-500'
-            : n.type === 'comment' || n.type === 'follow'
-              ? 'bg-accent/[0.12] text-accent'
-              : 'bg-muted/[0.12] text-muted'
-        }`}
-      >
-        {n.type === 'like' ? (
-          <Heart size={15} className="fill-current" />
-        ) : n.type === 'comment' ? (
-          <MessageSquare size={15} />
-        ) : n.type === 'follow' ? (
-          <UserPlus size={15} />
-        ) : (
-          <Bell size={15} />
-        )}
+      <span className="relative shrink-0" style={{ width: avatarSize, height: avatarSize }}>
+        <Avatar url={n.actor?.avatar_url} size={avatarSize} />
+        <span
+          className={`absolute -bottom-0.5 -right-0.5 flex items-center justify-center w-[18px] h-[18px] rounded-full ring-2 ring-surface ${badge.className}`}
+        >
+          <Icon size={9} strokeWidth={2.5} className={n.type.includes('like') ? 'fill-current' : ''} />
+        </span>
       </span>
       <span className="min-w-0">
         <span className={`block ${compact ? 'text-[13px]' : 'text-[13.5px]'} text-ink`}>

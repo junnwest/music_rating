@@ -802,7 +802,9 @@ struct UserProfileView: View {
                                     commentsCount: vm.commentCounts[rating.id] ?? 0,
                                     instinctAlbumCount: vm.catalogSnapshot.instinctAlbumCount,
                                     isLiked: vm.likedRatingIds.contains(rating.id),
-                                    onLike: { await vm.toggleLike(ratingId: rating.id) }
+                                    onLike: { await vm.toggleLike(ratingId: rating.id) },
+                                    headerHandle: vm.profile?.handle ?? initialHandle,
+                                    headerVerified: vm.profile?.isVerified == true
                                 )
                                 .padding(.horizontal, 12)
                                 .padding(.top, 8)

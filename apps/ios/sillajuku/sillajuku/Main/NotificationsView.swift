@@ -361,6 +361,8 @@ struct AlbumPostDetailView: View {
     @State private var likesCount = 0
     @State private var commentsCount = 0
     @State private var isLiked = false
+    @State private var myHandle: String? = nil
+    @State private var myVerified = false
 
     var body: some View {
         Group {
@@ -374,7 +376,9 @@ struct AlbumPostDetailView: View {
                         commentsCount: commentsCount,
                         instinctAlbumCount: totalRatingsCount,
                         isLiked: isLiked,
-                        onLike: toggleLike
+                        onLike: toggleLike,
+                        headerHandle: myHandle,
+                        headerVerified: myVerified
                     )
                     .padding(.horizontal, 12)
                     .padding(.top, 12)
@@ -405,6 +409,21 @@ struct AlbumPostDetailView: View {
             .single()
             .execute()
             .value
+
+        // These single-post screens always show one of the signed-in user's own
+        // ratings (see the comment on AlbumPostDestination), so the card header
+        // is the user's own handle.
+        struct MyProfile: Decodable {
+            let username: String?
+            let isVerified: Bool?
+            enum CodingKeys: String, CodingKey { case username; case isVerified = "is_verified" }
+        }
+        if let p: MyProfile = try? await supabase.from("profiles")
+            .select("username, is_verified").eq("id", value: userId)
+            .single().execute().value {
+            myHandle = p.username
+            myVerified = p.isVerified == true
+        }
 
         if let r = try? await supabase.from("ratings").select("*", count: .exact)
             .eq("user_id", value: userId).execute() {
@@ -468,6 +487,8 @@ struct SongPostDetailView: View {
     @State private var likesCount = 0
     @State private var commentsCount = 0
     @State private var isLiked = false
+    @State private var myHandle: String? = nil
+    @State private var myVerified = false
 
     var body: some View {
         Group {
@@ -481,7 +502,9 @@ struct SongPostDetailView: View {
                         likesCount: likesCount,
                         commentsCount: commentsCount,
                         isLiked: isLiked,
-                        onLike: toggleLike
+                        onLike: toggleLike,
+                        headerHandle: myHandle,
+                        headerVerified: myVerified
                     )
                     .padding(.horizontal, 12)
                     .padding(.top, 12)
@@ -578,6 +601,19 @@ struct SongPostDetailView: View {
             ratingId: raw.id, recordingId: raw.recordingId, score: raw.score, eloScore: raw.eloScore,
             reviewText: raw.reviewText, trackTitle: raw.recordings.title, release: ref, createdAt: raw.createdAt
         )
+
+        // Own-post header identity (see AlbumPostDetailView's matching fetch).
+        struct MyProfile: Decodable {
+            let username: String?
+            let isVerified: Bool?
+            enum CodingKeys: String, CodingKey { case username; case isVerified = "is_verified" }
+        }
+        if let p: MyProfile = try? await supabase.from("profiles")
+            .select("username, is_verified").eq("id", value: userId)
+            .single().execute().value {
+            myHandle = p.username
+            myVerified = p.isVerified == true
+        }
 
         if let r = try? await supabase.from("track_ratings").select("*", count: .exact)
             .eq("user_id", value: userId).execute() {

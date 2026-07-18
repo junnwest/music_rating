@@ -35,8 +35,32 @@ export function isPredominantlyHangul(s: string | null | undefined): boolean {
   return hangul / letters > 0.5;
 }
 
-/** Show the native value only when it's actually Hangul; else the Latin value. */
+// Current UI language, set by the LanguageProvider during render (module-level
+// so the dozens of displayName call sites don't all need a lang parameter).
+// Stays 'en' on the server — API routes that intentionally want the old
+// unconditional-Hangul behavior use preferHangulName below instead.
+let displayLang: 'en' | 'ko' = 'en';
+
+export function setDisplayLanguage(lang: 'en' | 'ko') {
+  displayLang = lang;
+}
+
+/**
+ * Show the native value only in Korean mode — and only when it's actually
+ * Hangul; else the Latin value. English mode always shows the Latin name
+ * (SHINee, not 샤이니). iOS still prefers Hangul unconditionally — flagged
+ * as a parity gap when this was fixed (2026-07-16).
+ */
 export function displayName(latin: string, native?: string | null): string {
+  return displayLang === 'ko' && native && isPredominantlyHangul(native) ? native : latin;
+}
+
+/**
+ * The pre-2026-07-16 displayName semantics: prefer Hangul regardless of UI
+ * language. Kept for /api/taste/profile, whose cached payload is also consumed
+ * by iOS — its output must not change with the web UI language.
+ */
+export function preferHangulName(latin: string, native?: string | null): string {
   return native && isPredominantlyHangul(native) ? native : latin;
 }
 

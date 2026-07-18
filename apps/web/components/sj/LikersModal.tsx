@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Heart } from 'lucide-react';
+import Avatar from './Avatar';
 import Modal from './Modal';
 import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
@@ -10,7 +11,12 @@ import { profileHandle } from '../../lib/sj/data';
 
 interface LikerRow {
   user_id: string;
-  profiles: { id: string; username: string | null; display_name: string | null } | null;
+  profiles: {
+    id: string;
+    username: string | null;
+    display_name: string | null;
+    avatar_url: string | null;
+  } | null;
 }
 
 /** Who liked a rating — mirrors iOS LikersSheetView. */
@@ -32,7 +38,7 @@ export default function LikersModal({
     setLoading(true);
     supabase
       .from('rating_likes')
-      .select('user_id, profiles!rating_likes_user_id_fkey(id, username, display_name)')
+      .select('user_id, profiles!rating_likes_user_id_fkey(id, username, display_name, avatar_url)')
       .eq('rating_id', ratingId)
       .then(({ data }) => {
         setLikers((data as unknown as LikerRow[] | null) ?? []);
@@ -64,9 +70,7 @@ export default function LikersModal({
                 onClick={onClose}
                 className="flex items-center gap-3 px-5 py-3 hover:bg-surface transition"
               >
-                <span className="flex w-8 h-8 rounded-full bg-accent-soft text-accent-deep items-center justify-center text-[12px] font-bold">
-                  {profileHandle(liker.profiles).slice(0, 1).toUpperCase()}
-                </span>
+                <Avatar url={liker.profiles?.avatar_url} size={32} />
                 <span className="text-[14px] font-semibold text-ink">
                   @{profileHandle(liker.profiles)}
                 </span>

@@ -237,9 +237,23 @@ private struct QuestTimeline: View {
     let items: [QuestTimelineItem]
 
     var body: some View {
-        VStack(spacing: 0) {
+        // chainDone[i] is true only when every item from 0...i is done -- an unbroken completed
+        // streak reaching back to the very first item, not just "this one item happens to be
+        // done". The line BELOW item i connects it to item i+1, so it needs the chain to still
+        // be unbroken THROUGH i+1, not just through i -- otherwise the last completed item's
+        // own line reads as connected even when the very next (incomplete) item breaks the
+        // chain right there (confirmed live: all of Set Profile Picture...Connect Phone Number
+        // done colored every line blue including the one leading into the not-yet-done Invite a
+        // Friend, since that line only checked Connect Phone Number's own chain state).
+        var runningDone = true
+        let chainDone: [Bool] = items.map { item in
+            runningDone = runningDone && item.isDone
+            return runningDone
+        }
+        return VStack(spacing: 0) {
             ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                QuestTimelineRow(item: item, isLast: index == items.count - 1)
+                let lineDone = index + 1 < chainDone.count ? chainDone[index + 1] : chainDone[index]
+                QuestTimelineRow(item: item, isLast: index == items.count - 1, isChainDone: lineDone)
             }
         }
     }
@@ -248,6 +262,7 @@ private struct QuestTimeline: View {
 private struct QuestTimelineRow: View {
     let item: QuestTimelineItem
     let isLast: Bool
+    let isChainDone: Bool
 
     @State private var showRewardInfo = false
     private let dotSize: CGFloat = 22
@@ -269,7 +284,7 @@ private struct QuestTimelineRow: View {
 
                 if !isLast {
                     Rectangle()
-                        .fill(item.isDone ? Color.sjBlue : Color.sjBorder)
+                        .fill(isChainDone ? Color.sjBlue : Color.sjBorder)
                         .frame(width: 2)
                         .frame(maxHeight: .infinity)
                 }

@@ -1,5 +1,30 @@
 # Web Parity Checklist
 
+## Current parity queue (2026-07-16 — iOS→web items from the rated-state/rating-UX session)
+
+Done that day: Split column (album page), Quick Add page + `/search` banner, `FlowerRatingRow`
+component, "Add to a list"→"Add to a Mix" wording, English-mode Hangul-name fix (web-only so far).
+Still open, roughly in priority order:
+
+1. **`ManualRateModal` slider → draggable flowers.** iOS's manual rating modals (album + track) now
+   use the 5-flower drag control with the numeric readout kept for 0.1 steps. Web's modal still uses
+   `<input type=range>`. `components/sj/FlowerRatingRow.tsx` already exists (supports `step` +
+   `onLiveChange`) — small swap inside `ManualRateModal.tsx`.
+2. **Album/song page rated state as a post card with ⋯ menu.** iOS renders the user's own rating as
+   the regular post card under "Your Rating" with a top-right menu (Share / Edit / Add to Mix /
+   Edit Comment / Delete; songs omit Share+Mix). Web album page still shows `InlineRatingEditor` +
+   an autosaving comment textarea.
+3. **Dedicated Edit Comment modal.** iOS added `CommentEditSheet` (header + editor + Save, no mix
+   row). Web's `PostRatingOptions` is still the combined comment+mix sheet. Ties into item 2.
+4. **Profile post-card header consistency.** iOS profile/song/post-detail cards now carry the
+   FeedCard-style header (avatar + @handle + verified + time). Web's profile card layout has NOT
+   been audited against its FeedCard — check and align.
+5. **Reverse-parity (web→iOS): English-mode Hangul names.** Web now gates native names on UI
+   language; iOS still prefers Hangul unconditionally (`Release.swift` displayTitle/displayArtist)
+   and shows it inconsistently (only on surfaces that join `name_native`). Awaiting user decision.
+6. **iOS ko strings for Quick Add** ("Quick Add", "Setting up?", banner copy, mode-gate alert,
+   empty state) are missing in `Localizable.xcstrings`; web's `sj.quickAdd.*` ko copy can be reused.
+
 > **✅ SUPERSEDED (2026-07-06):** the web reconstruction session rebuilt `apps/web` against the *current*
 > iOS app and schema, which covers (and in places supersedes) everything below — §1 OAuth-only login ✅,
 > §2 onboarding ✅ (current iOS steps: name → username → rating mode → notifications; the Google-only

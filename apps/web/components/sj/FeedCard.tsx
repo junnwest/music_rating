@@ -11,6 +11,7 @@ import {
   Flag,
   Ban,
 } from 'lucide-react';
+import Avatar from './Avatar';
 import Cover from './Cover';
 import ScoreBadge from './ScoreBadge';
 import CommentsModal from './CommentsModal';
@@ -94,9 +95,7 @@ export default function FeedCard({
           href={isOwn ? '/profile' : `/profile/${item.profiles?.username ?? ''}`}
           className="flex items-center gap-2 min-w-0 group"
         >
-          <span className="flex w-[30px] h-[30px] rounded-full bg-accent-soft text-accent-deep items-center justify-center text-[12px] font-bold shrink-0">
-            {handle.slice(0, 1).toUpperCase()}
-          </span>
+          <Avatar url={null} size={30} />
           <span className="text-[13.5px] font-semibold text-ink truncate group-hover:underline">
             @{handle}
           </span>

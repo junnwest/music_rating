@@ -382,7 +382,7 @@ struct SettingsView: View {
     private var deleteAccountSheet: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 16) {
-                Text("This will permanently delete your account and all your data — ratings, reviews, lists, and followers. This cannot be undone.")
+                Text("This will permanently delete your account and all your data — ratings, reviews, mixes, and followers. This cannot be undone.")
                     .font(.system(size: 14))
                     .foregroundStyle(Color.sjMuted)
 

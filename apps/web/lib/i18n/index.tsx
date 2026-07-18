@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import en from './en';
 import ko from './ko';
 import type { Translations } from './en';
+import { setDisplayLanguage } from '../sj/display';
 
 export type Lang = 'en' | 'ko';
 
@@ -33,6 +34,11 @@ function browserLang(): Lang {
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>('en');
+
+  // Set during render, not in an effect, so children rendering in this same
+  // pass (which call displayName) already see the right language — an effect
+  // would lag one render behind on language switch.
+  setDisplayLanguage(lang);
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY) as Lang | null;

@@ -8,7 +8,6 @@ import Cover from '../../../components/sj/Cover';
 import ManualRateModal from '../../../components/sj/ManualRateModal';
 import InstinctModal from '../../../components/sj/InstinctModal';
 import FlowerRateControl from '../../../components/sj/FlowerRateControl';
-import FlowerGlyph from '../../../components/sj/FlowerGlyph';
 import { useSession } from '../../../components/sj/SessionContext';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
@@ -269,12 +268,30 @@ function SearchPageInner() {
           onRate={quickRate}
         />
       ) : (
-        <Discovery
-          ratedIds={ratedIds}
-          sessionRatedIds={sessionRatedIds}
-          onAdd={addRelease}
-          onRate={quickRate}
-        />
+        <>
+          {/* Quick Add entry banner — mirrors iOS SearchView's quickAddBanner.
+              Manual-mode gating happens on the Quick Add page itself. */}
+          {userId && (
+            <div className="flex items-center gap-3 mt-4 p-3 rounded-2xl bg-surface border border-divider/60">
+              <div className="min-w-0 flex-1">
+                <p className="text-[15px] font-bold text-ink">{t('sj.quickAdd.settingUp')}</p>
+                <p className="text-[12px] text-muted truncate">{t('sj.quickAdd.bannerBody')}</p>
+              </div>
+              <Link
+                href="/quick-add"
+                className="shrink-0 px-3.5 py-2 rounded-full bg-ink text-page text-[13.5px] font-semibold hover:opacity-85 transition"
+              >
+                {t('sj.quickAdd.title')}
+              </Link>
+            </div>
+          )}
+          <Discovery
+            ratedIds={ratedIds}
+            sessionRatedIds={sessionRatedIds}
+            onAdd={addRelease}
+            onRate={quickRate}
+          />
+        </>
       )}
 
       {manualTarget && (
@@ -628,21 +645,6 @@ function Discovery({
 
   return (
     <div className="mt-8 space-y-9 pb-10">
-      {/* Quick Add entry — rate albums you already know, fast */}
-      <Link
-        href="/quick-add"
-        className="flex items-center gap-3 rounded-2xl bg-accent-soft/70 border border-accent/15 px-4 py-3.5 hover:bg-accent-soft transition"
-      >
-        <span className="flex w-9 h-9 rounded-full bg-white items-center justify-center shadow-sm shrink-0 text-accent">
-          <FlowerGlyph size={18} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[14px] font-bold text-ink">{t('sj.quickAdd.entryTitle')}</span>
-          <span className="block text-[12.5px] text-muted truncate">{t('sj.quickAdd.entrySub')}</span>
-        </span>
-        <ChevronRight size={16} className="text-accent shrink-0" />
-      </Link>
-
       {sections.map(({ title, albums }) => (
         <section key={title}>
           <h2 className="text-[19px] font-bold text-ink mb-3">{title}</h2>

@@ -1,20 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { CheckCircle2 } from 'lucide-react';
 import Cover from '../../../components/sj/Cover';
-import ScoreBadge from '../../../components/sj/ScoreBadge';
-import FlowerRateControl from '../../../components/sj/FlowerRateControl';
-import ManualRateModal from '../../../components/sj/ManualRateModal';
+import FlowerRatingRow from '../../../components/sj/FlowerRatingRow';
 import { useSession } from '../../../components/sj/SessionContext';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
 import { displayName } from '../../../lib/sj/display';
-import type { SJRelease } from '../../../lib/sj/data';
 
 const PAGE_SIZE = 20;
-
-type Mode = 'albums' | 'songs';
 
 interface AlbumCandidate {
   id: string;
@@ -26,123 +22,120 @@ interface AlbumCandidate {
 }
 
 interface SongCandidate {
-  id: string; // recording id
+  id: string; // recordings.id
   title: string;
   artist_display: string;
   cover_url: string | null;
   album_title: string;
 }
 
-/** A precise-rating target handed to ManualRateModal (drag = quick; tap = precise). */
-type Target =
-  | { kind: 'album'; release: SJRelease }
-  | { kind: 'song'; recordingId: string; title: string; release: SJRelease };
-
 /**
- * Quick Add — the web counterpart of iOS's QuickAddView. Its whole purpose is
- * albums (and songs) the user has *probably already heard* — seeded from their
- * Spotify top/recent artists and their own highly-rated artists — so they can
- * rate fast from memory. Backed by get_quick_add_candidates /
- * get_quick_add_song_candidates (already-rated releases excluded in SQL,
- * prestige-ordered so the artist's known work leads). Rate by dragging the
- * flower; tap it for the precise slider.
+ * Quick Add — web port of iOS QuickAddView: candidate albums/songs from artists
+ * the user probably knows (Spotify taste + own rated-artist history), each rated
+ * in place by dragging across five flowers. Just-rated rows keep the editable
+ * flower row (filled at the committed score) so a slip can be fixed immediately;
+ * the server-side NOT EXISTS exclusion drops them on the next fresh load.
  */
 export default function QuickAddPage() {
   const { t } = useLanguage();
-  const { userId, ready } = useSession();
-
-  const [seeds, setSeeds] = useState<string[] | null>(null);
-  const [mode, setMode] = useState<Mode>('albums');
+  const { userId, profile } = useSession();
+  const [mode, setMode] = useState<'albums' | 'songs'>('albums');
   const [albums, setAlbums] = useState<AlbumCandidate[]>([]);
   const [songs, setSongs] = useState<SongCandidate[]>([]);
-  const [albumDone, setAlbumDone] = useState(false);
-  const [songDone, setSongDone] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [held, setHeld] = useState<Record<string, number>>({});
-  const [target, setTarget] = useState<Target | null>(null);
+  const [hasMoreAlbums, setHasMoreAlbums] = useState(true);
+  const [hasMoreSongs, setHasMoreSongs] = useState(true);
+  // Rated this session but held in place (keyed by album/song id) — mirrors
+  // iOS QuickAddViewModel.ratedScores.
+  const [ratedScores, setRatedScores] = useState<Record<string, number>>({});
+  const seedRef = useRef<string[] | null>(null);
 
-  // ── Seed assembly: artists the user very likely knows, in confidence order ──
-  useEffect(() => {
-    if (!ready || !supabase) return;
-    if (!userId) {
-      setSeeds([]);
-      setLoading(false);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      const [{ data: prof }, { data: ratedRows }] = await Promise.all([
-        supabase!
-          .from('profiles')
-          .select('spotify_artists, spotify_recently_played')
-          .eq('id', userId)
-          .maybeSingle(),
-        supabase!
-          .from('ratings')
-          .select('score, release_groups(artist_display)')
-          .eq('user_id', userId)
-          .gte('score', 3.5)
-          .order('score', { ascending: false })
-          .limit(150),
-      ]);
-      if (cancelled) return;
+  const ratingMode = profile?.rating_mode ?? 'manual';
 
-      const ordered: string[] = [];
-      const seen = new Set<string>();
-      const add = (name?: string | null) => {
-        const n = (name ?? '').trim();
-        if (!n || seen.has(n)) return;
-        seen.add(n);
-        ordered.push(n);
-      };
-      const p = prof as {
-        spotify_artists: { name?: string }[] | null;
-        spotify_recently_played: { artistName?: string }[] | null;
-      } | null;
-      for (const a of p?.spotify_artists ?? []) add(a.name);
-      for (const a of p?.spotify_recently_played ?? []) add(a.artistName);
-      for (const r of (ratedRows as { release_groups?: { artist_display?: string } }[] | null) ?? []) {
-        add(r.release_groups?.artist_display);
-      }
-      setSeeds(ordered);
-    })();
-    return () => {
-      cancelled = true;
+  /**
+   * Ordered by confidence, mirroring iOS QuickAddViewModel.init: Spotify top
+   * artists first, then Spotify recently-played, then the user's own highly-
+   * rated artist history (>= 3.5, best first). Apple Music sources are
+   * device-only and don't exist on web.
+   */
+  const buildSeed = useCallback(async (): Promise<string[]> => {
+    if (seedRef.current) return seedRef.current;
+    if (!supabase || !userId) return [];
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+    const add = (name: string | null | undefined) => {
+      if (!name) return;
+      if (seen.has(name)) return;
+      seen.add(name);
+      ordered.push(name);
     };
-  }, [ready, userId]);
+
+    const { data: prof } = await supabase
+      .from('profiles')
+      .select('spotify_artists, spotify_recently_played')
+      .eq('id', userId)
+      .maybeSingle();
+    const p = prof as {
+      spotify_artists: { name?: string }[] | null;
+      spotify_recently_played: { artistName?: string }[] | null;
+    } | null;
+    for (const a of p?.spotify_artists ?? []) add(a.name);
+    for (const a of p?.spotify_recently_played ?? []) add(a.artistName);
+
+    const { data: rated } = await supabase
+      .from('ratings')
+      .select('score, release_groups(artist_display)')
+      .eq('user_id', userId)
+      .gte('score', 3.5)
+      .order('score', { ascending: false })
+      .limit(100);
+    for (const r of (rated as { release_groups: { artist_display: string | null } | null }[] | null) ?? []) {
+      add(r.release_groups?.artist_display);
+    }
+
+    seedRef.current = ordered;
+    return ordered;
+  }, [userId]);
 
   const fetchAlbums = useCallback(
     async (offset: number): Promise<AlbumCandidate[]> => {
-      if (!supabase || !userId || !seeds || seeds.length === 0) return [];
+      if (!supabase || !userId) return [];
+      const names = await buildSeed();
+      if (!names.length) return [];
       const { data } = await supabase.rpc('get_quick_add_candidates', {
         p_user_id: userId,
-        p_artist_names: seeds,
+        p_artist_names: names,
         p_lim: PAGE_SIZE,
         p_offset: offset,
       });
-      return (data as AlbumCandidate[] | null) ?? [];
+      const page = (data as AlbumCandidate[] | null) ?? [];
+      // Only the first page shuffles — the RPC's ORDER BY must stay stable for
+      // offset paging (same reasoning as iOS fetchAlbumPage).
+      return offset === 0 ? shuffle(page) : page;
     },
-    [userId, seeds],
+    [userId, buildSeed],
   );
 
   const fetchSongs = useCallback(
     async (offset: number): Promise<SongCandidate[]> => {
-      if (!supabase || !userId || !seeds || seeds.length === 0) return [];
+      if (!supabase || !userId) return [];
+      const names = await buildSeed();
+      if (!names.length) return [];
       const { data } = await supabase.rpc('get_quick_add_song_candidates', {
         p_user_id: userId,
-        p_artist_names: seeds,
+        p_artist_names: names,
         p_lim: PAGE_SIZE,
         p_offset: offset,
       });
-      return (data as SongCandidate[] | null) ?? [];
+      const page = (data as SongCandidate[] | null) ?? [];
+      return offset === 0 ? shuffle(page) : page;
     },
-    [userId, seeds],
+    [userId, buildSeed],
   );
 
-  // Initial load once seeds are ready
   useEffect(() => {
-    if (seeds === null) return;
+    if (!userId) return;
     let cancelled = false;
     (async () => {
       setLoading(true);
@@ -150,258 +143,177 @@ export default function QuickAddPage() {
       if (cancelled) return;
       setAlbums(a);
       setSongs(s);
-      setAlbumDone(a.length < PAGE_SIZE);
-      setSongDone(s.length < PAGE_SIZE);
+      setHasMoreAlbums(a.length === PAGE_SIZE);
+      setHasMoreSongs(s.length === PAGE_SIZE);
       setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [seeds, fetchAlbums, fetchSongs]);
+  }, [userId, fetchAlbums, fetchSongs]);
 
-  const loadMore = useCallback(async () => {
+  async function loadMore() {
     if (loadingMore) return;
-    if (mode === 'albums' && albumDone) return;
-    if (mode === 'songs' && songDone) return;
     setLoadingMore(true);
     if (mode === 'albums') {
       const next = await fetchAlbums(albums.length);
       setAlbums((prev) => [...prev, ...next]);
-      setAlbumDone(next.length < PAGE_SIZE);
+      setHasMoreAlbums(next.length === PAGE_SIZE);
     } else {
       const next = await fetchSongs(songs.length);
       setSongs((prev) => [...prev, ...next]);
-      setSongDone(next.length < PAGE_SIZE);
+      setHasMoreSongs(next.length === PAGE_SIZE);
     }
     setLoadingMore(false);
-  }, [mode, loadingMore, albumDone, songDone, albums.length, songs.length, fetchAlbums, fetchSongs]);
+  }
 
-  // Infinite scroll
-  const sentinelRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = sentinelRef.current;
-    if (!el) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) loadMore();
-      },
-      { rootMargin: '400px' },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [loadMore]);
-
-  // ── Rating writes ──
-  async function rateAlbum(c: AlbumCandidate, score: number) {
+  /** Same write path as the album page's setRating (upsert; re-drags overwrite). */
+  async function rateAlbum(id: string, score: number) {
     if (!supabase || !userId) return;
-    setHeld((h) => ({ ...h, [c.id]: score }));
+    setRatedScores((prev) => ({ ...prev, [id]: score }));
     await supabase
       .from('ratings')
-      .upsert(
-        { user_id: userId, release_group_id: c.id, score },
-        { onConflict: 'user_id,release_group_id' },
-      );
+      .upsert({ user_id: userId, release_group_id: id, score }, { onConflict: 'user_id,release_group_id' });
   }
 
-  async function rateSong(c: SongCandidate, score: number) {
+  async function rateSong(id: string, score: number) {
     if (!supabase || !userId) return;
-    setHeld((h) => ({ ...h, [c.id]: score }));
+    setRatedScores((prev) => ({ ...prev, [id]: score }));
     await supabase
       .from('track_ratings')
-      .upsert(
-        { user_id: userId, recording_id: c.id, score },
-        { onConflict: 'user_id,recording_id' },
-      );
+      .upsert({ user_id: userId, recording_id: id, score }, { onConflict: 'user_id,recording_id' });
   }
 
-  async function saveTarget(score: number | null) {
-    if (!supabase || !userId || !target) return;
-    if (target.kind === 'album') {
-      if (score == null) return;
-      setHeld((h) => ({ ...h, [target.release.id]: score }));
-      await supabase
-        .from('ratings')
-        .upsert(
-          { user_id: userId, release_group_id: target.release.id, score },
-          { onConflict: 'user_id,release_group_id' },
-        );
-    } else {
-      if (score == null) return;
-      setHeld((h) => ({ ...h, [target.recordingId]: score }));
-      await supabase
-        .from('track_ratings')
-        .upsert(
-          { user_id: userId, recording_id: target.recordingId, score },
-          { onConflict: 'user_id,recording_id' },
-        );
-    }
+  if (ratingMode === 'instinct') {
+    return (
+      <main className="max-w-2xl mx-auto px-4 py-16 text-center">
+        <h1 className="text-[17px] font-semibold text-ink">{t('sj.quickAdd.title')}</h1>
+        <p className="mt-3 text-[14px] text-muted">{t('sj.quickAdd.manualOnly')}</p>
+        <Link
+          href="/settings"
+          className="inline-block mt-5 px-5 py-2.5 rounded-xl bg-accent text-white text-[14px] font-semibold hover:opacity-90 transition"
+        >
+          {t('sj.nav.settings')}
+        </Link>
+      </main>
+    );
   }
 
-  const list = mode === 'albums' ? albums : songs;
-  const done = mode === 'albums' ? albumDone : songDone;
+  const items = mode === 'albums' ? albums : songs;
+  const hasMore = mode === 'albums' ? hasMoreAlbums : hasMoreSongs;
 
   return (
-    <div className="mx-auto max-w-2xl px-4 md:px-6 py-6">
-      <header className="mb-5">
-        <h1 className="text-[22px] font-black text-ink">{t('sj.quickAdd.title')}</h1>
-        <p className="mt-1 text-[13px] text-muted">{t('sj.quickAdd.subtitle')}</p>
-      </header>
+    <main className="max-w-2xl mx-auto px-4 pb-16">
+      <h1 className="sr-only">{t('sj.quickAdd.title')}</h1>
 
-      {/* Albums / Songs toggle */}
-      <div className="flex items-center gap-6 border-b border-divider">
-        {(['albums', 'songs'] as Mode[]).map((m) => (
+      {/* Albums / Songs toggle — same style as the Rankings toggle */}
+      <div className="flex justify-center gap-7 py-3">
+        {(['albums', 'songs'] as const).map((m) => (
           <button
             key={m}
             onClick={() => setMode(m)}
-            className={`pb-2.5 -mb-px border-b-2 text-[15px] transition ${
-              mode === m
-                ? 'border-accent text-ink font-bold'
-                : 'border-transparent text-muted font-medium hover:text-ink'
+            className={`text-[17px] transition ${
+              mode === m ? 'font-bold text-ink' : 'text-muted hover:text-ink'
             }`}
           >
-            {t(m === 'albums' ? 'sj.quickAdd.albums' : 'sj.quickAdd.songs')}
+            {m === 'albums' ? t('sj.quickAdd.albums') : t('sj.quickAdd.songs')}
           </button>
         ))}
       </div>
 
       {loading ? (
-        <ul className="mt-3 divide-y divide-divider animate-pulse">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <li key={i} className="flex items-center gap-3 py-2.5">
-              <div className="w-[52px] h-[52px] rounded-lg bg-surface shrink-0" />
-              <div className="flex-1 space-y-2">
-                <div className="h-3 w-2/3 rounded bg-surface" />
-                <div className="h-2.5 w-1/3 rounded bg-surface" />
-              </div>
-            </li>
-          ))}
-        </ul>
-      ) : seeds && seeds.length === 0 ? (
-        <p className="py-20 text-center text-[13.5px] text-muted">{t('sj.quickAdd.needSeed')}</p>
-      ) : list.length === 0 ? (
-        <EmptyState />
+        <div className="py-24 text-center text-muted text-[14px]">…</div>
+      ) : items.length === 0 ? (
+        <div className="py-24 text-center">
+          <CheckCircle2 className="w-11 h-11 mx-auto text-divider" strokeWidth={1.5} />
+          <p className="mt-4 text-[17px] font-semibold text-ink">{t('sj.quickAdd.caughtUp')}</p>
+          <p className="mt-1 text-[14px] text-muted">{t('sj.quickAdd.caughtUpBody')}</p>
+        </div>
       ) : (
         <>
-          <ul className="mt-2 divide-y divide-divider">
+          <div className="rounded-2xl bg-surface border border-divider/60 divide-y divide-divider overflow-hidden">
             {mode === 'albums'
-              ? albums.map((c) => (
-                  <Row
-                    key={c.id}
-                    coverUrl={c.cover_url}
-                    title={displayName(c.title, c.native_title)}
-                    subtitle={c.artist_display}
-                    held={held[c.id]}
-                    onRate={(score) => rateAlbum(c, score)}
-                    onPrecise={() =>
-                      setTarget({
-                        kind: 'album',
-                        release: {
-                          id: c.id,
-                          title: c.title,
-                          artist: c.artist_display,
-                          coverUrl: c.cover_url,
-                          releaseType: c.release_group_type,
-                          releaseDate: null,
-                          titleNative: c.native_title,
-                          artistNative: null,
-                        },
-                      })
-                    }
+              ? albums.map((a) => (
+                  <QuickAddRow
+                    key={a.id}
+                    coverUrl={a.cover_url}
+                    href={`/album/${a.id}`}
+                    title={displayName(a.title, a.native_title)}
+                    subtitle={a.artist_display}
+                    rated={ratedScores[a.id] ?? null}
+                    onRate={(score) => rateAlbum(a.id, score)}
                   />
                 ))
-              : songs.map((c) => (
-                  <Row
-                    key={c.id}
-                    coverUrl={c.cover_url}
-                    title={c.title}
-                    subtitle={`${c.album_title} · ${c.artist_display}`}
-                    held={held[c.id]}
-                    onRate={(score) => rateSong(c, score)}
-                    onPrecise={() =>
-                      setTarget({
-                        kind: 'song',
-                        recordingId: c.id,
-                        title: c.title,
-                        release: {
-                          id: c.id,
-                          title: c.album_title,
-                          artist: c.artist_display,
-                          coverUrl: c.cover_url,
-                          releaseType: null,
-                          releaseDate: null,
-                          titleNative: null,
-                          artistNative: null,
-                        },
-                      })
-                    }
+              : songs.map((s) => (
+                  <QuickAddRow
+                    key={s.id}
+                    coverUrl={s.cover_url}
+                    href={null}
+                    title={s.title}
+                    subtitle={s.artist_display}
+                    rated={ratedScores[s.id] ?? null}
+                    onRate={(score) => rateSong(s.id, score)}
                   />
                 ))}
-          </ul>
-          {!done && <div ref={sentinelRef} className="h-10" />}
-          {loadingMore && (
-            <p className="py-4 text-center text-[12px] text-muted">…</p>
+          </div>
+          {hasMore && (
+            <button
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="mt-4 w-full py-3 rounded-xl border border-divider text-[14px] font-semibold text-ink hover:bg-surface transition disabled:opacity-50"
+            >
+              {loadingMore ? '…' : t('sj.quickAdd.loadMore')}
+            </button>
           )}
         </>
       )}
-
-      {target && (
-        <ManualRateModal
-          open
-          onClose={() => setTarget(null)}
-          release={target.release}
-          track={target.kind === 'song' ? { recordingId: target.recordingId, title: target.title } : null}
-          existingScore={null}
-          onSave={saveTarget}
-        />
-      )}
-    </div>
+    </main>
   );
 }
 
-function Row({
+function QuickAddRow({
   coverUrl,
+  href,
   title,
   subtitle,
-  held,
+  rated,
   onRate,
-  onPrecise,
 }: {
   coverUrl: string | null;
+  href: string | null;
   title: string;
   subtitle: string;
-  held?: number;
+  rated: number | null;
   onRate: (score: number) => void;
-  onPrecise: () => void;
 }) {
-  return (
-    <li className="flex items-center gap-3 py-2.5">
+  const inner = (
+    <>
       <Cover url={coverUrl} className="w-[52px] h-[52px] shrink-0" rounded="rounded-lg" />
       <div className="min-w-0 flex-1">
-        <p className="text-[14px] font-semibold text-ink truncate">{title}</p>
-        <p className="text-[12.5px] text-muted truncate">{subtitle}</p>
+        <p className="text-[15px] font-semibold text-ink truncate">{title}</p>
+        <p className="text-[13px] text-muted truncate">{subtitle}</p>
       </div>
-      {held != null ? (
-        <ScoreBadge score={held} size={34} />
+    </>
+  );
+  return (
+    <div className="flex items-center gap-3 px-4 py-2.5">
+      {href ? (
+        <Link href={href} className="flex items-center gap-3 min-w-0 flex-1 hover:opacity-80 transition">
+          {inner}
+        </Link>
       ) : (
-        <FlowerRateControl
-          ariaLabel={`Rate ${title}`}
-          onRate={onRate}
-          onRequestPrecise={onPrecise}
-          size={34}
-          className="shrink-0"
-        />
+        <div className="flex items-center gap-3 min-w-0 flex-1">{inner}</div>
       )}
-    </li>
+      <FlowerRatingRow rating={rated} onRate={onRate} label={title} />
+    </div>
   );
 }
 
-function EmptyState() {
-  const { t } = useLanguage();
-  return (
-    <div className="py-24 flex flex-col items-center gap-3 text-center">
-      <CheckCircle2 size={40} className="text-divider" />
-      <p className="text-[15px] font-semibold text-ink">{t('sj.quickAdd.empty')}</p>
-      <p className="text-[13px] text-muted max-w-xs">{t('sj.quickAdd.emptyDesc')}</p>
-    </div>
-  );
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
 }

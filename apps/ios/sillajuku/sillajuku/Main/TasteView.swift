@@ -2,56 +2,6 @@ import SwiftUI
 import Observation
 import Supabase
 
-// MARK: - Private data models
-
-private struct TasteRatingRow: Codable {
-    let score: Double?
-    let createdAt: Date
-    let releases: ReleaseEmbed?
-
-    struct ReleaseEmbed: Codable {
-        let id: UUID
-        let title: String
-        let artist: String
-        let coverUrl: String?
-        let genres: [String]?
-        let titleNative: String?
-        let primaryArtist: NativeArtistRef?
-        enum CodingKeys: String, CodingKey {
-            case id, title, genres
-            case artist       = "artist_display"
-            case coverUrl     = "cover_url"
-            case titleNative  = "native_title"
-            case primaryArtist = "artists"
-        }
-
-        var artistNative: String? { primaryArtist?.nameNative }
-        var displayTitle: String { titleNative?.isPredominantlyHangul == true ? titleNative! : title }
-        var displayArtist: String { artistNative?.isPredominantlyHangul == true ? artistNative! : artist }
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case score
-        case createdAt = "created_at"
-        case releases  = "release_groups"
-    }
-}
-
-private struct GenreStandingRow: Codable {
-    let genre: String
-    let userAvg: Double
-    let communityAvg: Double
-    let userCount: Int
-    let communityCount: Int
-    enum CodingKeys: String, CodingKey {
-        case genre
-        case userAvg        = "user_avg"
-        case communityAvg   = "community_avg"
-        case userCount      = "user_count"
-        case communityCount = "community_count"
-    }
-}
-
 // MARK: - Insight card model
 
 enum TasteInsightCard: Identifiable {
@@ -86,80 +36,67 @@ final class TasteViewModel {
     func load() async {
         guard let user = supabase.auth.currentUser else { isLoading = false; return }
 
-        let rows: [TasteRatingRow] = (try? await supabase
-            .from("ratings")
-            .select("score, created_at, release_groups(id, title, artist_display, cover_url, genres, native_title, artists!release_groups_primary_artist_id_fkey(name_native))")
-            .eq("user_id", value: user.id)
-            .execute()
-            .value) ?? []
-
-        struct SongRatingIdRow: Codable { let recordingId: UUID
-            enum CodingKeys: String, CodingKey { case recordingId = "recording_id" }
-        }
-        let songRows: [SongRatingIdRow] = (try? await supabase
-            .from("track_ratings")
-            .select("recording_id")
-            .eq("user_id", value: user.id)
-            .execute()
-            .value) ?? []
-
-        // Total ratings (any mode — manual score or Instinct/Elo) + song ratings,
-        // matching ProfileView's `totalRatings` so the unlock progress agrees with
-        // the "Rated" stat shown on the profile.
-        ratingCount = rows.count + songRows.count
-
-        let scored = rows.filter { $0.score != nil }
+        // Cheap counts only, just to decide the unlock gate -- matching ProfileView's
+        // `totalRatings` so the unlock progress agrees with the "Rated" stat on the profile.
+        // The actual card data (once unlocked) comes from web's own /api/taste/profile below,
+        // rather than a second, separately-maintained local computation.
+        let albumCount = (try? await supabase.from("ratings")
+            .select("*", head: true, count: .exact).eq("user_id", value: user.id).execute())?.count ?? 0
+        let songCount = (try? await supabase.from("track_ratings")
+            .select("*", head: true, count: .exact).eq("user_id", value: user.id).execute())?.count ?? 0
+        ratingCount = albumCount + songCount
 
         if isUnlocked {
-            var built = buildLocalCards(scored)
-
-            struct Params: Encodable { let p_user_id: UUID }
-            let standings: [GenreStandingRow] = (try? await supabase
-                .rpc("get_user_genre_standings", params: Params(p_user_id: user.id))
-                .execute()
-                .value) ?? []
-
-            if let top = standings.first {
-                built.append(.genreStanding(
-                    genre: top.genre,
-                    userAvg: top.userAvg,
-                    communityAvg: top.communityAvg,
-                    userCount: top.userCount
-                ))
-            }
-
-            cards = built
+            cards = await buildCards()
         }
 
         isLoading = false
     }
 
-    private func buildLocalCards(_ rows: [TasteRatingRow]) -> [TasteInsightCard] {
+    // Calls web's own /api/taste/profile directly (same taste-vector/genre-embedding algorithm
+    // web's Taste page uses) instead of the old single get_user_genre_standings RPC call + local
+    // top-album/activity-month computation -- one algorithm, one source of truth. Web's Taste page
+    // itself was rebuilt into a full chart-based report (2026-07-13, dropping the MBTI-style
+    // 4-letter type this session's iOS work originally targeted) -- that chart UI is out of scope
+    // here (this session's "algorithm only, keep the existing card-reel UI" decision), so iOS
+    // keeps its original 4-card shape, just sourced from the shared API's still-present fields
+    // (stats.fiveStars/albumRatingCount for the rating-style card, charts.timeline for activity,
+    // standings for genre DNA) instead of ad hoc local computation.
+    private func buildCards() async -> [TasteInsightCard] {
+        guard let resp: TasteProfileResponse = await WebAPI.get(
+            "/api/taste/profile", authed: true, query: ["refresh": "1"]
+        ) else { return [] }
+
         var result: [TasteInsightCard] = []
 
-        // Top album by score
-        if let top = rows.max(by: { ($0.score ?? 0) < ($1.score ?? 0) }),
-           let rel = top.releases,
-           let score = top.score {
+        if let top = resp.topAlbum {
             result.append(.topAlbum(
-                releaseId: rel.id, title: rel.displayTitle,
-                artist: rel.displayArtist, coverUrl: rel.coverUrl, score: score
+                releaseId: top.id, title: top.title, artist: top.artist,
+                coverUrl: top.coverUrl, score: top.score
             ))
         }
 
-        // Most active month (all-time)
-        let byMonth = Dictionary(grouping: rows) {
-            Calendar.current.component(.month, from: $0.createdAt)
-        }.mapValues { $0.count }
-        if let peak = byMonth.max(by: { $0.value < $1.value }) {
-            let name = Calendar.current.monthSymbols[peak.key - 1]
-            let all  = (1...12).map { (month: $0, count: byMonth[$0] ?? 0) }
-            result.append(.activityPeak(monthName: name, count: peak.value, allMonths: all))
+        // timeline is a rolling 12-month window ("YYYY-MM", oldest first), not fixed Jan-Dec --
+        // extract each entry's real calendar month for ActivityCard's existing shortNames lookup,
+        // keeping the array in the API's own chronological order.
+        if let peakIndex = resp.charts.peakMonthIndex, resp.charts.timeline.indices.contains(peakIndex) {
+            let peak = resp.charts.timeline[peakIndex]
+            func calendarMonth(_ yyyymm: String) -> Int {
+                Int(yyyymm.suffix(2)) ?? 1
+            }
+            let name = Calendar.current.monthSymbols[calendarMonth(peak.month) - 1]
+            let allMonths = resp.charts.timeline.map { (month: calendarMonth($0.month), count: $0.count) }
+            result.append(.activityPeak(monthName: name, count: peak.count, allMonths: allMonths))
         }
 
-        // Rating style
-        let fiveStars = rows.filter { $0.score == 5.0 }.count
-        result.append(.ratingStyle(fiveStarCount: fiveStars, totalCount: rows.count))
+        result.append(.ratingStyle(fiveStarCount: resp.stats.fiveStars, totalCount: resp.albumRatingCount))
+
+        for standing in resp.standings.prefix(3) {
+            result.append(.genreStanding(
+                genre: standing.genre, userAvg: standing.userAvg,
+                communityAvg: standing.communityAvg, userCount: standing.userCount
+            ))
+        }
 
         return result
     }

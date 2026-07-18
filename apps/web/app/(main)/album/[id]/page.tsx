@@ -12,6 +12,7 @@ import {
   ListMusic,
   ListPlus,
 } from 'lucide-react';
+import Avatar from '../../../../components/sj/Avatar';
 import Cover from '../../../../components/sj/Cover';
 import FlowerGlyph from '../../../../components/sj/FlowerGlyph';
 import ManualRateModal from '../../../../components/sj/ManualRateModal';
@@ -82,6 +83,7 @@ export default function AlbumPage() {
   const [trackRatings, setTrackRatings] = useState<Record<string, number>>({});
   const [eloRatedTracks, setEloRatedTracks] = useState<Set<string>>(new Set());
   const [communityAvg, setCommunityAvg] = useState<number | null>(null);
+  const [communitySD, setCommunitySD] = useState<number | null>(null);
   const [communityCount, setCommunityCount] = useState(0);
   const [scoreDist, setScoreDist] = useState<number[]>([]);
   const [userScore, setUserScore] = useState<number | null>(null);
@@ -121,6 +123,15 @@ export default function AlbumPage() {
       .map((r) => (r.score != null ? r.score : r.elo_score != null ? eloToScore(r.elo_score) : null))
       .filter((s): s is number => s != null);
     setCommunityAvg(scored.length ? scored.reduce((a, b) => a + b, 0) / scored.length : null);
+    // "Split" (편차): population SD of the same scored array as the average.
+    // Nil below 3 scores, where a deviation is statistically meaningless.
+    if (scored.length >= 3) {
+      const mean = scored.reduce((a, b) => a + b, 0) / scored.length;
+      const variance = scored.reduce((a, b) => a + (b - mean) * (b - mean), 0) / scored.length;
+      setCommunitySD(Math.sqrt(variance));
+    } else {
+      setCommunitySD(null);
+    }
     // Distribution: ten 0.5-wide buckets (0.5 … 5.0)
     const dist = new Array(10).fill(0) as number[];
     for (const s of scored) {
@@ -560,21 +571,26 @@ export default function AlbumPage() {
           )}
 
           {communityCount > 0 && (
+            /* Three equal columns: Avg | Ratings | Split (±population SD; "—" under 3 scores) */
             <div className="flex gap-2.5 mt-4">
-              {communityAvg != null && (
-                <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-[10px] bg-page border border-divider">
-                  <FlowerGlyph size={12} className="text-accent" />
-                  <div>
-                    <p className="text-[15px] font-bold text-ink leading-tight">
-                      {communityAvg.toFixed(1)}
-                    </p>
-                    <p className="text-[10px] text-muted">{t('sj.album.communityAvg')}</p>
-                  </div>
+              <div className="flex flex-1 items-center gap-2 px-3.5 py-2.5 rounded-[10px] bg-page border border-divider">
+                <FlowerGlyph size={12} className="text-accent shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-[15px] font-bold text-ink leading-tight">
+                    {communityAvg != null ? communityAvg.toFixed(1) : '—'}
+                  </p>
+                  <p className="text-[10px] text-muted truncate">{t('sj.album.communityAvg')}</p>
                 </div>
-              )}
-              <div className="px-3.5 py-2.5 rounded-[10px] bg-page border border-divider">
+              </div>
+              <div className="flex-1 px-3.5 py-2.5 rounded-[10px] bg-page border border-divider">
                 <p className="text-[15px] font-bold text-ink leading-tight">{communityCount}</p>
-                <p className="text-[10px] text-muted">{t('sj.album.ratings')}</p>
+                <p className="text-[10px] text-muted truncate">{t('sj.album.ratings')}</p>
+              </div>
+              <div className="flex-1 px-3.5 py-2.5 rounded-[10px] bg-page border border-divider">
+                <p className="text-[15px] font-bold text-ink leading-tight">
+                  {communitySD != null ? `±${communitySD.toFixed(1)}` : '—'}
+                </p>
+                <p className="text-[10px] text-muted truncate">{t('sj.album.split')}</p>
               </div>
             </div>
           )}
@@ -669,9 +685,7 @@ export default function AlbumPage() {
                         href={`/profile/${post.profiles?.username ?? ''}`}
                         className="flex items-center gap-3 min-w-0 flex-1 group"
                       >
-                        <span className="flex w-8 h-8 rounded-full bg-accent-soft text-accent-deep items-center justify-center text-[12px] font-bold shrink-0">
-                          {handle.slice(0, 1).toUpperCase()}
-                        </span>
+                        <Avatar url={null} size={32} />
                         <span className="min-w-0">
                           <span className="block text-[13px] font-medium text-ink truncate group-hover:underline">
                             @{handle}
