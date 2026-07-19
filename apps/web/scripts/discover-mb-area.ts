@@ -11,48 +11,67 @@
  *   npx tsx --env-file=.env.local scripts/discover-mb-area.ts --country=KR --tag="hip hop"
  *   npx tsx --env-file=.env.local scripts/discover-mb-area.ts --country=KR --limit=5000
  *
+ * --area catches the residual `country`-UNSET artists: MB tags many underground acts only with a
+ * CITY area (e.g. 민수 → area:Seoul, country blank), which `country:KR` misses entirely. Pass one or
+ * more (comma-separated, OR'd) area names to sweep them (dedup vs already-queued is automatic):
+ *   npx tsx --env-file=.env.local scripts/discover-mb-area.ts --area="Seoul,Busan,Incheon" --dry-run
+ *
  * Discovery itself is fast (100 artists/request); ingestion is the slow part, so it's fine to be
  * generous. Hits MusicBrainz (~1 req/s) — run during a pipeline pause, or accept brief contention.
  */
-import { getDB } from './itunes-ingest-core';
+import { getDB, type DB } from './itunes-ingest-core';
 import { searchArtistsByQuery } from './mb-client';
 import { SPECIAL_MBIDS } from './mb-ingest';
 
-const args = process.argv.slice(2);
-const DRY = args.includes('--dry-run');
-const arg = (f: string) => args.find(a => a.startsWith(`${f}=`))?.split('=').slice(1).join('=');
-const COUNTRY = arg('--country') ?? 'KR';
-const TAG = arg('--tag') ?? null;
-const TYPE = arg('--type') ?? null;               // 'group' | 'person' (optional)
-const LIMIT = arg('--limit') ? parseInt(arg('--limit')!, 10) : Infinity;
+export interface AreaDiscoverOpts {
+  country?: string | null;   // e.g. 'KR' (ignored when `area` is set)
+  area?: string | null;      // comma-separated city/area names, OR'd — catches country-null artists
+  tag?: string | null;
+  type?: string | null;      // 'group' | 'person'
+  limit?: number;
+  dryRun?: boolean;
+  log?: (m: string) => void; // route output (console for CLI, lane logger for the pipeline)
+}
+export interface AreaDiscoverResult { query: string; found: number; queued: number; skipHave: number; skipQueued: number }
 
-function buildQuery(): string {
-  const parts = [`country:${COUNTRY}`];
-  if (TAG) parts.push(`tag:"${TAG}"`);
-  if (TYPE) parts.push(`type:${TYPE}`);
+function buildQuery(o: AreaDiscoverOpts): string {
+  // area overrides country: catches artists MB tagged by city with no country (the residual gap).
+  const scope = o.area
+    ? `(${o.area.split(',').map(a => `area:"${a.trim()}"`).join(' OR ')})`
+    : `country:${o.country ?? 'KR'}`;
+  const parts = [scope];
+  if (o.tag) parts.push(`tag:"${o.tag}"`);
+  if (o.type) parts.push(`type:${o.type}`);
   return parts.join(' AND ');
 }
 
-async function main() {
-  const db = getDB();
-  const query = buildQuery();
+/**
+ * Sweep MB for artists in a country/area and QUEUE (source='mbid') any we don't already have or
+ * haven't queued. ONE implementation shared by the CLI and the pipeline `area` lane. Idempotent
+ * (dedup vs catalog + queue), so a re-run queues only what's genuinely new. Throws on a real DB
+ * error (never process.exit) so the lane supervisor can react.
+ */
+export async function discoverArea(db: DB, o: AreaDiscoverOpts): Promise<AreaDiscoverResult> {
+  const log = o.log ?? (() => {});
+  const limit = o.limit ?? Infinity;
+  const query = buildQuery(o);
 
   // Page MB, collecting (mbid, name). MBID is authoritative — no name resolution.
   const found = new Map<string, string>(); // mbid → name
   const PER = 100;
-  let total = 0;
   for (let offset = 0; ; offset += PER) {
     const page = await searchArtistsByQuery(query, PER, offset);
-    total = page.count;
+    const total = page.count;
     if (!page.artists.length) break;
     for (const a of page.artists) {
       if (!SPECIAL_MBIDS.has(a.id)) found.set(a.id, a.name);
-      if (found.size >= LIMIT) break;
+      if (found.size >= limit) break;
     }
-    process.stdout.write(`\r  fetched ${Math.min(offset + PER, total)}/${total}  (kept ${found.size})   `);
-    if (found.size >= LIMIT || offset + PER >= total) break;
+    if (offset % 2000 === 0 || found.size >= limit || offset + PER >= total)
+      log(`fetched ${Math.min(offset + PER, total)}/${total} (kept ${found.size})`);
+    if (found.size >= limit || offset + PER >= total) break;
   }
-  console.log(`\n[discover-mb-area] query="${query}" → ${found.size} artists`);
+  log(`query="${query}" → ${found.size} artists`);
 
   // Skip MBIDs already in the catalog (any ingest state) or already queued as 'mbid'.
   const mbids = [...found.keys()];
@@ -80,16 +99,42 @@ async function main() {
     rows.push({ name: n, source: 'mbid', source_id: mbid, status: 'pending' });
   }
 
-  console.log(`[discover-mb-area] to queue: ${rows.length}  (skipped ${skipHave} already-in-catalog, ${skipQueued} already-queued)${DRY ? '  [DRY RUN]' : ''}`);
-  if (DRY) { console.log('  sample:', rows.slice(0, 12).map(r => r.name).join(', ')); return; }
+  log(`to queue: ${rows.length} (skipped ${skipHave} already-in-catalog, ${skipQueued} already-queued)${o.dryRun ? ' [DRY RUN]' : ''}`);
+  if (o.dryRun) {
+    log('sample: ' + rows.slice(0, 12).map(r => r.name).join(', '));
+    return { query, found: found.size, queued: 0, skipHave, skipQueued };
+  }
 
   for (let i = 0; i < rows.length; i += 500) {
     const { error } = await db.from('artist_ingestion_queue')
       .upsert(rows.slice(i, i + 500), { onConflict: 'name,source', ignoreDuplicates: true });
-    if (error) { console.error(`  ! batch ${i}: ${error.message}`); process.exit(1); }
+    if (error) throw new Error(`queue upsert batch ${i}: ${error.message}`);
   }
-  const { count } = await db.from('artist_ingestion_queue')
-    .select('id', { count: 'exact', head: true }).eq('source', 'mbid').eq('status', 'pending');
-  console.log(`[discover-mb-area] queued ${rows.length}. Total source='mbid' pending: ${count}.`);
+  return { query, found: found.size, queued: rows.length, skipHave, skipQueued };
 }
-main().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); });
+
+// ── CLI ─────────────────────────────────────────────────────────────────────────
+async function main() {
+  const args = process.argv.slice(2);
+  const arg = (f: string) => args.find(a => a.startsWith(`${f}=`))?.split('=').slice(1).join('=');
+  const db = getDB();
+  const r = await discoverArea(db, {
+    country: arg('--country') ?? 'KR',
+    area: arg('--area') ?? null,
+    tag: arg('--tag') ?? null,
+    type: arg('--type') ?? null,
+    limit: arg('--limit') ? parseInt(arg('--limit')!, 10) : undefined,
+    dryRun: args.includes('--dry-run'),
+    log: (m) => console.log('[discover-mb-area] ' + m),
+  });
+  if (!args.includes('--dry-run')) {
+    const { count } = await db.from('artist_ingestion_queue')
+      .select('id', { count: 'exact', head: true }).eq('source', 'mbid').eq('status', 'pending');
+    console.log(`[discover-mb-area] queued ${r.queued}. Total source='mbid' pending: ${count}.`);
+  }
+}
+
+// Only run the CLI when invoked directly (not when the pipeline lane imports discoverArea).
+if (process.argv[1]?.endsWith('discover-mb-area.ts')) {
+  main().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); });
+}
