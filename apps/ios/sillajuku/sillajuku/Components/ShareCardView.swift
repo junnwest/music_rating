@@ -95,7 +95,5 @@ struct ShareCardView: View {
                 .padding(12)
                 .opacity(0.92)
         }
-        .shadow(color: .black.opacity(0.18), radius: 18, y: 8)
-        .padding(24) // room for the shadow to render fully, not get clipped at the export bounds
     }
 }

@@ -42,6 +42,7 @@ import { mbLastActivityAt } from './mb-client';
 import { SEED } from './seed-artists';
 import { scanArtistRecency, type RecencyArtist } from './discover-itunes-recency';
 import { reconcileItunesMb } from './reconcile-itunes-mb';
+import { discoverArea } from './discover-mb-area';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -128,6 +129,19 @@ const RECENCY_STATE = path.resolve('scripts/pipeline-recency-state.json');
 const DEEZER_FALLBACK = process.env.DEEZER_FALLBACK === '1';
 const DEEZER_BATCH    = envInt('DEEZER_BATCH', 5);
 const DEEZER_POLL_MS  = envInt('DEEZER_POLL_MS', 1_800_000); // 30m idle cadence
+
+// ── AREA discovery lane (MB country/area sweep) — keeps KR coverage tracking MusicBrainz over ──
+// time so newly-catalogued artists get queued without a manual re-run (the gap that let 민수/음율/
+// miiro slip through). Idempotent (queues only genuinely-new MBIDs) + INFREQUENT: a full sweep pages
+// ~15k artists at MB's ~1 req/s (~4m of MB calls), so it runs at most weekly and is gated by a
+// persisted last-run timestamp (survives restarts — a plain sleep-first loop would never fire on a
+// pipeline that restarts more often than the interval). ON by default; AREA_DISCOVERY=0 disables.
+const AREA_DISCOVERY = process.env.AREA_DISCOVERY !== '0';
+const AREA_COUNTRY   = process.env.AREA_DISCOVERY_COUNTRY ?? 'KR';
+const AREA_CITIES    = process.env.AREA_DISCOVERY_CITIES ?? 'Seoul,Busan,Incheon,Daegu,Gwangju,Daejeon'; // country-null residual
+const AREA_INTERVAL_MS = envInt('AREA_DISCOVERY_INTERVAL_MS', 604_800_000); // run at most once a week
+const AREA_CHECK_MS  = envInt('AREA_DISCOVERY_CHECK_MS', 3_600_000);        // re-check the due-gate hourly
+const AREA_STATE = path.resolve('scripts/pipeline-area-state.json');
 
 function sleep(ms: number) { return new Promise<void>(r => setTimeout(r, ms)); }
 const now = () => new Date().toISOString();
@@ -556,6 +570,41 @@ async function reconcileLoop(db: DB) {
   }
 }
 
+// ── AREA lane: re-sweep MB for KR (country + city areas) at most weekly, queuing genuinely-new
+// artists (source='mbid') so coverage self-maintains. Timestamp-gated (persisted) so it fires ~weekly
+// regardless of restart cadence, and so it does NOT redundantly re-page MB on every pipeline start. ──
+function areaCursor(): number { try { return Date.parse(JSON.parse(fs.readFileSync(AREA_STATE, 'utf8')).lastRunAt) || 0; } catch { return 0; } }
+function saveAreaCursor() { try { fs.writeFileSync(AREA_STATE, JSON.stringify({ lastRunAt: now() })); } catch { /* best-effort */ } }
+
+async function areaLoop(db: DB) {
+  if (!AREA_DISCOVERY) { await beat(db, 'area', { status: 'off', last_active: now() }); return; }
+  let queuedTotal = 0, errs = 0;
+  for (;;) {
+    try {
+      const dueIn = AREA_INTERVAL_MS - (Date.now() - areaCursor());
+      if (dueIn > 0) { // not due yet — idle-beat and re-check the gate later
+        await beat(db, 'area', { status: 'idle', last_active: now(), items_done: queuedTotal, current_item: `next sweep in ~${Math.round(dueIn / 3_600_000)}h` });
+        await sleep(AREA_CHECK_MS); continue;
+      }
+      await beat(db, 'area', { status: 'running', last_active: now(), current_item: 'sweeping MB…' });
+      const log = (m: string) => console.log(`  [area] ${m}`);
+      const c = await discoverArea(db, { country: AREA_COUNTRY, log });                 // country:KR (~15k)
+      const a = AREA_CITIES ? await discoverArea(db, { area: AREA_CITIES, log }) : { queued: 0 }; // country-null residual
+      const n = c.queued + a.queued;
+      queuedTotal += n;
+      saveAreaCursor(); // stamp AFTER a clean sweep so a mid-sweep crash retries next cycle
+      console.log(`  [area] swept ${AREA_COUNTRY} — queued +${n} net-new (${c.queued} country, ${a.queued} area)`);
+      await beat(db, 'area', { status: 'idle', last_active: now(), items_done: queuedTotal, current_item: `+${n} queued; next in ~${Math.round(AREA_INTERVAL_MS / 3_600_000)}h` });
+      await sleep(AREA_CHECK_MS);
+    } catch (e) {
+      errs++;
+      await beat(db, 'area', { status: 'error', last_active: now(), errors: errs, current_item: (e as Error).message.slice(0, 120) });
+      console.log(`  [area] ERROR: ${(e as Error).message}`);
+      await sleep(AREA_CHECK_MS);
+    }
+  }
+}
+
 // ── startup: reset stale 'processing' (from a prior crash) back to 'pending' ────
 async function resetStale(db: DB) {
   const { count } = await db.from('artist_ingestion_queue')
@@ -678,6 +727,7 @@ async function main() {
     supervise(db, 'deezer', deezerLoop),
     supervise(db, 'recency', recencyLoop),     // iTunes — recent KR releases MB lacks (auto but safe)
     supervise(db, 'reconcile', reconcileLoop), // link source='itunes' rows to MB once it catches up
+    supervise(db, 'area', areaLoop),           // MB country/area re-sweep — keeps KR coverage current (weekly)
   ]);
 }
 

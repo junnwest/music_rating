@@ -36,9 +36,12 @@ struct CachedImage<Placeholder: View>: View {
             guard let url else { image = nil; return }
             if let cached = ImageCache.shared[url] { image = cached; return }
             image = nil  // show placeholder while fetching
-            guard let (data, _) = try? await URLSession.shared.data(from: url),
+            // Disk tier before network: skips CAA's uncacheable ~1s redirect
+            // hop for any cover the app has ever fetched (see ImageCache).
+            if let disk = await ImageCache.shared.image(for: url) { image = disk; return }
+            guard let (data, _) = try? await ImageCache.session.data(from: url),
                   let uiImage = UIImage(data: data) else { return }
-            ImageCache.shared[url] = uiImage
+            ImageCache.shared.store(uiImage, data: data, for: url)
             image = uiImage
         }
     }

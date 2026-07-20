@@ -764,7 +764,14 @@ struct HomeView: View {
         // pass up behind the status bar.
         .background {
             GeometryReader { geo in
-                Color.clear.onAppear { topSafeAreaInset = geo.safeAreaInsets.top }
+                // Tracked, not sampled once: on device the first layout pass can
+                // report inset 0 (insets propagate a frame late), and a one-shot
+                // onAppear froze that 0 -- pinning the header into the status bar.
+                Color.clear
+                    .onAppear { topSafeAreaInset = geo.safeAreaInsets.top }
+                    .onChange(of: geo.safeAreaInsets.top) { _, newInset in
+                        topSafeAreaInset = newInset
+                    }
             }
         }
         .onChange(of: scrollToTopTrigger) { _, _ in

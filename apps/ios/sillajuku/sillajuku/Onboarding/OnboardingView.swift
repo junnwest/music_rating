@@ -4,17 +4,37 @@ import Supabase
 struct OnboardingView: View {
 	let provider: String
 	@State private var stepIndex = 0
-	@State private var data = OnboardingData()
+	@State private var data: OnboardingData
 	@State private var isSaving = false
 	@State private var saveError: String? = nil
 	@Environment(AppState.self) private var appState
 
 	enum Step { case name, username, ratingMode, notifications, appleMusic }
 
-	var steps: [Step] {
-		var s: [Step] = [.name, .username, .ratingMode, .notifications]
+	let steps: [Step]
+
+	/// App Review rejection 2026-07-16 (Guideline 4 — Sign in with Apple):
+	/// the name question must not be asked when the auth provider already
+	/// supplied one. So the name step only exists when no provider name is
+	/// available (email-hidden cases, lost metadata); otherwise the provided
+	/// name is used silently — still editable later in Edit Profile. Resolved
+	/// in init, not onAppear, so `steps` never changes after first render.
+	init(provider: String) {
+		self.provider = provider
+		var data = OnboardingData()
+		if let meta = supabase.auth.currentUser?.userMetadata {
+			for key in ["full_name", "name"] {
+				if let json = meta[key], case .string(let value) = json, !value.isEmpty {
+					data.displayName = value
+					break
+				}
+			}
+		}
+		var s: [Step] = data.displayName.isEmpty ? [.name] : []
+		s += [.username, .ratingMode, .notifications]
 		if provider == "apple" { s.append(.appleMusic) }
-		return s
+		self.steps = s
+		self._data = State(initialValue: data)
 	}
 
 	var body: some View {
@@ -53,21 +73,10 @@ struct OnboardingView: View {
 			))
 			.id(stepIndex)
 		}
-		.onAppear { loadProviderName() }
 		.alert(isPresented: Binding(
 			get: { saveError != nil },
 			set: { if !$0 { saveError = nil } }
 		)) { errorAlert }
-	}
-
-	private func loadProviderName() {
-		guard let meta = supabase.auth.currentUser?.userMetadata else { return }
-		for key in ["full_name", "name"] {
-			if let json = meta[key], case .string(let value) = json, !value.isEmpty {
-				data.displayName = value
-				return
-			}
-		}
 	}
 
 	private func advance() {

@@ -8,6 +8,8 @@
 	<string>sillajuku uses your Apple Music library and listening history to suggest albums for you to rate.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>sillajuku saves the share card image you choose to export to your Photos library.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>sillajuku uses the camera to take a photo for your story background.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -22,8 +24,84 @@
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>instagram-stories</string>
+		<string>instagram-reels</string>
+		<string>instagram</string>
 	</array>
 	<key>CFBundleIcons</key>
+	<dict>
+		<key>CFBundleAlternateIcons</key>
+		<dict>
+			<key>Sand</key>
+			<dict>
+				<key>CFBundleIconFiles</key>
+				<array>
+					<string>AppIcon-Sand</string>
+				</array>
+				<key>UIPrerenderedIcon</key>
+				<false/>
+			</dict>
+			<key>Blush</key>
+			<dict>
+				<key>CFBundleIconFiles</key>
+				<array>
+					<string>AppIcon-Blush</string>
+				</array>
+				<key>UIPrerenderedIcon</key>
+				<false/>
+			</dict>
+			<key>PowderBlue</key>
+			<dict>
+				<key>CFBundleIconFiles</key>
+				<array>
+					<string>AppIcon-PowderBlue</string>
+				</array>
+				<key>UIPrerenderedIcon</key>
+				<false/>
+			</dict>
+			<key>Lavender</key>
+			<dict>
+				<key>CFBundleIconFiles</key>
+				<array>
+					<string>AppIcon-Lavender</string>
+				</array>
+				<key>UIPrerenderedIcon</key>
+				<false/>
+			</dict>
+			<key>Mint</key>
+			<dict>
+				<key>CFBundleIconFiles</key>
+				<array>
+					<string>AppIcon-Mint</string>
+				</array>
+				<key>UIPrerenderedIcon</key>
+				<false/>
+			</dict>
+			<key>Terracotta</key>
+			<dict>
+				<key>CFBundleIconFiles</key>
+				<array>
+					<string>AppIcon-Terracotta</string>
+				</array>
+				<key>UIPrerenderedIcon</key>
+				<false/>
+			</dict>
+			<key>Black</key>
+			<dict>
+				<key>CFBundleIconFiles</key>
+				<array>
+					<string>AppIcon-Black</string>
+				</array>
+				<key>UIPrerenderedIcon</key>
+				<false/>
+			</dict>
+		</dict>
+	</dict>
+	<!-- iPad reads its icons from CFBundleIcons~ipad, not CFBundleIcons.
+	     Without this dict + the 152px @2x~ipad PNGs, alternate icons don't
+	     resolve on iPad at all, and App Store Connect flags ITMS-90892 on
+	     every upload. Same seven entries; the ~ipad file variants sit next
+	     to the iPhone ones in AlternateIcons/. -->
+	<key>CFBundleIcons~ipad</key>
 	<dict>
 		<key>CFBundleAlternateIcons</key>
 		<dict>
