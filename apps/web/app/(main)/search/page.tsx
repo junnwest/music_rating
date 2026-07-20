@@ -11,6 +11,7 @@ import InstinctModal from '../../../components/sj/InstinctModal';
 import FlowerRateControl from '../../../components/sj/FlowerRateControl';
 import AlbumBookmarkButton from '../../../components/sj/AlbumBookmarkButton';
 import AlbumPeek from '../../../components/sj/AlbumPeek';
+import { Skeleton, SkeletonLine } from '../../../components/sj/Loading';
 import { useSession } from '../../../components/sj/SessionContext';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
@@ -619,13 +620,13 @@ function Discovery({
 
   if (loading) {
     return (
-      <div className="mt-8 space-y-8 animate-pulse">
+      <div className="mt-8 space-y-8" aria-hidden>
         {[0, 1].map((i) => (
           <div key={i}>
-            <div className="h-6 w-40 rounded bg-surface mb-3" />
+            <SkeletonLine w="w-40" h="h-6" className="mb-3" />
             <div className="flex gap-4">
               {Array.from({ length: 6 }).map((_, j) => (
-                <div key={j} className="w-36 h-48 rounded-xl bg-surface" />
+                <Skeleton key={j} className="w-36 h-48 rounded-xl bg-surface" />
               ))}
             </div>
           </div>

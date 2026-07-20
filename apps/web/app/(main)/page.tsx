@@ -8,6 +8,7 @@ import FeedCard from '../../components/sj/FeedCard';
 import TitleTabs from '../../components/sj/TitleTabs';
 import AlbumPeek from '../../components/sj/AlbumPeek';
 import Cover from '../../components/sj/Cover';
+import { SkeletonBlock } from '../../components/sj/Loading';
 import { useSession } from '../../components/sj/SessionContext';
 import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
@@ -331,10 +332,7 @@ function FeedSkeleton() {
   return (
     <div className="flex flex-col gap-2.5">
       {Array.from({ length: 4 }).map((_, i) => (
-        <div
-          key={i}
-          className="h-[150px] rounded-2xl bg-surface border border-divider/60 animate-pulse"
-        />
+        <SkeletonBlock key={i} className="h-[150px] border border-divider/60" />
       ))}
     </div>
   );

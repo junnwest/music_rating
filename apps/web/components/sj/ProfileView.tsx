@@ -15,21 +15,27 @@ import {
   Newspaper,
   List as ListIcon,
   Plus,
-  Table2,
 } from 'lucide-react';
-import Cover from './Cover';
-import FlowerGlyph from './FlowerGlyph';
 import Modal from './Modal';
 import Avatar from './Avatar';
+import { Skeleton, SkeletonLine, SkeletonRows } from './Loading';
 import ProfilePostCard from './ProfilePostCard';
 import ProfileSongPostCard from './ProfileSongPostCard';
 import ProfileStats from './ProfileStats';
 import { useSession } from './SessionContext';
 import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
-import { eloToScore, INSTINCT_REVEAL_THRESHOLD } from '../../lib/elo';
-import { displayName, formatScore } from '../../lib/sj/display';
-import { RatedTable } from './ProfileExtras';
+import { eloToScore } from '../../lib/elo';
+import { displayName } from '../../lib/sj/display';
+import ProfileRatedList, {
+  FULL_RANGE,
+  RatedFilterBar,
+  effectiveScore,
+  kindOf,
+  type KindFilter,
+  type RatedSortCol,
+  type ScoreRange,
+} from './ProfileRatedList';
 import { RG_EMBED_NATIVE } from '../../lib/sj/data';
 import type { MixRow } from '../../lib/db/types';
 
@@ -52,8 +58,6 @@ export interface ProfileRatingItem {
 }
 
 type ProfileTab = 'rated' | 'lists' | 'stats';
-type TypeFilter = 'all' | 'albums' | 'songs';
-type SortOrder = 'recent' | 'top' | 'bottom' | 'az';
 
 /**
  * Profile — shared by the own-profile page and /profile/[username].
@@ -86,9 +90,13 @@ export default function ProfileView({ username }: { username?: string }) {
   const [notFound, setNotFound] = useState(false);
 
   const [tab, setTab] = useState<ProfileTab>('rated');
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('recent');
-  const [displayMode, setDisplayMode] = useState<'list' | 'posts' | 'table'>('list');
+  const [kind, setKind] = useState<KindFilter>('all');
+  const [range, setRange] = useState<ScoreRange>(FULL_RANGE);
+  const [sortCol, setSortCol] = useState<RatedSortCol>('date');
+  const [sortDesc, setSortDesc] = useState(true);
+  // The table mode is gone — list and table were the same rows at two widths,
+  // so they merged into one responsive view (see ProfileRatedList).
+  const [displayMode, setDisplayMode] = useState<'list' | 'posts'>('list');
   const [followModal, setFollowModal] = useState<null | 'following' | 'followers'>(null);
   const [pendingDelete, setPendingDelete] = useState<ProfileRatingItem | null>(null);
 
@@ -320,22 +328,37 @@ export default function ProfileView({ username }: { username?: string }) {
     [items],
   );
 
-  const itemScore = useCallback((item: ProfileRatingItem) => {
-    if (item.score != null) return item.score;
-    if (item.eloScore != null) return eloToScore(item.eloScore);
-    return 0;
-  }, []);
+  /** Per-bucket totals, so the filter bar can hide buckets nobody has. */
+  const kindCounts = useMemo(() => {
+    const c: Record<KindFilter, number> = { all: items.length, albums: 0, eps: 0, singles: 0, songs: 0 };
+    for (const i of items) c[kindOf(i)] += 1;
+    return c;
+  }, [items]);
 
   const filtered = useMemo(() => {
-    let base = items;
-    if (typeFilter === 'albums') base = items.filter((i) => !i.isSong);
-    if (typeFilter === 'songs') base = items.filter((i) => i.isSong);
-    const sorted = [...base];
-    if (sortOrder === 'top') sorted.sort((a, b) => itemScore(b) - itemScore(a));
-    if (sortOrder === 'bottom') sorted.sort((a, b) => itemScore(a) - itemScore(b));
-    if (sortOrder === 'az') sorted.sort((a, b) => a.title.localeCompare(b.title));
-    return sorted;
-  }, [items, typeFilter, sortOrder, itemScore]);
+    const rangeActive = range[0] !== FULL_RANGE[0] || range[1] !== FULL_RANGE[1];
+    const base = items.filter((i) => {
+      if (kind !== 'all' && kindOf(i) !== kind) return false;
+      if (rangeActive) {
+        const s = effectiveScore(i);
+        // An unscored row has no place on a score range — narrowing the range
+        // is an explicit "show me things in this band".
+        if (s == null || s < range[0] || s > range[1]) return false;
+      }
+      return true;
+    });
+    const dir = sortDesc ? -1 : 1;
+    return base.sort((a, b) => {
+      let cmp = 0;
+      if (sortCol === 'title') cmp = a.title.localeCompare(b.title);
+      else if (sortCol === 'artist') cmp = a.artistLine.localeCompare(b.artistLine);
+      else if (sortCol === 'type') cmp = kindOf(a).localeCompare(kindOf(b));
+      else if (sortCol === 'score')
+        cmp = (effectiveScore(a) ?? -1) - (effectiveScore(b) ?? -1);
+      else cmp = (a.createdAt ?? '').localeCompare(b.createdAt ?? '');
+      return cmp * dir;
+    });
+  }, [items, kind, range, sortCol, sortDesc]);
 
   async function toggleFollow() {
     if (!supabase || !myId || !targetId) return;
@@ -445,9 +468,26 @@ export default function ProfileView({ username }: { username?: string }) {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-3xl px-4 md:px-6 py-8 animate-pulse space-y-5">
-        <div className="h-24 rounded-2xl bg-surface" />
-        <div className="h-64 rounded-2xl bg-surface" />
+      <div className="mx-auto max-w-3xl px-4 md:px-6 py-7">
+        <div className="flex items-center gap-6">
+          <Skeleton className="h-[76px] w-[76px] rounded-full bg-surface" />
+          <div className="flex-1 grid grid-cols-3 gap-2">
+            {Array.from({ length: 3 }, (_, i) => (
+              <div key={i} className="flex flex-col items-center gap-1.5">
+                <SkeletonLine w="w-8" h="h-4" />
+                <SkeletonLine w="w-12" h="h-2.5" />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="mt-4 space-y-2">
+          <SkeletonLine w="w-32" h="h-4" />
+          <SkeletonLine w="w-24" h="h-2.5" />
+        </div>
+        <div className="mt-6 border-b border-divider pb-3">
+          <SkeletonLine w="w-full" h="h-4" />
+        </div>
+        <SkeletonRows className="mt-4" count={6} />
       </div>
     );
   }
@@ -548,27 +588,9 @@ export default function ProfileView({ username }: { username?: string }) {
             <Empty label={t('sj.profile.noRatings')} />
           ) : (
             <>
-              <div className="flex items-center gap-1 flex-wrap">
-                {(['all', 'albums', 'songs'] as TypeFilter[]).map((f) => (
-                  <button
-                    key={f}
-                    onClick={() => setTypeFilter(f)}
-                    className={`px-3 py-1.5 rounded-lg text-[12px] transition ${
-                      typeFilter === f
-                        ? 'bg-accent/10 text-accent font-semibold'
-                        : 'text-muted hover:text-ink'
-                    }`}
-                  >
-                    {f === 'all'
-                      ? t('sj.profile.filterAll')
-                      : f === 'albums'
-                        ? t('sj.profile.filterAlbums')
-                        : t('sj.profile.filterSongs')}
-                  </button>
-                ))}
-                <span className="flex-1" />
+              <div className="flex items-center gap-2 flex-wrap">
                 {isSelf && (
-                  <span className="flex gap-0.5">
+                  <span className="flex gap-0.5 order-last sm:order-none">
                     <button
                       onClick={() => setDisplayMode('list')}
                       aria-label={t('sj.profile.listView')}
@@ -587,36 +609,29 @@ export default function ProfileView({ username }: { username?: string }) {
                     >
                       <Newspaper size={15} />
                     </button>
-                    <button
-                      onClick={() => setDisplayMode('table')}
-                      aria-label={t('sj.profile.tableView')}
-                      className={`hidden md:inline-flex p-1.5 rounded-md transition ${
-                        displayMode === 'table' ? 'bg-accent/10 text-accent' : 'text-muted'
-                      }`}
-                    >
-                      <Table2 size={15} />
-                    </button>
                   </span>
                 )}
-                {displayMode !== 'table' && (
-                  <select
-                    value={sortOrder}
-                    onChange={(e) => setSortOrder(e.target.value as SortOrder)}
-                    aria-label={t('sj.profile.sort')}
-                    className="ml-1 bg-transparent text-[12px] font-medium text-accent outline-none cursor-pointer"
-                  >
-                    <option value="recent">{t('sj.profile.sortRecent')}</option>
-                    <option value="top">{t('sj.profile.sortTop')}</option>
-                    <option value="bottom">{t('sj.profile.sortBottom')}</option>
-                    <option value="az">{t('sj.profile.sortAz')}</option>
-                  </select>
-                )}
+                {/* Filters apply to both modes — they describe *which* ratings
+                    you're looking at, not how they're drawn. */}
+                <span className="flex-1 min-w-0">
+                  <RatedFilterBar
+                    kind={kind}
+                    onKind={setKind}
+                    range={range}
+                    onRange={setRange}
+                    sortCol={sortCol}
+                    sortDesc={sortDesc}
+                    onSort={(c, d) => {
+                      setSortCol(c);
+                      setSortDesc(d);
+                    }}
+                    counts={kindCounts}
+                  />
+                </span>
               </div>
 
               {filtered.length === 0 ? (
                 <Empty label={t('sj.profile.noneOfType')} />
-              ) : displayMode === 'table' && isSelf ? (
-                <RatedTable items={filtered} />
               ) : displayMode === 'posts' && isSelf ? (
                 <div className="mt-3 flex flex-col gap-2.5">
                   {filtered.map((item) =>
@@ -646,17 +661,20 @@ export default function ProfileView({ username }: { username?: string }) {
                   )}
                 </div>
               ) : (
-                <ul className="mt-2 divide-y divide-divider">
-                  {filtered.map((item) => (
-                    <RatedRow
-                      key={item.key}
-                      item={item}
-                      instinctCount={item.isSong ? instinctSongCount : instinctAlbumCount}
-                      showScore={isSelf || item.score != null}
-                      onDelete={isSelf ? () => setPendingDelete(item) : undefined}
-                    />
-                  ))}
-                </ul>
+                <ProfileRatedList
+                  items={filtered}
+                  instinctAlbumCount={instinctAlbumCount}
+                  instinctSongCount={instinctSongCount}
+                  showScores={isSelf}
+                  sortCol={sortCol}
+                  sortDesc={sortDesc}
+                  onSort={(c, d) => {
+                    setSortCol(c);
+                    setSortDesc(d);
+                  }}
+                  onDelete={isSelf ? (item) => setPendingDelete(item) : undefined}
+                  canExport={isSelf}
+                />
               )}
             </>
           )}
@@ -726,80 +744,6 @@ function Empty({ label }: { label: string }) {
   return <p className="py-16 text-center text-[14px] text-muted">{label}</p>;
 }
 
-function RatedRow({
-  item,
-  instinctCount,
-  showScore,
-  onDelete,
-}: {
-  item: ProfileRatingItem;
-  instinctCount: number;
-  showScore: boolean;
-  onDelete?: () => void;
-}) {
-  const { t } = useLanguage();
-  const score =
-    item.score != null
-      ? item.score
-      : item.eloScore != null && instinctCount >= INSTINCT_REVEAL_THRESHOLD
-        ? eloToScore(item.eloScore)
-        : null;
-  const pendingReveal =
-    item.score == null && item.eloScore != null && instinctCount < INSTINCT_REVEAL_THRESHOLD;
-  const href = item.isSong
-    ? `/song/${item.recordingId}${item.releaseGroupId ? `?rg=${item.releaseGroupId}` : ''}`
-    : `/album/${item.releaseGroupId}`;
-
-  return (
-    <li className="group flex items-center gap-3 py-2.5">
-      <Link href={href} className="flex items-center gap-3 min-w-0 flex-1">
-        <Cover url={item.coverUrl} className="w-[46px] h-[46px]" rounded="rounded-md" />
-        <span className="min-w-0">
-          <span className="flex items-center gap-1.5">
-            <span className="text-[13px] font-semibold text-ink truncate">{item.title}</span>
-            {item.isSong ? (
-              <span className="px-1.5 py-0.5 rounded bg-accent/[0.12] text-accent text-[9.5px] font-medium shrink-0">
-                {t('sj.type.song')}
-              </span>
-            ) : item.releaseType ? (
-              <span className="px-1.5 py-0.5 rounded bg-accent/10 text-accent text-[9.5px] font-medium shrink-0">
-                {item.releaseType.toLowerCase() === 'ep'
-                  ? 'EP'
-                  : item.releaseType.charAt(0).toUpperCase() + item.releaseType.slice(1)}
-              </span>
-            ) : null}
-          </span>
-          <span className="block text-[12px] text-muted truncate">{item.artistLine}</span>
-        </span>
-      </Link>
-      {showScore && score != null ? (
-        <span className="flex items-center gap-1 px-2 py-1 rounded-md bg-accent/10 text-accent shrink-0">
-          <FlowerGlyph size={11} />
-          <span className="text-[13px] font-bold tabular-nums">{formatScore(score)}</span>
-        </span>
-      ) : pendingReveal ? (
-        <span className="text-[10px] text-muted text-right max-w-[110px] shrink-0">
-          {t('sj.instinct.rateMoreToReveal').replace(
-            '{n}',
-            String(INSTINCT_REVEAL_THRESHOLD - instinctCount),
-          )}
-        </span>
-      ) : (
-        <FlowerGlyph size={11} className="text-muted shrink-0" />
-      )}
-      {onDelete && (
-        <button
-          onClick={onDelete}
-          aria-label={t('sj.profile.deleteRatingTitle')}
-          className="p-1.5 text-muted hover:text-red-500 opacity-0 group-hover:opacity-100 focus:opacity-100 transition shrink-0"
-        >
-          <Trash2 size={14} />
-        </button>
-      )}
-    </li>
-  );
-}
-
 // ── Mixes (Lists tab) ───────────────────────────────────────────────────────
 
 function MixLibrary({ userId, isSelf }: { userId: string; isSelf: boolean }) {
@@ -855,7 +799,7 @@ function MixLibrary({ userId, isSelf }: { userId: string; isSelf: boolean }) {
     load();
   }
 
-  if (loading) return <p className="py-14 text-center text-[13px] text-muted">…</p>;
+  if (loading) return <SkeletonRows className="mt-4" count={4} />;
 
   return (
     <div className="mt-3">
@@ -1044,7 +988,7 @@ function FollowListModal({
           ))}
         </div>
         {loading ? (
-          <p className="py-10 text-center text-[13px] text-muted">…</p>
+          <SkeletonRows className="py-4" count={4} />
         ) : list.length === 0 ? (
           <p className="py-10 text-center text-[13px] text-muted">
             {tab === 'following' ? t('sj.profile.noneFollowing') : t('sj.profile.noFollowers')}

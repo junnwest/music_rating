@@ -8,6 +8,7 @@ import ArtistLink from '../../../../components/sj/ArtistLink';
 import Cover from '../../../../components/sj/Cover';
 import ManualRateModal from '../../../../components/sj/ManualRateModal';
 import InstinctModal from '../../../../components/sj/InstinctModal';
+import { SkeletonBlock } from '../../../../components/sj/Loading';
 import { useSession } from '../../../../components/sj/SessionContext';
 import { supabase } from '../../../../lib/supabaseClient';
 import { useLanguage } from '../../../../lib/i18n';
@@ -138,9 +139,9 @@ function SongPageInner() {
 
   if (loading || !track) {
     return (
-      <div className="mx-auto max-w-3xl px-4 md:px-6 py-10 animate-pulse space-y-4">
-        <div className="h-24 rounded-2xl bg-surface" />
-        <div className="h-40 rounded-2xl bg-surface" />
+      <div className="mx-auto max-w-3xl px-4 md:px-6 py-10 space-y-4">
+        <SkeletonBlock className="h-24" />
+        <SkeletonBlock className="h-40" />
       </div>
     );
   }

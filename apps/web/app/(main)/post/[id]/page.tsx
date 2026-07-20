@@ -7,6 +7,7 @@ import ProfilePostCard from '../../../../components/sj/ProfilePostCard';
 import ProfileSongPostCard from '../../../../components/sj/ProfileSongPostCard';
 import type { ProfileRatingItem } from '../../../../components/sj/ProfileView';
 import { useSession } from '../../../../components/sj/SessionContext';
+import { SkeletonBlock } from '../../../../components/sj/Loading';
 import { supabase } from '../../../../lib/supabaseClient';
 import { useLanguage } from '../../../../lib/i18n';
 import { displayName } from '../../../../lib/sj/display';
@@ -191,7 +192,7 @@ export default function PostPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 md:px-6 py-7">
       {loading ? (
-        <div className="h-40 rounded-2xl bg-surface animate-pulse" />
+        <SkeletonBlock className="h-40" />
       ) : !item ? (
         <div className="py-24 flex flex-col items-center gap-3">
           <AlertCircle size={38} className="text-divider" />

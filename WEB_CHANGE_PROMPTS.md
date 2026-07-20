@@ -8,13 +8,17 @@ time (or in small batches). They assume the shared constraints in "Global rules"
 
 Build order (dependencies): ~~**#2 + #12 first** (others consume them)~~ →
 ~~**#1** (creates the … menu)~~ → ~~**#3, #17** (reuse it)~~ → independent page fixes
-(~~#5, #10, #11, #18~~) → larger surfaces (~~#4~~, **#6, #7, #8, #13, #14**, ~~#15~~,
-~~#16~~, ~~#9~~).
+(~~#5, #10, #11, #18~~) → larger surfaces (~~#4~~, **#6, #7**, ~~#8~~, ~~#13~~, ~~#14~~,
+~~#15~~, ~~#16~~, ~~#9~~).
+
+**Everything except the Taste page (#6 + #7) is done.** They are the only two
+left and they are one session — see the next-chat prompt at the bottom of this
+file.
 
 | # | Task | Status |
 |---|------|--------|
 | 2 | Quick-rate gauge redesign + new color ramp | ✅ **done** (2026-07-19) |
-| 12 | Global loading animation / skeletons | 🟡 **partial** — `Loading.tsx` shipped; applied to album + artist + mix |
+| 12 | Global loading animation / skeletons | ✅ **done** (2026-07-19) — everywhere except `taste/page.tsx`, which #6 rewrites |
 | 11 | No raw ID during album/artist load | ✅ **done** (2026-07-19) |
 | 18 | Home — remove "Go to charts" | ✅ **done** (2026-07-19) |
 | 1 | "Not interested" in the … menu | ✅ **done** (2026-07-19) — migration applied |
@@ -26,17 +30,17 @@ Build order (dependencies): ~~**#2 + #12 first** (others consume them)~~ →
 | 15 | Artist page — grouped discography | ✅ **done** (2026-07-19) |
 | 4 | Profile > Stats tab polish | ✅ **done** (2026-07-19) |
 | 9 | Profile — @username over display name | ✅ **done** (2026-07-19) |
-| 6 | Taste > Graph rebuild | ⬜ not started — **START HERE NEXT** |
-| 7 | Refresh + reconstruct taste report | ⬜ not started |
-| 8 | Profile — merge list+table, add filters | ⬜ not started |
-| 13 | Quick Add — horizontal rows + arrows + See more | ⬜ not started |
-| 14 | Quick Add — explore/like genres | ⬜ not started |
+| 8 | Profile — merge list+table, add filters | ✅ **done** (2026-07-19) |
+| 13 | Quick Add — horizontal rows + arrows + See more | ✅ **done** (2026-07-19) |
+| 14 | Quick Add — explore/like genres | ✅ **done** (2026-07-19) — migration applied |
+| 6 | Taste > Graph rebuild | ⬜ not started — **ONLY REMAINING WORK** |
+| 7 | Refresh + reconstruct taste report | ⬜ not started — do with #6 |
 
 ### Where to pick up next
 
-1. **#6 + #7 are the next task, and should be one session** — the refresh has to
+1. **#6 + #7 are all that's left, and they are one session** — the refresh has to
    feed the graph, so building them apart means building the data path twice.
-   #8 is the next-most-self-contained if you want a smaller one.
+   The ready-to-paste prompt is at the bottom of this file.
 2. **⚠ Audit every PostgREST embed that crosses a join table.** #10's root cause
    was `mixes → profiles` being ambiguous (`mix_likes` is a second path), so
    `profiles(...)` failed with **PGRST201** on *every* request and the page read
@@ -44,15 +48,13 @@ Build order (dependencies): ~~**#2 + #12 first** (others consume them)~~ →
    mixes list. Both now pass `profiles!mixes_user_id_fkey(...)`. Any table with a
    likes/shares join table pointing at `profiles` can have this; the errors are
    invisible because most call sites destructure `{ data }` and drop `error`.
-3. **#12 is only half-applied.** `components/sj/Loading.tsx` exists and exports
-   `FlowerSpinner`, `PageLoader`, `Skeleton`, `SkeletonLine`, `SkeletonBlock`,
-   `SkeletonCover`, `SkeletonCard`, `SkeletonCardGrid`, `SkeletonRows`. Album,
-   artist and mix pages use it. **Still to convert** (they all hand-roll
-   `animate-pulse` today): `taste/page.tsx:122`, `song/[id]/page.tsx:140`,
-   `charts/page.tsx` (3 spots), `notifications/page.tsx:55`, `search/page.tsx:621`,
-   `quick-add/page.tsx:269`, `post/[id]/page.tsx:194`, `page.tsx:309` (home),
-   `ProfileView.tsx:447` and `:857` (Mixes tab), `ProfileExtras.tsx:69`,
-   `HeaderMenus.tsx:104`, `AlbumPeek.tsx`.
+3. **#12 is fully rolled out except the Taste page.** `components/sj/Loading.tsx`
+   exports `FlowerSpinner`, `PageLoader`, `Skeleton`, `SkeletonLine`,
+   `SkeletonBlock`, `SkeletonCover`, `SkeletonCard`, `SkeletonCardGrid`,
+   `SkeletonRows`. The only remaining hand-rolled `animate-pulse` in the app is
+   **`taste/page.tsx:122`**, left alone on purpose because #6 rewrites that page
+   — convert it as part of #6 rather than touching it twice.
+   `grep -rn "animate-pulse" app components` is the check.
 4. **Nothing from 2026-07-19 has been clicked through in a live browser.** The
    builds are clean, but the *feel* of #2's new radii (`OFFSET` 36 / `STEP` 34,
    0.1 steps), the new `ScoreBadge` ramp (changed appearance app-wide), every #3
@@ -335,20 +337,49 @@ report is better-organized and clearly structured.
 ---
 
 ## 8. Profile — merge list + table view, add list-view filter
-**Status: ⬜ not started.**
+**Status: ✅ done 2026-07-19 (Windows). Not browser-verified.**
 
-In `components/sj/ProfileView.tsx` (Rated tab, `displayMode` list/posts/table):
+The two modes were the same rows twice: `list` (cover · title · artist · score)
+and `table` (the same fields as columns, `hidden md:` and **self-only**, so
+nobody could use it on another profile or on a phone). Each had grown its own
+sort model, so switching modes silently discarded your sort.
 
-- **Merge the `list` and `table` display modes** into one unified view (decide the
-  best single presentation — e.g. a responsive list that shows table-like columns
-  on wider screens). Keep `posts` as the separate mode if it's meaningfully
-  different; otherwise fold it in too and simplify the toggle.
-- Add a **filter** to the (now unified) list view: at minimum by score range and
-  by release type (album/EP/single), plus sort (date rated, score, title). Make it
-  responsive and keyboard-accessible.
+- **New `components/sj/ProfileRatedList.tsx`** — one responsive grid used at
+  every width and for every viewer. Below `md` it is the old list (cover, title
+  + type chip, artist, score chip); from `md` up the same rows become columns
+  (**Title · Artist · Type · Score · Date**) with the sortable headers the table
+  had. `GRID` is one shared template string on the header and every row, which
+  is what keeps them aligned without a `<table>`.
+- **One sort model.** `sortCol` (`title|artist|type|score|date`) + `sortDesc`
+  live in `ProfileView`; the column headers and the `<select>` are two controls
+  over the same state, so the ordering survives a resize. The select names the
+  six orderings worth naming (Recent / Oldest / Top / Bottom / A–Z / Artist).
+- **Filters** (`RatedFilterBar`, same file): kind pills widened from
+  All/Albums/Songs to **All · Albums · EPs · Singles · Songs** (`kindOf()` reads
+  `release_group_type`), and a **score-range** disclosure with two 0–5 sliders.
+  Buckets with no rows are hidden rather than shown empty, and dragging one
+  slider past the other clamps the other instead of producing an empty range.
+  **Filters apply to the posts mode too** — they describe which ratings you're
+  looking at, not how they're drawn.
+- **`posts` stays a separate mode** (it's a genuinely different presentation —
+  review text, likes, comments), so the toggle is now list/posts, two buttons,
+  no dead third. The `Table2` import and the `sj.profile.tableView` key are gone.
+- **CSV export survived the merge** — it was table-only, so folding the table in
+  would have deleted it. It now sits above the list, self only, and exports the
+  *filtered* rows.
+- Row links: the whole row is one stretched `absolute inset-0` anchor rather
+  than an anchor wrapping the grid cells (that needs `display: contents`, which
+  hit-tests unreliably). The delete button sits above it on `z-10`.
+- `RatedTable` deleted from `ProfileExtras.tsx` (which is now just
+  `SavedLibrary`). New i18n `sj.profile.{filterEps,filterSingles,sortOldest,
+  sortArtist,sortAsc,sortDesc,score,scoreRange,scoreRangeNote,clearFilter,min,
+  max}` en+ko.
 
-Acceptance: one merged list/table view with working filters + sort; no dead toggle
-buttons left behind.
+⚠ **A narrowed score range hides unrevealed instinct ratings** (they have no
+score to compare against), which the panel states in a note. ⚠ The profile still
+loads only the most recent **60** album + **60** song ratings, so every filter
+and sort here operates on that window, not the whole library — unchanged, but
+the filters make it easier to notice.
 
 ---
 
@@ -431,49 +462,99 @@ shared primitives for consistency. Original text of the prompt:
 ---
 
 ## 12. Global loading animation where needed
-**Status: 🟡 partial — component shipped 2026-07-19, rollout incomplete.**
-See "Where to pick up next" at the top for the exact list of remaining call sites.
+**Status: ✅ done — component 2026-07-19, rollout completed 2026-07-19 (pt 4).**
 
-- Create a shared loader (`components/sj/Loading.tsx`): a branded flower spinner +
-  reusable skeleton primitives (line, block, cover, card). ✅ done
-- Apply to: album ✅, artist ✅, mix ⬜, taste ⬜, profile ⬜, quick-add ⬜,
-  search ⬜ — anywhere a data fetch currently leaves a blank or janky gap. Prefer
-  skeletons that match the final layout over spinners where possible.
-- Keep it subtle and fast; respect `prefers-reduced-motion`. ✅ (every animation
-  carries `motion-reduce:animate-none`)
+- `components/sj/Loading.tsx`: `FlowerSpinner` / `PageLoader` + `Skeleton`,
+  `SkeletonLine`, `SkeletonBlock`, `SkeletonCover`, `SkeletonCard`,
+  `SkeletonCardGrid`, `SkeletonRows`. Every animation carries
+  `motion-reduce:animate-none`.
+- **Converted:** album, artist, mix (pt 1–2) — then charts (×3: albums pane,
+  songs pane, the ranking `<ol>`), notifications, home `FeedSkeleton`,
+  `post/[id]`, search, `song/[id]`, `HeaderMenus`' notification popover,
+  `AlbumPeek`'s stats line + tracklist, `ProfileView` (page load, Mixes tab,
+  `FollowListModal`), `ProfileExtras`' `SavedLibrary`, and Quick Add (rebuilt
+  wholesale in #13).
+- **Deliberately not converted: `taste/page.tsx:122`.** #6 rewrites that page;
+  converting it first would just be churn. Do it there.
+- `grep -rn "animate-pulse" app components` should return only `Loading.tsx`
+  and `taste/page.tsx`.
 
 ---
 
 ## 13. Quick Add — horizontal scroll rows, arrows, and "See more"
-**Status: ⬜ not started.**
+**Status: ✅ done 2026-07-19 (Windows). Not browser-verified.**
 
-On the Quick Add page (`app/(main)/quick-add/page.tsx`):
+`app/(main)/quick-add/page.tsx` was one flat, prestige-ordered, infinitely
+scrolling list. Every artist after the first was buried, which is backwards for
+a page whose question is "do I remember this record" — a question you answer per
+artist. It is now **one horizontal shelf per seed artist**.
 
-- Present candidates as **horizontally scrolling rows** (by seed/artist/genre
-  grouping) with a visible scrollbar/affordance.
-- Add **left/right arrow buttons** to page through each row (hidden at the ends,
-  keyboard accessible).
-- Add a **"See more"** at the end of each row that opens a full list/grid of the
-  similar items for that group.
-
-Acceptance: Quick Add rows scroll horizontally with working arrows; "See more"
-opens the expanded list of that group's items.
+- **No new SQL for the grouping.** Each shelf is its own
+  `get_quick_add_candidates` call with a **single-name** `p_artist_names` array,
+  so the RPC's existing prestige ordering and both exclusions (already rated /
+  not interested) apply per shelf unchanged. Shelves resolve independently — a
+  slow artist never blocks the rest.
+- **New `components/sj/CandidateRow.tsx`** — the shelf primitive. Arrows are
+  driven by **measured overflow** (`ResizeObserver` + a `MutationObserver` for
+  children arriving), not by item count: four covers overflow on a phone and
+  don't on a desktop, and only the element knows. They're **hidden, not
+  disabled**, at each end, revealed on row hover or keyboard focus, and sit
+  outside the scroller so they never cover a cover. Native scroll/swipe stays
+  on, with `snap-x` so a flick lands on a card edge.
+- **"See more"** opens a modal grid of that shelf's full list, paging 24 at a
+  time through the same RPC at a higher offset. It keeps its **own** items array
+  rather than growing the shelf's — paging 100 deep in the modal shouldn't leave
+  a 100-card horizontal scroller on the page behind it.
+- **Infinite scroll now reveals more shelves**, four seed artists at a time,
+  instead of appending albums.
+- Cards carry the full album vocabulary: `AlbumPeek` (so hover-peek and #3's
+  right-click menu come free), bookmark, `AlbumOverflowMenu`, and an
+  always-visible `FlowerRateControl` — the gauge is the point of the page, not a
+  hover affordance.
+- **Songs mode deliberately keeps the flat vertical list.** A shelf per artist
+  of near-identical text rows buys nothing, and songs get rated in runs rather
+  than browsed. Scope call, not an oversight.
 
 ---
 
 ## 14. Quick Add — explore other genres + set liked genres
-**Status: ⬜ not started.**
+**Status: ✅ done 2026-07-19 (Windows). Migration applied to the hosted project.**
 
-On the Quick Add page:
+Quick Add could only ever look *inward*: its seeds are the user's own Spotify
+history and their own high ratings, so it structurally cannot show them anything
+new. "Explore other genres" is the outward half.
 
-- Add an **"Explore other genres"** affordance that lets the user browse candidate
-  albums by genre beyond their seeded ones.
-- Add a way to **mark genres as liked**, feeding the recommendation/seed source
-  (persist the preference; coordinate with the taste/seed system rather than a
-  throwaway local flag).
+- **Migration `20260719000001_quick_add_genre_candidates.sql`** (applied +
+  verified 2026-07-19) — `get_quick_add_genre_candidates(p_user_id, p_genre,
+  p_lim, p_offset)`. Same body and **identical return columns** as
+  `get_quick_add_candidates`, with the seed predicate swapped for the charts'
+  genre predicate (`_rg_primary_matches`: `primary_genre` first, raw `genres`
+  array as fallback) and the same two exclusions. Identical columns is what lets
+  a genre shelf and an artist shelf render through one code path. Ordering is
+  prestige-first (there is no seed order inside a genre, and an unfamiliar genre
+  is only ratable from memory if it leads with its best-known records).
+- **`GenreExplorer`** — 16 genre chips. Each chip carries **two independent
+  actions**: tapping the label *opens* a shelf (a look), tapping the heart
+  *likes* the genre (a preference). Keeping them apart means browsing jazz once
+  doesn't claim you like jazz.
+- **Liked genres persist to `profiles.preferred_genres`** — the existing
+  comma-separated column that `lib/category-resolver.ts` already reads for the
+  homepage rows. So a like here reshapes home too, which is what "coordinate
+  with the seed system rather than a throwaway local flag" asked for. A failed
+  write rolls the toggle back rather than lying about what's saved. Opened
+  genres are session-only; liked ones are permanent shelves.
+- Genre labels are **not** run through i18n, matching the charts page's `GENRES`
+  array (they're mostly proper nouns and the two lists should agree).
+- New i18n `sj.quickAdd.{seeMore,scrollLeft,scrollRight,genreShelf,
+  exploreGenres,exploreGenresDesc,likeGenre,unlikeGenre}` + `sj.common.loading`,
+  en+ko.
 
-Acceptance: user can browse albums from other genres in Quick Add and mark genres
-as liked, and that preference persists and influences future candidates.
+⚠ The seedless state (a brand-new account with no Spotify link and no ratings)
+now shows the genre explorer under the "needs a seed" message instead of a dead
+end — that path is the least likely to have been exercised and is worth a look.
+⚠ `preferred_genres` is shared with onboarding, which used a different (older)
+label set; the picker only reads back values it recognises, so an old onboarding
+value is preserved in the column but not shown as liked.
 
 ---
 
@@ -567,3 +648,64 @@ of `TrendingRail` in `app/(main)/page.tsx`, plus the now-dead `sj.home.viewChart
 key from both `lib/i18n/en.ts` and `lib/i18n/ko.ts`. `Link` and `t` are both still
 used elsewhere in that component, so no imports changed. Charts remain reachable
 from the sidebar.
+
+---
+
+## ► Prompt for the next chat (#6 + #7 — the Taste page, the only work left)
+
+Paste this verbatim into a fresh session:
+
+> Work on the **Taste page only** (`apps/web/app/(main)/taste/page.tsx` and
+> whatever it needs). Everything else in `WEB_CHANGE_PROMPTS.md` is done — read
+> that file's Status board and the "Where to pick up next" notes first, then do
+> **#6 and #7 together** (the refresh has to feed the graph, so building them
+> apart means building the data path twice). Update `WEB_CHANGE_PROMPTS.md`,
+> `README.md` and `SESSIONS.md` when finished, then commit and push.
+>
+> **#6 — Taste > Graph, full interactive rebuild.** Genres as **soft circles**
+> whose *area* ∝ the user's mass in that genre, positioned by similarity and
+> coloured as a **heat map** (intensity = affinity/rating), with a fluid,
+> organic settle animation. **Click a genre → Prezi-style zoom** into it: the
+> camera pans/zooms so that genre fills the view and its **subgenres** appear as
+> their own bubbles, sized by their share of the parent; zoom back out to
+> return. A **side panel** for the focused genre/subgenre listing the user's
+> rated albums in it (cover, title, score) plus a few **recommendations** from
+> the existing personalized/recommendation source. Replace the current year bar
+> chart with a **histogram over years** (rated albums per year) with a **trend
+> line** overlaid (moving average or regression). Use the `dataviz` skill.
+> Canvas or SVG as appropriate; must stay smooth on mobile.
+>
+> **#7 — refresh + reconstruct the report.** Add a visible **Refresh** control
+> that recomputes the taste profile/report on demand with a proper loading state
+> (use `components/sj/Loading.tsx` — #12), rather than only ever rendering a
+> stale cached payload. Review how the report is assembled and **restructure it
+> for quality** (sections, ordering, what's actually insightful). The vector
+> math lives in Node / the Micro DB and profiles are trigger-maintained — the
+> web should *trigger and read* a rebuild, never reimplement the math
+> client-side. The refresh must feed #6's graph too, so both read one payload.
+>
+> Three things specific to this page:
+> 1. **`taste/page.tsx:122` is the last hand-rolled `animate-pulse` in the app.**
+>    It was left for you on purpose — convert it to the `Loading.tsx` primitives
+>    as part of this work rather than as a separate pass. After that,
+>    `grep -rn "animate-pulse" app components` should only hit `Loading.tsx`.
+> 2. **Do not call `/api/taste/profile?refresh=1` on every load.** That
+>    cache-bypass was removed on 2026-07-15 for burning Vercel CPU (and removed
+>    from iOS on 2026-07-18). The new Refresh control is an explicit,
+>    user-initiated bypass — keep the default path cached.
+> 3. **Audit any new PostgREST embed that crosses a join table** (#10's root
+>    cause: an ambiguous `mixes → profiles` embed failed `PGRST201` on every
+>    request and read as "not found" because only `{ data }` was destructured).
+>    Always capture `error`.
+>
+> Constraints, as for every prompt in that file: **web app only** (`apps/web`,
+> don't touch iOS or shared payloads iOS consumes); all user-facing strings go
+> through `useLanguage()` / `t(...)` with keys added to **both** `en` and `ko`;
+> ratings are 0.1 internally with a 0.5 default manual step; and per CLAUDE.md,
+> only change what this prompt names — note anything else you spot in text
+> instead of fixing it. Migrations on this machine go through the Management
+> API: from `apps/web/`,
+> `npx tsx --env-file=.env.local scripts/db-exec.ts <migration.sql>`.
+>
+> Nothing from 2026-07-19 has been clicked through in a live browser, so if
+> something on the Taste page looks off, check whether it predates this work.

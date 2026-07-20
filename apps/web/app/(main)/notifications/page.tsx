@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Bell } from 'lucide-react';
 import { useSession } from '../../../components/sj/SessionContext';
+import { SkeletonBlock } from '../../../components/sj/Loading';
 import {
   NOTIFICATION_SELECT,
   NotificationRow,
@@ -52,9 +53,9 @@ export default function NotificationsPage() {
     <div className="mx-auto max-w-2xl px-4 md:px-6 py-7">
       <h1 className="text-[20px] font-bold text-ink mb-4">{t('sj.nav.notifications')}</h1>
       {loading ? (
-        <div className="space-y-2 animate-pulse" aria-hidden>
+        <div className="space-y-2" aria-hidden>
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-14 rounded-2xl bg-surface" />
+            <SkeletonBlock key={i} className="h-14" />
           ))}
         </div>
       ) : notifications.length === 0 ? (

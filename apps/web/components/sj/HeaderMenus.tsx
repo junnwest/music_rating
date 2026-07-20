@@ -7,6 +7,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
 import { useSession } from './SessionContext';
 import Avatar from './Avatar';
+import { Skeleton } from './Loading';
 import {
   NOTIFICATION_SELECT,
   NotificationRow,
@@ -101,9 +102,9 @@ export function NotificationsBell({ hasUnread }: { hasUnread: boolean }) {
             {t('sj.nav.notifications')}
           </p>
           {items === null ? (
-            <div className="px-3.5 pb-3 space-y-2 animate-pulse" aria-hidden>
+            <div className="px-3.5 pb-3 space-y-2" aria-hidden>
               {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="h-11 rounded-lg bg-divider/60" />
+                <Skeleton key={i} className="h-11 rounded-lg" />
               ))}
             </div>
           ) : items.length === 0 ? (

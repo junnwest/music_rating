@@ -9,6 +9,7 @@ import AlbumBookmarkButton from '../../../components/sj/AlbumBookmarkButton';
 import FlowerGlyph from '../../../components/sj/FlowerGlyph';
 import TitleTabs from '../../../components/sj/TitleTabs';
 import AlbumPeek from '../../../components/sj/AlbumPeek';
+import { Skeleton, SkeletonBlock, SkeletonLine } from '../../../components/sj/Loading';
 import { useSession } from '../../../components/sj/SessionContext';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
@@ -178,9 +179,9 @@ export default function ChartsPage() {
       </div>
 
       {loading ? (
-        <div className="space-y-6 animate-pulse">
-          <div className="h-64 rounded-2xl bg-surface" />
-          <div className="h-40 rounded-2xl bg-surface" />
+        <div className="space-y-6">
+          <SkeletonBlock className="h-64" />
+          <SkeletonBlock className="h-40" />
         </div>
       ) : mode === 'albums' ? (
         unlock && !unlock.album_unlocked ? (
@@ -245,10 +246,10 @@ export default function ChartsPage() {
           kind="song"
         />
       ) : songsLoading ? (
-        <div className="space-y-8 animate-pulse">
-          <div className="h-44 rounded-2xl bg-surface" />
-          <div className="h-44 rounded-2xl bg-surface" />
-          <div className="h-64 max-w-2xl rounded-2xl bg-surface" />
+        <div className="space-y-8">
+          <SkeletonBlock className="h-44" />
+          <SkeletonBlock className="h-44" />
+          <SkeletonBlock className="h-64 max-w-2xl" />
         </div>
       ) : (
         <div className="space-y-8">
@@ -366,16 +367,16 @@ function RankingBlock() {
       <div className="h-px bg-divider mt-3" />
 
       {loading && entries.length === 0 ? (
-        <ol className="divide-y divide-divider animate-pulse" aria-hidden>
+        <ol className="divide-y divide-divider" aria-hidden>
           {Array.from({ length: 10 }).map((_, i) => (
             <li key={i} className="flex items-center gap-3 px-4 py-2.5">
               <span className="w-6 text-center text-[15px] font-black text-divider tabular-nums">
                 {i + 1}
               </span>
-              <span className="w-11 h-11 rounded-lg bg-divider shrink-0" />
+              <Skeleton className="w-11 h-11 rounded-lg shrink-0" />
               <span className="flex-1 min-w-0 space-y-1.5">
-                <span className="block h-3 w-2/5 rounded bg-divider" />
-                <span className="block h-2.5 w-1/4 rounded bg-divider" />
+                <SkeletonLine w="w-2/5" />
+                <SkeletonLine w="w-1/4" h="h-2.5" />
               </span>
             </li>
           ))}

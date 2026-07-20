@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import FlowerGlyph from './FlowerGlyph';
+import { Skeleton } from './Loading';
 import { useAlbumContextMenu } from './AlbumContextMenu';
 import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
@@ -215,7 +216,7 @@ export default function AlbumPeek({
 
                 <div className="flex items-center gap-1.5 mt-2 min-h-[18px]">
                   {stats === null ? (
-                    <span className="h-3 w-24 rounded bg-divider/60 animate-pulse" />
+                    <Skeleton className="h-3 w-24 rounded" />
                   ) : stats.count === 0 ? (
                     <span className="text-[11.5px] text-muted">{t('sj.peek.noRatings')}</span>
                   ) : (
@@ -238,7 +239,7 @@ export default function AlbumPeek({
                 {tracks === null ? (
                   <div className="space-y-1.5">
                     {Array.from({ length: 6 }).map((_, i) => (
-                      <span key={i} className="block h-3 rounded bg-divider/50 animate-pulse" />
+                      <Skeleton key={i} className="h-3 rounded" />
                     ))}
                   </div>
                 ) : tracks.length === 0 ? (
