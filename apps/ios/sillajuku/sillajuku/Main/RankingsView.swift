@@ -398,6 +398,7 @@ class ChartsViewModel {
 
 struct ChartsView: View {
     var viewModel: ChartsViewModel
+    @Namespace private var chartBubbleNamespace
 
     var body: some View {
         NavigationStack {
@@ -418,10 +419,11 @@ struct ChartsView: View {
         .task { await viewModel.load() }
     }
 
-    // MARK: Floating header (Albums / Songs — same style as Home Explore/Following)
+    // MARK: Floating header (Albums / Songs — same style as Home Explore/Following,
+    // including the sliding Liquid Glass bubble behind the active tab)
 
     private var floatingHeader: some View {
-        HStack(spacing: 28) {
+        HStack(spacing: 4) {
             chartTabButton(.albums, label: "Albums")
             chartTabButton(.songs,  label: "Songs")
         }
@@ -438,6 +440,16 @@ struct ChartsView: View {
             Text(label)
                 .font(.system(size: 17, weight: viewModel.chartMode == mode ? .bold : .regular))
                 .foregroundStyle(viewModel.chartMode == mode ? Color.sjInk : Color.sjMuted)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background {
+                    if viewModel.chartMode == mode {
+                        Capsule()
+                            .fill(Color.clear)
+                            .glassEffect(.regular, in: Capsule())
+                            .matchedGeometryEffect(id: "activeChartBubble", in: chartBubbleNamespace)
+                    }
+                }
         }
         .buttonStyle(.plain)
     }

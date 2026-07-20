@@ -432,16 +432,24 @@ class SearchViewModel {
     var songResults:   [SongResult] = []
     var isSearching = false
 
+    // Monotonic token so a superseded search can never clobber a newer one's
+    // results -- the debounce alone doesn't cover a slow old response landing
+    // after a fast new one (web's search got the same stale-request guard
+    // 2026-07-17).
+    private var searchGeneration = 0
+
     func search() async {
         let q = query.trimmingCharacters(in: .whitespaces)
+        searchGeneration += 1
+        let generation = searchGeneration
         guard q.count >= 2 else {
             artistResults = []
             albumResults  = []
             songResults   = []
+            isSearching   = false
             return
         }
         isSearching = true
-        defer { isSearching = false }
 
         // The three lookups used to run sequentially (album → songs →
         // artists), so a slow song lookup delayed album/artist results too
@@ -449,9 +457,11 @@ class SearchViewModel {
         // the catalog, most real search terms ("drake", "seoul", "jimin")
         // make the song step alone take 3+ seconds or time out outright,
         // since (unlike album/artist search) it has no dedicated search RPC,
-        // just a raw ILIKE scan over ~2.3M recordings. Running all three
-        // concurrently means total latency is bounded by the slowest one,
-        // not their sum.
+        // just a raw ILIKE scan over ~2.3M recordings. They run concurrently,
+        // and (2026-07-18, matching web's progressive search) results land
+        // AS EACH FINISHES: albums + artists render immediately while the
+        // slow song lookup is still going, instead of everything waiting on
+        // the slowest of the three.
         async let albumsTask: [Release] = (try? await supabase
             .rpc("search_release_groups", params: SearchParams(q: q, lim: 30))
             .execute()
@@ -462,7 +472,19 @@ class SearchViewModel {
             .execute()
             .value) ?? []
 
-        (albumResults, songResults, artistResults) = await (albumsTask, songsTask, artistsTask)
+        let albums = await albumsTask
+        guard generation == searchGeneration else { return }
+        albumResults = albums
+
+        let artists = await artistsTask
+        guard generation == searchGeneration else { return }
+        artistResults = artists
+        // The fast pair is in -- stop the spinner while songs stream in.
+        isSearching = false
+
+        let songs = await songsTask
+        guard generation == searchGeneration else { return }
+        songResults = songs
 
         // When the catalog returns NOTHING for a real query, log a search miss. This is the
         // demand signal that drives MB-gap recovery: the pipeline recovers an artist from Deezer
@@ -1480,6 +1502,11 @@ struct ArtistPageView: View {
     @State private var communityFeed:   [CommunityRating]     = []
     @State private var selectedTab      = 0
     @State private var isLoading        = true
+    // A failed/timed-out releases fetch used to be indistinguishable from a
+    // genuinely empty artist (`try? ?? []`) -- the page then claimed
+    // "0 releases" for artists that have plenty. Tracked so the empty state
+    // can offer Retry instead of lying.
+    @State private var loadFailed       = false
     // Songs load separately from the main isLoading gate -- loadSongs()'s
     // recordings lookup is the slowest single query on this page, and the
     // default (Albums) tab doesn't need it, so it shouldn't hold up the
@@ -1569,7 +1596,9 @@ struct ArtistPageView: View {
                     Divider().frame(height: 28)
                     artistStat(value: "\(communityCount)", label: "ratings")
                     Divider().frame(height: 28)
-                    artistStat(value: "\(releases.count)", label: "releases")
+                    // "—" while loading: rendering a live "0" here during the
+                    // fetch is what read as "this artist has 0 releases".
+                    artistStat(value: isLoading ? "—" : "\(releases.count)", label: "releases")
                 }
                 .padding(.horizontal, 18)
                 .padding(.bottom, 14)
@@ -1622,7 +1651,25 @@ struct ArtistPageView: View {
                     // Albums
                     ScrollView(showsIndicators: false) {
                         LazyVStack(spacing: 0) {
-                            if releases.isEmpty {
+                            if loadFailed {
+                                VStack(spacing: 12) {
+                                    Text("Couldn't load this artist's releases.")
+                                        .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                                    Button {
+                                        isLoading = true
+                                        Task { await load() }
+                                    } label: {
+                                        Text("Retry")
+                                            .font(.system(size: 13, weight: .semibold))
+                                            .foregroundStyle(Color.sjCream)
+                                            .padding(.horizontal, 18).padding(.vertical, 8)
+                                            .background(Color.sjInk)
+                                            .clipShape(Capsule())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .frame(maxWidth: .infinity).padding(.top, 40)
+                            } else if releases.isEmpty {
                                 Text("No releases in the catalogue yet.")
                                     .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
                                     .frame(maxWidth: .infinity).padding(.top, 40)
@@ -1719,6 +1766,7 @@ struct ArtistPageView: View {
     }
 
     private func load() async {
+        loadFailed = false
         var loaded: [Release]
         if let artistId = artist.artistId {
             // Identity-aware: returns all releases credited to this artist, regardless of credit position.
@@ -1728,17 +1776,30 @@ struct ArtistPageView: View {
                 let name: String; let coverUrl: String?
                 enum CodingKeys: String, CodingKey { case name; case coverUrl = "cover_url" }
             }
-            async let releasesFetch: [Release] = (try? await supabase
-                .rpc("get_artist_release_groups", params: ArtistReleasesParams(p_artist_id: artistId.uuidString, lim: 60))
-                .execute()
-                .value) ?? []
+            // Optional (nil = the fetch itself failed), NOT coalesced to [] --
+            // a timeout must not masquerade as an artist with zero releases.
+            func fetchReleases() async -> [Release]? {
+                try? await supabase
+                    .rpc("get_artist_release_groups", params: ArtistReleasesParams(p_artist_id: artistId.uuidString, lim: 60))
+                    .execute()
+                    .value
+            }
+            async let releasesFetch: [Release]? = fetchReleases()
             async let artistRowFetch: [ARow] = (try? await supabase
                 .from("artists").select("name, cover_url")
                 .eq("id", value: artistId.uuidString).limit(1).execute().value) ?? []
 
-            let (releasesResult, arows) = await (releasesFetch, artistRowFetch)
-            loaded = releasesResult
+            var (releasesResult, arows) = await (releasesFetch, artistRowFetch)
             if let row = arows.first { artistAvatarUrl = row.coverUrl; canonicalName = row.name }
+            if releasesResult == nil { releasesResult = await fetchReleases() }  // one retry
+            guard let releasesResult else {
+                loadFailed = true
+                releases = []
+                isLoading = false
+                isLoadingSongs = false
+                return
+            }
+            loaded = releasesResult
         } else {
             let escaped = artist.name.replacingOccurrences(of: "'", with: "''")
             loaded = (try? await supabase
@@ -1752,9 +1813,15 @@ struct ArtistPageView: View {
             if loaded.isEmpty { loaded = await fetchFromWebSearch() }
         }
         releases = loaded
+        // Releases are the page -- render them NOW and let community scores /
+        // my-ratings stream in below (their state updates re-render the rows).
+        // Previously isLoading stayed true through the full ratings fetch too,
+        // so the whole page sat on a spinner well after the releases existed.
+        isLoading = false
+        ImageCache.prefetch(loaded.compactMap { URL(string: $0.coverUrl?.thumbnailUrl ?? "") })
 
         let releaseGroupIds = loaded.map(\.id.uuidString)
-        guard !releaseGroupIds.isEmpty else { isLoading = false; isLoadingSongs = false; return }
+        guard !releaseGroupIds.isEmpty else { isLoadingSongs = false; return }
 
         // Not part of the async let group below on purpose -- this is the
         // slowest single query on the page (unindexed ILIKE scan over
@@ -1793,7 +1860,6 @@ struct ArtistPageView: View {
         allRatingScores = allScores
         communityCount  = rows.count  // all ratings, including instinct (score may be nil)
         communityAvg    = allScores.isEmpty ? nil : allScores.reduce(0, +) / Double(allScores.count)
-        isLoading       = false
 
         await loadCommunityFeed(releaseGroupIds: releaseGroupIds)
     }

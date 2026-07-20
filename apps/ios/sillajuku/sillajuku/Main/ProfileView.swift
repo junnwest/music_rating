@@ -295,57 +295,122 @@ class ProfileViewModel {
         hasLoaded = true
         isLoading = true
 
-        profile = try? await supabase
+        // These chains are independent of each other and used to run strictly
+        // serially -- a dozen network round-trips before the first pixel,
+        // which is why the tab took seconds to open cold. They all start
+        // concurrently now, and the page renders as soon as profile + album
+        // ratings (the primary content) are in; songs, follows, mix shares
+        // and social counts stream in behind it.
+        async let profileFetch  = fetchProfile(userId: user.id)
+        async let ratingsFetch  = fetchAlbumRatings(userId: user.id)
+        async let songsFetch    = fetchSongRatings(userId: user.id)
+        async let followsFetch  = fetchFollowCounts(userId: user.id)
+        async let sharesFetch   = fetchMixShares(userId: user.id)
+
+        profile = await profileFetch
+        ratings = await ratingsFetch
+        isLoading = false
+        ImageCache.prefetch(ratings.compactMap { URL(string: $0.releases.coverUrl?.thumbnailUrl ?? "") })
+
+        await loadAlbumRatingSocialData(userId: user.id)
+
+        songRatings = await songsFetch
+        ImageCache.prefetch(songRatings.compactMap { URL(string: $0.release.coverUrl?.thumbnailUrl ?? "") })
+        if !songRatings.isEmpty { await loadSongRatingSocialData() }
+
+        let follows = await followsFetch
+        followingCount = follows.following
+        followerCount  = follows.followers
+
+        mixShares = await HomeViewModel.hydrateCovers(await sharesFetch)
+        await loadMixShareSocialData()
+    }
+
+    private func fetchProfile(userId: UUID) async -> Profile? {
+        try? await supabase
             .from("profiles")
             .select("id, display_name, username, rating_mode, manual_rating_step, bio, avatar_url, notify_likes, notify_replies, notify_followers, notify_rankings, notify_capsule, profile_visibility, catalog_visibility, library_visibility, stats_visibility, referral_code, badge_color, is_verified")
-            .eq("id", value: user.id)
+            .eq("id", value: userId)
             .single()
             .execute()
             .value
+    }
 
-        ratings = (try? await supabase
+    private func fetchAlbumRatings(userId: UUID) async -> [UserRating] {
+        (try? await supabase
             .from("ratings")
             .select("id, score, elo_score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native))")
-            .eq("user_id", value: user.id)
+            .eq("user_id", value: userId)
             .order("created_at", ascending: false)
             .limit(60)
             .execute()
             .value) ?? []
+    }
 
-        // Fetch like + comment counts for the posts display mode
+    // Like + comment counts for the posts display mode (three independent
+    // lookups, run concurrently).
+    private func loadAlbumRatingSocialData(userId: UUID) async {
         let ratingIds = ratings.map(\.id.uuidString)
-        if !ratingIds.isEmpty {
-            struct RatingIdRow: Codable {
-                let ratingId: UUID
-                enum CodingKeys: String, CodingKey { case ratingId = "rating_id" }
-            }
-            if let rows: [RatingIdRow] = try? await supabase
-                .from("rating_likes").select("rating_id")
-                .in("rating_id", values: ratingIds).execute().value {
-                var counts: [UUID: Int] = [:]
-                for r in rows { counts[r.ratingId, default: 0] += 1 }
-                likeCounts = counts
-            }
-            if let rows: [RatingIdRow] = try? await supabase
-                .from("rating_comments").select("rating_id")
-                .in("rating_id", values: ratingIds).execute().value {
-                var counts: [UUID: Int] = [:]
-                for r in rows { counts[r.ratingId, default: 0] += 1 }
-                commentCounts = counts
-            }
-            if let rows: [RatingIdRow] = try? await supabase
-                .from("rating_likes").select("rating_id")
-                .eq("user_id", value: user.id)
-                .in("rating_id", values: ratingIds).execute().value {
-                likedRatingIds = Set(rows.map(\.ratingId))
-            }
+        guard !ratingIds.isEmpty else { return }
+        struct RatingIdRow: Codable {
+            let ratingId: UUID
+            enum CodingKeys: String, CodingKey { case ratingId = "rating_id" }
         }
+        async let likesFetch: [RatingIdRow]? = try? await supabase
+            .from("rating_likes").select("rating_id")
+            .in("rating_id", values: ratingIds).execute().value
+        async let commentsFetch: [RatingIdRow]? = try? await supabase
+            .from("rating_comments").select("rating_id")
+            .in("rating_id", values: ratingIds).execute().value
+        async let myLikesFetch: [RatingIdRow]? = try? await supabase
+            .from("rating_likes").select("rating_id")
+            .eq("user_id", value: userId)
+            .in("rating_id", values: ratingIds).execute().value
 
-        // Song ratings — Step 1: recording_id + score/elo_score + recording title/artist.
-        // elo_score is read here too: Instinct-mode song ratings only get their
-        // manual `score` column backfilled once the user has rated 5+ songs
-        // (see InstinctTrackRatingViewModel.finalize()) — before that threshold,
-        // elo_score is the only place the rating actually lives.
+        if let rows = await likesFetch {
+            var counts: [UUID: Int] = [:]
+            for r in rows { counts[r.ratingId, default: 0] += 1 }
+            likeCounts = counts
+        }
+        if let rows = await commentsFetch {
+            var counts: [UUID: Int] = [:]
+            for r in rows { counts[r.ratingId, default: 0] += 1 }
+            commentCounts = counts
+        }
+        if let rows = await myLikesFetch {
+            likedRatingIds = Set(rows.map(\.ratingId))
+        }
+    }
+
+    private func fetchFollowCounts(userId: UUID) async -> (following: Int, followers: Int) {
+        async let followingFetch = try? await supabase.from("follows")
+            .select("*", count: .exact)
+            .eq("follower_id", value: userId).execute()
+        async let followersFetch = try? await supabase.from("follows")
+            .select("*", count: .exact)
+            .eq("following_id", value: userId).execute()
+        let (following, followers) = await (followingFetch, followersFetch)
+        return (following?.count ?? 0, followers?.count ?? 0)
+    }
+
+    // Own mix shares -- merged into the posts feed so a just-shared mix shows
+    // up alongside rating posts instead of only in the Home feed.
+    private func fetchMixShares(userId: UUID) async -> [HomeViewModel.MixShareRow] {
+        (try? await supabase
+            .from("mix_shares").select(HomeViewModel.mixShareSelect)
+            .eq("user_id", value: userId)
+            .order("created_at", ascending: false)
+            .limit(30)
+            .execute()
+            .value) ?? []
+    }
+
+    // Song ratings — Step 1: recording_id + score/elo_score + recording title/artist.
+    // elo_score is read here too: Instinct-mode song ratings only get their
+    // manual `score` column backfilled once the user has rated 5+ songs
+    // (see InstinctTrackRatingViewModel.finalize()) — before that threshold,
+    // elo_score is the only place the rating actually lives.
+    private func fetchSongRatings(userId: UUID) async -> [SongRatingRow] {
         struct TrackRatingNew: Codable {
             let id: UUID
             let recordingId: UUID
@@ -369,15 +434,16 @@ class ProfileViewModel {
         let rawSongs: [TrackRatingNew] = (try? await supabase
             .from("track_ratings")
             .select("id, recording_id, score, elo_score, review_text, created_at, recordings(id, title, artist_display)")
-            .eq("user_id", value: user.id)
+            .eq("user_id", value: userId)
             .order("created_at", ascending: false)
             .limit(60)
             .execute()
             .value) ?? []
 
-        if !rawSongs.isEmpty {
-            // Step 2: get release group cover art via release_tracks
-            struct RTCoverRow: Codable {
+        guard !rawSongs.isEmpty else { return [] }
+
+        // Step 2: get release group cover art via release_tracks
+        struct RTCoverRow: Codable {
                 let recordingId: UUID
                 let releases: CoverRelRow?
                 struct CoverRelRow: Codable {
@@ -399,68 +465,41 @@ class ProfileViewModel {
                     case recordingId = "recording_id"; case releases
                 }
             }
-            let coverRows: [RTCoverRow] = (try? await supabase
-                .from("release_tracks")
-                .select("recording_id, releases(is_canonical, release_groups(id, title, artist_display, cover_url, native_title, artists!release_groups_primary_artist_id_fkey(name_native)))")
-                .in("recording_id", values: rawSongs.map(\.recordingId.uuidString))
-                .execute()
-                .value) ?? []
-
-            var rgMap: [UUID: RTCoverRow.CoverRelRow.RGCover] = [:]
-            for row in coverRows {
-                guard let rel = row.releases, let rg = rel.releaseGroups else { continue }
-                if rel.isCanonical == true || rgMap[row.recordingId] == nil { rgMap[row.recordingId] = rg }
-            }
-
-            songRatings = rawSongs.map { r in
-                let rg = rgMap[r.recordingId]
-                let ref = ReleaseRef(
-                    id:            rg?.id ?? UUID(),
-                    title:         rg?.title ?? "",
-                    artist:        rg?.artistDisplay ?? r.recordings.artistDisplay ?? "",
-                    coverUrl:      rg?.coverUrl,
-                    releaseType:   nil,
-                    titleNative:   rg?.titleNative,
-                    primaryArtist: rg?.primaryArtist
-                )
-                return SongRatingRow(
-                    ratingId:    r.id,
-                    recordingId: r.recordingId,
-                    score:       r.score,
-                    eloScore:    r.eloScore,
-                    reviewText:  r.reviewText,
-                    trackTitle:  r.recordings.title,
-                    release:     ref,
-                    createdAt:   r.createdAt
-                )
-            }
-            await loadSongRatingSocialData()
-        }
-
-        if let r = try? await supabase.from("follows")
-            .select("*", count: .exact)
-            .eq("follower_id", value: user.id).execute() {
-            followingCount = r.count ?? 0
-        }
-        if let r = try? await supabase.from("follows")
-            .select("*", count: .exact)
-            .eq("following_id", value: user.id).execute() {
-            followerCount = r.count ?? 0
-        }
-
-        // Own mix shares -- merged into the posts feed below so a just-shared
-        // mix shows up alongside rating posts instead of only in the Home feed.
-        let shareRows: [HomeViewModel.MixShareRow] = (try? await supabase
-            .from("mix_shares").select(HomeViewModel.mixShareSelect)
-            .eq("user_id", value: user.id)
-            .order("created_at", ascending: false)
-            .limit(30)
+        let coverRows: [RTCoverRow] = (try? await supabase
+            .from("release_tracks")
+            .select("recording_id, releases(is_canonical, release_groups(id, title, artist_display, cover_url, native_title, artists!release_groups_primary_artist_id_fkey(name_native)))")
+            .in("recording_id", values: rawSongs.map(\.recordingId.uuidString))
             .execute()
             .value) ?? []
-        mixShares = await HomeViewModel.hydrateCovers(shareRows)
-        await loadMixShareSocialData()
 
-        isLoading = false
+        var rgMap: [UUID: RTCoverRow.CoverRelRow.RGCover] = [:]
+        for row in coverRows {
+            guard let rel = row.releases, let rg = rel.releaseGroups else { continue }
+            if rel.isCanonical == true || rgMap[row.recordingId] == nil { rgMap[row.recordingId] = rg }
+        }
+
+        return rawSongs.map { r in
+            let rg = rgMap[r.recordingId]
+            let ref = ReleaseRef(
+                id:            rg?.id ?? UUID(),
+                title:         rg?.title ?? "",
+                artist:        rg?.artistDisplay ?? r.recordings.artistDisplay ?? "",
+                coverUrl:      rg?.coverUrl,
+                releaseType:   nil,
+                titleNative:   rg?.titleNative,
+                primaryArtist: rg?.primaryArtist
+            )
+            return SongRatingRow(
+                ratingId:    r.id,
+                recordingId: r.recordingId,
+                score:       r.score,
+                eloScore:    r.eloScore,
+                reviewText:  r.reviewText,
+                trackTitle:  r.recordings.title,
+                release:     ref,
+                createdAt:   r.createdAt
+            )
+        }
     }
 
     private func loadMixShareSocialData() async {

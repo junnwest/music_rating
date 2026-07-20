@@ -74,17 +74,39 @@ struct RecommendationsResponse: Decodable {
 // MARK: - /api/taste/profile (authenticated)
 
 // v4 (2026-07-13 web rebuild, MBTI 4-letter type removed in favor of a graphical chart report --
-// decade/score-distribution histograms, scene mix, canon reach, 12-month timeline). Only the
-// fields iOS's card-reel actually uses are decoded; `charts`/`disliked`/most of `clusters` are
-// omitted since this session's "algorithm only, keep the existing card UI" scope doesn't build
-// the chart-based report web now has.
+// decade/score-distribution histograms, scene mix, canon reach, 12-month timeline). Decoded in
+// full since 2026-07-18: iOS's TasteView now renders the same chart report web does.
 struct TasteProfileResponse: Decodable {
     let ratingCount: Int
     let albumRatingCount: Int
+    let totalTags: Int
+    let clusters: [TasteWorld]
+    let disliked: [DislikedTag]
     let standings: [GenreStandingRow]
-    let stats: TasteStats
     let charts: TasteCharts
+    let stats: TasteStats
     let topAlbum: TasteTopAlbum?
+
+    struct TasteWorld: Decodable {
+        let share: Double
+        let avgScore: Double?
+        let meanYear: Double?
+        let sdYears: Double?
+        let dominantScene: String?  // "kr" | "jp" | "west" | "other"
+        let tags: [WorldTag]
+
+        struct WorldTag: Decodable {
+            let tag: String
+            let display: String
+            let avg: Double
+            let n: Double
+        }
+    }
+
+    struct DislikedTag: Decodable {
+        let tag: String
+        let display: String
+    }
 
     struct GenreStandingRow: Decodable {
         let genre: String
@@ -94,13 +116,40 @@ struct TasteProfileResponse: Decodable {
     }
 
     struct TasteStats: Decodable {
+        let avgScore: Double?
+        let sdScore: Double?
         let fiveStars: Int
+        let meanYear: Int?
+        let sdYears: Double?
+        let prestigeShare: Double?
     }
 
     struct TasteCharts: Decodable {
+        // Contiguous, zero-filled between first and last rated decade.
+        let decades: [DecadeBin]
+        // Half-star buckets, index 0 = 0.5★ … 9 = 5.0★.
+        let scoreDist: [Int]
+        let scenes: SceneMix?
         // "YYYY-MM", oldest first, 12 entries (a rolling window, not fixed Jan-Dec).
         let timeline: [TimelineEntry]
         let peakMonthIndex: Int?
+
+        struct DecadeBin: Decodable {
+            let decade: Int
+            let count: Int
+        }
+
+        struct SceneMix: Decodable {
+            let counts: Counts
+            let total: Int
+
+            struct Counts: Decodable {
+                let kr: Int
+                let jp: Int
+                let west: Int
+                let other: Int
+            }
+        }
 
         struct TimelineEntry: Decodable {
             let month: String
