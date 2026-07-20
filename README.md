@@ -14,13 +14,14 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
-> **⚑ SESSION CLOSE (2026-07-20, Mac) — everything is COMMITTED + PUSHED (`e521e83` feature batch, `023548b` docs; rebased over Windows' `22d972e`). Open items, priority order:**
+> **⚑ SESSION CLOSE (2026-07-20, Mac, session 2) — App Store rejected the Guideline 4 fix A SECOND TIME (build 9, reviewed on iPad) — real root cause found, fixed properly, build 10. Everything COMMITTED + PUSHED (`5923504`, rebased over Windows' `75d4e98`). Open items, priority order:**
 >
-> 1. **USER: archive + upload build 9** (Xcode Organizer), reply to the App Review message, resubmit. Builds 7/8 are burned; Sentry-dSYM warning is expected noise.
-> 2. **USER: paste `20260718000000_artist_releases_rpc_union.sql` into the Supabase SQL editor** — the artist-page speedup is blocked on it. After applying, next session should re-time the RPC to confirm (~0.8s → expect tens of ms).
-> 3. **Device confirmations pending:** Home header safe-area fix (a few cold launches), Instagram share tap-through per background style (Story gradient keys / backgroundImage / backgroundVideo, Reels, `.igo` feed handoff, camera).
-> 4. `INTERVIEW_PREP.*` at repo root are personal, deliberately untracked — don't commit; interview tutoring paused at auth-tokens question, Lessons 2–4 (databases / async+types / Swift) queued.
-> 5. Windows' 2026-07-19 close notes below have the pipeline restart items (`area` lane activates, drop `RECENCY=0`).
+> 1. **USER: archive + upload build 10** (Xcode Organizer), reply to the new App Review message explaining the name step no longer exists at all, resubmit. Builds 7/8/9 are burned.
+> 2. **Root cause of the 2nd rejection (worth remembering):** the 07-18 fix only skipped the name step *when the current Sign-in-with-Apple authorization happened to include a name* — but Apple only ever sends the name on an Apple ID's very first-ever authorization to the app, and App Review reuses the same Apple ID across every resubmission. So by build 9 Apple sent no name, our gate reappeared, and it was a *mandatory* field (Continue disabled until typed) — exactly what Apple flags. Fix this time: the name step (`StepName`/`StepProfile.swift`) is deleted outright, for every provider, unconditionally — not conditioned on metadata at all. Verified on-sim: onboarding opens straight to "Create a username," 4 dots, no code path can resurrect the gate.
+> 3. **USER: paste `20260718000000_artist_releases_rpc_union.sql` into the Supabase SQL editor** — still not applied, still blocking the artist-page speedup.
+> 4. **Device confirmations pending:** Home header safe-area fix, Instagram share tap-through per background style, Reels, `.igo` feed handoff, camera.
+> 5. `INTERVIEW_PREP.*` at repo root are personal, deliberately untracked — don't commit; interview tutoring paused at auth-tokens question, Lessons 2–4 (databases / async+types / Swift) queued.
+> 6. Windows' 2026-07-19/20 close notes below have the pipeline + web-batch items.
 
 > **⚑ ACTION NEEDED (2026-07-18, session 5): paste migration `20260718000000_artist_releases_rpc_union.sql` into the Supabase SQL editor** (no `SUPABASE_ACCESS_TOKEN` on this Mac). It rewrites `get_artist_release_groups` from an OR+EXISTS full-scan (~0.8–1.8s measured) to an index-driven UNION — this is most of the artist page's remaining slowness. Also this session: cover fetches got a dedicated URLSession (12 connections/host, no double URLCache) + prefetch worker-pool of 8 (was barriered batches of 6). Cover "slowness" is CAA's 3-hop redirect chain (~1.6s, measured hop by hop), NOT resolution — we already fetch 250px thumbs; first-ever fetches stay slow until a server-side cover mirror/proxy exists (pipeline-side, parked).
 >
