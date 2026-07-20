@@ -23,6 +23,7 @@ import Modal from './Modal';
 import Avatar from './Avatar';
 import ProfilePostCard from './ProfilePostCard';
 import ProfileSongPostCard from './ProfileSongPostCard';
+import ProfileStats from './ProfileStats';
 import { useSession } from './SessionContext';
 import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
@@ -487,12 +488,12 @@ export default function ProfileView({ username }: { username?: string }) {
 
       {/* Name / bio / actions */}
       <div className="mt-4">
-        <p className="text-[15px] font-semibold text-ink">
-          {display?.displayName || `@${handle}`}
-          {display?.displayName && (
-            <span className="ml-2 text-[13px] font-normal text-muted">@{handle}</span>
-          )}
-        </p>
+        {/* The handle is the identity — the display name is a freeform label,
+            so it reads as the secondary line (see also FollowListModal). */}
+        <p className="text-[16px] font-semibold text-ink">@{handle}</p>
+        {display?.displayName && (
+          <p className="text-[13px] text-muted">{display.displayName}</p>
+        )}
         {display?.bio && <p className="mt-1 text-[13.5px] text-muted">{display.bio}</p>}
         {!isSelf && myId && myId !== targetId && (
           <div className="mt-3">
@@ -666,7 +667,7 @@ export default function ProfileView({ username }: { username?: string }) {
       {tab === 'lists' && targetId && <MixLibrary userId={targetId} isSelf={isSelf} />}
 
       {/* ── Stats tab ── */}
-      {tab === 'stats' && <StatsTab items={items} instinctCount={instinctAlbumCount} />}
+      {tab === 'stats' && <ProfileStats items={items} instinctCount={instinctAlbumCount} />}
 
       {/* Follow list modal */}
       {followModal && targetId && (
@@ -954,149 +955,6 @@ function MixLibrary({ userId, isSelf }: { userId: string; isSelf: boolean }) {
   );
 }
 
-// ── Stats tab ───────────────────────────────────────────────────────────────
-
-function StatsTab({
-  items,
-  instinctCount,
-}: {
-  items: ProfileRatingItem[];
-  instinctCount: number;
-}) {
-  const { t } = useLanguage();
-  const albums = items.filter((i) => !i.isSong);
-  const songs = items.filter((i) => i.isSong);
-
-  if (items.length === 0) return <Empty label={t('sj.profile.noStats')} />;
-
-  const manualScores = items.map((i) => i.score).filter((s): s is number => s != null);
-  const avg = manualScores.length
-    ? manualScores.reduce((a, b) => a + b, 0) / manualScores.length
-    : 0;
-
-  // 0.5 buckets across manual + revealed instinct scores
-  const allScores: number[] = [];
-  for (const i of items) {
-    if (i.score != null) allScores.push(i.score);
-    else if (i.eloScore != null && instinctCount >= INSTINCT_REVEAL_THRESHOLD) {
-      allScores.push(eloToScore(i.eloScore));
-    }
-  }
-  const buckets = Array.from({ length: 10 }, (_, i) => ({ score: (i + 1) / 2, count: 0 }));
-  for (const s of allScores) {
-    const b = Math.max(0.5, Math.min(5, Math.round(s * 2) / 2));
-    buckets[Math.round(b * 2) - 1].count += 1;
-  }
-  const maxCount = Math.max(1, ...buckets.map((b) => b.count));
-
-  // Top artists (albums only)
-  const artistCounts: Record<string, number> = {};
-  for (const i of albums) {
-    if (i.releaseArtist) artistCounts[i.releaseArtist] = (artistCounts[i.releaseArtist] ?? 0) + 1;
-  }
-  const topArtists = Object.entries(artistCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
-  const maxArtist = topArtists[0]?.[1] ?? 1;
-
-  const manualCount = items.filter((i) => i.score != null).length;
-  const instinctTotal = items.filter((i) => i.eloScore != null).length;
-
-  return (
-    <div className="mt-5 space-y-8 max-w-lg">
-      <div className="flex rounded-xl bg-ink/[0.05] py-3.5">
-        <StatCell value={albums.length} label={t('sj.profile.filterAlbums')} />
-        <span className="w-px bg-divider" />
-        <StatCell value={songs.length} label={t('sj.profile.filterSongs')} />
-        <span className="w-px bg-divider" />
-        <span className="flex-1 flex flex-col items-center">
-          <span className="text-[18px] font-bold text-ink tabular-nums">{avg.toFixed(2)}</span>
-          <span className="text-[10.5px] text-muted">{t('sj.profile.avgScore')}</span>
-        </span>
-      </div>
-
-      <section>
-        <h3 className="text-[11px] font-semibold tracking-[0.05em] uppercase text-muted mb-3">
-          {t('sj.artist.scoreDistribution')}
-        </h3>
-        <div className="flex items-end gap-1 h-24">
-          {buckets.map((b) => (
-            <span key={b.score} className="flex-1 flex flex-col items-center gap-0.5 self-end">
-              <span className="text-[8px] text-muted h-3">{b.count > 0 ? b.count : ''}</span>
-              <span
-                className={`w-full rounded ${b.count > 0 ? 'bg-accent/75' : 'bg-ink/[0.07]'}`}
-                style={{ height: Math.max(4, (b.count / maxCount) * 72) }}
-              />
-            </span>
-          ))}
-        </div>
-        <div className="h-px bg-divider/60 mt-0.5" />
-        <div className="flex gap-1 mt-1">
-          {buckets.map((b) => (
-            <span key={b.score} className="flex-1 text-center text-[9px] text-muted">
-              {Number.isInteger(b.score) ? b.score : ''}
-            </span>
-          ))}
-        </div>
-      </section>
-
-      {topArtists.length > 0 && (
-        <section>
-          <h3 className="text-[11px] font-semibold tracking-[0.05em] uppercase text-muted mb-2">
-            {t('sj.profile.topArtists')}
-          </h3>
-          <ul className="divide-y divide-divider">
-            {topArtists.map(([artist, count]) => (
-              <li key={artist} className="flex items-center gap-2.5 py-2">
-                <span className="flex-1 text-[13px] text-ink truncate">{artist}</span>
-                <span className="w-20 h-2 rounded bg-transparent">
-                  <span
-                    className="block h-full rounded bg-accent/30"
-                    style={{ width: `${(count / maxArtist) * 100}%` }}
-                  />
-                </span>
-                <span className="w-6 text-right text-[12px] font-semibold text-muted tabular-nums">
-                  {count}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {(instinctTotal > 0 || manualCount > 0) && (
-        <section>
-          <h3 className="text-[11px] font-semibold tracking-[0.05em] uppercase text-muted mb-3">
-            {t('sj.profile.ratingMode')}
-          </h3>
-          <div className="flex gap-2.5">
-            {instinctTotal > 0 && (
-              <span className="flex-1 px-3.5 py-3 rounded-[10px] bg-accent/[0.08]">
-                <span className="block text-[20px] font-bold text-ink tabular-nums">
-                  {instinctTotal}
-                </span>
-                <span className="block text-[11px] text-muted">
-                  {t('sj.onboarding.modeInstinct')}
-                </span>
-              </span>
-            )}
-            {manualCount > 0 && (
-              <span className="flex-1 px-3.5 py-3 rounded-[10px] bg-accent/[0.08]">
-                <span className="block text-[20px] font-bold text-ink tabular-nums">
-                  {manualCount}
-                </span>
-                <span className="block text-[11px] text-muted">
-                  {t('sj.onboarding.modeManual')}
-                </span>
-              </span>
-            )}
-          </div>
-        </section>
-      )}
-    </div>
-  );
-}
-
 // ── Follow list modal ───────────────────────────────────────────────────────
 
 function FollowListModal({
@@ -1202,14 +1060,12 @@ function FollowListModal({
                 >
                   <Avatar url={p.avatar_url} size={40} />
                   <span className="min-w-0">
-                    {p.display_name && (
-                      <span className="block text-[13.5px] font-semibold text-ink truncate">
-                        {p.display_name}
-                      </span>
-                    )}
-                    {p.username && (
+                    <span className="block text-[13.5px] font-semibold text-ink truncate">
+                      @{p.username ?? p.display_name ?? '—'}
+                    </span>
+                    {p.username && p.display_name && (
                       <span className="block text-[12.5px] text-muted truncate">
-                        @{p.username}
+                        {p.display_name}
                       </span>
                     )}
                   </span>

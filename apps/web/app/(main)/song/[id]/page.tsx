@@ -4,6 +4,7 @@ import { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { ChevronRight } from 'lucide-react';
+import ArtistLink from '../../../../components/sj/ArtistLink';
 import Cover from '../../../../components/sj/Cover';
 import ManualRateModal from '../../../../components/sj/ManualRateModal';
 import InstinctModal from '../../../../components/sj/InstinctModal';
@@ -166,12 +167,12 @@ function SongPageInner() {
             {track.title}
           </h1>
           {(track.artist || release) && (
-            <Link
+            <ArtistLink
               href={`/artist/${encodeURIComponent(track.artist ?? release?.artist ?? '')}`}
               className="text-[13px] text-muted hover:text-ink hover:underline"
             >
               {track.artist ?? (release ? displayName(release.artist, release.artistNative) : '')}
-            </Link>
+            </ArtistLink>
           )}
           {durationString && <p className="text-[12px] text-muted mt-0.5">{durationString}</p>}
         </div>

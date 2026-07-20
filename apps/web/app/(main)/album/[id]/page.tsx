@@ -10,10 +10,13 @@ import {
   ChevronRight,
   ExternalLink,
   ListMusic,
-  ListPlus,
+  Bookmark,
 } from 'lucide-react';
+import AlbumRateButton from '../../../../components/sj/AlbumRateButton';
+import ArtistLink from '../../../../components/sj/ArtistLink';
 import Avatar from '../../../../components/sj/Avatar';
 import Cover from '../../../../components/sj/Cover';
+import { useContextMenuFor, openInNewTab } from '../../../../components/sj/ContextMenu';
 import FlowerGlyph from '../../../../components/sj/FlowerGlyph';
 import ManualRateModal from '../../../../components/sj/ManualRateModal';
 import InstinctModal from '../../../../components/sj/InstinctModal';
@@ -21,6 +24,12 @@ import InlineRatingEditor from '../../../../components/sj/InlineRatingEditor';
 import MixPickerModal from '../../../../components/sj/MixPickerModal';
 import ScoreBadge from '../../../../components/sj/ScoreBadge';
 import RatingHistogram from '../../../../components/sj/RatingHistogram';
+import {
+  Skeleton,
+  SkeletonBlock,
+  SkeletonLine,
+  SkeletonRows,
+} from '../../../../components/sj/Loading';
 import { useSession } from '../../../../components/sj/SessionContext';
 import { supabase } from '../../../../lib/supabaseClient';
 import { useLanguage } from '../../../../lib/i18n';
@@ -107,6 +116,31 @@ export default function AlbumPage() {
 
   const ratingMode = profile?.rating_mode ?? 'manual';
   const ratingStep = profile?.manual_rating_step ?? 0.5;
+
+  // Right-click menu for the tracklist. One instance for the whole list — each
+  // row hands itself in as the subject (see `useContextMenuFor`).
+  const { onContextMenu: onTrackContextMenu, menu: trackContextMenu } =
+    useContextMenuFor<TrackEntry>((track) => [
+      {
+        key: 'open-new-tab',
+        label: t('sj.context.openNewTab'),
+        icon: <ExternalLink size={15} />,
+        onSelect: () => openInNewTab(`/song/${track.recordingId}?rg=${releaseGroupId}`),
+      },
+      ...(userId
+        ? [
+            {
+              key: 'rate',
+              label: t('sj.context.rate'),
+              icon: <FlowerGlyph size={14} src="/icon-flower.svg" />,
+              onSelect: () =>
+                ratingMode === 'instinct'
+                  ? setTrackInstinctTarget(track)
+                  : setTrackManualTarget(track),
+            },
+          ]
+        : []),
+    ]);
 
   const loadRatings = useCallback(async () => {
     if (!supabase) return;
@@ -235,7 +269,10 @@ export default function AlbumPage() {
         if (mixIds.length === 0) return;
         const { data: mixRows } = await supabase!
           .from('mixes')
-          .select('id, name, profiles(id, username, display_name)')
+          // Same PGRST201 ambiguity as the mix page: `mix_likes` is a second
+          // mixes↔profiles path, so the embed needs the FK hint or the whole
+          // query fails and this section silently renders empty.
+          .select('id, name, profiles!mixes_user_id_fkey(id, username, display_name)')
           .in('id', mixIds)
           .eq('is_public', true)
           .limit(10);
@@ -362,12 +399,13 @@ export default function AlbumPage() {
 
   if (loading || !release) {
     return (
-      <div className="mx-auto max-w-5xl px-4 md:px-6 py-8 flex gap-10 animate-pulse">
-        <div className="w-64 h-64 rounded-2xl bg-surface border border-divider/60 hidden md:block" />
+      <div className="mx-auto max-w-5xl px-4 md:px-6 py-8 flex gap-10">
+        <Skeleton className="w-64 h-64 shrink-0 rounded-2xl bg-surface border border-divider/60 hidden md:block" />
         <div className="flex-1 space-y-4">
-          <div className="h-8 w-2/3 rounded bg-surface" />
-          <div className="h-4 w-1/3 rounded bg-surface" />
-          <div className="h-40 rounded-2xl bg-surface" />
+          <SkeletonLine w="w-2/3" h="h-8" className="rounded-lg" />
+          <SkeletonLine w="w-1/3" h="h-4" />
+          <SkeletonBlock className="h-40" />
+          <SkeletonRows count={4} className="pt-2" />
         </div>
       </div>
     );
@@ -381,33 +419,45 @@ export default function AlbumPage() {
       {/* ── Left: cover + meta (sticky on desktop) ── */}
       <div className="md:w-64 shrink-0">
         <div className="md:sticky md:top-[76px] flex md:flex-col gap-4">
-          <Cover
-            url={release.coverUrl}
-            thumb={false}
-            className="w-28 h-28 md:w-64 md:h-64"
-            rounded="rounded-2xl"
-          />
+          {/* Cover + quick-rate flower overlapping its bottom-right corner */}
+          <div className="relative shrink-0 w-28 h-28 md:w-64 md:h-64">
+            <Cover
+              url={release.coverUrl}
+              thumb={false}
+              className="w-full h-full"
+              rounded="rounded-2xl"
+            />
+            {userId && ratingMode !== 'instinct' && (
+              <AlbumRateButton
+                release={release}
+                score={userScore}
+                onScoreChange={() => void loadRatings()}
+                size={32}
+                className="absolute bottom-1.5 right-1.5 md:bottom-2.5 md:right-2.5"
+              />
+            )}
+          </div>
           <div className="min-w-0">
             <h1 className="text-[20px] md:text-[22px] font-bold text-ink leading-snug">
               {title}
             </h1>
             <p className="mt-1 text-[14px] leading-relaxed">
               {credits.length === 0 ? (
-                <Link
+                <ArtistLink
                   href={`/artist/${encodeURIComponent(release.artist)}`}
                   className="text-muted hover:text-ink hover:underline"
                 >
                   {displayName(release.artist, release.artistNative)}
-                </Link>
+                </ArtistLink>
               ) : (
                 credits.map((c) => (
                   <span key={c.position}>
-                    <Link
+                    <ArtistLink
                       href={`/artist/${c.artist_id}`}
                       className="text-accent hover:underline"
                     >
                       {c.credited_as}
-                    </Link>
+                    </ArtistLink>
                     {c.join_phrase && <span className="text-muted">{c.join_phrase}</span>}
                   </span>
                 ))
@@ -481,7 +531,7 @@ export default function AlbumPage() {
                 aria-label={t('sj.rate.addToList')}
                 className="p-1.5 -my-1.5 rounded-lg text-muted hover:text-accent hover:bg-page transition"
               >
-                <ListPlus size={17} />
+                <Bookmark size={17} />
               </button>
             )}
           </div>
@@ -622,6 +672,7 @@ export default function AlbumPage() {
                 return (
                   <div
                     key={track.recordingId}
+                    onContextMenu={(e) => onTrackContextMenu(e, track)}
                     className="flex items-center gap-3 px-4 py-2.5 hover:bg-page/60 transition group"
                   >
                     <span className="w-6 text-right text-[13px] text-muted tabular-nums">
@@ -664,6 +715,7 @@ export default function AlbumPage() {
                 );
               })}
             </div>
+            {trackContextMenu}
           </section>
         )}
 

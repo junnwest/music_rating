@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bookmark, Check, ListMusic, X } from 'lucide-react';
+import { Bookmark, Check, X } from 'lucide-react';
 import MixPickerModal from './MixPickerModal';
 import { useSession } from './SessionContext';
 import { supabase } from '../../lib/supabaseClient';
@@ -147,7 +147,7 @@ export default function AlbumBookmarkButton({
               }}
               className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] text-left text-ink hover:bg-page transition"
             >
-              <ListMusic size={15} className="shrink-0" />
+              <Bookmark size={15} className="shrink-0" />
               {t('sj.bookmark.addToMix')}
             </button>
             <button

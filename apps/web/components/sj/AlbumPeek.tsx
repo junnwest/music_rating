@@ -3,9 +3,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import FlowerGlyph from './FlowerGlyph';
+import { useAlbumContextMenu } from './AlbumContextMenu';
 import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
 import { eloToScore } from '../../lib/elo';
+import type { SJRelease } from '../../lib/sj/data';
 
 interface PeekStats {
   avg: number | null;
@@ -37,12 +39,20 @@ function fmtDur(ms: number | null): string {
  * rating, and tracklist. Data is fetched once per album and cached for the
  * session. Fixed-position + portalled so it escapes overflow-clipping rails;
  * desktop only (hover: none never triggers it) and never intercepts clicks.
+ *
+ * It also carries the album **right-click menu**. This component already wraps
+ * every album cover in the app, so hanging `useAlbumContextMenu` off its
+ * existing root node is what makes that menu global — no per-page wiring, and no
+ * extra DOM that could disturb a cover's layout.
  */
 export default function AlbumPeek({
   releaseId,
   title,
   artist,
+  coverUrl,
   meta,
+  release,
+  onNotInterested,
   className = '',
   children,
 }: {
@@ -52,6 +62,13 @@ export default function AlbumPeek({
   coverUrl?: string | null;
   /** Small third line, e.g. "Album · 2023". */
   meta?: string | null;
+  /**
+   * Full record for the right-click menu's rating modal. Optional — where a page
+   * only has display strings, one is synthesized from them.
+   */
+  release?: SJRelease;
+  /** Forwarded to the menu's "Not interested" so the surface can drop the card. */
+  onNotInterested?: () => void;
   className?: string;
   children: ReactNode;
 }) {
@@ -61,6 +78,22 @@ export default function AlbumPeek({
   const [tracks, setTracks] = useState<PeekTrack[] | null>(null);
   const anchorRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const { onContextMenu, menu: contextMenu } = useAlbumContextMenu({
+    release: release ?? {
+      id: releaseId,
+      title,
+      artist,
+      coverUrl: coverUrl ?? null,
+      releaseType: null,
+      releaseDate: null,
+      // `title`/`artist` here are already display strings (native name resolved
+      // by the caller), so the native fields must stay null or they'd double up.
+      titleNative: null,
+      artistNative: null,
+    },
+    onNotInterested,
+  });
 
   function enter() {
     clearTimeout(timerRef.current);
@@ -153,8 +186,18 @@ export default function AlbumPeek({
   const extra = tracks ? tracks.length - shown.length : 0;
 
   return (
-    <div ref={anchorRef} onMouseEnter={enter} onMouseLeave={leave} className={className}>
+    <div
+      ref={anchorRef}
+      onMouseEnter={enter}
+      onMouseLeave={leave}
+      onContextMenu={(e) => {
+        leave(); // the peek would otherwise hang around behind the menu
+        onContextMenu(e);
+      }}
+      className={className}
+    >
       {children}
+      {contextMenu}
       {pos &&
         typeof document !== 'undefined' &&
         createPortal(

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, RotateCcw, SquarePen, Star, Trash2 } from 'lucide-react';
+import { Check, RotateCcw, SquarePen, Trash2 } from 'lucide-react';
 import FlowerGlyph from './FlowerGlyph';
 import { useLanguage } from '../../lib/i18n';
 import { formatScore } from '../../lib/sj/display';
@@ -10,9 +10,11 @@ import { formatScore } from '../../lib/sj/display';
  * Inline manual-rating editor for the album page — replaces the rate/edit
  * modal flow so editing never displaces the user:
  *
- * - Collapsed: 5 stars (empty when unrated, filled by score when rated) +
- *   an edit glyph. Clicking a star opens the editor at that value.
- * - Expanded: a dropdown panel in-flow (no overlay) with stars, an editable
+ * - Collapsed: 5 flowers (empty when unrated, filled by score when rated) +
+ *   an edit glyph. Each flower is split into `1 / step` click targets, so a
+ *   click lands on a partial value (0.5 steps by default) and opens the editor
+ *   there. Fill is a real horizontal clip, not a whole-glyph opacity fade.
+ * - Expanded: a dropdown panel in-flow (no overlay) with flowers, an editable
  *   number, and the slider. Every change AUTO-SAVES (debounced) — no Save
  *   button. Undo reverts to the value the edit session started with.
  * - The number is focused + selected on entry, so digits type straight in;
@@ -33,7 +35,7 @@ export default function InlineRatingEditor({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(score ?? 3);
   const [numText, setNumText] = useState('');
-  const [hoverStar, setHoverStar] = useState<number | null>(null);
+  const [hoverValue, setHoverValue] = useState<number | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
 
   const rootRef = useRef<HTMLDivElement>(null);
@@ -184,32 +186,63 @@ export default function InlineRatingEditor({
       ? dirtyRef.current || lastSaved.current != null
       : Math.abs((sessionStart.current ?? 0) - draft) > 1e-9;
 
-  function starsRow(value: number | null, interactive: boolean, size = 20) {
+  /**
+   * How many click targets each flower is divided into. A 0.5 step gives
+   * half-flowers, 1.0 gives whole flowers only, 0.1 gives ten slivers.
+   */
+  const segments = Math.min(10, Math.max(1, Math.round(1 / step)));
+
+  function flowersRow(value: number | null, interactive: boolean, size = 22) {
+    const shown = interactive && hoverValue != null ? hoverValue : value;
+    const lit = shown != null;
     return (
       <span
-        className={`flex items-center gap-0.5 ${value == null ? 'text-muted' : 'text-accent'}`}
-        onMouseLeave={() => interactive && setHoverStar(null)}
+        className={`flex items-center gap-1 ${lit ? 'text-accent' : 'text-muted'}`}
+        onMouseLeave={() => interactive && setHoverValue(null)}
       >
         {[1, 2, 3, 4, 5].map((s) => {
-          const shown = interactive && hoverStar != null ? hoverStar : value;
-          const cls =
-            shown != null && shown >= s
-              ? 'fill-current'
-              : shown != null && shown >= s - 0.5
-                ? 'fill-current opacity-50'
-                : 'opacity-25';
-          const star = <Star key={s} size={size} className={cls} />;
-          if (!interactive) return star;
+          // Fraction of this flower that is filled, 0…1
+          const fill = Math.min(1, Math.max(0, (shown ?? 0) - (s - 1)));
+          const mark = (
+            <>
+              <FlowerGlyph size={size} src="/icon-flower.svg" className="opacity-25" />
+              {fill > 0 && (
+                <span
+                  className="absolute inset-y-0 left-0 overflow-hidden"
+                  style={{ width: `${fill * 100}%` }}
+                >
+                  <FlowerGlyph size={size} src="/icon-flower.svg" />
+                </span>
+              )}
+            </>
+          );
           return (
-            <button
+            <span
               key={s}
-              aria-label={`${s}.0`}
-              onMouseEnter={() => setHoverStar(s)}
-              onClick={() => (editing ? update(s) : openEditor(s))}
-              className="transition-transform hover:scale-110"
+              className={`relative inline-block shrink-0 ${
+                interactive ? 'transition-transform hover:scale-110' : ''
+              }`}
+              style={{ width: size, height: size }}
             >
-              {star}
-            </button>
+              {mark}
+              {interactive &&
+                Array.from({ length: segments }, (_, i) => {
+                  const v = clampSnap(s - 1 + (i + 1) / segments);
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      aria-label={`${fmt(v)} / 5`}
+                      onMouseEnter={() => setHoverValue(v)}
+                      onFocus={() => setHoverValue(v)}
+                      onBlur={() => setHoverValue(null)}
+                      onClick={() => (editing ? update(v) : openEditor(v))}
+                      className="absolute inset-y-0 rounded-[3px] outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+                      style={{ left: `${(i / segments) * 100}%`, width: `${100 / segments}%` }}
+                    />
+                  );
+                })}
+            </span>
           );
         })}
       </span>
@@ -220,7 +253,7 @@ export default function InlineRatingEditor({
     <div ref={rootRef}>
       {/* Collapsed row — same anatomy rated or not */}
       <div className="flex items-center gap-3 flex-wrap">
-        {starsRow(editing ? draft : score, true)}
+        {flowersRow(editing ? draft : score, true)}
         {!editing && score != null && (
           <button
             onClick={() => openEditor()}

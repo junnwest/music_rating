@@ -10,6 +10,7 @@ import AlbumRateButton from '../../../../components/sj/AlbumRateButton';
 import AlbumBookmarkButton from '../../../../components/sj/AlbumBookmarkButton';
 import AlbumPeek from '../../../../components/sj/AlbumPeek';
 import FlowerGlyph from '../../../../components/sj/FlowerGlyph';
+import { Skeleton, SkeletonLine, SkeletonRows } from '../../../../components/sj/Loading';
 import { useSession } from '../../../../components/sj/SessionContext';
 import { supabase } from '../../../../lib/supabaseClient';
 import { useLanguage } from '../../../../lib/i18n';
@@ -18,6 +19,7 @@ import {
   displayName,
   formatScore,
   relativeTime,
+  typeLabelKey,
   yearOf,
 } from '../../../../lib/sj/display';
 import { RG_COLS, type SJRelease } from '../../../../lib/sj/data';
@@ -238,17 +240,23 @@ export default function ArtistPage() {
     <div className="mx-auto max-w-4xl px-4 md:px-6 py-8">
       {/* Header */}
       <div className="flex items-center gap-4">
-        {avatarUrl && (
+        {avatarUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={avatarUrl} alt="" className="w-16 h-16 rounded-full object-cover" />
+        ) : (
+          !name && <Skeleton className="w-16 h-16 shrink-0 rounded-full bg-surface" />
         )}
-        <div>
+        <div className="min-w-0">
           <p className="text-[10px] font-semibold tracking-[0.14em] uppercase text-muted">
             {t('sj.artist.artist')}
           </p>
-          <h1 className="text-[30px] font-extrabold text-ink leading-tight">
-            {name || rawId}
-          </h1>
+          {/* Never fall back to `rawId` — a UUID flashing as the title is worse
+              than a moment of skeleton. */}
+          {name ? (
+            <h1 className="text-[30px] font-extrabold text-ink leading-tight">{name}</h1>
+          ) : (
+            <SkeletonLine w="w-56" h="h-8" className="mt-1.5 rounded-lg" />
+          )}
         </div>
       </div>
 
@@ -293,69 +301,17 @@ export default function ArtistPage() {
       </div>
 
       {loading ? (
-        <div className="py-16 text-center text-muted text-[13px]">…</div>
+        <SkeletonRows className="mt-4" count={6} />
       ) : (
         <div className="mt-2">
-          {tab === 'albums' &&
-            (releases.length === 0 ? (
-              <Empty label={t('sj.artist.noReleases')} />
-            ) : (
-              <ul className="divide-y divide-divider">
-                {releases.map((r) => {
-                  const my = myRatings[r.id];
-                  const community = releaseScores[r.id];
-                  return (
-                    <li key={r.id}>
-                      <Link
-                        href={`/album/${r.id}`}
-                        className="group flex items-center gap-3 py-2.5 px-1 hover:bg-surface/70 rounded-lg transition"
-                      >
-                        <AlbumPeek
-                          releaseId={r.id}
-                          title={displayName(r.title, r.titleNative)}
-                          artist={name}
-                          className="relative shrink-0"
-                        >
-                          <Cover url={r.coverUrl} className="w-11 h-11" rounded="rounded-md" />
-                          <AlbumBookmarkButton
-                            releaseGroupId={r.id}
-                            size={20}
-                            className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
-                          />
-                          <AlbumRateButton
-                            release={r}
-                            initialScore={my ?? null}
-                            size={22}
-                            className="absolute -bottom-1 -right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
-                          />
-                        </AlbumPeek>
-                        <span className="flex-1 min-w-0">
-                          <span className="block text-[13.5px] font-semibold text-ink truncate">
-                            {displayName(r.title, r.titleNative)}
-                          </span>
-                          <span className="block text-[11.5px] text-muted">
-                            {r.releaseType?.toLowerCase() === 'ep'
-                              ? 'EP'
-                              : (r.releaseType ?? '').charAt(0).toUpperCase() +
-                                (r.releaseType ?? '').slice(1)}
-                            {yearOf(r.releaseDate) && ` · ${yearOf(r.releaseDate)}`}
-                          </span>
-                        </span>
-                        {my != null ? (
-                          <ScoreChip score={my} accent />
-                        ) : community != null ? (
-                          <ScoreChip score={community} />
-                        ) : (
-                          <span className="flex w-6 h-6 rounded-full border-[1.5px] border-divider items-center justify-center">
-                            <Plus size={10} className="text-muted" />
-                          </span>
-                        )}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            ))}
+          {tab === 'albums' && (
+            <Discography
+              releases={releases}
+              artistName={name}
+              myRatings={myRatings}
+              releaseScores={releaseScores}
+            />
+          )}
 
           {tab === 'songs' &&
             (songs.length === 0 ? (
@@ -466,6 +422,232 @@ function ScoreChip({ score, accent = false }: { score: number; accent?: boolean 
       <FlowerGlyph size={11} />
       <span className="text-[12px] font-bold tabular-nums">{score.toFixed(1)}</span>
     </span>
+  );
+}
+
+// ── Discography ─────────────────────────────────────────────────────────────
+
+type GroupKey = 'album' | 'ep' | 'single' | 'compilation' | 'soundtrack' | 'other';
+type SortKey = 'newest' | 'oldest' | 'title';
+
+/** Section order, matching how mainstream music apps lead with full-lengths. */
+const GROUP_ORDER: GroupKey[] = ['album', 'ep', 'single', 'compilation', 'soundtrack', 'other'];
+
+const GROUP_LABEL: Record<GroupKey, string> = {
+  album: 'sj.artist.groupAlbums',
+  ep: 'sj.artist.groupEps',
+  single: 'sj.artist.groupSingles',
+  compilation: 'sj.artist.groupCompilations',
+  soundtrack: 'sj.artist.groupSoundtracks',
+  other: 'sj.artist.groupOther',
+};
+
+/** `release_group_type` is free-form in the catalogue; anything unrecognised
+ *  lands in "Other" rather than inventing a section per stray value. */
+function groupOf(releaseType?: string | null): GroupKey {
+  const t = releaseType?.toLowerCase() ?? '';
+  return (GROUP_ORDER as string[]).includes(t) ? (t as GroupKey) : 'other';
+}
+
+/**
+ * Sectioned discography with sort + group controls. Grouping is a *view* over
+ * the same `releases` array the other tabs read, so nothing refetches when the
+ * controls change.
+ */
+function Discography({
+  releases,
+  artistName,
+  myRatings,
+  releaseScores,
+}: {
+  releases: SJRelease[];
+  artistName: string;
+  myRatings: Record<string, number>;
+  releaseScores: Record<string, number>;
+}) {
+  const { t } = useLanguage();
+  const [grouped, setGrouped] = useState(true);
+  const [sort, setSort] = useState<SortKey>('newest');
+
+  const sections = useMemo(() => {
+    // Undated releases sort last in both directions — an unknown date is not
+    // "the year 0", and burying them beats leading a discography with them.
+    const byDate = (a: SJRelease, b: SJRelease, dir: 1 | -1) => {
+      const da = a.releaseDate ?? '';
+      const db = b.releaseDate ?? '';
+      if (!da && !db) return 0;
+      if (!da) return 1;
+      if (!db) return -1;
+      return da < db ? dir : da > db ? -dir : 0;
+    };
+    const cmp = (a: SJRelease, b: SJRelease) => {
+      if (sort === 'title') {
+        return displayName(a.title, a.titleNative).localeCompare(
+          displayName(b.title, b.titleNative),
+        );
+      }
+      return byDate(a, b, sort === 'newest' ? 1 : -1);
+    };
+
+    if (!grouped) {
+      return [{ key: 'all' as const, label: null, items: [...releases].sort(cmp) }];
+    }
+    const buckets = new Map<GroupKey, SJRelease[]>();
+    for (const r of releases) {
+      const k = groupOf(r.releaseType);
+      const list = buckets.get(k);
+      if (list) list.push(r);
+      else buckets.set(k, [r]);
+    }
+    return GROUP_ORDER.filter((k) => buckets.has(k)).map((k) => ({
+      key: k,
+      label: t(GROUP_LABEL[k]),
+      items: buckets.get(k)!.sort(cmp),
+    }));
+  }, [releases, grouped, sort, t]);
+
+  if (releases.length === 0) return <Empty label={t('sj.artist.noReleases')} />;
+
+  return (
+    <div className="mt-3">
+      <div className="flex flex-wrap items-center gap-2 pb-1">
+        <Segmented
+          options={[
+            { key: 'type', label: t('sj.artist.groupByType') },
+            { key: 'all', label: t('sj.artist.groupAll') },
+          ]}
+          value={grouped ? 'type' : 'all'}
+          onChange={(v) => setGrouped(v === 'type')}
+        />
+        <Segmented
+          options={[
+            { key: 'newest', label: t('sj.artist.sortNewest') },
+            { key: 'oldest', label: t('sj.artist.sortOldest') },
+            { key: 'title', label: t('sj.artist.sortTitle') },
+          ]}
+          value={sort}
+          onChange={(v) => setSort(v as SortKey)}
+        />
+      </div>
+
+      {sections.map((section) => (
+        <section key={section.key} className="mt-4 first:mt-3">
+          {section.label && (
+            <h2 className="flex items-baseline gap-2 px-1 pb-1">
+              <span className="text-[13px] font-bold text-ink">{section.label}</span>
+              <span className="text-[11px] text-muted tabular-nums">
+                {section.items.length === 1
+                  ? t('sj.artist.oneRelease')
+                  : t('sj.artist.nReleases').replace('{n}', String(section.items.length))}
+              </span>
+            </h2>
+          )}
+          <ul className="divide-y divide-divider">
+            {section.items.map((r) => (
+              <ReleaseRow
+                key={r.id}
+                release={r}
+                artistName={artistName}
+                myScore={myRatings[r.id]}
+                communityScore={releaseScores[r.id]}
+              />
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+/** Pill group. Plain buttons, so tab/enter work without extra key handling. */
+function Segmented({
+  options,
+  value,
+  onChange,
+}: {
+  options: { key: string; label: string }[];
+  value: string;
+  onChange: (key: string) => void;
+}) {
+  return (
+    <div role="group" className="flex items-center gap-0.5 p-0.5 rounded-full bg-surface border border-divider/60">
+      {options.map((o) => (
+        <button
+          key={o.key}
+          type="button"
+          aria-pressed={value === o.key}
+          onClick={() => onChange(o.key)}
+          className={`px-2.5 py-1 rounded-full text-[11.5px] whitespace-nowrap transition outline-none focus-visible:ring-2 focus-visible:ring-accent/50 ${
+            value === o.key
+              ? 'bg-accent/[0.14] text-ink font-bold'
+              : 'text-muted hover:text-ink font-medium'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** One discography row — unchanged from the flat list it replaced. */
+function ReleaseRow({
+  release: r,
+  artistName,
+  myScore,
+  communityScore,
+}: {
+  release: SJRelease;
+  artistName: string;
+  myScore?: number;
+  communityScore?: number;
+}) {
+  const { t } = useLanguage();
+  const title = displayName(r.title, r.titleNative);
+  return (
+    <li>
+      <Link
+        href={`/album/${r.id}`}
+        className="group flex items-center gap-3 py-2.5 px-1 hover:bg-surface/70 rounded-lg transition"
+      >
+        <AlbumPeek
+          releaseId={r.id}
+          title={title}
+          artist={artistName}
+          release={r}
+          className="relative shrink-0"
+        >
+          <Cover url={r.coverUrl} className="w-11 h-11" rounded="rounded-md" />
+          <AlbumBookmarkButton
+            releaseGroupId={r.id}
+            size={20}
+            className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
+          />
+          <AlbumRateButton
+            release={r}
+            initialScore={myScore ?? null}
+            size={22}
+            className="absolute -bottom-1 -right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
+          />
+        </AlbumPeek>
+        <span className="flex-1 min-w-0">
+          <span className="block text-[13.5px] font-semibold text-ink truncate">{title}</span>
+          <span className="block text-[11.5px] text-muted">
+            {t(typeLabelKey(r.releaseType))}
+            {yearOf(r.releaseDate) && ` · ${yearOf(r.releaseDate)}`}
+          </span>
+        </span>
+        {myScore != null ? (
+          <ScoreChip score={myScore} accent />
+        ) : communityScore != null ? (
+          <ScoreChip score={communityScore} />
+        ) : (
+          <span className="flex w-6 h-6 rounded-full border-[1.5px] border-divider items-center justify-center">
+            <Plus size={10} className="text-muted" />
+          </span>
+        )}
+      </Link>
+    </li>
   );
 }
 

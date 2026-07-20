@@ -13,6 +13,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
 import { FEED_SELECT, type FeedItemRow } from '../../lib/sj/data';
 import { fetchFeed, fetchChartsSummary } from '../../lib/sj/apiClient';
+import { fetchNotInterestedIds, markNotInterested } from '../../lib/sj/notInterested';
 import { displayName } from '../../lib/sj/display';
 import type { ChartTrendingRPC, SuggestedUserRPC } from '../../lib/db/types';
 
@@ -32,6 +33,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
 
+  const [notInterested, setNotInterested] = useState<Set<string>>(new Set());
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
@@ -53,8 +55,9 @@ export default function HomePage() {
     let followingIds = new Set<string>();
     let likedArtists = new Set<string>();
     let blocked = new Set<string>();
+    let dismissed = new Set<string>();
     if (userId) {
-      const [followsRes, artistsRes, blockedRes] = await Promise.all([
+      const [followsRes, artistsRes, blockedRes, dismissedIds] = await Promise.all([
         supabase.from('follows').select('following_id').eq('follower_id', userId),
         supabase
           .from('ratings')
@@ -62,6 +65,7 @@ export default function HomePage() {
           .eq('user_id', userId)
           .gte('score', 4.0),
         supabase.from('blocked_users').select('blocked_id').eq('blocker_id', userId),
+        fetchNotInterestedIds(userId),
       ]);
       followingIds = new Set(
         ((followsRes.data as { following_id: string }[] | null) ?? []).map((r) => r.following_id),
@@ -74,6 +78,8 @@ export default function HomePage() {
       blocked = new Set(
         ((blockedRes.data as { blocked_id: string }[] | null) ?? []).map((r) => r.blocked_id),
       );
+      dismissed = dismissedIds;
+      setNotInterested(dismissed);
     }
 
     // Explore pool. A failed query is an error state, NOT an empty catalog —
@@ -99,6 +105,11 @@ export default function HomePage() {
       );
     }
     setLoadFailed(poolFailed);
+
+    // Albums the user marked "Not interested" never come back in explore. The
+    // Following feed is deliberately left alone — that's people you chose to
+    // follow, not a recommendation.
+    if (dismissed.size > 0) pool = pool.filter((i) => !dismissed.has(i.release_groups.id));
 
     // Following feed
     let following: FeedItemRow[] = [];
@@ -212,6 +223,12 @@ export default function HomePage() {
     }
   }
 
+  async function notInterestedAlbum(releaseGroupId: string) {
+    if (!userId) return;
+    setNotInterested((prev) => new Set(prev).add(releaseGroupId));
+    await markNotInterested(userId, releaseGroupId);
+  }
+
   async function blockUser(blockedUserId: string) {
     if (!supabase || !userId || blockedUserId === userId) return;
     setExploreItems((items) => items.filter((i) => i.user_id !== blockedUserId));
@@ -221,7 +238,12 @@ export default function HomePage() {
       .insert({ blocker_id: userId, blocked_id: blockedUserId });
   }
 
-  const items = tab === 'explore' ? exploreItems : followingItems;
+  // Explore drops dismissed albums immediately (the load-time filter only sees
+  // what was already persisted when the feed was fetched).
+  const items =
+    tab === 'explore'
+      ? exploreItems.filter((i) => !notInterested.has(i.release_groups.id))
+      : followingItems;
 
   return (
     <div className="mx-auto max-w-6xl px-4 md:px-6 py-5 flex gap-8">
@@ -285,6 +307,11 @@ export default function HomePage() {
                 commentsCount={commentCounts[item.id] ?? 0}
                 onLike={() => toggleLike(item)}
                 onBlock={() => blockUser(item.user_id)}
+                onNotInterested={
+                  tab === 'explore' && userId
+                    ? () => notInterestedAlbum(item.release_groups.id)
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -374,12 +401,6 @@ function TrendingRail() {
           </li>
         ))}
       </ol>
-      <Link
-        href="/charts"
-        className="block mt-3 text-[12px] font-semibold text-accent hover:opacity-80"
-      >
-        {t('sj.home.viewCharts')} →
-      </Link>
     </section>
   );
 }

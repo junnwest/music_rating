@@ -6,10 +6,11 @@ import {
   Heart,
   MessageCircle,
   MoreHorizontal,
-  ListMusic,
+  Bookmark,
   Share2,
   Flag,
   Ban,
+  EyeOff,
 } from 'lucide-react';
 import Avatar from './Avatar';
 import Cover from './Cover';
@@ -43,6 +44,7 @@ export default function FeedCard({
   commentsCount,
   onLike,
   onBlock,
+  onNotInterested,
 }: {
   item: FeedItemRow;
   currentUserId: string | null;
@@ -51,6 +53,8 @@ export default function FeedCard({
   commentsCount: number;
   onLike: () => void;
   onBlock: () => void;
+  /** Down-weight this album for the recommender; the feed drops the card. */
+  onNotInterested?: () => void;
 }) {
   const { t, lang } = useLanguage();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -118,7 +122,7 @@ export default function FeedCard({
           {menuOpen && (
             <div className="absolute right-0 top-9 z-20 w-52 py-1.5 rounded-xl bg-surface border border-divider shadow-xl">
               <MenuItem
-                icon={<ListMusic size={15} />}
+                icon={<Bookmark size={15} />}
                 label={t('sj.mix.saveToMix')}
                 onClick={() => {
                   setShowMixPicker(true);
@@ -126,6 +130,16 @@ export default function FeedCard({
                 }}
               />
               <MenuItem icon={<Share2 size={15} />} label={t('sj.feed.share')} onClick={share} />
+              {onNotInterested && (
+                <MenuItem
+                  icon={<EyeOff size={15} />}
+                  label={t('sj.notInterested.action')}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onNotInterested();
+                  }}
+                />
+              )}
               {!isOwn && (
                 <>
                   <div className="h-px bg-divider my-1.5" />
@@ -163,6 +177,8 @@ export default function FeedCard({
           releaseId={rg.id}
           title={displayName(rg.title, rg.native_title)}
           artist={displayName(rg.artist_display, rg.artists?.name_native)}
+          release={release}
+          onNotInterested={onNotInterested}
           className="relative shrink-0 group"
         >
           <Cover url={rg.cover_url} className="w-20 h-20" />

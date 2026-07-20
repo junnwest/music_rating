@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { MessageSquare, PlusSquare, ChevronUp, ChevronDown, ChevronRight } from 'lucide-react';
+import { MessageSquare, Bookmark, ChevronUp, ChevronDown, ChevronRight } from 'lucide-react';
 import MixPickerModal from './MixPickerModal';
 import Cover from './Cover';
 import { useLanguage } from '../../lib/i18n';
@@ -80,7 +80,7 @@ export default function PostRatingOptions({
         onClick={() => setShowMixPicker(true)}
         className="flex items-center gap-3.5 px-5 py-3 text-left hover:bg-surface transition"
       >
-        <PlusSquare size={17} className="text-ink shrink-0" />
+        <Bookmark size={17} className="text-ink shrink-0" />
         <span className="flex-1 text-[14.5px] text-ink">{t('sj.rate.addToList')}</span>
         <ChevronRight size={15} className="text-muted" />
       </button>

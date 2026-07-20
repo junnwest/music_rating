@@ -9,38 +9,43 @@ import { spectrumFill, spectrumNumber, spectrumRing, formatScore } from '../../l
  * Drag-to-rate flower control — the quick-rate affordance for any album/song
  * surface (search, explore, quick add). At rest it's a small rounded-flower
  * button (or the current score, if already rated — press it again to re-rate).
- * Press and drag outward: distance from the press point maps to the score
- * (farther = higher). Concentric translucent rings around the flower fill
- * outward, one per whole star, as the cursor moves; the exact score stays small
- * inside the original icon circle. Release to commit.
+ *
+ * The flower itself never moves. Press it and drag outward: distance from the
+ * button's centre maps to the score (farther = higher, 0.1 steps). A single thin
+ * arc — drawn at the current score's radius, angled toward the cursor and fading
+ * out along its length — is the whole gauge; a dotted horizontal baseline with
+ * whole-star ticks gives the drag something to read against. The live score
+ * fades in *over* the flower, centred and stationary, as the glyph dims out.
  *
  * A press with no meaningful drag is treated as a tap → `onRequestPrecise`
  * (open the full rating modal). Pointer events + capture cover mouse and touch;
  * `touch-action: none` stops the page scrolling mid-drag.
  */
 
-// Radii are literal drag distances: OFFSET is a dead zone (release inside =
-// cancel), then each whole star is STEP px further out — so the drawn rings show
-// exactly how far to drag for each rating. TAP_THRESHOLD distinguishes a short
-// click (→ open the precise modal) from a real drag.
+// Radii are literal drag distances from the button's centre: OFFSET is a dead
+// zone (release inside = cancel), then each whole star is STEP px further out.
+// The full 0.5→5.0 sweep lands at OFFSET + 5*STEP ≈ 206px — comfortable on a
+// phone, and 0.1 of a star is ~3.4px, so tenths stay distinguishable.
 const TAP_THRESHOLD = 8; // px of movement below which a release is a click, not a drag
-const OFFSET = 44; // dead-zone radius — release inside cancels
-const STEP = 52; // px of drag per whole star
-const ringRadius = (star: number) => OFFSET + star * STEP; // star 1..5
+const OFFSET = 36; // dead-zone radius — release inside cancels
+const STEP = 34; // px of drag per whole star
+const MAX_RADIUS = OFFSET + 5 * STEP;
+const scoreRadius = (score: number) => OFFSET + score * STEP;
 
-/** Distance → score, or null inside the dead zone (a cancel). */
+/** Distance → score rounded to 0.1, or null inside the dead zone (a cancel). */
 function distanceToScore(dist: number): number | null {
   if (dist < OFFSET) return null;
   const stars = (dist - OFFSET) / STEP;
-  const half = Math.round(stars * 2) / 2;
-  return Math.min(5, Math.max(0.5, half));
+  const tenths = Math.round(stars * 10) / 10;
+  return Math.min(5, Math.max(0.5, tenths));
 }
 
 interface DragState {
+  /** Gauge origin — the button's centre, in viewport coords. It never moves. */
   ox: number;
   oy: number;
-  px: number;
-  py: number;
+  /** Cursor angle from the origin, radians. */
+  angle: number;
   score: number | null;
   maxDist: number;
 }
@@ -71,18 +76,28 @@ export default function FlowerRateControl({
     e.preventDefault();
     e.stopPropagation();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    setDrag({ ox: e.clientX, oy: e.clientY, px: e.clientX, py: e.clientY, score: null, maxDist: 0 });
+    // Anchor the gauge to the button's centre so it stays put no matter where
+    // on the flower the press landed.
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setDrag({
+      ox: rect.left + rect.width / 2,
+      oy: rect.top + rect.height / 2,
+      angle: 0,
+      score: null,
+      maxDist: 0,
+    });
   }, []);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     const d = dragRef.current;
     if (!d) return;
     e.preventDefault();
-    const dist = Math.hypot(e.clientX - d.ox, e.clientY - d.oy);
+    const dx = e.clientX - d.ox;
+    const dy = e.clientY - d.oy;
+    const dist = Math.hypot(dx, dy);
     setDrag({
       ...d,
-      px: e.clientX,
-      py: e.clientY,
+      angle: dist > 1 ? Math.atan2(dy, dx) : d.angle,
       score: distanceToScore(dist),
       maxDist: Math.max(d.maxDist, dist),
     });
@@ -115,6 +130,9 @@ export default function FlowerRateControl({
   );
 
   const rated = currentScore != null;
+  // What the button shows right now: the live drag score wins over the stored one.
+  const shown = drag?.score ?? (drag ? null : currentScore);
+  const showNumber = shown != null;
 
   return (
     <>
@@ -135,121 +153,144 @@ export default function FlowerRateControl({
             onRequestPrecise?.();
           }
         }}
-        className={`flex items-center justify-center rounded-full shadow transition hover:scale-105 active:scale-95 ${
-          drag ? 'opacity-0' : ''
-        } ${className}`}
+        // grid + a shared cell stacks the glyph and the number without needing
+        // `relative` here — several call sites pass their own `absolute …`.
+        className={`grid place-items-center rounded-full shadow transition-transform hover:scale-105 active:scale-95 ${className}`}
         style={{
           width: size,
           height: size,
           touchAction: 'none',
-          background: rated ? spectrumFill(currentScore!) : '#fff',
-          color: rated ? spectrumNumber(currentScore!) : undefined,
+          background: showNumber ? spectrumFill(shown!) : '#fff',
+          transition: 'background 140ms ease-out',
         }}
       >
-        {rated ? (
-          <span
-            className="font-black leading-none tabular-nums"
-            style={{ fontSize: Math.round(size * 0.4) }}
-          >
-            {formatScore(currentScore!)}
-          </span>
-        ) : (
+        {/* Flower glyph — dims out as the drag score rises over it. */}
+        <span
+          className="flex items-center justify-center"
+          style={{
+            gridArea: '1 / 1',
+            opacity: showNumber ? 0 : 1,
+            transform: showNumber ? 'scale(0.82)' : 'scale(1)',
+            transition: 'opacity 130ms ease-out, transform 130ms ease-out',
+          }}
+        >
           <FlowerGlyph src="/icon-flower.svg" size={Math.round(size * 0.56)} className="text-accent" />
-        )}
+        </span>
+        {/* Score, revealed in place over the flower — a touch of overshoot on the
+            way in so it reads as a "pop", not a crossfade. */}
+        <span
+          className="font-black leading-none tabular-nums"
+          style={{
+            gridArea: '1 / 1',
+            fontSize: Math.round(size * 0.4),
+            color: showNumber ? spectrumNumber(shown!) : 'transparent',
+            opacity: showNumber ? 1 : 0,
+            transform: showNumber ? 'scale(1)' : 'scale(0.6)',
+            transition:
+              'opacity 130ms ease-out, transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1), color 140ms ease-out',
+          }}
+        >
+          {showNumber ? formatScore(shown!) : rated ? formatScore(currentScore!) : ''}
+        </span>
       </button>
       {drag && typeof document !== 'undefined' &&
-        createPortal(<DragGauge state={drag} iconSize={size} />, document.body)}
+        createPortal(<DragGauge state={drag} />, document.body)}
     </>
   );
 }
 
-/** The live radial gauge shown while dragging: concentric rings whose radii ARE
- *  the drag distance for each whole star, filled with translucent discs that
- *  stack toward the centre (denser as more stars fill), a dashed dead-zone
- *  boundary, and a small score readout kept at the original icon size. */
-function DragGauge({ state, iconSize }: { state: DragState; iconSize: number }) {
-  const { ox, oy, px, py, score } = state;
+/** Arc geometry: half-width of the sector, and how many sub-segments compose it.
+ *  The arc is built from short strokes with a cosine opacity falloff, which
+ *  fades it out along its length without needing a gradient in arc space. */
+const ARC_SPAN = (52 * Math.PI) / 180; // total sweep of the arc, radians
+const ARC_SEGMENTS = 22;
+
+/**
+ * The live gauge: a dotted horizontal baseline out of the (stationary) flower
+ * with whole-star ticks, plus one thin arc at the current score's radius,
+ * centred on the cursor's angle and fading toward both ends.
+ */
+function DragGauge({ state }: { state: DragState }) {
+  const { ox, oy, angle, score } = state;
   const cancel = score == null;
-  const filled = cancel ? 0 : Math.round(score); // whole stars reached
-  const ring = spectrumRing(score ?? 0.5);
-  const stars = [1, 2, 3, 4, 5];
+  const color = spectrumRing(score ?? 0.5);
+  const radius = scoreRadius(score ?? 0.5);
+
+  // Arc sub-segments, each a short stroke with its own opacity.
+  const segments = [];
+  if (!cancel) {
+    const step = ARC_SPAN / ARC_SEGMENTS;
+    for (let i = 0; i < ARC_SEGMENTS; i += 1) {
+      const t = (i + 0.5) / ARC_SEGMENTS; // 0..1 along the arc
+      const a0 = angle - ARC_SPAN / 2 + i * step;
+      const a1 = a0 + step * 1.04; // slight overlap so the strokes read continuous
+      // Cosine falloff: opaque in the middle, vanishing at both ends.
+      const fade = Math.pow(Math.sin(t * Math.PI), 1.4);
+      segments.push(
+        <line
+          key={i}
+          x1={ox + radius * Math.cos(a0)}
+          y1={oy + radius * Math.sin(a0)}
+          x2={ox + radius * Math.cos(a1)}
+          y2={oy + radius * Math.sin(a1)}
+          stroke={color}
+          strokeWidth={2.5}
+          strokeLinecap="round"
+          opacity={fade * 0.95}
+        />,
+      );
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-[100] pointer-events-none select-none">
       <svg className="absolute inset-0 h-full w-full overflow-visible">
-        {/* Filled discs — one per reached whole star; overlapping translucent
-            fills accumulate toward the centre, so it's denser in the middle and
-            more opaque overall the further you drag. */}
-        {stars
-          .filter((s) => s <= filled)
-          .map((s) => (
-            <circle key={`fill-${s}`} cx={ox} cy={oy} r={ringRadius(s)} fill={ring} opacity={0.1} />
-          ))}
-        {/* Whole-star guide rings — radius = how far to drag for that rating */}
-        {stars.map((s) => {
-          const reached = s <= filled;
-          return (
-            <circle
-              key={`ring-${s}`}
-              cx={ox}
-              cy={oy}
-              r={ringRadius(s)}
-              fill="none"
-              stroke={reached ? ring : 'rgb(120,120,120)'}
-              strokeOpacity={reached ? 0.5 : 0.16}
-              strokeWidth={reached ? 2 : 1}
+        {/* Dotted horizontal baseline — the fixed reference the drag reads
+            against — with a tick at each whole star. Drawn as two halves that
+            start at the dead-zone edge, so nothing crosses the flower itself. */}
+        {[-1, 1].map((side) => (
+          <line
+            key={`base-${side}`}
+            x1={ox + side * OFFSET}
+            y1={oy}
+            x2={ox + side * MAX_RADIUS}
+            y2={oy}
+            stroke="rgb(120,120,120)"
+            strokeWidth={1}
+            strokeDasharray="1 5"
+            strokeLinecap="round"
+            opacity={0.4}
+          />
+        ))}
+        {[1, 2, 3, 4, 5].map((s) => {
+          const r = scoreRadius(s);
+          const reached = !cancel && score! >= s;
+          return [-1, 1].map((side) => (
+            <line
+              key={`tick-${s}-${side}`}
+              x1={ox + side * r}
+              y1={oy - 3}
+              x2={ox + side * r}
+              y2={oy + 3}
+              stroke={reached ? color : 'rgb(120,120,120)'}
+              strokeWidth={reached ? 1.5 : 1}
+              opacity={reached ? 0.55 : 0.28}
             />
-          );
+          ));
         })}
-        {/* Dead-zone boundary — release inside cancels */}
+        {/* Dead-zone edge — release inside here cancels. */}
         <circle
           cx={ox}
           cy={oy}
           r={OFFSET}
           fill="none"
-          stroke="rgb(120,120,120)"
-          strokeOpacity={0.3}
+          stroke={cancel ? 'rgb(120,120,120)' : color}
+          strokeOpacity={cancel ? 0.35 : 0.18}
           strokeWidth={1}
-          strokeDasharray="2 3"
+          strokeDasharray="2 4"
         />
-        {/* Connector + cursor dot */}
-        <line
-          x1={ox}
-          y1={oy}
-          x2={px}
-          y2={py}
-          stroke={cancel ? 'rgb(120,120,120)' : ring}
-          strokeWidth={2}
-          strokeDasharray="3 5"
-          strokeLinecap="round"
-          opacity={0.35}
-        />
-        <circle cx={px} cy={py} r={5} fill={cancel ? 'rgb(120,120,120)' : ring} opacity={0.8} />
+        {segments}
       </svg>
-
-      {/* Score readout — kept at the original icon size, not enlarged. In the
-          dead zone it shows a dash to signal "release here to cancel". */}
-      <div
-        className="absolute -translate-x-1/2 -translate-y-1/2 flex items-center justify-center rounded-full"
-        style={{
-          left: ox,
-          top: oy,
-          width: iconSize,
-          height: iconSize,
-          background: cancel ? '#fff' : spectrumFill(score ?? 0.5),
-          boxShadow: '0 2px 8px rgba(0,0,0,0.18), inset 0 1px 2px rgba(255,255,255,0.6)',
-        }}
-      >
-        <span
-          className="font-black leading-none tabular-nums"
-          style={{
-            fontSize: Math.round(iconSize * 0.4),
-            color: cancel ? 'rgb(150,150,150)' : spectrumNumber(score ?? 0.5),
-          }}
-        >
-          {cancel ? '–' : formatScore(score ?? 0.5)}
-        </span>
-      </div>
     </div>
   );
 }

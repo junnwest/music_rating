@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Search as SearchIcon, X, Check, ChevronRight } from 'lucide-react';
+import ArtistLink from '../../../components/sj/ArtistLink';
 import Cover from '../../../components/sj/Cover';
 import ManualRateModal from '../../../components/sj/ManualRateModal';
 import InstinctModal from '../../../components/sj/InstinctModal';
@@ -368,7 +369,7 @@ function SearchResults({
                 a.name_native && isPredominantlyHangul(a.name_native) ? a.name_native : null;
               return (
                 <li key={a.id}>
-                  <Link
+                  <ArtistLink
                     href={`/artist/${a.id}`}
                     className="flex items-center gap-3 px-3.5 py-2.5 hover:bg-page/60 transition"
                   >
@@ -398,7 +399,7 @@ function SearchResults({
                       </span>
                     </span>
                     <ChevronRight size={13} className="text-divider" />
-                  </Link>
+                  </ArtistLink>
                 </li>
               );
             })}
@@ -702,6 +703,7 @@ function AlbumCard({
         releaseId={release.id}
         title={displayName(release.title, release.titleNative)}
         artist={displayName(release.artist, release.artistNative)}
+        release={release}
         className="relative"
       >
         <Link href={`/album/${release.id}`}>

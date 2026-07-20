@@ -5,12 +5,14 @@ import { CheckCircle2 } from 'lucide-react';
 import Cover from '../../../components/sj/Cover';
 import FlowerRateControl from '../../../components/sj/FlowerRateControl';
 import AlbumBookmarkButton from '../../../components/sj/AlbumBookmarkButton';
+import AlbumOverflowMenu from '../../../components/sj/AlbumOverflowMenu';
 import AlbumPeek from '../../../components/sj/AlbumPeek';
 import ManualRateModal from '../../../components/sj/ManualRateModal';
 import { useSession } from '../../../components/sj/SessionContext';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
 import { displayName } from '../../../lib/sj/display';
+import { fetchNotInterestedIds } from '../../../lib/sj/notInterested';
 import type { SJRelease } from '../../../lib/sj/data';
 
 const PAGE_SIZE = 20;
@@ -62,6 +64,22 @@ export default function QuickAddPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [held, setHeld] = useState<Record<string, number>>({});
   const [target, setTarget] = useState<Target | null>(null);
+  // "Not interested" albums. get_quick_add_candidates already excludes them, so
+  // this only covers the ones dismissed during this session (and any environment
+  // where the migration hasn't landed yet). Filtered at render, not in the
+  // fetched array, so the pagination offset stays honest.
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!ready || !userId) return;
+    let cancelled = false;
+    fetchNotInterestedIds(userId).then((ids) => {
+      if (!cancelled && ids.size > 0) setDismissed(ids);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, userId]);
 
   // ── Seed assembly: artists the user very likely knows, in confidence order ──
   useEffect(() => {
@@ -238,7 +256,8 @@ export default function QuickAddPage() {
     }
   }
 
-  const list = mode === 'albums' ? albums : songs;
+  const visibleAlbums = albums.filter((a) => !dismissed.has(a.id));
+  const list = mode === 'albums' ? visibleAlbums : songs;
   const done = mode === 'albums' ? albumDone : songDone;
 
   return (
@@ -285,7 +304,7 @@ export default function QuickAddPage() {
         <>
           <ul className="mt-2 divide-y divide-divider">
             {mode === 'albums'
-              ? albums.map((c) => (
+              ? visibleAlbums.map((c) => (
                   <Row
                     key={c.id}
                     coverUrl={c.cover_url}
@@ -294,6 +313,9 @@ export default function QuickAddPage() {
                     subtitle={c.artist_display}
                     held={held[c.id]}
                     onRate={(score) => rateAlbum(c, score)}
+                    onNotInterested={() =>
+                      setDismissed((prev) => new Set(prev).add(c.id))
+                    }
                     onPrecise={() =>
                       setTarget({
                         kind: 'album',
@@ -368,6 +390,7 @@ function Row({
   held,
   onRate,
   onPrecise,
+  onNotInterested,
 }: {
   coverUrl: string | null;
   bookmarkId?: string;
@@ -376,16 +399,30 @@ function Row({
   held?: number;
   onRate: (score: number) => void;
   onPrecise: () => void;
+  onNotInterested?: () => void;
 }) {
   return (
     <li className="flex items-center gap-3 py-2.5">
       {bookmarkId ? (
-        <AlbumPeek releaseId={bookmarkId} title={title} artist={subtitle} className="relative shrink-0 group">
+        <AlbumPeek
+          releaseId={bookmarkId}
+          title={title}
+          artist={subtitle}
+          coverUrl={coverUrl}
+          onNotInterested={onNotInterested}
+          className="relative shrink-0 group"
+        >
           <Cover url={coverUrl} className="w-[52px] h-[52px]" rounded="rounded-lg" />
           <AlbumBookmarkButton
             releaseGroupId={bookmarkId}
             size={22}
             className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
+          />
+          <AlbumOverflowMenu
+            releaseGroupId={bookmarkId}
+            onNotInterested={onNotInterested}
+            size={22}
+            className="absolute bottom-0.5 right-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
           />
         </AlbumPeek>
       ) : (
