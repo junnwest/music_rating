@@ -9,16 +9,23 @@ struct OnboardingView: View {
 	@State private var saveError: String? = nil
 	@Environment(AppState.self) private var appState
 
-	enum Step { case name, username, ratingMode, notifications, appleMusic }
+	enum Step { case username, ratingMode, notifications, appleMusic }
 
 	let steps: [Step]
 
-	/// App Review rejection 2026-07-16 (Guideline 4 — Sign in with Apple):
-	/// the name question must not be asked when the auth provider already
-	/// supplied one. So the name step only exists when no provider name is
-	/// available (email-hidden cases, lost metadata); otherwise the provided
-	/// name is used silently — still editable later in Edit Profile. Resolved
-	/// in init, not onAppear, so `steps` never changes after first render.
+	/// App Review rejected TWICE on this (2026-07-16, then again 2026-07-20 on
+	/// build 9): a "What's your name?" step must never be a REQUIRED gate after
+	/// Sign in with Apple — full stop, not just "skip it when this particular
+	/// authorization happened to include a name." The first fix only did the
+	/// latter, and Apple only ever sends the name on an Apple ID's very FIRST
+	/// authorization to this app; every authorization since (App Review reuses
+	/// the same Apple ID across resubmissions) comes back with no name at all,
+	/// so the gated step kept reappearing as a mandatory field in practice.
+	/// Fix: there is no name step, period, for any provider. If provider
+	/// metadata has a name, it's used silently; if not, `finish()` falls back
+	/// to the email/relay-address prefix. Either way it's editable afterward
+	/// in Edit Profile — never a signup gate. Resolved in init, not onAppear,
+	/// so `steps` never changes after first render.
 	init(provider: String) {
 		self.provider = provider
 		var data = OnboardingData()
@@ -30,8 +37,7 @@ struct OnboardingView: View {
 				}
 			}
 		}
-		var s: [Step] = data.displayName.isEmpty ? [.name] : []
-		s += [.username, .ratingMode, .notifications]
+		var s: [Step] = [.username, .ratingMode, .notifications]
 		if provider == "apple" { s.append(.appleMusic) }
 		self.steps = s
 		self._data = State(initialValue: data)
@@ -55,8 +61,6 @@ struct OnboardingView: View {
 			// Step content
 			Group {
 				switch steps[stepIndex] {
-				case .name:
-					StepName(data: $data, onNext: advance)
 				case .username:
 					StepUsername(data: $data, onNext: advance)
 				case .ratingMode:
