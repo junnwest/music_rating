@@ -5,7 +5,7 @@ import { rateLimit } from '../../../../lib/rateLimit';
 import { cacheGet, cacheSet } from '../../../../lib/cache';
 import { eloToScore } from '../../../../lib/elo';
 import { preferHangulName } from '../../../../lib/sj/display';
-import { displayGenre } from '../../../../lib/taste/embeddings';
+import { cosine, displayGenre, genreVector } from '../../../../lib/taste/embeddings';
 import { sceneOf, type Scene } from '../../../../lib/taste/albumVector';
 import {
   weightsFromRatings,
@@ -28,6 +28,13 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 15;
 
 const TTL_SECONDS = 60;
+/** Tags per world that become sub-genre bubbles (and get their own rec list). */
+const GRAPH_TAGS = 8;
+/** Worlds that get a prestige candidate pool for the graph's side panel. */
+const REC_POOL_WORLDS = 3;
+const RECS_PER_FOCUS = 6;
+/** Cap on the rated albums shipped for the side panel (score-descending). */
+const GRAPH_ALBUMS = 400;
 
 interface RatingRow {
   score: number | null;
@@ -54,7 +61,9 @@ export async function GET(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   const refresh = req.nextUrl.searchParams.get('refresh') === '1';
-  const cacheKey = `taste:profile:v4:${userId}`;
+  // v5: 2026-07-19 adds the taste map (bubbles + per-genre albums/recs) and the
+  // per-year series, so a v4 entry can't satisfy the new page.
+  const cacheKey = `taste:profile:v5:${userId}`;
   if (!refresh) {
     const cached = await cacheGet<object>(cacheKey);
     if (cached) return NextResponse.json(cached);
@@ -151,6 +160,17 @@ export async function GET(req: NextRequest) {
     for (let d = first; d <= last; d += 10) decades.push({ decade: d, count: decadeMap.get(d) ?? 0 });
   }
 
+  // Release years, contiguous and zero-filled — the decade histogram's finer
+  // grain, which the taste map's year chart draws a trend line over.
+  const yearMap = new Map<number, number>();
+  for (const y of years) yearMap.set(y, (yearMap.get(y) ?? 0) + 1);
+  const yearSeries: { year: number; count: number }[] = [];
+  if (yearMap.size > 0) {
+    const first = Math.min(...yearMap.keys());
+    const last = Math.max(...yearMap.keys());
+    for (let y = first; y <= last; y += 1) yearSeries.push({ year: y, count: yearMap.get(y) ?? 0 });
+  }
+
   // Score distribution in half-star buckets (index 0 = 0.5★ … 9 = 5.0★).
   const scoreDist = Array.from({ length: 10 }, () => 0);
   for (const x of scores) scoreDist[Math.max(0, Math.min(9, Math.round(x * 2) - 1))] += 1;
@@ -191,6 +211,126 @@ export async function GET(req: NextRequest) {
 
   const r2 = (x: number | null) => (x != null ? Math.round(x * 100) / 100 : null);
 
+  // ── Taste map ──────────────────────────────────────────────────────────────
+  // The graph is drawn from the same clusters the report already computes: a
+  // world is a bubble, its tags are the sub-genre bubbles you zoom into. The
+  // client lays them out from the similarity matrices below (embedding cosine),
+  // so "positioned by similarity" doesn't need the 300-dim vectors on the wire.
+  const graphWorlds = clusters.map((c, i) => {
+    const tags = c.tags.slice(0, GRAPH_TAGS);
+    const tagMass = tags.reduce((s, t) => s + t.n, 0) || 1;
+    const vecs = tags.map((t) => genreVector(t.tag));
+    return {
+      key: `world:${i}`,
+      label:
+        tags.length > 1 && tags[1].w >= tags[0].w * 0.5
+          ? `${displayGenre(tags[0].tag)} × ${displayGenre(tags[1].tag)}`
+          : displayGenre(tags[0]?.tag ?? ''),
+      primary: displayGenre(tags[0]?.tag ?? ''),
+      share: c.share,
+      mass: Math.round(tagMass * 10) / 10,
+      avg: r2(3 + c.tags.reduce((s, t) => s + t.w, 0) / (c.tags.reduce((s, t) => s + t.n, 0) || 1)),
+      sim: clusters.map((o) => Math.round(cosine(c.centroid, o.centroid) * 1000) / 1000),
+      tags: tags.map((t) => ({
+        tag: t.tag,
+        display: displayGenre(t.tag),
+        mass: Math.round(t.n * 10) / 10,
+        share: Math.round((t.n / tagMass) * 1000) / 1000,
+        avg: t.avg,
+      })),
+      tagSim: vecs.map((a) =>
+        vecs.map((b) => (a && b ? Math.round(cosine(a, b) * 1000) / 1000 : 0)),
+      ),
+    };
+  });
+
+  // Every tag that can be focused — the side panel filters the user's ratings
+  // against this vocabulary, so albums ship with their in-vocab tags only.
+  const vocab = new Set<string>();
+  for (const w of graphWorlds) for (const t of w.tags) vocab.add(t.tag);
+
+  const ratedIds = new Set<string>(rows.map((r) => r.release_groups!.id));
+  const graphAlbums = scored
+    .map((r) => {
+      const rg = r.release_groups!;
+      const tags = (rg.genres ?? [])
+        .map((g) => g.trim())
+        .filter((g) => vocab.has(g))
+        .slice(0, 5);
+      if (tags.length === 0) return null;
+      return {
+        id: rg.id,
+        title: preferHangulName(rg.title, rg.native_title),
+        artist: preferHangulName(rg.artist_display, rg.artists?.name_native ?? null),
+        coverUrl: rg.cover_url,
+        score: Math.round(display(r)! * 10) / 10,
+        tags,
+      };
+    })
+    .filter((a): a is NonNullable<typeof a> => a != null)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, GRAPH_ALBUMS);
+
+  // One prestige pool per leading world, reused for that world and each of its
+  // tags — the panel needs "a few recommendations in this genre", not a second
+  // recommender. Already-rated albums are excluded here, not on the client.
+  const recPools = await Promise.all(
+    clusters.slice(0, REC_POOL_WORLDS).map((c) =>
+      supabase
+        .from('release_groups')
+        .select('id, title, artist_display, cover_url, native_title, genres')
+        .overlaps(
+          'genres',
+          c.tags.slice(0, GRAPH_TAGS).map((t) => t.tag),
+        )
+        .not('prestige_score', 'is', null)
+        .in('release_group_type', ['album', 'ep'])
+        .not('cover_url', 'is', null)
+        .order('prestige_score', { ascending: false })
+        .limit(60),
+    ),
+  );
+
+  interface PoolRow {
+    id: string;
+    title: string;
+    artist_display: string;
+    cover_url: string | null;
+    native_title: string | null;
+    genres: string[] | null;
+  }
+  const recs: Record<string, { id: string; title: string; artist: string; coverUrl: string | null }[]> =
+    {};
+  recPools.forEach((res, i) => {
+    if (res.error) {
+      console.error('[taste] rec pool error:', res.error.message);
+      return;
+    }
+    const pool = ((res.data as unknown as PoolRow[] | null) ?? []).filter((r) => !ratedIds.has(r.id));
+    // One album per artist so a single prolific act can't own a panel.
+    const take = (candidates: PoolRow[]) => {
+      const seenArtists = new Set<string>();
+      const out: { id: string; title: string; artist: string; coverUrl: string | null }[] = [];
+      for (const r of candidates) {
+        if (out.length >= RECS_PER_FOCUS) break;
+        if (seenArtists.has(r.artist_display)) continue;
+        seenArtists.add(r.artist_display);
+        out.push({
+          id: r.id,
+          title: preferHangulName(r.title, r.native_title),
+          artist: r.artist_display,
+          coverUrl: r.cover_url,
+        });
+      }
+      return out;
+    };
+    recs[`world:${i}`] = take(pool);
+    for (const t of graphWorlds[i].tags) {
+      const forTag = pool.filter((r) => (r.genres ?? []).some((g) => g.trim() === t.tag));
+      if (forTag.length > 0) recs[`tag:${t.tag}`] = take(forTag);
+    }
+  });
+
   interface StandingRow {
     genre: string;
     user_avg: number;
@@ -230,8 +370,10 @@ export async function GET(req: NextRequest) {
       .slice(0, 6)
       .map((tag) => ({ tag, display: displayGenre(tag) })),
     standings,
+    graph: { worlds: graphWorlds, albums: graphAlbums, recs },
     charts: {
       decades,
+      years: yearSeries,
       scoreDist,
       scenes: sceneTotal > 0 ? { counts: sceneCounts, total: sceneTotal } : null,
       timeline,

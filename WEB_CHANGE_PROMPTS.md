@@ -8,12 +8,11 @@ time (or in small batches). They assume the shared constraints in "Global rules"
 
 Build order (dependencies): ~~**#2 + #12 first** (others consume them)~~ →
 ~~**#1** (creates the … menu)~~ → ~~**#3, #17** (reuse it)~~ → independent page fixes
-(~~#5, #10, #11, #18~~) → larger surfaces (~~#4~~, **#6, #7**, ~~#8~~, ~~#13~~, ~~#14~~,
+(~~#5, #10, #11, #18~~) → larger surfaces (~~#4~~, ~~#6, #7~~, ~~#8~~, ~~#13~~, ~~#14~~,
 ~~#15~~, ~~#16~~, ~~#9~~).
 
-**Everything except the Taste page (#6 + #7) is done.** They are the only two
-left and they are one session — see the next-chat prompt at the bottom of this
-file.
+**All 18 items are done (2026-07-20).** Nothing here is open. What remains is
+*verification*, not construction — see "Where to pick up next".
 
 | # | Task | Status |
 |---|------|--------|
@@ -33,14 +32,16 @@ file.
 | 8 | Profile — merge list+table, add filters | ✅ **done** (2026-07-19) |
 | 13 | Quick Add — horizontal rows + arrows + See more | ✅ **done** (2026-07-19) |
 | 14 | Quick Add — explore/like genres | ✅ **done** (2026-07-19) — migration applied |
-| 6 | Taste > Graph rebuild | ⬜ not started — **ONLY REMAINING WORK** |
-| 7 | Refresh + reconstruct taste report | ⬜ not started — do with #6 |
+| 6 | Taste > Graph rebuild | ✅ **done** (2026-07-20) — payload `v5` |
+| 7 | Refresh + reconstruct taste report | ✅ **done** (2026-07-20) — with #6 |
 
 ### Where to pick up next
 
-1. **#6 + #7 are all that's left, and they are one session** — the refresh has to
-   feed the graph, so building them apart means building the data path twice.
-   The ready-to-paste prompt is at the bottom of this file.
+1. **Nothing is left to build — the whole list needs a signed-in browser pass.**
+   In rough order of how much a real look would tell you: **#6's taste map** (the
+   zoom feel, label legibility inside sub-genre bubbles, mobile), **#4's Stats
+   tab**, **#13's shelves at phone width**, **#2's gauge radii**, and the new
+   `ScoreBadge` ramp everywhere.
 2. **⚠ Audit every PostgREST embed that crosses a join table.** #10's root cause
    was `mixes → profiles` being ambiguous (`mix_likes` is a second path), so
    `profiles(...)` failed with **PGRST201** on *every* request and the page read
@@ -48,14 +49,12 @@ file.
    mixes list. Both now pass `profiles!mixes_user_id_fkey(...)`. Any table with a
    likes/shares join table pointing at `profiles` can have this; the errors are
    invisible because most call sites destructure `{ data }` and drop `error`.
-3. **#12 is fully rolled out except the Taste page.** `components/sj/Loading.tsx`
-   exports `FlowerSpinner`, `PageLoader`, `Skeleton`, `SkeletonLine`,
-   `SkeletonBlock`, `SkeletonCover`, `SkeletonCard`, `SkeletonCardGrid`,
-   `SkeletonRows`. The only remaining hand-rolled `animate-pulse` in the app is
-   **`taste/page.tsx:122`**, left alone on purpose because #6 rewrites that page
-   — convert it as part of #6 rather than touching it twice.
-   `grep -rn "animate-pulse" app components` is the check.
-4. **Nothing from 2026-07-19 has been clicked through in a live browser.** The
+3. **#12 is fully rolled out.** `components/sj/Loading.tsx` exports
+   `FlowerSpinner`, `PageLoader`, `Skeleton`, `SkeletonLine`, `SkeletonBlock`,
+   `SkeletonCover`, `SkeletonCard`, `SkeletonCardGrid`, `SkeletonRows`.
+   `grep -rn "animate-pulse" app components` now returns **only `Loading.tsx`** —
+   the Taste page's was the last one and #6 converted it.
+4. **Nothing from 2026-07-19/20 has been clicked through in a live browser.** The
    builds are clean, but the *feel* of #2's new radii (`OFFSET` 36 / `STEP` 34,
    0.1 steps), the new `ScoreBadge` ramp (changed appearance app-wide), every #3
    right-click surface, and the album page's two new rating affordances (#5's
@@ -282,57 +281,90 @@ Cosmetic, and outside what the prompt named.
 
 ---
 
-## 6. Taste > Graph — full interactive rebuild (single prompt)
-**Status: ⬜ not started.**
+## 6. Taste > Graph — full interactive rebuild
+**Status: ✅ done 2026-07-20 (Windows). Not browser-verified.**
 
-Rebuild the Taste graph in `app/(main)/taste/page.tsx` into an interactive,
-awwwards-grade visualization. One comprehensive change.
+The map is **new `components/sj/TasteGraph.tsx`**; the page consumes it. Nothing
+new was invented taxonomically — the graph is drawn from the *same clusters the
+report already computed*: a **world is a bubble, its tags are the sub-genre
+bubbles you zoom into**. That's what made #6 a payload change rather than a
+second taste model.
 
-**Genre bubbles (agar.io + heatmap language):**
-- Render genres as **soft circles** whose **area ∝ the user's mass in that genre**
-  (count/weight of rated albums), positioned by similarity, colored as a **heat
-  map** (intensity = affinity/rating). Fluid, organic look — soft edges, gentle
-  drift/settle animation.
-- **Click a genre → Prezi-style zoom** into it: the camera smoothly zooms/pans so
-  that genre fills the view and its **subgenres** appear as their own bubbles,
-  sized by their area within the parent. Zoom back out to return.
+- **Area, not radius, carries mass** (`r ∝ √share`), verified numerically: a world
+  with 7× the share renders at exactly 7× the area.
+- **Colour is the app's score ramp** (`spectrumColor`, #2's OKLCh spectrum), so a
+  bubble's warmth means the same thing as a score badge anywhere else in the app.
+  Never the sole encoding — every bubble is directly labelled, the panel repeats
+  the number, and a 1→5 gradient legend sits in the corner.
+- **Positioned by similarity, not packed.** `layoutBySimilarity` is a stress
+  relaxation: each pair is pulled toward a distance that grows with embedding
+  *dis*similarity and can never fall below `r_i + r_j`, then a hard separation
+  pass. Deterministic (index-based ring init, no RNG) — **a refresh never
+  reshuffles the user's map**. The old greedy `packCircles` / `TasteTerritory` is
+  deleted; it packed by size alone and said nothing about relatedness.
+  Similarity ships as small cosine matrices (`sim`, `tagSim`), so the 300-dim
+  vectors stay server-side.
+- **Prezi zoom is one CSS transform on one `<g>`** (`translate + scale`, 760ms),
+  and the organic drift is a CSS keyframe per bubble — neither costs a React
+  render per frame, which is what keeps it smooth on a phone. Both are killed by
+  `prefers-reduced-motion`. Escape and a Back pill walk back out one level.
+- **Sub-genres are laid out inside the parent circle**, scaled by the furthest
+  bubble *edge* from the centre rather than the layout box's half-width — a
+  square box's corner is 1.41× further out, and a sub-genre poking through its
+  parent would read as a sibling.
+- **Side panel** (right on `md`+, below on mobile): the focus's era/scene line,
+  its average, the user's rated albums in it (cover/title/score, from a new
+  `graph.albums` array the client filters — no per-click fetch), and a few
+  recommendations. With nothing focused it becomes a clickable world legend.
+- **Year chart replaced the decade chart**: per-year bars + a **centred 5-year
+  moving average** (`YearHistogram`, same file), window shrinking at the edges so
+  the line spans the full range. One measure, one axis — the line is the same
+  series smoothed, not a second series.
+- `taste/page.tsx:122`'s hand-rolled `animate-pulse` is gone (#12 closed).
 
-**Side panel:**
-- When a genre/subgenre is focused, show a side panel listing **the user's rated
-  albums in that genre/subgenre** (cover, title, score) and a few
-  **recommendations** in that genre (from the recommendation/personalized source).
-
-**Year chart:**
-- Replace the current year bar chart with a **histogram over years** (rated albums
-  per year) with a **trend line overlaid** (e.g. moving average / regression).
-
-Use the `dataviz` skill. Keep it performant (canvas/SVG as appropriate) and smooth
-on mobile. Reuse existing taste data endpoints where possible; note any new
-aggregation you need.
-
-Acceptance: genres render as heat-mapped area-scaled bubbles; clicking zooms
-Prezi-style into subgenres; side panel shows rated albums + recs for the focus;
-year view is a histogram + trend line; all interactive and smooth.
+⚠ The old per-world cards (sub-genre bars, "{avg} above your usual") were
+**removed** — the map's panel carries that information now and the page was
+otherwise five near-identical cards long. Their i18n keys (`territoryHeader`,
+`subGenres`, `worldVsUsual*`, `eraHeader`, …) are left in place, unused.
+⚠ **iOS `TasteReportView` still renders the v4 report** (it ported the old
+territory pack on 2026-07-18) — a new parity gap, deliberately untouched under
+the web-only rule. The payload is **additive**, so iOS keeps working.
 
 ---
 
 ## 7. Refresh the Taste page + reconstruct the report
-**Status: ⬜ not started.**
+**Status: ✅ done 2026-07-20 (Windows), in the same pass as #6.**
 
-Add a way to **refresh/rebuild** the taste report, and improve how it's built.
-
-- Add a visible **Refresh** control on the Taste page that recomputes the taste
-  profile/report on demand (with a loading state — see #12), rather than only
-  showing a stale cached payload.
-- Review how the taste report is currently assembled and **reconstruct it for
-  quality** — judge the best structure (sections, ordering, what's most insightful
-  to show). Note: the vector math lives in Node / the Micro DB and profiles are
-  trigger-maintained (see memory `taste-system-architecture`) — respect that; the
-  web should trigger/read a rebuild, not reimplement the math client-side.
-- Make sure the refresh feeds #6's graph too (consistent data).
-
-Acceptance: user can refresh the taste report and see it recompute; the resulting
-report is better-organized and clearly structured.
+- **Refresh control** in the report header: `FlowerSpinner` + "Recomputing…"
+  while in flight, and it is the **only** caller of `?refresh=1`. The default
+  load stays cached — the every-load cache-bypass removed on 2026-07-15 for
+  burning Vercel CPU was *not* reintroduced, and the page's doc comment says so
+  where the next person will read it. A failed refresh keeps the report already
+  on screen rather than blanking the page.
+- **One payload feeds everything.** The map, its side-panel albums and its recs
+  all come from `/api/taste/profile`, so Refresh recomputes the graph and the
+  report together by construction — there is no second endpoint to fall out of
+  sync. Cache key bumped **v4 → v5**.
+- **Report restructured** into a read order that answers the obvious questions
+  first: header → **taste map** → by-the-numbers (#1 album + tiles) → release
+  years → how you score → scene mix + canon reach → you-vs-community → not your
+  thing. Net effect is a much shorter page: five per-world cards collapsed into
+  the map's panel.
+- **Vector math stayed in Node**, per the architecture rule — the route derives
+  clusters from the ratings it already fetches and still upserts
+  `user_taste_profiles`; nothing was reimplemented client-side.
+- **New in the payload** (all additive): `charts.years` (contiguous, zero-filled)
+  and `graph = { worlds, albums, recs }`. `worlds` carry `share`/`mass`/`avg` +
+  the two cosine matrices; `albums` are the user's scored ratings tagged with
+  their in-vocab genres (≤400, score-descending); `recs` is keyed `world:{i}` /
+  `tag:{tag}`.
+- **Recommendations reuse the existing prestige-pool query shape** from
+  `/api/recommendations` (one pool per leading world, one album per artist,
+  already-rated excluded server-side) rather than calling that route — its
+  response `strip()`s `genres`, so it can't be filtered down to a sub-genre.
+  ⚠ That's **3 extra `release_groups` queries on an uncached load** (60 rows
+  each, prestige-ordered, index-backed). Worlds past the third get no recs and
+  the panel just shows the user's own ratings. Every one captures `error`.
 
 ---
 
@@ -651,61 +683,22 @@ from the sidebar.
 
 ---
 
-## ► Prompt for the next chat (#6 + #7 — the Taste page, the only work left)
+## ► Prompt for the next chat (verification, not construction)
 
-Paste this verbatim into a fresh session:
+**The 18-item list is complete.** There is no remaining build prompt. The next
+session's job is a **signed-in browser click-through** of the whole batch —
+nothing here has been looked at live. Suggested order, most-informative first:
 
-> Work on the **Taste page only** (`apps/web/app/(main)/taste/page.tsx` and
-> whatever it needs). Everything else in `WEB_CHANGE_PROMPTS.md` is done — read
-> that file's Status board and the "Where to pick up next" notes first, then do
-> **#6 and #7 together** (the refresh has to feed the graph, so building them
-> apart means building the data path twice). Update `WEB_CHANGE_PROMPTS.md`,
-> `README.md` and `SESSIONS.md` when finished, then commit and push.
->
-> **#6 — Taste > Graph, full interactive rebuild.** Genres as **soft circles**
-> whose *area* ∝ the user's mass in that genre, positioned by similarity and
-> coloured as a **heat map** (intensity = affinity/rating), with a fluid,
-> organic settle animation. **Click a genre → Prezi-style zoom** into it: the
-> camera pans/zooms so that genre fills the view and its **subgenres** appear as
-> their own bubbles, sized by their share of the parent; zoom back out to
-> return. A **side panel** for the focused genre/subgenre listing the user's
-> rated albums in it (cover, title, score) plus a few **recommendations** from
-> the existing personalized/recommendation source. Replace the current year bar
-> chart with a **histogram over years** (rated albums per year) with a **trend
-> line** overlaid (moving average or regression). Use the `dataviz` skill.
-> Canvas or SVG as appropriate; must stay smooth on mobile.
->
-> **#7 — refresh + reconstruct the report.** Add a visible **Refresh** control
-> that recomputes the taste profile/report on demand with a proper loading state
-> (use `components/sj/Loading.tsx` — #12), rather than only ever rendering a
-> stale cached payload. Review how the report is assembled and **restructure it
-> for quality** (sections, ordering, what's actually insightful). The vector
-> math lives in Node / the Micro DB and profiles are trigger-maintained — the
-> web should *trigger and read* a rebuild, never reimplement the math
-> client-side. The refresh must feed #6's graph too, so both read one payload.
->
-> Three things specific to this page:
-> 1. **`taste/page.tsx:122` is the last hand-rolled `animate-pulse` in the app.**
->    It was left for you on purpose — convert it to the `Loading.tsx` primitives
->    as part of this work rather than as a separate pass. After that,
->    `grep -rn "animate-pulse" app components` should only hit `Loading.tsx`.
-> 2. **Do not call `/api/taste/profile?refresh=1` on every load.** That
->    cache-bypass was removed on 2026-07-15 for burning Vercel CPU (and removed
->    from iOS on 2026-07-18). The new Refresh control is an explicit,
->    user-initiated bypass — keep the default path cached.
-> 3. **Audit any new PostgREST embed that crosses a join table** (#10's root
->    cause: an ambiguous `mixes → profiles` embed failed `PGRST201` on every
->    request and read as "not found" because only `{ data }` was destructured).
->    Always capture `error`.
->
-> Constraints, as for every prompt in that file: **web app only** (`apps/web`,
-> don't touch iOS or shared payloads iOS consumes); all user-facing strings go
-> through `useLanguage()` / `t(...)` with keys added to **both** `en` and `ko`;
-> ratings are 0.1 internally with a 0.5 default manual step; and per CLAUDE.md,
-> only change what this prompt names — note anything else you spot in text
-> instead of fixing it. Migrations on this machine go through the Management
-> API: from `apps/web/`,
-> `npx tsx --env-file=.env.local scripts/db-exec.ts <migration.sql>`.
->
-> Nothing from 2026-07-19 has been clicked through in a live browser, so if
-> something on the Taste page looks off, check whether it predates this work.
+1. **Taste map (#6)** — open a world (Prezi zoom), open a sub-genre bubble,
+   confirm the side panel shows your rated albums + recs, check label legibility
+   inside small bubbles, and try it at phone width. Then hit **Refresh (#7)** and
+   confirm the report + map recompute together with the spinner state.
+2. **Profile > Stats (#4)** — the histogram spectrum bars, the dashed average
+   marker, the card grid at mobile width.
+3. **Quick Add shelves (#13)** at phone width; the genre explorer (#14).
+4. **The #2 gauge** (drag distance, 0.1 steps) and the **new `ScoreBadge` ramp**,
+   which changed appearance app-wide.
+
+If something on the Taste page looks off, note that **iOS's `TasteReportView`
+still renders the older v4 report** — the web payload is `v5` and additive, so
+the two intentionally diverge until an iOS session ports the map.
