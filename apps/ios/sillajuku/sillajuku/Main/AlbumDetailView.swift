@@ -1008,9 +1008,22 @@ struct AlbumDetailView: View {
 
     private var compactHeader: some View {
         HStack(alignment: .top, spacing: 14) {
-            CoverImage(url: release.coverUrl, cornerRadius: 12)
-                .frame(width: 88, height: 88)
-                .accessibilityHidden(true) // title/artist text alongside already describes it
+            ZStack(alignment: .bottomTrailing) {
+                CoverImage(url: release.coverUrl, cornerRadius: 12)
+                    .frame(width: 88, height: 88)
+                    .accessibilityHidden(true) // title/artist text alongside already describes it
+
+                if supabase.auth.currentUser?.id != nil, viewModel.ratingMode != "instinct" {
+                    AlbumRateButton(
+                        release: release,
+                        externalScore: $viewModel.userScore,
+                        ratingStep: viewModel.ratingStep,
+                        onScoreChange: { _ in Task { await viewModel.loadRatings(releaseGroupId: release.id) } },
+                        size: 32
+                    )
+                    .offset(x: 4, y: 4)
+                }
+            }
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(release.displayTitle)
@@ -1160,6 +1173,7 @@ struct AlbumDetailView: View {
                 onSave: { await viewModel.toggleSave(for: myPost) },
                 onBlock: {},
                 onOwnProfileTap: {},
+                ratingMode: viewModel.ratingMode,
                 ownRatingActions: OwnRatingMenuActions(
                     onShare: { Task { await prepareShare(score: score) } },
                     onEdit: { openRatingSheet() },
@@ -1248,7 +1262,8 @@ struct AlbumDetailView: View {
                             onLike: { await viewModel.toggleLike(for: item) },
                             onSave: { await viewModel.toggleSave(for: item) },
                             onBlock: { await viewModel.blockUser(userId: item.userId) },
-                            onOwnProfileTap: {}
+                            onOwnProfileTap: {},
+                            ratingMode: viewModel.ratingMode
                         )
                         .frame(width: 300)
                     }
@@ -1412,6 +1427,9 @@ private class AlbumRatingsListViewModel {
     var likeCounts: [UUID: Int] = [:]
     var commentCounts: [UUID: Int] = [:]
     var isLoading = true
+    // Gates the drag-to-rate gauge on each post's cover -- see HomeViewModel's
+    // ratingMode for why.
+    var ratingMode: String = "manual"
 
     var currentUserId: UUID? { supabase.auth.currentUser?.id }
 
@@ -1422,11 +1440,23 @@ private class AlbumRatingsListViewModel {
             .select(AlbumDetailViewModel.postsSelect)
             .eq("release_group_id", value: releaseGroupId)
         if let myId { query = query.neq("user_id", value: myId) }
-        posts = (try? await query
+        async let postsTask: [FeedItem] = (try? await query
             .order("created_at", ascending: false)
             .limit(200)
             .execute()
             .value) ?? []
+        async let modeTask: String = {
+            guard let myId else { return "manual" }
+            struct P: Decodable {
+                let ratingMode: String?
+                enum CodingKeys: String, CodingKey { case ratingMode = "rating_mode" }
+            }
+            let p: P? = try? await supabase
+                .from("profiles").select("rating_mode")
+                .eq("id", value: myId).single().execute().value
+            return p?.ratingMode ?? "manual"
+        }()
+        (posts, ratingMode) = await (postsTask, modeTask)
 
         if !posts.isEmpty {
             let counts = await AlbumSocial.loadCounts(for: posts)
@@ -1488,7 +1518,8 @@ struct AlbumAllRatingsView: View {
                                 onLike: { await vm.toggleLike(for: item) },
                                 onSave: { await vm.toggleSave(for: item) },
                                 onBlock: { await vm.blockUser(userId: item.userId) },
-                                onOwnProfileTap: {}
+                                onOwnProfileTap: {},
+                                ratingMode: vm.ratingMode
                             )
                         }
                     }
@@ -1571,7 +1602,7 @@ private struct TrackRow: View {
 
 // MARK: - Track Rating Sheet
 
-private struct TrackRatingSheet: View {
+struct TrackRatingSheet: View {
     let track: TrackEntry
     let release: Release
     let existingScore: Double?
@@ -1769,9 +1800,22 @@ struct SongDetailView: View {
 
     private var songHeader: some View {
         HStack(alignment: .top, spacing: 16) {
-            CoverImage(url: release.coverUrl)
-                .frame(width: 80, height: 80)
-                .accessibilityHidden(true) // track title text alongside already describes it
+            ZStack(alignment: .bottomTrailing) {
+                CoverImage(url: release.coverUrl)
+                    .frame(width: 80, height: 80)
+                    .accessibilityHidden(true) // track title text alongside already describes it
+
+                if ratingMode != "instinct", supabase.auth.currentUser?.id != nil {
+                    SongRateButton(
+                        track: track,
+                        release: release,
+                        externalScore: $userScore,
+                        onScoreChange: { _ in Task { await loadStats() } },
+                        size: 30
+                    )
+                    .offset(x: 4, y: 4)
+                }
+            }
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(String(format: String(localized: "Track %d"), track.position))

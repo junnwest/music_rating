@@ -248,6 +248,9 @@ class ChartsViewModel {
     var trendingSongs: [ChartSongEntry] = []
     var isLoading = true
     private var hasLoaded = false
+    // Gates the drag-to-rate gauge on each card's cover -- see HomeViewModel's
+    // ratingMode for why.
+    var ratingMode = "manual"
 
     var activeTrending: [ChartEntry] {
         trendingMode == .forYou && !trendingForYou.isEmpty ? trendingForYou : trendingGlobal
@@ -267,6 +270,7 @@ class ChartsViewModel {
             group.addTask { await self.loadTopRatedSongs() }
             group.addTask { await self.loadMostRatedSongs() }
             group.addTask { await self.loadTrendingSongs() }
+            group.addTask { await self.loadRatingMode() }
         }
         isLoading = false
         let prefetchUrls = (topRated + mostRated + trendingGlobal + trendingForYou)
@@ -275,6 +279,18 @@ class ChartsViewModel {
     }
 
     // MARK: Loaders
+
+    private func loadRatingMode() async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        struct P: Decodable {
+            let ratingMode: String?
+            enum CodingKeys: String, CodingKey { case ratingMode = "rating_mode" }
+        }
+        let p: P? = try? await supabase
+            .from("profiles").select("rating_mode")
+            .eq("id", value: userId).single().execute().value
+        ratingMode = p?.ratingMode ?? "manual"
+    }
 
     private func loadPulse() async {
         struct PulseRow: Codable {
@@ -494,7 +510,8 @@ struct ChartsView: View {
                             title: "Most Rated",
                             entries: viewModel.mostRated,
                             destination: ChartDetailType.mostRated,
-                            showScore: false
+                            showScore: false,
+                            ratingMode: viewModel.ratingMode
                         )
                         .padding(.bottom, 30)
 
@@ -528,14 +545,16 @@ struct ChartsView: View {
                         SongHorizSection(
                             title: "Top Rated",
                             entries: viewModel.topRatedSongs,
-                            showScore: true
+                            showScore: true,
+                            ratingMode: viewModel.ratingMode
                         )
                         .padding(.bottom, 30)
 
                         SongHorizSection(
                             title: "Most Rated Songs",
                             entries: viewModel.mostRatedSongs,
-                            showScore: false
+                            showScore: false,
+                            ratingMode: viewModel.ratingMode
                         )
                         .padding(.bottom, 30)
 
@@ -639,6 +658,7 @@ private struct SongHorizSection: View {
     let title: LocalizedStringKey
     let entries: [ChartSongEntry]
     let showScore: Bool
+    var ratingMode: String = "manual"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -657,7 +677,7 @@ private struct SongHorizSection: View {
                     HStack(spacing: 10) {
                         ForEach(Array(entries.prefix(20).enumerated()), id: \.element.id) { idx, entry in
                             NavigationLink(value: entry.asRelease) {
-                                HorizSongCard(rank: idx + 1, entry: entry, showScore: showScore)
+                                HorizSongCard(rank: idx + 1, entry: entry, showScore: showScore, ratingMode: ratingMode)
                             }
                             .buttonStyle(.plain)
                             .albumContextMenu(entry.asRelease)
@@ -674,6 +694,7 @@ private struct HorizSongCard: View {
     let rank: Int
     let entry: ChartSongEntry
     let showScore: Bool
+    var ratingMode: String = "manual"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -703,6 +724,21 @@ private struct HorizSongCard: View {
                                 .background(Color.sjAmber)
                                 .clipShape(RoundedRectangle(cornerRadius: 4))
                                 .padding(5)
+                        }
+                    }
+                }
+
+                // Bottom-leading -- the rank badge owns top-leading, the score
+                // badge (when shown) owns bottom-trailing. Falls back to rating
+                // the parent album (same as SearchView's SongRow): chart song
+                // entries don't carry a recording id for a true per-song rating.
+                if ratingMode != "instinct" {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            AlbumRateButton(release: entry.asRelease, size: 26)
+                                .padding(5)
+                            Spacer(minLength: 0)
                         }
                     }
                 }
@@ -1100,6 +1136,9 @@ struct RankingDetailView: View {
     @State private var isLoading   = true
     @State private var selectedGenre:   String? = nil
     @State private var selectedCountry: String? = nil
+    // Gates the drag-to-rate gauge on each card's cover -- see HomeViewModel's
+    // ratingMode for why.
+    @State private var ratingMode = "manual"
 
     private let genres    = ["Hip Hop", "K-Pop", "Jazz", "Electronic", "Classical", "Metal", "R&B", "Pop"]
     private let countries = [("Global", Optional<String>.none), ("KR", "kr"), ("JP", "jp"),
@@ -1206,9 +1245,21 @@ struct RankingDetailView: View {
             p_limit:   100,
             p_offset:  0
         )
-        let rows: [SillaLeaderboardRow] = (try? await supabase
+        async let rowsTask: [SillaLeaderboardRow] = (try? await supabase
             .rpc("get_silla_leaderboard", params: params)
             .execute().value) ?? []
+        async let modeTask: String = {
+            guard let userId = supabase.auth.currentUser?.id else { return "manual" }
+            struct P: Decodable {
+                let ratingMode: String?
+                enum CodingKeys: String, CodingKey { case ratingMode = "rating_mode" }
+            }
+            let p: P? = try? await supabase
+                .from("profiles").select("rating_mode")
+                .eq("id", value: userId).single().execute().value
+            return p?.ratingMode ?? "manual"
+        }()
+        let (rows, mode) = await (rowsTask, modeTask)
         // silla_score is [0,1]; scale ×5 so the badge reads on the same 0–5 axis as ratings
         entries = rows.map {
             ChartEntry(id: $0.releaseId, title: $0.title, artist: $0.artist,
@@ -1217,6 +1268,7 @@ struct RankingDetailView: View {
                        titleNative: $0.titleNative, artistNative: $0.artistNative,
                        releaseType: $0.releaseType)
         }
+        ratingMode = mode
         isLoading = false
         let prefetchUrls = entries.compactMap { URL(string: $0.coverUrl?.thumbnailUrl ?? "") }
         ImageCache.prefetch(prefetchUrls)
@@ -1405,6 +1457,7 @@ private struct ChartHorizSection: View {
     let entries: [ChartEntry]
     let destination: ChartDetailType
     let showScore: Bool
+    var ratingMode: String = "manual"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1432,7 +1485,7 @@ private struct ChartHorizSection: View {
                     HStack(spacing: 10) {
                         ForEach(Array(entries.prefix(20).enumerated()), id: \.element.id) { idx, entry in
                             NavigationLink(value: entry.asRelease) {
-                                HorizAlbumCard(rank: idx + 1, entry: entry, showScore: showScore)
+                                HorizAlbumCard(rank: idx + 1, entry: entry, showScore: showScore, ratingMode: ratingMode)
                             }
                             .buttonStyle(.plain)
                             .albumContextMenu(entry.asRelease)
@@ -1449,6 +1502,7 @@ private struct HorizAlbumCard: View {
     let rank: Int
     let entry: ChartEntry
     let showScore: Bool
+    var ratingMode: String = "manual"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -1478,6 +1532,19 @@ private struct HorizAlbumCard: View {
                                 .background(Color.sjAmber)
                                 .clipShape(RoundedRectangle(cornerRadius: 4))
                                 .padding(5)
+                        }
+                    }
+                }
+
+                // Bottom-leading -- the rank badge owns top-leading, the score
+                // badge (when shown) owns bottom-trailing.
+                if ratingMode != "instinct" {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            AlbumRateButton(release: entry.asRelease, size: 26)
+                                .padding(5)
+                            Spacer(minLength: 0)
                         }
                     }
                 }

@@ -1,27 +1,88 @@
 import SwiftUI
 
-/// Score-adaptive color spectrum: hue sweeps from red (0°) at the bottom of
-/// the real rating scale (0.5) to sjBlue's own hue (~206°) at a perfect 5.0.
-/// Saturation/lightness stay fixed — only the hue moves — so every score
-/// reads as "the same badge," just recolored.
+/// Score-adaptive color spectrum: a perceptually-uniform OKLCh ramp, ported
+/// from web's `lib/sj/display.ts` (2026-07-17 web change, #2 in that
+/// session). 0.5 → deep red, then orange, yellow-green, teal, and blue at
+/// 5.0, walked at a *fixed* OKLab lightness per variant (fill/number/ring),
+/// so every score reads at the same perceived brightness — unlike the old
+/// HSL hue-sweep this replaces, whose yellows blew out and whose blues went
+/// muddy at the extremes.
 enum ScoreSpectrum {
-    private static let maxHue = 205.7
+    private struct Stop { let score: Double; let hue: Double; let chroma: Double }
 
-    static func hue(for score: Double) -> Double {
-        min(max(maxHue * (score - 0.5) / 4.5, 0), maxHue)
+    /// Hue (OKLCh degrees) and chroma anchors across the 0.5–5.0 range.
+    private static let stops: [Stop] = [
+        Stop(score: 0.5, hue: 25,  chroma: 0.16),  // deep red
+        Stop(score: 1.6, hue: 58,  chroma: 0.145), // orange
+        Stop(score: 2.7, hue: 126, chroma: 0.15),  // yellow-green
+        Stop(score: 3.8, hue: 196, chroma: 0.115), // teal
+        Stop(score: 5.0, hue: 262, chroma: 0.155), // blue
+    ]
+
+    private static func lerp(_ a: Double, _ b: Double, _ t: Double) -> Double { a + (b - a) * t }
+
+    /// Interpolate the hue/chroma anchors at `score` (clamped to 0.5–5.0).
+    private static func stop(for score: Double) -> (hue: Double, chroma: Double) {
+        let s = min(max(score, 0.5), 5)
+        for i in 0..<(stops.count - 1) {
+            let a = stops[i], b = stops[i + 1]
+            if s <= b.score {
+                let t = (s - a.score) / (b.score - a.score)
+                return (lerp(a.hue, b.hue, t), lerp(a.chroma, b.chroma, t))
+            }
+        }
+        let last = stops[stops.count - 1]
+        return (last.hue, last.chroma)
     }
 
-    static func fill(for score: Double) -> Color {
-        Color(hslHue: hue(for: score), saturation: 0.65, lightness: 0.89)
+    private static func gammaEncode(_ c: Double) -> Double {
+        c <= 0.0031308 ? 12.92 * c : 1.055 * pow(c, 1 / 2.4) - 0.055
     }
 
-    static func numberColor(for score: Double) -> Color {
-        Color(hslHue: hue(for: score), saturation: 0.73, lightness: 0.29)
+    /// OKLab → linear sRGB (Björn Ottosson's matrices).
+    private static func oklabToLinearRgb(_ L: Double, _ a: Double, _ b: Double) -> (Double, Double, Double) {
+        let l_ = L + 0.3963377774 * a + 0.2158037573 * b
+        let m_ = L - 0.1055613458 * a - 0.0638541728 * b
+        let s_ = L - 0.0894841775 * a - 1.291485548 * b
+        let l = l_ * l_ * l_
+        let m = m_ * m_ * m_
+        let s = s_ * s_ * s_
+        return (
+            4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+            -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+            -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s
+        )
     }
 
-    static func ringColor(for score: Double) -> Color {
-        Color(hslHue: hue(for: score), saturation: 0.70, lightness: 0.45)
+    /// OKLCh → Color, walking chroma down until it fits sRGB. Cutting chroma
+    /// (rather than clipping channels) keeps hue and lightness intact.
+    private static func oklch(_ L: Double, _ chroma: Double, _ hueDeg: Double) -> Color {
+        let rad = hueDeg * Double.pi / 180
+        var c = chroma
+        var rgb: (Double, Double, Double) = (0, 0, 0)
+        for _ in 0..<24 {
+            rgb = oklabToLinearRgb(L, c * cos(rad), c * sin(rad))
+            if [rgb.0, rgb.1, rgb.2].allSatisfy({ $0 >= -0.0005 && $0 <= 1.0005 }) { break }
+            c *= 0.92
+        }
+        let r = min(1, max(0, gammaEncode(min(1, max(0, rgb.0)))))
+        let g = min(1, max(0, gammaEncode(min(1, max(0, rgb.1)))))
+        let b = min(1, max(0, gammaEncode(min(1, max(0, rgb.2)))))
+        return Color(red: r, green: g, blue: b)
     }
+
+    /// Any point on the ramp at an arbitrary lightness — matches web's `spectrumColor`.
+    static func color(for score: Double, lightness: Double, chromaScale: Double = 1) -> Color {
+        let (hue, chroma) = stop(for: score)
+        return oklch(lightness, chroma * chromaScale, hue)
+    }
+
+    /// Pale badge background.
+    static func fill(for score: Double) -> Color { color(for: score, lightness: 0.92, chromaScale: 0.28) }
+    /// Dark, legible number/text color on top of `fill`.
+    static func numberColor(for score: Double) -> Color { color(for: score, lightness: 0.45, chromaScale: 0.95) }
+    /// Mid-tone stroke/accent — the ramp's "true" color.
+    static func ringColor(for score: Double) -> Color { color(for: score, lightness: 0.63, chromaScale: 1) }
 
     /// Non-linear visibility: a great score should pop, a mediocre one
     /// shouldn't compete for attention. Power curve (not three flat bands)
@@ -32,27 +93,6 @@ enum ScoreSpectrum {
     static func opacity(for score: Double) -> Double {
         let x = min(max((score - 0.5) / 4.5, 0), 1)
         return max(pow(x, 9), 0.06)
-    }
-}
-
-private extension Color {
-    /// Matches CSS `hsl(h, s%, l%)` semantics exactly — SwiftUI's native
-    /// `Color(hue:saturation:brightness:)` is HSB, a different model that
-    /// would NOT reproduce the same colors from the approved mockup.
-    init(hslHue h: Double, saturation s: Double, lightness l: Double) {
-        let c = (1 - abs(2 * l - 1)) * s
-        let x = c * (1 - abs((h / 60).truncatingRemainder(dividingBy: 2) - 1))
-        let m = l - c / 2
-        let (r, g, b): (Double, Double, Double)
-        switch h {
-        case 0..<60:    (r, g, b) = (c, x, 0)
-        case 60..<120:  (r, g, b) = (x, c, 0)
-        case 120..<180: (r, g, b) = (0, c, x)
-        case 180..<240: (r, g, b) = (0, x, c)
-        case 240..<300: (r, g, b) = (x, 0, c)
-        default:        (r, g, b) = (c, 0, x)
-        }
-        self.init(red: r + m, green: g + m, blue: b + m)
     }
 }
 

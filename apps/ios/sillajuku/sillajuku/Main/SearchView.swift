@@ -21,6 +21,15 @@ struct SongResult: Codable, Identifiable {
             case id, title, artist
             case coverUrl = "cover_url"
         }
+
+        var asRelease: Release {
+            Release(id: id, title: title, artist: artist, coverUrl: coverUrl, releaseType: nil,
+                     releaseDate: nil, titleNative: nil, artistNative: nil, tracklist: nil, totalTracks: nil)
+        }
+    }
+
+    var asTrackEntry: TrackEntry {
+        TrackEntry(trackId: id, position: 0, title: title, durationMs: nil, artists: artists)
     }
 }
 
@@ -924,7 +933,8 @@ struct SearchView: View {
                                     SongRow(
                                         song: song,
                                         onAdd: rated ? nil : { addRelease(pr) },
-                                        isRated: rated
+                                        isRated: rated,
+                                        useRateGauge: userRatingMode != "instinct"
                                     )
                                 }
                                 .buttonStyle(.plain)
@@ -1271,7 +1281,8 @@ struct SearchView: View {
                     NavigationLink(value: release) {
                         DiscoveryAlbumCard(release: release,
                                            onAdd: checked ? nil : { addRelease(release) },
-                                           isRated: checked)
+                                           isRated: checked,
+                                           useRateGauge: userRatingMode != "instinct")
                     }
                     .buttonStyle(.plain)
                     .albumContextMenu(release)
@@ -1293,7 +1304,8 @@ struct SearchView: View {
                 let pr = songParentRelease(song)
                 let checked = sessionRatedIds.contains(pr.id)
                 NavigationLink(value: pr) {
-                    SongRow(song: song, onAdd: checked ? nil : { addRelease(pr) }, isRated: checked)
+                    SongRow(song: song, onAdd: checked ? nil : { addRelease(pr) }, isRated: checked,
+                            useRateGauge: userRatingMode != "instinct")
                 }
                 .buttonStyle(.plain)
                 .albumContextMenu(pr)
@@ -1325,6 +1337,10 @@ private struct DiscoveryAlbumCard: View {
     let release: Release
     var onAdd: (() -> Void)? = nil
     var isRated: Bool = false
+    /// Manual-mode users get the drag-to-rate gauge instead of the plain "+"
+    /// button; Instinct mode keeps `onAdd` (opens the pairwise comparison
+    /// flow -- a direct score doesn't fit that model).
+    var useRateGauge: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -1345,6 +1361,9 @@ private struct DiscoveryAlbumCard: View {
                     }
                     .allowsHitTesting(false)
                     .padding(6)
+                } else if useRateGauge {
+                    AlbumRateButton(release: release, size: 30)
+                        .padding(4)
                 } else if let onAdd {
                     Button(action: onAdd) {
                         ZStack {
@@ -1393,6 +1412,9 @@ struct SongRow: View {
     let song: SongResult
     var onAdd: (() -> Void)? = nil
     var isRated: Bool = false
+    /// Manual-mode users get the drag-to-rate gauge instead of the plain "+"
+    /// button; Instinct mode keeps `onAdd`.
+    var useRateGauge: Bool = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -1431,6 +1453,12 @@ struct SongRow: View {
                         .foregroundStyle(.white)
                 }
                 .allowsHitTesting(false)
+            } else if useRateGauge {
+                // Matches the existing onAdd/isRated semantics below (both keyed
+                // on the song's *parent release*, not the individual recording) --
+                // this row has never rated the song itself, only quick-added its
+                // album; only the affordance (plus button -> drag gauge) changes.
+                AlbumRateButton(release: song.releases.asRelease, size: 30)
             } else if let onAdd {
                 Button(action: onAdd) {
                     ZStack {
@@ -1684,7 +1712,8 @@ struct ArtistPageView: View {
                                     ForEach(Array(list.enumerated()), id: \.element.id) { idx, release in
                                         ArtistReleaseRow(release: release,
                                                          communityScore: releaseScores[release.id],
-                                                         userScore: myRatings[release.id])
+                                                         userScore: myRatings[release.id],
+                                                         ratingMode: ratingMode)
                                         if idx < list.count - 1 {
                                             Divider().padding(.leading, 68).foregroundStyle(Color.sjBorder)
                                         }
@@ -2515,6 +2544,7 @@ private struct ArtistReleaseRow: View {
     let release:        Release
     let communityScore: Double?
     let userScore:      Double?
+    var ratingMode:     String = "manual"
 
     private var year: String? {
         guard let d = release.releaseDate, d.count >= 4 else { return nil }
@@ -2524,9 +2554,16 @@ private struct ArtistReleaseRow: View {
     var body: some View {
         NavigationLink(value: release) {
             HStack(spacing: 12) {
-                CoverImage(url: release.coverUrl, cornerRadius: 6)
-                    .frame(width: 44, height: 44)
-                    .accessibilityHidden(true) // title text alongside already describes it
+                ZStack(alignment: .bottomTrailing) {
+                    CoverImage(url: release.coverUrl, cornerRadius: 6)
+                        .frame(width: 44, height: 44)
+                        .accessibilityHidden(true) // title text alongside already describes it
+
+                    if userScore == nil, ratingMode != "instinct" {
+                        AlbumRateButton(release: release, size: 22)
+                            .offset(x: 3, y: 3)
+                    }
+                }
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(release.displayTitle)

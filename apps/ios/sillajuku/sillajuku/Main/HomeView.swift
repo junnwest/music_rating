@@ -196,6 +196,10 @@ class HomeViewModel {
     private var likedArtists:  Set<String> = []
 
     var currentUserId: UUID? { supabase.auth.currentUser?.id }
+    // Gates the drag-to-rate gauge on post covers -- a direct score doesn't
+    // fit the Instinct (pairwise/Elo) rating model. Mirrors web's page-level
+    // `ratingMode !== 'instinct'` check.
+    var ratingMode: String = "manual"
 
     func load() async {
         await loadPersonalization()   // must run before explore so ranking has signals
@@ -243,10 +247,21 @@ class HomeViewModel {
                 .eq("blocker_id", value: userId).execute().value) ?? []
             return rows.map(\.blockedId)
         }()
-        let (ids, artists, blocked) = await (followsTask, artistsTask, blockedTask)
+        async let ratingModeTask: String = {
+            struct P: Decodable {
+                let ratingMode: String?
+                enum CodingKeys: String, CodingKey { case ratingMode = "rating_mode" }
+            }
+            let p: P? = try? await supabase
+                .from("profiles").select("rating_mode")
+                .eq("id", value: userId).single().execute().value
+            return p?.ratingMode ?? "manual"
+        }()
+        let (ids, artists, blocked, mode) = await (followsTask, artistsTask, blockedTask, ratingModeTask)
         followingIds  = Set(ids)
         likedArtists  = Set(artists)
         blockedUserIds = Set(blocked)
+        ratingMode    = mode
     }
 
     func blockUser(userId: UUID) async {
@@ -982,7 +997,8 @@ struct HomeView: View {
             onLike: { await viewModel.toggleLike(for: item) },
             onSave: { await viewModel.toggleSave(for: item) },
             onBlock: { await viewModel.blockUser(userId: item.userId) },
-            onOwnProfileTap: onOwnProfileTap
+            onOwnProfileTap: onOwnProfileTap,
+            ratingMode: viewModel.ratingMode
         )
     }
 
@@ -1210,6 +1226,7 @@ struct FeedCard: View {
     let onSave: () async -> Void
     let onBlock: () async -> Void
     let onOwnProfileTap: () -> Void
+    var ratingMode: String = "manual"
     var ownRatingActions: OwnRatingMenuActions? = nil
 
     @State private var activeSheet: CardSheet?
@@ -1418,9 +1435,16 @@ struct FeedCard: View {
     private var albumSection: some View {
         NavigationLink(value: item.releases.asRelease) {
             HStack(spacing: 13) {
-                CoverImage(url: item.releases.coverUrl)
-                    .frame(width: 66, height: 66)
-                    .accessibilityHidden(true) // title/artist text alongside already describes it
+                ZStack(alignment: .bottomTrailing) {
+                    CoverImage(url: item.releases.coverUrl)
+                        .frame(width: 66, height: 66)
+                        .accessibilityHidden(true) // title/artist text alongside already describes it
+
+                    if ratingMode != "instinct", currentUserId != nil {
+                        AlbumRateButton(release: item.releases.asRelease, size: 26)
+                            .offset(x: 3, y: 3)
+                    }
+                }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.releases.displayTitle)

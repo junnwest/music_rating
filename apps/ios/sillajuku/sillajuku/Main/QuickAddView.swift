@@ -20,6 +20,16 @@ struct SongCandidate: Codable, Identifiable {
         case coverUrl = "cover_url"
         case albumTitle = "album_title"
     }
+
+    var asTrackEntry: TrackEntry {
+        TrackEntry(trackId: id, position: 0, title: title, durationMs: nil, artists: artist)
+    }
+    /// Display-only -- the precise-rate sheet needs a Release for its cover/artist
+    /// text; the actual write goes through `id` (the recording), never this id.
+    var displayRelease: Release {
+        Release(id: id, title: albumTitle, artist: artist, coverUrl: coverUrl, releaseType: nil,
+                 releaseDate: nil, titleNative: nil, artistNative: nil, tracklist: nil, totalTracks: nil)
+    }
 }
 
 // MARK: - View Model
@@ -272,6 +282,8 @@ private struct QuickAddRow: View {
     let ratedScore: Double?
     let onRate: (Double) -> Void
 
+    @State private var showPrecise = false
+
     var body: some View {
         HStack(spacing: 12) {
             CoverImage(url: release.coverUrl, cornerRadius: 8)
@@ -290,13 +302,24 @@ private struct QuickAddRow: View {
 
             Spacer(minLength: 8)
 
-            // Stays a draggable flower row even after rating (filled at the committed
+            // Stays a re-ratable drag gauge even after rating (shows the committed
             // score) so a slip can be fixed in place -- swapping to a ScoreBadge here
             // made just-rated rows read-only until the next refresh.
-            HalfStarRow(rating: ratedScore, onRate: onRate)
+            FlowerRateControl(
+                onRate: onRate,
+                onRequestPrecise: { showPrecise = true },
+                size: 34,
+                currentScore: ratedScore,
+                accessibilityLabelText: String(format: String(localized: "Rate %@"), release.title)
+            )
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+        .sheet(isPresented: $showPrecise) {
+            ManualRatingSheet(release: release, existingScore: .constant(ratedScore)) { score in
+                if let score { onRate(score) }
+            }
+        }
     }
 }
 
@@ -304,6 +327,8 @@ private struct QuickAddSongRow: View {
     let song: SongCandidate
     let ratedScore: Double?
     let onRate: (Double) -> Void
+
+    @State private var showPrecise = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -324,10 +349,21 @@ private struct QuickAddSongRow: View {
             Spacer(minLength: 8)
 
             // Same as QuickAddRow: stays draggable after rating so it can be fixed in place.
-            HalfStarRow(rating: ratedScore, onRate: onRate)
+            FlowerRateControl(
+                onRate: onRate,
+                onRequestPrecise: { showPrecise = true },
+                size: 34,
+                currentScore: ratedScore,
+                accessibilityLabelText: String(format: String(localized: "Rate %@"), song.title)
+            )
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+        .sheet(isPresented: $showPrecise) {
+            TrackRatingSheet(track: song.asTrackEntry, release: song.displayRelease, existingScore: ratedScore) { _, score in
+                if let score { onRate(score) }
+            }
+        }
     }
 }
 
