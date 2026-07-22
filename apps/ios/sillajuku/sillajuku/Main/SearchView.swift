@@ -1590,7 +1590,7 @@ struct ArtistPageView: View {
                 .padding(.top, 16)
                 .padding(.bottom, 14)
 
-                HStack(spacing: 0) {
+                HStack(spacing: 12) {
                     artistStat(value: communityAvg.map { String(format: "%.1f", $0) } ?? "—",
                                label: "community avg")
                     Divider().frame(height: 28)

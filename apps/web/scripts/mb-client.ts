@@ -268,12 +268,16 @@ export async function browseReleases(releaseGroupMbid: string): Promise<MbReleas
 }
 
 // Parse a release's media[] → flat track list (recordings + ISRCs + disc/position).
+// Skips video recordings (bonus-DVD music videos, "Dance Shot" clips, making-ofs,
+// interviews, etc — common on JP CD+DVD singles): MB's `recording.video` flag marks
+// them, and they aren't songs, so they don't belong in a tracklist.
 function parseMedia(media: any[] | undefined): MbTrack[] {
   const tracks: MbTrack[] = [];
   for (const m of media ?? []) {
     const disc = m.position ?? 1;
     for (const t of m.tracks ?? []) {
       const rec = t.recording ?? {};
+      if (rec.video === true) continue;
       tracks.push({
         position: t.position ?? tracks.length + 1,
         discNumber: disc,

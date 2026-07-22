@@ -69,7 +69,7 @@ struct FeedRelease: Codable, Identifiable {
 }
 
 /// The joined artist relation used solely to pull the primary artist's native (Korean) name.
-struct NativeArtistRef: Codable {
+struct NativeArtistRef: Codable, Hashable {
     let nameNative: String?
     enum CodingKeys: String, CodingKey { case nameNative = "name_native" }
 }
@@ -1316,7 +1316,7 @@ struct FeedCard: View {
                 if let own = ownRatingActions {
                     Button { own.onShare() } label: { Label("Share", systemImage: "square.and.arrow.up") }
                     Button { own.onEdit() } label: { Label("Edit", systemImage: "square.and.pencil") }
-                    Button { own.onAddToMix() } label: { Label("Add to Mix", systemImage: "plus.square") }
+                    Button { own.onAddToMix() } label: { Label("Add to Mix", systemImage: "bookmark") }
                     Button { own.onEditComment() } label: { Label("Edit Comment", systemImage: "bubble.right") }
                     Divider()
                     Button(role: .destructive) { own.onDelete() } label: { Label("Delete", systemImage: "trash") }
@@ -1419,16 +1419,16 @@ struct FeedCard: View {
         NavigationLink(value: item.releases.asRelease) {
             HStack(spacing: 13) {
                 CoverImage(url: item.releases.coverUrl)
-                    .frame(width: 80, height: 80)
+                    .frame(width: 66, height: 66)
                     .accessibilityHidden(true) // title/artist text alongside already describes it
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.releases.displayTitle)
-                        .font(.system(size: 17, weight: .bold))
+                        .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(Color.sjInk).lineLimit(2)
 
                     Text(item.releases.typeLabel + " · " + item.releases.displayArtist)
-                        .font(.system(size: 14)).foregroundStyle(Color.sjMuted).lineLimit(1)
+                        .font(.system(size: 11.5)).foregroundStyle(Color.sjMuted).lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 

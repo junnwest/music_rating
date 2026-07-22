@@ -37,7 +37,7 @@ struct MixItem: Codable, Identifiable {
     }
 }
 
-struct MixRelease: Codable, Identifiable {
+struct MixRelease: Codable, Identifiable, Hashable {
     let id: UUID
     let title: String
     let artist: String
@@ -75,6 +75,45 @@ struct MixRelease: Codable, Identifiable {
     }
 }
 
+// A song saved into a Mix. `releaseGroups` is the album the song was saved
+// from -- carried alongside `recording_id` so the row has a cover/title/artist
+// to show without picking among a recording's (rare) multiple releases.
+struct MixSongItem: Codable, Identifiable, Hashable {
+    let id: UUID
+    let mixId: UUID
+    let recordingId: UUID
+    let createdAt: Date
+    let recordings: MixSongRecording
+    let releaseGroups: MixRelease
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case recordings
+        case mixId       = "mix_id"
+        case recordingId = "recording_id"
+        case createdAt   = "created_at"
+        case releaseGroups = "release_groups"
+    }
+
+    var asTrackEntry: TrackEntry {
+        TrackEntry(trackId: recordingId, position: 0, title: recordings.title,
+                   durationMs: recordings.durationMs, artists: recordings.artistDisplay)
+    }
+}
+
+struct MixSongRecording: Codable, Hashable {
+    let id: UUID
+    let title: String
+    let durationMs: Int?
+    let artistDisplay: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, title
+        case durationMs    = "duration_ms"
+        case artistDisplay = "artist_display"
+    }
+}
+
 // MARK: - Mix Library ViewModel (lives in ProfileView, survives tab switches)
 
 @Observable
@@ -103,15 +142,22 @@ final class MixLibraryViewModel {
             enum CodingKeys: String, CodingKey { case mixId = "mix_id" }
         }
         let mixIds = loaded.map(\.id.uuidString)
-        if !mixIds.isEmpty,
-           let rows: [CountRow] = try? await supabase
-            .from("mix_items")
-            .select("mix_id")
-            .in("mix_id", values: mixIds)
-            .execute()
-            .value {
+        if !mixIds.isEmpty {
+            async let releaseRows: [CountRow] = (try? await supabase
+                .from("mix_items")
+                .select("mix_id")
+                .in("mix_id", values: mixIds)
+                .execute()
+                .value) ?? []
+            async let songRows: [CountRow] = (try? await supabase
+                .from("mix_song_items")
+                .select("mix_id")
+                .in("mix_id", values: mixIds)
+                .execute()
+                .value) ?? []
             var counts: [UUID: Int] = [:]
-            for r in rows { counts[r.mixId, default: 0] += 1 }
+            for r in await releaseRows { counts[r.mixId, default: 0] += 1 }
+            for r in await songRows { counts[r.mixId, default: 0] += 1 }
             itemCounts = counts
         }
         isLoading = false
@@ -263,6 +309,8 @@ struct MixDetailView: View {
     @Environment(\.editMode) private var editMode
 
     @State private var items: [MixItem] = []
+    @State private var songItems: [MixSongItem] = []
+    @State private var selectedSongItem: MixSongItem? = nil
     @State private var isLoading = true
 
     @State private var isLiked = false
@@ -302,6 +350,11 @@ struct MixDetailView: View {
         return { offsets in deleteItems(at: offsets) }
     }
 
+    private var deleteSongAction: ((IndexSet) -> Void)? {
+        guard isOwnMix else { return nil }
+        return { offsets in deleteSongItems(at: offsets) }
+    }
+
     var body: some View {
         Group {
             if isLoading {
@@ -322,23 +375,38 @@ struct MixDetailView: View {
                         }
                     }
 
-                    if items.isEmpty {
+                    if items.isEmpty && songItems.isEmpty {
                         Section {
                             emptyStateRow
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(Color.sjCream)
                         }
                     } else {
-                        Section {
-                            ForEach(items) { item in
-                                NavigationLink(value: item.releases.asRelease) {
-                                    MixItemRow(item: item)
+                        if !items.isEmpty {
+                            Section {
+                                ForEach(items) { item in
+                                    NavigationLink(value: item.releases.asRelease) {
+                                        MixItemRow(item: item)
+                                    }
+                                    .albumContextMenu(item.releases.asRelease)
+                                    .listRowBackground(Color.sjSurface)
+                                    .listRowSeparatorTint(Color.sjBorder.opacity(0.5))
                                 }
-                                .albumContextMenu(item.releases.asRelease)
-                                .listRowBackground(Color.sjSurface)
-                                .listRowSeparatorTint(Color.sjBorder.opacity(0.5))
+                                .onDelete(perform: deleteAction)
                             }
-                            .onDelete(perform: deleteAction)
+                        }
+                        if !songItems.isEmpty {
+                            Section {
+                                ForEach(songItems) { item in
+                                    Button { selectedSongItem = item } label: {
+                                        MixSongItemRow(item: item)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .listRowBackground(Color.sjSurface)
+                                    .listRowSeparatorTint(Color.sjBorder.opacity(0.5))
+                                }
+                                .onDelete(perform: deleteSongAction)
+                            }
                         }
                     }
                 }
@@ -357,6 +425,10 @@ struct MixDetailView: View {
                 EditButton()
                     .foregroundStyle(Color.sjAmber)
             }
+        }
+        .navigationDestination(item: $selectedSongItem) { item in
+            SongDetailView(track: item.asTrackEntry, release: item.releaseGroups.asRelease)
+                .onDisappear { if selectedSongItem == item { selectedSongItem = nil } }
         }
         .task { await load() }
         .onChange(of: editMode?.wrappedValue) { oldValue, newValue in
@@ -547,7 +619,14 @@ struct MixDetailView: View {
             .order("created_at", ascending: false)
             .execute()
             .value) ?? []
-        items = await itemsTask
+        async let songItemsTask: [MixSongItem] = (try? await supabase
+            .from("mix_song_items")
+            .select("id, mix_id, recording_id, created_at, recordings(id, title, duration_ms, artist_display), release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native))")
+            .eq("mix_id", value: mix.id)
+            .order("created_at", ascending: false)
+            .execute()
+            .value) ?? []
+        (items, songItems) = await (itemsTask, songItemsTask)
         await loadMixSocial()
         isLoading = false
     }
@@ -673,6 +752,21 @@ struct MixDetailView: View {
             NotificationCenter.default.post(name: .mixLibraryChanged, object: nil)
         }
     }
+
+    private func deleteSongItems(at offsets: IndexSet) {
+        let toDelete = offsets.map { songItems[$0] }
+        songItems.remove(atOffsets: offsets)
+        Task {
+            for item in toDelete {
+                _ = try? await supabase
+                    .from("mix_song_items")
+                    .delete()
+                    .eq("id", value: item.id)
+                    .execute()
+            }
+            NotificationCenter.default.post(name: .mixLibraryChanged, object: nil)
+        }
+    }
 }
 
 private struct MixShareSharerRow: Codable, Identifiable {
@@ -710,6 +804,40 @@ private struct MixItemRow: View {
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(1)
                 Text(item.releases.typeLabel + " · " + item.releases.displayArtist)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.sjMuted)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+private struct MixSongItemRow: View {
+    let item: MixSongItem
+
+    var body: some View {
+        HStack(spacing: 12) {
+            CoverImage(url: item.releaseGroups.coverUrl, cornerRadius: 8)
+                .frame(width: 50, height: 50)
+                .accessibilityHidden(true) // title/artist text alongside already describes it
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 5) {
+                    Text(item.recordings.title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.sjInk)
+                        .lineLimit(1)
+                    Text("Song")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(Color.sjAmber)
+                        .padding(.horizontal, 4).padding(.vertical, 1)
+                        .background(Color.sjAmber.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                }
+                Text(item.releaseGroups.displayArtist)
                     .font(.system(size: 12))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
@@ -964,6 +1092,154 @@ struct MixPickerView: View {
         // lifetime (MixLibraryViewModel.hasLoaded) -- without this, adding/removing a
         // release here never invalidates that cache, so counts silently go stale (this
         // is what caused every mix to show "0 releases" even when populated).
+        NotificationCenter.default.post(name: .mixLibraryChanged, object: nil)
+        isSaving = false
+        dismiss()
+    }
+}
+
+// Song counterpart to MixPickerView -- writes to mix_song_items instead of
+// mix_items. releaseGroupId is the album the song was saved from (see
+// MixSongItem's doc comment for why it's carried alongside recordingId).
+struct SongMixPickerView: View {
+    let recordingId: UUID
+    let releaseGroupId: UUID
+    let songTitle: String
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var mixes: [Mix] = []
+    @State private var selectedIds: Set<UUID> = []
+    @State private var isLoading = true
+    @State private var isSaving = false
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if isLoading {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    List(mixes) { mix in
+                        Button {
+                            if selectedIds.contains(mix.id) {
+                                selectedIds.remove(mix.id)
+                            } else {
+                                selectedIds.insert(mix.id)
+                            }
+                        } label: {
+                            HStack(spacing: 14) {
+                                Image(systemName: mix.isDefault ? "clock.fill" : "music.note.list")
+                                    .font(.system(size: 16))
+                                    .foregroundStyle(Color.sjAmber)
+                                    .frame(width: 24)
+
+                                Text(mix.name)
+                                    .font(.system(size: 15))
+                                    .foregroundStyle(Color.sjInk)
+
+                                Spacer()
+
+                                if selectedIds.contains(mix.id) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(Color.sjAmber)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .listRowBackground(Color.sjSurface)
+                        .listRowSeparatorTint(Color.sjBorder.opacity(0.5))
+                    }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                }
+            }
+            .background(Color.sjCream.ignoresSafeArea())
+            .navigationTitle("Save to Mix")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundStyle(Color.sjMuted)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        Task { await save() }
+                    } label: {
+                        if isSaving {
+                            ProgressView().scaleEffect(0.8)
+                        } else {
+                            Text("Save")
+                                .fontWeight(.semibold)
+                        }
+                    }
+                    .foregroundStyle(Color.sjAmber)
+                    .disabled(selectedIds.isEmpty || isSaving)
+                }
+            }
+        }
+        .task { await load() }
+    }
+
+    private func load() async {
+        guard let userId = supabase.auth.currentUser?.id else { isLoading = false; return }
+        isLoading = true
+
+        let loaded: [Mix] = (try? await supabase
+            .from("mixes")
+            .select("*")
+            .eq("user_id", value: userId)
+            .order("is_default", ascending: false)
+            .order("created_at", ascending: true)
+            .execute()
+            .value) ?? []
+        mixes = loaded
+
+        // Pre-select mixes that already contain this song
+        struct ExistingItem: Decodable {
+            let mixId: UUID
+            enum CodingKeys: String, CodingKey { case mixId = "mix_id" }
+        }
+        let mixIds = loaded.map(\.id.uuidString)
+        if !mixIds.isEmpty,
+           let existing: [ExistingItem] = try? await supabase
+            .from("mix_song_items")
+            .select("mix_id")
+            .eq("recording_id", value: recordingId)
+            .in("mix_id", values: mixIds)
+            .execute()
+            .value {
+            selectedIds = Set(existing.map(\.mixId))
+        }
+
+        isLoading = false
+    }
+
+    private func save() async {
+        isSaving = true
+        struct Payload: Encodable {
+            let mixId: UUID; let recordingId: UUID; let releaseGroupId: UUID
+            enum CodingKeys: String, CodingKey {
+                case mixId = "mix_id"; case recordingId = "recording_id"; case releaseGroupId = "release_group_id"
+            }
+        }
+        for mixId in selectedIds {
+            _ = try? await supabase
+                .from("mix_song_items")
+                .upsert(Payload(mixId: mixId, recordingId: recordingId, releaseGroupId: releaseGroupId),
+                        onConflict: "mix_id,recording_id")
+                .execute()
+        }
+        // Remove from mixes that were deselected
+        let deselected = Set(mixes.map(\.id)).subtracting(selectedIds)
+        for mixId in deselected {
+            _ = try? await supabase
+                .from("mix_song_items")
+                .delete()
+                .eq("mix_id", value: mixId)
+                .eq("recording_id", value: recordingId)
+                .execute()
+        }
         NotificationCenter.default.post(name: .mixLibraryChanged, object: nil)
         isSaving = false
         dismiss()

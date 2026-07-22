@@ -372,7 +372,10 @@ async function ingestEditionFromPrefetched(
     artist: rg.artistCredit || '(unknown)',
     release_date: padDate(rep.date),
     release_type: TITLE_TYPE[mbTypeToGroupType(rg.primaryType, rg.secondaryTypes)] ?? 'Album',
-    total_tracks: rep.trackCount || null,
+    // rep.trackCount is MB's raw media count (includes video tracks); rep.tracks is
+    // already filtered to audio-only by parseMedia(), so use its length to keep
+    // total_tracks consistent with what's actually written to release_tracks below.
+    total_tracks: rep.tracks.length || null,
     cover_url: coverUrl,
     cover_source: coverUrl ? 'coverartarchive' : null,
     source: 'musicbrainz',

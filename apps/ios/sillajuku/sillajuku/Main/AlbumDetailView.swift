@@ -892,6 +892,13 @@ struct AlbumDetailView: View {
         .background(Color.sjCream.ignoresSafeArea())
         .navigationTitle(release.displayTitle)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                ShareLink(item: URL(string: "https://sillajuku.com/album/\(release.id)")!) {
+                    Image(systemName: "square.and.arrow.up")
+                }
+            }
+        }
         .task { await viewModel.load(releaseGroupId: release.id) }
         .task {
             credits = (try? await supabase
@@ -1056,6 +1063,14 @@ struct AlbumDetailView: View {
                 .padding(.top, 2)
             }
             Spacer(minLength: 0)
+
+            Button { showMixPicker = true } label: {
+                Image(systemName: "bookmark")
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(Color.sjMuted)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(localized: "Add to Mix"))
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 18)
@@ -1669,6 +1684,7 @@ struct SongDetailView: View {
     @State private var myVerified = false
     @State private var showEditCommentSheet = false
     @State private var showDeleteConfirm = false
+    @State private var showMixPicker = false
 
     private var durationString: String {
         guard let ms = track.durationMs, ms > 0 else { return "" }
@@ -1692,6 +1708,20 @@ struct SongDetailView: View {
         .background(Color.sjCream.ignoresSafeArea())
         .navigationTitle(track.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let trackId = track.trackId {
+                ToolbarItem(placement: .topBarTrailing) {
+                    ShareLink(item: URL(string: "https://sillajuku.com/song/\(trackId)")!) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showMixPicker) {
+            if let trackId = track.trackId {
+                SongMixPickerView(recordingId: trackId, releaseGroupId: release.id, songTitle: track.title)
+            }
+        }
         .task {
             guard !isLoaded else { return }
             isLoaded = true
@@ -1738,7 +1768,7 @@ struct SongDetailView: View {
     }
 
     private var songHeader: some View {
-        HStack(spacing: 16) {
+        HStack(alignment: .top, spacing: 16) {
             CoverImage(url: release.coverUrl)
                 .frame(width: 80, height: 80)
                 .accessibilityHidden(true) // track title text alongside already describes it
@@ -1766,6 +1796,16 @@ struct SongDetailView: View {
                 }
             }
             Spacer()
+
+            if track.trackId != nil {
+                Button { showMixPicker = true } label: {
+                    Image(systemName: "bookmark")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(Color.sjMuted)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "Add to Mix"))
+            }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 20)

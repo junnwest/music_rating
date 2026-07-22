@@ -2188,16 +2188,16 @@ struct ProfilePostCard: View {
             NavigationLink(value: rating.releases.asRelease) {
                 HStack(spacing: 13) {
                     CoverImage(url: rating.releases.coverUrl)
-                        .frame(width: 80, height: 80)
+                        .frame(width: 66, height: 66)
                         .accessibilityHidden(true) // title/artist text alongside already describes it
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(rating.releases.displayTitle)
-                            .font(.system(size: 17, weight: .bold))
+                            .font(.system(size: 14, weight: .bold))
                             .foregroundStyle(Color.sjInk)
                             .lineLimit(2)
                         Text(rating.releases.typeLabel + " · " + rating.releases.displayArtist)
-                            .font(.system(size: 14))
+                            .font(.system(size: 11.5))
                             .foregroundStyle(Color.sjMuted)
                             .lineLimit(1)
                     }
@@ -2332,13 +2332,13 @@ struct ProfileSongPostCard: View {
             NavigationLink(value: song.release.asRelease) {
                 HStack(spacing: 13) {
                     CoverImage(url: song.release.coverUrl)
-                        .frame(width: 80, height: 80)
+                        .frame(width: 66, height: 66)
                         .accessibilityHidden(true) // title/artist text alongside already describes it
 
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 6) {
                             Text(song.trackTitle ?? "Unknown Track")
-                                .font(.system(size: 17, weight: .bold))
+                                .font(.system(size: 14, weight: .bold))
                                 .foregroundStyle(Color.sjInk)
                                 .lineLimit(2)
                             Text("Song")
@@ -2349,7 +2349,7 @@ struct ProfileSongPostCard: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 4))
                         }
                         Text("\(song.release.displayTitle) · \(song.release.displayArtist)")
-                            .font(.system(size: 14))
+                            .font(.system(size: 11.5))
                             .foregroundStyle(Color.sjMuted)
                             .lineLimit(1)
                     }
