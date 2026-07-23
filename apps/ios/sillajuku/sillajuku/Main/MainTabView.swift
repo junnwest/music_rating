@@ -71,7 +71,14 @@ struct MainTabView: View {
 
     var body: some View {
         Group {
-            if homeVM.isLoading || chartsVM.isLoading || discoveryVM.isLoading {
+            // Only Home gates the launch splash -- it's the actual landing tab and
+            // the only one still eagerly loaded here. Charts/Discovery load lazily
+            // now (their own `.task`, first-visit-only), which can only run once
+            // their view is actually in the hierarchy -- gating this on their
+            // isLoading too created a deadlock: the TabView (and their views inside
+            // it) could never render while this stayed true, but their `.load()`
+            // could never run to flip it false without that same TabView existing.
+            if homeVM.isLoading {
                 AppLoadingView()
             } else {
                 TabView(selection: tabSelection) {
@@ -125,10 +132,21 @@ struct MainTabView: View {
             }
         }
         .task {
+            // Charts and Discovery are deliberately NOT preloaded here anymore --
+            // ChartsView and SearchView each already have their own `.task {
+            // await viewModel.load() }`, guarded by the same `hasLoaded` flag
+            // Profile uses, so they load lazily on first visit exactly like
+            // Profile always has. Eagerly firing all four here at once (measured
+            // via a temporary timing probe) meant Charts/Discovery's own dozen-plus
+            // concurrent queries were still in flight when a user went straight to
+            // a different tab (e.g. Profile) on cold launch -- that tab's own,
+            // otherwise-fast load had to queue up behind unrelated work nobody
+            // had asked for yet. Home stays eager because it's the actual landing
+            // tab; Quest stays eager because shouldOfferBadgeRedeem below needs to
+            // be known at launch regardless of which tab is showing, and it was
+            // never a meaningful contributor to the pileup (fastest of the four).
             await withTaskGroup(of: Void.self) { group in
                 group.addTask { await self.homeVM.load() }
-                group.addTask { await self.chartsVM.load() }
-                group.addTask { await self.discoveryVM.load() }
                 group.addTask { await self.questVM.load() }
             }
             // Every launch, not once-ever -- there's no dismiss-and-forget
