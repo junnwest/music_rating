@@ -1008,22 +1008,13 @@ struct AlbumDetailView: View {
 
     private var compactHeader: some View {
         HStack(alignment: .top, spacing: 14) {
-            ZStack(alignment: .bottomTrailing) {
-                CoverImage(url: release.coverUrl, cornerRadius: 12)
-                    .frame(width: 88, height: 88)
-                    .accessibilityHidden(true) // title/artist text alongside already describes it
-
-                if supabase.auth.currentUser?.id != nil, viewModel.ratingMode != "instinct" {
-                    AlbumRateButton(
-                        release: release,
-                        externalScore: $viewModel.userScore,
-                        ratingStep: viewModel.ratingStep,
-                        onScoreChange: { _ in Task { await viewModel.loadRatings(releaseGroupId: release.id) } },
-                        size: 32
-                    )
-                    .offset(x: 4, y: 4)
-                }
-            }
+            // No drag-to-rate overlay here -- the "Your Rating" section below
+            // is the single rating surface for this page (a full FeedCard once
+            // rated, a "Rate this Album"/"Add to Rankings" button otherwise),
+            // so a second flower on the hero cover was a redundant affordance.
+            CoverImage(url: release.coverUrl, cornerRadius: 12)
+                .frame(width: 88, height: 88)
+                .accessibilityHidden(true) // title/artist text alongside already describes it
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(release.displayTitle)
@@ -1180,7 +1171,12 @@ struct AlbumDetailView: View {
                     onAddToMix: { showMixPicker = true },
                     onEditComment: { showEditCommentSheet = true },
                     onDelete: { showDeleteConfirm = true }
-                )
+                ),
+                myScore: viewModel.userScore,
+                onMyScoreChange: { newScore in
+                    viewModel.userScore = newScore
+                    Task { await viewModel.loadRatings(releaseGroupId: release.id) }
+                }
             )
         } else {
             // Rated (score is known from the lightweight ratings fetch) but the
@@ -1263,7 +1259,12 @@ struct AlbumDetailView: View {
                             onSave: { await viewModel.toggleSave(for: item) },
                             onBlock: { await viewModel.blockUser(userId: item.userId) },
                             onOwnProfileTap: {},
-                            ratingMode: viewModel.ratingMode
+                            ratingMode: viewModel.ratingMode,
+                            myScore: viewModel.userScore,
+                            onMyScoreChange: { newScore in
+                                viewModel.userScore = newScore
+                                Task { await viewModel.loadRatings(releaseGroupId: release.id) }
+                            }
                         )
                         .frame(width: 300)
                     }
@@ -1430,6 +1431,11 @@ private class AlbumRatingsListViewModel {
     // Gates the drag-to-rate gauge on each post's cover -- see HomeViewModel's
     // ratingMode for why.
     var ratingMode: String = "manual"
+    // The viewer's own rating of this release -- every post here is about the
+    // same release_group_id, so unlike Home's feed this is a single value, not
+    // a per-item map. Without it every post's cover button showed the unrated
+    // flower even when the viewer had already rated this exact album.
+    var myScore: Double? = nil
 
     var currentUserId: UUID? { supabase.auth.currentUser?.id }
 
@@ -1456,7 +1462,17 @@ private class AlbumRatingsListViewModel {
                 .eq("id", value: myId).single().execute().value
             return p?.ratingMode ?? "manual"
         }()
-        (posts, ratingMode) = await (postsTask, modeTask)
+        async let myScoreTask: Double? = {
+            guard let myId else { return nil }
+            struct R: Decodable { let score: Double? }
+            let r: R? = try? await supabase
+                .from("ratings").select("score")
+                .eq("user_id", value: myId)
+                .eq("release_group_id", value: releaseGroupId)
+                .single().execute().value
+            return r?.score
+        }()
+        (posts, ratingMode, myScore) = await (postsTask, modeTask, myScoreTask)
 
         if !posts.isEmpty {
             let counts = await AlbumSocial.loadCounts(for: posts)
@@ -1519,7 +1535,9 @@ struct AlbumAllRatingsView: View {
                                 onSave: { await vm.toggleSave(for: item) },
                                 onBlock: { await vm.blockUser(userId: item.userId) },
                                 onOwnProfileTap: {},
-                                ratingMode: vm.ratingMode
+                                ratingMode: vm.ratingMode,
+                                myScore: vm.myScore,
+                                onMyScoreChange: { vm.myScore = $0 }
                             )
                         }
                     }
