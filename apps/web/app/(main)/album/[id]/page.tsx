@@ -33,7 +33,7 @@ import {
 import { useSession } from '../../../../components/sj/SessionContext';
 import { supabase } from '../../../../lib/supabaseClient';
 import { useLanguage } from '../../../../lib/i18n';
-import { eloToScore } from '../../../../lib/elo';
+import { eloToScore, INSTINCT_REVEAL_THRESHOLD } from '../../../../lib/elo';
 import {
   displayName,
   displayScore,
@@ -97,6 +97,10 @@ export default function AlbumPage() {
   const [scoreDist, setScoreDist] = useState<number[]>([]);
   const [userScore, setUserScore] = useState<number | null>(null);
   const [userElo, setUserElo] = useState<number | null>(null);
+  // Total albums this user has ranked in Instinct mode. An Elo score is
+  // statistically meaningless below the reveal threshold, so — exactly as the
+  // profile does — we hide the number until enough albums have been ranked.
+  const [instinctAlbumCount, setInstinctAlbumCount] = useState(0);
   const [posts, setPosts] = useState<PostRow[]>([]);
   const [publicMixes, setPublicMixes] = useState<PublicMix[]>([]);
   const [loading, setLoading] = useState(true);
@@ -181,6 +185,14 @@ export default function AlbumPage() {
       if (document.activeElement !== reviewBoxRef.current) {
         setReviewDraft(mine?.review_text ?? '');
       }
+      // How many albums the user has ranked in total — gates whether this
+      // album's Instinct score is shown yet (mirrors the profile's rule).
+      const { count } = await supabase
+        .from('ratings')
+        .select('release_group_id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .not('elo_score', 'is', null);
+      setInstinctAlbumCount(count ?? 0);
     }
   }, [releaseGroupId, userId]);
 
@@ -551,11 +563,23 @@ export default function AlbumPage() {
                   className="flex items-center gap-1.5 px-3.5 py-2 rounded-[10px] bg-accent/10 hover:bg-accent/[0.16] transition"
                 >
                   <FlowerGlyph size={14} className="text-accent" />
-                  <span className="text-[18px] font-bold text-accent tabular-nums">
-                    {eloToScore(userElo).toFixed(1)}
-                  </span>
+                  {/* Score stays hidden until the ranking is calibrated — below
+                      the reveal threshold an Elo number is noise (same rule the
+                      profile applies). Show it only once enough albums exist. */}
+                  {instinctAlbumCount >= INSTINCT_REVEAL_THRESHOLD && (
+                    <span className="text-[18px] font-bold text-accent tabular-nums">
+                      {eloToScore(userElo).toFixed(1)}
+                    </span>
+                  )}
                 </button>
-                <span className="text-[12px] text-muted">{t('sj.album.instinctScore')}</span>
+                <span className="text-[12px] text-muted">
+                  {instinctAlbumCount >= INSTINCT_REVEAL_THRESHOLD
+                    ? t('sj.album.instinctScore')
+                    : t('sj.instinct.rateMoreToReveal').replace(
+                        '{n}',
+                        String(INSTINCT_REVEAL_THRESHOLD - instinctAlbumCount),
+                      )}
+                </span>
                 <span className="flex-1" />
                 <button
                   onClick={() => setShowInstinct(true)}
@@ -651,7 +675,9 @@ export default function AlbumPage() {
               userBucket={
                 userScore != null
                   ? Math.min(Math.max(Math.round(userScore * 2) - 1, 0), 9)
-                  : userElo != null
+                  : // Don't mark the user's bucket from an un-revealed Elo score —
+                    // that would leak the position of a number we're hiding.
+                    userElo != null && instinctAlbumCount >= INSTINCT_REVEAL_THRESHOLD
                     ? Math.min(Math.max(Math.round(eloToScore(userElo) * 2) - 1, 0), 9)
                     : null
               }
