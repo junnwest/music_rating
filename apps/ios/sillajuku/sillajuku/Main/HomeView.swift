@@ -168,6 +168,7 @@ class HomeViewModel {
 
     var likedPostIds:           Set<UUID>  = []
     var savedReleaseIds:        Set<UUID>  = []
+    var myScores:               [UUID: Double] = [:]
     var likeCounts:            [UUID: Int] = [:]
     var commentCounts:         [UUID: Int] = [:]
     var hasUnreadNotifications: Bool       = false
@@ -555,6 +556,7 @@ class HomeViewModel {
         let sharePool = (try? await fetchExploreMixShares()) ?? []
         likedPostIds = []
         savedReleaseIds = []
+        myScores = [:]
         likeCounts = [:]
         commentCounts = [:]
         let filteredRatings = ratingPool.filter { !blockedUserIds.contains($0.userId) }
@@ -684,6 +686,24 @@ class HomeViewModel {
             .eq("user_id", value: userId)
             .in("release_id", values: releaseIds).execute().value {
             for r in rows { savedReleaseIds.insert(r.releaseId) }
+        }
+
+        struct MyRatingRow: Codable {
+            let releaseGroupId: UUID
+            let score: Double?
+            enum CodingKeys: String, CodingKey {
+                case releaseGroupId = "release_group_id"; case score
+            }
+        }
+        // The viewer's own manual rating for each release shown in the feed --
+        // separate from item.displayScore, which is the *post author's* score.
+        // Feeds a rated card's cover button its score instead of the unrated
+        // flower (AlbumRateButton has no way to know this unless we pass it).
+        if let rows: [MyRatingRow] = try? await supabase
+            .from("ratings").select("release_group_id, score")
+            .eq("user_id", value: userId)
+            .in("release_group_id", values: releaseIds).execute().value {
+            for r in rows { if let s = r.score { myScores[r.releaseGroupId] = s } }
         }
     }
 
@@ -1042,7 +1062,9 @@ struct HomeView: View {
             onSave: { await viewModel.toggleSave(for: item) },
             onBlock: { await viewModel.blockUser(userId: item.userId) },
             onOwnProfileTap: onOwnProfileTap,
-            ratingMode: viewModel.ratingMode
+            ratingMode: viewModel.ratingMode,
+            myScore: viewModel.myScores[item.releases.id],
+            onMyScoreChange: { viewModel.myScores[item.releases.id] = $0 }
         )
     }
 
@@ -1272,6 +1294,8 @@ struct FeedCard: View {
     let onOwnProfileTap: () -> Void
     var ratingMode: String = "manual"
     var ownRatingActions: OwnRatingMenuActions? = nil
+    var myScore: Double? = nil
+    var onMyScoreChange: ((Double?) -> Void)? = nil
 
     @State private var activeSheet: CardSheet?
     @State private var showBlockConfirm = false
@@ -1485,8 +1509,13 @@ struct FeedCard: View {
                         .accessibilityHidden(true) // title/artist text alongside already describes it
 
                     if ratingMode != "instinct", currentUserId != nil {
-                        AlbumRateButton(release: item.releases.asRelease, size: 26)
-                            .offset(x: 3, y: 3)
+                        AlbumRateButton(
+                            release: item.releases.asRelease,
+                            initialScore: myScore,
+                            onScoreChange: onMyScoreChange,
+                            size: 26
+                        )
+                        .offset(x: 3, y: 3)
                     }
                 }
 
