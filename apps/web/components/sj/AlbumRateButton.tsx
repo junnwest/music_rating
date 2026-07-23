@@ -1,8 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Plus, Check } from 'lucide-react';
 import FlowerRateControl from './FlowerRateControl';
 import ManualRateModal from './ManualRateModal';
+import InstinctModal from './InstinctModal';
+import { useNavSafeClick } from './useNavSafeClick';
 import { useSession } from './SessionContext';
 import { supabase } from '../../lib/supabaseClient';
 import type { SJRelease } from '../../lib/sj/data';
@@ -21,6 +24,12 @@ import type { SJRelease } from '../../lib/sj/data';
  * page has an inline flower row) can pass `score` to push its value down and
  * `onScoreChange` to hear about commits, keeping the two in sync. The button
  * still shows its own optimistic value first, so a drag never lags on a refetch.
+ *
+ * Mode-aware: in Instinct mode the drag-to-rate flower is replaced by a plus
+ * button that opens the pairwise Instinct flow (no quick score, no drag), and
+ * turns into a check once the album has been ranked — mirroring iOS AlbumCard.
+ * Because `profile.rating_mode` comes from the session, flipping the mode in
+ * Settings swaps every cover's button immediately, with no refetch.
  */
 export default function AlbumRateButton({
   release,
@@ -42,13 +51,51 @@ export default function AlbumRateButton({
   const { userId, profile } = useSession();
   const [shown, setShown] = useState<number | null>(score ?? initialScore);
   const [modalOpen, setModalOpen] = useState(false);
+  const [instinctOpen, setInstinctOpen] = useState(false);
+  const [instinctRated, setInstinctRated] = useState(false);
   const ratingStep = profile?.manual_rating_step ?? 0.5;
+  const isInstinct = (profile?.rating_mode ?? 'manual') === 'instinct';
+  // Native-listener ref: opens the Instinct sheet without the click reaching the
+  // wrapping <Link> / the top progress bar. See useNavSafeClick.
+  const instinctBtnRef = useNavSafeClick<HTMLButtonElement>(() => setInstinctOpen(true));
 
   useEffect(() => {
     if (score !== undefined) setShown(score);
   }, [score]);
 
   if (!userId) return null;
+
+  // ── Instinct mode: a plus (→ check) that opens the pairwise flow. No drag,
+  // no quick score — ranking is the only way to rate here. Matches iOS. ──
+  if (isInstinct) {
+    return (
+      <>
+        <button
+          ref={instinctBtnRef}
+          type="button"
+          aria-label={`Rate ${release.title}`}
+          onPointerDown={(e) => e.stopPropagation()}
+          className={`grid place-items-center rounded-full shadow bg-white text-accent transition-transform hover:scale-105 active:scale-95 ${className}`}
+          style={{ width: size, height: size }}
+        >
+          {instinctRated ? (
+            <Check size={Math.round(size * 0.5)} strokeWidth={3} />
+          ) : (
+            <Plus size={Math.round(size * 0.52)} strokeWidth={3} />
+          )}
+        </button>
+        <InstinctModal
+          open={instinctOpen}
+          onClose={() => setInstinctOpen(false)}
+          release={release}
+          onRated={() => {
+            setInstinctRated(true);
+            onScoreChange?.(shown ?? null);
+          }}
+        />
+      </>
+    );
+  }
 
   async function quickRate(s: number) {
     setShown(s);

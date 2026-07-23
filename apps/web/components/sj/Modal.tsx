@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 /**
@@ -37,13 +38,23 @@ export default function Modal({
     };
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!open || typeof document === 'undefined') return null;
 
-  return (
+  // Portal to <body> so the dialog escapes whatever stacking context / transform
+  // it was rendered from. Without this, a Modal opened from inside a card (e.g.
+  // AlbumRateButton's Instinct sheet, nested in a feed card's <Link>) is trapped
+  // in that card's context and the card's own score badges / titles paint over it.
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+      className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center"
       role="dialog"
       aria-modal="true"
+      // A portal moves the DOM to <body>, but React still bubbles events through
+      // the *component* tree — so a click inside a modal opened from within a
+      // card's <Link> would bubble to that Link and navigate (e.g. closing the
+      // Instinct sheet jumped to the album page). Stop every click here so no
+      // modal ever leaks interactions to whatever rendered it.
+      onClick={(e) => e.stopPropagation()}
     >
       <div className="absolute inset-0 bg-black/45 sj-fade-in" onClick={onClose} />
       <div
@@ -65,6 +76,7 @@ export default function Modal({
         )}
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
