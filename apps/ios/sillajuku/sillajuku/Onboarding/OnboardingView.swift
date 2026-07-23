@@ -9,23 +9,27 @@ struct OnboardingView: View {
 	@State private var saveError: String? = nil
 	@Environment(AppState.self) private var appState
 
-	enum Step { case username, ratingMode, notifications, appleMusic }
+	enum Step { case name, username, ratingMode, notifications, appleMusic }
 
 	let steps: [Step]
 
-	/// App Review rejected TWICE on this (2026-07-16, then again 2026-07-20 on
-	/// build 9): a "What's your name?" step must never be a REQUIRED gate after
-	/// Sign in with Apple — full stop, not just "skip it when this particular
-	/// authorization happened to include a name." The first fix only did the
-	/// latter, and Apple only ever sends the name on an Apple ID's very FIRST
-	/// authorization to this app; every authorization since (App Review reuses
-	/// the same Apple ID across resubmissions) comes back with no name at all,
-	/// so the gated step kept reappearing as a mandatory field in practice.
-	/// Fix: there is no name step, period, for any provider. If provider
-	/// metadata has a name, it's used silently; if not, `finish()` falls back
-	/// to the email/relay-address prefix. Either way it's editable afterward
-	/// in Edit Profile — never a signup gate. Resolved in init, not onAppear,
-	/// so `steps` never changes after first render.
+	/// App Review rejected TWICE on a "What's your name?" step (2026-07-16, then
+	/// again 2026-07-20 on build 9) for making Continue REQUIRE a non-empty
+	/// field — Apple only ever sends the name on an Apple ID's very FIRST
+	/// authorization to this app, and every authorization since (App Review
+	/// reuses the same Apple ID across resubmissions) comes back with nothing,
+	/// so a disabled-until-typed Continue turned into an always-blocking gate
+	/// for reviewers. Build 10 (2026-07-20) responded by deleting the step
+	/// entirely — compliant, but it meant nobody could ever be asked for a name.
+	/// This restores the step (2026-07-22) the compliant way instead of the
+	/// blunt way: the field is ALWAYS shown, pre-filled with the real name when
+	/// Apple provided one (editable — the user can keep it or change it) and
+	/// empty with a placeholder when it didn't, and **Continue is unconditional**
+	/// — never gated on the field's contents. That's the actual rule Apple
+	/// enforces: don't require re-entry of data already provided, and don't make
+	/// any such field a hard block. `finish()` falls back to the username if the
+	/// field is left empty, so every account still gets a real display name.
+	/// Resolved in init, not onAppear, so `steps` never changes after first render.
 	init(provider: String) {
 		self.provider = provider
 		var data = OnboardingData()
@@ -37,7 +41,7 @@ struct OnboardingView: View {
 				}
 			}
 		}
-		var s: [Step] = [.username, .ratingMode, .notifications]
+		var s: [Step] = [.name, .username, .ratingMode, .notifications]
 		if provider == "apple" { s.append(.appleMusic) }
 		self.steps = s
 		self._data = State(initialValue: data)
@@ -61,6 +65,8 @@ struct OnboardingView: View {
 			// Step content
 			Group {
 				switch steps[stepIndex] {
+				case .name:
+					StepName(data: $data, onNext: advance)
 				case .username:
 					StepUsername(data: $data, onNext: advance)
 				case .ratingMode:
@@ -97,9 +103,12 @@ struct OnboardingView: View {
 		isSaving = true
 		defer { isSaving = false }
 		do {
+			// Left blank when Apple gave no name to pre-fill and the user didn't
+			// type one — the username, not the private-relay email prefix, since
+			// every account has a real, validated username by this point and it
+			// reads far better than a relay address's random local part.
 			let typed = data.displayName.trimmingCharacters(in: .whitespaces)
-			let displayName = !typed.isEmpty ? typed
-				: (user.email?.components(separatedBy: "@").first ?? "")
+			let displayName = !typed.isEmpty ? typed : data.username
 			let insert = ProfileInsert(
 				id: user.id,
 				displayName: displayName,

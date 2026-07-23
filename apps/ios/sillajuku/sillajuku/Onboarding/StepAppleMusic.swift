@@ -27,6 +27,11 @@ struct StepAppleMusic: View {
 
             Spacer()
 
+            // App Review (Guideline 5.1.1(iv), 2026-07-21): a custom pre-permission
+            // screen must not word its own button "Allow X" — that's the system
+            // permission sheet's language, not this button's. "Continue" just
+            // proceeds to `requestAndFinish()`, which triggers the real MusicKit
+            // authorization dialog.
             VStack(spacing: 12) {
                 Button(action: { Task { await requestAndFinish() } }) {
                     HStack(spacing: 10) {
@@ -35,7 +40,7 @@ struct StepAppleMusic: View {
                                 .scaleEffect(0.8)
                                 .tint(Color.sjCream)
                         }
-                        Text(isSaving ? "Saving…" : "Allow Apple Music")
+                        Text(isSaving ? "Saving…" : "Continue")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(Color.sjCream)
                     }

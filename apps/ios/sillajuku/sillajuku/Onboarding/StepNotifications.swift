@@ -23,6 +23,10 @@ struct StepNotifications: View {
 
             Spacer()
 
+            // Same wording fix as StepAppleMusic.swift (App Review, Guideline
+            // 5.1.1(iv), 2026-07-21) applied here pre-emptively — this screen has
+            // the identical "custom screen + Allow X button" shape and would trip
+            // the same rule on notifications once a reviewer reached it.
             VStack(spacing: 12) {
                 Button(action: { Task { await requestAndFinish() } }) {
                     HStack(spacing: 10) {
@@ -31,7 +35,7 @@ struct StepNotifications: View {
                                 .scaleEffect(0.8)
                                 .tint(Color.sjCream)
                         }
-                        Text(isSaving ? "Saving…" : "Allow Notifications")
+                        Text(isSaving ? "Saving…" : "Continue")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(Color.sjCream)
                     }
