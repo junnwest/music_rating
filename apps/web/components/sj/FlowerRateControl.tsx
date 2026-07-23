@@ -32,12 +32,18 @@ const STEP = 34; // px of drag per whole star
 const MAX_RADIUS = OFFSET + 5 * STEP;
 const scoreRadius = (score: number) => OFFSET + score * STEP;
 
-/** Distance → score rounded to 0.1, or null inside the dead zone (a cancel). */
-function distanceToScore(dist: number): number | null {
+/**
+ * Distance → score snapped to `ratingStep` (the user's manual rating precision —
+ * 0.5 half-star / 0.1 decimal), or null inside the dead zone (a cancel).
+ * Previously hardcoded to 0.1 regardless of the caller's step, so the drag let a
+ * half-star user land on a decimal score — the tap-to-open precise modal already
+ * respected `ratingStep` (see AlbumRateButton), only the drag itself didn't.
+ */
+function distanceToScore(dist: number, ratingStep: number): number | null {
   if (dist < OFFSET) return null;
   const stars = (dist - OFFSET) / STEP;
-  const tenths = Math.round(stars * 10) / 10;
-  return Math.min(5, Math.max(0.5, tenths));
+  const snapped = Math.round(stars / ratingStep) * ratingStep;
+  return Math.min(5, Math.max(0.5, snapped));
 }
 
 interface DragState {
@@ -57,6 +63,7 @@ export default function FlowerRateControl({
   currentScore = null,
   ariaLabel,
   className = '',
+  ratingStep = 0.5,
 }: {
   /** Commit a drag-selected score (0.5–5.0). */
   onRate: (score: number) => void;
@@ -67,6 +74,10 @@ export default function FlowerRateControl({
   currentScore?: number | null;
   ariaLabel?: string;
   className?: string;
+  /** The user's manual rating precision (0.5 half-star / 0.1 decimal, from
+   *  `profile.manual_rating_step`) — the drag snaps to this, same as the
+   *  tap-to-open precise modal already does. */
+  ratingStep?: number;
 }) {
   const [drag, setDrag] = useState<DragState | null>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -98,10 +109,10 @@ export default function FlowerRateControl({
     setDrag({
       ...d,
       angle: dist > 1 ? Math.atan2(dy, dx) : d.angle,
-      score: distanceToScore(dist),
+      score: distanceToScore(dist, ratingStep),
       maxDist: Math.max(d.maxDist, dist),
     });
-  }, []);
+  }, [ratingStep]);
 
   const finish = useCallback(
     (commit: boolean) => {

@@ -138,6 +138,7 @@ export default function AlbumRateButton({
         currentScore={shown}
         size={size}
         className={className}
+        ratingStep={ratingStep}
       />
       {modalOpen && (
         <ManualRateModal

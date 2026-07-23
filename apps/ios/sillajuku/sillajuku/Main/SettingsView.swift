@@ -469,6 +469,11 @@ struct SettingsView: View {
             try? await supabase.from("profiles")
                 .update(["rating_mode": value])
                 .eq("id", value: user.id).execute()
+            // Tells HomeView (see its .onReceive) that rating_mode may have changed --
+            // HomeViewModel is hoisted for the whole session and only fetches
+            // rating_mode once, so without this it keeps showing the manual-mode
+            // flower rate button after switching to Instinct.
+            NotificationCenter.default.post(name: .sjProfileUpdated, object: nil)
         }
     }
 

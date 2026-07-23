@@ -352,6 +352,8 @@ function SearchResults({
   onRate: (release: SJRelease, score: number) => void;
 }) {
   const { t } = useLanguage();
+  const { profile } = useSession();
+  const ratingStep = profile?.manual_rating_step ?? 0.5;
   const hasAny = artists.length > 0 || albums.length > 0 || songs.length > 0;
 
   if (!hasAny) {
@@ -429,6 +431,7 @@ function SearchResults({
                   rated={ratedIds.has(release.id)}
                   sessionRated={sessionRatedIds.has(release.id)}
                   isInstinct={isInstinct}
+                  ratingStep={ratingStep}
                   onAdd={() => onAdd(release)}
                   onRate={(score) => onRate(release, score)}
                 />
@@ -449,6 +452,7 @@ function SearchResults({
                   rated={ratedIds.has(song.release.id)}
                   sessionRated={sessionRatedIds.has(song.release.id)}
                   isInstinct={isInstinct}
+                  ratingStep={ratingStep}
                   onAdd={() => onAdd(song.release)}
                   onRate={(score) => onRate(song.release, score)}
                 />
@@ -477,7 +481,8 @@ function Discovery({
   onRate: (release: SJRelease, score: number) => void;
 }) {
   const { t } = useLanguage();
-  const { userId, ready } = useSession();
+  const { userId, ready, profile } = useSession();
+  const ratingStep = profile?.manual_rating_step ?? 0.5;
   const [tasteAlbums, setTasteAlbums] = useState<SJRelease[]>([]);
   const [personalized, setPersonalized] = useState<SJRelease[]>([]);
   const [worlds, setWorlds] = useState<{ label: string; albums: SJRelease[] }[]>([]);
@@ -672,6 +677,7 @@ function Discovery({
                   rated={ratedIds.has(release.id)}
                   sessionRated={sessionRatedIds.has(release.id)}
                   isInstinct={isInstinct}
+                  ratingStep={ratingStep}
                   onAdd={() => onAdd(release)}
                   onRate={(score) => onRate(release, score)}
                 />
@@ -699,6 +705,7 @@ function AlbumCard({
   rated,
   sessionRated,
   isInstinct,
+  ratingStep = 0.5,
   onAdd,
   onRate,
 }: {
@@ -706,6 +713,7 @@ function AlbumCard({
   rated: boolean;
   sessionRated: boolean;
   isInstinct: boolean;
+  ratingStep?: number;
   onAdd: () => void;
   onRate: (score: number) => void;
 }) {
@@ -750,6 +758,7 @@ function AlbumCard({
               onRequestPrecise={onAdd}
               size={30}
               className="absolute bottom-2 right-2 opacity-90 group-hover:opacity-100 transition"
+              ratingStep={ratingStep}
             />
           ))}
       </AlbumPeek>
@@ -773,6 +782,7 @@ function SongRow({
   rated,
   sessionRated,
   isInstinct,
+  ratingStep = 0.5,
   onAdd,
   onRate,
 }: {
@@ -780,6 +790,7 @@ function SongRow({
   rated: boolean;
   sessionRated: boolean;
   isInstinct: boolean;
+  ratingStep?: number;
   onAdd: () => void;
   onRate: (score: number) => void;
 }) {
@@ -822,6 +833,7 @@ function SongRow({
             onRequestPrecise={onAdd}
             size={30}
             className="shrink-0 !bg-accent/[0.12] !shadow-none"
+            ratingStep={ratingStep}
           />
         )
       ) : null}

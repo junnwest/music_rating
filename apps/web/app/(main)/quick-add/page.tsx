@@ -112,6 +112,7 @@ export default function QuickAddPage() {
   // pairwise flow, mirroring the rest of the app (AlbumRateButton). Reactive to
   // the session profile, so flipping the mode in Settings swaps the buttons live.
   const isInstinct = (profile?.rating_mode ?? 'manual') === 'instinct';
+  const ratingStep = profile?.manual_rating_step ?? 0.5;
 
   const [seeds, setSeeds] = useState<string[] | null>(null);
   const [mode, setMode] = useState<Mode>('albums');
@@ -482,6 +483,7 @@ export default function QuickAddPage() {
                   candidate={c}
                   held={held[c.id]}
                   isInstinct={isInstinct}
+                  ratingStep={ratingStep}
                   ranked={ranked.has(c.id)}
                   onRate={(score) => rateSong(c, score)}
                   onPrecise={() =>
@@ -541,6 +543,7 @@ export default function QuickAddPage() {
                   candidate={c}
                   held={held[c.id]}
                   isInstinct={isInstinct}
+                  ratingStep={ratingStep}
                   ranked={ranked.has(c.id)}
                   onRate={(score) => rateAlbum(c.id, score)}
                   onPrecise={() => preciseAlbum(c)}
@@ -571,6 +574,7 @@ export default function QuickAddPage() {
           dismissed={dismissed}
           held={held}
           isInstinct={isInstinct}
+          ratingStep={ratingStep}
           ranked={ranked}
           onRate={rateAlbum}
           onPrecise={preciseAlbum}
@@ -688,6 +692,7 @@ function SeeMoreModal({
   dismissed,
   held,
   isInstinct,
+  ratingStep = 0.5,
   ranked,
   onRate,
   onPrecise,
@@ -699,6 +704,7 @@ function SeeMoreModal({
   dismissed: Set<string>;
   held: Record<string, number>;
   isInstinct: boolean;
+  ratingStep?: number;
   ranked: Set<string>;
   onRate: (id: string, score: number) => void;
   onPrecise: (c: AlbumCandidate) => void;
@@ -760,6 +766,7 @@ function SeeMoreModal({
                   held={held[c.id]}
                   fluid
                   isInstinct={isInstinct}
+                  ratingStep={ratingStep}
                   ranked={ranked.has(c.id)}
                   onRate={(score) => onRate(c.id, score)}
                   onPrecise={() => onPrecise(c)}
@@ -797,6 +804,7 @@ function CandidateCard({
   held,
   fluid,
   isInstinct,
+  ratingStep = 0.5,
   ranked,
   onRate,
   onPrecise,
@@ -806,6 +814,7 @@ function CandidateCard({
   held?: number;
   fluid?: boolean;
   isInstinct: boolean;
+  ratingStep?: number;
   ranked: boolean;
   onRate: (score: number) => void;
   onPrecise: () => void;
@@ -853,6 +862,7 @@ function CandidateCard({
             currentScore={held ?? null}
             size={30}
             className="absolute bottom-1.5 right-1.5"
+            ratingStep={ratingStep}
           />
         )}
       </AlbumPeek>
@@ -866,6 +876,7 @@ function SongRow({
   candidate: c,
   held,
   isInstinct,
+  ratingStep = 0.5,
   ranked,
   onRate,
   onPrecise,
@@ -873,6 +884,7 @@ function SongRow({
   candidate: SongCandidate;
   held?: number;
   isInstinct: boolean;
+  ratingStep?: number;
   ranked: boolean;
   onRate: (score: number) => void;
   onPrecise: () => void;
@@ -906,6 +918,7 @@ function SongRow({
           currentScore={held ?? null}
           size={34}
           className="shrink-0"
+          ratingStep={ratingStep}
         />
       )}
     </li>

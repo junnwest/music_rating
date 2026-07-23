@@ -264,6 +264,23 @@ class HomeViewModel {
         ratingMode    = mode
     }
 
+    // HomeViewModel is hoisted once at MainTabView and lives for the whole session
+    // (unlike AlbumDetailView/SearchView/RankingsView, which are pushed destinations
+    // that re-fetch rating_mode fresh on every appearance), so its one-time fetch in
+    // loadPersonalization() above goes stale the moment the user flips modes in
+    // Settings. Called from HomeView's .onReceive(.sjProfileUpdated).
+    func refreshRatingMode() async {
+        guard let userId = currentUserId else { return }
+        struct P: Decodable {
+            let ratingMode: String?
+            enum CodingKeys: String, CodingKey { case ratingMode = "rating_mode" }
+        }
+        let p: P? = try? await supabase
+            .from("profiles").select("rating_mode")
+            .eq("id", value: userId).single().execute().value
+        ratingMode = p?.ratingMode ?? "manual"
+    }
+
     func blockUser(userId: UUID) async {
         guard let me = currentUserId, userId != me else { return }
         blockedUserIds.insert(userId)
@@ -793,6 +810,13 @@ struct HomeView: View {
             if activeTab == .explore { exploreScrollTrigger = UUID() }
             else { followingScrollTrigger = UUID() }
         }
+        // Settings' rating-mode toggle posts this after saving. HomeViewModel is
+        // hoisted once and never otherwise re-fetches rating_mode, so without this
+        // the feed's flower (manual-only) rate buttons would keep showing after
+        // switching to Instinct until the next full app launch.
+        .onReceive(NotificationCenter.default.publisher(for: .sjProfileUpdated)) { _ in
+            Task { await viewModel.refreshRatingMode() }
+        }
     }
 
     // MARK: Floating header — centered tabs + trailing bell
@@ -907,21 +931,41 @@ struct HomeView: View {
 
     // MARK: Feed content (swipeable)
 
+    // Confirmed via UI testing (2026-07-23): TabView(.page)'s `selection` binding does
+    // not reliably respond to a programmatic (code-driven) change here -- a real swipe
+    // paged correctly (proving the pages/data were always fine), but setting `activeTab`
+    // from feedTabButton's action, in any of several forms (plain, withAnimation,
+    // deferred to the next run loop), left the page visually stuck. This is a
+    // long-documented TabView(.page) limitation, not something fixable by adjusting
+    // animations around it. Replaced with the modern ScrollView + `.scrollPosition(id:)`
+    // + `.scrollTargetBehavior(.paging)` combination Apple introduced specifically to
+    // support two-way (view <-> state) programmatic control, which a plain `TabView`
+    // page style does not guarantee.
     private var feedContent: some View {
-        TabView(selection: $activeTab) {
-            feedList(posts: viewModel.exploreFeed, isLoading: viewModel.isLoadingExplore,
-                     emptyMessage: "No ratings yet — be the first!",
-                     scrollTrigger: exploreScrollTrigger, isExplore: true)
-                .tag(FeedTab.explore)
+        ScrollView(.horizontal) {
+            LazyHStack(spacing: 0) {
+                feedList(posts: viewModel.exploreFeed, isLoading: viewModel.isLoadingExplore,
+                         emptyMessage: "No ratings yet — be the first!",
+                         scrollTrigger: exploreScrollTrigger, isExplore: true)
+                    .containerRelativeFrame(.horizontal)
+                    .id(FeedTab.explore)
 
-            feedList(posts: viewModel.followingFeed, isLoading: viewModel.isLoadingFollowing,
-                     emptyMessage: "Follow people to see their ratings here.",
-                     scrollTrigger: followingScrollTrigger, isExplore: false)
-                .tag(FeedTab.following)
+                feedList(posts: viewModel.followingFeed, isLoading: viewModel.isLoadingFollowing,
+                         emptyMessage: "Follow people to see their ratings here.",
+                         scrollTrigger: followingScrollTrigger, isExplore: false)
+                    .containerRelativeFrame(.horizontal)
+                    .id(FeedTab.following)
+            }
+            .scrollTargetLayout()
         }
-        .tabViewStyle(.page(indexDisplayMode: .never))
-        .animation(.easeInOut(duration: 0.18), value: activeTab)
-        // Clear background so the inner page TabView doesn't paint a white/grey block
+        .scrollTargetBehavior(.paging)
+        .scrollPosition(id: Binding(
+            get: { Optional(activeTab) },
+            set: { if let newValue = $0 { activeTab = newValue } }
+        ))
+        .scrollIndicators(.hidden)
+        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+        // Clear background so the inner scroll view doesn't paint a white/grey block
         // that sits between the glass tab bar and the scroll content
         .background(Color.clear)
     }

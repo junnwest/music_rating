@@ -51,7 +51,8 @@ struct AlbumRateButton: View {
                 onRequestPrecise: { modalOpen = true },
                 size: size,
                 currentScore: shown,
-                accessibilityLabelText: String(format: String(localized: "Rate %@"), release.displayTitle)
+                accessibilityLabelText: String(format: String(localized: "Rate %@"), release.displayTitle),
+                ratingStep: ratingStep
             )
             .sheet(isPresented: $modalOpen) {
                 ManualRatingSheet(release: release, existingScore: shownBinding, ratingStep: ratingStep) { s in

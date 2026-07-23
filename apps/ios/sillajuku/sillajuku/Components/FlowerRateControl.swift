@@ -13,12 +13,16 @@ enum RateGaugeGeometry {
 
     static func scoreRadius(_ score: Double) -> Double { offset + score * step }
 
-    /// Distance -> score rounded to 0.1, or nil inside the dead zone (a cancel).
-    static func distanceToScore(_ dist: Double) -> Double? {
+    /// Distance -> score snapped to `ratingStep` (the user's manual rating precision --
+    /// 0.5 for half-star, 0.1 for decimal), or nil inside the dead zone (a cancel).
+    /// Previously hardcoded to 0.1 regardless of the caller's step, so the drag gauge
+    /// let a half-star user land on a decimal score -- the tap-to-open precise sheet
+    /// already respected `ratingStep`, only the drag itself didn't.
+    static func distanceToScore(_ dist: Double, ratingStep: Double) -> Double? {
         guard dist >= offset else { return nil }
         let stars = (dist - offset) / step
-        let tenths = (stars * 10).rounded() / 10
-        return min(5, max(0.5, tenths))
+        let snapped = (stars / ratingStep).rounded() * ratingStep
+        return min(5, max(0.5, snapped))
     }
 }
 
@@ -38,6 +42,10 @@ struct FlowerRateControl: View {
     /// If already rated, the resting score to show (still re-ratable on press).
     var currentScore: Double? = nil
     var accessibilityLabelText: String = ""
+    /// The user's manual rating precision (0.5 half-star / 0.1 decimal, from
+    /// `profiles.manual_rating_step`) -- the drag snaps to this, same as the
+    /// tap-to-open precise sheet already does.
+    var ratingStep: Double = 0.5
 
     @State private var isDragging = false
     @State private var dragScore: Double? = nil
@@ -64,7 +72,7 @@ struct FlowerRateControl: View {
                             let dist = (dx * dx + dy * dy).squareRoot()
                             maxDist = max(maxDist, dist)
                             if dist > 1 { dragAngle = atan2(dy, dx) }
-                            dragScore = RateGaugeGeometry.distanceToScore(dist)
+                            dragScore = RateGaugeGeometry.distanceToScore(dist, ratingStep: ratingStep)
                             RateGaugeOverlay.shared.show(origin: origin, angle: dragAngle, score: dragScore)
                         }
                         .onEnded { _ in
