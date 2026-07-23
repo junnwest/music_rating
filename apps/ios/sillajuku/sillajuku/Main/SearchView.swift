@@ -101,7 +101,14 @@ class DiscoveryViewModel {
                 g.addTask { await self.loadSpotify() }
                 g.addTask { await self.loadAppleMusic() }
             }
-            await reloadDiscoverySections()
+            // resolveRecentlyPlayedIfNeeded() only needs the recently-played lists just
+            // populated above -- it doesn't depend on reloadDiscoverySections() at all,
+            // so running it after that instead of alongside it was pure serial waste
+            // (measured live: ~2.8s tacked onto Discovery's ~6s on top of it).
+            await withTaskGroup(of: Void.self) { g in
+                g.addTask { await self.reloadDiscoverySections() }
+                g.addTask { await self.resolveRecentlyPlayedIfNeeded() }
+            }
         } else {
             // Retried on every subsequent load() call (e.g. switching back to this tab) --
             // unlike the full first-load branch above, this only re-attempts whichever
@@ -109,8 +116,8 @@ class DiscoveryViewModel {
             // without needing a full app relaunch.
             if !hasSpotifyData { await loadSpotify() }
             if !hasAppleMusicData { await loadAppleMusic() }
+            await resolveRecentlyPlayedIfNeeded()
         }
-        await resolveRecentlyPlayedIfNeeded()
         isLoading = false
         prefetchDiscoveryCovers()
     }
