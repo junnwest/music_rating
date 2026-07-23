@@ -5,6 +5,7 @@ import Sentry
 
 extension Notification.Name {
     static let sjSpotifyTokenRefreshed = Notification.Name("sjSpotifyTokenRefreshed")
+    static let sjAppleMusicAuthorized = Notification.Name("sjAppleMusicAuthorized")
 }
 
 final class AppDelegate: NSObject, UIApplicationDelegate {

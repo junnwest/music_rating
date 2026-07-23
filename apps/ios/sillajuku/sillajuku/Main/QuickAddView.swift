@@ -50,6 +50,40 @@ final class QuickAddViewModel {
     // the item itself is only actually dropped from albumCandidates/songCandidates on the next
     // refresh or cold load, once the server-side NOT EXISTS exclusion naturally leaves it out.
     var ratedScores: [UUID: Double] = [:]
+    // Set when a rate write actually fails (rate()/rateSong() roll the optimistic score
+    // back at the same time) -- surfaced as an alert rather than failing silently.
+    var rateErrorMessage: String?
+
+    // MARK: Genre explorer ("Explore other genres")
+
+    /// Same short, recognisable list as web's `GENRES` (`quick-add/page.tsx`) — matched by
+    /// `_rg_primary_matches` server-side, so anything that works as a charts genre filter
+    /// works here. Deliberately not the full genre taxonomy; this is a browse affordance.
+    static let allGenres: [String] = [
+        "K-Pop", "K-Indie", "Hip Hop", "R&B", "Rock", "Pop", "Indie", "Electronic",
+        "Jazz", "Metal", "Classical", "Folk", "Soul", "Punk", "City Pop", "J-Pop",
+    ]
+    /// Persisted to `profiles.preferred_genres` -- permanent shelves, and the same column
+    /// the home feed's category resolver reads, so liking a genre here reshapes Home too.
+    var likedGenres: [String] = []
+    /// Opened (not liked) genres -- session-only, cleared on next launch.
+    var openedGenres: [String] = []
+    var genreShelves: [String: [Release]] = [:]
+    var loadingGenres: Set<String> = []
+
+    /// Liked genres first, then opened-but-not-liked -- mirrors web's `wanted` shelf order.
+    var genresToShow: [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for g in likedGenres + openedGenres where seen.insert(g).inserted { out.append(g) }
+        return out
+    }
+
+    /// No Spotify/Apple Music history and no rated-artist signal at all -- Quick Add has
+    /// nothing to seed suggestions from. Distinct from "candidates.isEmpty because we've
+    /// shown everything" (the real "all caught up" case) -- these read as opposite states
+    /// to the user and were incorrectly sharing one empty-state message before this.
+    var hasSeed: Bool { !artistNames.isEmpty }
 
     private let pageSize = 20
     private let artistNames: [String]
@@ -135,8 +169,17 @@ final class QuickAddViewModel {
     /// (Components/AlbumContextMenu.swift) -- same write path (upsert into `ratings`,
     /// ratingChanged notification) as every other rating surface in the app, not a parallel one.
     func rate(_ release: Release, score: Double) {
+        let previous = ratedScores[release.id]
         ratedScores[release.id] = score
-        Task { await AlbumQuickRate.saveManualScore(releaseGroupId: release.id, score: score) }
+        Task {
+            let ok = await AlbumQuickRate.saveManualScore(releaseGroupId: release.id, score: score)
+            if !ok {
+                // Roll back to whatever was actually true before this tap -- not just nil,
+                // in case this was a re-rate of an already-committed score.
+                ratedScores[release.id] = previous
+                rateErrorMessage = String(localized: "Couldn't save that rating. Check your connection and try again.")
+            }
+        }
     }
 
     // MARK: Songs
@@ -185,8 +228,94 @@ final class QuickAddViewModel {
     /// Same hold-in-place shape as `rate(_:score:)`, writing to `track_ratings` via
     /// AlbumQuickRate.saveManualTrackScore instead of `ratings`.
     func rateSong(_ song: SongCandidate, score: Double) {
+        let previous = ratedScores[song.id]
         ratedScores[song.id] = score
-        Task { await AlbumQuickRate.saveManualTrackScore(recordingId: song.id, score: score) }
+        Task {
+            let ok = await AlbumQuickRate.saveManualTrackScore(recordingId: song.id, score: score)
+            if !ok {
+                ratedScores[song.id] = previous
+                rateErrorMessage = String(localized: "Couldn't save that rating. Check your connection and try again.")
+            }
+        }
+    }
+
+    // MARK: Genre explorer
+
+    func loadLikedGenres() async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        struct Row: Decodable { let preferredGenres: String?
+            enum CodingKeys: String, CodingKey { case preferredGenres = "preferred_genres" }
+        }
+        let row: Row? = try? await supabase
+            .from("profiles")
+            .select("preferred_genres")
+            .eq("id", value: userId)
+            .single()
+            .execute()
+            .value
+        // Only genres this picker knows about -- the column is shared with onboarding,
+        // which used a different (older) label set.
+        let known = Set(Self.allGenres)
+        likedGenres = (row?.preferredGenres ?? "")
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { known.contains($0) }
+    }
+
+    /// Persisted immediately, not a local-only flag -- rolls back on write failure rather
+    /// than lying about what's saved (same rule as web's toggleLiked).
+    func toggleLikedGenre(_ genre: String) async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        let previous = likedGenres
+        if let idx = likedGenres.firstIndex(of: genre) {
+            likedGenres.remove(at: idx)
+        } else {
+            likedGenres.append(genre)
+        }
+        do {
+            try await supabase
+                .from("profiles")
+                .update(["preferred_genres": likedGenres.joined(separator: ", ")])
+                .eq("id", value: userId)
+                .execute()
+        } catch {
+            likedGenres = previous
+        }
+    }
+
+    /// Tapping a genre's label -- a look, not a preference. Loads its shelf the first
+    /// time it's opened; re-tapping just collapses it back (data stays cached).
+    func toggleOpenedGenre(_ genre: String) {
+        if let idx = openedGenres.firstIndex(of: genre) {
+            openedGenres.remove(at: idx)
+        } else {
+            openedGenres.append(genre)
+            if genreShelves[genre] == nil {
+                Task { await loadGenreShelf(genre) }
+            }
+        }
+    }
+
+    /// One page, no further pagination -- a genre shelf here is a browse sampler, not a
+    /// full paged list like web's "See more" modal (that's more chrome than this flat,
+    /// single-screen layout needs for a first port).
+    func loadGenreShelf(_ genre: String) async {
+        guard let userId = supabase.auth.currentUser?.id, !loadingGenres.contains(genre) else { return }
+        loadingGenres.insert(genre)
+        defer { loadingGenres.remove(genre) }
+        struct Params: Encodable {
+            let p_user_id: String
+            let p_genre: String
+            let p_lim: Int
+        }
+        let page: [Release] = (try? await supabase
+            .rpc("get_quick_add_genre_candidates", params: Params(
+                p_user_id: userId.uuidString,
+                p_genre: genre,
+                p_lim: 20))
+            .execute()
+            .value) ?? []
+        genreShelves[genre] = page
     }
 }
 
@@ -374,9 +503,12 @@ struct QuickAddView: View {
     @State private var mode: QuickAddMode = .albums
     @State private var albumScrollTrigger = UUID()
     @State private var songScrollTrigger = UUID()
+    @Environment(\.dismiss) private var dismiss
+    private let onGoToSettings: () -> Void
 
-    init(discoveryVM: DiscoveryViewModel) {
+    init(discoveryVM: DiscoveryViewModel, onGoToSettings: @escaping () -> Void) {
         _vm = State(initialValue: QuickAddViewModel(discoveryVM: discoveryVM))
+        self.onGoToSettings = onGoToSettings
     }
 
     var body: some View {
@@ -390,6 +522,19 @@ struct QuickAddView: View {
         .task {
             await vm.loadFirstAlbumPage()
             await vm.loadFirstSongPage()
+            await vm.loadLikedGenres()
+        }
+        .alert(
+            "Couldn't save rating",
+            isPresented: Binding(
+                get: { vm.rateErrorMessage != nil },
+                set: { if !$0 { vm.rateErrorMessage = nil } }
+            ),
+            presenting: vm.rateErrorMessage
+        ) { _ in
+            Button("OK") { vm.rateErrorMessage = nil }
+        } message: { message in
+            Text(message)
         }
     }
 
@@ -437,7 +582,17 @@ struct QuickAddView: View {
         if vm.isLoadingAlbums {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if vm.albumCandidates.isEmpty {
-            emptyState
+            // Seedless (no Spotify/Apple Music history, no ratings yet) reads as the
+            // opposite of "caught up" -- give it its own message + a way forward,
+            // instead of the generic checkmark that implies there was ever anything to
+            // exhaust in the first place.
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 20) {
+                    if vm.hasSeed { emptyState } else { seedlessNudge }
+                    genreExplorer
+                }
+                .padding(16)
+            }
         } else {
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
@@ -460,6 +615,14 @@ struct QuickAddView: View {
                         }
                     }
                     .padding(.vertical, 8)
+
+                    // Always available, seeded or not -- matches web, where "Explore
+                    // other genres" sits under the shelves regardless of whether the
+                    // user already has suggestions.
+                    genreExplorer
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                        .padding(.bottom, 24)
                 }
                 .refreshable { await vm.refreshAlbums() }
                 .onChange(of: albumScrollTrigger) { _, _ in
@@ -474,7 +637,13 @@ struct QuickAddView: View {
         if vm.isLoadingSongs {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if vm.songCandidates.isEmpty {
-            emptyState
+            if vm.hasSeed {
+                emptyState
+            } else {
+                ScrollView(showsIndicators: false) {
+                    seedlessNudge.padding(16)
+                }
+            }
         } else {
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
@@ -521,5 +690,184 @@ struct QuickAddView: View {
                 .padding(.horizontal, 40)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: Seedless nudge
+
+    /// Shown instead of `emptyState` when there's no seed at all yet -- no Spotify/Apple
+    /// Music history and no ratings. Two concrete next actions rather than a dead end.
+    private var seedlessNudge: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Nothing to suggest yet")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Color.sjInk)
+                Text("Quick Add works off your listening history and your own ratings. Either of these gets it started:")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color.sjMuted)
+            }
+
+            VStack(spacing: 10) {
+                Button { dismiss() } label: {
+                    nudgeRow(icon: "magnifyingglass", title: "Search & rate a few albums")
+                }
+                Button { onGoToSettings() } label: {
+                    nudgeRow(icon: "link", title: "Connect Spotify or Apple Music")
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func nudgeRow(icon: String, title: LocalizedStringKey) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Color.sjCream)
+                .frame(width: 32, height: 32)
+                .background(Color.sjInk)
+                .clipShape(Circle())
+            Text(title)
+                .font(.system(size: 14.5, weight: .semibold))
+                .foregroundStyle(Color.sjInk)
+            Spacer(minLength: 8)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.sjMuted)
+        }
+        .padding(14)
+        .background(Color.sjSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    // MARK: Genre explorer
+
+    /// iOS counterpart of web's `GenreExplorer` (`quick-add/page.tsx`) -- same RPC
+    /// (`get_quick_add_genre_candidates`), same two-action chip (label opens a shelf,
+    /// heart likes/persists the genre), same permanent-vs-session shelf split. Albums
+    /// only, matching the RPC (`release_group_type IN ('album','ep')`) and web's own
+    /// scope call that songs are rated in runs, not browsed.
+    private var genreExplorer: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "safari")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.sjAmber)
+                Text("Explore other genres")
+                    .font(.system(size: 14.5, weight: .bold))
+                    .foregroundStyle(Color.sjInk)
+            }
+            Text("Browse genres outside your usual listening. Liking one also shapes your Home feed.")
+                .font(.system(size: 12.5))
+                .foregroundStyle(Color.sjMuted)
+
+            FlowLayout(spacing: 8) {
+                ForEach(QuickAddViewModel.allGenres, id: \.self) { genre in
+                    genreChip(genre)
+                }
+            }
+
+            ForEach(vm.genresToShow, id: \.self) { genre in
+                genreSection(genre)
+            }
+        }
+        .padding(16)
+        .background(Color.sjSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    /// Two independent taps in one pill -- the label opens (a look), the heart likes (a
+    /// preference). Kept apart so browsing jazz once doesn't claim you like jazz.
+    private func genreChip(_ genre: String) -> some View {
+        let isLiked = vm.likedGenres.contains(genre)
+        let isOpen = isLiked || vm.openedGenres.contains(genre)
+        return HStack(spacing: 0) {
+            Button { vm.toggleOpenedGenre(genre) } label: {
+                Text(genre)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(isOpen ? Color.sjAmber : Color.sjMuted)
+                    .padding(.leading, 12).padding(.trailing, 6).padding(.vertical, 7)
+            }
+            Button { Task { await vm.toggleLikedGenre(genre) } } label: {
+                Image(systemName: isLiked ? "heart.fill" : "heart")
+                    .font(.system(size: 11))
+                    .foregroundStyle(isLiked ? Color.sjAmber : Color.sjMuted)
+                    .padding(.leading, 4).padding(.trailing, 10).padding(.vertical, 7)
+            }
+        }
+        .buttonStyle(.plain)
+        .background(isOpen ? Color.sjAmber.opacity(0.12) : Color.sjCream)
+        .clipShape(Capsule())
+        .overlay(Capsule().stroke(isOpen ? Color.sjAmber.opacity(0.4) : Color.sjBorder, lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private func genreSection(_ genre: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(genre)
+                .font(.system(size: 12.5, weight: .semibold))
+                .foregroundStyle(Color.sjMuted)
+                .padding(.top, 6)
+                .padding(.horizontal, 2)
+
+            if vm.loadingGenres.contains(genre) && (vm.genreShelves[genre]?.isEmpty ?? true) {
+                ProgressView().frame(maxWidth: .infinity).padding(.vertical, 12)
+            } else if let items = vm.genreShelves[genre], !items.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(items) { release in
+                        QuickAddRow(release: release, ratedScore: vm.ratedScores[release.id]) { score in
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                vm.rate(release, score: score)
+                            }
+                        }
+                    }
+                }
+                .background(Color.sjCream)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            } else {
+                Text("Nothing here yet")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Color.sjMuted)
+                    .padding(.vertical, 6)
+            }
+        }
+    }
+}
+
+/// Minimal left-aligned wrapping layout for genre chips. Self-contained here rather than
+/// reusing TasteView.swift's private `FlowLayout` of the same shape, to avoid a cross-file
+/// dependency for a five-line utility.
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > width {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return CGSize(width: width, height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX {
+                x = bounds.minX
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), proposal: .unspecified)
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
     }
 }

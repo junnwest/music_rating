@@ -326,6 +326,14 @@ class DiscoveryViewModel {
         await loadSpotify()
     }
 
+    // Same idea for Apple Music, triggered from Settings' new "Connect Apple Music" row
+    // (MusicKitService.requestAuthorization() there has no way to reach this view model
+    // directly, so it goes through the same scenePhase/notification hooks Spotify uses).
+    func refreshAppleMusicIfNeeded() async {
+        guard !hasAppleMusicData else { return }
+        await loadAppleMusic()
+    }
+
     // Artists behind ratings >= 3.5, best-first -- QuickAddViewModel's seed source. Kept as its
     // own small loader (previously a side effect of loadPersonalized(), now that that's gone in
     // favor of calling web's own /api/recommendations directly).
@@ -652,7 +660,7 @@ struct SearchView: View {
                 Text("Quick Add's half-star rating only works in Manual mode. Switch modes in Settings to use it.")
             }
             .navigationDestination(isPresented: $showQuickAdd) {
-                QuickAddView(discoveryVM: discoveryVM)
+                QuickAddView(discoveryVM: discoveryVM, onGoToSettings: onGoToSettings)
             }
             .sheet(item: $quickRateRelease) { release in
                 ManualRatingSheet(
@@ -681,12 +689,16 @@ struct SearchView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 Task { await discoveryVM.refreshSpotifyIfNeeded() }
+                Task { await discoveryVM.refreshAppleMusicIfNeeded() }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .sjSpotifyTokenRefreshed)) { _ in
             // Auth observer saved a fresh provider token — reload Spotify data now.
             // This fires after linkIdentity completes, which is later than scenePhase.active.
             Task { await discoveryVM.refreshSpotifyIfNeeded() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .sjAppleMusicAuthorized)) { _ in
+            Task { await discoveryVM.refreshAppleMusicIfNeeded() }
         }
     }
 

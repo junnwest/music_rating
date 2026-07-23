@@ -1,11 +1,17 @@
 import SwiftUI
 import Supabase
+import MusicKit
 
 struct ConnectedAccountsView: View {
     @State private var vm = ConnectedAccountsViewModel()
     @State private var showPhoneVerification = false
     @State private var showDisconnectPhoneConfirm = false
     @State private var unlinkTarget: Provider?
+    // Local, not on ConnectedAccountsViewModel -- MusicKit authorization is a device
+    // permission (MusicAuthorization.currentStatus), not a Supabase-linked identity like
+    // the social providers below, so it doesn't belong in that model's `identities` list.
+    @State private var appleMusicStatus = MusicAuthorization.currentStatus
+    @State private var isRequestingAppleMusic = false
     @Environment(\.scenePhase) private var scenePhase
 
     private static let socialProviders: [(provider: Provider, label: LocalizedStringKey, icon: ProviderIcon)] = [
@@ -26,6 +32,14 @@ struct ConnectedAccountsView: View {
                 Text("Social accounts")
             } footer: {
                 Text("Connect more than one so you can always sign back in, even if you lose access to one of them.")
+            }
+
+            Section {
+                appleMusicRow
+            } header: {
+                Text("Music library")
+            } footer: {
+                Text("Lets Quick Add and Home suggest albums from your Apple Music library, recently played, and heavy rotation. Skipped this during setup? Connect it here any time.")
             }
 
             Section {
@@ -56,7 +70,12 @@ struct ConnectedAccountsView: View {
             // redirect, not this screen directly -- reload once control
             // actually returns to the app so a newly-linked identity shows up
             // without the user having to back out and back in manually.
-            if phase == .active { Task { await vm.load() } }
+            if phase == .active {
+                Task { await vm.load() }
+                // Covers the "denied -> Settings app -> granted" path, which returns
+                // here with no callback of our own to hook.
+                appleMusicStatus = MusicAuthorization.currentStatus
+            }
         }
         .sheet(isPresented: $showPhoneVerification, onDismiss: { Task { await vm.load() } }) {
             PhoneVerificationView()
@@ -130,6 +149,59 @@ struct ConnectedAccountsView: View {
         case .system(let name):
             Image(systemName: name).font(.system(size: 18)).foregroundStyle(Color.sjInk)
         }
+    }
+
+    private var appleMusicRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "music.note")
+                .font(.system(size: 16))
+                .foregroundStyle(Color.sjInk)
+                .frame(width: 24)
+
+            Text("Apple Music")
+                .foregroundStyle(Color.sjInk)
+
+            Spacer()
+
+            switch appleMusicStatus {
+            case .authorized:
+                Text("Connected")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.sjMuted)
+            default:
+                Button {
+                    Task { await connectAppleMusic() }
+                } label: {
+                    if isRequestingAppleMusic {
+                        ProgressView().scaleEffect(0.75)
+                    } else {
+                        // Denied/restricted can't be re-prompted in-app (MusicAuthorization.request()
+                        // just returns the same status again) -- only iOS Settings can change it now.
+                        Text(appleMusicStatus == .notDetermined ? "Connect" : "Open Settings")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.sjBlue)
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(isRequestingAppleMusic)
+            }
+        }
+    }
+
+    private func connectAppleMusic() async {
+        if appleMusicStatus != .notDetermined {
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                await UIApplication.shared.open(url)
+            }
+            return
+        }
+        isRequestingAppleMusic = true
+        let granted = await MusicKitService.requestAuthorization()
+        appleMusicStatus = MusicAuthorization.currentStatus
+        isRequestingAppleMusic = false
+        // DiscoveryViewModel has no reference here -- Quick Add and Home pick this up via
+        // the same scenePhase/notification hooks Spotify already uses (SearchView.swift).
+        if granted { NotificationCenter.default.post(name: .sjAppleMusicAuthorized, object: nil) }
     }
 
     private var phoneRow: some View {

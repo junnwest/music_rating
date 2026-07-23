@@ -19,37 +19,56 @@ enum AlbumQuickRate {
         return p?.ratingMode ?? "manual"
     }
 
-    static func saveManualScore(releaseGroupId: UUID, score: Double) async {
-        guard let userId = supabase.auth.currentUser?.id else { return }
+    /// Returns whether the write actually landed. Previously `try?`, which swallowed any
+    /// failure (network drop, RLS, etc.) while still posting `.ratingChanged` unconditionally
+    /// -- callers held an optimistic "rated" score with no way to know it hadn't really saved,
+    /// and every listener (e.g. Profile) got told to refresh for a write that never happened.
+    @discardableResult
+    static func saveManualScore(releaseGroupId: UUID, score: Double) async -> Bool {
+        guard let userId = supabase.auth.currentUser?.id else { return false }
         struct Payload: Encodable {
             let userId: UUID; let releaseGroupId: UUID; let score: Double
             enum CodingKeys: String, CodingKey {
                 case userId = "user_id"; case releaseGroupId = "release_group_id"; case score
             }
         }
-        try? await supabase.from("ratings")
-            .upsert(Payload(userId: userId, releaseGroupId: releaseGroupId, score: score),
-                    onConflict: "user_id,release_group_id")
-            .execute()
+        do {
+            try await supabase.from("ratings")
+                .upsert(Payload(userId: userId, releaseGroupId: releaseGroupId, score: score),
+                        onConflict: "user_id,release_group_id")
+                .execute()
+        } catch {
+            print("AlbumQuickRate.saveManualScore(\(releaseGroupId)) failed: \(error)")
+            return false
+        }
         NotificationCenter.default.post(name: .ratingChanged, object: nil)
+        return true
     }
 
     /// Standalone version of AlbumDetailView's `rateTrack(recordingId:score:)` -- same table,
     /// same upsert columns/onConflict target -- for surfaces (Quick Add) that need to write a
-    /// song rating without a full AlbumDetailViewModel instance.
-    static func saveManualTrackScore(recordingId: UUID, score: Double) async {
-        guard let userId = supabase.auth.currentUser?.id else { return }
+    /// song rating without a full AlbumDetailViewModel instance. Same success-reporting shape
+    /// as saveManualScore above, for the same reason.
+    @discardableResult
+    static func saveManualTrackScore(recordingId: UUID, score: Double) async -> Bool {
+        guard let userId = supabase.auth.currentUser?.id else { return false }
         struct Payload: Encodable {
             let userId: UUID; let recordingId: UUID; let score: Double
             enum CodingKeys: String, CodingKey {
                 case userId = "user_id"; case recordingId = "recording_id"; case score
             }
         }
-        try? await supabase.from("track_ratings")
-            .upsert(Payload(userId: userId, recordingId: recordingId, score: score),
-                    onConflict: "user_id,recording_id")
-            .execute()
+        do {
+            try await supabase.from("track_ratings")
+                .upsert(Payload(userId: userId, recordingId: recordingId, score: score),
+                        onConflict: "user_id,recording_id")
+                .execute()
+        } catch {
+            print("AlbumQuickRate.saveManualTrackScore(\(recordingId)) failed: \(error)")
+            return false
+        }
         NotificationCenter.default.post(name: .ratingChanged, object: nil)
+        return true
     }
 }
 
