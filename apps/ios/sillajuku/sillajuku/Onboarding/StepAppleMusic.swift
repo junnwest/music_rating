@@ -27,38 +27,38 @@ struct StepAppleMusic: View {
 
             Spacer()
 
-            // App Review (Guideline 5.1.1(iv), 2026-07-21): a custom pre-permission
-            // screen must not word its own button "Allow X" — that's the system
-            // permission sheet's language, not this button's. "Continue" just
-            // proceeds to `requestAndFinish()`, which triggers the real MusicKit
-            // authorization dialog.
-            VStack(spacing: 12) {
-                Button(action: { Task { await requestAndFinish() } }) {
-                    HStack(spacing: 10) {
-                        if isBusy {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                                .tint(Color.sjCream)
-                        }
-                        Text(isSaving ? "Saving…" : "Continue")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(Color.sjCream)
+            // App Review, Guideline 5.1.1(iv) — two rounds:
+            // 2026-07-21: a custom pre-permission screen must not word its own
+            // button "Allow X" (that's the system sheet's language) — fixed to
+            // "Continue".
+            // 2026-07-27 (build 11, still rejected): a "Skip for now" button let
+            // the user close this message and delay the real permission prompt
+            // indefinitely. Apple's rule is that a custom pre-permission screen
+            // must always lead into the system request — it can gate whether the
+            // request fires, not offer an escape from ever seeing it. The skip
+            // button is gone; "Continue" is the only action and always calls
+            // `requestAndFinish()`, which fires the real MusicKit dialog. A user
+            // who doesn't want library access still declines it there (system
+            // "Don't Allow") — `requestAndFinish()` calls `onFinish()`
+            // unconditionally after the request resolves, so declining doesn't
+            // block onboarding, it just skips the permission itself.
+            Button(action: { Task { await requestAndFinish() } }) {
+                HStack(spacing: 10) {
+                    if isBusy {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                            .tint(Color.sjCream)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(Color.sjInk)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    Text(isSaving ? "Saving…" : "Continue")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.sjCream)
                 }
-                .disabled(isBusy)
-
-                Button(action: { Task { await onFinish() } }) {
-                    Text("Skip for now")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(Color.sjMuted)
-                        .padding(.vertical, 8)
-                }
-                .disabled(isBusy)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(Color.sjInk)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             }
+            .disabled(isBusy)
             .padding(.horizontal, 24)
             .padding(.bottom, 48)
         }
