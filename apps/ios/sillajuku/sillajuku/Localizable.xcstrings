@@ -4064,6 +4064,7 @@
       }
     },
     "Skip for now" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
