@@ -74,9 +74,26 @@ export async function GET(req: NextRequest) {
       .limit(ALBUM_POOL),
   ]);
 
+  // Drop artists with nothing to show. The `area` discovery lane queues every MB artist ENTITY in
+  // a country/city, and MB entities exist without any releases (see migration 20260728000000), so
+  // ~13% of the catalog would otherwise suggest a page that renders empty. The "has releases" test
+  // mirrors get_artist_release_groups — primary UNION credited — so we never suggest a dead end.
+  // Answered server-side (artists_with_releases) rather than by de-duplicating release rows here:
+  // one prolific artist can exceed PostgREST's 1000-row response cap and truncate another's rows,
+  // which would read as "no releases" and hide a real artist.
+  const artistPool = (artistsResult.data ?? []) as any[];
+  const withReleases = new Set<string>();
+  if (artistPool.length) {
+    const { data: nonEmpty } = await supabase.rpc('artists_with_releases', {
+      p_ids: artistPool.map((a) => a.id),
+    });
+    for (const r of (nonEmpty ?? []) as any[]) withReleases.add(r.artist_id);
+  }
+
   // Artists: exact > prefix, then the shorter name (a decent proxy for the primary/best-known
   // act — "Drake" before "Drake Bell") so what the user meant floats up.
-  const artists: SuggestArtist[] = (artistsResult.data ?? [])
+  const artists: SuggestArtist[] = artistPool
+    .filter((a: any) => withReleases.has(a.id))
     .map((a: any) => ({
       item: {
         id: a.id,
