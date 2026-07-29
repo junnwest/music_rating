@@ -63,6 +63,9 @@ const RESUME = args.includes('--resume');
 const ARTIST = arg('artist') ?? null;
 const LIMIT = Number(arg('limit') ?? (ARTIST ? 1 : 100));
 const COUNTRY = arg('country') ?? null;
+// TIER 2 is opt-in: --tier=alias adds MB-alias-corroborated iTunes resolution on top of the
+// hard-link tier. Default stays hard-link-only, since alias matching is the weaker signal.
+const ALIAS_TIER = (arg('tier') ?? 'hard-link') === 'alias';
 
 const STATE = path.join(__dirname, 'resolve-empty-artists-state.json');
 
@@ -120,7 +123,7 @@ let itunesDisabled = false;
 const ITUNES_403_LIMIT = 15;
 
 interface Candidate { id: string; name: string; name_native: string | null; country: string | null; mbid: string }
-type Outcome = 'ingested' | 'would-ingest' | 'no-link' | 'ambiguous-link' | 'provider-unavailable' | 'no-albums' | 'already-has-releases' | 'name-mismatch' | 'error';
+type Outcome = 'ingested' | 'would-ingest' | 'no-link' | 'ambiguous-link' | 'provider-unavailable' | 'no-albums' | 'already-has-releases' | 'name-mismatch' | 'alias-rejected' | 'error';
 interface Result { id: string; name: string; outcome: Outcome; provider: string | null; groups: number; note: string; titles: string[] }
 
 // ── Second signal: does the provider's artist NAME corroborate the MB link? ──
@@ -132,13 +135,42 @@ interface Result { id: string; name: string; outcome: Outcome; provider: string 
 const nameKey = (s: string) => (s ?? '').toLowerCase()
   .replace(/[''`"]/g, '').replace(/[^\w가-힣぀-ゟ゠-ヿ一-鿿]/gu, '').trim();
 
+// Names too weak to identify an artist on their own. Both halves were established empirically:
+//   • short single-token CJK (김형우, 민수) — probed against iTunes, "김형우" returns exactly ONE
+//     exact-name artistId, so a uniqueness test alone would wrongly ACCEPT it.
+//   • short Latin (INE, exci) — a 3–5 character token collides freely across scenes; MB's
+//     sort-name "INE" matched an unrelated Japanese act in the 2026-07-29 dry run.
+const isGenericName = (n: string) => {
+  const s = (n ?? '').trim();
+  if (!s) return true;
+  const cjk = (s.match(/[가-힣぀-ゟ゠-ヿ一-鿿]/g) ?? []).length;
+  const single = s.split(/\s+/).length === 1;
+  if (cjk > 0) return single && cjk <= 3;
+  // Latin: a single-token romanized Korean GIVEN NAME ("Hansol", "Jihoon", "Minjun") is every bit
+  // as collision-prone as its Hangul form, just longer — MB's alias "Hansol" for 지한솔 (Busan)
+  // matched an unrelated iTunes "Hansol" in the 2026-07-29 dry run. Only a genuinely distinctive
+  // single-token handle clears this ("Skyminhyuk" 10, "Briakitten" 10, "LILMONEY" 8).
+  return single && s.length < 8;
+};
+
+// STRICT key for alias matching: case/punctuation-insensitive but WHITESPACE-PRESERVING.
+// nameKey() deletes spaces, which made "Marineboy" and "Marine Boy" identical — that collapsed
+// onto a different, 196-album artist in the 2026-07-29 dry run. A hard link can afford loose
+// name corroboration; name-based *resolution* cannot.
+const strictKey = (s: string) => (s ?? '').toLowerCase()
+  .replace(/[''`"]/g, '').replace(/[^\w\s가-힣぀-ゟ゠-ヿ一-鿿]/gu, ' ').replace(/\s+/g, ' ').trim();
+
+// NOTE: `sort-name` is deliberately EXCLUDED. It is a sorting key, not a performing name —
+// MB stores "INE" as the sort-name for 아이네, and searching that matched an unrelated Japanese
+// artist called INE, which would have written that act's discography onto a Korean one
+// (caught in the 2026-07-29 dry run, before any write).
 async function mbAliases(mbid: string): Promise<string[]> {
   await sleep(1100);
   try {
     const r = await fetch(`https://musicbrainz.org/ws/2/artist/${mbid}?inc=aliases&fmt=json`, { headers: { 'User-Agent': MB_UA } });
     if (!r.ok) return [];
     const j: any = await r.json();
-    return [j.name, j['sort-name'], ...(j.aliases ?? []).map((a: any) => a.name)].filter(Boolean);
+    return [j.name, ...(j.aliases ?? []).map((a: any) => a.name)].filter(Boolean);
   } catch { return []; }
 }
 
@@ -293,6 +325,60 @@ async function ingestFromDeezer(db: DB, a: Candidate, dzArtistId: number, write:
   return { groups, titles, note: '' };
 }
 
+// ── TIER 2 (opt-in, --tier=alias): MB-alias-corroborated iTunes resolution ──
+//
+// Weaker than a URL rel and deliberately separate. Two INDEPENDENT gates, both load-bearing —
+// probed 2026-07-29 against real iTunes data:
+//   UNIQUENESS     "이민영" returns 3 distinct artistIds with that exact name → abstain.
+//   DISTINCTIVENESS "김형우" returns exactly ONE exact-name artistId, so uniqueness alone would
+//                  have ACCEPTED it — but a 3-char Hangul personal name is a coin-flip on whether
+//                  it's *our* 김형우, so the generic-name guard rejects it anyway.
+// Only a name that is both unique on iTunes and distinctive enough to mean something passes
+// (스카이민혁 → 1475047483, correct). We search MB's ALIASES, not just our stored name: iTunes
+// lists Korean acts natively, so the Latin "Skyminhyuk" returns 0 exact matches while the MB alias
+// "스카이민혁" resolves cleanly.
+const ITUNES_SEARCH_DELAY = 900;
+async function itunesSearchAlbums(term: string, store: string | null): Promise<any[] | null> {
+  await sleep(ITUNES_SEARCH_DELAY + Math.floor(Math.random() * 300));
+  try {
+    const c = store ? `&country=${store}` : '';
+    const r = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=album&limit=50${c}`,
+      { headers: { 'User-Agent': 'sillajuku-empty-resolver/1.0' } });
+    if (r.status === 403 || r.status === 429) {
+      if (++itunes403Streak >= ITUNES_403_LIMIT) { itunesDisabled = true; console.warn('  [itunes] disabling after 403 streak'); }
+      return null;
+    }
+    if (!r.ok) return null;
+    itunes403Streak = 0;
+    return ((await r.json()) as any).results ?? [];
+  } catch { return null; }
+}
+
+async function resolveItunesByAlias(a: Candidate): Promise<{ artistId: number; via: string } | { reject: string }> {
+  const store = a.country === 'KR' ? 'KR' : a.country === 'JP' ? 'JP' : null;
+  const names = [...new Set([a.name_native, a.name, ...(await mbAliases(a.mbid))].filter(Boolean) as string[])];
+  // Native-script names first: that's how the stores actually list these acts.
+  names.sort((x, y) => (/[가-힣぀-ゟ゠-ヿ一-鿿]/.test(y) ? 1 : 0) - (/[가-힣぀-ゟ゠-ヿ一-鿿]/.test(x) ? 1 : 0));
+
+  let sawGeneric = false;
+  for (const nm of names) {
+    if (isGenericName(nm)) { sawGeneric = true; continue; } // never auto-accept a generic name
+    if (itunesDisabled) return { reject: 'itunes disabled (403 streak)' };
+    const results = await itunesSearchAlbums(nm, store);
+    if (!results?.length) continue;
+
+    const byArtist = new Map<number, string>();
+    for (const c of results) if (c.collectionId && c.artistId) byArtist.set(c.artistId, c.artistName ?? '');
+    const want = strictKey(nm);
+    const exact = [...byArtist.entries()].filter(([, an]) => strictKey(an) === want);
+
+    if (exact.length === 1) return { artistId: exact[0][0], via: nm };
+    // A collision is a red flag about the NAME itself — stop, don't try to get lucky on another.
+    if (exact.length > 1) return { reject: `${exact.length} iTunes artists share the exact name "${nm}"` };
+  }
+  return { reject: sawGeneric ? 'only generic/collision-prone names available' : 'no exact iTunes name match' };
+}
+
 // ── Spotify ingest (the majority of hard links) ──
 // Direct inserts rather than ingest-core, because `releases.spotify_id` is UNIQUE — that gives this
 // path the same DB-enforced re-run safety the iTunes path gets from UNIQUE(itunes_id), which the
@@ -387,7 +473,8 @@ async function resolveOne(db: DB, a: Candidate, write: boolean, spotifyUsable: b
 
   const links = await mbHardLinks(a.mbid);
   if (!links) return { ...base, outcome: 'error', note: 'MB lookup failed' };
-  if (!links.spotify.length && !links.apple.length && !links.deezer.length) return base;
+  const noHardLink = !links.spotify.length && !links.apple.length && !links.deezer.length;
+  if (noHardLink && !ALIAS_TIER) return base; // 'no-link'
 
   // MB listing two different ids for ONE provider means MB is unsure about THAT provider — it says
   // nothing about the others. Judge each independently (Skyminhyuk has one clean Spotify id and two
@@ -398,7 +485,7 @@ async function resolveOne(db: DB, a: Candidate, write: boolean, spotifyUsable: b
     spotify: links.spotify.length === 1 ? links.spotify[0] : null,
   };
   const ambiguous = Object.entries(links).filter(([, v]) => (v as string[]).length > 1).map(([k, v]) => `${(v as string[]).length} ${k}`);
-  if (!usable.apple && !usable.deezer && !usable.spotify) {
+  if (!usable.apple && !usable.deezer && !usable.spotify && !ALIAS_TIER) {
     return { ...base, outcome: 'ambiguous-link', note: `no unambiguous link (${ambiguous.join(', ')})` };
   }
 
@@ -417,14 +504,39 @@ async function resolveOne(db: DB, a: Candidate, write: boolean, spotifyUsable: b
     if (r.mismatch) return { ...base, outcome: 'name-mismatch', provider: 'deezer', note: r.note };
     if (r.note) return { ...base, outcome: 'no-albums', provider: 'deezer', note: r.note };
   }
+  // Tracks a hard link we couldn't USE (e.g. Spotify breaker open) so that, if the alias tier is
+  // also unavailable, we report the more informative 'provider-unavailable' rather than a
+  // terminal-sounding verdict — this artist is still recoverable on a later run.
+  let unavailableNote: string | null = null;
   if (usable.spotify) {
-    if (!spotifyUsable) return { ...base, outcome: 'provider-unavailable', provider: 'spotify', note: 'circuit breaker OPEN at start of run' };
-    const r = await ingestFromSpotify(db, a, usable.spotify, write);
-    if (r.groups > 0) return { ...base, outcome: write ? 'ingested' : 'would-ingest', provider: 'spotify', groups: r.groups, titles: r.titles, note: r.note };
-    if (r.mismatch) return { ...base, outcome: 'name-mismatch', provider: 'spotify', note: r.note };
-    // Not a terminal verdict — leave it re-runnable rather than recording "nothing to find".
-    if (r.unavailable) return { ...base, outcome: 'provider-unavailable', provider: 'spotify', note: r.note };
-    if (r.note) return { ...base, outcome: 'no-albums', provider: 'spotify', note: r.note };
+    if (!spotifyUsable) unavailableNote = 'spotify link only — circuit breaker OPEN at start of run';
+    else {
+      const r = await ingestFromSpotify(db, a, usable.spotify, write);
+      if (r.groups > 0) return { ...base, outcome: write ? 'ingested' : 'would-ingest', provider: 'spotify', groups: r.groups, titles: r.titles, note: r.note };
+      if (r.mismatch) return { ...base, outcome: 'name-mismatch', provider: 'spotify', note: r.note };
+      // Not a terminal verdict — leave it re-runnable rather than recording "nothing to find".
+      if (r.unavailable) unavailableNote = r.note;
+      else if (r.note) return { ...base, outcome: 'no-albums', provider: 'spotify', note: r.note };
+    }
+    // Fall through to the alias tier when enabled: the hard link being unreachable right now says
+    // nothing about whether iTunes can identify this artist by a corroborated name.
+    if (!ALIAS_TIER) return { ...base, outcome: 'provider-unavailable', provider: 'spotify', note: unavailableNote ?? '' };
+  }
+
+  // TIER 2 fallback — only when no hard link could be used, and only when explicitly enabled.
+  if (ALIAS_TIER && !itunesDisabled) {
+    const res = await resolveItunesByAlias(a);
+    if ('reject' in res) {
+      // An unusable hard link outranks an alias rejection: it means "try again later", not "no".
+      if (unavailableNote) return { ...base, outcome: 'provider-unavailable', provider: 'spotify', note: `${unavailableNote}; alias fallback: ${res.reject}` };
+      return { ...base, outcome: 'alias-rejected', note: res.reject };
+    }
+    const r = await ingestFromItunes(db, a, res.artistId, write);
+    if (r.groups > 0) {
+      return { ...base, outcome: write ? 'ingested' : 'would-ingest', provider: `itunes-alias`, groups: r.groups, titles: r.titles, note: `matched via "${res.via}"` };
+    }
+    if (r.mismatch) return { ...base, outcome: 'name-mismatch', provider: 'itunes-alias', note: r.note };
+    return { ...base, outcome: 'no-albums', provider: 'itunes-alias', note: r.note || 'alias resolved but no albums' };
   }
   return { ...base, outcome: 'no-albums', note: 'links present but no usable provider' };
 }
@@ -435,7 +547,7 @@ async function main() {
   let spotifyUsable = true;
   try { await assertSpotifyCircuitClosed(); } catch (e) { spotifyUsable = false; console.warn(`⚠ ${(e as Error).message}\n`); }
 
-  console.log(`${WRITE ? '⚠ LIVE — WRITES TO CATALOG' : 'DRY-RUN (no writes)'} · hard-link tier only\n`);
+  console.log(`${WRITE ? '⚠ LIVE — WRITES TO CATALOG' : 'DRY-RUN (no writes)'} · ${ALIAS_TIER ? 'hard-link + MB-alias iTunes tier' : 'hard-link tier only'}\n`);
 
   const rows = await sql<Candidate>(`
     select a.id, a.name, a.name_native, a.country, e.external_id as mbid
