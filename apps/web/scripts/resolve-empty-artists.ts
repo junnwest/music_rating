@@ -66,6 +66,19 @@ const COUNTRY = arg('country') ?? null;
 // TIER 2 is opt-in: --tier=alias adds MB-alias-corroborated iTunes resolution on top of the
 // hard-link tier. Default stays hard-link-only, since alias matching is the weaker signal.
 const ALIAS_TIER = (arg('tier') ?? 'hard-link') === 'alias';
+// Review workflow for the weaker alias tier: dry-run → eyeball the list → write ONLY the approved
+// artists. Accepts a comma-separated list of artist uuids, or a path to a file of them (one per
+// line, '#' comments allowed) — which is what you get by pruning the dry run's own report.
+const ONLY_IDS: Set<string> | null = (() => {
+  const v = arg('only-ids');
+  if (!v) return null;
+  const raw = fs.existsSync(v)
+    ? fs.readFileSync(v, 'utf8').split(/\r?\n/).map(l => l.replace(/#.*$/, '').trim())
+    : v.split(',').map(s => s.trim());
+  const ids = raw.filter(s => /^[0-9a-f-]{36}$/i.test(s));
+  if (!ids.length) { console.error(`--only-ids matched no artist uuids in "${v}"`); process.exit(1); }
+  return new Set(ids);
+})();
 
 const STATE = path.join(__dirname, 'resolve-empty-artists-state.json');
 
@@ -193,8 +206,11 @@ async function stillEmpty(db: DB, artistId: string): Promise<boolean> {
 }
 
 // ── iTunes ingest (mirrors discover-itunes-recency's proven path, but with a known artist id) ──
-async function ingestFromItunes(db: DB, a: Candidate, appleArtistId: number, write: boolean): Promise<{ groups: number; titles: string[]; note: string; mismatch?: boolean }> {
-  if (itunesDisabled) return { groups: 0, titles: [], note: 'itunes disabled (403 streak)' };
+async function ingestFromItunes(db: DB, a: Candidate, appleArtistId: number, write: boolean): Promise<{ groups: number; titles: string[]; note: string; mismatch?: boolean; unavailable?: boolean }> {
+  // Apple throttles this box persistently, so a 403 streak is a "come back later", NOT a verdict
+  // about the artist — it must stay retryable or a bulk run would strand everyone processed after
+  // the block kicked in.
+  if (itunesDisabled) return { groups: 0, titles: [], note: 'itunes disabled (403 streak)', unavailable: true };
   const nativeLang = a.name_native ? 'ko' : (a.country === 'KR' ? 'ko' : null);
   let albums;
   try {
@@ -204,7 +220,7 @@ async function ingestFromItunes(db: DB, a: Candidate, appleArtistId: number, wri
     if (/403|429/.test((e as Error).message)) {
       if (++itunes403Streak >= ITUNES_403_LIMIT) { itunesDisabled = true; console.warn('  [itunes] disabling after 403 streak'); }
     }
-    return { groups: 0, titles: [], note: `itunes error: ${(e as Error).message.slice(0, 80)}` };
+    return { groups: 0, titles: [], note: `itunes error: ${(e as Error).message.slice(0, 80)}`, unavailable: true };
   }
   // Only releases credited to THIS artist id — the lookup also returns features/comps by others.
   const own = albums.filter((al: any) => al.artistId === appleArtistId);
@@ -496,6 +512,7 @@ async function resolveOne(db: DB, a: Candidate, write: boolean, spotifyUsable: b
     const r = await ingestFromItunes(db, a, Number(usable.apple), write);
     if (r.groups > 0) return { ...base, outcome: write ? 'ingested' : 'would-ingest', provider: 'itunes', groups: r.groups, titles: r.titles, note: r.note };
     if (r.mismatch) return { ...base, outcome: 'name-mismatch', provider: 'itunes', note: r.note };
+    if (r.unavailable) return { ...base, outcome: 'provider-unavailable', provider: 'itunes', note: r.note };
     if (r.note) return { ...base, outcome: 'no-albums', provider: 'itunes', note: r.note };
   }
   if (usable.deezer) {
@@ -529,6 +546,8 @@ async function resolveOne(db: DB, a: Candidate, write: boolean, spotifyUsable: b
     if ('reject' in res) {
       // An unusable hard link outranks an alias rejection: it means "try again later", not "no".
       if (unavailableNote) return { ...base, outcome: 'provider-unavailable', provider: 'spotify', note: `${unavailableNote}; alias fallback: ${res.reject}` };
+      // A 403 block is likewise not a verdict about this artist — keep it retryable.
+      if (/itunes disabled/.test(res.reject)) return { ...base, outcome: 'provider-unavailable', provider: 'itunes-alias', note: res.reject };
       return { ...base, outcome: 'alias-rejected', note: res.reject };
     }
     const r = await ingestFromItunes(db, a, res.artistId, write);
@@ -536,6 +555,7 @@ async function resolveOne(db: DB, a: Candidate, write: boolean, spotifyUsable: b
       return { ...base, outcome: write ? 'ingested' : 'would-ingest', provider: `itunes-alias`, groups: r.groups, titles: r.titles, note: `matched via "${res.via}"` };
     }
     if (r.mismatch) return { ...base, outcome: 'name-mismatch', provider: 'itunes-alias', note: r.note };
+    if (r.unavailable) return { ...base, outcome: 'provider-unavailable', provider: 'itunes-alias', note: r.note };
     return { ...base, outcome: 'no-albums', provider: 'itunes-alias', note: r.note || 'alias resolved but no albums' };
   }
   return { ...base, outcome: 'no-albums', note: 'links present but no usable provider' };
@@ -549,7 +569,7 @@ async function main() {
 
   console.log(`${WRITE ? '⚠ LIVE — WRITES TO CATALOG' : 'DRY-RUN (no writes)'} · ${ALIAS_TIER ? 'hard-link + MB-alias iTunes tier' : 'hard-link tier only'}\n`);
 
-  const rows = await sql<Candidate>(`
+  let rows = await sql<Candidate>(`
     select a.id, a.name, a.name_native, a.country, e.external_id as mbid
     from artists a
     join artist_external_ids e on e.artist_id = a.id and e.source = 'musicbrainz'
@@ -561,15 +581,27 @@ async function main() {
     ${ALL ? '' : `limit ${LIMIT}`}
   `);
   if (!rows.length) { console.log('No matching zero-release artists.'); return; }
+  if (ONLY_IDS) {
+    const before = rows.length;
+    rows = rows.filter(r => ONLY_IDS.has(r.id));
+    console.log(`--only-ids: ${rows.length} of ${before} candidates approved for this run.`);
+    if (!rows.length) { console.log('None of the supplied ids are still zero-release artists.'); return; }
+  }
 
   let done: Result[] = [];
   if (RESUME && fs.existsSync(STATE)) {
     done = JSON.parse(fs.readFileSync(STATE, 'utf8'));
     console.log(`Resuming — ${done.length} already processed.`);
   }
-  const seen = new Set(done.map(r => r.id));
-  const todo = rows.filter(r => !seen.has(r.id));
-  console.log(`${rows.length} candidates · ${todo.length} to process\n`);
+  // Only TERMINAL verdicts are "done". 'provider-unavailable' and 'error' mean "couldn't check
+  // right now" (Spotify breaker open, MB timeout) — skipping those on resume would silently
+  // strand every artist whose link we simply hadn't been able to read yet.
+  const RETRYABLE = new Set<Outcome>(['provider-unavailable', 'error']);
+  const settled = new Set(done.filter(r => !RETRYABLE.has(r.outcome)).map(r => r.id));
+  const retryCount = done.filter(r => RETRYABLE.has(r.outcome)).length;
+  done = done.filter(r => !RETRYABLE.has(r.outcome)); // drop stale non-terminal rows; they re-run
+  const todo = rows.filter(r => !settled.has(r.id));
+  console.log(`${rows.length} candidates · ${todo.length} to process${retryCount ? ` (incl. ${retryCount} retryable from a previous run)` : ''}\n`);
 
   let n = 0;
   for (const a of todo) {
