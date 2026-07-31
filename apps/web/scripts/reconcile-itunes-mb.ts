@@ -39,9 +39,14 @@ export async function reconcileItunesMb(
   const log = opts.log ?? (() => {});
   const res: ReconcileResult = { linked: 0, dupNeedsMerge: 0, noMatch: 0, noMbArtist: 0 };
 
+  // Deezer included as of 2026-07-29: resolve-empty-artists.ts ingests MB-LINKED artists from
+  // Deezer, which mb-deezer-fallback never did (its artists have no MBID, so MB can never re-ingest
+  // them and no duplicate can form). Ours DO have an MBID and ARE re-polled by the FRESHNESS lane,
+  // so without this they'd be the one source-tagged population with no duplicate safety net.
+  // Only the selection filter changes — the matching below is already source-agnostic.
   let q = db.from('release_groups')
     .select('id, primary_artist_id, title, native_title, release_group_type, first_release_date')
-    .eq('source', 'itunes').is('mb_release_group_id', null).order('first_release_date', { ascending: false });
+    .in('source', ['itunes', 'deezer', 'spotify']).is('mb_release_group_id', null).order('first_release_date', { ascending: false });
   if (opts.limit) q = q.limit(opts.limit);
   const { data: rows, error } = await q;
   if (error) throw new Error(error.message);

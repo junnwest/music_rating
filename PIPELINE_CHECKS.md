@@ -24,7 +24,18 @@ npm run mb:audit          # deeper data view: sample eyeball, skipped list, sour
 
 ## Reading the results — what's fine vs a real problem
 **GOOD (no action):**
-- `pipeline:verify` → **7/7, "structurally clean"**. The `N empty artist(s) to review` note is **benign** — features-only acts (e.g. SEHUN) legitimately have 0 core releases after the composition filter, plus a few known generic-name false-matches (kai/dean/gray class, 0 release_groups = no bad data).
+- `pipeline:verify` → **7/7, "structurally clean"**. The `N empty artist(s) to review` note is **structurally** harmless (0 release_groups = no bad data, nothing to corrupt) — but see the warning below before reading it as "nothing to do".
+
+> ⚠️ **The `N empty artist(s)` note is no longer a small benign footnote (revised 2026-07-28).**
+> The original text here — "features-only acts (e.g. SEHUN) plus a few known generic-name
+> false-matches (kai/dean/gray class)" — was written when N was a handful. It predates the
+> **`area` discovery lane (2026-07-17)**, which queues every MB `country:KR` / `area:<city>`
+> **artist entity**; MB entities exist without any releases, so N is now **8,973 (13.3% of the
+> catalog; 7,662 KR = 61.7% of all KR artists)**. Sampled against the live MB API, ~98% have zero
+> release-groups **in MusicBrainz itself** — so it is a coverage gap, not an ingest failure, and
+> `pipeline:verify` passing is correct. Still **not** something to auto-fix: the rows are inert and
+> the FRESHNESS lane keeps re-polling them, so they self-heal when MB catalogs a release. They are
+> hidden from search as of migration `20260728000000`. Only treat a **rising** N as news.
 - `pipeline:status` throughput: healthy is **≳ 25 artists/hr**. A reading taken right after a restart is **understated** (downtime sits in the 60-min window) — re-check before reacting.
 - The `qc` **lane** heartbeat in `pipeline:status` can lag the live truth (it re-runs hourly and reflects the running process's code). **Trust `pipeline:verify` over a stale qc heartbeat.**
 - Two lanes added 2026-07-15 (iTunes recency bridge) are **expected** in `pipeline:status`: **`recency`** (auto-ingests recent KR releases MB lacks; `idle (swept)` = finished a full ~783-artist sweep, normal; `blocked (iTunes 403)` = shared GAPFILL cooldown, transient) and **`reconcile`** (daily; links `source='itunes'` rows to MB once it catches up). Both ON by default; `RECENCY=0` disables both. A slow but nonzero `recency` ingest rate is normal (5 artists/30m). If `reconcile` reports "merge-needed", that's a genuine cross-source dup to look at (rare).
