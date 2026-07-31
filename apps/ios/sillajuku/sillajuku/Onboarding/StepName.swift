@@ -32,17 +32,14 @@ struct StepName: View {
 
             Spacer()
 
-            // App Review (Guideline 4 — rejected 2026-07-16 and again on build 9,
-            // 2026-07-20) for gating Continue on this field being non-empty: Apple
-            // only ever sends a name on an Apple ID's first-ever authorization, so
-            // every repeat authorization — including every App Review pass, which
-            // reuses the same Apple ID across resubmissions — arrives with nothing
-            // to pre-fill, and a disabled Continue turned an occasionally-empty
-            // field into an always-blocking one for reviewers. Continue must stay
-            // enabled unconditionally here regardless of whether the field starts
-            // pre-filled, edited, or left empty; `OnboardingView.finish()` handles
-            // an empty submission by falling back to the username rather than
-            // blocking on it.
+            // This step is only reachable for Google/Spotify sign-in now —
+            // `OnboardingView.init` skips it entirely for `provider == "apple"`
+            // (Guideline 4: Sign in with Apple users must never be asked to
+            // (re-)confirm a name Authentication Services already supplied, so
+            // the fix lives at the step-list level, not here). Continue stays
+            // unconditional regardless, since there's no reason to block
+            // onboarding on an optional field; `OnboardingView.finish()` falls
+            // back to the username if it's left empty.
             Button(action: onNext) {
                 Text("Continue")
                     .font(.system(size: 16, weight: .semibold))

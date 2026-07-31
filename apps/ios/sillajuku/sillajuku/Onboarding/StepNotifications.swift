@@ -23,37 +23,33 @@ struct StepNotifications: View {
 
             Spacer()
 
-            // Same wording fix as StepAppleMusic.swift (App Review, Guideline
-            // 5.1.1(iv), 2026-07-21) applied here pre-emptively — this screen has
-            // the identical "custom screen + Allow X button" shape and would trip
-            // the same rule on notifications once a reviewer reached it.
-            VStack(spacing: 12) {
-                Button(action: { Task { await requestAndFinish() } }) {
-                    HStack(spacing: 10) {
-                        if isSaving {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                                .tint(Color.sjCream)
-                        }
-                        Text(isSaving ? "Saving…" : "Continue")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(Color.sjCream)
+            // Same shape as StepAppleMusic.swift, same two-round fix history
+            // (App Review, Guideline 5.1.1(iv)): "Continue" instead of "Allow X"
+            // (2026-07-21), and — found during the 2026-07-28 pre-final-submit
+            // guideline pass, not from a rejection letter naming this screen
+            // specifically — the "Skip for now" escape hatch removed too. A
+            // custom pre-permission screen must always lead into the system
+            // request, not offer a way to close it and never see the prompt.
+            // "Continue" is the only action; declining happens in the system
+            // sheet, and `requestAndFinish()` calls `onNext()` unconditionally
+            // either way, so declining skips the permission, not onboarding.
+            Button(action: { Task { await requestAndFinish() } }) {
+                HStack(spacing: 10) {
+                    if isSaving {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                            .tint(Color.sjCream)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(Color.sjInk)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    Text(isSaving ? "Saving…" : "Continue")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.sjCream)
                 }
-                .disabled(isSaving)
-
-                Button(action: { Task { await onNext() } }) {
-                    Text("Skip for now")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(Color.sjMuted)
-                        .padding(.vertical, 8)
-                }
-                .disabled(isSaving)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(Color.sjInk)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
             }
+            .disabled(isSaving)
             .padding(.horizontal, 24)
             .padding(.bottom, 48)
         }

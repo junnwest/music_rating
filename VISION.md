@@ -185,7 +185,7 @@ This data layer has long-term commercial value: licensing taste signals to strea
 | Rate limiting (Upstash Redis) | in progress |
 | Korean i18n (next-intl) | in progress |
 | Native iOS (Swift/SwiftUI) build | in progress |
-| App Store / Play Store submission | not started — submit by Jun 1 for mid-June review |
+| App Store / Play Store submission | in active review (build 14 pending, submission `16d56cd0`) — rejected 3x so far (Sign in with Apple UX, Apple Music permission flow, Age Rating accuracy, then a Sign-in-with-Apple bug on iPad); Play Store not started |
 | Pre-launch catalog seeding (Phase 2–4) | in progress |
 | Production QA | not started |
 

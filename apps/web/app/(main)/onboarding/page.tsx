@@ -1,18 +1,23 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Star, ArrowLeftRight, CheckCircle2, Circle, Bell } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
 import { USERNAME_REGEX, normalizeUsername } from '../../../lib/username';
 
 type Step = 'name' | 'username' | 'ratingMode' | 'notifications';
-const STEPS: Step[] = ['name', 'username', 'ratingMode', 'notifications'];
 
 /**
  * Onboarding — one question per screen, mirroring iOS OnboardingView:
  * name → username → rating style → notifications. Display name pre-fills
  * from the OAuth provider metadata.
+ *
+ * The name step is skipped entirely for Sign in with Apple (matches iOS's
+ * `OnboardingView.init`, fixed 2026-07-28 after two App Store rejections on
+ * Guideline 4): Apple's Authentication Services already supplied whatever
+ * name it had, or supplied nothing on a repeat authorization — either way,
+ * this app must not ask again. Google/Spotify still see the step.
  */
 export default function OnboardingPage() {
   const { t } = useLanguage();
@@ -23,19 +28,37 @@ export default function OnboardingPage() {
   const [ratingMode, setRatingMode] = useState<'manual' | 'instinct'>('manual');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [provider, setProvider] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
   const nameInput = useRef<HTMLInputElement>(null);
   const usernameInput = useRef<HTMLInputElement>(null);
   const checkTimer = useRef<ReturnType<typeof setTimeout>>();
 
-  const step = STEPS[stepIndex];
+  const steps = useMemo<Step[]>(
+    () =>
+      provider === 'apple'
+        ? ['username', 'ratingMode', 'notifications']
+        : ['name', 'username', 'ratingMode', 'notifications'],
+    [provider]
+  );
+  const step = steps[stepIndex];
 
-  // Pre-fill name from OAuth metadata (full_name / name), like iOS
+  // Pre-fill name from OAuth metadata (full_name / name) and read the sign-in
+  // provider, like iOS. `getSession()` reads the already-established local
+  // session (no network round-trip), so `steps` resolves before the first
+  // paint would otherwise show the wrong step list.
   useEffect(() => {
-    if (!supabase) return;
-    supabase.auth.getUser().then(({ data }) => {
-      const meta = data.user?.user_metadata ?? {};
+    if (!supabase) {
+      setReady(true);
+      return;
+    }
+    supabase.auth.getSession().then(({ data }) => {
+      const user = data.session?.user;
+      const meta = user?.user_metadata ?? {};
       const provided = (meta.full_name as string) || (meta.name as string) || '';
       if (provided) setDisplayName((v) => v || provided);
+      setProvider(user?.app_metadata?.provider ?? null);
+      setReady(true);
     });
   }, []);
 
@@ -70,15 +93,13 @@ export default function OnboardingPage() {
     return () => clearTimeout(checkTimer.current);
   }, [username]);
 
-  const canContinue =
-    step === 'name'
-      ? displayName.trim().length > 0
-      : step === 'username'
-        ? usernameStatus === 'ok'
-        : true;
+  // Continue is never gated on the name field — matches iOS's StepName,
+  // which stays unconditional so an empty/optional name never blocks
+  // onboarding; `finish()` falls back to the username.
+  const canContinue = step === 'username' ? usernameStatus === 'ok' : true;
 
   function advance() {
-    if (stepIndex + 1 < STEPS.length) setStepIndex(stepIndex + 1);
+    if (stepIndex + 1 < steps.length) setStepIndex(stepIndex + 1);
   }
 
   async function requestNotifications() {
@@ -101,7 +122,10 @@ export default function OnboardingPage() {
       const user = data.user;
       if (!user) throw new Error('not signed in');
       const typed = displayName.trim();
-      const finalName = typed || user.email?.split('@')[0] || '';
+      // Falls back to the username, not the email's local part — an Apple
+      // private-relay address's random local part reads far worse, and by
+      // this point the username step has already validated a real one.
+      const finalName = typed || username;
       const { error } = await supabase.from('profiles').upsert({
         id: user.id,
         display_name: finalName,
@@ -117,11 +141,15 @@ export default function OnboardingPage() {
     }
   }
 
+  if (!ready) {
+    return <div className="min-h-screen bg-page" />;
+  }
+
   return (
     <div className="min-h-screen bg-page flex flex-col items-center px-6">
       {/* Progress capsules */}
       <div className="flex items-center gap-1.5 pt-16">
-        {STEPS.map((s, i) => (
+        {steps.map((s, i) => (
           <span
             key={s}
             className={`h-1.5 rounded-full transition-all duration-300 ${
@@ -227,19 +255,21 @@ export default function OnboardingPage() {
             {saveError && (
               <p className="mb-3 text-[13px] text-red-500 text-center">{saveError}</p>
             )}
+            {/*
+              A custom pre-permission screen must always lead into the real
+              system prompt — no "Skip for now" escape hatch (App Review,
+              Guideline 5.1.1(iv); iOS's StepAppleMusic/StepNotifications hit
+              this exact issue, fixed 2026-07-28, ported here for parity even
+              though App Review doesn't review the web app). "Continue" is the
+              only action and always calls requestNotifications(), which
+              resolves to finish() either way the browser's own prompt goes.
+            */}
             <button
               onClick={requestNotifications}
               disabled={saving}
               className="w-full py-4 rounded-xl bg-ink text-page text-[15px] font-semibold hover:opacity-90 disabled:opacity-60 transition"
             >
-              {saving ? '…' : t('sj.onboarding.allowNotifications')}
-            </button>
-            <button
-              onClick={finish}
-              disabled={saving}
-              className="mt-3 py-1 text-[13px] text-muted hover:text-ink transition"
-            >
-              {t('sj.onboarding.skipForNow')}
+              {saving ? '…' : t('sj.onboarding.continue')}
             </button>
           </div>
         )}

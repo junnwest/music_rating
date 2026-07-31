@@ -3,6 +3,7 @@ import Observation
 import Supabase
 import AuthenticationServices
 import CryptoKit
+import Sentry
 
 @Observable
 class AuthViewModel {
@@ -53,7 +54,22 @@ class AuthViewModel {
         } catch {
             appleSignInHandler = nil
             if (error as? ASAuthorizationError)?.code != .canceled {
-                errorMessage = error.localizedDescription
+                // App Review rejected build 13 (Guideline 2.1(a), 2026-07-31, iPad
+                // Air 11" M3) for "an error message was displayed" during Sign in
+                // with Apple, with no repro steps or error text given. Capturing to
+                // Sentry here means any recurrence — on this device class or any
+                // other — leaves an actual stack trace/error code instead of
+                // another blind-guess round.
+                SentrySDK.capture(error: error)
+                // Same Apple ID gets reused across every App Review resubmission
+                // (documented in this file's onboarding-adjacent history) — if
+                // Supabase's identity linking ever conflicts for that reused
+                // identity, don't surface the raw backend string.
+                if let authError = error as? AuthError, authError.errorCode == .identityAlreadyExists {
+                    errorMessage = String(localized: "This Apple ID is already linked to a different sillajuku account. Sign in with the account you originally used, or contact support to unlink it.")
+                } else {
+                    errorMessage = error.localizedDescription
+                }
             }
         }
     }
@@ -70,6 +86,7 @@ class AuthViewModel {
                 scopes: scopes
             )
         } catch {
+            SentrySDK.capture(error: error)
             errorMessage = error.localizedDescription
         }
     }
@@ -113,9 +130,39 @@ private final class AppleSignInHandler: NSObject,
     }
 
     func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap { $0.windows }
-            .first { $0.isKeyWindow } ?? UIWindow()
+        // App Review rejected build 13 (Guideline 2.1(a), 2026-07-31) for an
+        // unspecified error during Sign in with Apple on iPad Air 11" M3 — no
+        // repro steps given. This app does NOT declare
+        // UIApplicationSupportsMultipleScenes, so it can never have more than
+        // one UIWindowScene of its own alive at once — Split View/Stage Manager
+        // with a *different* app doesn't add entries to *our* connectedScenes
+        // (each app is its own process with its own scene list), so multi-app
+        // multitasking was never actually a way to get more than one scene
+        // here. The real, narrower risk the old
+        // `.first { $0.isKeyWindow } ?? UIWindow()` missed: our single window
+        // can be transiently NOT flagged key during a scene activation-state
+        // transition (e.g. right as the app (re)gains focus), and the old
+        // fallback then handed ASAuthorizationController a disconnected,
+        // scene-less window with nothing to present on. This is the strongest
+        // available hypothesis (matches the exact code path and the "error
+        // message displayed" symptom), though Apple gave no error text to
+        // confirm it, and the timing window is closer to a race condition than
+        // something a manual repro can force on demand — the `SentrySDK.capture`
+        // in the catch block above is the fallback if this isn't the whole
+        // story. The fix below is a strict improvement regardless of the exact
+        // trigger: it only ever prefers a real window over the old blank one.
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        if let activeKeyWindow = scenes
+            .first(where: { $0.activationState == .foregroundActive })?
+            .windows.first(where: \.isKeyWindow) {
+            return activeKeyWindow
+        }
+        if let anyKeyWindow = scenes.flatMap(\.windows).first(where: \.isKeyWindow) {
+            return anyKeyWindow
+        }
+        if let anyWindow = scenes.flatMap(\.windows).first {
+            return anyWindow
+        }
+        return UIWindow()
     }
 }

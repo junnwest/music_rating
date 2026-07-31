@@ -13,22 +13,26 @@ struct OnboardingView: View {
 
 	let steps: [Step]
 
-	/// App Review rejected TWICE on a "What's your name?" step (2026-07-16, then
-	/// again 2026-07-20 on build 9) for making Continue REQUIRE a non-empty
-	/// field — Apple only ever sends the name on an Apple ID's very FIRST
-	/// authorization to this app, and every authorization since (App Review
+	/// App Review rejected the "What's your name?" step under Guideline 4
+	/// THREE times: 2026-07-16 and 2026-07-20 (build 9) for making Continue
+	/// REQUIRE a non-empty field — Apple only ever sends the name on an Apple
+	/// ID's very FIRST authorization, and every authorization since (App Review
 	/// reuses the same Apple ID across resubmissions) comes back with nothing,
 	/// so a disabled-until-typed Continue turned into an always-blocking gate
-	/// for reviewers. Build 10 (2026-07-20) responded by deleting the step
-	/// entirely — compliant, but it meant nobody could ever be asked for a name.
-	/// This restores the step (2026-07-22) the compliant way instead of the
-	/// blunt way: the field is ALWAYS shown, pre-filled with the real name when
-	/// Apple provided one (editable — the user can keep it or change it) and
-	/// empty with a placeholder when it didn't, and **Continue is unconditional**
-	/// — never gated on the field's contents. That's the actual rule Apple
-	/// enforces: don't require re-entry of data already provided, and don't make
-	/// any such field a hard block. `finish()` falls back to the username if the
-	/// field is left empty, so every account still gets a real display name.
+	/// for reviewers — and again on 2026-07-27 (build 11), after the field was
+	/// restored as an *optional*, pre-filled-when-available step shown to every
+	/// provider. That confirms Apple's rule is broader than "don't gate
+	/// Continue on it": Sign in with Apple's design guidelines say not to ask
+	/// the user to (re-)confirm name/email at all when Authentication Services
+	/// already supplied it — showing the screen is itself nonconforming,
+	/// whether or not the field is required. Fix: the `.name` step is now
+	/// skipped entirely for `provider == "apple"` (Apple already gave us the
+	/// name via `userMetadata` on first auth, or nothing on repeat auth — either
+	/// way, this app must not ask again). It stays for Google/Spotify, which
+	/// aren't governed by this SIWA-specific guideline. `finish()` still falls
+	/// back to the username when `data.displayName` is empty, so an Apple
+	/// sign-in with no name metadata still gets a real display name without a
+	/// screen ever asking for one.
 	/// Resolved in init, not onAppear, so `steps` never changes after first render.
 	init(provider: String) {
 		self.provider = provider
@@ -41,7 +45,8 @@ struct OnboardingView: View {
 				}
 			}
 		}
-		var s: [Step] = [.name, .username, .ratingMode, .notifications]
+		var s: [Step] = provider == "apple" ? [.username, .ratingMode, .notifications]
+										     : [.name, .username, .ratingMode, .notifications]
 		if provider == "apple" { s.append(.appleMusic) }
 		self.steps = s
 		self._data = State(initialValue: data)
