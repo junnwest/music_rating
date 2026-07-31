@@ -10,6 +10,14 @@ import type { MetadataRoute } from 'next';
 // intentionally does NOT enumerate the full catalog for the same reason — see that file for what
 // it includes and why. Only well-behaved bots obey robots.txt at all (Googlebot/Bingbot/GPTBot/
 // etc.) — abusive scrapers still need a WAF/rate limit regardless.
+//
+// AI_CRAWLER_BLOCKLIST (added 2026-07-30, after the sitemap's ~460k album+artist URLs blew
+// through Vercel's free Fluid Active CPU tier): these bots are exactly the "well-behaved, obeys
+// robots.txt" kind noted above, which is what makes blocking them actually work. None of them
+// send real visitors back the way Googlebot/Bingbot's search placement does — they exist to feed
+// AI training or answer-engine indexes — so disallowing them cuts real server-render load with no
+// SEO cost. A named User-agent block is matched *instead of* the `*` block below, not in addition
+// to it, so Googlebot/Bingbot/every other crawler not listed here keeps the normal allow rules.
 // generateSitemaps() in sitemap.ts produces N+1 static files (/sitemap/0.xml..N.xml), not a
 // single /sitemap.xml index -- Next doesn't auto-generate an index linking them, so every
 // individual file has to be listed here directly (the sitemap protocol supports multiple
@@ -41,6 +49,25 @@ async function albumPageCount(): Promise<number> {
   }
 }
 
+// AI training / answer-engine crawlers, blocked outright (see the comment above
+// albumPageCount for why). Not exhaustive — extend if a new one shows up in
+// Vercel's function logs consuming meaningful CPU.
+const AI_CRAWLER_BLOCKLIST = [
+  'GPTBot',
+  'ChatGPT-User',
+  'Google-Extended',
+  'CCBot',
+  'ClaudeBot',
+  'anthropic-ai',
+  'Bytespider',
+  'PerplexityBot',
+  'Applebot-Extended',
+  'meta-externalagent',
+  'Diffbot',
+  'Omgilibot',
+  'Omgili',
+];
+
 export default async function robots(): Promise<MetadataRoute.Robots> {
   // www, not the bare apex -- see layout.tsx's matching comment. Confirmed live: submitting the
   // apex version to Search Console showed "Couldn't fetch" (sillajuku.com 307-redirects to
@@ -68,6 +95,7 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
           '/search',
         ],
       },
+      ...AI_CRAWLER_BLOCKLIST.map((userAgent) => ({ userAgent, disallow: '/' })),
     ],
     sitemap: sitemaps,
   };
