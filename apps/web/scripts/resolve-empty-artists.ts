@@ -434,11 +434,30 @@ async function resolveItunesByAlias(a: Candidate): Promise<{ artistId: number; v
 // Direct inserts rather than ingest-core, because `releases.spotify_id` is UNIQUE — that gives this
 // path the same DB-enforced re-run safety the iTunes path gets from UNIQUE(itunes_id), which the
 // Deezer path cannot have (there is no deezer id column).
+// Self-imposed backpressure, not just reaction to a 429. The breaker tripped TWICE running this
+// script (2026-07-29 from an unthrottled helper script; 2026-07-30 from THIS function despite a
+// 250ms per-album sleep, ~630 artists into an ~8,700-artist sweep) — reacting after Spotify tells
+// us to stop is too late once a sustained bulk run is already mid-flight. Every Spotify-bound call
+// in this function goes through here first: a per-call minimum spacing, plus a longer forced
+// cooldown every SPOTIFY_BUDGET_CHUNK calls, proactively, before any 429 ever happens.
+// UNVERIFIED LIVE as of 2026-07-30 — the breaker (open until 2026-08-01 03:27 UTC) blocked testing
+// this. Start the next Spotify run small (--limit) and confirm no 429s before trusting it at scale.
+let spotifyCallCount = 0;
+const SPOTIFY_MIN_SPACING_MS = 600;
+const SPOTIFY_BUDGET_CHUNK = 40;
+const SPOTIFY_BUDGET_COOLDOWN_MS = 8000;
+async function spotifyPace(): Promise<void> {
+  spotifyCallCount++;
+  await sleep(SPOTIFY_MIN_SPACING_MS);
+  if (spotifyCallCount % SPOTIFY_BUDGET_CHUNK === 0) await sleep(SPOTIFY_BUDGET_COOLDOWN_MS);
+}
+
 async function ingestFromSpotify(db: DB, a: Candidate, spotifyArtistId: string, write: boolean): Promise<{ groups: number; titles: string[]; note: string; mismatch?: boolean; unavailable?: boolean }> {
   // Fail loudly rather than hammering a rate-limited API — the breaker is shared with production.
   try { await assertSpotifyCircuitClosed(); }
   catch (e) { return { groups: 0, titles: [], note: (e as Error).message.slice(0, 90), unavailable: true }; }
 
+  await spotifyPace();
   const artist = await getSpotifyArtist(spotifyArtistId);
   if (!artist) return { groups: 0, titles: [], note: 'spotify artist lookup failed', unavailable: true };
   if (!(await nameCorroborates(a, artist.name))) {
@@ -449,6 +468,7 @@ async function ingestFromSpotify(db: DB, a: Candidate, spotifyArtistId: string, 
   // artist who genuinely has no albums (the same silent-failure shape as the getReleaseTracks bug
   // fixed 2026-07-22). Re-check the breaker on an empty result so a rate-limit mid-run is never
   // recorded as the terminal verdict "this artist has nothing".
+  await spotifyPace();
   const page = await getSpotifyArtistAlbums(spotifyArtistId); // no artistName → no name-search fallback
   if (page.releases.length === 0) {
     try { await assertSpotifyCircuitClosed(); }
@@ -479,6 +499,7 @@ async function ingestFromSpotify(db: DB, a: Candidate, spotifyArtistId: string, 
     // "would ingest" for an artist a real --write only wrote 2 for. Moved the check before both
     // paths so dry-run and write agree — costs dry-run one extra Spotify call per candidate album,
     // worth it given tonight's running theme of inflated numbers (Marineboy, 아이네, 한솔).
+    await spotifyPace();
     let detail;
     try { detail = await getSpotifyAlbum(al.spotifyId ?? al.id); }
     catch { detail = null; }
@@ -535,7 +556,6 @@ async function ingestFromSpotify(db: DB, a: Candidate, spotifyArtistId: string, 
       skippedErrors++;
       console.warn(`  [spotify] "${al.title}" failed, skipping this album: ${(e as Error).message.slice(0, 100)}`);
     }
-    await sleep(250); // gentle: this is the shared production Spotify credential
   }
   // All attempts failed transiently (not a genuine empty catalog) -> retryable, not terminal.
   if (groups === 0 && skippedErrors > 0) {
