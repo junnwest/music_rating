@@ -423,9 +423,30 @@ async function resolveItunesByAlias(a: Candidate): Promise<{ artistId: number; v
     const want = strictKey(nm);
     const exact = [...byArtist.entries()].filter(([, an]) => strictKey(an) === want);
 
-    if (exact.length === 1) return { artistId: exact[0][0], via: nm };
-    // A collision is a red flag about the NAME itself — stop, don't try to get lucky on another.
-    if (exact.length > 1) return { reject: `${exact.length} iTunes artists share the exact name "${nm}"` };
+    if (exact.length > 1) {
+      // A collision is a red flag about the NAME itself — stop, don't try to get lucky on another.
+      return { reject: `${exact.length} iTunes artists share the exact name "${nm}"` };
+    }
+    if (exact.length === 1) {
+      // COHERENCE CHECK — found 2026-07-31 auditing a full alias-tier sweep: "Christina" (52
+      // groups) passed uniqueness AND the distinctiveness guard (9 chars), but its one iTunes
+      // artistId turned out to itself be an Apple-side mis-merge of unrelated people sharing that
+      // mononym — German Christmas harp music, Spanish pop, a Korean kids' song, and Russian pop,
+      // spanning 1991–2026. Uniqueness only proves ONE iTunes id exists for the name; it says
+      // nothing about whether that id's own catalog is internally coherent. A single artist's
+      // catalog spanning >25 years is possible but rare for this pipeline's population (mostly
+      // active/modern acts) and was the single reliable signal that separated "Christina" from
+      // clean matches like Zack Knight (11yr) or Rajvir Jawanda (11yr) — reject rather than guess.
+      const disco = await fetchDiscography(exact[0][0]);
+      const years = disco
+        .map(al => Number((al.releaseDate ?? '').slice(0, 4)))
+        .filter(y => y > 1900 && y <= new Date().getUTCFullYear() + 1);
+      if (years.length >= 2) {
+        const span = Math.max(...years) - Math.min(...years);
+        if (span > 25) return { reject: `catalog spans ${span} years (${Math.min(...years)}–${Math.max(...years)}) — likely a merged/ambiguous identity, not one artist` };
+      }
+      return { artistId: exact[0][0], via: nm };
+    }
   }
   return { reject: sawGeneric ? 'only generic/collision-prone names available' : 'no exact iTunes name match' };
 }
