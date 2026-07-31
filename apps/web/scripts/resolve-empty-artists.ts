@@ -235,48 +235,64 @@ async function ingestFromItunes(db: DB, a: Candidate, appleArtistId: number, wri
 
   const titles: string[] = [];
   let groups = 0;
-  for (const al of own) {
-    const key = releaseGroupKey(al.collectionName);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const date = (al.releaseDate ?? '').slice(0, 10);
-    const rtype = releaseType(al.trackCount ?? 0, al.collectionName);
-    const album: AlbumInput = {
-      collectionId: al.collectionId, artistId: al.artistId, artistName: al.artistName,
-      collectionName: al.collectionName, releaseDate: al.releaseDate, primaryGenreName: al.primaryGenreName,
-      trackCount: al.trackCount, artworkUrl100: al.artworkUrl100, country: al.country,
-    };
-    const group = await findOrCreateReleaseGroup(ctx, {
-      primaryArtistId: a.id, artistDisplay: al.artistName, title: al.collectionName,
-      appReleaseType: rtype, firstReleaseDate: date || null,
-      coverUrl: artworkUrl(al.artworkUrl100 ?? '') || null, genre: mapGenre(al.primaryGenreName ?? '') || null,
-    });
-    const tracks = write ? await fetchAlbumTracks(al.collectionId, nativeLang) : [];
-    const native = detectLanguage(al.collectionName)
-      ? { titleNative: al.collectionName, artistNative: a.name_native ?? al.artistName, nativeLanguage: detectLanguage(al.collectionName)! }
-      : null;
-    const result = await ingestEdition(ctx, { album, primaryArtistId: a.id, group, native, tracks });
-    titles.push(`${date || '????'} ${al.collectionName}`);
-    if (result === 'inserted') groups++; // 'skipped' = dup itunes_id; must not be counted as gained
-  }
-  if (write && groups > 0) {
-    // Sweep-tag AFTER the loop, artist-scoped. Doing it per-group left a crash window: an
-    // interrupt between the release_group insert and its source update would strand a source=NULL
-    // row, which reconcile-itunes-mb (source in itunes/deezer) would never pick up — an
-    // unreconcilable row that becomes a cross-source duplicate when MB catalogs the album. A
-    // sweep also self-heals any such row left by an earlier interrupted run.
-    await db.from('release_groups').update({ source: 'itunes' }).eq('primary_artist_id', a.id).is('source', null);
-    const { data: rgIds } = await db.from('release_groups').select('id').eq('primary_artist_id', a.id);
-    for (const rg of (rgIds ?? []) as any[]) {
-      await db.from('releases').update({ source: 'itunes' }).eq('release_group_id', rg.id).is('source', null);
+  let skippedErrors = 0;
+  try {
+    for (const al of own) {
+      const key = releaseGroupKey(al.collectionName);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      // Found 2026-07-30: a single album's DB write (e.g. a recordings-insert statement timeout,
+      // as happened to "Lino") threw out of the whole loop, aborting BEFORE the sweep-tag below
+      // ever ran — every earlier album this call had already written was left source=NULL and
+      // silently unreconcilable (63 groups on one artist, confirmed by direct audit). One album's
+      // transient failure must never cost every other album's provenance tag.
+      try {
+        const date = (al.releaseDate ?? '').slice(0, 10);
+        const rtype = releaseType(al.trackCount ?? 0, al.collectionName);
+        const album: AlbumInput = {
+          collectionId: al.collectionId, artistId: al.artistId, artistName: al.artistName,
+          collectionName: al.collectionName, releaseDate: al.releaseDate, primaryGenreName: al.primaryGenreName,
+          trackCount: al.trackCount, artworkUrl100: al.artworkUrl100, country: al.country,
+        };
+        const group = await findOrCreateReleaseGroup(ctx, {
+          primaryArtistId: a.id, artistDisplay: al.artistName, title: al.collectionName,
+          appReleaseType: rtype, firstReleaseDate: date || null,
+          coverUrl: artworkUrl(al.artworkUrl100 ?? '') || null, genre: mapGenre(al.primaryGenreName ?? '') || null,
+        });
+        const tracks = write ? await fetchAlbumTracks(al.collectionId, nativeLang) : [];
+        const native = detectLanguage(al.collectionName)
+          ? { titleNative: al.collectionName, artistNative: a.name_native ?? al.artistName, nativeLanguage: detectLanguage(al.collectionName)! }
+          : null;
+        const result = await ingestEdition(ctx, { album, primaryArtistId: a.id, group, native, tracks });
+        titles.push(`${date || '????'} ${al.collectionName}`);
+        if (result === 'inserted') groups++; // 'skipped' = dup itunes_id; must not be counted as gained
+      } catch (e) {
+        skippedErrors++;
+        console.warn(`  [itunes] "${al.collectionName}" failed, skipping this album: ${(e as Error).message.slice(0, 100)}`);
+      }
     }
-    await db.from('recordings').update({ source: 'itunes' }).eq('primary_artist_id', a.id).is('source', null);
+  } finally {
+    // ALWAYS runs, even if the loop above threw somewhere the per-album catch didn't cover —
+    // whatever made it into the DB this call gets tagged, belt-and-suspenders on top of the
+    // per-album catch. Idempotent (`.is('source', null)`), so re-running it costs nothing.
+    if (write && groups > 0) {
+      await db.from('release_groups').update({ source: 'itunes' }).eq('primary_artist_id', a.id).is('source', null);
+      const { data: rgIds } = await db.from('release_groups').select('id').eq('primary_artist_id', a.id);
+      for (const rg of (rgIds ?? []) as any[]) {
+        await db.from('releases').update({ source: 'itunes' }).eq('release_group_id', rg.id).is('source', null);
+      }
+      await db.from('recordings').update({ source: 'itunes' }).eq('primary_artist_id', a.id).is('source', null);
+    }
   }
-  return { groups, titles, note: '' };
+  // All attempts failed transiently (not a genuine empty catalog) -> retryable, not terminal.
+  if (groups === 0 && skippedErrors > 0) {
+    return { groups, titles, note: `${skippedErrors} album(s) failed and were skipped`, unavailable: true };
+  }
+  return { groups, titles, note: skippedErrors ? `${skippedErrors} album(s) failed and were skipped` : '' };
 }
 
 // ── Deezer ingest (mirrors mb-deezer-fallback's writer, but never creates an artist) ──
-async function ingestFromDeezer(db: DB, a: Candidate, dzArtistId: number, write: boolean): Promise<{ groups: number; titles: string[]; note: string; mismatch?: boolean }> {
+async function ingestFromDeezer(db: DB, a: Candidate, dzArtistId: number, write: boolean): Promise<{ groups: number; titles: string[]; note: string; mismatch?: boolean; unavailable?: boolean }> {
   // artistAlbums() is id-scoped but returns no artist name, so read the artist entity for the
   // corroboration check — same guard as the iTunes path.
   let dzName = '';
@@ -297,6 +313,7 @@ async function ingestFromDeezer(db: DB, a: Candidate, dzArtistId: number, write:
 
   const titles: string[] = [];
   let groups = 0;
+  let skippedErrors = 0;
   for (const al of albums) {
     const key = releaseGroupKey(al.title);
     if (seen.has(key)) continue;
@@ -305,40 +322,58 @@ async function ingestFromDeezer(db: DB, a: Candidate, dzArtistId: number, write:
     titles.push(`${date ?? '????'} ${al.title}`);
     if (!write) { groups++; continue; }
 
-    const detail = await albumWithTracks(al.id, true);
-    if (!detail || detail.tracks.length === 0) continue;
-    const rgId = randomUUID();
-    const genre = mapGenre(detail.genre ?? '') || null;
-    const native = detectLanguage(al.title) ? al.title : null;
-    const { error: rgErr } = await db.from('release_groups').insert({
-      id: rgId, primary_artist_id: a.id, artist_display: display, title: al.title,
-      release_group_type: ['album', 'ep', 'single'].includes(al.recordType) ? al.recordType : 'album',
-      first_release_date: date, cover_url: detail.cover || al.cover || null,
-      genres: genre ? [genre] : null, native_title: native, source: 'deezer',
-    });
-    if (rgErr) throw new Error(`release_group "${al.title}": ${rgErr.message}`);
+    // Isolated per-album (2026-07-30, same lesson as the iTunes path's "Lino" incident): a
+    // recordings/release_tracks failure partway through must not abort every remaining album for
+    // this artist — that turns one transient DB error into a whole-artist outcome:'error' that
+    // then needs a full re-scan to retry, instead of just this one album.
+    try {
+      const detail = await albumWithTracks(al.id, true);
+      if (!detail || detail.tracks.length === 0) continue;
+      const rgId = randomUUID();
+      const genre = mapGenre(detail.genre ?? '') || null;
+      const native = detectLanguage(al.title) ? al.title : null;
+      const { error: rgErr } = await db.from('release_groups').insert({
+        id: rgId, primary_artist_id: a.id, artist_display: display, title: al.title,
+        release_group_type: ['album', 'ep', 'single'].includes(al.recordType) ? al.recordType : 'album',
+        first_release_date: date, cover_url: detail.cover || al.cover || null,
+        genres: genre ? [genre] : null, native_title: native, source: 'deezer',
+      });
+      if (rgErr) throw new Error(`release_group "${al.title}": ${rgErr.message}`);
 
-    const relId = randomUUID();
-    const { error: relErr } = await db.from('releases').insert({
-      id: relId, release_group_id: rgId, is_canonical: true, region: a.country,
-      title: al.title, artist: display, release_date: date, release_type: al.recordType,
-      cover_url: detail.cover || al.cover || null, total_tracks: detail.tracks.length,
-      source: 'deezer', cached_at: nowIso(),
-    });
-    if (relErr) throw new Error(`release "${al.title}": ${relErr.message}`);
+      const relId = randomUUID();
+      const { error: relErr } = await db.from('releases').insert({
+        id: relId, release_group_id: rgId, is_canonical: true, region: a.country,
+        title: al.title, artist: display, release_date: date, release_type: al.recordType,
+        cover_url: detail.cover || al.cover || null, total_tracks: detail.tracks.length,
+        source: 'deezer', cached_at: nowIso(),
+      });
+      if (relErr) {
+        // The release_group above DID commit — never leave it orphaned (0 releases). Clean it up
+        // so a future run's `seen` (built from titles) doesn't wrongly think this title exists.
+        await db.from('release_groups').delete().eq('id', rgId);
+        throw new Error(`release "${al.title}": ${relErr.message}`);
+      }
 
-    const recs = detail.tracks.map(t => ({
-      id: randomUUID(), primary_artist_id: a.id, artist_display: t.artists || display,
-      title: t.title, isrc: t.isrc, duration_ms: t.durationMs, source: 'deezer',
-    }));
-    const { error: recErr } = await db.from('recordings').insert(recs);
-    if (recErr) throw new Error(`recordings "${al.title}": ${recErr.message}`);
-    const rts = detail.tracks.map((t, i) => ({ release_id: relId, recording_id: recs[i].id, position: t.position, disc_number: t.discNumber }));
-    const { error: rtErr } = await db.from('release_tracks').insert(rts);
-    if (rtErr) throw new Error(`release_tracks "${al.title}": ${rtErr.message}`);
-    groups++;
+      const recs = detail.tracks.map(t => ({
+        id: randomUUID(), primary_artist_id: a.id, artist_display: t.artists || display,
+        title: t.title, isrc: t.isrc, duration_ms: t.durationMs, source: 'deezer',
+      }));
+      const { error: recErr } = await db.from('recordings').insert(recs);
+      if (recErr) throw new Error(`recordings "${al.title}": ${recErr.message}`);
+      const rts = detail.tracks.map((t, i) => ({ release_id: relId, recording_id: recs[i].id, position: t.position, disc_number: t.discNumber }));
+      const { error: rtErr } = await db.from('release_tracks').insert(rts);
+      if (rtErr) throw new Error(`release_tracks "${al.title}": ${rtErr.message}`);
+      groups++;
+    } catch (e) {
+      skippedErrors++;
+      console.warn(`  [deezer] "${al.title}" failed, skipping this album: ${(e as Error).message.slice(0, 100)}`);
+    }
   }
-  return { groups, titles, note: '' };
+  // All attempts failed transiently (not a genuine empty catalog) -> retryable, not terminal.
+  if (groups === 0 && skippedErrors > 0) {
+    return { groups, titles, note: `${skippedErrors} album(s) failed and were skipped`, unavailable: true };
+  }
+  return { groups, titles, note: skippedErrors ? `${skippedErrors} album(s) failed and were skipped` : '' };
 }
 
 // ── TIER 2 (opt-in, --tier=alias): MB-alias-corroborated iTunes resolution ──
@@ -427,61 +462,86 @@ async function ingestFromSpotify(db: DB, a: Candidate, spotifyArtistId: string, 
 
   const titles: string[] = [];
   let groups = 0;
+  let skippedErrors = 0;
   for (const al of page.releases) {
     const key = releaseGroupKey(al.title);
     if (seen.has(key)) continue;
     seen.add(key);
     const date = (al.date || '').slice(0, 10) || null;
+
+    // Found testing "Briakitten" (2026-07-30): getSpotifyArtistAlbums surfaces some releases
+    // (compilations/OSTs) whose OWN metadata credits a DIFFERENT artist id — Spotify's artist-
+    // discography endpoint doesn't mark these 'appears_on' the way it does true guest features, so
+    // the lib-level filter lets them through. The detail-level artist-id check below is what
+    // actually excludes them, correctly (attaching someone else's soundtrack credit to this artist
+    // would be exactly the wrong-attribution class this script exists to prevent) — but it used to
+    // run AFTER the dry-run's `!write` shortcut already counted the album, so dry-run reported 6
+    // "would ingest" for an artist a real --write only wrote 2 for. Moved the check before both
+    // paths so dry-run and write agree — costs dry-run one extra Spotify call per candidate album,
+    // worth it given tonight's running theme of inflated numbers (Marineboy, 아이네, 한솔).
+    let detail;
+    try { detail = await getSpotifyAlbum(al.spotifyId ?? al.id); }
+    catch { detail = null; }
+    if (!detail || detail.tracks.length === 0) continue;
+    if (detail.artists?.length && !detail.artists.some(ar => ar.id === spotifyArtistId)) continue;
+
     titles.push(`${date ?? '????'} ${al.title}`);
     if (!write) { groups++; continue; }
 
-    const detail = await getSpotifyAlbum(al.spotifyId ?? al.id);
-    if (!detail || detail.tracks.length === 0) continue;
-    // Guard the fallback path inside getSpotifyArtistAlbums: only ingest what this artist is on.
-    if (detail.artists?.length && !detail.artists.some(ar => ar.id === spotifyArtistId)) continue;
+    // Isolated per-album (same lesson as the iTunes "Lino" incident, 2026-07-30): one album's DB
+    // failure must not abort every remaining album for this artist.
+    try {
+      const rgType = ['album', 'ep', 'single'].includes((al.releaseType ?? '').toLowerCase())
+        ? (al.releaseType as string).toLowerCase() : 'album';
+      const rgId = randomUUID();
+      const native = detectLanguage(al.title) ? al.title : null;
+      const { error: rgErr } = await db.from('release_groups').insert({
+        id: rgId, primary_artist_id: a.id, artist_display: display, title: al.title,
+        release_group_type: rgType, first_release_date: date, cover_url: al.coverUrl ?? null,
+        genres: detail.genres?.length ? [mapGenre(detail.genres[0])].filter(Boolean) : null,
+        native_title: native, source: 'spotify',
+      });
+      if (rgErr) throw new Error(`release_group "${al.title}": ${rgErr.message}`);
 
-    const rgType = ['album', 'ep', 'single'].includes((al.releaseType ?? '').toLowerCase())
-      ? (al.releaseType as string).toLowerCase() : 'album';
-    const rgId = randomUUID();
-    const native = detectLanguage(al.title) ? al.title : null;
-    const { error: rgErr } = await db.from('release_groups').insert({
-      id: rgId, primary_artist_id: a.id, artist_display: display, title: al.title,
-      release_group_type: rgType, first_release_date: date, cover_url: al.coverUrl ?? null,
-      genres: detail.genres?.length ? [mapGenre(detail.genres[0])].filter(Boolean) : null,
-      native_title: native, source: 'spotify',
-    });
-    if (rgErr) throw new Error(`release_group "${al.title}": ${rgErr.message}`);
-
-    const relId = randomUUID();
-    const { error: relErr } = await db.from('releases').insert({
-      id: relId, release_group_id: rgId, is_canonical: true, region: a.country,
-      spotify_id: al.spotifyId ?? al.id, title: al.title, artist: display, release_date: date,
-      release_type: rgType, cover_url: al.coverUrl ?? null, total_tracks: detail.tracks.length,
-      source: 'spotify', cached_at: nowIso(),
-    });
-    if (relErr) {
-      // 23505 = UNIQUE(spotify_id): this edition already exists → drop the just-made group so we
-      // never strand an empty release_group, and move on.
-      if ((relErr as { code?: string }).code === '23505') {
-        await db.from('release_groups').delete().eq('id', rgId);
-        continue;
+      const relId = randomUUID();
+      const { error: relErr } = await db.from('releases').insert({
+        id: relId, release_group_id: rgId, is_canonical: true, region: a.country,
+        spotify_id: al.spotifyId ?? al.id, title: al.title, artist: display, release_date: date,
+        release_type: rgType, cover_url: al.coverUrl ?? null, total_tracks: detail.tracks.length,
+        source: 'spotify', cached_at: nowIso(),
+      });
+      if (relErr) {
+        // 23505 = UNIQUE(spotify_id): this edition already exists → drop the just-made group so we
+        // never strand an empty release_group, and move on.
+        if ((relErr as { code?: string }).code === '23505') {
+          await db.from('release_groups').delete().eq('id', rgId);
+          continue;
+        }
+        await db.from('release_groups').delete().eq('id', rgId); // never leave a 0-release group
+        throw new Error(`release "${al.title}": ${relErr.message}`);
       }
-      throw new Error(`release "${al.title}": ${relErr.message}`);
-    }
 
-    const recs = detail.tracks.map(t => ({
-      id: randomUUID(), primary_artist_id: a.id, artist_display: t.artists || display,
-      title: t.title, duration_ms: t.durationMs, source: 'spotify',
-    }));
-    const { error: recErr } = await db.from('recordings').insert(recs);
-    if (recErr) throw new Error(`recordings "${al.title}": ${recErr.message}`);
-    const rts = detail.tracks.map((t, i) => ({ release_id: relId, recording_id: recs[i].id, position: t.position, disc_number: 1 }));
-    const { error: rtErr } = await db.from('release_tracks').insert(rts);
-    if (rtErr) throw new Error(`release_tracks "${al.title}": ${rtErr.message}`);
-    groups++;
+      const recs = detail.tracks.map(t => ({
+        id: randomUUID(), primary_artist_id: a.id, artist_display: t.artists || display,
+        title: t.title, duration_ms: t.durationMs, source: 'spotify',
+      }));
+      const { error: recErr } = await db.from('recordings').insert(recs);
+      if (recErr) throw new Error(`recordings "${al.title}": ${recErr.message}`);
+      const rts = detail.tracks.map((t, i) => ({ release_id: relId, recording_id: recs[i].id, position: t.position, disc_number: 1 }));
+      const { error: rtErr } = await db.from('release_tracks').insert(rts);
+      if (rtErr) throw new Error(`release_tracks "${al.title}": ${rtErr.message}`);
+      groups++;
+    } catch (e) {
+      skippedErrors++;
+      console.warn(`  [spotify] "${al.title}" failed, skipping this album: ${(e as Error).message.slice(0, 100)}`);
+    }
     await sleep(250); // gentle: this is the shared production Spotify credential
   }
-  return { groups, titles, note: '' };
+  // All attempts failed transiently (not a genuine empty catalog) -> retryable, not terminal.
+  if (groups === 0 && skippedErrors > 0) {
+    return { groups, titles, note: `${skippedErrors} album(s) failed and were skipped`, unavailable: true };
+  }
+  return { groups, titles, note: skippedErrors ? `${skippedErrors} album(s) failed and were skipped` : '' };
 }
 
 async function resolveOne(db: DB, a: Candidate, write: boolean, spotifyUsable: boolean): Promise<Result> {
@@ -519,6 +579,7 @@ async function resolveOne(db: DB, a: Candidate, write: boolean, spotifyUsable: b
     const r = await ingestFromDeezer(db, a, Number(usable.deezer), write);
     if (r.groups > 0) return { ...base, outcome: write ? 'ingested' : 'would-ingest', provider: 'deezer', groups: r.groups, titles: r.titles, note: r.note };
     if (r.mismatch) return { ...base, outcome: 'name-mismatch', provider: 'deezer', note: r.note };
+    if (r.unavailable) return { ...base, outcome: 'provider-unavailable', provider: 'deezer', note: r.note };
     if (r.note) return { ...base, outcome: 'no-albums', provider: 'deezer', note: r.note };
   }
   // Tracks a hard link we couldn't USE (e.g. Spotify breaker open) so that, if the alias tier is
