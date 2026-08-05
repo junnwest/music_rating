@@ -44,12 +44,31 @@ final class ConnectedAccountsViewModel {
         isWorking = true
         defer { isWorking = false }
         do {
-            try await supabase.auth.linkIdentity(provider: provider, redirectTo: Config.oauthRedirectURL)
+            try await supabase.auth.linkIdentity(
+                provider: provider,
+                redirectTo: Config.oauthRedirectURL,
+                queryParams: Self.accountChooserParams(for: provider)
+            )
             // Nothing to reload yet -- linking finishes asynchronously via the
             // OAuth redirect + onOpenURL, not this call returning.
         } catch {
             print("ConnectedAccountsViewModel.link(\(provider.rawValue)) failed: \(error)")
             errorMessage = String(localized: "Couldn't connect that account. Try again.")
+        }
+    }
+
+    // Same fix as AuthViewModel.signIn's initial-login path, needed here too:
+    // linking a second Google/Spotify account from Settings would otherwise
+    // silently reuse whichever account already has a trusted on-device session,
+    // with no way to pick a different one to connect.
+    private static func accountChooserParams(for provider: Provider) -> [(name: String, value: String?)] {
+        switch provider {
+        case .google:
+            return [("prompt", "select_account")]
+        case .spotify:
+            return [("show_dialog", "true")]
+        default:
+            return []
         }
     }
 

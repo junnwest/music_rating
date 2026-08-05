@@ -83,11 +83,32 @@ class AuthViewModel {
             try await supabase.auth.signInWithOAuth(
                 provider: provider,
                 redirectTo: Config.oauthRedirectURL,
-                scopes: scopes
+                scopes: scopes,
+                queryParams: accountChooserParams(for: provider)
             )
         } catch {
             SentrySDK.capture(error: error)
             errorMessage = error.localizedDescription
+        }
+    }
+
+    // Without this, both providers silently reuse whichever account already has a
+    // trusted session on-device: Google skips its own account picker entirely, and
+    // Spotify skips its login/consent screen — so signing out and choosing the same
+    // OAuth button again just re-authenticates the same account with no way to pick
+    // a different one. Each provider needs its own parameter to force that dialog
+    // back open; GoTrue forwards arbitrary queryParams straight through to the
+    // provider's own /authorize URL. Sign in with Apple is unaffected — it's a
+    // native ASAuthorizationController flow, not this OAuth path, and account
+    // switching there is the device's own Apple ID setting, outside this app.
+    private func accountChooserParams(for provider: Provider) -> [(name: String, value: String?)] {
+        switch provider {
+        case .google:
+            return [("prompt", "select_account")]
+        case .spotify:
+            return [("show_dialog", "true")]
+        default:
+            return []
         }
     }
 

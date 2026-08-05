@@ -19,6 +19,25 @@ export default function LoginPage() {
   const [loading, setLoading] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Without this, Google/Spotify silently reuse whichever account already has a
+  // trusted browser session: Google skips its own account picker, and Spotify
+  // skips its login/consent screen — so signing out and clicking the same OAuth
+  // button just re-authenticates the same account, with no way to pick a
+  // different one. Each provider needs its own param to force that dialog back
+  // open; GoTrue forwards arbitrary queryParams straight through to the
+  // provider's own /authorize URL. Apple has no equivalent documented param and
+  // is left alone. Mirrors the same fix in iOS's AuthViewModel.swift.
+  function accountChooserParams(provider: Provider): Record<string, string> {
+    switch (provider) {
+      case 'google':
+        return { prompt: 'select_account' };
+      case 'spotify':
+        return { show_dialog: 'true' };
+      default:
+        return {};
+    }
+  }
+
   async function signIn(provider: Provider) {
     if (!supabase) return;
     setLoading(provider);
@@ -31,6 +50,7 @@ export default function LoginPage() {
           provider === 'spotify'
             ? 'user-top-read user-read-recently-played'
             : undefined,
+        queryParams: accountChooserParams(provider),
       },
     });
     if (error) {
