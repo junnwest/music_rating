@@ -11,21 +11,40 @@ final class TasteViewModel {
     private(set) var ratingCount = 0
     private(set) var report: TasteProfileResponse?
     private(set) var isLoading = true
+    // True only when the count fetch itself failed (timeout/network) -- kept
+    // distinct from "below threshold" so a transient failure can't silently
+    // masquerade as a low rating count and falsely show the lock screen to a
+    // user who's well past it.
+    private(set) var loadFailed = false
 
     var isUnlocked: Bool { ratingCount >= Self.unlockThreshold }
     var remaining: Int   { max(0, Self.unlockThreshold - ratingCount) }
 
+    private func fetchCount(table: String, userId: UUID) async -> Int? {
+        (try? await supabase.from(table)
+            .select("*", head: true, count: .exact).eq("user_id", value: userId).execute())?.count
+    }
+
     func load() async {
         guard let user = supabase.auth.currentUser else { isLoading = false; return }
+        isLoading = true
+        loadFailed = false
 
         // Cheap counts only, just to decide the unlock gate -- matching ProfileView's
         // `totalRatings` so the unlock progress agrees with the "Rated" stat on the profile.
         // The report itself comes from web's own /api/taste/profile (one algorithm, one
         // source of truth).
-        let albumCount = (try? await supabase.from("ratings")
-            .select("*", head: true, count: .exact).eq("user_id", value: user.id).execute())?.count ?? 0
-        let songCount = (try? await supabase.from("track_ratings")
-            .select("*", head: true, count: .exact).eq("user_id", value: user.id).execute())?.count ?? 0
+        async let albumTask = fetchCount(table: "ratings", userId: user.id)
+        async let songTask  = fetchCount(table: "track_ratings", userId: user.id)
+        var albumCount = await albumTask
+        var songCount  = await songTask
+        if albumCount == nil { albumCount = await fetchCount(table: "ratings", userId: user.id) }        // one retry
+        if songCount  == nil { songCount  = await fetchCount(table: "track_ratings", userId: user.id) }  // one retry
+        guard let albumCount, let songCount else {
+            loadFailed = true
+            isLoading = false
+            return
+        }
         ratingCount = albumCount + songCount
 
         if isUnlocked {
@@ -49,6 +68,8 @@ struct TasteView: View {
             Group {
                 if vm.isLoading {
                     tasteLoader
+                } else if vm.loadFailed {
+                    tasteFailed
                 } else if !vm.isUnlocked {
                     TasteLockView(ratingCount: vm.ratingCount, onGoToAdd: onGoToAdd)
                 } else if let report = vm.report {
@@ -66,6 +87,23 @@ struct TasteView: View {
         ZStack {
             Color.sjCream.ignoresSafeArea()
             ProgressView().tint(Color.sjAmber)
+        }
+    }
+
+    private var tasteFailed: some View {
+        ZStack {
+            Color.sjCream.ignoresSafeArea()
+            VStack(spacing: 12) {
+                Image(systemName: "wifi.slash")
+                    .font(.system(size: 36))
+                    .foregroundStyle(Color.sjBorder)
+                Text("Couldn't load your taste progress.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color.sjMuted)
+                Button("Retry") { Task { await vm.load() } }
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.sjAmber)
+            }
         }
     }
 }

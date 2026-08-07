@@ -408,13 +408,18 @@ class AlbumDetailViewModel {
     private func loadPostSocialData() async {
         let all = posts + (myPost.map { [$0] } ?? [])
         guard !all.isEmpty else { return }
-        let counts = await AlbumSocial.loadCounts(for: all)
+        async let countsTask = AlbumSocial.loadCounts(for: all)
+        async let mineTask: AlbumSocial.MyState? = {
+            guard let userId = currentUserId else { return nil }
+            return await AlbumSocial.loadMyLikesAndSaves(posts: all, userId: userId)
+        }()
+        let counts = await countsTask
         for (k, v) in counts.likeCounts { likeCounts[k] = v }
         for (k, v) in counts.commentCounts { commentCounts[k] = v }
-        guard let userId = currentUserId else { return }
-        let mine = await AlbumSocial.loadMyLikesAndSaves(posts: all, userId: userId)
-        likedPostIds.formUnion(mine.likedPostIds)
-        savedReleaseIds.formUnion(mine.savedReleaseIds)
+        if let mine = await mineTask {
+            likedPostIds.formUnion(mine.likedPostIds)
+            savedReleaseIds.formUnion(mine.savedReleaseIds)
+        }
     }
 
     func toggleLike(for item: FeedItem) async {
@@ -540,15 +545,17 @@ enum AlbumSocial {
             let ratingId: UUID
             enum CodingKeys: String, CodingKey { case ratingId = "rating_id" }
         }
-        var result = Counts()
-        if let rows: [RatingIdRow] = try? await supabase
+        async let likesTask: [RatingIdRow]? = try? await supabase
             .from("rating_likes").select("rating_id")
-            .in("rating_id", values: ratingIds).execute().value {
+            .in("rating_id", values: ratingIds).execute().value
+        async let commentsTask: [RatingIdRow]? = try? await supabase
+            .from("rating_comments").select("rating_id")
+            .in("rating_id", values: ratingIds).execute().value
+        var result = Counts()
+        if let rows = await likesTask {
             for r in rows { result.likeCounts[r.ratingId, default: 0] += 1 }
         }
-        if let rows: [RatingIdRow] = try? await supabase
-            .from("rating_comments").select("rating_id")
-            .in("rating_id", values: ratingIds).execute().value {
+        if let rows = await commentsTask {
             for r in rows { result.commentCounts[r.ratingId, default: 0] += 1 }
         }
         return result
@@ -565,17 +572,19 @@ enum AlbumSocial {
             let releaseId: UUID
             enum CodingKeys: String, CodingKey { case releaseId = "release_id" }
         }
-        var result = MyState()
-        if let rows: [RatingIdRow] = try? await supabase
+        async let likedTask: [RatingIdRow]? = try? await supabase
             .from("rating_likes").select("rating_id")
             .eq("user_id", value: userId)
-            .in("rating_id", values: ratingIds).execute().value {
-            for r in rows { result.likedPostIds.insert(r.ratingId) }
-        }
-        if let rows: [ReleaseIdRow] = try? await supabase
+            .in("rating_id", values: ratingIds).execute().value
+        async let savedTask: [ReleaseIdRow]? = try? await supabase
             .from("saved_releases").select("release_id")
             .eq("user_id", value: userId)
-            .in("release_id", values: releaseIds).execute().value {
+            .in("release_id", values: releaseIds).execute().value
+        var result = MyState()
+        if let rows = await likedTask {
+            for r in rows { result.likedPostIds.insert(r.ratingId) }
+        }
+        if let rows = await savedTask {
             for r in rows { result.savedReleaseIds.insert(r.releaseId) }
         }
         return result
@@ -1475,11 +1484,15 @@ private class AlbumRatingsListViewModel {
         (posts, ratingMode, myScore) = await (postsTask, modeTask, myScoreTask)
 
         if !posts.isEmpty {
-            let counts = await AlbumSocial.loadCounts(for: posts)
+            async let countsTask = AlbumSocial.loadCounts(for: posts)
+            async let mineTask: AlbumSocial.MyState? = {
+                guard let myId else { return nil }
+                return await AlbumSocial.loadMyLikesAndSaves(posts: posts, userId: myId)
+            }()
+            let counts = await countsTask
             for (k, v) in counts.likeCounts { likeCounts[k] = v }
             for (k, v) in counts.commentCounts { commentCounts[k] = v }
-            if let myId {
-                let mine = await AlbumSocial.loadMyLikesAndSaves(posts: posts, userId: myId)
+            if let mine = await mineTask {
                 likedPostIds.formUnion(mine.likedPostIds)
                 savedReleaseIds.formUnion(mine.savedReleaseIds)
             }

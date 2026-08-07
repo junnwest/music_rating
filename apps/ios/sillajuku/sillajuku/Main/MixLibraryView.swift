@@ -121,20 +121,38 @@ final class MixLibraryViewModel {
     var mixes: [Mix] = []
     var itemCounts: [UUID: Int] = [:]
     var isLoading = true
+    // True only when the fetch itself failed (timeout/network) -- kept distinct
+    // from mixes.isEmpty because every account has a default "Listen Later" mix
+    // (server-side trigger, see 20260620000001_mixes.sql), so a genuinely empty
+    // result should never happen. Without this, a transient failure silently
+    // masquerading as "zero mixes" showed the wrong empty state permanently
+    // (hasLoaded latched true, so nothing ever retried).
+    var loadFailed = false
     private var hasLoaded = false
 
-    func load(userId: UUID) async {
-        guard !hasLoaded else { return }
-        hasLoaded = true
-        isLoading = true
-        let loaded: [Mix] = (try? await supabase
+    private func fetchMixes(userId: UUID) async -> [Mix]? {
+        try? await supabase
             .from("mixes")
             .select("*")
             .eq("user_id", value: userId)
             .order("is_default", ascending: false)
             .order("created_at", ascending: true)
             .execute()
-            .value) ?? []
+            .value
+    }
+
+    func load(userId: UUID) async {
+        guard !hasLoaded else { return }
+        isLoading = true
+        loadFailed = false
+        var loaded = await fetchMixes(userId: userId)
+        if loaded == nil { loaded = await fetchMixes(userId: userId) }  // one retry
+        guard let loaded else {
+            loadFailed = true
+            isLoading = false
+            return
+        }
+        hasLoaded = true
         mixes = loaded
 
         struct CountRow: Decodable {
@@ -182,6 +200,8 @@ struct MixLibraryView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity)
                     .padding(.top, 60)
+            } else if viewModel.loadFailed {
+                failedState
             } else if viewModel.mixes.isEmpty {
                 emptyState
             } else {
@@ -195,6 +215,25 @@ struct MixLibraryView: View {
         .onReceive(NotificationCenter.default.publisher(for: .mixLibraryChanged)) { _ in
             Task { await viewModel.reload(userId: userId) }
         }
+    }
+
+    // Every account has a default "Listen Later" mix, so mixes never
+    // genuinely comes back empty -- a fetch failure gets its own state
+    // (with retry) instead of falling into "No mixes yet".
+    private var failedState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "wifi.slash")
+                .font(.system(size: 36))
+                .foregroundStyle(Color.sjBorder)
+            Text("Couldn't load your mixes.")
+                .font(.system(size: 15))
+                .foregroundStyle(Color.sjMuted)
+            Button("Retry") { Task { await viewModel.reload(userId: userId) } }
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color.sjAmber)
+        }
+        .frame(maxWidth: .infinity, alignment: .top)
+        .padding(.top, 24)
     }
 
     private var emptyState: some View {

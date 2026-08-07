@@ -499,25 +499,32 @@ class HomeViewModel {
             let mixShareId: UUID
             enum CodingKeys: String, CodingKey { case mixShareId = "mix_share_id" }
         }
-        if let rows: [IdRow] = try? await supabase
+        async let likesTask: [IdRow]? = try? await supabase
             .from("mix_share_likes").select("mix_share_id")
-            .in("mix_share_id", values: shareIds).execute().value {
+            .in("mix_share_id", values: shareIds).execute().value
+        async let commentsTask: [IdRow]? = try? await supabase
+            .from("mix_share_comments").select("mix_share_id")
+            .in("mix_share_id", values: shareIds).execute().value
+        let userId = currentUserId
+        async let myLikesTask: [IdRow]? = {
+            guard let userId else { return nil }
+            return try? await supabase
+                .from("mix_share_likes").select("mix_share_id")
+                .eq("user_id", value: userId)
+                .in("mix_share_id", values: shareIds).execute().value
+        }()
+
+        if let rows = await likesTask {
             var counts: [UUID: Int] = [:]
             for r in rows { counts[r.mixShareId, default: 0] += 1 }
             for (k, v) in counts { likeCounts[k] = v }
         }
-        if let rows: [IdRow] = try? await supabase
-            .from("mix_share_comments").select("mix_share_id")
-            .in("mix_share_id", values: shareIds).execute().value {
+        if let rows = await commentsTask {
             var counts: [UUID: Int] = [:]
             for r in rows { counts[r.mixShareId, default: 0] += 1 }
             for (k, v) in counts { commentCounts[k] = v }
         }
-        guard let userId = currentUserId else { return }
-        if let rows: [IdRow] = try? await supabase
-            .from("mix_share_likes").select("mix_share_id")
-            .eq("user_id", value: userId)
-            .in("mix_share_id", values: shareIds).execute().value {
+        if let rows = await myLikesTask {
             for r in rows { likedPostIds.insert(r.mixShareId) }
         }
     }
@@ -655,39 +662,6 @@ class HomeViewModel {
             let releaseId: UUID
             enum CodingKeys: String, CodingKey { case releaseId = "release_id" }
         }
-
-        if let rows: [RatingIdRow] = try? await supabase
-            .from("rating_likes").select("rating_id")
-            .in("rating_id", values: ratingIds).execute().value {
-            var counts: [UUID: Int] = [:]
-            for r in rows { counts[r.ratingId, default: 0] += 1 }
-            for (k, v) in counts { likeCounts[k] = v }
-        }
-
-        if let rows: [RatingIdRow] = try? await supabase
-            .from("rating_comments").select("rating_id")
-            .in("rating_id", values: ratingIds).execute().value {
-            var counts: [UUID: Int] = [:]
-            for r in rows { counts[r.ratingId, default: 0] += 1 }
-            for (k, v) in counts { commentCounts[k] = v }
-        }
-
-        guard let userId = currentUserId else { return }
-
-        if let rows: [RatingIdRow] = try? await supabase
-            .from("rating_likes").select("rating_id")
-            .eq("user_id", value: userId)
-            .in("rating_id", values: ratingIds).execute().value {
-            for r in rows { likedPostIds.insert(r.ratingId) }
-        }
-
-        if let rows: [ReleaseIdRow] = try? await supabase
-            .from("saved_releases").select("release_id")
-            .eq("user_id", value: userId)
-            .in("release_id", values: releaseIds).execute().value {
-            for r in rows { savedReleaseIds.insert(r.releaseId) }
-        }
-
         struct MyRatingRow: Codable {
             let releaseGroupId: UUID
             let score: Double?
@@ -695,14 +669,58 @@ class HomeViewModel {
                 case releaseGroupId = "release_group_id"; case score
             }
         }
+
+        async let likesTask: [RatingIdRow]? = try? await supabase
+            .from("rating_likes").select("rating_id")
+            .in("rating_id", values: ratingIds).execute().value
+        async let commentsTask: [RatingIdRow]? = try? await supabase
+            .from("rating_comments").select("rating_id")
+            .in("rating_id", values: ratingIds).execute().value
+
+        let userId = currentUserId
+        async let myLikesTask: [RatingIdRow]? = {
+            guard let userId else { return nil }
+            return try? await supabase
+                .from("rating_likes").select("rating_id")
+                .eq("user_id", value: userId)
+                .in("rating_id", values: ratingIds).execute().value
+        }()
+        async let savedTask: [ReleaseIdRow]? = {
+            guard let userId else { return nil }
+            return try? await supabase
+                .from("saved_releases").select("release_id")
+                .eq("user_id", value: userId)
+                .in("release_id", values: releaseIds).execute().value
+        }()
         // The viewer's own manual rating for each release shown in the feed --
         // separate from item.displayScore, which is the *post author's* score.
         // Feeds a rated card's cover button its score instead of the unrated
         // flower (AlbumRateButton has no way to know this unless we pass it).
-        if let rows: [MyRatingRow] = try? await supabase
-            .from("ratings").select("release_group_id, score")
-            .eq("user_id", value: userId)
-            .in("release_group_id", values: releaseIds).execute().value {
+        async let myRatingsTask: [MyRatingRow]? = {
+            guard let userId else { return nil }
+            return try? await supabase
+                .from("ratings").select("release_group_id, score")
+                .eq("user_id", value: userId)
+                .in("release_group_id", values: releaseIds).execute().value
+        }()
+
+        if let rows = await likesTask {
+            var counts: [UUID: Int] = [:]
+            for r in rows { counts[r.ratingId, default: 0] += 1 }
+            for (k, v) in counts { likeCounts[k] = v }
+        }
+        if let rows = await commentsTask {
+            var counts: [UUID: Int] = [:]
+            for r in rows { counts[r.ratingId, default: 0] += 1 }
+            for (k, v) in counts { commentCounts[k] = v }
+        }
+        if let rows = await myLikesTask {
+            for r in rows { likedPostIds.insert(r.ratingId) }
+        }
+        if let rows = await savedTask {
+            for r in rows { savedReleaseIds.insert(r.releaseId) }
+        }
+        if let rows = await myRatingsTask {
             for r in rows { if let s = r.score { myScores[r.releaseGroupId] = s } }
         }
     }

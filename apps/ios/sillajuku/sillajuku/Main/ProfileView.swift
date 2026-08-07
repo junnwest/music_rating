@@ -509,24 +509,28 @@ class ProfileViewModel {
             let mixShareId: UUID
             enum CodingKeys: String, CodingKey { case mixShareId = "mix_share_id" }
         }
-        if let rows: [IdRow] = try? await supabase
+        async let likesTask: [IdRow]? = try? await supabase
             .from("mix_share_likes").select("mix_share_id")
-            .in("mix_share_id", values: shareIds).execute().value {
+            .in("mix_share_id", values: shareIds).execute().value
+        async let commentsTask: [IdRow]? = try? await supabase
+            .from("mix_share_comments").select("mix_share_id")
+            .in("mix_share_id", values: shareIds).execute().value
+        async let myLikesTask: [IdRow]? = try? await supabase
+            .from("mix_share_likes").select("mix_share_id")
+            .eq("user_id", value: userId)
+            .in("mix_share_id", values: shareIds).execute().value
+
+        if let rows = await likesTask {
             var counts: [UUID: Int] = [:]
             for r in rows { counts[r.mixShareId, default: 0] += 1 }
             for (k, v) in counts { likeCounts[k] = v }
         }
-        if let rows: [IdRow] = try? await supabase
-            .from("mix_share_comments").select("mix_share_id")
-            .in("mix_share_id", values: shareIds).execute().value {
+        if let rows = await commentsTask {
             var counts: [UUID: Int] = [:]
             for r in rows { counts[r.mixShareId, default: 0] += 1 }
             for (k, v) in counts { commentCounts[k] = v }
         }
-        if let rows: [IdRow] = try? await supabase
-            .from("mix_share_likes").select("mix_share_id")
-            .eq("user_id", value: userId)
-            .in("mix_share_id", values: shareIds).execute().value {
+        if let rows = await myLikesTask {
             likedMixShareIds = Set(rows.map(\.mixShareId))
         }
     }
@@ -569,24 +573,28 @@ class ProfileViewModel {
             let trackRatingId: UUID
             enum CodingKeys: String, CodingKey { case trackRatingId = "track_rating_id" }
         }
-        if let rows: [IdRow] = try? await supabase
+        async let likesTask: [IdRow]? = try? await supabase
             .from("track_rating_likes").select("track_rating_id")
-            .in("track_rating_id", values: songRatingIds).execute().value {
+            .in("track_rating_id", values: songRatingIds).execute().value
+        async let commentsTask: [IdRow]? = try? await supabase
+            .from("track_rating_comments").select("track_rating_id")
+            .in("track_rating_id", values: songRatingIds).execute().value
+        async let myLikesTask: [IdRow]? = try? await supabase
+            .from("track_rating_likes").select("track_rating_id")
+            .eq("user_id", value: userId)
+            .in("track_rating_id", values: songRatingIds).execute().value
+
+        if let rows = await likesTask {
             var counts: [UUID: Int] = [:]
             for r in rows { counts[r.trackRatingId, default: 0] += 1 }
             for (k, v) in counts { likeCounts[k] = v }
         }
-        if let rows: [IdRow] = try? await supabase
-            .from("track_rating_comments").select("track_rating_id")
-            .in("track_rating_id", values: songRatingIds).execute().value {
+        if let rows = await commentsTask {
             var counts: [UUID: Int] = [:]
             for r in rows { counts[r.trackRatingId, default: 0] += 1 }
             for (k, v) in counts { commentCounts[k] = v }
         }
-        if let rows: [IdRow] = try? await supabase
-            .from("track_rating_likes").select("track_rating_id")
-            .eq("user_id", value: userId)
-            .in("track_rating_id", values: songRatingIds).execute().value {
+        if let rows = await myLikesTask {
             likedSongRatingIds = Set(rows.map(\.trackRatingId))
         }
     }
