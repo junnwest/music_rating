@@ -11,11 +11,13 @@ import { spectrumFill, spectrumNumber, spectrumRing, formatScore } from '../../l
  * button (or the current score, if already rated — press it again to re-rate).
  *
  * The flower itself never moves. Press it and drag outward: distance from the
- * button's centre maps to the score (farther = higher, 0.1 steps). A single thin
- * arc — drawn at the current score's radius, angled toward the cursor and fading
- * out along its length — is the whole gauge; a dotted horizontal baseline with
- * whole-star ticks gives the drag something to read against. The live score
- * fades in *over* the flower, centred and stationary, as the glyph dims out.
+ * button's centre maps to the score (farther = higher, 0.1 steps). Concentric
+ * rings at each whole-star radius (solid + coloured once reached) are the scale,
+ * with a single thin arc at the current score's radius — angled toward the
+ * cursor and fading out along its length — as the live pointer; a light dotted
+ * baseline gives the drag axis something to read against. While dragging, the
+ * flower is lifted and popped forward in 3D *in front of* a fade that diffuses
+ * outward from behind it, the live score fading in over the glyph.
  *
  * A press with no meaningful drag is treated as a tap → `onRequestPrecise`
  * (open the full rating modal). Pointer events + capture cover mouse and touch;
@@ -179,6 +181,11 @@ export default function FlowerRateControl({
           height: size,
           touchAction: 'none',
           background: showNumber ? spectrumFill(shown!) : '#fff',
+          // While dragging, the flower is re-rendered inside the portal, lifted
+          // and 3D-popped *in front of* the fade. Hide the in-flow original so
+          // there's no ghost behind the scrim (it still owns the pointer capture,
+          // so it keeps receiving the drag even at opacity 0).
+          opacity: drag ? 0 : 1,
           transition: 'background 140ms ease-out',
         }}
       >
@@ -212,7 +219,7 @@ export default function FlowerRateControl({
         </span>
       </button>
       {drag && typeof document !== 'undefined' &&
-        createPortal(<DragGauge state={drag} rated={rated} />, document.body)}
+        createPortal(<DragGauge state={drag} rated={rated} size={size} />, document.body)}
     </>
   );
 }
@@ -228,7 +235,7 @@ const ARC_SEGMENTS = 22;
  * with whole-star ticks, plus one thin arc at the current score's radius,
  * centred on the cursor's angle and fading toward both ends.
  */
-function DragGauge({ state, rated }: { state: DragState; rated: boolean }) {
+function DragGauge({ state, rated, size }: { state: DragState; rated: boolean; size: number }) {
   const { ox, oy, angle, score } = state;
   const cancel = score == null;
   // In the dead zone on an already-rated album, releasing removes the rating —
@@ -236,6 +243,7 @@ function DragGauge({ state, rated }: { state: DragState; rated: boolean }) {
   const willVoid = cancel && rated;
   const color = spectrumRing(score ?? 0.5);
   const radius = scoreRadius(score ?? 0.5);
+  const showNumber = score != null;
 
   // Fade the whole overlay in on mount so the scrim doesn't hard-cut over the
   // page the instant a drag starts.
@@ -273,22 +281,45 @@ function DragGauge({ state, rated }: { state: DragState; rated: boolean }) {
 
   return (
     <div className="fixed inset-0 z-[100] pointer-events-none select-none">
-      {/* Translucent scrim — a soft radial vignette centred on the (stationary)
-          flower that dims the busy album art underneath so the gauge arc, ticks
-          and live score read clearly. Darkest around the gauge band, clearing to
-          fully transparent beyond its reach and (gently) over the flower itself. */}
+      {/* Translucent scrim — a soft radial vignette that dims the busy album art
+          so the gauge rings and live score read clearly. It's fully clear right
+          behind the (lifted) flower, then *diffuses outward* — building to its
+          darkest through the gauge band and dissolving gently to nothing beyond,
+          with no hard edges. Reads as the fade seeping out from behind the
+          popped-forward button. */}
       <div
         className="absolute inset-0"
         style={{
-          background: `radial-gradient(circle at ${ox}px ${oy}px, rgba(8,8,12,0.20) 0px, rgba(8,8,12,0.34) ${OFFSET}px, rgba(8,8,12,0.34) ${MAX_RADIUS}px, rgba(8,8,12,0) ${Math.round(MAX_RADIUS * 1.5)}px)`,
+          background: `radial-gradient(circle at ${ox}px ${oy}px, rgba(8,8,12,0) 0px, rgba(8,8,12,0.05) ${Math.round(OFFSET * 0.72)}px, rgba(8,8,12,0.30) ${OFFSET + Math.round(STEP * 0.9)}px, rgba(8,8,12,0.42) ${OFFSET + Math.round(STEP * 2.4)}px, rgba(8,8,12,0.30) ${MAX_RADIUS}px, rgba(8,8,12,0) ${Math.round(MAX_RADIUS * 1.62)}px)`,
           opacity: shown ? 1 : 0,
-          transition: 'opacity 170ms ease-out',
+          transition: 'opacity 200ms ease-out',
         }}
       />
       <svg className="absolute inset-0 h-full w-full overflow-visible">
-        {/* Dotted horizontal baseline — the fixed reference the drag reads
-            against — with a tick at each whole star. Drawn as two halves that
-            start at the dead-zone edge, so nothing crosses the flower itself. */}
+        {/* Concentric star rings — one full circle at each whole-star radius,
+            the gauge's primary scale. Faint dashed by default, but a solid,
+            colour-filled ring once the drag has reached that star, so the
+            "you're past 3★" read is unmistakable against the dark scrim. */}
+        {[1, 2, 3, 4, 5].map((s) => {
+          const r = scoreRadius(s);
+          const reached = !cancel && score! >= s;
+          return (
+            <circle
+              key={`ring-${s}`}
+              cx={ox}
+              cy={oy}
+              r={r}
+              fill="none"
+              stroke={reached ? color : 'rgb(232,234,244)'}
+              strokeWidth={reached ? 1.75 : 1}
+              strokeOpacity={reached ? 0.7 : 0.24}
+              strokeDasharray={reached ? undefined : '2 5'}
+            />
+          );
+        })}
+        {/* Dotted horizontal baseline — a light orientation reference out of the
+            flower along the drag axis. Two halves that start at the dead-zone
+            edge, so nothing crosses the flower itself. */}
         {[-1, 1].map((side) => (
           <line
             key={`base-${side}`}
@@ -296,29 +327,13 @@ function DragGauge({ state, rated }: { state: DragState; rated: boolean }) {
             y1={oy}
             x2={ox + side * MAX_RADIUS}
             y2={oy}
-            stroke="rgb(120,120,120)"
+            stroke="rgb(232,234,244)"
             strokeWidth={1}
             strokeDasharray="1 5"
             strokeLinecap="round"
-            opacity={0.4}
+            opacity={0.34}
           />
         ))}
-        {[1, 2, 3, 4, 5].map((s) => {
-          const r = scoreRadius(s);
-          const reached = !cancel && score! >= s;
-          return [-1, 1].map((side) => (
-            <line
-              key={`tick-${s}-${side}`}
-              x1={ox + side * r}
-              y1={oy - 3}
-              x2={ox + side * r}
-              y2={oy + 3}
-              stroke={reached ? color : 'rgb(120,120,120)'}
-              strokeWidth={reached ? 1.5 : 1}
-              opacity={reached ? 0.55 : 0.28}
-            />
-          ));
-        })}
         {/* Dead-zone edge — release inside here cancels, or *removes* the rating
             when the album is already rated (warm tint + heavier ring). */}
         <circle
@@ -347,6 +362,52 @@ function DragGauge({ state, rated }: { state: DragState; rated: boolean }) {
         )}
         {segments}
       </svg>
+      {/* The flower itself, lifted out of the page and popped forward in 3D —
+          rendered here (above the scrim) so it sits genuinely *in front of* the
+          fade rather than under it. Mirrors the resting button's flower→score
+          crossfade; the in-flow original is hidden while this is up. */}
+      <div
+        className="absolute grid place-items-center rounded-full"
+        style={{
+          left: ox,
+          top: oy,
+          width: size,
+          height: size,
+          background: showNumber ? spectrumFill(score!) : '#fff',
+          transform: `translate(-50%, -50%) translateY(${shown ? -3 : 0}px) scale(${shown ? 1.22 : 1})`,
+          boxShadow: shown
+            ? '0 14px 30px -6px rgba(0,0,0,0.6), 0 5px 12px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.10), inset 0 1px 1px rgba(255,255,255,0.35)'
+            : '0 2px 6px rgba(0,0,0,0.3)',
+          transition:
+            'transform 220ms cubic-bezier(0.34, 1.5, 0.64, 1), box-shadow 220ms ease-out, background 140ms ease-out',
+        }}
+      >
+        <span
+          className="flex items-center justify-center"
+          style={{
+            gridArea: '1 / 1',
+            opacity: showNumber ? 0 : 1,
+            transform: showNumber ? 'scale(0.82)' : 'scale(1)',
+            transition: 'opacity 130ms ease-out, transform 130ms ease-out',
+          }}
+        >
+          <FlowerGlyph src="/icon-flower.svg" size={Math.round(size * 0.56)} className="text-accent" />
+        </span>
+        <span
+          className="font-black leading-none tabular-nums"
+          style={{
+            gridArea: '1 / 1',
+            fontSize: Math.round(size * 0.4),
+            color: showNumber ? spectrumNumber(score!) : 'transparent',
+            opacity: showNumber ? 1 : 0,
+            transform: showNumber ? 'scale(1)' : 'scale(0.6)',
+            transition:
+              'opacity 130ms ease-out, transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1), color 140ms ease-out',
+          }}
+        >
+          {showNumber ? formatScore(score!) : ''}
+        </span>
+      </div>
     </div>
   );
 }
