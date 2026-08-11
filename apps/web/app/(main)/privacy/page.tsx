@@ -50,7 +50,7 @@ const sections = [
   {
     icon: Cookie,
     title: '10. Cookies & Local Storage',
-    body: 'We use strictly-necessary storage to keep you signed in and remember your language preference — these are essential for the service to function. We also use limited analytics storage (via PostHog) to understand product usage and diagnostics storage (via Sentry) to capture errors. We do not use cookies for advertising or cross-site ad tracking. You can limit non-essential storage through your browser settings (including "Do Not Track," which we honor for analytics) or your operating system\'s privacy controls; essential storage cannot be disabled without breaking core functionality.',
+    body: 'We use only strictly-necessary cookies and storage — to keep you signed in and remember your language preference. We do not use cookies for advertising, cross-site tracking, or analytics profiling. Our product analytics (PostHog) and error diagnostics (Sentry) run cookieless: they set no cookies or persistent identifiers in your browser, and our analytics honors the "Do Not Track" browser signal. Because we use no non-essential cookies, no cookie-consent banner is shown; this would change if we ever introduced non-essential cookies.',
   },
   {
     icon: FileText,
