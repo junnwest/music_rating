@@ -178,6 +178,7 @@ const KEYFRAMES = `
 @keyframes taste-drift-b{from{transform:translate(0,0)}to{transform:translate(-0.8px,0.8px)}}
 @keyframes taste-drift-c{from{transform:translate(0,0)}to{transform:translate(0.6px,0.9px)}}
 .taste-bubble{animation-duration:7s;animation-timing-function:ease-in-out;animation-iteration-count:infinite;animation-direction:alternate}
+.taste-bubble:hover{filter:brightness(1.05) saturate(1.1)}
 @media (prefers-reduced-motion: reduce){
   .taste-bubble{animation:none!important}
   .taste-camera{transition:none!important}
@@ -267,15 +268,21 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
   const colorAt = (avg: number | null) => spectrumColor(avg ?? 3, 0.62, 1);
 
   return (
-    <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_248px]">
+    <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_264px]">
       <style>{KEYFRAMES}</style>
 
       {/* ── The map ── */}
-      <div className="relative rounded-2xl bg-page border border-divider/60 overflow-hidden">
+      <div
+        className="relative rounded-2xl bg-page border border-divider/60 overflow-hidden"
+        style={{
+          backgroundImage: 'radial-gradient(rgb(var(--color-divider)) 1px, transparent 1px)',
+          backgroundSize: '18px 18px',
+        }}
+      >
         <svg
           viewBox={`0 0 ${VIEW} ${VIEW}`}
           className="block w-full touch-manipulation"
-          style={{ aspectRatio: '1 / 1', maxHeight: 420 }}
+          style={{ aspectRatio: '1 / 1', maxHeight: 500 }}
           role="img"
           aria-label={t('sj.taste.mapHeader')}
         >
@@ -473,6 +480,7 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
             }}
           />
           <span className="text-[10px] text-muted tabular-nums">5</span>
+          <span className="text-[10px] text-muted">{t('sj.taste.mapLegendScore')}</span>
         </div>
       </div>
 
@@ -481,7 +489,7 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
         {!openWorld ? (
           <div>
             <p className="text-[12.5px] text-muted">{t('sj.taste.mapHint')}</p>
-            <div className="mt-3 space-y-1">
+            <div className="mt-3 space-y-1.5">
               {worlds.map((w, i) => (
                 <button
                   key={w.key}
@@ -490,17 +498,28 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
                     setTag(null);
                     setWorld(i);
                   }}
-                  className="flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left hover:bg-ink/[0.04] transition"
+                  className="block w-full rounded-lg px-1.5 py-1.5 text-left hover:bg-ink/[0.04] transition"
                 >
-                  <span
-                    className="w-2.5 h-2.5 rounded-full shrink-0"
-                    style={{ background: colorAt(w.avg) }}
-                  />
-                  <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-ink">
-                    {w.label}
+                  <span className="flex items-center gap-2">
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ background: colorAt(w.avg) }}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-ink">
+                      {w.label}
+                    </span>
+                    <span className="text-[11.5px] tabular-nums text-muted">
+                      {Math.round(w.share * 100)}%
+                    </span>
                   </span>
-                  <span className="text-[11.5px] tabular-nums text-muted">
-                    {Math.round(w.share * 100)}%
+                  <span className="mt-1 ml-[18px] block h-[3px] rounded-full bg-divider/60 overflow-hidden">
+                    <span
+                      className="block h-full rounded-full"
+                      style={{
+                        width: `${Math.max(3, Math.round(w.share * 100))}%`,
+                        background: colorAt(w.avg),
+                      }}
+                    />
                   </span>
                 </button>
               ))}
@@ -580,108 +599,5 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
   );
 }
 
-/**
- * Rated releases per release-year, with a centred 5-year moving average over
- * the top — the bars carry the year-by-year magnitude, the line carries the
- * shape you actually read. One axis, one measure; the line is the same series
- * smoothed, not a second one.
- */
-export function YearHistogram({
-  years,
-  label,
-  trendLabel,
-}: {
-  years: { year: number; count: number }[];
-  label: string;
-  trendLabel: string;
-}) {
-  const max = Math.max(1, ...years.map((y) => y.count));
-  const peak = years.reduce((best, y, i) => (y.count > years[best].count ? i : best), 0);
-
-  // Centred moving average, window shrinking at the edges so the line spans the
-  // full range instead of stopping two years short.
-  const W = 2;
-  const trend = years.map((_, i) => {
-    let sum = 0;
-    let n = 0;
-    for (let j = Math.max(0, i - W); j <= Math.min(years.length - 1, i + W); j += 1) {
-      sum += years[j].count;
-      n += 1;
-    }
-    return sum / n;
-  });
-
-  const H = 100;
-  const step = years.length > 1 ? 100 / (years.length - 1) : 0;
-  const path = trend
-    .map((v, i) => `${i === 0 ? 'M' : 'L'}${(i * step).toFixed(2)},${(H - (v / max) * H).toFixed(2)}`)
-    .join(' ');
-
-  // ~6 ticks, always including the first and last year.
-  const tickEvery = Math.max(1, Math.ceil(years.length / 6));
-
-  return (
-    <div className="mt-4">
-      <div className="relative">
-        <div className="flex items-end gap-[2px] h-28 border-b border-divider" aria-label={label}>
-          {years.map((y, i) => (
-            <div
-              key={y.year}
-              title={`${y.year} · ${y.count}`}
-              className="flex-1 min-w-0 h-full flex flex-col items-center justify-end"
-            >
-              {i === peak && y.count > 0 && (
-                <span className="text-[10px] font-semibold text-muted mb-0.5 tabular-nums">
-                  {y.count}
-                </span>
-              )}
-              <span
-                className="w-full rounded-t bg-accent/70"
-                style={{ height: y.count > 0 ? Math.max(3, Math.round((y.count / max) * 88)) : 0 }}
-              />
-            </div>
-          ))}
-        </div>
-        {years.length > 2 && (
-          <svg
-            viewBox={`0 0 100 ${H}`}
-            preserveAspectRatio="none"
-            className="absolute inset-x-0 bottom-0 h-28 pointer-events-none"
-            aria-hidden
-          >
-            <path
-              d={path}
-              fill="none"
-              stroke="currentColor"
-              className="text-ink/45"
-              strokeWidth={2}
-              vectorEffect="non-scaling-stroke"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        )}
-      </div>
-      <div className="flex gap-[2px] mt-1">
-        {years.map((y, i) => (
-          <span
-            key={y.year}
-            className="flex-1 min-w-0 text-center text-[10px] text-muted/70 tabular-nums"
-          >
-            {i % tickEvery === 0 || i === years.length - 1 ? y.year : ''}
-          </span>
-        ))}
-      </div>
-      <div className="mt-2 flex items-center gap-4 text-[11px] text-muted">
-        <span className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-sm bg-accent/70 shrink-0" />
-          {label}
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-4 h-[2px] rounded-full bg-ink/45 shrink-0" />
-          {trendLabel}
-        </span>
-      </div>
-    </div>
-  );
-}
+// The release-year histogram moved to TasteCharts.tsx (`YearChart`) in the
+// 2026-08-10 report rebuild — it gained the era band and a real hover layer.
