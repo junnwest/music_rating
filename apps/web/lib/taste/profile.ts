@@ -63,6 +63,13 @@ export interface TasteCluster {
 /** Minimum cosine between a tag and a cluster centroid to join that cluster. */
 const JOIN_THRESHOLD = 0.45;
 const MAX_CLUSTERS = 5;
+/**
+ * Absolute ceiling once scene-forced worlds are allowed past MAX_CLUSTERS. A
+ * scene-pinned tag with no scene-compatible home (e.g. j-pop when every existing
+ * world is Korean/Western) opens its OWN world rather than being drowned in a
+ * conflicting-scene cluster — but only up to here, so the map can't sprawl.
+ */
+const HARD_MAX_CLUSTERS = MAX_CLUSTERS + 2;
 /** Only the strongest N positive tags participate in clustering. */
 const MAX_TAGS = 30;
 
@@ -142,15 +149,27 @@ export function buildClusters(weights: GenreWeights): TasteCluster[] {
         best = c;
       }
     }
-    const joinTarget =
-      best && bestSim >= JOIN_THRESHOLD
-        ? best
-        : clusters.length >= MAX_CLUSTERS
-          ? // At the cluster cap a join is forced; still prefer the best
-            // scene-compatible home, falling back to overall best only when
-            // every cluster conflicts.
-            (best ?? bestAny)
-          : null;
+    let joinTarget: Working | null;
+    if (best && bestSim >= JOIN_THRESHOLD) {
+      // A genuinely similar, scene-compatible home — the normal join.
+      joinTarget = best;
+    } else if (clusters.length < MAX_CLUSTERS) {
+      // Room under the soft cap → open a fresh world (handled by the else below).
+      joinTarget = null;
+    } else if (best) {
+      // At the cap, forced — but a scene-compatible cluster exists, so use it.
+      joinTarget = best;
+    } else if (scene != null && clusters.length < HARD_MAX_CLUSTERS) {
+      // At the cap with NO scene-compatible home, and this tag's name pins it to
+      // a scene (j-pop → jp): give it its own world instead of force-merging it
+      // into a conflicting-scene cluster (which buried j-pop inside the k-pop
+      // world — no J-pop sub-genres, and k-pop recommendations). Bounded by the
+      // hard ceiling so a long tail of scene tags can't sprawl the map.
+      joinTarget = null;
+    } else {
+      // A scene-neutral tag (or the ceiling is hit): fall back to the nearest.
+      joinTarget = bestAny;
+    }
     if (joinTarget) {
       joinTarget.tags.push(t);
       joinTarget.weight += t.w;

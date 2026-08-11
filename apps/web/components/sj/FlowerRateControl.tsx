@@ -291,8 +291,15 @@ function DragGauge({ state, rated, size }: { state: DragState; rated: boolean; s
         className="absolute inset-0"
         style={{
           background: `radial-gradient(circle at ${ox}px ${oy}px, rgba(8,8,12,0) 0px, rgba(8,8,12,0.05) ${Math.round(OFFSET * 0.72)}px, rgba(8,8,12,0.30) ${OFFSET + Math.round(STEP * 0.9)}px, rgba(8,8,12,0.42) ${OFFSET + Math.round(STEP * 2.4)}px, rgba(8,8,12,0.30) ${MAX_RADIUS}px, rgba(8,8,12,0) ${Math.round(MAX_RADIUS * 1.62)}px)`,
+          // Diffuse the fade *outward over time* on press: the gradient grows
+          // from a tight disc behind the flower to its full reach, scaled about
+          // the button's centre, while it eases in. Reads as the dark seeping
+          // out from behind the button rather than snapping on as a flat wash.
+          transformOrigin: `${ox}px ${oy}px`,
+          transform: shown ? 'scale(1)' : 'scale(0.35)',
           opacity: shown ? 1 : 0,
-          transition: 'opacity 200ms ease-out',
+          transition:
+            'transform 460ms cubic-bezier(0.22, 1, 0.36, 1), opacity 300ms ease-out',
         }}
       />
       <svg className="absolute inset-0 h-full w-full overflow-visible">

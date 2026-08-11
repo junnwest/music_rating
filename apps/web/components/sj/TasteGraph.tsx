@@ -170,6 +170,7 @@ function Tile({
   rect,
   label,
   sub,
+  hint,
   avg,
   selected,
   dim,
@@ -180,6 +181,9 @@ function Tile({
   rect: Rect;
   label: string;
   sub: string;
+  /** Optional third line — e.g. a world tile's top sub-genres. Only shown on
+   *  tiles with room to spare. */
+  hint?: string;
   avg: number | null;
   selected: boolean;
   dim: boolean;
@@ -191,6 +195,8 @@ function Tile({
   // keep their colour + tooltip but drop the label rather than overflow it.
   const showLabel = rect.w > 12 && rect.h > 9;
   const showSub = showLabel && rect.w > 18 && rect.h > 16;
+  // A hint needs a genuinely roomy tile — a third line only fits the big worlds.
+  const showHint = !!hint && showSub && rect.w > 26 && rect.h > 24;
   const score = avg ?? 3;
   return (
     <button
@@ -241,6 +247,14 @@ function Tile({
                 style={{ textShadow: '0 1px 2px rgba(0,0,0,0.4)' }}
               >
                 {sub}
+              </span>
+            )}
+            {showHint && (
+              <span
+                className="block mt-1 text-[10.5px] font-medium text-white/70 truncate"
+                style={{ textShadow: '0 1px 2px rgba(0,0,0,0.4)' }}
+              >
+                {hint}
               </span>
             )}
           </span>
@@ -332,12 +346,21 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
               {worldRects.map((r) => {
                 const w = worlds[r.i];
                 const pct = Math.round(w.share * 100);
+                // A hint at the world's other sub-genres, so a big tile previews
+                // what's inside before you drill in. Skip any tag already named
+                // in the headline (the "A × B" two-tag worlds), take the next few.
+                const hint = w.tags
+                  .map((tg) => tg.display)
+                  .filter((d) => !w.label.includes(d))
+                  .slice(0, 3)
+                  .join(' · ');
                 return (
                   <Tile
                     key={w.key}
                     rect={r}
                     label={w.primary}
                     sub={`${pct}%${w.avg != null ? ` · ${w.avg.toFixed(1)}★` : ''}`}
+                    hint={hint}
                     avg={w.avg}
                     selected={false}
                     dim={false}
@@ -376,19 +399,20 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
           )}
         </div>
 
-        {world != null && (
-          <button
-            type="button"
-            onClick={() => (tag ? setTag(null) : setWorld(null))}
-            className="absolute top-2.5 left-2.5 flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-surface/90 border border-divider text-[12px] font-semibold text-ink backdrop-blur hover:bg-surface transition"
-          >
-            <ChevronLeft size={14} />
-            {t('sj.taste.mapBack')}
-          </button>
-        )}
+          {world != null && (
+            <button
+              type="button"
+              onClick={() => (tag ? setTag(null) : setWorld(null))}
+              className="absolute top-2.5 left-2.5 flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-surface/90 border border-divider text-[12px] font-semibold text-ink backdrop-blur hover:bg-surface transition"
+            >
+              <ChevronLeft size={14} />
+              {t('sj.taste.mapBack')}
+            </button>
+          )}
 
-        {/* Sequential legend: the ramp is the app's score scale, stated. */}
-        <div className="absolute bottom-2.5 right-2.5 flex items-center gap-1.5 rounded-full bg-surface/90 border border-divider px-2.5 py-1 backdrop-blur">
+        {/* Legend in its own footer strip — the ramp is the app's score scale,
+            stated — so it never sits on top of a tile's label. */}
+        <div className="flex items-center justify-end gap-1.5 border-t border-divider/60 px-3 py-1.5">
           <span className="text-[10px] text-muted tabular-nums">1</span>
           <span
             className="h-[6px] w-16 rounded-full"

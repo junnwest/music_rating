@@ -30,8 +30,11 @@ export const maxDuration = 15;
 const TTL_SECONDS = 60;
 /** Tags per world that become sub-genre bubbles (and get their own rec list). */
 const GRAPH_TAGS = 8;
-/** Worlds that get a prestige candidate pool for the graph's side panel. */
-const REC_POOL_WORLDS = 3;
+/** Worlds that get a prestige candidate pool for the graph's side panel. Covers
+ *  every world the clusterer can now emit (scene-forced worlds can push past 5),
+ *  so a smaller world like J-pop gets its OWN in-genre recs instead of falling
+ *  back to a bigger neighbour's (which surfaced all-k-pop under the J-pop tab). */
+const REC_POOL_WORLDS = 7;
 const RECS_PER_FOCUS = 6;
 /** Cap on the rated albums shipped for the side panel (score-descending). */
 const GRAPH_ALBUMS = 400;
@@ -61,11 +64,12 @@ export async function GET(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   const refresh = req.nextUrl.searchParams.get('refresh') === '1';
-  // v7: 2026-08-11 — clustering scene-lock (a scene-neutral-anchored world no
-  // longer absorbs both k-pop and j-pop), so worlds/labels shift; bust the
-  // cache rather than serve up-to-60s-stale groupings. v6 made ratingCount the
-  // exact total; v5 added the taste map + per-year series.
-  const cacheKey = `taste:profile:v7:${userId}`;
+  // v8: 2026-08-11 — a scene-pinned tag with no scene-compatible home now opens
+  // its own world past the soft cap instead of force-merging (J-pop no longer
+  // buried in the K-pop world → its own sub-genres + in-genre recs), and the rec
+  // pool covers every world. Bust rather than serve up-to-60s-stale groupings.
+  // v7 added the clustering scene-lock; v6 made ratingCount exact; v5 the map.
+  const cacheKey = `taste:profile:v8:${userId}`;
   if (!refresh) {
     const cached = await cacheGet<object>(cacheKey);
     if (cached) return NextResponse.json(cached);
