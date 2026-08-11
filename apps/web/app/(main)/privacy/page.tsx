@@ -1,56 +1,66 @@
 import Link from 'next/link';
-import { Shield, Lock, Globe, Eye, Trash2, Cookie, Mail, FileText, ArrowLeft } from 'lucide-react';
+import { Shield, Lock, Globe, Eye, Trash2, Cookie, Mail, FileText, ArrowLeft, BarChart3 } from 'lucide-react';
 
 const sections = [
   {
     icon: Shield,
     title: '1. Information We Collect',
-    body: 'We collect information you provide directly when creating an account, including your email address, display name, username, and profile photo. We also collect activity data — ratings, written reviews, Pinned Ten selections, and Listen Later saves. We collect usage data such as pages visited, search queries, and interaction data to improve the service.',
+    body: 'We collect information you provide directly when creating an account, including your email address, display name, username, and (optionally) a profile photo and bio. We collect activity data you generate on the service — ratings, written reviews, Mixes, saved albums, follows, likes, and comments. If you choose to connect a third-party service such as Spotify, we import the data you authorize (for example your top and recently-played artists) to personalize recommendations, and store it against your account until you disconnect. We also collect limited technical and usage data — pages visited, search queries, feature interactions, device and browser type, and IP address — to operate, secure, and improve the service.',
   },
   {
     icon: Lock,
     title: '2. How We Use Your Information',
-    body: 'We use your information to operate sillajuku, personalize your discovery feed and recommendations, display your public profile and reviews to other users, improve the platform, and communicate important service updates.',
+    body: 'We use your information to operate sillajuku, personalize your discovery feed and recommendations, display your public profile and reviews to other users, measure and improve the platform, diagnose errors, prevent abuse, and communicate important service updates. We do not use your data to build advertising profiles, and we do not run third-party advertising.',
+  },
+  {
+    icon: BarChart3,
+    title: '3. Analytics & Diagnostics',
+    body: 'To understand how the product is used and to fix problems, we use PostHog for privacy-conscious product analytics (which pages and features are used, aggregated engagement) and Sentry for error and performance diagnostics (crash reports and the technical context around them, which may include your IP address). These providers process data on our behalf under contract and are not permitted to use it for their own purposes. We do not sell this data or use it for advertising. See the Cookies section below for how this works in your browser and how to limit it.',
   },
   {
     icon: Globe,
-    title: '3. Information Sharing',
-    body: 'We do not sell your personal data. Your ratings and reviews are public by default and visible to all users. We may share anonymized, aggregated data for research purposes. We use Supabase for database and authentication. Music metadata, cover art, and related information are sourced from a combination of third-party catalogs, including MusicBrainz, the Cover Art Archive, Deezer, Last.fm, and Apple/iTunes.',
+    title: '4. Information Sharing',
+    body: 'We do not sell your personal data. Your ratings, reviews, public Mixes, and profile are public by default and visible to other users. We share data with service providers who help us run the platform — Supabase (database and authentication), Vercel (hosting), Upstash (caching), PostHog (product analytics), and Sentry (error diagnostics) — each acting as our processor under contract. Music metadata, cover art, and related information are sourced from third-party catalogs, including MusicBrainz, the Cover Art Archive, Deezer, Last.fm, and Apple/iTunes. We may disclose information if required by law or to protect the rights, safety, and security of our users and the service. We may share anonymized, aggregated statistics that cannot identify you.',
   },
   {
     icon: Trash2,
-    title: '4. Data Retention',
-    body: 'We retain account data for as long as your account is active. If you delete your account, personal information is removed within 30 days. Anonymized activity data may be retained for statistical purposes.',
+    title: '5. Data Retention',
+    body: 'We retain account data for as long as your account is active. If you delete your account, your personal information is removed within 30 days, except where we must retain limited records to comply with legal obligations or resolve disputes. Anonymized or aggregated data that can no longer identify you may be retained for statistical purposes.',
   },
   {
     icon: Eye,
-    title: '5. Your Rights',
-    body: 'You have the right to access, correct, or delete your personal data. Most settings can be managed directly from your profile. For account deletion or data export, contact admin@sillajuku.com.',
+    title: '6. Your Rights',
+    body: 'You have the right to access, correct, or delete your personal data. Most settings can be managed directly from your profile and settings, and you can delete your account at any time from Settings. For data export or any request you cannot complete in-app, contact admin@sillajuku.com.',
   },
   {
     icon: Globe,
-    title: '6. GDPR (European Users)',
-    body: 'If you are located in the European Economic Area or UK, we process your data under the following lawful bases: performance of a contract (operating your account and the core service), legitimate interests (improving the product, security, abuse prevention), and consent (where you opt in, e.g. push notifications). You have the right to access, rectify, erase, restrict, or port your data, and to object to processing based on legitimate interests. Contact admin@sillajuku.com to exercise any of these rights; we will respond within 30 days. You also have the right to lodge a complaint with your local data protection supervisory authority.',
+    title: '7. Korean Users (PIPA)',
+    body: 'sillajuku is operated from the Republic of Korea and complies with the Personal Information Protection Act (PIPA). We collect and use personal information based on your consent given at sign-up and as necessary to perform the service. You may withdraw consent, request access, correction, deletion, or suspension of processing of your personal information at any time by contacting admin@sillajuku.com. Children under 14 require the consent of a legal guardian to create an account. You may also file a complaint with the Personal Information Protection Commission (privacy.go.kr) or the Korea Internet & Security Agency (privacy KISA, 118).',
   },
   {
     icon: Globe,
-    title: '7. CCPA (California Residents)',
-    body: 'California residents have the right to know what personal information we collect, request deletion of that information, and opt out of its "sale" — we do not sell personal information as defined by the CCPA, so there is nothing to opt out of. To exercise any of these rights, contact admin@sillajuku.com; we will not discriminate against you for making a request.',
+    title: '8. GDPR (European Users)',
+    body: 'If you are located in the European Economic Area, the UK, or Switzerland, we process your data under these lawful bases: performance of a contract (operating your account and the core service), legitimate interests (improving the product, security, and abuse prevention, balanced against your rights), and consent (where you opt in, for example non-essential analytics cookies or push notifications). You have the right to access, rectify, erase, restrict, or port your data, and to object to processing based on legitimate interests. To exercise any of these, contact admin@sillajuku.com; we respond within 30 days. You may also lodge a complaint with your local data protection supervisory authority.',
+  },
+  {
+    icon: Globe,
+    title: '9. CCPA (California Residents)',
+    body: 'California residents have the right to know what personal information we collect, to request its deletion, and to opt out of its "sale" or "sharing." We do not sell or share personal information as those terms are defined by the CCPA/CPRA, so there is nothing to opt out of. To exercise any of these rights, contact admin@sillajuku.com; we will not discriminate against you for making a request.',
   },
   {
     icon: Cookie,
-    title: '8. Cookies',
-    body: 'We use only strictly-necessary, functional cookies — to maintain your login session and remember your language preference. We do not use cookies for advertising, cross-site tracking, or analytics profiling. Because these cookies are strictly necessary for the service to function, no cookie-consent banner is shown; this will change if we ever introduce non-essential cookies.',
+    title: '10. Cookies & Local Storage',
+    body: 'We use strictly-necessary storage to keep you signed in and remember your language preference — these are essential for the service to function. We also use limited analytics storage (via PostHog) to understand product usage and diagnostics storage (via Sentry) to capture errors. We do not use cookies for advertising or cross-site ad tracking. You can limit non-essential storage through your browser settings (including "Do Not Track," which we honor for analytics) or your operating system\'s privacy controls; essential storage cannot be disabled without breaking core functionality.',
   },
   {
     icon: FileText,
-    title: '9. Changes to This Policy',
-    body: 'We may update this policy from time to time. Significant changes will be posted on the site or emailed to you. Continued use after changes constitutes acceptance.',
+    title: '11. Changes to This Policy',
+    body: 'We may update this policy from time to time. Significant changes will be posted on the site or emailed to you. Continued use after changes take effect constitutes acceptance.',
   },
   {
     icon: Mail,
-    title: '10. Contact',
-    body: 'For privacy questions, contact admin@sillajuku.com. We typically respond within 24–48 hours.',
+    title: '12. Contact',
+    body: 'For privacy questions or to exercise any of your rights, contact admin@sillajuku.com. We typically respond within 24–48 hours and within any period required by applicable law.',
   },
 ];
 
@@ -67,7 +77,7 @@ export default function PrivacyPage() {
             <Shield size={28} className="text-ink" strokeWidth={1.8} />
             <h1 className="text-[28px] md:text-[34px] font-extrabold text-ink tracking-tight">Privacy Policy</h1>
           </div>
-          <p className="text-[13px] text-muted">Last updated: July 2026</p>
+          <p className="text-[13px] text-muted">Last updated: August 2026</p>
         </div>
       </div>
 

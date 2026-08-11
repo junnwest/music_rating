@@ -24,7 +24,11 @@ const statsCache = new Map<string, PeekStats>();
 const tracksCache = new Map<string, PeekTrack[]>();
 
 const CARD_W = 300;
-const CARD_H = 380; // approximate, for vertical clamping only
+// Tall enough for the worst case (2-line title + meta + MAX_TRACKS rows + the
+// "+N" line ≈ 455px) — it doubles as the content's max-height, so a shorter
+// value visibly clipped the tracklist of long albums. Used for vertical
+// clamping too; still comfortably inside any desktop viewport.
+const CARD_H = 460;
 const MAX_TRACKS = 14;
 
 function fmtDur(ms: number | null): string {

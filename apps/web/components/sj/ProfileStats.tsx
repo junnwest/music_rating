@@ -260,21 +260,32 @@ function Histogram({
   avgLabel: string;
 }) {
   const max = Math.max(...dist, 1);
+  const avgPct = avg != null ? scoreToPct(avg) : 0;
 
   return (
     <div>
+      {/* pt-4 reserves a strip above the bars for the avg label — without it,
+          the label sat at the same height as the tallest bucket's count and the
+          two overlapped whenever the average landed near the mode (guaranteed
+          with only a handful of scores). */}
       <div
         role="img"
         aria-label={dist.map((n, i) => `${((i + 1) / 2).toFixed(1)}: ${n}`).join(', ')}
-        className="relative flex items-end gap-[3px] h-32 sm:h-40 border-b border-divider"
+        className="relative flex items-end gap-[3px] h-32 sm:h-40 pt-4 border-b border-divider"
       >
         {avg != null && (
           <span
             aria-hidden
             className="absolute inset-y-0 border-l border-dashed border-ink/25 pointer-events-none"
-            style={{ left: `${scoreToPct(avg)}%` }}
+            style={{ left: `${avgPct}%` }}
           >
-            <span className="absolute -top-0.5 left-1 text-[9.5px] text-muted whitespace-nowrap">
+            {/* Flip to the left of the line near the right edge so the label
+                never runs off the plot. */}
+            <span
+              className={`absolute top-0 text-[9.5px] text-muted whitespace-nowrap ${
+                avgPct > 70 ? 'right-1' : 'left-1'
+              }`}
+            >
               {avgLabel} {avg.toFixed(1)}
             </span>
           </span>

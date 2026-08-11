@@ -61,9 +61,10 @@ export async function GET(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   const refresh = req.nextUrl.searchParams.get('refresh') === '1';
-  // v5: 2026-07-19 adds the taste map (bubbles + per-genre albums/recs) and the
-  // per-year series, so a v4 entry can't satisfy the new page.
-  const cacheKey = `taste:profile:v5:${userId}`;
+  // v6: 2026-08-10 — ratingCount becomes the exact ratings total (the fetch is
+  // capped at 500 rows, which undercounted heavy raters and disagreed with the
+  // profile header). v5 added the taste map + per-year series.
+  const cacheKey = `taste:profile:v6:${userId}`;
   if (!refresh) {
     const cached = await cacheGet<object>(cacheKey);
     if (cached) return NextResponse.json(cached);
@@ -72,7 +73,7 @@ export async function GET(req: NextRequest) {
   const supabase = createServerClient();
   if (!supabase) return NextResponse.json({ error: 'not configured' }, { status: 503 });
 
-  const [ratingsRes, standingsRes, trackCountRes] = await Promise.all([
+  const [ratingsRes, standingsRes, trackCountRes, albumCountRes] = await Promise.all([
     supabase
       .from('ratings')
       .select(
@@ -84,6 +85,12 @@ export async function GET(req: NextRequest) {
     supabase
       .from('track_ratings')
       .select('recording_id', { count: 'exact', head: true })
+      .eq('user_id', userId),
+    // Exact album total — the row fetch above is capped at 500, and the "rated"
+    // headline must agree with the profile header, which counts everything.
+    supabase
+      .from('ratings')
+      .select('release_group_id', { count: 'exact', head: true })
       .eq('user_id', userId),
   ]);
   if (ratingsRes.error) {
@@ -116,7 +123,9 @@ export async function GET(req: NextRequest) {
   const { error: upsertErr } = await supabase.from('user_taste_profiles').upsert({
     user_id: userId,
     genre_weights: weights,
-    rating_count: rows.length,
+    // Exact count, not rows.length — the row fetch is capped at 500 and writing
+    // a capped number here would make the stored profile look drifted forever.
+    rating_count: albumCountRes.count ?? rows.length,
     updated_at: new Date().toISOString(),
   });
   if (upsertErr) console.error('[taste] profile upsert error:', upsertErr.message);
@@ -344,9 +353,10 @@ export async function GET(req: NextRequest) {
     userCount: Number(s.user_count),
   }));
 
+  const albumTotal = albumCountRes.count ?? rows.length;
   const payload = {
-    ratingCount: rows.length + (trackCountRes.count ?? 0),
-    albumRatingCount: rows.length,
+    ratingCount: albumTotal + (trackCountRes.count ?? 0),
+    albumRatingCount: albumTotal,
     totalTags: Object.keys(weights).length,
     clusters: clusters.map((c, i) => {
       const sumW = c.tags.reduce((s, t) => s + t.w, 0);

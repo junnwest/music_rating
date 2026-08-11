@@ -1,13 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, Compass, Heart, Plus, Check } from 'lucide-react';
+import { CheckCircle2, Compass, ExternalLink, Heart, Plus, Check } from 'lucide-react';
 import Cover from '../../../components/sj/Cover';
 import CandidateRow from '../../../components/sj/CandidateRow';
 import FlowerRateControl from '../../../components/sj/FlowerRateControl';
 import AlbumBookmarkButton from '../../../components/sj/AlbumBookmarkButton';
-import AlbumOverflowMenu from '../../../components/sj/AlbumOverflowMenu';
+import AlbumOverflowMenu, { NotInterestedButton } from '../../../components/sj/AlbumOverflowMenu';
 import AlbumPeek from '../../../components/sj/AlbumPeek';
+import FlowerGlyph from '../../../components/sj/FlowerGlyph';
+import { useContextMenu, openInNewTab } from '../../../components/sj/ContextMenu';
 import ManualRateModal from '../../../components/sj/ManualRateModal';
 import InstinctModal from '../../../components/sj/InstinctModal';
 import { useNavSafeClick } from '../../../components/sj/useNavSafeClick';
@@ -861,6 +863,14 @@ function CandidateCard({
           size={24}
           className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
         />
+        {/* One-tap dismissal — this page exists to teach the algorithm, so the
+            negative signal is as reachable as the rate gauge. */}
+        <NotInterestedButton
+          releaseGroupId={c.id}
+          onNotInterested={onNotInterested}
+          size={24}
+          className="absolute bottom-1.5 left-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
+        />
         {/* The rate gauge is always visible — it's the point of the page, not a
             hover affordance. Instinct mode swaps the drag flower for a plus that
             opens the pairwise sheet (no quick score here). */}
@@ -907,8 +917,25 @@ function SongRow({
   onRate: (score: number | null) => void;
   onPrecise: () => void;
 }) {
+  const { t } = useLanguage();
+  // Song rows get the same right-click affordance albums have via AlbumPeek.
+  const { onContextMenu, menu } = useContextMenu([
+    {
+      key: 'open-new-tab',
+      label: t('sj.context.openNewTab'),
+      icon: <ExternalLink size={15} />,
+      onSelect: () => openInNewTab(`/song/${c.id}`),
+    },
+    {
+      key: 'rate',
+      label: t('sj.context.rate'),
+      icon: <FlowerGlyph size={14} src="/icon-flower.svg" />,
+      onSelect: onPrecise,
+    },
+  ]);
   return (
-    <li className="flex items-center gap-3 py-2.5">
+    <li className="flex items-center gap-3 py-2.5" onContextMenu={onContextMenu}>
+      {menu}
       <span className="relative shrink-0">
         <Cover url={c.cover_url} className="w-[52px] h-[52px]" rounded="rounded-lg" />
       </span>

@@ -3,8 +3,10 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Search as SearchIcon, X, Check, ChevronRight, Plus } from 'lucide-react';
+import { Search as SearchIcon, X, Check, ChevronRight, ExternalLink, Plus } from 'lucide-react';
 import ArtistLink from '../../../components/sj/ArtistLink';
+import FlowerGlyph from '../../../components/sj/FlowerGlyph';
+import { useContextMenu, useContextMenuFor, openInNewTab } from '../../../components/sj/ContextMenu';
 import Cover from '../../../components/sj/Cover';
 import ManualRateModal from '../../../components/sj/ManualRateModal';
 import InstinctModal from '../../../components/sj/InstinctModal';
@@ -355,6 +357,17 @@ function SearchResults({
   const ratingStep = profile?.manual_rating_step ?? 0.5;
   const hasAny = artists.length > 0 || albums.length > 0 || songs.length > 0;
 
+  // One menu instance for the whole artist column (see useContextMenuFor).
+  const { onContextMenu: onArtistContextMenu, menu: artistContextMenu } =
+    useContextMenuFor<SearchArtistRPC>((a) => [
+      {
+        key: 'open-new-tab',
+        label: t('sj.context.openNewTab'),
+        icon: <ExternalLink size={15} />,
+        onSelect: () => openInNewTab(`/artist/${a.id}`),
+      },
+    ]);
+
   if (!hasAny) {
     if (searching || query.trim().length < 2) return <div className="py-20" />;
     return (
@@ -378,7 +391,7 @@ function SearchResults({
               const native =
                 a.name_native && isPredominantlyHangul(a.name_native) ? a.name_native : null;
               return (
-                <li key={a.id}>
+                <li key={a.id} onContextMenu={(e) => onArtistContextMenu(e, a)}>
                   <ArtistLink
                     href={`/artist/${a.id}`}
                     className="flex items-center gap-3 px-3.5 py-2.5 hover:bg-page/60 transition"
@@ -414,6 +427,7 @@ function SearchResults({
               );
             })}
           </ul>
+          {artistContextMenu}
         </section>
       )}
 
@@ -794,8 +808,27 @@ function SongRow({
   onRate: (score: number | null) => void;
 }) {
   const { t } = useLanguage();
+  // Right-click parity with album cards (whose menu rides on AlbumPeek).
+  const { onContextMenu, menu } = useContextMenu([
+    {
+      key: 'open-new-tab',
+      label: t('sj.context.openNewTab'),
+      icon: <ExternalLink size={15} />,
+      onSelect: () => openInNewTab(`/song/${song.id}?rg=${song.release.id}`),
+    },
+    {
+      key: 'rate',
+      label: t('sj.context.rate'),
+      icon: <FlowerGlyph size={14} src="/icon-flower.svg" />,
+      onSelect: onAdd,
+    },
+  ]);
   return (
-    <li className="flex items-center gap-3 px-3.5 py-2.5 hover:bg-page/60 transition group">
+    <li
+      onContextMenu={onContextMenu}
+      className="flex items-center gap-3 px-3.5 py-2.5 hover:bg-page/60 transition group"
+    >
+      {menu}
       <Link
         href={`/song/${song.id}?rg=${song.release.id}`}
         className="flex items-center gap-3 min-w-0 flex-1"

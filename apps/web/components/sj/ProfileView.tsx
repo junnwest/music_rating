@@ -15,8 +15,10 @@ import {
   Newspaper,
   List as ListIcon,
   Plus,
+  ExternalLink,
 } from 'lucide-react';
 import Modal from './Modal';
+import { useContextMenuFor, openInNewTab } from './ContextMenu';
 import Avatar from './Avatar';
 import { Skeleton, SkeletonLine, SkeletonRows } from './Loading';
 import ProfilePostCard from './ProfilePostCard';
@@ -79,6 +81,10 @@ export default function ProfileView({ username }: { username?: string }) {
     avatarUrl: string | null;
   } | null>(null);
   const [items, setItems] = useState<ProfileRatingItem[]>([]);
+  // Exact ratings total for the header stat. `items` is a page (60 albums +
+  // 60 songs), so its length undercounts heavy raters — and disagreed with the
+  // Taste page's "rated" figure, which counts everything.
+  const [ratedTotal, setRatedTotal] = useState<number | null>(null);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
   const [isFollowing, setIsFollowing] = useState(false);
@@ -196,10 +202,15 @@ export default function ProfileView({ username }: { username?: string }) {
       });
     })();
 
-    // Follow counts (+ my relation for other profiles)
+    // Follow counts + exact rating totals (+ my relation for other profiles)
     const countsP = Promise.all([
       supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', uid),
       supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', uid),
+      supabase.from('ratings').select('*', { count: 'exact', head: true }).eq('user_id', uid),
+      supabase
+        .from('track_ratings')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', uid),
       !isSelf && myId
         ? supabase
             .from('follows')
@@ -216,8 +227,11 @@ export default function ProfileView({ username }: { username?: string }) {
         : Promise.resolve({ data: null }),
     ]);
 
-    const [{ data: albumRows }, songItems, [followingRes, followerRes, relRes, blockRes]] =
-      await Promise.all([albumP, songP, countsP]);
+    const [
+      { data: albumRows },
+      songItems,
+      [followingRes, followerRes, albumTotalRes, songTotalRes, relRes, blockRes],
+    ] = await Promise.all([albumP, songP, countsP]);
 
     const albumItems: ProfileRatingItem[] = ((albumRows as any[] | null) ?? []).map((r) => {
       const rg = r.release_groups;
@@ -241,6 +255,10 @@ export default function ProfileView({ username }: { username?: string }) {
     });
 
     setItems([...albumItems, ...songItems]);
+    setRatedTotal(
+      ((albumTotalRes as any).count ?? albumItems.length) +
+        ((songTotalRes as any).count ?? songItems.length),
+    );
     setFollowingCount((followingRes as any).count ?? 0);
     setFollowerCount((followerRes as any).count ?? 0);
     setIsFollowing((((relRes as any).data as any[] | null) ?? []).length > 0);
@@ -397,6 +415,7 @@ export default function ProfileView({ username }: { username?: string }) {
   async function deleteRating(item: ProfileRatingItem) {
     if (!supabase || !myId) return;
     setItems((prev) => prev.filter((i) => i.key !== item.key));
+    setRatedTotal((n) => (n == null ? n : Math.max(0, n - 1)));
     if (item.isSong && item.recordingId) {
       await supabase
         .from('track_ratings')
@@ -507,7 +526,7 @@ export default function ProfileView({ username }: { username?: string }) {
       <div className="flex items-center gap-6">
         <Avatar url={display?.avatarUrl} size={76} />
         <div className="flex-1 flex items-center gap-2">
-          <StatCell value={items.length} label={t('sj.profile.ratedStat')} />
+          <StatCell value={ratedTotal ?? items.length} label={t('sj.profile.ratedStat')} />
           <button onClick={() => setFollowModal('following')} className="flex-1">
             <StatCell value={followingCount} label={t('sj.profile.following')} />
           </button>
@@ -799,10 +818,22 @@ function MixLibrary({ userId, isSelf }: { userId: string; isSelf: boolean }) {
     load();
   }
 
+  // Right-click on a mix row — same "open in new tab" the rated rows have.
+  const { onContextMenu: onMixContextMenu, menu: mixContextMenu } =
+    useContextMenuFor<MixRow>((mix) => [
+      {
+        key: 'open-new-tab',
+        label: t('sj.context.openNewTab'),
+        icon: <ExternalLink size={15} />,
+        onSelect: () => openInNewTab(`/mix/${mix.id}`),
+      },
+    ]);
+
   if (loading) return <SkeletonRows className="mt-4" count={4} />;
 
   return (
     <div className="mt-3">
+      {mixContextMenu}
       {isSelf && (
         <button
           onClick={() => setShowCreate(true)}
@@ -817,7 +848,7 @@ function MixLibrary({ userId, isSelf }: { userId: string; isSelf: boolean }) {
       ) : (
         <ul className="divide-y divide-divider">
           {mixes.map((mix) => (
-            <li key={mix.id}>
+            <li key={mix.id} onContextMenu={(e) => onMixContextMenu(e, mix)}>
               <Link
                 href={`/mix/${mix.id}`}
                 className="flex items-center gap-3.5 py-3 px-1 hover:bg-surface/60 rounded-lg transition"

@@ -17,7 +17,9 @@ import Cover from './Cover';
 import ScoreBadge from './ScoreBadge';
 import AlbumRateButton from './AlbumRateButton';
 import AlbumBookmarkButton from './AlbumBookmarkButton';
+import { NotInterestedButton, type OverflowItem } from './AlbumOverflowMenu';
 import AlbumPeek from './AlbumPeek';
+import { useContextMenu } from './ContextMenu';
 import CommentsModal from './CommentsModal';
 import LikersModal from './LikersModal';
 import ReportModal from './ReportModal';
@@ -94,8 +96,54 @@ export default function FeedCard({
     setMenuOpen(false);
   }
 
+  // Right-click anywhere on the post (outside the album cover, which carries
+  // its own album menu) mirrors the overflow (…) menu, so the two entry points
+  // never drift apart in what they offer.
+  const postMenuItems: OverflowItem[] = [
+    {
+      key: 'save-to-mix',
+      label: t('sj.mix.saveToMix'),
+      icon: <Bookmark size={15} />,
+      onSelect: () => setShowMixPicker(true),
+    },
+    { key: 'share', label: t('sj.feed.share'), icon: <Share2 size={15} />, onSelect: share },
+    ...(onNotInterested
+      ? [
+          {
+            key: 'not-interested',
+            label: t('sj.notInterested.action'),
+            icon: <EyeOff size={15} />,
+            onSelect: onNotInterested,
+          },
+        ]
+      : []),
+    ...(!isOwn
+      ? [
+          {
+            key: 'report',
+            label: t('sj.feed.report'),
+            icon: <Flag size={15} />,
+            destructive: true,
+            onSelect: () => setShowReport(true),
+          },
+          {
+            key: 'block',
+            label: t('sj.feed.block'),
+            icon: <Ban size={15} />,
+            destructive: true,
+            onSelect: () => setConfirmBlock(true),
+          },
+        ]
+      : []),
+  ];
+  const { onContextMenu: onPostContextMenu, menu: postContextMenu } =
+    useContextMenu(postMenuItems);
+
   return (
-    <article className="bg-surface rounded-2xl shadow-[0_1px_4px_rgba(0,0,0,0.05)] border border-divider/60">
+    <article
+      onContextMenu={onPostContextMenu}
+      className="bg-surface rounded-2xl shadow-[0_1px_4px_rgba(0,0,0,0.05)] border border-divider/60"
+    >
       {/* Header */}
       <div className="flex items-center gap-2 pl-3.5 pr-1 pt-2.5 pb-1">
         <Link
@@ -182,6 +230,14 @@ export default function FeedCard({
           className="relative shrink-0 group"
         >
           <Cover url={rg.cover_url} className="w-20 h-20" />
+          {onNotInterested && (
+            <NotInterestedButton
+              releaseGroupId={rg.id}
+              onNotInterested={onNotInterested}
+              size={24}
+              className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
+            />
+          )}
           <AlbumBookmarkButton
             releaseGroupId={rg.id}
             size={24}
@@ -284,6 +340,7 @@ export default function FeedCard({
         onClose={() => setShowMixPicker(false)}
         releaseGroupId={rg.id}
       />
+      {postContextMenu}
     </article>
   );
 }

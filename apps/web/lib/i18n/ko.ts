@@ -640,6 +640,7 @@ const ko: Translations = {
       saveToMix: '믹스에 저장',
       goToArtist: '아티스트 페이지로',
       removeFromMix: '믹스에서 제거',
+      deleteRating: '평가 삭제',
     },
     notInterested: {
       action: '관심 없음',

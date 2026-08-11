@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Flame, ListMusic, UserPlus } from 'lucide-react';
+import { ExternalLink, Flame, ListMusic, UserPlus } from 'lucide-react';
 import Avatar from '../../components/sj/Avatar';
+import { useContextMenuFor, openInNewTab } from '../../components/sj/ContextMenu';
 import FeedCard from '../../components/sj/FeedCard';
 import TitleTabs from '../../components/sj/TitleTabs';
 import AlbumPeek from '../../components/sj/AlbumPeek';
@@ -436,6 +437,17 @@ function SuggestedRail() {
     }
   }
 
+  // Right-click on a person mirrors the album rows' "open in new tab".
+  const { onContextMenu: onUserContextMenu, menu: userContextMenu } =
+    useContextMenuFor<SuggestedUserRPC>((u) => [
+      {
+        key: 'open-new-tab',
+        label: t('sj.context.openNewTab'),
+        icon: <ExternalLink size={15} />,
+        onSelect: () => openInNewTab(`/profile/${u.username ?? ''}`),
+      },
+    ]);
+
   if (!userId || users.length === 0) return null;
 
   return (
@@ -444,12 +456,17 @@ function SuggestedRail() {
         <UserPlus size={14} className="text-accent" />
         {t('sj.home.findPeople')}
       </h2>
+      {userContextMenu}
       <ul className="flex flex-col gap-3">
         {users.map((u) => {
           const handle = u.username ?? u.display_name ?? 'user';
           const isFollowed = followed.has(u.id);
           return (
-            <li key={u.id} className="flex items-center gap-2.5">
+            <li
+              key={u.id}
+              className="flex items-center gap-2.5"
+              onContextMenu={(e) => onUserContextMenu(e, u)}
+            >
               <Link
                 href={`/profile/${u.username ?? ''}`}
                 className="flex items-center gap-2.5 min-w-0 flex-1 group"

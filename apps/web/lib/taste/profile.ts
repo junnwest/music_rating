@@ -23,6 +23,7 @@ import {
   eraAffinity,
   sceneAffinity,
   sceneOf,
+  tagScene,
   yearOf,
   type Scene,
   type SceneShares,
@@ -111,27 +112,53 @@ export function buildClusters(weights: GenreWeights): TasteCluster[] {
     tags: ClusterTag[];
     weight: number;
     centroid: number[];
+    /** Scene implied by the anchor tag's name (kr/jp), if any. */
+    scene: Scene | null;
   }
   const clusters: Working[] = [];
 
   for (const t of positive) {
     const vec = genreVector(t.tag)!;
+    const scene = tagScene(t.tag);
+    // Scene-aware join: a tag whose *name* pins it to a scene (j-pop → jp)
+    // never joins a cluster anchored to a different scene (k-pop → kr), even
+    // when the co-occurrence embeddings put them close (j-pop↔k-pop ≈ 0.55 in
+    // this catalog). Without this the "J-Pop world" merged into the K-Pop one
+    // and inherited its "Korean scene" label. Clusters with no implied scene
+    // (rock, jazz…) accept everything, as before.
     let best: Working | null = null;
     let bestSim = -1;
+    let bestAny: Working | null = null;
+    let bestAnySim = -1;
     for (const c of clusters) {
       const sim = cosine(vec, c.centroid);
-      if (sim > bestSim) {
+      if (sim > bestAnySim) {
+        bestAnySim = sim;
+        bestAny = c;
+      }
+      const conflict = scene != null && c.scene != null && scene !== c.scene;
+      if (!conflict && sim > bestSim) {
         bestSim = sim;
         best = c;
       }
     }
-    if (best && (bestSim >= JOIN_THRESHOLD || clusters.length >= MAX_CLUSTERS)) {
-      best.tags.push(t);
-      best.weight += t.w;
-      best.centroid =
-        centroid(best.tags.map(({ tag, w }) => ({ tag, weight: w }))) ?? best.centroid;
+    const joinTarget =
+      best && bestSim >= JOIN_THRESHOLD
+        ? best
+        : clusters.length >= MAX_CLUSTERS
+          ? // At the cluster cap a join is forced; still prefer the best
+            // scene-compatible home, falling back to overall best only when
+            // every cluster conflicts.
+            (best ?? bestAny)
+          : null;
+    if (joinTarget) {
+      joinTarget.tags.push(t);
+      joinTarget.weight += t.w;
+      joinTarget.centroid =
+        centroid(joinTarget.tags.map(({ tag, w }) => ({ tag, weight: w }))) ??
+        joinTarget.centroid;
     } else {
-      clusters.push({ tags: [t], weight: t.w, centroid: [...vec] });
+      clusters.push({ tags: [t], weight: t.w, centroid: [...vec], scene });
     }
   }
 

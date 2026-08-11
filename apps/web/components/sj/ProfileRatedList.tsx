@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronsUpDown, Download, SlidersHorizontal, Trash2, X } from 'lucide-react';
+import { ChevronsUpDown, Download, ExternalLink, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import Cover from './Cover';
 import FlowerGlyph from './FlowerGlyph';
+import { useContextMenu, openInNewTab } from './ContextMenu';
 import { useLanguage } from '../../lib/i18n';
 import { eloToScore, INSTINCT_REVEAL_THRESHOLD } from '../../lib/elo';
-import { formatScore, typeLabelKey } from '../../lib/sj/display';
+import { formatScore, spectrumFill, spectrumNumber, spectrumRing, typeLabelKey } from '../../lib/sj/display';
 import type { ProfileRatingItem } from './ProfileView';
 
 /**
@@ -367,8 +368,32 @@ function Row({
   const typeKey = item.isSong ? 'sj.type.song' : typeLabelKey(item.releaseType);
   const typeLabel = typeKey ? t(typeKey) : null;
 
+  const { onContextMenu, menu } = useContextMenu([
+    {
+      key: 'open-new-tab',
+      label: t('sj.context.openNewTab'),
+      icon: <ExternalLink size={15} />,
+      onSelect: () => openInNewTab(href),
+    },
+    ...(onDelete
+      ? [
+          {
+            key: 'delete',
+            label: t('sj.context.deleteRating'),
+            icon: <Trash2 size={15} />,
+            destructive: true,
+            onSelect: onDelete,
+          },
+        ]
+      : []),
+  ]);
+
   return (
-    <li className={`group relative ${GRID} px-1 py-2.5 hover:bg-surface/50 transition`}>
+    <li
+      onContextMenu={onContextMenu}
+      className={`group relative ${GRID} px-1 py-2.5 hover:bg-surface/50 transition`}
+    >
+      {menu}
       {/* One stretched link behind the whole row rather than an anchor wrapping
           the cells — the cells are grid items, and an anchor around them would
           need `display: contents` (unreliable for hit-testing). The delete
@@ -405,9 +430,20 @@ function Row({
           instinctCount={instinctCount}
         />
       </span>
-      <span className="hidden md:block text-right text-[13px] font-bold text-ink tabular-nums">
-        {showScore && score != null ? formatScore(score) : pendingReveal ? '·' : '—'}
-      </span>
+      {/* Scores wear the app's score ramp (same as ScoreBadge/Stats) instead of
+          flat ink, so a 4.5 and a 2.0 read differently at a glance. */}
+      {showScore && score != null ? (
+        <span
+          className="hidden md:block text-right text-[13px] font-bold tabular-nums"
+          style={{ color: spectrumRing(score) }}
+        >
+          {formatScore(score)}
+        </span>
+      ) : (
+        <span className="hidden md:block text-right text-[13px] font-bold text-muted tabular-nums">
+          {pendingReveal ? '·' : '—'}
+        </span>
+      )}
       <span className="hidden md:block text-right text-[12px] text-muted tabular-nums whitespace-nowrap">
         {item.createdAt ? item.createdAt.slice(0, 10) : '—'}
       </span>
@@ -436,8 +472,13 @@ function ScoreChip({
 }) {
   const { t } = useLanguage();
   if (score != null) {
+    // Ramp-colored chip — same fill/number pairing the Taste page's top-album
+    // badge uses, replacing the old flat accent chip.
     return (
-      <span className="flex items-center gap-1 px-2 py-1 rounded-md bg-accent/10 text-accent">
+      <span
+        className="flex items-center gap-1 px-2 py-1 rounded-md"
+        style={{ background: spectrumFill(score), color: spectrumNumber(score) }}
+      >
         <FlowerGlyph size={11} />
         <span className="text-[13px] font-bold tabular-nums">{formatScore(score)}</span>
       </span>

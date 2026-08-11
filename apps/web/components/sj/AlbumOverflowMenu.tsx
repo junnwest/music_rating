@@ -117,6 +117,47 @@ export function OverflowMenuSurface({
   );
 }
 
+/**
+ * The one-tap "Not interested" cover button — the visible sibling of the menu
+ * item below, for surfaces where the signal deserves first-class placement
+ * (Home explore cards, Quick Add candidates). Same optimistic contract: the
+ * caller drops the card, the write follows.
+ */
+export function NotInterestedButton({
+  releaseGroupId,
+  onNotInterested,
+  size = 26,
+  className = '',
+}: {
+  releaseGroupId: string;
+  onNotInterested?: () => void;
+  size?: number;
+  className?: string;
+}) {
+  const { userId } = useSession();
+  const { t } = useLanguage();
+
+  if (!userId) return null;
+
+  return (
+    <button
+      type="button"
+      aria-label={t('sj.notInterested.action')}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onNotInterested?.();
+        void markNotInterested(userId, releaseGroupId);
+      }}
+      className={`flex items-center justify-center rounded-full bg-black/55 text-white shadow backdrop-blur-sm transition hover:bg-black/70 active:scale-95 ${className}`}
+      style={{ width: size, height: size }}
+    >
+      <EyeOff size={Math.round(size * 0.54)} strokeWidth={2} />
+    </button>
+  );
+}
+
 export default function AlbumOverflowMenu({
   releaseGroupId,
   onNotInterested,

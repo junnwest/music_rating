@@ -638,6 +638,7 @@ const en = {
       saveToMix: 'Save to Mix',
       goToArtist: 'Go to artist',
       removeFromMix: 'Remove from Mix',
+      deleteRating: 'Delete rating',
     },
     notInterested: {
       action: 'Not interested',
