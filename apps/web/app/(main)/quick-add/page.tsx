@@ -14,6 +14,7 @@ import { useNavSafeClick } from '../../../components/sj/useNavSafeClick';
 import Modal from '../../../components/sj/Modal';
 import { Skeleton, SkeletonLine, SkeletonRows } from '../../../components/sj/Loading';
 import { useSession } from '../../../components/sj/SessionContext';
+import { useRatings } from '../../../components/sj/RatingsStore';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
 import { displayName } from '../../../lib/sj/display';
@@ -108,6 +109,7 @@ type Target =
 export default function QuickAddPage() {
   const { t } = useLanguage();
   const { userId, ready, profile } = useSession();
+  const { setRating } = useRatings();
   // In Instinct mode there's no drag-to-score: covers show a plus that opens the
   // pairwise flow, mirroring the rest of the app (AlbumRateButton). Reactive to
   // the session profile, so flipping the mode in Settings swaps the buttons live.
@@ -358,26 +360,42 @@ export default function QuickAddPage() {
   }, [loadMore]);
 
   // ── Rating writes ──
-  async function rateAlbum(id: string, score: number) {
-    if (!supabase || !userId) return;
-    setHeld((h) => ({ ...h, [id]: score }));
-    await supabase
-      .from('ratings')
-      .upsert(
-        { user_id: userId, release_group_id: id, score },
-        { onConflict: 'user_id,release_group_id' },
-      );
+  // A null score = the gauge was dragged back into the dead zone → void it.
+  async function rateAlbum(id: string, score: number | null) {
+    if (!userId) return;
+    setHeld((h) => {
+      const next = { ...h };
+      if (score == null) delete next[id];
+      else next[id] = score;
+      return next;
+    });
+    // Albums go through the app-wide store (DB upsert/delete + global sync), so
+    // rating here shows up on every other surface for the album immediately.
+    await setRating(id, score);
   }
 
-  async function rateSong(c: SongCandidate, score: number) {
+  async function rateSong(c: SongCandidate, score: number | null) {
     if (!supabase || !userId) return;
-    setHeld((h) => ({ ...h, [c.id]: score }));
-    await supabase
-      .from('track_ratings')
-      .upsert(
-        { user_id: userId, recording_id: c.id, score },
-        { onConflict: 'user_id,recording_id' },
-      );
+    setHeld((h) => {
+      const next = { ...h };
+      if (score == null) delete next[c.id];
+      else next[c.id] = score;
+      return next;
+    });
+    if (score == null) {
+      await supabase
+        .from('track_ratings')
+        .delete()
+        .eq('user_id', userId)
+        .eq('recording_id', c.id);
+    } else {
+      await supabase
+        .from('track_ratings')
+        .upsert(
+          { user_id: userId, recording_id: c.id, score },
+          { onConflict: 'user_id,recording_id' },
+        );
+    }
   }
 
   async function saveTarget(score: number | null) {
@@ -706,7 +724,7 @@ function SeeMoreModal({
   isInstinct: boolean;
   ratingStep?: number;
   ranked: Set<string>;
-  onRate: (id: string, score: number) => void;
+  onRate: (id: string, score: number | null) => void;
   onPrecise: (c: AlbumCandidate) => void;
   onNotInterested: (id: string) => void;
 }) {
@@ -816,7 +834,7 @@ function CandidateCard({
   isInstinct: boolean;
   ratingStep?: number;
   ranked: boolean;
-  onRate: (score: number) => void;
+  onRate: (score: number | null) => void;
   onPrecise: () => void;
   onNotInterested: () => void;
 }) {
@@ -886,7 +904,7 @@ function SongRow({
   isInstinct: boolean;
   ratingStep?: number;
   ranked: boolean;
-  onRate: (score: number) => void;
+  onRate: (score: number | null) => void;
   onPrecise: () => void;
 }) {
   return (

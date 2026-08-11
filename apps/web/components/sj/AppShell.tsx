@@ -14,6 +14,7 @@ import {
 import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
 import { SessionProvider, useSession } from './SessionContext';
+import { RatingsProvider } from './RatingsStore';
 import FlowerGlyph from './FlowerGlyph';
 import SearchOmnibox from './SearchOmnibox';
 import CursorTip from './CursorTip';
@@ -27,7 +28,9 @@ import { AvatarMenu, NotificationsBell } from './HeaderMenus';
 export default function AppShell({ children }: { children: ReactNode }) {
   return (
     <SessionProvider>
-      <ShellInner>{children}</ShellInner>
+      <RatingsProvider>
+        <ShellInner>{children}</ShellInner>
+      </RatingsProvider>
     </SessionProvider>
   );
 }

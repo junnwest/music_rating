@@ -31,6 +31,7 @@ import {
   SkeletonRows,
 } from '../../../../components/sj/Loading';
 import { useSession } from '../../../../components/sj/SessionContext';
+import { useRatings } from '../../../../components/sj/RatingsStore';
 import { supabase } from '../../../../lib/supabaseClient';
 import { useLanguage } from '../../../../lib/i18n';
 import { eloToScore, INSTINCT_REVEAL_THRESHOLD } from '../../../../lib/elo';
@@ -84,6 +85,7 @@ export default function AlbumPage() {
   const releaseGroupId = params.id;
   const { t, lang } = useLanguage();
   const { userId, profile } = useSession();
+  const { applyLocal } = useRatings();
 
   const [release, setRelease] = useState<SJRelease | null>(null);
   const [genres, setGenres] = useState<string[]>([]);
@@ -179,6 +181,9 @@ export default function AlbumPage() {
     if (userId) {
       const mine = rows.find((r) => r.user_id === userId);
       setUserScore(mine?.score ?? null);
+      // Keep the app-wide store in sync so every other surface for this album
+      // (feed, charts, artist…) reflects edits made here, and vice-versa.
+      applyLocal(releaseGroupId, mine?.score ?? null);
       setUserElo(mine?.elo_score ?? null);
       myReviewRef.current = mine?.review_text ?? null;
       // Don't clobber in-progress typing
@@ -194,7 +199,7 @@ export default function AlbumPage() {
         .not('elo_score', 'is', null);
       setInstinctAlbumCount(count ?? 0);
     }
-  }, [releaseGroupId, userId]);
+  }, [releaseGroupId, userId, applyLocal]);
 
   const saveReview = useCallback(
     async (text: string) => {

@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Plus, Check } from 'lucide-react';
 import FlowerRateControl from './FlowerRateControl';
 import ManualRateModal from './ManualRateModal';
 import InstinctModal from './InstinctModal';
 import { useNavSafeClick } from './useNavSafeClick';
 import { useSession } from './SessionContext';
-import { supabase } from '../../lib/supabaseClient';
+import { useRating, useRatings } from './RatingsStore';
 import type { SJRelease } from '../../lib/sj/data';
 
 /**
@@ -17,13 +17,15 @@ import type { SJRelease } from '../../lib/sj/data';
  * score and stays re-ratable. Manages its own `ratings` upsert/delete — drop it
  * onto a cover with no per-page plumbing. Renders nothing for signed-out users.
  *
- * `initialScore` lets a page that already knows the user's rating pre-fill it;
- * pages that don't simply start unrated (a re-rate still upserts correctly).
+ * Score comes from the app-wide RatingsStore, so a rated album shows its score
+ * here even on pages that never fetched ratings, and one rating updates every
+ * instance of that album at once. `initialScore`/`score` are only a fallback
+ * used until the store has learned the album's score (e.g. on first paint, or
+ * for a value the store hasn't loaded yet); once the store knows, it wins.
  *
  * A page that renders a *second* rating surface for the same release (the album
- * page has an inline flower row) can pass `score` to push its value down and
- * `onScoreChange` to hear about commits, keeping the two in sync. The button
- * still shows its own optimistic value first, so a drag never lags on a refetch.
+ * page has an inline flower row) can pass `score` and hear commits via
+ * `onScoreChange`; because both read the same store, they stay in sync.
  *
  * Mode-aware: in Instinct mode the drag-to-rate flower is replaced by a plus
  * button that opens the pairwise Instinct flow (no quick score, no drag), and
@@ -49,19 +51,19 @@ export default function AlbumRateButton({
   className?: string;
 }) {
   const { userId, profile } = useSession();
-  const [shown, setShown] = useState<number | null>(score ?? initialScore);
+  const { setRating } = useRatings();
+  const stored = useRating(release.id);
   const [modalOpen, setModalOpen] = useState(false);
   const [instinctOpen, setInstinctOpen] = useState(false);
   const [instinctRated, setInstinctRated] = useState(false);
   const ratingStep = profile?.manual_rating_step ?? 0.5;
   const isInstinct = (profile?.rating_mode ?? 'manual') === 'instinct';
+  // Store wins once it knows the album; until then fall back to the prop the
+  // page handed us so a rating never flashes empty on first paint.
+  const shown = stored !== undefined ? stored : (score ?? initialScore ?? null);
   // Native-listener ref: opens the Instinct sheet without the click reaching the
   // wrapping <Link> / the top progress bar. See useNavSafeClick.
   const instinctBtnRef = useNavSafeClick<HTMLButtonElement>(() => setInstinctOpen(true));
-
-  useEffect(() => {
-    if (score !== undefined) setShown(score);
-  }, [score]);
 
   if (!userId) return null;
 
@@ -90,42 +92,23 @@ export default function AlbumRateButton({
           release={release}
           onRated={() => {
             setInstinctRated(true);
-            onScoreChange?.(shown ?? null);
+            onScoreChange?.(shown);
           }}
         />
       </>
     );
   }
 
-  async function quickRate(s: number) {
-    setShown(s);
-    if (!supabase || !userId) return;
-    await supabase
-      .from('ratings')
-      .upsert(
-        { user_id: userId, release_group_id: release.id, score: s },
-        { onConflict: 'user_id,release_group_id' },
-      );
+  // A drag commits a score; a drag back into the dead zone commits null, which
+  // voids (deletes) the rating. Both flow through the store so every instance
+  // of this album updates at once.
+  async function quickRate(s: number | null) {
+    await setRating(release.id, s);
     onScoreChange?.(s);
   }
 
   async function saveModal(s: number | null) {
-    setShown(s);
-    if (!supabase || !userId) return;
-    if (s == null) {
-      await supabase
-        .from('ratings')
-        .delete()
-        .eq('user_id', userId)
-        .eq('release_group_id', release.id);
-    } else {
-      await supabase
-        .from('ratings')
-        .upsert(
-          { user_id: userId, release_group_id: release.id, score: s },
-          { onConflict: 'user_id,release_group_id' },
-        );
-    }
+    await setRating(release.id, s);
     onScoreChange?.(s);
   }
 

@@ -14,6 +14,7 @@ import AlbumPeek from '../../../components/sj/AlbumPeek';
 import { useNavSafeClick } from '../../../components/sj/useNavSafeClick';
 import { Skeleton, SkeletonLine } from '../../../components/sj/Loading';
 import { useSession } from '../../../components/sj/SessionContext';
+import { useRatings } from '../../../components/sj/RatingsStore';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
 import { displayName, isPredominantlyHangul, typeLabelKey } from '../../../lib/sj/display';
@@ -46,6 +47,7 @@ export default function SearchPage() {
 function SearchPageInner() {
   const { t } = useLanguage();
   const { userId, profile } = useSession();
+  const { setRating } = useRatings();
   const searchParams = useSearchParams();
   const [query, setQuery] = useState(searchParams.get('q') ?? '');
   const [searching, setSearching] = useState(false);
@@ -195,14 +197,12 @@ function SearchPageInner() {
   }
 
   async function saveQuickRating(score: number | null, release: SJRelease) {
-    if (!supabase || !userId) return;
+    if (!userId) return;
+    // Route through the app-wide store so the write propagates to every other
+    // surface for this album (feed, charts, album page…), not just this page.
+    await setRating(release.id, score);
     if (score == null) {
       // "Remove rating" from the modal used to silently no-op here
-      await supabase
-        .from('ratings')
-        .delete()
-        .eq('user_id', userId)
-        .eq('release_group_id', release.id);
       setRatedIds((prev) => {
         const next = new Set(prev);
         next.delete(release.id);
@@ -215,12 +215,6 @@ function SearchPageInner() {
       });
       return;
     }
-    await supabase
-      .from('ratings')
-      .upsert(
-        { user_id: userId, release_group_id: release.id, score },
-        { onConflict: 'user_id,release_group_id' },
-      );
     markRated(release.id);
   }
 
@@ -231,7 +225,12 @@ function SearchPageInner() {
 
   // Drag-to-rate: commit a quick score without opening the modal. Optimistically
   // marks the release rated so the card flips to its "rated" state immediately.
-  function quickRate(release: SJRelease, score: number) {
+  function quickRate(release: SJRelease, score: number | null) {
+    // A drag back into the dead zone commits null → void the rating.
+    if (score == null) {
+      void saveQuickRating(null, release);
+      return;
+    }
     markRated(release.id);
     void saveQuickRating(score, release);
   }
@@ -349,7 +348,7 @@ function SearchResults({
   sessionRatedIds: Set<string>;
   isInstinct: boolean;
   onAdd: (release: SJRelease) => void;
-  onRate: (release: SJRelease, score: number) => void;
+  onRate: (release: SJRelease, score: number | null) => void;
 }) {
   const { t } = useLanguage();
   const { profile } = useSession();
@@ -478,7 +477,7 @@ function Discovery({
   sessionRatedIds: Set<string>;
   isInstinct: boolean;
   onAdd: (release: SJRelease) => void;
-  onRate: (release: SJRelease, score: number) => void;
+  onRate: (release: SJRelease, score: number | null) => void;
 }) {
   const { t } = useLanguage();
   const { userId, ready, profile } = useSession();
@@ -715,7 +714,7 @@ function AlbumCard({
   isInstinct: boolean;
   ratingStep?: number;
   onAdd: () => void;
-  onRate: (score: number) => void;
+  onRate: (score: number | null) => void;
 }) {
   const { t } = useLanguage();
   const showCheck = sessionRated;
@@ -792,7 +791,7 @@ function SongRow({
   isInstinct: boolean;
   ratingStep?: number;
   onAdd: () => void;
-  onRate: (score: number) => void;
+  onRate: (score: number | null) => void;
 }) {
   const { t } = useLanguage();
   return (

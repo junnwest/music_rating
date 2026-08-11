@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import FlowerGlyph from './FlowerGlyph';
 import { spectrumFill, spectrumNumber, spectrumRing, formatScore } from '../../lib/sj/display';
@@ -65,8 +65,9 @@ export default function FlowerRateControl({
   className = '',
   ratingStep = 0.5,
 }: {
-  /** Commit a drag-selected score (0.5–5.0). */
-  onRate: (score: number) => void;
+  /** Commit a drag-selected score (0.5–5.0), or `null` to void an existing
+   *  rating (dragged back into the dead zone and released). */
+  onRate: (score: number | null) => void;
   /** A tap (no drag) — hand off to the precise rating modal. */
   onRequestPrecise?: () => void;
   size?: number;
@@ -114,6 +115,8 @@ export default function FlowerRateControl({
     });
   }, [ratingStep]);
 
+  const rated = currentScore != null;
+
   const finish = useCallback(
     (commit: boolean) => {
       const d = dragRef.current;
@@ -124,11 +127,16 @@ export default function FlowerRateControl({
         onRequestPrecise?.();
         return;
       }
-      // Dragged, but released back inside the dead zone → cancel, no rating.
-      if (d.score == null) return;
+      // Dragged, but released back inside the dead zone. If the album is already
+      // rated, that's an intentional "drag it back to nothing" → void the
+      // rating. If it was never rated, there's nothing to void → plain cancel.
+      if (d.score == null) {
+        if (rated) onRate(null);
+        return;
+      }
       onRate(d.score);
     },
-    [onRate, onRequestPrecise],
+    [onRate, onRequestPrecise, rated],
   );
 
   const onPointerUp = useCallback(
@@ -140,7 +148,6 @@ export default function FlowerRateControl({
     [finish],
   );
 
-  const rated = currentScore != null;
   // What the button shows right now: the live drag score wins over the stored one.
   const shown = drag?.score ?? (drag ? null : currentScore);
   const showNumber = shown != null;
@@ -205,7 +212,7 @@ export default function FlowerRateControl({
         </span>
       </button>
       {drag && typeof document !== 'undefined' &&
-        createPortal(<DragGauge state={drag} />, document.body)}
+        createPortal(<DragGauge state={drag} rated={rated} />, document.body)}
     </>
   );
 }
@@ -221,11 +228,22 @@ const ARC_SEGMENTS = 22;
  * with whole-star ticks, plus one thin arc at the current score's radius,
  * centred on the cursor's angle and fading toward both ends.
  */
-function DragGauge({ state }: { state: DragState }) {
+function DragGauge({ state, rated }: { state: DragState; rated: boolean }) {
   const { ox, oy, angle, score } = state;
   const cancel = score == null;
+  // In the dead zone on an already-rated album, releasing removes the rating —
+  // signal that with a warm "void" tint instead of the neutral cancel grey.
+  const willVoid = cancel && rated;
   const color = spectrumRing(score ?? 0.5);
   const radius = scoreRadius(score ?? 0.5);
+
+  // Fade the whole overlay in on mount so the scrim doesn't hard-cut over the
+  // page the instant a drag starts.
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setShown(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
 
   // Arc sub-segments, each a short stroke with its own opacity.
   const segments = [];
@@ -255,6 +273,18 @@ function DragGauge({ state }: { state: DragState }) {
 
   return (
     <div className="fixed inset-0 z-[100] pointer-events-none select-none">
+      {/* Translucent scrim — a soft radial vignette centred on the (stationary)
+          flower that dims the busy album art underneath so the gauge arc, ticks
+          and live score read clearly. Darkest around the gauge band, clearing to
+          fully transparent beyond its reach and (gently) over the flower itself. */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background: `radial-gradient(circle at ${ox}px ${oy}px, rgba(8,8,12,0.20) 0px, rgba(8,8,12,0.34) ${OFFSET}px, rgba(8,8,12,0.34) ${MAX_RADIUS}px, rgba(8,8,12,0) ${Math.round(MAX_RADIUS * 1.5)}px)`,
+          opacity: shown ? 1 : 0,
+          transition: 'opacity 170ms ease-out',
+        }}
+      />
       <svg className="absolute inset-0 h-full w-full overflow-visible">
         {/* Dotted horizontal baseline — the fixed reference the drag reads
             against — with a tick at each whole star. Drawn as two halves that
@@ -289,17 +319,32 @@ function DragGauge({ state }: { state: DragState }) {
             />
           ));
         })}
-        {/* Dead-zone edge — release inside here cancels. */}
+        {/* Dead-zone edge — release inside here cancels, or *removes* the rating
+            when the album is already rated (warm tint + heavier ring). */}
         <circle
           cx={ox}
           cy={oy}
           r={OFFSET}
           fill="none"
-          stroke={cancel ? 'rgb(120,120,120)' : color}
-          strokeOpacity={cancel ? 0.35 : 0.18}
-          strokeWidth={1}
+          stroke={willVoid ? 'rgb(220,72,72)' : cancel ? 'rgb(150,150,150)' : color}
+          strokeOpacity={willVoid ? 0.85 : cancel ? 0.4 : 0.18}
+          strokeWidth={willVoid ? 1.5 : 1}
           strokeDasharray="2 4"
         />
+        {/* "Release to remove" cue, just below the flower, when a drag has
+            returned to the dead zone on an already-rated album. */}
+        {willVoid && (
+          <text
+            x={ox}
+            y={oy + OFFSET + 16}
+            textAnchor="middle"
+            fontSize={11}
+            fontWeight={700}
+            fill="rgb(232,96,96)"
+          >
+            Remove
+          </text>
+        )}
         {segments}
       </svg>
     </div>
