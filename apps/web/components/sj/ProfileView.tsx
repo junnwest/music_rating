@@ -487,7 +487,7 @@ export default function ProfileView({ username }: { username?: string }) {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-3xl px-4 md:px-6 py-7">
+      <div className="mx-auto max-w-5xl px-4 md:px-6 py-7">
         <div className="flex items-center gap-6">
           <Skeleton className="h-[76px] w-[76px] rounded-full bg-surface" />
           <div className="flex-1 grid grid-cols-3 gap-2">

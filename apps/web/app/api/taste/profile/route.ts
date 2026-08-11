@@ -61,10 +61,11 @@ export async function GET(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   const refresh = req.nextUrl.searchParams.get('refresh') === '1';
-  // v6: 2026-08-10 — ratingCount becomes the exact ratings total (the fetch is
-  // capped at 500 rows, which undercounted heavy raters and disagreed with the
-  // profile header). v5 added the taste map + per-year series.
-  const cacheKey = `taste:profile:v6:${userId}`;
+  // v7: 2026-08-11 — clustering scene-lock (a scene-neutral-anchored world no
+  // longer absorbs both k-pop and j-pop), so worlds/labels shift; bust the
+  // cache rather than serve up-to-60s-stale groupings. v6 made ratingCount the
+  // exact total; v5 added the taste map + per-year series.
+  const cacheKey = `taste:profile:v7:${userId}`;
   if (!refresh) {
     const cached = await cacheGet<object>(cacheKey);
     if (cached) return NextResponse.json(cached);

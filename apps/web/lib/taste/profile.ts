@@ -157,6 +157,13 @@ export function buildClusters(weights: GenreWeights): TasteCluster[] {
       joinTarget.centroid =
         centroid(joinTarget.tags.map(({ tag, w }) => ({ tag, weight: w }))) ??
         joinTarget.centroid;
+      // A scene-pinned tag LOCKS an as-yet-unpinned cluster to its scene, so a
+      // later tag from a conflicting scene can no longer land here. Without this
+      // a world anchored by a scene-neutral tag (e.g. "pop") would absorb both
+      // k-pop and j-pop — the co-occurrence embeddings place them ≈ 0.55 apart —
+      // and its country profile would then mislabel the whole world (and the
+      // nested j-pop tag) as "Korean scene". The anchor-only check missed this.
+      if (joinTarget.scene == null && scene != null) joinTarget.scene = scene;
     } else {
       clusters.push({ tags: [t], weight: t.w, centroid: [...vec], scene });
     }

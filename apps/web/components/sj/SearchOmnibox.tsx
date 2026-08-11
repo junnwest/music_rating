@@ -35,7 +35,7 @@ type Item =
  * focus from anywhere, arrow keys + Enter to pick, Esc to dismiss,
  * Enter with no selection → full results on /search?q=.
  */
-export default function SearchOmnibox() {
+export default function SearchOmnibox({ fullWidth = false }: { fullWidth?: boolean }) {
   const { t } = useLanguage();
   const router = useRouter();
   const [query, setQuery] = useState('');
@@ -145,7 +145,7 @@ export default function SearchOmnibox() {
   }
 
   return (
-    <div ref={rootRef} className="relative flex-1 max-w-md">
+    <div ref={rootRef} className={fullWidth ? 'relative w-full' : 'relative flex-1 max-w-md'}>
       <div className="flex items-center gap-2 px-3 h-9 rounded-[10px] bg-surface border border-divider focus-within:border-accent/60 transition">
         <Search size={15} className="text-muted shrink-0" />
         <input

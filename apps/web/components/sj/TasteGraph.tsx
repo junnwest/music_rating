@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import Cover from './Cover';
@@ -8,23 +8,20 @@ import { useLanguage } from '../../lib/i18n';
 import { spectrumColor, spectrumNumber } from '../../lib/sj/display';
 
 /**
- * The taste map: one soft bubble per taste world, area ∝ the user's mass in it,
- * positioned by embedding similarity, coloured by how highly they rate it — then
- * a Prezi-style zoom into a world to see its sub-genres as their own bubbles.
+ * The taste map: a **treemap heatmap** of the user's taste worlds — one tile per
+ * world, area ∝ their mass in it, colour ∝ how highly they rate it (the app's
+ * score ramp). Click a world to drill into its sub-genres as their own tiles,
+ * and pick a sub-genre to focus the side panel's albums + recommendations.
  *
- * Design notes:
- * - **Area, not radius, carries magnitude** (r ∝ √share), which is the only
- *   honest way to size a circle.
- * - **Colour is the app's score ramp** (`spectrumColor`, #2's OKLCh spectrum), so
- *   a bubble's warmth means the same thing here as a score badge anywhere else.
- *   It's redundant with the labels and the panel, never the sole encoding, and a
- *   legend states the scale.
- * - **The camera is one CSS transform on a single `<g>`**, so the zoom is
- *   GPU-composited rather than a per-frame React render; the drift is a CSS
- *   keyframe per bubble for the same reason. Both are disabled under
- *   `prefers-reduced-motion`.
- * - Layout is deterministic (fixed-seed ring init, no RNG): the same profile
- *   always draws the same map, so a refresh doesn't reshuffle the user's world.
+ * Why a treemap replaced the old bubble field (2026-08-11): packed rectangles
+ * give every world a legible, labelled area no matter how small its share is —
+ * the old √share circles made minor worlds vanish into unreadable dots. The
+ * colour language is unchanged (`spectrumColor`, the OKLCh score spectrum), so a
+ * warm tile means the same thing as a warm score badge anywhere else; it stays
+ * redundant with the label and the panel, and a legend states the scale.
+ *
+ * Layout is deterministic (squarified treemap over a fixed value order), so the
+ * same profile always draws the same map and a refresh doesn't reshuffle it.
  */
 
 export interface TasteGraphTag {
@@ -75,163 +72,222 @@ export interface TasteGraphData {
   recs: Record<string, TasteGraphRec[]>;
 }
 
-const VIEW = 100;
 const PANEL_ALBUMS = 10;
 
-interface Node {
+interface Rect {
   x: number;
   y: number;
-  r: number;
+  w: number;
+  h: number;
+  i: number;
 }
 
 /**
- * Stress-relaxation layout: pairs are pulled toward a distance that grows with
- * embedding *dis*similarity and can never fall below their radii, so similar
- * genres end up adjacent and nothing overlaps. Deterministic — the ring init is
- * index-based, there is no jitter — and O(iterations · n²) on n ≤ 8.
+ * Squarified treemap (Bruls, Huizing & van Wijk 2000): pack `values` into the
+ * `w`×`h` box as rectangles whose areas are proportional to the values and whose
+ * aspect ratios stay as close to square as possible. Deterministic — values are
+ * laid out in the given order (callers pre-sort descending).
  */
-function layoutBySimilarity(radii: number[], sim: number[][]): { x: number; y: number }[] {
-  const n = radii.length;
+function squarify(values: number[], w: number, h: number): Rect[] {
+  const n = values.length;
   if (n === 0) return [];
-  if (n === 1) return [{ x: 0, y: 0 }];
-  const sumR = radii.reduce((s, r) => s + r, 0);
-  const avgR = sumR / n;
-  const ring = sumR / Math.PI + avgR;
-  const pts = radii.map((_, i) => ({
-    x: Math.cos((2 * Math.PI * i) / n) * ring,
-    y: Math.sin((2 * Math.PI * i) / n) * ring,
-  }));
-  const target = (i: number, j: number) => {
-    const s = Math.max(0, Math.min(1, sim[i]?.[j] ?? 0));
-    return (radii[i] + radii[j]) * 1.12 + 1.5 * avgR * (1 - s);
+  const total = values.reduce((s, v) => s + v, 0) || 1;
+  const scale = (w * h) / total;
+  const items = values.map((v, i) => ({ area: Math.max(v, 0) * scale, i }));
+
+  const out: Rect[] = [];
+  let x = 0;
+  let y = 0;
+  let fw = w;
+  let fh = h;
+
+  const worst = (row: { area: number }[], side: number) => {
+    if (row.length === 0) return Infinity;
+    const sum = row.reduce((s, r) => s + r.area, 0);
+    let max = -Infinity;
+    let min = Infinity;
+    for (const r of row) {
+      if (r.area > max) max = r.area;
+      if (r.area < min) min = r.area;
+    }
+    const s2 = sum * sum;
+    const side2 = side * side;
+    return Math.max((side2 * max) / s2, s2 / (side2 * min));
   };
 
-  for (let step = 0; step < 240; step += 1) {
-    const damp = 0.25 * (1 - step / 320);
-    for (let i = 0; i < n; i += 1) {
-      for (let j = i + 1; j < n; j += 1) {
-        const dx = pts[j].x - pts[i].x;
-        const dy = pts[j].y - pts[i].y;
-        const d = Math.hypot(dx, dy) || 0.001;
-        const k = ((d - target(i, j)) / d) * damp;
-        pts[i].x += dx * k;
-        pts[i].y += dy * k;
-        pts[j].x -= dx * k;
-        pts[j].y -= dy * k;
+  let idx = 0;
+  while (idx < items.length) {
+    const short = Math.min(fw, fh);
+    const row: { area: number; i: number }[] = [items[idx]];
+    let j = idx + 1;
+    while (j < items.length && worst(row, short) >= worst([...row, items[j]], short)) {
+      row.push(items[j]);
+      j += 1;
+    }
+    const rowArea = row.reduce((s, r) => s + r.area, 0);
+    if (fw <= fh) {
+      // Horizontal strip across the top of the remaining box.
+      const rh = rowArea / fw || 0;
+      let rx = x;
+      for (const r of row) {
+        const rw = rh > 0 ? r.area / rh : 0;
+        out.push({ x: rx, y, w: rw, h: rh, i: r.i });
+        rx += rw;
       }
-    }
-    // Weak pull to the origin so the field stays compact instead of drifting apart.
-    for (const p of pts) {
-      p.x *= 0.996;
-      p.y *= 0.996;
-    }
-  }
-
-  // Hard separation pass — similarity is a preference, overlap is not allowed.
-  for (let step = 0; step < 60; step += 1) {
-    for (let i = 0; i < n; i += 1) {
-      for (let j = i + 1; j < n; j += 1) {
-        const dx = pts[j].x - pts[i].x;
-        const dy = pts[j].y - pts[i].y;
-        const d = Math.hypot(dx, dy) || 0.001;
-        const min = radii[i] + radii[j] + 0.05 * avgR;
-        if (d >= min) continue;
-        const k = ((min - d) / d) * 0.5;
-        pts[i].x -= dx * k;
-        pts[i].y -= dy * k;
-        pts[j].x += dx * k;
-        pts[j].y += dy * k;
+      y += rh;
+      fh -= rh;
+    } else {
+      // Vertical strip down the left of the remaining box.
+      const rw = rowArea / fh || 0;
+      let ry = y;
+      for (const r of row) {
+        const rh = rw > 0 ? r.area / rw : 0;
+        out.push({ x, y: ry, w: rw, h: rh, i: r.i });
+        ry += rh;
       }
+      x += rw;
+      fw -= rw;
     }
+    idx = j;
   }
-  return pts;
+  return out;
 }
 
-/** Scale a raw layout into a `size`-square box with `pad` breathing room. */
-function fitToBox(
-  pts: { x: number; y: number }[],
-  radii: number[],
-  size = VIEW,
-  pad = 4,
-): Node[] {
-  if (pts.length === 0) return [];
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  pts.forEach((p, i) => {
-    minX = Math.min(minX, p.x - radii[i]);
-    minY = Math.min(minY, p.y - radii[i]);
-    maxX = Math.max(maxX, p.x + radii[i]);
-    maxY = Math.max(maxY, p.y + radii[i]);
-  });
-  const w = Math.max(maxX - minX, 0.001);
-  const h = Math.max(maxY - minY, 0.001);
-  const k = (size - pad * 2) / Math.max(w, h);
-  const offX = (size - w * k) / 2 - minX * k;
-  const offY = (size - h * k) / 2 - minY * k;
-  return pts.map((p, i) => ({ x: p.x * k + offX, y: p.y * k + offY, r: radii[i] * k }));
-}
-
-const KEYFRAMES = `
-@keyframes taste-drift-a{from{transform:translate(0,0)}to{transform:translate(0.9px,-0.7px)}}
-@keyframes taste-drift-b{from{transform:translate(0,0)}to{transform:translate(-0.8px,0.8px)}}
-@keyframes taste-drift-c{from{transform:translate(0,0)}to{transform:translate(0.6px,0.9px)}}
-.taste-bubble{animation-duration:7s;animation-timing-function:ease-in-out;animation-iteration-count:infinite;animation-direction:alternate}
-.taste-bubble:hover{filter:brightness(1.05) saturate(1.1)}
+const MAP_CSS = `
+@keyframes taste-tiles-in{from{opacity:0}to{opacity:1}}
+.taste-tiles{animation:taste-tiles-in 360ms ease}
+.taste-tile{transition:filter 200ms ease, box-shadow 200ms ease, transform 200ms ease}
+.taste-tile:hover{filter:brightness(1.07) saturate(1.05)}
+.taste-tile:focus-visible{outline:none}
 @media (prefers-reduced-motion: reduce){
-  .taste-bubble{animation:none!important}
-  .taste-camera{transition:none!important}
+  .taste-tiles{animation:none}
+  .taste-tile{transition:none}
 }
 `;
 
+/** A single heatmap tile — a world at the top level, a sub-genre when drilled in. */
+function Tile({
+  rect,
+  label,
+  sub,
+  avg,
+  selected,
+  dim,
+  onClick,
+  title,
+  ariaLabel,
+}: {
+  rect: Rect;
+  label: string;
+  sub: string;
+  avg: number | null;
+  selected: boolean;
+  dim: boolean;
+  onClick: () => void;
+  title: string;
+  ariaLabel: string;
+}) {
+  // Big enough for text? (percent thresholds — the map box is ~1:1). Tiny tiles
+  // keep their colour + tooltip but drop the label rather than overflow it.
+  const showLabel = rect.w > 12 && rect.h > 9;
+  const showSub = showLabel && rect.w > 18 && rect.h > 16;
+  const score = avg ?? 3;
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={ariaLabel}
+      onClick={onClick}
+      className="taste-tile absolute block text-left overflow-hidden"
+      style={{
+        left: `${rect.x}%`,
+        top: `${rect.y}%`,
+        width: `${rect.w}%`,
+        height: `${rect.h}%`,
+        opacity: dim ? 0.32 : 1,
+        transitionProperty: 'opacity, filter, box-shadow, transform',
+      }}
+    >
+      <span
+        className="absolute inset-[3px] rounded-xl overflow-hidden"
+        style={{
+          backgroundImage: `linear-gradient(155deg, ${spectrumColor(score, 0.68, 0.92)}, ${spectrumColor(
+            score,
+            0.5,
+            1,
+          )})`,
+          boxShadow: selected
+            ? '0 0 0 2px #fff, 0 0 0 3.5px rgba(0,0,0,0.28)'
+            : 'inset 0 1px 0 rgba(255,255,255,0.14)',
+        }}
+      >
+        {/* Bottom scrim keeps white text legible across the whole ramp. */}
+        <span
+          aria-hidden
+          className="absolute inset-x-0 bottom-0 h-1/2"
+          style={{ backgroundImage: 'linear-gradient(to top, rgba(0,0,0,0.34), transparent)' }}
+        />
+        {showLabel && (
+          <span className="absolute inset-x-0 bottom-0 p-2 sm:p-2.5">
+            <span
+              className="block font-black text-white leading-tight tracking-tight line-clamp-2"
+              style={{ fontSize: rect.w > 24 ? 15 : 13, textShadow: '0 1px 3px rgba(0,0,0,0.4)' }}
+            >
+              {label}
+            </span>
+            {showSub && (
+              <span
+                className="block mt-0.5 text-[11px] font-semibold text-white/85 tabular-nums"
+                style={{ textShadow: '0 1px 2px rgba(0,0,0,0.4)' }}
+              >
+                {sub}
+              </span>
+            )}
+          </span>
+        )}
+      </span>
+    </button>
+  );
+}
+
 export default function TasteGraph({ data }: { data: TasteGraphData }) {
   const { t } = useLanguage();
-  const uid = useId().replace(/:/g, '');
   const [world, setWorld] = useState<number | null>(null);
   const [tag, setTag] = useState<string | null>(null);
 
   const worlds = data.worlds;
 
-  const nodes = useMemo(() => {
-    const radii = worlds.map((w) => Math.sqrt(Math.max(w.share, 0.004)));
-    return fitToBox(
-      layoutBySimilarity(
-        radii,
-        worlds.map((w) => w.sim),
-      ),
-      radii,
+  // Top-level tiles: one per world, area ∝ share (sorted so the treemap packs
+  // largest-first, which is what keeps the aspect ratios tidy).
+  const worldOrder = useMemo(
+    () => worlds.map((_, i) => i).sort((a, b) => worlds[b].share - worlds[a].share),
+    [worlds],
+  );
+  const worldRects = useMemo(() => {
+    const rects = squarify(
+      worldOrder.map((i) => Math.max(worlds[i].share, 0.02)),
+      100,
+      100,
     );
-  }, [worlds]);
+    // Map rect.i (position in worldOrder) back to the real world index.
+    return rects.map((r) => ({ ...r, i: worldOrder[r.i] }));
+  }, [worldOrder, worlds]);
 
-  // Sub-genre bubbles for the open world, packed inside its circle.
-  const subNodes = useMemo(() => {
-    if (world == null || !worlds[world] || !nodes[world]) return [];
-    const w = worlds[world];
-    const radii = w.tags.map((tg) => Math.sqrt(Math.max(tg.share, 0.01)));
-    const local = fitToBox(layoutBySimilarity(radii, w.tagSim), radii, VIEW, 6);
-    const parent = nodes[world];
-    // Scale by the furthest bubble EDGE from the centre, not by the box's half
-    // width — a square box's corner sits 1.41× further out than its edge, and a
-    // sub-genre poking out of its parent circle would read as a sibling.
-    const reach = Math.max(
-      ...local.map((n) => Math.hypot(n.x - VIEW / 2, n.y - VIEW / 2) + n.r),
-      0.001,
+  const openWorld = world != null ? worlds[world] : null;
+
+  const tagOrder = useMemo(() => {
+    if (!openWorld) return [];
+    return openWorld.tags.map((_, i) => i).sort((a, b) => openWorld.tags[b].share - openWorld.tags[a].share);
+  }, [openWorld]);
+  const tagRects = useMemo(() => {
+    if (!openWorld) return [];
+    const rects = squarify(
+      tagOrder.map((i) => Math.max(openWorld.tags[i].share, 0.02)),
+      100,
+      100,
     );
-    const k = (parent.r * 0.94) / reach;
-    return local.map((n) => ({
-      x: parent.x + (n.x - VIEW / 2) * k,
-      y: parent.y + (n.y - VIEW / 2) * k,
-      r: n.r * k,
-    }));
-  }, [world, worlds, nodes]);
-
-  const camera = useMemo(() => {
-    if (world == null || !nodes[world]) return { k: 1, tx: 0, ty: 0 };
-    const n = nodes[world];
-    const k = Math.min(14, (VIEW / 2) / Math.max(n.r * 1.15, 0.001));
-    return { k, tx: VIEW / 2 - k * n.x, ty: VIEW / 2 - k * n.y };
-  }, [world, nodes]);
+    return rects.map((r) => ({ ...r, i: tagOrder[r.i] }));
+  }, [openWorld, tagOrder]);
 
   // Escape backs out one level — the same order the Back button walks.
   useEffect(() => {
@@ -245,7 +301,6 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [world, tag]);
 
-  const openWorld = world != null ? worlds[world] : null;
   const openTag = openWorld && tag ? openWorld.tags.find((x) => x.tag === tag) ?? null : null;
 
   const focusTags = useMemo(() => {
@@ -265,197 +320,61 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
         ? data.recs[openWorld.key] ?? []
         : [];
 
-  const colorAt = (avg: number | null) => spectrumColor(avg ?? 3, 0.62, 1);
-
   return (
     <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_264px]">
-      <style>{KEYFRAMES}</style>
+      <style>{MAP_CSS}</style>
 
-      {/* ── The map ── */}
-      <div
-        className="relative rounded-2xl bg-page border border-divider/60 overflow-hidden"
-        style={{
-          backgroundImage: 'radial-gradient(rgb(var(--color-divider)) 1px, transparent 1px)',
-          backgroundSize: '18px 18px',
-        }}
-      >
-        <svg
-          viewBox={`0 0 ${VIEW} ${VIEW}`}
-          className="block w-full touch-manipulation"
-          style={{ aspectRatio: '1 / 1', maxHeight: 500 }}
-          role="img"
-          aria-label={t('sj.taste.mapHeader')}
-        >
-          <defs>
-            <filter id={`${uid}-soft`} x="-30%" y="-30%" width="160%" height="160%">
-              <feGaussianBlur stdDeviation="1.6" />
-            </filter>
-            {worlds.map((w, i) => (
-              <radialGradient key={i} id={`${uid}-w${i}`} cx="38%" cy="34%" r="72%">
-                <stop offset="0%" stopColor={spectrumColor(w.avg ?? 3, 0.82, 0.75)} />
-                <stop offset="100%" stopColor={spectrumColor(w.avg ?? 3, 0.56, 1)} />
-              </radialGradient>
-            ))}
-            {(openWorld?.tags ?? []).map((tg, i) => (
-              <radialGradient key={tg.tag} id={`${uid}-t${i}`} cx="38%" cy="34%" r="72%">
-                <stop offset="0%" stopColor={spectrumColor(tg.avg, 0.86, 0.7)} />
-                <stop offset="100%" stopColor={spectrumColor(tg.avg, 0.6, 1)} />
-              </radialGradient>
-            ))}
-          </defs>
-
-          <g
-            className="taste-camera"
-            style={{
-              transform: `translate(${camera.tx}px, ${camera.ty}px) scale(${camera.k})`,
-              transformOrigin: '0 0',
-              transition: 'transform 760ms cubic-bezier(0.22, 0.61, 0.36, 1)',
-              willChange: 'transform',
-            }}
-          >
-            {nodes.map((n, i) => {
-              const w = worlds[i];
-              const dimmed = world != null && world !== i;
-              const isOpen = world === i;
-              const pct = Math.round(w.share * 100);
-              return (
-                <g
-                  key={w.key}
-                  className="taste-bubble"
-                  style={{
-                    animationName: ['taste-drift-a', 'taste-drift-b', 'taste-drift-c'][i % 3],
-                    animationDuration: `${6.5 + i * 0.9}s`,
-                    animationDelay: `${i * 0.4}s`,
-                    opacity: dimmed ? 0.18 : 1,
-                    transition: 'opacity 500ms ease',
-                    cursor: isOpen ? 'default' : 'pointer',
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`${w.label} · ${pct}%`}
-                  onClick={() => {
-                    setTag(null);
-                    setWorld(isOpen ? null : i);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key !== 'Enter' && e.key !== ' ') return;
-                    e.preventDefault();
-                    setTag(null);
-                    setWorld(isOpen ? null : i);
-                  }}
-                >
-                  <title>{`${w.label} · ${pct}%${w.avg != null ? ` · ${w.avg.toFixed(2)}★` : ''}`}</title>
-                  {/* Soft halo — the "organic" edge, drawn under the solid body. */}
-                  <circle
-                    cx={n.x}
-                    cy={n.y}
-                    r={n.r * 0.98}
-                    fill={colorAt(w.avg)}
-                    opacity={0.38}
-                    filter={`url(#${uid}-soft)`}
+      {/* ── The heatmap ── */}
+      <div className="relative rounded-2xl bg-surface border border-divider/60 overflow-hidden">
+        <div className="relative w-full h-[360px] sm:h-[440px]">
+          {!openWorld ? (
+            <div key="worlds" className="taste-tiles absolute inset-0">
+              {worldRects.map((r) => {
+                const w = worlds[r.i];
+                const pct = Math.round(w.share * 100);
+                return (
+                  <Tile
+                    key={w.key}
+                    rect={r}
+                    label={w.primary}
+                    sub={`${pct}%${w.avg != null ? ` · ${w.avg.toFixed(1)}★` : ''}`}
+                    avg={w.avg}
+                    selected={false}
+                    dim={false}
+                    onClick={() => {
+                      setTag(null);
+                      setWorld(r.i);
+                    }}
+                    title={`${w.label} · ${pct}%${w.avg != null ? ` · ${w.avg.toFixed(2)}★` : ''}`}
+                    ariaLabel={`${w.label} · ${pct}%`}
                   />
-                  <circle cx={n.x} cy={n.y} r={n.r} fill={`url(#${uid}-w${i})`} />
-                  {!isOpen && n.r > 6 && (
-                    <text
-                      x={n.x}
-                      y={n.y}
-                      textAnchor="middle"
-                      fill="#fff"
-                      stroke="rgba(0,0,0,0.24)"
-                      strokeWidth={n.r * 0.06}
-                      paintOrder="stroke"
-                      strokeLinejoin="round"
-                      pointerEvents="none"
-                    >
-                      <tspan
-                        x={n.x}
-                        dy="-0.1em"
-                        style={{
-                          fontSize: Math.min(n.r * 0.3, (n.r * 1.9) / Math.max(6, w.primary.length)),
-                          fontWeight: 800,
-                        }}
-                      >
-                        {w.primary}
-                      </tspan>
-                      <tspan
-                        x={n.x}
-                        dy="1.25em"
-                        opacity={0.9}
-                        style={{ fontSize: Math.min(n.r * 0.26, 5), fontWeight: 800 }}
-                      >
-                        {pct}%
-                      </tspan>
-                    </text>
-                  )}
-                </g>
-              );
-            })}
-
-            {/* Sub-genres of the open world, revealed inside its circle. */}
-            {openWorld && (
-              <g style={{ transition: 'opacity 400ms ease 200ms' }}>
-                {subNodes.map((n, i) => {
-                  const tg = openWorld.tags[i];
-                  if (!tg) return null;
-                  const selected = tag === tg.tag;
-                  return (
-                    <g
-                      key={tg.tag}
-                      role="button"
-                      tabIndex={0}
-                      aria-label={`${tg.display} · ${tg.avg.toFixed(1)}`}
-                      style={{ cursor: 'pointer' }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setTag(selected ? null : tg.tag);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key !== 'Enter' && e.key !== ' ') return;
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setTag(selected ? null : tg.tag);
-                      }}
-                    >
-                      <title>{`${tg.display} · ${tg.avg.toFixed(2)}★`}</title>
-                      <circle
-                        cx={n.x}
-                        cy={n.y}
-                        r={n.r}
-                        fill={`url(#${uid}-t${i})`}
-                        stroke={selected ? '#fff' : 'transparent'}
-                        strokeWidth={n.r * 0.07}
-                        opacity={tag && !selected ? 0.45 : 1}
-                        style={{ transition: 'opacity 300ms ease' }}
-                      />
-                      {n.r > 1.2 && (
-                        <text
-                          x={n.x}
-                          y={n.y}
-                          textAnchor="middle"
-                          dominantBaseline="central"
-                          fill="#fff"
-                          stroke="rgba(0,0,0,0.26)"
-                          strokeWidth={n.r * 0.05}
-                          paintOrder="stroke"
-                          strokeLinejoin="round"
-                          pointerEvents="none"
-                          style={{
-                            // Long tag names shrink to fit their bubble rather
-                            // than spilling over the neighbours.
-                            fontSize: Math.min(n.r * 0.34, (n.r * 1.7) / Math.max(4, tg.display.length)),
-                            fontWeight: 800,
-                          }}
-                        >
-                          {tg.display}
-                        </text>
-                      )}
-                    </g>
-                  );
-                })}
-              </g>
-            )}
-          </g>
-        </svg>
+                );
+              })}
+            </div>
+          ) : (
+            <div key={`world-${world}`} className="taste-tiles absolute inset-0">
+              {tagRects.map((r) => {
+                const tg = openWorld.tags[r.i];
+                if (!tg) return null;
+                const selected = tag === tg.tag;
+                return (
+                  <Tile
+                    key={tg.tag}
+                    rect={r}
+                    label={tg.display}
+                    sub={`${tg.avg.toFixed(1)}★`}
+                    avg={tg.avg}
+                    selected={selected}
+                    dim={!!tag && !selected}
+                    onClick={() => setTag(selected ? null : tg.tag)}
+                    title={`${tg.display} · ${tg.avg.toFixed(2)}★`}
+                    ariaLabel={`${tg.display} · ${tg.avg.toFixed(1)}★`}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
 
         {world != null && (
           <button
@@ -469,13 +388,13 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
         )}
 
         {/* Sequential legend: the ramp is the app's score scale, stated. */}
-        <div className="absolute bottom-2.5 right-2.5 flex items-center gap-1.5 rounded-full bg-surface/85 border border-divider px-2.5 py-1 backdrop-blur">
+        <div className="absolute bottom-2.5 right-2.5 flex items-center gap-1.5 rounded-full bg-surface/90 border border-divider px-2.5 py-1 backdrop-blur">
           <span className="text-[10px] text-muted tabular-nums">1</span>
           <span
             className="h-[6px] w-16 rounded-full"
             style={{
               background: `linear-gradient(to right, ${[1, 2, 3, 4, 5]
-                .map((s) => spectrumColor(s, 0.62, 1))
+                .map((s) => spectrumColor(s, 0.58, 1))
                 .join(', ')})`,
             }}
           />
@@ -503,7 +422,7 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
                   <span className="flex items-center gap-2">
                     <span
                       className="w-2.5 h-2.5 rounded-full shrink-0"
-                      style={{ background: colorAt(w.avg) }}
+                      style={{ background: spectrumColor(w.avg ?? 3, 0.58, 1) }}
                     />
                     <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-ink">
                       {w.label}
@@ -517,7 +436,7 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
                       className="block h-full rounded-full"
                       style={{
                         width: `${Math.max(3, Math.round(w.share * 100))}%`,
-                        background: colorAt(w.avg),
+                        background: spectrumColor(w.avg ?? 3, 0.58, 1),
                       }}
                     />
                   </span>

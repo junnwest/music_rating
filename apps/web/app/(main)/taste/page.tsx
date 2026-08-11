@@ -163,7 +163,7 @@ export default function TastePage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-4xl px-4 md:px-6 py-8 space-y-6">
+      <div className="mx-auto max-w-5xl px-4 md:px-6 py-8 space-y-6">
         <div className="rounded-3xl bg-accent-soft/60 border border-accent/15 px-8 py-10 space-y-3">
           <SkeletonLine w="w-24" h="h-2.5" />
           <SkeletonLine w="w-3/5" h="h-8" />
@@ -298,7 +298,7 @@ function ReportView({
   const nextNo = () => String(++sectionCount).padStart(2, '0');
 
   return (
-    <div className="taste-report mx-auto max-w-4xl px-4 md:px-6 py-7 space-y-6">
+    <div className="taste-report mx-auto max-w-5xl px-4 md:px-6 py-7 space-y-6">
       <style>{VIZ_VARS + TASTE_MOTION_CSS}</style>
 
       {/* ── Hero ── */}
