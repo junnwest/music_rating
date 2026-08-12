@@ -98,33 +98,48 @@ export default function AlbumRateButton({
   }
 
   async function quickRate(s: number) {
+    const prev = shown;
     setShown(s);
     if (!supabase || !userId) return;
-    await supabase
+    const { error } = await supabase
       .from('ratings')
       .upsert(
         { user_id: userId, release_group_id: release.id, score: s },
         { onConflict: 'user_id,release_group_id' },
       );
+    if (error) {
+      // Don't leave a misleading optimistic score that vanishes on refresh —
+      // revert and surface the reason (RLS / constraint / auth / network).
+      console.error('[AlbumRateButton] rating upsert failed', { releaseGroupId: release.id, score: s, error });
+      setShown(prev);
+      return;
+    }
     onScoreChange?.(s);
   }
 
   async function saveModal(s: number | null) {
+    const prev = shown;
     setShown(s);
     if (!supabase || !userId) return;
+    let error;
     if (s == null) {
-      await supabase
+      ({ error } = await supabase
         .from('ratings')
         .delete()
         .eq('user_id', userId)
-        .eq('release_group_id', release.id);
+        .eq('release_group_id', release.id));
     } else {
-      await supabase
+      ({ error } = await supabase
         .from('ratings')
         .upsert(
           { user_id: userId, release_group_id: release.id, score: s },
           { onConflict: 'user_id,release_group_id' },
-        );
+        ));
+    }
+    if (error) {
+      console.error('[AlbumRateButton] rating save failed', { releaseGroupId: release.id, score: s, error });
+      setShown(prev);
+      return;
     }
     onScoreChange?.(s);
   }
