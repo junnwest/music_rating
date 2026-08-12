@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
@@ -47,6 +47,7 @@ import type { ReleaseGroupCreditRPC } from '../../../../lib/db/types';
 
 interface TrackEntry {
   recordingId: string;
+  discNumber: number;
   position: number;
   title: string;
   durationMs: number | null;
@@ -314,10 +315,15 @@ export default function AlbumPage() {
           .from('release_tracks')
           .select('position, disc_number, recordings(id, title, duration_ms, artist_display)')
           .eq('release_id', canonicalId)
+          // Positions restart on every disc, so disc_number has to lead the sort —
+          // ordering by position alone interleaves disc 2 into disc 1 and renders
+          // as duplicate track numbers.
+          .order('disc_number')
           .order('position');
         if (cancelled) return;
         const loaded: TrackEntry[] = ((rows as any[] | null) ?? []).map((r) => ({
           recordingId: r.recordings.id,
+          discNumber: r.disc_number ?? 1,
           position: r.position,
           title: r.recordings.title,
           durationMs: r.recordings.duration_ms,
@@ -350,20 +356,22 @@ export default function AlbumPage() {
 
   async function setRating(score: number | null) {
     if (!supabase || !userId) return;
+    let error;
     if (score != null) {
-      await supabase
+      ({ error } = await supabase
         .from('ratings')
         .upsert(
           { user_id: userId, release_group_id: releaseGroupId, score },
           { onConflict: 'user_id,release_group_id' },
-        );
+        ));
     } else {
-      await supabase
+      ({ error } = await supabase
         .from('ratings')
         .delete()
         .eq('user_id', userId)
-        .eq('release_group_id', releaseGroupId);
+        .eq('release_group_id', releaseGroupId));
     }
+    if (error) console.error('[album setRating] rating write failed', { releaseGroupId, score, error });
     await loadRatings();
   }
 
@@ -686,18 +694,29 @@ export default function AlbumPage() {
         </section>
 
         {/* Tracklist */}
-        {tracks.length > 0 && (
+        {tracks.length > 0 && (() => {
+          const multiDisc = tracks.some((tr) => tr.discNumber !== tracks[0].discNumber);
+          return (
           <section className="mt-6">
             <h2 className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted mb-2 px-1">
               {t('sj.album.tracklist')}
             </h2>
             <div className="rounded-2xl bg-surface border border-divider/60 divide-y divide-divider overflow-hidden">
-              {tracks.map((track) => {
+              {tracks.map((track, i) => {
                 const trackScore = trackRatings[track.recordingId];
                 const isEloRated = eloRatedTracks.has(track.recordingId);
+                // Multi-disc releases restart numbering per disc — label each one so
+                // the repeated track numbers read as "Disc 2, track 1", not a duplicate.
+                const showDiscHeader =
+                  multiDisc && (i === 0 || tracks[i - 1].discNumber !== track.discNumber);
                 return (
+                  <Fragment key={track.recordingId}>
+                  {showDiscHeader && (
+                    <div className="px-4 py-1.5 bg-page/40 text-[11px] font-semibold tracking-[0.06em] uppercase text-muted">
+                      {t('sj.album.discN').replace('{n}', String(track.discNumber))}
+                    </div>
+                  )}
                   <div
-                    key={track.recordingId}
                     onContextMenu={(e) => onTrackContextMenu(e, track)}
                     className="flex items-center gap-3 px-4 py-2.5 hover:bg-page/60 transition group"
                   >
@@ -738,12 +757,14 @@ export default function AlbumPage() {
                       </button>
                     ) : null}
                   </div>
+                  </Fragment>
                 );
               })}
             </div>
             {trackContextMenu}
           </section>
-        )}
+          );
+        })()}
 
         {/* Ratings & reviews */}
         {posts.length > 0 && (

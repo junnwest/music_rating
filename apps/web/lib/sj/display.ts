@@ -134,7 +134,9 @@ export function relativeTime(iso: string, lang: 'en' | 'ko' = 'en'): string {
 /** 12.3k-style count formatting (matches iOS formatCount). */
 export function formatCount(n: number | null | undefined): string {
   if (n == null) return '—';
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  // Floor, not round — 2,967 reads "2.9k", not "3.0k" (rounding up implies more
+  // than actually exists). Mirrors iOS's gauge formatCount.
+  if (n >= 1000) return `${(Math.floor(n / 100) / 10).toFixed(1)}k`;
   return `${n}`;
 }
 
