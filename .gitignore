@@ -33,6 +33,13 @@ apps/web/scripts/*-state.json
 apps/web/scripts/*-state-*.json
 apps/web/scripts/bot-roster.json
 
+# Generated script output under scripts/data/ (run reports + resume state; can reach tens of MB).
+# Curated, human-reviewed artifacts are named *-review-*.json and stay tracked on purpose --
+# e.g. data/alias-tier-review-2026-07-31.json, which README points at as the reviewable output.
+apps/web/scripts/data/*-state.json
+apps/web/scripts/data/*-report.json
+apps/web/scripts/data/*-report-*.json
+
 # Tooling scratch
 .understand-anything/
 backups/
