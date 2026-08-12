@@ -202,6 +202,37 @@ export async function searchArtistsByQuery(luceneQuery: string, limit = 100, off
   return { count: data?.count ?? 0, artists };
 }
 
+// One page of an arbitrary Lucene RELEASE-GROUP query (e.g. `firstreleasedate:[2026-07-01 TO *]`).
+// The counterpart to searchArtistsByQuery, and the basis of the NEWRELEASES lane: asking MB "what
+// came out since X?" costs ~1 request per 100 groups, versus ~3 requests PER ARTIST to ask 67k
+// artists the same question one at a time. Artist MBIDs come straight off the credit, so the caller
+// can intersect against the catalog without any name resolution.
+export interface MbReleaseGroupPage {
+  count: number;
+  groups: {
+    id: string;
+    title: string;
+    primaryType: string | null;
+    firstReleaseDate: string | null;
+    artistMbids: string[];   // every credited artist, not just the first
+    artistCredit: string;
+  }[];
+}
+export async function searchReleaseGroupsByQuery(luceneQuery: string, limit = 100, offset = 0): Promise<MbReleaseGroupPage> {
+  const data = await mbGet(`/release-group?query=${enc(luceneQuery)}&limit=${limit}&offset=${offset}`);
+  const groups = (data?.['release-groups'] ?? []).map((rg: any) => ({
+    id: rg.id,
+    title: rg.title,
+    primaryType: rg['primary-type'] ?? null,
+    firstReleaseDate: rg['first-release-date'] || null,
+    artistMbids: (rg['artist-credit'] ?? [])
+      .map((c: any) => c?.artist?.id)
+      .filter((id: unknown): id is string => typeof id === 'string'),
+    artistCredit: creditPhrase(rg['artist-credit']),
+  }));
+  return { count: data?.count ?? 0, groups };
+}
+
 export async function getArtist(mbid: string): Promise<MbArtistDetail | null> {
   const a = await mbGet(`/artist/${mbid}?inc=${enc('aliases genres')}`);
   if (!a) return null;
@@ -271,6 +302,34 @@ export async function browseReleases(releaseGroupMbid: string): Promise<MbReleas
 // Skips video recordings (bonus-DVD music videos, "Dance Shot" clips, making-ofs,
 // interviews, etc — common on JP CD+DVD singles): MB's `recording.video` flag marks
 // them, and they aren't songs, so they don't belong in a tracklist.
+// Split a release's media into real audio vs MB-flagged video, instead of silently dropping the
+// video half. Callers that DELETE need the video list too: "absent from the audio list" alone
+// can't tell a bonus-DVD music video (safe to remove) from a recording MB merged or re-edited away
+// (real audio that just moved). parseMedia keeps the old audio-only contract for every other caller.
+export interface MbReleaseTracksSplit { audio: MbTrack[]; video: MbTrack[] }
+function parseMediaSplit(media: any[] | undefined): MbReleaseTracksSplit {
+  const audio: MbTrack[] = [];
+  const video: MbTrack[] = [];
+  for (const m of media ?? []) {
+    const disc = m.position ?? 1;
+    for (const t of m.tracks ?? []) {
+      const rec = t.recording ?? {};
+      const bucket = rec.video === true ? video : audio;
+      bucket.push({
+        position: t.position ?? bucket.length + 1,
+        discNumber: disc,
+        title: t.title ?? rec.title ?? '',
+        recordingId: rec.id,
+        recordingTitle: rec.title ?? t.title ?? '',
+        artistCredit: creditPhrase(t['artist-credit'] ?? rec['artist-credit']),
+        lengthMs: t.length ?? rec.length ?? null,
+        isrcs: rec.isrcs ?? [],
+      });
+    }
+  }
+  return { audio, video };
+}
+
 function parseMedia(media: any[] | undefined): MbTrack[] {
   const tracks: MbTrack[] = [];
   for (const m of media ?? []) {
@@ -293,9 +352,25 @@ function parseMedia(media: any[] | undefined): MbTrack[] {
   return tracks;
 }
 
-export async function getReleaseTracks(releaseMbid: string): Promise<MbTrack[]> {
+// Returns null when the MB fetch itself failed (network error / exhausted 503
+// retries) — as opposed to an empty array, which means the release genuinely
+// parsed to zero audio tracks. Callers that DELETE based on this diff (e.g.
+// cleanup-video-tracks) MUST distinguish the two: a throttled fetch that
+// couldn't verify the release is not evidence that its stored tracks are bad.
+// Same fetch + same null-vs-empty contract as getReleaseTracksOrNull, but keeps the video half.
+// One MB request serves both lists, so classifying costs nothing extra over the plain diff.
+export async function getReleaseTracksSplitOrNull(releaseMbid: string): Promise<MbReleaseTracksSplit | null> {
   const r = await mbGet(`/release/${releaseMbid}?inc=${enc('recordings isrcs artist-credits media')}`);
-  return r ? parseMedia(r.media) : [];
+  return r ? parseMediaSplit(r.media) : null;
+}
+
+export async function getReleaseTracksOrNull(releaseMbid: string): Promise<MbTrack[] | null> {
+  const r = await mbGet(`/release/${releaseMbid}?inc=${enc('recordings isrcs artist-credits media')}`);
+  return r ? parseMedia(r.media) : null;
+}
+
+export async function getReleaseTracks(releaseMbid: string): Promise<MbTrack[]> {
+  return (await getReleaseTracksOrNull(releaseMbid)) ?? [];
 }
 
 // A release edition WITH its tracks + the release-group it belongs to.
