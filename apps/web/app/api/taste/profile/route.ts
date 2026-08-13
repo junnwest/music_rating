@@ -67,12 +67,12 @@ export async function GET(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   const refresh = req.nextUrl.searchParams.get('refresh') === '1';
-  // v9: 2026-08-12 — near-duplicate genre spellings (k-pop/kpop/korean pop) now
-  // merge into one canonical sub-genre before clustering, and the "you might
-  // like" recs are ranked by blob affinity (genre + era + scene fit) instead of
-  // raw prestige. Both reshape the graph payload → bust the v8 groupings.
-  // v8 gave J-pop its own world; v7 the clustering scene-lock; v6 exact counts.
-  const cacheKey = `taste:profile:v9:${userId}`;
+  // v10: 2026-08-12 — a scene-pinned world (j-pop/k-pop) now takes its scene from
+  // its genres, not the countries of albums that landed nearest its centroid, and
+  // its recs are scene-filtered — so a J-pop world stops labelling itself "Korean
+  // scene" and stops recommending K-pop. v9 added synonym-merge + affinity recs;
+  // v8 gave J-pop its own world; v7 the clustering scene-lock.
+  const cacheKey = `taste:profile:v10:${userId}`;
   if (!refresh) {
     const cached = await cacheGet<object>(cacheKey);
     if (cached) return NextResponse.json(cached);
@@ -358,9 +358,18 @@ export async function GET(req: NextRequest) {
       console.error('[taste] rec pool error:', res.error.message);
       return;
     }
+    // A scene-pinned world (j-pop/k-pop…) only recommends in-scene (or
+    // unknown-country) albums, so a J-pop world can't surface Korean K-pop even
+    // when a Korean release carries a stray j-pop tag.
+    const pinnedScene = clusters[i]?.scene ?? null;
     // Rank by taste fit (genre + era + scene), prestige as the tiebreak.
     const pool = ((res.data as unknown as PoolRow[] | null) ?? [])
       .filter((r) => !ratedIds.has(r.id))
+      .filter((r) => {
+        if (!pinnedScene) return true;
+        const s = sceneOf(r.artists?.country ?? null);
+        return s == null || s === pinnedScene;
+      })
       .map((r) => {
         const y = r.first_release_date ? parseInt(r.first_release_date.slice(0, 4), 10) : NaN;
         return {

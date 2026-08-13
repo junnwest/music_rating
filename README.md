@@ -14,6 +14,11 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **✅ SESSION CLOSE (2026-08-12, Windows, web, session 4) — J-pop scene fix + inspector scrollbar. COMMITTED + PUSHED. Full detail in SESSIONS.md 2026-08-12 (session 4).**
+> 1. **J-pop world no longer mislabels as "Korean scene" or recommends K-pop.** Root cause: `buildClusters` scene-pins the world to `jp`, but the `scene` was dropped from `TasteCluster`, so `clusterProfiles` recomputed scene from album countries and mis-tagged Korean-as-j-pop rows dragged it to `kr` — which then fed `blobAffinity` → K-pop recs. Fix (`lib/taste/profile.ts`): `TasteCluster` carries `scene`; a pinned world takes its scene from its **genres** (`{pinned:1}`), not album countries; the taste route also **scene-filters** a pinned world's rec pool. Verified on a synthetic j-pop+k-pop profile. Cache `v9 → v10`. (Does NOT re-tag the catalog — the mis-tagged rows still exist; only the taste layer is now scene-correct.)
+> 2. **Inspector scrollbar overlap** (`TasteGraph.tsx`): "Your ratings here" list now uses `pr-2.5` + `scrollbar-gutter:stable` so the bar no longer covers the score column.
+> 3. **Verified:** `tsc --noEmit` + `next lint` clean. **Not yet eyeballed live.**
+>
 > **✅ SESSION CLOSE (2026-08-12, Windows, web, session 3) — Taste map interaction/polish pass. COMMITTED + PUSHED. Full detail in SESSIONS.md 2026-08-12 (session 3).**
 > 1. **Flexible canvas height** (`components/sj/TasteGraph.tsx`): map card `flex flex-col`, tile box `flex-1 min-h-[440px] sm:min-h-[540px]`, grid `md:items-stretch` — the mosaic now grows to match a tall inspector (the "6+ ratings + 5 recs" gap) instead of a fixed-height gap. Mosaic cap raised 3×3 → 4×4.
 > 2. **Album counts on big tiles** ("{n} rated · {pct}%" / "{n} rated"; new `mapNAlbums` key). **Small-tile labels fixed** — tiers by measured px size (big: name+meta+chip / med: name+chip / small: truncated name / tiny: tooltip), so text never overflows.

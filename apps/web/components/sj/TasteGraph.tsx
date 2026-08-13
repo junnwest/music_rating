@@ -742,7 +742,7 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
             {focusAlbums.length === 0 ? (
               <p className="mt-1.5 text-[12px] text-muted">{t('sj.taste.mapNoAlbums')}</p>
             ) : (
-              <ul className="mt-2 space-y-2 max-h-[240px] overflow-y-auto pr-1">
+              <ul className="mt-2 space-y-2 max-h-[240px] overflow-y-auto pr-2.5 [scrollbar-gutter:stable]">
                 {focusAlbums.map((a) => (
                   <li key={a.id}>
                     <Link href={`/album/${a.id}`} className="flex items-center gap-2 group">

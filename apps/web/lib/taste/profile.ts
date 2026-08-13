@@ -59,6 +59,12 @@ export interface TasteCluster {
   /** weight / Σ all clusters' weights. */
   share: number;
   centroid: number[];
+  /** Scene the world is pinned to by its tag names (kr/jp), or null for a
+   *  scene-neutral world (rock, jazz…). A pinned world's scene identity comes
+   *  from its genres, NOT from the noisy countries of the albums that happen to
+   *  land nearest its centroid — so a J-pop world stays Japanese even when a few
+   *  mis-tagged Korean albums assign to it. */
+  scene: Scene | null;
 }
 
 /** Minimum cosine between a tag and a cluster centroid to join that cluster. */
@@ -264,6 +270,7 @@ export function buildClusters(weights: GenreWeights): TasteCluster[] {
       weight: round2(c.weight),
       share: round2(c.weight / total),
       centroid: c.centroid,
+      scene: c.scene,
     }));
 }
 
@@ -314,7 +321,7 @@ export function clusterProfiles(
     const scene = sceneOf(r.country);
     if (scene != null) buckets[best].scenes.push(scene);
   }
-  return buckets.map((b) => {
+  return buckets.map((b, i) => {
     const meanYear =
       b.years.length > 0 ? b.years.reduce((s, y) => s + y, 0) / b.years.length : null;
     const sdYears =
@@ -323,7 +330,16 @@ export function clusterProfiles(
         : null;
     let sceneShares: SceneShares | null = null;
     let dominantScene: Scene | null = null;
-    if (b.scenes.length > 0) {
+    const pinned = clusters[i]?.scene ?? null;
+    if (pinned) {
+      // Scene-pinned world (j-pop/k-pop…): its scene identity is its genre's, not
+      // the countries of albums that landed nearest its centroid. Forcing the
+      // share also keeps blobAffinity from rewarding cross-scene recs (the K-pop-
+      // in-the-J-pop-world bug).
+      sceneShares = { kr: 0, jp: 0, west: 0, other: 0 };
+      sceneShares[pinned] = 1;
+      dominantScene = pinned;
+    } else if (b.scenes.length > 0) {
       sceneShares = { kr: 0, jp: 0, west: 0, other: 0 };
       for (const sc of b.scenes) sceneShares[sc] += 1 / b.scenes.length;
       const top = (Object.entries(sceneShares) as [Scene, number][]).sort((a, x) => x[1] - a[1])[0];
