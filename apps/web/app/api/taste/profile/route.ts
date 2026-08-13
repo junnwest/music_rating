@@ -6,10 +6,13 @@ import { cacheGet, cacheSet } from '../../../../lib/cache';
 import { eloToScore } from '../../../../lib/elo';
 import { preferHangulName } from '../../../../lib/sj/display';
 import { cosine, displayGenre, genreVector } from '../../../../lib/taste/embeddings';
+import { canonicalize, synonymsOf } from '../../../../lib/taste/genreSynonyms';
 import { sceneOf, type Scene } from '../../../../lib/taste/albumVector';
 import {
   weightsFromRatings,
+  mergeSynonymWeights,
   buildClusters,
+  blobAffinity,
   clusterProfiles,
   dislikedTags,
 } from '../../../../lib/taste/profile';
@@ -64,12 +67,12 @@ export async function GET(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   const refresh = req.nextUrl.searchParams.get('refresh') === '1';
-  // v8: 2026-08-11 — a scene-pinned tag with no scene-compatible home now opens
-  // its own world past the soft cap instead of force-merging (J-pop no longer
-  // buried in the K-pop world → its own sub-genres + in-genre recs), and the rec
-  // pool covers every world. Bust rather than serve up-to-60s-stale groupings.
-  // v7 added the clustering scene-lock; v6 made ratingCount exact; v5 the map.
-  const cacheKey = `taste:profile:v8:${userId}`;
+  // v9: 2026-08-12 — near-duplicate genre spellings (k-pop/kpop/korean pop) now
+  // merge into one canonical sub-genre before clustering, and the "you might
+  // like" recs are ranked by blob affinity (genre + era + scene fit) instead of
+  // raw prestige. Both reshape the graph payload → bust the v8 groupings.
+  // v8 gave J-pop its own world; v7 the clustering scene-lock; v6 exact counts.
+  const cacheKey = `taste:profile:v9:${userId}`;
   if (!refresh) {
     const cached = await cacheGet<object>(cacheKey);
     if (cached) return NextResponse.json(cached);
@@ -114,8 +117,25 @@ export async function GET(req: NextRequest) {
   const weights = weightsFromRatings(
     rows.map((r) => ({ score: r.score, elo_score: r.elo_score, genres: r.release_groups!.genres })),
   );
-  const clusters = buildClusters(weights);
-  const disliked = dislikedTags(weights);
+  // Merge near-duplicate genres (spelling variants + embedding near-twins like
+  // soul→r&b) for the derived map/clusters; the stored `genre_weights` upsert
+  // below keeps the raw keys for iOS.
+  const merged = mergeSynonymWeights(weights);
+  const clusters = buildClusters(merged.weights);
+  const disliked = dislikedTags(merged.weights);
+  // Map an album/candidate's raw genre onto its merged tile tag (spelling
+  // canonical → embedding anchor), and the reverse (anchor → every raw catalog
+  // spelling that lands on it) for genre-overlap DB queries.
+  const toTile = (raw: string) => {
+    const c = canonicalize(raw.trim());
+    return merged.anchorOf[c] ?? c;
+  };
+  const spellingsOf = new Map<string, string[]>();
+  for (const [canon, anchor] of Object.entries(merged.anchorOf)) {
+    let list = spellingsOf.get(anchor);
+    if (!list) spellingsOf.set(anchor, (list = []));
+    for (const s of synonymsOf(canon)) list.push(s);
+  }
   // Per-world era + scene profiles ("2020s · Korean scene") for the report.
   const worldProfiles = clusterProfiles(
     rows.map((r) => ({
@@ -267,10 +287,17 @@ export async function GET(req: NextRequest) {
   const graphAlbums = scored
     .map((r) => {
       const rg = r.release_groups!;
-      const tags = (rg.genres ?? [])
-        .map((g) => g.trim())
-        .filter((g) => vocab.has(g))
-        .slice(0, 5);
+      // Map each genre to its merged tile tag, keep only in-vocab ones, dedup.
+      const tags: string[] = [];
+      const seenTags = new Set<string>();
+      for (const g of rg.genres ?? []) {
+        const c = toTile(g);
+        if (vocab.has(c) && !seenTags.has(c)) {
+          seenTags.add(c);
+          tags.push(c);
+          if (tags.length >= 5) break;
+        }
+      }
       if (tags.length === 0) return null;
       return {
         id: rg.id,
@@ -285,23 +312,31 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => b.score - a.score)
     .slice(0, GRAPH_ALBUMS);
 
-  // One prestige pool per leading world, reused for that world and each of its
-  // tags — the panel needs "a few recommendations in this genre", not a second
-  // recommender. Already-rated albums are excluded here, not on the client.
+  // One candidate pool per leading world: prestige gates it to canon-quality
+  // albums overlapping the world's (synonym-expanded) genres, then we re-rank in
+  // Node by blob affinity so the panel shows the most *on-taste* of them — not
+  // just the most prestigious — reusing the same fit math the recommender uses.
+  // Already-rated albums are excluded here, not on the client.
   const recPools = await Promise.all(
     clusters.slice(0, REC_POOL_WORLDS).map((c) =>
       supabase
         .from('release_groups')
-        .select('id, title, artist_display, cover_url, native_title, genres')
+        .select(
+          'id, title, artist_display, cover_url, native_title, genres, first_release_date, prestige_score, artists!release_groups_primary_artist_id_fkey(country)',
+        )
         .overlaps(
           'genres',
-          c.tags.slice(0, GRAPH_TAGS).map((t) => t.tag),
+          // Expand each merged anchor tag back to every raw catalog spelling that
+          // folds onto it, so a rec tagged "soul" still matches the "r&b" world.
+          Array.from(
+            new Set(c.tags.slice(0, GRAPH_TAGS).flatMap((t) => spellingsOf.get(t.tag) ?? [t.tag])),
+          ),
         )
         .not('prestige_score', 'is', null)
         .in('release_group_type', ['album', 'ep'])
         .not('cover_url', 'is', null)
         .order('prestige_score', { ascending: false })
-        .limit(60),
+        .limit(90),
     ),
   );
 
@@ -312,6 +347,9 @@ export async function GET(req: NextRequest) {
     cover_url: string | null;
     native_title: string | null;
     genres: string[] | null;
+    first_release_date: string | null;
+    prestige_score: number | null;
+    artists: { country: string | null } | null;
   }
   const recs: Record<string, { id: string; title: string; artist: string; coverUrl: string | null }[]> =
     {};
@@ -320,7 +358,26 @@ export async function GET(req: NextRequest) {
       console.error('[taste] rec pool error:', res.error.message);
       return;
     }
-    const pool = ((res.data as unknown as PoolRow[] | null) ?? []).filter((r) => !ratedIds.has(r.id));
+    // Rank by taste fit (genre + era + scene), prestige as the tiebreak.
+    const pool = ((res.data as unknown as PoolRow[] | null) ?? [])
+      .filter((r) => !ratedIds.has(r.id))
+      .map((r) => {
+        const y = r.first_release_date ? parseInt(r.first_release_date.slice(0, 4), 10) : NaN;
+        return {
+          r,
+          aff: blobAffinity(
+            {
+              genres: r.genres,
+              year: Number.isFinite(y) && y >= 1900 ? y : null,
+              scene: sceneOf(r.artists?.country ?? null),
+            },
+            clusters,
+            worldProfiles,
+          ),
+        };
+      })
+      .sort((a, b) => b.aff - a.aff || (b.r.prestige_score ?? 0) - (a.r.prestige_score ?? 0))
+      .map((s) => s.r);
     // One album per artist so a single prolific act can't own a panel.
     const take = (candidates: PoolRow[]) => {
       const seenArtists = new Set<string>();
@@ -340,7 +397,7 @@ export async function GET(req: NextRequest) {
     };
     recs[`world:${i}`] = take(pool);
     for (const t of graphWorlds[i].tags) {
-      const forTag = pool.filter((r) => (r.genres ?? []).some((g) => g.trim() === t.tag));
+      const forTag = pool.filter((r) => (r.genres ?? []).some((g) => toTile(g) === t.tag));
       if (forTag.length > 0) recs[`tag:${t.tag}`] = take(forTag);
     }
   });
