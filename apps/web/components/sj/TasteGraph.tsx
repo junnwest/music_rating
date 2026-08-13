@@ -13,19 +13,17 @@ import { spectrumColor, spectrumFill, spectrumNumber } from '../../lib/sj/displa
  * album covers they rated there* (density scales with the tile's size). The avg
  * rating rides as a solid numeric chip, and the app's score ramp is demoted to a
  * thin accent frame — a redundant, glanceable heat cue that no longer flattens
- * the tile into one bland colour. Click a world to zoom into its sub-genres (the
- * clicked tile expands from its own rectangle, so the eye tracks the drill), then
- * pick a sub-genre to focus the inspector's albums + recommendations.
+ * the tile into one bland colour. Click a world and it fluidly expands into its
+ * sub-genres; pick a sub-genre to focus the inspector's albums + recommendations.
  *
- * Why covers replaced the flat colour fill (2026-08-12): a user's world averages
- * nearly all land in a narrow band, so score-as-hue produced a monochrome quilt
- * carrying almost no information. Covers are the emotional payload of a music app
- * and the one channel that actually varies — so the map now *shows the music*.
- * Identity never rides on colour alone: every tile is labelled, its number is
- * printed, and a legend states the ramp.
+ * Interaction is deliberately tactile (2026-08-12): tiles lift and tilt toward
+ * the pointer (a Vision-OS-style parallax "magnet"), their siblings dim, and
+ * opening a world animates the clicked tile growing to fill the canvas before it
+ * resolves into the sub-genre mosaic — so the drill reads as spatial, not a swap.
  *
  * Layout is deterministic (squarified treemap over a fixed value order), so the
- * same profile always draws the same map and a refresh doesn't reshuffle it.
+ * same profile always draws the same map and a refresh doesn't reshuffle it. The
+ * canvas grows to fill whichever column (map or inspector) is taller.
  */
 
 export interface TasteGraphTag {
@@ -77,6 +75,9 @@ export interface TasteGraphData {
 }
 
 const PANEL_ALBUMS = 10;
+/** Time the "clicked tile expands to fill" animation runs before the sub-genre
+ *  mosaic takes over. Kept in sync with the CSS transition below. */
+const OPEN_MS = 380;
 
 interface Rect {
   x: number;
@@ -84,6 +85,13 @@ interface Rect {
   w: number;
   h: number;
   i: number;
+}
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
 }
 
 /**
@@ -158,30 +166,28 @@ function squarify(values: number[], w: number, h: number): Rect[] {
 }
 
 const MAP_CSS = `
-@keyframes taste-tiles-in{from{opacity:0}to{opacity:1}}
-@keyframes taste-zoom-in{
-  from{opacity:.35;transform:translate(var(--ox,0),var(--oy,0)) scale(var(--ow,1),var(--oh,1))}
-  to{opacity:1;transform:translate(0,0) scale(1,1)}
-}
-.taste-tiles{animation:taste-tiles-in 340ms ease}
-.taste-zoom{animation:taste-zoom-in 440ms cubic-bezier(.22,.61,.36,1);transform-origin:0 0}
-.taste-tile{transition:filter 220ms ease, box-shadow 220ms ease}
-.taste-tile:hover .taste-tile-face{filter:brightness(1.06) saturate(1.04)}
-.taste-tile:focus-visible{outline:none}
-.taste-tile:focus-visible .taste-tile-face{box-shadow:0 0 0 2px var(--surface,#fff),0 0 0 4px var(--accent,#6366f1)}
+@keyframes taste-open-in{from{opacity:0;transform:scale(1.03)}to{opacity:1;transform:scale(1)}}
+.taste-open{animation:taste-open-in 380ms cubic-bezier(.22,.61,.36,1)}
+.taste-tile-face{transition:transform 200ms cubic-bezier(.2,.7,.2,1), box-shadow 240ms ease, filter 240ms ease}
+.taste-tile:hover{z-index:30}
+/* Vision-OS "magnet": the hovered tile lifts (JS adds the pointer-tracked tilt on
+   top of this base), and its siblings quietly dim so focus reads as a spotlight. */
+.taste-tile:hover .taste-tile-face{transform:scale(1.04) translateY(-3px)}
+.taste-tiles:has(.taste-tile:hover) .taste-tile:not(:hover) .taste-tile-face{filter:brightness(.78) saturate(.9)}
 @media (prefers-reduced-motion: reduce){
-  .taste-tiles,.taste-zoom{animation:none}
-  .taste-tile{transition:none}
+  .taste-open{animation:none}
+  .taste-tile-face{transition:none}
+  .taste-tile:hover .taste-tile-face{transform:none}
 }
 `;
 
 /** Largest fully-fillable cover grid for a tile of `tileW`×`tileH` px given
- *  `n` available covers. Targets ~96px cells, caps at 3×3, and never leaves an
+ *  `n` available covers. Targets ~104px cells, caps at 4×4, and never leaves an
  *  empty cell (so the collage always reads as intentional). */
 function chooseGrid(tileW: number, tileH: number, n: number): { cols: number; rows: number } | null {
   if (n <= 0 || tileW < 44 || tileH < 44) return null;
-  let cols = Math.max(1, Math.min(3, Math.floor(tileW / 96)));
-  let rows = Math.max(1, Math.min(3, Math.floor(tileH / 96)));
+  let cols = Math.max(1, Math.min(4, Math.floor(tileW / 104)));
+  let rows = Math.max(1, Math.min(4, Math.floor(tileH / 104)));
   while (cols * rows > n) {
     if (cols >= rows && cols > 1) cols -= 1;
     else if (rows > 1) rows -= 1;
@@ -201,6 +207,7 @@ function MosaicTile({
   covers,
   selected,
   dim,
+  enterState,
   onClick,
   title,
   ariaLabel,
@@ -209,16 +216,22 @@ function MosaicTile({
   boxW: number;
   boxH: number;
   name: string;
-  /** Small secondary line under the name (e.g. "32% of library") — big tiles only. */
+  /** Small secondary line under the name (e.g. "42 rated · 32%") — big tiles only. */
   meta?: string;
   avg: number | null;
   covers: string[];
   selected: boolean;
   dim: boolean;
+  /** During a world-open animation: 'target' = the clicked tile (grows to fill),
+   *  'other' = a sibling (fades away), null = not animating. */
+  enterState: 'target' | 'other' | null;
   onClick: () => void;
   title: string;
   ariaLabel: string;
 }) {
+  const faceRef = useRef<HTMLSpanElement>(null);
+  const glowRef = useRef<HTMLSpanElement>(null);
+
   const tileW = (rect.w / 100) * boxW;
   const tileH = (rect.h / 100) * boxH;
   const score = avg ?? 3;
@@ -226,12 +239,41 @@ function MosaicTile({
   const grid = chooseGrid(tileW, tileH, covers.length);
   const shown = grid ? covers.slice(0, grid.cols * grid.rows) : [];
 
-  const showLabel = tileW >= 60 && tileH >= 44;
+  // Label tiers keyed to the tile's real size, so text never overflows: big gets
+  // a two-line name + meta + chip, med a name + chip, small a single truncated
+  // line (no chip), and tiny drops to the tooltip only.
   const big = tileW >= 178 && tileH >= 148;
+  const med = !big && tileW >= 88 && tileH >= 58;
+  const small = !big && !med && tileW >= 52 && tileH >= 30;
+  const showLabel = big || med || small;
 
-  // The demoted colour channel: a thin score-ramp frame — glanceable heat that
-  // no longer floods the whole tile.
   const accent = spectrumColor(score, 0.62, 1);
+
+  // Pointer-tracked parallax — the "magnet" pull. Written imperatively so the
+  // pointer move doesn't re-render (which would wipe the transform).
+  const onMove = (e: React.MouseEvent) => {
+    if (enterState || prefersReducedMotion()) return;
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width - 0.5;
+    const py = (e.clientY - r.top) / r.height - 0.5;
+    const f = faceRef.current;
+    if (f) {
+      f.style.transform = `scale(1.04) translateY(-3px) rotateX(${(-py * 6).toFixed(2)}deg) rotateY(${(px * 6).toFixed(2)}deg)`;
+    }
+    const g = glowRef.current;
+    if (g) {
+      g.style.opacity = '1';
+      g.style.background = `radial-gradient(240px circle at ${((px + 0.5) * 100).toFixed(1)}% ${((py + 0.5) * 100).toFixed(1)}%, rgba(255,255,255,0.3), transparent 55%)`;
+    }
+  };
+  const onLeave = () => {
+    const f = faceRef.current;
+    if (f) f.style.transform = '';
+    const g = glowRef.current;
+    if (g) g.style.opacity = '0';
+  };
+
+  const targ = enterState === 'target';
 
   return (
     <div
@@ -247,21 +289,30 @@ function MosaicTile({
           onClick();
         }
       }}
+      onMouseMove={onMove}
+      onMouseLeave={onLeave}
       className="taste-tile absolute block text-left cursor-pointer"
       style={{
-        left: `${rect.x}%`,
-        top: `${rect.y}%`,
-        width: `${rect.w}%`,
-        height: `${rect.h}%`,
+        left: `${targ ? 0 : rect.x}%`,
+        top: `${targ ? 0 : rect.y}%`,
+        width: `${targ ? 100 : rect.w}%`,
+        height: `${targ ? 100 : rect.h}%`,
+        opacity: enterState === 'other' ? 0 : 1,
+        transform: enterState === 'other' ? 'scale(0.92)' : undefined,
+        transition: enterState
+          ? `left ${OPEN_MS}ms cubic-bezier(.22,.61,.36,1), top ${OPEN_MS}ms cubic-bezier(.22,.61,.36,1), width ${OPEN_MS}ms cubic-bezier(.22,.61,.36,1), height ${OPEN_MS}ms cubic-bezier(.22,.61,.36,1), opacity 320ms ease, transform 320ms ease`
+          : undefined,
+        zIndex: targ ? 20 : undefined,
+        perspective: 700,
       }}
     >
       <span
+        ref={faceRef}
         className="taste-tile-face absolute inset-[3px] rounded-xl overflow-hidden block bg-divider"
         style={{
-          filter: dim ? 'brightness(0.42) saturate(0.65)' : undefined,
-          transition: 'filter 220ms ease',
+          filter: dim ? 'brightness(0.4) saturate(0.6)' : undefined,
           boxShadow: selected
-            ? `0 0 0 2px #fff, 0 0 0 4px ${accent}, 0 10px 24px -8px rgba(0,0,0,0.45)`
+            ? `0 0 0 2px #fff, 0 0 0 4px ${accent}, 0 12px 26px -8px rgba(0,0,0,0.5)`
             : `inset 0 0 0 1.5px ${accent}66, inset 0 1px 0 rgba(255,255,255,0.14)`,
         }}
       >
@@ -301,12 +352,26 @@ function MosaicTile({
           }}
         />
 
+        {/* Specular highlight that tracks the pointer (the glass "sheen"). */}
+        <span
+          ref={glowRef}
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
+          style={{ opacity: 0, transition: 'opacity 220ms ease', mixBlendMode: 'soft-light' }}
+        />
+
         {showLabel && (
-          <span className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 p-2.5">
+          <span
+            className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2"
+            style={{ padding: small ? '6px 8px' : '10px' }}
+          >
             <span className="min-w-0">
               <span
-                className="block font-black text-white leading-tight tracking-tight line-clamp-2"
-                style={{ fontSize: big ? 15 : 13, textShadow: '0 1px 4px rgba(0,0,0,0.55)' }}
+                className={`block font-black text-white tracking-tight ${small ? 'truncate' : 'leading-tight line-clamp-2'}`}
+                style={{
+                  fontSize: big ? 15 : med ? 13 : 11,
+                  textShadow: '0 1px 4px rgba(0,0,0,0.55)',
+                }}
               >
                 {name}
               </span>
@@ -319,7 +384,7 @@ function MosaicTile({
                 </span>
               )}
             </span>
-            {avg != null && (
+            {avg != null && !small && (
               <span
                 className="shrink-0 rounded-md px-1.5 py-0.5 text-[12px] font-black tabular-nums shadow-sm"
                 style={{ background: spectrumFill(score), color: spectrumNumber(score) }}
@@ -338,13 +403,15 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
   const { t } = useLanguage();
   const [world, setWorld] = useState<number | null>(null);
   const [tag, setTag] = useState<string | null>(null);
-  // Rect (in %) of the world tile that was opened — the zoom animation grows the
-  // sub-genre layer out of it, so the drill reads as spatial, not a hard swap.
-  const [zoom, setZoom] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  // The world index mid-open: its tile grows to fill the canvas before the
+  // sub-genre mosaic resolves in. null except during the ~380ms transition.
+  const [entering, setEntering] = useState<number | null>(null);
+  const enterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // The mosaic grid choice depends on real pixel size, so measure the canvas.
+  // The mosaic grid choice depends on real pixel size, so measure the canvas
+  // (which now flexes to fill whichever column is taller).
   const boxRef = useRef<HTMLDivElement>(null);
-  const [box, setBox] = useState({ w: 680, h: 500 });
+  const [box, setBox] = useState({ w: 680, h: 540 });
   useLayoutEffect(() => {
     const el = boxRef.current;
     if (!el) return;
@@ -353,6 +420,9 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
+  }, []);
+  useEffect(() => () => {
+    if (enterTimer.current) clearTimeout(enterTimer.current);
   }, []);
 
   const worlds = data.worlds;
@@ -371,7 +441,7 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
   }, [data.albums]);
 
   // Per-world album roll-up (union across the world's tags, deduped, best-first)
-  // — the source of each world tile's mosaic.
+  // — the source of each world tile's mosaic and its rated-album count.
   const worldAlbums = useMemo(
     () =>
       worlds.map((w) => {
@@ -471,24 +541,37 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
   const focusRecs = openTag ? (tagRecs.length > 0 ? tagRecs : worldRecs) : worldRecs;
   const recsFallback = !!openTag && tagRecs.length === 0 && worldRecs.length > 0;
 
-  const openWorldTile = (i: number, r: { x: number; y: number; w: number; h: number }) => {
-    setZoom(r);
-    setTag(null);
-    setWorld(i);
+  // Open a world — animate the clicked tile filling the canvas, then swap to the
+  // sub-genre mosaic. Reduced motion skips straight to the mosaic.
+  const openWorldTile = (i: number) => {
+    if (prefersReducedMotion()) {
+      setTag(null);
+      setWorld(i);
+      return;
+    }
+    if (enterTimer.current) clearTimeout(enterTimer.current);
+    setEntering(i);
+    enterTimer.current = setTimeout(() => {
+      setTag(null);
+      setWorld(i);
+      setEntering(null);
+      enterTimer.current = null;
+    }, OPEN_MS);
   };
 
   return (
-    <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_300px]">
+    <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_300px] md:items-stretch">
       <style>{MAP_CSS}</style>
 
       {/* ── The mosaic ── */}
-      <div className="relative rounded-2xl bg-surface border border-divider/60 overflow-hidden">
-        <div ref={boxRef} className="relative w-full h-[380px] sm:h-[500px]">
+      <div className="relative flex flex-col rounded-2xl bg-surface border border-divider/60 overflow-hidden">
+        <div ref={boxRef} className="relative w-full flex-1 min-h-[440px] sm:min-h-[540px]">
           {!openWorld ? (
-            <div key="worlds" className="taste-tiles absolute inset-0">
+            <div key="worlds" className="taste-tiles taste-open absolute inset-0">
               {worldRects.map((r) => {
                 const w = worlds[r.i];
                 const pct = Math.round(w.share * 100);
+                const count = worldAlbums[r.i].length;
                 return (
                   <MosaicTile
                     key={w.key}
@@ -496,35 +579,26 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
                     boxW={box.w}
                     boxH={box.h}
                     name={w.primary}
-                    meta={t('sj.taste.mapShareOfLibrary').replace('{pct}', String(pct))}
+                    meta={`${t('sj.taste.mapNAlbums').replace('{n}', String(count))} · ${pct}%`}
                     avg={w.avg}
                     covers={worldCovers[r.i]}
                     selected={false}
                     dim={false}
-                    onClick={() => openWorldTile(r.i, r)}
-                    title={`${w.label} · ${pct}%${w.avg != null ? ` · ${w.avg.toFixed(2)}★` : ''}`}
+                    enterState={entering == null ? null : entering === r.i ? 'target' : 'other'}
+                    onClick={() => openWorldTile(r.i)}
+                    title={`${w.label} · ${count} · ${pct}%${w.avg != null ? ` · ${w.avg.toFixed(2)}★` : ''}`}
                     ariaLabel={`${w.label} · ${pct}%`}
                   />
                 );
               })}
             </div>
           ) : (
-            <div
-              key={`world-${world}`}
-              className="taste-zoom absolute inset-0"
-              style={
-                {
-                  '--ox': `${zoom?.x ?? 0}%`,
-                  '--oy': `${zoom?.y ?? 0}%`,
-                  '--ow': (zoom?.w ?? 100) / 100,
-                  '--oh': (zoom?.h ?? 100) / 100,
-                } as React.CSSProperties
-              }
-            >
+            <div key={`world-${world}`} className="taste-tiles taste-open absolute inset-0">
               {tagRects.map((r) => {
                 const tg = openTags[r.i];
                 if (!tg) return null;
                 const selected = tag === tg.tag;
+                const cnt = (albumsByTag.get(tg.tag) ?? []).length;
                 return (
                   <MosaicTile
                     key={tg.tag}
@@ -532,14 +606,16 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
                     boxW={box.w}
                     boxH={box.h}
                     name={tg.display}
+                    meta={t('sj.taste.mapNAlbums').replace('{n}', String(cnt))}
                     avg={tg.avg}
                     covers={(albumsByTag.get(tg.tag) ?? [])
                       .filter((a) => a.coverUrl)
                       .map((a) => a.coverUrl as string)}
                     selected={selected}
                     dim={!!tag && !selected}
+                    enterState={null}
                     onClick={() => setTag(selected ? null : tg.tag)}
-                    title={`${tg.display} · ${tg.avg.toFixed(2)}★`}
+                    title={`${tg.display} · ${cnt} · ${tg.avg.toFixed(2)}★`}
                     ariaLabel={`${tg.display} · ${tg.avg.toFixed(1)}★`}
                   />
                 );
@@ -607,18 +683,16 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
               {worldOrder.map((i) => {
                 const w = worlds[i];
                 const cover = worldCovers[i][0] ?? null;
-                const jump = () =>
-                  openWorldTile(i, worldRects.find((r) => r.i === i) ?? { x: 40, y: 40, w: 20, h: 20 });
                 return (
                   <div
                     key={w.key}
                     role="button"
                     tabIndex={0}
-                    onClick={jump}
+                    onClick={() => openWorldTile(i)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
-                        jump();
+                        openWorldTile(i);
                       }
                     }}
                     className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left hover:bg-ink/[0.04] transition"

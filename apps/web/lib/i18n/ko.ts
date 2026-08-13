@@ -780,6 +780,7 @@ const ko: Translations = {
       mapOthers: '기타',
       mapExplore: '살펴보기',
       mapShareOfLibrary: '내 기록의 {pct}%',
+      mapNAlbums: '{n}장 평가',
       yearsHeader: '연도별 발매작 분포',
       yearsLegend: '평가한 발매작',
       yearsTrend: '5년 추세',

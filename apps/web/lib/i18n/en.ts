@@ -778,6 +778,7 @@ const en = {
       mapOthers: 'Others',
       mapExplore: 'Explore',
       mapShareOfLibrary: '{pct}% of your library',
+      mapNAlbums: '{n} rated',
       yearsHeader: 'Your library across the years',
       yearsLegend: 'releases rated',
       yearsTrend: '5-year trend',
