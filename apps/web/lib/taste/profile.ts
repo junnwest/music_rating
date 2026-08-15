@@ -14,6 +14,7 @@
  * Server-only (pulls in the embeddings artifact).
  */
 import { albumCentroid, centroid, cosine, genreVector } from './embeddings';
+import { canonicalize } from './genreSynonyms';
 import { primaryTagOf, tagWeight } from './primaryGenre';
 import {
   W_GENRE,
@@ -57,6 +58,12 @@ export interface TasteCluster {
   /** weight / Σ all clusters' weights. */
   share: number;
   centroid: number[];
+  /** Scene the world is pinned to by its tag names (kr/jp), or null for a
+   *  scene-neutral world (rock, jazz…). A pinned world's scene identity comes
+   *  from its genres, NOT from the noisy countries of the albums that happen to
+   *  land nearest its centroid — so a J-pop world stays Japanese even when a few
+   *  mis-tagged Korean albums assign to it. */
+  scene: Scene | null;
 }
 
 /** Minimum cosine between a tag and a cluster centroid to join that cluster. */
@@ -99,6 +106,73 @@ export function weightsFromRatings(
     e.n = Math.round(e.n * 1000) / 1000;
   }
   return weights;
+}
+
+/**
+ * Cosine at/above which two genre tags are treated as the same genre and folded
+ * together. Tuned against this catalog's co-occurrence embeddings: r&b↔soul sit
+ * at ≈0.96 (true twins → merge), while indie-rock↔alt-rock ≈0.73 and
+ * k-pop↔j-pop ≈0.55 stay distinct. High on purpose — this merges near-synonyms,
+ * not whole families, so the map keeps its sub-genre texture.
+ */
+const NEAR_DUP_COSINE = 0.93;
+
+export interface MergedWeights {
+  /** Merged weights keyed by anchor tag — feed this to buildClusters/dislikedTags. */
+  weights: GenreWeights;
+  /** Spelling-canonical tag → the anchor tag it folded into (identity if none).
+   *  Lets callers map an album/candidate's raw genres onto the merged tiles. */
+  anchorOf: Record<string, string>;
+}
+
+/**
+ * Fold near-duplicate genres together for the DERIVED taste map/clusters (the
+ * stored `genre_weights` row keeps its raw keys — iOS reads it). Two stages:
+ *   1. spelling canonicalization (k-pop / kpop / korean pop → k-pop), and
+ *   2. embedding near-twin fold — positively-weighted tags within `NEAR_DUP_COSINE`
+ *      collapse into the stronger anchor (soul → r&b), summing weights so the
+ *      combined `3 + w/n` stays a true weighted average.
+ * Disliked (w ≤ 0) tags are never folded, so dislike detection is untouched.
+ */
+export function mergeSynonymWeights(weights: GenreWeights): MergedWeights {
+  // Stage 1 — spelling canonicalization.
+  const spelled: GenreWeights = {};
+  for (const [tag, e] of Object.entries(weights)) {
+    const key = canonicalize(tag);
+    const acc = (spelled[key] ??= { w: 0, n: 0 });
+    acc.w += e.w;
+    acc.n += e.n;
+  }
+  // Stage 2 — embedding near-twin fold, strongest tag anchoring each group.
+  const anchorOf: Record<string, string> = {};
+  const anchors: { tag: string; w: number; n: number; vec: number[] | null }[] = [];
+  const entries = Object.entries(spelled)
+    .map(([tag, e]) => ({ tag, w: e.w, n: e.n, vec: genreVector(tag) }))
+    .sort((a, b) => b.w - a.w);
+  for (const e of entries) {
+    let target: { tag: string; w: number; n: number; vec: number[] | null } | null = null;
+    if (e.w > 0 && e.vec) {
+      for (const a of anchors) {
+        if (a.w > 0 && a.vec && cosine(e.vec, a.vec) >= NEAR_DUP_COSINE) {
+          target = a;
+          break;
+        }
+      }
+    }
+    if (target) {
+      target.w += e.w;
+      target.n += e.n;
+      anchorOf[e.tag] = target.tag;
+    } else {
+      anchors.push({ tag: e.tag, w: e.w, n: e.n, vec: e.vec });
+      anchorOf[e.tag] = e.tag;
+    }
+  }
+  const out: GenreWeights = {};
+  for (const a of anchors) {
+    out[a.tag] = { w: Math.round(a.w * 1000) / 1000, n: Math.round(a.n * 1000) / 1000 };
+  }
+  return { weights: out, anchorOf };
 }
 
 /**
@@ -195,6 +269,7 @@ export function buildClusters(weights: GenreWeights): TasteCluster[] {
       weight: round2(c.weight),
       share: round2(c.weight / total),
       centroid: c.centroid,
+      scene: c.scene,
     }));
 }
 
@@ -245,7 +320,7 @@ export function clusterProfiles(
     const scene = sceneOf(r.country);
     if (scene != null) buckets[best].scenes.push(scene);
   }
-  return buckets.map((b) => {
+  return buckets.map((b, i) => {
     const meanYear =
       b.years.length > 0 ? b.years.reduce((s, y) => s + y, 0) / b.years.length : null;
     const sdYears =
@@ -254,7 +329,16 @@ export function clusterProfiles(
         : null;
     let sceneShares: SceneShares | null = null;
     let dominantScene: Scene | null = null;
-    if (b.scenes.length > 0) {
+    const pinned = clusters[i]?.scene ?? null;
+    if (pinned) {
+      // Scene-pinned world (j-pop/k-pop…): its scene identity is its genre's, not
+      // the countries of albums that landed nearest its centroid. Forcing the
+      // share also keeps blobAffinity from rewarding cross-scene recs (the K-pop-
+      // in-the-J-pop-world bug).
+      sceneShares = { kr: 0, jp: 0, west: 0, other: 0 };
+      sceneShares[pinned] = 1;
+      dominantScene = pinned;
+    } else if (b.scenes.length > 0) {
       sceneShares = { kr: 0, jp: 0, west: 0, other: 0 };
       for (const sc of b.scenes) sceneShares[sc] += 1 / b.scenes.length;
       const top = (Object.entries(sceneShares) as [Scene, number][]).sort((a, x) => x[1] - a[1])[0];
