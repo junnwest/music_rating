@@ -76,6 +76,9 @@ struct RecommendationsResponse: Decodable {
 // v4 (2026-07-13 web rebuild, MBTI 4-letter type removed in favor of a graphical chart report --
 // decade/score-distribution histograms, scene mix, canon reach, 12-month timeline). Decoded in
 // full since 2026-07-18: iOS's TasteView now renders the same chart report web does.
+// v5 (2026-08-13, taste-page rebuild port): added `graph` (treemap worlds/albums/recs) and
+// `charts.years` -- both already sent by the API since the 2026-08-10/11 web rebuild, but
+// silently dropped by JSONDecoder until now since it ignores unknown keys rather than erroring.
 struct TasteProfileResponse: Decodable {
     let ratingCount: Int
     let albumRatingCount: Int
@@ -83,9 +86,54 @@ struct TasteProfileResponse: Decodable {
     let clusters: [TasteWorld]
     let disliked: [DislikedTag]
     let standings: [GenreStandingRow]
+    let graph: TasteGraph?
     let charts: TasteCharts
     let stats: TasteStats
     let topAlbum: TasteTopAlbum?
+
+    struct TasteGraph: Decodable {
+        let worlds: [GraphWorld]
+        let albums: [GraphAlbum]
+        let recs: [String: [GraphRec]]
+
+        struct GraphWorld: Decodable {
+            let key: String
+            let label: String
+            let primary: String
+            let share: Double
+            let mass: Double
+            let avg: Double?
+            /// Cosine similarity to every world (including itself), same index order as `clusters`.
+            let sim: [Double]
+            let tags: [GraphTag]
+            /// Pairwise cosine among this world's own tags, same index order as `tags`.
+            let tagSim: [[Double]]
+
+            struct GraphTag: Decodable {
+                let tag: String
+                let display: String
+                let mass: Double
+                let share: Double
+                let avg: Double
+            }
+        }
+
+        struct GraphAlbum: Decodable {
+            let id: UUID
+            let title: String
+            let artist: String
+            let coverUrl: String?
+            let score: Double
+            let tags: [String]
+        }
+
+        struct GraphRec: Decodable {
+            let id: UUID
+            let title: String
+            let artist: String
+            let coverUrl: String?
+        }
+    }
 
     struct TasteWorld: Decodable {
         let share: Double
@@ -127,6 +175,9 @@ struct TasteProfileResponse: Decodable {
     struct TasteCharts: Decodable {
         // Contiguous, zero-filled between first and last rated decade.
         let decades: [DecadeBin]
+        // Contiguous, zero-filled between first and last rated year -- finer-grained than
+        // `decades`, used by the year histogram since the 2026-08-10 web rebuild.
+        let years: [YearBin]
         // Half-star buckets, index 0 = 0.5★ … 9 = 5.0★.
         let scoreDist: [Int]
         let scenes: SceneMix?
@@ -136,6 +187,11 @@ struct TasteProfileResponse: Decodable {
 
         struct DecadeBin: Decodable {
             let decade: Int
+            let count: Int
+        }
+
+        struct YearBin: Decodable {
+            let year: Int
             let count: Int
         }
 
