@@ -33,6 +33,35 @@ Still open, roughly in priority order:
 > not the `release_id` shown in the SQL sketch below), §5 login redesign ✅, §7 i18n ✅ (as the `sj.*`
 > namespace). §6 (Spotify/Apple data sync surfacing discovery rows on web) is the one remaining open item.
 > Kept for historical context — details below reflect 2026-06-17, before the DB renovation.
+>
+> **✅ RESOLVED (2026-08-15):** the 2026-08-13 correction below is no longer current. Re-did the web
+> removal against today's codebase — stripped the remaining Instinct/`rating_mode`/`elo_score`
+> references from the 5 files that had reverted to upstream during the 2026-08-13 `git pull` conflict
+> (`AlbumRateButton.tsx`, `search/page.tsx`, `quick-add/page.tsx`, `album/[id]/page.tsx`,
+> `ProfileRatedList.tsx`) — the rest of the original 2026-08-11 removal was already sitting correctly
+> stripped in the working tree, just uncommitted. **iOS and web now agree: Instinct mode is gone from
+> both.** `tsc --noEmit` + `next lint` + full `next build` clean; `xcodebuild` clean. The DB migration
+> (`20260810010000_remove_instinct_mode.sql`) is still ⏳ **not yet applied** — deliberately, per this
+> project's convention that destructive/schema-changing migrations are user-applied, not automatic.
+> The REMOVED note directly below is accurate again.
+>
+> **REMOVED (2026-08-11, re-verified 2026-08-15):** Instinct mode (§4's pairwise-comparison rating
+> path) was deleted entirely — iOS, web (code), and pending DB cleanup (`rating_mode`,
+> `elo_score`/`elo_games`, the `pairwise_comparisons` tables — migration written, not yet applied).
+> Only Manual (direct-score) rating remains. §4 below is historical record of a feature that no
+> longer exists in any form.
+>
+> <details><summary>2026-08-13 correction (superseded by the above, kept for the record)</summary>
+>
+> the "REMOVED (2026-08-11)" claim below was wrong for web. That session's removal (iOS + web + DB)
+> was built but **never committed or pushed** — confirmed 2026-08-13 while resolving a `git pull`
+> conflict: origin/main still had `lib/elo.ts`, `InstinctModal`, `rating_mode` throughout, and
+> substantial *new* web work (`RatingsStore`, drag-to-delete, the taste-page rebuild) had since been
+> built directly on top of the Instinct-still-present codebase. The iOS-side removal was still
+> sitting uncommitted in the local working tree, so iOS and web disagreed on whether Instinct mode
+> existed.
+>
+> </details>
 
 Changes designed and built in the iOS (Swift) app during the 2026-06-17 session that must be mirrored on the web (`apps/web`) in a follow-up session.
 
