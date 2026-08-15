@@ -27,8 +27,8 @@ const ALBUMS = resolve(ROOT, 'backups/ratings_pre_renovation_20260624_win.json')
 const TRACKS = resolve(ROOT, 'backups/track_ratings_pre_renovation_20260624_win.json');
 
 interface BackupRelease { title: string; artist: string }
-interface AlbumRating { id: string; user_id: string; score: number | null; status: string | null; note: string | null; created_at: string; updated_at: string; elo_score: number | null; elo_games: number | null; _release: BackupRelease }
-interface TrackRating { id: string; user_id: string; track_position: number; track_title: string; score: number | null; created_at: string; elo_score: number | null; elo_games: number | null; _release: BackupRelease }
+interface AlbumRating { id: string; user_id: string; score: number | null; status: string | null; note: string | null; created_at: string; updated_at: string; _release: BackupRelease }
+interface TrackRating { id: string; user_id: string; track_position: number; track_title: string; score: number | null; created_at: string; _release: BackupRelease }
 
 // Drop edition qualifiers + " - EP/Single/Album" suffixes so a Spotify title collapses
 // onto the clean MB group title ("Album (Deluxe)" / "FEELM - EP" → "Album" / "FEELM").
@@ -110,7 +110,6 @@ async function main() {
       const { error } = await db.from('ratings').upsert({
         user_id: r.user_id, release_group_id: m.id,
         score: r.score, status: r.status, note: r.note,
-        elo_score: r.elo_score, elo_games: r.elo_games,
         created_at: r.created_at, updated_at: r.updated_at,
       }, { onConflict: 'user_id,release_group_id' });
       if (error) console.log(`  ! album upsert "${r._release.title}": ${error.message}`);
@@ -136,7 +135,7 @@ async function main() {
     if (WRITE) {
       const { error } = await db.from('track_ratings').upsert({
         user_id: r.user_id, recording_id: rec.recording_id,
-        score: r.score, elo_score: r.elo_score, elo_games: r.elo_games, created_at: r.created_at,
+        score: r.score, created_at: r.created_at,
       }, { onConflict: 'user_id,recording_id' });
       if (error) console.log(`  ! track upsert "${r.track_title}": ${error.message}`);
     }

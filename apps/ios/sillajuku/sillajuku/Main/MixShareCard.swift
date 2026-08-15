@@ -194,14 +194,17 @@ struct MixShareCard: View {
                 .buttonStyle(.plain)
                 .animation(.easeInOut(duration: 0.15), value: isLiked)
                 .accessibilityLabel(isLiked ? String(localized: "Unlike") : String(localized: "Like"))
+                .sensoryFeedback(.impact(weight: .light), trigger: isLiked)
 
-                Button { activeSheet = .likers } label: {
-                    Text("\(likesCount)")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(isLiked ? .red : Color.sjMuted)
-                        .contentShape(Rectangle())
+                if likesCount > 0 {
+                    Button { activeSheet = .likers } label: {
+                        Text("\(likesCount)")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(isLiked ? .red : Color.sjMuted)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
 
             HStack(spacing: 5) {
@@ -213,9 +216,11 @@ struct MixShareCard: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(String(localized: "View comments"))
 
-                Text("\(commentsCount)")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(Color.sjMuted)
+                if commentsCount > 0 {
+                    Text("\(commentsCount)")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Color.sjMuted)
+                }
             }
 
             Spacer(minLength: 0)

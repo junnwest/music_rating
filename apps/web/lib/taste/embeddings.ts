@@ -32,6 +32,13 @@ export function genreSupport(tag: string): number {
   return data.support[tag] ?? 0;
 }
 
+/** Every genre tag the embedding artifact knows a vector for — the catalog's
+ *  tag vocabulary. Used to discover spelling variants of a genre (see
+ *  genreSynonyms.ts). Server-only; do not ship to the client. */
+export function genreVocab(): string[] {
+  return Object.keys(data.vectors);
+}
+
 /** Cosine similarity of two unit vectors (embeddings are stored L2-normalized). */
 export function cosine(a: number[], b: number[]): number {
   let s = 0;

@@ -28,7 +28,6 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
 
-    @State private var ratingMode: String  = "manual"
     @State private var ratingStep: Double  = 0.5
 
     // Notifications
@@ -76,8 +75,7 @@ struct SettingsView: View {
                 // MARK: Preferences
                 Section("Preferences") {
                     appearancePicker
-                    ratingModePicker
-                    if ratingMode == "manual" { ratingPrecisionPicker }
+                    ratingPrecisionPicker
                 }
 
                 // MARK: App Icon (unlocked at 5 verified invites)
@@ -193,7 +191,6 @@ struct SettingsView: View {
             .sheet(isPresented: $showDeleteConfirm) { deleteAccountSheet }
             .onAppear { loadPreferences() }
             .task { await loadVerifiedInviteCount() }
-            .onChange(of: viewModel.profile?.ratingMode)          { _, _ in loadPreferences() }
             .onChange(of: viewModel.profile?.ratingStep)          { _, _ in loadPreferences() }
             .onChange(of: viewModel.profile?.notifyLikes)         { _, _ in loadPreferences() }
             .onChange(of: viewModel.profile?.profileVisibility)   { _, _ in loadPreferences() }
@@ -217,25 +214,7 @@ struct SettingsView: View {
                     }
                 }
             }
-        }
-        .padding(.vertical, 6)
-    }
-
-    private var ratingModePicker: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Rating Mode")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.sjInk)
-
-            HStack(spacing: 8) {
-                ForEach([("star.fill", "Normal", "manual"),
-                         ("arrow.left.arrow.right", "Instinct", "instinct")] as [(String, LocalizedStringKey, String)], id: \.2) { icon, label, value in
-                    segmentButton(icon: icon, label: label, selected: ratingMode == value) {
-                        ratingMode = value
-                        saveRatingMode(value)
-                    }
-                }
-            }
+            .sensoryFeedback(.selection, trigger: appearanceMode)
         }
         .padding(.vertical, 6)
     }
@@ -267,6 +246,7 @@ struct SettingsView: View {
                     .buttonStyle(.plain)
                 }
             }
+            .sensoryFeedback(.selection, trigger: ratingStep)
         }
         .padding(.vertical, 6)
     }
@@ -450,7 +430,6 @@ struct SettingsView: View {
 
     private func loadPreferences() {
         guard let p = viewModel.profile else { return }
-        ratingMode           = p.ratingMode ?? "manual"
         ratingStep           = p.ratingStep ?? 0.5
         notifyLikes          = p.notifyLikes ?? true
         notifyReplies        = p.notifyReplies ?? true
@@ -461,20 +440,6 @@ struct SettingsView: View {
         catalogOverride      = .from(p.catalogVisibility)
         libraryOverride      = .from(p.libraryVisibility)
         statsOverride        = .from(p.statsVisibility)
-    }
-
-    private func saveRatingMode(_ value: String) {
-        guard let user = supabase.auth.currentUser else { return }
-        Task {
-            try? await supabase.from("profiles")
-                .update(["rating_mode": value])
-                .eq("id", value: user.id).execute()
-            // Tells HomeView (see its .onReceive) that rating_mode may have changed --
-            // HomeViewModel is hoisted for the whole session and only fetches
-            // rating_mode once, so without this it keeps showing the manual-mode
-            // flower rate button after switching to Instinct.
-            NotificationCenter.default.post(name: .sjProfileUpdated, object: nil)
-        }
     }
 
     private func saveRatingStep(_ value: Double) {

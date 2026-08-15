@@ -28,11 +28,9 @@ async function fetchRecording(id: string): Promise<RecordingRow | null> {
   }
 }
 
-// Matches the page's own community-average formula exactly (page.tsx's `scores` computation) --
-// score only, no elo_score fallback. Unlike the album page, the song page's community average
-// doesn't convert unrevealed Instinct-mode elo_score at all, so structured data has to mirror
-// that same (narrower) formula or it'll show a number the page itself doesn't display. Capped at
-// 2000 rows -- see album/[id]/layout.tsx's matching comment.
+// Matches the page's own community-average formula exactly (page.tsx's `scores` computation), so
+// structured data doesn't show a number the page itself doesn't display. Capped at 2000 rows --
+// see album/[id]/layout.tsx's matching comment.
 async function fetchRatingStats(recordingId: string): Promise<{ count: number; average: number | null }> {
   try {
     const res = await fetch(

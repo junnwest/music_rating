@@ -3,7 +3,6 @@ import { createServerClient } from '../../../lib/supabaseServer';
 import { getAuthedUserId } from '../../../lib/authGuard';
 import { rateLimit } from '../../../lib/rateLimit';
 import { cacheGet, cacheSet } from '../../../lib/cache';
-import { eloToScore } from '../../../lib/elo';
 import { albumCentroid, cosine, displayGenre } from '../../../lib/taste/embeddings';
 import {
   W_GENRE,
@@ -131,7 +130,7 @@ export async function GET(req: NextRequest) {
     supabase
       .from('ratings')
       .select(
-        'release_group_id, score, elo_score, release_groups(id, artist_display, genres, first_release_date, artists!release_groups_primary_artist_id_fkey(country))',
+        'release_group_id, score, release_groups(id, artist_display, genres, first_release_date, artists!release_groups_primary_artist_id_fkey(country))',
       )
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
@@ -146,7 +145,6 @@ export async function GET(req: NextRequest) {
   interface RatingRow {
     release_group_id: string;
     score: number | null;
-    elo_score: number | null;
     release_groups: {
       id: string;
       artist_display: string;
@@ -169,7 +167,7 @@ export async function GET(req: NextRequest) {
   const seedCandidates: { id: string; artist: string; display: number }[] = [];
 
   for (const r of ratings) {
-    const display = r.score ?? (r.elo_score != null ? eloToScore(r.elo_score) : null);
+    const display = r.score;
     if (display == null) continue;
     const artist = r.release_groups!.artist_display;
     if (display <= BLOCK_SCORE) blockedArtists.add(artist);
@@ -193,7 +191,6 @@ export async function GET(req: NextRequest) {
   const weights = weightsFromRatings(
     ratings.map((r) => ({
       score: r.score,
-      elo_score: r.elo_score,
       genres: r.release_groups!.genres,
     })),
   );

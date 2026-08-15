@@ -11,7 +11,7 @@ console.log(`role: ${process.argv.includes('--service') ? 'service' : 'anon'}`);
 const supabase = createClient(url, key, { auth: { persistSession: false } });
 
 const FEED_SELECT =
-  `id, user_id, score, elo_score, review_text, created_at, ` +
+  `id, user_id, score, review_text, created_at, ` +
   `release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), ` +
   `profiles!ratings_user_id_fkey(username, display_name)`;
 

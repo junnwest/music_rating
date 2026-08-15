@@ -11,6 +11,15 @@ if (typeof window !== 'undefined') {
     api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
     capture_pageview: false, // manual below so we get the right path
     capture_pageleave: true,
+    // Cookieless analytics: keep the distinct-id in memory only — no cookies,
+    // no localStorage. This is what lets the privacy policy honestly say we use
+    // strictly-necessary cookies only (so no consent banner is required), while
+    // still getting session-scoped product analytics. `respect_dnt` backs the
+    // policy's "we honor Do Not Track for analytics" line. Persists across the
+    // App Router's client-side navigations (same JS context); resets on a hard
+    // reload / new tab.
+    persistence: 'memory',
+    respect_dnt: true,
   });
 }
 

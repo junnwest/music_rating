@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { eloToScore } from '../../../../lib/elo';
 
 // Every page on the site previously shared the root layout's static title/description
 // ("sillajuku" / "Every record you've loved.") -- Google was substituting its own titles/
@@ -38,24 +37,23 @@ async function fetchRelease(id: string): Promise<ReleaseRow | null> {
   }
 }
 
-// Same score-or-elo-converted-to-score formula the page itself uses for its own displayed
-// "community avg" (see page.tsx's `scored` computation) -- structured data has to match what's
-// actually shown on the page, not an independently-computed number, or it risks a Google manual
-// action for misleading markup. Capped at 2000 rows: this is an average, not the display list,
-// so a bounded sample is fine even for a very popular album, and keeps this from ever becoming an
-// unbounded fetch.
+// Same formula the page itself uses for its own displayed "community avg" (see page.tsx's
+// `scored` computation) -- structured data has to match what's actually shown on the page, not an
+// independently-computed number, or it risks a Google manual action for misleading markup. Capped
+// at 2000 rows: this is an average, not the display list, so a bounded sample is fine even for a
+// very popular album, and keeps this from ever becoming an unbounded fetch.
 async function fetchRatingStats(releaseGroupId: string): Promise<{ count: number; average: number | null }> {
   try {
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/ratings?release_group_id=eq.${releaseGroupId}&select=score,elo_score&limit=2000`,
+      `${SUPABASE_URL}/rest/v1/ratings?release_group_id=eq.${releaseGroupId}&select=score&limit=2000`,
       {
         headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` },
         next: { revalidate: 3600 },
       }
     );
-    const rows: { score: number | null; elo_score: number | null }[] = await res.json();
+    const rows: { score: number | null }[] = await res.json();
     const scored = (Array.isArray(rows) ? rows : [])
-      .map((r) => (r.score != null ? r.score : r.elo_score != null ? eloToScore(r.elo_score) : null))
+      .map((r) => r.score)
       .filter((s): s is number => s != null);
     if (scored.length === 0) return { count: 0, average: null };
     return { count: scored.length, average: scored.reduce((a, b) => a + b, 0) / scored.length };

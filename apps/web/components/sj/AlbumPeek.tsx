@@ -7,7 +7,6 @@ import { Skeleton } from './Loading';
 import { useAlbumContextMenu } from './AlbumContextMenu';
 import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
-import { eloToScore } from '../../lib/elo';
 import type { SJRelease } from '../../lib/sj/data';
 
 interface PeekStats {
@@ -24,7 +23,11 @@ const statsCache = new Map<string, PeekStats>();
 const tracksCache = new Map<string, PeekTrack[]>();
 
 const CARD_W = 300;
-const CARD_H = 380; // approximate, for vertical clamping only
+// Tall enough for the worst case (2-line title + meta + MAX_TRACKS rows + the
+// "+N" line ≈ 455px) — it doubles as the content's max-height, so a shorter
+// value visibly clipped the tracklist of long albums. Used for vertical
+// clamping too; still comfortably inside any desktop viewport.
+const CARD_H = 460;
 const MAX_TRACKS = 14;
 
 function fmtDur(ms: number | null): string {
@@ -117,13 +120,11 @@ export default function AlbumPeek({
         setStats(null);
         supabase
           ?.from('ratings')
-          .select('score, elo_score')
+          .select('score')
           .eq('release_group_id', releaseId)
           .then(({ data }) => {
-            const rows = (data as { score: number | null; elo_score: number | null }[] | null) ?? [];
-            const scored = rows
-              .map((r) => (r.score != null ? r.score : r.elo_score != null ? eloToScore(r.elo_score) : null))
-              .filter((s): s is number => s != null);
+            const rows = (data as { score: number | null }[] | null) ?? [];
+            const scored = rows.map((r) => r.score).filter((s): s is number => s != null);
             const next: PeekStats = {
               avg: scored.length ? scored.reduce((a, b) => a + b, 0) / scored.length : null,
               count: rows.length,

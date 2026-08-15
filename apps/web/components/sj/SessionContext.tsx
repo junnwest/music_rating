@@ -37,7 +37,7 @@ const SessionContext = createContext<SessionValue>({
 });
 
 const PROFILE_COLS =
-  'id, username, display_name, bio, avatar_url, rating_mode, manual_rating_step, ' +
+  'id, username, display_name, bio, avatar_url, manual_rating_step, ' +
   'notifications_last_seen_at, notify_likes, notify_replies, notify_followers, ' +
   'notify_rankings, notify_capsule, profile_visibility, catalog_visibility, ' +
   'library_visibility, stats_visibility, is_bot';

@@ -83,14 +83,6 @@ struct QuestChecklistView: View {
             .init(title: "Write a short bio", progress: (vm.hasBio ? 1 : 0, 1), action: openEditProfile),
             .init(title: "Rate your first release", progress: (vm.hasFirstRating ? 1 : 0, 1), action: goToAdd),
         ]
-        if vm.ratingMode == "instinct" {
-            items.append(.init(
-                title: "Rate 5 releases",
-                progress: (min(vm.albumRatingCount, 5), 5),
-                reward: QuestReward(icon: "waveform", description: "Reveals your Instinct score"),
-                action: goToAdd
-            ))
-        }
         items.append(.init(
             title: "Rate 25 releases",
             progress: (min(vm.combinedRatingCount, TasteViewModel.unlockThreshold), TasteViewModel.unlockThreshold),

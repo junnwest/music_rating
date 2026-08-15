@@ -9,8 +9,8 @@ import { releaseDisplayArtist, releaseDisplayTitle, type SJRelease } from '../..
 import { typeLabelKey } from '../../lib/sj/display';
 
 /**
- * Post-rating step shared by Manual and Instinct flows — mirrors iOS
- * PostRatingOptionsView: inline comment + "Add to a list", then Continue.
+ * Post-rating step — mirrors iOS PostRatingOptionsView: inline comment +
+ * "Add to a list", then Continue.
  */
 export default function PostRatingOptions({
   release,

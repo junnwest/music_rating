@@ -37,6 +37,40 @@ export function sceneOf(country: string | null | undefined): Scene | null {
   return 'other';
 }
 
+/**
+ * Scene implied by a genre tag's *name* (kr/jp only — nothing else is
+ * derivable from a tag). Used by the clustering step: the co-occurrence
+ * embeddings put j-pop and k-pop at cosine ≈ 0.55 (they share listeners in
+ * this catalog), which is above the cluster-join threshold — so without this,
+ * a J-pop tag merges into a K-pop-anchored world and the world's country
+ * profile then labels it "Korean scene". Verified live 2026-08-10.
+ */
+export function tagScene(tag: string): Scene | null {
+  const t = tag.toLowerCase().replace(/-/g, ' ').replace(/&/g, ' and ').replace(/\s+/g, ' ').trim();
+  if (t.includes('korean') || /^k (pop|rap|rock|indie|ballad|folk|hip hop|r and b|rnb)\b/.test(t) || t === 'trot') {
+    return 'kr';
+  }
+  if (
+    t.includes('japanese') ||
+    /^j (pop|rock|rap|hip hop)\b/.test(t) ||
+    [
+      'city pop',
+      'enka',
+      'kayokyoku',
+      'kayōkyoku',
+      'shibuya kei',
+      'visual kei',
+      'anison',
+      'vocaloid',
+      'idol kayo',
+      'idol kayō',
+    ].some((s) => t === s || t.startsWith(`${s} `))
+  ) {
+    return 'jp';
+  }
+  return null;
+}
+
 export interface EraProfile {
   meanYear: number | null;
   sdYears: number | null;

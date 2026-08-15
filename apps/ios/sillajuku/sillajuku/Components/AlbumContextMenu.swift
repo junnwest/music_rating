@@ -7,18 +7,6 @@ import Supabase
 // cards (FeedCard, ProfilePostCard, MixShareCard), which already have their
 // own ellipsis menu with an overlapping action set.
 enum AlbumQuickRate {
-    static func currentUserRatingMode() async -> String {
-        guard let userId = supabase.auth.currentUser?.id else { return "manual" }
-        struct P: Decodable {
-            let ratingMode: String?
-            enum CodingKeys: String, CodingKey { case ratingMode = "rating_mode" }
-        }
-        let p: P? = try? await supabase
-            .from("profiles").select("rating_mode")
-            .eq("id", value: userId).single().execute().value
-        return p?.ratingMode ?? "manual"
-    }
-
     /// Returns whether the write actually landed. Previously `try?`, which swallowed any
     /// failure (network drop, RLS, etc.) while still posting `.ratingChanged` unconditionally
     /// -- callers held an optimistic "rated" score with no way to know it hadn't really saved,
@@ -72,6 +60,12 @@ enum AlbumQuickRate {
     }
 }
 
+/// File-scope, not nested in `prepareShare()` -- Swift disallows a locally-declared
+/// type inside a closure/function body belonging to a generic type (`AlbumContextMenu`
+/// is generic over `ExtraItems`), unlike the equivalent inline declarations in
+/// AlbumDetailView/SongDetailView/MixDetailView's own non-generic `prepareShare`s.
+private struct ShareProfileRow: Decodable { let username: String? }
+
 private struct AlbumMenuPreview: View {
     let release: Release
 
@@ -98,10 +92,11 @@ struct AlbumContextMenu<ExtraItems: View>: ViewModifier {
     @ViewBuilder var extraItems: () -> ExtraItems
 
     @State private var showManualSheet = false
-    @State private var showInstinctSheet = false
     @State private var showMixPicker = false
     @State private var quickScore: Double? = nil
     @State private var artistDestination: ArtistDestination? = nil
+    @State private var didMarkNotInterested = false
+    @State private var pendingShare: PendingShare? = nil
 
     private var shareURL: URL { URL(string: "https://sillajuku.com/album/\(release.id.uuidString)")! }
 
@@ -109,7 +104,7 @@ struct AlbumContextMenu<ExtraItems: View>: ViewModifier {
         content
             .contextMenu {
                 Button {
-                    Task { await openRateSheet() }
+                    openRateSheet()
                 } label: {
                     Label("Rate", systemImage: "star")
                 }
@@ -122,39 +117,79 @@ struct AlbumContextMenu<ExtraItems: View>: ViewModifier {
                     Label("Share", systemImage: "square.and.arrow.up")
                 }
                 Button {
+                    Task { await prepareShare() }
+                } label: {
+                    Label("Share to Instagram", systemImage: "camera")
+                }
+                Button {
                     artistDestination = ArtistDestination(artistId: nil, name: release.displayArtist)
                 } label: {
                     Label("View Artist", systemImage: "music.mic")
+                }
+                Button {
+                    Task {
+                        if await NotInterested.markAlbum(releaseGroupId: release.id) {
+                            didMarkNotInterested.toggle()
+                        }
+                    }
+                } label: {
+                    Label("Not Interested", systemImage: "hand.thumbsdown")
                 }
                 extraItems()
             } preview: {
                 AlbumMenuPreview(release: release)
             }
+            .sensoryFeedback(.success, trigger: didMarkNotInterested)
             .sheet(isPresented: $showManualSheet) {
                 ManualRatingSheet(release: release, existingScore: $quickScore) { score in
                     guard let score else { return }
                     Task { await AlbumQuickRate.saveManualScore(releaseGroupId: release.id, score: score) }
                 }
             }
-            .sheet(isPresented: $showInstinctSheet) {
-                InstinctRatingView(release: release)
-            }
             .sheet(isPresented: $showMixPicker) {
                 MixPickerView(releaseId: release.id, releaseTitle: release.displayTitle)
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
             }
+            .sheet(item: $pendingShare) { pending in
+                SharePreviewSheet(pending: pending)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
             .navigationDestination(item: $artistDestination) { ArtistPageView(artist: $0) }
     }
 
-    private func openRateSheet() async {
-        let mode = await AlbumQuickRate.currentUserRatingMode()
-        if mode == "instinct" {
-            showInstinctSheet = true
-        } else {
-            quickScore = nil
-            showManualSheet = true
+    private func openRateSheet() {
+        quickScore = nil
+        showManualSheet = true
+    }
+
+    /// Shares the album itself, not a rating of it -- this modifier has no
+    /// per-user rating state for the release (adding it would mean a new fetch
+    /// on every one of this modifier's 9+ call sites app-wide), so score is
+    /// always nil here. Mirrors AlbumDetailView's own `prepareShare`.
+    private func prepareShare() async {
+        var username = "someone"
+        if let userId = supabase.auth.currentUser?.id {
+            let profile: ShareProfileRow? = try? await supabase
+                .from("profiles").select("username")
+                .eq("id", value: userId).single().execute().value
+            username = profile?.username ?? "someone"
         }
+
+        let coverImage: UIImage? = await {
+            guard let coverUrl = release.coverUrl, let url = URL(string: coverUrl) else { return nil }
+            return try? await InstagramShare.downloadImage(from: url)
+        }()
+
+        pendingShare = PendingShare(
+            username: username,
+            coverImages: [coverImage],
+            title: release.displayTitle,
+            subtitle: release.typeLabel + " · " + release.displayArtist,
+            score: nil,
+            reviewText: nil
+        )
     }
 }
 

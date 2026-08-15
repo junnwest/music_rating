@@ -1,18 +1,30 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Lock, Star, BarChart3, Drama, AudioWaveform, RotateCw } from 'lucide-react';
 import Cover from '../../../components/sj/Cover';
 import { useSession } from '../../../components/sj/SessionContext';
 import { SkeletonBlock, SkeletonLine, FlowerSpinner } from '../../../components/sj/Loading';
 import TasteGraph, {
-  YearHistogram,
   type TasteGraphData,
   type TasteGraphWorld,
 } from '../../../components/sj/TasteGraph';
+import {
+  TASTE_MOTION_CSS,
+  Reveal,
+  CountUp,
+  YearChart,
+  ScoreChart,
+  SceneBar,
+  CanonGauge,
+  DumbbellAxis,
+  DumbbellRow,
+  ActivitySpark,
+} from '../../../components/sj/TasteCharts';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
+import { spectrumColor, spectrumFill, spectrumNumber } from '../../../lib/sj/display';
 
 const UNLOCK_THRESHOLD = 25;
 
@@ -86,11 +98,13 @@ const SCENE_KEYS: Record<Scene, string> = {
 };
 
 /**
- * Taste — a graphical analysis report of the user's rating history, led by the
- * interactive taste map (genre worlds as area-scaled, score-coloured bubbles you
- * can zoom into), then the numbers: release-year histogram with a trend line,
- * score distribution, scene mix, canon reach, and community comparison. Locked
- * until 25 ratings.
+ * Taste — an editorial, scroll-revealed analysis report of the user's rating
+ * history (2026-08-10 visual rebuild). Opens on a hero whose aurora gradient is
+ * mixed from the user's own world colors, then numbered sections: the
+ * interactive taste map, headline numbers + 12-month activity, release-year
+ * histogram with a "your era" band, ramp-colored score distribution, scene mix,
+ * canon-reach gauge, and community dumbbells with real tooltips throughout.
+ * Locked until 25 ratings.
  *
  * The report is served cached (60s) by `/api/taste/profile`; the **Refresh**
  * control is the only path that passes `?refresh=1`. Do not reintroduce a
@@ -149,15 +163,20 @@ export default function TastePage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-3xl px-4 md:px-6 py-8 space-y-5">
-        <div className="rounded-2xl bg-accent-soft/60 border border-accent/15 px-6 py-6 space-y-2">
+      <div className="mx-auto max-w-5xl px-4 md:px-6 py-8 space-y-6">
+        <div className="rounded-3xl bg-accent-soft/60 border border-accent/15 px-8 py-10 space-y-3">
           <SkeletonLine w="w-24" h="h-2.5" />
-          <SkeletonLine w="w-3/5" h="h-6" />
+          <SkeletonLine w="w-3/5" h="h-8" />
           <SkeletonLine w="w-2/5" h="h-3" />
+          <div className="flex gap-10 pt-4">
+            <SkeletonLine w="w-16" h="h-7" />
+            <SkeletonLine w="w-16" h="h-7" />
+            <SkeletonLine w="w-16" h="h-7" />
+          </div>
         </div>
-        <SkeletonBlock className="h-72" />
-        <SkeletonBlock className="h-44" />
-        <SkeletonBlock className="h-44" />
+        <SkeletonBlock className="h-96" />
+        <SkeletonBlock className="h-56" />
+        <SkeletonBlock className="h-48" />
       </div>
     );
   }
@@ -202,6 +221,23 @@ function ReportView({
         }
       : null;
 
+  // Hero aurora — radial washes mixed from the user's three biggest worlds'
+  // ramp colors, one layer per theme (the ramp needs different lightness on
+  // each surface, and CSS vars can't carry a JS-computed OKLCh pair).
+  const auroraWorlds = (report.graph?.worlds ?? []).slice(0, 3);
+  const AURORA_POS = ['14% 16%', '86% 8%', '68% 96%'];
+  const aurora = (lightness: number) =>
+    auroraWorlds
+      .map(
+        (w, i) =>
+          `radial-gradient(52% 72% at ${AURORA_POS[i]}, color-mix(in srgb, ${spectrumColor(
+            w.avg ?? 3,
+            lightness,
+            0.65,
+          )} 52%, transparent), transparent 70%)`,
+      )
+      .join(', ');
+
   // ── release years ──
   const years = charts.years ?? [];
   const eraText =
@@ -214,7 +250,6 @@ function ReportView({
   // ── score distribution ──
   const scoreDist = charts.scoreDist;
   const scoreTotal = scoreDist.reduce((s, x) => s + x, 0);
-  const scorePeak = scoreDist.reduce((best, x, i) => (x > scoreDist[best] ? i : best), 0);
   const scoreText =
     stats.avgScore == null
       ? ''
@@ -241,151 +276,190 @@ function ReportView({
   const peakMonth =
     charts.peakMonthIndex != null ? charts.timeline[charts.peakMonthIndex] : null;
 
+  // Sorted by how far the user diverges above the community — the story the
+  // section is telling — not by the RPC's row order.
+  const standings = useMemo(
+    () => [...report.standings].sort((a, b) => (b.userAvg - b.communityAvg) - (a.userAvg - a.communityAvg)),
+    [report.standings],
+  );
+
+  const monthLabel = useCallback(
+    (month: string) => {
+      if (month.length < 7) return month;
+      const y = month.slice(2, 4);
+      const m = parseInt(month.slice(5), 10) - 1;
+      return lang === 'ko' ? `${y}년 ${m + 1}월` : `${monthName(m, lang)} '${y}`;
+    },
+    [lang],
+  );
+
+  // Section numbers stay sequential no matter which sections this profile has.
+  let sectionCount = 0;
+  const nextNo = () => String(++sectionCount).padStart(2, '0');
+
   return (
-    <div className="taste-report mx-auto max-w-3xl px-4 md:px-6 py-7 space-y-5">
-      <style>{VIZ_VARS}</style>
+    <div className="taste-report mx-auto max-w-5xl px-4 md:px-6 py-7 space-y-6">
+      <style>{VIZ_VARS + TASTE_MOTION_CSS}</style>
 
-      {/* ── 1. Header ── */}
-      <section className="rounded-2xl bg-accent-soft/60 border border-accent/15 px-6 py-6">
-        <div className="flex items-start justify-between gap-4">
-          <p className="text-[10px] font-black tracking-[0.12em] uppercase text-accent-deep/70">
-            {t('sj.taste.analysisTitle')}
+      {/* ── Hero ── */}
+      <header className="relative overflow-hidden rounded-3xl border border-accent/15 bg-accent-soft/60 px-6 py-8 md:px-9 md:py-10">
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none dark:hidden"
+          style={{ backgroundImage: aurora(0.86) }}
+        />
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none hidden dark:block"
+          style={{ backgroundImage: aurora(0.3) }}
+        />
+        <div className="relative">
+          <div className="flex items-start justify-between gap-4">
+            <p className="text-[10px] font-black tracking-[0.14em] uppercase text-accent-deep/70">
+              {t('sj.taste.analysisTitle')}
+            </p>
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={refreshing}
+              className="flex items-center gap-1.5 shrink-0 rounded-full border border-accent/25 bg-surface/70 px-3 py-1.5 text-[12px] font-semibold text-accent-deep hover:bg-surface transition disabled:opacity-70"
+            >
+              {refreshing ? <FlowerSpinner size={13} /> : <RotateCw size={13} />}
+              {t(refreshing ? 'sj.taste.refreshing' : 'sj.taste.refresh')}
+            </button>
+          </div>
+          <h1 className="mt-3 text-[30px] md:text-[38px] font-black text-ink leading-[1.08] tracking-tight whitespace-pre-line">
+            {headline}
+          </h1>
+          <p className="mt-3 max-w-lg text-[13px] md:text-[13.5px] text-mid leading-relaxed">
+            {t('sj.taste.analysisMeta')
+              .replace('{n}', String(report.ratingCount))
+              .replace('{g}', String(report.totalTags))
+              .replace('{w}', String(clusters.length))}
           </p>
-          <button
-            type="button"
-            onClick={onRefresh}
-            disabled={refreshing}
-            className="flex items-center gap-1.5 shrink-0 rounded-full border border-accent/25 bg-surface/70 px-3 py-1.5 text-[12px] font-semibold text-accent-deep hover:bg-surface transition disabled:opacity-70"
-          >
-            {refreshing ? <FlowerSpinner size={13} /> : <RotateCw size={13} />}
-            {t(refreshing ? 'sj.taste.refreshing' : 'sj.taste.refresh')}
-          </button>
+          <div className="mt-7 flex items-stretch gap-6 md:gap-9">
+            <HeroStat value={report.ratingCount} label={t('sj.taste.statRated')} />
+            <span className="w-px bg-accent/20" aria-hidden />
+            <HeroStat value={report.totalTags} label={t('sj.taste.statGenres')} />
+            <span className="w-px bg-accent/20" aria-hidden />
+            <HeroStat value={clusters.length} label={t('sj.taste.statWorlds')} />
+          </div>
         </div>
-        <h1 className="mt-2 text-[24px] font-black text-ink leading-tight whitespace-pre-line">
-          {headline}
-        </h1>
-        <p className="mt-1.5 text-[12.5px] text-muted">
-          {t('sj.taste.analysisMeta')
-            .replace('{n}', String(report.ratingCount))
-            .replace('{g}', String(report.totalTags))
-            .replace('{w}', String(clusters.length))}
-        </p>
-      </section>
+      </header>
 
-      {/* ── 2. The taste map ── */}
+      {/* ── The taste map ── */}
       {graph && (
-        <section className="rounded-2xl bg-surface px-5 py-5">
-          <h2 className="text-[15px] font-bold text-ink">{t('sj.taste.mapHeader')}</h2>
-          <p className="mt-1 text-[12.5px] text-muted">{t('sj.taste.mapSub')}</p>
+        <Section no={nextNo()} title={t('sj.taste.mapHeader')} lead={t('sj.taste.mapSub')}>
           <TasteGraph data={graph} />
-        </section>
+        </Section>
       )}
 
-      {/* ── 3. Numbers: #1 album + stat tiles ── */}
-      <section className="rounded-2xl bg-surface px-5 py-5">
-        <h2 className="text-[15px] font-bold text-ink mb-4">{t('sj.taste.statsHeader')}</h2>
-        <div className="flex flex-col sm:flex-row gap-5">
+      {/* ── Numbers: #1 album + stat tiles + 12-month activity ── */}
+      <Section no={nextNo()} title={t('sj.taste.statsHeader')}>
+        <div className="mt-5 flex flex-col sm:flex-row gap-6">
           {report.topAlbum && (
             <Link
               href={`/album/${report.topAlbum.id}`}
-              className="flex sm:flex-col items-center sm:items-start gap-4 sm:gap-2 sm:w-40 shrink-0 group"
+              className="flex sm:flex-col items-center sm:items-start gap-4 sm:gap-2.5 sm:w-44 shrink-0 group"
             >
               <Cover
                 url={report.topAlbum.coverUrl}
                 thumb={false}
-                className="w-24 h-24 sm:w-40 sm:h-40"
+                className="w-24 h-24 sm:w-44 sm:h-44"
                 rounded="rounded-xl"
               />
-              <span>
+              <span className="min-w-0">
                 <span className="block text-[10px] font-black tracking-[0.1em] uppercase text-accent-deep/70">
                   {t('sj.taste.topAlbum')}
                 </span>
-                <span className="block mt-0.5 text-[13.5px] font-bold text-ink line-clamp-2 group-hover:underline">
+                <span className="block mt-0.5 text-[14px] font-bold text-ink line-clamp-2 group-hover:underline">
                   {report.topAlbum.title}
                 </span>
-                <span className="block text-[12px] text-muted">{report.topAlbum.artist}</span>
-                <span className="block mt-0.5 text-[15px] font-black text-accent-deep">
+                <span className="block text-[12px] text-muted truncate">
+                  {report.topAlbum.artist}
+                </span>
+                <span
+                  className="inline-block mt-1.5 rounded-md px-2 py-0.5 text-[14px] font-black tabular-nums"
+                  style={{
+                    background: spectrumFill(report.topAlbum.score),
+                    color: spectrumNumber(report.topAlbum.score),
+                  }}
+                >
                   {report.topAlbum.score.toFixed(1)}
                 </span>
               </span>
             </Link>
           )}
-          <div className="flex-1 grid grid-cols-2 gap-3">
-            <StatTile value={String(report.ratingCount)} label={t('sj.taste.statRated')} />
-            <StatTile
-              value={stats.avgScore != null ? stats.avgScore.toFixed(2) : '—'}
-              label={
-                stats.sdScore != null
-                  ? `${t('sj.taste.statAvg')} (±${stats.sdScore.toFixed(2)})`
-                  : t('sj.taste.statAvg')
-              }
-            />
-            <StatTile value={String(stats.fiveStars)} label={t('sj.taste.perfectScores')} />
-            <StatTile
-              value={peakMonth ? monthName(parseInt(peakMonth.month.slice(5), 10) - 1, lang) : '—'}
-              label={t('sj.taste.statPeak')}
-            >
-              <div className="flex items-end gap-[2px] h-6 mt-1">
-                {charts.timeline.map((m, i) => {
-                  const max = Math.max(1, ...charts.timeline.map((x) => x.count));
-                  const isPeak = i === charts.peakMonthIndex;
-                  return (
-                    <span
-                      key={m.month}
-                      title={`${m.month} · ${m.count}`}
-                      className={`flex-1 rounded-sm ${isPeak ? 'bg-accent' : 'bg-divider'}`}
-                      style={{ height: Math.max(2, (m.count / max) * 24) }}
-                    />
-                  );
-                })}
-              </div>
-            </StatTile>
+          <div className="flex-1 flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-3">
+              <StatTile value={String(report.ratingCount)} label={t('sj.taste.statRated')} />
+              <StatTile
+                value={stats.avgScore != null ? stats.avgScore.toFixed(2) : '—'}
+                label={
+                  stats.sdScore != null
+                    ? `${t('sj.taste.statAvg')} (±${stats.sdScore.toFixed(2)})`
+                    : t('sj.taste.statAvg')
+                }
+              />
+              <StatTile value={String(stats.fiveStars)} label={t('sj.taste.perfectScores')} />
+              <StatTile
+                value={peakMonth ? monthName(parseInt(peakMonth.month.slice(5), 10) - 1, lang) : '—'}
+                label={t('sj.taste.statPeak')}
+              />
+            </div>
+            <div className="rounded-xl bg-page border border-divider/60 px-4 py-3">
+              <p className="text-[11px] font-bold text-muted mb-2">
+                {t('sj.taste.activityHeader')}
+              </p>
+              <ActivitySpark
+                timeline={charts.timeline}
+                peakIndex={charts.peakMonthIndex}
+                monthLabel={monthLabel}
+              />
+            </div>
           </div>
         </div>
-      </section>
+      </Section>
 
-      {/* ── 4. Release years ── */}
+      {/* ── Release years ── */}
       {years.length > 1 && stats.meanYear != null && (
-        <section className="rounded-2xl bg-surface px-5 py-5">
-          <h2 className="text-[15px] font-bold text-ink">{t('sj.taste.yearsHeader')}</h2>
-          <p className="mt-1 text-[12.5px] text-muted">{eraText}</p>
-          <YearHistogram
+        <Section no={nextNo()} title={t('sj.taste.yearsHeader')} lead={eraText}>
+          <YearChart
             years={years}
             label={t('sj.taste.yearsLegend')}
             trendLabel={t('sj.taste.yearsTrend')}
+            meanYear={stats.meanYear}
+            sdYears={stats.sdYears}
+            eraLabel={t('sj.taste.eraBand')}
           />
-        </section>
+        </Section>
       )}
 
-      {/* ── 5. Score distribution ── */}
+      {/* ── Score distribution ── */}
       {scoreTotal > 0 && stats.avgScore != null && (
-        <section className="rounded-2xl bg-surface px-5 py-5">
-          <h2 className="text-[15px] font-bold text-ink">{t('sj.taste.scoreHeader')}</h2>
-          <p className="mt-1 text-[12.5px] text-muted">{scoreText}</p>
-          <ColumnChart
+        <Section no={nextNo()} title={t('sj.taste.scoreHeader')} lead={scoreText}>
+          <ScoreChart
             bins={scoreDist}
-            xLabels={scoreDist.map((_, i) => (i % 2 === 1 ? String((i + 1) / 2) : null))}
-            peakIndex={scorePeak}
             mean={{
               pos: (stats.avgScore - 0.25) / 5,
               label: `${t('sj.taste.meanLabel')} ${stats.avgScore.toFixed(2)}`,
             }}
-            titleFor={(i) => `${((i + 1) / 2).toFixed(1)}★ · ${scoreDist[i]}`}
+            legend={t('sj.taste.mapLegendScore')}
           />
-        </section>
+        </Section>
       )}
 
-      {/* ── 6. Scene mix + canon reach ── */}
-      <div className="grid sm:grid-cols-2 gap-5">
+      {/* ── Scene mix + canon reach ── */}
+      <div className="grid sm:grid-cols-2 gap-6">
         {scenes && sceneLead && (
-          <section className="rounded-2xl bg-surface px-5 py-5">
-            <h2 className="text-[15px] font-bold text-ink">{t('sj.taste.sceneHeader')}</h2>
-            <p className="mt-1 text-[12.5px] text-muted">
-              {t('sj.taste.sceneLeadText')
-                .replace('{scene}', t(SCENE_KEYS[sceneLead.scene]))
-                .replace('{pct}', String(Math.round(sceneLead.share * 100)))}
-            </p>
-            <StackedBar
+          <Section
+            no={nextNo()}
+            title={t('sj.taste.sceneHeader')}
+            lead={t('sj.taste.sceneLeadText')
+              .replace('{scene}', t(SCENE_KEYS[sceneLead.scene]))
+              .replace('{pct}', String(Math.round(sceneLead.share * 100)))}
+          >
+            <SceneBar
               segments={sceneShares.map((s) => ({
                 share: s.share,
                 color: s.color,
@@ -401,28 +475,20 @@ function ReportView({
                 </span>
               ))}
             </div>
-          </section>
+          </Section>
         )}
-        <section className="rounded-2xl bg-surface px-5 py-5">
-          <h2 className="text-[15px] font-bold text-ink">{t('sj.taste.canonHeader')}</h2>
-          <p className="mt-3 text-[28px] font-black text-ink leading-none">
-            {Math.round((stats.prestigeShare ?? 0) * 100)}%
-          </p>
-          <div className="mt-3 h-[10px] rounded-full bg-accent-soft overflow-hidden">
-            <div
-              className="h-full rounded-full bg-accent"
-              style={{ width: `${Math.min(100, (stats.prestigeShare ?? 0) * 100)}%` }}
-            />
+        <Section no={nextNo()} title={t('sj.taste.canonHeader')}>
+          <div className="mt-4 flex items-center gap-5">
+            <CanonGauge pct={stats.prestigeShare ?? 0} label={t('sj.taste.canonInCanon')} />
+            <p className="flex-1 text-[12.5px] text-mid leading-relaxed">{reachText}</p>
           </div>
-          <p className="mt-2 text-[12.5px] text-muted">{reachText}</p>
-        </section>
+        </Section>
       </div>
 
-      {/* ── 7. Community comparison (dumbbell per genre) ── */}
-      {report.standings.length > 0 && (
-        <section className="rounded-2xl bg-surface px-5 py-5">
-          <div className="flex items-baseline justify-between mb-4">
-            <h2 className="text-[15px] font-bold text-ink">{t('sj.taste.standingsHeader')}</h2>
+      {/* ── Community comparison (dumbbell per genre) ── */}
+      {standings.length > 0 && (
+        <Section no={nextNo()} title={t('sj.taste.standingsHeader')} lead={t('sj.taste.standingsSub')}>
+          <div className="mt-4 flex items-center justify-end">
             <span className="flex items-center gap-3 text-[11px] text-muted">
               <span className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-accent shrink-0" />
@@ -434,37 +500,37 @@ function ReportView({
               </span>
             </span>
           </div>
+          <DumbbellAxis />
           <div className="space-y-4">
-            {report.standings.map((s) => {
+            {standings.map((s) => {
               const diff = s.userAvg - s.communityAvg;
               return (
                 <div key={s.genre}>
-                  <div className="flex items-baseline justify-between mb-1.5">
+                  <div className="flex items-baseline justify-between mb-1">
                     <span className="text-[13px] font-bold text-ink">{s.genre}</span>
                     <span
-                      className={`text-[11.5px] font-semibold ${diff >= 0 ? 'text-accent-deep' : 'text-muted'}`}
+                      className={`text-[11.5px] font-semibold tabular-nums ${diff >= 0 ? 'text-accent-deep' : 'text-muted'}`}
                     >
                       {diff >= 0 ? '↑' : '↓'} {Math.abs(diff).toFixed(2)}{' '}
                       {t(diff >= 0 ? 'sj.taste.aboveAverage' : 'sj.taste.belowAverage')}
                     </span>
                   </div>
-                  <Dumbbell
+                  <DumbbellRow
                     user={s.userAvg}
                     community={s.communityAvg}
-                    title={`${t('sj.taste.you')} ${s.userAvg.toFixed(2)} · ${t('sj.taste.community')} ${s.communityAvg.toFixed(2)}`}
+                    tipText={`${t('sj.taste.you')} ${s.userAvg.toFixed(2)} · ${t('sj.taste.community')} ${s.communityAvg.toFixed(2)}`}
                   />
                 </div>
               );
             })}
           </div>
-        </section>
+        </Section>
       )}
 
-      {/* ── 8. Not your thing ── */}
+      {/* ── Not your thing ── */}
       {report.disliked.length > 0 && (
-        <section className="rounded-2xl bg-surface px-5 py-5">
-          <h2 className="text-[15px] font-bold text-ink mb-3">{t('sj.taste.notYourThing')}</h2>
-          <div className="flex flex-wrap gap-2">
+        <Section no={nextNo()} title={t('sj.taste.notYourThing')} lead={t('sj.taste.notYourThingSub')}>
+          <div className="mt-4 flex flex-wrap gap-2">
             {report.disliked.map((d) => (
               <span
                 key={d.tag}
@@ -474,11 +540,56 @@ function ReportView({
               </span>
             ))}
           </div>
-        </section>
+        </Section>
       )}
 
-      <p className="text-center text-[11.5px] text-muted/50 pb-6">{t('sj.taste.snapshotEnd')}</p>
+      <Reveal>
+        <p className="text-center text-[11.5px] text-muted/50 pb-6">{t('sj.taste.snapshotEnd')}</p>
+      </Reveal>
     </div>
+  );
+}
+
+/** Numbered, scroll-revealed report section card. */
+function Section({
+  no,
+  title,
+  lead,
+  children,
+}: {
+  no: string;
+  title: string;
+  lead?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Reveal>
+      <section className="rounded-2xl bg-surface border border-divider/60 px-5 py-5 md:px-7 md:py-6 h-full">
+        <div className="flex items-baseline gap-3">
+          <span className="text-[11px] font-black tabular-nums text-accent/60">{no}</span>
+          <h2 className="text-[17px] md:text-[19px] font-black text-ink tracking-tight">{title}</h2>
+        </div>
+        {lead && (
+          <p className="mt-1.5 text-[13px] md:text-[13.5px] text-mid leading-relaxed max-w-prose">
+            {lead}
+          </p>
+        )}
+        {children}
+      </section>
+    </Reveal>
+  );
+}
+
+function HeroStat({ value, label }: { value: number; label: string }) {
+  return (
+    <span>
+      <span className="block text-[26px] md:text-[30px] font-black text-ink leading-none">
+        <CountUp value={value} />
+      </span>
+      <span className="block mt-1.5 text-[10.5px] font-bold tracking-[0.08em] uppercase text-muted">
+        {label}
+      </span>
+    </span>
   );
 }
 
@@ -497,136 +608,11 @@ function worldNote(world: TasteWorld, t: (k: string) => string): string {
   return parts.join(' · ');
 }
 
-// ── Chart primitives ────────────────────────────────────────────────────────
-
-/**
- * Single-hue column chart: ≤24px columns with a 4px rounded top and square
- * baseline, 2px gaps, hairline baseline, the peak column direct-labeled, an
- * optional mean marker, and per-column native tooltips.
- */
-function ColumnChart({
-  bins,
-  xLabels,
-  peakIndex,
-  mean,
-  titleFor,
-}: {
-  bins: number[];
-  xLabels: (string | null)[];
-  peakIndex: number | null;
-  mean: { pos: number; label: string } | null;
-  titleFor: (i: number) => string;
-}) {
-  const max = Math.max(1, ...bins);
+function StatTile({ value, label }: { value: string; label: string }) {
   return (
-    <div className={mean ? 'mt-8' : 'mt-3'}>
-      <div className="relative">
-        <div className="flex items-end gap-[2px] h-24 border-b border-divider">
-          {bins.map((count, i) => (
-            <div
-              key={i}
-              title={titleFor(i)}
-              className="flex-1 h-full flex flex-col items-center justify-end min-w-0"
-            >
-              {i === peakIndex && count > 0 && (
-                <span className="text-[10px] font-semibold text-muted mb-0.5 tabular-nums">
-                  {count}
-                </span>
-              )}
-              <span
-                className="w-full max-w-[24px] rounded-t bg-accent"
-                style={{ height: count > 0 ? Math.max(3, Math.round((count / max) * 76)) : 0 }}
-              />
-            </div>
-          ))}
-        </div>
-        {mean && (
-          <>
-            <span
-              className="absolute -top-1 bottom-0 w-px bg-ink/35 pointer-events-none"
-              style={{ left: `${Math.max(2, Math.min(98, mean.pos * 100))}%` }}
-            />
-            <span
-              className="absolute -top-6 -translate-x-1/2 text-[10px] font-semibold text-muted whitespace-nowrap pointer-events-none"
-              style={{ left: `${Math.max(10, Math.min(90, mean.pos * 100))}%` }}
-            >
-              {mean.label}
-            </span>
-          </>
-        )}
-      </div>
-      <div className="flex gap-[2px] mt-1">
-        {xLabels.map((label, i) => (
-          <span
-            key={i}
-            className="flex-1 min-w-0 text-center text-[10px] text-muted/70 tabular-nums"
-          >
-            {label ?? ''}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/** Part-to-whole stacked bar with 2px surface gaps between segments. */
-function StackedBar({
-  segments,
-}: {
-  segments: { share: number; color: string; title: string }[];
-}) {
-  return (
-    <div className="mt-4 flex h-[14px] rounded-full overflow-hidden gap-[2px]">
-      {segments.map((s, i) => (
-        <span
-          key={i}
-          title={s.title}
-          className="min-w-[6px]"
-          style={{ flex: `${s.share} 1 0px`, background: s.color }}
-        />
-      ))}
-    </div>
-  );
-}
-
-/** You-vs-community dumbbell on a fixed 0.5–5.0 track; dots wear surface rings. */
-function Dumbbell({ user, community, title }: { user: number; community: number; title: string }) {
-  const pos = (v: number) => Math.max(2, Math.min(98, ((v - 0.5) / 4.5) * 100));
-  const lo = Math.min(pos(user), pos(community));
-  const hi = Math.max(pos(user), pos(community));
-  return (
-    <div className="relative h-[18px]" title={title}>
-      <span className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[2px] rounded-full bg-divider/70" />
-      <span
-        className="absolute top-1/2 -translate-y-1/2 h-[2px] bg-muted/40"
-        style={{ left: `${lo}%`, width: `${hi - lo}%` }}
-      />
-      <span
-        className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-[10px] h-[10px] rounded-full bg-muted/50 ring-2 ring-surface"
-        style={{ left: `${pos(community)}%` }}
-      />
-      <span
-        className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-[10px] h-[10px] rounded-full bg-accent ring-2 ring-surface"
-        style={{ left: `${pos(user)}%` }}
-      />
-    </div>
-  );
-}
-
-function StatTile({
-  value,
-  label,
-  children,
-}: {
-  value: string;
-  label: string;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-xl bg-page border border-divider/60 px-3.5 py-3">
-      <p className="text-[19px] font-black text-ink leading-tight">{value}</p>
+    <div className="rounded-xl bg-page border border-divider/60 px-4 py-3.5">
+      <p className="text-[22px] font-black text-ink leading-tight tabular-nums">{value}</p>
       <p className="text-[11px] text-muted mt-0.5">{label}</p>
-      {children}
     </div>
   );
 }

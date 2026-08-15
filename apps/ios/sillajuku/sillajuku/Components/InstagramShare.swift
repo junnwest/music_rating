@@ -65,18 +65,18 @@ enum InstagramShare {
     @MainActor
     static func renderStickerImage(
         username: String,
-        coverImage: UIImage?,
+        coverImages: [UIImage?],
         title: String,
-        typeAndArtist: String,
-        score: Double,
+        subtitle: String,
+        score: Double?,
         reviewText: String?,
         colorScheme: ColorScheme
     ) -> UIImage? {
         let card = ShareCardView(
             username: username,
-            coverImage: coverImage,
+            coverImages: coverImages,
             title: title,
-            typeAndArtist: typeAndArtist,
+            subtitle: subtitle,
             score: score,
             reviewText: reviewText
         )
@@ -92,12 +92,37 @@ enum InstagramShare {
         return UIImage(data: data)
     }
 
+    /// Parallel fetch for a mix's multiple cover URLs -- mirrors `downloadImage`
+    /// above but for `ShareCardView`'s collage layout. Failed/nil downloads are
+    /// simply dropped rather than leaving a gap, since the collage already
+    /// tolerates fewer than 4 images gracefully.
+    static func downloadImages(from urls: [URL]) async -> [UIImage] {
+        await withTaskGroup(of: UIImage?.self) { group in
+            for url in urls {
+                group.addTask { try? await downloadImage(from: url) }
+            }
+            var images: [UIImage] = []
+            for await image in group {
+                if let image { images.append(image) }
+            }
+            return images
+        }
+    }
+
     /// Hands the image to Instagram's Stories composer via the documented
     /// pasteboard contract. Returns whether the handoff was attempted —
     /// Instagram itself doesn't report back whether the user actually posted.
     /// Callers should check `canShareToInstagramStories()` first and not
     /// offer this option at all otherwise, rather than let Instagram's own
     /// confusing native error be the first sign anything's wrong.
+    ///
+    /// Note: the pasteboard contract has no sticker-position key -- only a
+    /// flat `stickerImage` and a background. Any drag/pinch repositioning
+    /// the user did in our own preview is honored for Save/More/Post (see
+    /// `composite`'s `stickerScale`/`stickerOffsetFraction`) but can't carry
+    /// over here; Instagram always drops the sticker centered in its own
+    /// editor, where the user can then reposition it again using Instagram's
+    /// native gesture support. Not a bug -- a real platform limitation.
     @discardableResult
     static func shareToInstagramStories(stickerImage: UIImage, background: StoryBackground) -> Bool {
         guard canShareToInstagramStories(), let appId = Config.instagramFacebookAppID,
@@ -216,11 +241,24 @@ enum InstagramShare {
         return UIImage(cgImage: cgImage)
     }
 
-    /// Flattens the sticker over a backdrop (aspect-filled, sticker centered)
-    /// so Save/More/feed-post exports match what the Instagram handoff
-    /// produces. Photos only — a video backdrop would need an AVFoundation
-    /// export session, so video stays Stories/Reels-only.
-    static func composite(sticker: UIImage, over background: UIImage, canvas: CGSize = storyCanvas) -> UIImage {
+    /// Flattens the sticker over a backdrop (aspect-filled) so Save/More/
+    /// feed-post exports match what the user actually arranged in the
+    /// interactive preview. Photos only — a video backdrop would need an
+    /// AVFoundation export session, so video stays Stories/Reels-only.
+    ///
+    /// `stickerScale` multiplies the sticker's default 78%-of-canvas-width
+    /// footprint; `stickerOffsetFraction` shifts it from dead-center, both
+    /// axes expressed as a fraction of the canvas's own width/height (not
+    /// points), so the same values apply correctly whether `canvas` is the
+    /// 1080×1920 story size or the 1080×1350 post size, independent of
+    /// whatever point size the on-screen preview was measured at.
+    static func composite(
+        sticker: UIImage,
+        over background: UIImage,
+        canvas: CGSize = storyCanvas,
+        stickerScale: CGFloat = 1.0,
+        stickerOffsetFraction: CGSize = .zero
+    ) -> UIImage {
         return UIGraphicsImageRenderer(size: canvas).image { _ in
             let fillScale = max(canvas.width / background.size.width,
                                 canvas.height / background.size.height)
@@ -232,14 +270,14 @@ enum InstagramShare {
                 size: bgSize
             ))
 
-            let stickerWidth = canvas.width * 0.78
+            let stickerWidth = canvas.width * 0.78 * stickerScale
             let stickerSize = CGSize(width: stickerWidth,
                                      height: sticker.size.height * stickerWidth / sticker.size.width)
-            sticker.draw(in: CGRect(
-                origin: CGPoint(x: (canvas.width - stickerSize.width) / 2,
-                                y: (canvas.height - stickerSize.height) / 2),
-                size: stickerSize
-            ))
+            let origin = CGPoint(
+                x: (canvas.width - stickerSize.width) / 2 + stickerOffsetFraction.width * canvas.width,
+                y: (canvas.height - stickerSize.height) / 2 + stickerOffsetFraction.height * canvas.height
+            )
+            sticker.draw(in: CGRect(origin: origin, size: stickerSize))
         }
     }
 }

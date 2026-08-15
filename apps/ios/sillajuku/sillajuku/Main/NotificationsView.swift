@@ -374,7 +374,6 @@ struct AlbumPostDetailView: View {
                         rating: rating,
                         likesCount: likesCount,
                         commentsCount: commentsCount,
-                        instinctAlbumCount: totalRatingsCount,
                         isLiked: isLiked,
                         onLike: toggleLike,
                         headerHandle: myHandle,
@@ -404,7 +403,7 @@ struct AlbumPostDetailView: View {
 
         rating = try? await supabase
             .from("ratings")
-            .select("id, score, elo_score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native))")
+            .select("id, score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native))")
             .eq("id", value: ratingId)
             .single()
             .execute()
@@ -483,7 +482,6 @@ struct SongPostDetailView: View {
 
     @State private var song: SongRatingRow?
     @State private var isLoading = true
-    @State private var totalSongRatingsCount = 0
     @State private var likesCount = 0
     @State private var commentsCount = 0
     @State private var isLiked = false
@@ -498,7 +496,6 @@ struct SongPostDetailView: View {
                 ScrollView(showsIndicators: false) {
                     ProfileSongPostCard(
                         song: song,
-                        totalSongRatingsCount: totalSongRatingsCount,
                         likesCount: likesCount,
                         commentsCount: commentsCount,
                         isLiked: isLiked,
@@ -532,7 +529,6 @@ struct SongPostDetailView: View {
             let id: UUID
             let recordingId: UUID
             let score: Double?
-            let eloScore: Double?
             let reviewText: String?
             let createdAt: Date
             let recordings: RecordingInfo
@@ -544,13 +540,13 @@ struct SongPostDetailView: View {
             }
             enum CodingKeys: String, CodingKey {
                 case id, recordingId = "recording_id"; case score
-                case eloScore = "elo_score"; case reviewText = "review_text"
+                case reviewText = "review_text"
                 case createdAt = "created_at"; case recordings
             }
         }
         guard let raw: TrackRatingRow = try? await supabase
             .from("track_ratings")
-            .select("id, recording_id, score, elo_score, review_text, created_at, recordings(id, title, artist_display)")
+            .select("id, recording_id, score, review_text, created_at, recordings(id, title, artist_display)")
             .eq("id", value: ratingId)
             .single()
             .execute()
@@ -598,7 +594,7 @@ struct SongPostDetailView: View {
             primaryArtist: rg?.primaryArtist
         )
         song = SongRatingRow(
-            ratingId: raw.id, recordingId: raw.recordingId, score: raw.score, eloScore: raw.eloScore,
+            ratingId: raw.id, recordingId: raw.recordingId, score: raw.score,
             reviewText: raw.reviewText, trackTitle: raw.recordings.title, release: ref, createdAt: raw.createdAt
         )
 
@@ -615,10 +611,6 @@ struct SongPostDetailView: View {
             myVerified = p.isVerified == true
         }
 
-        if let r = try? await supabase.from("track_ratings").select("*", count: .exact)
-            .eq("user_id", value: userId).execute() {
-            totalSongRatingsCount = r.count ?? 0
-        }
         if let r = try? await supabase.from("track_rating_likes").select("*", count: .exact)
             .eq("track_rating_id", value: ratingId).execute() {
             likesCount = r.count ?? 0

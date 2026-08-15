@@ -13,8 +13,8 @@
  *
  * Server-only (pulls in the embeddings artifact).
  */
-import { eloToScore } from '../elo';
 import { albumCentroid, centroid, cosine, genreVector } from './embeddings';
+import { canonicalize } from './genreSynonyms';
 import { primaryTagOf, tagWeight } from './primaryGenre';
 import {
   W_GENRE,
@@ -23,6 +23,7 @@ import {
   eraAffinity,
   sceneAffinity,
   sceneOf,
+  tagScene,
   yearOf,
   type Scene,
   type SceneShares,
@@ -57,11 +58,24 @@ export interface TasteCluster {
   /** weight / Σ all clusters' weights. */
   share: number;
   centroid: number[];
+  /** Scene the world is pinned to by its tag names (kr/jp), or null for a
+   *  scene-neutral world (rock, jazz…). A pinned world's scene identity comes
+   *  from its genres, NOT from the noisy countries of the albums that happen to
+   *  land nearest its centroid — so a J-pop world stays Japanese even when a few
+   *  mis-tagged Korean albums assign to it. */
+  scene: Scene | null;
 }
 
 /** Minimum cosine between a tag and a cluster centroid to join that cluster. */
 const JOIN_THRESHOLD = 0.45;
 const MAX_CLUSTERS = 5;
+/**
+ * Absolute ceiling once scene-forced worlds are allowed past MAX_CLUSTERS. A
+ * scene-pinned tag with no scene-compatible home (e.g. j-pop when every existing
+ * world is Korean/Western) opens its OWN world rather than being drowned in a
+ * conflicting-scene cluster — but only up to here, so the map can't sprawl.
+ */
+const HARD_MAX_CLUSTERS = MAX_CLUSTERS + 2;
 /** Only the strongest N positive tags participate in clustering. */
 const MAX_TAGS = 30;
 
@@ -71,11 +85,11 @@ const MAX_TAGS = 30;
  * before the migration backfill).
  */
 export function weightsFromRatings(
-  rows: { score: number | null; elo_score: number | null; genres: string[] | null }[],
+  rows: { score: number | null; genres: string[] | null }[],
 ): GenreWeights {
   const weights: GenreWeights = {};
   for (const r of rows) {
-    const display = r.score ?? (r.elo_score != null ? eloToScore(r.elo_score) : null);
+    const display = r.score;
     if (display == null || !r.genres) continue;
     const primary = primaryTagOf(r.genres);
     for (const raw of r.genres) {
@@ -95,6 +109,73 @@ export function weightsFromRatings(
 }
 
 /**
+ * Cosine at/above which two genre tags are treated as the same genre and folded
+ * together. Tuned against this catalog's co-occurrence embeddings: r&b↔soul sit
+ * at ≈0.96 (true twins → merge), while indie-rock↔alt-rock ≈0.73 and
+ * k-pop↔j-pop ≈0.55 stay distinct. High on purpose — this merges near-synonyms,
+ * not whole families, so the map keeps its sub-genre texture.
+ */
+const NEAR_DUP_COSINE = 0.93;
+
+export interface MergedWeights {
+  /** Merged weights keyed by anchor tag — feed this to buildClusters/dislikedTags. */
+  weights: GenreWeights;
+  /** Spelling-canonical tag → the anchor tag it folded into (identity if none).
+   *  Lets callers map an album/candidate's raw genres onto the merged tiles. */
+  anchorOf: Record<string, string>;
+}
+
+/**
+ * Fold near-duplicate genres together for the DERIVED taste map/clusters (the
+ * stored `genre_weights` row keeps its raw keys — iOS reads it). Two stages:
+ *   1. spelling canonicalization (k-pop / kpop / korean pop → k-pop), and
+ *   2. embedding near-twin fold — positively-weighted tags within `NEAR_DUP_COSINE`
+ *      collapse into the stronger anchor (soul → r&b), summing weights so the
+ *      combined `3 + w/n` stays a true weighted average.
+ * Disliked (w ≤ 0) tags are never folded, so dislike detection is untouched.
+ */
+export function mergeSynonymWeights(weights: GenreWeights): MergedWeights {
+  // Stage 1 — spelling canonicalization.
+  const spelled: GenreWeights = {};
+  for (const [tag, e] of Object.entries(weights)) {
+    const key = canonicalize(tag);
+    const acc = (spelled[key] ??= { w: 0, n: 0 });
+    acc.w += e.w;
+    acc.n += e.n;
+  }
+  // Stage 2 — embedding near-twin fold, strongest tag anchoring each group.
+  const anchorOf: Record<string, string> = {};
+  const anchors: { tag: string; w: number; n: number; vec: number[] | null }[] = [];
+  const entries = Object.entries(spelled)
+    .map(([tag, e]) => ({ tag, w: e.w, n: e.n, vec: genreVector(tag) }))
+    .sort((a, b) => b.w - a.w);
+  for (const e of entries) {
+    let target: { tag: string; w: number; n: number; vec: number[] | null } | null = null;
+    if (e.w > 0 && e.vec) {
+      for (const a of anchors) {
+        if (a.w > 0 && a.vec && cosine(e.vec, a.vec) >= NEAR_DUP_COSINE) {
+          target = a;
+          break;
+        }
+      }
+    }
+    if (target) {
+      target.w += e.w;
+      target.n += e.n;
+      anchorOf[e.tag] = target.tag;
+    } else {
+      anchors.push({ tag: e.tag, w: e.w, n: e.n, vec: e.vec });
+      anchorOf[e.tag] = e.tag;
+    }
+  }
+  const out: GenreWeights = {};
+  for (const a of anchors) {
+    out[a.tag] = { w: Math.round(a.w * 1000) / 1000, n: Math.round(a.n * 1000) / 1000 };
+  }
+  return { weights: out, anchorOf };
+}
+
+/**
  * Greedy embedding-similarity clustering of the user's positively-weighted
  * genres. Deterministic: tags are visited strongest-first, so the biggest
  * affinities anchor the clusters.
@@ -111,27 +192,72 @@ export function buildClusters(weights: GenreWeights): TasteCluster[] {
     tags: ClusterTag[];
     weight: number;
     centroid: number[];
+    /** Scene implied by the anchor tag's name (kr/jp), if any. */
+    scene: Scene | null;
   }
   const clusters: Working[] = [];
 
   for (const t of positive) {
     const vec = genreVector(t.tag)!;
+    const scene = tagScene(t.tag);
+    // Scene-aware join: a tag whose *name* pins it to a scene (j-pop → jp)
+    // never joins a cluster anchored to a different scene (k-pop → kr), even
+    // when the co-occurrence embeddings put them close (j-pop↔k-pop ≈ 0.55 in
+    // this catalog). Without this the "J-Pop world" merged into the K-Pop one
+    // and inherited its "Korean scene" label. Clusters with no implied scene
+    // (rock, jazz…) accept everything, as before.
     let best: Working | null = null;
     let bestSim = -1;
+    let bestAny: Working | null = null;
+    let bestAnySim = -1;
     for (const c of clusters) {
       const sim = cosine(vec, c.centroid);
-      if (sim > bestSim) {
+      if (sim > bestAnySim) {
+        bestAnySim = sim;
+        bestAny = c;
+      }
+      const conflict = scene != null && c.scene != null && scene !== c.scene;
+      if (!conflict && sim > bestSim) {
         bestSim = sim;
         best = c;
       }
     }
-    if (best && (bestSim >= JOIN_THRESHOLD || clusters.length >= MAX_CLUSTERS)) {
-      best.tags.push(t);
-      best.weight += t.w;
-      best.centroid =
-        centroid(best.tags.map(({ tag, w }) => ({ tag, weight: w }))) ?? best.centroid;
+    let joinTarget: Working | null;
+    if (best && bestSim >= JOIN_THRESHOLD) {
+      // A genuinely similar, scene-compatible home — the normal join.
+      joinTarget = best;
+    } else if (clusters.length < MAX_CLUSTERS) {
+      // Room under the soft cap → open a fresh world (handled by the else below).
+      joinTarget = null;
+    } else if (best) {
+      // At the cap, forced — but a scene-compatible cluster exists, so use it.
+      joinTarget = best;
+    } else if (scene != null && clusters.length < HARD_MAX_CLUSTERS) {
+      // At the cap with NO scene-compatible home, and this tag's name pins it to
+      // a scene (j-pop → jp): give it its own world instead of force-merging it
+      // into a conflicting-scene cluster (which buried j-pop inside the k-pop
+      // world — no J-pop sub-genres, and k-pop recommendations). Bounded by the
+      // hard ceiling so a long tail of scene tags can't sprawl the map.
+      joinTarget = null;
     } else {
-      clusters.push({ tags: [t], weight: t.w, centroid: [...vec] });
+      // A scene-neutral tag (or the ceiling is hit): fall back to the nearest.
+      joinTarget = bestAny;
+    }
+    if (joinTarget) {
+      joinTarget.tags.push(t);
+      joinTarget.weight += t.w;
+      joinTarget.centroid =
+        centroid(joinTarget.tags.map(({ tag, w }) => ({ tag, weight: w }))) ??
+        joinTarget.centroid;
+      // A scene-pinned tag LOCKS an as-yet-unpinned cluster to its scene, so a
+      // later tag from a conflicting scene can no longer land here. Without this
+      // a world anchored by a scene-neutral tag (e.g. "pop") would absorb both
+      // k-pop and j-pop — the co-occurrence embeddings place them ≈ 0.55 apart —
+      // and its country profile would then mislabel the whole world (and the
+      // nested j-pop tag) as "Korean scene". The anchor-only check missed this.
+      if (joinTarget.scene == null && scene != null) joinTarget.scene = scene;
+    } else {
+      clusters.push({ tags: [t], weight: t.w, centroid: [...vec], scene });
     }
   }
 
@@ -143,6 +269,7 @@ export function buildClusters(weights: GenreWeights): TasteCluster[] {
       weight: round2(c.weight),
       share: round2(c.weight / total),
       centroid: c.centroid,
+      scene: c.scene,
     }));
 }
 
@@ -193,7 +320,7 @@ export function clusterProfiles(
     const scene = sceneOf(r.country);
     if (scene != null) buckets[best].scenes.push(scene);
   }
-  return buckets.map((b) => {
+  return buckets.map((b, i) => {
     const meanYear =
       b.years.length > 0 ? b.years.reduce((s, y) => s + y, 0) / b.years.length : null;
     const sdYears =
@@ -202,7 +329,16 @@ export function clusterProfiles(
         : null;
     let sceneShares: SceneShares | null = null;
     let dominantScene: Scene | null = null;
-    if (b.scenes.length > 0) {
+    const pinned = clusters[i]?.scene ?? null;
+    if (pinned) {
+      // Scene-pinned world (j-pop/k-pop…): its scene identity is its genre's, not
+      // the countries of albums that landed nearest its centroid. Forcing the
+      // share also keeps blobAffinity from rewarding cross-scene recs (the K-pop-
+      // in-the-J-pop-world bug).
+      sceneShares = { kr: 0, jp: 0, west: 0, other: 0 };
+      sceneShares[pinned] = 1;
+      dominantScene = pinned;
+    } else if (b.scenes.length > 0) {
       sceneShares = { kr: 0, jp: 0, west: 0, other: 0 };
       for (const sc of b.scenes) sceneShares[sc] += 1 / b.scenes.length;
       const top = (Object.entries(sceneShares) as [Scene, number][]).sort((a, x) => x[1] - a[1])[0];

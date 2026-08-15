@@ -27,6 +27,10 @@ export default function CursorTip() {
       if ((el.textContent ?? '').trim() !== '') return null; // has visible text
       if (el.getAttribute('title')) return null; // native tooltip already
       if (el.getAttribute('role') === 'combobox' || el.tagName === 'INPUT') return null;
+      // Charts label themselves for screen readers with a full data readout
+      // (e.g. the album page's rating histogram) — hovering one must not dump
+      // that whole string under the cursor.
+      if (el.getAttribute('role') === 'img') return null;
       return { el, text };
     }
 

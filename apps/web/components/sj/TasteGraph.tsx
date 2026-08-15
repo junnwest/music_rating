@@ -1,30 +1,29 @@
 'use client';
 
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import Cover from './Cover';
 import { useLanguage } from '../../lib/i18n';
-import { spectrumColor, spectrumNumber } from '../../lib/sj/display';
+import { spectrumColor, spectrumFill, spectrumNumber } from '../../lib/sj/display';
 
 /**
- * The taste map: one soft bubble per taste world, area ∝ the user's mass in it,
- * positioned by embedding similarity, coloured by how highly they rate it — then
- * a Prezi-style zoom into a world to see its sub-genres as their own bubbles.
+ * The taste map: a **cover mosaic treemap** of the user's taste worlds — one tile
+ * per world, area ∝ their mass in it, and the tile itself is *tiled with the
+ * album covers they rated there* (density scales with the tile's size). The avg
+ * rating rides as a solid numeric chip, and the app's score ramp is demoted to a
+ * thin accent frame — a redundant, glanceable heat cue that no longer flattens
+ * the tile into one bland colour. Click a world and it fluidly expands into its
+ * sub-genres; pick a sub-genre to focus the inspector's albums + recommendations.
  *
- * Design notes:
- * - **Area, not radius, carries magnitude** (r ∝ √share), which is the only
- *   honest way to size a circle.
- * - **Colour is the app's score ramp** (`spectrumColor`, #2's OKLCh spectrum), so
- *   a bubble's warmth means the same thing here as a score badge anywhere else.
- *   It's redundant with the labels and the panel, never the sole encoding, and a
- *   legend states the scale.
- * - **The camera is one CSS transform on a single `<g>`**, so the zoom is
- *   GPU-composited rather than a per-frame React render; the drift is a CSS
- *   keyframe per bubble for the same reason. Both are disabled under
- *   `prefers-reduced-motion`.
- * - Layout is deterministic (fixed-seed ring init, no RNG): the same profile
- *   always draws the same map, so a refresh doesn't reshuffle the user's world.
+ * Interaction is deliberately tactile (2026-08-12): tiles lift and tilt toward
+ * the pointer (a Vision-OS-style parallax "magnet"), their siblings dim, and
+ * opening a world animates the clicked tile growing to fill the canvas before it
+ * resolves into the sub-genre mosaic — so the drill reads as spatial, not a swap.
+ *
+ * Layout is deterministic (squarified treemap over a fixed value order), so the
+ * same profile always draws the same map and a refresh doesn't reshuffle it. The
+ * canvas grows to fill whichever column (map or inspector) is taller.
  */
 
 export interface TasteGraphTag {
@@ -75,164 +74,442 @@ export interface TasteGraphData {
   recs: Record<string, TasteGraphRec[]>;
 }
 
-const VIEW = 100;
 const PANEL_ALBUMS = 10;
+/** Time the "clicked tile expands to fill" animation runs before the sub-genre
+ *  mosaic takes over. Kept in sync with the CSS transition below. */
+const OPEN_MS = 380;
 
-interface Node {
+interface Rect {
   x: number;
   y: number;
-  r: number;
+  w: number;
+  h: number;
+  i: number;
+}
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
 }
 
 /**
- * Stress-relaxation layout: pairs are pulled toward a distance that grows with
- * embedding *dis*similarity and can never fall below their radii, so similar
- * genres end up adjacent and nothing overlaps. Deterministic — the ring init is
- * index-based, there is no jitter — and O(iterations · n²) on n ≤ 8.
+ * Squarified treemap (Bruls, Huizing & van Wijk 2000): pack `values` into the
+ * `w`×`h` box as rectangles whose areas are proportional to the values and whose
+ * aspect ratios stay as close to square as possible. Deterministic — values are
+ * laid out in the given order (callers pre-sort descending).
  */
-function layoutBySimilarity(radii: number[], sim: number[][]): { x: number; y: number }[] {
-  const n = radii.length;
+function squarify(values: number[], w: number, h: number): Rect[] {
+  const n = values.length;
   if (n === 0) return [];
-  if (n === 1) return [{ x: 0, y: 0 }];
-  const sumR = radii.reduce((s, r) => s + r, 0);
-  const avgR = sumR / n;
-  const ring = sumR / Math.PI + avgR;
-  const pts = radii.map((_, i) => ({
-    x: Math.cos((2 * Math.PI * i) / n) * ring,
-    y: Math.sin((2 * Math.PI * i) / n) * ring,
-  }));
-  const target = (i: number, j: number) => {
-    const s = Math.max(0, Math.min(1, sim[i]?.[j] ?? 0));
-    return (radii[i] + radii[j]) * 1.12 + 1.5 * avgR * (1 - s);
+  const total = values.reduce((s, v) => s + v, 0) || 1;
+  const scale = (w * h) / total;
+  const items = values.map((v, i) => ({ area: Math.max(v, 0) * scale, i }));
+
+  const out: Rect[] = [];
+  let x = 0;
+  let y = 0;
+  let fw = w;
+  let fh = h;
+
+  const worst = (row: { area: number }[], side: number) => {
+    if (row.length === 0) return Infinity;
+    const sum = row.reduce((s, r) => s + r.area, 0);
+    let max = -Infinity;
+    let min = Infinity;
+    for (const r of row) {
+      if (r.area > max) max = r.area;
+      if (r.area < min) min = r.area;
+    }
+    const s2 = sum * sum;
+    const side2 = side * side;
+    return Math.max((side2 * max) / s2, s2 / (side2 * min));
   };
 
-  for (let step = 0; step < 240; step += 1) {
-    const damp = 0.25 * (1 - step / 320);
-    for (let i = 0; i < n; i += 1) {
-      for (let j = i + 1; j < n; j += 1) {
-        const dx = pts[j].x - pts[i].x;
-        const dy = pts[j].y - pts[i].y;
-        const d = Math.hypot(dx, dy) || 0.001;
-        const k = ((d - target(i, j)) / d) * damp;
-        pts[i].x += dx * k;
-        pts[i].y += dy * k;
-        pts[j].x -= dx * k;
-        pts[j].y -= dy * k;
+  let idx = 0;
+  while (idx < items.length) {
+    const short = Math.min(fw, fh);
+    const row: { area: number; i: number }[] = [items[idx]];
+    let j = idx + 1;
+    while (j < items.length && worst(row, short) >= worst([...row, items[j]], short)) {
+      row.push(items[j]);
+      j += 1;
+    }
+    const rowArea = row.reduce((s, r) => s + r.area, 0);
+    if (fw <= fh) {
+      // Horizontal strip across the top of the remaining box.
+      const rh = rowArea / fw || 0;
+      let rx = x;
+      for (const r of row) {
+        const rw = rh > 0 ? r.area / rh : 0;
+        out.push({ x: rx, y, w: rw, h: rh, i: r.i });
+        rx += rw;
       }
-    }
-    // Weak pull to the origin so the field stays compact instead of drifting apart.
-    for (const p of pts) {
-      p.x *= 0.996;
-      p.y *= 0.996;
-    }
-  }
-
-  // Hard separation pass — similarity is a preference, overlap is not allowed.
-  for (let step = 0; step < 60; step += 1) {
-    for (let i = 0; i < n; i += 1) {
-      for (let j = i + 1; j < n; j += 1) {
-        const dx = pts[j].x - pts[i].x;
-        const dy = pts[j].y - pts[i].y;
-        const d = Math.hypot(dx, dy) || 0.001;
-        const min = radii[i] + radii[j] + 0.05 * avgR;
-        if (d >= min) continue;
-        const k = ((min - d) / d) * 0.5;
-        pts[i].x -= dx * k;
-        pts[i].y -= dy * k;
-        pts[j].x += dx * k;
-        pts[j].y += dy * k;
+      y += rh;
+      fh -= rh;
+    } else {
+      // Vertical strip down the left of the remaining box.
+      const rw = rowArea / fh || 0;
+      let ry = y;
+      for (const r of row) {
+        const rh = rw > 0 ? r.area / rw : 0;
+        out.push({ x, y: ry, w: rw, h: rh, i: r.i });
+        ry += rh;
       }
+      x += rw;
+      fw -= rw;
     }
+    idx = j;
   }
-  return pts;
+  return out;
 }
 
-/** Scale a raw layout into a `size`-square box with `pad` breathing room. */
-function fitToBox(
-  pts: { x: number; y: number }[],
-  radii: number[],
-  size = VIEW,
-  pad = 4,
-): Node[] {
-  if (pts.length === 0) return [];
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  pts.forEach((p, i) => {
-    minX = Math.min(minX, p.x - radii[i]);
-    minY = Math.min(minY, p.y - radii[i]);
-    maxX = Math.max(maxX, p.x + radii[i]);
-    maxY = Math.max(maxY, p.y + radii[i]);
-  });
-  const w = Math.max(maxX - minX, 0.001);
-  const h = Math.max(maxY - minY, 0.001);
-  const k = (size - pad * 2) / Math.max(w, h);
-  const offX = (size - w * k) / 2 - minX * k;
-  const offY = (size - h * k) / 2 - minY * k;
-  return pts.map((p, i) => ({ x: p.x * k + offX, y: p.y * k + offY, r: radii[i] * k }));
-}
-
-const KEYFRAMES = `
-@keyframes taste-drift-a{from{transform:translate(0,0)}to{transform:translate(0.9px,-0.7px)}}
-@keyframes taste-drift-b{from{transform:translate(0,0)}to{transform:translate(-0.8px,0.8px)}}
-@keyframes taste-drift-c{from{transform:translate(0,0)}to{transform:translate(0.6px,0.9px)}}
-.taste-bubble{animation-duration:7s;animation-timing-function:ease-in-out;animation-iteration-count:infinite;animation-direction:alternate}
+const MAP_CSS = `
+@keyframes taste-open-in{from{opacity:0;transform:scale(1.03)}to{opacity:1;transform:scale(1)}}
+.taste-open{animation:taste-open-in 380ms cubic-bezier(.22,.61,.36,1)}
+.taste-tile-face{transition:transform 200ms cubic-bezier(.2,.7,.2,1), box-shadow 240ms ease, filter 240ms ease}
+.taste-tile:hover{z-index:30}
+/* Vision-OS "magnet": the hovered tile lifts (JS adds the pointer-tracked tilt on
+   top of this base), and its siblings quietly dim so focus reads as a spotlight. */
+.taste-tile:hover .taste-tile-face{transform:scale(1.04) translateY(-3px)}
+.taste-tiles:has(.taste-tile:hover) .taste-tile:not(:hover) .taste-tile-face{filter:brightness(.78) saturate(.9)}
 @media (prefers-reduced-motion: reduce){
-  .taste-bubble{animation:none!important}
-  .taste-camera{transition:none!important}
+  .taste-open{animation:none}
+  .taste-tile-face{transition:none}
+  .taste-tile:hover .taste-tile-face{transform:none}
 }
 `;
 
+/** Largest fully-fillable cover grid for a tile of `tileW`×`tileH` px given
+ *  `n` available covers. Targets ~104px cells, caps at 4×4, and never leaves an
+ *  empty cell (so the collage always reads as intentional). */
+function chooseGrid(tileW: number, tileH: number, n: number): { cols: number; rows: number } | null {
+  if (n <= 0 || tileW < 44 || tileH < 44) return null;
+  let cols = Math.max(1, Math.min(4, Math.floor(tileW / 104)));
+  let rows = Math.max(1, Math.min(4, Math.floor(tileH / 104)));
+  while (cols * rows > n) {
+    if (cols >= rows && cols > 1) cols -= 1;
+    else if (rows > 1) rows -= 1;
+    else break;
+  }
+  return { cols, rows };
+}
+
+/** A single mosaic tile — a world at the top level, a sub-genre when drilled in. */
+function MosaicTile({
+  rect,
+  boxW,
+  boxH,
+  name,
+  meta,
+  avg,
+  covers,
+  selected,
+  dim,
+  enterState,
+  onClick,
+  title,
+  ariaLabel,
+}: {
+  rect: Rect;
+  boxW: number;
+  boxH: number;
+  name: string;
+  /** Small secondary line under the name (e.g. "42 rated · 32%") — big tiles only. */
+  meta?: string;
+  avg: number | null;
+  covers: string[];
+  selected: boolean;
+  dim: boolean;
+  /** During a world-open animation: 'target' = the clicked tile (grows to fill),
+   *  'other' = a sibling (fades away), null = not animating. */
+  enterState: 'target' | 'other' | null;
+  onClick: () => void;
+  title: string;
+  ariaLabel: string;
+}) {
+  const faceRef = useRef<HTMLSpanElement>(null);
+  const glowRef = useRef<HTMLSpanElement>(null);
+
+  const tileW = (rect.w / 100) * boxW;
+  const tileH = (rect.h / 100) * boxH;
+  const score = avg ?? 3;
+
+  const grid = chooseGrid(tileW, tileH, covers.length);
+  const shown = grid ? covers.slice(0, grid.cols * grid.rows) : [];
+
+  // Label tiers keyed to the tile's real size, so text never overflows: big gets
+  // a two-line name + meta + chip, med a name + chip, small a single truncated
+  // line (no chip), and tiny drops to the tooltip only.
+  const big = tileW >= 178 && tileH >= 148;
+  const med = !big && tileW >= 88 && tileH >= 58;
+  const small = !big && !med && tileW >= 52 && tileH >= 30;
+  const showLabel = big || med || small;
+
+  const accent = spectrumColor(score, 0.62, 1);
+
+  // Pointer-tracked parallax — the "magnet" pull. Written imperatively so the
+  // pointer move doesn't re-render (which would wipe the transform).
+  const onMove = (e: React.MouseEvent) => {
+    if (enterState || prefersReducedMotion()) return;
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width - 0.5;
+    const py = (e.clientY - r.top) / r.height - 0.5;
+    const f = faceRef.current;
+    if (f) {
+      f.style.transform = `scale(1.04) translateY(-3px) rotateX(${(-py * 6).toFixed(2)}deg) rotateY(${(px * 6).toFixed(2)}deg)`;
+    }
+    const g = glowRef.current;
+    if (g) {
+      g.style.opacity = '1';
+      g.style.background = `radial-gradient(240px circle at ${((px + 0.5) * 100).toFixed(1)}% ${((py + 0.5) * 100).toFixed(1)}%, rgba(255,255,255,0.3), transparent 55%)`;
+    }
+  };
+  const onLeave = () => {
+    const f = faceRef.current;
+    if (f) f.style.transform = '';
+    const g = glowRef.current;
+    if (g) g.style.opacity = '0';
+  };
+
+  const targ = enterState === 'target';
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      title={title}
+      aria-label={ariaLabel}
+      aria-pressed={selected}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      onMouseMove={onMove}
+      onMouseLeave={onLeave}
+      className="taste-tile absolute block text-left cursor-pointer"
+      style={{
+        left: `${targ ? 0 : rect.x}%`,
+        top: `${targ ? 0 : rect.y}%`,
+        width: `${targ ? 100 : rect.w}%`,
+        height: `${targ ? 100 : rect.h}%`,
+        opacity: enterState === 'other' ? 0 : 1,
+        transform: enterState === 'other' ? 'scale(0.92)' : undefined,
+        transition: enterState
+          ? `left ${OPEN_MS}ms cubic-bezier(.22,.61,.36,1), top ${OPEN_MS}ms cubic-bezier(.22,.61,.36,1), width ${OPEN_MS}ms cubic-bezier(.22,.61,.36,1), height ${OPEN_MS}ms cubic-bezier(.22,.61,.36,1), opacity 320ms ease, transform 320ms ease`
+          : undefined,
+        zIndex: targ ? 20 : undefined,
+        perspective: 700,
+      }}
+    >
+      <span
+        ref={faceRef}
+        className="taste-tile-face absolute inset-[3px] rounded-xl overflow-hidden block bg-divider"
+        style={{
+          filter: dim ? 'brightness(0.4) saturate(0.6)' : undefined,
+          boxShadow: selected
+            ? `0 0 0 2px #fff, 0 0 0 4px ${accent}, 0 12px 26px -8px rgba(0,0,0,0.5)`
+            : `inset 0 0 0 1.5px ${accent}66, inset 0 1px 0 rgba(255,255,255,0.14)`,
+        }}
+      >
+        {/* Cover mosaic — or a score-ramp gradient when this corner has no art. */}
+        {grid ? (
+          <span
+            className="absolute inset-0 grid gap-px bg-divider"
+            style={{
+              gridTemplateColumns: `repeat(${grid.cols}, 1fr)`,
+              gridTemplateRows: `repeat(${grid.rows}, 1fr)`,
+            }}
+          >
+            {shown.map((url, i) => (
+              <Cover key={i} url={url} className="w-full h-full" rounded="rounded-none" />
+            ))}
+          </span>
+        ) : (
+          <span
+            className="absolute inset-0"
+            style={{
+              backgroundImage: `linear-gradient(155deg, ${spectrumColor(
+                score,
+                0.68,
+                0.9,
+              )}, ${spectrumColor(score, 0.5, 1)})`,
+            }}
+          />
+        )}
+
+        {/* Bottom scrim reserves a legible band for the label over any cover. */}
+        <span
+          aria-hidden
+          className="absolute inset-x-0 bottom-0 h-3/5"
+          style={{
+            backgroundImage:
+              'linear-gradient(to top, rgba(0,0,0,0.72) 4%, rgba(0,0,0,0.32) 42%, transparent)',
+          }}
+        />
+
+        {/* Specular highlight that tracks the pointer (the glass "sheen"). */}
+        <span
+          ref={glowRef}
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
+          style={{ opacity: 0, transition: 'opacity 220ms ease', mixBlendMode: 'soft-light' }}
+        />
+
+        {showLabel && (
+          <span
+            className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2"
+            style={{ padding: small ? '6px 8px' : '10px' }}
+          >
+            <span className="min-w-0">
+              <span
+                className={`block font-black text-white tracking-tight ${small ? 'truncate' : 'leading-tight line-clamp-2'}`}
+                style={{
+                  fontSize: big ? 15 : med ? 13 : 11,
+                  textShadow: '0 1px 4px rgba(0,0,0,0.55)',
+                }}
+              >
+                {name}
+              </span>
+              {big && meta && (
+                <span
+                  className="mt-0.5 block text-[10.5px] font-semibold text-white/75"
+                  style={{ textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}
+                >
+                  {meta}
+                </span>
+              )}
+            </span>
+            {avg != null && !small && (
+              <span
+                className="shrink-0 rounded-md px-1.5 py-0.5 text-[12px] font-black tabular-nums shadow-sm"
+                style={{ background: spectrumFill(score), color: spectrumNumber(score) }}
+              >
+                {avg.toFixed(1)}
+              </span>
+            )}
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
+
 export default function TasteGraph({ data }: { data: TasteGraphData }) {
   const { t } = useLanguage();
-  const uid = useId().replace(/:/g, '');
   const [world, setWorld] = useState<number | null>(null);
   const [tag, setTag] = useState<string | null>(null);
+  // The world index mid-open: its tile grows to fill the canvas before the
+  // sub-genre mosaic resolves in. null except during the ~380ms transition.
+  const [entering, setEntering] = useState<number | null>(null);
+  const enterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // The mosaic grid choice depends on real pixel size, so measure the canvas
+  // (which now flexes to fill whichever column is taller).
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState({ w: 680, h: 540 });
+  useLayoutEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const measure = () => setBox({ w: el.clientWidth, h: el.clientHeight });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  useEffect(() => () => {
+    if (enterTimer.current) clearTimeout(enterTimer.current);
+  }, []);
 
   const worlds = data.worlds;
 
-  const nodes = useMemo(() => {
-    const radii = worlds.map((w) => Math.sqrt(Math.max(w.share, 0.004)));
-    return fitToBox(
-      layoutBySimilarity(
-        radii,
-        worlds.map((w) => w.sim),
-      ),
-      radii,
+  // Albums grouped by tag (each list stays score-descending — data.albums is).
+  const albumsByTag = useMemo(() => {
+    const m = new Map<string, TasteGraphAlbum[]>();
+    for (const a of data.albums) {
+      for (const tg of a.tags) {
+        let list = m.get(tg);
+        if (!list) m.set(tg, (list = []));
+        list.push(a);
+      }
+    }
+    return m;
+  }, [data.albums]);
+
+  // Per-world album roll-up (union across the world's tags, deduped, best-first)
+  // — the source of each world tile's mosaic and its rated-album count.
+  const worldAlbums = useMemo(
+    () =>
+      worlds.map((w) => {
+        const seen = new Set<string>();
+        const out: TasteGraphAlbum[] = [];
+        for (const tg of w.tags) {
+          for (const a of albumsByTag.get(tg.tag) ?? []) {
+            if (!seen.has(a.id)) {
+              seen.add(a.id);
+              out.push(a);
+            }
+          }
+        }
+        out.sort((x, y) => y.score - x.score);
+        return out;
+      }),
+    [worlds, albumsByTag],
+  );
+  const worldCovers = useMemo(
+    () => worldAlbums.map((list) => list.filter((a) => a.coverUrl).map((a) => a.coverUrl as string)),
+    [worldAlbums],
+  );
+
+  // Top-level tiles: one per world, area ∝ share (sorted so the treemap packs
+  // largest-first, which is what keeps the aspect ratios tidy).
+  const worldOrder = useMemo(
+    () => worlds.map((_, i) => i).sort((a, b) => worlds[b].share - worlds[a].share),
+    [worlds],
+  );
+  const worldRects = useMemo(() => {
+    const rects = squarify(
+      worldOrder.map((i) => Math.max(worlds[i].share, 0.02)),
+      100,
+      100,
     );
-  }, [worlds]);
+    return rects.map((r) => ({ ...r, i: worldOrder[r.i] }));
+  }, [worldOrder, worlds]);
 
-  // Sub-genre bubbles for the open world, packed inside its circle.
-  const subNodes = useMemo(() => {
-    if (world == null || !worlds[world] || !nodes[world]) return [];
-    const w = worlds[world];
-    const radii = w.tags.map((tg) => Math.sqrt(Math.max(tg.share, 0.01)));
-    const local = fitToBox(layoutBySimilarity(radii, w.tagSim), radii, VIEW, 6);
-    const parent = nodes[world];
-    // Scale by the furthest bubble EDGE from the centre, not by the box's half
-    // width — a square box's corner sits 1.41× further out than its edge, and a
-    // sub-genre poking out of its parent circle would read as a sibling.
-    const reach = Math.max(
-      ...local.map((n) => Math.hypot(n.x - VIEW / 2, n.y - VIEW / 2) + n.r),
-      0.001,
+  const openWorld = world != null ? worlds[world] : null;
+
+  // Sub-genre tags, deduped by display name (two tag keys can collapse to one
+  // label) so the sub-map never shows the same genre twice.
+  const openTags = useMemo(() => {
+    if (!openWorld) return [];
+    const seen = new Set<string>();
+    return openWorld.tags.filter((tg) => {
+      const key = tg.display.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [openWorld]);
+
+  const tagOrder = useMemo(
+    () => openTags.map((_, i) => i).sort((a, b) => openTags[b].share - openTags[a].share),
+    [openTags],
+  );
+  const tagRects = useMemo(() => {
+    if (openTags.length === 0) return [];
+    const rects = squarify(
+      tagOrder.map((i) => Math.max(openTags[i].share, 0.02)),
+      100,
+      100,
     );
-    const k = (parent.r * 0.94) / reach;
-    return local.map((n) => ({
-      x: parent.x + (n.x - VIEW / 2) * k,
-      y: parent.y + (n.y - VIEW / 2) * k,
-      r: n.r * k,
-    }));
-  }, [world, worlds, nodes]);
+    return rects.map((r) => ({ ...r, i: tagOrder[r.i] }));
+  }, [openTags, tagOrder]);
 
-  const camera = useMemo(() => {
-    if (world == null || !nodes[world]) return { k: 1, tx: 0, ty: 0 };
-    const n = nodes[world];
-    const k = Math.min(14, (VIEW / 2) / Math.max(n.r * 1.15, 0.001));
-    return { k, tx: VIEW / 2 - k * n.x, ty: VIEW / 2 - k * n.y };
-  }, [world, nodes]);
-
-  // Escape backs out one level — the same order the Back button walks.
+  // Escape backs out one level — the same order the breadcrumb walks.
   useEffect(() => {
     if (world == null) return;
     const onKey = (e: KeyboardEvent) => {
@@ -244,266 +521,203 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [world, tag]);
 
-  const openWorld = world != null ? worlds[world] : null;
-  const openTag = openWorld && tag ? openWorld.tags.find((x) => x.tag === tag) ?? null : null;
+  const openTag = openWorld && tag ? openTags.find((x) => x.tag === tag) ?? null : null;
 
   const focusTags = useMemo(() => {
     if (!openWorld) return null;
-    return new Set(openTag ? [openTag.tag] : openWorld.tags.map((x) => x.tag));
-  }, [openWorld, openTag]);
+    return new Set(openTag ? [openTag.tag] : openTags.map((x) => x.tag));
+  }, [openWorld, openTag, openTags]);
 
   const focusAlbums = useMemo(() => {
     if (!focusTags) return [];
     return data.albums.filter((a) => a.tags.some((x) => focusTags.has(x))).slice(0, PANEL_ALBUMS);
   }, [data.albums, focusTags]);
 
-  const focusRecs =
-    openTag != null
-      ? data.recs[`tag:${openTag.tag}`] ?? (openWorld ? data.recs[openWorld.key] : undefined) ?? []
-      : openWorld
-        ? data.recs[openWorld.key] ?? []
-        : [];
+  // Recommendations: prefer the focused sub-genre's own pool, fall back to the
+  // world pool (labelled so the shift is never silent), so the panel is never
+  // inconsistently empty from one tab to the next.
+  const worldRecs = openWorld ? data.recs[openWorld.key] ?? [] : [];
+  const tagRecs = openTag ? data.recs[`tag:${openTag.tag}`] ?? [] : [];
+  const focusRecs = openTag ? (tagRecs.length > 0 ? tagRecs : worldRecs) : worldRecs;
+  const recsFallback = !!openTag && tagRecs.length === 0 && worldRecs.length > 0;
 
-  const colorAt = (avg: number | null) => spectrumColor(avg ?? 3, 0.62, 1);
+  // Open a world — animate the clicked tile filling the canvas, then swap to the
+  // sub-genre mosaic. Reduced motion skips straight to the mosaic.
+  const openWorldTile = (i: number) => {
+    if (prefersReducedMotion()) {
+      setTag(null);
+      setWorld(i);
+      return;
+    }
+    if (enterTimer.current) clearTimeout(enterTimer.current);
+    setEntering(i);
+    enterTimer.current = setTimeout(() => {
+      setTag(null);
+      setWorld(i);
+      setEntering(null);
+      enterTimer.current = null;
+    }, OPEN_MS);
+  };
 
   return (
-    <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_248px]">
-      <style>{KEYFRAMES}</style>
+    <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_300px] md:items-stretch">
+      <style>{MAP_CSS}</style>
 
-      {/* ── The map ── */}
-      <div className="relative rounded-2xl bg-page border border-divider/60 overflow-hidden">
-        <svg
-          viewBox={`0 0 ${VIEW} ${VIEW}`}
-          className="block w-full touch-manipulation"
-          style={{ aspectRatio: '1 / 1', maxHeight: 420 }}
-          role="img"
-          aria-label={t('sj.taste.mapHeader')}
-        >
-          <defs>
-            <filter id={`${uid}-soft`} x="-30%" y="-30%" width="160%" height="160%">
-              <feGaussianBlur stdDeviation="1.6" />
-            </filter>
-            {worlds.map((w, i) => (
-              <radialGradient key={i} id={`${uid}-w${i}`} cx="38%" cy="34%" r="72%">
-                <stop offset="0%" stopColor={spectrumColor(w.avg ?? 3, 0.82, 0.75)} />
-                <stop offset="100%" stopColor={spectrumColor(w.avg ?? 3, 0.56, 1)} />
-              </radialGradient>
-            ))}
-            {(openWorld?.tags ?? []).map((tg, i) => (
-              <radialGradient key={tg.tag} id={`${uid}-t${i}`} cx="38%" cy="34%" r="72%">
-                <stop offset="0%" stopColor={spectrumColor(tg.avg, 0.86, 0.7)} />
-                <stop offset="100%" stopColor={spectrumColor(tg.avg, 0.6, 1)} />
-              </radialGradient>
-            ))}
-          </defs>
-
-          <g
-            className="taste-camera"
-            style={{
-              transform: `translate(${camera.tx}px, ${camera.ty}px) scale(${camera.k})`,
-              transformOrigin: '0 0',
-              transition: 'transform 760ms cubic-bezier(0.22, 0.61, 0.36, 1)',
-              willChange: 'transform',
-            }}
-          >
-            {nodes.map((n, i) => {
-              const w = worlds[i];
-              const dimmed = world != null && world !== i;
-              const isOpen = world === i;
-              const pct = Math.round(w.share * 100);
-              return (
-                <g
-                  key={w.key}
-                  className="taste-bubble"
-                  style={{
-                    animationName: ['taste-drift-a', 'taste-drift-b', 'taste-drift-c'][i % 3],
-                    animationDuration: `${6.5 + i * 0.9}s`,
-                    animationDelay: `${i * 0.4}s`,
-                    opacity: dimmed ? 0.18 : 1,
-                    transition: 'opacity 500ms ease',
-                    cursor: isOpen ? 'default' : 'pointer',
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`${w.label} · ${pct}%`}
-                  onClick={() => {
-                    setTag(null);
-                    setWorld(isOpen ? null : i);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key !== 'Enter' && e.key !== ' ') return;
-                    e.preventDefault();
-                    setTag(null);
-                    setWorld(isOpen ? null : i);
-                  }}
-                >
-                  <title>{`${w.label} · ${pct}%${w.avg != null ? ` · ${w.avg.toFixed(2)}★` : ''}`}</title>
-                  {/* Soft halo — the "organic" edge, drawn under the solid body. */}
-                  <circle
-                    cx={n.x}
-                    cy={n.y}
-                    r={n.r * 0.98}
-                    fill={colorAt(w.avg)}
-                    opacity={0.38}
-                    filter={`url(#${uid}-soft)`}
+      {/* ── The mosaic ── */}
+      <div className="relative flex flex-col rounded-2xl bg-surface border border-divider/60 overflow-hidden">
+        <div ref={boxRef} className="relative w-full flex-1 min-h-[440px] sm:min-h-[540px]">
+          {!openWorld ? (
+            <div key="worlds" className="taste-tiles taste-open absolute inset-0">
+              {worldRects.map((r) => {
+                const w = worlds[r.i];
+                const pct = Math.round(w.share * 100);
+                const count = worldAlbums[r.i].length;
+                return (
+                  <MosaicTile
+                    key={w.key}
+                    rect={r}
+                    boxW={box.w}
+                    boxH={box.h}
+                    name={w.primary}
+                    meta={`${t('sj.taste.mapNAlbums').replace('{n}', String(count))} · ${pct}%`}
+                    avg={w.avg}
+                    covers={worldCovers[r.i]}
+                    selected={false}
+                    dim={false}
+                    enterState={entering == null ? null : entering === r.i ? 'target' : 'other'}
+                    onClick={() => openWorldTile(r.i)}
+                    title={`${w.label} · ${count} · ${pct}%${w.avg != null ? ` · ${w.avg.toFixed(2)}★` : ''}`}
+                    ariaLabel={`${w.label} · ${pct}%`}
                   />
-                  <circle cx={n.x} cy={n.y} r={n.r} fill={`url(#${uid}-w${i})`} />
-                  {!isOpen && n.r > 6 && (
-                    <text
-                      x={n.x}
-                      y={n.y}
-                      textAnchor="middle"
-                      fill="#fff"
-                      stroke="rgba(0,0,0,0.24)"
-                      strokeWidth={n.r * 0.06}
-                      paintOrder="stroke"
-                      strokeLinejoin="round"
-                      pointerEvents="none"
-                    >
-                      <tspan
-                        x={n.x}
-                        dy="-0.1em"
-                        style={{
-                          fontSize: Math.min(n.r * 0.3, (n.r * 1.9) / Math.max(6, w.primary.length)),
-                          fontWeight: 800,
-                        }}
-                      >
-                        {w.primary}
-                      </tspan>
-                      <tspan
-                        x={n.x}
-                        dy="1.25em"
-                        opacity={0.9}
-                        style={{ fontSize: Math.min(n.r * 0.26, 5), fontWeight: 800 }}
-                      >
-                        {pct}%
-                      </tspan>
-                    </text>
-                  )}
-                </g>
-              );
-            })}
+                );
+              })}
+            </div>
+          ) : (
+            <div key={`world-${world}`} className="taste-tiles taste-open absolute inset-0">
+              {tagRects.map((r) => {
+                const tg = openTags[r.i];
+                if (!tg) return null;
+                const selected = tag === tg.tag;
+                const cnt = (albumsByTag.get(tg.tag) ?? []).length;
+                return (
+                  <MosaicTile
+                    key={tg.tag}
+                    rect={r}
+                    boxW={box.w}
+                    boxH={box.h}
+                    name={tg.display}
+                    meta={t('sj.taste.mapNAlbums').replace('{n}', String(cnt))}
+                    avg={tg.avg}
+                    covers={(albumsByTag.get(tg.tag) ?? [])
+                      .filter((a) => a.coverUrl)
+                      .map((a) => a.coverUrl as string)}
+                    selected={selected}
+                    dim={!!tag && !selected}
+                    enterState={null}
+                    onClick={() => setTag(selected ? null : tg.tag)}
+                    title={`${tg.display} · ${cnt} · ${tg.avg.toFixed(2)}★`}
+                    ariaLabel={`${tg.display} · ${tg.avg.toFixed(1)}★`}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
 
-            {/* Sub-genres of the open world, revealed inside its circle. */}
-            {openWorld && (
-              <g style={{ transition: 'opacity 400ms ease 200ms' }}>
-                {subNodes.map((n, i) => {
-                  const tg = openWorld.tags[i];
-                  if (!tg) return null;
-                  const selected = tag === tg.tag;
-                  return (
-                    <g
-                      key={tg.tag}
-                      role="button"
-                      tabIndex={0}
-                      aria-label={`${tg.display} · ${tg.avg.toFixed(1)}`}
-                      style={{ cursor: 'pointer' }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setTag(selected ? null : tg.tag);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key !== 'Enter' && e.key !== ' ') return;
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setTag(selected ? null : tg.tag);
-                      }}
-                    >
-                      <title>{`${tg.display} · ${tg.avg.toFixed(2)}★`}</title>
-                      <circle
-                        cx={n.x}
-                        cy={n.y}
-                        r={n.r}
-                        fill={`url(#${uid}-t${i})`}
-                        stroke={selected ? '#fff' : 'transparent'}
-                        strokeWidth={n.r * 0.07}
-                        opacity={tag && !selected ? 0.45 : 1}
-                        style={{ transition: 'opacity 300ms ease' }}
-                      />
-                      {n.r > 1.2 && (
-                        <text
-                          x={n.x}
-                          y={n.y}
-                          textAnchor="middle"
-                          dominantBaseline="central"
-                          fill="#fff"
-                          stroke="rgba(0,0,0,0.26)"
-                          strokeWidth={n.r * 0.05}
-                          paintOrder="stroke"
-                          strokeLinejoin="round"
-                          pointerEvents="none"
-                          style={{
-                            // Long tag names shrink to fit their bubble rather
-                            // than spilling over the neighbours.
-                            fontSize: Math.min(n.r * 0.34, (n.r * 1.7) / Math.max(4, tg.display.length)),
-                            fontWeight: 800,
-                          }}
-                        >
-                          {tg.display}
-                        </text>
-                      )}
-                    </g>
-                  );
-                })}
-              </g>
+        {/* Breadcrumb — replaces the floating Back button; each crumb walks a level. */}
+        {openWorld && (
+          <div className="absolute top-3 left-3 flex items-center gap-1 rounded-full bg-surface/85 border border-divider px-2.5 py-1.5 text-[12px] backdrop-blur-md shadow-sm">
+            <button
+              type="button"
+              onClick={() => {
+                setTag(null);
+                setWorld(null);
+              }}
+              className="font-semibold text-muted hover:text-ink transition"
+            >
+              {t('sj.taste.mapAllWorlds')}
+            </button>
+            <ChevronRight size={13} className="text-muted/50 shrink-0" />
+            <button
+              type="button"
+              onClick={() => setTag(null)}
+              className={`font-semibold transition ${openTag ? 'text-muted hover:text-ink' : 'text-ink'}`}
+            >
+              {openWorld.primary}
+            </button>
+            {openTag && (
+              <>
+                <ChevronRight size={13} className="text-muted/50 shrink-0" />
+                <span className="font-semibold text-ink">{openTag.display}</span>
+              </>
             )}
-          </g>
-        </svg>
-
-        {world != null && (
-          <button
-            type="button"
-            onClick={() => (tag ? setTag(null) : setWorld(null))}
-            className="absolute top-2.5 left-2.5 flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-surface/90 border border-divider text-[12px] font-semibold text-ink backdrop-blur hover:bg-surface transition"
-          >
-            <ChevronLeft size={14} />
-            {t('sj.taste.mapBack')}
-          </button>
+          </div>
         )}
 
-        {/* Sequential legend: the ramp is the app's score scale, stated. */}
-        <div className="absolute bottom-2.5 right-2.5 flex items-center gap-1.5 rounded-full bg-surface/85 border border-divider px-2.5 py-1 backdrop-blur">
+        {/* Legend in its own footer strip — the ramp is the app's score scale,
+            stated — so it never sits on top of a tile's label. */}
+        <div className="flex items-center justify-end gap-1.5 border-t border-divider/60 px-3 py-1.5">
           <span className="text-[10px] text-muted tabular-nums">1</span>
           <span
             className="h-[6px] w-16 rounded-full"
             style={{
               background: `linear-gradient(to right, ${[1, 2, 3, 4, 5]
-                .map((s) => spectrumColor(s, 0.62, 1))
+                .map((s) => spectrumColor(s, 0.58, 1))
                 .join(', ')})`,
             }}
           />
           <span className="text-[10px] text-muted tabular-nums">5</span>
+          <span className="text-[10px] text-muted">{t('sj.taste.mapLegendScore')}</span>
         </div>
       </div>
 
-      {/* ── Side panel ── */}
+      {/* ── Inspector ── */}
       <aside className="rounded-2xl bg-page border border-divider/60 px-4 py-4 min-h-[220px]">
         {!openWorld ? (
           <div>
-            <p className="text-[12.5px] text-muted">{t('sj.taste.mapHint')}</p>
+            <p className="text-[10px] font-bold tracking-[0.08em] uppercase text-muted/60">
+              {t('sj.taste.mapExplore')}
+            </p>
+            <p className="mt-1.5 text-[12.5px] text-muted leading-relaxed">{t('sj.taste.mapHint')}</p>
             <div className="mt-3 space-y-1">
-              {worlds.map((w, i) => (
-                <button
-                  key={w.key}
-                  type="button"
-                  onClick={() => {
-                    setTag(null);
-                    setWorld(i);
-                  }}
-                  className="flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left hover:bg-ink/[0.04] transition"
-                >
-                  <span
-                    className="w-2.5 h-2.5 rounded-full shrink-0"
-                    style={{ background: colorAt(w.avg) }}
-                  />
-                  <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-ink">
-                    {w.label}
-                  </span>
-                  <span className="text-[11.5px] tabular-nums text-muted">
-                    {Math.round(w.share * 100)}%
-                  </span>
-                </button>
-              ))}
+              {worldOrder.map((i) => {
+                const w = worlds[i];
+                const cover = worldCovers[i][0] ?? null;
+                return (
+                  <div
+                    key={w.key}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openWorldTile(i)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        openWorldTile(i);
+                      }
+                    }}
+                    className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left hover:bg-ink/[0.04] transition"
+                  >
+                    <Cover url={cover} className="w-9 h-9" rounded="rounded-md" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[12.5px] font-semibold text-ink">
+                        {w.label}
+                      </span>
+                      <span className="mt-1 block h-[3px] rounded-full bg-divider/60 overflow-hidden">
+                        <span
+                          className="block h-full rounded-full"
+                          style={{
+                            width: `${Math.max(4, Math.round(w.share * 100))}%`,
+                            background: spectrumColor(w.avg ?? 3, 0.58, 1),
+                          }}
+                        />
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-[11.5px] tabular-nums text-muted">
+                      {Math.round(w.share * 100)}%
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         ) : (
@@ -528,7 +742,7 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
             {focusAlbums.length === 0 ? (
               <p className="mt-1.5 text-[12px] text-muted">{t('sj.taste.mapNoAlbums')}</p>
             ) : (
-              <ul className="mt-2 space-y-2 max-h-[210px] overflow-y-auto pr-1">
+              <ul className="mt-2 space-y-2 max-h-[240px] overflow-y-auto pr-2.5 [scrollbar-gutter:stable]">
                 {focusAlbums.map((a) => (
                   <li key={a.id}>
                     <Link href={`/album/${a.id}`} className="flex items-center gap-2 group">
@@ -554,7 +768,9 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
             {focusRecs.length > 0 && (
               <>
                 <p className="mt-4 text-[10px] font-bold tracking-[0.08em] uppercase text-muted/60">
-                  {t('sj.taste.mapRecs')}
+                  {recsFallback
+                    ? t('sj.taste.mapMoreIn').replace('{world}', openWorld.primary)
+                    : t('sj.taste.mapRecs')}
                 </p>
                 <ul className="mt-2 space-y-2">
                   {focusRecs.slice(0, 5).map((r) => (
@@ -580,108 +796,5 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
   );
 }
 
-/**
- * Rated releases per release-year, with a centred 5-year moving average over
- * the top — the bars carry the year-by-year magnitude, the line carries the
- * shape you actually read. One axis, one measure; the line is the same series
- * smoothed, not a second one.
- */
-export function YearHistogram({
-  years,
-  label,
-  trendLabel,
-}: {
-  years: { year: number; count: number }[];
-  label: string;
-  trendLabel: string;
-}) {
-  const max = Math.max(1, ...years.map((y) => y.count));
-  const peak = years.reduce((best, y, i) => (y.count > years[best].count ? i : best), 0);
-
-  // Centred moving average, window shrinking at the edges so the line spans the
-  // full range instead of stopping two years short.
-  const W = 2;
-  const trend = years.map((_, i) => {
-    let sum = 0;
-    let n = 0;
-    for (let j = Math.max(0, i - W); j <= Math.min(years.length - 1, i + W); j += 1) {
-      sum += years[j].count;
-      n += 1;
-    }
-    return sum / n;
-  });
-
-  const H = 100;
-  const step = years.length > 1 ? 100 / (years.length - 1) : 0;
-  const path = trend
-    .map((v, i) => `${i === 0 ? 'M' : 'L'}${(i * step).toFixed(2)},${(H - (v / max) * H).toFixed(2)}`)
-    .join(' ');
-
-  // ~6 ticks, always including the first and last year.
-  const tickEvery = Math.max(1, Math.ceil(years.length / 6));
-
-  return (
-    <div className="mt-4">
-      <div className="relative">
-        <div className="flex items-end gap-[2px] h-28 border-b border-divider" aria-label={label}>
-          {years.map((y, i) => (
-            <div
-              key={y.year}
-              title={`${y.year} · ${y.count}`}
-              className="flex-1 min-w-0 h-full flex flex-col items-center justify-end"
-            >
-              {i === peak && y.count > 0 && (
-                <span className="text-[10px] font-semibold text-muted mb-0.5 tabular-nums">
-                  {y.count}
-                </span>
-              )}
-              <span
-                className="w-full rounded-t bg-accent/70"
-                style={{ height: y.count > 0 ? Math.max(3, Math.round((y.count / max) * 88)) : 0 }}
-              />
-            </div>
-          ))}
-        </div>
-        {years.length > 2 && (
-          <svg
-            viewBox={`0 0 100 ${H}`}
-            preserveAspectRatio="none"
-            className="absolute inset-x-0 bottom-0 h-28 pointer-events-none"
-            aria-hidden
-          >
-            <path
-              d={path}
-              fill="none"
-              stroke="currentColor"
-              className="text-ink/45"
-              strokeWidth={2}
-              vectorEffect="non-scaling-stroke"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        )}
-      </div>
-      <div className="flex gap-[2px] mt-1">
-        {years.map((y, i) => (
-          <span
-            key={y.year}
-            className="flex-1 min-w-0 text-center text-[10px] text-muted/70 tabular-nums"
-          >
-            {i % tickEvery === 0 || i === years.length - 1 ? y.year : ''}
-          </span>
-        ))}
-      </div>
-      <div className="mt-2 flex items-center gap-4 text-[11px] text-muted">
-        <span className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-sm bg-accent/70 shrink-0" />
-          {label}
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-4 h-[2px] rounded-full bg-ink/45 shrink-0" />
-          {trendLabel}
-        </span>
-      </div>
-    </div>
-  );
-}
+// The release-year histogram moved to TasteCharts.tsx (`YearChart`) in the
+// 2026-08-10 report rebuild — it gained the era band and a real hover layer.

@@ -14,6 +14,7 @@ import {
 import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
 import { SessionProvider, useSession } from './SessionContext';
+import { RatingsProvider } from './RatingsStore';
 import FlowerGlyph from './FlowerGlyph';
 import SearchOmnibox from './SearchOmnibox';
 import CursorTip from './CursorTip';
@@ -27,7 +28,9 @@ import { AvatarMenu, NotificationsBell } from './HeaderMenus';
 export default function AppShell({ children }: { children: ReactNode }) {
   return (
     <SessionProvider>
-      <ShellInner>{children}</ShellInner>
+      <RatingsProvider>
+        <ShellInner>{children}</ShellInner>
+      </RatingsProvider>
     </SessionProvider>
   );
 }
@@ -92,14 +95,17 @@ function ShellInner({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen flex">
-      {/* ── Sidebar (≥md) ── */}
-      <aside className="hidden md:flex sticky top-0 h-screen w-[212px] shrink-0 flex-col border-r border-divider bg-page">
-        <Link href="/" className="flex items-center gap-2.5 px-5 pt-5 pb-6">
+      {/* ── Sidebar (≥md) — App Store-style: logo, in-sidebar search, nav ── */}
+      <aside className="hidden md:flex sticky top-0 h-screen w-[264px] shrink-0 flex-col border-r border-divider bg-page">
+        <Link href="/" className="flex items-center gap-2.5 px-5 pt-5 pb-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo-flower.svg" alt="" className="w-7 h-7" />
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo-text.svg" alt="sillajuku" className="h-[15px] dark:invert" />
         </Link>
+        <div className="px-3 pb-3">
+          <SearchOmnibox fullWidth />
+        </div>
         <nav className="flex flex-col gap-1 px-3 flex-1">
           {nav.map(({ icon: Icon, label, path }) => (
             <Link
@@ -139,7 +145,11 @@ function ShellInner({ children }: { children: ReactNode }) {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo-flower.svg" alt="sillajuku" className="w-7 h-7" />
           </Link>
-          <SearchOmnibox />
+          {/* Search lives in the sidebar on desktop; the top bar carries it on
+              mobile, where the sidebar is hidden. */}
+          <div className="md:hidden flex-1 flex">
+            <SearchOmnibox />
+          </div>
           <div className="flex items-center gap-1.5 ml-auto">
             <NotificationsBell hasUnread={hasUnread} />
             {userId === null ? (

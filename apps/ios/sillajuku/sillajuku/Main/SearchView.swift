@@ -90,35 +90,67 @@ class DiscoveryViewModel {
 
     var isLoading = true
     var needsSpotifyReconnect = false  // no cached data AND token is gone
-    private var hasLoaded = false
     private var hasResolvedRecentlyPlayed = false
 
+    // Whether ANY discovery/recommendation section actually populated. reloadDiscoverySections()
+    // fans out to two WebAPI.get() calls that silently resolve to "do nothing" on any failure
+    // (network blip, timeout, or the whole .task getting cancelled by a quick tab-switch
+    // mid-load) -- previously `hasLoaded` latched true regardless, before those calls even
+    // finished, so a single such failure left every album-suggestion section empty for the rest
+    // of the app session (the `else` branch below only ever retried Spotify/Apple Music), with no
+    // way to recover short of relaunching. Same root shape as the Taste tab's
+    // hasLoaded-latched-too-early bug. Checked on every load() call, independent of `hasLoaded`,
+    // so a retry never has to re-run the Spotify/Apple Music fetch (which hits live, rate-limited
+    // APIs unconditionally) just to also retry discovery.
+    private var hasDiscoveryData: Bool {
+        !personalizedAlbums.isEmpty || !tasteAlbums.isEmpty || !worlds.isEmpty
+            || !trendingAlbums.isEmpty || !newReleaseAlbums.isEmpty || !popularAlbums.isEmpty
+    }
+
     func load() async {
-        if !hasLoaded {
-            hasLoaded = true
-            // Load music service data in parallel, then personalized (needs artist seeds from both)
-            await withTaskGroup(of: Void.self) { g in
-                g.addTask { await self.loadSpotify() }
-                g.addTask { await self.loadAppleMusic() }
-            }
-            // resolveRecentlyPlayedIfNeeded() only needs the recently-played lists just
-            // populated above -- it doesn't depend on reloadDiscoverySections() at all,
-            // so running it after that instead of alongside it was pure serial waste
-            // (measured live: ~2.8s tacked onto Discovery's ~6s on top of it).
-            await withTaskGroup(of: Void.self) { g in
-                g.addTask { await self.reloadDiscoverySections() }
-                g.addTask { await self.resolveRecentlyPlayedIfNeeded() }
-            }
-        } else {
-            // Retried on every subsequent load() call (e.g. switching back to this tab) --
-            // unlike the full first-load branch above, this only re-attempts whichever
-            // service still has nothing, so a user who connects mid-session picks it up
-            // without needing a full app relaunch.
-            if !hasSpotifyData { await loadSpotify() }
-            if !hasAppleMusicData { await loadAppleMusic() }
-            await resolveRecentlyPlayedIfNeeded()
-        }
+        // Every section below (`discoveryView` in the View) already guards itself on its own
+        // `!x.isEmpty` check -- nothing actually requires ALL of Spotify/Apple Music/Discovery/
+        // Recommendations to finish before rendering something. Flipping this immediately, before
+        // any of the fetches below even start, turns "stare at one spinner for 11-20s" into
+        // "see the screen instantly, sections pop in individually as their own fetch lands" --
+        // this is the fix that actually gets Add under 5s to first meaningful content; the
+        // parallelization work above/below reduces total background completion time, but was
+        // never going to get a single blocking spinner under 5s on its own (bounded by the
+        // slowest of several independent network calls, several of them third-party APIs this
+        // app doesn't control the latency of). Same progressive-reveal pattern ProfileViewModel
+        // already uses (see its load()).
         isLoading = false
+
+        // Spotify/Apple Music and Discovery/Recommendations are independent of each other --
+        // Discovery moved to web's own /api/discovery + /api/recommendations a while back and no
+        // longer needs Spotify/Apple Music seed artists (see reloadDiscoverySections' own
+        // loaders), but this kept waiting for the music-service fetch to finish first anyway,
+        // stacking two full network legs in series (measured live: ~6s Spotify+Apple Music, THEN
+        // ~6s Discovery on top of it -- ~12s total for a cold Add-tab visit). Merged into one
+        // wave; each still has its own hasXData-based guard so a retry only re-fetches what's
+        // actually missing, same as before.
+        await withTaskGroup(of: Void.self) { g in
+            if !hasSpotifyData    { g.addTask { await self.loadSpotify() } }
+            if !hasAppleMusicData { g.addTask { await self.loadAppleMusic() } }
+            if !hasDiscoveryData  { g.addTask { await self.reloadDiscoverySections() } }
+        }
+        // One retry if discovery/recommendations came back empty -- loadDiscovery/
+        // loadRecommendations/loadRatedArtists each silently swallow a failed fetch (network
+        // blip, timeout, or cold-launch contention with Home/Quest's own concurrent queries) as
+        // "no data" rather than surfacing an error, so `hasDiscoveryData` false here is far more
+        // likely a transient failure than a real empty state (popular/trending are global feeds,
+        // not personalized -- they're essentially never genuinely empty). Without this, the user
+        // was stuck seeing only Spotify's locally-cached "Your Top Artists" (immune to this
+        // failure -- see loadSpotify) until a manual pull-to-refresh. Same "optional fetch, one
+        // retry" pattern already used by TasteViewModel/MixLibraryViewModel for this exact shape
+        // of bug.
+        if !hasDiscoveryData {
+            await reloadDiscoverySections()
+        }
+        // Only needs the recently-played lists loadSpotify/loadAppleMusic just populated above --
+        // has its own hasResolvedRecentlyPlayed guard, so this really must stay sequenced after
+        // the wave above (unlike Discovery, it has a genuine dependency on Spotify/Apple Music).
+        await resolveRecentlyPlayedIfNeeded()
         prefetchDiscoveryCovers()
     }
 
@@ -199,7 +231,10 @@ class DiscoveryViewModel {
         return fuzzy.first(where: accept)
     }
 
-    private static func resolveArtistId(name: String) async -> UUID? {
+    // fileprivate (not private) so ArtistPageView.load() can reuse it for its own artistId == nil
+    // resolution instead of the weaker bare-ILIKE fallback -- same identity-aware, alias-aware
+    // matching this file's other name-based lookups already share.
+    fileprivate static func resolveArtistId(name: String) async -> UUID? {
         let rows: [SearchArtist] = (try? await supabase
             .rpc("search_artists", params: SearchParams(q: name, lim: 3))
             .execute()
@@ -285,20 +320,22 @@ class DiscoveryViewModel {
         if spotifyArtists.isEmpty { spotifyArtists = SpotifyService.loadCachedArtists() }
         if recentlyPlayed.isEmpty { recentlyPlayed  = SpotifyService.loadCachedRecentlyPlayed() }
 
-        // Layer 2: Supabase DB (persistent across reinstalls and devices)
-        if spotifyArtists.isEmpty {
-            let dbArtists = await SpotifyService.loadArtistsFromDB()
-            if !dbArtists.isEmpty {
-                spotifyArtists = dbArtists
-                SpotifyService.saveArtists(dbArtists)  // backfill local cache
-            }
+        // Layer 2: Supabase DB (persistent across reinstalls and devices) -- independent
+        // of each other, run concurrently instead of stacking two DB round-trips when
+        // both caches are empty (e.g. every cold app launch).
+        async let dbArtistsTask: [SpotifyArtistDisplay] =
+            spotifyArtists.isEmpty ? await SpotifyService.loadArtistsFromDB() : []
+        async let dbRecentTask: [SpotifyAlbumDisplay] =
+            recentlyPlayed.isEmpty ? await SpotifyService.loadRecentlyPlayedFromDB() : []
+        let dbArtists = await dbArtistsTask
+        let dbRecent  = await dbRecentTask
+        if !dbArtists.isEmpty {
+            spotifyArtists = dbArtists
+            SpotifyService.saveArtists(dbArtists)  // backfill local cache
         }
-        if recentlyPlayed.isEmpty {
-            let dbRecent = await SpotifyService.loadRecentlyPlayedFromDB()
-            if !dbRecent.isEmpty {
-                recentlyPlayed = dbRecent
-                SpotifyService.saveRecentlyPlayed(dbRecent)
-            }
+        if !dbRecent.isEmpty {
+            recentlyPlayed = dbRecent
+            SpotifyService.saveRecentlyPlayed(dbRecent)
         }
 
         hasSpotifyData = !spotifyArtists.isEmpty || !recentlyPlayed.isEmpty
@@ -310,18 +347,24 @@ class DiscoveryViewModel {
         }
         needsSpotifyReconnect = false
 
-        let fresh = await SpotifyService.topArtists(token: token, limit: 10)
+        // Independent of each other -- were two full sequential live Spotify API round-trips
+        // (each with its own network latency) stacked one after the other; now concurrent.
+        async let freshTask  = SpotifyService.topArtists(token: token, limit: 10)
+        async let recentTask = SpotifyService.recentlyPlayed(token: token, limit: 50)
+        let (fresh, recent) = await (freshTask, recentTask)
+
         if !fresh.isEmpty {
             spotifyArtists = fresh
             SpotifyService.saveArtists(fresh)
-            await SpotifyService.saveArtistsToDB(fresh)
         }
-
-        let recent = await SpotifyService.recentlyPlayed(token: token, limit: 50)
         if !recent.isEmpty {
             recentlyPlayed = recent
             SpotifyService.saveRecentlyPlayed(recent)
-            await SpotifyService.saveRecentlyPlayedToDB(recent)
+        }
+        // DB writebacks are independent of each other too -- same treatment.
+        await withTaskGroup(of: Void.self) { g in
+            if !fresh.isEmpty  { g.addTask { await SpotifyService.saveArtistsToDB(fresh) } }
+            if !recent.isEmpty { g.addTask { await SpotifyService.saveRecentlyPlayedToDB(recent) } }
         }
 
         hasSpotifyData = !spotifyArtists.isEmpty || !recentlyPlayed.isEmpty
@@ -348,19 +391,18 @@ class DiscoveryViewModel {
         guard let userId = supabase.auth.currentUser?.id else { return }
         struct RatedRelease: Codable {
             let score: Double?
-            let eloScore: Double?
             let releaseGroups: ArtistOnly
             struct ArtistOnly: Codable {
                 let artist: String
                 enum CodingKeys: String, CodingKey { case artist = "artist_display" }
             }
             enum CodingKeys: String, CodingKey {
-                case score; case eloScore = "elo_score"; case releaseGroups = "release_groups"
+                case score; case releaseGroups = "release_groups"
             }
         }
         let ratedReleases: [RatedRelease] = (try? await supabase
             .from("ratings")
-            .select("score, elo_score, release_groups(artist_display)")
+            .select("score, release_groups(artist_display)")
             .eq("user_id", value: userId)
             .limit(200)
             .execute()
@@ -368,7 +410,7 @@ class DiscoveryViewModel {
         var seenRatedArtists = Set<String>()
         ratedArtists = ratedReleases
             .compactMap { r -> (String, Double)? in
-                guard let d = r.score ?? r.eloScore.map(Elo.toScore), d >= 3.5 else { return nil }
+                guard let d = r.score, d >= 3.5 else { return nil }
                 return (r.releaseGroups.artist, d)
             }
             .sorted { $0.1 > $1.1 }
@@ -608,19 +650,15 @@ struct SearchView: View {
     let discoveryVM: DiscoveryViewModel
     let onGoToSettings: () -> Void
     @State private var showQuickAdd          = false
-    @State private var showQuickAddModeGate  = false
     @State private var searchVM           = SearchViewModel()
     @State private var searchTask: Task<Void, Never>?
     @State private var quickRateRelease: Release?
     @State private var quickRateScore: Double?     = nil
-    @State private var instinctSheetRelease: Release?
-    @State private var userRatingMode  = "manual"
     @State private var userRatingStep: Double = 0.5
     @State private var ratedReleaseIds: Set<UUID> = []   // loaded from DB at launch — used to hide pre-rated items
     @State private var sessionRatedIds: Set<UUID>  = []   // tapped in this session — shows checkmark
     @State private var showAllPersonalizedSongs = false
     @State private var showAllPopularSongs      = false
-    @State private var spotifyArtistNavTarget: ArtistDestination?
     @Environment(\.scenePhase) private var scenePhase
 
     private let threeColumns = [GridItem(.flexible(), spacing: 12),
@@ -651,21 +689,6 @@ struct SearchView: View {
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
             .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
-            // Reset the item binding to nil when its pushed destination disappears -- confirmed
-            // live that a stale (still non-nil) item binding gets spuriously re-presented on top
-            // of a later, unrelated push made from further inside that same destination (e.g.
-            // tapping the artist name on an album opened via this row double-pushed the album
-            // again on top of the artist page). Clearing it once actually popped prevents that.
-            .navigationDestination(item: $spotifyArtistNavTarget) { artist in
-                ArtistPageView(artist: artist)
-                    .onDisappear { if spotifyArtistNavTarget == artist { spotifyArtistNavTarget = nil } }
-            }
-            .alert("Switch to Manual mode", isPresented: $showQuickAddModeGate) {
-                Button("Cancel", role: .cancel) {}
-                Button("Go to Settings") { onGoToSettings() }
-            } message: {
-                Text("Quick Add's half-star rating only works in Manual mode. Switch modes in Settings to use it.")
-            }
             .navigationDestination(isPresented: $showQuickAdd) {
                 QuickAddView(discoveryVM: discoveryVM, onGoToSettings: onGoToSettings)
             }
@@ -679,17 +702,11 @@ struct SearchView: View {
                     Task { await saveQuickRating(score, for: release) }
                 }
             }
-            .sheet(item: $instinctSheetRelease) { release in
-                InstinctRatingView(release: release, onRated: { id in
-                    ratedReleaseIds.insert(id)
-                    sessionRatedIds.insert(id)
-                }, onDone: { instinctSheetRelease = nil })
-            }
         }
         .task {
             await discoveryVM.load()
             await withTaskGroup(of: Void.self) { g in
-                g.addTask { await loadUserRatingMode() }
+                g.addTask { await loadUserRatingStep() }
                 g.addTask { await loadRatedReleaseIds() }
             }
         }
@@ -710,14 +727,7 @@ struct SearchView: View {
     }
 
     private func quickAddTapped() {
-        Task {
-            let mode = await AlbumQuickRate.currentUserRatingMode()
-            if mode == "instinct" {
-                showQuickAddModeGate = true
-            } else {
-                showQuickAdd = true
-            }
-        }
+        showQuickAdd = true
     }
 
     private func loadRatedReleaseIds() async {
@@ -735,33 +745,28 @@ struct SearchView: View {
         ratedReleaseIds = Set(rows.map(\.releaseGroupId))
     }
 
-    private func loadUserRatingMode() async {
+    private func loadUserRatingStep() async {
         guard let userId = supabase.auth.currentUser?.id else { return }
         struct P: Decodable {
-            let ratingMode: String?; let manualRatingStep: Double?
+            let manualRatingStep: Double?
             enum CodingKeys: String, CodingKey {
-                case ratingMode = "rating_mode"; case manualRatingStep = "manual_rating_step"
+                case manualRatingStep = "manual_rating_step"
             }
         }
         if let p: P = try? await supabase
             .from("profiles")
-            .select("rating_mode, manual_rating_step")
+            .select("manual_rating_step")
             .eq("id", value: userId)
             .single()
             .execute()
             .value {
-            userRatingMode = p.ratingMode ?? "manual"
             userRatingStep = p.manualRatingStep ?? 0.5
         }
     }
 
     private func addRelease(_ release: Release) {
-        if userRatingMode == "instinct" {
-            instinctSheetRelease = release
-        } else {
-            quickRateScore   = nil
-            quickRateRelease = release
-        }
+        quickRateScore   = nil
+        quickRateRelease = release
     }
 
     private func saveQuickRating(_ score: Double, for release: Release) async {
@@ -949,12 +954,7 @@ struct SearchView: View {
                                 let pr = songParentRelease(song)
                                 let rated = ratedReleaseIds.contains(song.releases.id)
                                 NavigationLink(value: pr) {
-                                    SongRow(
-                                        song: song,
-                                        onAdd: rated ? nil : { addRelease(pr) },
-                                        isRated: rated,
-                                        useRateGauge: userRatingMode != "instinct"
-                                    )
+                                    SongRow(song: song, isRated: rated)
                                 }
                                 .buttonStyle(.plain)
                                 .albumContextMenu(pr)
@@ -1175,9 +1175,14 @@ struct SearchView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(alignment: .top, spacing: 14) {
                 ForEach(artists) { artist in
-                    Button {
-                        Task { spotifyArtistNavTarget = await resolveArtist(name: artist.name) }
-                    } label: {
+                    // Navigates immediately (was previously gated behind an async
+                    // search_artists resolution that blocked the page push for
+                    // several seconds with zero loading feedback -- confusing, read
+                    // as a dead tap). ArtistPageView now does that same identity-
+                    // aware resolution itself, behind its own spinner, when
+                    // `artistId` is nil -- matching how the Apple Music row below
+                    // already navigates.
+                    NavigationLink(value: ArtistDestination(artistId: nil, name: artist.name)) {
                         VStack(spacing: 7) {
                             CachedImage(url: URL(string: artist.imageUrl?.thumbnailUrl ?? "")) {
                                 Color.sjBorder.overlay(
@@ -1205,37 +1210,6 @@ struct SearchView: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
         }
-    }
-
-    // Same reasoning as DiscoveryViewModel.fetchRelease (which now does this eagerly at load
-    // time for Recently Listened) -- Spotify's artist name string rarely matches our
-    // artist_display exactly, so the old artistId: nil fallback (a bare ILIKE deep inside
-    // ArtistPageView) frequently showed an empty or wrong artist. Resolving the real catalog
-    // id up front via search_artists lets navigation use the identity-aware RPC path instead.
-    //
-    // Requires the candidate's name OR native name to actually overlap the query before
-    // trusting it -- confirmed live that search_artists' top fuzzy result for a genuinely
-    // absent artist ("Masta Wu") was "Masta Killa", an unrelated artist that just happens to
-    // share a word. Checking name_native too (not just name) is what lets a Korean-rendered
-    // Spotify name like "사이먼 도미닉" still correctly match "Simon Dominic".
-    private func resolveArtist(name: String) async -> ArtistDestination {
-        let rows: [SearchArtist] = (try? await supabase
-            .rpc("search_artists", params: SearchParams(q: name, lim: 3))
-            .execute()
-            .value) ?? []
-        let target = name.lowercased()
-        func overlaps(_ s: String) -> Bool {
-            let l = s.lowercased()
-            return !l.isEmpty && (l == target || l.contains(target) || target.contains(l))
-        }
-        let match = rows.first { row in
-            // name / native as before, PLUS any romanized alias — the RPC can match a native-
-            // named artist (혁오) via its "HYUKOH" alias, which name/native can't string-overlap.
-            overlaps(row.name)
-                || (row.nameNative.map(overlaps) ?? false)
-                || (row.aliases ?? []).contains(where: overlaps)
-        }
-        return ArtistDestination(artistId: match?.id, name: name)
     }
 
     private func appleMusicArtistScroll(_ artists: [AppleMusicArtistDisplay]) -> some View {
@@ -1298,10 +1272,7 @@ struct SearchView: View {
                     // checkmark rather than a misleading "add" button.
                     let checked = sessionRatedIds.contains(release.id) || ratedReleaseIds.contains(release.id)
                     NavigationLink(value: release) {
-                        DiscoveryAlbumCard(release: release,
-                                           onAdd: checked ? nil : { addRelease(release) },
-                                           isRated: checked,
-                                           useRateGauge: userRatingMode != "instinct")
+                        DiscoveryAlbumCard(release: release, isRated: checked)
                     }
                     .buttonStyle(.plain)
                     .albumContextMenu(release)
@@ -1323,8 +1294,7 @@ struct SearchView: View {
                 let pr = songParentRelease(song)
                 let checked = sessionRatedIds.contains(pr.id)
                 NavigationLink(value: pr) {
-                    SongRow(song: song, onAdd: checked ? nil : { addRelease(pr) }, isRated: checked,
-                            useRateGauge: userRatingMode != "instinct")
+                    SongRow(song: song, isRated: checked)
                 }
                 .buttonStyle(.plain)
                 .albumContextMenu(pr)
@@ -1354,12 +1324,7 @@ struct SearchView: View {
 
 private struct DiscoveryAlbumCard: View {
     let release: Release
-    var onAdd: (() -> Void)? = nil
     var isRated: Bool = false
-    /// Manual-mode users get the drag-to-rate gauge instead of the plain "+"
-    /// button; Instinct mode keeps `onAdd` (opens the pairwise comparison
-    /// flow -- a direct score doesn't fit that model).
-    var useRateGauge: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -1380,24 +1345,9 @@ private struct DiscoveryAlbumCard: View {
                     }
                     .allowsHitTesting(false)
                     .padding(6)
-                } else if useRateGauge {
+                } else {
                     AlbumRateButton(release: release, size: 30)
                         .padding(4)
-                } else if let onAdd {
-                    Button(action: onAdd) {
-                        ZStack {
-                            Circle()
-                                .fill(.white)
-                                .frame(width: 28, height: 28)
-                                .shadow(color: .black.opacity(0.15), radius: 4, y: 1)
-                            Image(systemName: "plus")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundStyle(Color.sjBlue)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .padding(6)
-                    .accessibilityLabel(String(format: String(localized: "Add %@"), release.title))
                 }
             }
 
@@ -1429,11 +1379,7 @@ private struct DiscoveryAlbumCard: View {
 
 struct SongRow: View {
     let song: SongResult
-    var onAdd: (() -> Void)? = nil
     var isRated: Bool = false
-    /// Manual-mode users get the drag-to-rate gauge instead of the plain "+"
-    /// button; Instinct mode keeps `onAdd`.
-    var useRateGauge: Bool = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -1472,25 +1418,10 @@ struct SongRow: View {
                         .foregroundStyle(.white)
                 }
                 .allowsHitTesting(false)
-            } else if useRateGauge {
-                // Matches the existing onAdd/isRated semantics below (both keyed
-                // on the song's *parent release*, not the individual recording) --
-                // this row has never rated the song itself, only quick-added its
-                // album; only the affordance (plus button -> drag gauge) changes.
+            } else {
+                // Keyed on the song's *parent release*, not the individual recording --
+                // this row has never rated the song itself, only quick-added its album.
                 AlbumRateButton(release: song.releases.asRelease, size: 30)
-            } else if let onAdd {
-                Button(action: onAdd) {
-                    ZStack {
-                        Circle()
-                            .fill(Color.sjBlue.opacity(0.12))
-                            .frame(width: 30, height: 30)
-                        Image(systemName: "plus")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(Color.sjBlue)
-                    }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(String(format: String(localized: "Add %@"), song.title))
             }
         }
         .padding(.horizontal, 16)
@@ -1564,7 +1495,6 @@ struct ArtistPageView: View {
     @State private var albumTypeFilter: ArtistAlbumTypeFilter = .all
     @State private var albumSortOrder:  ArtistAlbumSortOrder  = .newest
     @State private var communityDisplayMode: ArtistCommunityDisplayMode = .posts
-    @State private var ratingMode = "manual"
     @State private var songNavTarget: SongNavTarget? = nil
 
     private struct SongNavTarget: Identifiable, Hashable {
@@ -1578,7 +1508,6 @@ struct ArtistPageView: View {
         let userId: UUID
         let releaseGroupId: UUID
         let score: Double?
-        let eloScore: Double?
         let createdAt: Date
         let reviewText: String?
         let profiles: CRProfile?
@@ -1590,14 +1519,10 @@ struct ArtistPageView: View {
         }
         enum CodingKeys: String, CodingKey {
             case id; case userId = "user_id"; case releaseGroupId = "release_group_id"
-            case score; case eloScore = "elo_score"; case createdAt = "created_at"
+            case score; case createdAt = "created_at"
             case reviewText = "review_text"; case profiles
         }
-        var displayScore: Double? {
-            if let s = score { return s }
-            if let e = eloScore { return Elo.toScore(e) }
-            return nil
-        }
+        var displayScore: Double? { score }
     }
 
     private let tabLabels: [LocalizedStringKey] = ["Albums", "Songs", "Community", "Stats"]
@@ -1731,8 +1656,7 @@ struct ArtistPageView: View {
                                     ForEach(Array(list.enumerated()), id: \.element.id) { idx, release in
                                         ArtistReleaseRow(release: release,
                                                          communityScore: releaseScores[release.id],
-                                                         userScore: myRatings[release.id],
-                                                         ratingMode: ratingMode)
+                                                         userScore: myRatings[release.id])
                                         if idx < list.count - 1 {
                                             Divider().padding(.leading, 68).foregroundStyle(Color.sjBorder)
                                         }
@@ -1798,7 +1722,7 @@ struct ArtistPageView: View {
         // on top of a later push made from within its own destination (e.g. tapping the artist
         // name inside SongDetailView). See the matching note on SearchView's own item targets.
         .navigationDestination(item: $songNavTarget) { target in
-            SongDetailView(track: target.track, release: target.release, ratingMode: ratingMode)
+            SongDetailView(track: target.track, release: target.release)
                 .onDisappear { if songNavTarget?.id == target.id { songNavTarget = nil } }
         }
         .task { await load() }
@@ -1816,7 +1740,20 @@ struct ArtistPageView: View {
     private func load() async {
         loadFailed = false
         var loaded: [Release]
-        if let artistId = artist.artistId {
+        // Spotify/Apple Music rows only carry a name -- resolve the real catalog id via the same
+        // identity-aware, alias-aware RPC used by search results (DiscoveryViewModel.resolveArtistId),
+        // instead of the bare ILIKE fallback below, which can show an empty or wrong artist for a
+        // name that doesn't string-match exactly (e.g. Korean-rendered "사이먼 도미닉" vs "Simon
+        // Dominic"). This resolution used to happen BEFORE navigation even started (blocking the
+        // page push for several seconds with no loading indicator, reading as a dead tap) -- moved
+        // here so the page pushes immediately and this runs behind the spinner already below instead.
+        let resolvedArtistId: UUID?
+        if let id = artist.artistId {
+            resolvedArtistId = id
+        } else {
+            resolvedArtistId = await DiscoveryViewModel.resolveArtistId(name: artist.name)
+        }
+        if let artistId = resolvedArtistId {
             // Identity-aware: returns all releases credited to this artist, regardless of credit position.
             // Independent of the canonical name/avatar lookup below -- run both concurrently instead of
             // waiting on the releases RPC before even starting the artist row fetch.
@@ -1879,7 +1816,6 @@ struct ArtistPageView: View {
             await loadSongs()
             isLoadingSongs = false
         }
-        Task { await loadRatingMode() }
 
         struct RRow: Codable {
             let releaseGroupId: UUID; let userId: UUID; let score: Double?
@@ -1915,15 +1851,15 @@ struct ArtistPageView: View {
     private func loadCommunityFeed(releaseGroupIds: [String]) async {
         struct CFRow: Codable {
             let id: UUID; let userId: UUID; let releaseGroupId: UUID
-            let score: Double?; let eloScore: Double?; let createdAt: Date; let reviewText: String?
+            let score: Double?; let createdAt: Date; let reviewText: String?
             enum CodingKeys: String, CodingKey {
                 case id; case userId = "user_id"; case releaseGroupId = "release_group_id"
-                case score; case eloScore = "elo_score"; case createdAt = "created_at"
+                case score; case createdAt = "created_at"
                 case reviewText = "review_text"
             }
         }
         let cfRows: [CFRow] = (try? await supabase
-            .from("ratings").select("id, user_id, release_group_id, score, elo_score, created_at, review_text")
+            .from("ratings").select("id, user_id, release_group_id, score, created_at, review_text")
             .in("release_group_id", values: releaseGroupIds)
             .order("created_at", ascending: false)
             .limit(60)
@@ -1944,23 +1880,10 @@ struct ArtistPageView: View {
             let p = pMap[row.userId]
             return CommunityRating(
                 id: row.id, userId: row.userId, releaseGroupId: row.releaseGroupId,
-                score: row.score, eloScore: row.eloScore, createdAt: row.createdAt,
+                score: row.score, createdAt: row.createdAt,
                 reviewText: row.reviewText,
                 profiles: p.map { CommunityRating.CRProfile(username: $0.username, displayName: $0.displayName) }
             )
-        }
-    }
-
-    private func loadRatingMode() async {
-        guard let userId = supabase.auth.currentUser?.id else { return }
-        struct P: Decodable {
-            let ratingMode: String?
-            enum CodingKeys: String, CodingKey { case ratingMode = "rating_mode" }
-        }
-        if let p: P = try? await supabase
-            .from("profiles").select("rating_mode")
-            .eq("id", value: userId).single().execute().value {
-            ratingMode = p.ratingMode ?? "manual"
         }
     }
 
@@ -2003,18 +1926,14 @@ struct ArtistPageView: View {
             }
         }
 
-        // Community rating count/avg per song -- counts every track_ratings row (including
-        // instinct-only rows with score == nil, matching the album-side communityCount
-        // convention) so "number of ratings" reflects everyone who's rated the track, not
-        // just manual-mode raters.
         struct TRRow: Codable {
-            let recordingId: UUID; let userId: UUID; let score: Double?; let eloScore: Double?
+            let recordingId: UUID; let userId: UUID; let score: Double?
             enum CodingKeys: String, CodingKey {
-                case recordingId = "recording_id"; case userId = "user_id"; case score; case eloScore = "elo_score"
+                case recordingId = "recording_id"; case userId = "user_id"; case score
             }
         }
         let trRows: [TRRow] = (try? await supabase
-            .from("track_ratings").select("recording_id, user_id, score, elo_score")
+            .from("track_ratings").select("recording_id, user_id, score")
             .in("recording_id", values: hits.map(\.id.uuidString)).execute().value) ?? []
         let currentUserId = supabase.auth.currentUser?.id
         var trCount: [UUID: Int] = [:]
@@ -2022,8 +1941,7 @@ struct ArtistPageView: View {
         var myMap:   [UUID: Double] = [:]
         for r in trRows {
             trCount[r.recordingId, default: 0] += 1
-            let display = r.score ?? r.eloScore.map(Elo.toScore)
-            if let d = display {
+            if let d = r.score {
                 let e = trSum[r.recordingId] ?? (0, 0)
                 trSum[r.recordingId] = (e.sum + d, e.n + 1)
                 if r.userId == currentUserId { myMap[r.recordingId] = d }
@@ -2563,7 +2481,6 @@ private struct ArtistReleaseRow: View {
     let release:        Release
     let communityScore: Double?
     let userScore:      Double?
-    var ratingMode:     String = "manual"
 
     private var year: String? {
         guard let d = release.releaseDate, d.count >= 4 else { return nil }
@@ -2578,7 +2495,7 @@ private struct ArtistReleaseRow: View {
                         .frame(width: 44, height: 44)
                         .accessibilityHidden(true) // title text alongside already describes it
 
-                    if userScore == nil, ratingMode != "instinct" {
+                    if userScore == nil {
                         AlbumRateButton(release: release, size: 22)
                             .offset(x: 3, y: 3)
                     }

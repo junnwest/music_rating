@@ -64,15 +64,12 @@ export interface ReleaseTrackRow {
 
 // ── User data ──────────────────────────────────────────────────────────────
 
-export type RatingMode = 'manual' | 'instinct';
-
 export interface ProfileRow {
   id: string;
   username: string | null;
   display_name: string | null;
   bio: string | null;
   avatar_url: string | null;
-  rating_mode: RatingMode | null;
   manual_rating_step: number | null; // 0.5 | 0.1
   notifications_last_seen_at: string | null;
   notify_likes: boolean | null;
@@ -87,14 +84,12 @@ export interface ProfileRow {
   is_bot: boolean | null; // 20260705000004
 }
 
-/** ratings keys on release_group_id (renovation §8). score OR elo_score may be set. */
+/** ratings keys on release_group_id (renovation §8). */
 export interface RatingRow {
   id: string;
   user_id: string;
   release_group_id: string;
   score: number | null;
-  elo_score: number | null;
-  elo_games: number;
   review_text: string | null; // 20260701000001
   created_at: string;
   updated_at: string | null;
@@ -106,8 +101,6 @@ export interface TrackRatingRow {
   user_id: string;
   recording_id: string;
   score: number | null;
-  elo_score: number | null;
-  elo_games: number;
   created_at: string;
 }
 

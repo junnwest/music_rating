@@ -3,17 +3,18 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Search as SearchIcon, X, Check, ChevronRight, Plus } from 'lucide-react';
+import { Search as SearchIcon, X, Check, ChevronRight, ExternalLink } from 'lucide-react';
 import ArtistLink from '../../../components/sj/ArtistLink';
+import FlowerGlyph from '../../../components/sj/FlowerGlyph';
+import { useContextMenu, useContextMenuFor, openInNewTab } from '../../../components/sj/ContextMenu';
 import Cover from '../../../components/sj/Cover';
 import ManualRateModal from '../../../components/sj/ManualRateModal';
-import InstinctModal from '../../../components/sj/InstinctModal';
 import FlowerRateControl from '../../../components/sj/FlowerRateControl';
 import AlbumBookmarkButton from '../../../components/sj/AlbumBookmarkButton';
 import AlbumPeek from '../../../components/sj/AlbumPeek';
-import { useNavSafeClick } from '../../../components/sj/useNavSafeClick';
 import { Skeleton, SkeletonLine } from '../../../components/sj/Loading';
 import { useSession } from '../../../components/sj/SessionContext';
+import { useRatings } from '../../../components/sj/RatingsStore';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
 import { displayName, isPredominantlyHangul, typeLabelKey } from '../../../lib/sj/display';
@@ -46,6 +47,7 @@ export default function SearchPage() {
 function SearchPageInner() {
   const { t } = useLanguage();
   const { userId, profile } = useSession();
+  const { setRating } = useRatings();
   const searchParams = useSearchParams();
   const [query, setQuery] = useState(searchParams.get('q') ?? '');
   const [searching, setSearching] = useState(false);
@@ -59,13 +61,8 @@ function SearchPageInner() {
   const [ratedIds, setRatedIds] = useState<Set<string>>(new Set());
   const [sessionRatedIds, setSessionRatedIds] = useState<Set<string>>(new Set());
   const [manualTarget, setManualTarget] = useState<SJRelease | null>(null);
-  const [instinctTarget, setInstinctTarget] = useState<SJRelease | null>(null);
 
-  const ratingMode = profile?.rating_mode ?? 'manual';
   const ratingStep = profile?.manual_rating_step ?? 0.5;
-  // Instinct mode has no drag-to-score: unrated covers show a plus that opens
-  // the pairwise sheet instead of the flower. Reactive to the session profile.
-  const isInstinct = ratingMode === 'instinct';
   const hasQuery = query.trim().length > 0;
 
   // Already-rated release ids (hide their add buttons / discovery entries)
@@ -190,19 +187,16 @@ function SearchPageInner() {
   }, [query, runSearch]);
 
   function addRelease(release: SJRelease) {
-    if (ratingMode === 'instinct') setInstinctTarget(release);
-    else setManualTarget(release);
+    setManualTarget(release);
   }
 
   async function saveQuickRating(score: number | null, release: SJRelease) {
-    if (!supabase || !userId) return;
+    if (!userId) return;
+    // Route through the app-wide store so the write propagates to every other
+    // surface for this album (feed, charts, album page…), not just this page.
+    await setRating(release.id, score);
     if (score == null) {
       // "Remove rating" from the modal used to silently no-op here
-      await supabase
-        .from('ratings')
-        .delete()
-        .eq('user_id', userId)
-        .eq('release_group_id', release.id);
       setRatedIds((prev) => {
         const next = new Set(prev);
         next.delete(release.id);
@@ -215,12 +209,6 @@ function SearchPageInner() {
       });
       return;
     }
-    await supabase
-      .from('ratings')
-      .upsert(
-        { user_id: userId, release_group_id: release.id, score },
-        { onConflict: 'user_id,release_group_id' },
-      );
     markRated(release.id);
   }
 
@@ -231,7 +219,12 @@ function SearchPageInner() {
 
   // Drag-to-rate: commit a quick score without opening the modal. Optimistically
   // marks the release rated so the card flips to its "rated" state immediately.
-  function quickRate(release: SJRelease, score: number) {
+  function quickRate(release: SJRelease, score: number | null) {
+    // A drag back into the dead zone commits null → void the rating.
+    if (score == null) {
+      void saveQuickRating(null, release);
+      return;
+    }
     markRated(release.id);
     void saveQuickRating(score, release);
   }
@@ -272,7 +265,6 @@ function SearchPageInner() {
           query={query}
           ratedIds={ratedIds}
           sessionRatedIds={sessionRatedIds}
-          isInstinct={isInstinct}
           onAdd={addRelease}
           onRate={quickRate}
         />
@@ -297,7 +289,6 @@ function SearchPageInner() {
           <Discovery
             ratedIds={ratedIds}
             sessionRatedIds={sessionRatedIds}
-            isInstinct={isInstinct}
             onAdd={addRelease}
             onRate={quickRate}
           />
@@ -314,14 +305,6 @@ function SearchPageInner() {
           onSave={(score) => saveQuickRating(score, manualTarget)}
         />
       )}
-      {instinctTarget && (
-        <InstinctModal
-          open
-          onClose={() => setInstinctTarget(null)}
-          release={instinctTarget}
-          onRated={markRated}
-        />
-      )}
     </div>
   );
 }
@@ -336,7 +319,6 @@ function SearchResults({
   query,
   ratedIds,
   sessionRatedIds,
-  isInstinct,
   onAdd,
   onRate,
 }: {
@@ -347,14 +329,24 @@ function SearchResults({
   query: string;
   ratedIds: Set<string>;
   sessionRatedIds: Set<string>;
-  isInstinct: boolean;
   onAdd: (release: SJRelease) => void;
-  onRate: (release: SJRelease, score: number) => void;
+  onRate: (release: SJRelease, score: number | null) => void;
 }) {
   const { t } = useLanguage();
   const { profile } = useSession();
   const ratingStep = profile?.manual_rating_step ?? 0.5;
   const hasAny = artists.length > 0 || albums.length > 0 || songs.length > 0;
+
+  // One menu instance for the whole artist column (see useContextMenuFor).
+  const { onContextMenu: onArtistContextMenu, menu: artistContextMenu } =
+    useContextMenuFor<SearchArtistRPC>((a) => [
+      {
+        key: 'open-new-tab',
+        label: t('sj.context.openNewTab'),
+        icon: <ExternalLink size={15} />,
+        onSelect: () => openInNewTab(`/artist/${a.id}`),
+      },
+    ]);
 
   if (!hasAny) {
     if (searching || query.trim().length < 2) return <div className="py-20" />;
@@ -379,7 +371,7 @@ function SearchResults({
               const native =
                 a.name_native && isPredominantlyHangul(a.name_native) ? a.name_native : null;
               return (
-                <li key={a.id}>
+                <li key={a.id} onContextMenu={(e) => onArtistContextMenu(e, a)}>
                   <ArtistLink
                     href={`/artist/${a.id}`}
                     className="flex items-center gap-3 px-3.5 py-2.5 hover:bg-page/60 transition"
@@ -415,6 +407,7 @@ function SearchResults({
               );
             })}
           </ul>
+          {artistContextMenu}
         </section>
       )}
 
@@ -430,7 +423,6 @@ function SearchResults({
                   release={release}
                   rated={ratedIds.has(release.id)}
                   sessionRated={sessionRatedIds.has(release.id)}
-                  isInstinct={isInstinct}
                   ratingStep={ratingStep}
                   onAdd={() => onAdd(release)}
                   onRate={(score) => onRate(release, score)}
@@ -451,7 +443,6 @@ function SearchResults({
                   song={song}
                   rated={ratedIds.has(song.release.id)}
                   sessionRated={sessionRatedIds.has(song.release.id)}
-                  isInstinct={isInstinct}
                   ratingStep={ratingStep}
                   onAdd={() => onAdd(song.release)}
                   onRate={(score) => onRate(song.release, score)}
@@ -470,15 +461,13 @@ function SearchResults({
 function Discovery({
   ratedIds,
   sessionRatedIds,
-  isInstinct,
   onAdd,
   onRate,
 }: {
   ratedIds: Set<string>;
   sessionRatedIds: Set<string>;
-  isInstinct: boolean;
   onAdd: (release: SJRelease) => void;
-  onRate: (release: SJRelease, score: number) => void;
+  onRate: (release: SJRelease, score: number | null) => void;
 }) {
   const { t } = useLanguage();
   const { userId, ready, profile } = useSession();
@@ -676,7 +665,6 @@ function Discovery({
                   release={release}
                   rated={ratedIds.has(release.id)}
                   sessionRated={sessionRatedIds.has(release.id)}
-                  isInstinct={isInstinct}
                   ratingStep={ratingStep}
                   onAdd={() => onAdd(release)}
                   onRate={(score) => onRate(release, score)}
@@ -704,7 +692,6 @@ function AlbumCard({
   release,
   rated,
   sessionRated,
-  isInstinct,
   ratingStep = 0.5,
   onAdd,
   onRate,
@@ -712,10 +699,9 @@ function AlbumCard({
   release: SJRelease;
   rated: boolean;
   sessionRated: boolean;
-  isInstinct: boolean;
   ratingStep?: number;
   onAdd: () => void;
-  onRate: (score: number) => void;
+  onRate: (score: number | null) => void;
 }) {
   const { t } = useLanguage();
   const showCheck = sessionRated;
@@ -743,24 +729,16 @@ function AlbumCard({
             <Check size={12} strokeWidth={3} className="text-white" />
           </span>
         )}
-        {showAdd &&
-          (isInstinct ? (
-            <InstinctAddButton
-              onOpen={onAdd}
-              ariaLabel={`${t('sj.search.add')} ${release.title}`}
-              size={30}
-              className="absolute bottom-2 right-2 opacity-90 group-hover:opacity-100 transition"
-            />
-          ) : (
-            <FlowerRateControl
-              ariaLabel={`${t('sj.search.add')} ${release.title}`}
-              onRate={onRate}
-              onRequestPrecise={onAdd}
-              size={30}
-              className="absolute bottom-2 right-2 opacity-90 group-hover:opacity-100 transition"
-              ratingStep={ratingStep}
-            />
-          ))}
+        {showAdd && (
+          <FlowerRateControl
+            ariaLabel={`${t('sj.search.add')} ${release.title}`}
+            onRate={onRate}
+            onRequestPrecise={onAdd}
+            size={30}
+            className="absolute bottom-2 right-2 opacity-90 group-hover:opacity-100 transition"
+            ratingStep={ratingStep}
+          />
+        )}
       </AlbumPeek>
       <Link href={`/album/${release.id}`} className="block mt-1.5">
         <p className="text-[13px] font-semibold text-ink truncate group-hover:underline">
@@ -781,7 +759,6 @@ function SongRow({
   song,
   rated,
   sessionRated,
-  isInstinct,
   ratingStep = 0.5,
   onAdd,
   onRate,
@@ -789,14 +766,32 @@ function SongRow({
   song: SongResult;
   rated: boolean;
   sessionRated: boolean;
-  isInstinct: boolean;
   ratingStep?: number;
   onAdd: () => void;
-  onRate: (score: number) => void;
+  onRate: (score: number | null) => void;
 }) {
   const { t } = useLanguage();
+  // Right-click parity with album cards (whose menu rides on AlbumPeek).
+  const { onContextMenu, menu } = useContextMenu([
+    {
+      key: 'open-new-tab',
+      label: t('sj.context.openNewTab'),
+      icon: <ExternalLink size={15} />,
+      onSelect: () => openInNewTab(`/song/${song.id}?rg=${song.release.id}`),
+    },
+    {
+      key: 'rate',
+      label: t('sj.context.rate'),
+      icon: <FlowerGlyph size={14} src="/icon-flower.svg" />,
+      onSelect: onAdd,
+    },
+  ]);
   return (
-    <li className="flex items-center gap-3 px-3.5 py-2.5 hover:bg-page/60 transition group">
+    <li
+      onContextMenu={onContextMenu}
+      className="flex items-center gap-3 px-3.5 py-2.5 hover:bg-page/60 transition group"
+    >
+      {menu}
       <Link
         href={`/song/${song.id}?rg=${song.release.id}`}
         className="flex items-center gap-3 min-w-0 flex-1"
@@ -819,57 +814,15 @@ function SongRow({
           <Check size={12} strokeWidth={3} className="text-white" />
         </span>
       ) : !rated ? (
-        isInstinct ? (
-          <InstinctAddButton
-            onOpen={onAdd}
-            ariaLabel={`${t('sj.search.add')} ${song.title}`}
-            size={30}
-            className="shrink-0 !bg-accent/[0.12] !shadow-none"
-          />
-        ) : (
-          <FlowerRateControl
-            ariaLabel={`${t('sj.search.add')} ${song.title}`}
-            onRate={onRate}
-            onRequestPrecise={onAdd}
-            size={30}
-            className="shrink-0 !bg-accent/[0.12] !shadow-none"
-            ratingStep={ratingStep}
-          />
-        )
+        <FlowerRateControl
+          ariaLabel={`${t('sj.search.add')} ${song.title}`}
+          onRate={onRate}
+          onRequestPrecise={onAdd}
+          size={30}
+          className="shrink-0 !bg-accent/[0.12] !shadow-none"
+          ratingStep={ratingStep}
+        />
       ) : null}
     </li>
-  );
-}
-
-/**
- * Instinct-mode counterpart to the drag flower: a plus that opens the pairwise
- * sheet (no quick score, no drag). Session-rated cards show a check elsewhere,
- * so this only ever renders the plus. Matches AlbumRateButton's Instinct button.
- */
-function InstinctAddButton({
-  onOpen,
-  ariaLabel,
-  size,
-  className = '',
-}: {
-  onOpen: () => void;
-  ariaLabel: string;
-  size: number;
-  className?: string;
-}) {
-  // Native-listener ref so the click never reaches a wrapping <Link> or the top
-  // progress bar (see useNavSafeClick).
-  const ref = useNavSafeClick<HTMLButtonElement>(onOpen);
-  return (
-    <button
-      ref={ref}
-      type="button"
-      aria-label={ariaLabel}
-      onPointerDown={(e) => e.stopPropagation()}
-      className={`grid place-items-center rounded-full shadow bg-white text-accent transition-transform hover:scale-105 active:scale-95 ${className}`}
-      style={{ width: size, height: size }}
-    >
-      <Plus size={Math.round(size * 0.52)} strokeWidth={3} />
-    </button>
   );
 }

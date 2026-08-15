@@ -121,20 +121,38 @@ final class MixLibraryViewModel {
     var mixes: [Mix] = []
     var itemCounts: [UUID: Int] = [:]
     var isLoading = true
+    // True only when the fetch itself failed (timeout/network) -- kept distinct
+    // from mixes.isEmpty because every account has a default "Listen Later" mix
+    // (server-side trigger, see 20260620000001_mixes.sql), so a genuinely empty
+    // result should never happen. Without this, a transient failure silently
+    // masquerading as "zero mixes" showed the wrong empty state permanently
+    // (hasLoaded latched true, so nothing ever retried).
+    var loadFailed = false
     private var hasLoaded = false
 
-    func load(userId: UUID) async {
-        guard !hasLoaded else { return }
-        hasLoaded = true
-        isLoading = true
-        let loaded: [Mix] = (try? await supabase
+    private func fetchMixes(userId: UUID) async -> [Mix]? {
+        try? await supabase
             .from("mixes")
             .select("*")
             .eq("user_id", value: userId)
             .order("is_default", ascending: false)
             .order("created_at", ascending: true)
             .execute()
-            .value) ?? []
+            .value
+    }
+
+    func load(userId: UUID) async {
+        guard !hasLoaded else { return }
+        isLoading = true
+        loadFailed = false
+        var loaded = await fetchMixes(userId: userId)
+        if loaded == nil { loaded = await fetchMixes(userId: userId) }  // one retry
+        guard let loaded else {
+            loadFailed = true
+            isLoading = false
+            return
+        }
+        hasLoaded = true
         mixes = loaded
 
         struct CountRow: Decodable {
@@ -182,6 +200,8 @@ struct MixLibraryView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity)
                     .padding(.top, 60)
+            } else if viewModel.loadFailed {
+                failedState
             } else if viewModel.mixes.isEmpty {
                 emptyState
             } else {
@@ -195,6 +215,25 @@ struct MixLibraryView: View {
         .onReceive(NotificationCenter.default.publisher(for: .mixLibraryChanged)) { _ in
             Task { await viewModel.reload(userId: userId) }
         }
+    }
+
+    // Every account has a default "Listen Later" mix, so mixes never
+    // genuinely comes back empty -- a fetch failure gets its own state
+    // (with retry) instead of falling into "No mixes yet".
+    private var failedState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "wifi.slash")
+                .font(.system(size: 36))
+                .foregroundStyle(Color.sjBorder)
+            Text("Couldn't load your mixes.")
+                .font(.system(size: 15))
+                .foregroundStyle(Color.sjMuted)
+            Button("Retry") { Task { await viewModel.reload(userId: userId) } }
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color.sjAmber)
+        }
+        .frame(maxWidth: .infinity, alignment: .top)
+        .padding(.top, 24)
     }
 
     private var emptyState: some View {
@@ -318,6 +357,7 @@ struct MixDetailView: View {
     @State private var sharePosts: [MixShareSharerRow] = []
     @State private var showShareComposer = false
     @State private var showDeleteConfirm = false
+    @State private var pendingShare: PendingShare? = nil
 
     // Live-edited while the system EditButton() is active -- populated from
     // `mix` on entering edit mode, written back to `mix` + the DB on Done.
@@ -449,6 +489,11 @@ struct MixDetailView: View {
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
+        .sheet(item: $pendingShare) { pending in
+            SharePreviewSheet(pending: pending)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
     }
 
     private var emptyStateRow: some View {
@@ -548,17 +593,27 @@ struct MixDetailView: View {
                 }
                 .buttonStyle(.plain)
 
-                if mix.isPublic {
-                    Button { showShareComposer = true } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "square.and.arrow.up")
-                                .foregroundStyle(Color.sjBlue)
-                            Text("Share")
-                                .foregroundStyle(Color.sjBlue)
+                Menu {
+                    // Sharing to the in-app feed requires the mix to be public (it'd
+                    // otherwise leak a private mix's contents); the Instagram export is
+                    // just your own external image, so it's available regardless.
+                    if mix.isPublic {
+                        Button { showShareComposer = true } label: {
+                            Label("Share to Feed", systemImage: "person.2")
                         }
                     }
-                    .buttonStyle(.plain)
+                    Button { Task { await prepareShare() } } label: {
+                        Label("Share to Instagram", systemImage: "camera")
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "square.and.arrow.up")
+                            .foregroundStyle(Color.sjBlue)
+                        Text("Share")
+                            .foregroundStyle(Color.sjBlue)
+                    }
                 }
+                .buttonStyle(.plain)
 
                 if isOwnMix, !mix.isDefault {
                     Button { showDeleteConfirm = true } label: {
@@ -736,6 +791,36 @@ struct MixDetailView: View {
         _ = try? await supabase.from("mixes").delete().eq("id", value: mix.id).execute()
         NotificationCenter.default.post(name: .mixLibraryChanged, object: nil)
         dismiss()
+    }
+
+    /// Mirrors AlbumDetailView's own `prepareShare` -- a mix has no single score,
+    /// so that field is always nil, and up to 4 covers (album ratings first, then
+    /// songs) become the card's stacked collage instead of one square cover.
+    private func prepareShare() async {
+        let username = await {
+            guard let userId = supabase.auth.currentUser?.id else { return "someone" }
+            struct ProfileRow: Decodable { let username: String? }
+            let profile: ProfileRow? = try? await supabase
+                .from("profiles").select("username")
+                .eq("id", value: userId).single().execute().value
+            return profile?.username ?? "someone"
+        }()
+
+        let coverUrls = (items.map(\.releases.coverUrl) + songItems.map(\.releaseGroups.coverUrl))
+            .compactMap { $0 }
+            .prefix(4)
+            .compactMap { URL(string: $0) }
+        let coverImages = await InstagramShare.downloadImages(from: Array(coverUrls))
+
+        let itemCount = items.count + songItems.count
+        pendingShare = PendingShare(
+            username: username,
+            coverImages: coverImages,
+            title: mix.name,
+            subtitle: "Mix · \(itemCount) item\(itemCount == 1 ? "" : "s")",
+            score: nil,
+            reviewText: nil
+        )
     }
 
     private func deleteItems(at offsets: IndexSet) {
@@ -1003,6 +1088,7 @@ struct MixPickerView: View {
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
+                    .sensoryFeedback(.selection, trigger: selectedIds)
                 }
             }
             .background(Color.sjCream.ignoresSafeArea())
@@ -1152,6 +1238,7 @@ struct SongMixPickerView: View {
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
+                    .sensoryFeedback(.selection, trigger: selectedIds)
                 }
             }
             .background(Color.sjCream.ignoresSafeArea())

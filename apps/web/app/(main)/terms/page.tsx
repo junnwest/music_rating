@@ -10,7 +10,7 @@ const sections = [
   {
     icon: FileText,
     title: '2. Your Account',
-    body: 'You are responsible for maintaining the confidentiality of your login credentials and for all activity under your account. You must be at least 13 years old. You agree to provide accurate information when registering.',
+    body: 'You are responsible for maintaining the confidentiality of your login credentials and for all activity under your account. You must be at least 14 years old, or the minimum age of digital consent in your country if it is higher; users under that age require a legal guardian\'s consent. You agree to provide accurate information when registering and to keep it current.',
   },
   {
     icon: Music,
@@ -28,28 +28,33 @@ const sections = [
     body: 'Music metadata, cover art, and related information are sourced from a combination of third-party catalogs and databases, including MusicBrainz (released under a CC0 public-domain dedication), the Cover Art Archive, Deezer, Last.fm, and Apple/iTunes. We are not affiliated with, endorsed by, or sponsored by any of these services. Album artwork, artist images, and metadata remain the property of their respective rights holders and are used for informational, non-commercial cataloging purposes.',
   },
   {
+    icon: Music,
+    title: '6. Connected Services',
+    body: 'You may choose to connect third-party services such as Spotify to import listening data and personalize your experience. Your use of those services remains governed by their own terms and privacy policies, and you are responsible for complying with them. You can disconnect a service at any time; doing so stops future imports and, on request, removes the imported data associated with your account.',
+  },
+  {
     icon: AlertTriangle,
-    title: '6. Disclaimers & Liability',
-    body: 'sillajuku is provided "as is" without warranties. We do not guarantee uninterrupted service. Ratings and reviews represent individual user opinions, not ours. We are not liable for indirect, incidental, or consequential damages.',
+    title: '7. Disclaimers & Liability',
+    body: 'sillajuku is provided "as is" without warranties. We do not guarantee uninterrupted service. Ratings and reviews represent individual user opinions, not ours. To the fullest extent permitted by law, we are not liable for indirect, incidental, or consequential damages.',
   },
   {
     icon: FileText,
-    title: '7. Termination',
+    title: '8. Termination',
     body: 'We reserve the right to suspend or terminate accounts that violate these terms. You may delete your account at any time from Settings.',
   },
   {
     icon: AlertCircle,
-    title: '8. Copyright Complaints (DMCA)',
+    title: '9. Copyright Complaints (DMCA)',
     body: 'If you believe content on sillajuku infringes your copyright, send a written notice to admin@sillajuku.com including: (1) a description of the copyrighted work you claim is infringed; (2) the specific URL or location of the material on sillajuku; (3) your contact information (name, address, phone, email); (4) a statement that you have a good-faith belief the use is not authorized by the copyright owner, its agent, or the law; (5) a statement, under penalty of perjury, that the notice is accurate and that you are authorized to act on the copyright owner’s behalf; and (6) your physical or electronic signature. We will review valid notices and remove or disable access to the identified material where appropriate. Accounts found to be repeat infringers may be terminated.',
   },
   {
     icon: FileText,
-    title: '9. Governing Law',
-    body: 'These Terms are governed by the laws of the Republic of Korea, without regard to conflict-of-law principles. Any dispute arising out of or relating to these Terms or your use of sillajuku will be subject to the exclusive jurisdiction of the courts of the Republic of Korea.',
+    title: '10. Governing Law',
+    body: 'These Terms are governed by the laws of the Republic of Korea, without regard to conflict-of-law principles. Any dispute arising out of or relating to these Terms or your use of sillajuku will be subject to the exclusive jurisdiction of the courts of the Republic of Korea. Nothing in these Terms deprives a consumer of the mandatory protections of the law of their country of residence.',
   },
   {
     icon: Mail,
-    title: '10. Contact',
+    title: '11. Contact',
     body: 'For legal questions, contact admin@sillajuku.com.',
   },
 ];
@@ -67,7 +72,7 @@ export default function TermsPage() {
             <FileText size={28} className="text-ink" strokeWidth={1.8} />
             <h1 className="text-[28px] md:text-[34px] font-extrabold text-ink tracking-tight">Terms of Service</h1>
           </div>
-          <p className="text-[13px] text-muted">Last updated: July 2026</p>
+          <p className="text-[13px] text-muted">Last updated: August 2026</p>
         </div>
       </div>
 

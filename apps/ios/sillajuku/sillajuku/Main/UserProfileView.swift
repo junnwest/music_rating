@@ -99,10 +99,8 @@ final class UserProfileViewModel {
         RatingStatsSnapshot.compute(ratings: statsAlbums, songRatings: statsSongs)
     }
 
-    // Instinct-mode reveal thresholds (elo score only shows once this
-    // person has rated >= 5 in that mode) must use THIS person's own
-    // catalog counts, not the viewer's -- separate from statsSnapshot since
-    // Catalog and Stats are independently-visible arrays.
+    // Separate from statsSnapshot since Catalog and Stats are
+    // independently-visible arrays.
     var catalogSnapshot: RatingStatsSnapshot {
         RatingStatsSnapshot.compute(ratings: catalogAlbums, songRatings: catalogSongs)
     }
@@ -150,12 +148,11 @@ final class UserProfileViewModel {
     private struct SongRatingRPCRow: Codable {
         let recordingId: UUID
         let score: Double?
-        let eloScore: Double?
         let trackTitle: String?
         let releaseGroups: ReleaseRef?
         enum CodingKeys: String, CodingKey {
             case recordingId = "recording_id", score
-            case eloScore = "elo_score", trackTitle = "track_title"
+            case trackTitle = "track_title"
             case releaseGroups = "release_groups"
         }
 
@@ -173,7 +170,7 @@ final class UserProfileViewModel {
             // design) and its List mode has no like/comment/date affordance for any item, so none
             // of these are ever actually read here. Placeholders are safe for now; add the real
             // columns to the RPC if this view ever needs song-post parity too.
-            return SongRatingRow(ratingId: UUID(), recordingId: recordingId, score: score, eloScore: eloScore,
+            return SongRatingRow(ratingId: UUID(), recordingId: recordingId, score: score,
                                   reviewText: nil, trackTitle: trackTitle, release: ref, createdAt: Date())
         }
     }
@@ -378,6 +375,11 @@ final class UserProfileViewModel {
                     .insert(Payload(userId: userId, ratingId: ratingId)).execute()
             }
         } catch { /* best-effort, matches ProfileViewModel's own toggleLike */ }
+    }
+
+    func notInterested(rating: UserRating) async {
+        catalogAlbums.removeAll { $0.id == rating.id }
+        await NotInterested.markAlbum(releaseGroupId: rating.releases.id)
     }
 }
 
@@ -589,6 +591,7 @@ struct UserProfileView: View {
         }
         .buttonStyle(.plain)
         .animation(.easeInOut(duration: 0.15), value: vm.isFollowing)
+        .sensoryFeedback(.impact(weight: .light), trigger: vm.isFollowing)
     }
 
     // MARK: Tab bar (mirrors ProfileView's own icon tab bar)
@@ -679,9 +682,7 @@ struct UserProfileView: View {
     }
 
     private func itemScore(_ item: ProfileRatedItem) -> Double {
-        if let s = item.score { return s }
-        if let e = item.eloScore { return eloToDisplayScore(e) }
-        return 0
+        item.score ?? 0
     }
 
     @ViewBuilder
@@ -771,8 +772,6 @@ struct UserProfileView: View {
                                 title: item.displayTitle,
                                 artistLine: item.artistLine,
                                 score: item.score,
-                                eloScore: item.eloScore,
-                                instinctCount: item.isSong ? vm.catalogSnapshot.instinctSongCount : vm.catalogSnapshot.instinctAlbumCount,
                                 isSong: item.isSong,
                                 releaseType: item.releaseType
                             )
@@ -800,11 +799,11 @@ struct UserProfileView: View {
                                     rating: rating,
                                     likesCount: vm.likeCounts[rating.id] ?? 0,
                                     commentsCount: vm.commentCounts[rating.id] ?? 0,
-                                    instinctAlbumCount: vm.catalogSnapshot.instinctAlbumCount,
                                     isLiked: vm.likedRatingIds.contains(rating.id),
                                     onLike: { await vm.toggleLike(ratingId: rating.id) },
                                     headerHandle: vm.profile?.handle ?? initialHandle,
-                                    headerVerified: vm.profile?.isVerified == true
+                                    headerVerified: vm.profile?.isVerified == true,
+                                    onNotInterested: { Task { await vm.notInterested(rating: rating) } }
                                 )
                                 .padding(.horizontal, 12)
                                 .padding(.top, 8)

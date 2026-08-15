@@ -2,20 +2,11 @@ import SwiftUI
 import Observation
 import Supabase
 
-// MARK: - Shared Elo helper (Instinct mode: converts Elo → 0–5 display score)
-
-// Not private -- UserProfileView.swift's itemScore(_:) also needs this now.
-func eloToDisplayScore(_ elo: Double) -> Double {
-    let raw = 5.0 / (1.0 + pow(10.0, (1500.0 - elo) / 250.0))
-    return (raw * 10).rounded() / 10.0
-}
-
 // MARK: - Models
 
 struct UserRating: Codable, Identifiable {
     let id: UUID
     let score: Double?
-    let eloScore: Double?
     let reviewText: String?
     let createdAt: Date
     let releases: ReleaseRef
@@ -23,7 +14,6 @@ struct UserRating: Codable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id, score
         case releases   = "release_groups"
-        case eloScore   = "elo_score"
         case reviewText = "review_text"
         case createdAt  = "created_at"
     }
@@ -36,7 +26,6 @@ struct SongRatingRow: Identifiable {
     let ratingId: UUID
     let recordingId: UUID
     let score: Double?
-    let eloScore: Double?
     let reviewText: String?
     let trackTitle: String?
     let release: ReleaseRef
@@ -66,25 +55,13 @@ struct ArtistCount: Identifiable {
 struct RatingStatsSnapshot {
     let albumCount: Int
     let songCount: Int
-    let instinctAlbumCount: Int
-    let manualRatingCount: Int
-    let instinctRatingCount: Int
-    let instinctSongCount: Int
     let totalRatings: Int
     let avgScore: Double
     let scoreDistribution: [ScoreBucket]
     let topArtists: [ArtistCount]
 
     static func compute(ratings: [UserRating], songRatings: [SongRatingRow]) -> RatingStatsSnapshot {
-        let instinctAlbumCount = ratings.filter { $0.eloScore != nil }.count
-        let manualRatingCount  = ratings.filter { $0.score != nil }.count
-        let instinctSongCount  = songRatings.filter { $0.eloScore != nil }.count
-
-        let albumScores: [Double] = ratings.compactMap { r in
-            if let s = r.score { return s }
-            if let e = r.eloScore, instinctAlbumCount >= 5 { return eloToDisplayScore(e) }
-            return nil
-        }
+        let albumScores: [Double] = ratings.compactMap(\.score)
         let songScores: [Double] = songRatings.compactMap(\.score)
         let allScores = albumScores + songScores
 
@@ -114,10 +91,6 @@ struct RatingStatsSnapshot {
         return RatingStatsSnapshot(
             albumCount: ratings.count,
             songCount: songRatings.count,
-            instinctAlbumCount: instinctAlbumCount,
-            manualRatingCount: manualRatingCount,
-            instinctRatingCount: instinctAlbumCount,
-            instinctSongCount: instinctSongCount,
             totalRatings: ratings.count + songRatings.count,
             avgScore: avgScore,
             scoreDistribution: scoreDistribution,
@@ -224,10 +197,6 @@ class ProfileViewModel {
     private var statsSnapshot: RatingStatsSnapshot {
         RatingStatsSnapshot.compute(ratings: ratings, songRatings: songRatings)
     }
-    var instinctAlbumCount: Int { statsSnapshot.instinctAlbumCount }
-    var manualRatingCount:  Int { statsSnapshot.manualRatingCount }
-    var instinctRatingCount: Int { statsSnapshot.instinctRatingCount }
-    var instinctSongCount:  Int { statsSnapshot.instinctSongCount }
     var totalRatings: Int { statsSnapshot.totalRatings }
     var avgScore: Double { statsSnapshot.avgScore }
     var scoreDistribution: [ScoreBucket] { statsSnapshot.scoreDistribution }
@@ -339,7 +308,7 @@ class ProfileViewModel {
     private func fetchAlbumRatings(userId: UUID) async -> [UserRating] {
         (try? await supabase
             .from("ratings")
-            .select("id, score, elo_score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native))")
+            .select("id, score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native))")
             .eq("user_id", value: userId)
             .order("created_at", ascending: false)
             .limit(60)
@@ -405,17 +374,11 @@ class ProfileViewModel {
             .value) ?? []
     }
 
-    // Song ratings — Step 1: recording_id + score/elo_score + recording title/artist.
-    // elo_score is read here too: Instinct-mode song ratings only get their
-    // manual `score` column backfilled once the user has rated 5+ songs
-    // (see InstinctTrackRatingViewModel.finalize()) — before that threshold,
-    // elo_score is the only place the rating actually lives.
     private func fetchSongRatings(userId: UUID) async -> [SongRatingRow] {
         struct TrackRatingNew: Codable {
             let id: UUID
             let recordingId: UUID
             let score: Double?
-            let eloScore: Double?
             let reviewText: String?
             let createdAt: Date
             let recordings: RecordingInfo
@@ -427,13 +390,13 @@ class ProfileViewModel {
             }
             enum CodingKeys: String, CodingKey {
                 case id, recordingId = "recording_id"; case score
-                case eloScore = "elo_score"; case reviewText = "review_text"
+                case reviewText = "review_text"
                 case createdAt = "created_at"; case recordings
             }
         }
         let rawSongs: [TrackRatingNew] = (try? await supabase
             .from("track_ratings")
-            .select("id, recording_id, score, elo_score, review_text, created_at, recordings(id, title, artist_display)")
+            .select("id, recording_id, score, review_text, created_at, recordings(id, title, artist_display)")
             .eq("user_id", value: userId)
             .order("created_at", ascending: false)
             .limit(60)
@@ -493,7 +456,6 @@ class ProfileViewModel {
                 ratingId:    r.id,
                 recordingId: r.recordingId,
                 score:       r.score,
-                eloScore:    r.eloScore,
                 reviewText:  r.reviewText,
                 trackTitle:  r.recordings.title,
                 release:     ref,
@@ -509,24 +471,28 @@ class ProfileViewModel {
             let mixShareId: UUID
             enum CodingKeys: String, CodingKey { case mixShareId = "mix_share_id" }
         }
-        if let rows: [IdRow] = try? await supabase
+        async let likesTask: [IdRow]? = try? await supabase
             .from("mix_share_likes").select("mix_share_id")
-            .in("mix_share_id", values: shareIds).execute().value {
+            .in("mix_share_id", values: shareIds).execute().value
+        async let commentsTask: [IdRow]? = try? await supabase
+            .from("mix_share_comments").select("mix_share_id")
+            .in("mix_share_id", values: shareIds).execute().value
+        async let myLikesTask: [IdRow]? = try? await supabase
+            .from("mix_share_likes").select("mix_share_id")
+            .eq("user_id", value: userId)
+            .in("mix_share_id", values: shareIds).execute().value
+
+        if let rows = await likesTask {
             var counts: [UUID: Int] = [:]
             for r in rows { counts[r.mixShareId, default: 0] += 1 }
             for (k, v) in counts { likeCounts[k] = v }
         }
-        if let rows: [IdRow] = try? await supabase
-            .from("mix_share_comments").select("mix_share_id")
-            .in("mix_share_id", values: shareIds).execute().value {
+        if let rows = await commentsTask {
             var counts: [UUID: Int] = [:]
             for r in rows { counts[r.mixShareId, default: 0] += 1 }
             for (k, v) in counts { commentCounts[k] = v }
         }
-        if let rows: [IdRow] = try? await supabase
-            .from("mix_share_likes").select("mix_share_id")
-            .eq("user_id", value: userId)
-            .in("mix_share_id", values: shareIds).execute().value {
+        if let rows = await myLikesTask {
             likedMixShareIds = Set(rows.map(\.mixShareId))
         }
     }
@@ -569,24 +535,28 @@ class ProfileViewModel {
             let trackRatingId: UUID
             enum CodingKeys: String, CodingKey { case trackRatingId = "track_rating_id" }
         }
-        if let rows: [IdRow] = try? await supabase
+        async let likesTask: [IdRow]? = try? await supabase
             .from("track_rating_likes").select("track_rating_id")
-            .in("track_rating_id", values: songRatingIds).execute().value {
+            .in("track_rating_id", values: songRatingIds).execute().value
+        async let commentsTask: [IdRow]? = try? await supabase
+            .from("track_rating_comments").select("track_rating_id")
+            .in("track_rating_id", values: songRatingIds).execute().value
+        async let myLikesTask: [IdRow]? = try? await supabase
+            .from("track_rating_likes").select("track_rating_id")
+            .eq("user_id", value: userId)
+            .in("track_rating_id", values: songRatingIds).execute().value
+
+        if let rows = await likesTask {
             var counts: [UUID: Int] = [:]
             for r in rows { counts[r.trackRatingId, default: 0] += 1 }
             for (k, v) in counts { likeCounts[k] = v }
         }
-        if let rows: [IdRow] = try? await supabase
-            .from("track_rating_comments").select("track_rating_id")
-            .in("track_rating_id", values: songRatingIds).execute().value {
+        if let rows = await commentsTask {
             var counts: [UUID: Int] = [:]
             for r in rows { counts[r.trackRatingId, default: 0] += 1 }
             for (k, v) in counts { commentCounts[k] = v }
         }
-        if let rows: [IdRow] = try? await supabase
-            .from("track_rating_likes").select("track_rating_id")
-            .eq("user_id", value: userId)
-            .in("track_rating_id", values: songRatingIds).execute().value {
+        if let rows = await myLikesTask {
             likedSongRatingIds = Set(rows.map(\.trackRatingId))
         }
     }
@@ -664,9 +634,6 @@ enum ProfileRatedItem: Identifiable {
     }
     var score: Double? {
         switch self { case .album(let r): return r.score; case .song(let r): return r.score }
-    }
-    var eloScore: Double? {
-        switch self { case .album(let r): return r.eloScore; case .song(let r): return r.eloScore }
     }
     var displayTitle: String {
         switch self {
@@ -1124,9 +1091,7 @@ struct ProfileView: View {
     }
 
     private func itemScore(_ item: ProfileRatedItem) -> Double {
-        if let s = item.score { return s }
-        if let e = item.eloScore { return eloToDisplayScore(e) }
-        return 0
+        item.score ?? 0
     }
 
     @ViewBuilder
@@ -1229,15 +1194,6 @@ struct ProfileView: View {
                                 title: item.displayTitle,
                                 artistLine: item.artistLine,
                                 score: item.score,
-                                eloScore: item.eloScore,
-                                // Total ratings of this type, not viewModel.instinctSongCount/
-                                // instinctAlbumCount (those only count rows that still carry an
-                                // elo_score) -- using the elo-only count undercounts as soon as
-                                // any manual-mode rating of the same type exists, since manual
-                                // ratings never carry elo_score, permanently stalling the reveal
-                                // for older Instinct-mode ratings even after the user has clearly
-                                // rated several more since.
-                                instinctCount: item.isSong ? viewModel.songRatings.count : viewModel.ratings.count,
                                 isSong: item.isSong,
                                 releaseType: item.releaseType
                             )
@@ -1311,7 +1267,6 @@ struct ProfileView: View {
     private func songCard(_ song: SongRatingRow) -> some View {
         ProfileSongPostCard(
             song: song,
-            totalSongRatingsCount: viewModel.songRatings.count,
             likesCount: viewModel.likeCounts[song.ratingId] ?? 0,
             commentsCount: viewModel.commentCounts[song.ratingId] ?? 0,
             isLiked: viewModel.likedSongRatingIds.contains(song.ratingId),
@@ -1335,9 +1290,6 @@ struct ProfileView: View {
             rating: rating,
             likesCount: viewModel.likeCounts[rating.id] ?? 0,
             commentsCount: viewModel.commentCounts[rating.id] ?? 0,
-            // Total album ratings, not viewModel.instinctAlbumCount -- see the matching comment
-            // on the List-mode RatingListRow call above for why the elo-only count undercounts.
-            instinctAlbumCount: viewModel.ratings.count,
             isLiked: viewModel.likedRatingIds.contains(rating.id),
             onLike: { await viewModel.toggleLike(ratingId: rating.id) },
             headerHandle: viewModel.profile?.username ?? "me",
@@ -1409,9 +1361,6 @@ struct RatingStatsView: View {
                     scoreHistogramSection
                     if !snapshot.topArtists.isEmpty {
                         topArtistsSection
-                    }
-                    if snapshot.instinctRatingCount > 0 || snapshot.manualRatingCount > 0 {
-                        ratingModeSection
                     }
                 }
                 .padding(.horizontal, 18)
@@ -1519,36 +1468,6 @@ struct RatingStatsView: View {
         }
     }
 
-    private var ratingModeSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            statSectionHeader("Rating Mode")
-            HStack(spacing: 10) {
-                if snapshot.instinctRatingCount > 0 {
-                    modePill(label: "Instinct", count: snapshot.instinctRatingCount)
-                }
-                if snapshot.manualRatingCount > 0 {
-                    modePill(label: "Manual", count: snapshot.manualRatingCount)
-                }
-            }
-        }
-    }
-
-    private func modePill(label: LocalizedStringKey, count: Int) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("\(count)")
-                .font(.system(size: 22, weight: .bold))
-                .foregroundStyle(Color.sjInk)
-            Text(label)
-                .font(.system(size: 11))
-                .foregroundStyle(Color.sjMuted)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(Color.sjBlue.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-    }
-
     private func statSectionHeader(_ title: LocalizedStringKey) -> some View {
         Text(title)
             .font(.system(size: 12, weight: .semibold))
@@ -1648,26 +1567,14 @@ struct RatingListRow: View {
     let title: String
     let artistLine: String
     let score: Double?
-    let eloScore: Double?
-    let instinctCount: Int
     var isSong: Bool = false
     var releaseType: String? = nil
 
-    // Score to display: manual score > elo-derived (only if threshold met) > nil
-    private var displayScore: Double? {
-        if let s = score { return s }
-        if let e = eloScore, instinctCount >= 5 { return eloToDisplayScore(e) }
-        return nil
-    }
+    private var displayScore: Double? { score }
 
     private var scoreText: String {
         guard let v = displayScore else { return "" }
         return v.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(v))" : String(format: "%.1f", v)
-    }
-
-    // Instinct rating that exists but hasn't hit the reveal threshold yet
-    private var pendingReveal: Bool {
-        score == nil && eloScore != nil && instinctCount < 5
     }
 
     var body: some View {
@@ -1717,16 +1624,6 @@ struct RatingListRow: View {
                 .padding(.horizontal, 8).padding(.vertical, 4)
                 .background(Color.sjBlue.opacity(0.1))
                 .clipShape(RoundedRectangle(cornerRadius: 6))
-            } else if pendingReveal {
-                VStack(alignment: .trailing, spacing: 2) {
-                    Image("icon-flower")
-                        .renderingMode(.template).resizable().scaledToFit()
-                        .frame(width: 11, height: 11).foregroundStyle(Color.sjMuted)
-                    Text(String(format: String(localized: "Rate %d more to reveal"), 5 - instinctCount))
-                        .font(.system(size: 10))
-                        .foregroundStyle(Color.sjMuted)
-                        .multilineTextAlignment(.trailing)
-                }
             } else {
                 Image("icon-flower")
                     .renderingMode(.template).resizable().scaledToFit()
@@ -2155,7 +2052,6 @@ struct ProfilePostCard: View {
     let rating: UserRating
     let likesCount: Int
     let commentsCount: Int
-    let instinctAlbumCount: Int
     let isLiked: Bool
     let onLike: () async -> Void
     // FeedCard-style header row (avatar + @handle + · + time). When set, the
@@ -2163,23 +2059,37 @@ struct ProfilePostCard: View {
     // like posts everywhere else (feed, album page).
     var headerHandle: String? = nil
     var headerVerified: Bool = false
+    // Only offered on someone else's post (UserProfileView) -- redundant on your
+    // own ratings, which are already excluded from Quick Add via the ratings table.
+    var onNotInterested: (() -> Void)? = nil
 
     @State private var showComments = false
     @State private var showLikers = false
+    @State private var didMarkNotInterested = false
 
-    private var displayScore: Double? {
-        if let s = rating.score { return s }
-        if let e = rating.eloScore, instinctAlbumCount >= 5 {
-            return eloToDisplayScore(e)
-        }
-        return nil
-    }
+    private var displayScore: Double? { rating.score }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let handle = headerHandle {
                 PostCardHeader(handle: handle, isVerified: headerVerified,
-                               createdAt: rating.createdAt)
+                               createdAt: rating.createdAt) {
+                    if let onNotInterested {
+                        Menu {
+                            Button {
+                                onNotInterested()
+                                didMarkNotInterested.toggle()
+                            } label: {
+                                Label("Not Interested", systemImage: "hand.thumbsdown")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(Color.sjMuted)
+                                .frame(width: 30, height: 30)
+                        }
+                    }
+                }
             }
 
             // Album row — tappable, scoped to just this row (not the whole
@@ -2237,14 +2147,17 @@ struct ProfilePostCard: View {
                     .buttonStyle(.plain)
                     .animation(.easeInOut(duration: 0.15), value: isLiked)
                     .accessibilityLabel(isLiked ? String(localized: "Unlike") : String(localized: "Like"))
+                    .sensoryFeedback(.impact(weight: .light), trigger: isLiked)
 
-                    Button { showLikers = true } label: {
-                        Text("\(likesCount)")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(isLiked ? .red : Color.sjMuted)
-                            .contentShape(Rectangle())
+                    if likesCount > 0 {
+                        Button { showLikers = true } label: {
+                            Text("\(likesCount)")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(isLiked ? .red : Color.sjMuted)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
                 HStack(spacing: 5) {
                     Button { showComments = true } label: {
@@ -2254,8 +2167,10 @@ struct ProfilePostCard: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel(String(localized: "View comments"))
 
-                    Text("\(commentsCount)")
-                        .font(.system(size: 14, weight: .medium)).foregroundStyle(Color.sjMuted)
+                    if commentsCount > 0 {
+                        Text("\(commentsCount)")
+                            .font(.system(size: 14, weight: .medium)).foregroundStyle(Color.sjMuted)
+                    }
                 }
                 Spacer()
                 if headerHandle == nil {
@@ -2279,20 +2194,18 @@ struct ProfilePostCard: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
+        .sensoryFeedback(.success, trigger: didMarkNotInterested)
     }
 }
 
 // Song-rating counterpart to ProfilePostCard -- full parity now (migration 20260713000001 added
 // track_ratings.review_text + the track_rating_likes/track_rating_comments tables song ratings
-// were previously missing entirely). totalSongRatingsCount gates the elo-derived score reveal the
-// same way ProfilePostCard does for albums, but counts ALL of the user's song ratings rather than
-// only the ones that still carry an elo_score -- using an elo-only count undercounts once a user
-// has any manual-mode song ratings mixed in (those never carry elo_score), which was stalling the
-// reveal for older Instinct-mode ratings even after the user had clearly rated several more since.
+// were previously missing entirely).
 /// Menu actions for rendering the current user's own song rating as a card on
 /// the song detail page. Songs have no share URL or mix membership anywhere in
 /// the app, so unlike the album card's menu this carries only edit/comment/delete.
 struct SongOwnRatingMenuActions {
+    let onShare: () -> Void
     let onEdit: () -> Void
     let onEditComment: () -> Void
     let onDelete: () -> Void
@@ -2300,7 +2213,6 @@ struct SongOwnRatingMenuActions {
 
 struct ProfileSongPostCard: View {
     let song: SongRatingRow
-    let totalSongRatingsCount: Int
     let likesCount: Int
     let commentsCount: Int
     let isLiked: Bool
@@ -2314,11 +2226,7 @@ struct ProfileSongPostCard: View {
     @State private var showComments = false
     @State private var showLikers = false
 
-    private var displayScore: Double? {
-        if let s = song.score { return s }
-        if let e = song.eloScore, totalSongRatingsCount >= 5 { return eloToDisplayScore(e) }
-        return nil
-    }
+    private var displayScore: Double? { song.score }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -2389,14 +2297,17 @@ struct ProfileSongPostCard: View {
                     .buttonStyle(.plain)
                     .animation(.easeInOut(duration: 0.15), value: isLiked)
                     .accessibilityLabel(isLiked ? String(localized: "Unlike") : String(localized: "Like"))
+                    .sensoryFeedback(.impact(weight: .light), trigger: isLiked)
 
-                    Button { showLikers = true } label: {
-                        Text("\(likesCount)")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(isLiked ? .red : Color.sjMuted)
-                            .contentShape(Rectangle())
+                    if likesCount > 0 {
+                        Button { showLikers = true } label: {
+                            Text("\(likesCount)")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(isLiked ? .red : Color.sjMuted)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
                 HStack(spacing: 5) {
                     Button { showComments = true } label: {
@@ -2406,8 +2317,10 @@ struct ProfileSongPostCard: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel(String(localized: "View comments"))
 
-                    Text("\(commentsCount)")
-                        .font(.system(size: 14, weight: .medium)).foregroundStyle(Color.sjMuted)
+                    if commentsCount > 0 {
+                        Text("\(commentsCount)")
+                            .font(.system(size: 14, weight: .medium)).foregroundStyle(Color.sjMuted)
+                    }
                 }
                 Spacer()
                 if headerHandle == nil {
@@ -2443,6 +2356,7 @@ struct ProfileSongPostCard: View {
 
     private func ownMenu(_ own: SongOwnRatingMenuActions) -> some View {
         Menu {
+            Button { own.onShare() } label: { Label("Share", systemImage: "square.and.arrow.up") }
             Button { own.onEdit() } label: { Label("Edit", systemImage: "square.and.pencil") }
             Button { own.onEditComment() } label: { Label("Edit Comment", systemImage: "bubble.right") }
             Divider()

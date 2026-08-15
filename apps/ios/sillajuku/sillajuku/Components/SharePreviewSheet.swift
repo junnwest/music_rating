@@ -2,15 +2,18 @@ import SwiftUI
 import PhotosUI
 import AVFoundation
 
-/// Everything the share card needs, already resolved (cover downloaded,
+/// Everything the share card needs, already resolved (cover(s) downloaded,
 /// username fetched) — built once by the caller, then handed to the preview
 /// sheet so it never has to do async work before the user can see something.
+/// `coverImages` is 1 image for an album/song rating, up to 4 for a mix
+/// collage. `score` is nil when sharing a bare album/mix rather than a
+/// rating of one -- the card simply omits the score badge.
 struct PendingShare: Identifiable {
     let username: String
-    let coverImage: UIImage?
+    let coverImages: [UIImage?]
     let title: String
-    let typeAndArtist: String
-    let score: Double
+    let subtitle: String
+    let score: Double?
     let reviewText: String?
 
     let id = UUID()
@@ -66,6 +69,17 @@ struct SharePreviewSheet: View {
     /// toggled by tapping the card in the preview, baked into the export.
     @State private var cardScheme: ColorScheme = .light
 
+    // Sticker placement -- drag to move, pinch to resize, double-tap to
+    // reset, mirroring how Instagram's own Story editor handles a sticker.
+    // Committed values (post-gesture); the live in-flight gesture deltas
+    // below are combined with these only for on-screen rendering, so the
+    // exported image (which reads these committed values directly) is never
+    // mid-gesture-stale.
+    @State private var stickerOffset: CGSize = .zero
+    @State private var stickerScale: CGFloat = 1.0
+    @GestureState private var stickerDragTranslation: CGSize = .zero
+    @GestureState private var stickerPinchDelta: CGFloat = 1.0
+
     /// The brand cream (#F8F8F5) the pre-carousel share flow always used —
     /// a fixed value, not the adaptive `Color.sjCream`, because the exported
     /// story must not depend on the phone's light/dark mode.
@@ -108,7 +122,7 @@ struct SharePreviewSheet: View {
             return .colors(top: UIColor(gradientTop), bottom: UIColor(gradientBottom))
         case .cover:
             if let blurredCover { return .image(blurredCover) }
-            if let cover = pending.coverImage { return .image(InstagramShare.blurredCoverBackdrop(from: cover)) }
+            if let cover = pending.coverImages.first ?? nil { return .image(InstagramShare.blurredCoverBackdrop(from: cover)) }
             return .colors(top: UIColor(Self.creamColor), bottom: UIColor(Self.creamColor))
         case .photo:
             switch pickedMedia {
@@ -119,15 +133,30 @@ struct SharePreviewSheet: View {
         }
     }
 
+    /// Fraction-of-canvas sticker offset for `composite`, derived from the
+    /// committed (post-gesture) on-screen drag -- not the live in-flight
+    /// gesture state, since export only ever happens via a button tap, when
+    /// no gesture is active anyway. Valid at any canvas size since it's a
+    /// fraction, not points.
+    private var stickerOffsetFraction: CGSize {
+        CGSize(width: stickerOffset.width / previewWidth, height: stickerOffset.height / previewHeight)
+    }
+
     /// What Save/More actually export: the full story composite for every
     /// background except video (which can't be flattened here — card only).
     private var exportImage: UIImage? {
         guard let renderedImage else { return nil }
         switch storyBackground {
         case .colors(let top, let bottom):
-            return InstagramShare.composite(sticker: renderedImage, over: InstagramShare.gradientImage(top: top, bottom: bottom))
+            return InstagramShare.composite(
+                sticker: renderedImage, over: InstagramShare.gradientImage(top: top, bottom: bottom),
+                stickerScale: stickerScale, stickerOffsetFraction: stickerOffsetFraction
+            )
         case .image(let image):
-            return InstagramShare.composite(sticker: renderedImage, over: image)
+            return InstagramShare.composite(
+                sticker: renderedImage, over: image,
+                stickerScale: stickerScale, stickerOffsetFraction: stickerOffsetFraction
+            )
         case .video:
             return renderedImage
         }
@@ -142,10 +171,14 @@ struct SharePreviewSheet: View {
             return InstagramShare.composite(
                 sticker: renderedImage,
                 over: InstagramShare.gradientImage(top: top, bottom: bottom, canvas: InstagramShare.postCanvas),
-                canvas: InstagramShare.postCanvas
+                canvas: InstagramShare.postCanvas,
+                stickerScale: stickerScale, stickerOffsetFraction: stickerOffsetFraction
             )
         case .image(let image):
-            return InstagramShare.composite(sticker: renderedImage, over: image, canvas: InstagramShare.postCanvas)
+            return InstagramShare.composite(
+                sticker: renderedImage, over: image, canvas: InstagramShare.postCanvas,
+                stickerScale: stickerScale, stickerOffsetFraction: stickerOffsetFraction
+            )
         case .video:
             return nil
         }
@@ -153,29 +186,12 @@ struct SharePreviewSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                ScrollView {
-                    VStack(spacing: 14) {
-                        backgroundCarousel
-                            .padding(.top, 8)
+            VStack(spacing: 12) {
+                Spacer(minLength: 0)
 
-                        // Custom dots + page title (the TabView's own index dots
-                        // would collide with the per-page control chips).
-                        VStack(spacing: 5) {
-                            HStack(spacing: 6) {
-                                ForEach(ShareBackgroundStyle.allCases) { style in
-                                    Circle()
-                                        .fill(style == backgroundStyle ? Color.sjInk : Color.sjBorder)
-                                        .frame(width: 6, height: 6)
-                                }
-                            }
-                            Text(backgroundStyle.title)
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(Color.sjMuted)
-                        }
-                    }
-                    .padding(.bottom, 12)
-                }
+                backgroundCarousel
+
+                Spacer(minLength: 0)
 
                 VStack(spacing: 10) {
                     if canShareToInstagram {
@@ -265,7 +281,7 @@ struct SharePreviewSheet: View {
             // The export-resolution blur is a one-time ~100ms of CoreImage
             // work — precompute off the main actor so neither the carousel
             // swipe nor the share tap hitches.
-            guard let cover = pending.coverImage else { return }
+            guard let cover = pending.coverImages.first ?? nil else { return }
             blurredCover = await Task.detached(priority: .userInitiated) {
                 InstagramShare.blurredCoverBackdrop(from: cover)
             }.value
@@ -292,9 +308,9 @@ struct SharePreviewSheet: View {
     private var shareCard: some View {
         ShareCardView(
             username: pending.username,
-            coverImage: pending.coverImage,
+            coverImages: pending.coverImages,
             title: pending.title,
-            typeAndArtist: pending.typeAndArtist,
+            subtitle: pending.subtitle,
             score: pending.score,
             reviewText: pending.reviewText
         )
@@ -304,9 +320,9 @@ struct SharePreviewSheet: View {
     private func renderSticker() {
         renderedImage = InstagramShare.renderStickerImage(
             username: pending.username,
-            coverImage: pending.coverImage,
+            coverImages: pending.coverImages,
             title: pending.title,
-            typeAndArtist: pending.typeAndArtist,
+            subtitle: pending.subtitle,
             score: pending.score,
             reviewText: pending.reviewText,
             colorScheme: cardScheme
@@ -315,9 +331,14 @@ struct SharePreviewSheet: View {
 
     // MARK: - Background carousel
 
-    // Sized so the full 9:16 frame + the dots/title row below it stay above
-    // the fold (no header hint anymore — the preview gets that space).
-    private let previewWidth: CGFloat = 248
+    // Much bigger than the original small thumbnail (closer to Instagram's
+    // own near-full-bleed Story editor), but capped rather than filling the
+    // full screen width: at full bleed the 9:16 canvas alone is taller than
+    // the `.large` sheet detent leaves room for once the nav bar, safe
+    // areas, and the action-button section below it are accounted for,
+    // which pushed those buttons off the bottom edge (confirmed live).
+    // 320pt keeps the whole sheet on one screen with no scrolling.
+    private var previewWidth: CGFloat { min(UIScreen.main.bounds.width - 60, 320) }
     private var previewHeight: CGFloat { previewWidth * 16 / 9 }
 
     private var backgroundCarousel: some View {
@@ -329,6 +350,59 @@ struct SharePreviewSheet: View {
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
         .frame(width: previewWidth, height: previewHeight)
+        .overlay(alignment: .top) {
+            // Custom dots + page title, Instagram-chrome style (small
+            // translucent pill floating over the canvas) -- the TabView's
+            // own index dots would collide with the per-page control chips
+            // docked at the bottom.
+            VStack(spacing: 4) {
+                HStack(spacing: 6) {
+                    ForEach(ShareBackgroundStyle.allCases) { style in
+                        Circle()
+                            .fill(style == backgroundStyle ? Color.white : Color.white.opacity(0.4))
+                            .frame(width: 6, height: 6)
+                    }
+                }
+                Text(backgroundStyle.title)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(.black.opacity(0.35), in: Capsule())
+            .padding(.top, 14)
+            .allowsHitTesting(false)
+        }
+    }
+
+    /// Drag to reposition the sticker; the live translation is added on top
+    /// of the committed offset only for rendering (`.updating`), then folded
+    /// into `stickerOffset` on release. Clamped so the sticker's center can
+    /// never leave the canvas -- easy to lose track of otherwise, since
+    /// there's no visible boundary once it's dragged near an edge.
+    private var stickerDragGesture: some Gesture {
+        DragGesture()
+            .updating($stickerDragTranslation) { value, state, _ in state = value.translation }
+            .onEnded { value in
+                let proposed = CGSize(
+                    width: stickerOffset.width + value.translation.width,
+                    height: stickerOffset.height + value.translation.height
+                )
+                stickerOffset = CGSize(
+                    width: min(max(proposed.width, -previewWidth * 0.5), previewWidth * 0.5),
+                    height: min(max(proposed.height, -previewHeight * 0.5), previewHeight * 0.5)
+                )
+            }
+    }
+
+    /// Pinch to resize, same 0.5–2.2× range `composite` and the preview both
+    /// respect, so what's on screen always matches what gets exported.
+    private var stickerPinchGesture: some Gesture {
+        MagnificationGesture()
+            .updating($stickerPinchDelta) { value, state, _ in state = value }
+            .onEnded { value in
+                stickerScale = min(max(stickerScale * value, 0.5), 2.2)
+            }
     }
 
     /// One 9:16 story mock — backdrop filling the frame, card centered at the
@@ -342,7 +416,7 @@ struct SharePreviewSheet: View {
             case .gradient:
                 LinearGradient(colors: [gradientTop, gradientBottom], startPoint: .top, endPoint: .bottom)
             case .cover:
-                if let cover = pending.coverImage {
+                if let cover = pending.coverImages.first ?? nil {
                     // SwiftUI-blur stand-in for the CoreImage export blur:
                     // sigma 60 at 1080px ≈ radius 12 at this preview width;
                     // the 1.15 upscale pushes the blur's faded edges outside
@@ -382,10 +456,26 @@ struct SharePreviewSheet: View {
         )
         .overlay {
             // ShareCardView lays out at its fixed natural width; scale it to
-            // the composite's 78%-of-canvas footprint. Tapping flips the
-            // card between its light and dark look.
+            // the composite's 78%-of-canvas footprint, times whatever the
+            // user has pinched it to. Drag to reposition (high-priority so it
+            // wins over the TabView's own page-swipe when the touch starts
+            // on the sticker itself -- swipes starting elsewhere on the
+            // canvas still page through backgrounds normally). Single tap
+            // flips the card's light/dark look; double tap resets position
+            // and size, since there's no other undo for a bad drag.
             shareCard
-                .scaleEffect(previewWidth * 0.78 / 320)
+                .scaleEffect(previewWidth * 0.78 / 320 * stickerScale * stickerPinchDelta)
+                .offset(
+                    x: stickerOffset.width + stickerDragTranslation.width,
+                    y: stickerOffset.height + stickerDragTranslation.height
+                )
+                .highPriorityGesture(SimultaneousGesture(stickerDragGesture, stickerPinchGesture))
+                .onTapGesture(count: 2) {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                        stickerOffset = .zero
+                        stickerScale = 1.0
+                    }
+                }
                 .onTapGesture {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         cardScheme = cardScheme == .light ? .dark : .light
@@ -393,8 +483,18 @@ struct SharePreviewSheet: View {
                 }
         }
         .overlay(alignment: .bottom) {
-            pageControls(style)
-                .padding(.bottom, 12)
+            VStack(spacing: 8) {
+                // Dragging/pinching a sticker isn't an obvious affordance in
+                // a share sheet the way it is inside Instagram's own editor
+                // (where users already expect it) -- a one-time hint until
+                // the user actually touches the card, then it's gone for
+                // good this session.
+                if stickerOffset == .zero, stickerScale == 1.0 {
+                    pageNote(String(localized: "Drag or pinch the card to adjust"))
+                }
+                pageControls(style)
+            }
+            .padding(.bottom, 12)
         }
         .overlay(alignment: .top) {
             // Photo-page-specific notes ride on the page itself — keeping

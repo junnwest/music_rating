@@ -15,8 +15,10 @@ import {
   Newspaper,
   List as ListIcon,
   Plus,
+  ExternalLink,
 } from 'lucide-react';
 import Modal from './Modal';
+import { useContextMenuFor, openInNewTab } from './ContextMenu';
 import Avatar from './Avatar';
 import { Skeleton, SkeletonLine, SkeletonRows } from './Loading';
 import ProfilePostCard from './ProfilePostCard';
@@ -25,7 +27,6 @@ import ProfileStats from './ProfileStats';
 import { useSession } from './SessionContext';
 import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
-import { eloToScore } from '../../lib/elo';
 import { displayName } from '../../lib/sj/display';
 import ProfileRatedList, {
   FULL_RANGE,
@@ -50,7 +51,6 @@ export interface ProfileRatingItem {
   coverUrl: string | null;
   releaseType: string | null;
   score: number | null;
-  eloScore: number | null;
   reviewText: string | null;
   createdAt: string | null;
   releaseTitle: string;
@@ -79,6 +79,10 @@ export default function ProfileView({ username }: { username?: string }) {
     avatarUrl: string | null;
   } | null>(null);
   const [items, setItems] = useState<ProfileRatingItem[]>([]);
+  // Exact ratings total for the header stat. `items` is a page (60 albums +
+  // 60 songs), so its length undercounts heavy raters — and disagreed with the
+  // Taste page's "rated" figure, which counts everything.
+  const [ratedTotal, setRatedTotal] = useState<number | null>(null);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
   const [isFollowing, setIsFollowing] = useState(false);
@@ -145,7 +149,7 @@ export default function ProfileView({ username }: { username?: string }) {
     // Album ratings
     const albumP = supabase
       .from('ratings')
-      .select(`id, score, elo_score, review_text, created_at, ${RG_EMBED_NATIVE}`)
+      .select(`id, score, review_text, created_at, ${RG_EMBED_NATIVE}`)
       .eq('user_id', uid)
       .order('created_at', { ascending: false })
       .limit(60);
@@ -155,7 +159,7 @@ export default function ProfileView({ username }: { username?: string }) {
       const { data: raw } = await supabase!
         .from('track_ratings')
         .select(
-          'id, recording_id, score, elo_score, review_text, created_at, recordings(id, title, artist_display)',
+          'id, recording_id, score, review_text, created_at, recordings(id, title, artist_display)',
         )
         .eq('user_id', uid)
         .order('created_at', { ascending: false })
@@ -187,7 +191,6 @@ export default function ProfileView({ username }: { username?: string }) {
           coverUrl: rg?.cover_url ?? null,
           releaseType: null,
           score: r.score,
-          eloScore: r.elo_score,
           reviewText: r.review_text,
           createdAt: r.created_at,
           releaseTitle: rg?.title ?? '',
@@ -196,10 +199,15 @@ export default function ProfileView({ username }: { username?: string }) {
       });
     })();
 
-    // Follow counts (+ my relation for other profiles)
+    // Follow counts + exact rating totals (+ my relation for other profiles)
     const countsP = Promise.all([
       supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', uid),
       supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', uid),
+      supabase.from('ratings').select('*', { count: 'exact', head: true }).eq('user_id', uid),
+      supabase
+        .from('track_ratings')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', uid),
       !isSelf && myId
         ? supabase
             .from('follows')
@@ -216,8 +224,11 @@ export default function ProfileView({ username }: { username?: string }) {
         : Promise.resolve({ data: null }),
     ]);
 
-    const [{ data: albumRows }, songItems, [followingRes, followerRes, relRes, blockRes]] =
-      await Promise.all([albumP, songP, countsP]);
+    const [
+      { data: albumRows },
+      songItems,
+      [followingRes, followerRes, albumTotalRes, songTotalRes, relRes, blockRes],
+    ] = await Promise.all([albumP, songP, countsP]);
 
     const albumItems: ProfileRatingItem[] = ((albumRows as any[] | null) ?? []).map((r) => {
       const rg = r.release_groups;
@@ -232,7 +243,6 @@ export default function ProfileView({ username }: { username?: string }) {
         coverUrl: rg?.cover_url ?? null,
         releaseType: rg?.release_group_type ?? null,
         score: r.score,
-        eloScore: r.elo_score,
         reviewText: r.review_text,
         createdAt: r.created_at,
         releaseTitle: rg?.title ?? '',
@@ -241,6 +251,10 @@ export default function ProfileView({ username }: { username?: string }) {
     });
 
     setItems([...albumItems, ...songItems]);
+    setRatedTotal(
+      ((albumTotalRes as any).count ?? albumItems.length) +
+        ((songTotalRes as any).count ?? songItems.length),
+    );
     setFollowingCount((followingRes as any).count ?? 0);
     setFollowerCount((followerRes as any).count ?? 0);
     setIsFollowing((((relRes as any).data as any[] | null) ?? []).length > 0);
@@ -319,15 +333,6 @@ export default function ProfileView({ username }: { username?: string }) {
     }
   }, [ready, isSelf, myId, load, router]);
 
-  const instinctAlbumCount = useMemo(
-    () => items.filter((i) => !i.isSong && i.eloScore != null).length,
-    [items],
-  );
-  const instinctSongCount = useMemo(
-    () => items.filter((i) => i.isSong && i.eloScore != null).length,
-    [items],
-  );
-
   /** Per-bucket totals, so the filter bar can hide buckets nobody has. */
   const kindCounts = useMemo(() => {
     const c: Record<KindFilter, number> = { all: items.length, albums: 0, eps: 0, singles: 0, songs: 0 };
@@ -397,6 +402,7 @@ export default function ProfileView({ username }: { username?: string }) {
   async function deleteRating(item: ProfileRatingItem) {
     if (!supabase || !myId) return;
     setItems((prev) => prev.filter((i) => i.key !== item.key));
+    setRatedTotal((n) => (n == null ? n : Math.max(0, n - 1)));
     if (item.isSong && item.recordingId) {
       await supabase
         .from('track_ratings')
@@ -468,7 +474,7 @@ export default function ProfileView({ username }: { username?: string }) {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-3xl px-4 md:px-6 py-7">
+      <div className="mx-auto max-w-5xl px-4 md:px-6 py-7">
         <div className="flex items-center gap-6">
           <Skeleton className="h-[76px] w-[76px] rounded-full bg-surface" />
           <div className="flex-1 grid grid-cols-3 gap-2">
@@ -507,7 +513,7 @@ export default function ProfileView({ username }: { username?: string }) {
       <div className="flex items-center gap-6">
         <Avatar url={display?.avatarUrl} size={76} />
         <div className="flex-1 flex items-center gap-2">
-          <StatCell value={items.length} label={t('sj.profile.ratedStat')} />
+          <StatCell value={ratedTotal ?? items.length} label={t('sj.profile.ratedStat')} />
           <button onClick={() => setFollowModal('following')} className="flex-1">
             <StatCell value={followingCount} label={t('sj.profile.following')} />
           </button>
@@ -639,7 +645,6 @@ export default function ProfileView({ username }: { username?: string }) {
                       <ProfileSongPostCard
                         key={item.key}
                         item={item}
-                        instinctSongCount={instinctSongCount}
                         likesCount={likeCounts[item.ratingId] ?? 0}
                         commentsCount={commentCounts[item.ratingId] ?? 0}
                         isLiked={likedIds.has(item.ratingId)}
@@ -650,7 +655,6 @@ export default function ProfileView({ username }: { username?: string }) {
                       <ProfilePostCard
                         key={item.key}
                         item={item}
-                        instinctAlbumCount={instinctAlbumCount}
                         likesCount={likeCounts[item.ratingId] ?? 0}
                         commentsCount={commentCounts[item.ratingId] ?? 0}
                         isLiked={likedIds.has(item.ratingId)}
@@ -663,8 +667,6 @@ export default function ProfileView({ username }: { username?: string }) {
               ) : (
                 <ProfileRatedList
                   items={filtered}
-                  instinctAlbumCount={instinctAlbumCount}
-                  instinctSongCount={instinctSongCount}
                   showScores={isSelf}
                   sortCol={sortCol}
                   sortDesc={sortDesc}
@@ -685,7 +687,7 @@ export default function ProfileView({ username }: { username?: string }) {
       {tab === 'lists' && targetId && <MixLibrary userId={targetId} isSelf={isSelf} />}
 
       {/* ── Stats tab ── */}
-      {tab === 'stats' && <ProfileStats items={items} instinctCount={instinctAlbumCount} />}
+      {tab === 'stats' && <ProfileStats items={items} />}
 
       {/* Follow list modal */}
       {followModal && targetId && (
@@ -799,10 +801,22 @@ function MixLibrary({ userId, isSelf }: { userId: string; isSelf: boolean }) {
     load();
   }
 
+  // Right-click on a mix row — same "open in new tab" the rated rows have.
+  const { onContextMenu: onMixContextMenu, menu: mixContextMenu } =
+    useContextMenuFor<MixRow>((mix) => [
+      {
+        key: 'open-new-tab',
+        label: t('sj.context.openNewTab'),
+        icon: <ExternalLink size={15} />,
+        onSelect: () => openInNewTab(`/mix/${mix.id}`),
+      },
+    ]);
+
   if (loading) return <SkeletonRows className="mt-4" count={4} />;
 
   return (
     <div className="mt-3">
+      {mixContextMenu}
       {isSelf && (
         <button
           onClick={() => setShowCreate(true)}
@@ -817,7 +831,7 @@ function MixLibrary({ userId, isSelf }: { userId: string; isSelf: boolean }) {
       ) : (
         <ul className="divide-y divide-divider">
           {mixes.map((mix) => (
-            <li key={mix.id}>
+            <li key={mix.id} onContextMenu={(e) => onMixContextMenu(e, mix)}>
               <Link
                 href={`/mix/${mix.id}`}
                 className="flex items-center gap-3.5 py-3 px-1 hover:bg-surface/60 rounded-lg transition"

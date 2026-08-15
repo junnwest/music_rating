@@ -14,7 +14,6 @@ import { Skeleton, SkeletonLine, SkeletonRows } from '../../../../components/sj/
 import { useSession } from '../../../../components/sj/SessionContext';
 import { supabase } from '../../../../lib/supabaseClient';
 import { useLanguage } from '../../../../lib/i18n';
-import { eloToScore } from '../../../../lib/elo';
 import {
   displayName,
   formatScore,
@@ -31,7 +30,6 @@ interface CommunityEntry {
   userId: string;
   releaseGroupId: string;
   score: number | null;
-  eloScore: number | null;
   createdAt: string;
   handle: string;
   username: string | null;
@@ -191,7 +189,7 @@ export default function ArtistPage() {
         // Community feed
         const { data: cf } = await supabase!
           .from('ratings')
-          .select('id, user_id, release_group_id, score, elo_score, created_at, profiles(username, display_name)')
+          .select('id, user_id, release_group_id, score, created_at, profiles(username, display_name)')
           .in('release_group_id', ids)
           .order('created_at', { ascending: false })
           .limit(60);
@@ -202,7 +200,6 @@ export default function ArtistPage() {
             userId: r.user_id,
             releaseGroupId: r.release_group_id,
             score: r.score,
-            eloScore: r.elo_score,
             createdAt: r.created_at,
             handle: r.profiles?.username ?? r.profiles?.display_name ?? 'someone',
             username: r.profiles?.username ?? null,
@@ -346,8 +343,7 @@ export default function ArtistPage() {
               <ul className="divide-y divide-divider">
                 {communityFeed.map((entry) => {
                   const release = releaseById[entry.releaseGroupId];
-                  const score =
-                    entry.score ?? (entry.eloScore != null ? eloToScore(entry.eloScore) : null);
+                  const score = entry.score;
                   return (
                     <li key={entry.id} className="flex items-center gap-2.5 py-2.5 px-1">
                       <Avatar url={null} size={36} />
