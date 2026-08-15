@@ -33,7 +33,6 @@ export default function PostPage() {
 
   const [item, setItem] = useState<ProfileRatingItem | null>(null);
   const [loading, setLoading] = useState(true);
-  const [instinctCount, setInstinctCount] = useState(0);
   const [likesCount, setLikesCount] = useState(0);
   const [commentsCount, setCommentsCount] = useState(0);
   const [isLiked, setIsLiked] = useState(false);
@@ -47,7 +46,7 @@ export default function PostPage() {
         const { data: raw } = await supabase!
           .from('track_ratings')
           .select(
-            'id, recording_id, score, elo_score, review_text, created_at, recordings(id, title, artist_display)',
+            'id, recording_id, score, review_text, created_at, recordings(id, title, artist_display)',
           )
           .eq('id', params.id)
           .maybeSingle();
@@ -80,16 +79,14 @@ export default function PostPage() {
           coverUrl: rg?.cover_url ?? null,
           releaseType: null,
           score: r.score,
-          eloScore: r.elo_score,
           reviewText: r.review_text,
           createdAt: r.created_at,
           releaseTitle: rg?.title ?? '',
           releaseArtist: rg?.artist_display ?? '',
         });
 
-        const [{ count: total }, { count: likes }, { count: comments }, { data: myLike }] =
+        const [{ count: likes }, { count: comments }, { data: myLike }] =
           await Promise.all([
-            supabase!.from('track_ratings').select('*', { count: 'exact', head: true }).eq('user_id', myId),
             supabase!
               .from('track_rating_likes')
               .select('*', { count: 'exact', head: true })
@@ -105,14 +102,13 @@ export default function PostPage() {
               .eq('track_rating_id', params.id),
           ]);
         if (cancelled) return;
-        setInstinctCount(total ?? 0);
         setLikesCount(likes ?? 0);
         setCommentsCount(comments ?? 0);
         setIsLiked(((myLike as any[] | null) ?? []).length > 0);
       } else {
         const { data: raw } = await supabase!
           .from('ratings')
-          .select(`id, score, elo_score, review_text, created_at, ${RG_EMBED_NATIVE}`)
+          .select(`id, score, review_text, created_at, ${RG_EMBED_NATIVE}`)
           .eq('id', params.id)
           .maybeSingle();
         if (cancelled) return;
@@ -134,16 +130,14 @@ export default function PostPage() {
           coverUrl: rg?.cover_url ?? null,
           releaseType: rg?.release_group_type ?? null,
           score: r.score,
-          eloScore: r.elo_score,
           reviewText: r.review_text,
           createdAt: r.created_at,
           releaseTitle: rg?.title ?? '',
           releaseArtist: rg?.artist_display ?? '',
         });
 
-        const [{ count: total }, { count: likes }, { count: comments }, { data: myLike }] =
+        const [{ count: likes }, { count: comments }, { data: myLike }] =
           await Promise.all([
-            supabase!.from('ratings').select('*', { count: 'exact', head: true }).eq('user_id', myId),
             supabase!.from('rating_likes').select('*', { count: 'exact', head: true }).eq('rating_id', params.id),
             supabase!
               .from('rating_comments')
@@ -152,7 +146,6 @@ export default function PostPage() {
             supabase!.from('rating_likes').select('rating_id').eq('user_id', myId).eq('rating_id', params.id),
           ]);
         if (cancelled) return;
-        setInstinctCount(total ?? 0);
         setLikesCount(likes ?? 0);
         setCommentsCount(comments ?? 0);
         setIsLiked(((myLike as any[] | null) ?? []).length > 0);
@@ -201,7 +194,6 @@ export default function PostPage() {
       ) : item.isSong ? (
         <ProfileSongPostCard
           item={item}
-          instinctSongCount={instinctCount}
           likesCount={likesCount}
           commentsCount={commentsCount}
           isLiked={isLiked}
@@ -211,7 +203,6 @@ export default function PostPage() {
       ) : (
         <ProfilePostCard
           item={item}
-          instinctAlbumCount={instinctCount}
           likesCount={likesCount}
           commentsCount={commentsCount}
           isLiked={isLiked}

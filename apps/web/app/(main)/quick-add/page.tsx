@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, Compass, ExternalLink, Heart, Plus, Check } from 'lucide-react';
+import { CheckCircle2, Compass, ExternalLink, Heart } from 'lucide-react';
 import Cover from '../../../components/sj/Cover';
 import CandidateRow from '../../../components/sj/CandidateRow';
 import FlowerRateControl from '../../../components/sj/FlowerRateControl';
@@ -11,8 +11,6 @@ import AlbumPeek from '../../../components/sj/AlbumPeek';
 import FlowerGlyph from '../../../components/sj/FlowerGlyph';
 import { useContextMenu, openInNewTab } from '../../../components/sj/ContextMenu';
 import ManualRateModal from '../../../components/sj/ManualRateModal';
-import InstinctModal from '../../../components/sj/InstinctModal';
-import { useNavSafeClick } from '../../../components/sj/useNavSafeClick';
 import Modal from '../../../components/sj/Modal';
 import { Skeleton, SkeletonLine, SkeletonRows } from '../../../components/sj/Loading';
 import { useSession } from '../../../components/sj/SessionContext';
@@ -112,10 +110,6 @@ export default function QuickAddPage() {
   const { t } = useLanguage();
   const { userId, ready, profile } = useSession();
   const { setRating } = useRatings();
-  // In Instinct mode there's no drag-to-score: covers show a plus that opens the
-  // pairwise flow, mirroring the rest of the app (AlbumRateButton). Reactive to
-  // the session profile, so flipping the mode in Settings swaps the buttons live.
-  const isInstinct = (profile?.rating_mode ?? 'manual') === 'instinct';
   const ratingStep = profile?.manual_rating_step ?? 0.5;
 
   const [seeds, setSeeds] = useState<string[] | null>(null);
@@ -128,11 +122,6 @@ export default function QuickAddPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [held, setHeld] = useState<Record<string, number>>({});
   const [target, setTarget] = useState<Target | null>(null);
-  // Instinct-mode rating: the subject whose pairwise sheet is open, and the set
-  // of ids ranked this session (so their plus turns into a check — no score is
-  // shown, matching the "hidden until 5" rule the rest of the app uses).
-  const [instinctTarget, setInstinctTarget] = useState<Target | null>(null);
-  const [ranked, setRanked] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Shelf | null>(null);
   // "Not interested" albums. The RPCs already exclude them, so this only covers
   // the ones dismissed during this session (and any environment where the
@@ -434,12 +423,7 @@ export default function QuickAddPage() {
     setDismissed((prev) => new Set(prev).add(id));
   }, []);
 
-  // Route a rate request to the mode's sheet: the pairwise Instinct flow, or the
-  // precise Manual modal. Both take the same Target.
-  const openRateTarget = useCallback(
-    (tg: Target) => (isInstinct ? setInstinctTarget(tg) : setTarget(tg)),
-    [isInstinct],
-  );
+  const openRateTarget = useCallback((tg: Target) => setTarget(tg), []);
 
   const preciseAlbum = useCallback(
     (c: AlbumCandidate) => {
@@ -502,9 +486,7 @@ export default function QuickAddPage() {
                   key={c.id}
                   candidate={c}
                   held={held[c.id]}
-                  isInstinct={isInstinct}
                   ratingStep={ratingStep}
-                  ranked={ranked.has(c.id)}
                   onRate={(score) => rateSong(c, score)}
                   onPrecise={() =>
                     openRateTarget({
@@ -562,9 +544,7 @@ export default function QuickAddPage() {
                   key={c.id}
                   candidate={c}
                   held={held[c.id]}
-                  isInstinct={isInstinct}
                   ratingStep={ratingStep}
-                  ranked={ranked.has(c.id)}
                   onRate={(score) => rateAlbum(c.id, score)}
                   onPrecise={() => preciseAlbum(c)}
                   onNotInterested={() => dismiss(c.id)}
@@ -593,9 +573,7 @@ export default function QuickAddPage() {
           fetchPage={(offset) => fetchShelf(expanded.kind, expanded.seed, offset, GRID_PAGE)}
           dismissed={dismissed}
           held={held}
-          isInstinct={isInstinct}
           ratingStep={ratingStep}
-          ranked={ranked}
           onRate={rateAlbum}
           onPrecise={preciseAlbum}
           onNotInterested={dismiss}
@@ -610,20 +588,6 @@ export default function QuickAddPage() {
           track={target.kind === 'song' ? { recordingId: target.recordingId, title: target.title } : null}
           existingScore={null}
           onSave={saveTarget}
-        />
-      )}
-
-      {instinctTarget && (
-        <InstinctModal
-          open
-          onClose={() => setInstinctTarget(null)}
-          release={instinctTarget.release}
-          track={
-            instinctTarget.kind === 'song'
-              ? { recordingId: instinctTarget.recordingId, title: instinctTarget.title }
-              : null
-          }
-          onRated={(id) => setRanked((prev) => new Set(prev).add(id))}
         />
       )}
     </div>
@@ -711,9 +675,7 @@ function SeeMoreModal({
   fetchPage,
   dismissed,
   held,
-  isInstinct,
   ratingStep = 0.5,
-  ranked,
   onRate,
   onPrecise,
   onNotInterested,
@@ -723,9 +685,7 @@ function SeeMoreModal({
   fetchPage: (offset: number) => Promise<AlbumCandidate[]>;
   dismissed: Set<string>;
   held: Record<string, number>;
-  isInstinct: boolean;
   ratingStep?: number;
-  ranked: Set<string>;
   onRate: (id: string, score: number | null) => void;
   onPrecise: (c: AlbumCandidate) => void;
   onNotInterested: (id: string) => void;
@@ -785,9 +745,7 @@ function SeeMoreModal({
                   candidate={c}
                   held={held[c.id]}
                   fluid
-                  isInstinct={isInstinct}
                   ratingStep={ratingStep}
-                  ranked={ranked.has(c.id)}
                   onRate={(score) => onRate(c.id, score)}
                   onPrecise={() => onPrecise(c)}
                   onNotInterested={() => onNotInterested(c.id)}
@@ -823,9 +781,7 @@ function CandidateCard({
   candidate: c,
   held,
   fluid,
-  isInstinct,
   ratingStep = 0.5,
-  ranked,
   onRate,
   onPrecise,
   onNotInterested,
@@ -833,9 +789,7 @@ function CandidateCard({
   candidate: AlbumCandidate;
   held?: number;
   fluid?: boolean;
-  isInstinct: boolean;
   ratingStep?: number;
-  ranked: boolean;
   onRate: (score: number | null) => void;
   onPrecise: () => void;
   onNotInterested: () => void;
@@ -872,27 +826,16 @@ function CandidateCard({
           className="absolute bottom-1.5 left-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
         />
         {/* The rate gauge is always visible — it's the point of the page, not a
-            hover affordance. Instinct mode swaps the drag flower for a plus that
-            opens the pairwise sheet (no quick score here). */}
-        {isInstinct ? (
-          <InstinctAddButton
-            ranked={ranked}
-            onOpen={onPrecise}
-            ariaLabel={`Rate ${title}`}
-            size={30}
-            className="absolute bottom-1.5 right-1.5"
-          />
-        ) : (
-          <FlowerRateControl
-            ariaLabel={`Rate ${title}`}
-            onRate={onRate}
-            onRequestPrecise={onPrecise}
-            currentScore={held ?? null}
-            size={30}
-            className="absolute bottom-1.5 right-1.5"
-            ratingStep={ratingStep}
-          />
-        )}
+            hover affordance. */}
+        <FlowerRateControl
+          ariaLabel={`Rate ${title}`}
+          onRate={onRate}
+          onRequestPrecise={onPrecise}
+          currentScore={held ?? null}
+          size={30}
+          className="absolute bottom-1.5 right-1.5"
+          ratingStep={ratingStep}
+        />
       </AlbumPeek>
       <p className="mt-1.5 text-[12.5px] font-semibold text-ink truncate">{title}</p>
       <p className="text-[11.5px] text-muted truncate">{c.artist_display}</p>
@@ -903,17 +846,13 @@ function CandidateCard({
 function SongRow({
   candidate: c,
   held,
-  isInstinct,
   ratingStep = 0.5,
-  ranked,
   onRate,
   onPrecise,
 }: {
   candidate: SongCandidate;
   held?: number;
-  isInstinct: boolean;
   ratingStep?: number;
-  ranked: boolean;
   onRate: (score: number | null) => void;
   onPrecise: () => void;
 }) {
@@ -945,67 +884,16 @@ function SongRow({
           {c.album_title} · {c.artist_display}
         </p>
       </div>
-      {/* Manual: drag control (a rated row shows its score, re-ratable).
-          Instinct: a plus that opens the pairwise sheet. */}
-      {isInstinct ? (
-        <InstinctAddButton
-          ranked={ranked}
-          onOpen={onPrecise}
-          ariaLabel={`Rate ${c.title}`}
-          size={34}
-          className="shrink-0"
-        />
-      ) : (
-        <FlowerRateControl
-          ariaLabel={`Rate ${c.title}`}
-          onRate={onRate}
-          onRequestPrecise={onPrecise}
-          currentScore={held ?? null}
-          size={34}
-          className="shrink-0"
-          ratingStep={ratingStep}
-        />
-      )}
+      <FlowerRateControl
+        ariaLabel={`Rate ${c.title}`}
+        onRate={onRate}
+        onRequestPrecise={onPrecise}
+        currentScore={held ?? null}
+        size={34}
+        className="shrink-0"
+        ratingStep={ratingStep}
+      />
     </li>
-  );
-}
-
-/**
- * Instinct-mode counterpart to the drag flower: a plus (→ check once ranked)
- * that opens the pairwise sheet. No quick score, no drag. Matches the button
- * AlbumRateButton renders in Instinct mode elsewhere in the app.
- */
-function InstinctAddButton({
-  ranked,
-  onOpen,
-  ariaLabel,
-  size,
-  className = '',
-}: {
-  ranked: boolean;
-  onOpen: () => void;
-  ariaLabel: string;
-  size: number;
-  className?: string;
-}) {
-  // Native-listener ref so the click never reaches a wrapping <Link> or the top
-  // progress bar (see useNavSafeClick).
-  const ref = useNavSafeClick<HTMLButtonElement>(onOpen);
-  return (
-    <button
-      ref={ref}
-      type="button"
-      aria-label={ariaLabel}
-      onPointerDown={(e) => e.stopPropagation()}
-      className={`grid place-items-center rounded-full shadow bg-white text-accent transition-transform hover:scale-105 active:scale-95 ${className}`}
-      style={{ width: size, height: size }}
-    >
-      {ranked ? (
-        <Check size={Math.round(size * 0.5)} strokeWidth={3} />
-      ) : (
-        <Plus size={Math.round(size * 0.52)} strokeWidth={3} />
-      )}
-    </button>
   );
 }
 

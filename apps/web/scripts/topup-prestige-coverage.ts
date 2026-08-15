@@ -70,14 +70,14 @@ async function main() {
   const bucketOf = (r: { primary_artist_id: string }) => { const l = lang.get(r.primary_artist_id); return l === 'ko' ? 'ko' : l === 'ja' ? 'ja' : 'western'; };
 
   // current per-album score-rating counts + existing (user, rg) pairs
-  const ratings = await pageAll<{ user_id: string; release_group_id: string; score: number | null; elo_score: number | null }>((f) =>
-    db.from('ratings').select('user_id, release_group_id, score, elo_score'));
+  const ratings = await pageAll<{ user_id: string; release_group_id: string; score: number | null }>((f) =>
+    db.from('ratings').select('user_id, release_group_id, score'));
   const scoreCount = new Map<string, number>();       // score-not-null count per rg (coverage metric)
   const ratedPair = new Set<string>();                // user|rg (any rating)
-  let events = 0;                                     // score OR elo not null
+  let events = 0;
   for (const r of ratings) {
     if (r.score != null) scoreCount.set(r.release_group_id, (scoreCount.get(r.release_group_id) ?? 0) + 1);
-    if (r.score != null || r.elo_score != null) events++;
+    if (r.score != null) events++;
     ratedPair.add(r.user_id + '|' + r.release_group_id);
   }
   const covered0 = prestige.filter(r => (scoreCount.get(r.id) ?? 0) >= 3).length;
@@ -110,7 +110,7 @@ async function main() {
       const start = new Date(bot.created_at).getTime(), span = Math.max(1, Date.now() - start);
       rows.push({
         user_id: bot.user_id, release_group_id: rg.id, score: sc,
-        review_text: reviewFor(p, sc, rand), status: 'Listened', elo_games: 0,
+        review_text: reviewFor(p, sc, rand), status: 'Listened',
         created_at: new Date(start + span * Math.pow(rand(), 0.6)).toISOString(),
       });
       need--; addedEvents++; addedRows++;

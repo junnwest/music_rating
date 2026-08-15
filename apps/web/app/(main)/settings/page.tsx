@@ -8,8 +8,6 @@ import {
   Sun,
   Moon,
   Monitor,
-  Star,
-  ArrowLeftRight,
   ExternalLink,
 } from 'lucide-react';
 import Modal from '../../../components/sj/Modal';
@@ -92,7 +90,6 @@ export default function SettingsPage() {
     return <div className="py-32 text-center text-muted text-[13px]">…</div>;
   }
 
-  const ratingMode = profile.rating_mode ?? 'manual';
   const ratingStep = profile.manual_rating_step ?? 0.5;
 
   return (
@@ -158,37 +155,16 @@ export default function SettingsPage() {
               onChange={(v) => setLang(v as 'en' | 'ko')}
             />
           </Field>
-          <Field label={t('sj.settings.ratingMode')}>
+          <Field label={t('sj.settings.ratingPrecision')}>
             <Segmented
               options={[
-                {
-                  value: 'manual',
-                  label: t('sj.onboarding.modeManual'),
-                  icon: <Star size={13} />,
-                },
-                {
-                  value: 'instinct',
-                  label: t('sj.onboarding.modeInstinct'),
-                  icon: <ArrowLeftRight size={13} />,
-                },
+                { value: '0.5', label: t('sj.settings.halfStar') },
+                { value: '0.1', label: t('sj.settings.tenth') },
               ]}
-              value={ratingMode}
-              onChange={(v) => patch({ rating_mode: v })}
+              value={String(ratingStep)}
+              onChange={(v) => patch({ manual_rating_step: parseFloat(v) })}
             />
-            <p className="mt-1.5 text-[11.5px] text-muted">{t('sj.settings.ratingModeNote')}</p>
           </Field>
-          {ratingMode === 'manual' && (
-            <Field label={t('sj.settings.ratingPrecision')}>
-              <Segmented
-                options={[
-                  { value: '0.5', label: t('sj.settings.halfStar') },
-                  { value: '0.1', label: t('sj.settings.tenth') },
-                ]}
-                value={String(ratingStep)}
-                onChange={(v) => patch({ manual_rating_step: parseFloat(v) })}
-              />
-            </Field>
-          )}
         </div>
       </Section>
 

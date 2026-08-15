@@ -3,7 +3,6 @@ import { createServerClient } from '../../../../lib/supabaseServer';
 import { getAuthedUserId } from '../../../../lib/authGuard';
 import { rateLimit } from '../../../../lib/rateLimit';
 import { cacheGet, cacheSet } from '../../../../lib/cache';
-import { eloToScore } from '../../../../lib/elo';
 import { preferHangulName } from '../../../../lib/sj/display';
 import { cosine, displayGenre, genreVector } from '../../../../lib/taste/embeddings';
 import { sceneOf, type Scene } from '../../../../lib/taste/albumVector';
@@ -41,7 +40,6 @@ const GRAPH_ALBUMS = 400;
 
 interface RatingRow {
   score: number | null;
-  elo_score: number | null;
   created_at: string;
   release_groups: {
     id: string;
@@ -82,7 +80,7 @@ export async function GET(req: NextRequest) {
     supabase
       .from('ratings')
       .select(
-        'score, elo_score, created_at, release_groups(id, title, artist_display, cover_url, native_title, genres, first_release_date, prestige_score, artists!release_groups_primary_artist_id_fkey(name_native, country))',
+        'score, created_at, release_groups(id, title, artist_display, cover_url, native_title, genres, first_release_date, prestige_score, artists!release_groups_primary_artist_id_fkey(name_native, country))',
       )
       .eq('user_id', userId)
       .limit(500),
@@ -106,13 +104,12 @@ export async function GET(req: NextRequest) {
   const rows = ((ratingsRes.data as unknown as RatingRow[] | null) ?? []).filter(
     (r) => r.release_groups,
   );
-  const display = (r: RatingRow) =>
-    r.score ?? (r.elo_score != null ? eloToScore(r.elo_score) : null);
+  const display = (r: RatingRow) => r.score;
   const scored = rows.filter((r) => display(r) != null);
 
   // ── weights / clusters (+ keep the stored profile row in sync for iOS) ──
   const weights = weightsFromRatings(
-    rows.map((r) => ({ score: r.score, elo_score: r.elo_score, genres: r.release_groups!.genres })),
+    rows.map((r) => ({ score: r.score, genres: r.release_groups!.genres })),
   );
   const clusters = buildClusters(weights);
   const disliked = dislikedTags(weights);
@@ -125,7 +122,14 @@ export async function GET(req: NextRequest) {
     })),
     clusters,
   );
-  const { error: upsertErr } = await supabase.from('user_taste_profiles').upsert({
+  // Fired here, awaited later (alongside recPools below) instead of blocking immediately --
+  // nothing computed between here and the response depends on this write completing, it's a
+  // side-effect for other consumers (iOS reads user_taste_profiles directly elsewhere). Still
+  // awaited before the response is sent (not true fire-and-forget) since a Vercel serverless
+  // function isn't guaranteed to keep running once a response goes out -- this only removes it
+  // from the serial critical path, overlapping it with the CPU-bound work below and recPools'
+  // own network round-trip instead of sitting in between them.
+  const upsertPromise = supabase.from('user_taste_profiles').upsert({
     user_id: userId,
     genre_weights: weights,
     // Exact count, not rows.length — the row fetch is capped at 500 and writing
@@ -133,7 +137,6 @@ export async function GET(req: NextRequest) {
     rating_count: albumCountRes.count ?? rows.length,
     updated_at: new Date().toISOString(),
   });
-  if (upsertErr) console.error('[taste] profile upsert error:', upsertErr.message);
 
   // ── headline stats (means + population std devs) ──
   const scores = scored.map((r) => display(r)!);
@@ -288,22 +291,28 @@ export async function GET(req: NextRequest) {
   // One prestige pool per leading world, reused for that world and each of its
   // tags — the panel needs "a few recommendations in this genre", not a second
   // recommender. Already-rated albums are excluded here, not on the client.
-  const recPools = await Promise.all(
-    clusters.slice(0, REC_POOL_WORLDS).map((c) =>
-      supabase
-        .from('release_groups')
-        .select('id, title, artist_display, cover_url, native_title, genres')
-        .overlaps(
-          'genres',
-          c.tags.slice(0, GRAPH_TAGS).map((t) => t.tag),
-        )
-        .not('prestige_score', 'is', null)
-        .in('release_group_type', ['album', 'ep'])
-        .not('cover_url', 'is', null)
-        .order('prestige_score', { ascending: false })
-        .limit(60),
+  // Awaited together with upsertPromise (queued earlier) so that write finally overlaps
+  // with a network call instead of sitting alone in the middle of the handler.
+  const [recPools, { error: upsertErr }] = await Promise.all([
+    Promise.all(
+      clusters.slice(0, REC_POOL_WORLDS).map((c) =>
+        supabase
+          .from('release_groups')
+          .select('id, title, artist_display, cover_url, native_title, genres')
+          .overlaps(
+            'genres',
+            c.tags.slice(0, GRAPH_TAGS).map((t) => t.tag),
+          )
+          .not('prestige_score', 'is', null)
+          .in('release_group_type', ['album', 'ep'])
+          .not('cover_url', 'is', null)
+          .order('prestige_score', { ascending: false })
+          .limit(60),
+      ),
     ),
-  );
+    upsertPromise,
+  ]);
+  if (upsertErr) console.error('[taste] profile upsert error:', upsertErr.message);
 
   interface PoolRow {
     id: string;

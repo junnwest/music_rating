@@ -195,7 +195,7 @@ async function main() {
       return {
         user_id: bot.user_id, release_group_id: r.id, score: sc,
         review_text: reviewFor(p, sc, rand),           // language-matched to persona bucket; usually null
-        status: 'Listened', elo_games: 0,
+        status: 'Listened',
         // Backdated signup→now, gently biased toward recent (rand^0.65) so the population reads as an
         // app gaining traction, not a uniform dump — and the feed/trending have fresh activity.
         created_at: new Date(start + span * Math.pow(rand(), 0.65)).toISOString(),

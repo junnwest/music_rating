@@ -7,7 +7,6 @@ import { ChevronRight } from 'lucide-react';
 import ArtistLink from '../../../../components/sj/ArtistLink';
 import Cover from '../../../../components/sj/Cover';
 import ManualRateModal from '../../../../components/sj/ManualRateModal';
-import InstinctModal from '../../../../components/sj/InstinctModal';
 import { SkeletonBlock } from '../../../../components/sj/Loading';
 import { useSession } from '../../../../components/sj/SessionContext';
 import { supabase } from '../../../../lib/supabaseClient';
@@ -30,7 +29,7 @@ function SongPageInner() {
   const searchParams = useSearchParams();
   const rgHint = searchParams.get('rg');
   const { t } = useLanguage();
-  const { userId, profile } = useSession();
+  const { userId } = useSession();
 
   const [track, setTrack] = useState<{
     title: string;
@@ -44,9 +43,6 @@ function SongPageInner() {
   const [userScore, setUserScore] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [showManual, setShowManual] = useState(false);
-  const [showInstinct, setShowInstinct] = useState(false);
-
-  const ratingMode = profile?.rating_mode ?? 'manual';
 
   useEffect(() => {
     if (!supabase) return;
@@ -226,9 +222,7 @@ function SongPageInner() {
           </div>
         ) : (
           <button
-            onClick={() =>
-              ratingMode === 'instinct' ? setShowInstinct(true) : setShowManual(true)
-            }
+            onClick={() => setShowManual(true)}
             className="w-full py-2.5 rounded-[10px] bg-accent text-white text-[14px] font-semibold hover:opacity-90 transition"
           >
             {t('sj.song.rateThisTrack')}
@@ -262,22 +256,14 @@ function SongPageInner() {
       )}
 
       {release && (
-        <>
-          <ManualRateModal
-            open={showManual}
-            onClose={() => setShowManual(false)}
-            release={release}
-            track={{ recordingId, title: track.title }}
-            existingScore={userScore}
-            onSave={rate}
-          />
-          <InstinctModal
-            open={showInstinct}
-            onClose={() => setShowInstinct(false)}
-            release={release}
-            track={{ recordingId, title: track.title }}
-          />
-        </>
+        <ManualRateModal
+          open={showManual}
+          onClose={() => setShowManual(false)}
+          release={release}
+          track={{ recordingId, title: track.title }}
+          existingScore={userScore}
+          onSave={rate}
+        />
       )}
     </div>
   );

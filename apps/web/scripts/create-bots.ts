@@ -82,7 +82,7 @@ async function main() {
       if (ae || !au?.user) { console.warn(`  ! auth ${username}: ${ae?.message}`); continue; }
       const { error: pe } = await admin.from('profiles').insert({
         id: au.user.id, username, display_name, is_bot: true, country,
-        rating_mode: 'manual', created_at,
+        created_at,
       });
       // If the profile insert fails, delete the just-created auth user so a failure can never orphan
       // auth rows (and never silently spin past --limit without counting).

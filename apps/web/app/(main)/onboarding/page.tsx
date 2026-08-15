@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Star, ArrowLeftRight, CheckCircle2, Circle, Bell } from 'lucide-react';
+import { Bell } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
 import { USERNAME_REGEX, normalizeUsername } from '../../../lib/username';
 
-type Step = 'name' | 'username' | 'ratingMode' | 'notifications';
+type Step = 'name' | 'username' | 'notifications';
 
 /**
  * Onboarding — one question per screen, mirroring iOS OnboardingView:
@@ -25,7 +25,6 @@ export default function OnboardingPage() {
   const [displayName, setDisplayName] = useState('');
   const [username, setUsername] = useState('');
   const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'ok' | 'taken' | 'invalid'>('idle');
-  const [ratingMode, setRatingMode] = useState<'manual' | 'instinct'>('manual');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [provider, setProvider] = useState<string | null>(null);
@@ -37,8 +36,8 @@ export default function OnboardingPage() {
   const steps = useMemo<Step[]>(
     () =>
       provider === 'apple'
-        ? ['username', 'ratingMode', 'notifications']
-        : ['name', 'username', 'ratingMode', 'notifications'],
+        ? ['username', 'notifications']
+        : ['name', 'username', 'notifications'],
     [provider]
   );
   const step = steps[stepIndex];
@@ -130,7 +129,6 @@ export default function OnboardingPage() {
         id: user.id,
         display_name: finalName,
         username: username.trim().toLowerCase(),
-        rating_mode: ratingMode,
       });
       if (error) throw error;
       // Full reload so SessionProvider picks up the fresh profile
@@ -212,33 +210,6 @@ export default function OnboardingPage() {
           </StepShell>
         )}
 
-        {step === 'ratingMode' && (
-          <StepShell
-            title={t('sj.onboarding.ratingModeTitle')}
-            subtitle={t('sj.onboarding.ratingModeSubtitle')}
-            canContinue
-            continueLabel={t('sj.onboarding.continue')}
-            onContinue={advance}
-          >
-            <div className="flex flex-col gap-3">
-              <ModeCard
-                icon={<Star size={22} />}
-                title={t('sj.onboarding.modeManual')}
-                description={t('sj.onboarding.modeManualDesc')}
-                selected={ratingMode === 'manual'}
-                onClick={() => setRatingMode('manual')}
-              />
-              <ModeCard
-                icon={<ArrowLeftRight size={22} />}
-                title={t('sj.onboarding.modeInstinct')}
-                description={t('sj.onboarding.modeInstinctDesc')}
-                selected={ratingMode === 'instinct'}
-                onClick={() => setRatingMode('instinct')}
-              />
-            </div>
-          </StepShell>
-        )}
-
         {step === 'notifications' && (
           <div className="flex-1 flex flex-col">
             <h1 className="text-[26px] font-bold text-ink">
@@ -311,43 +282,5 @@ function StepShell({
         {continueLabel}
       </button>
     </div>
-  );
-}
-
-function ModeCard({
-  icon,
-  title,
-  description,
-  selected,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex items-center gap-4 px-4 py-4 rounded-2xl border-[1.5px] text-left transition ${
-        selected
-          ? 'bg-ink border-ink text-page'
-          : 'bg-surface border-divider text-ink hover:border-muted'
-      }`}
-    >
-      <span className={selected ? 'text-page' : 'text-muted'}>{icon}</span>
-      <span className="flex-1">
-        <span className="block text-[16px] font-semibold">{title}</span>
-        <span className={`block text-[13px] mt-0.5 ${selected ? 'text-page/75' : 'text-muted'}`}>
-          {description}
-        </span>
-      </span>
-      {selected ? (
-        <CheckCircle2 size={20} className="text-page" />
-      ) : (
-        <Circle size={20} className="text-divider" />
-      )}
-    </button>
   );
 }

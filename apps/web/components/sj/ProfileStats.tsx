@@ -2,7 +2,6 @@
 
 import { useMemo } from 'react';
 import { useLanguage } from '../../lib/i18n';
-import { eloToScore, INSTINCT_REVEAL_THRESHOLD } from '../../lib/elo';
 import { formatCount, formatScore, spectrumRing } from '../../lib/sj/display';
 import type { ProfileRatingItem } from './ProfileView';
 
@@ -11,9 +10,6 @@ import type { ProfileRatingItem } from './ProfileView';
  * (`formatCount`), and one denominator: every score-derived figure here — the
  * average, the histogram, the per-artist averages — comes from the same
  * `scored` set, so the tab can't quote two different totals for "your ratings".
- *
- * Instinct (elo) ratings only join that set once the reveal threshold is met,
- * which is the same rule the rated list uses to decide whether to show a score.
  */
 
 const BUCKETS = 10; // 0.5-wide buckets across 0.5 … 5.0
@@ -26,22 +22,13 @@ function scoreToPct(score: number): number {
 
 export default function ProfileStats({
   items,
-  instinctCount,
 }: {
   items: ProfileRatingItem[];
-  instinctCount: number;
 }) {
   const { t } = useLanguage();
 
   const stats = useMemo(() => {
-    const revealInstinct = instinctCount >= INSTINCT_REVEAL_THRESHOLD;
-
-    /** Displayable score for one item, under the same reveal rule as the list. */
-    const scoreOf = (i: ProfileRatingItem): number | null => {
-      if (i.score != null) return i.score;
-      if (i.eloScore != null && revealInstinct) return eloToScore(i.eloScore);
-      return null;
-    };
+    const scoreOf = (i: ProfileRatingItem): number | null => i.score;
 
     const albums = items.filter((i) => !i.isSong);
     const songs = items.filter((i) => i.isSong);
@@ -88,10 +75,8 @@ export default function ProfileStats({
       dist,
       avg,
       topArtists,
-      manualCount: items.filter((i) => i.score != null).length,
-      instinctTotal: items.filter((i) => i.score == null && i.eloScore != null).length,
     };
-  }, [items, instinctCount]);
+  }, [items]);
 
   if (items.length === 0) {
     return <p className="py-16 text-center text-[14px] text-muted">{t('sj.profile.noStats')}</p>;
@@ -161,28 +146,6 @@ export default function ProfileStats({
                 </li>
               ))}
             </ul>
-          </StatCard>
-        )}
-
-        {/* ── Manual vs instinct split ── */}
-        {stats.manualCount + stats.instinctTotal > 0 && (
-          <StatCard title={t('sj.profile.ratingMode')}>
-            <SplitBar
-              segments={[
-                {
-                  key: 'manual',
-                  value: stats.manualCount,
-                  label: t('sj.onboarding.modeManual'),
-                  className: 'bg-accent',
-                },
-                {
-                  key: 'instinct',
-                  value: stats.instinctTotal,
-                  label: t('sj.onboarding.modeInstinct'),
-                  className: 'bg-ink/40',
-                },
-              ]}
-            />
           </StatCard>
         )}
       </div>
@@ -331,47 +294,6 @@ function Histogram({
           );
         })}
       </div>
-    </div>
-  );
-}
-
-/**
- * Two-segment share bar with a legend — identity is never colour-alone, since
- * each segment is also named and counted below.
- */
-function SplitBar({
-  segments,
-}: {
-  segments: { key: string; value: number; label: string; className: string }[];
-}) {
-  const total = segments.reduce((a, s) => a + s.value, 0) || 1;
-  const shown = segments.filter((s) => s.value > 0);
-
-  return (
-    <div>
-      <div className="flex gap-[2px] h-2.5">
-        {shown.map((s, i) => (
-          <span
-            key={s.key}
-            className={`${s.className} h-full ${i === 0 ? 'rounded-l-full' : ''} ${
-              i === shown.length - 1 ? 'rounded-r-full' : ''
-            }`}
-            style={{ width: `${(s.value / total) * 100}%` }}
-          />
-        ))}
-      </div>
-      <ul className="mt-3 space-y-1.5">
-        {segments.map((s) => (
-          <li key={s.key} className="flex items-center gap-2 text-[12.5px]">
-            <span className={`${s.className} w-2 h-2 rounded-full shrink-0`} aria-hidden />
-            <span className="flex-1 text-muted truncate">{s.label}</span>
-            <span className="font-semibold text-ink tabular-nums">{formatCount(s.value)}</span>
-            <span className="w-10 text-right text-muted tabular-nums">
-              {Math.round((s.value / total) * 100)}%
-            </span>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }

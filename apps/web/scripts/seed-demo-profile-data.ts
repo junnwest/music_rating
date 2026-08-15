@@ -99,10 +99,7 @@ async function main() {
     .eq('id', userId);
   if (updErr) throw new Error(`update profile: ${updErr.message}`);
   console.log(`Seeded spotify_recently_played (${recentlyPlayed.length}) and spotify_artists (${spotifyArtists.length}).`);
-
-  console.log('\nDone. Rating mode is whatever it already was on this profile --');
-  console.log('toggle Settings -> Rating Mode to Instinct right before capturing that screenshot,');
-  console.log('and back to Manual for the others.');
+  console.log('\nDone.');
 }
 
 main().catch((err) => {

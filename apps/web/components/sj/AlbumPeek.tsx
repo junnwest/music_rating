@@ -7,7 +7,6 @@ import { Skeleton } from './Loading';
 import { useAlbumContextMenu } from './AlbumContextMenu';
 import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
-import { eloToScore } from '../../lib/elo';
 import type { SJRelease } from '../../lib/sj/data';
 
 interface PeekStats {
@@ -121,13 +120,11 @@ export default function AlbumPeek({
         setStats(null);
         supabase
           ?.from('ratings')
-          .select('score, elo_score')
+          .select('score')
           .eq('release_group_id', releaseId)
           .then(({ data }) => {
-            const rows = (data as { score: number | null; elo_score: number | null }[] | null) ?? [];
-            const scored = rows
-              .map((r) => (r.score != null ? r.score : r.elo_score != null ? eloToScore(r.elo_score) : null))
-              .filter((s): s is number => s != null);
+            const rows = (data as { score: number | null }[] | null) ?? [];
+            const scored = rows.map((r) => r.score).filter((s): s is number => s != null);
             const next: PeekStats = {
               avg: scored.length ? scored.reduce((a, b) => a + b, 0) / scored.length : null,
               count: rows.length,

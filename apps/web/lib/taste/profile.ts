@@ -13,7 +13,6 @@
  *
  * Server-only (pulls in the embeddings artifact).
  */
-import { eloToScore } from '../elo';
 import { albumCentroid, centroid, cosine, genreVector } from './embeddings';
 import { primaryTagOf, tagWeight } from './primaryGenre';
 import {
@@ -79,11 +78,11 @@ const MAX_TAGS = 30;
  * before the migration backfill).
  */
 export function weightsFromRatings(
-  rows: { score: number | null; elo_score: number | null; genres: string[] | null }[],
+  rows: { score: number | null; genres: string[] | null }[],
 ): GenreWeights {
   const weights: GenreWeights = {};
   for (const r of rows) {
-    const display = r.score ?? (r.elo_score != null ? eloToScore(r.elo_score) : null);
+    const display = r.score;
     if (display == null || !r.genres) continue;
     const primary = primaryTagOf(r.genres);
     for (const raw of r.genres) {

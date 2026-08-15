@@ -5,8 +5,6 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
   Plus,
-  ArrowUpDown,
-  Trash2,
   ChevronRight,
   ExternalLink,
   ListMusic,
@@ -19,7 +17,6 @@ import Cover from '../../../../components/sj/Cover';
 import { useContextMenuFor, openInNewTab } from '../../../../components/sj/ContextMenu';
 import FlowerGlyph from '../../../../components/sj/FlowerGlyph';
 import ManualRateModal from '../../../../components/sj/ManualRateModal';
-import InstinctModal from '../../../../components/sj/InstinctModal';
 import InlineRatingEditor from '../../../../components/sj/InlineRatingEditor';
 import MixPickerModal from '../../../../components/sj/MixPickerModal';
 import ScoreBadge from '../../../../components/sj/ScoreBadge';
@@ -34,7 +31,6 @@ import { useSession } from '../../../../components/sj/SessionContext';
 import { useRatings } from '../../../../components/sj/RatingsStore';
 import { supabase } from '../../../../lib/supabaseClient';
 import { useLanguage } from '../../../../lib/i18n';
-import { eloToScore, INSTINCT_REVEAL_THRESHOLD } from '../../../../lib/elo';
 import {
   displayName,
   displayScore,
@@ -58,7 +54,6 @@ interface PostRow {
   id: string;
   user_id: string;
   score: number | null;
-  elo_score: number | null;
   review_text: string | null;
   created_at: string;
   profiles: {
@@ -92,27 +87,18 @@ export default function AlbumPage() {
   const [credits, setCredits] = useState<ReleaseGroupCreditRPC[]>([]);
   const [tracks, setTracks] = useState<TrackEntry[]>([]);
   const [trackRatings, setTrackRatings] = useState<Record<string, number>>({});
-  const [eloRatedTracks, setEloRatedTracks] = useState<Set<string>>(new Set());
   const [communityAvg, setCommunityAvg] = useState<number | null>(null);
   const [communitySD, setCommunitySD] = useState<number | null>(null);
   const [communityCount, setCommunityCount] = useState(0);
   const [scoreDist, setScoreDist] = useState<number[]>([]);
   const [userScore, setUserScore] = useState<number | null>(null);
-  const [userElo, setUserElo] = useState<number | null>(null);
-  // Total albums this user has ranked in Instinct mode. An Elo score is
-  // statistically meaningless below the reveal threshold, so — exactly as the
-  // profile does — we hide the number until enough albums have been ranked.
-  const [instinctAlbumCount, setInstinctAlbumCount] = useState(0);
   const [posts, setPosts] = useState<PostRow[]>([]);
   const [publicMixes, setPublicMixes] = useState<PublicMix[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
-  const [showInstinct, setShowInstinct] = useState(false);
   const [showMixPicker, setShowMixPicker] = useState(false);
   const [trackManualTarget, setTrackManualTarget] = useState<TrackEntry | null>(null);
-  const [trackInstinctTarget, setTrackInstinctTarget] = useState<TrackEntry | null>(null);
-  const [confirmDeleteRanking, setConfirmDeleteRanking] = useState(false);
 
   // Inline comment (review_text on the user's rating row)
   const [reviewDraft, setReviewDraft] = useState('');
@@ -120,7 +106,6 @@ export default function AlbumPage() {
   const reviewBoxRef = useRef<HTMLTextAreaElement>(null);
   const reviewTimer = useRef<ReturnType<typeof setTimeout>>();
 
-  const ratingMode = profile?.rating_mode ?? 'manual';
   const ratingStep = profile?.manual_rating_step ?? 0.5;
 
   // Right-click menu for the tracklist. One instance for the whole list — each
@@ -139,10 +124,7 @@ export default function AlbumPage() {
               key: 'rate',
               label: t('sj.context.rate'),
               icon: <FlowerGlyph size={14} src="/icon-flower.svg" />,
-              onSelect: () =>
-                ratingMode === 'instinct'
-                  ? setTrackInstinctTarget(track)
-                  : setTrackManualTarget(track),
+              onSelect: () => setTrackManualTarget(track),
             },
           ]
         : []),
@@ -152,16 +134,14 @@ export default function AlbumPage() {
     if (!supabase) return;
     const { data } = await supabase
       .from('ratings')
-      .select('score, elo_score, user_id, review_text')
+      .select('score, user_id, review_text')
       .eq('release_group_id', releaseGroupId);
     const rows =
       (data as
-        | { score: number | null; elo_score: number | null; user_id: string; review_text: string | null }[]
+        | { score: number | null; user_id: string; review_text: string | null }[]
         | null) ?? [];
     setCommunityCount(rows.length);
-    const scored = rows
-      .map((r) => (r.score != null ? r.score : r.elo_score != null ? eloToScore(r.elo_score) : null))
-      .filter((s): s is number => s != null);
+    const scored = rows.map((r) => r.score).filter((s): s is number => s != null);
     setCommunityAvg(scored.length ? scored.reduce((a, b) => a + b, 0) / scored.length : null);
     // "Split" (편차): population SD of the same scored array as the average.
     // Nil below 3 scores, where a deviation is statistically meaningless.
@@ -184,20 +164,11 @@ export default function AlbumPage() {
       // Keep the app-wide store in sync so every other surface for this album
       // (feed, charts, artist…) reflects edits made here, and vice-versa.
       applyLocal(releaseGroupId, mine?.score ?? null);
-      setUserElo(mine?.elo_score ?? null);
       myReviewRef.current = mine?.review_text ?? null;
       // Don't clobber in-progress typing
       if (document.activeElement !== reviewBoxRef.current) {
         setReviewDraft(mine?.review_text ?? '');
       }
-      // How many albums the user has ranked in total — gates whether this
-      // album's Instinct score is shown yet (mirrors the profile's rule).
-      const { count } = await supabase
-        .from('ratings')
-        .select('release_group_id', { count: 'exact', head: true })
-        .eq('user_id', userId)
-        .not('elo_score', 'is', null);
-      setInstinctAlbumCount(count ?? 0);
     }
   }, [releaseGroupId, userId, applyLocal]);
 
@@ -265,7 +236,7 @@ export default function AlbumPage() {
       const postsP = supabase!
         .from('ratings')
         .select(
-          'id, user_id, score, elo_score, review_text, created_at, profiles(username, display_name, avatar_url)',
+          'id, user_id, score, review_text, created_at, profiles(username, display_name, avatar_url)',
         )
         .eq('release_group_id', releaseGroupId)
         .order('created_at', { ascending: false })
@@ -396,18 +367,6 @@ export default function AlbumPage() {
     }
   }
 
-  async function deleteInstinctRating() {
-    if (!supabase || !userId) return;
-    setUserElo(null);
-    setConfirmDeleteRanking(false);
-    await supabase
-      .from('ratings')
-      .delete()
-      .eq('user_id', userId)
-      .eq('release_group_id', releaseGroupId);
-    await loadRatings();
-  }
-
   if (notFound) {
     return (
       <div className="py-32 text-center text-muted text-[15px]">{t('sj.album.notFound')}</div>
@@ -444,7 +403,7 @@ export default function AlbumPage() {
               className="w-full h-full"
               rounded="rounded-2xl"
             />
-            {userId && ratingMode !== 'instinct' && (
+            {userId && (
               <AlbumRateButton
                 release={release}
                 score={userScore}
@@ -540,7 +499,7 @@ export default function AlbumPage() {
         <section className="rounded-2xl bg-surface border border-divider/60 p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted">
-              {ratingMode === 'instinct' ? t('sj.album.yourInstinct') : t('sj.album.yourRating')}
+              {t('sj.album.yourRating')}
             </h2>
             {userId && (
               <button
@@ -560,81 +519,12 @@ export default function AlbumPage() {
             >
               {t('sj.album.signInToRate')}
             </Link>
-          ) : ratingMode === 'instinct' ? (
-            userElo != null ? (
-              <div className="flex items-center gap-3 flex-wrap">
-                <button
-                  onClick={() => setShowInstinct(true)}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-[10px] bg-accent/10 hover:bg-accent/[0.16] transition"
-                >
-                  <FlowerGlyph size={14} className="text-accent" />
-                  {/* Score stays hidden until the ranking is calibrated — below
-                      the reveal threshold an Elo number is noise (same rule the
-                      profile applies). Show it only once enough albums exist. */}
-                  {instinctAlbumCount >= INSTINCT_REVEAL_THRESHOLD && (
-                    <span className="text-[18px] font-bold text-accent tabular-nums">
-                      {eloToScore(userElo).toFixed(1)}
-                    </span>
-                  )}
-                </button>
-                <span className="text-[12px] text-muted">
-                  {instinctAlbumCount >= INSTINCT_REVEAL_THRESHOLD
-                    ? t('sj.album.instinctScore')
-                    : t('sj.instinct.rateMoreToReveal').replace(
-                        '{n}',
-                        String(INSTINCT_REVEAL_THRESHOLD - instinctAlbumCount),
-                      )}
-                </span>
-                <span className="flex-1" />
-                <button
-                  onClick={() => setShowInstinct(true)}
-                  className="text-[13px] font-semibold text-accent hover:opacity-80"
-                >
-                  {t('sj.album.rerank')}
-                </button>
-                <button
-                  onClick={() => setConfirmDeleteRanking(true)}
-                  aria-label={t('sj.album.deleteRanking')}
-                  className="p-1.5 text-muted hover:text-red-500 transition"
-                >
-                  <Trash2 size={15} />
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setShowInstinct(true)}
-                className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-accent text-white text-[15px] font-semibold hover:opacity-90 transition"
-              >
-                <ArrowUpDown size={16} />
-                {t('sj.album.addToRankings')}
-              </button>
-            )
           ) : (
             <InlineRatingEditor score={userScore} step={ratingStep} onSave={setRating} />
           )}
 
-          {confirmDeleteRanking && (
-            <div className="flex items-center justify-between gap-3 mt-3 px-3.5 py-2.5 rounded-xl bg-red-500/[0.06] border border-red-500/20">
-              <p className="text-[12.5px] text-ink">{t('sj.album.deleteRankingConfirm')}</p>
-              <div className="flex gap-2 shrink-0">
-                <button
-                  onClick={() => setConfirmDeleteRanking(false)}
-                  className="px-2.5 py-1 rounded-lg text-[12px] font-medium text-muted hover:text-ink"
-                >
-                  {t('sj.common.cancel')}
-                </button>
-                <button
-                  onClick={deleteInstinctRating}
-                  className="px-2.5 py-1 rounded-lg bg-red-500 text-white text-[12px] font-semibold hover:opacity-90"
-                >
-                  {t('sj.common.delete')}
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* Inline comment — visible whenever the user has a rating row */}
-          {userId && (userScore != null || userElo != null) && (
+          {userId && userScore != null && (
             <textarea
               ref={reviewBoxRef}
               value={reviewDraft}
@@ -680,11 +570,7 @@ export default function AlbumPage() {
               userBucket={
                 userScore != null
                   ? Math.min(Math.max(Math.round(userScore * 2) - 1, 0), 9)
-                  : // Don't mark the user's bucket from an un-revealed Elo score —
-                    // that would leak the position of a number we're hiding.
-                    userElo != null && instinctAlbumCount >= INSTINCT_REVEAL_THRESHOLD
-                    ? Math.min(Math.max(Math.round(eloToScore(userElo) * 2) - 1, 0), 9)
-                    : null
+                  : null
               }
             />
           )}
@@ -699,7 +585,6 @@ export default function AlbumPage() {
             <div className="rounded-2xl bg-surface border border-divider/60 divide-y divide-divider overflow-hidden">
               {tracks.map((track) => {
                 const trackScore = trackRatings[track.recordingId];
-                const isEloRated = eloRatedTracks.has(track.recordingId);
                 return (
                   <div
                     key={track.recordingId}
@@ -725,17 +610,9 @@ export default function AlbumPage() {
                       <span className="px-1.5 py-0.5 rounded bg-accent/10 text-accent text-[11px] font-bold tabular-nums">
                         {formatScore(trackScore)}
                       </span>
-                    ) : isEloRated ? (
-                      <span className="flex w-[26px] h-[26px] rounded-full bg-accent/10 items-center justify-center">
-                        <ArrowUpDown size={11} className="text-accent" />
-                      </span>
                     ) : userId ? (
                       <button
-                        onClick={() =>
-                          ratingMode === 'instinct'
-                            ? setTrackInstinctTarget(track)
-                            : setTrackManualTarget(track)
-                        }
+                        onClick={() => setTrackManualTarget(track)}
                         aria-label={`${t('sj.album.rateTrack')} ${track.title}`}
                         className="flex w-[26px] h-[26px] rounded-full bg-accent/10 items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition"
                       >
@@ -758,7 +635,7 @@ export default function AlbumPage() {
             </h2>
             <div className="rounded-2xl bg-surface border border-divider/60 divide-y divide-divider overflow-hidden">
               {posts.map((post) => {
-                const score = displayScore(post.score, post.elo_score);
+                const score = displayScore(post.score);
                 const handle =
                   post.profiles?.username ?? post.profiles?.display_name ?? 'someone';
                 return (
@@ -826,14 +703,6 @@ export default function AlbumPage() {
         onClose={() => setShowMixPicker(false)}
         releaseGroupId={releaseGroupId}
       />
-      <InstinctModal
-        open={showInstinct}
-        onClose={() => {
-          setShowInstinct(false);
-          loadRatings();
-        }}
-        release={release}
-      />
       {trackManualTarget && (
         <ManualRateModal
           open
@@ -846,24 +715,6 @@ export default function AlbumPage() {
           existingScore={trackRatings[trackManualTarget.recordingId] ?? null}
           ratingStep={0.5}
           onSave={(score) => rateTrack(trackManualTarget.recordingId, score)}
-        />
-      )}
-      {trackInstinctTarget && (
-        <InstinctModal
-          open
-          onClose={() => setTrackInstinctTarget(null)}
-          release={release}
-          track={{
-            recordingId: trackInstinctTarget.recordingId,
-            title: trackInstinctTarget.title,
-          }}
-          onRated={(id) =>
-            setEloRatedTracks((prev) => {
-              const next = new Set(prev);
-              next.add(id);
-              return next;
-            })
-          }
         />
       )}
     </div>

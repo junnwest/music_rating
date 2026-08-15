@@ -69,7 +69,7 @@ export default function FeedCard({
 
   const rg = item.release_groups;
   const release = releaseFromEmbed(rg);
-  const score = displayScore(item.score, item.elo_score);
+  const score = displayScore(item.score);
   const handle = profileHandle(item.profiles);
   const isOwn = currentUserId != null && item.user_id === currentUserId;
 

@@ -7,7 +7,6 @@ import Cover from './Cover';
 import FlowerGlyph from './FlowerGlyph';
 import { useContextMenu, openInNewTab } from './ContextMenu';
 import { useLanguage } from '../../lib/i18n';
-import { eloToScore, INSTINCT_REVEAL_THRESHOLD } from '../../lib/elo';
 import { formatScore, spectrumFill, spectrumNumber, spectrumRing, typeLabelKey } from '../../lib/sj/display';
 import type { ProfileRatingItem } from './ProfileView';
 
@@ -32,11 +31,9 @@ export type ScoreRange = [number, number];
 
 export const FULL_RANGE: ScoreRange = [0, 5];
 
-/** The score a row is filtered and sorted by: manual first, then Elo. */
+/** The score a row is filtered and sorted by. */
 export function effectiveScore(i: ProfileRatingItem): number | null {
-  if (i.score != null) return i.score;
-  if (i.eloScore != null) return eloToScore(i.eloScore);
-  return null;
+  return i.score;
 }
 
 /** The bucket a row falls into for the kind filter. */
@@ -219,8 +216,6 @@ const GRID =
 
 export default function ProfileRatedList({
   items,
-  instinctAlbumCount,
-  instinctSongCount,
   showScores,
   sortCol,
   sortDesc,
@@ -229,9 +224,6 @@ export default function ProfileRatedList({
   canExport,
 }: {
   items: ProfileRatingItem[];
-  instinctAlbumCount: number;
-  instinctSongCount: number;
-  /** Other people's unrevealed instinct scores stay hidden. */
   showScores: boolean;
   sortCol: RatedSortCol;
   sortDesc: boolean;
@@ -332,7 +324,6 @@ export default function ProfileRatedList({
           <Row
             key={item.key}
             item={item}
-            instinctCount={item.isSong ? instinctSongCount : instinctAlbumCount}
             showScore={showScores || item.score != null}
             onDelete={onDelete ? () => onDelete(item) : undefined}
           />
@@ -344,24 +335,15 @@ export default function ProfileRatedList({
 
 function Row({
   item,
-  instinctCount,
   showScore,
   onDelete,
 }: {
   item: ProfileRatingItem;
-  instinctCount: number;
   showScore: boolean;
   onDelete?: () => void;
 }) {
   const { t } = useLanguage();
-  const score =
-    item.score != null
-      ? item.score
-      : item.eloScore != null && instinctCount >= INSTINCT_REVEAL_THRESHOLD
-        ? eloToScore(item.eloScore)
-        : null;
-  const pendingReveal =
-    item.score == null && item.eloScore != null && instinctCount < INSTINCT_REVEAL_THRESHOLD;
+  const score = item.score;
   const href = item.isSong
     ? `/song/${item.recordingId}${item.releaseGroupId ? `?rg=${item.releaseGroupId}` : ''}`
     : `/album/${item.releaseGroupId}`;
@@ -424,11 +406,7 @@ function Row({
       {/* Score: the chip on mobile (where it's the only score affordance), a
           plain right-aligned number in the desktop column. */}
       <span className="md:hidden justify-self-end pointer-events-none">
-        <ScoreChip
-          score={showScore ? score : null}
-          pendingReveal={pendingReveal}
-          instinctCount={instinctCount}
-        />
+        <ScoreChip score={showScore ? score : null} />
       </span>
       {/* Scores wear the app's score ramp (same as ScoreBadge/Stats) instead of
           flat ink, so a 4.5 and a 2.0 read differently at a glance. */}
@@ -441,7 +419,7 @@ function Row({
         </span>
       ) : (
         <span className="hidden md:block text-right text-[13px] font-bold text-muted tabular-nums">
-          {pendingReveal ? '·' : '—'}
+          —
         </span>
       )}
       <span className="hidden md:block text-right text-[12px] text-muted tabular-nums whitespace-nowrap">
@@ -461,16 +439,7 @@ function Row({
   );
 }
 
-function ScoreChip({
-  score,
-  pendingReveal,
-  instinctCount,
-}: {
-  score: number | null;
-  pendingReveal: boolean;
-  instinctCount: number;
-}) {
-  const { t } = useLanguage();
+function ScoreChip({ score }: { score: number | null }) {
   if (score != null) {
     // Ramp-colored chip — same fill/number pairing the Taste page's top-album
     // badge uses, replacing the old flat accent chip.
@@ -481,16 +450,6 @@ function ScoreChip({
       >
         <FlowerGlyph size={11} />
         <span className="text-[13px] font-bold tabular-nums">{formatScore(score)}</span>
-      </span>
-    );
-  }
-  if (pendingReveal) {
-    return (
-      <span className="block text-[10px] text-muted text-right max-w-[110px]">
-        {t('sj.instinct.rateMoreToReveal').replace(
-          '{n}',
-          String(INSTINCT_REVEAL_THRESHOLD - instinctCount),
-        )}
       </span>
     );
   }

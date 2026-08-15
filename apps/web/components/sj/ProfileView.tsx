@@ -27,7 +27,6 @@ import ProfileStats from './ProfileStats';
 import { useSession } from './SessionContext';
 import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
-import { eloToScore } from '../../lib/elo';
 import { displayName } from '../../lib/sj/display';
 import ProfileRatedList, {
   FULL_RANGE,
@@ -52,7 +51,6 @@ export interface ProfileRatingItem {
   coverUrl: string | null;
   releaseType: string | null;
   score: number | null;
-  eloScore: number | null;
   reviewText: string | null;
   createdAt: string | null;
   releaseTitle: string;
@@ -151,7 +149,7 @@ export default function ProfileView({ username }: { username?: string }) {
     // Album ratings
     const albumP = supabase
       .from('ratings')
-      .select(`id, score, elo_score, review_text, created_at, ${RG_EMBED_NATIVE}`)
+      .select(`id, score, review_text, created_at, ${RG_EMBED_NATIVE}`)
       .eq('user_id', uid)
       .order('created_at', { ascending: false })
       .limit(60);
@@ -161,7 +159,7 @@ export default function ProfileView({ username }: { username?: string }) {
       const { data: raw } = await supabase!
         .from('track_ratings')
         .select(
-          'id, recording_id, score, elo_score, review_text, created_at, recordings(id, title, artist_display)',
+          'id, recording_id, score, review_text, created_at, recordings(id, title, artist_display)',
         )
         .eq('user_id', uid)
         .order('created_at', { ascending: false })
@@ -193,7 +191,6 @@ export default function ProfileView({ username }: { username?: string }) {
           coverUrl: rg?.cover_url ?? null,
           releaseType: null,
           score: r.score,
-          eloScore: r.elo_score,
           reviewText: r.review_text,
           createdAt: r.created_at,
           releaseTitle: rg?.title ?? '',
@@ -246,7 +243,6 @@ export default function ProfileView({ username }: { username?: string }) {
         coverUrl: rg?.cover_url ?? null,
         releaseType: rg?.release_group_type ?? null,
         score: r.score,
-        eloScore: r.elo_score,
         reviewText: r.review_text,
         createdAt: r.created_at,
         releaseTitle: rg?.title ?? '',
@@ -336,15 +332,6 @@ export default function ProfileView({ username }: { username?: string }) {
       load();
     }
   }, [ready, isSelf, myId, load, router]);
-
-  const instinctAlbumCount = useMemo(
-    () => items.filter((i) => !i.isSong && i.eloScore != null).length,
-    [items],
-  );
-  const instinctSongCount = useMemo(
-    () => items.filter((i) => i.isSong && i.eloScore != null).length,
-    [items],
-  );
 
   /** Per-bucket totals, so the filter bar can hide buckets nobody has. */
   const kindCounts = useMemo(() => {
@@ -658,7 +645,6 @@ export default function ProfileView({ username }: { username?: string }) {
                       <ProfileSongPostCard
                         key={item.key}
                         item={item}
-                        instinctSongCount={instinctSongCount}
                         likesCount={likeCounts[item.ratingId] ?? 0}
                         commentsCount={commentCounts[item.ratingId] ?? 0}
                         isLiked={likedIds.has(item.ratingId)}
@@ -669,7 +655,6 @@ export default function ProfileView({ username }: { username?: string }) {
                       <ProfilePostCard
                         key={item.key}
                         item={item}
-                        instinctAlbumCount={instinctAlbumCount}
                         likesCount={likeCounts[item.ratingId] ?? 0}
                         commentsCount={commentCounts[item.ratingId] ?? 0}
                         isLiked={likedIds.has(item.ratingId)}
@@ -682,8 +667,6 @@ export default function ProfileView({ username }: { username?: string }) {
               ) : (
                 <ProfileRatedList
                   items={filtered}
-                  instinctAlbumCount={instinctAlbumCount}
-                  instinctSongCount={instinctSongCount}
                   showScores={isSelf}
                   sortCol={sortCol}
                   sortDesc={sortDesc}
@@ -704,7 +687,7 @@ export default function ProfileView({ username }: { username?: string }) {
       {tab === 'lists' && targetId && <MixLibrary userId={targetId} isSelf={isSelf} />}
 
       {/* ── Stats tab ── */}
-      {tab === 'stats' && <ProfileStats items={items} instinctCount={instinctAlbumCount} />}
+      {tab === 'stats' && <ProfileStats items={items} />}
 
       {/* Follow list modal */}
       {followModal && targetId && (

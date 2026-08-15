@@ -63,7 +63,6 @@ const profiles = people.map((p) => ({
   display_name: p.display_name,
   bio: p.bio ?? null,
   avatar_url: null,
-  rating_mode: 'manual',
   manual_rating_step: 0.5,
   notifications_last_seen_at: null,
   notify_likes: true,
@@ -259,8 +258,6 @@ const ratings = ratingDefs.map(([pi, ri, score, review, d], i) => {
     user_id: user.id,
     release_group_id: rg.id,
     score,
-    elo_score: null,
-    elo_games: 0,
     review_text: review,
     created_at: daysAgo(d, i % 5),
     updated_at: null,
@@ -390,8 +387,8 @@ const notifications = [
 ];
 
 const track_ratings = [
-  { id: uid(801), user_id: uid(1), recording_id: recordings[1]?.id, score: 4.5, elo_score: null, elo_games: 0, created_at: daysAgo(2), recordings: { id: recordings[1]?.id, title: recordings[1]?.title, artist_display: recordings[1]?.artist_display } },
-  { id: uid(802), user_id: uid(1), recording_id: recordings[3]?.id, score: 4.0, elo_score: null, elo_games: 0, created_at: daysAgo(3), recordings: { id: recordings[3]?.id, title: recordings[3]?.title, artist_display: recordings[3]?.artist_display } },
+  { id: uid(801), user_id: uid(1), recording_id: recordings[1]?.id, score: 4.5, created_at: daysAgo(2), recordings: { id: recordings[1]?.id, title: recordings[1]?.title, artist_display: recordings[1]?.artist_display } },
+  { id: uid(802), user_id: uid(1), recording_id: recordings[3]?.id, score: 4.0, created_at: daysAgo(3), recordings: { id: recordings[3]?.id, title: recordings[3]?.title, artist_display: recordings[3]?.artist_display } },
 ];
 
 // ── table store ─────────────────────────────────────────────────────────────
@@ -442,16 +439,13 @@ export const hydrators: Record<string, (row: any) => void> = {
       const p = tables.profiles.find((x) => x.id === row.user_id);
       if (p) row.profiles = { username: p.username, display_name: p.display_name, avatar_url: p.avatar_url ?? null };
     }
-    if (row.elo_score === undefined) row.elo_score = null;
     if (row.review_text === undefined) row.review_text = null;
-    if (row.elo_games === undefined) row.elo_games = 0;
   },
   track_ratings: (row) => {
     if (row.recording_id && !row.recordings) {
       const r = tables.recordings.find((x) => x.id === row.recording_id);
       if (r) row.recordings = { id: r.id, title: r.title, artist_display: r.artist_display };
     }
-    if (row.elo_score === undefined) row.elo_score = null;
   },
   rating_comments: (row) => {
     if (row.user_id && !row.profiles) {

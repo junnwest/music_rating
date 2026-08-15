@@ -5,8 +5,6 @@
  * `Theme.swift` (`thumbnailUrl`). Keep semantics identical to Swift.
  */
 
-import { eloToScore } from '../elo';
-
 /**
  * True when more than half of the string's letters are Hangul (syllables or
  * jamo). native_title / name_native are mixed-provenance — some rows hold a
@@ -143,17 +141,9 @@ export function formatScore(score: number): string {
   return Number.isInteger(score) ? `${score}` : score.toFixed(1);
 }
 
-/**
- * A rating row's displayable score: manual score wins; otherwise the
- * elo-derived score (0.1 steps). Returns null when neither exists.
- */
-export function displayScore(
-  score: number | null | undefined,
-  eloScore: number | null | undefined,
-): number | null {
-  if (score != null) return score;
-  if (eloScore != null) return eloToScore(eloScore);
-  return null;
+/** A rating row's displayable score. */
+export function displayScore(score: number | null | undefined): number | null {
+  return score ?? null;
 }
 
 /** Year prefix of a date string, or ''. */

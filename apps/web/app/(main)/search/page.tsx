@@ -3,17 +3,15 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Search as SearchIcon, X, Check, ChevronRight, ExternalLink, Plus } from 'lucide-react';
+import { Search as SearchIcon, X, Check, ChevronRight, ExternalLink } from 'lucide-react';
 import ArtistLink from '../../../components/sj/ArtistLink';
 import FlowerGlyph from '../../../components/sj/FlowerGlyph';
 import { useContextMenu, useContextMenuFor, openInNewTab } from '../../../components/sj/ContextMenu';
 import Cover from '../../../components/sj/Cover';
 import ManualRateModal from '../../../components/sj/ManualRateModal';
-import InstinctModal from '../../../components/sj/InstinctModal';
 import FlowerRateControl from '../../../components/sj/FlowerRateControl';
 import AlbumBookmarkButton from '../../../components/sj/AlbumBookmarkButton';
 import AlbumPeek from '../../../components/sj/AlbumPeek';
-import { useNavSafeClick } from '../../../components/sj/useNavSafeClick';
 import { Skeleton, SkeletonLine } from '../../../components/sj/Loading';
 import { useSession } from '../../../components/sj/SessionContext';
 import { useRatings } from '../../../components/sj/RatingsStore';
@@ -63,13 +61,8 @@ function SearchPageInner() {
   const [ratedIds, setRatedIds] = useState<Set<string>>(new Set());
   const [sessionRatedIds, setSessionRatedIds] = useState<Set<string>>(new Set());
   const [manualTarget, setManualTarget] = useState<SJRelease | null>(null);
-  const [instinctTarget, setInstinctTarget] = useState<SJRelease | null>(null);
 
-  const ratingMode = profile?.rating_mode ?? 'manual';
   const ratingStep = profile?.manual_rating_step ?? 0.5;
-  // Instinct mode has no drag-to-score: unrated covers show a plus that opens
-  // the pairwise sheet instead of the flower. Reactive to the session profile.
-  const isInstinct = ratingMode === 'instinct';
   const hasQuery = query.trim().length > 0;
 
   // Already-rated release ids (hide their add buttons / discovery entries)
@@ -194,8 +187,7 @@ function SearchPageInner() {
   }, [query, runSearch]);
 
   function addRelease(release: SJRelease) {
-    if (ratingMode === 'instinct') setInstinctTarget(release);
-    else setManualTarget(release);
+    setManualTarget(release);
   }
 
   async function saveQuickRating(score: number | null, release: SJRelease) {
@@ -273,7 +265,6 @@ function SearchPageInner() {
           query={query}
           ratedIds={ratedIds}
           sessionRatedIds={sessionRatedIds}
-          isInstinct={isInstinct}
           onAdd={addRelease}
           onRate={quickRate}
         />
@@ -298,7 +289,6 @@ function SearchPageInner() {
           <Discovery
             ratedIds={ratedIds}
             sessionRatedIds={sessionRatedIds}
-            isInstinct={isInstinct}
             onAdd={addRelease}
             onRate={quickRate}
           />
@@ -315,14 +305,6 @@ function SearchPageInner() {
           onSave={(score) => saveQuickRating(score, manualTarget)}
         />
       )}
-      {instinctTarget && (
-        <InstinctModal
-          open
-          onClose={() => setInstinctTarget(null)}
-          release={instinctTarget}
-          onRated={markRated}
-        />
-      )}
     </div>
   );
 }
@@ -337,7 +319,6 @@ function SearchResults({
   query,
   ratedIds,
   sessionRatedIds,
-  isInstinct,
   onAdd,
   onRate,
 }: {
@@ -348,7 +329,6 @@ function SearchResults({
   query: string;
   ratedIds: Set<string>;
   sessionRatedIds: Set<string>;
-  isInstinct: boolean;
   onAdd: (release: SJRelease) => void;
   onRate: (release: SJRelease, score: number | null) => void;
 }) {
@@ -443,7 +423,6 @@ function SearchResults({
                   release={release}
                   rated={ratedIds.has(release.id)}
                   sessionRated={sessionRatedIds.has(release.id)}
-                  isInstinct={isInstinct}
                   ratingStep={ratingStep}
                   onAdd={() => onAdd(release)}
                   onRate={(score) => onRate(release, score)}
@@ -464,7 +443,6 @@ function SearchResults({
                   song={song}
                   rated={ratedIds.has(song.release.id)}
                   sessionRated={sessionRatedIds.has(song.release.id)}
-                  isInstinct={isInstinct}
                   ratingStep={ratingStep}
                   onAdd={() => onAdd(song.release)}
                   onRate={(score) => onRate(song.release, score)}
@@ -483,13 +461,11 @@ function SearchResults({
 function Discovery({
   ratedIds,
   sessionRatedIds,
-  isInstinct,
   onAdd,
   onRate,
 }: {
   ratedIds: Set<string>;
   sessionRatedIds: Set<string>;
-  isInstinct: boolean;
   onAdd: (release: SJRelease) => void;
   onRate: (release: SJRelease, score: number | null) => void;
 }) {
@@ -689,7 +665,6 @@ function Discovery({
                   release={release}
                   rated={ratedIds.has(release.id)}
                   sessionRated={sessionRatedIds.has(release.id)}
-                  isInstinct={isInstinct}
                   ratingStep={ratingStep}
                   onAdd={() => onAdd(release)}
                   onRate={(score) => onRate(release, score)}
@@ -717,7 +692,6 @@ function AlbumCard({
   release,
   rated,
   sessionRated,
-  isInstinct,
   ratingStep = 0.5,
   onAdd,
   onRate,
@@ -725,7 +699,6 @@ function AlbumCard({
   release: SJRelease;
   rated: boolean;
   sessionRated: boolean;
-  isInstinct: boolean;
   ratingStep?: number;
   onAdd: () => void;
   onRate: (score: number | null) => void;
@@ -756,24 +729,16 @@ function AlbumCard({
             <Check size={12} strokeWidth={3} className="text-white" />
           </span>
         )}
-        {showAdd &&
-          (isInstinct ? (
-            <InstinctAddButton
-              onOpen={onAdd}
-              ariaLabel={`${t('sj.search.add')} ${release.title}`}
-              size={30}
-              className="absolute bottom-2 right-2 opacity-90 group-hover:opacity-100 transition"
-            />
-          ) : (
-            <FlowerRateControl
-              ariaLabel={`${t('sj.search.add')} ${release.title}`}
-              onRate={onRate}
-              onRequestPrecise={onAdd}
-              size={30}
-              className="absolute bottom-2 right-2 opacity-90 group-hover:opacity-100 transition"
-              ratingStep={ratingStep}
-            />
-          ))}
+        {showAdd && (
+          <FlowerRateControl
+            ariaLabel={`${t('sj.search.add')} ${release.title}`}
+            onRate={onRate}
+            onRequestPrecise={onAdd}
+            size={30}
+            className="absolute bottom-2 right-2 opacity-90 group-hover:opacity-100 transition"
+            ratingStep={ratingStep}
+          />
+        )}
       </AlbumPeek>
       <Link href={`/album/${release.id}`} className="block mt-1.5">
         <p className="text-[13px] font-semibold text-ink truncate group-hover:underline">
@@ -794,7 +759,6 @@ function SongRow({
   song,
   rated,
   sessionRated,
-  isInstinct,
   ratingStep = 0.5,
   onAdd,
   onRate,
@@ -802,7 +766,6 @@ function SongRow({
   song: SongResult;
   rated: boolean;
   sessionRated: boolean;
-  isInstinct: boolean;
   ratingStep?: number;
   onAdd: () => void;
   onRate: (score: number | null) => void;
@@ -851,57 +814,15 @@ function SongRow({
           <Check size={12} strokeWidth={3} className="text-white" />
         </span>
       ) : !rated ? (
-        isInstinct ? (
-          <InstinctAddButton
-            onOpen={onAdd}
-            ariaLabel={`${t('sj.search.add')} ${song.title}`}
-            size={30}
-            className="shrink-0 !bg-accent/[0.12] !shadow-none"
-          />
-        ) : (
-          <FlowerRateControl
-            ariaLabel={`${t('sj.search.add')} ${song.title}`}
-            onRate={onRate}
-            onRequestPrecise={onAdd}
-            size={30}
-            className="shrink-0 !bg-accent/[0.12] !shadow-none"
-            ratingStep={ratingStep}
-          />
-        )
+        <FlowerRateControl
+          ariaLabel={`${t('sj.search.add')} ${song.title}`}
+          onRate={onRate}
+          onRequestPrecise={onAdd}
+          size={30}
+          className="shrink-0 !bg-accent/[0.12] !shadow-none"
+          ratingStep={ratingStep}
+        />
       ) : null}
     </li>
-  );
-}
-
-/**
- * Instinct-mode counterpart to the drag flower: a plus that opens the pairwise
- * sheet (no quick score, no drag). Session-rated cards show a check elsewhere,
- * so this only ever renders the plus. Matches AlbumRateButton's Instinct button.
- */
-function InstinctAddButton({
-  onOpen,
-  ariaLabel,
-  size,
-  className = '',
-}: {
-  onOpen: () => void;
-  ariaLabel: string;
-  size: number;
-  className?: string;
-}) {
-  // Native-listener ref so the click never reaches a wrapping <Link> or the top
-  // progress bar (see useNavSafeClick).
-  const ref = useNavSafeClick<HTMLButtonElement>(onOpen);
-  return (
-    <button
-      ref={ref}
-      type="button"
-      aria-label={ariaLabel}
-      onPointerDown={(e) => e.stopPropagation()}
-      className={`grid place-items-center rounded-full shadow bg-white text-accent transition-transform hover:scale-105 active:scale-95 ${className}`}
-      style={{ width: size, height: size }}
-    >
-      <Plus size={Math.round(size * 0.52)} strokeWidth={3} />
-    </button>
   );
 }

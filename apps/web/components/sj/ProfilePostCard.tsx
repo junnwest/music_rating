@@ -8,7 +8,6 @@ import ScoreBadge from './ScoreBadge';
 import CommentsModal from './CommentsModal';
 import LikersModal from './LikersModal';
 import { useLanguage } from '../../lib/i18n';
-import { eloToScore, INSTINCT_REVEAL_THRESHOLD } from '../../lib/elo';
 import { relativeTime, typeLabelKey } from '../../lib/sj/display';
 import type { ProfileRatingItem } from './ProfileView';
 
@@ -18,7 +17,6 @@ import type { ProfileRatingItem } from './ProfileView';
  */
 export default function ProfilePostCard({
   item,
-  instinctAlbumCount,
   likesCount,
   commentsCount,
   isLiked,
@@ -26,7 +24,6 @@ export default function ProfilePostCard({
   onDelete,
 }: {
   item: ProfileRatingItem;
-  instinctAlbumCount: number;
   likesCount: number;
   commentsCount: number;
   isLiked: boolean;
@@ -37,12 +34,7 @@ export default function ProfilePostCard({
   const [showComments, setShowComments] = useState(false);
   const [showLikers, setShowLikers] = useState(false);
 
-  const score =
-    item.score != null
-      ? item.score
-      : item.eloScore != null && instinctAlbumCount >= INSTINCT_REVEAL_THRESHOLD
-        ? eloToScore(item.eloScore)
-        : null;
+  const score = item.score;
 
   return (
     <article className="bg-surface rounded-2xl shadow-[0_1px_4px_rgba(0,0,0,0.05)] border border-divider/60 group">
