@@ -8,6 +8,7 @@ struct MainTabView: View {
     @State private var chartsVM    = ChartsViewModel()
     @State private var profileVM   = ProfileViewModel()
     @State private var discoveryVM = DiscoveryViewModel()
+    @State private var tasteVM     = TasteViewModel()
     // Hoisted (not owned by ProfileView) so the tab badge, the nav-bar dot in
     // Profile, and the checklist sheet itself all read the SAME loaded state --
     // the badge/dot show based on actual completion (isFullyComplete), not a
@@ -27,9 +28,12 @@ struct MainTabView: View {
     // .destinationOut), not a colored fill, and the rect's own fill is the
     // inverse of the current color scheme (black rect in light mode, white
     // rect in dark mode) so it always reads as a punched-through action
-    // button rather than just another tab icon.
-    private static func addTabImage(dark: Bool) -> UIImage {
-        let fillColor: Color = dark ? .white : .black
+    // button rather than just another tab icon. `.renderingMode(.alwaysOriginal)`
+    // below means this fill color is final -- unlike the other four tabs' SF
+    // Symbols (template images that pick up the TabView's .tint(Color.sjAmber)
+    // automatically when selected), this one won't turn blue on its own, so the
+    // call site swaps in the sjBlue-filled variant by hand when Add is selected.
+    private static func addTabImage(fillColor: Color) -> UIImage {
         let shape = ZStack {
             RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .fill(fillColor)
@@ -48,13 +52,39 @@ struct MainTabView: View {
         return image.withRenderingMode(.alwaysOriginal)
     }
 
-    // Two pre-rendered variants — picked per-appearance at the call site via
-    // @Environment(\.colorScheme) below. (UIImage has no dynamicProvider
-    // initializer the way UIColor does; that's UIColor-only.)
-    private static let addTabImageLight = addTabImage(dark: false)
-    private static let addTabImageDark  = addTabImage(dark: true)
+    // Three pre-rendered variants — picked per-appearance/selection state at the
+    // call site via @Environment(\.colorScheme) and selectedTab below. (UIImage
+    // has no dynamicProvider initializer the way UIColor does; that's UIColor-only.)
+    // sjBlue isn't scheme-adaptive, so the selected variant needs no light/dark split.
+    private static let addTabImageLight    = addTabImage(fillColor: .black)
+    private static let addTabImageDark     = addTabImage(fillColor: .white)
+    private static let addTabImageSelected = addTabImage(fillColor: .sjBlue)
 
     @Environment(\.colorScheme) private var colorScheme
+
+    // Tabs the user has actually switched to at least once. SwiftUI's TabView
+    // (unlike List/LazyVStack) builds ALL of its static children -- and fires
+    // their .task -- the moment the TabView itself appears, not just the
+    // selected one. That defeated the "Charts/Add/Taste/Profile load lazily on
+    // first visit" intent described below: all four were actually firing their
+    // full load() pipelines simultaneously, competing for the same connections,
+    // right as the tab bar first appeared -- exactly the kind of eager-cold-launch
+    // contention this same comment already measured and fixed once before (by
+    // moving the calls out of MainTabView's own .task), just reintroduced one
+    // level down via TabView's own eagerness instead of an explicit taskgroup.
+    // Placeholder-until-visited (below) makes each tab's view -- and its .task --
+    // not exist at all until actually selected, so only one loads at a time.
+    @State private var visitedTabs: Set<AppTab> = [.home]
+
+    // The ONLY way selectedTab should be mutated -- every jump (user tap via
+    // tabSelection below, or a programmatic one like onGoToAdd/onOwnProfileTap)
+    // must also mark the destination visited, or it renders as the blank
+    // Color.clear placeholder the first time something jumps to a tab the user
+    // hasn't tapped directly yet.
+    private func goTo(_ tab: AppTab) {
+        selectedTab = tab
+        visitedTabs.insert(tab)
+    }
 
     // Custom binding that detects re-tapping the current tab
     private var tabSelection: Binding<AppTab> {
@@ -64,7 +94,7 @@ struct MainTabView: View {
                 if newVal == selectedTab, newVal == .home {
                     homeScrollTrigger = UUID()
                 }
-                selectedTab = newVal
+                goTo(newVal)
             }
         )
     }
@@ -85,7 +115,7 @@ struct MainTabView: View {
                     HomeView(
                         viewModel: homeVM,
                         scrollToTopTrigger: homeScrollTrigger,
-                        onOwnProfileTap: { selectedTab = .profile }
+                        onOwnProfileTap: { goTo(.profile) }
                     )
                     .tabItem {
                         Image(systemName: "house.fill")
@@ -93,25 +123,45 @@ struct MainTabView: View {
                     }
                     .tag(AppTab.home)
 
-                    ChartsView(viewModel: chartsVM)
+                    Group {
+                        if visitedTabs.contains(.rankings) {
+                            ChartsView(viewModel: chartsVM)
+                        } else {
+                            Color.clear
+                        }
+                    }
                         .tabItem {
                             Image(systemName: "trophy.fill")
                             Text(String(localized: "Charts"))
                         }
                         .tag(AppTab.rankings)
 
-                    SearchView(discoveryVM: discoveryVM, onGoToSettings: {
-                        selectedTab = .profile
-                        pendingOpenSettings = true
-                    })
+                    Group {
+                        if visitedTabs.contains(.add) {
+                            SearchView(discoveryVM: discoveryVM, onGoToSettings: {
+                                goTo(.profile)
+                                pendingOpenSettings = true
+                            })
+                        } else {
+                            Color.clear
+                        }
+                    }
                         .tabItem {
-                            Image(uiImage: colorScheme == .dark ? MainTabView.addTabImageDark : MainTabView.addTabImageLight)
+                            Image(uiImage: selectedTab == .add
+                                  ? MainTabView.addTabImageSelected
+                                  : (colorScheme == .dark ? MainTabView.addTabImageDark : MainTabView.addTabImageLight))
                                 .renderingMode(.original)
                             Text(String(localized: "Add"))
                         }
                         .tag(AppTab.add)
 
-                    TasteView(onGoToAdd: { selectedTab = .add })
+                    Group {
+                        if visitedTabs.contains(.taste) {
+                            TasteView(viewModel: tasteVM, onGoToAdd: { goTo(.add) })
+                        } else {
+                            Color.clear
+                        }
+                    }
                         .tabItem {
                             Image(systemName: "sparkles")
                             Text(String(localized: "Taste"))
@@ -121,7 +171,13 @@ struct MainTabView: View {
                     // No tab badge here -- SwiftUI's .badge() has no size control, and it
                     // rendered too large. The nudge lives solely on the checklist icon in
                     // Profile's own nav bar (small, size fully under our control there).
-                    ProfileView(viewModel: profileVM, questVM: questVM, onGoToAdd: { selectedTab = .add }, openSettingsTrigger: $pendingOpenSettings)
+                    Group {
+                        if visitedTabs.contains(.profile) {
+                            ProfileView(viewModel: profileVM, questVM: questVM, onGoToAdd: { goTo(.add) }, openSettingsTrigger: $pendingOpenSettings)
+                        } else {
+                            Color.clear
+                        }
+                    }
                         .tabItem {
                             Image(systemName: "person.fill")
                             Text(String(localized: "Profile"))
@@ -129,6 +185,7 @@ struct MainTabView: View {
                         .tag(AppTab.profile)
                 }
                 .tint(Color.sjAmber)
+                .sensoryFeedback(.selection, trigger: selectedTab)
             }
         }
         .task {
@@ -161,7 +218,7 @@ struct MainTabView: View {
             BadgeRedeemView(vm: questVM)
         }
         .onReceive(NotificationCenter.default.publisher(for: .mixShared)) { _ in
-            selectedTab = .profile
+            goTo(.profile)
         }
     }
 }

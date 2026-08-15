@@ -4,8 +4,7 @@ import Supabase
 /// Song counterpart to `AlbumRateButton` -- writes `track_ratings` instead of
 /// `ratings`, opens `TrackRatingSheet` as the precise fallback. Same
 /// self-contained/controlled-or-uncontrolled shape; see `AlbumRateButton`'s
-/// doc comment for the pattern (including the Instinct-mode caveat -- callers
-/// in Instinct mode should not render this).
+/// doc comment for the pattern.
 struct SongRateButton: View {
     let track: TrackEntry
     let release: Release
@@ -37,7 +36,8 @@ struct SongRateButton: View {
                 onRequestPrecise: { modalOpen = true },
                 size: size,
                 currentScore: shown,
-                accessibilityLabelText: String(format: String(localized: "Rate %@"), track.title)
+                accessibilityLabelText: String(format: String(localized: "Rate %@"), track.title),
+                onDelete: shown != nil ? { Task { await saveModal(nil) } } : nil
             )
             .sheet(isPresented: $modalOpen) {
                 TrackRatingSheet(track: track, release: release, existingScore: shown) { _, s in

@@ -70,6 +70,7 @@ struct BadgeRedeemView: View {
 
     @State private var selected: QuestBadgeColor?
     @State private var isSaving = false
+    @State private var didClaim = false
     // Measured (not guessed) so the sheet fits this content exactly, with no
     // leftover gap and no clipped button -- onAppear/onChange rather than a
     // PreferenceKey, which measured unreliably for a similar sizing need
@@ -123,7 +124,10 @@ struct BadgeRedeemView: View {
                 guard let selected else { return }
                 isSaving = true
                 Task {
-                    if await vm.claimBadge(selected) { dismiss() }
+                    if await vm.claimBadge(selected) {
+                        didClaim = true
+                        dismiss()
+                    }
                     isSaving = false
                 }
             } label: {
@@ -154,5 +158,6 @@ struct BadgeRedeemView: View {
         .interactiveDismissDisabled(isSaving)
         .presentationDetents([.height(contentHeight)])
         .presentationDragIndicator(.visible)
+        .sensoryFeedback(.success, trigger: didClaim)
     }
 }

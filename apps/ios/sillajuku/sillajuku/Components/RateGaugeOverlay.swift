@@ -17,8 +17,8 @@ final class RateGaugeOverlay {
 
     private init() {}
 
-    func show(origin: CGPoint, angle: Double, score: Double?) {
-        let view = RateGaugeView(origin: origin, angle: angle, score: score)
+    func show(origin: CGPoint, angle: Double, score: Double?, size: CGFloat, canDelete: Bool = false, isOverDeleteZone: Bool = false) {
+        let view = RateGaugeView(origin: origin, angle: angle, score: score, size: size, canDelete: canDelete, isOverDeleteZone: isOverDeleteZone)
         if let hostingController {
             hostingController.rootView = view
             return

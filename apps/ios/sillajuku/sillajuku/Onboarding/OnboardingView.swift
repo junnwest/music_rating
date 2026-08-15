@@ -9,7 +9,7 @@ struct OnboardingView: View {
 	@State private var saveError: String? = nil
 	@Environment(AppState.self) private var appState
 
-	enum Step { case name, username, ratingMode, notifications, appleMusic }
+	enum Step { case name, username, notifications, appleMusic }
 
 	let steps: [Step]
 
@@ -45,8 +45,8 @@ struct OnboardingView: View {
 				}
 			}
 		}
-		var s: [Step] = provider == "apple" ? [.username, .ratingMode, .notifications]
-										     : [.name, .username, .ratingMode, .notifications]
+		var s: [Step] = provider == "apple" ? [.username, .notifications]
+										     : [.name, .username, .notifications]
 		if provider == "apple" { s.append(.appleMusic) }
 		self.steps = s
 		self._data = State(initialValue: data)
@@ -74,8 +74,6 @@ struct OnboardingView: View {
 					StepName(data: $data, onNext: advance)
 				case .username:
 					StepUsername(data: $data, onNext: advance)
-				case .ratingMode:
-					StepRatingMode(data: $data, onNext: advance)
 				case .notifications:
 					StepNotifications(isSaving: isSaving, onNext: advance)
 				case .appleMusic:
@@ -117,8 +115,7 @@ struct OnboardingView: View {
 			let insert = ProfileInsert(
 				id: user.id,
 				displayName: displayName,
-				username: data.username,
-				ratingMode: data.ratingMode
+				username: data.username
 			)
 			try await supabase
 				.from("profiles")
@@ -145,5 +142,4 @@ struct OnboardingData {
 	var displayName: String = ""
 	var username: String = ""
 	var selectedGenres: [String] = []
-	var ratingMode: String = "manual"
 }

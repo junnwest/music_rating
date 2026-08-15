@@ -19,9 +19,8 @@ final class QuestChecklistViewModel {
 
     private(set) var hasAvatar = false
     private(set) var hasBio = false
-    private(set) var ratingMode = "manual"
 
-    // Album-only count -- basis for "rate your first release" / "rate 5" (Instinct).
+    // Album-only count -- basis for "rate your first release".
     private(set) var albumRatingCount = 0
     // Albums + songs, matching TasteViewModel's own basis exactly so this quest
     // item's "complete" state can never disagree with whether Taste is actually
@@ -121,7 +120,7 @@ final class QuestChecklistViewModel {
     private func loadProfile(userId: UUID) async {
         let row: Profile? = try? await supabase
             .from("profiles")
-            .select("id, display_name, username, rating_mode, bio, avatar_url, referral_code, badge_color")
+            .select("id, display_name, username, bio, avatar_url, referral_code, badge_color")
             .eq("id", value: userId)
             .single()
             .execute()
@@ -129,7 +128,6 @@ final class QuestChecklistViewModel {
         profile = row
         hasAvatar = !(row?.avatarUrl?.isEmpty ?? true)
         hasBio = !(row?.bio?.isEmpty ?? true)
-        ratingMode = row?.ratingMode ?? "manual"
         referralCode = row?.referralCode
     }
 

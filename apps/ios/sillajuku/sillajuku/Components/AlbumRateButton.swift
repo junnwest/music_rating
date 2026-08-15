@@ -8,10 +8,6 @@ import Supabase
 /// a cover with no per-page plumbing. Renders nothing for signed-out users.
 /// Ports web's `components/sj/AlbumRateButton.tsx`.
 ///
-/// Callers in Instinct rating mode should not render this at all (mirrors
-/// web's page-level `ratingMode !== 'instinct'` gate) -- a direct score
-/// doesn't fit that rating model.
-///
 /// `initialScore` seeds the button when nothing else on the page needs to
 /// know about changes. A page that renders a *second* rating surface for the
 /// same release (the album page's hero cover alongside its full rating
@@ -52,7 +48,8 @@ struct AlbumRateButton: View {
                 size: size,
                 currentScore: shown,
                 accessibilityLabelText: String(format: String(localized: "Rate %@"), release.displayTitle),
-                ratingStep: ratingStep
+                ratingStep: ratingStep,
+                onDelete: shown != nil ? { Task { await saveModal(nil) } } : nil
             )
             .sheet(isPresented: $modalOpen) {
                 ManualRatingSheet(release: release, existingScore: shownBinding, ratingStep: ratingStep) { s in

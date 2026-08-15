@@ -1,24 +1,68 @@
 import SwiftUI
 
 /// The Instagram Story sticker card — mirrors the real post layout (avatar +
-/// username + timestamp, then cover + title + type·artist + score), minus
-/// the ⋯ menu and like/comment bar, per the approved design.
+/// username + timestamp, then cover + title + subtitle + score), minus
+/// the ⋯ menu and like/comment bar, per the approved design. Also doubles as
+/// the "share this album/mix" card (no rating involved) when `score` is nil.
 ///
-/// `coverImage` is a pre-loaded `UIImage`, not a URL: this view gets rendered
+/// `coverImages` are pre-loaded `UIImage`s, not URLs: this view gets rendered
 /// to a flat image via `ImageRenderer`, which snapshots whatever is *already*
 /// on screen — an async `CoverImage`/`AsyncImage` load racing the snapshot
-/// would export a blank shimmer placeholder instead of the actual cover.
-/// The caller downloads the cover first (see `InstagramShare.downloadImage`)
-/// and hands it in already resolved.
+/// would export a blank shimmer placeholder instead of the actual cover(s).
+/// The caller downloads them first (see `InstagramShare.downloadImage(s)`)
+/// and hands them in already resolved. A single cover (album/song) renders
+/// as the usual 80×80 square; more than one (a mix) renders as a small
+/// overlapping collage, same "hand of cards" math as `StackedCoversView`
+/// adapted for pre-loaded images instead of URLs.
 struct ShareCardView: View {
     let username: String
-    let coverImage: UIImage?
+    let coverImages: [UIImage?]
     let title: String
-    let typeAndArtist: String
-    let score: Double
+    let subtitle: String
+    let score: Double?
     let reviewText: String?
 
     private let cardWidth: CGFloat = 320
+
+    private func collageRotation(index: Int, total: Int) -> Double {
+        guard total > 1 else { return 0 }
+        let mid = Double(total - 1) / 2
+        return (Double(index) - mid) * 3.5
+    }
+
+    @ViewBuilder
+    private var coverArea: some View {
+        if coverImages.count > 1 {
+            let shown = Array(coverImages.prefix(4))
+            HStack(spacing: -18) {
+                ForEach(Array(shown.enumerated()), id: \.offset) { index, image in
+                    Group {
+                        if let image {
+                            Image(uiImage: image).resizable().scaledToFill()
+                        } else {
+                            Color.sjBorder
+                        }
+                    }
+                    .frame(width: 52, height: 52)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .shadow(color: .black.opacity(0.18), radius: 3, x: 0, y: 2)
+                    .rotationEffect(.degrees(collageRotation(index: index, total: shown.count)))
+                    .zIndex(Double(shown.count - index))
+                }
+            }
+            .frame(width: 80, height: 80, alignment: .leading)
+        } else {
+            Group {
+                if let coverImage = coverImages.first ?? nil {
+                    Image(uiImage: coverImage).resizable().scaledToFill()
+                } else {
+                    Color.sjBorder
+                }
+            }
+            .frame(width: 80, height: 80)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -42,31 +86,26 @@ struct ShareCardView: View {
             .padding(.top, 14)
             .padding(.bottom, 6)
 
-            // Album row — cover + title/type·artist + score badge
+            // Cover(s) + title/subtitle + score badge (score omitted when nil --
+            // sharing a bare album/mix rather than a rating of one)
             HStack(spacing: 13) {
-                Group {
-                    if let coverImage {
-                        Image(uiImage: coverImage).resizable().scaledToFill()
-                    } else {
-                        Color.sjBorder
-                    }
-                }
-                .frame(width: 80, height: 80)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                coverArea
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
                         .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(Color.sjInk)
                         .lineLimit(2)
-                    Text(typeAndArtist)
+                    Text(subtitle)
                         .font(.system(size: 14))
                         .foregroundStyle(Color.sjMuted)
                         .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                ScoreBadge(score: score)
+                if let score {
+                    ScoreBadge(score: score)
+                }
             }
             .padding(.horizontal, 14)
             .padding(.bottom, (reviewText?.isEmpty == false) ? 10 : 14)

@@ -8,21 +8,15 @@ struct FeedItem: Codable, Identifiable {
     let id: UUID
     let userId: UUID
     let score: Double?
-    let eloScore: Double?
     let reviewText: String?
     let createdAt: Date
     let releases: FeedRelease
     let profiles: FeedProfile?
 
-    var displayScore: Double? {
-        if let s = score { return s }
-        if let e = eloScore { return Elo.toScore(e) }
-        return nil
-    }
+    var displayScore: Double? { score }
 
     enum CodingKeys: String, CodingKey {
         case id, score, profiles
-        case eloScore  = "elo_score"
         case reviewText = "review_text"
         case releases  = "release_groups"
         case userId    = "user_id"
@@ -178,7 +172,7 @@ class HomeViewModel {
     private var hasLoadedFollowing = false
 
     private static let feedSelect =
-        "id, user_id, score, elo_score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey(username, display_name, is_bot, is_verified)"
+        "id, user_id, score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey(username, display_name, is_bot, is_verified)"
 
     // Explore's fetch is split by is_bot BEFORE ranking, not just re-ranked after — with
     // bot ratings' recency-biased backdating, a human rating usually wouldn't survive into
@@ -197,10 +191,6 @@ class HomeViewModel {
     private var likedArtists:  Set<String> = []
 
     var currentUserId: UUID? { supabase.auth.currentUser?.id }
-    // Gates the drag-to-rate gauge on post covers -- a direct score doesn't
-    // fit the Instinct (pairwise/Elo) rating model. Mirrors web's page-level
-    // `ratingMode !== 'instinct'` check.
-    var ratingMode: String = "manual"
 
     func load() async {
         await loadPersonalization()   // must run before explore so ranking has signals
@@ -248,38 +238,10 @@ class HomeViewModel {
                 .eq("blocker_id", value: userId).execute().value) ?? []
             return rows.map(\.blockedId)
         }()
-        async let ratingModeTask: String = {
-            struct P: Decodable {
-                let ratingMode: String?
-                enum CodingKeys: String, CodingKey { case ratingMode = "rating_mode" }
-            }
-            let p: P? = try? await supabase
-                .from("profiles").select("rating_mode")
-                .eq("id", value: userId).single().execute().value
-            return p?.ratingMode ?? "manual"
-        }()
-        let (ids, artists, blocked, mode) = await (followsTask, artistsTask, blockedTask, ratingModeTask)
+        let (ids, artists, blocked) = await (followsTask, artistsTask, blockedTask)
         followingIds  = Set(ids)
         likedArtists  = Set(artists)
         blockedUserIds = Set(blocked)
-        ratingMode    = mode
-    }
-
-    // HomeViewModel is hoisted once at MainTabView and lives for the whole session
-    // (unlike AlbumDetailView/SearchView/RankingsView, which are pushed destinations
-    // that re-fetch rating_mode fresh on every appearance), so its one-time fetch in
-    // loadPersonalization() above goes stale the moment the user flips modes in
-    // Settings. Called from HomeView's .onReceive(.sjProfileUpdated).
-    func refreshRatingMode() async {
-        guard let userId = currentUserId else { return }
-        struct P: Decodable {
-            let ratingMode: String?
-            enum CodingKeys: String, CodingKey { case ratingMode = "rating_mode" }
-        }
-        let p: P? = try? await supabase
-            .from("profiles").select("rating_mode")
-            .eq("id", value: userId).single().execute().value
-        ratingMode = p?.ratingMode ?? "manual"
     }
 
     func blockUser(userId: UUID) async {
@@ -296,6 +258,13 @@ class HomeViewModel {
         _ = try? await supabase.from("blocked_users")
             .insert(Payload(blockerId: me, blockedId: userId))
             .execute()
+    }
+
+    func notInterested(item: FeedItem) async {
+        let postId = FeedPost.rating(item).id
+        exploreFeed.removeAll   { $0.id == postId }
+        followingFeed.removeAll { $0.id == postId }
+        await NotInterested.markAlbum(releaseGroupId: item.releases.id)
     }
 
     private func ranked(_ posts: [FeedPost]) -> [FeedPost] {
@@ -367,13 +336,12 @@ class HomeViewModel {
     // the identical query with the embed removed returns in <1s. release_groups
     // are fetched separately below and stitched back in client-side instead.
     private static let feedSelectLiteBotFilterable =
-        "id, user_id, score, elo_score, review_text, created_at, release_group_id, profiles!ratings_user_id_fkey!inner(username, display_name, is_bot, is_verified)"
+        "id, user_id, score, review_text, created_at, release_group_id, profiles!ratings_user_id_fkey!inner(username, display_name, is_bot, is_verified)"
 
     private struct FeedItemLite: Codable {
         let id: UUID
         let userId: UUID
         let score: Double?
-        let eloScore: Double?
         let reviewText: String?
         let createdAt: Date
         let releaseGroupId: UUID
@@ -381,7 +349,6 @@ class HomeViewModel {
         enum CodingKeys: String, CodingKey {
             case id, score, profiles
             case userId        = "user_id"
-            case eloScore       = "elo_score"
             case reviewText     = "review_text"
             case createdAt      = "created_at"
             case releaseGroupId = "release_group_id"
@@ -419,7 +386,7 @@ class HomeViewModel {
         let releaseGroups = await fetchReleaseGroups(ids: Array(Set(lite.map(\.releaseGroupId.uuidString))))
         return lite.compactMap { item in
             guard let release = releaseGroups[item.releaseGroupId] else { return nil }
-            return FeedItem(id: item.id, userId: item.userId, score: item.score, eloScore: item.eloScore,
+            return FeedItem(id: item.id, userId: item.userId, score: item.score,
                              reviewText: item.reviewText, createdAt: item.createdAt,
                              releases: release, profiles: item.profiles)
         }
@@ -568,8 +535,12 @@ class HomeViewModel {
         commentCounts = [:]
         let filteredRatings = ratingPool.filter { !blockedUserIds.contains($0.userId) }
         let filteredShares  = sharePool.filter  { !blockedUserIds.contains($0.userId) }
-        await loadSocialData(for: filteredRatings)
-        await loadMixShareSocialData(for: filteredShares)
+        // Independent of each other (ratings vs. mix-share ids) -- run concurrently
+        // rather than as two more serial round-trips stacked onto the pool fetches above.
+        await withTaskGroup(of: Void.self) { g in
+            g.addTask { await self.loadSocialData(for: filteredRatings) }
+            g.addTask { await self.loadMixShareSocialData(for: filteredShares) }
+        }
         let combined = filteredRatings.map(FeedPost.rating) + filteredShares.map(FeedPost.mixShare)
         exploreFeed = Array(ranked(combined).prefix(60))
         hasLoadedExplore = true
@@ -586,8 +557,10 @@ class HomeViewModel {
         let sharePool  = (try? await sharePoolTask) ?? []
         let filteredRatings = ratingPool.filter { !blockedUserIds.contains($0.userId) }
         let filteredShares  = sharePool.filter  { !blockedUserIds.contains($0.userId) }
-        await loadSocialData(for: filteredRatings)
-        await loadMixShareSocialData(for: filteredShares)
+        await withTaskGroup(of: Void.self) { g in
+            g.addTask { await self.loadSocialData(for: filteredRatings) }
+            g.addTask { await self.loadMixShareSocialData(for: filteredShares) }
+        }
         let combined = filteredRatings.map(FeedPost.rating) + filteredShares.map(FeedPost.mixShare)
         exploreFeed = Array(ranked(combined).prefix(60))
         isLoadingExplore = false
@@ -645,8 +618,10 @@ class HomeViewModel {
         followingFeed = (filteredRatings.map(FeedPost.rating) + filteredShares.map(FeedPost.mixShare))
             .sorted { $0.createdAt > $1.createdAt }
         isLoadingFollowing = false
-        await loadSocialData(for: filteredRatings)
-        await loadMixShareSocialData(for: filteredShares)
+        await withTaskGroup(of: Void.self) { g in
+            g.addTask { await self.loadSocialData(for: filteredRatings) }
+            g.addTask { await self.loadMixShareSocialData(for: filteredShares) }
+        }
     }
 
     private func loadSocialData(for items: [FeedItem]) async {
@@ -847,13 +822,6 @@ struct HomeView: View {
         .onChange(of: scrollToTopTrigger) { _, _ in
             if activeTab == .explore { exploreScrollTrigger = UUID() }
             else { followingScrollTrigger = UUID() }
-        }
-        // Settings' rating-mode toggle posts this after saving. HomeViewModel is
-        // hoisted once and never otherwise re-fetches rating_mode, so without this
-        // the feed's flower (manual-only) rate buttons would keep showing after
-        // switching to Instinct until the next full app launch.
-        .onReceive(NotificationCenter.default.publisher(for: .sjProfileUpdated)) { _ in
-            Task { await viewModel.refreshRatingMode() }
         }
     }
 
@@ -1079,8 +1047,8 @@ struct HomeView: View {
             onLike: { await viewModel.toggleLike(for: item) },
             onSave: { await viewModel.toggleSave(for: item) },
             onBlock: { await viewModel.blockUser(userId: item.userId) },
+            onNotInterested: { await viewModel.notInterested(item: item) },
             onOwnProfileTap: onOwnProfileTap,
-            ratingMode: viewModel.ratingMode,
             myScore: viewModel.myScores[item.releases.id],
             onMyScoreChange: { viewModel.myScores[item.releases.id] = $0 }
         )
@@ -1309,11 +1277,25 @@ struct FeedCard: View {
     let onLike: () async -> Void
     let onSave: () async -> Void
     let onBlock: () async -> Void
+    let onNotInterested: () async -> Void
     let onOwnProfileTap: () -> Void
-    var ratingMode: String = "manual"
     var ownRatingActions: OwnRatingMenuActions? = nil
     var myScore: Double? = nil
     var onMyScoreChange: ((Double?) -> Void)? = nil
+    /// True while a rating is still mid-flow (drag committed, "Done" not yet
+    /// tapped) -- the rating exists but isn't finalized, so this hides the
+    /// like/comment action bar (nothing to interact with on an unfinished
+    /// post) and skips this view's own card background/corner/shadow, so a
+    /// caller can embed it directly above its own continuation content
+    /// (comment/mix/Done) inside one shared card instead of two stacked
+    /// ones. Default false renders the normal, complete, standalone card.
+    var isDraft: Bool = false
+    /// Ties this card's `ScoreBadge` geometry to a matching id elsewhere in
+    /// the host view (typically the `MorphingRateButton` flower that just
+    /// committed this exact rating), so the badge lands as a continuation of
+    /// that flower's morph instead of appearing as an unrelated new view.
+    /// nil (the normal case, every other caller) opts out entirely.
+    var matchedGeometryNamespace: Namespace.ID? = nil
 
     @State private var activeSheet: CardSheet?
     @State private var showBlockConfirm = false
@@ -1325,7 +1307,7 @@ struct FeedCard: View {
         return item.userId == cid
     }
 
-    var body: some View {
+    private var cardContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             cardHeader
             albumSection
@@ -1337,11 +1319,23 @@ struct FeedCard: View {
                     .padding(.horizontal, 14)
                     .padding(.bottom, 10)
             }
-            actionBar
+            if !isDraft {
+                actionBar
+            }
         }
-        .background(Color.sjSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 1)
+    }
+
+    var body: some View {
+        Group {
+            if isDraft {
+                cardContent
+            } else {
+                cardContent
+                    .background(Color.sjSurface)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 1)
+            }
+        }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
             case .comments:
@@ -1448,6 +1442,9 @@ struct FeedCard: View {
                         Label("Share", systemImage: "square.and.arrow.up")
                     }
                     if !isOwnPost {
+                        Button { Task { await onNotInterested() } } label: {
+                            Label("Not Interested", systemImage: "hand.thumbsdown")
+                        }
                         Divider()
                         Button(role: .destructive) { activeSheet = .report } label: { Label("Report", systemImage: "flag") }
                         Button(role: .destructive) { showBlockConfirm = true } label: { Label("Block this user", systemImage: "hand.raised") }
@@ -1526,7 +1523,7 @@ struct FeedCard: View {
                         .frame(width: 66, height: 66)
                         .accessibilityHidden(true) // title/artist text alongside already describes it
 
-                    if ratingMode != "instinct", currentUserId != nil {
+                    if currentUserId != nil {
                         AlbumRateButton(
                             release: item.releases.asRelease,
                             initialScore: myScore,
@@ -1558,7 +1555,12 @@ struct FeedCard: View {
     @ViewBuilder
     private var scoreView: some View {
         if let score = item.displayScore {
-            ScoreBadge(score: score)
+            if let matchedGeometryNamespace {
+                ScoreBadge(score: score)
+                    .matchedGeometryEffect(id: "scoreBadge", in: matchedGeometryNamespace)
+            } else {
+                ScoreBadge(score: score)
+            }
         } else {
             EmptyView()
         }
@@ -1578,14 +1580,17 @@ struct FeedCard: View {
                 .buttonStyle(.plain)
                 .animation(.easeInOut(duration: 0.15), value: isLiked)
                 .accessibilityLabel(isLiked ? String(localized: "Unlike") : String(localized: "Like"))
+                .sensoryFeedback(.impact(weight: .light), trigger: isLiked)
 
-                Button { activeSheet = .likers } label: {
-                    Text("\(likesCount)")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(isLiked ? .red : Color.sjMuted)
-                        .contentShape(Rectangle())
+                if likesCount > 0 {
+                    Button { activeSheet = .likers } label: {
+                        Text("\(likesCount)")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(isLiked ? .red : Color.sjMuted)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
 
             // Comment group: icon + count
@@ -1598,9 +1603,11 @@ struct FeedCard: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(String(localized: "View comments"))
 
-                Text("\(commentsCount)")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(Color.sjMuted)
+                if commentsCount > 0 {
+                    Text("\(commentsCount)")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Color.sjMuted)
+                }
             }
 
             Spacer(minLength: 0)

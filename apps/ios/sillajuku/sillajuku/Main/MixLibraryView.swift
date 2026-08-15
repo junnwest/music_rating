@@ -357,6 +357,7 @@ struct MixDetailView: View {
     @State private var sharePosts: [MixShareSharerRow] = []
     @State private var showShareComposer = false
     @State private var showDeleteConfirm = false
+    @State private var pendingShare: PendingShare? = nil
 
     // Live-edited while the system EditButton() is active -- populated from
     // `mix` on entering edit mode, written back to `mix` + the DB on Done.
@@ -488,6 +489,11 @@ struct MixDetailView: View {
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
+        .sheet(item: $pendingShare) { pending in
+            SharePreviewSheet(pending: pending)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
     }
 
     private var emptyStateRow: some View {
@@ -587,17 +593,27 @@ struct MixDetailView: View {
                 }
                 .buttonStyle(.plain)
 
-                if mix.isPublic {
-                    Button { showShareComposer = true } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: "square.and.arrow.up")
-                                .foregroundStyle(Color.sjBlue)
-                            Text("Share")
-                                .foregroundStyle(Color.sjBlue)
+                Menu {
+                    // Sharing to the in-app feed requires the mix to be public (it'd
+                    // otherwise leak a private mix's contents); the Instagram export is
+                    // just your own external image, so it's available regardless.
+                    if mix.isPublic {
+                        Button { showShareComposer = true } label: {
+                            Label("Share to Feed", systemImage: "person.2")
                         }
                     }
-                    .buttonStyle(.plain)
+                    Button { Task { await prepareShare() } } label: {
+                        Label("Share to Instagram", systemImage: "camera")
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "square.and.arrow.up")
+                            .foregroundStyle(Color.sjBlue)
+                        Text("Share")
+                            .foregroundStyle(Color.sjBlue)
+                    }
                 }
+                .buttonStyle(.plain)
 
                 if isOwnMix, !mix.isDefault {
                     Button { showDeleteConfirm = true } label: {
@@ -775,6 +791,36 @@ struct MixDetailView: View {
         _ = try? await supabase.from("mixes").delete().eq("id", value: mix.id).execute()
         NotificationCenter.default.post(name: .mixLibraryChanged, object: nil)
         dismiss()
+    }
+
+    /// Mirrors AlbumDetailView's own `prepareShare` -- a mix has no single score,
+    /// so that field is always nil, and up to 4 covers (album ratings first, then
+    /// songs) become the card's stacked collage instead of one square cover.
+    private func prepareShare() async {
+        let username = await {
+            guard let userId = supabase.auth.currentUser?.id else { return "someone" }
+            struct ProfileRow: Decodable { let username: String? }
+            let profile: ProfileRow? = try? await supabase
+                .from("profiles").select("username")
+                .eq("id", value: userId).single().execute().value
+            return profile?.username ?? "someone"
+        }()
+
+        let coverUrls = (items.map(\.releases.coverUrl) + songItems.map(\.releaseGroups.coverUrl))
+            .compactMap { $0 }
+            .prefix(4)
+            .compactMap { URL(string: $0) }
+        let coverImages = await InstagramShare.downloadImages(from: Array(coverUrls))
+
+        let itemCount = items.count + songItems.count
+        pendingShare = PendingShare(
+            username: username,
+            coverImages: coverImages,
+            title: mix.name,
+            subtitle: "Mix · \(itemCount) item\(itemCount == 1 ? "" : "s")",
+            score: nil,
+            reviewText: nil
+        )
     }
 
     private func deleteItems(at offsets: IndexSet) {
@@ -1042,6 +1088,7 @@ struct MixPickerView: View {
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
+                    .sensoryFeedback(.selection, trigger: selectedIds)
                 }
             }
             .background(Color.sjCream.ignoresSafeArea())
@@ -1191,6 +1238,7 @@ struct SongMixPickerView: View {
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
+                    .sensoryFeedback(.selection, trigger: selectedIds)
                 }
             }
             .background(Color.sjCream.ignoresSafeArea())

@@ -10,6 +10,13 @@ struct PostRatingOptionsView: View {
     // grow its presentationDetents when the comment TextEditor expands) without
     // every call site needing to opt in.
     var onHeightChange: ((CGFloat) -> Void)? = nil
+    /// False when the host page already shows the album's cover/title/artist
+    /// elsewhere (e.g. inline on the album page, right below a score badge
+    /// that already identifies what was just rated) -- skips `albumHeader`
+    /// and its divider so the view starts straight at the comment row instead
+    /// of repeating info already on screen. Sheet-based hosts (no other album
+    /// context visible) keep the default `true`.
+    var showHeader: Bool = true
 
     @State private var isAddingComment: Bool
     @State private var commentText: String
@@ -17,11 +24,12 @@ struct PostRatingOptionsView: View {
 
     init(release: Release, continueLabel: LocalizedStringKey = "Continue", initialComment: String = "",
          onBack: (() -> Void)? = nil, onHeightChange: ((CGFloat) -> Void)? = nil,
-         onContinue: @escaping (String?) -> Void) {
+         showHeader: Bool = true, onContinue: @escaping (String?) -> Void) {
         self.release = release
         self.continueLabel = continueLabel
         self.onBack = onBack
         self.onHeightChange = onHeightChange
+        self.showHeader = showHeader
         self.onContinue = onContinue
         self._commentText = State(initialValue: initialComment)
         self._isAddingComment = State(initialValue: !initialComment.isEmpty)
@@ -29,8 +37,10 @@ struct PostRatingOptionsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            albumHeader
-            Divider().padding(.vertical, 10)
+            if showHeader {
+                albumHeader
+                Divider().padding(.vertical, 10)
+            }
             commentRow
             Divider().padding(.horizontal, 20)
             listRow
@@ -98,9 +108,20 @@ struct PostRatingOptionsView: View {
                         .font(.system(size: 15))
                         .foregroundStyle(Color.sjInk)
                     Spacer()
-                    Image(systemName: isAddingComment ? "chevron.up" : "chevron.down")
+                    // "chevron.down" rotating 180° open -- deliberately NOT
+                    // the same "chevron.right" the Add to a Mix row below
+                    // uses: that one opens a separate modal (navigation
+                    // affordance), this one expands inline in place
+                    // (disclosure affordance). Using the same glyph for both
+                    // would look identical at rest despite meaning different
+                    // things. A single glyph that rotates still reads as one
+                    // continuous turn -- swapping between separate up/down
+                    // glyphs (an earlier approach) didn't interpolate and
+                    // read as a glitchy jump instead.
+                    Image(systemName: "chevron.down")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Color.sjMuted)
+                        .rotationEffect(.degrees(isAddingComment ? 180 : 0))
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
@@ -130,7 +151,14 @@ struct PostRatingOptionsView: View {
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.sjBorder, lineWidth: 1))
                 .padding(.horizontal, 20)
                 .padding(.bottom, 10)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                // Plain opacity, no .move -- `.move(edge: .top)` starts an
+                // inserted view shifted UP by its own height (so it enters
+                // by sliding down INTO place from above), which for a box
+                // sitting directly below the "Add a comment" row meant it
+                // started out overlapping that row on the way in. Fading in
+                // at its actual (already-correct, growing-height) position
+                // avoids the overlap entirely.
+                .transition(.opacity)
             }
         }
     }
