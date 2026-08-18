@@ -6,6 +6,13 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-08-18 (Mac, continued once more same session) — User: "replace the plus buttons to flower button." Small direct follow-up.**
+
+- **`ArtistReleaseRow` and `ArtistSongRow`'s "nothing rated yet, no community score either" trailing indicator** (a bordered circle, previously `Image(systemName: "plus")`) now shows `Image("icon-flower")` (template rendering, `Color.sjMuted`, 12×12) instead — matching the flower mark used everywhere else on this page (this session's own `artistStatBox`, `ScoreBadge`).
+- **Flagged rather than silently changed: `ArtistReleaseRow` already has a real, interactive `AlbumRateButton` (`Components/AlbumRateButton.swift` — an actual `FlowerRateControl`, drag-to-rate) overlaid on the cover's bottom-trailing corner whenever `userScore == nil`.** So an album with zero ratings at all now shows *two* flower marks in the same row — one interactive (blue, on the cover), one passive (gray, trailing). Made the literal requested change rather than second-guessing it into a removal, but called it out explicitly since it's a plausible next thing to trim if it reads as redundant once seen live. `ArtistSongRow` has no such cover overlay, so its version is unambiguous.
+- **Live-verified in Simulator**, both Albums and Songs tabs, on the same still-logged-in account.
+- **`xcodebuild -scheme sillajuku -destination 'generic/platform=iOS Simulator' build` → BUILD SUCCEEDED.** Not committed.
+
 **2026-08-18 (Mac, continued further same session) — User: "i also feel like the artist page in general doesn't match the UI aesthetics of the rest of the app." Agreed and found three concrete mismatches beyond the score-badge one already fixed, all from the same root cause: this page predates (or was never updated to match) visual patterns the rest of the app later standardized on.**
 
 - **Approach: read the actual established patterns before touching anything**, same discipline as the taste-map "component sizes" fix earlier this session — compared `ArtistPageView` (`Main/SearchView.swift`) directly against `AlbumDetailView`'s `communityStatBox`/`ratingBody` and `HomeView`'s `feedTabButton`, rather than guessing what "more consistent" should look like.

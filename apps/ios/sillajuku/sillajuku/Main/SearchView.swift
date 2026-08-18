@@ -2456,7 +2456,9 @@ private struct ArtistSongRow: View {
                 } else {
                     ZStack {
                         Circle().stroke(Color.sjBorder, lineWidth: 1.5).frame(width: 24, height: 24)
-                        Image(systemName: "plus").font(.system(size: 10, weight: .semibold))
+                        Image("icon-flower")
+                            .renderingMode(.template).resizable().scaledToFit()
+                            .frame(width: 12, height: 12)
                             .foregroundStyle(Color.sjMuted)
                     }
                 }
@@ -2530,7 +2532,9 @@ private struct ArtistReleaseRow: View {
                 } else {
                     ZStack {
                         Circle().stroke(Color.sjBorder, lineWidth: 1.5).frame(width: 24, height: 24)
-                        Image(systemName: "plus").font(.system(size: 10, weight: .semibold))
+                        Image("icon-flower")
+                            .renderingMode(.template).resizable().scaledToFit()
+                            .frame(width: 12, height: 12)
                             .foregroundStyle(Color.sjMuted)
                     }
                 }

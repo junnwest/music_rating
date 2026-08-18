@@ -14,6 +14,12 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **✅ SESSION CLOSE (2026-08-18, Mac, continued once more) — User: "replace the plus buttons to flower button." Small, scoped follow-up to the prior entry: the generic SF Symbol "+" shown on unrated albums/songs is now the app's own flower mark.**
+> 1. **`ArtistReleaseRow` (Albums tab) and `ArtistSongRow` (Songs tab)** both had a passive `Image(systemName: "plus")` in a bordered circle for "no rating at all yet" (neither mine nor community's). Both now render `Image("icon-flower")` (template, muted) in the same circle instead — same brand mark `ScoreBadge`/`AlbumRateButton`/the stat tiles already use for anything rating-related.
+> 2. **Noted, not changed:** `ArtistReleaseRow`'s cover already carries a real interactive `AlbumRateButton` (an actual flower drag-to-rate control) at its bottom-trailing corner for any unrated release — so an unrated album row now shows two flower marks (one interactive on the cover, one passive in the trailing slot). Flagged in case that reads as one too many once seen live; easy to drop the trailing one if so.
+> 3. **Verified live in Simulator** — Albums and Songs tabs both show the flower glyph correctly in place of the plus.
+> 4. **`xcodebuild -scheme sillajuku -destination 'generic/platform=iOS Simulator' build` → BUILD SUCCEEDED.** Not committed.
+>
 > **✅ SESSION CLOSE (2026-08-18, Mac, continued further) — User: "the artist page in general doesn't match the UI aesthetics of the rest of the app." Correct — found and fixed 3 concrete mismatches beyond the score-badge one from the prior entry.**
 > 1. **Stats row:** community avg/ratings/releases were bare numbers separated by `Divider()` hairlines. Now three bordered stat tiles (`artistStatBox`, rounded 10, `sjSurface` fill, `sjBorder` stroke, flower icon on the avg tile) — the identical visual spec `AlbumDetailView.communityStatBox` already established for the same kind of data.
 > 2. **Tab switcher:** Albums/Songs/Community/Stats was a flat underline-indicator bar. Now a Liquid Glass floating capsule that slides behind the selected label via `matchedGeometryEffect` — the same pattern Home's Explore/Following switcher (`feedTabButton`) uses, adapted to 4 items. Caught and fixed a real bug from the first pass: "Community" wrapped to two lines at the initial font size — added `.lineLimit(1)` + `.minimumScaleFactor(0.75)`.
