@@ -1496,6 +1496,7 @@ struct ArtistPageView: View {
     @State private var albumSortOrder:  ArtistAlbumSortOrder  = .newest
     @State private var communityDisplayMode: ArtistCommunityDisplayMode = .posts
     @State private var songNavTarget: SongNavTarget? = nil
+    @Namespace private var artistTabBubble
 
     private struct SongNavTarget: Identifiable, Hashable {
         let id: UUID
@@ -1562,15 +1563,15 @@ struct ArtistPageView: View {
                 .padding(.top, 16)
                 .padding(.bottom, 14)
 
-                HStack(spacing: 12) {
-                    artistStat(value: communityAvg.map { String(format: "%.1f", $0) } ?? "—",
-                               label: "community avg")
-                    Divider().frame(height: 28)
-                    artistStat(value: "\(communityCount)", label: "ratings")
-                    Divider().frame(height: 28)
+                HStack(spacing: 10) {
+                    artistStatBox(value: communityAvg.map { String(format: "%.1f", $0) } ?? "—",
+                                  label: "Community Avg", showIcon: true)
+                    artistStatBox(value: "\(communityCount)",
+                                  label: communityCount == 1 ? "Rating" : "Ratings", showIcon: false)
                     // "—" while loading: rendering a live "0" here during the
                     // fetch is what read as "this artist has 0 releases".
-                    artistStat(value: isLoading ? "—" : "\(releases.count)", label: "releases")
+                    artistStatBox(value: isLoading ? "—" : "\(releases.count)",
+                                  label: "Releases", showIcon: false)
                 }
                 .padding(.horizontal, 18)
                 .padding(.bottom, 14)
@@ -1594,23 +1595,16 @@ struct ArtistPageView: View {
             }
 
             // ── Tab bar ──────────────────────────────────────
-            HStack(spacing: 0) {
+            // Floating glass-capsule bubble behind the selected label, sliding via
+            // matchedGeometryEffect -- same pattern as Home's Explore/Following
+            // switcher (`feedTabButton`), not a flat underline indicator.
+            HStack(spacing: 4) {
                 ForEach(tabLabels.indices, id: \.self) { i in
-                    Button { selectedTab = i } label: {
-                        Text(tabLabels[i])
-                            .font(.system(size: 11, weight: selectedTab == i ? .bold : .medium))
-                            .foregroundStyle(selectedTab == i ? Color.sjInk : Color.sjMuted)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 9)
-                            .overlay(alignment: .bottom) {
-                                if selectedTab == i {
-                                    Rectangle().frame(height: 2).foregroundStyle(Color.sjInk)
-                                }
-                            }
-                    }
-                    .buttonStyle(.plain)
+                    artistTabButton(i, label: tabLabels[i])
                 }
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
             .overlay(alignment: .bottom) { Divider() }
 
             // ── Swipeable content ────────────────────────────
@@ -1728,13 +1722,54 @@ struct ArtistPageView: View {
         .task { await load() }
     }
 
+    private func artistTabButton(_ i: Int, label: LocalizedStringKey) -> some View {
+        Button { selectedTab = i } label: {
+            Text(label)
+                .font(.system(size: 12.5, weight: selectedTab == i ? .bold : .medium))
+                .foregroundStyle(selectedTab == i ? Color.sjInk : Color.sjMuted)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background {
+                    if selectedTab == i {
+                        Capsule()
+                            .fill(Color.clear)
+                            .glassEffect(.regular, in: Capsule())
+                            .matchedGeometryEffect(id: "artistTabBubble", in: artistTabBubble)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Bordered stat tile -- same visual spec as `AlbumDetailView.communityStatBox`
+    /// (rounded 10, `sjSurface` fill, `sjBorder` stroke, icon+value+label), so the
+    /// artist page's summary numbers read as the same kind of object as the
+    /// album page's, instead of the bare number+divider row this replaced.
     @ViewBuilder
-    private func artistStat(value: String, label: LocalizedStringKey) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(value).font(.system(size: 22, weight: .heavy)).foregroundStyle(Color.sjInk)
-            Text(label).font(.system(size: 10)).foregroundStyle(Color.sjMuted)
+    private func artistStatBox(value: String, label: LocalizedStringKey, showIcon: Bool) -> some View {
+        HStack(spacing: 6) {
+            if showIcon {
+                Image("icon-flower")
+                    .renderingMode(.template).resizable().scaledToFit()
+                    .frame(width: 12, height: 12).foregroundStyle(Color.sjBlue)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(value)
+                    .font(.system(size: 16, weight: .bold)).foregroundStyle(Color.sjInk)
+                Text(label)
+                    .font(.system(size: 10)).foregroundStyle(Color.sjMuted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .background(Color.sjSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.sjBorder, lineWidth: 1))
     }
 
     private func load() async {
@@ -2084,14 +2119,7 @@ struct ArtistPageView: View {
                         }
                         Spacer()
                         if let score = entry.displayScore {
-                            HStack(spacing: 3) {
-                                Image("icon-flower")
-                                    .renderingMode(.template).resizable().scaledToFit()
-                                    .frame(width: 11, height: 11).foregroundStyle(Color.sjAmber)
-                                Text(score.truncatingRemainder(dividingBy: 1) == 0
-                                     ? "\(Int(score))" : String(format: "%.1f", score))
-                                    .font(.system(size: 13, weight: .bold)).foregroundStyle(Color.sjAmber)
-                            }
+                            ScoreBadge(score: score, badgeSize: 32, ringStroke: 2, ringGap: 1.5)
                         }
                     }
                     .padding(.horizontal, 14)
@@ -2141,15 +2169,10 @@ struct ArtistPageView: View {
                 }
             }
             Spacer()
+            // One person's own rating -- ScoreBadge, same as everywhere else an
+            // individual rating shows (see the note on ArtistReleaseRow's userScore).
             if let score = entry.displayScore {
-                HStack(spacing: 3) {
-                    Image("icon-flower")
-                        .renderingMode(.template).resizable().scaledToFit()
-                        .frame(width: 10, height: 10).foregroundStyle(Color.sjAmber)
-                    Text(score.truncatingRemainder(dividingBy: 1) == 0
-                         ? "\(Int(score))" : String(format: "%.1f", score))
-                        .font(.system(size: 12, weight: .bold)).foregroundStyle(Color.sjAmber)
-                }
+                ScoreBadge(score: score, badgeSize: 24, ringStroke: 1.5, ringGap: 1)
             }
             if let r = release {
                 CoverImage(url: r.coverUrl, cornerRadius: 6).frame(width: 36, height: 36)
@@ -2495,7 +2518,13 @@ private struct ArtistReleaseRow: View {
                 Spacer()
 
                 if let s = userScore {
-                    flowerScore(s, color: Color.sjBlue)
+                    // An individual rating (mine) -- ScoreBadge, the same badge every
+                    // other individual-rating surface in the app uses (AlbumDetailView's
+                    // "Your Rating", ProfileView's rated list, HomeView's feed). The
+                    // community average just below stays plain text on purpose: it's an
+                    // aggregate, not anyone's specific rating, and the app never puts an
+                    // aggregate in a ScoreBadge (see AlbumDetailView's Community Avg tile).
+                    ScoreBadge(score: s, badgeSize: 26, ringStroke: 1.5, ringGap: 1)
                 } else if let s = communityScore {
                     flowerScore(s, color: Color.sjAmber)
                 } else {
