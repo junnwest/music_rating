@@ -1540,13 +1540,22 @@ struct ArtistPageView: View {
             // ── Header ──────────────────────────────────────
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .center, spacing: 12) {
-                    if let urlStr = artistAvatarUrl, let url = URL(string: urlStr) {
-                        CachedImage(url: url) { Color.sjBorder }
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 56, height: 56)
-                            .clipShape(Circle())
-                            .accessibilityHidden(true) // artist name text alongside already describes it
+                    // `artists.cover_url` is null for a real slice of the catalog (same
+                    // class of gap as missing album art) -- previously the whole avatar
+                    // slot just vanished when that happened. Same initial-letter fallback
+                    // spotifyArtistScroll already uses for exactly this case, so a name
+                    // with no catalog photo still reads as an avatar, not an empty gap.
+                    CachedImage(url: artistAvatarUrl.flatMap { URL(string: $0) }) {
+                        Color.sjBorder.overlay(
+                            Text(String((canonicalName ?? artist.name).prefix(1)))
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundStyle(Color.sjMuted)
+                        )
                     }
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 56, height: 56)
+                    .clipShape(Circle())
+                    .accessibilityHidden(true) // artist name text alongside already describes it
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Artist")
                             .font(.system(size: 10, weight: .semibold))
