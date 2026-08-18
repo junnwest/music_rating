@@ -1182,7 +1182,9 @@ struct SearchView: View {
                     // aware resolution itself, behind its own spinner, when
                     // `artistId` is nil -- matching how the Apple Music row below
                     // already navigates.
-                    NavigationLink(value: ArtistDestination(artistId: nil, name: artist.name)) {
+                    NavigationLink(value: ArtistDestination(
+                        artistId: nil, name: artist.name, avatarHint: artist.imageUrl
+                    )) {
                         VStack(spacing: 7) {
                             CachedImage(url: URL(string: artist.imageUrl?.thumbnailUrl ?? "")) {
                                 Color.sjBorder.overlay(
@@ -1216,7 +1218,9 @@ struct SearchView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(alignment: .top, spacing: 14) {
                 ForEach(artists) { artist in
-                    NavigationLink(value: ArtistDestination(artistId: nil, name: artist.name)) {
+                    NavigationLink(value: ArtistDestination(
+                        artistId: nil, name: artist.name, avatarHint: artist.artworkURL?.absoluteString
+                    )) {
                         VStack(spacing: 7) {
                             CachedImage(url: artist.artworkURL) {
                                 Color.sjBorder.overlay(
@@ -1435,6 +1439,15 @@ struct SongRow: View {
 struct ArtistDestination: Hashable {
     let artistId: UUID?
     let name: String
+    // Optional avatar the caller already has on hand (Spotify/Apple Music's own cached
+    // artist photo) -- `artists.cover_url` is populated for only ~2.7% of the catalog
+    // (1,793 / 67,629, checked directly), so most artist pages have no DB photo to show at
+    // all. Seeding from a hint the caller already fetched means a real photo shows up for
+    // exactly the artists a user is most likely to visit (their own top/recent artists)
+    // instead of falling back to an initial letter almost every time. The DB's own
+    // `cover_url`, when it exists, still wins once `load()` resolves -- this is only a
+    // stand-in for however long that takes, or forever if the catalog has nothing.
+    var avatarHint: String? = nil
 }
 
 private struct ArtistSong: Identifiable {
@@ -1783,6 +1796,9 @@ struct ArtistPageView: View {
 
     private func load() async {
         loadFailed = false
+        // Show the caller's photo (if it handed one over) immediately, before any network
+        // round trip -- overwritten below only if the catalog turns out to have its own.
+        artistAvatarUrl = artist.avatarHint
         var loaded: [Release]
         // Spotify/Apple Music rows only carry a name -- resolve the real catalog id via the same
         // identity-aware, alias-aware RPC used by search results (DiscoveryViewModel.resolveArtistId),
@@ -1819,7 +1835,14 @@ struct ArtistPageView: View {
                 .eq("id", value: artistId.uuidString).limit(1).execute().value) ?? []
 
             var (releasesResult, arows) = await (releasesFetch, artistRowFetch)
-            if let row = arows.first { artistAvatarUrl = row.coverUrl; canonicalName = row.name }
+            if let row = arows.first {
+                canonicalName = row.name
+                // The catalog's own photo wins once it's in -- the avatarHint seeded above
+                // is only a placeholder for however long that takes, or for good if
+                // `cover_url` turns out to be null (the common case, see the doc comment
+                // on ArtistDestination.avatarHint).
+                if let coverUrl = row.coverUrl { artistAvatarUrl = coverUrl }
+            }
             if releasesResult == nil { releasesResult = await fetchReleases() }  // one retry
             guard let releasesResult else {
                 loadFailed = true

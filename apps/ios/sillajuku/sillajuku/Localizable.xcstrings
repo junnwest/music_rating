@@ -3662,6 +3662,7 @@
       }
     },
     "releases" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -3670,6 +3671,9 @@
           }
         }
       }
+    },
+    "Releases" : {
+
     },
     "releases rated" : {
       "localizations" : {
