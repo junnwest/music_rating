@@ -98,24 +98,41 @@ export function RatingsProvider({ children }: { children: ReactNode }) {
 
   const setRating = useCallback(
     async (releaseGroupId: string, score: number | null) => {
+      // Remember the pre-write value so a rejected write can be rolled back.
+      // `undefined` means the store didn't know this album yet, which is a
+      // distinct state from "known unrated" (null) and must be restored as such.
+      const prev = map.has(releaseGroupId) ? map.get(releaseGroupId)! : undefined;
       applyLocal(releaseGroupId, score);
       if (!supabase || !userId) return;
-      if (score == null) {
-        await supabase
-          .from('ratings')
-          .delete()
-          .eq('user_id', userId)
-          .eq('release_group_id', releaseGroupId);
-      } else {
-        await supabase
-          .from('ratings')
-          .upsert(
-            { user_id: userId, release_group_id: releaseGroupId, score },
-            { onConflict: 'user_id,release_group_id' },
-          );
+      const { error } =
+        score == null
+          ? await supabase
+              .from('ratings')
+              .delete()
+              .eq('user_id', userId)
+              .eq('release_group_id', releaseGroupId)
+          : await supabase
+              .from('ratings')
+              .upsert(
+                { user_id: userId, release_group_id: releaseGroupId, score },
+                { onConflict: 'user_id,release_group_id' },
+              );
+      if (error) {
+        // Never leave an optimistic score that the DB rejected. This is the one
+        // write path behind every rate button in the app and the cache is
+        // app-wide, so swallowing the error would show a wrong score on every
+        // surface at once until a reload. Roll back and surface the reason
+        // (RLS / constraint / auth / network).
+        console.error('[RatingsStore] rating write failed', { releaseGroupId, score, error });
+        setMap((m) => {
+          const next = new Map(m);
+          if (prev === undefined) next.delete(releaseGroupId);
+          else next.set(releaseGroupId, prev);
+          return next;
+        });
       }
     },
-    [userId, applyLocal],
+    [userId, applyLocal, map],
   );
 
   return (

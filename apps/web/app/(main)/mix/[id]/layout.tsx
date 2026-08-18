@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 
 // See album/[id]/layout.tsx for why this exists.
@@ -49,11 +48,14 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
   };
 }
 
-// See album/[id]/layout.tsx's matching comment -- same soft-404 fix. Also correctly covers a
-// private mix (fetchMix returns null there too, per RLS on the anon key) -- a private mix should
-// look like "not found" to an anonymous crawler, not leak that it exists.
-export default async function MixLayout({ children, params }: { children: ReactNode; params: { id: string } }) {
-  const mix = await fetchMix(params.id);
-  if (!mix) notFound();
-  return children;
+// NOTE: unlike album/[id]/layout.tsx, this must NOT notFound() on an empty fetch.
+// mixes are privacy-scoped: `fetchMix` uses the anon key and has no user session
+// server-side, so every *private* mix comes back empty here — including for its
+// owner. Calling notFound() 404'd owners out of their own private mixes. The
+// client page (which has the user's session) owns the not-found decision: it
+// shows the mix to the owner / public viewers and "not found" to everyone else.
+// generateMetadata still runs the anon fetch, so a crawler on a private mix gets
+// the generic title/description (no name/content leak), just not a hard 404.
+export default function MixLayout({ children }: { children: ReactNode }) {
+  return <>{children}</>;
 }

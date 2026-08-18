@@ -526,6 +526,7 @@ const en = {
       listenOn: 'Listen',
       ratings: 'Ratings',
       tracklist: 'Tracklist',
+      discN: 'Disc {n}',
       rateTrack: 'Rate',
       ratingsReviews: 'Ratings & Reviews',
       inPublicMixes: 'In Public Mixes',

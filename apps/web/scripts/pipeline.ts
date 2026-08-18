@@ -16,12 +16,21 @@
  *     auto-requeues transiently-failed rows (self-healing), capped by attempt_count.
  *   • GAPFILL — iTunes fallback (covers, empty tracklists, MB-missing artists), append-only
  *     + source-tagged. Slow/bounded with a NON-FATAL 403 breaker (backs off, never exits).
+ *   • NEWRELEASES — daily MB date-window sweep ("what came out since X?") that flags the catalog
+ *     artists credited on anything new as due, so FRESHNESS re-polls artists that ACTUALLY have a
+ *     new release. This is what makes whole-catalog recency achievable at all: per-artist polling
+ *     of 67.5k artists is ~200k MB requests (~2.3 days/cycle); the window sweep is ~250.
  * Plus per-lane heartbeat + startup stale-reset + freshness bootstrap.
  *
  * Tuning (env): DISCOVER_LOW_WATER, DISCOVER_TARGET, DISCOVER_CEILING, DISCOVER_POLL_MS,
  * FRESHNESS_EVERY, QC_POLL_MS, QC_MAX_ATTEMPTS, GAPFILL_POLL_MS, GAPFILL_GROUP_BATCH,
- * GAPFILL_ARTIST_BATCH, GAPFILL_BLOCK_COOLDOWN_MS. Flags: --no-discover, --no-qc, --no-embed,
- * --no-gapfill, --discover-only, --once, --limit=N.
+ * GAPFILL_ARTIST_BATCH, GAPFILL_BLOCK_COOLDOWN_MS, NEWRELEASES, NEWRELEASES_INTERVAL_MS,
+ * NEWRELEASES_LOOKBACK_DAYS, NEWRELEASES_LOOKAHEAD_DAYS. Flags: --no-discover, --no-qc, --no-embed,
+ * --no-gapfill, --discover-only, --once, --limit=N, --fresh-focus.
+ *
+ * Recency-first preset — new releases for artists we already have, minimal catalog growth:
+ *   npm run pipeline -- --fresh-focus --no-embed
+ * (= --no-discover + AREA_DISCOVERY=0 + FRESHNESS_EVERY=3, with NEWRELEASES still on.)
  *
  * Why a single INGEST worker: MusicBrainz is a hard global ~1 req/s limit, so more
  * workers can't go faster — they'd just contend. State lives in the DB
@@ -43,13 +52,19 @@ import { SEED } from './seed-artists';
 import { scanArtistRecency, type RecencyArtist } from './discover-itunes-recency';
 import { reconcileItunesMb } from './reconcile-itunes-mb';
 import { discoverArea } from './discover-mb-area';
+import { discoverNewReleases } from './discover-mb-newreleases';
 import fs from 'node:fs';
 import path from 'node:path';
 
 const ONCE = process.argv.includes('--once');
 const DISCOVER_ONLY = process.argv.includes('--discover-only');
 const NO_EMBED = process.argv.includes('--no-embed');
-const NO_DISCOVER = process.argv.includes('--no-discover'); // disable the self-feeding lane (drain-only)
+// --fresh-focus: spend the MB budget on NEW RELEASES for the artists we already have, instead of
+// on growing the catalog. Turns off both expansion lanes (DISCOVER top-up, AREA sweep) and
+// interleaves freshness re-polls far more often. Everything it does is also settable one knob at a
+// time (--no-discover / AREA_DISCOVERY=0 / FRESHNESS_EVERY); this is just the one-flag preset.
+const FRESH_FOCUS = process.argv.includes('--fresh-focus');
+const NO_DISCOVER = process.argv.includes('--no-discover') || FRESH_FOCUS; // disable the self-feeding lane (drain-only)
 const NO_QC = process.argv.includes('--no-qc');             // disable the QC lane
 const NO_GAPFILL = process.argv.includes('--no-gapfill');   // disable the iTunes GAPFILL lane
 const LIMIT = (() => { const a = process.argv.find(x => x.startsWith('--limit=')); return a ? parseInt(a.split('=')[1], 10) : Infinity; })();
@@ -85,7 +100,7 @@ const INGEST_MAX_HANGS   = envInt('INGEST_MAX_HANGS', 3);
 // FRESHNESS shares the single MB worker (one re-poll every FRESHNESS_EVERY new ingests,
 // plus whenever the queue is empty) so growth never fully starves re-checks. QC is
 // DB-only, so it runs as its own concurrent lane.
-const FRESHNESS_EVERY = envInt('FRESHNESS_EVERY', 20);          // 1 re-poll per N new ingests (0 = off)
+const FRESHNESS_EVERY = envInt('FRESHNESS_EVERY', FRESH_FOCUS ? 3 : 20); // 1 re-poll per N new ingests (0 = off)
 // When a user searches for an artist MusicBrainz doesn't have (common for niche/underground
 // acts — MB's coverage is thinnest exactly there), recover it from Deezer instead of dropping
 // the miss. Demand-driven + confident-match-only, so it's naturally bounded and clean. Default
@@ -136,12 +151,28 @@ const DEEZER_POLL_MS  = envInt('DEEZER_POLL_MS', 1_800_000); // 30m idle cadence
 // ~15k artists at MB's ~1 req/s (~4m of MB calls), so it runs at most weekly and is gated by a
 // persisted last-run timestamp (survives restarts — a plain sleep-first loop would never fire on a
 // pipeline that restarts more often than the interval). ON by default; AREA_DISCOVERY=0 disables.
-const AREA_DISCOVERY = process.env.AREA_DISCOVERY !== '0';
+const AREA_DISCOVERY = process.env.AREA_DISCOVERY !== '0' && !FRESH_FOCUS;
 const AREA_COUNTRY   = process.env.AREA_DISCOVERY_COUNTRY ?? 'KR';
 const AREA_CITIES    = process.env.AREA_DISCOVERY_CITIES ?? 'Seoul,Busan,Incheon,Daegu,Gwangju,Daejeon'; // country-null residual
 const AREA_INTERVAL_MS = envInt('AREA_DISCOVERY_INTERVAL_MS', 604_800_000); // run at most once a week
 const AREA_CHECK_MS  = envInt('AREA_DISCOVERY_CHECK_MS', 3_600_000);        // re-check the due-gate hourly
 const AREA_STATE = path.resolve('scripts/pipeline-area-state.json');
+
+// ── NEWRELEASES lane (MB date-window sweep) — how the WHOLE catalog stays current ──
+// FRESHNESS alone can't do this: ~3 MB requests per artist × 67.5k artists ≈ 2.3 days of solid MB
+// time per full cycle, so new releases were always weeks stale. This lane asks MB the inverted
+// question — "what came out since X?" — at ~1 request per 100 release groups (~340/day worldwide),
+// then flags ONLY the catalog artists credited on those groups as due now. FRESHNESS then re-polls
+// artists that demonstrably have something new instead of blindly cycling everyone. See
+// discover-mb-newreleases.ts for why it's a re-swept WINDOW and not an incremental cursor.
+// ON by default; NEWRELEASES=0 disables. Gated by a persisted timestamp like AREA, so restarting
+// the pipeline often doesn't re-sweep on every boot.
+const NEWRELEASES = process.env.NEWRELEASES !== '0';
+const NEWRELEASES_INTERVAL_MS = envInt('NEWRELEASES_INTERVAL_MS', 86_400_000); // daily
+const NEWRELEASES_CHECK_MS    = envInt('NEWRELEASES_CHECK_MS', 3_600_000);     // re-check the due-gate hourly
+const NEWRELEASES_LOOKBACK    = envInt('NEWRELEASES_LOOKBACK_DAYS', 45);
+const NEWRELEASES_LOOKAHEAD   = envInt('NEWRELEASES_LOOKAHEAD_DAYS', 30);
+const NEWRELEASES_STATE = path.resolve('scripts/pipeline-newreleases-state.json');
 
 function sleep(ms: number) { return new Promise<void>(r => setTimeout(r, ms)); }
 const now = () => new Date().toISOString();
@@ -252,14 +283,26 @@ async function countArtistRGs(db: DB, artistId: string): Promise<number> {
   const { count } = await db.from('release_groups').select('id', { count: 'exact', head: true }).eq('primary_artist_id', artistId);
   return count ?? 0;
 }
+// Tier order is deliberate and NOT the same as ordering by next_check_at alone. Sorting purely by
+// "most overdue" inverts the priority we actually want: after any long pipeline pause a dormant
+// artist scheduled 90 days ago looks more urgent than a hot artist scheduled yesterday, so the
+// backlog drains least-important-first. Query tier by tier instead (the composite index
+// idx_artists_priority (ingest_priority, next_check_at) exists for exactly this), falling through
+// only when a tier has nothing due. Within a tier it's still oldest-due-first.
+const FRESHNESS_TIERS = ['hot', 'active', 'known', 'dormant'] as const;
 async function claimDueFreshness(db: DB): Promise<{ id: string; name: string; mbid: string } | null> {
-  const { data } = await db.from('artists')
-    .select('id, name')
-    .eq('ingest_state', 'tracks_done')
-    .not('next_check_at', 'is', null)
-    .lte('next_check_at', now())
-    .order('next_check_at', { ascending: true })
-    .limit(1).maybeSingle();
+  let data: { id: string; name: string } | null = null;
+  for (const tier of FRESHNESS_TIERS) {
+    const { data: row } = await db.from('artists')
+      .select('id, name')
+      .eq('ingest_state', 'tracks_done')
+      .eq('ingest_priority', tier)
+      .not('next_check_at', 'is', null)
+      .lte('next_check_at', now())
+      .order('next_check_at', { ascending: true })
+      .limit(1).maybeSingle();
+    if (row) { data = row as { id: string; name: string }; break; }
+  }
   if (!data) return null;
   const { data: ext } = await db.from('artist_external_ids')
     .select('external_id').eq('artist_id', data.id).eq('source', 'musicbrainz').limit(1).maybeSingle();
@@ -605,6 +648,43 @@ async function areaLoop(db: DB) {
   }
 }
 
+// ── NEWRELEASES lane: sweep MB's release-group index by date window and flag the catalog artists
+// credited on anything new, so FRESHNESS re-polls them next. MB-scoped but CHEAP (~250 requests for
+// a 75-day window vs ~200k for a per-artist sweep of the same coverage), and it only ever writes
+// artists.next_check_at — the actual ingest still goes through the existing idempotent path. ──
+function newReleasesCursor(): number { try { return Date.parse(JSON.parse(fs.readFileSync(NEWRELEASES_STATE, 'utf8')).lastRunAt) || 0; } catch { return 0; } }
+function saveNewReleasesCursor() { try { fs.writeFileSync(NEWRELEASES_STATE, JSON.stringify({ lastRunAt: now() })); } catch { /* best-effort */ } }
+
+async function newReleasesLoop(db: DB) {
+  if (!NEWRELEASES || DRAIN_ONCE) { await beat(db, 'newreleases', { status: NEWRELEASES ? 'idle (drain-only)' : 'off', last_active: now() }); return; }
+  let flaggedTotal = 0, errs = 0;
+  for (;;) {
+    try {
+      const dueIn = NEWRELEASES_INTERVAL_MS - (Date.now() - newReleasesCursor());
+      if (dueIn > 0) { // not due yet — idle-beat and re-check the gate later
+        await beat(db, 'newreleases', { status: 'idle', last_active: now(), items_done: flaggedTotal, current_item: `next sweep in ~${Math.round(dueIn / 3_600_000)}h` });
+        await sleep(NEWRELEASES_CHECK_MS); continue;
+      }
+      await beat(db, 'newreleases', { status: 'running', last_active: now(), current_item: 'sweeping MB…' });
+      const r = await discoverNewReleases(db, {
+        lookbackDays: NEWRELEASES_LOOKBACK,
+        lookaheadDays: NEWRELEASES_LOOKAHEAD,
+        log: (m) => console.log(`  [newreleases] ${m}`),
+      });
+      flaggedTotal += r.flagged;
+      saveNewReleasesCursor(); // stamp AFTER a clean sweep so a mid-sweep crash retries next cycle
+      console.log(`  [newreleases] ${r.groups} groups → flagged ${r.flagged} catalog artist(s) for re-poll (${r.unowned} credited artists not in the catalog)`);
+      await beat(db, 'newreleases', { status: 'idle', last_active: now(), items_done: flaggedTotal, errors: errs, current_item: `+${r.flagged} flagged; next in ~${Math.round(NEWRELEASES_INTERVAL_MS / 3_600_000)}h` });
+      await sleep(NEWRELEASES_CHECK_MS);
+    } catch (e) {
+      errs++;
+      await beat(db, 'newreleases', { status: 'error', last_active: now(), errors: errs, current_item: (e as Error).message.slice(0, 120) });
+      console.log(`  [newreleases] ERROR: ${(e as Error).message}`);
+      await sleep(NEWRELEASES_CHECK_MS);
+    }
+  }
+}
+
 // ── startup: reset stale 'processing' (from a prior crash) back to 'pending' ────
 async function resetStale(db: DB) {
   const { count } = await db.from('artist_ingestion_queue')
@@ -728,6 +808,7 @@ async function main() {
     supervise(db, 'recency', recencyLoop),     // iTunes — recent KR releases MB lacks (auto but safe)
     supervise(db, 'reconcile', reconcileLoop), // link source='itunes' rows to MB once it catches up
     supervise(db, 'area', areaLoop),           // MB country/area re-sweep — keeps KR coverage current (weekly)
+    supervise(db, 'newreleases', newReleasesLoop), // MB date-window sweep — flags artists with actual new releases (daily)
   ]);
 }
 

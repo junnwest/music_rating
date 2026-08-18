@@ -528,6 +528,7 @@ const ko: Translations = {
       listenOn: '듣기',
       ratings: '평가',
       tracklist: '트랙리스트',
+      discN: '디스크 {n}',
       rateTrack: '평가',
       ratingsReviews: '평가 & 리뷰',
       inPublicMixes: '공개 믹스에 포함',
