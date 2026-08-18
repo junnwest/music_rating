@@ -2502,16 +2502,9 @@ private struct ArtistReleaseRow: View {
     var body: some View {
         NavigationLink(value: release) {
             HStack(spacing: 12) {
-                ZStack(alignment: .bottomTrailing) {
-                    CoverImage(url: release.coverUrl, cornerRadius: 6)
-                        .frame(width: 44, height: 44)
-                        .accessibilityHidden(true) // title text alongside already describes it
-
-                    if userScore == nil {
-                        AlbumRateButton(release: release, size: 22)
-                            .offset(x: 3, y: 3)
-                    }
-                }
+                CoverImage(url: release.coverUrl, cornerRadius: 6)
+                    .frame(width: 44, height: 44)
+                    .accessibilityHidden(true) // title text alongside already describes it
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(release.displayTitle)
@@ -2528,22 +2521,21 @@ private struct ArtistReleaseRow: View {
 
                 Spacer()
 
-                if let s = userScore {
-                    // An individual rating (mine) -- ScoreBadge, the same badge every
-                    // other individual-rating surface in the app uses (AlbumDetailView's
-                    // "Your Rating", ProfileView's rated list, HomeView's feed). The
-                    // community average just below stays plain text on purpose: it's an
-                    // aggregate, not anyone's specific rating, and the app never puts an
-                    // aggregate in a ScoreBadge (see AlbumDetailView's Community Avg tile).
-                    ScoreBadge(score: s, badgeSize: 26, ringStroke: 1.5, ringGap: 1)
-                } else if let s = communityScore {
+                // Community avg is an aggregate, not anyone's specific rating -- shown
+                // only when I haven't rated it myself, as plain text beside the button
+                // rather than implied to be part of "your" rating.
+                if userScore == nil, let s = communityScore {
                     flowerScore(s, color: Color.sjAmber)
                 }
-                // No trailing placeholder when there's neither -- the cover's own
-                // AlbumRateButton (a real, interactive flower) already covers "add a
-                // rating" for this row. A second, non-interactive flower glyph here
-                // (tapping it just opens the album, same as the row) duplicated that
-                // affordance rather than adding one.
+
+                // The one flower per row, on the trailing edge like every other row
+                // affordance -- no more separate cover-corner overlay. Also replaces the
+                // ScoreBadge this used to show for my own rating: FlowerRateControl's own
+                // rated state (a filled, score-tinted circle with the number inside, sized
+                // proportionally) is designed to read correctly at any size, where
+                // ScoreBadge's glass ring + flower watermark only holds together near its
+                // own default size -- shrinking it to fit a row was what looked off.
+                AlbumRateButton(release: release, initialScore: userScore, size: 30)
             }
             .padding(.horizontal, 16).padding(.vertical, 11)
             .contentShape(Rectangle())

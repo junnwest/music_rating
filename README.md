@@ -14,6 +14,13 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **✅ SESSION CLOSE (2026-08-18, Mac, final follow-up) — User: "the flower should be in the right hand side. also, the badge looks very off at the moment because it is just scaled down. we need another design." Both resolved with one change: `ArtistReleaseRow` now uses a single `AlbumRateButton` for everything.**
+> 1. **Moved `AlbumRateButton` off the cover's corner overlay to the row's trailing (right) edge**, alongside where the score used to show — matching where every other row affordance in the app lives.
+> 2. **Replaced the scaled-down `ScoreBadge(badgeSize: 26)` entirely** — `AlbumRateButton`/`FlowerRateControl` already has its own "already rated" visual (a score-tinted filled circle with the number inside, sized proportionally via its own `size` param), designed to hold together at arbitrary sizes. `ScoreBadge`'s glass ring + flower watermark composition was built for its ~48pt default and didn't survive being linearly shrunk to 26pt — that's what "looked off." One component (`AlbumRateButton(release:, initialScore: userScore, size: 30)`) now handles empty, community-only, and already-rated states for this row, seeded from `userScore` so dragging/tapping still writes a real rating.
+> 3. **Community avg (when I haven't rated) kept as a small plain-text flower+number beside the button** — still an aggregate, still not shown as if it were an individual rating.
+> 4. **Verified live, light + dark** — HALO's existing 4.3 rating now renders as a clean filled circle instead of a cramped ring; nested `AlbumRateButton`-inside-`NavigationLink` confirmed safe (same pattern already used in the Home/Discovery album grid).
+> 5. **`xcodebuild -scheme sillajuku -destination 'generic/platform=iOS Simulator' build` → BUILD SUCCEEDED.** Not committed.
+>
 > **✅ SESSION CLOSE (2026-08-18, Mac, one more follow-up) — User: "why are there two flower buttons each row in the artist page?" Exactly the redundancy flagged (not fixed) two entries back — resolved now.**
 > 1. **`ArtistReleaseRow`'s "nothing rated at all" trailing indicator removed entirely** — the cover already carries a real, interactive `AlbumRateButton` for any unrated release, so the passive flower-in-circle placeholder that used to sit in the trailing slot for the same case was pure duplication (tapping it did nothing itself; it just sat there looking like a second button). Those rows now show cover + title + subtitle with empty trailing space, same as any row where there's nothing to display there.
 > 2. **`ArtistSongRow` untouched** — it has no cover-corner rate button, so its flower indicator was never a duplicate.
