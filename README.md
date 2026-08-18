@@ -14,6 +14,12 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **✅ SESSION CLOSE (2026-08-18, Mac, one more follow-up) — User: "why are there two flower buttons each row in the artist page?" Exactly the redundancy flagged (not fixed) two entries back — resolved now.**
+> 1. **`ArtistReleaseRow`'s "nothing rated at all" trailing indicator removed entirely** — the cover already carries a real, interactive `AlbumRateButton` for any unrated release, so the passive flower-in-circle placeholder that used to sit in the trailing slot for the same case was pure duplication (tapping it did nothing itself; it just sat there looking like a second button). Those rows now show cover + title + subtitle with empty trailing space, same as any row where there's nothing to display there.
+> 2. **`ArtistSongRow` untouched** — it has no cover-corner rate button, so its flower indicator was never a duplicate.
+> 3. **Verified live** — unrated rows (CONSTANTLY, Start Over, etc.) now show exactly one flower each.
+> 4. **`xcodebuild -scheme sillajuku -destination 'generic/platform=iOS Simulator' build` → BUILD SUCCEEDED.** Not committed.
+>
 > **✅ SESSION CLOSE (2026-08-18, Mac, continued yet again) — User: "no artist avatar?" Real gap, quick fix: the header avatar had no fallback at all, so a null `artists.cover_url` made it just vanish instead of degrading gracefully.**
 > 1. **`artistAvatarUrl` came from `artists.cover_url`, which is null for a real slice of the catalog** (same class of gap as the missing album covers earlier this session — confirmed via direct query for Tiffany Day: `cover_url: null`). The header's `if let urlStr = artistAvatarUrl { ... }` had no `else`, so the whole 56×56 avatar slot just disappeared, leaving the name floating with no leading visual at all.
 > 2. **Fixed by applying a fallback the app already has**, not inventing a new one: `spotifyArtistScroll` (Add tab's "Your Top Artists") already shows an initial-letter circle for artists it can't photo — same treatment now applies here (`Color.sjBorder` circle, bold initial letter, `sjMuted`), so a name with no catalog photo reads as a deliberate avatar, not a layout gap.

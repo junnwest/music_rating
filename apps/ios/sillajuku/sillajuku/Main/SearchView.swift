@@ -2538,15 +2538,12 @@ private struct ArtistReleaseRow: View {
                     ScoreBadge(score: s, badgeSize: 26, ringStroke: 1.5, ringGap: 1)
                 } else if let s = communityScore {
                     flowerScore(s, color: Color.sjAmber)
-                } else {
-                    ZStack {
-                        Circle().stroke(Color.sjBorder, lineWidth: 1.5).frame(width: 24, height: 24)
-                        Image("icon-flower")
-                            .renderingMode(.template).resizable().scaledToFit()
-                            .frame(width: 12, height: 12)
-                            .foregroundStyle(Color.sjMuted)
-                    }
                 }
+                // No trailing placeholder when there's neither -- the cover's own
+                // AlbumRateButton (a real, interactive flower) already covers "add a
+                // rating" for this row. A second, non-interactive flower glyph here
+                // (tapping it just opens the album, same as the row) duplicated that
+                // affordance rather than adding one.
             }
             .padding(.horizontal, 16).padding(.vertical, 11)
             .contentShape(Rectangle())

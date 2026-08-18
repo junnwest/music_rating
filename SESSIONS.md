@@ -6,6 +6,12 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-08-18 (Mac, one more follow-up same session) — User: "why are there two flower buttons each row in the artist page?" Resolved the exact duplication flagged (not fixed) in the "replace the plus buttons to flower button" entry two back.**
+
+- **Removed `ArtistReleaseRow`'s trailing flower-in-circle placeholder for the "no user rating, no community score" case entirely**, rather than restyling it again. The cover's own `AlbumRateButton` (a real `FlowerRateControl` — drag to quick-rate, tap for the precise sheet) already renders at the cover's bottom-trailing corner for any release with `userScore == nil`, so the passive trailing flower was always literally redundant with it once both existed on the same row: two flower-shaped, circle-bordered visuals, only one of which actually did anything when tapped (the other just sat there — tapping it fired the row's own `NavigationLink`, same as tapping anywhere else in the row). `ArtistSongRow` was left untouched — it has no cover-corner rate button, so its own flower indicator was never a duplicate of anything.
+- **Verified live in Simulator**: Tiffany Day's unrated singles (CONSTANTLY, Start Over, TELL ME WHAT I DID, BREAKUP, AMERICAN GIRL) now each show exactly one flower — the interactive one on the cover — with clean empty trailing space where the redundant second one used to sit. HALO (already rated) still shows its `ScoreBadge` correctly, unaffected.
+- **`xcodebuild -scheme sillajuku -destination 'generic/platform=iOS Simulator' build` → BUILD SUCCEEDED.** Not committed.
+
 **2026-08-18 (Mac, continued yet again same session) — User: "no artist avatar?" — a real, well-scoped bug, not a rhetorical question. The header avatar had no missing-image fallback at all.**
 
 - **Root cause confirmed via direct DB query, not assumed:** `artistAvatarUrl` is populated from `artists.cover_url` (`Main/SearchView.swift`'s `load()`), and Tiffany Day's row has `cover_url: null` — queried directly and confirmed, same class of data gap as the "CONSTANTLY"/"Start Over" missing album covers found earlier this session. The header's `if let urlStr = artistAvatarUrl, let url = URL(string: urlStr) { CachedImage(...) }` had no `else` branch, so a null cover URL made the entire 56×56 avatar slot vanish rather than degrade to any placeholder — the artist's name just floated there with nothing beside it.
