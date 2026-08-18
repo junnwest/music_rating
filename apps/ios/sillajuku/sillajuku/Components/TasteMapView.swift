@@ -1,142 +1,209 @@
 import SwiftUI
 
-/// The taste map: a squarified-treemap heatmap of the user's taste worlds --
-/// one tile per world, area ∝ their mass in it, colour ∝ how highly they rate
-/// it (the app's OKLCh score ramp, `Spectrum`). Tap a world to drill into its
-/// sub-genres as their own tiles; tap a sub-genre to open a sheet with the
-/// user's own albums in it plus a few recommendations.
+/// The taste map: a ranked list of the user's taste worlds -- one row per
+/// world, ordered by mass, each showing a hero album cover, name, share of
+/// their ratings, average score, and a proportional bar. Tap a world to drill
+/// into its sub-genres as their own ranked rows; tap a sub-genre to open a
+/// sheet with the user's own albums in it plus a few recommendations.
 ///
-/// Port of web's `components/sj/TasteGraph.tsx` (2026-08-11 rebuild, which
-/// replaced an earlier √share bubble field with this treemap). Web shows the
-/// drill-down detail in a permanent side panel; here it's a `.sheet` on tap,
-/// the iOS-native equivalent for a phone-width screen -- same data, same
-/// squarify layout, adapted presentation.
+/// Was a squarified-treemap grid of variable-size tiles through two earlier
+/// passes this session -- both live-verified and both rejected (too cramped,
+/// then a busy cover-mosaic, then still reading as unpolished with clipped
+/// text at small tile sizes: a treemap fundamentally fights a ~360pt-wide
+/// phone screen, where any given tile can be too small to hold a genre name).
+/// A plain list has no small-tile problem at all: every row is full-width, so
+/// text never needs to fit inside a shrinking box. Semantically the same data
+/// web's `TasteGraph.tsx` inspector panel already shows in this exact shape
+/// (cover + name + proportional bar + share); this makes it the primary view
+/// instead of a secondary detail panel next to a treemap.
+struct TasteMapView: View {
+    let data: TasteProfileResponse.TasteGraph
 
-// MARK: - Squarified treemap layout
+    @State private var worldIndex: Int? = nil
+    @State private var sheetTarget: TasteMapSheetTarget? = nil
 
-private struct MapRect {
-    let x: Double
-    let y: Double
-    let w: Double
-    let h: Double
-    let i: Int
-}
-
-/// Squarified treemap (Bruls, Huizing & van Wijk 2000): pack `values` into the
-/// `w`×`h` box as rectangles whose areas are proportional to the values and
-/// whose aspect ratios stay as close to square as possible. Deterministic --
-/// values are laid out in the given order (callers pre-sort descending). 1:1
-/// algorithmic port of web's `squarify`.
-private func squarify(_ values: [Double], _ w: Double, _ h: Double) -> [MapRect] {
-    guard !values.isEmpty else { return [] }
-    let total = max(values.reduce(0, +), 0.0001)
-    let scale = (w * h) / total
-    let items = values.enumerated().map { (i: $0.offset, area: max($0.element, 0) * scale) }
-
-    var out: [MapRect] = []
-    var x = 0.0, y = 0.0, fw = w, fh = h
-
-    func worst(_ row: [(i: Int, area: Double)], _ side: Double) -> Double {
-        guard !row.isEmpty else { return .infinity }
-        let sum = row.reduce(0.0) { $0 + $1.area }
-        let maxA = row.map(\.area).max() ?? 0
-        let minA = row.map(\.area).min() ?? 0
-        let s2 = sum * sum
-        let side2 = side * side
-        return max((side2 * maxA) / s2, s2 / (side2 * minA))
+    /// Every rated album, indexed by each tag it carries -- built once per
+    /// render and threaded through the cover lookups below rather than
+    /// recomputed per row.
+    private var albumsByTag: [String: [TasteProfileResponse.TasteGraph.GraphAlbum]] {
+        var m: [String: [TasteProfileResponse.TasteGraph.GraphAlbum]] = [:]
+        for a in data.albums {
+            for tg in a.tags { m[tg, default: []].append(a) }
+        }
+        return m
     }
 
-    var idx = 0
-    while idx < items.count {
-        let short = min(fw, fh)
-        var row: [(i: Int, area: Double)] = [items[idx]]
-        var j = idx + 1
-        while j < items.count && worst(row, short) >= worst(row + [items[j]], short) {
-            row.append(items[j])
-            j += 1
-        }
-        let rowArea = row.reduce(0.0) { $0 + $1.area }
-        if fw <= fh {
-            let rh = fw > 0 ? rowArea / fw : 0
-            var rx = x
-            for r in row {
-                let rw = rh > 0 ? r.area / rh : 0
-                out.append(MapRect(x: rx, y: y, w: rw, h: rh, i: r.i))
-                rx += rw
+    /// A world's hero cover: its highest-scored rated album across any of its tags.
+    private func worldHeroCover(_ world: TasteProfileResponse.TasteGraph.GraphWorld,
+                                 in byTag: [String: [TasteProfileResponse.TasteGraph.GraphAlbum]]) -> String? {
+        var seen = Set<UUID>()
+        var best: (cover: String, score: Double)?
+        for tag in world.tags {
+            for a in byTag[tag.tag] ?? [] {
+                guard !seen.contains(a.id) else { continue }
+                seen.insert(a.id)
+                guard let cover = a.coverUrl else { continue }
+                if best == nil || a.score > best!.score { best = (cover, a.score) }
             }
-            y += rh
-            fh -= rh
-        } else {
-            let rw = fh > 0 ? rowArea / fh : 0
-            var ry = y
-            for r in row {
-                let rh2 = rw > 0 ? r.area / rw : 0
-                out.append(MapRect(x: x, y: ry, w: rw, h: rh2, i: r.i))
-                ry += rh2
-            }
-            x += rw
-            fw -= rw
         }
-        idx = j
+        return best?.cover
     }
-    return out
+
+    private func tagHeroCover(_ tag: TasteProfileResponse.TasteGraph.GraphWorld.GraphTag,
+                               in byTag: [String: [TasteProfileResponse.TasteGraph.GraphAlbum]]) -> String? {
+        (byTag[tag.tag] ?? []).max(by: { $0.score < $1.score })?.coverUrl
+    }
+
+    private var worldOrder: [Int] {
+        data.worlds.indices.sorted { data.worlds[$0].share > data.worlds[$1].share }
+    }
+
+    private var openWorld: TasteProfileResponse.TasteGraph.GraphWorld? {
+        guard let worldIndex, data.worlds.indices.contains(worldIndex) else { return nil }
+        return data.worlds[worldIndex]
+    }
+
+    private var tagOrder: [Int] {
+        guard let openWorld else { return [] }
+        return openWorld.tags.indices.sorted { openWorld.tags[$0].share > openWorld.tags[$1].share }
+    }
+
+    var body: some View {
+        let byTag = albumsByTag
+
+        VStack(alignment: .leading, spacing: 12) {
+            if let openWorld {
+                Button(action: { withAnimation(.easeOut(duration: 0.22)) { worldIndex = nil } }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 11, weight: .bold))
+                        Text(String(localized: "All worlds"))
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .foregroundStyle(Color.sjBlue)
+                }
+                .transition(.opacity)
+            }
+
+            VStack(spacing: 0) {
+                if let openWorld {
+                    ForEach(Array(tagOrder.enumerated()), id: \.element) { i, idx in
+                        let tag = openWorld.tags[idx]
+                        if i > 0 { Divider() }
+                        MapRow(
+                            label: tag.display,
+                            meta: "\(Int((tag.share * 100).rounded()))% \(String(localized: "share"))",
+                            avg: tag.avg,
+                            pct: tag.share,
+                            cover: tagHeroCover(tag, in: byTag),
+                            onTap: { openSheet(world: openWorld, tag: tag) }
+                        )
+                    }
+                } else {
+                    ForEach(Array(worldOrder.enumerated()), id: \.element) { i, idx in
+                        let w = data.worlds[idx]
+                        if i > 0 { Divider() }
+                        MapRow(
+                            label: w.primary,
+                            meta: "\(Int((w.share * 100).rounded()))% \(String(localized: "share"))",
+                            avg: w.avg,
+                            pct: w.share,
+                            cover: worldHeroCover(w, in: byTag),
+                            onTap: { withAnimation(.easeOut(duration: 0.22)) { worldIndex = idx } }
+                        )
+                    }
+                }
+            }
+            .id(openWorld?.key ?? "worlds")
+            .transition(.opacity)
+
+            RampLegendView(label: String(localized: "score"), width: 64)
+        }
+        .sheet(item: $sheetTarget) { target in
+            TasteMapSheet(target: target)
+        }
+    }
+
+    private func openSheet(world: TasteProfileResponse.TasteGraph.GraphWorld,
+                            tag: TasteProfileResponse.TasteGraph.GraphWorld.GraphTag) {
+        let albums = data.albums.filter { $0.tags.contains(tag.tag) }.prefix(10)
+        let recs = (data.recs["tag:\(tag.tag)"] ?? data.recs[world.key] ?? []).prefix(5)
+        sheetTarget = TasteMapSheetTarget(
+            id: "tag:\(tag.tag)", title: tag.display, subtitle: world.label, avg: tag.avg,
+            albums: Array(albums), recs: Array(recs)
+        )
+    }
 }
 
-// MARK: - Tile
+// MARK: - Row
 
-/// A single heatmap tile -- a world at the top level, a sub-genre when
-/// drilled in. Text drops out (color + accessibility label survive) on tiles
-/// too small to hold it, at the same percent-of-box thresholds web uses.
-private struct MapTile: View {
-    let rect: MapRect
+/// A single ranked row -- a world at the top level, a sub-genre when drilled
+/// in. Deliberately built from the app's own established row furniture
+/// rather than bespoke chrome: `CoverImage` (same shimmer-placeholder cover
+/// used by `ProfileView`'s rated list and `HomeView`'s feed), `ScoreBadge`
+/// (the app-wide Liquid Glass score indicator -- `AlbumDetailView`,
+/// `ProfileView`, `HomeView` all use it at its default size, so this does
+/// too), and the flat divider-separated list shape `MixLibraryView`'s
+/// `MixRow` uses (no per-row card, no border, no rounded background) --
+/// matching those fixes the "doesn't look like the rest of the app" feedback
+/// an earlier card-chip-mosaic version got. The one genuinely new element is
+/// the proportional share bar, which has no existing analog to match; it
+/// borrows the flat single-color capsule shape `RankingsView`'s progress bar
+/// already uses, just tinted by score via the shared `Spectrum` ramp instead
+/// of the fixed app-blue those bars use, since color-as-score is this
+/// component's whole point (see the ramp legend below the list).
+private struct MapRow: View {
     let label: String
-    let sub: String
-    var hint: String? = nil
+    let meta: String
     let avg: Double?
+    let pct: Double
+    let cover: String?
     let onTap: () -> Void
-
-    private var showLabel: Bool { rect.w > 12 && rect.h > 9 }
-    private var showSub: Bool { showLabel && rect.w > 18 && rect.h > 16 }
-    private var showHint: Bool { hint != nil && showSub && rect.w > 26 && rect.h > 24 }
-    private var score: Double { avg ?? 3 }
 
     var body: some View {
         Button(action: onTap) {
-            ZStack(alignment: .bottomLeading) {
-                LinearGradient(
-                    colors: [Spectrum.color(score: score, lightness: 0.68, chromaScale: 0.92),
-                             Spectrum.color(score: score, lightness: 0.5, chromaScale: 1)],
-                    startPoint: .topLeading, endPoint: .bottomTrailing
-                )
-                LinearGradient(colors: [.clear, .black.opacity(0.34)], startPoint: .center, endPoint: .bottom)
-                if showLabel {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(label)
-                            .font(.system(size: rect.w > 24 ? 14 : 12, weight: .heavy))
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.7)
-                        if showSub {
-                            Text(sub)
-                                .font(.system(size: 11, weight: .semibold))
-                                .monospacedDigit()
-                                .opacity(0.85)
-                        }
-                        if showHint, let hint {
-                            Text(hint)
-                                .font(.system(size: 10.5, weight: .medium))
-                                .opacity(0.7)
-                                .lineLimit(1)
+            HStack(spacing: 14) {
+                CoverImage(url: cover)
+                    .frame(width: 52, height: 52)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(label)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.sjInk)
+                        .lineLimit(1)
+
+                    Text(meta)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.sjMuted)
+                        .lineLimit(1)
+
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.sjBorder)
+                            Capsule()
+                                .fill(Spectrum.ring(avg ?? 3))
+                                .frame(width: max(4, geo.size.width * min(1, pct)))
                         }
                     }
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.35), radius: 1)
-                    .padding(8)
+                    .frame(height: 5)
+                    .padding(.top, 2)
                 }
+
+                Spacer(minLength: 4)
+
+                if let avg {
+                    ScoreBadge(score: avg, badgeSize: 34, ringStroke: 2, ringGap: 1.5)
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.sjBorder)
             }
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .accessibilityLabel("\(label) · \(sub)")
+        .accessibilityLabel("\(label) · \(meta)")
     }
 }
 
@@ -162,113 +229,6 @@ private extension TasteProfileResponse.TasteGraph.GraphRec {
     var asRelease: Release {
         Release(id: id, title: title, artist: artist, coverUrl: coverUrl, releaseType: nil,
                 releaseDate: nil, titleNative: nil, artistNative: nil, tracklist: nil, totalTracks: nil)
-    }
-}
-
-// MARK: - Map
-
-struct TasteMapView: View {
-    let data: TasteProfileResponse.TasteGraph
-
-    @State private var worldIndex: Int? = nil
-    @State private var sheetTarget: TasteMapSheetTarget? = nil
-
-    private var worldOrder: [Int] {
-        data.worlds.indices.sorted { data.worlds[$0].share > data.worlds[$1].share }
-    }
-    private var worldRects: [MapRect] {
-        let rects = squarify(worldOrder.map { max(data.worlds[$0].share, 0.02) }, 100, 100)
-        return rects.map { MapRect(x: $0.x, y: $0.y, w: $0.w, h: $0.h, i: worldOrder[$0.i]) }
-    }
-
-    private var openWorld: TasteProfileResponse.TasteGraph.GraphWorld? {
-        guard let worldIndex, data.worlds.indices.contains(worldIndex) else { return nil }
-        return data.worlds[worldIndex]
-    }
-
-    private var tagOrder: [Int] {
-        guard let openWorld else { return [] }
-        return openWorld.tags.indices.sorted { openWorld.tags[$0].share > openWorld.tags[$1].share }
-    }
-    private var tagRects: [MapRect] {
-        guard let openWorld else { return [] }
-        let rects = squarify(tagOrder.map { max(openWorld.tags[$0].share, 0.02) }, 100, 100)
-        return rects.map { MapRect(x: $0.x, y: $0.y, w: $0.w, h: $0.h, i: tagOrder[$0.i]) }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ZStack(alignment: .topLeading) {
-                GeometryReader { geo in
-                    ZStack {
-                        if let openWorld {
-                            ForEach(tagRects, id: \.i) { r in
-                                let tag = openWorld.tags[r.i]
-                                MapTile(
-                                    rect: r,
-                                    label: tag.display,
-                                    sub: String(format: "%.1f★", tag.avg),
-                                    avg: tag.avg,
-                                    onTap: { openSheet(world: openWorld, tag: tag) }
-                                )
-                                .frame(width: geo.size.width * r.w / 100, height: geo.size.height * r.h / 100)
-                                .position(x: geo.size.width * (r.x + r.w / 2) / 100,
-                                          y: geo.size.height * (r.y + r.h / 2) / 100)
-                            }
-                        } else {
-                            ForEach(worldRects, id: \.i) { r in
-                                let w = data.worlds[r.i]
-                                let pct = Int((w.share * 100).rounded())
-                                let hintTags = w.tags.map(\.display).filter { !w.label.contains($0) }.prefix(3)
-                                MapTile(
-                                    rect: r,
-                                    label: w.primary,
-                                    sub: w.avg != nil ? "\(pct)% · \(String(format: "%.1f", w.avg!))★" : "\(pct)%",
-                                    hint: hintTags.isEmpty ? nil : hintTags.joined(separator: " · "),
-                                    avg: w.avg,
-                                    onTap: { worldIndex = r.i }
-                                )
-                                .frame(width: geo.size.width * r.w / 100, height: geo.size.height * r.h / 100)
-                                .position(x: geo.size.width * (r.x + r.w / 2) / 100,
-                                          y: geo.size.height * (r.y + r.h / 2) / 100)
-                            }
-                        }
-                    }
-                }
-                .frame(height: 300)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-
-                if openWorld != nil {
-                    Button(action: { worldIndex = nil }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
-                            Text(String(localized: "Back"))
-                        }
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.sjInk)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(.thinMaterial, in: Capsule())
-                    }
-                    .padding(8)
-                }
-            }
-
-            RampLegendView(label: String(localized: "score"), width: 64)
-        }
-        .sheet(item: $sheetTarget) { target in
-            TasteMapSheet(target: target)
-        }
-    }
-
-    private func openSheet(world: TasteProfileResponse.TasteGraph.GraphWorld,
-                            tag: TasteProfileResponse.TasteGraph.GraphWorld.GraphTag) {
-        let albums = data.albums.filter { $0.tags.contains(tag.tag) }.prefix(10)
-        let recs = (data.recs["tag:\(tag.tag)"] ?? data.recs[world.key] ?? []).prefix(5)
-        sheetTarget = TasteMapSheetTarget(
-            id: "tag:\(tag.tag)", title: tag.display, subtitle: world.label, avg: tag.avg,
-            albums: Array(albums), recs: Array(recs)
-        )
     }
 }
 

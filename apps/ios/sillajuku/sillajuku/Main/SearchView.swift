@@ -1823,9 +1823,14 @@ struct ArtistPageView: View {
                 case releaseGroupId = "release_group_id"; case userId = "user_id"; case score
             }
         }
-        let rows: [RRow] = (try? await supabase
+        // Independent of each other (the feed doesn't need the stats query's
+        // result, or vice versa) -- was two sequential round trips, now concurrent.
+        async let statsRowsFetch: [RRow] = (try? await supabase
             .from("ratings").select("release_group_id, user_id, score")
             .in("release_group_id", values: releaseGroupIds).execute().value) ?? []
+        async let communityFeedFetch = loadCommunityFeed(releaseGroupIds: releaseGroupIds)
+        let (rows, feed) = await (statsRowsFetch, communityFeedFetch)
+        communityFeed = feed
 
         let currentUserId = supabase.auth.currentUser?.id
         var sumMap: [UUID: (sum: Double, count: Int)] = [:]
@@ -1844,47 +1849,20 @@ struct ArtistPageView: View {
         allRatingScores = allScores
         communityCount  = rows.count  // all ratings, including instinct (score may be nil)
         communityAvg    = allScores.isEmpty ? nil : allScores.reduce(0, +) / Double(allScores.count)
-
-        await loadCommunityFeed(releaseGroupIds: releaseGroupIds)
     }
 
-    private func loadCommunityFeed(releaseGroupIds: [String]) async {
-        struct CFRow: Codable {
-            let id: UUID; let userId: UUID; let releaseGroupId: UUID
-            let score: Double?; let createdAt: Date; let reviewText: String?
-            enum CodingKeys: String, CodingKey {
-                case id; case userId = "user_id"; case releaseGroupId = "release_group_id"
-                case score; case createdAt = "created_at"
-                case reviewText = "review_text"
-            }
-        }
-        let cfRows: [CFRow] = (try? await supabase
-            .from("ratings").select("id, user_id, release_group_id, score, created_at, review_text")
+    /// Was two sequential round trips (ratings, then a separate profiles lookup
+    /// keyed off the ratings' user ids) -- now one, embedding profiles via the
+    /// same `profiles!ratings_user_id_fkey(...)` join HomeView's feed queries
+    /// already use, since `CommunityRating` already decodes a nested `profiles`.
+    private func loadCommunityFeed(releaseGroupIds: [String]) async -> [CommunityRating] {
+        (try? await supabase
+            .from("ratings")
+            .select("id, user_id, release_group_id, score, created_at, review_text, profiles!ratings_user_id_fkey(username, display_name)")
             .in("release_group_id", values: releaseGroupIds)
             .order("created_at", ascending: false)
             .limit(60)
             .execute().value) ?? []
-        guard !cfRows.isEmpty else { return }
-
-        struct ProfileRow: Codable {
-            let id: UUID; let username: String?; let displayName: String?
-            enum CodingKeys: String, CodingKey { case id, username; case displayName = "display_name" }
-        }
-        let userIds = Array(Set(cfRows.map(\.userId.uuidString)))
-        let profiles: [ProfileRow] = (try? await supabase
-            .from("profiles").select("id, username, display_name")
-            .in("id", values: userIds).execute().value) ?? []
-        let pMap = Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
-
-        communityFeed = cfRows.map { row in
-            let p = pMap[row.userId]
-            return CommunityRating(
-                id: row.id, userId: row.userId, releaseGroupId: row.releaseGroupId,
-                score: row.score, createdAt: row.createdAt,
-                reviewText: row.reviewText,
-                profiles: p.map { CommunityRating.CRProfile(username: $0.username, displayName: $0.displayName) }
-            )
-        }
     }
 
     private func loadSongs() async {
