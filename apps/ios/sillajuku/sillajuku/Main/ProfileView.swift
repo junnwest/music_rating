@@ -1207,7 +1207,6 @@ struct ProfileView: View {
                                 Label("Delete Rating", systemImage: "trash")
                             }
                         }
-                        Divider().padding(.leading, 70)
                     }
                 } else {
                     // Posts display — album ratings + own mix shares, merged by recency
@@ -1578,9 +1577,9 @@ struct RatingListRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
-            CoverImage(url: coverUrl, cornerRadius: 6)
-                .frame(width: 46, height: 46)
+        HStack(spacing: 14) {
+            CoverImage(url: coverUrl, cornerRadius: 8)
+                .frame(width: 58, height: 58)
                 .accessibilityHidden(true) // title text alongside already describes it
 
             VStack(alignment: .leading, spacing: 2) {
@@ -1630,7 +1629,7 @@ struct RatingListRow: View {
                     .frame(width: 11, height: 11).foregroundStyle(Color.sjMuted)
             }
         }
-        .padding(.horizontal, 16).padding(.vertical, 10)
+        .padding(.horizontal, 16).padding(.vertical, 14)
         .contentShape(Rectangle())
     }
 }

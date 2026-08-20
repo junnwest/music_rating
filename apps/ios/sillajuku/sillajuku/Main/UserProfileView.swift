@@ -780,7 +780,6 @@ struct UserProfileView: View {
                         // No delete/edit affordance -- viewer isn't the owner --
                         // but the standard long-press quick actions still apply.
                         .albumContextMenu(item.asRelease)
-                        Divider().padding(.leading, 70)
                     }
                 } else {
                     let albumItems = items.filter { !$0.isSong }

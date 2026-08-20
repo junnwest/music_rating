@@ -1550,180 +1550,44 @@ struct ArtistPageView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // ── Header ──────────────────────────────────────
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .center, spacing: 12) {
-                    // `artists.cover_url` is null for a real slice of the catalog (same
-                    // class of gap as missing album art) -- previously the whole avatar
-                    // slot just vanished when that happened. Same initial-letter fallback
-                    // spotifyArtistScroll already uses for exactly this case, so a name
-                    // with no catalog photo still reads as an avatar, not an empty gap.
-                    CachedImage(url: artistAvatarUrl.flatMap { URL(string: $0) }) {
-                        Color.sjBorder.overlay(
-                            Text(String((canonicalName ?? artist.name).prefix(1)))
-                                .font(.system(size: 20, weight: .bold))
-                                .foregroundStyle(Color.sjMuted)
-                        )
-                    }
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: 56, height: 56)
-                    .clipShape(Circle())
-                    .accessibilityHidden(true) // artist name text alongside already describes it
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Artist")
-                            .font(.system(size: 10, weight: .semibold))
-                            .tracking(1.4)
-                            .foregroundStyle(Color.sjMuted)
-                        Text(canonicalName ?? artist.name)
-                            .font(.system(size: 28, weight: .heavy))
-                            .foregroundStyle(Color.sjInk)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.75)
-                    }
-                }
-                .padding(.horizontal, 18)
-                .padding(.top, 16)
-                .padding(.bottom, 14)
+            // Tab bar lives outside the scroll entirely -- genuinely fixed chrome,
+            // like the nav bar above it, always reachable with no scrolling back up.
+            // A `Section`/`pinnedViews: [.sectionHeaders]` version of this was tried
+            // first (kept the tab bar "pinned" inside the same ScrollView as the
+            // hero) but had a real rendering bug: the pinned header didn't fully
+            // occlude the content scrolling behind it, leaving a visible sliver of
+            // the next row peeking out from under its bottom edge once settled --
+            // not just a mid-scroll animation artifact, confirmed after letting the
+            // scroll fully stop. Simply keeping the tab bar outside the ScrollView
+            // sidesteps that whole class of bug -- nothing needs to "pin," it's just
+            // never part of the scrolled content to begin with.
+            tabBarView
 
-                HStack(spacing: 10) {
-                    artistStatBox(value: communityAvg.map { String(format: "%.1f", $0) } ?? "—",
-                                  label: "Community Avg", showIcon: true)
-                    artistStatBox(value: "\(communityCount)",
-                                  label: communityCount == 1 ? "Rating" : "Ratings", showIcon: false)
-                    // "—" while loading: rendering a live "0" here during the
-                    // fetch is what read as "this artist has 0 releases".
-                    artistStatBox(value: isLoading ? "—" : "\(releases.count)",
-                                  label: "Releases", showIcon: false)
-                }
-                .padding(.horizontal, 18)
-                .padding(.bottom, 14)
-
-                if myRatedCount > 0, let avg = myAvg {
-                    HStack(spacing: 6) {
-                        Text("You")
-                            .font(.system(size: 10, weight: .semibold))
-                            .tracking(0.5)
-                            .foregroundStyle(Color.sjMuted)
-                        Text(String(format: String(localized: "%d rated · %@ avg"), myRatedCount, String(format: "%.1f", avg)))
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(Color.sjInk)
-                    }
-                    .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(Color.sjAmber.opacity(0.12))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.sjAmber.opacity(0.4), lineWidth: 1))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .padding(.horizontal, 18).padding(.bottom, 12)
-                }
-            }
-
-            // ── Tab bar ──────────────────────────────────────
-            // Floating glass-capsule bubble behind the selected label, sliding via
-            // matchedGeometryEffect -- same pattern as Home's Explore/Following
-            // switcher (`feedTabButton`), not a flat underline indicator.
-            HStack(spacing: 4) {
-                ForEach(tabLabels.indices, id: \.self) { i in
-                    artistTabButton(i, label: tabLabels[i])
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .overlay(alignment: .bottom) { Divider() }
-
-            // ── Swipeable content ────────────────────────────
             if isLoading {
+                // Hero shown fixed here too -- name/avatar are already known
+                // instantly (avatarHint / canonicalName), so there's no reason to
+                // hide them behind the spinner. Once loaded it moves into the
+                // scroll view below instead (see the note on `headerContent`).
+                headerContent
                 Spacer()
                 ProgressView()
                 Spacer()
             } else {
-                TabView(selection: $selectedTab) {
-                    // Albums
-                    ScrollView(showsIndicators: false) {
-                        LazyVStack(spacing: 0) {
-                            if loadFailed {
-                                VStack(spacing: 12) {
-                                    Text("Couldn't load this artist's releases.")
-                                        .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
-                                    Button {
-                                        isLoading = true
-                                        Task { await load() }
-                                    } label: {
-                                        Text("Retry")
-                                            .font(.system(size: 13, weight: .semibold))
-                                            .foregroundStyle(Color.sjCream)
-                                            .padding(.horizontal, 18).padding(.vertical, 8)
-                                            .background(Color.sjInk)
-                                            .clipShape(Capsule())
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                                .frame(maxWidth: .infinity).padding(.top, 40)
-                            } else if releases.isEmpty {
-                                Text("No releases in the catalogue yet.")
-                                    .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
-                                    .frame(maxWidth: .infinity).padding(.top, 40)
-                            } else {
-                                albumFilterSortBar
-                                let list = filteredSortedReleases
-                                if list.isEmpty {
-                                    Text("No releases match this filter.")
-                                        .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
-                                        .frame(maxWidth: .infinity).padding(.top, 40)
-                                } else {
-                                    ForEach(Array(list.enumerated()), id: \.element.id) { idx, release in
-                                        ArtistReleaseRow(release: release,
-                                                         communityScore: releaseScores[release.id],
-                                                         userScore: myRatings[release.id])
-                                        if idx < list.count - 1 {
-                                            Divider().padding(.leading, 68).foregroundStyle(Color.sjBorder)
-                                        }
-                                    }
-                                }
-                            }
+                // Hero + whichever tab's content is selected, in one continuous
+                // scroll -- the hero exists exactly once (not duplicated per tab,
+                // which was the previous attempt's bug: each tab kept its own
+                // scroll offset, so the hero visibly reset itself on every switch).
+                ScrollView(showsIndicators: false) {
+                    LazyVStack(spacing: 0) {
+                        headerContent
+                        switch selectedTab {
+                        case 0: albumsContent
+                        case 1: songsContent
+                        case 2: communityContent
+                        default: statsContent
                         }
                     }
-                    .tag(0)
-
-                    // Songs
-                    ScrollView(showsIndicators: false) {
-                        LazyVStack(spacing: 0) {
-                            if isLoadingSongs {
-                                ProgressView()
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.top, 40)
-                            } else if songs.isEmpty {
-                                Text("No songs in the catalogue yet.")
-                                    .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
-                                    .frame(maxWidth: .infinity).padding(.top, 40)
-                            } else {
-                                ForEach(Array(songs.enumerated()), id: \.element.id) { idx, song in
-                                    ArtistSongRow(song: song) {
-                                        guard let albumId = song.albumId else { return }
-                                        let release = Release(
-                                            id: albumId, title: song.albumTitle, artist: artist.name,
-                                            coverUrl: song.albumCoverUrl, releaseType: nil,
-                                            releaseDate: song.releaseDate, titleNative: nil, artistNative: nil,
-                                            tracklist: nil, totalTracks: nil)
-                                        let track = TrackEntry(
-                                            trackId: song.id, position: song.position, title: song.title,
-                                            durationMs: nil, artists: artist.name)
-                                        songNavTarget = SongNavTarget(id: song.id, track: track, release: release)
-                                    }
-                                    if idx < songs.count - 1 {
-                                        Divider().padding(.leading, 68).foregroundStyle(Color.sjBorder)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .tag(1)
-
-                    // Community
-                    communityTab.tag(2)
-
-                    // Stats
-                    statsTab.tag(3)
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
             }
         }
         .background(Color.sjCream.ignoresSafeArea())
@@ -1742,6 +1606,166 @@ struct ArtistPageView: View {
                 .onDisappear { if songNavTarget?.id == target.id { songNavTarget = nil } }
         }
         .task { await load() }
+    }
+
+    /// Avatar/name/stat-tiles/"you rated" hero. Was permanently fixed at the top
+    /// of the page (outside the tab content), which meant it always ate the same
+    /// chunk of vertical space no matter how far the user scrolled -- on a page
+    /// whose whole point is a long list below it, that made the actual content
+    /// area noticeably short. Rendered exactly once, as the first item in the
+    /// page's single shared `ScrollView` (see `body`), so it scrolls away like any
+    /// other row once the user scrolls down and the list gets the full screen
+    /// height -- only the tab bar below it stays pinned as a `Section` header.
+    @ViewBuilder
+    private var headerContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: 12) {
+                // `artists.cover_url` is null for a real slice of the catalog (same
+                // class of gap as missing album art) -- previously the whole avatar
+                // slot just vanished when that happened. Same initial-letter fallback
+                // spotifyArtistScroll already uses for exactly this case, so a name
+                // with no catalog photo still reads as an avatar, not an empty gap.
+                CachedImage(url: artistAvatarUrl.flatMap { URL(string: $0) }) {
+                    Color.sjBorder.overlay(
+                        Text(String((canonicalName ?? artist.name).prefix(1)))
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(Color.sjMuted)
+                    )
+                }
+                .aspectRatio(contentMode: .fill)
+                .frame(width: 56, height: 56)
+                .clipShape(Circle())
+                .accessibilityHidden(true) // artist name text alongside already describes it
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Artist")
+                        .font(.system(size: 10, weight: .semibold))
+                        .tracking(1.4)
+                        .foregroundStyle(Color.sjMuted)
+                    Text(canonicalName ?? artist.name)
+                        .font(.system(size: 28, weight: .heavy))
+                        .foregroundStyle(Color.sjInk)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.75)
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 16)
+            .padding(.bottom, 14)
+
+            HStack(spacing: 10) {
+                artistStatBox(value: communityAvg.map { String(format: "%.1f", $0) } ?? "—",
+                              label: "Community Avg", showIcon: true)
+                artistStatBox(value: "\(communityCount)",
+                              label: communityCount == 1 ? "Rating" : "Ratings", showIcon: false)
+                // "—" while loading: rendering a live "0" here during the
+                // fetch is what read as "this artist has 0 releases".
+                artistStatBox(value: isLoading ? "—" : "\(releases.count)",
+                              label: "Releases", showIcon: false)
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 14)
+
+            if myRatedCount > 0, let avg = myAvg {
+                HStack(spacing: 6) {
+                    Text("You")
+                        .font(.system(size: 10, weight: .semibold))
+                        .tracking(0.5)
+                        .foregroundStyle(Color.sjMuted)
+                    Text(String(format: String(localized: "%d rated · %@ avg"), myRatedCount, String(format: "%.1f", avg)))
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Color.sjInk)
+                }
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(Color.sjAmber.opacity(0.12))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.sjAmber.opacity(0.4), lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .padding(.horizontal, 18).padding(.bottom, 12)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var albumsContent: some View {
+        if loadFailed {
+            VStack(spacing: 12) {
+                Text("Couldn't load this artist's releases.")
+                    .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                Button {
+                    isLoading = true
+                    Task { await load() }
+                } label: {
+                    Text("Retry")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.sjCream)
+                        .padding(.horizontal, 18).padding(.vertical, 8)
+                        .background(Color.sjInk)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(maxWidth: .infinity).padding(.top, 40)
+        } else if releases.isEmpty {
+            Text("No releases in the catalogue yet.")
+                .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                .frame(maxWidth: .infinity).padding(.top, 40)
+        } else {
+            albumFilterSortBar
+            let list = filteredSortedReleases
+            if list.isEmpty {
+                Text("No releases match this filter.")
+                    .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                    .frame(maxWidth: .infinity).padding(.top, 40)
+            } else {
+                ForEach(list) { release in
+                    ArtistReleaseRow(release: release,
+                                     communityScore: releaseScores[release.id],
+                                     userScore: myRatings[release.id])
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var songsContent: some View {
+        if isLoadingSongs {
+            ProgressView()
+                .frame(maxWidth: .infinity)
+                .padding(.top, 40)
+        } else if songs.isEmpty {
+            Text("No songs in the catalogue yet.")
+                .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                .frame(maxWidth: .infinity).padding(.top, 40)
+        } else {
+            ForEach(songs) { song in
+                ArtistSongRow(song: song, artistName: artist.name) {
+                    guard let albumId = song.albumId else { return }
+                    let release = Release(
+                        id: albumId, title: song.albumTitle, artist: artist.name,
+                        coverUrl: song.albumCoverUrl, releaseType: nil,
+                        releaseDate: song.releaseDate, titleNative: nil, artistNative: nil,
+                        tracklist: nil, totalTracks: nil)
+                    let track = TrackEntry(
+                        trackId: song.id, position: song.position, title: song.title,
+                        durationMs: nil, artists: artist.name)
+                    songNavTarget = SongNavTarget(id: song.id, track: track, release: release)
+                }
+            }
+        }
+    }
+
+    /// Floating glass-capsule bubble behind the selected label, sliding via
+    /// matchedGeometryEffect -- same pattern as Home's Explore/Following switcher
+    /// (`feedTabButton`), not a flat underline indicator. Lives outside the
+    /// ScrollView entirely (see `body`) -- genuinely fixed chrome, not pinned.
+    private var tabBarView: some View {
+        HStack(spacing: 4) {
+            ForEach(tabLabels.indices, id: \.self) { i in
+                artistTabButton(i, label: tabLabels[i])
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .overlay(alignment: .bottom) { Divider() }
     }
 
     private func artistTabButton(_ i: Int, label: LocalizedStringKey) -> some View {
@@ -2071,27 +2095,22 @@ struct ArtistPageView: View {
     // MARK: - Community tab
 
     @ViewBuilder
-    private var communityTab: some View {
+    private var communityContent: some View {
         if communityFeed.isEmpty {
             Text("No community ratings yet.")
                 .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
                 .frame(maxWidth: .infinity).padding(.top, 40)
         } else {
-            ScrollView(showsIndicators: false) {
-                LazyVStack(spacing: 0) {
-                    communityDisplayToggle
-                    if communityDisplayMode == .list {
-                        ForEach(communityFeed) { entry in
-                            communityRow(entry)
-                            Divider().padding(.leading, 54)
-                        }
-                    } else {
-                        ForEach(communityFeed) { entry in
-                            communityPostCard(entry)
-                        }
-                    }
+            communityDisplayToggle
+            if communityDisplayMode == .list {
+                ForEach(communityFeed) { entry in
+                    communityRow(entry)
+                    Divider().padding(.leading, 54)
                 }
-                .padding(.top, 4)
+            } else {
+                ForEach(communityFeed) { entry in
+                    communityPostCard(entry)
+                }
             }
         }
     }
@@ -2218,30 +2237,28 @@ struct ArtistPageView: View {
     // MARK: - Stats tab
 
     @ViewBuilder
-    private var statsTab: some View {
+    private var statsContent: some View {
         if allRatingScores.isEmpty && myRatings.isEmpty {
             Text("No ratings yet.")
                 .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
                 .frame(maxWidth: .infinity).padding(.top, 40)
         } else {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 20) {
-                    if !allRatingScores.isEmpty {
-                        statsSectionView("Score Distribution") { distributionChart }
-                        statsSectionView("Popular Albums") { topReleasesView }
-                    }
-                    if songs.contains(where: { $0.ratingCount > 0 }) {
-                        statsSectionView("Popular Songs") { topSongsView }
-                    }
-                    if !myRatings.isEmpty {
-                        statsSectionView("Your Coverage") { coverageView }
-                    }
-                    if typeStats.count > 1 {
-                        statsSectionView("By Release Type") { typeBreakdownView }
-                    }
+            VStack(alignment: .leading, spacing: 20) {
+                if !allRatingScores.isEmpty {
+                    statsSectionView("Score Distribution") { distributionChart }
+                    statsSectionView("Popular Albums") { topReleasesView }
                 }
-                .padding(18)
+                if songs.contains(where: { $0.ratingCount > 0 }) {
+                    statsSectionView("Popular Songs") { topSongsView }
+                }
+                if !myRatings.isEmpty {
+                    statsSectionView("Your Coverage") { coverageView }
+                }
+                if typeStats.count > 1 {
+                    statsSectionView("By Release Type") { typeBreakdownView }
+                }
             }
+            .padding(18)
         }
     }
 
@@ -2463,13 +2480,29 @@ struct ArtistPageView: View {
 
 private struct ArtistSongRow: View {
     let song: ArtistSong
+    let artistName: String
     let onTap: () -> Void
+
+    // Built here (not just inside onTap's nav-target closure) so `SongRateButton`
+    // below has the same `TrackEntry`/`Release` the row already needs for
+    // navigation -- same construction the caller used to do alone.
+    private var track: TrackEntry {
+        TrackEntry(trackId: song.id, position: song.position, title: song.title,
+                   durationMs: nil, artists: artistName)
+    }
+    private var release: Release? {
+        guard let albumId = song.albumId else { return nil }
+        return Release(id: albumId, title: song.albumTitle, artist: artistName,
+                        coverUrl: song.albumCoverUrl, releaseType: nil,
+                        releaseDate: song.releaseDate, titleNative: nil, artistNative: nil,
+                        tracklist: nil, totalTracks: nil)
+    }
 
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 12) {
-                CoverImage(url: song.albumCoverUrl, cornerRadius: 6)
-                    .frame(width: 44, height: 44)
+            HStack(spacing: 14) {
+                CoverImage(url: song.albumCoverUrl, cornerRadius: 8)
+                    .frame(width: 58, height: 58)
                     .accessibilityHidden(true) // title/album text alongside already describes it
                 VStack(alignment: .leading, spacing: 3) {
                     Text(song.title)
@@ -2481,21 +2514,20 @@ private struct ArtistSongRow: View {
                 }
                 Spacer()
 
-                if let s = song.myScore {
-                    scoreBadge(s, color: Color.sjBlue)
-                } else if let s = song.avgScore {
-                    scoreBadge(s, color: Color.sjAmber)
-                } else {
-                    ZStack {
-                        Circle().stroke(Color.sjBorder, lineWidth: 1.5).frame(width: 24, height: 24)
-                        Image("icon-flower")
-                            .renderingMode(.template).resizable().scaledToFit()
-                            .frame(width: 12, height: 12)
-                            .foregroundStyle(Color.sjMuted)
-                    }
+                // Same split as ArtistReleaseRow: community avg (an aggregate, not my
+                // own rating) shown as plain text only when I haven't rated it myself;
+                // the actual interactive control is always the real SongRateButton --
+                // previously this slot was a static, non-interactive flower-in-circle
+                // for the unrated case, which read as a disabled/grayed-out button
+                // because it was one (no tap target, no gesture, nothing behind it).
+                if song.myScore == nil, let avg = song.avgScore {
+                    scoreBadge(avg, color: Color.sjAmber)
+                }
+                if let release {
+                    SongRateButton(track: track, release: release, initialScore: song.myScore, size: 30)
                 }
             }
-            .padding(.horizontal, 16).padding(.vertical, 11)
+            .padding(.horizontal, 16).padding(.vertical, 14)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -2524,9 +2556,9 @@ private struct ArtistReleaseRow: View {
 
     var body: some View {
         NavigationLink(value: release) {
-            HStack(spacing: 12) {
-                CoverImage(url: release.coverUrl, cornerRadius: 6)
-                    .frame(width: 44, height: 44)
+            HStack(spacing: 14) {
+                CoverImage(url: release.coverUrl, cornerRadius: 8)
+                    .frame(width: 58, height: 58)
                     .accessibilityHidden(true) // title text alongside already describes it
 
                 VStack(alignment: .leading, spacing: 3) {
@@ -2560,7 +2592,7 @@ private struct ArtistReleaseRow: View {
                 // own default size -- shrinking it to fit a row was what looked off.
                 AlbumRateButton(release: release, initialScore: userScore, size: 30)
             }
-            .padding(.horizontal, 16).padding(.vertical, 11)
+            .padding(.horizontal, 16).padding(.vertical, 14)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
