@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { thumbnailUrl } from '../../lib/sj/display';
 
 /** CAA covers 307-redirect to archive.org and take 1.5–2.5s each; the
@@ -47,21 +47,50 @@ export default function Cover({
   const setAttempt = (fn: (a: number) => number) =>
     setState((s) => ({ ...s, attempt: fn(s.attempt) }));
 
+  // Fetch starts once the cover is within ~1200px of the viewport, well
+  // ahead of a normal scroll reaching it, instead of the browser's native
+  // `loading="lazy"` (which only starts near/at the viewport edge and reads
+  // as a visible pop-in).
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    if (inView) return;
+    const el = containerRef.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === 'undefined') {
+      setInView(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setInView(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '1200px 0px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [inView]);
+
   let src: string | null = null;
-  if (url && attempt < 2) {
+  if (url && attempt < 2 && inView) {
     const direct = thumb ? thumbnailUrl(url) : url;
     src =
       isCaa(url) && attempt === 0 ? `/api/img?url=${encodeURIComponent(direct)}` : direct;
   }
 
   return (
-    <div className={`relative overflow-hidden bg-divider shrink-0 ${rounded} ${className}`}>
+    <div
+      ref={containerRef}
+      className={`relative overflow-hidden bg-divider shrink-0 ${rounded} ${className}`}
+    >
       {src && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={src}
           alt={alt}
-          loading="lazy"
           onError={() => setAttempt((a) => (url && isCaa(url) && a === 0 ? 1 : 2))}
           className="absolute inset-0 h-full w-full object-cover"
         />
