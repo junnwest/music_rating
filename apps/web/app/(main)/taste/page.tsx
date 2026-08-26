@@ -55,7 +55,7 @@ interface TasteReport {
   graph?: TasteGraphData;
   charts: {
     decades: { decade: number; count: number }[];
-    years?: { year: number; count: number }[];
+    years?: { year: number; count: number; avg: number | null }[];
     scoreDist: number[];
     scenes: { counts: Record<Scene, number>; total: number } | null;
     timeline: { month: string; count: number }[];
@@ -84,9 +84,11 @@ interface TasteReport {
 // color alone: every use is paired with a named legend or a direct label.
 // (The taste map uses the score ramp instead — magnitude, not identity.)
 const SERIES = ['var(--viz-1)', 'var(--viz-2)', 'var(--viz-3)', 'var(--viz-4)', 'var(--viz-5)'];
+// --tr-up / --tr-dn drive the diverging "stock" year chart: blue where a year's
+// mean rating sits above your overall average, red where it falls below.
 const VIZ_VARS = `
-.taste-report{--viz-1:#2a78d6;--viz-2:#1baf7a;--viz-3:#eda100;--viz-4:#008300;--viz-5:#4a3aa7;}
-.dark .taste-report{--viz-1:#3987e5;--viz-2:#199e70;--viz-3:#c98500;--viz-4:#008300;--viz-5:#9085e9;}
+.taste-report{--viz-1:#2a78d6;--viz-2:#1baf7a;--viz-3:#eda100;--viz-4:#008300;--viz-5:#4a3aa7;--tr-up:#2a78d6;--tr-dn:#d8433d;}
+.dark .taste-report{--viz-1:#3987e5;--viz-2:#199e70;--viz-3:#c98500;--viz-4:#008300;--viz-5:#9085e9;--tr-up:#4a92ea;--tr-dn:#ef655d;}
 `;
 /** Scenes keep fixed slots (color follows the entity, not its rank). */
 const SCENE_ORDER: Scene[] = ['kr', 'jp', 'west', 'other'];
@@ -422,15 +424,16 @@ function ReportView({
       </Section>
 
       {/* ── Release years ── */}
-      {years.length > 1 && stats.meanYear != null && (
+      {years.length > 1 && stats.meanYear != null && stats.avgScore != null && (
         <Section no={nextNo()} title={t('sj.taste.yearsHeader')} lead={eraText}>
           <YearChart
             years={years}
-            label={t('sj.taste.yearsLegend')}
-            trendLabel={t('sj.taste.yearsTrend')}
-            meanYear={stats.meanYear}
-            sdYears={stats.sdYears}
-            eraLabel={t('sj.taste.eraBand')}
+            avgScore={stats.avgScore}
+            aboveLabel={t('sj.taste.yearsAbove')}
+            belowLabel={t('sj.taste.yearsBelow')}
+            freqLabel={t('sj.taste.yearsLegend')}
+            freqTrendLabel={t('sj.taste.yearsTrend')}
+            baselineLabel={t('sj.taste.yearsBaseline')}
           />
         </Section>
       )}

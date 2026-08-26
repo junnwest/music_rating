@@ -197,15 +197,35 @@ export async function GET(req: NextRequest) {
     for (let d = first; d <= last; d += 10) decades.push({ decade: d, count: decadeMap.get(d) ?? 0 });
   }
 
-  // Release years, contiguous and zero-filled — the decade histogram's finer
-  // grain, which the taste map's year chart draws a trend line over.
+  // Release years, contiguous and zero-filled — the "stock" chart draws two
+  // series over this: your mean rating per year (diverging around your overall
+  // average) and the release count (with a moving average as the pace line).
   const yearMap = new Map<number, number>();
   for (const y of years) yearMap.set(y, (yearMap.get(y) ?? 0) + 1);
-  const yearSeries: { year: number; count: number }[] = [];
+  // Per-release-year score sums, from scored rows only — the diverging line.
+  const yearScore = new Map<number, { sum: number; n: number }>();
+  for (const r of scored) {
+    const d = r.release_groups!.first_release_date;
+    if (!d) continue;
+    const y = parseInt(d.slice(0, 4), 10);
+    if (!(y >= 1900)) continue;
+    const cur = yearScore.get(y) ?? { sum: 0, n: 0 };
+    cur.sum += display(r)!;
+    cur.n += 1;
+    yearScore.set(y, cur);
+  }
+  const yearSeries: { year: number; count: number; avg: number | null }[] = [];
   if (yearMap.size > 0) {
     const first = Math.min(...yearMap.keys());
     const last = Math.max(...yearMap.keys());
-    for (let y = first; y <= last; y += 1) yearSeries.push({ year: y, count: yearMap.get(y) ?? 0 });
+    for (let y = first; y <= last; y += 1) {
+      const s = yearScore.get(y);
+      yearSeries.push({
+        year: y,
+        count: yearMap.get(y) ?? 0,
+        avg: s && s.n > 0 ? Math.round((s.sum / s.n) * 100) / 100 : null,
+      });
+    }
   }
 
   // Score distribution in half-star buckets (index 0 = 0.5★ … 9 = 5.0★).
