@@ -635,6 +635,12 @@ enum ProfileRatedItem: Identifiable {
     var score: Double? {
         switch self { case .album(let r): return r.score; case .song(let r): return r.score }
     }
+    var reviewText: String? {
+        switch self { case .album(let r): return r.reviewText; case .song(let r): return r.reviewText }
+    }
+    var createdAt: Date {
+        switch self { case .album(let r): return r.createdAt; case .song(let r): return r.createdAt }
+    }
     var displayTitle: String {
         switch self {
         case .album(let r): return r.releases.title
@@ -1188,17 +1194,17 @@ struct ProfileView: View {
                     .padding(.top, 40)
                 } else if ratingDisplayMode == .list {
                     ForEach(items) { item in
-                        NavigationLink(value: item.asRelease) {
-                            RatingListRow(
-                                coverUrl: item.coverUrl,
-                                title: item.displayTitle,
-                                artistLine: item.artistLine,
-                                score: item.score,
-                                isSong: item.isSong,
-                                releaseType: item.releaseType
-                            )
-                        }
-                        .buttonStyle(.plain)
+                        ExpandableRatingListRow(
+                            release: item.asRelease,
+                            coverUrl: item.coverUrl,
+                            title: item.displayTitle,
+                            artistLine: item.artistLine,
+                            score: item.score,
+                            isSong: item.isSong,
+                            releaseType: item.releaseType,
+                            reviewText: item.reviewText,
+                            createdAt: item.createdAt
+                        )
                         .albumContextMenu(item.asRelease) {
                             Divider()
                             Button(role: .destructive) {
@@ -1631,6 +1637,73 @@ struct RatingListRow: View {
         }
         .padding(.horizontal, 16).padding(.vertical, 14)
         .contentShape(Rectangle())
+    }
+}
+
+/// Wraps `RatingListRow` with a trailing chevron that expands the row's
+/// written comment inline, without disturbing the row's own tap-to-navigate
+/// behavior. The chevron lives as a sibling to the `NavigationLink` (not
+/// nested inside its label) since this codebase has no precedent for a plain
+/// `Button` nested inside a `NavigationLink` label reliably intercepting its
+/// own taps.
+struct ExpandableRatingListRow: View {
+    let release: Release
+    let coverUrl: String?
+    let title: String
+    let artistLine: String
+    let score: Double?
+    var isSong: Bool = false
+    var releaseType: String? = nil
+    let reviewText: String?
+    let createdAt: Date?
+
+    @State private var isExpanded = false
+
+    private var hasComment: Bool { !(reviewText?.isEmpty ?? true) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 0) {
+                NavigationLink(value: release) {
+                    RatingListRow(coverUrl: coverUrl, title: title, artistLine: artistLine,
+                                  score: score, isSong: isSong, releaseType: releaseType)
+                }
+                .buttonStyle(.plain)
+
+                if hasComment {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.sjMuted)
+                            .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                            .frame(width: 32, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.trailing, 12)
+                    .accessibilityLabel(isExpanded ? String(localized: "Hide comment") : String(localized: "Show comment"))
+                }
+            }
+            if isExpanded, let reviewText, !reviewText.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(reviewText)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.sjInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let createdAt {
+                        Text(createdAt.relativeTimeString)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.sjMuted)
+                    }
+                }
+                .padding(.leading, 88)
+                .padding(.trailing, 16)
+                .padding(.bottom, 12)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
     }
 }
 

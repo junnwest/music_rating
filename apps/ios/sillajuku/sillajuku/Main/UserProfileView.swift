@@ -766,17 +766,17 @@ struct UserProfileView: View {
                     .frame(maxWidth: .infinity).padding(.top, 40)
                 } else if ratingDisplayMode == .list {
                     ForEach(items) { item in
-                        NavigationLink(value: item.asRelease) {
-                            RatingListRow(
-                                coverUrl: item.coverUrl,
-                                title: item.displayTitle,
-                                artistLine: item.artistLine,
-                                score: item.score,
-                                isSong: item.isSong,
-                                releaseType: item.releaseType
-                            )
-                        }
-                        .buttonStyle(.plain)
+                        ExpandableRatingListRow(
+                            release: item.asRelease,
+                            coverUrl: item.coverUrl,
+                            title: item.displayTitle,
+                            artistLine: item.artistLine,
+                            score: item.score,
+                            isSong: item.isSong,
+                            releaseType: item.releaseType,
+                            reviewText: item.reviewText,
+                            createdAt: item.createdAt
+                        )
                         // No delete/edit affordance -- viewer isn't the owner --
                         // but the standard long-press quick actions still apply.
                         .albumContextMenu(item.asRelease)
