@@ -6,6 +6,11 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ## Session summaries (prepended — newest first)
 
+**2026-08-26 (Windows, web, session 3b) — YearChart trend now spans the whole range (`components/sj/TasteCharts.tsx` → `YearChart`).** User: "the 5 year trend stops at 2001. make sure it spans through whole range."
+
+- **Diagnosis (reproduced numerically, not guessed).** The path already spanned the full width (last point at viewBox x=100) — the line wasn't truncated. The real cause: over recent years with nothing rated, the 5-year moving average is 0, which mapped to `y = H` (=100), exactly the SVG's bottom edge. There the stroke is clipped by the viewBox edge and hidden behind the chart's `border-b`, so the flat zero-tail is invisible and the trend *looks* like it stops at the last non-empty year (e.g. 2001). Confirmed with a zero-tail series: every tail year computed `y = 100.0`.
+- **Fix.** Inset the trend's y-map top and bottom (`TREND_TOP = 4`, `TREND_BOT = 6` viewBox units): `trendY(v) = TREND_TOP + (1 - v/max) * (H - TREND_TOP - TREND_BOT)`. A zero stretch now lands at y≈94 — a few px above the axis, clearly visible — and the peak keeps headroom below the top. The line reads continuously end-to-end. Bars keep their own full-height mapping (unchanged). Verified all mapped y stay within `[0,H]`.
+
 **2026-08-26 (Windows, web, session 3) — "Your library across the years" trend line smoothed + zero-year discontinuities handled (`components/sj/TasteCharts.tsx` → `YearChart`).** User: "make the Your library across the years interpolation smooth and handle discontinuities. (0)"
 
 - **Context.** `YearChart` draws a bar per release-year over a **dense, zero-filled** year series (the API fills every year between first and last with `count: 0`), plus a **5-year centred moving-average** trend line. That trend was rendered as a piecewise-**linear** polyline (`M …L…L…`), so it looked angular, and any smooth spline naively fitted through it would **overshoot below the baseline** at the zero-count years (the "(0)" discontinuities the user pointed at).

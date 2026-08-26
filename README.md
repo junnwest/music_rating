@@ -14,8 +14,9 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
-> **✅ SESSION CLOSE (2026-08-26, Windows, web, session 3) — "Your library across the years" trend line smoothed. COMMITTED + PUSHED. Full detail in SESSIONS.md 2026-08-26 (session 3).**
+> **✅ SESSION CLOSE (2026-08-26, Windows, web, session 3) — "Your library across the years" trend line smoothed + made to span the full range. COMMITTED + PUSHED. Full detail in SESSIONS.md 2026-08-26 (session 3 / 3b).**
 > 1. **Smooth, shape-preserving trend line** (`components/sj/TasteCharts.tsx` → `YearChart`): the 5-year moving-average trend was rendered as an angular `L`-segment polyline. New `monotonePath()` helper draws it as a **monotone cubic Hermite** spline (Fritsch–Carlson tangents) — smooth *and* non-overshooting, so it eases onto the baseline across **zero-count years** instead of ringing below the axis. Verified numerically (spike→zeros stays within `[0,H]`); `tsc`/`next lint` clean.
+> 2. **Trend now spans the whole range** (follow-up): it *looked* like it stopped at the last non-empty year (e.g. 2001) because a zero-count tail mapped to `y=H`, where the SVG bottom edge + `border-b` clip it. Fixed by insetting the trend's y-map (`TREND_TOP=4`, `TREND_BOT=6` viewBox units) so a flat/zero stretch rides ~7px above the axis, visible end-to-end. Bars keep their full-height mapping.
 >
 > **✅ SESSION CLOSE (2026-08-26, Windows, web, session 2) — Desktop chrome moved to the sidebar + Add-page horizontal scrollbars removed. COMMITTED + PUSHED. Full detail in SESSIONS.md 2026-08-26 (session 2).**
 > 1. **Desktop top bar removed; notifications + profile menu moved into the left sidebar** (`components/sj/AppShell.tsx`, `components/sj/HeaderMenus.tsx`). The `<header>` is now `md:hidden` (mobile keeps it, since there's no sidebar there). The sidebar footer gained an account rail: `AvatarMenu variant="sidebar"` (avatar + name row) and `NotificationsBell variant="sidebar"` — both new variants open their popover **upward/left** (`bottom-full`) so they clear the sidebar's bottom edge. Signed-out shows a full-width Log in button there.

@@ -248,7 +248,16 @@ export function YearChart({
   // Smooth, shape-preserving trend: a monotone cubic through the moving-average
   // points, so the line reads as a continuous curve yet still eases onto the
   // baseline across zero-count years rather than overshooting below it.
-  const path = monotonePath(trend.map((v, i) => ({ x: i * step, y: H - (v / max) * H })));
+  //
+  // The y-map is inset top and bottom: a flat/zero stretch (e.g. recent years
+  // with nothing rated) then rides *visibly just above the axis* instead of
+  // landing on y=H, where the SVG's bottom edge and the border clip it and the
+  // line looks like it stops at the last non-empty year. With the inset the
+  // trend spans the whole range end to end.
+  const TREND_TOP = 4;
+  const TREND_BOT = 6;
+  const trendY = (v: number) => TREND_TOP + (1 - v / max) * (H - TREND_TOP - TREND_BOT);
+  const path = monotonePath(trend.map((v, i) => ({ x: i * step, y: trendY(v) })));
 
   // Era band: mean ± sd mapped onto slot centres, clamped to the domain.
   const first = years[0]?.year ?? 0;
