@@ -175,6 +175,14 @@ const MAP_CSS = `
   .taste-tile-face,.taste-sheen,.taste-tile{transition:none}
   .taste-tile:hover .taste-tile-face{transform:none}
 }
+/* Slim, always-present track for the inspector's scrollable lists — the thin bar
+   sits in a reserved gutter (scrollbar-gutter:stable on the element), so it rides
+   just outside the content instead of overlapping it. */
+.taste-scroll{scrollbar-width:thin;scrollbar-color:rgba(130,130,130,.45) transparent;scrollbar-gutter:stable}
+.taste-scroll::-webkit-scrollbar{width:6px;height:6px}
+.taste-scroll::-webkit-scrollbar-track{background:transparent}
+.taste-scroll::-webkit-scrollbar-thumb{background:rgba(130,130,130,.42);border-radius:999px}
+.taste-scroll::-webkit-scrollbar-thumb:hover{background:rgba(130,130,130,.62)}
 `;
 
 /** Largest fully-fillable cover grid for a tile of `tileW`×`tileH` px given
@@ -376,6 +384,32 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
     return () => ro.disconnect();
   }, []);
 
+  // Pin the inspector to the map card's exact height on desktop, so a world with
+  // a long "Your ratings here" + recs list scrolls *inside* the panel instead of
+  // stretching the whole section taller than the (fixed) map. The map card's own
+  // height doesn't depend on the inspector, so this measurement stays stable
+  // across drill-ins — the section height never changes.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [cardH, setCardH] = useState<number | null>(null);
+  const [wide, setWide] = useState(false);
+  useLayoutEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const mq = window.matchMedia('(min-width: 768px)');
+    const measure = () => {
+      setWide(mq.matches);
+      setCardH(el.offsetHeight);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    mq.addEventListener('change', measure);
+    return () => {
+      ro.disconnect();
+      mq.removeEventListener('change', measure);
+    };
+  }, []);
+
   const worlds = data.worlds;
 
   // Albums grouped by tag (each list stays score-descending — data.albums is).
@@ -504,7 +538,10 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
       <style>{MAP_CSS}</style>
 
       {/* ── The mosaic stage ── */}
-      <div className="relative flex flex-col rounded-2xl bg-surface border border-divider/60 overflow-hidden">
+      <div
+        ref={cardRef}
+        className="relative flex flex-col rounded-2xl bg-surface border border-divider/60 overflow-hidden"
+      >
         {/* Fixed-height stage — the single source of the map's height. It does
             not depend on the inspector, so drilling in never grows/shrinks it. */}
         <div ref={boxRef} className="relative w-full h-[430px] sm:h-[520px]">
@@ -615,14 +652,19 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
       </div>
 
       {/* ── Inspector ── */}
-      <aside className="rounded-2xl bg-page border border-divider/60 px-4 py-4">
+      {/* Height is pinned to the map card on desktop, and the body scrolls — so a
+          busy world (many ratings + recs) never stretches the section. */}
+      <aside
+        className="flex flex-col rounded-2xl bg-page border border-divider/60 px-4 py-4 md:overflow-hidden"
+        style={{ height: wide && cardH ? cardH : undefined }}
+      >
         {!openWorld ? (
-          <div>
+          <div className="flex min-h-0 flex-1 flex-col">
             <p className="text-[10px] font-bold tracking-[0.08em] uppercase text-muted/60">
               {t('sj.taste.mapExplore')}
             </p>
             <p className="mt-1.5 text-[12.5px] text-muted leading-relaxed">{t('sj.taste.mapHint')}</p>
-            <div className="mt-3 space-y-1">
+            <div className="taste-scroll mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
               {worldOrder.map((i) => {
                 const w = worlds[i];
                 const cover = worldCovers[i][0] ?? null;
@@ -664,28 +706,30 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
             </div>
           </div>
         ) : (
-          <div>
-            <p className="text-[10px] font-bold tracking-[0.08em] uppercase text-muted/60">
-              {openTag ? openWorld.label : t('sj.taste.mapWorld')}
-            </p>
-            <h3 className="mt-0.5 text-[15px] font-bold text-ink leading-tight">
-              {openTag ? openTag.display : openWorld.label}
-            </h3>
-            <p className="mt-0.5 text-[11.5px] text-muted">
-              {openWorld.note && !openTag ? `${openWorld.note} · ` : ''}
-              {t('sj.taste.mapAvg').replace(
-                '{avg}',
-                (openTag ? openTag.avg : openWorld.avg ?? 0).toFixed(2),
-              )}
-            </p>
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="shrink-0">
+              <p className="text-[10px] font-bold tracking-[0.08em] uppercase text-muted/60">
+                {openTag ? openWorld.label : t('sj.taste.mapWorld')}
+              </p>
+              <h3 className="mt-0.5 text-[15px] font-bold text-ink leading-tight">
+                {openTag ? openTag.display : openWorld.label}
+              </h3>
+              <p className="mt-0.5 text-[11.5px] text-muted">
+                {openWorld.note && !openTag ? `${openWorld.note} · ` : ''}
+                {t('sj.taste.mapAvg').replace(
+                  '{avg}',
+                  (openTag ? openTag.avg : openWorld.avg ?? 0).toFixed(2),
+                )}
+              </p>
+            </div>
 
-            <p className="mt-4 text-[10px] font-bold tracking-[0.08em] uppercase text-muted/60">
+            <p className="mt-4 shrink-0 text-[10px] font-bold tracking-[0.08em] uppercase text-muted/60">
               {t('sj.taste.mapYourAlbums')}
             </p>
             {focusAlbums.length === 0 ? (
-              <p className="mt-1.5 text-[12px] text-muted">{t('sj.taste.mapNoAlbums')}</p>
+              <p className="mt-1.5 shrink-0 text-[12px] text-muted">{t('sj.taste.mapNoAlbums')}</p>
             ) : (
-              <ul className="mt-2 space-y-2 max-h-[240px] overflow-y-auto pr-2.5 [scrollbar-gutter:stable]">
+              <ul className="taste-scroll mt-2 min-h-0 flex-1 space-y-2 overflow-y-auto md:overflow-y-scroll pr-2">
                 {focusAlbums.map((a) => (
                   <li key={a.id}>
                     <Link href={`/album/${a.id}`} className="flex items-center gap-2 group">
@@ -709,7 +753,7 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
             )}
 
             {focusRecs.length > 0 && (
-              <>
+              <div className="shrink-0">
                 <p className="mt-4 text-[10px] font-bold tracking-[0.08em] uppercase text-muted/60">
                   {recsFallback
                     ? t('sj.taste.mapMoreIn').replace('{world}', openWorld.primary)
@@ -730,7 +774,7 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
                     </li>
                   ))}
                 </ul>
-              </>
+              </div>
             )}
           </div>
         )}
