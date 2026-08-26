@@ -156,6 +156,58 @@ export function RampLegend({ label }: { label: string }) {
 // ── Release-year histogram ──────────────────────────────────────────────────
 
 /**
+ * A smooth SVG path through (x,y) points using **monotone cubic Hermite**
+ * interpolation (Fritsch–Carlson tangents). Chosen over Catmull-Rom because it
+ * is shape-preserving: the curve never overshoots the values it connects, so a
+ * trend line falling into a run of zero-count years eases down onto the baseline
+ * instead of dipping below it or ringing — the discontinuity is handled, not
+ * papered over. Points must be x-ascending; y is in SVG space (down = larger).
+ */
+function monotonePath(pts: { x: number; y: number }[]): string {
+  const n = pts.length;
+  if (n === 0) return '';
+  if (n === 1) return `M${pts[0].x.toFixed(2)},${pts[0].y.toFixed(2)}`;
+
+  // Secant slopes between consecutive points.
+  const h: number[] = [];
+  const s: number[] = [];
+  for (let i = 0; i < n - 1; i += 1) {
+    const dx = pts[i + 1].x - pts[i].x;
+    h.push(dx);
+    s.push(dx === 0 ? 0 : (pts[i + 1].y - pts[i].y) / dx);
+  }
+
+  // Tangents: endpoints take the adjacent secant; interior points use the
+  // weighted harmonic mean, forced flat at local extrema (where the sign flips)
+  // so no segment can overshoot — this is what keeps the curve off the axis.
+  const t: number[] = new Array(n);
+  t[0] = s[0];
+  t[n - 1] = s[n - 2];
+  for (let i = 1; i < n - 1; i += 1) {
+    if (s[i - 1] * s[i] <= 0) {
+      t[i] = 0;
+    } else {
+      const w1 = 2 * h[i] + h[i - 1];
+      const w2 = h[i] + 2 * h[i - 1];
+      t[i] = (w1 + w2) / (w1 / s[i - 1] + w2 / s[i]);
+    }
+  }
+
+  // Emit one cubic Bézier per interval; control points ride the tangents at h/3.
+  let d = `M${pts[0].x.toFixed(2)},${pts[0].y.toFixed(2)}`;
+  for (let i = 0; i < n - 1; i += 1) {
+    const c1x = pts[i].x + h[i] / 3;
+    const c1y = pts[i].y + (t[i] * h[i]) / 3;
+    const c2x = pts[i + 1].x - h[i] / 3;
+    const c2y = pts[i + 1].y - (t[i + 1] * h[i]) / 3;
+    d += ` C${c1x.toFixed(2)},${c1y.toFixed(2)} ${c2x.toFixed(2)},${c2y.toFixed(2)} ${pts[
+      i + 1
+    ].x.toFixed(2)},${pts[i + 1].y.toFixed(2)}`;
+  }
+  return d;
+}
+
+/**
  * Rated releases per release-year: accent bars, a centred 5-year moving
  * average, and a shaded mean±sd "your era" band. Hover shows year · count.
  */
@@ -193,11 +245,10 @@ export function YearChart({
 
   const H = 100;
   const step = years.length > 1 ? 100 / (years.length - 1) : 0;
-  const path = trend
-    .map(
-      (v, i) => `${i === 0 ? 'M' : 'L'}${(i * step).toFixed(2)},${(H - (v / max) * H).toFixed(2)}`,
-    )
-    .join(' ');
+  // Smooth, shape-preserving trend: a monotone cubic through the moving-average
+  // points, so the line reads as a continuous curve yet still eases onto the
+  // baseline across zero-count years rather than overshooting below it.
+  const path = monotonePath(trend.map((v, i) => ({ x: i * step, y: H - (v / max) * H })));
 
   // Era band: mean ± sd mapped onto slot centres, clamped to the domain.
   const first = years[0]?.year ?? 0;
