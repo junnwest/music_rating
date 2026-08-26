@@ -40,11 +40,20 @@ function usePopover() {
  * Bell → notifications popover (recent 8, marks read on open, View all →
  * /notifications). Desktop-grade glanceability instead of a full page turn.
  */
-export function NotificationsBell({ hasUnread }: { hasUnread: boolean }) {
+export function NotificationsBell({
+  hasUnread,
+  variant = 'bar',
+}: {
+  hasUnread: boolean;
+  /** 'bar' opens the panel below-right (top bar); 'sidebar' opens it above-left. */
+  variant?: 'bar' | 'sidebar';
+}) {
   const { t, lang } = useLanguage();
   const { userId, refreshProfile } = useSession();
   const { open, setOpen, ref } = usePopover();
   const [items, setItems] = useState<NotificationEntry[] | null>(null);
+  const panelPos =
+    variant === 'sidebar' ? 'left-0 bottom-full mb-2' : 'right-0 top-11';
 
   const loadAndMarkRead = useCallback(async () => {
     if (!supabase || !userId) return;
@@ -97,7 +106,7 @@ export function NotificationsBell({ hasUnread }: { hasUnread: boolean }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-11 z-50 w-[340px] max-w-[calc(100vw-2rem)] rounded-xl bg-surface border border-divider shadow-lg overflow-hidden sj-pop-in">
+        <div className={`absolute ${panelPos} z-50 w-[340px] max-w-[calc(100vw-2rem)] rounded-xl bg-surface border border-divider shadow-lg overflow-hidden sj-pop-in`}>
           <p className="px-3.5 pt-3 pb-2 text-[13px] font-bold text-ink">
             {t('sj.nav.notifications')}
           </p>
@@ -139,24 +148,44 @@ export function NotificationsBell({ hasUnread }: { hasUnread: boolean }) {
 }
 
 /** Avatar → account menu (identity header, Profile, Settings, Sign out). */
-export function AvatarMenu() {
+export function AvatarMenu({ variant = 'bar' }: { variant?: 'bar' | 'sidebar' }) {
   const { t } = useLanguage();
   const { profile, signOut } = useSession();
   const { open, setOpen, ref } = usePopover();
+  const name = profile?.display_name ?? profile?.username ?? '';
+  const panelPos =
+    variant === 'sidebar' ? 'left-0 bottom-full mb-2 w-full' : 'right-0 top-11 w-52';
 
   return (
-    <div ref={ref} className="relative">
-      <button
-        aria-label={t('sj.nav.profile')}
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-        className="p-1 rounded-full hover:bg-surface transition"
-      >
-        <Avatar url={profile?.avatar_url} size={28} />
-      </button>
+    <div ref={ref} className={variant === 'sidebar' ? 'relative w-full' : 'relative'}>
+      {variant === 'sidebar' ? (
+        <button
+          aria-label={t('sj.nav.profile')}
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+          className="flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left hover:bg-surface transition"
+        >
+          <Avatar url={profile?.avatar_url} size={30} />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[13px] font-semibold text-ink">{name}</span>
+            {profile?.username && (
+              <span className="block truncate text-[11.5px] text-muted">@{profile.username}</span>
+            )}
+          </span>
+        </button>
+      ) : (
+        <button
+          aria-label={t('sj.nav.profile')}
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+          className="p-1 rounded-full hover:bg-surface transition"
+        >
+          <Avatar url={profile?.avatar_url} size={28} />
+        </button>
+      )}
 
       {open && (
-        <div className="absolute right-0 top-11 z-50 w-52 rounded-xl bg-surface border border-divider shadow-lg overflow-hidden py-1 sj-pop-in">
+        <div className={`absolute ${panelPos} z-50 rounded-xl bg-surface border border-divider shadow-lg overflow-hidden py-1 sj-pop-in`}>
           <div className="px-3.5 py-2.5 border-b border-divider">
             <p className="text-[13.5px] font-bold text-ink truncate">
               {profile?.display_name ?? profile?.username ?? ''}

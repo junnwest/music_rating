@@ -14,6 +14,11 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **✅ SESSION CLOSE (2026-08-26, Windows, web, session 2) — Desktop chrome moved to the sidebar + Add-page horizontal scrollbars removed. COMMITTED + PUSHED. Full detail in SESSIONS.md 2026-08-26 (session 2).**
+> 1. **Desktop top bar removed; notifications + profile menu moved into the left sidebar** (`components/sj/AppShell.tsx`, `components/sj/HeaderMenus.tsx`). The `<header>` is now `md:hidden` (mobile keeps it, since there's no sidebar there). The sidebar footer gained an account rail: `AvatarMenu variant="sidebar"` (avatar + name row) and `NotificationsBell variant="sidebar"` — both new variants open their popover **upward/left** (`bottom-full`) so they clear the sidebar's bottom edge. Signed-out shows a full-width Log in button there.
+> 2. **Horizontal scrollbars gone from Add/Quick Add** (`components/sj/CandidateRow.tsx`): the shelf scroller used `[scrollbar-width:thin]`, which drew a visible bar under every Quick Add shelf — swapped to `scrollbar-hide` (matching the search discovery carousels; the paging arrows + swipe still scroll). Also hardened the `/search` loading skeleton row (`overflow-hidden` + `shrink-0`) so it can't push a page-level scrollbar while loading.
+> 3. **Verified:** `tsc --noEmit` (source clean; only stale `.next/types` API-route artifacts noise) + `next lint` clean. **Not yet eyeballed live.**
+>
 > **✅ SESSION CLOSE (2026-08-26, Windows, web) — Taste map reconstructed for stability + calm. COMMITTED + PUSHED. Full detail in SESSIONS.md 2026-08-26.**
 > 1. **Fixed-height stage** (`components/sj/TasteGraph.tsx`): the map canvas is now a fixed `h-[430px] sm:h-[520px]` box and the outer grid is `md:items-start` (was `items-stretch` + `flex-1`). The map no longer stretches to match the inspector, so drilling into a world/sub-genre never grows or shrinks it — the two columns size independently.
 > 2. **Breadcrumb can't be covered on hover.** The `All worlds ▸ world ▸ sub-genre` breadcrumb moved into a dedicated `z-20` chrome layer; a hovered tile only lifts to `z-10`, so it can never overlap the breadcrumb (the prior `z-30` hover bug).

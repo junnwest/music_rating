@@ -630,9 +630,9 @@ function Discovery({
         {[0, 1].map((i) => (
           <div key={i}>
             <SkeletonLine w="w-40" h="h-6" className="mb-3" />
-            <div className="flex gap-4">
+            <div className="flex gap-4 overflow-hidden">
               {Array.from({ length: 6 }).map((_, j) => (
-                <Skeleton key={j} className="w-36 h-48 rounded-xl bg-surface" />
+                <Skeleton key={j} className="w-36 h-48 rounded-xl bg-surface shrink-0" />
               ))}
             </div>
           </div>
