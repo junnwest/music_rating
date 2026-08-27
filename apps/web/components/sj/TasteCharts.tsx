@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { spectrumColor } from '../../lib/sj/display';
 
 /**
@@ -208,20 +208,19 @@ function monotonePath(pts: { x: number; y: number }[]): string {
 }
 
 /**
- * Your library across the years, drawn as a two-panel "stock" chart.
+ * Your library across the years, drawn as a two-panel "stock" chart of bars.
  *
- * Top (price) panel — your *mean rating* for each release year as a diverging
- * area around a baseline set at your overall average: the stretch above the
- * baseline is blue (a "gain" year, you rated that era higher than your norm),
- * below is red. A null year (a release rated but unscored, or none at all)
- * breaks the line so the curve never invents a value across a gap.
+ * Top panel — a diverging column per release year: the bar grows **up in blue**
+ * when your mean rating for that year beats your overall average, **down in red**
+ * when it falls below, its length set by how far it diverges. Years you rated
+ * nothing from are simply blank — a gap, never an invented value — which is why
+ * bars read cleanly here where a line could not.
  *
- * Bottom (volume) panel — how many releases you rated from each year, as bars,
- * with a centred 5-year moving average over the counts: the "pace" line. This
- * replaces the old single trend line, which conflated frequency with score.
+ * Bottom panel — how many releases you rated from each year, as light bars, with
+ * a centred 5-year moving average over the counts: the "rating pace" line (the
+ * moving average of the *frequency*, replacing the old broken trend).
  *
- * Hover anywhere snaps to a year and shows its mean rating (with ▲/▼ against
- * your average) and the release count.
+ * Hover snaps to a year: mean rating (with ▲/▼ against your average) and count.
  */
 export function YearChart({
   years,
@@ -241,52 +240,22 @@ export function YearChart({
   baselineLabel: string;
 }) {
   const { ref, hover, onPointerMove, onPointerLeave } = useBinHover(years.length);
-  const uid = useId().replace(/:/g, '');
-  const clipAbove = `tr-above-${uid}`;
-  const clipBelow = `tr-below-${uid}`;
   const n = years.length;
-  const step = n > 1 ? 100 / (n - 1) : 0;
+  // Column centres (percent) — bars, the hover guide, ticks and the pace line
+  // all key off these, so every layer stays aligned.
+  const cx = (i: number) => ((i + 0.5) / n) * 100;
 
-  // ── Price panel: per-year mean rating, diverging around your overall avg ──
-  const PH = 100; // viewBox height (SVG scales to the panel via preserveAspect none)
-  const PAD = 10; // top/bottom inset so peaks/troughs don't clip on the edges
-  const vals = years.filter((y) => y.avg != null).map((y) => y.avg as number);
-  let lo = Math.min(avgScore, ...vals);
-  let hi = Math.max(avgScore, ...vals);
-  if (hi - lo < 0.5) {
-    // Nearly-flat history: give the baseline breathing room so it isn't glued
-    // to an edge and the tiny wiggles above/below still read.
-    const mid = (hi + lo) / 2;
-    lo = mid - 0.25;
-    hi = mid + 0.25;
-  }
-  const yScore = (v: number) => PAD + (1 - (v - lo) / (hi - lo)) * (PH - 2 * PAD);
-  const baseY = yScore(avgScore);
+  // ── Score panel: diverging bars around your overall average ──
+  // Height encodes the *magnitude* of divergence; the larger absolute swing
+  // (above or below) sets the full-scale so both directions share one scale.
+  const devs = years.map((y) => (y.avg == null ? null : y.avg - avgScore));
+  const maxDev = Math.max(0.1, ...devs.map((d) => (d == null ? 0 : Math.abs(d))));
+  const HALF = 44; // % of panel height each side of the midline can fill
+  const barPct = (dev: number) => Math.max(4, (Math.abs(dev) / maxDev) * HALF);
 
-  // Contiguous runs of scored years — a null year ends the current run.
-  const runs: { x: number; y: number; v: number }[][] = [];
-  let run: { x: number; y: number; v: number }[] = [];
-  years.forEach((y, i) => {
-    if (y.avg == null) {
-      if (run.length) runs.push(run);
-      run = [];
-    } else {
-      run.push({ x: i * step, y: yScore(y.avg), v: y.avg });
-    }
-  });
-  if (run.length) runs.push(run);
-
-  // Close a run's smooth top edge down to the baseline into a fillable area.
-  const areaOf = (pts: { x: number; y: number }[]) => {
-    const top = monotonePath(pts);
-    const a = pts[0];
-    const b = pts[pts.length - 1];
-    return `${top} L${b.x.toFixed(2)},${baseY.toFixed(2)} L${a.x.toFixed(2)},${baseY.toFixed(2)} Z`;
-  };
-
-  // ── Volume panel: release counts + a centred 5-year moving average ──
+  // ── Frequency panel: release counts + a centred 5-year moving average ──
   const maxCount = Math.max(1, ...years.map((y) => y.count));
-  const BAR_MAX = 92; // of the 100-unit volume viewBox
+  const BAR_MAX = 92; // of the 100-unit viewBox
   const yVol = (v: number) => 100 - (v / maxCount) * BAR_MAX;
   const W = 2;
   const pace = years.map((_, i) => {
@@ -298,116 +267,55 @@ export function YearChart({
     }
     return sum / k;
   });
-  const pacePath = monotonePath(pace.map((v, i) => ({ x: i * step, y: yVol(v) })));
-  const barW = n > 1 ? step * 0.62 : 40;
+  const pacePath = monotonePath(pace.map((v, i) => ({ x: cx(i), y: yVol(v) })));
 
   const tickEvery = Math.max(1, Math.ceil(n / 6));
   const hy = hover != null ? years[hover] : null;
-  const hoverX = hover != null ? Math.max(0, Math.min(100, hover * step)) : 0;
-  const tipLeft = Math.max(7, Math.min(93, hoverX));
+  const hoverX = hover != null ? cx(hover) : 0;
+  const tipLeft = Math.max(8, Math.min(92, hoverX));
 
   return (
     <div className="mt-5">
       <div ref={ref} onPointerMove={onPointerMove} onPointerLeave={onPointerLeave} className="relative">
-        {/* ── price panel ── */}
-        <div className="relative h-36">
-          <svg
-            viewBox={`0 0 100 ${PH}`}
-            preserveAspectRatio="none"
-            className="absolute inset-0 h-full w-full"
-            aria-hidden
-          >
-            <defs>
-              <clipPath id={clipAbove}>
-                <rect x="0" y="0" width="100" height={baseY} />
-              </clipPath>
-              <clipPath id={clipBelow}>
-                <rect x="0" y={baseY} width="100" height={PH - baseY} />
-              </clipPath>
-            </defs>
-            {/* diverging areas — one fill clipped above the baseline, one below */}
-            {runs.map((pts, ri) =>
-              pts.length > 1 ? (
-                <g key={`a${ri}`}>
-                  <path d={areaOf(pts)} fill="var(--tr-up)" fillOpacity={0.15} clipPath={`url(#${clipAbove})`} />
-                  <path d={areaOf(pts)} fill="var(--tr-dn)" fillOpacity={0.15} clipPath={`url(#${clipBelow})`} />
-                </g>
-              ) : null,
-            )}
-            {/* baseline = your overall average */}
-            <line
-              x1="0"
-              y1={baseY}
-              x2="100"
-              y2={baseY}
-              stroke="currentColor"
-              className="text-ink/25"
-              strokeWidth={1}
-              strokeDasharray="3 3"
-              vectorEffect="non-scaling-stroke"
-            />
-            {/* the rating line, split blue above / red below the baseline */}
-            {runs.map((pts, ri) => {
-              if (pts.length === 1) {
-                const p = pts[0];
-                return (
-                  <circle
-                    key={`d${ri}`}
-                    cx={p.x}
-                    cy={p.y}
-                    r={2.5}
-                    fill={p.v >= avgScore ? 'var(--tr-up)' : 'var(--tr-dn)'}
-                    vectorEffect="non-scaling-stroke"
-                  />
-                );
-              }
-              const d = monotonePath(pts);
-              return (
-                <g key={`l${ri}`}>
-                  <path
-                    d={d}
-                    fill="none"
-                    stroke="var(--tr-up)"
-                    strokeWidth={2}
-                    clipPath={`url(#${clipAbove})`}
-                    vectorEffect="non-scaling-stroke"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d={d}
-                    fill="none"
-                    stroke="var(--tr-dn)"
-                    strokeWidth={2}
-                    clipPath={`url(#${clipBelow})`}
-                    vectorEffect="non-scaling-stroke"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </g>
-              );
-            })}
-          </svg>
-          {/* baseline caption */}
-          <span className="absolute right-0 -translate-y-1/2 pl-1 text-[10px] font-semibold text-muted tabular-nums bg-surface" style={{ top: `${baseY}%` }}>
+        {/* ── score panel ── */}
+        <div className="relative h-40">
+          {/* baseline = your overall average, at the vertical midline */}
+          <span className="absolute inset-x-0 top-1/2 h-px bg-ink/20 pointer-events-none" />
+          <span className="absolute right-0 top-1/2 -translate-y-1/2 pl-1 text-[10px] font-semibold text-muted tabular-nums bg-surface">
             {baselineLabel} {avgScore.toFixed(2)}
           </span>
-          {/* hover guide + marker */}
-          {hy && hy.avg != null && (
-            <>
-              <span
-                className="absolute inset-y-0 w-px bg-ink/20 pointer-events-none"
-                style={{ left: `${hoverX}%` }}
-              />
-              <span
-                className="absolute w-2.5 h-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-surface pointer-events-none"
-                style={{
-                  left: `${hoverX}%`,
-                  top: `${yScore(hy.avg)}%`,
-                  background: hy.avg >= avgScore ? 'var(--tr-up)' : 'var(--tr-dn)',
-                }}
-              />
-            </>
+          {/* diverging bars */}
+          <div className="absolute inset-0 flex items-stretch gap-[2px]">
+            {years.map((y, i) => {
+              const dev = devs[i];
+              const up = dev != null && dev >= 0;
+              return (
+                <div
+                  key={y.year}
+                  className={`relative flex-1 min-w-0 rounded-sm ${hover === i ? 'bg-ink/[0.05]' : ''}`}
+                >
+                  {dev != null && (
+                    <span
+                      className="absolute left-0 right-0 mx-auto w-[62%] max-w-[16px]"
+                      style={{
+                        [up ? 'bottom' : 'top']: '50%',
+                        height: `${barPct(dev)}%`,
+                        background: up ? 'var(--tr-up)' : 'var(--tr-dn)',
+                        opacity: hover == null || hover === i ? 1 : 0.72,
+                        borderRadius: up ? '3px 3px 0 0' : '0 0 3px 3px',
+                      }}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {/* hover guide + tooltip */}
+          {hover != null && (
+            <span
+              className="absolute inset-y-0 w-px bg-ink/20 pointer-events-none"
+              style={{ left: `${hoverX}%` }}
+            />
           )}
           {hy && (
             <div
@@ -431,27 +339,24 @@ export function YearChart({
           )}
         </div>
 
-        {/* ── volume panel ── */}
-        <div className="relative h-14 mt-1.5">
+        {/* ── frequency panel ── */}
+        <div className="relative h-14 mt-2">
+          <div className="absolute inset-0 flex items-end gap-[2px]">
+            {years.map((y, i) => (
+              <div key={y.year} className="flex-1 min-w-0 h-full flex items-end">
+                <span
+                  className={`w-full mx-auto max-w-[16px] rounded-t ${hover === i ? 'bg-accent' : 'bg-accent/30'}`}
+                  style={{ height: `${y.count > 0 ? Math.max(4, (y.count / maxCount) * 100) : 0}%` }}
+                />
+              </div>
+            ))}
+          </div>
           <svg
             viewBox="0 0 100 100"
             preserveAspectRatio="none"
-            className="absolute inset-0 h-full w-full"
+            className="absolute inset-0 h-full w-full pointer-events-none"
             aria-hidden
           >
-            {years.map((y, i) => {
-              const h = y.count > 0 ? Math.max(2, (y.count / maxCount) * BAR_MAX) : 0;
-              return (
-                <rect
-                  key={y.year}
-                  x={i * step - barW / 2}
-                  y={100 - h}
-                  width={barW}
-                  height={h}
-                  className={hover === i ? 'fill-accent' : 'fill-accent/35'}
-                />
-              );
-            })}
             <path
               d={pacePath}
               fill="none"
@@ -479,7 +384,7 @@ export function YearChart({
             <span
               key={y.year}
               className="absolute -translate-x-1/2 text-[10px] text-muted/70 tabular-nums"
-              style={{ left: `${Math.max(3, Math.min(97, i * step))}%` }}
+              style={{ left: `${Math.max(3, Math.min(97, cx(i)))}%` }}
             >
               {y.year}
             </span>
@@ -498,7 +403,7 @@ export function YearChart({
           {belowLabel}
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-sm bg-accent/35 shrink-0" />
+          <span className="w-2.5 h-2.5 rounded-sm bg-accent/30 shrink-0" />
           {freqLabel}
         </span>
         <span className="flex items-center gap-1.5">
