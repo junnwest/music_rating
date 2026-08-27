@@ -208,66 +208,61 @@ function monotonePath(pts: { x: number; y: number }[]): string {
 }
 
 /**
- * Your library across the years, drawn as a two-panel "stock" chart of bars.
+ * Your library across the years, drawn as a grouped frequency histogram.
  *
- * Top panel — a diverging column per release year: the bar grows **up in blue**
- * when your mean rating for that year beats your overall average, **down in red**
- * when it falls below, its length set by how far it diverges. Years you rated
- * nothing from are simply blank — a gap, never an invented value — which is why
- * bars read cleanly here where a line could not.
+ * For each release year, two side-by-side bars count how many of your ratings
+ * from that year landed **above your overall average** (blue) versus **below**
+ * it (red) — so the chart shows both *how much* you rated from an era and
+ * *how you felt* about it. Both bars grow up from a shared count baseline; a
+ * year you rated nothing from is simply blank.
  *
- * Bottom panel — how many releases you rated from each year, as light bars, with
- * a centred 5-year moving average over the counts: the "rating pace" line (the
- * moving average of the *frequency*, replacing the old broken trend).
+ * A centred 5-year moving average of the per-year total rides on top as the
+ * "rating pace" line (the moving average of the frequency, on the same count
+ * axis as the bars). Your overall average — the split threshold — is stated in
+ * a chip above the plot, not drawn over the bars where it used to hide.
  *
- * Hover snaps to a year: mean rating (with ▲/▼ against your average) and count.
+ * Hover snaps to a year: its above/below counts.
  */
 export function YearChart({
   years,
   avgScore,
   aboveLabel,
   belowLabel,
-  freqLabel,
-  freqTrendLabel,
-  baselineLabel,
+  paceLabel,
+  avgLabel,
 }: {
-  years: { year: number; count: number; avg: number | null }[];
+  years: { year: number; above: number; below: number }[];
   avgScore: number;
   aboveLabel: string;
   belowLabel: string;
-  freqLabel: string;
-  freqTrendLabel: string;
-  baselineLabel: string;
+  paceLabel: string;
+  avgLabel: string;
 }) {
   const { ref, hover, onPointerMove, onPointerLeave } = useBinHover(years.length);
   const n = years.length;
-  // Column centres (percent) — bars, the hover guide, ticks and the pace line
-  // all key off these, so every layer stays aligned.
+  // Column centres (percent) — ticks, hover guide and the pace line key off
+  // these so every layer stays aligned with the bar groups.
   const cx = (i: number) => ((i + 0.5) / n) * 100;
 
-  // ── Score panel: diverging bars around your overall average ──
-  // Height encodes the *magnitude* of divergence; the larger absolute swing
-  // (above or below) sets the full-scale so both directions share one scale.
-  const devs = years.map((y) => (y.avg == null ? null : y.avg - avgScore));
-  const maxDev = Math.max(0.1, ...devs.map((d) => (d == null ? 0 : Math.abs(d))));
-  const HALF = 44; // % of panel height each side of the midline can fill
-  const barPct = (dev: number) => Math.max(4, (Math.abs(dev) / maxDev) * HALF);
+  // One shared count axis: bars and the pace line both scale to the busiest
+  // year's *total*, so a tall bar and a high pace read as the same magnitude.
+  const totals = years.map((y) => y.above + y.below);
+  const maxTotal = Math.max(1, ...totals);
+  const SCALE = 94; // % of panel height the busiest year fills
+  const barH = (v: number) => (v > 0 ? Math.max(4, (v / maxTotal) * SCALE) : 0);
 
-  // ── Frequency panel: release counts + a centred 5-year moving average ──
-  const maxCount = Math.max(1, ...years.map((y) => y.count));
-  const BAR_MAX = 92; // of the 100-unit viewBox
-  const yVol = (v: number) => 100 - (v / maxCount) * BAR_MAX;
+  // Centred 5-year moving average of the per-year total → the pace line.
   const W = 2;
-  const pace = years.map((_, i) => {
+  const pace = totals.map((_, i) => {
     let sum = 0;
     let k = 0;
     for (let j = Math.max(0, i - W); j <= Math.min(n - 1, i + W); j += 1) {
-      sum += years[j].count;
+      sum += totals[j];
       k += 1;
     }
     return sum / k;
   });
-  const pacePath = monotonePath(pace.map((v, i) => ({ x: cx(i), y: yVol(v) })));
+  const pacePath = monotonePath(pace.map((v, i) => ({ x: cx(i), y: 100 - (v / maxTotal) * SCALE })));
 
   const tickEvery = Math.max(1, Math.ceil(n / 6));
   const hy = hover != null ? years[hover] : null;
@@ -276,40 +271,62 @@ export function YearChart({
 
   return (
     <div className="mt-5">
+      {/* your-average chip — the split threshold, above the plot so no bar hides it */}
+      <div className="mb-2 flex justify-end">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-divider/70 bg-page px-2.5 py-1 text-[11px] font-semibold text-muted">
+          <span className="w-1.5 h-1.5 rounded-full bg-ink/40" />
+          {avgLabel} <span className="text-ink tabular-nums">{avgScore.toFixed(2)}</span>
+        </span>
+      </div>
+
       <div ref={ref} onPointerMove={onPointerMove} onPointerLeave={onPointerLeave} className="relative">
-        {/* ── score panel ── */}
-        <div className="relative h-40">
-          {/* baseline = your overall average, at the vertical midline */}
-          <span className="absolute inset-x-0 top-1/2 h-px bg-ink/20 pointer-events-none" />
-          <span className="absolute right-0 top-1/2 -translate-y-1/2 pl-1 text-[10px] font-semibold text-muted tabular-nums bg-surface">
-            {baselineLabel} {avgScore.toFixed(2)}
-          </span>
-          {/* diverging bars */}
-          <div className="absolute inset-0 flex items-stretch gap-[2px]">
-            {years.map((y, i) => {
-              const dev = devs[i];
-              const up = dev != null && dev >= 0;
-              return (
-                <div
-                  key={y.year}
-                  className={`relative flex-1 min-w-0 rounded-sm ${hover === i ? 'bg-ink/[0.05]' : ''}`}
-                >
-                  {dev != null && (
-                    <span
-                      className="absolute left-0 right-0 mx-auto w-[62%] max-w-[16px]"
-                      style={{
-                        [up ? 'bottom' : 'top']: '50%',
-                        height: `${barPct(dev)}%`,
-                        background: up ? 'var(--tr-up)' : 'var(--tr-dn)',
-                        opacity: hover == null || hover === i ? 1 : 0.72,
-                        borderRadius: up ? '3px 3px 0 0' : '0 0 3px 3px',
-                      }}
-                    />
-                  )}
-                </div>
-              );
-            })}
+        <div className="relative h-44 border-b border-divider">
+          {/* grouped bars */}
+          <div className="absolute inset-0 flex items-end gap-[3px]">
+            {years.map((y, i) => (
+              <div
+                key={y.year}
+                className={`relative flex-1 min-w-0 h-full flex items-end justify-center gap-[2px] rounded-sm ${
+                  hover === i ? 'bg-ink/[0.05]' : ''
+                }`}
+              >
+                <span
+                  className="w-[42%] max-w-[11px] rounded-t"
+                  style={{
+                    height: `${barH(y.above)}%`,
+                    background: 'var(--tr-up)',
+                    opacity: hover == null || hover === i ? 1 : 0.7,
+                  }}
+                />
+                <span
+                  className="w-[42%] max-w-[11px] rounded-t"
+                  style={{
+                    height: `${barH(y.below)}%`,
+                    background: 'var(--tr-dn)',
+                    opacity: hover == null || hover === i ? 1 : 0.7,
+                  }}
+                />
+              </div>
+            ))}
           </div>
+          {/* pace line */}
+          <svg
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            className="absolute inset-0 h-full w-full pointer-events-none"
+            aria-hidden
+          >
+            <path
+              d={pacePath}
+              fill="none"
+              stroke="currentColor"
+              className="text-ink/45"
+              strokeWidth={2}
+              vectorEffect="non-scaling-stroke"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
           {/* hover guide + tooltip */}
           {hover != null && (
             <span
@@ -323,56 +340,9 @@ export function YearChart({
               style={{ left: `${tipLeft}%` }}
             >
               {hy.year} ·{' '}
-              {hy.avg != null ? (
-                <span>
-                  {hy.avg.toFixed(2)}★{' '}
-                  <span style={{ color: hy.avg >= avgScore ? 'var(--tr-up)' : 'var(--tr-dn)' }}>
-                    {hy.avg >= avgScore ? '▲' : '▼'}
-                    {Math.abs(hy.avg - avgScore).toFixed(2)}
-                  </span>
-                </span>
-              ) : (
-                <span className="text-page/60">—</span>
-              )}{' '}
-              · {hy.count}
+              <span style={{ color: 'var(--tr-up)' }}>{hy.above}▲</span>{' '}
+              <span style={{ color: 'var(--tr-dn)' }}>{hy.below}▼</span>
             </div>
-          )}
-        </div>
-
-        {/* ── frequency panel ── */}
-        <div className="relative h-14 mt-2">
-          <div className="absolute inset-0 flex items-end gap-[2px]">
-            {years.map((y, i) => (
-              <div key={y.year} className="flex-1 min-w-0 h-full flex items-end">
-                <span
-                  className={`w-full mx-auto max-w-[16px] rounded-t ${hover === i ? 'bg-accent' : 'bg-accent/30'}`}
-                  style={{ height: `${y.count > 0 ? Math.max(4, (y.count / maxCount) * 100) : 0}%` }}
-                />
-              </div>
-            ))}
-          </div>
-          <svg
-            viewBox="0 0 100 100"
-            preserveAspectRatio="none"
-            className="absolute inset-0 h-full w-full pointer-events-none"
-            aria-hidden
-          >
-            <path
-              d={pacePath}
-              fill="none"
-              stroke="currentColor"
-              className="text-ink/50"
-              strokeWidth={2}
-              vectorEffect="non-scaling-stroke"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          {hover != null && (
-            <span
-              className="absolute inset-y-0 w-px bg-ink/15 pointer-events-none"
-              style={{ left: `${hoverX}%` }}
-            />
           )}
         </div>
       </div>
@@ -403,12 +373,8 @@ export function YearChart({
           {belowLabel}
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-sm bg-accent/30 shrink-0" />
-          {freqLabel}
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="w-4 h-[2px] rounded-full bg-ink/50 shrink-0" />
-          {freqTrendLabel}
+          <span className="w-4 h-[2px] rounded-full bg-ink/45 shrink-0" />
+          {paceLabel}
         </span>
       </div>
     </div>

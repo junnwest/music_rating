@@ -197,34 +197,31 @@ export async function GET(req: NextRequest) {
     for (let d = first; d <= last; d += 10) decades.push({ decade: d, count: decadeMap.get(d) ?? 0 });
   }
 
-  // Release years, contiguous and zero-filled — the "stock" chart draws two
-  // series over this: your mean rating per year (diverging around your overall
-  // average) and the release count (with a moving average as the pace line).
+  // Release years, contiguous and zero-filled. The "stock" chart draws a grouped
+  // frequency histogram over this: per year, how many of your ratings landed
+  // above vs below your overall average (two bars), plus a moving average of the
+  // total-per-year as the pace line.
   const yearMap = new Map<number, number>();
   for (const y of years) yearMap.set(y, (yearMap.get(y) ?? 0) + 1);
-  // Per-release-year score sums, from scored rows only — the diverging line.
-  const yearScore = new Map<number, { sum: number; n: number }>();
+  // Per-release-year split of scored ratings around the overall average.
+  const yearSplit = new Map<number, { above: number; below: number }>();
   for (const r of scored) {
     const d = r.release_groups!.first_release_date;
     if (!d) continue;
     const y = parseInt(d.slice(0, 4), 10);
     if (!(y >= 1900)) continue;
-    const cur = yearScore.get(y) ?? { sum: 0, n: 0 };
-    cur.sum += display(r)!;
-    cur.n += 1;
-    yearScore.set(y, cur);
+    const cur = yearSplit.get(y) ?? { above: 0, below: 0 };
+    if (avgScore != null && display(r)! >= avgScore) cur.above += 1;
+    else cur.below += 1;
+    yearSplit.set(y, cur);
   }
-  const yearSeries: { year: number; count: number; avg: number | null }[] = [];
+  const yearSeries: { year: number; above: number; below: number }[] = [];
   if (yearMap.size > 0) {
     const first = Math.min(...yearMap.keys());
     const last = Math.max(...yearMap.keys());
     for (let y = first; y <= last; y += 1) {
-      const s = yearScore.get(y);
-      yearSeries.push({
-        year: y,
-        count: yearMap.get(y) ?? 0,
-        avg: s && s.n > 0 ? Math.round((s.sum / s.n) * 100) / 100 : null,
-      });
+      const s = yearSplit.get(y);
+      yearSeries.push({ year: y, above: s?.above ?? 0, below: s?.below ?? 0 });
     }
   }
 

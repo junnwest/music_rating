@@ -55,7 +55,7 @@ interface TasteReport {
   graph?: TasteGraphData;
   charts: {
     decades: { decade: number; count: number }[];
-    years?: { year: number; count: number; avg: number | null }[];
+    years?: { year: number; above: number; below: number }[];
     scoreDist: number[];
     scenes: { counts: Record<Scene, number>; total: number } | null;
     timeline: { month: string; count: number }[];
@@ -431,9 +431,8 @@ function ReportView({
             avgScore={stats.avgScore}
             aboveLabel={t('sj.taste.yearsAbove')}
             belowLabel={t('sj.taste.yearsBelow')}
-            freqLabel={t('sj.taste.yearsLegend')}
-            freqTrendLabel={t('sj.taste.yearsTrend')}
-            baselineLabel={t('sj.taste.yearsBaseline')}
+            paceLabel={t('sj.taste.yearsTrend')}
+            avgLabel={t('sj.taste.yearsBaseline')}
           />
         </Section>
       )}
