@@ -1128,8 +1128,9 @@ struct SearchView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
-                    .background(Color.sjBlue)
-                    .clipShape(Capsule())
+                    // Liquid Glass, matching ScoreBadge/FlowerRateControl's
+                    // tinted-glass treatment instead of a flat color fill.
+                    .glassEffect(.regular.tint(Color.sjBlue), in: Capsule())
             }
             .buttonStyle(.plain)
         }
