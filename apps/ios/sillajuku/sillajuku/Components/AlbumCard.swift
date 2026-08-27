@@ -21,7 +21,7 @@ struct AlbumCard: View {
                             .frame(width: 28, height: 28)
                             .shadow(color: .black.opacity(0.15), radius: 4, y: 1)
                         Image(systemName: "checkmark")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.jakarta(11, weight: .bold))
                             .foregroundStyle(.white)
                     }
                     .allowsHitTesting(false)
@@ -34,7 +34,7 @@ struct AlbumCard: View {
                                 .frame(width: 28, height: 28)
                                 .shadow(color: .black.opacity(0.15), radius: 4, y: 1)
                             Image(systemName: "plus")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.jakarta(12, weight: .bold))
                                 .foregroundStyle(Color.sjBlue)
                         }
                     }
@@ -46,11 +46,11 @@ struct AlbumCard: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(release.displayTitle)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.jakarta(12, weight: .medium))
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(1)
                 Text(release.displayArtist)
-                    .font(.system(size: 11))
+                    .font(.jakarta(11))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
             }

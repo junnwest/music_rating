@@ -9,6 +9,31 @@ extension Color {
     static let sjSpotifyGreen = Color(red: 0.114, green: 0.722, blue: 0.333) // #1DB954
 }
 
+extension Font {
+    /// The web app's brand typeface (Plus Jakarta Sans, `apps/web/app/layout.tsx`),
+    /// used in place of the system font throughout so both platforms read as
+    /// the same product. Bundled as static per-weight files (`Fonts/PlusJakartaSans-*.ttf`,
+    /// registered in `Info.plist`'s `UIAppFonts`) rather than the single
+    /// variable-font file Google Fonts ships, since `Font.custom` needs a
+    /// distinct PostScript name per weight -- a variable font only exposes
+    /// its default instance that way. `.ultraLight`/`.thin` fall back to the
+    /// lightest weight actually shipped (Light); `.heavy`/`.black` fall
+    /// forward to the heaviest (ExtraBold) -- Plus Jakarta Sans has no
+    /// dedicated weights beyond those.
+    static func jakarta(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        let name: String
+        switch weight {
+        case .ultraLight, .thin, .light: name = "PlusJakartaSans-Light"
+        case .medium:                    name = "PlusJakartaSans-Medium"
+        case .semibold:                  name = "PlusJakartaSans-SemiBold"
+        case .bold:                      name = "PlusJakartaSans-Bold"
+        case .heavy, .black:             name = "PlusJakartaSans-ExtraBold"
+        default:                         name = "PlusJakartaSans-Regular"
+        }
+        return .custom(name, size: size)
+    }
+}
+
 extension String {
     // Returns a downscaled cover URL (iTunes 600x600bb / 1200x1200bb → 300x300bb;
     // CAA front-500 → front-250).

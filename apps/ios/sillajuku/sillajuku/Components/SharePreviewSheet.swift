@@ -233,7 +233,7 @@ struct SharePreviewSheet: View {
                         VStack(spacing: 4) {
                             shareOptionLabel(icon: "camera.circle.fill", title: String(localized: "Share to Instagram Story"), tint: Color.sjMuted, background: Color.sjBorder)
                             Text("Needs a one-time setup on our end — try Save or More for now.")
-                                .font(.system(size: 11))
+                                .font(.jakarta(11))
                                 .foregroundStyle(Color.sjMuted)
                         }
                     }
@@ -364,7 +364,7 @@ struct SharePreviewSheet: View {
                     }
                 }
                 Text(backgroundStyle.title)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.jakarta(11, weight: .semibold))
                     .foregroundStyle(.white)
             }
             .padding(.horizontal, 12)
@@ -442,7 +442,7 @@ struct SharePreviewSheet: View {
                     ZStack {
                         Color(uiColor: .systemGray5)
                         Image(systemName: "photo")
-                            .font(.system(size: 34))
+                            .font(.jakarta(34))
                             .foregroundStyle(Color(uiColor: .systemGray2))
                     }
                 }
@@ -511,7 +511,7 @@ struct SharePreviewSheet: View {
 
     private func pageNote(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 11, weight: .medium))
+            .font(.jakarta(11, weight: .medium))
             .foregroundStyle(.white)
             .multilineTextAlignment(.center)
             .padding(.horizontal, 10)
@@ -565,9 +565,9 @@ struct SharePreviewSheet: View {
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: pickedMedia == nil ? "plus" : "photo")
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.jakarta(11, weight: .medium))
                         Text(pickedMedia == nil ? String(localized: "Add Photo or Video") : String(localized: "Change"))
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.jakarta(12, weight: .semibold))
                     }
                     .foregroundStyle(.white)
                     .padding(.horizontal, 11)
@@ -653,8 +653,8 @@ struct SharePreviewSheet: View {
     @ViewBuilder
     private func shareOptionLabel(icon: String, title: String, tint: Color, background: Color, bordered: Bool = false) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: icon).font(.system(size: 17, weight: .medium))
-            Text(title).font(.system(size: 15, weight: .semibold))
+            Image(systemName: icon).font(.jakarta(17, weight: .medium))
+            Text(title).font(.jakarta(15, weight: .semibold))
         }
         .foregroundStyle(tint)
         .frame(maxWidth: .infinity)

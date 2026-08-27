@@ -88,10 +88,10 @@ struct BadgeRedeemView: View {
                     .animation(.easeInOut(duration: 0.15), value: selected)
 
                 Text("Quests complete!")
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.jakarta(22, weight: .bold))
                     .foregroundStyle(Color.sjInk)
                 Text("Pick a color for your badge. This is permanent — choose carefully, it can't be changed later.")
-                    .font(.system(size: 14))
+                    .font(.jakarta(14))
                     .foregroundStyle(Color.sjMuted)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
@@ -112,7 +112,7 @@ struct BadgeRedeemView: View {
                                         .padding(-3)
                                 }
                             Text(option.label)
-                                .font(.system(size: 11, weight: .medium))
+                                .font(.jakarta(11, weight: .medium))
                                 .foregroundStyle(Color.sjMuted)
                         }
                     }
@@ -135,7 +135,7 @@ struct BadgeRedeemView: View {
                     ProgressView().tint(.white).frame(maxWidth: .infinity)
                 } else {
                     Text("Claim Badge")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.jakarta(15, weight: .semibold))
                         .frame(maxWidth: .infinity)
                 }
             }

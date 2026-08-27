@@ -260,7 +260,7 @@ private struct LaunchLoadingView: View {
                 .frame(width: 34, height: 34)
                 .rotationEffect(.degrees(-90))
             Text("\(Int(progress * 100))%")
-                .font(.system(size: 10, weight: .bold).width(.condensed))
+                .font(.jakarta(10, weight: .bold).width(.condensed))
                 .foregroundStyle(Color.sjMuted)
         }
         .padding(.top, 6)
@@ -292,14 +292,14 @@ private struct LaunchLoadingView: View {
         VStack(spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: "wifi.slash")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.jakarta(13, weight: .semibold))
                 Text("No internet connection")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.jakarta(13, weight: .semibold))
             }
             .foregroundStyle(Color.sjInk)
 
             Text("Waiting for a connection to sign you in.")
-                .font(.system(size: 12))
+                .font(.jakarta(12))
                 .foregroundStyle(Color.sjMuted)
                 .multilineTextAlignment(.center)
         }

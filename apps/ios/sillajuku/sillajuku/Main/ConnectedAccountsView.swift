@@ -56,7 +56,7 @@ struct ConnectedAccountsView: View {
 
             if let errorMessage = vm.errorMessage {
                 Text(errorMessage)
-                    .font(.system(size: 13))
+                    .font(.jakarta(13))
                     .foregroundStyle(.red)
                     .listRowBackground(Color.clear)
             }
@@ -121,7 +121,7 @@ struct ConnectedAccountsView: View {
 
             if linked {
                 Text("Connected")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.jakarta(12, weight: .semibold))
                     .foregroundStyle(Color.sjMuted)
             }
 
@@ -133,7 +133,7 @@ struct ConnectedAccountsView: View {
                 }
             } label: {
                 Text(linked ? "Disconnect" : "Connect")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.jakarta(13, weight: .semibold))
                     .foregroundStyle(linked ? .red : Color.sjBlue)
             }
             .buttonStyle(.plain)
@@ -147,14 +147,14 @@ struct ConnectedAccountsView: View {
         case .asset(let name):
             Image(name).resizable().scaledToFit()
         case .system(let name):
-            Image(systemName: name).font(.system(size: 18)).foregroundStyle(Color.sjInk)
+            Image(systemName: name).font(.jakarta(18)).foregroundStyle(Color.sjInk)
         }
     }
 
     private var appleMusicRow: some View {
         HStack(spacing: 12) {
             Image(systemName: "music.note")
-                .font(.system(size: 16))
+                .font(.jakarta(16))
                 .foregroundStyle(Color.sjInk)
                 .frame(width: 24)
 
@@ -166,7 +166,7 @@ struct ConnectedAccountsView: View {
             switch appleMusicStatus {
             case .authorized:
                 Text("Connected")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.jakarta(12, weight: .semibold))
                     .foregroundStyle(Color.sjMuted)
             default:
                 Button {
@@ -178,7 +178,7 @@ struct ConnectedAccountsView: View {
                         // Denied/restricted can't be re-prompted in-app (MusicAuthorization.request()
                         // just returns the same status again) -- only iOS Settings can change it now.
                         Text(appleMusicStatus == .notDetermined ? "Connect" : "Open Settings")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.jakarta(13, weight: .semibold))
                             .foregroundStyle(Color.sjBlue)
                     }
                 }
@@ -207,7 +207,7 @@ struct ConnectedAccountsView: View {
     private var phoneRow: some View {
         HStack(spacing: 12) {
             Image(systemName: "phone.fill")
-                .font(.system(size: 16))
+                .font(.jakarta(16))
                 .foregroundStyle(Color.sjInk)
                 .frame(width: 24)
 
@@ -229,7 +229,7 @@ struct ConnectedAccountsView: View {
                 }
             } label: {
                 Text(vm.hasVerifiedPhone ? "Disconnect" : "Connect")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.jakarta(13, weight: .semibold))
                     .foregroundStyle(vm.hasVerifiedPhone ? .red : Color.sjBlue)
             }
             .buttonStyle(.plain)

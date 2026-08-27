@@ -54,7 +54,7 @@ struct AuthView: View {
 
                 // Tagline
                 Text("Every Record You've Loved.")
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.jakarta(24, weight: .bold))
                     .foregroundStyle(Color.sjInk.opacity(0.6))
                     .padding(.bottom, 18)
                     .padding(.horizontal, 24)
@@ -72,10 +72,10 @@ struct AuthView: View {
                     } label: {
                         HStack(spacing: 4) {
                             Text("More options")
-                                .font(.system(size: 14))
+                                .font(.jakarta(14))
                                 .foregroundStyle(Color.sjMuted)
                             Image(systemName: showMoreOptions ? "chevron.up" : "chevron.down")
-                                .font(.system(size: 11, weight: .medium))
+                                .font(.jakarta(11, weight: .medium))
                                 .foregroundStyle(Color.sjMuted)
                         }
                     }
@@ -118,22 +118,22 @@ struct AuthView: View {
 
     private var legalText: AttributedString {
         var base = AttributedString(String(localized: "By continuing, you agree to our"))
-        base.font = .system(size: 12)
+        base.font = .jakarta(12)
         base.foregroundColor = Color.sjMuted
 
         let lineBreak = AttributedString("\n")
 
         var terms = AttributedString(String(localized: "Terms of Service"))
-        terms.font = .system(size: 12, weight: .bold)
+        terms.font = .jakarta(12, weight: .bold)
         terms.foregroundColor = Color.sjMuted
         terms.link = URL(string: "https://sillajuku.com/terms")
 
         var sep = AttributedString(String(localized: " and "))
-        sep.font = .system(size: 12)
+        sep.font = .jakarta(12)
         sep.foregroundColor = Color.sjMuted
 
         var privacy = AttributedString(String(localized: "Privacy Policy"))
-        privacy.font = .system(size: 12, weight: .bold)
+        privacy.font = .jakarta(12, weight: .bold)
         privacy.foregroundColor = Color.sjMuted
         privacy.link = URL(string: "https://sillajuku.com/privacy")
 
@@ -156,7 +156,7 @@ private struct SpotifyAuthButton: View {
                     .frame(width: 24, height: 24)
 
                 Text("Continue with Spotify")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.jakarta(16, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
             }
@@ -180,12 +180,12 @@ private struct AppleAuthButton: View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: "apple.logo")
-                    .font(.system(size: 18, weight: .medium))
+                    .font(.jakarta(18, weight: .medium))
                     .foregroundStyle(.white)
                     .frame(width: 24)
 
                 Text("Continue with Apple")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.jakarta(16, weight: .semibold))
                     .foregroundStyle(.white)
             }
             .padding(.horizontal, 18)
@@ -213,7 +213,7 @@ private struct GoogleAuthButton: View {
                     .frame(width: 24, height: 24)
 
                 Text("Continue with Google")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.jakarta(16, weight: .semibold))
                     .foregroundStyle(Color(red: 0.1, green: 0.1, blue: 0.1))
             }
             .padding(.horizontal, 18)

@@ -118,13 +118,13 @@ struct TasteView: View {
             Color.sjCream.ignoresSafeArea()
             VStack(spacing: 12) {
                 Image(systemName: "wifi.slash")
-                    .font(.system(size: 36))
+                    .font(.jakarta(36))
                     .foregroundStyle(Color.sjBorder)
                 Text("Couldn't load your taste progress.")
-                    .font(.system(size: 15))
+                    .font(.jakarta(15))
                     .foregroundStyle(Color.sjMuted)
                 Button("Retry") { Task { await viewModel.load() } }
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.jakarta(14, weight: .semibold))
                     .foregroundStyle(Color.sjAmber)
             }
         }
@@ -244,7 +244,7 @@ private struct TasteReportView: View {
                 }
 
                 Text("That's your taste snapshot.")
-                    .font(.system(size: 11.5))
+                    .font(.jakarta(11.5))
                     .foregroundStyle(Color.sjMuted.opacity(0.5))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
@@ -284,19 +284,19 @@ private struct TasteReportView: View {
     private var heroCard: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Taste Report")
-                .font(.system(size: 10, weight: .black))
+                .font(.jakarta(10, weight: .black))
                 .kerning(1.2)
                 .textCase(.uppercase)
                 .foregroundStyle(Color.sjBlue.opacity(0.7))
             Text(report.clusters.count >= 2
                  ? String(format: String(localized: "Your taste lives in\n%d worlds."), report.clusters.count)
                  : String(localized: "Your taste lives in\none world."))
-                .font(.system(size: 24, weight: .black))
+                .font(.jakarta(24, weight: .black))
                 .foregroundStyle(Color.sjInk)
                 .padding(.top, 8)
             Text(String(format: String(localized: "Based on %1$d ratings across %2$d genres, analyzed into %3$d worlds."),
                         report.ratingCount, report.totalTags, report.clusters.count))
-                .font(.system(size: 12.5))
+                .font(.jakarta(12.5))
                 .foregroundStyle(Color.sjMuted)
                 .padding(.top, 6)
             HStack(spacing: 18) {
@@ -319,10 +319,10 @@ private struct TasteReportView: View {
     private func heroStat(value: Int, label: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             CountUpText(value: value)
-                .font(.system(size: 22, weight: .black))
+                .font(.jakarta(22, weight: .black))
                 .foregroundStyle(Color.sjInk)
             Text(label)
-                .font(.system(size: 10, weight: .bold))
+                .font(.jakarta(10, weight: .bold))
                 .kerning(0.6)
                 .textCase(.uppercase)
                 .foregroundStyle(Color.sjMuted)
@@ -367,10 +367,10 @@ private struct TasteReportView: View {
                     HStack(spacing: 6) {
                         Circle().fill(s.color).frame(width: 10, height: 10)
                         Text(s.label)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.jakarta(12, weight: .semibold))
                             .foregroundStyle(Color.sjInk)
                         Text("\(Int((s.share * 100).rounded()))%")
-                            .font(.system(size: 12))
+                            .font(.jakarta(12))
                             .monospacedDigit()
                             .foregroundStyle(Color.sjMuted)
                     }
@@ -387,7 +387,7 @@ private struct TasteReportView: View {
             CanonRadialGauge(pct: stats.prestigeShare ?? 0, label: String(localized: "in the canon"))
             Text(String(format: String(localized: "%d%% of what you rate sits in the curated canon; the rest is your own discovery."),
                         Int(((stats.prestigeShare ?? 0) * 100).rounded())))
-                .font(.system(size: 12.5))
+                .font(.jakarta(12.5))
                 .foregroundStyle(Color.sjMuted)
         }
         .padding(.top, 10)
@@ -411,20 +411,20 @@ private struct TasteReportView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Your #1 Album")
-                            .font(.system(size: 10, weight: .black))
+                            .font(.jakarta(10, weight: .black))
                             .kerning(1)
                             .textCase(.uppercase)
                             .foregroundStyle(Color.sjBlue.opacity(0.7))
                         Text(top.title)
-                            .font(.system(size: 13.5, weight: .bold))
+                            .font(.jakarta(13.5, weight: .bold))
                             .foregroundStyle(Color.sjInk)
                             .lineLimit(2)
                         Text(top.artist)
-                            .font(.system(size: 12))
+                            .font(.jakarta(12))
                             .foregroundStyle(Color.sjMuted)
                             .lineLimit(1)
                         Text(String(format: "%.1f", top.score))
-                            .font(.system(size: 15, weight: .black))
+                            .font(.jakarta(15, weight: .black))
                             .foregroundStyle(Color.sjBlue)
                     }
                     Spacer(minLength: 0)
@@ -445,7 +445,7 @@ private struct TasteReportView: View {
             .padding(.top, 12)
             VStack(alignment: .leading, spacing: 8) {
                 Text(String(localized: "12-month activity"))
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.jakarta(11, weight: .bold))
                     .foregroundStyle(Color.sjMuted)
                 ActivitySparkView(timeline: charts.timeline, peakIndex: charts.peakMonthIndex, monthLabel: monthTooltipLabel)
             }
@@ -491,11 +491,11 @@ private struct TasteReportView: View {
                 Spacer()
                 HStack(spacing: 4) {
                     Circle().fill(Color.sjBlue).frame(width: 9, height: 9)
-                    Text("You").font(.system(size: 11)).foregroundStyle(Color.sjMuted)
+                    Text("You").font(.jakarta(11)).foregroundStyle(Color.sjMuted)
                 }
                 HStack(spacing: 4) {
                     Circle().fill(Color.sjMuted.opacity(0.5)).frame(width: 9, height: 9)
-                    Text("Community").font(.system(size: 11)).foregroundStyle(Color.sjMuted)
+                    Text("Community").font(.jakarta(11)).foregroundStyle(Color.sjMuted)
                 }
             }
             DumbbellAxisView()
@@ -505,14 +505,14 @@ private struct TasteReportView: View {
                     VStack(spacing: 6) {
                         HStack(alignment: .firstTextBaseline) {
                             Text(s.genre)
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.jakarta(13, weight: .bold))
                                 .foregroundStyle(Color.sjInk)
                             Spacer()
                             HStack(spacing: 3) {
                                 Image(systemName: diff >= 0 ? "arrow.up" : "arrow.down")
-                                    .font(.system(size: 9, weight: .bold))
+                                    .font(.jakarta(9, weight: .bold))
                                 Text("\(String(format: "%.2f", abs(diff))) \(diff >= 0 ? String(localized: "above average") : String(localized: "below average"))")
-                                    .font(.system(size: 11.5, weight: .semibold))
+                                    .font(.jakarta(11.5, weight: .semibold))
                             }
                             .foregroundStyle(diff >= 0 ? Color.sjBlue : Color.sjMuted)
                         }
@@ -546,7 +546,7 @@ private struct ColumnChartView: View {
                             VStack(spacing: 2) {
                                 if i == peakIndex && count > 0 {
                                     Text("\(count)")
-                                        .font(.system(size: 10, weight: .semibold))
+                                        .font(.jakarta(10, weight: .semibold))
                                         .monospacedDigit()
                                         .foregroundStyle(Color.sjMuted)
                                 }
@@ -569,7 +569,7 @@ private struct ColumnChartView: View {
                             .frame(width: 1)
                             .position(x: x, y: geo.size.height / 2)
                         Text(mean.label)
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.jakarta(10, weight: .semibold))
                             .foregroundStyle(Color.sjMuted)
                             .fixedSize()
                             .position(x: geo.size.width * CGFloat(min(0.9, max(0.1, mean.pos))), y: -8)
@@ -580,7 +580,7 @@ private struct ColumnChartView: View {
             HStack(spacing: 2) {
                 ForEach(Array(xLabels.enumerated()), id: \.offset) { _, label in
                     Text(label ?? " ")
-                        .font(.system(size: 10))
+                        .font(.jakarta(10))
                         .monospacedDigit()
                         .foregroundStyle(Color.sjMuted.opacity(0.7))
                         .lineLimit(1)
@@ -667,7 +667,7 @@ private struct DumbbellAxisView: View {
         GeometryReader { geo in
             ForEach(ticks, id: \.self) { v in
                 Text("\(v)")
-                    .font(.system(size: 10))
+                    .font(.jakarta(10))
                     .monospacedDigit()
                     .foregroundStyle(Color.sjMuted.opacity(0.6))
                     .position(x: geo.size.width * pos(Double(v)), y: 7)
@@ -686,7 +686,7 @@ private struct BinTooltip: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.jakarta(11, weight: .semibold))
             .foregroundStyle(Color.sjCream)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
@@ -737,15 +737,15 @@ struct RampLegendView: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Text("1").font(.system(size: 10)).monospacedDigit().foregroundStyle(Color.sjMuted)
+            Text("1").font(.jakarta(10)).monospacedDigit().foregroundStyle(Color.sjMuted)
             LinearGradient(
                 colors: (1...5).map { Spectrum.color(score: Double($0), lightness: 0.62, chromaScale: 1) },
                 startPoint: .leading, endPoint: .trailing
             )
             .frame(width: width, height: 6)
             .clipShape(Capsule())
-            Text("5").font(.system(size: 10)).monospacedDigit().foregroundStyle(Color.sjMuted)
-            Text(label).font(.system(size: 10)).foregroundStyle(Color.sjMuted)
+            Text("5").font(.jakarta(10)).monospacedDigit().foregroundStyle(Color.sjMuted)
+            Text(label).font(.jakarta(10)).foregroundStyle(Color.sjMuted)
         }
     }
 }
@@ -797,7 +797,7 @@ private struct YearChartView: View {
                             .frame(width: max(0, w), height: 96)
                             .offset(x: x0)
                         Text(eraLabel)
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.jakarta(9, weight: .bold))
                             .foregroundStyle(Color.sjBlue.opacity(0.8))
                             .fixedSize()
                             .position(x: x0 + w / 2, y: -8)
@@ -808,7 +808,7 @@ private struct YearChartView: View {
                                 VStack(spacing: 2) {
                                     if i == peakIndex, y.count > 0, hover == nil {
                                         Text("\(y.count)")
-                                            .font(.system(size: 9, weight: .semibold))
+                                            .font(.jakarta(9, weight: .semibold))
                                             .monospacedDigit()
                                             .foregroundStyle(Color.sjMuted)
                                     }
@@ -840,7 +840,7 @@ private struct YearChartView: View {
             HStack(spacing: 2) {
                 ForEach(Array(years.enumerated()), id: \.offset) { i, y in
                     Text(i % tickEvery == 0 || i == years.count - 1 ? String(y.year) : "")
-                        .font(.system(size: 9))
+                        .font(.jakarta(9))
                         .monospacedDigit()
                         .foregroundStyle(Color.sjMuted.opacity(0.7))
                         .lineLimit(1)
@@ -851,11 +851,11 @@ private struct YearChartView: View {
             HStack(spacing: 14) {
                 HStack(spacing: 6) {
                     RoundedRectangle(cornerRadius: 2).fill(Color.sjBlue.opacity(0.7)).frame(width: 10, height: 10)
-                    Text(label).font(.system(size: 11)).foregroundStyle(Color.sjMuted)
+                    Text(label).font(.jakarta(11)).foregroundStyle(Color.sjMuted)
                 }
                 HStack(spacing: 6) {
                     Rectangle().fill(Color.sjInk.opacity(0.45)).frame(width: 16, height: 2)
-                    Text(trendLabel).font(.system(size: 11)).foregroundStyle(Color.sjMuted)
+                    Text(trendLabel).font(.jakarta(11)).foregroundStyle(Color.sjMuted)
                 }
             }
             .padding(.top, 4)
@@ -889,7 +889,7 @@ private struct ScoreRampChartView: View {
                                     VStack(spacing: 2) {
                                         if i == peakIndex, count > 0, hover == nil {
                                             Text("\(count)")
-                                                .font(.system(size: 9, weight: .semibold))
+                                                .font(.jakarta(9, weight: .semibold))
                                                 .monospacedDigit()
                                                 .foregroundStyle(Color.sjMuted)
                                         }
@@ -908,7 +908,7 @@ private struct ScoreRampChartView: View {
                             let x = geo.size.width * CGFloat(min(0.98, max(0.02, mean.pos)))
                             Rectangle().fill(Color.sjInk.opacity(0.35)).frame(width: 1).position(x: x, y: 44)
                             Text(mean.label)
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.jakarta(10, weight: .semibold))
                                 .foregroundStyle(Color.sjMuted)
                                 .fixedSize()
                                 .position(x: geo.size.width * CGFloat(min(0.9, max(0.1, mean.pos))), y: -8)
@@ -926,7 +926,7 @@ private struct ScoreRampChartView: View {
                 HStack(spacing: 3) {
                     ForEach(bins.indices, id: \.self) { i in
                         Text(i % 2 == 1 ? String(format: "%g", scoreAt(i)) : "")
-                            .font(.system(size: 10))
+                            .font(.jakarta(10))
                             .monospacedDigit()
                             .foregroundStyle(Color.sjMuted.opacity(0.7))
                             .frame(maxWidth: .infinity)
@@ -957,11 +957,11 @@ private struct CanonRadialGauge: View {
                 .rotationEffect(.degrees(-90))
             VStack(spacing: 2) {
                 Text("\(Int((pct * 100).rounded()))%")
-                    .font(.system(size: 22, weight: .black))
+                    .font(.jakarta(22, weight: .black))
                     .monospacedDigit()
                     .foregroundStyle(Color.sjInk)
                 Text(label)
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.jakarta(9, weight: .semibold))
                     .foregroundStyle(Color.sjMuted)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 10)
@@ -1076,10 +1076,10 @@ private struct StatTileView<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value)
-                .font(.system(size: 19, weight: .black))
+                .font(.jakarta(19, weight: .black))
                 .foregroundStyle(Color.sjInk)
             Text(label)
-                .font(.system(size: 11))
+                .font(.jakarta(11))
                 .foregroundStyle(Color.sjMuted)
             content
         }
@@ -1100,7 +1100,7 @@ private struct FlowChips: View {
         FlowLayout(spacing: 8) {
             ForEach(items, id: \.self) { item in
                 Text(item)
-                    .font(.system(size: 12.5))
+                    .font(.jakarta(12.5))
                     .strikethrough(true, color: Color.sjMuted.opacity(0.5))
                     .foregroundStyle(Color.sjMuted)
                     .padding(.horizontal, 12)
@@ -1168,7 +1168,7 @@ private struct CardTitle: View {
     init(_ text: String) { self.text = text }
     var body: some View {
         Text(text)
-            .font(.system(size: 15, weight: .bold))
+            .font(.jakarta(15, weight: .bold))
             .foregroundStyle(Color.sjInk)
     }
 }
@@ -1178,7 +1178,7 @@ private struct CardSub: View {
     init(_ text: String) { self.text = text }
     var body: some View {
         Text(text)
-            .font(.system(size: 12.5))
+            .font(.jakarta(12.5))
             .foregroundStyle(Color.sjMuted)
             .padding(.top, 4)
             .fixedSize(horizontal: false, vertical: true)
@@ -1199,7 +1199,7 @@ private struct ReportSection<Content: View>: View {
             ReportCard {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(no)
-                        .font(.system(size: 11, weight: .black))
+                        .font(.jakarta(11, weight: .black))
                         .monospacedDigit()
                         .foregroundStyle(Color.sjBlue.opacity(0.6))
                     CardTitle(title)
@@ -1275,18 +1275,18 @@ private struct TasteLockView: View {
                 Spacer()
 
                 Image(systemName: "lock.fill")
-                    .font(.system(size: 36, weight: .medium))
+                    .font(.jakarta(36, weight: .medium))
                     .foregroundStyle(Color.sjAmber)
                     .padding(.bottom, 24)
 
                 Text(String(format: String(localized: "Rate %d more\nreleases to unlock Taste"), Self.threshold - ratingCount))
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.jakarta(24, weight: .bold))
                     .foregroundStyle(Color.sjInk)
                     .multilineTextAlignment(.center)
                     .padding(.bottom, 12)
 
                 Text("We need enough ratings to surface\nmeaningful insights about your taste.")
-                    .font(.system(size: 15))
+                    .font(.jakarta(15))
                     .foregroundStyle(Color.sjMuted)
                     .multilineTextAlignment(.center)
                     .padding(.bottom, 40)
@@ -1310,14 +1310,14 @@ private struct TasteLockView: View {
                     .padding(.horizontal, 48)
 
                     Text(String(format: String(localized: "%d of %d"), ratingCount, Self.threshold))
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.jakarta(13, weight: .semibold))
                         .foregroundStyle(Color.sjMuted)
                 }
 
                 if let onGoToAdd {
                     Button(action: onGoToAdd) {
                         Text("Find releases to rate")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.jakarta(14, weight: .semibold))
                             .foregroundStyle(Color.sjCream)
                             .frame(maxWidth: .infinity)
                             .frame(height: 44)
@@ -1334,7 +1334,7 @@ private struct TasteLockView: View {
                 // Teaser strip
                 VStack(spacing: 10) {
                     Text("Coming to you")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.jakarta(10, weight: .bold))
                         .foregroundStyle(Color.sjMuted.opacity(0.6))
                         .kerning(0.8)
                         .textCase(.uppercase)
@@ -1343,10 +1343,10 @@ private struct TasteLockView: View {
                         ForEach(teaserItems, id: \.1) { icon, label in
                             VStack(spacing: 5) {
                                 Image(systemName: icon)
-                                    .font(.system(size: 20))
+                                    .font(.jakarta(20))
                                     .foregroundStyle(Color.sjAmber.opacity(0.4))
                                 Text(label)
-                                    .font(.system(size: 10))
+                                    .font(.jakarta(10))
                                     .foregroundStyle(Color.sjMuted.opacity(0.7))
                             }
                             .frame(maxWidth: .infinity)

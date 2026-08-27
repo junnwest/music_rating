@@ -335,11 +335,11 @@ private struct QuickAddRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(release.title)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.jakarta(15, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(1)
                 Text(release.artist)
-                    .font(.system(size: 13))
+                    .font(.jakarta(13))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
             }
@@ -381,11 +381,11 @@ private struct QuickAddSongRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(song.title)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.jakarta(15, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(1)
                 Text(song.artist)
-                    .font(.system(size: 13))
+                    .font(.jakarta(13))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
             }
@@ -475,7 +475,7 @@ struct QuickAddView: View {
             }
         } label: {
             Text(label)
-                .font(.system(size: 17, weight: mode == target ? .bold : .regular))
+                .font(.jakarta(17, weight: mode == target ? .bold : .regular))
                 .foregroundStyle(mode == target ? Color.sjInk : Color.sjMuted)
         }
         .buttonStyle(.plain)
@@ -593,13 +593,13 @@ struct QuickAddView: View {
     private var emptyState: some View {
         VStack(spacing: 14) {
             Image(systemName: "checkmark.circle")
-                .font(.system(size: 44))
+                .font(.jakarta(44))
                 .foregroundStyle(Color.sjBorder)
             Text("You're all caught up")
-                .font(.system(size: 17, weight: .semibold))
+                .font(.jakarta(17, weight: .semibold))
                 .foregroundStyle(Color.sjInk)
             Text("No more releases to quickly rate right now.")
-                .font(.system(size: 14))
+                .font(.jakarta(14))
                 .foregroundStyle(Color.sjMuted)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
@@ -615,10 +615,10 @@ struct QuickAddView: View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Nothing to suggest yet")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.jakarta(17, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
                 Text("Quick Add works off your listening history and your own ratings. Either of these gets it started:")
-                    .font(.system(size: 14))
+                    .font(.jakarta(14))
                     .foregroundStyle(Color.sjMuted)
             }
 
@@ -637,17 +637,17 @@ struct QuickAddView: View {
     private func nudgeRow(icon: String, title: LocalizedStringKey) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.jakarta(15, weight: .semibold))
                 .foregroundStyle(Color.sjCream)
                 .frame(width: 32, height: 32)
                 .background(Color.sjInk)
                 .clipShape(Circle())
             Text(title)
-                .font(.system(size: 14.5, weight: .semibold))
+                .font(.jakarta(14.5, weight: .semibold))
                 .foregroundStyle(Color.sjInk)
             Spacer(minLength: 8)
             Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.jakarta(12, weight: .semibold))
                 .foregroundStyle(Color.sjMuted)
         }
         .padding(14)
@@ -666,14 +666,14 @@ struct QuickAddView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: "safari")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.jakarta(13, weight: .semibold))
                     .foregroundStyle(Color.sjAmber)
                 Text("Explore other genres")
-                    .font(.system(size: 14.5, weight: .bold))
+                    .font(.jakarta(14.5, weight: .bold))
                     .foregroundStyle(Color.sjInk)
             }
             Text("Browse genres outside your usual listening. Liking one also shapes your Home feed.")
-                .font(.system(size: 12.5))
+                .font(.jakarta(12.5))
                 .foregroundStyle(Color.sjMuted)
 
             FlowLayout(spacing: 8) {
@@ -699,13 +699,13 @@ struct QuickAddView: View {
         return HStack(spacing: 0) {
             Button { vm.toggleOpenedGenre(genre) } label: {
                 Text(genre)
-                    .font(.system(size: 12.5, weight: .medium))
+                    .font(.jakarta(12.5, weight: .medium))
                     .foregroundStyle(isOpen ? Color.sjAmber : Color.sjMuted)
                     .padding(.leading, 12).padding(.trailing, 6).padding(.vertical, 7)
             }
             Button { Task { await vm.toggleLikedGenre(genre) } } label: {
                 Image(systemName: isLiked ? "heart.fill" : "heart")
-                    .font(.system(size: 11))
+                    .font(.jakarta(11))
                     .foregroundStyle(isLiked ? Color.sjAmber : Color.sjMuted)
                     .padding(.leading, 4).padding(.trailing, 10).padding(.vertical, 7)
             }
@@ -720,7 +720,7 @@ struct QuickAddView: View {
     private func genreSection(_ genre: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(genre)
-                .font(.system(size: 12.5, weight: .semibold))
+                .font(.jakarta(12.5, weight: .semibold))
                 .foregroundStyle(Color.sjMuted)
                 .padding(.top, 6)
                 .padding(.horizontal, 2)
@@ -741,7 +741,7 @@ struct QuickAddView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             } else {
                 Text("Nothing here yet")
-                    .font(.system(size: 12.5))
+                    .font(.jakarta(12.5))
                     .foregroundStyle(Color.sjMuted)
                     .padding(.vertical, 6)
             }

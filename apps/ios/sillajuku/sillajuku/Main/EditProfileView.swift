@@ -45,7 +45,7 @@ struct EditProfileView: View {
                                     .frame(width: 28, height: 28)
                                     .overlay(
                                         Image(systemName: "camera.fill")
-                                            .font(.system(size: 12))
+                                            .font(.jakarta(12))
                                             .foregroundStyle(Color.sjCream)
                                     )
                                     .offset(x: 2, y: 2)
@@ -88,7 +88,7 @@ struct EditProfileView: View {
                     Section {
                         Text(errorMessage)
                             .foregroundStyle(.red)
-                            .font(.system(size: 13))
+                            .font(.jakarta(13))
                     }
                 }
             }
@@ -134,7 +134,7 @@ struct EditProfileView: View {
             .fill(Color.sjAmber.opacity(0.14))
             .overlay(
                 Text(String((profile?.displayName ?? displayName).prefix(1).uppercased()).ifEmpty("?"))
-                    .font(.system(size: 32, weight: .bold))
+                    .font(.jakarta(32, weight: .bold))
                     .foregroundStyle(Color.sjAmber)
             )
     }

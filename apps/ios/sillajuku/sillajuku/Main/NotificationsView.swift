@@ -185,10 +185,10 @@ struct NotificationsView: View {
             } else if notifications.isEmpty {
                 VStack(spacing: 14) {
                     Image(systemName: "bell")
-                        .font(.system(size: 44))
+                        .font(.jakarta(44))
                         .foregroundStyle(Color.sjBorder)
                     Text("No notifications yet")
-                        .font(.system(size: 15))
+                        .font(.jakarta(15))
                         .foregroundStyle(Color.sjMuted)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -300,7 +300,7 @@ private struct NotificationRow: View {
                 .fill(notif.iconColor)
                 .frame(width: 18, height: 18)
             Image(systemName: notif.iconName)
-                .font(.system(size: 8, weight: .bold))
+                .font(.jakarta(8, weight: .bold))
                 .foregroundStyle(.white)
         }
         .overlay(Circle().stroke(Color.sjCream, lineWidth: 2))
@@ -317,11 +317,11 @@ private struct NotificationRow: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(notif.bodyText)
-                    .font(.system(size: 14))
+                    .font(.jakarta(14))
                     .foregroundStyle(Color.sjInk)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(notif.createdAt.relativeTimeString)
-                    .font(.system(size: 12))
+                    .font(.jakarta(12))
                     .foregroundStyle(Color.sjMuted)
             }
 
@@ -385,9 +385,9 @@ struct AlbumPostDetailView: View {
             } else {
                 VStack(spacing: 12) {
                     Image(systemName: "exclamationmark.circle")
-                        .font(.system(size: 36)).foregroundStyle(Color.sjBorder)
+                        .font(.jakarta(36)).foregroundStyle(Color.sjBorder)
                     Text("This rating is no longer available")
-                        .font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                        .font(.jakarta(15)).foregroundStyle(Color.sjMuted)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -509,9 +509,9 @@ struct SongPostDetailView: View {
             } else {
                 VStack(spacing: 12) {
                     Image(systemName: "exclamationmark.circle")
-                        .font(.system(size: 36)).foregroundStyle(Color.sjBorder)
+                        .font(.jakarta(36)).foregroundStyle(Color.sjBorder)
                     Text("This rating is no longer available")
-                        .font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                        .font(.jakarta(15)).foregroundStyle(Color.sjMuted)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }

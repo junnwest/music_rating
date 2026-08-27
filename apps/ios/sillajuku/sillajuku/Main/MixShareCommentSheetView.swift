@@ -52,9 +52,9 @@ struct MixShareCommentSheetView: View {
                 if let err = errorMessage {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.circle.fill")
-                            .font(.system(size: 12)).foregroundStyle(.red)
+                            .font(.jakarta(12)).foregroundStyle(.red)
                         Text(err)
-                            .font(.system(size: 12)).foregroundStyle(.red)
+                            .font(.jakarta(12)).foregroundStyle(.red)
                         Spacer()
                     }
                     .padding(.horizontal, 16).padding(.vertical, 6)
@@ -81,10 +81,10 @@ struct MixShareCommentSheetView: View {
         } else if comments.isEmpty {
             VStack(spacing: 12) {
                 Image(systemName: "bubble.right")
-                    .font(.system(size: 36))
+                    .font(.jakarta(36))
                     .foregroundStyle(Color.sjBorder)
                 Text("No comments yet.\nBe the first!")
-                    .font(.system(size: 15))
+                    .font(.jakarta(15))
                     .foregroundStyle(Color.sjMuted)
                     .multilineTextAlignment(.center)
             }
@@ -112,11 +112,11 @@ struct MixShareCommentSheetView: View {
     private var inputBar: some View {
         HStack(spacing: 10) {
             Image(systemName: "person.circle.fill")
-                .font(.system(size: 30))
+                .font(.jakarta(30))
                 .foregroundStyle(Color(uiColor: .systemGray3))
 
             TextField("Add a comment…", text: $newComment, axis: .vertical)
-                .font(.system(size: 14))
+                .font(.jakarta(14))
                 .lineLimit(1...4)
                 .submitLabel(.send)
                 .onSubmit { Task { await sendComment() } }
@@ -129,7 +129,7 @@ struct MixShareCommentSheetView: View {
                         ProgressView().scaleEffect(0.75)
                     } else {
                         Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 28))
+                            .font(.jakarta(28))
                             .foregroundStyle(Color.sjAmber)
                     }
                 }
@@ -192,21 +192,21 @@ private struct MixShareCommentRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "person.circle.fill")
-                .font(.system(size: 34))
+                .font(.jakarta(34))
                 .foregroundStyle(Color(uiColor: .systemGray3))
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text("@" + (comment.profiles?.handle ?? String(localized: "someone")))
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.jakarta(13, weight: .semibold))
                         .foregroundStyle(Color.sjInk)
                         .lineLimit(1)
                     Text(comment.createdAt.relativeTimeString)
-                        .font(.system(size: 12))
+                        .font(.jakarta(12))
                         .foregroundStyle(Color.sjMuted)
                 }
                 Text(comment.content)
-                    .font(.system(size: 14))
+                    .font(.jakarta(14))
                     .foregroundStyle(Color.sjInk)
                     .fixedSize(horizontal: false, vertical: true)
             }

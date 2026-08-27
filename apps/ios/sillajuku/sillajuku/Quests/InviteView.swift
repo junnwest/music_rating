@@ -48,7 +48,7 @@ struct InviteView: View {
                 }
 
                 Text("Invites only count toward the 5-invite reward once the person you invited verifies their phone number — this keeps one person from farming credit with throwaway accounts.")
-                    .font(.system(size: 12))
+                    .font(.jakarta(12))
                     .foregroundStyle(Color.sjMuted)
             }
             .padding(20)
@@ -58,7 +58,7 @@ struct InviteView: View {
     private var myCodeCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Your invite code")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.jakarta(13, weight: .semibold))
                 .foregroundStyle(Color.sjMuted)
                 .textCase(.uppercase)
                 .kerning(0.4)
@@ -73,7 +73,7 @@ struct InviteView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "square.and.arrow.up")
                         Text("Share invite link")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.jakarta(14, weight: .semibold))
                     }
                     .foregroundStyle(Color.sjCream)
                     .frame(maxWidth: .infinity)
@@ -92,7 +92,7 @@ struct InviteView: View {
     private var redeemCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Have an invite code?")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.jakarta(13, weight: .semibold))
                 .foregroundStyle(Color.sjMuted)
                 .textCase(.uppercase)
                 .kerning(0.4)
@@ -113,7 +113,7 @@ struct InviteView: View {
                         ProgressView().tint(Color.sjCream)
                     } else {
                         Text("Apply")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.jakarta(14, weight: .semibold))
                     }
                 }
                 .foregroundStyle(Color.sjCream)
@@ -126,7 +126,7 @@ struct InviteView: View {
 
             if let message = vm.redeemMessage {
                 Text(message)
-                    .font(.system(size: 12))
+                    .font(.jakarta(12))
                     .foregroundStyle(Color.sjMuted)
             }
         }
@@ -148,16 +148,16 @@ struct InviteView: View {
                 Image(systemName: "checkmark.shield")
                     .foregroundStyle(Color.sjBlue)
                 Text("Verify your phone number")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.jakarta(14, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
             }
             Text(verifyPhoneBody)
-                .font(.system(size: 13))
+                .font(.jakarta(13))
                 .foregroundStyle(Color.sjMuted)
 
             Button { showPhoneVerification = true } label: {
                 Text("Verify phone number")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.jakarta(14, weight: .semibold))
                     .foregroundStyle(Color.sjCream)
                     .frame(maxWidth: .infinity)
                     .frame(height: 44)

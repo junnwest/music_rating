@@ -21,7 +21,7 @@ struct StepUsername: View {
             Spacer().frame(height: 110)
 
             Text("Create a username.")
-                .font(.system(size: 28, weight: .bold))
+                .font(.jakarta(28, weight: .bold))
                 .foregroundStyle(Color.sjInk)
                 .padding(.horizontal, 24)
                 .padding(.bottom, 32)
@@ -33,7 +33,7 @@ struct StepUsername: View {
                         set: { data.username = Username.normalize($0) }
                     ))
                         .textFieldStyle(.plain)
-                        .font(.system(size: 16))
+                        .font(.jakarta(16))
                         .foregroundStyle(Color.sjInk)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
@@ -56,7 +56,7 @@ struct StepUsername: View {
 
                 if usernameAvailable == false {
                     Text("That username is already taken.")
-                        .font(.system(size: 12))
+                        .font(.jakarta(12))
                         .foregroundStyle(.red)
                         .padding(.horizontal, 2)
                 }
@@ -67,7 +67,7 @@ struct StepUsername: View {
 
             Button(action: onNext) {
                 Text("Continue")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.jakarta(16, weight: .semibold))
                     .foregroundStyle(Color.sjCream)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)

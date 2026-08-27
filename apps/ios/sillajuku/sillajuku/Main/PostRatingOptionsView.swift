@@ -70,18 +70,18 @@ struct PostRatingOptionsView: View {
                 .accessibilityHidden(true) // title text alongside already describes it
             VStack(alignment: .leading, spacing: 2) {
                 Text(release.displayTitle)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.jakarta(14, weight: .bold))
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(1)
                 HStack(spacing: 6) {
                     Text(release.typeLabel)
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.jakarta(10, weight: .medium))
                         .foregroundStyle(Color.sjBlue)
                         .padding(.horizontal, 5).padding(.vertical, 2)
                         .background(Color.sjBlue.opacity(0.1))
                         .clipShape(RoundedRectangle(cornerRadius: 4))
                     Text(release.displayArtist)
-                        .font(.system(size: 12))
+                        .font(.jakarta(12))
                         .foregroundStyle(Color.sjMuted)
                         .lineLimit(1)
                 }
@@ -101,11 +101,11 @@ struct PostRatingOptionsView: View {
             } label: {
                 HStack(spacing: 14) {
                     Image(systemName: "bubble.right")
-                        .font(.system(size: 17))
+                        .font(.jakarta(17))
                         .foregroundStyle(Color.sjInk)
                         .frame(width: 24)
                     Text("Add a comment")
-                        .font(.system(size: 15))
+                        .font(.jakarta(15))
                         .foregroundStyle(Color.sjInk)
                     Spacer()
                     // "chevron.down" rotating 180° open -- deliberately NOT
@@ -119,7 +119,7 @@ struct PostRatingOptionsView: View {
                     // glyphs (an earlier approach) didn't interpolate and
                     // read as a glitchy jump instead.
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.jakarta(13, weight: .medium))
                         .foregroundStyle(Color.sjMuted)
                         .rotationEffect(.degrees(isAddingComment ? 180 : 0))
                 }
@@ -133,13 +133,13 @@ struct PostRatingOptionsView: View {
                 ZStack(alignment: .topLeading) {
                     if commentText.isEmpty {
                         Text("What did you think?")
-                            .font(.system(size: 14))
+                            .font(.jakarta(14))
                             .foregroundStyle(Color.sjMuted)
                             .padding(.horizontal, 14)
                             .padding(.top, 10)
                     }
                     TextEditor(text: $commentText)
-                        .font(.system(size: 14))
+                        .font(.jakarta(14))
                         .foregroundStyle(Color.sjInk)
                         .scrollContentBackground(.hidden)
                         .frame(height: 68)
@@ -169,15 +169,15 @@ struct PostRatingOptionsView: View {
         Button { showMixPicker = true } label: {
             HStack(spacing: 14) {
                 Image(systemName: "plus.square")
-                    .font(.system(size: 17))
+                    .font(.jakarta(17))
                     .foregroundStyle(Color.sjInk)
                     .frame(width: 24)
                 Text("Add to a Mix")
-                    .font(.system(size: 15))
+                    .font(.jakarta(15))
                     .foregroundStyle(Color.sjInk)
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.jakarta(13, weight: .medium))
                     .foregroundStyle(Color.sjMuted)
             }
             .padding(.horizontal, 20)
@@ -196,7 +196,7 @@ struct PostRatingOptionsView: View {
                 onContinue(text.isEmpty ? nil : text)
             } label: {
                 Text(continueLabel)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.jakarta(16, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
@@ -210,7 +210,7 @@ struct PostRatingOptionsView: View {
                     onBack()
                 } label: {
                     Text("← Back")
-                        .font(.system(size: 14))
+                        .font(.jakarta(14))
                         .foregroundStyle(Color.sjMuted)
                 }
             }
@@ -251,18 +251,18 @@ struct CommentEditSheet: View {
                     .accessibilityHidden(true) // title text alongside already describes it
                 VStack(alignment: .leading, spacing: 2) {
                     Text(trackTitle ?? release.displayTitle)
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.jakarta(14, weight: .bold))
                         .foregroundStyle(Color.sjInk)
                         .lineLimit(1)
                     HStack(spacing: 6) {
                         Text(trackTitle != nil ? "Song" : release.typeLabel)
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.jakarta(10, weight: .medium))
                             .foregroundStyle(Color.sjBlue)
                             .padding(.horizontal, 5).padding(.vertical, 2)
                             .background(Color.sjBlue.opacity(0.1))
                             .clipShape(RoundedRectangle(cornerRadius: 4))
                         Text(release.displayArtist)
-                            .font(.system(size: 12))
+                            .font(.jakarta(12))
                             .foregroundStyle(Color.sjMuted)
                             .lineLimit(1)
                     }
@@ -277,13 +277,13 @@ struct CommentEditSheet: View {
             ZStack(alignment: .topLeading) {
                 if commentText.isEmpty {
                     Text("What did you think?")
-                        .font(.system(size: 14))
+                        .font(.jakarta(14))
                         .foregroundStyle(Color.sjMuted)
                         .padding(.horizontal, 14)
                         .padding(.top, 10)
                 }
                 TextEditor(text: $commentText)
-                    .font(.system(size: 14))
+                    .font(.jakarta(14))
                     .foregroundStyle(Color.sjInk)
                     .scrollContentBackground(.hidden)
                     .frame(height: 110)
@@ -300,7 +300,7 @@ struct CommentEditSheet: View {
                 onSave(text.isEmpty ? nil : text)
             } label: {
                 Text("Save")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.jakarta(16, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)

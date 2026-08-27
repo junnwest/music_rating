@@ -443,7 +443,7 @@ struct ChartsView: View {
             withAnimation(.easeInOut(duration: 0.18)) { viewModel.chartMode = mode }
         } label: {
             Text(label)
-                .font(.system(size: 17, weight: viewModel.chartMode == mode ? .bold : .regular))
+                .font(.jakarta(17, weight: viewModel.chartMode == mode ? .bold : .regular))
                 .foregroundStyle(viewModel.chartMode == mode ? Color.sjInk : Color.sjMuted)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 6)
@@ -595,11 +595,11 @@ private struct RankingsLockedView: View {
 
             VStack(spacing: 6) {
                 Text(headline)
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.jakarta(17, weight: .bold))
                     .foregroundStyle(Color.sjInk)
                     .multilineTextAlignment(.center)
                 Text(subtitle)
-                    .font(.system(size: 13))
+                    .font(.jakarta(13))
                     .foregroundStyle(Color.sjMuted)
                     .multilineTextAlignment(.center)
             }
@@ -617,7 +617,7 @@ private struct RankingsLockedView: View {
                 .padding(.horizontal, 40)
 
                 Text(String(format: String(localized: "%@ / %@ ratings"), formatCount(events), formatCount(target)))
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.jakarta(13, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
                     .monospacedDigit()
             }
@@ -648,13 +648,13 @@ private struct SongHorizSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.system(size: 16, weight: .bold))
+                .font(.jakarta(16, weight: .bold))
                 .foregroundStyle(Color.sjInk)
                 .padding(.horizontal, 16)
 
             if entries.isEmpty {
                 Text("No data yet.")
-                    .font(.system(size: 13))
+                    .font(.jakarta(13))
                     .foregroundStyle(Color.sjMuted)
                     .padding(.horizontal, 16)
             } else {
@@ -687,7 +687,7 @@ private struct HorizSongCard: View {
                     .accessibilityHidden(true) // title/artist text below already describes it
 
                 Text("#\(rank)")
-                    .font(.system(size: 9, weight: .black))
+                    .font(.jakarta(9, weight: .black))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 2)
@@ -701,7 +701,7 @@ private struct HorizSongCard: View {
                         HStack {
                             Spacer()
                             Text(String(format: "%.1f", score))
-                                .font(.system(size: 10, weight: .black))
+                                .font(.jakarta(10, weight: .black))
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 2)
@@ -728,19 +728,19 @@ private struct HorizSongCard: View {
             .frame(width: 110, height: 110)
 
             Text(entry.trackTitle)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.jakarta(11, weight: .semibold))
                 .foregroundStyle(Color.sjInk)
                 .lineLimit(1)
                 .frame(width: 110, alignment: .leading)
 
             Text(entry.displayArtist)
-                .font(.system(size: 10))
+                .font(.jakarta(10))
                 .foregroundStyle(Color.sjMuted)
                 .lineLimit(1)
                 .frame(width: 110, alignment: .leading)
 
             Text(entry.displayAlbumTitle)
-                .font(.system(size: 9))
+                .font(.jakarta(9))
                 .foregroundStyle(Color.sjMuted.opacity(0.7))
                 .lineLimit(1)
                 .frame(width: 110, alignment: .leading)
@@ -755,17 +755,17 @@ private struct TrendingSongsSection: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: "flame.fill")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.jakarta(13, weight: .bold))
                     .foregroundStyle(Color.sjAmber)
                 Text("Trending")
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.jakarta(16, weight: .bold))
                     .foregroundStyle(Color.sjInk)
             }
             .padding(.horizontal, 16)
 
             if entries.isEmpty {
                 Text("No trending song data yet.")
-                    .font(.system(size: 13))
+                    .font(.jakarta(13))
                     .foregroundStyle(Color.sjMuted)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
@@ -798,7 +798,7 @@ private struct TrendingSongRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Text("\(rank)")
-                .font(.system(size: 12, weight: .bold))
+                .font(.jakarta(12, weight: .bold))
                 .foregroundStyle(Color.sjMuted)
                 .frame(width: 14, alignment: .trailing)
 
@@ -807,11 +807,11 @@ private struct TrendingSongRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.trackTitle)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.jakarta(12, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(1)
                 Text(entry.displayArtist + " · " + entry.displayAlbumTitle)
-                    .font(.system(size: 10))
+                    .font(.jakarta(10))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
             }
@@ -819,10 +819,10 @@ private struct TrendingSongRow: View {
             if let n = entry.newCount {
                 VStack(alignment: .trailing, spacing: 1) {
                     Text("+\(n)")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.jakarta(11, weight: .bold))
                         .foregroundStyle(Color.sjInk)
                     Text("this week")
-                        .font(.system(size: 8))
+                        .font(.jakarta(8))
                         .foregroundStyle(Color.sjMuted)
                 }
             }
@@ -854,15 +854,15 @@ private struct RankingBlock: View {
                 HStack {
                     HStack(spacing: 8) {
                         Image(systemName: "trophy.fill")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.jakarta(13, weight: .bold))
                             .foregroundStyle(Color.sjAmber)
                         Text("Ranking")
-                            .font(.system(size: 16, weight: .bold))
+                            .font(.jakarta(16, weight: .bold))
                             .foregroundStyle(Color.sjInk)
                     }
                     Spacer()
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.jakarta(13, weight: .semibold))
                         .foregroundStyle(Color.sjMuted)
                         .rotationEffect(.degrees(isExpanded ? 180 : 0))
                         .animation(.easeInOut(duration: 0.22), value: isExpanded)
@@ -923,7 +923,7 @@ private struct RankingBlock: View {
                     .padding(.vertical, 24)
             } else if entries.isEmpty {
                 Text("No ranking data yet.")
-                    .font(.system(size: 13))
+                    .font(.jakarta(13))
                     .foregroundStyle(Color.sjMuted)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 20)
@@ -937,7 +937,7 @@ private struct RankingBlock: View {
                                     CoverThumb(url: entry.coverUrl, size: itemSize, radius: 8)
                                         .accessibilityLabel(String(format: String(localized: "#%d %@ by %@"), idx + 1, entry.displayTitle, entry.displayArtist))
                                     Text("#\(idx + 1)")
-                                        .font(.system(size: 10, weight: .bold))
+                                        .font(.jakarta(10, weight: .bold))
                                         .foregroundStyle(.white)
                                         .padding(.horizontal, 5).padding(.vertical, 2)
                                         .background(Color.black.opacity(0.55))
@@ -947,7 +947,7 @@ private struct RankingBlock: View {
                                 .overlay(alignment: .bottomTrailing) {
                                     if let score = entry.avgScore {
                                         Text(String(format: "%.1f", score))
-                                            .font(.system(size: 10, weight: .bold))
+                                            .font(.jakarta(10, weight: .bold))
                                             .foregroundStyle(.white)
                                             .padding(.horizontal, 5).padding(.vertical, 2)
                                             .background(Color.sjAmber)
@@ -1027,9 +1027,9 @@ private struct RankingBlock: View {
         NavigationLink(value: RankingDetailDestination()) {
             HStack(spacing: 4) {
                 Text("See full ranking")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.jakarta(14, weight: .semibold))
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.jakarta(12, weight: .semibold))
             }
             .foregroundStyle(Color.sjAmber)
             .frame(maxWidth: .infinity)
@@ -1043,7 +1043,7 @@ private struct RankingBlock: View {
 
     private func filterLabel(_ text: LocalizedStringKey) -> some View {
         Text(text)
-            .font(.system(size: 10, weight: .semibold))
+            .font(.jakarta(10, weight: .semibold))
             .foregroundStyle(Color.sjMuted)
             .kerning(0.4)
             .textCase(.uppercase)
@@ -1057,7 +1057,7 @@ private struct RankingBlock: View {
         let selected = selectedValue == value
         return Button(action: action) {
             Text(label)
-                .font(.system(size: 12, weight: .medium))
+                .font(.jakarta(12, weight: .medium))
                 .foregroundStyle(selected ? .white : Color.sjMuted)
                 .padding(.horizontal, 12).padding(.vertical, 5)
                 .background(selected ? Color.sjAmber : Color.sjCream)
@@ -1070,7 +1070,7 @@ private struct RankingBlock: View {
     private func rankRow(rank: Int, entry: ChartEntry) -> some View {
         HStack(spacing: 10) {
             Text("\(rank)")
-                .font(.system(size: 16, weight: .black))
+                .font(.jakarta(16, weight: .black))
                 .foregroundStyle(rank <= 3 ? Color.sjAmber : Color.sjBorder)
                 .frame(width: 24, alignment: .center)
                 .monospacedDigit()
@@ -1080,11 +1080,11 @@ private struct RankingBlock: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.displayTitle)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.jakarta(13, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(1)
                 Text(entry.displayArtist)
-                    .font(.system(size: 12))
+                    .font(.jakarta(12))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
             }
@@ -1094,13 +1094,13 @@ private struct RankingBlock: View {
             if let score = entry.avgScore {
                 VStack(alignment: .trailing, spacing: 3) {
                     Text(String(format: "%.1f", score))
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.jakarta(12, weight: .bold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 9).padding(.vertical, 3)
                         .background(Color.sjAmber)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     Text("avg")
-                        .font(.system(size: 10))
+                        .font(.jakarta(10))
                         .foregroundStyle(Color.sjMuted)
                 }
             }
@@ -1137,9 +1137,9 @@ struct RankingDetailView: View {
                 } else if entries.isEmpty {
                     VStack(spacing: 10) {
                         Image(systemName: "trophy")
-                            .font(.system(size: 36)).foregroundStyle(Color.sjMuted)
+                            .font(.jakarta(36)).foregroundStyle(Color.sjMuted)
                         Text("No ranking data yet.")
-                            .font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                            .font(.jakarta(15)).foregroundStyle(Color.sjMuted)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
@@ -1204,7 +1204,7 @@ struct RankingDetailView: View {
         let selected = selectedValue == value
         return Button(action: action) {
             Text(label)
-                .font(.system(size: 12, weight: .medium))
+                .font(.jakarta(12, weight: .medium))
                 .foregroundStyle(selected ? .white : Color.sjMuted)
                 .padding(.horizontal, 12).padding(.vertical, 5)
                 .background(selected ? Color.sjAmber : Color.sjSurface)
@@ -1274,11 +1274,11 @@ private struct PulseStat: View {
     var body: some View {
         VStack(spacing: 3) {
             Text(value)
-                .font(.system(size: 17, weight: .black, design: .default))
+                .font(.jakarta(17, weight: .black))
                 .foregroundStyle(Color.sjAmber)
                 .monospacedDigit()
             Text(label)
-                .font(.system(size: 9, weight: .medium))
+                .font(.jakarta(9, weight: .medium))
                 .foregroundStyle(Color.sjMuted)
         }
         .frame(maxWidth: .infinity)
@@ -1299,10 +1299,10 @@ private struct TrendingCard: View {
             HStack(alignment: .center) {
                 HStack(spacing: 6) {
                     Image(systemName: "flame.fill")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.jakarta(13, weight: .bold))
                         .foregroundStyle(Color.sjAmber)
                     Text("Trending")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.jakarta(16, weight: .bold))
                         .foregroundStyle(Color.sjInk)
                 }
                 Spacer()
@@ -1320,7 +1320,7 @@ private struct TrendingCard: View {
             let entries = viewModel.activeTrending
             if entries.isEmpty {
                 Text("No trending data yet.")
-                    .font(.system(size: 13))
+                    .font(.jakarta(13))
                     .foregroundStyle(Color.sjMuted)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
@@ -1346,7 +1346,7 @@ private struct TrendingCard: View {
 
                 NavigationLink(value: ChartDetailType.trending) {
                     Text("View all")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.jakarta(12, weight: .semibold))
                         .foregroundStyle(Color.sjAmber)
                         .frame(maxWidth: .infinity)
                         .padding(.top, 10)
@@ -1363,7 +1363,7 @@ private struct TrendingCard: View {
             viewModel.trendingMode = mode
         } label: {
             Text(label)
-                .font(.system(size: 10, weight: .bold))
+                .font(.jakarta(10, weight: .bold))
                 .foregroundStyle(active ? Color.sjInk : Color.sjMuted)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
@@ -1382,7 +1382,7 @@ private struct TrendingRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Text("\(rank)")
-                .font(.system(size: 12, weight: .bold))
+                .font(.jakarta(12, weight: .bold))
                 .foregroundStyle(Color.sjMuted)
                 .frame(width: 14, alignment: .trailing)
 
@@ -1391,24 +1391,24 @@ private struct TrendingRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.displayTitle)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.jakarta(13, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(1)
                 if let n = entry.newCount {
                     Text(String(format: String(localized: "%@ · +%d this week"), entry.displayArtist, n))
-                        .font(.system(size: 11))
+                        .font(.jakarta(11))
                         .foregroundStyle(Color.sjMuted)
                         .lineLimit(1)
                 } else {
                     Text(entry.displayArtist)
-                        .font(.system(size: 11))
+                        .font(.jakarta(11))
                         .foregroundStyle(Color.sjMuted)
                         .lineLimit(1)
                 }
             }
             Spacer()
             Image(systemName: "chevron.right")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.jakarta(10, weight: .semibold))
                 .foregroundStyle(Color.sjBorder)
         }
         .padding(.horizontal, 16)
@@ -1428,12 +1428,12 @@ private struct ChartHorizSection: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text(title)
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.jakarta(16, weight: .bold))
                     .foregroundStyle(Color.sjInk)
                 Spacer()
                 NavigationLink(value: destination) {
                     Text("View all")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.jakarta(12, weight: .semibold))
                         .foregroundStyle(Color.sjAmber)
                 }
                 .padding(.trailing, 16)
@@ -1442,7 +1442,7 @@ private struct ChartHorizSection: View {
 
             if entries.isEmpty {
                 Text("No data yet.")
-                    .font(.system(size: 13))
+                    .font(.jakarta(13))
                     .foregroundStyle(Color.sjMuted)
                     .padding(.horizontal, 16)
             } else {
@@ -1475,7 +1475,7 @@ private struct HorizAlbumCard: View {
                     .accessibilityHidden(true) // title/artist text below already describes it
 
                 Text("#\(rank)")
-                    .font(.system(size: 9, weight: .black))
+                    .font(.jakarta(9, weight: .black))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 2)
@@ -1489,7 +1489,7 @@ private struct HorizAlbumCard: View {
                         HStack {
                             Spacer()
                             Text(String(format: "%.1f", score))
-                                .font(.system(size: 10, weight: .black))
+                                .font(.jakarta(10, weight: .black))
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 2)
@@ -1514,13 +1514,13 @@ private struct HorizAlbumCard: View {
             .frame(width: 110, height: 110)
 
             Text(entry.displayTitle)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.jakarta(11, weight: .semibold))
                 .foregroundStyle(Color.sjInk)
                 .lineLimit(1)
                 .frame(width: 110, alignment: .leading)
 
             Text(entry.displayArtist)
-                .font(.system(size: 10))
+                .font(.jakarta(10))
                 .foregroundStyle(Color.sjMuted)
                 .lineLimit(1)
                 .frame(width: 110, alignment: .leading)
@@ -1534,7 +1534,7 @@ private struct GenreScrollSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("By Genre")
-                .font(.system(size: 16, weight: .bold))
+                .font(.jakarta(16, weight: .bold))
                 .foregroundStyle(Color.sjInk)
                 .padding(.horizontal, 16)
 
@@ -1559,10 +1559,10 @@ private struct GenrePill: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Image(systemName: genre.symbol)
-                .font(.system(size: 22, weight: .semibold))
+                .font(.jakarta(22, weight: .semibold))
                 .foregroundStyle(.white)
             Text(genre.name)
-                .font(.system(size: 13, weight: .bold))
+                .font(.jakarta(13, weight: .bold))
                 .foregroundStyle(.white)
         }
         .padding(.horizontal, 18)
@@ -1605,13 +1605,13 @@ private struct InsightCard: View {
         NavigationLink(value: destination) {
             VStack(alignment: .leading, spacing: 6) {
                 Image(systemName: symbol)
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.jakarta(18, weight: .semibold))
                     .foregroundStyle(Color.sjAmber)
                 Text(title)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.jakarta(13, weight: .bold))
                     .foregroundStyle(Color.sjInk)
                 Text(subtitle)
-                    .font(.system(size: 10))
+                    .font(.jakarta(10))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1640,7 +1640,7 @@ private struct YearScrollSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Best by Year")
-                .font(.system(size: 16, weight: .bold))
+                .font(.jakarta(16, weight: .bold))
                 .foregroundStyle(Color.sjInk)
                 .padding(.horizontal, 16)
 
@@ -1667,7 +1667,7 @@ private struct YearCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(item.label)
-                .font(.system(size: 20, weight: .black))
+                .font(.jakarta(20, weight: .black))
                 .foregroundStyle(.white)
                 .monospacedDigit()
         }
@@ -1796,10 +1796,10 @@ struct ChartDetailView: View {
     private var emptyState: some View {
         VStack(spacing: 10) {
             Image(systemName: "chart.bar.xaxis")
-                .font(.system(size: 36))
+                .font(.jakarta(36))
                 .foregroundStyle(Color.sjMuted)
             Text("No data yet.")
-                .font(.system(size: 15))
+                .font(.jakarta(15))
                 .foregroundStyle(Color.sjMuted)
         }
     }
@@ -1834,7 +1834,7 @@ private struct PodiumItem: View {
                     Group {
                         if rank == 1 {
                             Image(systemName: "trophy.fill")
-                                .font(.system(size: 8, weight: .bold))
+                                .font(.jakarta(8, weight: .bold))
                                 .foregroundStyle(.white)
                                 .padding(4)
                                 .background(Color.sjAmber)
@@ -1842,7 +1842,7 @@ private struct PodiumItem: View {
                                 .padding(4)
                         } else {
                             Text("#\(rank)")
-                                .font(.system(size: 8, weight: .black))
+                                .font(.jakarta(8, weight: .black))
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 2)
@@ -1854,15 +1854,15 @@ private struct PodiumItem: View {
                 }
                 if let score = entry.avgScore {
                     Text(String(format: "%.1f", score))
-                        .font(.system(size: 13, weight: .black))
+                        .font(.jakarta(13, weight: .black))
                         .foregroundStyle(rank == 1 ? Color.sjAmber : Color.sjInk)
                 }
                 Text(entry.displayTitle)
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.jakarta(9, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(1)
                 Text(entry.displayArtist)
-                    .font(.system(size: 8))
+                    .font(.jakarta(8))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
             }
@@ -1881,7 +1881,7 @@ private struct RankedListRow: View {
     var body: some View {
         HStack(spacing: 10) {
             Text("\(rank)")
-                .font(.system(size: 12, weight: .bold))
+                .font(.jakarta(12, weight: .bold))
                 .foregroundStyle(Color.sjMuted)
                 .lineLimit(1)
                 .frame(width: 30, alignment: .trailing)
@@ -1889,11 +1889,11 @@ private struct RankedListRow: View {
                 .accessibilityHidden(true) // title text alongside already describes it
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.displayTitle)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.jakarta(12, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(1)
                 Text(entry.displayArtist)
-                    .font(.system(size: 10))
+                    .font(.jakarta(10))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
             }
@@ -1901,26 +1901,26 @@ private struct RankedListRow: View {
             VStack(alignment: .trailing, spacing: 2) {
                 if isTrending, let n = entry.newCount {
                     Text("+\(n)")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.jakarta(12, weight: .bold))
                         .foregroundStyle(Color.sjInk)
                     Text("this week")
-                        .font(.system(size: 9))
+                        .font(.jakarta(9))
                         .foregroundStyle(Color.sjMuted)
                 } else if let score = entry.avgScore {
                     Text(String(format: "%.1f", score))
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.jakarta(13, weight: .bold))
                         .foregroundStyle(Color.sjInk)
                     if let count = entry.ratingCount {
                         Text(formatCount(count))
-                            .font(.system(size: 9))
+                            .font(.jakarta(9))
                             .foregroundStyle(Color.sjMuted)
                     }
                 } else if let count = entry.ratingCount {
                     Text(formatCount(count))
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.jakarta(12, weight: .bold))
                         .foregroundStyle(Color.sjInk)
                     Text("ratings")
-                        .font(.system(size: 9))
+                        .font(.jakarta(9))
                         .foregroundStyle(Color.sjMuted)
                 }
             }
@@ -2087,10 +2087,10 @@ struct GenreDetailView: View {
                 } else if viewModel.entries.isEmpty {
                     VStack(spacing: 10) {
                         Image(systemName: "chart.bar.xaxis")
-                            .font(.system(size: 36))
+                            .font(.jakarta(36))
                             .foregroundStyle(Color.sjMuted)
                         Text("No data yet.")
-                            .font(.system(size: 15))
+                            .font(.jakarta(15))
                             .foregroundStyle(Color.sjMuted)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -2135,7 +2135,7 @@ private struct SortChip: View {
     var body: some View {
         Button(action: action) {
             Text(LocalizedStringKey(label))
-                .font(.system(size: 12, weight: .bold))
+                .font(.jakarta(12, weight: .bold))
                 .foregroundStyle(active ? Color.sjSurface : Color.sjMuted)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 6)

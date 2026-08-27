@@ -793,7 +793,7 @@ struct SearchView: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(Color.sjMuted)
             TextField("Artists, albums, songs…", text: $searchVM.query)
-                .font(.system(size: 16))
+                .font(.jakarta(16))
                 .foregroundStyle(Color.sjInk)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
@@ -846,15 +846,15 @@ struct SearchView: View {
             // (the "search bar floating in blank space" bug).
             VStack(spacing: 14) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 44))
+                    .font(.jakarta(44))
                     .foregroundStyle(Color.sjBorder)
                 if searchVM.query.trimmingCharacters(in: .whitespaces).count >= 2 {
                     Text(String(format: String(localized: "No results for \"%@\""), searchVM.query))
-                        .font(.system(size: 15))
+                        .font(.jakarta(15))
                         .foregroundStyle(Color.sjMuted)
                 } else {
                     Text("Keep typing to search…")
-                        .font(.system(size: 15))
+                        .font(.jakarta(15))
                         .foregroundStyle(Color.sjMuted)
                 }
             }
@@ -875,7 +875,7 @@ struct SearchView: View {
                                                 CachedImage(url: url) {
                                                     Circle().fill(Color.sjBorder)
                                                         .overlay(Text(String(artist.name.prefix(1)).uppercased())
-                                                            .font(.system(size: 16, weight: .bold))
+                                                            .font(.jakarta(16, weight: .bold))
                                                             .foregroundStyle(Color.sjMuted))
                                                 }
                                                 .aspectRatio(contentMode: .fill)
@@ -883,7 +883,7 @@ struct SearchView: View {
                                                 ZStack {
                                                     Circle().fill(Color.sjBorder)
                                                     Text(String(artist.name.prefix(1)).uppercased())
-                                                        .font(.system(size: 16, weight: .bold))
+                                                        .font(.jakarta(16, weight: .bold))
                                                         .foregroundStyle(Color.sjMuted)
                                                 }
                                             }
@@ -894,21 +894,21 @@ struct SearchView: View {
 
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text(artist.name)
-                                                .font(.system(size: 14, weight: .semibold))
+                                                .font(.jakarta(14, weight: .semibold))
                                                 .foregroundStyle(Color.sjInk)
                                             if let native = artist.displayNativeName {
                                                 Text(native)
-                                                    .font(.system(size: 12))
+                                                    .font(.jakarta(12))
                                                     .foregroundStyle(Color.sjMuted)
                                             }
                                             Text(artist.releaseCount == 1 ? String(localized: "1 release") : String(format: String(localized: "%d releases"), artist.releaseCount))
-                                                .font(.system(size: 12))
+                                                .font(.jakarta(12))
                                                 .foregroundStyle(Color.sjMuted)
                                         }
 
                                         Spacer()
                                         Image(systemName: "chevron.right")
-                                            .font(.system(size: 11))
+                                            .font(.jakarta(11))
                                             .foregroundStyle(Color.sjBorder)
                                     }
                                     .padding(.horizontal, 16)
@@ -1109,10 +1109,10 @@ struct SearchView: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Setting up?")
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.jakarta(16, weight: .bold))
                     .foregroundStyle(Color.sjInk)
                 Text("Half-star rate albums you've probably already heard")
-                    .font(.system(size: 12))
+                    .font(.jakarta(12))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
             }
@@ -1121,7 +1121,7 @@ struct SearchView: View {
 
             Button { quickAddTapped() } label: {
                 Text("Quick Add")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.jakarta(14, weight: .semibold))
                     // Plain .white, not sjCream -- sjBlue is a fixed brand
                     // color that doesn't flip in dark mode (unlike sjInk),
                     // so the label doesn't need to flip either.
@@ -1143,7 +1143,7 @@ struct SearchView: View {
 
     private func sectionLabel(_ text: LocalizedStringKey) -> some View {
         Text(text)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.jakarta(11, weight: .semibold))
             .foregroundStyle(Color.sjMuted)
             .tracking(1)
             .textCase(.uppercase)
@@ -1153,7 +1153,7 @@ struct SearchView: View {
 
     private func discoverySectionTitle(_ text: LocalizedStringKey) -> some View {
         Text(text)
-            .font(.system(size: 20, weight: .bold))
+            .font(.jakarta(20, weight: .bold))
             .foregroundStyle(Color.sjInk)
             .padding(.horizontal, 16)
             .padding(.top, 20)
@@ -1163,7 +1163,7 @@ struct SearchView: View {
 
     private func discoverySubheader(_ text: LocalizedStringKey) -> some View {
         Text(text)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.jakarta(11, weight: .semibold))
             .foregroundStyle(Color.sjAmber)
             .textCase(.uppercase)
             .tracking(1)
@@ -1190,7 +1190,7 @@ struct SearchView: View {
                             CachedImage(url: URL(string: artist.imageUrl?.thumbnailUrl ?? "")) {
                                 Color.sjBorder.overlay(
                                     Text(String(artist.name.prefix(1)))
-                                        .font(.system(size: 20, weight: .bold))
+                                        .font(.jakarta(20, weight: .bold))
                                         .foregroundStyle(Color.sjMuted)
                                 )
                             }
@@ -1200,7 +1200,7 @@ struct SearchView: View {
                             .accessibilityHidden(true) // name text below already describes it
 
                             Text(artist.name)
-                                .font(.system(size: 11, weight: .medium))
+                                .font(.jakarta(11, weight: .medium))
                                 .foregroundStyle(Color.sjInk)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.center)
@@ -1226,7 +1226,7 @@ struct SearchView: View {
                             CachedImage(url: artist.artworkURL) {
                                 Color.sjBorder.overlay(
                                     Text(String(artist.name.prefix(1)))
-                                        .font(.system(size: 20, weight: .bold))
+                                        .font(.jakarta(20, weight: .bold))
                                         .foregroundStyle(Color.sjMuted)
                                 )
                             }
@@ -1236,7 +1236,7 @@ struct SearchView: View {
                             .accessibilityHidden(true) // name text below already describes it
 
                             Text(artist.name)
-                                .font(.system(size: 11, weight: .medium))
+                                .font(.jakarta(11, weight: .medium))
                                 .foregroundStyle(Color.sjInk)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.center)
@@ -1314,7 +1314,7 @@ struct SearchView: View {
                     expanded?.wrappedValue = true
                 } label: {
                     Text(String(format: String(localized: "View all %d songs"), visible.count))
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.jakarta(13, weight: .semibold))
                         .foregroundStyle(Color.sjAmber)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 16)
@@ -1345,7 +1345,7 @@ private struct DiscoveryAlbumCard: View {
                             .frame(width: 28, height: 28)
                             .shadow(color: .black.opacity(0.15), radius: 4, y: 1)
                         Image(systemName: "checkmark")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.jakarta(11, weight: .bold))
                             .foregroundStyle(.white)
                     }
                     .allowsHitTesting(false)
@@ -1357,21 +1357,21 @@ private struct DiscoveryAlbumCard: View {
             }
 
             Text(release.title)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.jakarta(13, weight: .semibold))
                 .foregroundStyle(Color.sjInk)
                 .lineLimit(1)
                 .frame(width: 128, alignment: .leading)
 
             HStack(spacing: 5) {
                 Text(release.typeLabel)
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.jakarta(9, weight: .medium))
                     .foregroundStyle(Color.sjBlue)
                     .lineLimit(1)
                     .padding(.horizontal, 4).padding(.vertical, 2)
                     .background(Color.sjBlue.opacity(0.1))
                     .clipShape(RoundedRectangle(cornerRadius: 3))
                 Text(release.artist)
-                    .font(.system(size: 12))
+                    .font(.jakarta(12))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
             }
@@ -1395,18 +1395,18 @@ struct SongRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(song.title)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.jakarta(14, weight: .semibold))
                         .foregroundStyle(Color.sjInk)
                         .lineLimit(1)
                     Text("Song")
-                        .font(.system(size: 9, weight: .medium))
+                        .font(.jakarta(9, weight: .medium))
                         .foregroundStyle(Color.sjBlue)
                         .padding(.horizontal, 4).padding(.vertical, 2)
                         .background(Color.sjBlue.opacity(0.1))
                         .clipShape(RoundedRectangle(cornerRadius: 3))
                 }
                 Text(song.releases.title + " · " + (song.artists ?? song.releases.artist))
-                    .font(.system(size: 12))
+                    .font(.jakarta(12))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
             }
@@ -1419,7 +1419,7 @@ struct SongRow: View {
                         .fill(Color.sjBlue)
                         .frame(width: 30, height: 30)
                     Image(systemName: "checkmark")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.jakarta(11, weight: .bold))
                         .foregroundStyle(.white)
                 }
                 .allowsHitTesting(false)
@@ -1629,7 +1629,7 @@ struct ArtistPageView: View {
                 CachedImage(url: artistAvatarUrl.flatMap { URL(string: $0) }) {
                     Color.sjBorder.overlay(
                         Text(String((canonicalName ?? artist.name).prefix(1)))
-                            .font(.system(size: 20, weight: .bold))
+                            .font(.jakarta(20, weight: .bold))
                             .foregroundStyle(Color.sjMuted)
                     )
                 }
@@ -1639,11 +1639,11 @@ struct ArtistPageView: View {
                 .accessibilityHidden(true) // artist name text alongside already describes it
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Artist")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.jakarta(10, weight: .semibold))
                         .tracking(1.4)
                         .foregroundStyle(Color.sjMuted)
                     Text(canonicalName ?? artist.name)
-                        .font(.system(size: 28, weight: .heavy))
+                        .font(.jakarta(28, weight: .heavy))
                         .foregroundStyle(Color.sjInk)
                         .lineLimit(2)
                         .minimumScaleFactor(0.75)
@@ -1669,11 +1669,11 @@ struct ArtistPageView: View {
             if myRatedCount > 0, let avg = myAvg {
                 HStack(spacing: 6) {
                     Text("You")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.jakarta(10, weight: .semibold))
                         .tracking(0.5)
                         .foregroundStyle(Color.sjMuted)
                     Text(String(format: String(localized: "%d rated · %@ avg"), myRatedCount, String(format: "%.1f", avg)))
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.jakarta(12, weight: .bold))
                         .foregroundStyle(Color.sjInk)
                 }
                 .padding(.horizontal, 10).padding(.vertical, 6)
@@ -1690,13 +1690,13 @@ struct ArtistPageView: View {
         if loadFailed {
             VStack(spacing: 12) {
                 Text("Couldn't load this artist's releases.")
-                    .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                    .font(.jakarta(14)).foregroundStyle(Color.sjMuted)
                 Button {
                     isLoading = true
                     Task { await load() }
                 } label: {
                     Text("Retry")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.jakarta(13, weight: .semibold))
                         .foregroundStyle(Color.sjCream)
                         .padding(.horizontal, 18).padding(.vertical, 8)
                         .background(Color.sjInk)
@@ -1707,14 +1707,14 @@ struct ArtistPageView: View {
             .frame(maxWidth: .infinity).padding(.top, 40)
         } else if releases.isEmpty {
             Text("No releases in the catalogue yet.")
-                .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                .font(.jakarta(14)).foregroundStyle(Color.sjMuted)
                 .frame(maxWidth: .infinity).padding(.top, 40)
         } else {
             albumFilterSortBar
             let list = filteredSortedReleases
             if list.isEmpty {
                 Text("No releases match this filter.")
-                    .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                    .font(.jakarta(14)).foregroundStyle(Color.sjMuted)
                     .frame(maxWidth: .infinity).padding(.top, 40)
             } else {
                 ForEach(list) { release in
@@ -1734,7 +1734,7 @@ struct ArtistPageView: View {
                 .padding(.top, 40)
         } else if songs.isEmpty {
             Text("No songs in the catalogue yet.")
-                .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                .font(.jakarta(14)).foregroundStyle(Color.sjMuted)
                 .frame(maxWidth: .infinity).padding(.top, 40)
         } else {
             ForEach(songs) { song in
@@ -1772,7 +1772,7 @@ struct ArtistPageView: View {
     private func artistTabButton(_ i: Int, label: LocalizedStringKey) -> some View {
         Button { selectedTab = i } label: {
             Text(label)
-                .font(.system(size: 12.5, weight: selectedTab == i ? .bold : .medium))
+                .font(.jakarta(12.5, weight: selectedTab == i ? .bold : .medium))
                 .foregroundStyle(selectedTab == i ? Color.sjInk : Color.sjMuted)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
@@ -1805,9 +1805,9 @@ struct ArtistPageView: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(value)
-                    .font(.system(size: 16, weight: .bold)).foregroundStyle(Color.sjInk)
+                    .font(.jakarta(16, weight: .bold)).foregroundStyle(Color.sjInk)
                 Text(label)
-                    .font(.system(size: 10)).foregroundStyle(Color.sjMuted)
+                    .font(.jakarta(10)).foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
@@ -2060,7 +2060,7 @@ struct ArtistPageView: View {
             ForEach(ArtistAlbumTypeFilter.allCases, id: \.self) { filter in
                 Button { albumTypeFilter = filter } label: {
                     Text(LocalizedStringKey(filter.rawValue))
-                        .font(.system(size: 12, weight: albumTypeFilter == filter ? .semibold : .regular))
+                        .font(.jakarta(12, weight: albumTypeFilter == filter ? .semibold : .regular))
                         .foregroundStyle(albumTypeFilter == filter ? Color.sjBlue : Color.sjMuted)
                         .padding(.horizontal, 12).padding(.vertical, 6)
                         .background(albumTypeFilter == filter ? Color.sjBlue.opacity(0.1) : Color.clear)
@@ -2085,7 +2085,7 @@ struct ArtistPageView: View {
                     Image(systemName: "line.3.horizontal.decrease")
                     Text(LocalizedStringKey(albumSortOrder.rawValue))
                 }
-                .font(.system(size: 12, weight: .medium))
+                .font(.jakarta(12, weight: .medium))
                 .foregroundStyle(Color.sjAmber)
             }
         }
@@ -2099,7 +2099,7 @@ struct ArtistPageView: View {
     private var communityContent: some View {
         if communityFeed.isEmpty {
             Text("No community ratings yet.")
-                .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                .font(.jakarta(14)).foregroundStyle(Color.sjMuted)
                 .frame(maxWidth: .infinity).padding(.top, 40)
         } else {
             communityDisplayToggle
@@ -2123,7 +2123,7 @@ struct ArtistPageView: View {
                 ForEach([ArtistCommunityDisplayMode.list, .posts], id: \.self) { mode in
                     Button { communityDisplayMode = mode } label: {
                         Image(systemName: mode == .list ? "list.bullet" : "newspaper")
-                            .font(.system(size: 14))
+                            .font(.jakarta(14))
                             .foregroundStyle(communityDisplayMode == mode ? Color.sjBlue : Color.sjMuted)
                             .frame(width: 32, height: 28)
                             .background(communityDisplayMode == mode ? Color.sjBlue.opacity(0.1) : Color.clear)
@@ -2146,13 +2146,13 @@ struct ArtistPageView: View {
                 ZStack {
                     Circle().fill(Color.sjAmber.opacity(0.15)).frame(width: 32, height: 32)
                     Text(entry.profiles?.initial ?? "?")
-                        .font(.system(size: 13, weight: .bold)).foregroundStyle(Color.sjAmber)
+                        .font(.jakarta(13, weight: .bold)).foregroundStyle(Color.sjAmber)
                 }
                 Text("@" + (entry.profiles?.handle ?? String(localized: "someone")))
-                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.sjInk)
+                    .font(.jakarta(13, weight: .semibold)).foregroundStyle(Color.sjInk)
                 Text("·").foregroundStyle(Color.sjBorder)
                 Text(entry.createdAt.relativeTimeString)
-                    .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                    .font(.jakarta(12)).foregroundStyle(Color.sjMuted)
                 Spacer()
             }
             .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 8)
@@ -2165,9 +2165,9 @@ struct ArtistPageView: View {
                             .accessibilityHidden(true) // title text alongside already describes it
                         VStack(alignment: .leading, spacing: 3) {
                             Text(release.displayTitle)
-                                .font(.system(size: 15, weight: .bold)).foregroundStyle(Color.sjInk).lineLimit(1)
+                                .font(.jakarta(15, weight: .bold)).foregroundStyle(Color.sjInk).lineLimit(1)
                             Text(release.typeLabel)
-                                .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                                .font(.jakarta(12)).foregroundStyle(Color.sjMuted)
                         }
                         Spacer()
                         if let score = entry.displayScore {
@@ -2182,7 +2182,7 @@ struct ArtistPageView: View {
 
             if let text = entry.reviewText, !text.isEmpty {
                 Text(text)
-                    .font(.system(size: 13))
+                    .font(.jakarta(13))
                     .foregroundStyle(Color.sjInk)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 14)
@@ -2203,21 +2203,21 @@ struct ArtistPageView: View {
             ZStack {
                 Circle().fill(Color.sjAmber.opacity(0.15)).frame(width: 36, height: 36)
                 Text(entry.profiles?.initial ?? "?")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.jakarta(14, weight: .bold))
                     .foregroundStyle(Color.sjAmber)
             }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text("@" + (entry.profiles?.handle ?? String(localized: "someone")))
-                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.sjInk)
+                        .font(.jakarta(12, weight: .semibold)).foregroundStyle(Color.sjInk)
                         .lineLimit(1)
                     Text("·").foregroundStyle(Color.sjBorder)
                     Text(entry.createdAt.relativeTimeString)
-                        .font(.system(size: 11)).foregroundStyle(Color.sjMuted)
+                        .font(.jakarta(11)).foregroundStyle(Color.sjMuted)
                 }
                 if let r = release {
                     Text(r.displayTitle)
-                        .font(.system(size: 12)).foregroundStyle(Color.sjMuted).lineLimit(1)
+                        .font(.jakarta(12)).foregroundStyle(Color.sjMuted).lineLimit(1)
                 }
             }
             Spacer()
@@ -2241,7 +2241,7 @@ struct ArtistPageView: View {
     private var statsContent: some View {
         if allRatingScores.isEmpty && myRatings.isEmpty {
             Text("No ratings yet.")
-                .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                .font(.jakarta(14)).foregroundStyle(Color.sjMuted)
                 .frame(maxWidth: .infinity).padding(.top, 40)
         } else {
             VStack(alignment: .leading, spacing: 20) {
@@ -2266,7 +2266,7 @@ struct ArtistPageView: View {
     private func statsSectionView(_ title: LocalizedStringKey, @ViewBuilder content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.jakarta(11, weight: .semibold))
                 .foregroundStyle(Color.sjMuted)
                 .textCase(.uppercase)
                 .tracking(0.8)
@@ -2282,7 +2282,7 @@ struct ArtistPageView: View {
             ForEach(bins, id: \.label) { bin in
                 HStack(spacing: 8) {
                     Text(bin.label)
-                        .font(.system(size: 11, weight: .medium)).foregroundStyle(Color.sjMuted)
+                        .font(.jakarta(11, weight: .medium)).foregroundStyle(Color.sjMuted)
                         .frame(width: 26, alignment: .trailing)
                     GeometryReader { geo in
                         RoundedRectangle(cornerRadius: 3)
@@ -2291,7 +2291,7 @@ struct ArtistPageView: View {
                     }
                     .frame(height: 14)
                     Text("\(bin.count)")
-                        .font(.system(size: 11)).foregroundStyle(Color.sjMuted)
+                        .font(.jakarta(11)).foregroundStyle(Color.sjMuted)
                 }
             }
         }
@@ -2327,16 +2327,16 @@ struct ArtistPageView: View {
                 NavigationLink(value: release) {
                     HStack(spacing: 10) {
                         Text("#\(idx + 1)")
-                            .font(.system(size: 11, weight: .bold)).foregroundStyle(Color.sjMuted)
+                            .font(.jakarta(11, weight: .bold)).foregroundStyle(Color.sjMuted)
                             .frame(width: 20)
                         CoverImage(url: release.coverUrl, cornerRadius: 5)
                             .frame(width: 36, height: 36)
                             .accessibilityHidden(true) // title text alongside already describes it
                         VStack(alignment: .leading, spacing: 2) {
                             Text(release.displayTitle)
-                                .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.sjInk).lineLimit(1)
+                                .font(.jakarta(12, weight: .semibold)).foregroundStyle(Color.sjInk).lineLimit(1)
                             Text(count == 1 ? String(localized: "1 rating") : String(format: String(localized: "%d ratings"), count))
-                                .font(.system(size: 10)).foregroundStyle(Color.sjMuted)
+                                .font(.jakarta(10)).foregroundStyle(Color.sjMuted)
                         }
                         Spacer()
                         HStack(spacing: 3) {
@@ -2344,7 +2344,7 @@ struct ArtistPageView: View {
                                 .renderingMode(.template).resizable().scaledToFit()
                                 .frame(width: 10, height: 10).foregroundStyle(Color.sjAmber)
                             Text(String(format: "%.1f", score))
-                                .font(.system(size: 12, weight: .bold)).foregroundStyle(Color.sjAmber)
+                                .font(.jakarta(12, weight: .bold)).foregroundStyle(Color.sjAmber)
                         }
                     }
                     .padding(.vertical, 8)
@@ -2367,16 +2367,16 @@ struct ArtistPageView: View {
                 let album = song.albumId.flatMap { id in releases.first { $0.id == id } }
                 let row = HStack(spacing: 10) {
                     Text("#\(idx + 1)")
-                        .font(.system(size: 11, weight: .bold)).foregroundStyle(Color.sjMuted)
+                        .font(.jakarta(11, weight: .bold)).foregroundStyle(Color.sjMuted)
                         .frame(width: 20)
                     CoverImage(url: song.albumCoverUrl, cornerRadius: 5)
                         .frame(width: 36, height: 36)
                         .accessibilityHidden(true) // title text alongside already describes it
                     VStack(alignment: .leading, spacing: 2) {
                         Text(song.title)
-                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.sjInk).lineLimit(1)
+                            .font(.jakarta(12, weight: .semibold)).foregroundStyle(Color.sjInk).lineLimit(1)
                         Text(song.ratingCount == 1 ? String(localized: "1 rating") : String(format: String(localized: "%d ratings"), song.ratingCount))
-                            .font(.system(size: 10)).foregroundStyle(Color.sjMuted)
+                            .font(.jakarta(10)).foregroundStyle(Color.sjMuted)
                     }
                     Spacer()
                     HStack(spacing: 3) {
@@ -2384,7 +2384,7 @@ struct ArtistPageView: View {
                             .renderingMode(.template).resizable().scaledToFit()
                             .frame(width: 10, height: 10).foregroundStyle(Color.sjAmber)
                         Text(String(format: "%.1f", song.avgScore ?? 0))
-                            .font(.system(size: 12, weight: .bold)).foregroundStyle(Color.sjAmber)
+                            .font(.jakarta(12, weight: .bold)).foregroundStyle(Color.sjAmber)
                     }
                 }
                 .padding(.vertical, 8)
@@ -2407,23 +2407,23 @@ struct ArtistPageView: View {
         let pct    = total > 0 ? Int(Double(rated) / Double(total) * 100) : 0
         return HStack(spacing: 20) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(rated)/\(total)").font(.system(size: 20, weight: .heavy)).foregroundStyle(Color.sjInk)
-                Text("releases rated").font(.system(size: 10)).foregroundStyle(Color.sjMuted)
+                Text("\(rated)/\(total)").font(.jakarta(20, weight: .heavy)).foregroundStyle(Color.sjInk)
+                Text("releases rated").font(.jakarta(10)).foregroundStyle(Color.sjMuted)
             }
             if rated > 0 {
                 Divider().frame(height: 32)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(String(format: "%.1f", myAvgV)).font(.system(size: 20, weight: .heavy)).foregroundStyle(Color.sjInk)
-                    Text("your avg").font(.system(size: 10)).foregroundStyle(Color.sjMuted)
+                    Text(String(format: "%.1f", myAvgV)).font(.jakarta(20, weight: .heavy)).foregroundStyle(Color.sjInk)
+                    Text("your avg").font(.jakarta(10)).foregroundStyle(Color.sjMuted)
                 }
                 if let cAvg = communityAvg {
                     Divider().frame(height: 32)
                     VStack(alignment: .leading, spacing: 2) {
                         let diff = myAvgV - cAvg
                         Text((diff >= 0 ? "+" : "") + String(format: "%.1f", diff))
-                            .font(.system(size: 20, weight: .heavy))
+                            .font(.jakarta(20, weight: .heavy))
                             .foregroundStyle(diff >= 0 ? Color.sjBlue : Color.sjMuted)
-                        Text("vs community").font(.system(size: 10)).foregroundStyle(Color.sjMuted)
+                        Text("vs community").font(.jakarta(10)).foregroundStyle(Color.sjMuted)
                     }
                 }
             }
@@ -2450,16 +2450,16 @@ struct ArtistPageView: View {
             ForEach(typeStats, id: \.type) { stat in
                 HStack {
                     Text(LocalizedStringKey(stat.type))
-                        .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.sjInk)
+                        .font(.jakarta(12, weight: .medium)).foregroundStyle(Color.sjInk)
                     Text("(\(stat.count))")
-                        .font(.system(size: 11)).foregroundStyle(Color.sjMuted)
+                        .font(.jakarta(11)).foregroundStyle(Color.sjMuted)
                     Spacer()
                     HStack(spacing: 3) {
                         Image("icon-flower")
                             .renderingMode(.template).resizable().scaledToFit()
                             .frame(width: 10, height: 10).foregroundStyle(Color.sjAmber)
                         Text(String(format: "%.1f", stat.avg))
-                            .font(.system(size: 12, weight: .bold)).foregroundStyle(Color.sjAmber)
+                            .font(.jakarta(12, weight: .bold)).foregroundStyle(Color.sjAmber)
                     }
                 }
             }
@@ -2507,10 +2507,10 @@ private struct ArtistSongRow: View {
                     .accessibilityHidden(true) // title/album text alongside already describes it
                 VStack(alignment: .leading, spacing: 3) {
                     Text(song.title)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.jakarta(13, weight: .semibold))
                         .foregroundStyle(Color.sjInk).lineLimit(1)
                     Text(song.albumTitle)
-                        .font(.system(size: 11))
+                        .font(.jakarta(11))
                         .foregroundStyle(Color.sjMuted).lineLimit(1)
                 }
                 Spacer()
@@ -2540,7 +2540,7 @@ private struct ArtistSongRow: View {
                 .renderingMode(.template).resizable().scaledToFit()
                 .frame(width: 11, height: 11).foregroundStyle(color)
             Text(String(format: "%.1f", score))
-                .font(.system(size: 12, weight: .bold)).foregroundStyle(color)
+                .font(.jakarta(12, weight: .bold)).foregroundStyle(color)
         }
     }
 }
@@ -2564,7 +2564,7 @@ private struct ArtistReleaseRow: View {
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(release.displayTitle)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.jakarta(13, weight: .semibold))
                         .foregroundStyle(Color.sjInk).lineLimit(1)
                     HStack(spacing: 3) {
                         if let t = release.releaseType {
@@ -2572,7 +2572,7 @@ private struct ArtistReleaseRow: View {
                         }
                         if let y = year { Text("·"); Text(y) }
                     }
-                    .font(.system(size: 11)).foregroundStyle(Color.sjMuted)
+                    .font(.jakarta(11)).foregroundStyle(Color.sjMuted)
                 }
 
                 Spacer()
@@ -2605,7 +2605,7 @@ private struct ArtistReleaseRow: View {
                 .renderingMode(.template).resizable().scaledToFit()
                 .frame(width: 11, height: 11).foregroundStyle(color)
             Text(String(format: "%.1f", score))
-                .font(.system(size: 12, weight: .bold)).foregroundStyle(color)
+                .font(.jakarta(12, weight: .bold)).foregroundStyle(color)
         }
     }
 }

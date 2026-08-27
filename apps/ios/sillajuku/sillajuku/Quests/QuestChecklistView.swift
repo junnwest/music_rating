@@ -55,7 +55,7 @@ struct QuestChecklistView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 28) {
                 Text("Quests")
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.jakarta(22, weight: .bold))
                     .foregroundStyle(Color.sjInk)
 
                 QuestTimeline(items: timelineItems)
@@ -126,9 +126,9 @@ struct QuestChecklistView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: "person.3.fill")
-                    .font(.system(size: 11))
+                    .font(.jakarta(11))
                 Text("Community goals")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.jakarta(12, weight: .semibold))
                     .textCase(.uppercase)
                     .kerning(0.4)
             }
@@ -162,7 +162,7 @@ struct QuestChecklistView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(title)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.jakarta(14, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
                 Spacer()
                 if isDone {
@@ -171,7 +171,7 @@ struct QuestChecklistView: View {
                 }
             }
             Text(subtitle)
-                .font(.system(size: 11))
+                .font(.jakarta(11))
                 .foregroundStyle(Color.sjMuted)
 
             GeometryReader { geo in
@@ -268,7 +268,7 @@ private struct QuestTimelineRow: View {
                         .overlay(Circle().stroke(item.isDone ? Color.clear : Color.sjBorder, lineWidth: 1.5))
                     if item.isDone {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.jakarta(10, weight: .bold))
                             .foregroundStyle(Color.sjCream)
                     }
                 }
@@ -295,7 +295,7 @@ private struct QuestTimelineRow: View {
                             Spacer(minLength: 0)
                             if item.reward == nil {
                                 Image(systemName: "chevron.right")
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.jakarta(12, weight: .semibold))
                                     .foregroundStyle(Color.sjBorder)
                                     .padding(.top, 2)
                             }
@@ -312,7 +312,7 @@ private struct QuestTimelineRow: View {
             if let reward = item.reward {
                 Button { showRewardInfo = true } label: {
                     Image(systemName: reward.icon)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.jakarta(13, weight: .semibold))
                         .foregroundStyle(Color.sjBlue)
                         .frame(width: 30, height: 30)
                         .background(Color.sjBlue.opacity(0.1))
@@ -321,7 +321,7 @@ private struct QuestTimelineRow: View {
                 .buttonStyle(.plain)
                 .popover(isPresented: $showRewardInfo) {
                     Text(reward.description)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.jakarta(13, weight: .medium))
                         .foregroundStyle(Color.sjInk)
                         .padding(14)
                         .presentationCompactAdaptation(.popover)
@@ -333,17 +333,17 @@ private struct QuestTimelineRow: View {
     private var titleContent: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(item.title)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.jakarta(14, weight: .semibold))
                 .foregroundStyle(Color.sjInk)
                 .strikethrough(item.isDone, color: Color.sjMuted)
             if !item.isDone {
                 if let note = item.note {
                     Text(note)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.jakarta(11, weight: .semibold))
                         .foregroundStyle(Color.sjBlue)
                 } else {
                     Text("\(item.progress.current)/\(item.progress.target)")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.jakarta(11, weight: .semibold))
                         .foregroundStyle(Color.sjMuted)
                         .monospacedDigit()
                 }

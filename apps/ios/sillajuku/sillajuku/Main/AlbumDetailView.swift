@@ -735,7 +735,7 @@ struct ManualRatingSheet: View {
                     Task { await transitionToPostRating() }
                 } label: {
                     Text("Save Rating")
-                        .font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+                        .font(.jakarta(16, weight: .semibold)).foregroundStyle(.white)
                         .frame(maxWidth: .infinity).padding(.vertical, 13)
                         .background(Color.sjBlue).clipShape(RoundedRectangle(cornerRadius: 12))
                 }
@@ -743,7 +743,7 @@ struct ManualRatingSheet: View {
                 .opacity(draftScore == nil ? 0.4 : 1)
                 if existingScore != nil {
                     Button("Remove Rating") { onSave(nil); dismiss() }
-                        .font(.system(size: 13)).foregroundStyle(Color.sjMuted)
+                        .font(.jakarta(13)).foregroundStyle(Color.sjMuted)
                 }
             }
             .padding(.horizontal, 20)
@@ -1016,7 +1016,7 @@ struct AlbumDetailView: View {
 
                 VStack(spacing: 6) {
                     Text(release.displayTitle)
-                        .font(.system(size: 20, weight: .bold))
+                        .font(.jakarta(20, weight: .bold))
                         .foregroundStyle(Color.sjInk)
                         .multilineTextAlignment(.center)
                         .lineLimit(3)
@@ -1025,7 +1025,7 @@ struct AlbumDetailView: View {
                     if credits.isEmpty {
                         NavigationLink(value: ArtistDestination(artistId: nil, name: release.displayArtist)) {
                             Text(release.displayArtist)
-                                .font(.system(size: 14))
+                                .font(.jakarta(14))
                                 .foregroundStyle(Color.sjMuted)
                                 .lineLimit(1)
                         }
@@ -1035,14 +1035,14 @@ struct AlbumDetailView: View {
                             ForEach(credits) { credit in
                                 NavigationLink(value: ArtistDestination(artistId: credit.artistId, name: credit.creditedAs)) {
                                     Text(credit.creditedAs)
-                                        .font(.system(size: 14))
+                                        .font(.jakarta(14))
                                         .foregroundStyle(Color.sjAmber)
                                         .lineLimit(1)
                                 }
                                 .buttonStyle(.plain)
                                 if !credit.joinPhrase.isEmpty {
                                     Text(credit.joinPhrase)
-                                        .font(.system(size: 14))
+                                        .font(.jakarta(14))
                                         .foregroundStyle(Color.sjMuted)
                                 }
                             }
@@ -1052,14 +1052,14 @@ struct AlbumDetailView: View {
                     HStack(spacing: 6) {
                         if let type = release.releaseType {
                             Text(type.lowercased() == "ep" ? "EP" : type.capitalized)
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.jakarta(11, weight: .semibold))
                                 .foregroundStyle(Color.sjBlue)
                                 .padding(.horizontal, 8).padding(.vertical, 3)
                                 .background(Color.sjBlue.opacity(0.1)).clipShape(Capsule())
                         }
                         if !releaseYear.isEmpty {
                             Text(releaseYear)
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.jakarta(11, weight: .semibold))
                                 .foregroundStyle(Color.sjMuted)
                                 .padding(.horizontal, 8).padding(.vertical, 3)
                                 .background(Color.sjMuted.opacity(0.1)).clipShape(Capsule())
@@ -1073,13 +1073,13 @@ struct AlbumDetailView: View {
                                 .renderingMode(.template).resizable().scaledToFit()
                                 .frame(width: 11, height: 11).foregroundStyle(Color.sjBlue)
                             Text(viewModel.communityAvg.map { String(format: "%.1f", $0) } ?? "—")
-                                .font(.system(size: 13, weight: .bold)).foregroundStyle(Color.sjInk)
-                            Text("·").font(.system(size: 12)).foregroundStyle(Color.sjBorder)
+                                .font(.jakarta(13, weight: .bold)).foregroundStyle(Color.sjInk)
+                            Text("·").font(.jakarta(12)).foregroundStyle(Color.sjBorder)
                             Text(viewModel.communityCount == 1 ? "1 rating" : "\(viewModel.communityCount) ratings")
-                                .font(.system(size: 13)).foregroundStyle(Color.sjMuted)
-                            Text("·").font(.system(size: 12)).foregroundStyle(Color.sjBorder)
+                                .font(.jakarta(13)).foregroundStyle(Color.sjMuted)
+                            Text("·").font(.jakarta(12)).foregroundStyle(Color.sjBorder)
                             Text(viewModel.communitySD.map { String(format: "±%.1f split", $0) } ?? "— split")
-                                .font(.system(size: 13)).foregroundStyle(Color.sjMuted)
+                                .font(.jakarta(13)).foregroundStyle(Color.sjMuted)
                         }
                         .padding(.top, 6)
                     }
@@ -1093,7 +1093,7 @@ struct AlbumDetailView: View {
         .overlay(alignment: .topTrailing) {
             Button { showMixPicker = true } label: {
                 Image(systemName: "bookmark")
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.jakarta(16, weight: .medium))
                     .foregroundStyle(Color.sjInk)
                     .padding(10)
                     .background(.ultraThinMaterial, in: Circle())
@@ -1112,7 +1112,7 @@ struct AlbumDetailView: View {
     private var myReviewSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Your Rating")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.jakarta(11, weight: .semibold))
                 .foregroundStyle(Color.sjMuted)
                 .textCase(.uppercase)
                 .tracking(0.6)
@@ -1164,7 +1164,7 @@ struct AlbumDetailView: View {
                 MorphingRateButton(
                     idleLabel: {
                         Label("Rate this Album", systemImage: "plus")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.jakarta(15, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 13)
@@ -1361,14 +1361,14 @@ struct AlbumDetailView: View {
     private func sectionHeader<Destination: View>(_ text: LocalizedStringKey, @ViewBuilder destination: () -> Destination) -> some View {
         HStack {
             Text(text)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.jakarta(11, weight: .semibold))
                 .foregroundStyle(Color.sjMuted)
                 .textCase(.uppercase)
                 .tracking(0.6)
             Spacer()
             NavigationLink(destination: destination()) {
                 Text("View All")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.jakarta(12, weight: .semibold))
                     .foregroundStyle(Color.sjBlue)
             }
         }
@@ -1379,7 +1379,7 @@ struct AlbumDetailView: View {
 
     private func sectionLabel(_ text: LocalizedStringKey) -> some View {
         Text(text)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.jakarta(11, weight: .semibold))
             .foregroundStyle(Color.sjMuted)
             .textCase(.uppercase)
             .tracking(0.6)
@@ -1397,21 +1397,21 @@ private struct MixRowContent: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "music.note.list")
-                .font(.system(size: 16))
+                .font(.jakarta(16))
                 .foregroundStyle(Color.sjBlue)
                 .frame(width: 32)
             VStack(alignment: .leading, spacing: 2) {
                 Text(mix.name)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.jakarta(14, weight: .medium))
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(1)
                 Text(mix.authorHandle)
-                    .font(.system(size: 12))
+                    .font(.jakarta(12))
                     .foregroundStyle(Color.sjMuted)
             }
             Spacer()
             Image(systemName: "chevron.right")
-                .font(.system(size: 12))
+                .font(.jakarta(12))
                 .foregroundStyle(Color.sjMuted)
         }
         .padding(.vertical, 11)
@@ -1467,13 +1467,13 @@ struct RatingCommentRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "person.circle.fill")
-                .font(.system(size: 28))
+                .font(.jakarta(28))
                 .foregroundStyle(Color(uiColor: .systemGray3))
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text("@" + (item.profiles?.handle ?? String(localized: "someone")))
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.jakarta(13, weight: .semibold))
                         .foregroundStyle(Color.sjInk)
                         .lineLimit(1)
                     if item.profiles?.isVerified == true {
@@ -1481,10 +1481,10 @@ struct RatingCommentRow: View {
                             .frame(width: 12, height: 12)
                     }
                     Text("·")
-                        .font(.system(size: 12))
+                        .font(.jakarta(12))
                         .foregroundStyle(Color.sjBorder)
                     Text(item.createdAt.relativeTimeString)
-                        .font(.system(size: 12))
+                        .font(.jakarta(12))
                         .foregroundStyle(Color.sjMuted)
                     Spacer(minLength: 0)
                     if let score = item.score {
@@ -1494,7 +1494,7 @@ struct RatingCommentRow: View {
 
                 if let text = item.reviewText, !text.isEmpty {
                     Text(text)
-                        .font(.system(size: 14))
+                        .font(.jakarta(14))
                         .foregroundStyle(Color.sjInk)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -1512,7 +1512,7 @@ struct RatingCommentRow: View {
                         }
                     }
                     .buttonStyle(.plain)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.jakarta(13, weight: .medium))
                     .animation(.easeInOut(duration: 0.15), value: isLiked)
                     .accessibilityLabel(isLiked ? String(localized: "Unlike") : String(localized: "Like"))
 
@@ -1523,7 +1523,7 @@ struct RatingCommentRow: View {
                             .foregroundStyle(Color.sjMuted)
                     }
                     .buttonStyle(.plain)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.jakarta(13, weight: .medium))
                 }
                 .padding(.top, 2)
             }
@@ -1645,9 +1645,9 @@ struct AlbumAllRatingsView: View {
             } else if vm.posts.isEmpty {
                 VStack(spacing: 14) {
                     Image(systemName: "bubble.left.and.bubble.right")
-                        .font(.system(size: 44)).foregroundStyle(Color.sjBorder)
+                        .font(.jakarta(44)).foregroundStyle(Color.sjBorder)
                     Text("No ratings from other users yet.")
-                        .font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                        .font(.jakarta(15)).foregroundStyle(Color.sjMuted)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -1702,35 +1702,35 @@ private struct TrackRow: View {
     var body: some View {
         HStack(spacing: 10) {
             Text("\(track.position)")
-                .font(.system(size: 13)).foregroundStyle(Color.sjMuted)
+                .font(.jakarta(13)).foregroundStyle(Color.sjMuted)
                 .frame(width: 24, alignment: .trailing)
 
             if let onTap {
                 Button(action: onTap) {
                     Text(track.title)
-                        .font(.system(size: 14)).foregroundStyle(Color.sjInk).lineLimit(1)
+                        .font(.jakarta(14)).foregroundStyle(Color.sjInk).lineLimit(1)
                 }
                 .buttonStyle(.plain)
             } else {
                 Text(track.title)
-                    .font(.system(size: 14)).foregroundStyle(Color.sjInk).lineLimit(1)
+                    .font(.jakarta(14)).foregroundStyle(Color.sjInk).lineLimit(1)
             }
 
             Spacer()
             if !formattedDuration.isEmpty {
                 Text(formattedDuration)
-                    .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                    .font(.jakarta(12)).foregroundStyle(Color.sjMuted)
             }
             if let score = existingScore {
                 Text(scoreLabel(score))
-                    .font(.system(size: 11, weight: .bold)).foregroundStyle(Color.sjBlue)
+                    .font(.jakarta(11, weight: .bold)).foregroundStyle(Color.sjBlue)
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(Color.sjBlue.opacity(0.1)).clipShape(RoundedRectangle(cornerRadius: 4))
             } else if let onAdd {
                 MorphingRateButton(
                     idleLabel: {
                         Image(systemName: "plus")
-                            .font(.system(size: 11, weight: .bold)).foregroundStyle(Color.sjBlue)
+                            .font(.jakarta(11, weight: .bold)).foregroundStyle(Color.sjBlue)
                             .frame(width: 26, height: 26)
                     },
                     idleShape: AnyShape(Circle()),
@@ -1806,7 +1806,7 @@ struct TrackRatingSheet: View {
                     dismiss()
                 } label: {
                     Text("Save Rating")
-                        .font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+                        .font(.jakarta(16, weight: .semibold)).foregroundStyle(.white)
                         .frame(maxWidth: .infinity).padding(.vertical, 13)
                         .background(Color.sjBlue).clipShape(RoundedRectangle(cornerRadius: 12))
                 }
@@ -1814,7 +1814,7 @@ struct TrackRatingSheet: View {
                 .opacity(draftScore == nil ? 0.4 : 1)
                 if existingScore != nil {
                     Button("Remove Rating") { onSave(track, nil); dismiss() }
-                        .font(.system(size: 13)).foregroundStyle(Color.sjMuted)
+                        .font(.jakarta(13)).foregroundStyle(Color.sjMuted)
                 }
             }
             .padding(.horizontal, 20)
@@ -1867,13 +1867,13 @@ struct SongRatingCommentRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "person.circle.fill")
-                .font(.system(size: 28))
+                .font(.jakarta(28))
                 .foregroundStyle(Color(uiColor: .systemGray3))
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text("@" + (item.profiles?.handle ?? String(localized: "someone")))
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.jakarta(13, weight: .semibold))
                         .foregroundStyle(Color.sjInk)
                         .lineLimit(1)
                     if item.profiles?.isVerified == true {
@@ -1881,10 +1881,10 @@ struct SongRatingCommentRow: View {
                             .frame(width: 12, height: 12)
                     }
                     Text("·")
-                        .font(.system(size: 12))
+                        .font(.jakarta(12))
                         .foregroundStyle(Color.sjBorder)
                     Text(item.createdAt.relativeTimeString)
-                        .font(.system(size: 12))
+                        .font(.jakarta(12))
                         .foregroundStyle(Color.sjMuted)
                     Spacer(minLength: 0)
                     if let score = item.score {
@@ -1894,7 +1894,7 @@ struct SongRatingCommentRow: View {
 
                 if let text = item.reviewText, !text.isEmpty {
                     Text(text)
-                        .font(.system(size: 14))
+                        .font(.jakarta(14))
                         .foregroundStyle(Color.sjInk)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -1912,7 +1912,7 @@ struct SongRatingCommentRow: View {
                         }
                     }
                     .buttonStyle(.plain)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.jakarta(13, weight: .medium))
                     .animation(.easeInOut(duration: 0.15), value: isLiked)
                     .accessibilityLabel(isLiked ? String(localized: "Unlike") : String(localized: "Like"))
 
@@ -1923,7 +1923,7 @@ struct SongRatingCommentRow: View {
                             .foregroundStyle(Color.sjMuted)
                     }
                     .buttonStyle(.plain)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.jakarta(13, weight: .medium))
                 }
                 .padding(.top, 2)
             }
@@ -2110,19 +2110,19 @@ struct SongDetailView: View {
 
                 VStack(spacing: 6) {
                     Text(String(format: String(localized: "Track %d"), track.position))
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.jakarta(11, weight: .semibold))
                         .foregroundStyle(Color.sjMuted)
                         .textCase(.uppercase)
                         .tracking(0.5)
                     Text(track.title)
-                        .font(.system(size: 20, weight: .bold))
+                        .font(.jakarta(20, weight: .bold))
                         .foregroundStyle(Color.sjInk)
                         .multilineTextAlignment(.center)
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
                     NavigationLink(value: ArtistDestination(artistId: nil, name: release.displayArtist)) {
                         Text(release.displayArtist)
-                            .font(.system(size: 14))
+                            .font(.jakarta(14))
                             .foregroundStyle(Color.sjMuted)
                             .lineLimit(1)
                     }
@@ -2130,13 +2130,13 @@ struct SongDetailView: View {
 
                     HStack(spacing: 6) {
                         Text("Song")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.jakarta(11, weight: .semibold))
                             .foregroundStyle(Color.sjAmber)
                             .padding(.horizontal, 8).padding(.vertical, 3)
                             .background(Color.sjAmber.opacity(0.12)).clipShape(Capsule())
                         if !durationString.isEmpty {
                             Text(durationString)
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.jakarta(11, weight: .semibold))
                                 .foregroundStyle(Color.sjMuted)
                                 .padding(.horizontal, 8).padding(.vertical, 3)
                                 .background(Color.sjMuted.opacity(0.1)).clipShape(Capsule())
@@ -2153,10 +2153,10 @@ struct SongDetailView: View {
                                 $0.truncatingRemainder(dividingBy: 1) == 0
                                     ? "\(Int($0))" : String(format: "%.2f", $0)
                             } ?? "—")
-                                .font(.system(size: 13, weight: .bold)).foregroundStyle(Color.sjInk)
-                            Text("·").font(.system(size: 12)).foregroundStyle(Color.sjBorder)
+                                .font(.jakarta(13, weight: .bold)).foregroundStyle(Color.sjInk)
+                            Text("·").font(.jakarta(12)).foregroundStyle(Color.sjBorder)
                             Text(communityCount == 1 ? "1 rating" : "\(communityCount) ratings")
-                                .font(.system(size: 13)).foregroundStyle(Color.sjMuted)
+                                .font(.jakarta(13)).foregroundStyle(Color.sjMuted)
                         }
                         .padding(.top, 6)
                     }
@@ -2171,7 +2171,7 @@ struct SongDetailView: View {
             if track.trackId != nil {
                 Button { showMixPicker = true } label: {
                     Image(systemName: "bookmark")
-                        .font(.system(size: 16, weight: .medium))
+                        .font(.jakarta(16, weight: .medium))
                         .foregroundStyle(Color.sjInk)
                         .padding(10)
                         .background(.ultraThinMaterial, in: Circle())
@@ -2187,7 +2187,7 @@ struct SongDetailView: View {
     private var ratingSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("YOUR RATING")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.jakarta(11, weight: .semibold))
                 .foregroundStyle(Color.sjMuted)
                 .tracking(0.8)
             if let myRow {
@@ -2213,7 +2213,7 @@ struct SongDetailView: View {
                     showRatingSheet = true
                 } label: {
                     Text("Rate this track")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.jakarta(14, weight: .semibold))
                         .foregroundStyle(Color.sjCream)
                         .frame(maxWidth: .infinity).frame(height: 42)
                         .background(Color.sjBlue)
@@ -2240,14 +2240,14 @@ struct SongDetailView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("RATINGS & REVIEWS")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.jakarta(11, weight: .semibold))
                     .foregroundStyle(Color.sjMuted)
                     .tracking(0.8)
                 Spacer()
                 if otherPosts.count > 5, let recordingId = track.trackId {
                     NavigationLink(destination: SongAllRatingsView(recordingId: recordingId, release: release)) {
                         Text("View All")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.jakarta(12, weight: .semibold))
                             .foregroundStyle(Color.sjBlue)
                     }
                 }
@@ -2274,7 +2274,7 @@ struct SongDetailView: View {
     private var appearsOnSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("APPEARS ON")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.jakarta(11, weight: .semibold))
                 .foregroundStyle(Color.sjMuted)
                 .tracking(0.8)
             NavigationLink(value: release) {
@@ -2285,15 +2285,15 @@ struct SongDetailView: View {
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(release.displayTitle)
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.jakarta(14, weight: .semibold))
                             .foregroundStyle(Color.sjInk).lineLimit(1)
                         Text(release.artist)
-                            .font(.system(size: 12))
+                            .font(.jakarta(12))
                             .foregroundStyle(Color.sjMuted).lineLimit(1)
                     }
                     Spacer()
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                        .font(.jakarta(12)).foregroundStyle(Color.sjMuted)
                 }
             }
             .buttonStyle(.plain)
@@ -2702,9 +2702,9 @@ struct SongAllRatingsView: View {
             } else if vm.posts.isEmpty {
                 VStack(spacing: 14) {
                     Image(systemName: "bubble.left.and.bubble.right")
-                        .font(.system(size: 44)).foregroundStyle(Color.sjBorder)
+                        .font(.jakarta(44)).foregroundStyle(Color.sjBorder)
                     Text("No ratings from other users yet.")
-                        .font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                        .font(.jakarta(15)).foregroundStyle(Color.sjMuted)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {

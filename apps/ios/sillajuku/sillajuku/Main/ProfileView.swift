@@ -892,7 +892,7 @@ struct ProfileView: View {
             // adding badges doesn't throw off the title's centering.
             HStack(spacing: 4) {
                 Text(viewModel.profile.flatMap { $0.username }.map { "@\($0)" } ?? "Profile")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.jakarta(16, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(1)
                 if let raw = viewModel.profile?.badgeColor, let badge = QuestBadgeColor(rawValue: raw) {
@@ -911,7 +911,7 @@ struct ProfileView: View {
             HStack {
                 Button { showUserSearch = true } label: {
                     Image(systemName: "person.badge.plus")
-                        .font(.system(size: 16))
+                        .font(.jakarta(16))
                         .foregroundStyle(Color.sjInk)
                 }
                 .accessibilityLabel(String(localized: "Find people"))
@@ -920,7 +920,7 @@ struct ProfileView: View {
                     showQuestChecklist = true
                 } label: {
                     Image(systemName: "checklist")
-                        .font(.system(size: 16))
+                        .font(.jakarta(16))
                         .foregroundStyle(Color.sjInk)
                         .overlay(alignment: .topTrailing) {
                             if !questVM.personalQuestsComplete {
@@ -934,7 +934,7 @@ struct ProfileView: View {
                 .accessibilityLabel(String(localized: "Getting Started"))
                 Button { showSettings = true } label: {
                     Image(systemName: "gearshape")
-                        .font(.system(size: 16))
+                        .font(.jakarta(16))
                         .foregroundStyle(Color.sjInk)
                 }
                 .accessibilityLabel(String(localized: "Settings"))
@@ -1000,12 +1000,12 @@ struct ProfileView: View {
         VStack(alignment: .leading, spacing: 4) {
             if let name = viewModel.profile?.displayName, !name.isEmpty {
                 Text(name)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.jakarta(13, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
             }
             if let bio = viewModel.profile?.bio, !bio.isEmpty {
                 Text(bio)
-                    .font(.system(size: 13))
+                    .font(.jakarta(13))
                     .foregroundStyle(Color.sjMuted)
             }
         }
@@ -1038,7 +1038,7 @@ struct ProfileView: View {
                     VStack(spacing: 0) {
                         Image(systemName: activeTab == tab ? tab.activeIcon : tab.icon)
                             // bookmark is a tall narrow symbol — use smaller size to balance it
-                            .font(.system(size: 20))
+                            .font(.jakarta(20))
                             .foregroundStyle(activeTab == tab ? Color.sjInk : Color.sjMuted)
                             .frame(maxWidth: .infinity)
                             .frame(height: 44)
@@ -1108,10 +1108,10 @@ struct ProfileView: View {
         if !hasAny {
             VStack(spacing: 12) {
                 Image(systemName: "square.grid.2x2")
-                    .font(.system(size: 36))
+                    .font(.jakarta(36))
                     .foregroundStyle(Color.sjMuted)
                 Text("No ratings yet")
-                    .font(.system(size: 15))
+                    .font(.jakarta(15))
                     .foregroundStyle(Color.sjMuted)
             }
             .frame(maxWidth: .infinity)
@@ -1125,7 +1125,7 @@ struct ProfileView: View {
                             ratingTypeFilter = filter
                         } label: {
                             Text(LocalizedStringKey(filter.rawValue))
-                                .font(.system(size: 12, weight: ratingTypeFilter == filter ? .semibold : .regular))
+                                .font(.jakarta(12, weight: ratingTypeFilter == filter ? .semibold : .regular))
                                 .foregroundStyle(ratingTypeFilter == filter ? Color.sjBlue : Color.sjMuted)
                                 .padding(.horizontal, 12).padding(.vertical, 6)
                                 .background(ratingTypeFilter == filter ? Color.sjBlue.opacity(0.1) : Color.clear)
@@ -1140,7 +1140,7 @@ struct ProfileView: View {
                         ForEach([RatingDisplayMode.list, .posts], id: \.self) { mode in
                             Button { ratingDisplayMode = mode } label: {
                                 Image(systemName: mode == .list ? "list.bullet" : "newspaper")
-                                    .font(.system(size: 14))
+                                    .font(.jakarta(14))
                                     .foregroundStyle(ratingDisplayMode == mode ? Color.sjBlue : Color.sjMuted)
                                     .frame(width: 32, height: 28)
                                     .background(ratingDisplayMode == mode ? Color.sjBlue.opacity(0.1) : Color.clear)
@@ -1157,7 +1157,7 @@ struct ProfileView: View {
                 // Count + sort
                 HStack {
                     Text(String(format: String(localized: "%d %@"), items.count, ratingTypeFilter == .all ? String(localized: "ratings") : String(localized: String.LocalizationValue(ratingTypeFilter.rawValue)).lowercased()))
-                        .font(.system(size: 12))
+                        .font(.jakarta(12))
                         .foregroundStyle(Color.sjMuted)
                     Spacer()
                     Menu {
@@ -1174,7 +1174,7 @@ struct ProfileView: View {
                             Image(systemName: "line.3.horizontal.decrease")
                             Text(LocalizedStringKey(ratingSortOrder.rawValue))
                         }
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.jakarta(12, weight: .medium))
                         .foregroundStyle(Color.sjAmber)
                     }
                 }
@@ -1184,10 +1184,10 @@ struct ProfileView: View {
                 if items.isEmpty {
                     VStack(spacing: 10) {
                         Image(systemName: ratingTypeFilter == .songs ? "music.note" : "square.grid.2x2")
-                            .font(.system(size: 28))
+                            .font(.jakarta(28))
                             .foregroundStyle(Color.sjMuted)
                         Text(String(format: String(localized: "No %@ rated yet"), String(localized: String.LocalizationValue(ratingTypeFilter.rawValue)).lowercased()))
-                            .font(.system(size: 14))
+                            .font(.jakarta(14))
                             .foregroundStyle(Color.sjMuted)
                     }
                     .frame(maxWidth: .infinity)
@@ -1220,9 +1220,9 @@ struct ProfileView: View {
                     if posts.isEmpty {
                         VStack(spacing: 10) {
                             Image(systemName: "newspaper")
-                                .font(.system(size: 28)).foregroundStyle(Color.sjMuted)
+                                .font(.jakarta(28)).foregroundStyle(Color.sjMuted)
                             Text("No posts yet")
-                                .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                                .font(.jakarta(14)).foregroundStyle(Color.sjMuted)
                         }
                         .frame(maxWidth: .infinity).padding(.top, 40)
                     } else {
@@ -1351,10 +1351,10 @@ struct RatingStatsView: View {
             if snapshot.totalRatings == 0 {
                 VStack(spacing: 12) {
                     Image(systemName: "chart.bar")
-                        .font(.system(size: 36))
+                        .font(.jakarta(36))
                         .foregroundStyle(Color.sjMuted)
                     Text("Rate some albums to see your stats")
-                        .font(.system(size: 15))
+                        .font(.jakarta(15))
                         .foregroundStyle(Color.sjMuted)
                         .multilineTextAlignment(.center)
                 }
@@ -1390,10 +1390,10 @@ struct RatingStatsView: View {
     private func statsCell(value: String, label: LocalizedStringKey) -> some View {
         VStack(spacing: 3) {
             Text(value)
-                .font(.system(size: 20, weight: .bold))
+                .font(.jakarta(20, weight: .bold))
                 .foregroundStyle(Color.sjInk)
             Text(label)
-                .font(.system(size: 11))
+                .font(.jakarta(11))
                 .foregroundStyle(Color.sjMuted)
         }
         .frame(maxWidth: .infinity)
@@ -1411,7 +1411,7 @@ struct RatingStatsView: View {
                         VStack(spacing: 2) {
                             // Space character keeps this row the same height for every column
                             Text(bucket.count > 0 ? "\(bucket.count)" : " ")
-                                .font(.system(size: 8))
+                                .font(.jakarta(8))
                                 .foregroundStyle(Color.sjMuted)
                             RoundedRectangle(cornerRadius: 3)
                                 .fill(bucket.count > 0
@@ -1431,7 +1431,7 @@ struct RatingStatsView: View {
                     ForEach(buckets) { bucket in
                         Text(bucket.score.truncatingRemainder(dividingBy: 1) == 0
                              ? "\(Int(bucket.score))" : "")
-                            .font(.system(size: 9))
+                            .font(.jakarta(9))
                             .foregroundStyle(Color.sjMuted)
                             .frame(maxWidth: .infinity)
                     }
@@ -1449,7 +1449,7 @@ struct RatingStatsView: View {
                 ForEach(artists) { item in
                     HStack(spacing: 10) {
                         Text(item.artist)
-                            .font(.system(size: 13))
+                            .font(.jakarta(13))
                             .foregroundStyle(Color.sjInk)
                             .lineLimit(1)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1462,7 +1462,7 @@ struct RatingStatsView: View {
                         }
                         .frame(width: 80, height: 16)
                         Text("\(item.count)")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.jakarta(12, weight: .semibold))
                             .foregroundStyle(Color.sjMuted)
                             .frame(width: 24, alignment: .trailing)
                     }
@@ -1475,7 +1475,7 @@ struct RatingStatsView: View {
 
     private func statSectionHeader(_ title: LocalizedStringKey) -> some View {
         Text(title)
-            .font(.system(size: 12, weight: .semibold))
+            .font(.jakarta(12, weight: .semibold))
             .foregroundStyle(Color.sjMuted)
             .textCase(.uppercase)
             .tracking(0.5)
@@ -1543,10 +1543,10 @@ private struct ProfileStatCell: View {
     var body: some View {
         VStack(spacing: 2) {
             Text(value)
-                .font(.system(size: 18, weight: .bold))
+                .font(.jakarta(18, weight: .bold))
                 .foregroundStyle(Color.sjInk)
             Text(label)
-                .font(.system(size: 10.5))
+                .font(.jakarta(10.5))
                 .foregroundStyle(Color.sjMuted)
         }
         .frame(maxWidth: .infinity)
@@ -1556,7 +1556,7 @@ private struct ProfileStatCell: View {
 struct ProfileActionButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 13, weight: .semibold))
+            .font(.jakarta(13, weight: .semibold))
             .foregroundStyle(Color.sjInk)
             .frame(maxWidth: .infinity)
             .frame(height: 32)
@@ -1591,19 +1591,19 @@ struct RatingListRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(title)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.jakarta(13, weight: .semibold))
                         .foregroundStyle(Color.sjInk)
                         .lineLimit(1)
                     if isSong {
                         Text("Song")
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.jakarta(10, weight: .medium))
                             .foregroundStyle(Color.sjAmber)
                             .padding(.horizontal, 5).padding(.vertical, 2)
                             .background(Color.sjAmber.opacity(0.12))
                             .clipShape(RoundedRectangle(cornerRadius: 4))
                     } else if let rt = releaseType {
                         Text(LocalizedStringKey(rt.lowercased() == "ep" ? "EP" : rt.capitalized))
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.jakarta(10, weight: .medium))
                             .foregroundStyle(Color.sjBlue)
                             .padding(.horizontal, 5).padding(.vertical, 2)
                             .background(Color.sjBlue.opacity(0.1))
@@ -1611,7 +1611,7 @@ struct RatingListRow: View {
                     }
                 }
                 Text(artistLine)
-                    .font(.system(size: 12))
+                    .font(.jakarta(12))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
             }
@@ -1623,7 +1623,7 @@ struct RatingListRow: View {
                         .renderingMode(.template).resizable().scaledToFit()
                         .frame(width: 11, height: 11).foregroundStyle(Color.sjBlue)
                     Text(scoreText)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.jakarta(13, weight: .bold))
                         .foregroundStyle(Color.sjBlue)
                 }
                 .padding(.horizontal, 8).padding(.vertical, 4)
@@ -1675,7 +1675,7 @@ struct ExpandableRatingListRow: View {
                         withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
                     } label: {
                         Image(systemName: "chevron.down")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.jakarta(12, weight: .semibold))
                             .foregroundStyle(Color.sjMuted)
                             .rotationEffect(.degrees(isExpanded ? 180 : 0))
                             .frame(width: 32, height: 44)
@@ -1689,12 +1689,12 @@ struct ExpandableRatingListRow: View {
             if isExpanded, let reviewText, !reviewText.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(reviewText)
-                        .font(.system(size: 13))
+                        .font(.jakarta(13))
                         .foregroundStyle(Color.sjInk)
                         .fixedSize(horizontal: false, vertical: true)
                     if let createdAt {
                         Text(createdAt.relativeTimeString)
-                            .font(.system(size: 11))
+                            .font(.jakarta(11))
                             .foregroundStyle(Color.sjMuted)
                     }
                 }
@@ -1746,15 +1746,15 @@ struct FollowListModal: View {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(Color.sjMuted)
-                        .font(.system(size: 14))
+                        .font(.jakarta(14))
                     TextField("Search", text: $searchText)
-                        .font(.system(size: 14))
+                        .font(.jakarta(14))
                         .foregroundStyle(Color.sjInk)
                     if !searchText.isEmpty {
                         Button { searchText = "" } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundStyle(Color.sjMuted)
-                                .font(.system(size: 14))
+                                .font(.jakarta(14))
                         }
                         .accessibilityLabel(String(localized: "Clear search"))
                         .buttonStyle(.plain)
@@ -1817,10 +1817,10 @@ struct FollowListModal: View {
         if profiles.isEmpty {
             VStack(spacing: 12) {
                 Image(systemName: searchText.isEmpty ? "person.2" : "magnifyingglass")
-                    .font(.system(size: 36))
+                    .font(.jakarta(36))
                     .foregroundStyle(Color.sjMuted)
                 Text(searchText.isEmpty ? empty : "No results for \"\(searchText)\"")
-                    .font(.system(size: 15))
+                    .font(.jakarta(15))
                     .foregroundStyle(Color.sjMuted)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1845,11 +1845,11 @@ struct FollowListModal: View {
             VStack(spacing: 0) {
                 HStack(spacing: 5) {
                     Text(label)
-                        .font(.system(size: 14, weight: activeTab == tab ? .semibold : .regular))
+                        .font(.jakarta(14, weight: activeTab == tab ? .semibold : .regular))
                         .foregroundStyle(activeTab == tab ? Color.sjInk : Color.sjMuted)
                     if count > 0 {
                         Text("\(count)")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.jakarta(11, weight: .semibold))
                             .foregroundStyle(activeTab == tab ? Color.sjBlue : Color.sjMuted)
                             .padding(.horizontal, 5).padding(.vertical, 2)
                             .background(
@@ -1923,13 +1923,13 @@ private struct FollowProfileRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 if let name = profile.displayName, !name.isEmpty {
                     Text(name)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.jakarta(14, weight: .semibold))
                         .foregroundStyle(Color.sjInk)
                         .lineLimit(1)
                 }
                 if let username = profile.username {
                     Text("@" + username)
-                        .font(.system(size: 13))
+                        .font(.jakarta(13))
                         .foregroundStyle(Color.sjMuted)
                         .lineLimit(1)
                 }
@@ -1990,7 +1990,7 @@ struct UserSearchSheet: View {
                     ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if results.isEmpty && !query.trimmingCharacters(in: .whitespaces).isEmpty {
                     Text("No users found.")
-                        .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                        .font(.jakarta(14)).foregroundStyle(Color.sjMuted)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView {
@@ -2001,14 +2001,14 @@ struct UserSearchSheet: View {
                                         ZStack {
                                             Circle().fill(Color.sjAmber.opacity(0.15)).frame(width: 40, height: 40)
                                             Text(profile.initial)
-                                                .font(.system(size: 16, weight: .bold)).foregroundStyle(Color.sjAmber)
+                                                .font(.jakarta(16, weight: .bold)).foregroundStyle(Color.sjAmber)
                                         }
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text(profile.label)
-                                                .font(.system(size: 14, weight: .semibold)).foregroundStyle(Color.sjInk)
+                                                .font(.jakarta(14, weight: .semibold)).foregroundStyle(Color.sjInk)
                                             HStack(spacing: 4) {
                                                 Text("@" + profile.handle)
-                                                    .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                                                    .font(.jakarta(12)).foregroundStyle(Color.sjMuted)
                                                 if profile.isVerified == true {
                                                     VerifiedBadgeView()
                                                         .frame(width: 12, height: 12)
@@ -2018,7 +2018,7 @@ struct UserSearchSheet: View {
                                         }
                                         Spacer()
                                         Image(systemName: "chevron.right")
-                                            .font(.system(size: 12, weight: .semibold))
+                                            .font(.jakarta(12, weight: .semibold))
                                             .foregroundStyle(Color.sjBorder)
                                     }
                                     .padding(.horizontal, 16)
@@ -2097,11 +2097,11 @@ struct PostCardHeader<Trailing: View>: View {
     var body: some View {
         HStack(spacing: 9) {
             Image(systemName: "person.circle.fill")
-                .font(.system(size: 30))
+                .font(.jakarta(30))
                 .foregroundStyle(Color(uiColor: .systemGray3))
             HStack(spacing: 4) {
                 Text("@" + handle)
-                    .font(.system(size: 13.5, weight: .semibold))
+                    .font(.jakarta(13.5, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
                 if isVerified {
                     VerifiedBadgeView()
@@ -2109,9 +2109,9 @@ struct PostCardHeader<Trailing: View>: View {
                         .accessibilityLabel(String(localized: "Verified"))
                 }
             }
-            Text("·").font(.system(size: 13)).foregroundStyle(Color.sjBorder)
+            Text("·").font(.jakarta(13)).foregroundStyle(Color.sjBorder)
             Text(createdAt.relativeTimeString)
-                .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                .font(.jakarta(12)).foregroundStyle(Color.sjMuted)
             Spacer(minLength: 0)
             trailing()
         }
@@ -2156,7 +2156,7 @@ struct ProfilePostCard: View {
                             }
                         } label: {
                             Image(systemName: "ellipsis")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(.jakarta(14, weight: .medium))
                                 .foregroundStyle(Color.sjMuted)
                                 .frame(width: 30, height: 30)
                         }
@@ -2175,11 +2175,11 @@ struct ProfilePostCard: View {
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(rating.releases.displayTitle)
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.jakarta(14, weight: .bold))
                             .foregroundStyle(Color.sjInk)
                             .lineLimit(2)
                         Text(rating.releases.typeLabel + " · " + rating.releases.displayArtist)
-                            .font(.system(size: 11.5))
+                            .font(.jakarta(11.5))
                             .foregroundStyle(Color.sjMuted)
                             .lineLimit(1)
                     }
@@ -2201,7 +2201,7 @@ struct ProfilePostCard: View {
             // Review text
             if let text = rating.reviewText, !text.isEmpty {
                 Text(text)
-                    .font(.system(size: 14))
+                    .font(.jakarta(14))
                     .foregroundStyle(Color.sjInk)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 14)
@@ -2213,7 +2213,7 @@ struct ProfilePostCard: View {
                 HStack(spacing: 5) {
                     Button { Task { await onLike() } } label: {
                         Image(systemName: isLiked ? "heart.fill" : "heart")
-                            .font(.system(size: 19, weight: .medium))
+                            .font(.jakarta(19, weight: .medium))
                             .foregroundStyle(isLiked ? .red : Color.sjInk)
                     }
                     .buttonStyle(.plain)
@@ -2224,7 +2224,7 @@ struct ProfilePostCard: View {
                     if likesCount > 0 {
                         Button { showLikers = true } label: {
                             Text("\(likesCount)")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(.jakarta(14, weight: .medium))
                                 .foregroundStyle(isLiked ? .red : Color.sjMuted)
                                 .contentShape(Rectangle())
                         }
@@ -2234,20 +2234,20 @@ struct ProfilePostCard: View {
                 HStack(spacing: 5) {
                     Button { showComments = true } label: {
                         Image(systemName: "bubble.left")
-                            .font(.system(size: 19, weight: .medium)).foregroundStyle(Color.sjInk)
+                            .font(.jakarta(19, weight: .medium)).foregroundStyle(Color.sjInk)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(String(localized: "View comments"))
 
                     if commentsCount > 0 {
                         Text("\(commentsCount)")
-                            .font(.system(size: 14, weight: .medium)).foregroundStyle(Color.sjMuted)
+                            .font(.jakarta(14, weight: .medium)).foregroundStyle(Color.sjMuted)
                     }
                 }
                 Spacer()
                 if headerHandle == nil {
                     Text(rating.createdAt.relativeTimeString)
-                        .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                        .font(.jakarta(12)).foregroundStyle(Color.sjMuted)
                 }
             }
             .padding(.horizontal, 14)
@@ -2318,18 +2318,18 @@ struct ProfileSongPostCard: View {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 6) {
                             Text(song.trackTitle ?? "Unknown Track")
-                                .font(.system(size: 14, weight: .bold))
+                                .font(.jakarta(14, weight: .bold))
                                 .foregroundStyle(Color.sjInk)
                                 .lineLimit(2)
                             Text("Song")
-                                .font(.system(size: 10, weight: .medium))
+                                .font(.jakarta(10, weight: .medium))
                                 .foregroundStyle(Color.sjAmber)
                                 .padding(.horizontal, 5).padding(.vertical, 2)
                                 .background(Color.sjAmber.opacity(0.12))
                                 .clipShape(RoundedRectangle(cornerRadius: 4))
                         }
                         Text("\(song.release.displayTitle) · \(song.release.displayArtist)")
-                            .font(.system(size: 11.5))
+                            .font(.jakarta(11.5))
                             .foregroundStyle(Color.sjMuted)
                             .lineLimit(1)
                     }
@@ -2352,7 +2352,7 @@ struct ProfileSongPostCard: View {
 
             if let text = song.reviewText, !text.isEmpty {
                 Text(text)
-                    .font(.system(size: 14))
+                    .font(.jakarta(14))
                     .foregroundStyle(Color.sjInk)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 14)
@@ -2363,7 +2363,7 @@ struct ProfileSongPostCard: View {
                 HStack(spacing: 5) {
                     Button { Task { await onLike() } } label: {
                         Image(systemName: isLiked ? "heart.fill" : "heart")
-                            .font(.system(size: 19, weight: .medium))
+                            .font(.jakarta(19, weight: .medium))
                             .foregroundStyle(isLiked ? .red : Color.sjInk)
                     }
                     .buttonStyle(.plain)
@@ -2374,7 +2374,7 @@ struct ProfileSongPostCard: View {
                     if likesCount > 0 {
                         Button { showLikers = true } label: {
                             Text("\(likesCount)")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(.jakarta(14, weight: .medium))
                                 .foregroundStyle(isLiked ? .red : Color.sjMuted)
                                 .contentShape(Rectangle())
                         }
@@ -2384,20 +2384,20 @@ struct ProfileSongPostCard: View {
                 HStack(spacing: 5) {
                     Button { showComments = true } label: {
                         Image(systemName: "bubble.left")
-                            .font(.system(size: 19, weight: .medium)).foregroundStyle(Color.sjInk)
+                            .font(.jakarta(19, weight: .medium)).foregroundStyle(Color.sjInk)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(String(localized: "View comments"))
 
                     if commentsCount > 0 {
                         Text("\(commentsCount)")
-                            .font(.system(size: 14, weight: .medium)).foregroundStyle(Color.sjMuted)
+                            .font(.jakarta(14, weight: .medium)).foregroundStyle(Color.sjMuted)
                     }
                 }
                 Spacer()
                 if headerHandle == nil {
                     Text(song.createdAt.relativeTimeString)
-                        .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                        .font(.jakarta(12)).foregroundStyle(Color.sjMuted)
                 }
             }
             .padding(.horizontal, 14)
@@ -2435,7 +2435,7 @@ struct ProfileSongPostCard: View {
             Button(role: .destructive) { own.onDelete() } label: { Label("Delete", systemImage: "trash") }
         } label: {
             Image(systemName: "ellipsis")
-                .font(.system(size: 14, weight: .medium))
+                .font(.jakarta(14, weight: .medium))
                 .foregroundStyle(Color.sjMuted)
                 .frame(width: 34, height: 34)
                 .contentShape(Rectangle())

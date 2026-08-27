@@ -11,14 +11,14 @@ struct StepName: View {
             Spacer().frame(height: 110)
 
             Text("What's your name?")
-                .font(.system(size: 28, weight: .bold))
+                .font(.jakarta(28, weight: .bold))
                 .foregroundStyle(Color.sjInk)
                 .padding(.horizontal, 24)
                 .padding(.bottom, 32)
 
             TextField("Your name", text: $data.displayName)
                 .textFieldStyle(.plain)
-                .font(.system(size: 16))
+                .font(.jakarta(16))
                 .foregroundStyle(Color.sjInk)
                 .textInputAutocapitalization(.words)
                 .focused($isFocused)
@@ -42,7 +42,7 @@ struct StepName: View {
             // back to the username if it's left empty.
             Button(action: onNext) {
                 Text("Continue")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.jakarta(16, weight: .semibold))
                     .foregroundStyle(Color.sjCream)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)

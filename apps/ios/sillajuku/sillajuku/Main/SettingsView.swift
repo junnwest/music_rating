@@ -125,7 +125,7 @@ struct SettingsView: View {
                             Label("Help & Feedback", systemImage: "questionmark.circle")
                             Spacer()
                             Image(systemName: "arrow.up.forward")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.jakarta(12, weight: .semibold))
                                 .foregroundStyle(Color.sjMuted)
                         }
                     }
@@ -139,7 +139,7 @@ struct SettingsView: View {
                             Label("Terms of Service", systemImage: "doc.text")
                             Spacer()
                             Image(systemName: "arrow.up.forward")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.jakarta(12, weight: .semibold))
                                 .foregroundStyle(Color.sjMuted)
                         }
                     }
@@ -150,7 +150,7 @@ struct SettingsView: View {
                             Label("Privacy Policy", systemImage: "hand.raised")
                             Spacer()
                             Image(systemName: "arrow.up.forward")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.jakarta(12, weight: .semibold))
                                 .foregroundStyle(Color.sjMuted)
                         }
                     }
@@ -202,7 +202,7 @@ struct SettingsView: View {
     private var appearancePicker: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Appearance")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.jakarta(13, weight: .semibold))
                 .foregroundStyle(Color.sjInk)
 
             HStack(spacing: 8) {
@@ -222,7 +222,7 @@ struct SettingsView: View {
     private var ratingPrecisionPicker: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Rating Precision")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.jakarta(13, weight: .semibold))
                 .foregroundStyle(Color.sjInk)
 
             HStack(spacing: 8) {
@@ -232,7 +232,7 @@ struct SettingsView: View {
                         saveRatingStep(step)
                     } label: {
                         Text(label)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.jakarta(12, weight: .semibold))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 8)
                             .background(ratingStep == step ? Color.sjInk : Color.clear)
@@ -290,12 +290,12 @@ struct SettingsView: View {
                                 .overlay {
                                     if currentIconName == option.name {
                                         Image(systemName: "checkmark")
-                                            .font(.system(size: 14, weight: .bold))
+                                            .font(.jakarta(14, weight: .bold))
                                             .foregroundStyle(option.name == "Black" ? .white : Color.sjInk)
                                     }
                                 }
                             Text(option.label)
-                                .font(.system(size: 10, weight: .medium))
+                                .font(.jakarta(10, weight: .medium))
                                 .foregroundStyle(Color.sjMuted)
                         }
                     }
@@ -341,8 +341,8 @@ struct SettingsView: View {
     private func segmentButton(icon: String, label: LocalizedStringKey, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 5) {
-                Image(systemName: icon).font(.system(size: 12))
-                Text(label).font(.system(size: 12, weight: .semibold))
+                Image(systemName: icon).font(.jakarta(12))
+                Text(label).font(.jakarta(12, weight: .semibold))
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
@@ -363,12 +363,12 @@ struct SettingsView: View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 16) {
                 Text("This will permanently delete your account and all your data — ratings, reviews, mixes, and followers. This cannot be undone.")
-                    .font(.system(size: 14))
+                    .font(.jakarta(14))
                     .foregroundStyle(Color.sjMuted)
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Type your username to confirm:")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.jakarta(13, weight: .semibold))
                         .foregroundStyle(Color.sjInk)
 
                     HStack(spacing: 2) {
@@ -388,7 +388,7 @@ struct SettingsView: View {
 
                 if let deleteError {
                     Text(deleteError)
-                        .font(.system(size: 13))
+                        .font(.jakarta(13))
                         .foregroundStyle(.red)
                 }
 
@@ -400,7 +400,7 @@ struct SettingsView: View {
                             ProgressView().tint(Color.sjCream)
                         } else {
                             Text("Delete My Account")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.jakarta(16, weight: .semibold))
                         }
                     }
                     .frame(maxWidth: .infinity)

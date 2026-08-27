@@ -875,7 +875,7 @@ struct HomeView: View {
         VStack(spacing: 12) {
             Divider()
             Text("Follow more people to keep your feed fresh.")
-                .font(.system(size: 13))
+                .font(.jakarta(13))
                 .foregroundStyle(Color.sjMuted)
                 .multilineTextAlignment(.center)
             FindPeopleLinkButton()
@@ -887,7 +887,7 @@ struct HomeView: View {
     private var bellButton: some View {
         NavigationLink(value: NotificationsDestination()) {
             Image(systemName: "bell")
-                .font(.system(size: 19, weight: .medium))
+                .font(.jakarta(19, weight: .medium))
                 .foregroundStyle(Color.sjInk)
                 .frame(width: 36, height: 36)
                 .background {
@@ -919,7 +919,7 @@ struct HomeView: View {
             }
         } label: {
             Text(label)
-                .font(.system(size: 17, weight: activeTab == tab ? .bold : .regular))
+                .font(.jakarta(17, weight: activeTab == tab ? .bold : .regular))
                 .foregroundStyle(activeTab == tab ? Color.sjInk : Color.sjMuted)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 6)
@@ -983,9 +983,9 @@ struct HomeView: View {
         } else if posts.isEmpty {
             VStack(spacing: 14) {
                 Image(systemName: "music.note.list")
-                    .font(.system(size: 44)).foregroundStyle(Color.sjBorder)
+                    .font(.jakarta(44)).foregroundStyle(Color.sjBorder)
                 Text(emptyMessage)
-                    .font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                    .font(.jakarta(15)).foregroundStyle(Color.sjMuted)
                     .multilineTextAlignment(.center).padding(.horizontal, 40)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1095,9 +1095,9 @@ struct FindPeopleView: View {
             } else if suggestions.isEmpty {
                 VStack(spacing: 14) {
                     Image(systemName: "person.2")
-                        .font(.system(size: 44)).foregroundStyle(Color.sjBorder)
+                        .font(.jakarta(44)).foregroundStyle(Color.sjBorder)
                     Text("No suggestions right now.")
-                        .font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                        .font(.jakarta(15)).foregroundStyle(Color.sjMuted)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -1208,17 +1208,17 @@ private struct SuggestedUserRow: View {
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(user.displayName ?? user.username ?? String(localized: "User"))
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.jakarta(14, weight: .semibold))
                             .foregroundStyle(Color.sjInk)
                             .lineLimit(1)
                         if let u = user.username {
                             Text("@" + u)
-                                .font(.system(size: 12))
+                                .font(.jakarta(12))
                                 .foregroundStyle(Color.sjMuted)
                                 .lineLimit(1)
                         }
                         Text(String(format: String(localized: "%d ratings"), user.ratingCount))
-                            .font(.system(size: 11))
+                            .font(.jakarta(11))
                             .foregroundStyle(Color.sjMuted)
                     }
                 }
@@ -1233,7 +1233,7 @@ private struct SuggestedUserRow: View {
                 Task { await onToggle() }
             } label: {
                 Text(isFollowed ? "Following" : "Follow")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.jakarta(12, weight: .semibold))
                     .foregroundStyle(isFollowed ? Color.sjMuted : Color.sjCream)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 6)
@@ -1313,7 +1313,7 @@ struct FeedCard: View {
             albumSection
             if let text = item.reviewText, !text.isEmpty {
                 Text(text)
-                    .font(.system(size: 14))
+                    .font(.jakarta(14))
                     .foregroundStyle(Color.sjInk)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 14)
@@ -1402,10 +1402,10 @@ struct FeedCard: View {
             // Username — same navigation as avatar
             usernameLink
 
-            Text("·").font(.system(size: 13)).foregroundStyle(Color.sjBorder)
+            Text("·").font(.jakarta(13)).foregroundStyle(Color.sjBorder)
 
             Text(item.createdAt.relativeTimeString)
-                .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                .font(.jakarta(12)).foregroundStyle(Color.sjMuted)
 
             Spacer(minLength: 0)
 
@@ -1452,7 +1452,7 @@ struct FeedCard: View {
                 }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.jakarta(14, weight: .medium))
                     .foregroundStyle(Color.sjMuted)
                     .frame(width: 34, height: 34)
                     .contentShape(Rectangle())
@@ -1466,7 +1466,7 @@ struct FeedCard: View {
     @ViewBuilder
     private var avatarLink: some View {
         let icon = Image(systemName: "person.circle.fill")
-            .font(.system(size: 30))
+            .font(.jakarta(30))
             .foregroundStyle(Color(uiColor: .systemGray3))
         let handle = item.profiles?.handle
         let label = handle.map { String(format: String(localized: "View @%@'s profile"), $0) }
@@ -1491,7 +1491,7 @@ struct FeedCard: View {
     private var usernameLink: some View {
         let label = HStack(spacing: 4) {
             Text("@" + (item.profiles?.handle ?? String(localized: "someone")))
-                .font(.system(size: 13.5, weight: .semibold))
+                .font(.jakarta(13.5, weight: .semibold))
                 .foregroundStyle(Color.sjInk)
             if item.profiles?.isVerified == true {
                 VerifiedBadgeView()
@@ -1536,11 +1536,11 @@ struct FeedCard: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.releases.displayTitle)
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.jakarta(14, weight: .bold))
                         .foregroundStyle(Color.sjInk).lineLimit(2)
 
                     Text(item.releases.typeLabel + " · " + item.releases.displayArtist)
-                        .font(.system(size: 11.5)).foregroundStyle(Color.sjMuted).lineLimit(1)
+                        .font(.jakarta(11.5)).foregroundStyle(Color.sjMuted).lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -1574,7 +1574,7 @@ struct FeedCard: View {
             HStack(spacing: 5) {
                 Button { Task { await onLike() } } label: {
                     Image(systemName: isLiked ? "heart.fill" : "heart")
-                        .font(.system(size: 19, weight: .medium))
+                        .font(.jakarta(19, weight: .medium))
                         .foregroundStyle(isLiked ? .red : Color.sjInk)
                 }
                 .buttonStyle(.plain)
@@ -1585,7 +1585,7 @@ struct FeedCard: View {
                 if likesCount > 0 {
                     Button { activeSheet = .likers } label: {
                         Text("\(likesCount)")
-                            .font(.system(size: 14, weight: .medium))
+                            .font(.jakarta(14, weight: .medium))
                             .foregroundStyle(isLiked ? .red : Color.sjMuted)
                             .contentShape(Rectangle())
                     }
@@ -1597,7 +1597,7 @@ struct FeedCard: View {
             HStack(spacing: 5) {
                 Button { activeSheet = .comments } label: {
                     Image(systemName: "bubble.left")
-                        .font(.system(size: 19, weight: .medium))
+                        .font(.jakarta(19, weight: .medium))
                         .foregroundStyle(Color.sjInk)
                 }
                 .buttonStyle(.plain)
@@ -1605,7 +1605,7 @@ struct FeedCard: View {
 
                 if commentsCount > 0 {
                     Text("\(commentsCount)")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.jakarta(14, weight: .medium))
                         .foregroundStyle(Color.sjMuted)
                 }
             }
@@ -1650,8 +1650,8 @@ struct LikersSheetView: View {
                     ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if likers.isEmpty {
                     VStack(spacing: 12) {
-                        Image(systemName: "heart").font(.system(size: 36)).foregroundStyle(Color.sjBorder)
-                        Text("No likes yet").font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                        Image(systemName: "heart").font(.jakarta(36)).foregroundStyle(Color.sjBorder)
+                        Text("No likes yet").font(.jakarta(15)).foregroundStyle(Color.sjMuted)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.sjCream.ignoresSafeArea())
@@ -1663,10 +1663,10 @@ struct LikersSheetView: View {
                         )) {
                             HStack(spacing: 11) {
                                 Image(systemName: "person.circle.fill")
-                                    .font(.system(size: 32))
+                                    .font(.jakarta(32))
                                     .foregroundStyle(Color(uiColor: .systemGray3))
                                 Text("@" + (liker.profiles?.handle ?? String(localized: "someone")))
-                                    .font(.system(size: 14, weight: .semibold))
+                                    .font(.jakarta(14, weight: .semibold))
                                     .foregroundStyle(Color.sjInk)
                             }
                             .padding(.vertical, 4)
@@ -1729,8 +1729,8 @@ struct SongLikersSheetView: View {
                     ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if likers.isEmpty {
                     VStack(spacing: 12) {
-                        Image(systemName: "heart").font(.system(size: 36)).foregroundStyle(Color.sjBorder)
-                        Text("No likes yet").font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                        Image(systemName: "heart").font(.jakarta(36)).foregroundStyle(Color.sjBorder)
+                        Text("No likes yet").font(.jakarta(15)).foregroundStyle(Color.sjMuted)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.sjCream.ignoresSafeArea())
@@ -1742,10 +1742,10 @@ struct SongLikersSheetView: View {
                         )) {
                             HStack(spacing: 11) {
                                 Image(systemName: "person.circle.fill")
-                                    .font(.system(size: 32))
+                                    .font(.jakarta(32))
                                     .foregroundStyle(Color(uiColor: .systemGray3))
                                 Text("@" + (liker.profiles?.handle ?? String(localized: "someone")))
-                                    .font(.system(size: 14, weight: .semibold))
+                                    .font(.jakarta(14, weight: .semibold))
                                     .foregroundStyle(Color.sjInk)
                             }
                             .padding(.vertical, 4)
@@ -1782,9 +1782,9 @@ struct FindPeopleLinkButton: View {
         NavigationLink(value: FindPeopleDestination()) {
             HStack(spacing: 8) {
                 Image(systemName: "person.badge.plus")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.jakarta(14, weight: .semibold))
                 Text("Find people to follow")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.jakarta(14, weight: .semibold))
             }
             .foregroundStyle(Color.sjBlue)
             .frame(maxWidth: .infinity)
@@ -1817,17 +1817,17 @@ private struct ReportSheet: View {
                 if submitted {
                     VStack(spacing: 14) {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 44))
+                            .font(.jakarta(44))
                             .foregroundStyle(Color.sjBlue)
                         Text("Report submitted")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.jakarta(16, weight: .semibold))
                             .foregroundStyle(Color.sjInk)
                         Text("Thanks for helping keep sillajuku safe.")
-                            .font(.system(size: 14))
+                            .font(.jakarta(14))
                             .foregroundStyle(Color.sjMuted)
                             .multilineTextAlignment(.center)
                         Button("Done") { dismiss() }
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.jakarta(15, weight: .semibold))
                             .foregroundStyle(Color.sjBlue)
                             .padding(.top, 4)
                     }
@@ -1836,13 +1836,13 @@ private struct ReportSheet: View {
                 } else {
                     if let error = errorMessage {
                         Text(error)
-                            .font(.system(size: 13))
+                            .font(.jakarta(13))
                             .foregroundStyle(.red)
                             .padding(.horizontal, 20)
                             .padding(.bottom, 8)
                     }
                     Text("Why are you reporting this post?")
-                        .font(.system(size: 13))
+                        .font(.jakarta(13))
                         .foregroundStyle(Color.sjMuted)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 12)
@@ -1856,14 +1856,14 @@ private struct ReportSheet: View {
                         } label: {
                             HStack {
                                 Text(label)
-                                    .font(.system(size: 15))
+                                    .font(.jakarta(15))
                                     .foregroundStyle(Color.sjInk)
                                 Spacer()
                                 if isSubmitting {
                                     ProgressView().scaleEffect(0.8)
                                 } else {
                                     Image(systemName: "chevron.right")
-                                        .font(.system(size: 12, weight: .medium))
+                                        .font(.jakarta(12, weight: .medium))
                                         .foregroundStyle(Color.sjMuted)
                                 }
                             }

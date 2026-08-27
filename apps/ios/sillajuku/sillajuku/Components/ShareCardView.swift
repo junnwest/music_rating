@@ -69,16 +69,16 @@ struct ShareCardView: View {
             // Header — avatar + username + "now", no ⋯ menu
             HStack(spacing: 9) {
                 Image(systemName: "person.circle.fill")
-                    .font(.system(size: 26))
+                    .font(.jakarta(26))
                     .foregroundStyle(Color(uiColor: .systemGray3))
                 Text("@\(username)")
-                    .font(.system(size: 13.5, weight: .semibold))
+                    .font(.jakarta(13.5, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
                 Text("·")
-                    .font(.system(size: 13))
+                    .font(.jakarta(13))
                     .foregroundStyle(Color.sjBorder)
                 Text("now")
-                    .font(.system(size: 12))
+                    .font(.jakarta(12))
                     .foregroundStyle(Color.sjMuted)
                 Spacer(minLength: 0)
             }
@@ -93,11 +93,11 @@ struct ShareCardView: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
-                        .font(.system(size: 17, weight: .bold))
+                        .font(.jakarta(17, weight: .bold))
                         .foregroundStyle(Color.sjInk)
                         .lineLimit(2)
                     Text(subtitle)
-                        .font(.system(size: 14))
+                        .font(.jakarta(14))
                         .foregroundStyle(Color.sjMuted)
                         .lineLimit(1)
                 }
@@ -112,7 +112,7 @@ struct ShareCardView: View {
 
             if let text = reviewText, !text.isEmpty {
                 Text(text)
-                    .font(.system(size: 14))
+                    .font(.jakarta(14))
                     .foregroundStyle(Color.sjInk)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 14)

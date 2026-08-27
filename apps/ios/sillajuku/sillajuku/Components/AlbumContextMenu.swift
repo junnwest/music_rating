@@ -74,11 +74,11 @@ private struct AlbumMenuPreview: View {
             CoverImage(url: release.coverUrl, cornerRadius: 12)
                 .frame(width: 220, height: 220)
             Text(release.displayTitle)
-                .font(.system(size: 15, weight: .bold))
+                .font(.jakarta(15, weight: .bold))
                 .foregroundStyle(Color.sjInk)
                 .lineLimit(2)
             Text(release.displayArtist)
-                .font(.system(size: 13))
+                .font(.jakarta(13))
                 .foregroundStyle(Color.sjMuted)
                 .lineLimit(1)
         }
