@@ -1122,13 +1122,13 @@ struct SearchView: View {
             Button { quickAddTapped() } label: {
                 Text("Quick Add")
                     .font(.system(size: 14, weight: .semibold))
-                    // sjCream, not .white -- sjInk flips light in dark mode, so a hardcoded
-                    // white label disappears there (cream flips dark in step, like the
-                    // other sjInk-background buttons: InviteView, onboarding steps).
-                    .foregroundStyle(Color.sjCream)
+                    // Plain .white, not sjCream -- sjBlue is a fixed brand
+                    // color that doesn't flip in dark mode (unlike sjInk),
+                    // so the label doesn't need to flip either.
+                    .foregroundStyle(.white)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
-                    .background(Color.sjInk)
+                    .background(Color.sjBlue)
                     .clipShape(Capsule())
             }
             .buttonStyle(.plain)
