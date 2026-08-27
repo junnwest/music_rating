@@ -65,17 +65,26 @@ interface TasteReport {
     avgScore: number | null;
     sdScore: number | null;
     fiveStars: number;
+    perfectRate: number | null;
+    median: number | null;
+    skew: number | null;
+    effectiveGenres: number | null;
+    communityDelta: number | null;
     meanYear: number | null;
     sdYears: number | null;
     prestigeShare: number | null;
   };
-  topAlbum: {
-    id: string;
-    title: string;
-    artist: string;
-    coverUrl: string | null;
-    score: number;
-  } | null;
+  topScore: number | null;
+  topAlbums: TopAlbum[];
+  topAlbum: TopAlbum | null;
+}
+
+interface TopAlbum {
+  id: string;
+  title: string;
+  artist: string;
+  coverUrl: string | null;
+  score: number;
 }
 
 // Categorical series slots for scenes — a fixed-order palette validated (CVD
@@ -275,9 +284,6 @@ function ReportView({
     String(Math.round((stats.prestigeShare ?? 0) * 100)),
   );
 
-  const peakMonth =
-    charts.peakMonthIndex != null ? charts.timeline[charts.peakMonthIndex] : null;
-
   // Sorted by how far the user diverges above the community — the story the
   // section is telling — not by the RPC's row order.
   const standings = useMemo(
@@ -356,57 +362,46 @@ function ReportView({
         </Section>
       )}
 
-      {/* ── Numbers: #1 album + stat tiles + 12-month activity ── */}
+      {/* ── Numbers: rotating #1 hall of fame + meaningful stat tiles + activity ── */}
       <Section no={nextNo()} title={t('sj.taste.statsHeader')}>
-        <div className="mt-5 flex flex-col sm:flex-row gap-6">
-          {report.topAlbum && (
-            <Link
-              href={`/album/${report.topAlbum.id}`}
-              className="flex sm:flex-col items-center sm:items-start gap-4 sm:gap-2.5 sm:w-44 shrink-0 group"
-            >
-              <Cover
-                url={report.topAlbum.coverUrl}
-                thumb={false}
-                className="w-24 h-24 sm:w-44 sm:h-44"
-                rounded="rounded-xl"
-              />
-              <span className="min-w-0">
-                <span className="block text-[10px] font-black tracking-[0.1em] uppercase text-accent-deep/70">
-                  {t('sj.taste.topAlbum')}
-                </span>
-                <span className="block mt-0.5 text-[14px] font-bold text-ink line-clamp-2 group-hover:underline">
-                  {report.topAlbum.title}
-                </span>
-                <span className="block text-[12px] text-muted truncate">
-                  {report.topAlbum.artist}
-                </span>
-                <span
-                  className="inline-block mt-1.5 rounded-md px-2 py-0.5 text-[14px] font-black tabular-nums"
-                  style={{
-                    background: spectrumFill(report.topAlbum.score),
-                    color: spectrumNumber(report.topAlbum.score),
-                  }}
-                >
-                  {report.topAlbum.score.toFixed(1)}
-                </span>
-              </span>
-            </Link>
+        <div className="mt-5 flex flex-col lg:flex-row gap-7 lg:gap-9">
+          {report.topAlbums.length > 0 && (
+            <HallOfFame albums={report.topAlbums} score={report.topScore ?? report.topAlbums[0].score} t={t} />
           )}
-          <div className="flex-1 flex flex-col gap-4">
+          <div className="flex-1 min-w-0 flex flex-col gap-4">
             <div className="grid grid-cols-2 gap-3">
-              <StatTile value={String(report.ratingCount)} label={t('sj.taste.statRated')} />
               <StatTile
                 value={stats.avgScore != null ? stats.avgScore.toFixed(2) : '—'}
-                label={
-                  stats.sdScore != null
-                    ? `${t('sj.taste.statAvg')} (±${stats.sdScore.toFixed(2)})`
-                    : t('sj.taste.statAvg')
-                }
+                label={t('sj.taste.statAvg')}
+                hint={stats.sdScore != null ? `±${stats.sdScore.toFixed(2)} ${t('sj.taste.statSpread')}` : undefined}
               />
-              <StatTile value={String(stats.fiveStars)} label={t('sj.taste.perfectScores')} />
               <StatTile
-                value={peakMonth ? monthName(parseInt(peakMonth.month.slice(5), 10) - 1, lang) : '—'}
-                label={t('sj.taste.statPeak')}
+                value={stats.median != null ? stats.median.toFixed(1) : '—'}
+                label={t('sj.taste.statMedian')}
+                hint={skewHint(stats.skew, stats.median, stats.avgScore, t)}
+                hintTone="neutral"
+              />
+              <StatTile
+                value={stats.effectiveGenres != null ? stats.effectiveGenres.toFixed(1) : '—'}
+                label={t('sj.taste.statDiversity')}
+                hint={t('sj.taste.statDiversityHint').replace('{n}', String(report.totalTags))}
+                hintTone="neutral"
+              />
+              <StatTile
+                value={
+                  stats.communityDelta != null
+                    ? `${stats.communityDelta >= 0 ? '+' : '−'}${Math.abs(stats.communityDelta).toFixed(2)}`
+                    : '—'
+                }
+                label={t('sj.taste.statVsCrowd')}
+                hint={crowdHint(stats.communityDelta, t)}
+                hintTone={
+                  stats.communityDelta == null || Math.abs(stats.communityDelta) < 0.05
+                    ? 'neutral'
+                    : stats.communityDelta > 0
+                      ? 'up'
+                      : 'down'
+                }
               />
             </div>
             <div className="rounded-xl bg-page border border-divider/60 px-4 py-3">
@@ -610,13 +605,218 @@ function worldNote(world: TasteWorld, t: (k: string) => string): string {
   return parts.join(' · ');
 }
 
-function StatTile({ value, label }: { value: string; label: string }) {
+function StatTile({
+  value,
+  label,
+  hint,
+  hintTone = 'neutral',
+}: {
+  value: string;
+  label: string;
+  hint?: string;
+  hintTone?: 'neutral' | 'up' | 'down';
+}) {
+  const tone =
+    hintTone === 'up'
+      ? 'text-accent-deep'
+      : hintTone === 'down'
+        ? 'text-[color:var(--tr-dn)]'
+        : 'text-muted/80';
   return (
     <div className="rounded-xl bg-page border border-divider/60 px-4 py-3.5">
       <p className="text-[22px] font-black text-ink leading-tight tabular-nums">{value}</p>
       <p className="text-[11px] text-muted mt-0.5">{label}</p>
+      {hint && <p className={`text-[10.5px] font-semibold mt-1 tabular-nums ${tone}`}>{hint}</p>}
     </div>
   );
+}
+
+/** Median-vs-mean skew read: which way your scale leans. */
+function skewHint(
+  skew: number | null,
+  median: number | null,
+  mean: number | null,
+  t: (k: string) => string,
+): string | undefined {
+  if (skew == null || median == null || mean == null) return undefined;
+  if (Math.abs(skew) < 0.25) return t('sj.taste.statSkewEven');
+  // Negative moment-skew = a long tail of harsh scores below a generous hump.
+  return t(skew < 0 ? 'sj.taste.statSkewHigh' : 'sj.taste.statSkewLow');
+}
+
+/** Turn the signed community gap into a plain-language grader read. */
+function crowdHint(delta: number | null, t: (k: string) => string): string | undefined {
+  if (delta == null) return undefined;
+  if (Math.abs(delta) < 0.05) return t('sj.taste.statAligned');
+  return t(delta > 0 ? 'sj.taste.statGenerous' : 'sj.taste.statCritical');
+}
+
+/**
+ * Rotating 3D "hall of fame" for the albums tied at the user's top score. The
+ * covers sit on a ring in 3D space; the ring auto-advances so each tied album
+ * takes the front in turn, with its title/artist crossfading below. A single
+ * top album just floats (no ring); clicking any cover brings it to the front,
+ * and the front cover links to the album. All motion collapses under
+ * prefers-reduced-motion — the ring snaps instead of sweeping and the front
+ * album is navigable via the dots.
+ */
+function HallOfFame({
+  albums,
+  score,
+  t,
+}: {
+  albums: TopAlbum[];
+  score: number;
+  t: (k: string) => string;
+}) {
+  const n = albums.length;
+  const [active, setActive] = useState(0);
+  const reduced = usePrefersReducedMotion();
+
+  useEffect(() => {
+    if (reduced || n <= 1) return;
+    const id = setInterval(() => setActive((a) => (a + 1) % n), 3400);
+    return () => clearInterval(id);
+  }, [reduced, n]);
+
+  const front = albums[Math.min(active, n - 1)];
+  const COVER = 168; // px — fixed so the 3D ring geometry is stable
+  const step = n > 0 ? 360 / n : 0;
+  // Radius so neighbouring covers don't collide; ample gap for a coverflow feel.
+  const radius = n <= 1 ? 0 : Math.max(150, COVER / 2 / Math.tan(Math.PI / n) + 26);
+
+  return (
+    <div className="shrink-0 w-full lg:w-[300px] flex flex-col items-center">
+      <span className="self-start text-[10px] font-black tracking-[0.1em] uppercase text-accent-deep/70">
+        {t('sj.taste.topAlbum')}
+      </span>
+
+      {n === 1 ? (
+        <Link href={`/album/${front.id}`} className="group mt-3">
+          <div className="hof-float">
+            <Cover
+              url={front.coverUrl}
+              thumb={false}
+              className="w-44 h-44 shadow-xl"
+              rounded="rounded-xl"
+            />
+          </div>
+        </Link>
+      ) : (
+        <div
+          className="hof-stage mt-3 w-full"
+          style={{ height: COVER + 24 }}
+          role="group"
+          aria-roledescription="carousel"
+        >
+          <div
+            className="hof-ring"
+            style={{ transform: `translateZ(-${radius}px) rotateY(${-active * step}deg)` }}
+          >
+            {albums.map((al, i) => {
+              const dist = Math.min((i - active + n) % n, (active - i + n) % n);
+              const isFront = i === active;
+              const card = (
+                <Cover
+                  url={al.coverUrl}
+                  thumb={false}
+                  className={`w-full h-full ${isFront ? 'shadow-xl ring-2 ring-accent/40' : 'shadow-md'}`}
+                  rounded="rounded-xl"
+                />
+              );
+              return (
+                <div
+                  key={al.id}
+                  className="hof-card"
+                  style={{
+                    width: COVER,
+                    height: COVER,
+                    marginLeft: -COVER / 2,
+                    transform: `rotateY(${i * step}deg) translateZ(${radius}px)`,
+                    opacity: isFront ? 1 : Math.max(0.22, 1 - dist * 0.32),
+                    filter: isFront ? 'none' : `brightness(${Math.max(0.55, 1 - dist * 0.16)})`,
+                    zIndex: n - dist,
+                  }}
+                  aria-hidden={!isFront}
+                >
+                  {isFront ? (
+                    <Link href={`/album/${al.id}`} className="block w-full h-full">
+                      {card}
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setActive(i)}
+                      className="block w-full h-full"
+                      tabIndex={-1}
+                    >
+                      {card}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* front album meta — crossfades as the ring turns */}
+      <Link href={`/album/${front.id}`} className="group mt-4 text-center max-w-[240px]">
+        <span key={front.id} className="hof-meta block">
+          <span className="block text-[14px] font-bold text-ink line-clamp-2 group-hover:underline">
+            {front.title}
+          </span>
+          <span className="block text-[12px] text-muted truncate">{front.artist}</span>
+        </span>
+      </Link>
+
+      <span
+        className="inline-block mt-2 rounded-md px-2 py-0.5 text-[14px] font-black tabular-nums"
+        style={{ background: spectrumFill(score), color: spectrumNumber(score) }}
+      >
+        {score.toFixed(1)}
+      </span>
+
+      {n > 1 && (
+        <>
+          <p className="mt-2 text-[11px] text-muted">
+            {t('sj.taste.hofTied')
+              .replace('{n}', String(n))
+              .replace('{score}', score.toFixed(1))}
+          </p>
+          <div className="mt-2 flex flex-wrap justify-center gap-1.5" role="tablist">
+            {albums.map((al, i) => (
+              <button
+                key={al.id}
+                type="button"
+                role="tab"
+                aria-selected={i === active}
+                aria-label={al.title}
+                onClick={() => setActive(i)}
+                className={`h-1.5 rounded-full transition-all ${
+                  i === active ? 'w-4 bg-accent' : 'w-1.5 bg-muted/40 hover:bg-muted/70'
+                }`}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** True when the user has asked the OS to reduce motion (live, not one-shot). */
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setReduced(mq.matches);
+    const on = () => setReduced(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return reduced;
 }
 
 function monthName(index: number, lang: string): string {

@@ -70,7 +70,10 @@ export async function GET(req: NextRequest) {
   // its recs are scene-filtered — so a J-pop world stops labelling itself "Korean
   // scene" and stops recommending K-pop. v9 added synonym-merge + affinity recs;
   // v8 gave J-pop its own world; v7 the clustering scene-lock.
-  const cacheKey = `taste:profile:v10:${userId}`;
+  // v11: 2026-08-27 — "By the numbers" rebuild adds the tied-#1 hall-of-fame list
+  // (topAlbums/topScore) and richer stats (median, skew, effectiveGenres,
+  // communityDelta, perfectRate). v10 scene-pinned worlds; v9 synonym-merge recs.
+  const cacheKey = `taste:profile:v11:${userId}`;
   if (!refresh) {
     const cached = await cacheGet<object>(cacheKey);
     if (cached) return NextResponse.json(cached);
@@ -166,6 +169,49 @@ export async function GET(req: NextRequest) {
       ? Math.sqrt(scores.reduce((s, x) => s + (x - avgScore) ** 2, 0) / scores.length)
       : null;
   const fiveStars = scores.filter((x) => x >= 5).length;
+  const perfectRate = scores.length > 0 ? fiveStars / scores.length : null;
+
+  // Median + distribution shape — what the mean alone can't tell you. The median
+  // is the score you're as likely to sit above as below; comparing it to the mean
+  // (and the sign of the Fisher–Pearson moment skewness) says which way your
+  // scale leans: skew < 0 means a long tail of harsh ratings under a generous
+  // hump, skew > 0 the reverse.
+  const sortedScores = [...scores].sort((a, b) => a - b);
+  const median =
+    sortedScores.length === 0
+      ? null
+      : sortedScores.length % 2 === 1
+        ? sortedScores[(sortedScores.length - 1) / 2]
+        : (sortedScores[sortedScores.length / 2 - 1] + sortedScores[sortedScores.length / 2]) / 2;
+  const skew =
+    avgScore != null && sdScore != null && sdScore > 0 && scores.length > 2
+      ? scores.reduce((s, x) => s + ((x - avgScore) / sdScore) ** 3, 0) / scores.length
+      : null;
+
+  // Effective genre count — the Hill number of order 1 (exp of the Shannon
+  // entropy over how many of your ratings fall in each merged genre). A genuine
+  // diversity measure, not a raw tally: 1.0 means everything sits in one genre;
+  // a value near your genre total means your listening spreads evenly across all
+  // of them. Uses the merged tile tags so spelling variants don't inflate it.
+  const genreCounts = new Map<string, number>();
+  for (const r of rows) {
+    const seen = new Set<string>();
+    for (const g of r.release_groups!.genres ?? []) {
+      const tag = toTile(g);
+      if (seen.has(tag)) continue;
+      seen.add(tag);
+      genreCounts.set(tag, (genreCounts.get(tag) ?? 0) + 1);
+    }
+  }
+  const genreMass = Array.from(genreCounts.values()).reduce((a, b) => a + b, 0);
+  let entropy = 0;
+  if (genreMass > 0) {
+    for (const c of genreCounts.values()) {
+      const p = c / genreMass;
+      if (p > 0) entropy -= p * Math.log(p);
+    }
+  }
+  const effectiveGenres = genreMass > 0 ? Math.exp(entropy) : null;
 
   const years = rows
     .map((r) => r.release_groups!.first_release_date)
@@ -182,6 +228,36 @@ export async function GET(req: NextRequest) {
     (best, r) => (best == null || (display(r) ?? 0) > (display(best) ?? 0) ? r : best),
     null,
   );
+
+  // Every album tied at your top score — the "hall of fame" the client rotates
+  // through. When a whole run of albums shares your ceiling (e.g. eleven 5.0s),
+  // singling one out is arbitrary, so ship them all (newest first, capped, one
+  // row per release group).
+  const topScore = top != null ? display(top) : null;
+  const seenTopIds = new Set<string>();
+  const topAlbums =
+    topScore == null
+      ? []
+      : scored
+          .filter((r) => display(r) === topScore)
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .filter((r) => {
+            const id = r.release_groups!.id;
+            if (seenTopIds.has(id)) return false;
+            seenTopIds.add(id);
+            return true;
+          })
+          .slice(0, 12)
+          .map((r) => {
+            const rg = r.release_groups!;
+            return {
+              id: rg.id,
+              title: preferHangulName(rg.title, rg.native_title),
+              artist: preferHangulName(rg.artist_display, rg.artists?.name_native ?? null),
+              coverUrl: rg.cover_url,
+              score: display(r)!,
+            };
+          });
 
   // ── chart data ──
   // Release decades (contiguous, zero-filled between first and last).
@@ -450,6 +526,14 @@ export async function GET(req: NextRequest) {
     userCount: Number(s.user_count),
   }));
 
+  // Mean signed gap between your average and the community's, over the genres you
+  // share with everyone else — a single "are you a soft or a tough grader vs the
+  // crowd" number, and how far.
+  const communityDelta =
+    standings.length > 0
+      ? standings.reduce((s, x) => s + (x.userAvg - x.communityAvg), 0) / standings.length
+      : null;
+
   const albumTotal = albumCountRes.count ?? rows.length;
   const payload = {
     ratingCount: albumTotal + (trackCountRes.count ?? 0),
@@ -490,10 +574,17 @@ export async function GET(req: NextRequest) {
       avgScore: r2(avgScore),
       sdScore: r2(sdScore),
       fiveStars,
+      perfectRate: r2(perfectRate),
+      median,
+      skew: r2(skew),
+      effectiveGenres: r2(effectiveGenres),
+      communityDelta: r2(communityDelta),
       meanYear: meanYear != null ? Math.round(meanYear) : null,
       sdYears: r2(sdYears),
       prestigeShare: r2(prestigeShare),
     },
+    topScore: topScore ?? null,
+    topAlbums,
     topAlbum: top?.release_groups
       ? {
           id: top.release_groups.id,

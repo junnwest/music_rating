@@ -35,6 +35,19 @@ export const TASTE_MOTION_CSS = `
   .tr-reveal .tr-bar,.tr-reveal .tr-grow{transform:none;transition:none}
   .tr-reveal .tr-gauge-arc{transition:none}
 }
+/* 3D hall-of-fame carousel for the tied #1 albums */
+.hof-stage{position:relative;perspective:1000px;perspective-origin:50% 44%}
+.hof-ring{position:absolute;inset:0;transform-style:preserve-3d;transition:transform .95s cubic-bezier(.22,.61,.36,1)}
+.hof-card{position:absolute;left:50%;top:0;transition:opacity .55s ease,filter .55s ease;backface-visibility:hidden}
+.hof-float{animation:hof-float 5.5s ease-in-out infinite}
+@keyframes hof-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+.hof-meta{animation:hof-meta-in .5s ease}
+@keyframes hof-meta-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){
+  .hof-ring{transition:none}
+  .hof-float{animation:none}
+  .hof-meta{animation:none}
+}
 `;
 
 /** Scroll-triggered fade-up wrapper. Fires once, ~15% visible. */
