@@ -36,6 +36,16 @@ const nextConfig = {
     config.cache = false;
     return config;
   },
+  experimental: {
+    // og-fonts.ts reads these via node:fs with a path built from a loop
+    // variable (not a string literal), which Vercel's build-time file
+    // tracer may not follow -- this guarantees the font files ship with
+    // the two OG-image routes that call loadJakartaFonts() regardless.
+    outputFileTracingIncludes: {
+      '/api/daily-question/card': ['./assets/fonts/**'],
+      '/profile/[username]': ['./assets/fonts/**'],
+    },
+  },
   async redirects() {
     return [
       { source: '/@:username', destination: '/profile/:username', permanent: true },

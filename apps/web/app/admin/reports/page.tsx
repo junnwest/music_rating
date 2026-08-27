@@ -80,7 +80,7 @@ export default function AdminReportsPage() {
 
   if (!authed) {
     return (
-      <div style={{ maxWidth: 360, margin: '96px auto', padding: '0 20px', fontFamily: 'system-ui' }}>
+      <div style={{ maxWidth: 360, margin: '96px auto', padding: '0 20px' }}>
         <h1 style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>Admin — Reports</h1>
         <input
           type="password"
@@ -102,7 +102,7 @@ export default function AdminReportsPage() {
   }
 
   return (
-    <div style={{ maxWidth: 860, margin: '48px auto', padding: '0 20px', fontFamily: 'system-ui' }}>
+    <div style={{ maxWidth: 860, margin: '48px auto', padding: '0 20px' }}>
       <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Moderation queue</h1>
       <p style={{ fontSize: 13, color: '#666', marginBottom: 20 }}>
         User reports and Help-page submissions. Not linked from anywhere in the app UI — bookmark this URL.
