@@ -68,9 +68,7 @@ struct ShareCardView: View {
         VStack(alignment: .leading, spacing: 0) {
             // Header — avatar + username + "now", no ⋯ menu
             HStack(spacing: 9) {
-                Image(systemName: "person.circle.fill")
-                    .font(.jakarta(26))
-                    .foregroundStyle(Color(uiColor: .systemGray3))
+                DefaultAvatarView(size: 26)
                 Text("@\(username)")
                     .font(.jakarta(13.5, weight: .semibold))
                     .foregroundStyle(Color.sjInk)

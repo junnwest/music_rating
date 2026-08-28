@@ -63,7 +63,7 @@ struct ChartGenre: Identifiable, Hashable {
     let id: String
     let name: LocalizedStringKey
     let slug: String      // used in ILIKE queries
-    let symbol: String    // SF Symbol name
+    let symbol: String    // icon asset name (Assets.xcassets/icon-*)
     let bgColor: Color
 
     static func == (lhs: ChartGenre, rhs: ChartGenre) -> Bool { lhs.id == rhs.id }
@@ -71,17 +71,17 @@ struct ChartGenre: Identifiable, Hashable {
 
     static let all: [ChartGenre] = [
         ChartGenre(id: "kpop",       name: "K-Pop",      slug: "k-pop",
-                   symbol: "music.note.list", bgColor: Color(red: 0.10, green: 0.10, blue: 0.22)),
+                   symbol: "icon-list-music", bgColor: Color(red: 0.10, green: 0.10, blue: 0.22)),
         ChartGenre(id: "hiphop",     name: "Hip-Hop",    slug: "hip-hop",
-                   symbol: "mic.fill",        bgColor: Color(red: 0.10, green: 0.10, blue: 0.10)),
+                   symbol: "icon-mic",        bgColor: Color(red: 0.10, green: 0.10, blue: 0.10)),
         ChartGenre(id: "rock",       name: "Rock",       slug: "rock",
-                   symbol: "guitars.fill",    bgColor: Color(red: 0.10, green: 0.14, blue: 0.28)),
+                   symbol: "icon-guitar",     bgColor: Color(red: 0.10, green: 0.14, blue: 0.28)),
         ChartGenre(id: "electronic", name: "Electronic", slug: "electronic",
-                   symbol: "waveform",        bgColor: Color(red: 0.14, green: 0.10, blue: 0.25)),
+                   symbol: "icon-waveform",   bgColor: Color(red: 0.14, green: 0.10, blue: 0.25)),
         ChartGenre(id: "indie",      name: "Indie",      slug: "indie",
-                   symbol: "leaf.fill",       bgColor: Color(red: 0.10, green: 0.18, blue: 0.10)),
+                   symbol: "icon-leaf",       bgColor: Color(red: 0.10, green: 0.18, blue: 0.10)),
         ChartGenre(id: "rnb",        name: "R&B",        slug: "r&b",
-                   symbol: "heart.fill",      bgColor: Color(red: 0.22, green: 0.10, blue: 0.14)),
+                   symbol: "icon-heart-filled", bgColor: Color(red: 0.22, green: 0.10, blue: 0.14)),
     ]
 }
 
@@ -754,8 +754,10 @@ private struct TrendingSongsSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Image(systemName: "flame.fill")
-                    .font(.jakarta(13, weight: .bold))
+                Image("icon-flame")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 13, height: 13)
                     .foregroundStyle(Color.sjAmber)
                 Text("Trending")
                     .font(.jakarta(16, weight: .bold))
@@ -853,16 +855,20 @@ private struct RankingBlock: View {
             } label: {
                 HStack {
                     HStack(spacing: 8) {
-                        Image(systemName: "trophy.fill")
-                            .font(.jakarta(13, weight: .bold))
+                        Image("icon-trophy")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 13, height: 13)
                             .foregroundStyle(Color.sjAmber)
                         Text("Ranking")
                             .font(.jakarta(16, weight: .bold))
                             .foregroundStyle(Color.sjInk)
                     }
                     Spacer()
-                    Image(systemName: "chevron.down")
-                        .font(.jakarta(13, weight: .semibold))
+                    Image("icon-chevron-down")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 13, height: 13)
                         .foregroundStyle(Color.sjMuted)
                         .rotationEffect(.degrees(isExpanded ? 180 : 0))
                         .animation(.easeInOut(duration: 0.22), value: isExpanded)
@@ -1028,8 +1034,10 @@ private struct RankingBlock: View {
             HStack(spacing: 4) {
                 Text("See full ranking")
                     .font(.jakarta(14, weight: .semibold))
-                Image(systemName: "chevron.right")
-                    .font(.jakarta(12, weight: .semibold))
+                Image("icon-chevron-right")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 12, height: 12)
             }
             .foregroundStyle(Color.sjAmber)
             .frame(maxWidth: .infinity)
@@ -1136,8 +1144,11 @@ struct RankingDetailView: View {
                     ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if entries.isEmpty {
                     VStack(spacing: 10) {
-                        Image(systemName: "trophy")
-                            .font(.jakarta(36)).foregroundStyle(Color.sjMuted)
+                        Image("icon-trophy")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 36, height: 36)
+                            .foregroundStyle(Color.sjMuted)
                         Text("No ranking data yet.")
                             .font(.jakarta(15)).foregroundStyle(Color.sjMuted)
                     }
@@ -1298,8 +1309,10 @@ private struct TrendingCard: View {
             // Header row
             HStack(alignment: .center) {
                 HStack(spacing: 6) {
-                    Image(systemName: "flame.fill")
-                        .font(.jakarta(13, weight: .bold))
+                    Image("icon-flame")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 13, height: 13)
                         .foregroundStyle(Color.sjAmber)
                     Text("Trending")
                         .font(.jakarta(16, weight: .bold))
@@ -1407,8 +1420,10 @@ private struct TrendingRow: View {
                 }
             }
             Spacer()
-            Image(systemName: "chevron.right")
-                .font(.jakarta(10, weight: .semibold))
+            Image("icon-chevron-right")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 10, height: 10)
                 .foregroundStyle(Color.sjBorder)
         }
         .padding(.horizontal, 16)
@@ -1558,8 +1573,10 @@ private struct GenrePill: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: genre.symbol)
-                .font(.jakarta(22, weight: .semibold))
+            Image(genre.symbol)
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 22, height: 22)
                 .foregroundStyle(.white)
             Text(genre.name)
                 .font(.jakarta(13, weight: .bold))
@@ -1579,13 +1596,13 @@ private struct InsightCardRow: View {
     var body: some View {
         HStack(spacing: 10) {
             InsightCard(
-                symbol: "diamond.fill",
+                symbol: "icon-gem",
                 title: String(localized: "Hidden Gems"),
                 subtitle: String(localized: "High scores, small audiences"),
                 destination: ChartDetailType.hiddenGems
             )
             InsightCard(
-                symbol: "bolt.fill",
+                symbol: "icon-zap",
                 title: String(localized: "Controversial"),
                 subtitle: String(localized: "The community can't agree"),
                 destination: ChartDetailType.controversial
@@ -1604,8 +1621,10 @@ private struct InsightCard: View {
     var body: some View {
         NavigationLink(value: destination) {
             VStack(alignment: .leading, spacing: 6) {
-                Image(systemName: symbol)
-                    .font(.jakarta(18, weight: .semibold))
+                Image(symbol)
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 18, height: 18)
                     .foregroundStyle(Color.sjAmber)
                 Text(title)
                     .font(.jakarta(13, weight: .bold))
@@ -1795,8 +1814,10 @@ struct ChartDetailView: View {
 
     private var emptyState: some View {
         VStack(spacing: 10) {
-            Image(systemName: "chart.bar.xaxis")
-                .font(.jakarta(36))
+            Image("icon-bar-chart")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 36, height: 36)
                 .foregroundStyle(Color.sjMuted)
             Text("No data yet.")
                 .font(.jakarta(15))
@@ -1833,8 +1854,10 @@ private struct PodiumItem: View {
                         .accessibilityHidden(true) // title text below already describes it
                     Group {
                         if rank == 1 {
-                            Image(systemName: "trophy.fill")
-                                .font(.jakarta(8, weight: .bold))
+                            Image("icon-trophy")
+                                .renderingMode(.template)
+                                .resizable().scaledToFit()
+                                .frame(width: 8, height: 8)
                                 .foregroundStyle(.white)
                                 .padding(4)
                                 .background(Color.sjAmber)
@@ -2086,8 +2109,10 @@ struct GenreDetailView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if viewModel.entries.isEmpty {
                     VStack(spacing: 10) {
-                        Image(systemName: "chart.bar.xaxis")
-                            .font(.jakarta(36))
+                        Image("icon-bar-chart")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 36, height: 36)
                             .foregroundStyle(Color.sjMuted)
                         Text("No data yet.")
                             .font(.jakarta(15))

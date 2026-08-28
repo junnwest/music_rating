@@ -291,8 +291,10 @@ private struct LaunchLoadingView: View {
     private var disconnectedNotice: some View {
         VStack(spacing: 6) {
             HStack(spacing: 6) {
-                Image(systemName: "wifi.slash")
-                    .font(.jakarta(13, weight: .semibold))
+                Image("icon-wifi-off")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 13, height: 13)
                 Text("No internet connection")
                     .font(.jakarta(13, weight: .semibold))
             }

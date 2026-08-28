@@ -154,10 +154,10 @@ struct AppNotification: Codable, Identifiable {
 
     var iconName: String {
         switch type {
-        case "like", "mix_like", "mix_share_like", "track_rating_like": return "heart.fill"
-        case "comment", "mix_share_comment", "track_rating_comment":    return "bubble.right.fill"
-        case "follow":                                                  return "person.fill.badge.plus"
-        default:                                                        return "bell.fill"
+        case "like", "mix_like", "mix_share_like", "track_rating_like": return "icon-heart-filled"
+        case "comment", "mix_share_comment", "track_rating_comment":    return "icon-message-square"
+        case "follow":                                                  return "icon-user-plus"
+        default:                                                        return "icon-bell"
         }
     }
 
@@ -184,8 +184,10 @@ struct NotificationsView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if notifications.isEmpty {
                 VStack(spacing: 14) {
-                    Image(systemName: "bell")
-                        .font(.jakarta(44))
+                    Image("icon-bell")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 44, height: 44)
                         .foregroundStyle(Color.sjBorder)
                     Text("No notifications yet")
                         .font(.jakarta(15))
@@ -288,10 +290,7 @@ private struct NotificationRow: View {
     }
 
     private var defaultAvatar: some View {
-        Image(systemName: "person.circle.fill")
-            .resizable()
-            .scaledToFit()
-            .foregroundStyle(Color(uiColor: .systemGray3))
+        DefaultAvatarView(size: 38)
     }
 
     private var typeBadge: some View {
@@ -299,8 +298,10 @@ private struct NotificationRow: View {
             Circle()
                 .fill(notif.iconColor)
                 .frame(width: 18, height: 18)
-            Image(systemName: notif.iconName)
-                .font(.jakarta(8, weight: .bold))
+            Image(notif.iconName)
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 9, height: 9)
                 .foregroundStyle(.white)
         }
         .overlay(Circle().stroke(Color.sjCream, lineWidth: 2))
@@ -384,8 +385,11 @@ struct AlbumPostDetailView: View {
                 }
             } else {
                 VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.circle")
-                        .font(.jakarta(36)).foregroundStyle(Color.sjBorder)
+                    Image("icon-alert-circle")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 36, height: 36)
+                        .foregroundStyle(Color.sjBorder)
                     Text("This rating is no longer available")
                         .font(.jakarta(15)).foregroundStyle(Color.sjMuted)
                 }
@@ -508,8 +512,11 @@ struct SongPostDetailView: View {
                 }
             } else {
                 VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.circle")
-                        .font(.jakarta(36)).foregroundStyle(Color.sjBorder)
+                    Image("icon-alert-circle")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 36, height: 36)
+                        .foregroundStyle(Color.sjBorder)
                     Text("This rating is no longer available")
                         .font(.jakarta(15)).foregroundStyle(Color.sjMuted)
                 }

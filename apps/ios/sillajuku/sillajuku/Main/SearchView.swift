@@ -790,7 +790,10 @@ struct SearchView: View {
 
     private var searchBar: some View {
         HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
+            Image("icon-search")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 16, height: 16)
                 .foregroundStyle(Color.sjMuted)
             TextField("Artists, albums, songs…", text: $searchVM.query)
                 .font(.jakarta(16))
@@ -815,7 +818,10 @@ struct SearchView: View {
                     searchVM.albumResults  = []
                     searchVM.songResults   = []
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
+                    Image("icon-x-circle")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 16, height: 16)
                         .foregroundStyle(Color.sjMuted)
                 }
                 .accessibilityLabel(String(localized: "Clear search"))
@@ -845,8 +851,10 @@ struct SearchView: View {
             // SwiftUI then centers vertically instead of pinning to the top
             // (the "search bar floating in blank space" bug).
             VStack(spacing: 14) {
-                Image(systemName: "magnifyingglass")
-                    .font(.jakarta(44))
+                Image("icon-search")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 44, height: 44)
                     .foregroundStyle(Color.sjBorder)
                 if searchVM.query.trimmingCharacters(in: .whitespaces).count >= 2 {
                     Text(String(format: String(localized: "No results for \"%@\""), searchVM.query))
@@ -907,8 +915,10 @@ struct SearchView: View {
                                         }
 
                                         Spacer()
-                                        Image(systemName: "chevron.right")
-                                            .font(.jakarta(11))
+                                        Image("icon-chevron-right")
+                                            .renderingMode(.template)
+                                            .resizable().scaledToFit()
+                                            .frame(width: 11, height: 11)
                                             .foregroundStyle(Color.sjBorder)
                                     }
                                     .padding(.horizontal, 16)
@@ -1344,8 +1354,10 @@ private struct DiscoveryAlbumCard: View {
                             .fill(Color.sjBlue)
                             .frame(width: 28, height: 28)
                             .shadow(color: .black.opacity(0.15), radius: 4, y: 1)
-                        Image(systemName: "checkmark")
-                            .font(.jakarta(11, weight: .bold))
+                        Image("icon-check")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 11, height: 11)
                             .foregroundStyle(.white)
                     }
                     .allowsHitTesting(false)
@@ -1418,8 +1430,10 @@ struct SongRow: View {
                     Circle()
                         .fill(Color.sjBlue)
                         .frame(width: 30, height: 30)
-                    Image(systemName: "checkmark")
-                        .font(.jakarta(11, weight: .bold))
+                    Image("icon-check")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 11, height: 11)
                         .foregroundStyle(.white)
                 }
                 .allowsHitTesting(false)
@@ -2076,13 +2090,19 @@ struct ArtistPageView: View {
                     Button {
                         albumSortOrder = order
                     } label: {
-                        Label(LocalizedStringKey(order.rawValue),
-                              systemImage: albumSortOrder == order ? "checkmark" : "")
+                        if albumSortOrder == order {
+                            Label(LocalizedStringKey(order.rawValue), image: "icon-check")
+                        } else {
+                            Text(LocalizedStringKey(order.rawValue))
+                        }
                     }
                 }
             } label: {
                 HStack(spacing: 4) {
-                    Image(systemName: "line.3.horizontal.decrease")
+                    Image("icon-sliders-horizontal")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 14, height: 14)
                     Text(LocalizedStringKey(albumSortOrder.rawValue))
                 }
                 .font(.jakarta(12, weight: .medium))
@@ -2122,8 +2142,10 @@ struct ArtistPageView: View {
             HStack(spacing: 2) {
                 ForEach([ArtistCommunityDisplayMode.list, .posts], id: \.self) { mode in
                     Button { communityDisplayMode = mode } label: {
-                        Image(systemName: mode == .list ? "list.bullet" : "newspaper")
-                            .font(.jakarta(14))
+                        Image(mode == .list ? "icon-list" : "icon-newspaper")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 14, height: 14)
                             .foregroundStyle(communityDisplayMode == mode ? Color.sjBlue : Color.sjMuted)
                             .frame(width: 32, height: 28)
                             .background(communityDisplayMode == mode ? Color.sjBlue.opacity(0.1) : Color.clear)

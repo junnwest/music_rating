@@ -122,10 +122,12 @@ struct SettingsView: View {
                 Section("Support") {
                     Link(destination: Config.webBaseURL.appendingPathComponent("/help")) {
                         HStack {
-                            Label("Help & Feedback", systemImage: "questionmark.circle")
+                            Label("Help & Feedback", image: "icon-help-circle")
                             Spacer()
-                            Image(systemName: "arrow.up.forward")
-                                .font(.jakarta(12, weight: .semibold))
+                            Image("icon-arrow-up-right")
+                                .renderingMode(.template)
+                                .resizable().scaledToFit()
+                                .frame(width: 12, height: 12)
                                 .foregroundStyle(Color.sjMuted)
                         }
                     }
@@ -136,10 +138,12 @@ struct SettingsView: View {
                 Section("Legal") {
                     Link(destination: Config.webBaseURL.appendingPathComponent("/terms")) {
                         HStack {
-                            Label("Terms of Service", systemImage: "doc.text")
+                            Label("Terms of Service", image: "icon-file-text")
                             Spacer()
-                            Image(systemName: "arrow.up.forward")
-                                .font(.jakarta(12, weight: .semibold))
+                            Image("icon-arrow-up-right")
+                                .renderingMode(.template)
+                                .resizable().scaledToFit()
+                                .frame(width: 12, height: 12)
                                 .foregroundStyle(Color.sjMuted)
                         }
                     }
@@ -147,10 +151,12 @@ struct SettingsView: View {
 
                     Link(destination: Config.webBaseURL.appendingPathComponent("/privacy")) {
                         HStack {
-                            Label("Privacy Policy", systemImage: "hand.raised")
+                            Label("Privacy Policy", image: "icon-hand")
                             Spacer()
-                            Image(systemName: "arrow.up.forward")
-                                .font(.jakarta(12, weight: .semibold))
+                            Image("icon-arrow-up-right")
+                                .renderingMode(.template)
+                                .resizable().scaledToFit()
+                                .frame(width: 12, height: 12)
                                 .foregroundStyle(Color.sjMuted)
                         }
                     }
@@ -160,14 +166,14 @@ struct SettingsView: View {
                 // MARK: Danger zone
                 Section("Danger Zone") {
                     Button(role: .destructive) { showSignOutConfirm = true } label: {
-                        Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                        Label("Sign Out", image: "icon-log-out")
                     }
                     Button(role: .destructive) {
                         deleteUsernameInput = ""
                         deleteError = nil
                         showDeleteConfirm = true
                     } label: {
-                        Label("Delete Account", systemImage: "trash")
+                        Label("Delete Account", image: "icon-trash")
                     }
                 }
             }
@@ -206,9 +212,9 @@ struct SettingsView: View {
                 .foregroundStyle(Color.sjInk)
 
             HStack(spacing: 8) {
-                ForEach([("sun.max", "Light", "light"),
-                         ("circle.lefthalf.filled", "System", "system"),
-                         ("moon", "Dark", "dark")] as [(String, LocalizedStringKey, String)], id: \.2) { icon, label, value in
+                ForEach([("icon-sun", "Light", "light"),
+                         ("icon-contrast", "System", "system"),
+                         ("icon-moon", "Dark", "dark")] as [(String, LocalizedStringKey, String)], id: \.2) { icon, label, value in
                     segmentButton(icon: icon, label: label, selected: appearanceMode == value) {
                         appearanceMode = value
                     }
@@ -289,8 +295,10 @@ struct SettingsView: View {
                                 )
                                 .overlay {
                                     if currentIconName == option.name {
-                                        Image(systemName: "checkmark")
-                                            .font(.jakarta(14, weight: .bold))
+                                        Image("icon-check")
+                                            .renderingMode(.template)
+                                            .resizable().scaledToFit()
+                                            .frame(width: 14, height: 14)
                                             .foregroundStyle(option.name == "Black" ? .white : Color.sjInk)
                                     }
                                 }
@@ -341,7 +349,10 @@ struct SettingsView: View {
     private func segmentButton(icon: String, label: LocalizedStringKey, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 5) {
-                Image(systemName: icon).font(.jakarta(12))
+                Image(icon)
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 12, height: 12)
                 Text(label).font(.jakarta(12, weight: .semibold))
             }
             .frame(maxWidth: .infinity)

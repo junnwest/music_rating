@@ -200,7 +200,7 @@ struct SharePreviewSheet: View {
                             InstagramShare.shareToInstagramStories(stickerImage: renderedImage, background: storyBackground)
                             dismiss()
                         } label: {
-                            shareOptionLabel(icon: "camera.circle.fill", title: String(localized: "Share to Instagram Story"), tint: .white, background: Color.sjBlue)
+                            shareOptionLabel(icon: "icon-camera", title: String(localized: "Share to Instagram Story"), tint: .white, background: Color.sjBlue)
                         }
                         .buttonStyle(.plain)
 
@@ -215,7 +215,7 @@ struct SharePreviewSheet: View {
                                     InstagramShare.shareToInstagramReels(stickerImage: renderedImage, videoData: data)
                                     dismiss()
                                 } label: {
-                                    shareOptionLabel(icon: "video.circle.fill", title: String(localized: "Share to Instagram Reels"), tint: Color.sjInk, background: Color.sjSurface, bordered: true)
+                                    shareOptionLabel(icon: "icon-video", title: String(localized: "Share to Instagram Reels"), tint: Color.sjInk, background: Color.sjSurface, bordered: true)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -224,14 +224,14 @@ struct SharePreviewSheet: View {
                                 guard let postExportImage else { return }
                                 InstagramFeedShare.share(image: postExportImage)
                             } label: {
-                                shareOptionLabel(icon: "photo.circle.fill", title: String(localized: "Share as Instagram Post"), tint: Color.sjInk, background: Color.sjSurface, bordered: true)
+                                shareOptionLabel(icon: "icon-image", title: String(localized: "Share as Instagram Post"), tint: Color.sjInk, background: Color.sjSurface, bordered: true)
                             }
                             .buttonStyle(.plain)
                             .disabled(renderedImage == nil)
                         }
                     } else {
                         VStack(spacing: 4) {
-                            shareOptionLabel(icon: "camera.circle.fill", title: String(localized: "Share to Instagram Story"), tint: Color.sjMuted, background: Color.sjBorder)
+                            shareOptionLabel(icon: "icon-camera", title: String(localized: "Share to Instagram Story"), tint: Color.sjMuted, background: Color.sjBorder)
                             Text("Needs a one-time setup on our end — try Save or More for now.")
                                 .font(.jakarta(11))
                                 .foregroundStyle(Color.sjMuted)
@@ -257,7 +257,7 @@ struct SharePreviewSheet: View {
                         .disabled(renderedImage == nil)
 
                         Button { showSystemShareSheet = true } label: {
-                            shareOptionLabel(icon: "square.and.arrow.up", title: String(localized: "More Options"), tint: Color.sjInk, background: Color.sjSurface, bordered: true)
+                            shareOptionLabel(icon: "icon-share", title: String(localized: "More Options"), tint: Color.sjInk, background: Color.sjSurface, bordered: true)
                         }
                         .buttonStyle(.plain)
                         .disabled(renderedImage == nil)
@@ -441,8 +441,10 @@ struct SharePreviewSheet: View {
                 case nil:
                     ZStack {
                         Color(uiColor: .systemGray5)
-                        Image(systemName: "photo")
-                            .font(.jakarta(34))
+                        Image("icon-image")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 34, height: 34)
                             .foregroundStyle(Color(uiColor: .systemGray2))
                     }
                 }
@@ -556,16 +558,18 @@ struct SharePreviewSheet: View {
                 Menu {
                     if UIImagePickerController.isSourceTypeAvailable(.camera) {
                         Button { showCameraCapture = true } label: {
-                            Label("Take a Photo", systemImage: "camera")
+                            Label("Take a Photo", image: "icon-camera")
                         }
                     }
                     Button { showGalleryPicker = true } label: {
-                        Label("Choose from Gallery", systemImage: "photo.on.rectangle")
+                        Label("Choose from Gallery", image: "icon-images")
                     }
                 } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: pickedMedia == nil ? "plus" : "photo")
-                            .font(.jakarta(11, weight: .medium))
+                        Image(pickedMedia == nil ? "icon-plus" : "icon-image")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 11, height: 11)
                         Text(pickedMedia == nil ? String(localized: "Add Photo or Video") : String(localized: "Change"))
                             .font(.jakarta(12, weight: .semibold))
                     }
@@ -653,7 +657,10 @@ struct SharePreviewSheet: View {
     @ViewBuilder
     private func shareOptionLabel(icon: String, title: String, tint: Color, background: Color, bordered: Bool = false) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: icon).font(.jakarta(17, weight: .medium))
+            Image(icon)
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 17, height: 17)
             Text(title).font(.jakarta(15, weight: .semibold))
         }
         .foregroundStyle(tint)

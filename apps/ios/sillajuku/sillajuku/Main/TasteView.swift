@@ -117,8 +117,10 @@ struct TasteView: View {
         ZStack {
             Color.sjCream.ignoresSafeArea()
             VStack(spacing: 12) {
-                Image(systemName: "wifi.slash")
-                    .font(.jakarta(36))
+                Image("icon-wifi-off")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 36, height: 36)
                     .foregroundStyle(Color.sjBorder)
                 Text("Couldn't load your taste progress.")
                     .font(.jakarta(15))
@@ -509,8 +511,10 @@ private struct TasteReportView: View {
                                 .foregroundStyle(Color.sjInk)
                             Spacer()
                             HStack(spacing: 3) {
-                                Image(systemName: diff >= 0 ? "arrow.up" : "arrow.down")
-                                    .font(.jakarta(9, weight: .bold))
+                                Image(diff >= 0 ? "icon-arrow-up" : "icon-arrow-down")
+                                    .renderingMode(.template)
+                                    .resizable().scaledToFit()
+                                    .frame(width: 9, height: 9)
                                 Text("\(String(format: "%.2f", abs(diff))) \(diff >= 0 ? String(localized: "above average") : String(localized: "below average"))")
                                     .font(.jakarta(11.5, weight: .semibold))
                             }
@@ -1274,8 +1278,10 @@ private struct TasteLockView: View {
             VStack(spacing: 0) {
                 Spacer()
 
-                Image(systemName: "lock.fill")
-                    .font(.jakarta(36, weight: .medium))
+                Image("icon-lock")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 36, height: 36)
                     .foregroundStyle(Color.sjAmber)
                     .padding(.bottom, 24)
 
@@ -1342,8 +1348,10 @@ private struct TasteLockView: View {
                     HStack(spacing: 0) {
                         ForEach(teaserItems, id: \.1) { icon, label in
                             VStack(spacing: 5) {
-                                Image(systemName: icon)
-                                    .font(.jakarta(20))
+                                Image(icon)
+                                    .renderingMode(.template)
+                                    .resizable().scaledToFit()
+                                    .frame(width: 20, height: 20)
                                     .foregroundStyle(Color.sjAmber.opacity(0.4))
                                 Text(label)
                                     .font(.jakarta(10))
@@ -1361,9 +1369,9 @@ private struct TasteLockView: View {
     }
 
     private let teaserItems: [(String, String)] = [
-        ("star.fill",      "Top Album"),
-        ("chart.bar.fill", "Activity"),
-        ("theatermasks",   "Your Style"),
-        ("waveform",       "Genre DNA")
+        ("icon-star-filled", "Top Album"),
+        ("icon-bar-chart",   "Activity"),
+        ("icon-drama",       "Your Style"),
+        ("icon-waveform",    "Genre DNA")
     ]
 }

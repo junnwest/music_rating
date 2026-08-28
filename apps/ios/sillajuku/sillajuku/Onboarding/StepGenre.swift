@@ -45,7 +45,10 @@ struct StepUsername: View {
                     if isChecking {
                         ProgressView().scaleEffect(0.75)
                     } else if let available = usernameAvailable {
-                        Image(systemName: available ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        Image(available ? "icon-check-circle" : "icon-circle-x")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 18, height: 18)
                             .foregroundStyle(available ? .green : .red)
                     }
                 }

@@ -51,8 +51,11 @@ struct MixShareCommentSheetView: View {
                 commentList
                 if let err = errorMessage {
                     HStack(spacing: 6) {
-                        Image(systemName: "exclamationmark.circle.fill")
-                            .font(.jakarta(12)).foregroundStyle(.red)
+                        Image("icon-alert-circle")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 12, height: 12)
+                            .foregroundStyle(.red)
                         Text(err)
                             .font(.jakarta(12)).foregroundStyle(.red)
                         Spacer()
@@ -80,8 +83,10 @@ struct MixShareCommentSheetView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if comments.isEmpty {
             VStack(spacing: 12) {
-                Image(systemName: "bubble.right")
-                    .font(.jakarta(36))
+                Image("icon-message-square")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 36, height: 36)
                     .foregroundStyle(Color.sjBorder)
                 Text("No comments yet.\nBe the first!")
                     .font(.jakarta(15))
@@ -111,9 +116,7 @@ struct MixShareCommentSheetView: View {
 
     private var inputBar: some View {
         HStack(spacing: 10) {
-            Image(systemName: "person.circle.fill")
-                .font(.jakarta(30))
-                .foregroundStyle(Color(uiColor: .systemGray3))
+            DefaultAvatarView(size: 30)
 
             TextField("Add a comment…", text: $newComment, axis: .vertical)
                 .font(.jakarta(14))
@@ -128,8 +131,10 @@ struct MixShareCommentSheetView: View {
                     if isSending {
                         ProgressView().scaleEffect(0.75)
                     } else {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.jakarta(28))
+                        Image("icon-arrow-up-circle")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 28, height: 28)
                             .foregroundStyle(Color.sjAmber)
                     }
                 }
@@ -191,9 +196,7 @@ private struct MixShareCommentRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "person.circle.fill")
-                .font(.jakarta(34))
-                .foregroundStyle(Color(uiColor: .systemGray3))
+            DefaultAvatarView(size: 34)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {

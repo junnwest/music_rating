@@ -71,7 +71,10 @@ struct InviteView: View {
             if let code = vm.myReferralCode {
                 ShareLink(item: shareURL(code), subject: Text("Join me on sillajuku"), message: shareMessage(code)) {
                     HStack(spacing: 8) {
-                        Image(systemName: "square.and.arrow.up")
+                        Image("icon-share")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 15, height: 15)
                         Text("Share invite link")
                             .font(.jakarta(14, weight: .semibold))
                     }
@@ -145,7 +148,10 @@ struct InviteView: View {
     private var verifyPhonePrompt: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
-                Image(systemName: "checkmark.shield")
+                Image("icon-shield-check")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 15, height: 15)
                     .foregroundStyle(Color.sjBlue)
                 Text("Verify your phone number")
                     .font(.jakarta(14, weight: .semibold))

@@ -86,7 +86,7 @@ struct QuestChecklistView: View {
         items.append(.init(
             title: "Rate 25 releases",
             progress: (min(vm.combinedRatingCount, TasteViewModel.unlockThreshold), TasteViewModel.unlockThreshold),
-            reward: QuestReward(icon: "sparkles", description: "Unlocks Taste"),
+            reward: QuestReward(icon: "icon-sparkles", description: "Unlocks Taste"),
             action: goToAdd
         ))
         items.append(contentsOf: [
@@ -113,7 +113,7 @@ struct QuestChecklistView: View {
             .init(
                 title: "Invite 5 friends",
                 progress: (vm.verifiedInviteCount, 5),
-                reward: QuestReward(icon: "paintpalette.fill", description: "Unlocks a custom app icon"),
+                reward: QuestReward(icon: "icon-palette", description: "Unlocks a custom app icon"),
                 action: vm.hasVerifiedPhone ? { showInvite = true } : { showPhoneVerification = true }
             ),
         ])
@@ -125,8 +125,10 @@ struct QuestChecklistView: View {
     private var communityBlock: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
-                Image(systemName: "person.3.fill")
-                    .font(.jakarta(11))
+                Image("icon-users")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 11, height: 11)
                 Text("Community goals")
                     .font(.jakarta(12, weight: .semibold))
                     .textCase(.uppercase)
@@ -166,7 +168,10 @@ struct QuestChecklistView: View {
                     .foregroundStyle(Color.sjInk)
                 Spacer()
                 if isDone {
-                    Image(systemName: "checkmark.circle.fill")
+                    Image("icon-check-circle")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 16, height: 16)
                         .foregroundStyle(Color.sjBlue)
                 }
             }
@@ -267,8 +272,10 @@ private struct QuestTimelineRow: View {
                         .fill(item.isDone ? Color.sjBlue : Color.sjSurface)
                         .overlay(Circle().stroke(item.isDone ? Color.clear : Color.sjBorder, lineWidth: 1.5))
                     if item.isDone {
-                        Image(systemName: "checkmark")
-                            .font(.jakarta(10, weight: .bold))
+                        Image("icon-check")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 10, height: 10)
                             .foregroundStyle(Color.sjCream)
                     }
                 }
@@ -294,8 +301,10 @@ private struct QuestTimelineRow: View {
                             titleContent
                             Spacer(minLength: 0)
                             if item.reward == nil {
-                                Image(systemName: "chevron.right")
-                                    .font(.jakarta(12, weight: .semibold))
+                                Image("icon-chevron-right")
+                                    .renderingMode(.template)
+                                    .resizable().scaledToFit()
+                                    .frame(width: 12, height: 12)
                                     .foregroundStyle(Color.sjBorder)
                                     .padding(.top, 2)
                             }
@@ -311,8 +320,10 @@ private struct QuestTimelineRow: View {
 
             if let reward = item.reward {
                 Button { showRewardInfo = true } label: {
-                    Image(systemName: reward.icon)
-                        .font(.jakarta(13, weight: .semibold))
+                    Image(reward.icon)
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 15, height: 15)
                         .foregroundStyle(Color.sjBlue)
                         .frame(width: 30, height: 30)
                         .background(Color.sjBlue.opacity(0.1))

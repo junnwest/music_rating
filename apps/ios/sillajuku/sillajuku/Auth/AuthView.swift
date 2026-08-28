@@ -74,8 +74,10 @@ struct AuthView: View {
                             Text("More options")
                                 .font(.jakarta(14))
                                 .foregroundStyle(Color.sjMuted)
-                            Image(systemName: showMoreOptions ? "chevron.up" : "chevron.down")
-                                .font(.jakarta(11, weight: .medium))
+                            Image(showMoreOptions ? "icon-chevron-up" : "icon-chevron-down")
+                                .renderingMode(.template)
+                                .resizable().scaledToFit()
+                                .frame(width: 11, height: 11)
                                 .foregroundStyle(Color.sjMuted)
                         }
                     }

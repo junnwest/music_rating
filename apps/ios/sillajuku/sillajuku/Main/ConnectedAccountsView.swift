@@ -153,8 +153,10 @@ struct ConnectedAccountsView: View {
 
     private var appleMusicRow: some View {
         HStack(spacing: 12) {
-            Image(systemName: "music.note")
-                .font(.jakarta(16))
+            Image("icon-music")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 16, height: 16)
                 .foregroundStyle(Color.sjInk)
                 .frame(width: 24)
 
@@ -206,8 +208,10 @@ struct ConnectedAccountsView: View {
 
     private var phoneRow: some View {
         HStack(spacing: 12) {
-            Image(systemName: "phone.fill")
-                .font(.jakarta(16))
+            Image("icon-phone")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 16, height: 16)
                 .foregroundStyle(Color.sjInk)
                 .frame(width: 24)
 

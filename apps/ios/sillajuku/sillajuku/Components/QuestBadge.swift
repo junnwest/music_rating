@@ -47,12 +47,11 @@ struct QuestBadgeView: View {
     }
 }
 
-/// The verified badge for known critics/artists/creators -- a plain system
-/// glyph, not a custom shape, so it renders pixel-identical to every other
-/// iOS app's own verified mark.
+/// The verified badge for known critics/artists/creators.
 struct VerifiedBadgeView: View {
     var body: some View {
-        Image(systemName: "checkmark.seal.fill")
+        Image("icon-verified")
+            .renderingMode(.template)
             .resizable()
             .scaledToFit()
             .foregroundStyle(Color.sjBlue)

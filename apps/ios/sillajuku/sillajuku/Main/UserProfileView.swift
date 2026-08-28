@@ -472,9 +472,7 @@ struct UserProfileView: View {
                     CoverImage(url: url, cornerRadius: 40)
                         .frame(width: 80, height: 80)
                 } else {
-                    Image(systemName: "person.circle.fill")
-                        .font(.jakarta(80))
-                        .foregroundStyle(Color(uiColor: .systemGray3))
+                    DefaultAvatarView(size: 80)
                 }
             }
             .padding(.top, 24)
@@ -603,8 +601,10 @@ struct UserProfileView: View {
                     withAnimation(.easeInOut(duration: 0.15)) { activeTab = tab }
                 } label: {
                     VStack(spacing: 0) {
-                        Image(systemName: activeTab == tab ? tab.activeIcon : tab.icon)
-                            .font(.jakarta(20))
+                        Image(tab.icon)
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 20, height: 20)
                             .foregroundStyle(activeTab == tab ? Color.sjInk : Color.sjMuted)
                             .frame(maxWidth: .infinity)
                             .frame(height: 44)
@@ -692,8 +692,10 @@ struct UserProfileView: View {
 
         if !hasAny {
             VStack(spacing: 12) {
-                Image(systemName: "square.grid.2x2")
-                    .font(.jakarta(36))
+                Image("icon-layout-grid")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 36, height: 36)
                     .foregroundStyle(Color.sjMuted)
                 Text("No ratings yet")
                     .font(.jakarta(15))
@@ -719,8 +721,10 @@ struct UserProfileView: View {
                     HStack(spacing: 2) {
                         ForEach([RatingDisplayMode.list, .posts], id: \.self) { mode in
                             Button { ratingDisplayMode = mode } label: {
-                                Image(systemName: mode == .list ? "list.bullet" : "newspaper")
-                                    .font(.jakarta(14))
+                                Image(mode == .list ? "icon-list" : "icon-newspaper")
+                                    .renderingMode(.template)
+                                    .resizable().scaledToFit()
+                                    .frame(width: 14, height: 14)
                                     .foregroundStyle(ratingDisplayMode == mode ? Color.sjBlue : Color.sjMuted)
                                     .frame(width: 32, height: 28)
                                     .background(ratingDisplayMode == mode ? Color.sjBlue.opacity(0.1) : Color.clear)
@@ -741,13 +745,19 @@ struct UserProfileView: View {
                     Menu {
                         ForEach(RatingSortOrder.allCases, id: \.self) { order in
                             Button { ratingSortOrder = order } label: {
-                                Label(LocalizedStringKey(order.rawValue),
-                                      systemImage: ratingSortOrder == order ? "checkmark" : "")
+                                if ratingSortOrder == order {
+                                    Label(LocalizedStringKey(order.rawValue), image: "icon-check")
+                                } else {
+                                    Text(LocalizedStringKey(order.rawValue))
+                                }
                             }
                         }
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: "line.3.horizontal.decrease")
+                            Image("icon-sliders-horizontal")
+                                .renderingMode(.template)
+                                .resizable().scaledToFit()
+                                .frame(width: 14, height: 14)
                             Text(LocalizedStringKey(ratingSortOrder.rawValue))
                         }
                         .font(.jakarta(12, weight: .medium))
@@ -758,8 +768,11 @@ struct UserProfileView: View {
 
                 if items.isEmpty {
                     VStack(spacing: 10) {
-                        Image(systemName: ratingTypeFilter == .songs ? "music.note" : "square.grid.2x2")
-                            .font(.jakarta(28)).foregroundStyle(Color.sjMuted)
+                        Image(ratingTypeFilter == .songs ? "icon-music" : "icon-layout-grid")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 28, height: 28)
+                            .foregroundStyle(Color.sjMuted)
                         Text(String(format: String(localized: "No %@ rated yet"), String(localized: String.LocalizationValue(ratingTypeFilter.rawValue)).lowercased()))
                             .font(.jakarta(14)).foregroundStyle(Color.sjMuted)
                     }
@@ -785,8 +798,11 @@ struct UserProfileView: View {
                     let albumItems = items.filter { !$0.isSong }
                     if albumItems.isEmpty {
                         VStack(spacing: 10) {
-                            Image(systemName: "newspaper")
-                                .font(.jakarta(28)).foregroundStyle(Color.sjMuted)
+                            Image("icon-newspaper")
+                                .renderingMode(.template)
+                                .resizable().scaledToFit()
+                                .frame(width: 28, height: 28)
+                                .foregroundStyle(Color.sjMuted)
                             Text("No album ratings yet")
                                 .font(.jakarta(14)).foregroundStyle(Color.sjMuted)
                         }
@@ -822,8 +838,10 @@ struct UserProfileView: View {
         Group {
             if vm.mixes.isEmpty {
                 VStack(spacing: 12) {
-                    Image(systemName: "music.note.list")
-                        .font(.jakarta(36))
+                    Image("icon-list-music")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 36, height: 36)
                         .foregroundStyle(Color.sjBorder)
                     Text("No public mixes")
                         .font(.jakarta(15))

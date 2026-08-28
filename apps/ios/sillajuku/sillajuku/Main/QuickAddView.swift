@@ -592,8 +592,10 @@ struct QuickAddView: View {
 
     private var emptyState: some View {
         VStack(spacing: 14) {
-            Image(systemName: "checkmark.circle")
-                .font(.jakarta(44))
+            Image("icon-check-circle")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 44, height: 44)
                 .foregroundStyle(Color.sjBorder)
             Text("You're all caught up")
                 .font(.jakarta(17, weight: .semibold))
@@ -624,10 +626,10 @@ struct QuickAddView: View {
 
             VStack(spacing: 10) {
                 Button { dismiss() } label: {
-                    nudgeRow(icon: "magnifyingglass", title: "Search & rate a few albums")
+                    nudgeRow(icon: "icon-search", title: "Search & rate a few albums")
                 }
                 Button { onGoToSettings() } label: {
-                    nudgeRow(icon: "link", title: "Connect Spotify or Apple Music")
+                    nudgeRow(icon: "icon-link", title: "Connect Spotify or Apple Music")
                 }
             }
             .buttonStyle(.plain)
@@ -636,8 +638,10 @@ struct QuickAddView: View {
 
     private func nudgeRow(icon: String, title: LocalizedStringKey) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.jakarta(15, weight: .semibold))
+            Image(icon)
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 16, height: 16)
                 .foregroundStyle(Color.sjCream)
                 .frame(width: 32, height: 32)
                 .background(Color.sjInk)
@@ -646,8 +650,10 @@ struct QuickAddView: View {
                 .font(.jakarta(14.5, weight: .semibold))
                 .foregroundStyle(Color.sjInk)
             Spacer(minLength: 8)
-            Image(systemName: "chevron.right")
-                .font(.jakarta(12, weight: .semibold))
+            Image("icon-chevron-right")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 12, height: 12)
                 .foregroundStyle(Color.sjMuted)
         }
         .padding(14)
@@ -665,8 +671,10 @@ struct QuickAddView: View {
     private var genreExplorer: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
-                Image(systemName: "safari")
-                    .font(.jakarta(13, weight: .semibold))
+                Image("icon-compass")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 15, height: 15)
                     .foregroundStyle(Color.sjAmber)
                 Text("Explore other genres")
                     .font(.jakarta(14.5, weight: .bold))
@@ -704,8 +712,10 @@ struct QuickAddView: View {
                     .padding(.leading, 12).padding(.trailing, 6).padding(.vertical, 7)
             }
             Button { Task { await vm.toggleLikedGenre(genre) } } label: {
-                Image(systemName: isLiked ? "heart.fill" : "heart")
-                    .font(.jakarta(11))
+                Image(isLiked ? "icon-heart-filled" : "icon-heart")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 11, height: 11)
                     .foregroundStyle(isLiked ? Color.sjAmber : Color.sjMuted)
                     .padding(.leading, 4).padding(.trailing, 10).padding(.vertical, 7)
             }

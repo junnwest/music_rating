@@ -100,8 +100,10 @@ struct PostRatingOptionsView: View {
                 withAnimation(.easeInOut(duration: 0.2)) { isAddingComment.toggle() }
             } label: {
                 HStack(spacing: 14) {
-                    Image(systemName: "bubble.right")
-                        .font(.jakarta(17))
+                    Image("icon-message-square")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 17, height: 17)
                         .foregroundStyle(Color.sjInk)
                         .frame(width: 24)
                     Text("Add a comment")
@@ -118,8 +120,10 @@ struct PostRatingOptionsView: View {
                     // continuous turn -- swapping between separate up/down
                     // glyphs (an earlier approach) didn't interpolate and
                     // read as a glitchy jump instead.
-                    Image(systemName: "chevron.down")
-                        .font(.jakarta(13, weight: .medium))
+                    Image("icon-chevron-down")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 13, height: 13)
                         .foregroundStyle(Color.sjMuted)
                         .rotationEffect(.degrees(isAddingComment ? 180 : 0))
                 }
@@ -168,16 +172,20 @@ struct PostRatingOptionsView: View {
     private var listRow: some View {
         Button { showMixPicker = true } label: {
             HStack(spacing: 14) {
-                Image(systemName: "plus.square")
-                    .font(.jakarta(17))
+                Image("icon-square-plus")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 17, height: 17)
                     .foregroundStyle(Color.sjInk)
                     .frame(width: 24)
                 Text("Add to a Mix")
                     .font(.jakarta(15))
                     .foregroundStyle(Color.sjInk)
                 Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.jakarta(13, weight: .medium))
+                Image("icon-chevron-right")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 13, height: 13)
                     .foregroundStyle(Color.sjMuted)
             }
             .padding(.horizontal, 20)

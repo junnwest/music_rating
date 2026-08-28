@@ -44,8 +44,10 @@ struct EditProfileView: View {
                                     .fill(Color.sjInk)
                                     .frame(width: 28, height: 28)
                                     .overlay(
-                                        Image(systemName: "camera.fill")
-                                            .font(.jakarta(12))
+                                        Image("icon-camera")
+                                            .renderingMode(.template)
+                                            .resizable().scaledToFit()
+                                            .frame(width: 12, height: 12)
                                             .foregroundStyle(Color.sjCream)
                                     )
                                     .offset(x: 2, y: 2)

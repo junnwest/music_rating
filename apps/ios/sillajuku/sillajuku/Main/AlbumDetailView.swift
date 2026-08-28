@@ -907,7 +907,10 @@ struct AlbumDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 ShareLink(item: URL(string: "https://sillajuku.com/album/\(release.id)")!) {
-                    Image(systemName: "square.and.arrow.up")
+                    Image("icon-share")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 17, height: 17)
                 }
             }
         }
@@ -1092,8 +1095,10 @@ struct AlbumDetailView: View {
         .frame(maxWidth: .infinity)
         .overlay(alignment: .topTrailing) {
             Button { showMixPicker = true } label: {
-                Image(systemName: "bookmark")
-                    .font(.jakarta(16, weight: .medium))
+                Image("icon-bookmark")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 16, height: 16)
                     .foregroundStyle(Color.sjInk)
                     .padding(10)
                     .background(.ultraThinMaterial, in: Circle())
@@ -1163,7 +1168,7 @@ struct AlbumDetailView: View {
             } else {
                 MorphingRateButton(
                     idleLabel: {
-                        Label("Rate this Album", systemImage: "plus")
+                        Label("Rate this Album", image: "icon-plus")
                             .font(.jakarta(15, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
@@ -1396,8 +1401,10 @@ private struct MixRowContent: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "music.note.list")
-                .font(.jakarta(16))
+            Image("icon-list-music")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 16, height: 16)
                 .foregroundStyle(Color.sjBlue)
                 .frame(width: 32)
             VStack(alignment: .leading, spacing: 2) {
@@ -1410,8 +1417,10 @@ private struct MixRowContent: View {
                     .foregroundStyle(Color.sjMuted)
             }
             Spacer()
-            Image(systemName: "chevron.right")
-                .font(.jakarta(12))
+            Image("icon-chevron-right")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 12, height: 12)
                 .foregroundStyle(Color.sjMuted)
         }
         .padding(.vertical, 11)
@@ -1466,9 +1475,7 @@ struct RatingCommentRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "person.circle.fill")
-                .font(.jakarta(28))
-                .foregroundStyle(Color(uiColor: .systemGray3))
+            DefaultAvatarView(size: 28)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
@@ -1504,7 +1511,10 @@ struct RatingCommentRow: View {
                         Task { await onLike() }
                     } label: {
                         HStack(spacing: 5) {
-                            Image(systemName: isLiked ? "heart.fill" : "heart")
+                            Image(isLiked ? "icon-heart-filled" : "icon-heart")
+                                .renderingMode(.template)
+                                .resizable().scaledToFit()
+                                .frame(width: 14, height: 14)
                                 .foregroundStyle(isLiked ? .red : Color.sjMuted)
                             if likesCount > 0 {
                                 Text("\(likesCount)").foregroundStyle(Color.sjMuted)
@@ -1644,8 +1654,11 @@ struct AlbumAllRatingsView: View {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if vm.posts.isEmpty {
                 VStack(spacing: 14) {
-                    Image(systemName: "bubble.left.and.bubble.right")
-                        .font(.jakarta(44)).foregroundStyle(Color.sjBorder)
+                    Image("icon-message-circle")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 44, height: 44)
+                        .foregroundStyle(Color.sjBorder)
                     Text("No ratings from other users yet.")
                         .font(.jakarta(15)).foregroundStyle(Color.sjMuted)
                 }
@@ -1729,8 +1742,11 @@ private struct TrackRow: View {
             } else if let onAdd {
                 MorphingRateButton(
                     idleLabel: {
-                        Image(systemName: "plus")
-                            .font(.jakarta(11, weight: .bold)).foregroundStyle(Color.sjBlue)
+                        Image("icon-plus")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 11, height: 11)
+                            .foregroundStyle(Color.sjBlue)
                             .frame(width: 26, height: 26)
                     },
                     idleShape: AnyShape(Circle()),
@@ -1750,7 +1766,7 @@ private struct TrackRow: View {
                         }
                     }
                 } label: {
-                    Label("Not Interested", systemImage: "hand.thumbsdown")
+                    Label("Not Interested", image: "icon-thumbs-down")
                 }
             }
         }
@@ -1866,9 +1882,7 @@ struct SongRatingCommentRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "person.circle.fill")
-                .font(.jakarta(28))
-                .foregroundStyle(Color(uiColor: .systemGray3))
+            DefaultAvatarView(size: 28)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
@@ -1904,7 +1918,10 @@ struct SongRatingCommentRow: View {
                         Task { await onLike() }
                     } label: {
                         HStack(spacing: 5) {
-                            Image(systemName: isLiked ? "heart.fill" : "heart")
+                            Image(isLiked ? "icon-heart-filled" : "icon-heart")
+                                .renderingMode(.template)
+                                .resizable().scaledToFit()
+                                .frame(width: 14, height: 14)
                                 .foregroundStyle(isLiked ? .red : Color.sjMuted)
                             if likesCount > 0 {
                                 Text("\(likesCount)").foregroundStyle(Color.sjMuted)
@@ -2030,7 +2047,10 @@ struct SongDetailView: View {
             if let trackId = track.trackId {
                 ToolbarItem(placement: .topBarTrailing) {
                     ShareLink(item: URL(string: "https://sillajuku.com/song/\(trackId)")!) {
-                        Image(systemName: "square.and.arrow.up")
+                        Image("icon-share")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 17, height: 17)
                     }
                 }
             }
@@ -2170,8 +2190,10 @@ struct SongDetailView: View {
         .overlay(alignment: .topTrailing) {
             if track.trackId != nil {
                 Button { showMixPicker = true } label: {
-                    Image(systemName: "bookmark")
-                        .font(.jakarta(16, weight: .medium))
+                    Image("icon-bookmark")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 16, height: 16)
                         .foregroundStyle(Color.sjInk)
                         .padding(10)
                         .background(.ultraThinMaterial, in: Circle())
@@ -2292,8 +2314,11 @@ struct SongDetailView: View {
                             .foregroundStyle(Color.sjMuted).lineLimit(1)
                     }
                     Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.jakarta(12)).foregroundStyle(Color.sjMuted)
+                    Image("icon-chevron-right")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 12, height: 12)
+                        .foregroundStyle(Color.sjMuted)
                 }
             }
             .buttonStyle(.plain)
@@ -2701,8 +2726,11 @@ struct SongAllRatingsView: View {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if vm.posts.isEmpty {
                 VStack(spacing: 14) {
-                    Image(systemName: "bubble.left.and.bubble.right")
-                        .font(.jakarta(44)).foregroundStyle(Color.sjBorder)
+                    Image("icon-message-circle")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 44, height: 44)
+                        .foregroundStyle(Color.sjBorder)
                     Text("No ratings from other users yet.")
                         .font(.jakarta(15)).foregroundStyle(Color.sjMuted)
                 }

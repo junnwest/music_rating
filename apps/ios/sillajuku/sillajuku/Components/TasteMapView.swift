@@ -75,8 +75,10 @@ struct TasteMapView: View {
             if let openWorld {
                 Button(action: { withAnimation(.easeOut(duration: 0.22)) { worldIndex = nil } }) {
                     HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                            .font(.jakarta(11, weight: .bold))
+                        Image("icon-chevron-left")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 11, height: 11)
                         Text(String(localized: "All worlds"))
                             .font(.jakarta(13, weight: .semibold))
                     }
@@ -195,8 +197,10 @@ private struct MapRow: View {
                     ScoreBadge(score: avg, badgeSize: 34, ringStroke: 2, ringGap: 1.5)
                 }
 
-                Image(systemName: "chevron.right")
-                    .font(.jakarta(11, weight: .medium))
+                Image("icon-chevron-right")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 11, height: 11)
                     .foregroundStyle(Color.sjBorder)
             }
             .padding(.vertical, 12)

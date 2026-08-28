@@ -118,7 +118,7 @@ struct MainTabView: View {
                         onOwnProfileTap: { goTo(.profile) }
                     )
                     .tabItem {
-                        Image(systemName: "house.fill")
+                        Image("icon-home").renderingMode(.template)
                         Text(String(localized: "Home"))
                     }
                     .tag(AppTab.home)
@@ -131,7 +131,7 @@ struct MainTabView: View {
                         }
                     }
                         .tabItem {
-                            Image(systemName: "trophy.fill")
+                            Image("icon-trophy").renderingMode(.template)
                             Text(String(localized: "Charts"))
                         }
                         .tag(AppTab.rankings)
@@ -163,7 +163,7 @@ struct MainTabView: View {
                         }
                     }
                         .tabItem {
-                            Image(systemName: "sparkles")
+                            Image("icon-sparkles").renderingMode(.template)
                             Text(String(localized: "Taste"))
                         }
                         .tag(AppTab.taste)
@@ -179,7 +179,7 @@ struct MainTabView: View {
                         }
                     }
                         .tabItem {
-                            Image(systemName: "person.fill")
+                            Image("icon-user").renderingMode(.template)
                             Text(String(localized: "Profile"))
                         }
                         .tag(AppTab.profile)

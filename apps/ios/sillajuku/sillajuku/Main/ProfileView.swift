@@ -142,19 +142,15 @@ struct ReleaseRef: Codable, Identifiable {
 enum ProfileTab: CaseIterable {
     case rated, lists, stats
 
+    // No separate active/inactive glyph -- Lucide has no filled-icon family the
+    // way SF Symbols did, and the tab bar already signals the active tab via
+    // color (sjInk vs sjMuted) plus an underline, so a second signal here was
+    // redundant once the glyph itself couldn't change weight.
     var icon: String {
         switch self {
-        case .rated: return "square.grid.2x2"
-        case .lists: return "music.note.list"
-        case .stats: return "chart.bar"
-        }
-    }
-
-    var activeIcon: String {
-        switch self {
-        case .rated: return "square.grid.2x2.fill"
-        case .lists: return "music.note.list"
-        case .stats: return "chart.bar.fill"
+        case .rated: return "icon-layout-grid"
+        case .lists: return "icon-list-music"
+        case .stats: return "icon-bar-chart"
         }
     }
 
@@ -910,8 +906,10 @@ struct ProfileView: View {
 
             HStack {
                 Button { showUserSearch = true } label: {
-                    Image(systemName: "person.badge.plus")
-                        .font(.jakarta(16))
+                    Image("icon-user-plus")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 16, height: 16)
                         .foregroundStyle(Color.sjInk)
                 }
                 .accessibilityLabel(String(localized: "Find people"))
@@ -919,8 +917,10 @@ struct ProfileView: View {
                 Button {
                     showQuestChecklist = true
                 } label: {
-                    Image(systemName: "checklist")
-                        .font(.jakarta(16))
+                    Image("icon-list-checks")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 16, height: 16)
                         .foregroundStyle(Color.sjInk)
                         .overlay(alignment: .topTrailing) {
                             if !questVM.personalQuestsComplete {
@@ -933,8 +933,10 @@ struct ProfileView: View {
                 }
                 .accessibilityLabel(String(localized: "Getting Started"))
                 Button { showSettings = true } label: {
-                    Image(systemName: "gearshape")
-                        .font(.jakarta(16))
+                    Image("icon-settings")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 16, height: 16)
                         .foregroundStyle(Color.sjInk)
                 }
                 .accessibilityLabel(String(localized: "Settings"))
@@ -977,21 +979,14 @@ struct ProfileView: View {
     private var avatarCircle: some View {
         Group {
             if let urlStr = viewModel.profile?.avatarUrl, let url = URL(string: urlStr) {
-                CachedImage(url: url) { defaultAvatar }
+                CachedImage(url: url) { DefaultAvatarView(size: 76) }
                     .scaledToFill()
                     .clipShape(Circle())
             } else {
-                defaultAvatar
+                DefaultAvatarView(size: 76)
             }
         }
         .accessibilityLabel(String(localized: "Your profile photo"))
-    }
-
-    private var defaultAvatar: some View {
-        Image(systemName: "person.circle.fill")
-            .resizable()
-            .scaledToFit()
-            .foregroundStyle(Color(uiColor: .systemGray3))
     }
 
     // MARK: - Display name + bio
@@ -1036,9 +1031,10 @@ struct ProfileView: View {
                     withAnimation(.easeInOut(duration: 0.15)) { activeTab = tab }
                 } label: {
                     VStack(spacing: 0) {
-                        Image(systemName: activeTab == tab ? tab.activeIcon : tab.icon)
-                            // bookmark is a tall narrow symbol — use smaller size to balance it
-                            .font(.jakarta(20))
+                        Image(tab.icon)
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 20, height: 20)
                             .foregroundStyle(activeTab == tab ? Color.sjInk : Color.sjMuted)
                             .frame(maxWidth: .infinity)
                             .frame(height: 44)
@@ -1107,8 +1103,10 @@ struct ProfileView: View {
 
         if !hasAny {
             VStack(spacing: 12) {
-                Image(systemName: "square.grid.2x2")
-                    .font(.jakarta(36))
+                Image("icon-layout-grid")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 36, height: 36)
                     .foregroundStyle(Color.sjMuted)
                 Text("No ratings yet")
                     .font(.jakarta(15))
@@ -1139,8 +1137,10 @@ struct ProfileView: View {
                     HStack(spacing: 2) {
                         ForEach([RatingDisplayMode.list, .posts], id: \.self) { mode in
                             Button { ratingDisplayMode = mode } label: {
-                                Image(systemName: mode == .list ? "list.bullet" : "newspaper")
-                                    .font(.jakarta(14))
+                                Image(mode == .list ? "icon-list" : "icon-newspaper")
+                                    .renderingMode(.template)
+                                    .resizable().scaledToFit()
+                                    .frame(width: 14, height: 14)
                                     .foregroundStyle(ratingDisplayMode == mode ? Color.sjBlue : Color.sjMuted)
                                     .frame(width: 32, height: 28)
                                     .background(ratingDisplayMode == mode ? Color.sjBlue.opacity(0.1) : Color.clear)
@@ -1165,13 +1165,19 @@ struct ProfileView: View {
                             Button {
                                 ratingSortOrder = order
                             } label: {
-                                Label(LocalizedStringKey(order.rawValue),
-                                      systemImage: ratingSortOrder == order ? "checkmark" : "")
+                                if ratingSortOrder == order {
+                                    Label(LocalizedStringKey(order.rawValue), image: "icon-check")
+                                } else {
+                                    Text(LocalizedStringKey(order.rawValue))
+                                }
                             }
                         }
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: "line.3.horizontal.decrease")
+                            Image("icon-sliders-horizontal")
+                                .renderingMode(.template)
+                                .resizable().scaledToFit()
+                                .frame(width: 14, height: 14)
                             Text(LocalizedStringKey(ratingSortOrder.rawValue))
                         }
                         .font(.jakarta(12, weight: .medium))
@@ -1183,8 +1189,10 @@ struct ProfileView: View {
 
                 if items.isEmpty {
                     VStack(spacing: 10) {
-                        Image(systemName: ratingTypeFilter == .songs ? "music.note" : "square.grid.2x2")
-                            .font(.jakarta(28))
+                        Image(ratingTypeFilter == .songs ? "icon-music" : "icon-layout-grid")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 28, height: 28)
                             .foregroundStyle(Color.sjMuted)
                         Text(String(format: String(localized: "No %@ rated yet"), String(localized: String.LocalizationValue(ratingTypeFilter.rawValue)).lowercased()))
                             .font(.jakarta(14))
@@ -1210,7 +1218,7 @@ struct ProfileView: View {
                             Button(role: .destructive) {
                                 pendingDeleteItem = item
                             } label: {
-                                Label("Delete Rating", systemImage: "trash")
+                                Label("Delete Rating", image: "icon-trash")
                             }
                         }
                     }
@@ -1219,8 +1227,11 @@ struct ProfileView: View {
                     let posts = postsFeed
                     if posts.isEmpty {
                         VStack(spacing: 10) {
-                            Image(systemName: "newspaper")
-                                .font(.jakarta(28)).foregroundStyle(Color.sjMuted)
+                            Image("icon-newspaper")
+                                .renderingMode(.template)
+                                .resizable().scaledToFit()
+                                .frame(width: 28, height: 28)
+                                .foregroundStyle(Color.sjMuted)
                             Text("No posts yet")
                                 .font(.jakarta(14)).foregroundStyle(Color.sjMuted)
                         }
@@ -1285,7 +1296,7 @@ struct ProfileView: View {
             Button(role: .destructive) {
                 pendingDeleteItem = .song(song)
             } label: {
-                Label("Delete Rating", systemImage: "trash")
+                Label("Delete Rating", image: "icon-trash")
             }
         }
     }
@@ -1306,7 +1317,7 @@ struct ProfileView: View {
             Button(role: .destructive) {
                 pendingDeleteItem = .album(rating)
             } label: {
-                Label("Delete Rating", systemImage: "trash")
+                Label("Delete Rating", image: "icon-trash")
             }
         }
     }
@@ -1350,8 +1361,10 @@ struct RatingStatsView: View {
         Group {
             if snapshot.totalRatings == 0 {
                 VStack(spacing: 12) {
-                    Image(systemName: "chart.bar")
-                        .font(.jakarta(36))
+                    Image("icon-bar-chart")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 36, height: 36)
                         .foregroundStyle(Color.sjMuted)
                     Text("Rate some albums to see your stats")
                         .font(.jakarta(15))
@@ -1674,8 +1687,10 @@ struct ExpandableRatingListRow: View {
                     Button {
                         withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
                     } label: {
-                        Image(systemName: "chevron.down")
-                            .font(.jakarta(12, weight: .semibold))
+                        Image("icon-chevron-down")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 12, height: 12)
                             .foregroundStyle(Color.sjMuted)
                             .rotationEffect(.degrees(isExpanded ? 180 : 0))
                             .frame(width: 32, height: 44)
@@ -1744,17 +1759,21 @@ struct FollowListModal: View {
             VStack(spacing: 0) {
                 // Search bar
                 HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
+                    Image("icon-search")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 14, height: 14)
                         .foregroundStyle(Color.sjMuted)
-                        .font(.jakarta(14))
                     TextField("Search", text: $searchText)
                         .font(.jakarta(14))
                         .foregroundStyle(Color.sjInk)
                     if !searchText.isEmpty {
                         Button { searchText = "" } label: {
-                            Image(systemName: "xmark.circle.fill")
+                            Image("icon-x-circle")
+                                .renderingMode(.template)
+                                .resizable().scaledToFit()
+                                .frame(width: 14, height: 14)
                                 .foregroundStyle(Color.sjMuted)
-                                .font(.jakarta(14))
                         }
                         .accessibilityLabel(String(localized: "Clear search"))
                         .buttonStyle(.plain)
@@ -1816,8 +1835,10 @@ struct FollowListModal: View {
     private func profileList(_ profiles: [FollowProfile], empty: String) -> some View {
         if profiles.isEmpty {
             VStack(spacing: 12) {
-                Image(systemName: searchText.isEmpty ? "person.2" : "magnifyingglass")
-                    .font(.jakarta(36))
+                Image(searchText.isEmpty ? "icon-users" : "icon-search")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 36, height: 36)
                     .foregroundStyle(Color.sjMuted)
                 Text(searchText.isEmpty ? empty : "No results for \"\(searchText)\"")
                     .font(.jakarta(15))
@@ -1910,10 +1931,7 @@ private struct FollowProfileRow: View {
                     CachedImage(url: url) { Color.sjBorder }
                         .scaledToFill()
                 } else {
-                    Image(systemName: "person.circle.fill")
-                        .resizable()
-                        .scaledToFit()
-                        .foregroundStyle(Color(uiColor: .systemGray3))
+                    DefaultAvatarView(size: 40)
                 }
             }
             .frame(width: 40, height: 40)
@@ -1967,13 +1985,21 @@ struct UserSearchSheet: View {
         NavigationStack {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(Color.sjMuted)
+                    Image("icon-search")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 16, height: 16)
+                        .foregroundStyle(Color.sjMuted)
                     TextField("Search by username…", text: $query)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                     if !query.isEmpty {
                         Button { query = "" } label: {
-                            Image(systemName: "xmark.circle.fill").foregroundStyle(Color.sjMuted)
+                            Image("icon-x-circle")
+                                .renderingMode(.template)
+                                .resizable().scaledToFit()
+                                .frame(width: 16, height: 16)
+                                .foregroundStyle(Color.sjMuted)
                         }
                         .accessibilityLabel(String(localized: "Clear search"))
                     }
@@ -2017,8 +2043,10 @@ struct UserSearchSheet: View {
                                             }
                                         }
                                         Spacer()
-                                        Image(systemName: "chevron.right")
-                                            .font(.jakarta(12, weight: .semibold))
+                                        Image("icon-chevron-right")
+                                            .renderingMode(.template)
+                                            .resizable().scaledToFit()
+                                            .frame(width: 12, height: 12)
                                             .foregroundStyle(Color.sjBorder)
                                     }
                                     .padding(.horizontal, 16)
@@ -2096,9 +2124,7 @@ struct PostCardHeader<Trailing: View>: View {
 
     var body: some View {
         HStack(spacing: 9) {
-            Image(systemName: "person.circle.fill")
-                .font(.jakarta(30))
-                .foregroundStyle(Color(uiColor: .systemGray3))
+            DefaultAvatarView(size: 30)
             HStack(spacing: 4) {
                 Text("@" + handle)
                     .font(.jakarta(13.5, weight: .semibold))
@@ -2152,11 +2178,13 @@ struct ProfilePostCard: View {
                                 onNotInterested()
                                 didMarkNotInterested.toggle()
                             } label: {
-                                Label("Not Interested", systemImage: "hand.thumbsdown")
+                                Label("Not Interested", image: "icon-thumbs-down")
                             }
                         } label: {
-                            Image(systemName: "ellipsis")
-                                .font(.jakarta(14, weight: .medium))
+                            Image("icon-more-horizontal")
+                                .renderingMode(.template)
+                                .resizable().scaledToFit()
+                                .frame(width: 14, height: 14)
                                 .foregroundStyle(Color.sjMuted)
                                 .frame(width: 30, height: 30)
                         }
@@ -2212,8 +2240,10 @@ struct ProfilePostCard: View {
             HStack(spacing: 16) {
                 HStack(spacing: 5) {
                     Button { Task { await onLike() } } label: {
-                        Image(systemName: isLiked ? "heart.fill" : "heart")
-                            .font(.jakarta(19, weight: .medium))
+                        Image(isLiked ? "icon-heart-filled" : "icon-heart")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 19, height: 19)
                             .foregroundStyle(isLiked ? .red : Color.sjInk)
                     }
                     .buttonStyle(.plain)
@@ -2233,8 +2263,10 @@ struct ProfilePostCard: View {
                 }
                 HStack(spacing: 5) {
                     Button { showComments = true } label: {
-                        Image(systemName: "bubble.left")
-                            .font(.jakarta(19, weight: .medium)).foregroundStyle(Color.sjInk)
+                        Image("icon-message-circle")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 19, height: 19).foregroundStyle(Color.sjInk)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(String(localized: "View comments"))
@@ -2362,8 +2394,10 @@ struct ProfileSongPostCard: View {
             HStack(spacing: 16) {
                 HStack(spacing: 5) {
                     Button { Task { await onLike() } } label: {
-                        Image(systemName: isLiked ? "heart.fill" : "heart")
-                            .font(.jakarta(19, weight: .medium))
+                        Image(isLiked ? "icon-heart-filled" : "icon-heart")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 19, height: 19)
                             .foregroundStyle(isLiked ? .red : Color.sjInk)
                     }
                     .buttonStyle(.plain)
@@ -2383,8 +2417,10 @@ struct ProfileSongPostCard: View {
                 }
                 HStack(spacing: 5) {
                     Button { showComments = true } label: {
-                        Image(systemName: "bubble.left")
-                            .font(.jakarta(19, weight: .medium)).foregroundStyle(Color.sjInk)
+                        Image("icon-message-circle")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 19, height: 19).foregroundStyle(Color.sjInk)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(String(localized: "View comments"))
@@ -2428,14 +2464,16 @@ struct ProfileSongPostCard: View {
 
     private func ownMenu(_ own: SongOwnRatingMenuActions) -> some View {
         Menu {
-            Button { own.onShare() } label: { Label("Share", systemImage: "square.and.arrow.up") }
-            Button { own.onEdit() } label: { Label("Edit", systemImage: "square.and.pencil") }
-            Button { own.onEditComment() } label: { Label("Edit Comment", systemImage: "bubble.right") }
+            Button { own.onShare() } label: { Label("Share", image: "icon-share") }
+            Button { own.onEdit() } label: { Label("Edit", image: "icon-square-pen") }
+            Button { own.onEditComment() } label: { Label("Edit Comment", image: "icon-message-square") }
             Divider()
-            Button(role: .destructive) { own.onDelete() } label: { Label("Delete", systemImage: "trash") }
+            Button(role: .destructive) { own.onDelete() } label: { Label("Delete", image: "icon-trash") }
         } label: {
-            Image(systemName: "ellipsis")
-                .font(.jakarta(14, weight: .medium))
+            Image("icon-more-horizontal")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 14, height: 14)
                 .foregroundStyle(Color.sjMuted)
                 .frame(width: 34, height: 34)
                 .contentShape(Rectangle())

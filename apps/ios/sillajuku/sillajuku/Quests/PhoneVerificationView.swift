@@ -78,8 +78,10 @@ struct PhoneVerificationView: View {
                         Text("+\(selectedCountry.dialCode)")
                             .font(.jakarta(15, weight: .semibold))
                             .foregroundStyle(Color.sjInk)
-                        Image(systemName: "chevron.down")
-                            .font(.jakarta(10, weight: .semibold))
+                        Image("icon-chevron-down")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 10, height: 10)
                             .foregroundStyle(Color.sjMuted)
                     }
                     .padding(.horizontal, 12)
@@ -138,8 +140,10 @@ struct PhoneVerificationView: View {
 
     private var doneStage: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.jakarta(40))
+            Image("icon-check-circle")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 40, height: 40)
                 .foregroundStyle(Color.sjBlue)
             Text("Phone verified")
                 .font(.jakarta(20, weight: .bold))
