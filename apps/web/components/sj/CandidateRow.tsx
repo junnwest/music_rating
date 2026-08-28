@@ -83,7 +83,7 @@ export default function CandidateRow({
         <div
           ref={ref}
           onScroll={measure}
-          className="flex gap-3 overflow-x-auto snap-x scroll-smooth pb-1 [scrollbar-width:thin]"
+          className="flex gap-3 overflow-x-auto snap-x scroll-smooth pb-1 scrollbar-hide"
         >
           {children}
         </div>

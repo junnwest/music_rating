@@ -8,22 +8,24 @@ import { useLanguage } from '../../lib/i18n';
 import { spectrumColor, spectrumFill, spectrumNumber } from '../../lib/sj/display';
 
 /**
- * The taste map: a **cover mosaic treemap** of the user's taste worlds — one tile
- * per world, area ∝ their mass in it, and the tile itself is *tiled with the
- * album covers they rated there* (density scales with the tile's size). The avg
- * rating rides as a solid numeric chip, and the app's score ramp is demoted to a
- * thin accent frame — a redundant, glanceable heat cue that no longer flattens
- * the tile into one bland colour. Click a world and it fluidly expands into its
- * sub-genres; pick a sub-genre to focus the inspector's albums + recommendations.
+ * The taste map: a **cover-mosaic treemap** of the user's taste worlds — one tile
+ * per world, area ∝ their mass in it, and the tile itself tiled with the album
+ * covers they rated there. The avg rating rides as a solid numeric chip; the
+ * app's score ramp is demoted to a thin accent frame — a glanceable heat cue.
+ * Click a world and it resolves into its sub-genres; pick a sub-genre to focus
+ * the inspector's albums + recommendations.
  *
- * Interaction is deliberately tactile (2026-08-12): tiles lift and tilt toward
- * the pointer (a Vision-OS-style parallax "magnet"), their siblings dim, and
- * opening a world animates the clicked tile growing to fill the canvas before it
- * resolves into the sub-genre mosaic — so the drill reads as spatial, not a swap.
+ * Rebuilt 2026-08-26 for stability and calm (the prior version had three UX
+ * defects): (1) the canvas is now a **fixed-height stage** decoupled from the
+ * inspector's height, so drilling in never makes the map grow or shrink — the
+ * two columns size independently. (2) The breadcrumb + legend live in a **chrome
+ * layer that always sits above the tiles**, so a hovered tile can never cover
+ * them. (3) Hover is a single cheap transform (a gentle lift + a static sheen),
+ * replacing the pointer-tracked 3D tilt and the sibling-dimming `:has()` rule
+ * that made the surface feel jittery. Level changes cross-fade.
  *
  * Layout is deterministic (squarified treemap over a fixed value order), so the
- * same profile always draws the same map and a refresh doesn't reshuffle it. The
- * canvas grows to fill whichever column (map or inspector) is taller.
+ * same profile always draws the same map and a refresh doesn't reshuffle it.
  */
 
 export interface TasteGraphTag {
@@ -75,9 +77,6 @@ export interface TasteGraphData {
 }
 
 const PANEL_ALBUMS = 10;
-/** Time the "clicked tile expands to fill" animation runs before the sub-genre
- *  mosaic takes over. Kept in sync with the CSS transition below. */
-const OPEN_MS = 380;
 
 interface Rect {
   x: number;
@@ -85,13 +84,6 @@ interface Rect {
   w: number;
   h: number;
   i: number;
-}
-
-function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  );
 }
 
 /**
@@ -165,20 +157,32 @@ function squarify(values: number[], w: number, h: number): Rect[] {
   return out;
 }
 
+// Interaction is CSS-only now (no per-frame JS, no re-renders on pointer move):
+// the hovered tile lifts a hair and its sheen fades in; the breadcrumb chrome
+// sits in its own always-on-top layer so a lifted tile can't overlap it.
 const MAP_CSS = `
-@keyframes taste-open-in{from{opacity:0;transform:scale(1.03)}to{opacity:1;transform:scale(1)}}
-.taste-open{animation:taste-open-in 380ms cubic-bezier(.22,.61,.36,1)}
-.taste-tile-face{transition:transform 200ms cubic-bezier(.2,.7,.2,1), box-shadow 240ms ease, filter 240ms ease}
-.taste-tile:hover{z-index:30}
-/* Vision-OS "magnet": the hovered tile lifts (JS adds the pointer-tracked tilt on
-   top of this base), and its siblings quietly dim so focus reads as a spotlight. */
-.taste-tile:hover .taste-tile-face{transform:scale(1.04) translateY(-3px)}
-.taste-tiles:has(.taste-tile:hover) .taste-tile:not(:hover) .taste-tile-face{filter:brightness(.78) saturate(.9)}
+@keyframes taste-in{from{opacity:0;transform:scale(.99)}to{opacity:1;transform:scale(1)}}
+.taste-level{animation:taste-in 300ms cubic-bezier(.22,.61,.36,1)}
+.taste-tile-face{transition:transform 200ms cubic-bezier(.2,.7,.2,1), box-shadow 220ms ease, filter 220ms ease}
+.taste-sheen{opacity:0;transition:opacity 220ms ease}
+.taste-tile{transition:opacity 220ms ease}
+.taste-tile:hover{z-index:10}
+.taste-tile:hover .taste-tile-face{transform:translateY(-2px) scale(1.02)}
+.taste-tile:hover .taste-sheen{opacity:1}
+.taste-tile:focus-visible{outline:2px solid currentColor;outline-offset:2px;border-radius:14px}
 @media (prefers-reduced-motion: reduce){
-  .taste-open{animation:none}
-  .taste-tile-face{transition:none}
+  .taste-level{animation:none}
+  .taste-tile-face,.taste-sheen,.taste-tile{transition:none}
   .taste-tile:hover .taste-tile-face{transform:none}
 }
+/* Slim, always-present track for the inspector's scrollable lists — the thin bar
+   sits in a reserved gutter (scrollbar-gutter:stable on the element), so it rides
+   just outside the content instead of overlapping it. */
+.taste-scroll{scrollbar-width:thin;scrollbar-color:rgba(130,130,130,.45) transparent;scrollbar-gutter:stable}
+.taste-scroll::-webkit-scrollbar{width:6px;height:6px}
+.taste-scroll::-webkit-scrollbar-track{background:transparent}
+.taste-scroll::-webkit-scrollbar-thumb{background:rgba(130,130,130,.42);border-radius:999px}
+.taste-scroll::-webkit-scrollbar-thumb:hover{background:rgba(130,130,130,.62)}
 `;
 
 /** Largest fully-fillable cover grid for a tile of `tileW`×`tileH` px given
@@ -207,7 +211,6 @@ function MosaicTile({
   covers,
   selected,
   dim,
-  enterState,
   onClick,
   title,
   ariaLabel,
@@ -222,16 +225,10 @@ function MosaicTile({
   covers: string[];
   selected: boolean;
   dim: boolean;
-  /** During a world-open animation: 'target' = the clicked tile (grows to fill),
-   *  'other' = a sibling (fades away), null = not animating. */
-  enterState: 'target' | 'other' | null;
   onClick: () => void;
   title: string;
   ariaLabel: string;
 }) {
-  const faceRef = useRef<HTMLSpanElement>(null);
-  const glowRef = useRef<HTMLSpanElement>(null);
-
   const tileW = (rect.w / 100) * boxW;
   const tileH = (rect.h / 100) * boxH;
   const score = avg ?? 3;
@@ -249,32 +246,6 @@ function MosaicTile({
 
   const accent = spectrumColor(score, 0.62, 1);
 
-  // Pointer-tracked parallax — the "magnet" pull. Written imperatively so the
-  // pointer move doesn't re-render (which would wipe the transform).
-  const onMove = (e: React.MouseEvent) => {
-    if (enterState || prefersReducedMotion()) return;
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const px = (e.clientX - r.left) / r.width - 0.5;
-    const py = (e.clientY - r.top) / r.height - 0.5;
-    const f = faceRef.current;
-    if (f) {
-      f.style.transform = `scale(1.04) translateY(-3px) rotateX(${(-py * 6).toFixed(2)}deg) rotateY(${(px * 6).toFixed(2)}deg)`;
-    }
-    const g = glowRef.current;
-    if (g) {
-      g.style.opacity = '1';
-      g.style.background = `radial-gradient(240px circle at ${((px + 0.5) * 100).toFixed(1)}% ${((py + 0.5) * 100).toFixed(1)}%, rgba(255,255,255,0.3), transparent 55%)`;
-    }
-  };
-  const onLeave = () => {
-    const f = faceRef.current;
-    if (f) f.style.transform = '';
-    const g = glowRef.current;
-    if (g) g.style.opacity = '0';
-  };
-
-  const targ = enterState === 'target';
-
   return (
     <div
       role="button"
@@ -289,28 +260,19 @@ function MosaicTile({
           onClick();
         }
       }}
-      onMouseMove={onMove}
-      onMouseLeave={onLeave}
       className="taste-tile absolute block text-left cursor-pointer"
       style={{
-        left: `${targ ? 0 : rect.x}%`,
-        top: `${targ ? 0 : rect.y}%`,
-        width: `${targ ? 100 : rect.w}%`,
-        height: `${targ ? 100 : rect.h}%`,
-        opacity: enterState === 'other' ? 0 : 1,
-        transform: enterState === 'other' ? 'scale(0.92)' : undefined,
-        transition: enterState
-          ? `left ${OPEN_MS}ms cubic-bezier(.22,.61,.36,1), top ${OPEN_MS}ms cubic-bezier(.22,.61,.36,1), width ${OPEN_MS}ms cubic-bezier(.22,.61,.36,1), height ${OPEN_MS}ms cubic-bezier(.22,.61,.36,1), opacity 320ms ease, transform 320ms ease`
-          : undefined,
-        zIndex: targ ? 20 : undefined,
-        perspective: 700,
+        left: `${rect.x}%`,
+        top: `${rect.y}%`,
+        width: `${rect.w}%`,
+        height: `${rect.h}%`,
+        opacity: dim ? 0.5 : 1,
+        zIndex: selected ? 5 : undefined,
       }}
     >
       <span
-        ref={faceRef}
         className="taste-tile-face absolute inset-[3px] rounded-xl overflow-hidden block bg-divider"
         style={{
-          filter: dim ? 'brightness(0.4) saturate(0.6)' : undefined,
           boxShadow: selected
             ? `0 0 0 2px #fff, 0 0 0 4px ${accent}, 0 12px 26px -8px rgba(0,0,0,0.5)`
             : `inset 0 0 0 1.5px ${accent}66, inset 0 1px 0 rgba(255,255,255,0.14)`,
@@ -352,12 +314,15 @@ function MosaicTile({
           }}
         />
 
-        {/* Specular highlight that tracks the pointer (the glass "sheen"). */}
+        {/* Static top sheen that fades in on hover (the glass "lift"). */}
         <span
-          ref={glowRef}
           aria-hidden
-          className="absolute inset-0 pointer-events-none"
-          style={{ opacity: 0, transition: 'opacity 220ms ease', mixBlendMode: 'soft-light' }}
+          className="taste-sheen absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage:
+              'linear-gradient(150deg, rgba(255,255,255,0.28), transparent 46%)',
+            mixBlendMode: 'soft-light',
+          }}
         />
 
         {showLabel && (
@@ -403,15 +368,12 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
   const { t } = useLanguage();
   const [world, setWorld] = useState<number | null>(null);
   const [tag, setTag] = useState<string | null>(null);
-  // The world index mid-open: its tile grows to fill the canvas before the
-  // sub-genre mosaic resolves in. null except during the ~380ms transition.
-  const [entering, setEntering] = useState<number | null>(null);
-  const enterTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // The mosaic grid choice depends on real pixel size, so measure the canvas
-  // (which now flexes to fill whichever column is taller).
+  // The mosaic grid choice depends on real pixel size, so measure the stage.
+  // The stage is a fixed-height box (see below), so this only fires on real
+  // resizes — never on a drill-in — which is what keeps the map from jumping.
   const boxRef = useRef<HTMLDivElement>(null);
-  const [box, setBox] = useState({ w: 680, h: 540 });
+  const [box, setBox] = useState({ w: 680, h: 520 });
   useLayoutEffect(() => {
     const el = boxRef.current;
     if (!el) return;
@@ -421,8 +383,31 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  useEffect(() => () => {
-    if (enterTimer.current) clearTimeout(enterTimer.current);
+
+  // Pin the inspector to the map card's exact height on desktop, so a world with
+  // a long "Your ratings here" + recs list scrolls *inside* the panel instead of
+  // stretching the whole section taller than the (fixed) map. The map card's own
+  // height doesn't depend on the inspector, so this measurement stays stable
+  // across drill-ins — the section height never changes.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [cardH, setCardH] = useState<number | null>(null);
+  const [wide, setWide] = useState(false);
+  useLayoutEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const mq = window.matchMedia('(min-width: 768px)');
+    const measure = () => {
+      setWide(mq.matches);
+      setCardH(el.offsetHeight);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    mq.addEventListener('change', measure);
+    return () => {
+      ro.disconnect();
+      mq.removeEventListener('change', measure);
+    };
   }, []);
 
   const worlds = data.worlds;
@@ -541,33 +526,27 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
   const focusRecs = openTag ? (tagRecs.length > 0 ? tagRecs : worldRecs) : worldRecs;
   const recsFallback = !!openTag && tagRecs.length === 0 && worldRecs.length > 0;
 
-  // Open a world — animate the clicked tile filling the canvas, then swap to the
-  // sub-genre mosaic. Reduced motion skips straight to the mosaic.
   const openWorldTile = (i: number) => {
-    if (prefersReducedMotion()) {
-      setTag(null);
-      setWorld(i);
-      return;
-    }
-    if (enterTimer.current) clearTimeout(enterTimer.current);
-    setEntering(i);
-    enterTimer.current = setTimeout(() => {
-      setTag(null);
-      setWorld(i);
-      setEntering(null);
-      enterTimer.current = null;
-    }, OPEN_MS);
+    setTag(null);
+    setWorld(i);
   };
 
   return (
-    <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_300px] md:items-stretch">
+    // items-start (not items-stretch): the map and the inspector size themselves
+    // independently, so the inspector's changing height never resizes the map.
+    <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_300px] md:items-start">
       <style>{MAP_CSS}</style>
 
-      {/* ── The mosaic ── */}
-      <div className="relative flex flex-col rounded-2xl bg-surface border border-divider/60 overflow-hidden">
-        <div ref={boxRef} className="relative w-full flex-1 min-h-[440px] sm:min-h-[540px]">
+      {/* ── The mosaic stage ── */}
+      <div
+        ref={cardRef}
+        className="relative flex flex-col rounded-2xl bg-surface border border-divider/60 overflow-hidden"
+      >
+        {/* Fixed-height stage — the single source of the map's height. It does
+            not depend on the inspector, so drilling in never grows/shrinks it. */}
+        <div ref={boxRef} className="relative w-full h-[430px] sm:h-[520px]">
           {!openWorld ? (
-            <div key="worlds" className="taste-tiles taste-open absolute inset-0">
+            <div key="worlds" className="taste-level absolute inset-0">
               {worldRects.map((r) => {
                 const w = worlds[r.i];
                 const pct = Math.round(w.share * 100);
@@ -584,7 +563,6 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
                     covers={worldCovers[r.i]}
                     selected={false}
                     dim={false}
-                    enterState={entering == null ? null : entering === r.i ? 'target' : 'other'}
                     onClick={() => openWorldTile(r.i)}
                     title={`${w.label} · ${count} · ${pct}%${w.avg != null ? ` · ${w.avg.toFixed(2)}★` : ''}`}
                     ariaLabel={`${w.label} · ${pct}%`}
@@ -593,7 +571,7 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
               })}
             </div>
           ) : (
-            <div key={`world-${world}`} className="taste-tiles taste-open absolute inset-0">
+            <div key={`world-${world}`} className="taste-level absolute inset-0">
               {tagRects.map((r) => {
                 const tg = openTags[r.i];
                 if (!tg) return null;
@@ -613,7 +591,6 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
                       .map((a) => a.coverUrl as string)}
                     selected={selected}
                     dim={!!tag && !selected}
-                    enterState={null}
                     onClick={() => setTag(selected ? null : tg.tag)}
                     title={`${tg.display} · ${cnt} · ${tg.avg.toFixed(2)}★`}
                     ariaLabel={`${tg.display} · ${tg.avg.toFixed(1)}★`}
@@ -624,33 +601,36 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
           )}
         </div>
 
-        {/* Breadcrumb — replaces the floating Back button; each crumb walks a level. */}
+        {/* Chrome layer — breadcrumb pinned above every tile (z-20 clears the
+            hovered tile's z-10), so a lifted tile can never cover it. */}
         {openWorld && (
-          <div className="absolute top-3 left-3 flex items-center gap-1 rounded-full bg-surface/85 border border-divider px-2.5 py-1.5 text-[12px] backdrop-blur-md shadow-sm">
-            <button
-              type="button"
-              onClick={() => {
-                setTag(null);
-                setWorld(null);
-              }}
-              className="font-semibold text-muted hover:text-ink transition"
-            >
-              {t('sj.taste.mapAllWorlds')}
-            </button>
-            <ChevronRight size={13} className="text-muted/50 shrink-0" />
-            <button
-              type="button"
-              onClick={() => setTag(null)}
-              className={`font-semibold transition ${openTag ? 'text-muted hover:text-ink' : 'text-ink'}`}
-            >
-              {openWorld.primary}
-            </button>
-            {openTag && (
-              <>
-                <ChevronRight size={13} className="text-muted/50 shrink-0" />
-                <span className="font-semibold text-ink">{openTag.display}</span>
-              </>
-            )}
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-20 p-3">
+            <div className="pointer-events-auto inline-flex items-center gap-1 rounded-full bg-surface/85 border border-divider px-2.5 py-1.5 text-[12px] backdrop-blur-md shadow-sm">
+              <button
+                type="button"
+                onClick={() => {
+                  setTag(null);
+                  setWorld(null);
+                }}
+                className="font-semibold text-muted hover:text-ink transition"
+              >
+                {t('sj.taste.mapAllWorlds')}
+              </button>
+              <ChevronRight size={13} className="text-muted/50 shrink-0" />
+              <button
+                type="button"
+                onClick={() => setTag(null)}
+                className={`font-semibold transition ${openTag ? 'text-muted hover:text-ink' : 'text-ink'}`}
+              >
+                {openWorld.primary}
+              </button>
+              {openTag && (
+                <>
+                  <ChevronRight size={13} className="text-muted/50 shrink-0" />
+                  <span className="font-semibold text-ink">{openTag.display}</span>
+                </>
+              )}
+            </div>
           </div>
         )}
 
@@ -672,14 +652,19 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
       </div>
 
       {/* ── Inspector ── */}
-      <aside className="rounded-2xl bg-page border border-divider/60 px-4 py-4 min-h-[220px]">
+      {/* Height is pinned to the map card on desktop, and the body scrolls — so a
+          busy world (many ratings + recs) never stretches the section. */}
+      <aside
+        className="flex flex-col rounded-2xl bg-page border border-divider/60 px-4 py-4 md:overflow-hidden"
+        style={{ height: wide && cardH ? cardH : undefined }}
+      >
         {!openWorld ? (
-          <div>
+          <div className="flex min-h-0 flex-1 flex-col">
             <p className="text-[10px] font-bold tracking-[0.08em] uppercase text-muted/60">
               {t('sj.taste.mapExplore')}
             </p>
             <p className="mt-1.5 text-[12.5px] text-muted leading-relaxed">{t('sj.taste.mapHint')}</p>
-            <div className="mt-3 space-y-1">
+            <div className="taste-scroll mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
               {worldOrder.map((i) => {
                 const w = worlds[i];
                 const cover = worldCovers[i][0] ?? null;
@@ -721,28 +706,30 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
             </div>
           </div>
         ) : (
-          <div>
-            <p className="text-[10px] font-bold tracking-[0.08em] uppercase text-muted/60">
-              {openTag ? openWorld.label : t('sj.taste.mapWorld')}
-            </p>
-            <h3 className="mt-0.5 text-[15px] font-bold text-ink leading-tight">
-              {openTag ? openTag.display : openWorld.label}
-            </h3>
-            <p className="mt-0.5 text-[11.5px] text-muted">
-              {openWorld.note && !openTag ? `${openWorld.note} · ` : ''}
-              {t('sj.taste.mapAvg').replace(
-                '{avg}',
-                (openTag ? openTag.avg : openWorld.avg ?? 0).toFixed(2),
-              )}
-            </p>
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="shrink-0">
+              <p className="text-[10px] font-bold tracking-[0.08em] uppercase text-muted/60">
+                {openTag ? openWorld.label : t('sj.taste.mapWorld')}
+              </p>
+              <h3 className="mt-0.5 text-[15px] font-bold text-ink leading-tight">
+                {openTag ? openTag.display : openWorld.label}
+              </h3>
+              <p className="mt-0.5 text-[11.5px] text-muted">
+                {openWorld.note && !openTag ? `${openWorld.note} · ` : ''}
+                {t('sj.taste.mapAvg').replace(
+                  '{avg}',
+                  (openTag ? openTag.avg : openWorld.avg ?? 0).toFixed(2),
+                )}
+              </p>
+            </div>
 
-            <p className="mt-4 text-[10px] font-bold tracking-[0.08em] uppercase text-muted/60">
+            <p className="mt-4 shrink-0 text-[10px] font-bold tracking-[0.08em] uppercase text-muted/60">
               {t('sj.taste.mapYourAlbums')}
             </p>
             {focusAlbums.length === 0 ? (
-              <p className="mt-1.5 text-[12px] text-muted">{t('sj.taste.mapNoAlbums')}</p>
+              <p className="mt-1.5 shrink-0 text-[12px] text-muted">{t('sj.taste.mapNoAlbums')}</p>
             ) : (
-              <ul className="mt-2 space-y-2 max-h-[240px] overflow-y-auto pr-2.5 [scrollbar-gutter:stable]">
+              <ul className="taste-scroll mt-2 min-h-0 flex-1 space-y-2 overflow-y-auto md:overflow-y-scroll pr-2">
                 {focusAlbums.map((a) => (
                   <li key={a.id}>
                     <Link href={`/album/${a.id}`} className="flex items-center gap-2 group">
@@ -766,7 +753,7 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
             )}
 
             {focusRecs.length > 0 && (
-              <>
+              <div className="shrink-0">
                 <p className="mt-4 text-[10px] font-bold tracking-[0.08em] uppercase text-muted/60">
                   {recsFallback
                     ? t('sj.taste.mapMoreIn').replace('{world}', openWorld.primary)
@@ -787,7 +774,7 @@ export default function TasteGraph({ data }: { data: TasteGraphData }) {
                     </li>
                   ))}
                 </ul>
-              </>
+              </div>
             )}
           </div>
         )}

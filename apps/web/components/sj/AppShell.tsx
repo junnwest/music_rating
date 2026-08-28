@@ -134,23 +134,42 @@ function ShellInner({ children }: { children: ReactNode }) {
             <Settings size={19} strokeWidth={isActive('/settings') ? 2.2 : 1.8} />
             {t('sj.nav.settings')}
           </Link>
+
+          {/* Account rail — notifications + profile menu live here now that the
+              desktop top bar is gone. */}
+          <div className="mt-2 pt-2 border-t border-divider flex items-center gap-1">
+            {userId === null ? (
+              <Link
+                href="/login"
+                className="flex-1 flex items-center justify-center px-3 py-2.5 rounded-xl bg-accent text-white text-[14px] font-semibold hover:opacity-90 transition"
+              >
+                {t('sj.nav.logIn')}
+              </Link>
+            ) : (
+              <>
+                <div className="min-w-0 flex-1">
+                  <AvatarMenu variant="sidebar" />
+                </div>
+                <NotificationsBell variant="sidebar" hasUnread={hasUnread} />
+              </>
+            )}
+          </div>
         </div>
       </aside>
 
       {/* ── Main column ── */}
       <div className="flex-1 min-w-0 flex flex-col">
-        {/* Top bar */}
-        <header className="sticky top-0 z-40 flex items-center gap-3 px-4 md:px-6 h-[56px] bg-page/90 backdrop-blur border-b border-divider">
-          <Link href="/" className="md:hidden flex items-center">
+        {/* Top bar — mobile only. On desktop the sidebar carries search, nav,
+            notifications, and the profile menu, so there's no top bar at all. */}
+        <header className="md:hidden sticky top-0 z-40 flex items-center gap-3 px-4 h-[56px] bg-page/90 backdrop-blur border-b border-divider">
+          <Link href="/" className="flex items-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo-flower.svg" alt="sillajuku" className="w-7 h-7" />
           </Link>
-          {/* Search lives in the sidebar on desktop; the top bar carries it on
-              mobile, where the sidebar is hidden. */}
-          <div className="md:hidden flex-1 flex">
+          <div className="flex-1 flex">
             <SearchOmnibox />
           </div>
-          <div className="flex items-center gap-1.5 ml-auto">
+          <div className="flex items-center gap-1.5">
             <NotificationsBell hasUnread={hasUnread} />
             {userId === null ? (
               <Link
