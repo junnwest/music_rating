@@ -95,15 +95,22 @@ struct sillajukuApp: App {
                 .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
                     // Universal Link path — only relevant when the app is already
                     // installed (the rare case for an invite; the clipboard handoff
-                    // in ReferralClipboardHandoff.swift covers the common one).
-                    // Saved unconditionally, not just attempted directly — if this
-                    // fires while signed out (no auth.uid() for the RPC to key on),
-                    // a direct attempt would just throw and be lost. Persisting it
-                    // lets observeAuth() retry once a real session shows up, rather
-                    // than silently dropping a genuine link tap.
-                    guard let url = activity.webpageURL, let code = InviteLink.code(from: url) else { return }
-                    PendingReferralStore.save(code)
-                    Task { await PendingReferralStore.consumeAndRedeem() }
+                    // in ReferralClipboardHandoff.swift/BetaInvite.swift covers the
+                    // common one). Saved unconditionally, not just attempted
+                    // directly — if this fires while signed out (no auth.uid() for
+                    // the RPC to key on), a direct attempt would just throw and be
+                    // lost. Persisting it lets observeAuth() retry once a real
+                    // session shows up, rather than silently dropping a genuine
+                    // link tap. The two path shapes (/i/<code>, /beta/<token>) are
+                    // mutually exclusive, so only one of these ever matches.
+                    guard let url = activity.webpageURL else { return }
+                    if let code = InviteLink.code(from: url) {
+                        PendingReferralStore.save(code)
+                        Task { await PendingReferralStore.consumeAndRedeem() }
+                    } else if let token = BetaInviteLink.token(from: url) {
+                        PendingBetaTokenStore.save(token)
+                        Task { await PendingBetaTokenStore.consumeAndRedeem() }
+                    }
                 }
         }
     }
@@ -159,6 +166,8 @@ struct RootView: View {
             // any Universal-Link code that arrived before a session existed.
             Task { await ReferralClipboardHandoff.checkAndRedeemOnce() }
             Task { await PendingReferralStore.consumeAndRedeem() }
+            Task { await BetaTokenClipboardHandoff.checkAndRedeemOnce() }
+            Task { await PendingBetaTokenStore.consumeAndRedeem() }
             let onboarded = await checkOnboarded(userId: session.user.id)
             if onboarded {
                 appState.authState = .authenticated

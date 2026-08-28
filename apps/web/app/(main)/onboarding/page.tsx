@@ -131,8 +131,13 @@ export default function OnboardingPage() {
         username: username.trim().toLowerCase(),
       });
       if (error) throw error;
-      // Full reload so SessionProvider picks up the fresh profile
-      window.location.href = '/';
+      // A pending beta token (set by BetaSwipeFlow before the OAuth redirect,
+      // see app/beta/[token]) means this brand-new account arrived via a beta
+      // invite link — redeem_beta_token needs the profiles row that just got
+      // created above, so this is the earliest point it's safe to claim it.
+      // Full reload either way so SessionProvider picks up the fresh profile.
+      const hasPendingBetaToken = window.localStorage.getItem('sj_pending_beta_token');
+      window.location.href = hasPendingBetaToken ? '/beta/claim' : '/';
     } catch {
       setSaveError(t('sj.onboarding.saveError'));
       setSaving(false);
