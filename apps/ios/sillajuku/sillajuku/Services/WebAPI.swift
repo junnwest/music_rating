@@ -79,6 +79,12 @@ struct RecommendationsResponse: Decodable {
 // v5 (2026-08-13, taste-page rebuild port): added `graph` (treemap worlds/albums/recs) and
 // `charts.years` -- both already sent by the API since the 2026-08-10/11 web rebuild, but
 // silently dropped by JSONDecoder until now since it ignores unknown keys rather than erroring.
+// v11 (2026-08-27, "By the numbers" rebuild): `charts.years[i]` changed from `{year, count}` to
+// `{year, above, below}` (a diverging above/below-your-average split, not a single tally) --
+// this broke decoding entirely until fixed (confirmed live: every load failed with
+// DecodingError.keyNotFound("count") once the API moved to this shape). Added `topScore`/
+// `topAlbums` (every album tied at the top score, for a rotating "hall of fame") and
+// `stats.median`/`skew`/`effectiveGenres`/`communityDelta`/`perfectRate`.
 struct TasteProfileResponse: Decodable {
     let ratingCount: Int
     let albumRatingCount: Int
@@ -89,6 +95,8 @@ struct TasteProfileResponse: Decodable {
     let graph: TasteGraph?
     let charts: TasteCharts
     let stats: TasteStats
+    let topScore: Double?
+    let topAlbums: [TasteTopAlbum]
     let topAlbum: TasteTopAlbum?
 
     struct TasteGraph: Decodable {
@@ -167,6 +175,11 @@ struct TasteProfileResponse: Decodable {
         let avgScore: Double?
         let sdScore: Double?
         let fiveStars: Int
+        let perfectRate: Double?
+        let median: Double?
+        let skew: Double?
+        let effectiveGenres: Double?
+        let communityDelta: Double?
         let meanYear: Int?
         let sdYears: Double?
         let prestigeShare: Double?
@@ -190,9 +203,13 @@ struct TasteProfileResponse: Decodable {
             let count: Int
         }
 
+        // Per-release-year split of scored ratings around the overall average -- v11 replaced
+        // the single `count` tally with this above/below split so the chart can show both how
+        // much you rated from an era and how you felt about it (diverging frequency histogram).
         struct YearBin: Decodable {
             let year: Int
-            let count: Int
+            let above: Int
+            let below: Int
         }
 
         struct SceneMix: Decodable {
