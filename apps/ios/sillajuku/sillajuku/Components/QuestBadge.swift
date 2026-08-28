@@ -58,6 +58,25 @@ struct VerifiedBadgeView: View {
     }
 }
 
+/// The beta-tester badge -- granted manually (same pattern as `is_verified`,
+/// see `is_beta_tester` migration) to early private-outreach accounts. A
+/// rocket, so it can't be mistaken for the flower (quest completion) or the
+/// seal (verified) sharing a profile with it. Tinted a dedicated launch-
+/// orange rather than `Color.sjAmber` -- that token is now an alias for
+/// `sjBlue` (see Theme.swift) after an earlier rebrand, which would put this
+/// badge in the same blue as Verified right next to it.
+struct BetaBadgeView: View {
+    private static let launchOrange = Color(red: 1.0, green: 0.478, blue: 0.0) // #FF7A00
+
+    var body: some View {
+        Image("icon-rocket-filled")
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .foregroundStyle(Self.launchOrange)
+    }
+}
+
 /// Auto-presented by MainTabView on every launch while
 /// `questVM.shouldOfferBadgeRedeem` is true -- i.e. every session until the
 /// user actually picks a color. There is no Cancel/dismiss-and-forget path by

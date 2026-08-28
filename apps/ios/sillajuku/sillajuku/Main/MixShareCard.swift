@@ -163,10 +163,20 @@ struct MixShareCard: View {
             Text("@" + (post.profile?.handle ?? String(localized: "someone")))
                 .font(.jakarta(13.5, weight: .semibold))
                 .foregroundStyle(Color.sjInk)
+            if let raw = post.profile?.badgeColor, let badge = QuestBadgeColor(rawValue: raw) {
+                QuestBadgeView(color: badge.color)
+                    .frame(width: 13, height: 13)
+                    .accessibilityLabel(String(localized: "Quests complete"))
+            }
             if post.profile?.isVerified == true {
                 VerifiedBadgeView()
                     .frame(width: 13, height: 13)
                     .accessibilityLabel(String(localized: "Verified"))
+            }
+            if post.profile?.isBetaTester == true {
+                BetaBadgeView()
+                    .frame(width: 13, height: 13)
+                    .accessibilityLabel(String(localized: "Beta tester"))
             }
         }
 

@@ -1483,8 +1483,16 @@ struct RatingCommentRow: View {
                         .font(.jakarta(13, weight: .semibold))
                         .foregroundStyle(Color.sjInk)
                         .lineLimit(1)
+                    if let raw = item.profiles?.badgeColor, let badge = QuestBadgeColor(rawValue: raw) {
+                        QuestBadgeView(color: badge.color)
+                            .frame(width: 12, height: 12)
+                    }
                     if item.profiles?.isVerified == true {
                         VerifiedBadgeView()
+                            .frame(width: 12, height: 12)
+                    }
+                    if item.profiles?.isBetaTester == true {
+                        BetaBadgeView()
                             .frame(width: 12, height: 12)
                     }
                     Text("·")
@@ -1890,8 +1898,16 @@ struct SongRatingCommentRow: View {
                         .font(.jakarta(13, weight: .semibold))
                         .foregroundStyle(Color.sjInk)
                         .lineLimit(1)
+                    if let raw = item.profiles?.badgeColor, let badge = QuestBadgeColor(rawValue: raw) {
+                        QuestBadgeView(color: badge.color)
+                            .frame(width: 12, height: 12)
+                    }
                     if item.profiles?.isVerified == true {
                         VerifiedBadgeView()
+                            .frame(width: 12, height: 12)
+                    }
+                    if item.profiles?.isBetaTester == true {
+                        BetaBadgeView()
                             .frame(width: 12, height: 12)
                     }
                     Text("·")
@@ -1972,6 +1988,8 @@ struct SongDetailView: View {
     @State private var myRowLiked = false
     @State private var myHandle: String? = nil
     @State private var myVerified = false
+    @State private var myBadgeColor: String? = nil
+    @State private var myBetaTester = false
     @State private var showEditCommentSheet = false
     @State private var showDeleteConfirm = false
     @State private var showMixPicker = false
@@ -2228,7 +2246,9 @@ struct SongDetailView: View {
                         onDelete: { showDeleteConfirm = true }
                     ),
                     headerHandle: myHandle,
-                    headerVerified: myVerified
+                    headerVerified: myVerified,
+                    headerBadgeColor: myBadgeColor,
+                    headerBetaTester: myBetaTester
                 )
             } else {
                 Button {
@@ -2409,13 +2429,20 @@ struct SongDetailView: View {
             struct MyProfile: Decodable {
                 let username: String?
                 let isVerified: Bool?
-                enum CodingKeys: String, CodingKey { case username; case isVerified = "is_verified" }
+                let badgeColor: String?
+                let isBetaTester: Bool?
+                enum CodingKeys: String, CodingKey {
+                    case username; case isVerified = "is_verified"
+                    case badgeColor = "badge_color"; case isBetaTester = "is_beta_tester"
+                }
             }
             if let p: MyProfile = try? await supabase.from("profiles")
-                .select("username, is_verified").eq("id", value: userId)
+                .select("username, is_verified, badge_color, is_beta_tester").eq("id", value: userId)
                 .single().execute().value {
                 myHandle = p.username
                 myVerified = p.isVerified == true
+                myBadgeColor = p.badgeColor
+                myBetaTester = p.isBetaTester == true
             }
         }
     }
@@ -2478,18 +2505,20 @@ struct SongDetailView: View {
             struct ProfileRow: Decodable {
                 let id: UUID; let username: String?; let displayName: String?
                 let isBot: Bool?; let isVerified: Bool?
+                let badgeColor: String?; let isBetaTester: Bool?
                 enum CodingKeys: String, CodingKey {
                     case id, username
                     case displayName = "display_name"; case isBot = "is_bot"; case isVerified = "is_verified"
+                    case badgeColor = "badge_color"; case isBetaTester = "is_beta_tester"
                 }
             }
             let profileRows: [ProfileRow] = (try? await supabase
                 .from("profiles")
-                .select("id, username, display_name, is_bot, is_verified")
+                .select("id, username, display_name, is_bot, is_verified, badge_color, is_beta_tester")
                 .in("id", values: userIds)
                 .execute().value) ?? []
             let byId = Dictionary(uniqueKeysWithValues: profileRows.map {
-                ($0.id, FeedProfile(username: $0.username, displayName: $0.displayName, isBot: $0.isBot, isVerified: $0.isVerified))
+                ($0.id, FeedProfile(username: $0.username, displayName: $0.displayName, isBot: $0.isBot, isVerified: $0.isVerified, badgeColor: $0.badgeColor, isBetaTester: $0.isBetaTester))
             })
             for i in posts.indices { posts[i].profiles = byId[posts[i].userId] }
         }
@@ -2634,18 +2663,20 @@ private class SongRatingsListViewModel {
             struct ProfileRow: Decodable {
                 let id: UUID; let username: String?; let displayName: String?
                 let isBot: Bool?; let isVerified: Bool?
+                let badgeColor: String?; let isBetaTester: Bool?
                 enum CodingKeys: String, CodingKey {
                     case id, username
                     case displayName = "display_name"; case isBot = "is_bot"; case isVerified = "is_verified"
+                    case badgeColor = "badge_color"; case isBetaTester = "is_beta_tester"
                 }
             }
             let profileRows: [ProfileRow] = (try? await supabase
                 .from("profiles")
-                .select("id, username, display_name, is_bot, is_verified")
+                .select("id, username, display_name, is_bot, is_verified, badge_color, is_beta_tester")
                 .in("id", values: userIds)
                 .execute().value) ?? []
             let byId = Dictionary(uniqueKeysWithValues: profileRows.map {
-                ($0.id, FeedProfile(username: $0.username, displayName: $0.displayName, isBot: $0.isBot, isVerified: $0.isVerified))
+                ($0.id, FeedProfile(username: $0.username, displayName: $0.displayName, isBot: $0.isBot, isVerified: $0.isVerified, badgeColor: $0.badgeColor, isBetaTester: $0.isBetaTester))
             })
             for i in loaded.indices { loaded[i].profiles = byId[loaded[i].userId] }
         }

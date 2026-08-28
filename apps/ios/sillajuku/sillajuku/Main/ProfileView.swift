@@ -294,7 +294,7 @@ class ProfileViewModel {
     private func fetchProfile(userId: UUID) async -> Profile? {
         try? await supabase
             .from("profiles")
-            .select("id, display_name, username, rating_mode, manual_rating_step, bio, avatar_url, notify_likes, notify_replies, notify_followers, notify_rankings, notify_capsule, profile_visibility, catalog_visibility, library_visibility, stats_visibility, referral_code, badge_color, is_verified")
+            .select("id, display_name, username, rating_mode, manual_rating_step, bio, avatar_url, notify_likes, notify_replies, notify_followers, notify_rankings, notify_capsule, profile_visibility, catalog_visibility, library_visibility, stats_visibility, referral_code, badge_color, is_verified, is_beta_tester")
             .eq("id", value: userId)
             .single()
             .execute()
@@ -901,6 +901,11 @@ struct ProfileView: View {
                         .frame(width: 14, height: 14)
                         .accessibilityLabel(String(localized: "Verified"))
                 }
+                if viewModel.profile?.isBetaTester == true {
+                    BetaBadgeView()
+                        .frame(width: 14, height: 14)
+                        .accessibilityLabel(String(localized: "Beta tester"))
+                }
             }
             .frame(maxWidth: .infinity, alignment: .center)
 
@@ -1288,7 +1293,9 @@ struct ProfileView: View {
             isLiked: viewModel.likedSongRatingIds.contains(song.ratingId),
             onLike: { await viewModel.toggleSongLike(ratingId: song.ratingId) },
             headerHandle: viewModel.profile?.username ?? "me",
-            headerVerified: viewModel.profile?.isVerified == true
+            headerVerified: viewModel.profile?.isVerified == true,
+            headerBadgeColor: viewModel.profile?.badgeColor,
+            headerBetaTester: viewModel.profile?.isBetaTester == true
         )
         .padding(.horizontal, 12)
         .padding(.top, 8)
@@ -1309,7 +1316,9 @@ struct ProfileView: View {
             isLiked: viewModel.likedRatingIds.contains(rating.id),
             onLike: { await viewModel.toggleLike(ratingId: rating.id) },
             headerHandle: viewModel.profile?.username ?? "me",
-            headerVerified: viewModel.profile?.isVerified == true
+            headerVerified: viewModel.profile?.isVerified == true,
+            headerBadgeColor: viewModel.profile?.badgeColor,
+            headerBetaTester: viewModel.profile?.isBetaTester == true
         )
         .padding(.horizontal, 12)
         .padding(.top, 8)
@@ -2111,13 +2120,17 @@ struct UserSearchSheet: View {
 struct PostCardHeader<Trailing: View>: View {
     let handle: String
     let isVerified: Bool
+    let badgeColor: String?
+    let isBetaTester: Bool
     let createdAt: Date
     @ViewBuilder var trailing: () -> Trailing
 
-    init(handle: String, isVerified: Bool, createdAt: Date,
-         @ViewBuilder trailing: @escaping () -> Trailing = { EmptyView() }) {
+    init(handle: String, isVerified: Bool, badgeColor: String? = nil, isBetaTester: Bool = false,
+         createdAt: Date, @ViewBuilder trailing: @escaping () -> Trailing = { EmptyView() }) {
         self.handle = handle
         self.isVerified = isVerified
+        self.badgeColor = badgeColor
+        self.isBetaTester = isBetaTester
         self.createdAt = createdAt
         self.trailing = trailing
     }
@@ -2129,10 +2142,20 @@ struct PostCardHeader<Trailing: View>: View {
                 Text("@" + handle)
                     .font(.jakarta(13.5, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
+                if let raw = badgeColor, let badge = QuestBadgeColor(rawValue: raw) {
+                    QuestBadgeView(color: badge.color)
+                        .frame(width: 13, height: 13)
+                        .accessibilityLabel(String(localized: "Quests complete"))
+                }
                 if isVerified {
                     VerifiedBadgeView()
                         .frame(width: 13, height: 13)
                         .accessibilityLabel(String(localized: "Verified"))
+                }
+                if isBetaTester {
+                    BetaBadgeView()
+                        .frame(width: 13, height: 13)
+                        .accessibilityLabel(String(localized: "Beta tester"))
                 }
             }
             Text("·").font(.jakarta(13)).foregroundStyle(Color.sjBorder)
@@ -2157,6 +2180,8 @@ struct ProfilePostCard: View {
     // like posts everywhere else (feed, album page).
     var headerHandle: String? = nil
     var headerVerified: Bool = false
+    var headerBadgeColor: String? = nil
+    var headerBetaTester: Bool = false
     // Only offered on someone else's post (UserProfileView) -- redundant on your
     // own ratings, which are already excluded from Quick Add via the ratings table.
     var onNotInterested: (() -> Void)? = nil
@@ -2171,6 +2196,7 @@ struct ProfilePostCard: View {
         VStack(alignment: .leading, spacing: 0) {
             if let handle = headerHandle {
                 PostCardHeader(handle: handle, isVerified: headerVerified,
+                               badgeColor: headerBadgeColor, isBetaTester: headerBetaTester,
                                createdAt: rating.createdAt) {
                     if let onNotInterested {
                         Menu {
@@ -2326,6 +2352,8 @@ struct ProfileSongPostCard: View {
     // it instead of as a corner overlay, and the action-bar timestamp moves up.
     var headerHandle: String? = nil
     var headerVerified: Bool = false
+    var headerBadgeColor: String? = nil
+    var headerBetaTester: Bool = false
 
     @State private var showComments = false
     @State private var showLikers = false
@@ -2336,6 +2364,7 @@ struct ProfileSongPostCard: View {
         VStack(alignment: .leading, spacing: 0) {
             if let handle = headerHandle {
                 PostCardHeader(handle: handle, isVerified: headerVerified,
+                               badgeColor: headerBadgeColor, isBetaTester: headerBetaTester,
                                createdAt: song.createdAt) {
                     if let own = ownActions { ownMenu(own) }
                 }

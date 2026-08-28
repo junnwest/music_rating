@@ -57,12 +57,14 @@ final class UserProfileViewModel {
         let avatarUrl: String?
         let badgeColor: String?
         let isVerified: Bool?
+        let isBetaTester: Bool?
         enum CodingKeys: String, CodingKey {
             case id, username, bio
             case displayName = "display_name"
             case avatarUrl   = "avatar_url"
             case badgeColor  = "badge_color"
             case isVerified  = "is_verified"
+            case isBetaTester = "is_beta_tester"
         }
         var handle: String { username ?? displayName ?? String(localized: "someone") }
         var displayLabel: String { displayName ?? username ?? String(localized: "someone") }
@@ -257,7 +259,7 @@ final class UserProfileViewModel {
     private func loadProfile() async -> OtherProfile? {
         try? await supabase
             .from("profiles")
-            .select("id, username, display_name, bio, avatar_url, badge_color, is_verified")
+            .select("id, username, display_name, bio, avatar_url, badge_color, is_verified, is_beta_tester")
             .eq("id", value: userId)
             .single()
             .execute()
@@ -497,6 +499,11 @@ struct UserProfileView: View {
                         VerifiedBadgeView()
                             .frame(width: 15, height: 15)
                             .accessibilityLabel(String(localized: "Verified"))
+                    }
+                    if vm.profile?.isBetaTester == true {
+                        BetaBadgeView()
+                            .frame(width: 15, height: 15)
+                            .accessibilityLabel(String(localized: "Beta tester"))
                     }
                 }
             }
@@ -818,6 +825,8 @@ struct UserProfileView: View {
                                     onLike: { await vm.toggleLike(ratingId: rating.id) },
                                     headerHandle: vm.profile?.handle ?? initialHandle,
                                     headerVerified: vm.profile?.isVerified == true,
+                                    headerBadgeColor: vm.profile?.badgeColor,
+                                    headerBetaTester: vm.profile?.isBetaTester == true,
                                     onNotInterested: { Task { await vm.notInterested(rating: rating) } }
                                 )
                                 .padding(.horizontal, 12)
