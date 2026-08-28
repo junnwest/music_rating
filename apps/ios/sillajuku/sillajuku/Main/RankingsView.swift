@@ -256,6 +256,30 @@ class ChartsViewModel {
     var isLoading: Bool { unlockStatus == nil }
     private var hasLoaded = false
 
+    // TEMPORARY (dev only): the real community thresholds (10k album / 2.5k song rating
+    // events) won't be hit for a long time, which makes the fully-built unlocked screen
+    // untestable on a real account. Force both charts open so that screen can be developed
+    // and verified live, without touching the actual unlock RPC/thresholds. `#if DEBUG` keeps
+    // this out of Release/TestFlight builds entirely -- flip to false or delete this block
+    // once the charts work is done and real unlock behavior should be exercised again.
+    #if DEBUG
+    static let devForceUnlock = true
+    #endif
+
+    var albumsUnlocked: Bool {
+        #if DEBUG
+        if Self.devForceUnlock { return true }
+        #endif
+        return unlockStatus?.albumUnlocked == true
+    }
+
+    var songsUnlocked: Bool {
+        #if DEBUG
+        if Self.devForceUnlock { return true }
+        #endif
+        return unlockStatus?.songUnlocked == true
+    }
+
     var activeTrending: [ChartEntry] {
         trendingMode == .forYou && !trendingForYou.isEmpty ? trendingForYou : trendingGlobal
     }
@@ -477,7 +501,7 @@ struct ChartsView: View {
         Group {
             if viewModel.isLoading {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if viewModel.unlockStatus?.albumUnlocked != true {
+            } else if !viewModel.albumsUnlocked {
                 // Fail locked, not open: a nil status (RPC failure/timeout) must
                 // not fall through to the unlocked branch below.
                 RankingsLockedView(
@@ -520,7 +544,7 @@ struct ChartsView: View {
         Group {
             if viewModel.isLoading {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if viewModel.unlockStatus?.songUnlocked != true {
+            } else if !viewModel.songsUnlocked {
                 // Fail locked, not open -- see albumsTab's identical guard.
                 RankingsLockedView(
                     events: viewModel.unlockStatus?.songEvents ?? 0,
