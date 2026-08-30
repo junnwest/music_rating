@@ -39,6 +39,12 @@ export const TASTE_MOTION_CSS = `
 .hof-stage{position:relative;perspective:1000px;perspective-origin:50% 44%}
 .hof-ring{position:absolute;inset:0;transform-style:preserve-3d;transition:transform .95s cubic-bezier(.22,.61,.36,1)}
 .hof-card{position:absolute;left:50%;top:0;transition:opacity .55s ease,filter .55s ease;backface-visibility:hidden}
+/* Cover art fills its rounded frame under 3D rotation: overscan the image a hair
+   so a sub-pixel seam of the light placeholder background can't show as a white
+   hairline along a tilted cover's edge. Native image-drag is disabled and pointer
+   events pass through to the card so a press-drag anywhere on a cover spins the
+   ring (not the browser's ghost-drag) while taps still reach the link/button. */
+.hof-cover img{transform:scale(1.035);-webkit-user-drag:none;user-select:none;pointer-events:none}
 .hof-float{animation:hof-float 5.5s ease-in-out infinite}
 @keyframes hof-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
 .hof-meta{animation:hof-meta-in .5s ease}

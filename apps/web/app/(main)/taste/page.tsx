@@ -716,36 +716,44 @@ function HallOfFame({
   );
 
   // ── Drag to spin ──────────────────────────────────────────────────────────
+  // `turn` is read through a ref so the pointer handlers never re-create (and so
+  // a press captures the *current* turn without listing it as a dep).
+  const turnRef = useRef(turn);
+  turnRef.current = turn;
   const drag = useRef<{ startX: number; startTurn: number; moved: boolean } | null>(null);
   const DRAG_PX_PER_STEP = 70; // horizontal travel that advances one cover
 
-  const onPointerDown = useCallback(
-    (e: React.PointerEvent) => {
-      if (n <= 1) return;
-      drag.current = { startX: e.clientX, startTurn: turn, moved: false };
-      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-      setResetKey((k) => k + 1); // pause auto-spin the moment a drag begins
-    },
-    [n, turn],
-  );
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    if (n <= 1 || e.button !== 0) return;
+    // Don't capture yet: capturing on press retargets pointer events off the
+    // covers, which swallows their click (goTo) and nav. Capture only once a
+    // real drag starts, in onPointerMove.
+    drag.current = { startX: e.clientX, startTurn: turnRef.current, moved: false };
+  }, [n]);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     const d = drag.current;
     if (!d) return;
     const dx = e.clientX - d.startX;
-    if (Math.abs(dx) > 4) d.moved = true;
+    if (!d.moved) {
+      if (Math.abs(dx) < 4) return; // a click, not a drag — leave covers clickable
+      d.moved = true;
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+      setResetKey((k) => k + 1); // pause auto-spin now that a drag is underway
+    }
     // Drag left → advance forward (matches the auto-spin direction).
     setTurn(d.startTurn - Math.round(dx / DRAG_PX_PER_STEP));
   }, []);
 
   const endDrag = useCallback((e: React.PointerEvent) => {
-    if (!drag.current) return;
+    const d = drag.current;
+    if (!d) return;
     (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
-    // Keep `moved` readable one tick so the click handler can suppress nav.
-    const wasMoved = drag.current.moved;
-    drag.current = wasMoved ? { startX: 0, startTurn: turn, moved: true } : null;
-    if (wasMoved) setTimeout(() => (drag.current = null), 0);
-  }, [turn]);
+    // Keep `moved` readable through the click that immediately follows so cover
+    // taps that were actually drags don't also navigate / jump.
+    if (d.moved) setTimeout(() => (drag.current = null), 0);
+    else drag.current = null;
+  }, []);
 
   const front = albums[active];
   const COVER = 168; // px — fixed so the 3D ring geometry is stable
@@ -792,16 +800,10 @@ function HallOfFame({
                 <Cover
                   url={al.coverUrl}
                   thumb={false}
-                  className={`w-full h-full ${isFront ? 'shadow-xl ring-2 ring-accent/40' : 'shadow-md'}`}
+                  className={`hof-cover w-full h-full ${isFront ? 'shadow-xl ring-2 ring-accent/40' : 'shadow-md'}`}
                   rounded="rounded-xl"
                 />
               );
-              const suppressIfDragged = (e: React.MouseEvent) => {
-                if (drag.current?.moved) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }
-              };
               return (
                 <div
                   key={al.id}
@@ -822,15 +824,25 @@ function HallOfFame({
                       href={`/album/${al.id}`}
                       className="block w-full h-full"
                       draggable={false}
-                      onClick={suppressIfDragged}
+                      onClick={(e) => {
+                        // A drag that happened to end on the front cover shouldn't
+                        // navigate.
+                        if (drag.current?.moved) {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }
+                      }}
                     >
                       {card}
                     </Link>
                   ) : (
                     <button
                       type="button"
-                      onClick={() => goTo(i)}
+                      onClick={() => {
+                        if (!drag.current?.moved) goTo(i); // plain tap → bring to front
+                      }}
                       className="block w-full h-full"
+                      draggable={false}
                       tabIndex={-1}
                     >
                       {card}
