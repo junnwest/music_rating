@@ -855,10 +855,17 @@ function HallOfFame({
         </div>
       )}
 
-      {/* front album meta — crossfades as the ring turns */}
+      {/* front album meta — crossfades as the ring turns. The title box reserves
+          a fixed two-line height (leading-[1.25] × 2 = 2.5em) so a long, wrapping
+          title and a short one-liner take the same vertical space — otherwise the
+          meta block, and the whole "By the numbers" box, would jump height as the
+          ring rotates through titles of different lengths. */}
       <Link href={`/album/${front.id}`} className="group mt-4 text-center max-w-[240px]">
         <span key={front.id} className="hof-meta block">
-          <span className="block text-[14px] font-bold text-ink line-clamp-2 group-hover:underline">
+          <span
+            className="block text-[14px] font-bold leading-[1.25] text-ink line-clamp-2 group-hover:underline"
+            style={{ height: '2.5em' }}
+          >
             {front.title}
           </span>
           <span className="block text-[12px] text-muted truncate">{front.artist}</span>
