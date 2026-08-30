@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Lock, Star, BarChart3, Drama, AudioWaveform, RotateCw } from 'lucide-react';
 import Cover from '../../../components/sj/Cover';
@@ -374,18 +374,21 @@ function ReportView({
                 value={stats.avgScore != null ? stats.avgScore.toFixed(2) : '—'}
                 label={t('sj.taste.statAvg')}
                 hint={stats.sdScore != null ? `±${stats.sdScore.toFixed(2)} ${t('sj.taste.statSpread')}` : undefined}
+                tip={t('sj.taste.statAvgTip')}
               />
               <StatTile
                 value={stats.median != null ? stats.median.toFixed(1) : '—'}
                 label={t('sj.taste.statMedian')}
                 hint={skewHint(stats.skew, stats.median, stats.avgScore, t)}
                 hintTone="neutral"
+                tip={t('sj.taste.statMedianTip')}
               />
               <StatTile
                 value={stats.effectiveGenres != null ? stats.effectiveGenres.toFixed(1) : '—'}
                 label={t('sj.taste.statDiversity')}
                 hint={t('sj.taste.statDiversityHint').replace('{n}', String(report.totalTags))}
                 hintTone="neutral"
+                tip={t('sj.taste.statDiversityTip')}
               />
               <StatTile
                 value={
@@ -395,6 +398,7 @@ function ReportView({
                 }
                 label={t('sj.taste.statVsCrowd')}
                 hint={crowdHint(stats.communityDelta, t)}
+                tip={t('sj.taste.statVsCrowdTip')}
                 hintTone={
                   stats.communityDelta == null || Math.abs(stats.communityDelta) < 0.05
                     ? 'neutral'
@@ -610,11 +614,13 @@ function StatTile({
   label,
   hint,
   hintTone = 'neutral',
+  tip,
 }: {
   value: string;
   label: string;
   hint?: string;
   hintTone?: 'neutral' | 'up' | 'down';
+  tip?: string;
 }) {
   const tone =
     hintTone === 'up'
@@ -623,10 +629,18 @@ function StatTile({
         ? 'text-[color:var(--tr-dn)]'
         : 'text-muted/80';
   return (
-    <div className="rounded-xl bg-page border border-divider/60 px-4 py-3.5">
+    <div className="group relative rounded-xl bg-page border border-divider/60 px-4 py-3.5">
       <p className="text-[22px] font-black text-ink leading-tight tabular-nums">{value}</p>
       <p className="text-[11px] text-muted mt-0.5">{label}</p>
       {hint && <p className={`text-[10.5px] font-semibold mt-1 tabular-nums ${tone}`}>{hint}</p>}
+      {tip && (
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute left-3 right-3 bottom-full z-20 mb-1.5 rounded-lg bg-ink px-3 py-2 text-[11px] leading-snug text-page opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+        >
+          {tip}
+        </span>
+      )}
     </div>
   );
 }
@@ -670,23 +684,77 @@ function HallOfFame({
   t: (k: string) => string;
 }) {
   const n = albums.length;
-  const [active, setActive] = useState(0);
+  // `turn` is an unbounded, monotonically-moving index: auto-spin and a
+  // rightward drag only ever *increase* it, so the ring rotates forward past the
+  // last cover into the first instead of unwinding all the way back. The album
+  // shown at the front is `turn` folded into range.
+  const [turn, setTurn] = useState(0);
+  const active = ((turn % n) + n) % n;
   const reduced = usePrefersReducedMotion();
+  // Bumped on every user interaction so the auto-spin timer restarts from zero
+  // rather than firing immediately after the user just moved the ring.
+  const [resetKey, setResetKey] = useState(0);
 
   useEffect(() => {
     if (reduced || n <= 1) return;
-    const id = setInterval(() => setActive((a) => (a + 1) % n), 3400);
+    const id = setInterval(() => setTurn((x) => x + 1), 3400);
     return () => clearInterval(id);
-  }, [reduced, n]);
+  }, [reduced, n, resetKey]);
 
-  const front = albums[Math.min(active, n - 1)];
+  /** Move to a specific album by the shortest signed path, then restart timer. */
+  const goTo = useCallback(
+    (i: number) => {
+      setTurn((x) => {
+        const cur = ((x % n) + n) % n;
+        let d = ((i - cur) % n + n) % n; // 0..n-1 forward
+        if (d > n / 2) d -= n; // take the shorter way round
+        return x + d;
+      });
+      setResetKey((k) => k + 1);
+    },
+    [n],
+  );
+
+  // ── Drag to spin ──────────────────────────────────────────────────────────
+  const drag = useRef<{ startX: number; startTurn: number; moved: boolean } | null>(null);
+  const DRAG_PX_PER_STEP = 70; // horizontal travel that advances one cover
+
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (n <= 1) return;
+      drag.current = { startX: e.clientX, startTurn: turn, moved: false };
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+      setResetKey((k) => k + 1); // pause auto-spin the moment a drag begins
+    },
+    [n, turn],
+  );
+
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    const dx = e.clientX - d.startX;
+    if (Math.abs(dx) > 4) d.moved = true;
+    // Drag left → advance forward (matches the auto-spin direction).
+    setTurn(d.startTurn - Math.round(dx / DRAG_PX_PER_STEP));
+  }, []);
+
+  const endDrag = useCallback((e: React.PointerEvent) => {
+    if (!drag.current) return;
+    (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+    // Keep `moved` readable one tick so the click handler can suppress nav.
+    const wasMoved = drag.current.moved;
+    drag.current = wasMoved ? { startX: 0, startTurn: turn, moved: true } : null;
+    if (wasMoved) setTimeout(() => (drag.current = null), 0);
+  }, [turn]);
+
+  const front = albums[active];
   const COVER = 168; // px — fixed so the 3D ring geometry is stable
   const step = n > 0 ? 360 / n : 0;
   // Radius so neighbouring covers don't collide; ample gap for a coverflow feel.
   const radius = n <= 1 ? 0 : Math.max(150, COVER / 2 / Math.tan(Math.PI / n) + 26);
 
   return (
-    <div className="shrink-0 w-full lg:w-[300px] flex flex-col items-center">
+    <div className="shrink-0 w-full lg:w-1/2 flex flex-col items-center">
       <span className="self-start text-[10px] font-black tracking-[0.1em] uppercase text-accent-deep/70">
         {t('sj.taste.topAlbum')}
       </span>
@@ -704,14 +772,18 @@ function HallOfFame({
         </Link>
       ) : (
         <div
-          className="hof-stage mt-3 w-full"
+          className="hof-stage mt-3 w-full overflow-hidden touch-pan-y select-none cursor-grab active:cursor-grabbing"
           style={{ height: COVER + 24 }}
           role="group"
           aria-roledescription="carousel"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
         >
           <div
             className="hof-ring"
-            style={{ transform: `translateZ(-${radius}px) rotateY(${-active * step}deg)` }}
+            style={{ transform: `translateZ(-${radius}px) rotateY(${-turn * step}deg)` }}
           >
             {albums.map((al, i) => {
               const dist = Math.min((i - active + n) % n, (active - i + n) % n);
@@ -724,6 +796,12 @@ function HallOfFame({
                   rounded="rounded-xl"
                 />
               );
+              const suppressIfDragged = (e: React.MouseEvent) => {
+                if (drag.current?.moved) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }
+              };
               return (
                 <div
                   key={al.id}
@@ -740,13 +818,18 @@ function HallOfFame({
                   aria-hidden={!isFront}
                 >
                   {isFront ? (
-                    <Link href={`/album/${al.id}`} className="block w-full h-full">
+                    <Link
+                      href={`/album/${al.id}`}
+                      className="block w-full h-full"
+                      draggable={false}
+                      onClick={suppressIfDragged}
+                    >
                       {card}
                     </Link>
                   ) : (
                     <button
                       type="button"
-                      onClick={() => setActive(i)}
+                      onClick={() => goTo(i)}
                       className="block w-full h-full"
                       tabIndex={-1}
                     >
@@ -792,7 +875,7 @@ function HallOfFame({
                 role="tab"
                 aria-selected={i === active}
                 aria-label={al.title}
-                onClick={() => setActive(i)}
+                onClick={() => goTo(i)}
                 className={`h-1.5 rounded-full transition-all ${
                   i === active ? 'w-4 bg-accent' : 'w-1.5 bg-muted/40 hover:bg-muted/70'
                 }`}
