@@ -298,8 +298,17 @@ async function countArtistRGs(db: DB, artistId: string): Promise<number> {
 // idx_artists_priority (ingest_priority, next_check_at) exists for exactly this), falling through
 // only when a tier has nothing due. Within a tier it's still oldest-due-first.
 const FRESHNESS_TIERS = ['hot', 'active', 'known', 'dormant'] as const;
+// This CLAIMS the artist (stamps next_check_at forward) rather than merely reading it. Reading
+// alone was not enough: refreshArtist can be interrupted by things that are NOT exceptions, so
+// tryFreshness's catch never runs and next_check_at stays in the past — leaving this same artist
+// the most-due one, re-claimed on the very next pass, forever. Observed live on 2026-08-18 with
+// Erik Satie (267 release groups): the INGEST WATCHDOG fired mid-re-poll ("no MB activity 603s" —
+// its timer measures MB calls, and the long DB-WRITE phase of a big artist makes none), forcing a
+// lane restart every ~11 minutes with zero progress. A crash or power cut does the same thing.
+// Claiming makes that impossible however the work ends. A successful re-poll reschedules properly
+// on its own (ingestArtist resets next_check_at), so the only cost is that an interrupted re-poll
+// waits for its next natural slot instead of retrying immediately.
 async function claimDueFreshness(db: DB): Promise<{ id: string; name: string; mbid: string } | null> {
-  let data: { id: string; name: string } | null = null;
   for (const tier of FRESHNESS_TIERS) {
     const { data: row } = await db.from('artists')
       .select('id, name')
@@ -309,13 +318,26 @@ async function claimDueFreshness(db: DB): Promise<{ id: string; name: string; mb
       .lte('next_check_at', now())
       .order('next_check_at', { ascending: true })
       .limit(1).maybeSingle();
-    if (row) { data = row as { id: string; name: string }; break; }
+    if (!row) continue;
+    const a = row as { id: string; name: string };
+
+    const { data: claimed } = await db.from('artists')
+      .update({ next_check_at: nextCheckAt(tier) })
+      .eq('id', a.id)
+      .lte('next_check_at', now())   // lost-update guard: only claim while it is still due
+      .select('id');
+    if (!claimed?.length) continue;  // a concurrent pass took it — fall through to the next tier
+
+    const { data: ext } = await db.from('artist_external_ids')
+      .select('external_id').eq('artist_id', a.id).eq('source', 'musicbrainz').limit(1).maybeSingle();
+    // No MBID means this artist can never be re-polled. It is already claimed above, so unlike the
+    // previous bare `return null` here it can no longer sit at the head of the queue blocking every
+    // artist behind it — the same head-of-line stall in a different disguise.
+    if (!ext?.external_id) continue;
+
+    return { id: a.id, name: a.name, mbid: ext.external_id as string };
   }
-  if (!data) return null;
-  const { data: ext } = await db.from('artist_external_ids')
-    .select('external_id').eq('artist_id', data.id).eq('source', 'musicbrainz').limit(1).maybeSingle();
-  if (!ext?.external_id) return null;
-  return { id: data.id, name: data.name, mbid: ext.external_id as string };
+  return null;
 }
 async function refreshArtist(db: DB, a: { id: string; name: string; mbid: string }, fcount: number): Promise<void> {
   const before = await countArtistRGs(db, a.id);
