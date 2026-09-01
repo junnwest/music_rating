@@ -659,7 +659,7 @@ function Discovery({
       {sections.map(({ title, albums }) => (
         <section key={title}>
           <h2 className="text-[19px] font-bold text-ink mb-3">{title}</h2>
-          <DragScrollShelf scrollClassName="gap-4 -mx-4 px-4 md:-mx-6 md:px-6 pb-2.5">
+          <DragScrollShelf scrollClassName="gap-4 pb-2.5">
             {albums.slice(0, 24).map((release) => (
               <div key={release.id} className="w-36 shrink-0">
                 <AlbumCard
