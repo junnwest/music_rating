@@ -11,10 +11,10 @@ struct StepNotifications: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Turn on notifications.")
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.jakarta(28, weight: .bold))
                     .foregroundStyle(Color.sjInk)
                 Text("Get notified when friends rate albums, follow you, or comment.")
-                    .font(.system(size: 16))
+                    .font(.jakarta(16))
                     .foregroundStyle(Color.sjMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -41,7 +41,7 @@ struct StepNotifications: View {
                             .tint(Color.sjCream)
                     }
                     Text(isSaving ? "Saving…" : "Continue")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.jakarta(16, weight: .semibold))
                         .foregroundStyle(Color.sjCream)
                 }
                 .frame(maxWidth: .infinity)

@@ -75,10 +75,12 @@ struct TasteMapView: View {
             if let openWorld {
                 Button(action: { withAnimation(.easeOut(duration: 0.22)) { worldIndex = nil } }) {
                     HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 11, weight: .bold))
+                        Image("icon-chevron-left")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 11, height: 11)
                         Text(String(localized: "All worlds"))
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.jakarta(13, weight: .semibold))
                     }
                     .foregroundStyle(Color.sjBlue)
                 }
@@ -168,12 +170,12 @@ private struct MapRow: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(label)
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.jakarta(15, weight: .semibold))
                         .foregroundStyle(Color.sjInk)
                         .lineLimit(1)
 
                     Text(meta)
-                        .font(.system(size: 12))
+                        .font(.jakarta(12))
                         .foregroundStyle(Color.sjMuted)
                         .lineLimit(1)
 
@@ -195,8 +197,10 @@ private struct MapRow: View {
                     ScoreBadge(score: avg, badgeSize: 34, ringStroke: 2, ringGap: 1.5)
                 }
 
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .medium))
+                Image("icon-chevron-right")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 11, height: 11)
                     .foregroundStyle(Color.sjBorder)
             }
             .padding(.vertical, 12)
@@ -243,22 +247,22 @@ private struct TasteMapSheet: View {
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(target.subtitle)
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.jakarta(10, weight: .bold))
                             .kerning(0.6)
                             .textCase(.uppercase)
                             .foregroundStyle(Color.sjMuted.opacity(0.6))
                         Text(target.title)
-                            .font(.system(size: 21, weight: .black))
+                            .font(.jakarta(21, weight: .black))
                             .foregroundStyle(Color.sjInk)
                         Text(String(format: String(localized: "Average score %.2f"), target.avg))
-                            .font(.system(size: 12.5))
+                            .font(.jakarta(12.5))
                             .foregroundStyle(Color.sjMuted)
                     }
 
                     if !target.albums.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
                             Text(String(localized: "Your albums"))
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.jakarta(11, weight: .bold))
                                 .kerning(0.4)
                                 .textCase(.uppercase)
                                 .foregroundStyle(Color.sjMuted.opacity(0.7))
@@ -272,14 +276,14 @@ private struct TasteMapSheet: View {
                         }
                     } else {
                         Text(String(localized: "No rated albums here yet."))
-                            .font(.system(size: 12.5))
+                            .font(.jakarta(12.5))
                             .foregroundStyle(Color.sjMuted)
                     }
 
                     if !target.recs.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
                             Text(String(localized: "Recommended"))
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.jakarta(11, weight: .bold))
                                 .kerning(0.4)
                                 .textCase(.uppercase)
                                 .foregroundStyle(Color.sjMuted.opacity(0.7))
@@ -322,18 +326,18 @@ private struct TasteMapAlbumRow: View {
             .clipShape(RoundedRectangle(cornerRadius: 8))
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.jakarta(13, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(1)
                 Text(artist)
-                    .font(.system(size: 11.5))
+                    .font(.jakarta(11.5))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
             if let trailing {
                 Text(trailing)
-                    .font(.system(size: 12.5, weight: .bold))
+                    .font(.jakarta(12.5, weight: .bold))
                     .monospacedDigit()
                     .foregroundStyle(Color.sjBlue)
             }

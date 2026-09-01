@@ -63,6 +63,48 @@ export default function CandidateRow({
     el.scrollBy({ left: dir * el.clientWidth * 0.85, behavior: 'smooth' });
   }
 
+  // ── Drag-to-scroll ──────────────────────────────────────────────────────
+  // Grab-and-drag anywhere on the shelf pans it horizontally. The rate flower
+  // stops pointer propagation on its own press, so a drag that starts on the
+  // gauge rates instead of scrolling; a drag that starts on a cover pans, and
+  // we swallow the click it would otherwise fire so it doesn't open a peek.
+  const drag = useRef<{ startX: number; startLeft: number; moved: boolean } | null>(null);
+
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    const el = ref.current;
+    if (!el || e.button !== 0) return;
+    drag.current = { startX: e.clientX, startLeft: el.scrollLeft, moved: false };
+  }, []);
+
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
+    const el = ref.current;
+    const d = drag.current;
+    if (!el || !d) return;
+    const dx = e.clientX - d.startX;
+    if (!d.moved && Math.abs(dx) < 4) return;
+    if (!d.moved) {
+      d.moved = true;
+      el.setPointerCapture?.(e.pointerId);
+    }
+    el.scrollLeft = d.startLeft - dx;
+  }, []);
+
+  const endDrag = useCallback((e: React.PointerEvent) => {
+    const el = ref.current;
+    if (el) el.releasePointerCapture?.(e.pointerId);
+    // Keep `moved` around for the click that follows so we can cancel it, then
+    // clear on the next tick.
+    if (drag.current?.moved) setTimeout(() => (drag.current = null), 0);
+    else drag.current = null;
+  }, []);
+
+  const onClickCapture = useCallback((e: React.MouseEvent) => {
+    if (drag.current?.moved) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, []);
+
   return (
     <section className="mt-5">
       <div className="flex items-baseline gap-2 px-0.5">
@@ -83,17 +125,28 @@ export default function CandidateRow({
         <div
           ref={ref}
           onScroll={measure}
-          className="flex gap-3 overflow-x-auto snap-x scroll-smooth pb-1 [scrollbar-width:thin]"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          onClickCapture={onClickCapture}
+          className="flex gap-3 overflow-x-auto snap-x pb-2.5 shelf-scroll cursor-grab active:cursor-grabbing select-none"
         >
           {children}
         </div>
 
-        {!atStart && (
-          <Arrow dir={-1} onClick={() => page(-1)} label={t('sj.quickAdd.scrollLeft')} />
-        )}
-        {!atEnd && (
-          <Arrow dir={1} onClick={() => page(1)} label={t('sj.quickAdd.scrollRight')} />
-        )}
+        <Arrow
+          dir={-1}
+          onClick={() => page(-1)}
+          disabled={atStart}
+          label={t('sj.quickAdd.scrollLeft')}
+        />
+        <Arrow
+          dir={1}
+          onClick={() => page(1)}
+          disabled={atEnd}
+          label={t('sj.quickAdd.scrollRight')}
+        />
       </div>
     </section>
   );
@@ -102,19 +155,23 @@ export default function CandidateRow({
 function Arrow({
   dir,
   onClick,
+  disabled,
   label,
 }: {
   dir: -1 | 1;
   onClick: () => void;
+  disabled: boolean;
   label: string;
 }) {
   const Icon = dir === -1 ? ChevronLeft : ChevronRight;
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       aria-label={label}
       className={`absolute top-1/2 -translate-y-1/2 z-10 grid place-items-center w-8 h-8 rounded-full bg-page/90 border border-divider text-ink shadow-sm transition
-        opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 outline-none focus-visible:ring-2 focus-visible:ring-accent/50
+        outline-none focus-visible:ring-2 focus-visible:ring-accent/50
+        ${disabled ? 'opacity-0 pointer-events-none' : 'opacity-90 hover:opacity-100 hover:bg-page'}
         ${dir === -1 ? '-left-1' : '-right-1'}`}
     >
       <Icon size={16} />

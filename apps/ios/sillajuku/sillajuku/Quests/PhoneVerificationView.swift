@@ -68,7 +68,7 @@ struct PhoneVerificationView: View {
     private var phoneStage: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Enter your phone number. We'll text you a one-time code.")
-                .font(.system(size: 14))
+                .font(.jakarta(14))
                 .foregroundStyle(Color.sjMuted)
 
             HStack(spacing: 10) {
@@ -76,10 +76,12 @@ struct PhoneVerificationView: View {
                     HStack(spacing: 6) {
                         Text(selectedCountry.flag)
                         Text("+\(selectedCountry.dialCode)")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.jakarta(15, weight: .semibold))
                             .foregroundStyle(Color.sjInk)
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 10, weight: .semibold))
+                        Image("icon-chevron-down")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 10, height: 10)
                             .foregroundStyle(Color.sjMuted)
                     }
                     .padding(.horizontal, 12)
@@ -100,7 +102,7 @@ struct PhoneVerificationView: View {
             }
 
             if let errorMessage {
-                Text(errorMessage).font(.system(size: 13)).foregroundStyle(.red)
+                Text(errorMessage).font(.jakarta(13)).foregroundStyle(.red)
             }
 
             submitButton(title: "Send code", disabled: localNumber.filter(\.isNumber).isEmpty) {
@@ -112,7 +114,7 @@ struct PhoneVerificationView: View {
     private var codeStage: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(String(format: String(localized: "Enter the code we sent to %@."), fullPhone))
-                .font(.system(size: 14))
+                .font(.jakarta(14))
                 .foregroundStyle(Color.sjMuted)
 
             TextField("123456", text: $code)
@@ -123,7 +125,7 @@ struct PhoneVerificationView: View {
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.sjBorder, lineWidth: 1))
 
             if let errorMessage {
-                Text(errorMessage).font(.system(size: 13)).foregroundStyle(.red)
+                Text(errorMessage).font(.jakarta(13)).foregroundStyle(.red)
             }
 
             submitButton(title: "Verify", disabled: code.trimmingCharacters(in: .whitespaces).isEmpty) {
@@ -131,26 +133,28 @@ struct PhoneVerificationView: View {
             }
 
             Button("Use a different number") { stage = .enterPhone; code = ""; errorMessage = nil }
-                .font(.system(size: 13))
+                .font(.jakarta(13))
                 .foregroundStyle(Color.sjMuted)
         }
     }
 
     private var doneStage: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 40))
+            Image("icon-check-circle")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 40, height: 40)
                 .foregroundStyle(Color.sjBlue)
             Text("Phone verified")
-                .font(.system(size: 20, weight: .bold))
+                .font(.jakarta(20, weight: .bold))
                 .foregroundStyle(Color.sjInk)
             if wasInvited {
                 Text("Whoever invited you just got credit for it.")
-                    .font(.system(size: 14))
+                    .font(.jakarta(14))
                     .foregroundStyle(Color.sjMuted)
             }
             Button("Done") { dismiss() }
-                .font(.system(size: 15, weight: .semibold))
+                .font(.jakarta(15, weight: .semibold))
                 .foregroundStyle(Color.sjCream)
                 .frame(maxWidth: .infinity)
                 .frame(height: 46)
@@ -168,7 +172,7 @@ struct PhoneVerificationView: View {
                 if isSubmitting {
                     ProgressView().tint(Color.sjCream)
                 } else {
-                    Text(title).font(.system(size: 15, weight: .semibold))
+                    Text(title).font(.jakarta(15, weight: .semibold))
                 }
             }
             .foregroundStyle(Color.sjCream)

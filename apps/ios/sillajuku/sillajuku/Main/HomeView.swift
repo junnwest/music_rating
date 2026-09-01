@@ -73,9 +73,12 @@ struct FeedProfile: Codable {
     let displayName: String?
     let isBot: Bool?
     let isVerified: Bool?
+    let badgeColor: String?
+    let isBetaTester: Bool?
     enum CodingKeys: String, CodingKey {
         case username; case displayName = "display_name"; case isBot = "is_bot"
         case isVerified = "is_verified"
+        case badgeColor = "badge_color"; case isBetaTester = "is_beta_tester"
     }
     var handle: String { username ?? displayName ?? String(localized: "someone") }
 }
@@ -172,7 +175,7 @@ class HomeViewModel {
     private var hasLoadedFollowing = false
 
     private static let feedSelect =
-        "id, user_id, score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey(username, display_name, is_bot, is_verified)"
+        "id, user_id, score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey(username, display_name, is_bot, is_verified, badge_color, is_beta_tester)"
 
     // Explore's fetch is split by is_bot BEFORE ranking, not just re-ranked after — with
     // bot ratings' recency-biased backdating, a human rating usually wouldn't survive into
@@ -336,7 +339,7 @@ class HomeViewModel {
     // the identical query with the embed removed returns in <1s. release_groups
     // are fetched separately below and stitched back in client-side instead.
     private static let feedSelectLiteBotFilterable =
-        "id, user_id, score, review_text, created_at, release_group_id, profiles!ratings_user_id_fkey!inner(username, display_name, is_bot, is_verified)"
+        "id, user_id, score, review_text, created_at, release_group_id, profiles!ratings_user_id_fkey!inner(username, display_name, is_bot, is_verified, badge_color, is_beta_tester)"
 
     private struct FeedItemLite: Codable {
         let id: UUID
@@ -395,7 +398,7 @@ class HomeViewModel {
     // Not private -- reused by ProfileViewModel to fetch the current user's
     // own mix shares for the profile posts feed.
     static let mixShareSelect =
-        "id, user_id, mix_id, caption, created_at, mixes(id, name, description), profiles!mix_shares_user_id_fkey(username, display_name, is_bot, is_verified)"
+        "id, user_id, mix_id, caption, created_at, mixes(id, name, description), profiles!mix_shares_user_id_fkey(username, display_name, is_bot, is_verified, badge_color, is_beta_tester)"
 
     struct MixShareRow: Codable {
         let id: UUID
@@ -875,7 +878,7 @@ struct HomeView: View {
         VStack(spacing: 12) {
             Divider()
             Text("Follow more people to keep your feed fresh.")
-                .font(.system(size: 13))
+                .font(.jakarta(13))
                 .foregroundStyle(Color.sjMuted)
                 .multilineTextAlignment(.center)
             FindPeopleLinkButton()
@@ -886,8 +889,10 @@ struct HomeView: View {
 
     private var bellButton: some View {
         NavigationLink(value: NotificationsDestination()) {
-            Image(systemName: "bell")
-                .font(.system(size: 19, weight: .medium))
+            Image("icon-bell")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 19, height: 19)
                 .foregroundStyle(Color.sjInk)
                 .frame(width: 36, height: 36)
                 .background {
@@ -919,7 +924,7 @@ struct HomeView: View {
             }
         } label: {
             Text(label)
-                .font(.system(size: 17, weight: activeTab == tab ? .bold : .regular))
+                .font(.jakarta(17, weight: activeTab == tab ? .bold : .regular))
                 .foregroundStyle(activeTab == tab ? Color.sjInk : Color.sjMuted)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 6)
@@ -982,10 +987,13 @@ struct HomeView: View {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if posts.isEmpty {
             VStack(spacing: 14) {
-                Image(systemName: "music.note.list")
-                    .font(.system(size: 44)).foregroundStyle(Color.sjBorder)
+                Image("icon-list-music")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 44, height: 44)
+                    .foregroundStyle(Color.sjBorder)
                 Text(emptyMessage)
-                    .font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                    .font(.jakarta(15)).foregroundStyle(Color.sjMuted)
                     .multilineTextAlignment(.center).padding(.horizontal, 40)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1094,10 +1102,13 @@ struct FindPeopleView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if suggestions.isEmpty {
                 VStack(spacing: 14) {
-                    Image(systemName: "person.2")
-                        .font(.system(size: 44)).foregroundStyle(Color.sjBorder)
+                    Image("icon-users")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 44, height: 44)
+                        .foregroundStyle(Color.sjBorder)
                     Text("No suggestions right now.")
-                        .font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                        .font(.jakarta(15)).foregroundStyle(Color.sjMuted)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -1198,9 +1209,7 @@ private struct SuggestedUserRow: View {
                             CachedImage(url: url) { Color.sjBorder }
                                 .scaledToFill()
                         } else {
-                            Image(systemName: "person.circle.fill")
-                                .resizable().scaledToFit()
-                                .foregroundStyle(Color(uiColor: .systemGray3))
+                            DefaultAvatarView(size: 44)
                         }
                     }
                     .frame(width: 44, height: 44).clipShape(Circle())
@@ -1208,17 +1217,17 @@ private struct SuggestedUserRow: View {
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(user.displayName ?? user.username ?? String(localized: "User"))
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.jakarta(14, weight: .semibold))
                             .foregroundStyle(Color.sjInk)
                             .lineLimit(1)
                         if let u = user.username {
                             Text("@" + u)
-                                .font(.system(size: 12))
+                                .font(.jakarta(12))
                                 .foregroundStyle(Color.sjMuted)
                                 .lineLimit(1)
                         }
                         Text(String(format: String(localized: "%d ratings"), user.ratingCount))
-                            .font(.system(size: 11))
+                            .font(.jakarta(11))
                             .foregroundStyle(Color.sjMuted)
                     }
                 }
@@ -1233,7 +1242,7 @@ private struct SuggestedUserRow: View {
                 Task { await onToggle() }
             } label: {
                 Text(isFollowed ? "Following" : "Follow")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.jakarta(12, weight: .semibold))
                     .foregroundStyle(isFollowed ? Color.sjMuted : Color.sjCream)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 6)
@@ -1313,7 +1322,7 @@ struct FeedCard: View {
             albumSection
             if let text = item.reviewText, !text.isEmpty {
                 Text(text)
-                    .font(.system(size: 14))
+                    .font(.jakarta(14))
                     .foregroundStyle(Color.sjInk)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 14)
@@ -1402,24 +1411,24 @@ struct FeedCard: View {
             // Username — same navigation as avatar
             usernameLink
 
-            Text("·").font(.system(size: 13)).foregroundStyle(Color.sjBorder)
+            Text("·").font(.jakarta(13)).foregroundStyle(Color.sjBorder)
 
             Text(item.createdAt.relativeTimeString)
-                .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                .font(.jakarta(12)).foregroundStyle(Color.sjMuted)
 
             Spacer(minLength: 0)
 
             Menu {
                 if let own = ownRatingActions {
-                    Button { own.onShare() } label: { Label("Share", systemImage: "square.and.arrow.up") }
-                    Button { own.onEdit() } label: { Label("Edit", systemImage: "square.and.pencil") }
-                    Button { own.onAddToMix() } label: { Label("Add to Mix", systemImage: "bookmark") }
-                    Button { own.onEditComment() } label: { Label("Edit Comment", systemImage: "bubble.right") }
+                    Button { own.onShare() } label: { Label("Share", image: "icon-share") }
+                    Button { own.onEdit() } label: { Label("Edit", image: "icon-square-pen") }
+                    Button { own.onAddToMix() } label: { Label("Add to Mix", image: "icon-bookmark") }
+                    Button { own.onEditComment() } label: { Label("Edit Comment", image: "icon-message-square") }
                     Divider()
-                    Button(role: .destructive) { own.onDelete() } label: { Label("Delete", systemImage: "trash") }
+                    Button(role: .destructive) { own.onDelete() } label: { Label("Delete", image: "icon-trash") }
                 } else {
                     Button { activeSheet = .addRating } label: {
-                        Label("Add", systemImage: "plus")
+                        Label("Add", image: "icon-plus")
                     }
                     Button {
                         // If user has only the default Listen Later mix, save immediately.
@@ -1431,28 +1440,33 @@ struct FeedCard: View {
                             Task { await onSave() }
                         }
                     } label: {
-                        Label(isSaved ? "Saved" : "Save",
-                              systemImage: isSaved ? "bookmark.fill" : "bookmark")
+                        if isSaved {
+                            Label("Saved", image: "icon-bookmark-filled")
+                        } else {
+                            Label("Save", image: "icon-bookmark")
+                        }
                     }
                     ShareLink(
                         item: URL(string: "https://sillajuku.com/r/\(item.id)")!,
                         subject: Text(item.releases.displayTitle + " · " + item.releases.displayArtist),
                         message: Text("Check out this rating on sillajuku")
                     ) {
-                        Label("Share", systemImage: "square.and.arrow.up")
+                        Label("Share", image: "icon-share")
                     }
                     if !isOwnPost {
                         Button { Task { await onNotInterested() } } label: {
-                            Label("Not Interested", systemImage: "hand.thumbsdown")
+                            Label("Not Interested", image: "icon-thumbs-down")
                         }
                         Divider()
-                        Button(role: .destructive) { activeSheet = .report } label: { Label("Report", systemImage: "flag") }
-                        Button(role: .destructive) { showBlockConfirm = true } label: { Label("Block this user", systemImage: "hand.raised") }
+                        Button(role: .destructive) { activeSheet = .report } label: { Label("Report", image: "icon-flag") }
+                        Button(role: .destructive) { showBlockConfirm = true } label: { Label("Block this user", image: "icon-hand") }
                     }
                 }
             } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 14, weight: .medium))
+                Image("icon-more-horizontal")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 14, height: 14)
                     .foregroundStyle(Color.sjMuted)
                     .frame(width: 34, height: 34)
                     .contentShape(Rectangle())
@@ -1465,9 +1479,7 @@ struct FeedCard: View {
 
     @ViewBuilder
     private var avatarLink: some View {
-        let icon = Image(systemName: "person.circle.fill")
-            .font(.system(size: 30))
-            .foregroundStyle(Color(uiColor: .systemGray3))
+        let icon = DefaultAvatarView(size: 30)
         let handle = item.profiles?.handle
         let label = handle.map { String(format: String(localized: "View @%@'s profile"), $0) }
             ?? String(localized: "View profile")
@@ -1491,12 +1503,22 @@ struct FeedCard: View {
     private var usernameLink: some View {
         let label = HStack(spacing: 4) {
             Text("@" + (item.profiles?.handle ?? String(localized: "someone")))
-                .font(.system(size: 13.5, weight: .semibold))
+                .font(.jakarta(13.5, weight: .semibold))
                 .foregroundStyle(Color.sjInk)
+            if let raw = item.profiles?.badgeColor, let badge = QuestBadgeColor(rawValue: raw) {
+                QuestBadgeView(color: badge.color)
+                    .frame(width: 13, height: 13)
+                    .accessibilityLabel(String(localized: "Quests complete"))
+            }
             if item.profiles?.isVerified == true {
                 VerifiedBadgeView()
                     .frame(width: 13, height: 13)
                     .accessibilityLabel(String(localized: "Verified"))
+            }
+            if item.profiles?.isBetaTester == true {
+                BetaBadgeView()
+                    .frame(width: 13, height: 13)
+                    .accessibilityLabel(String(localized: "Beta tester"))
             }
         }
 
@@ -1536,11 +1558,11 @@ struct FeedCard: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.releases.displayTitle)
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.jakarta(14, weight: .bold))
                         .foregroundStyle(Color.sjInk).lineLimit(2)
 
                     Text(item.releases.typeLabel + " · " + item.releases.displayArtist)
-                        .font(.system(size: 11.5)).foregroundStyle(Color.sjMuted).lineLimit(1)
+                        .font(.jakarta(11.5)).foregroundStyle(Color.sjMuted).lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -1573,8 +1595,10 @@ struct FeedCard: View {
             // Like group: icon (toggles) + count (opens likers)
             HStack(spacing: 5) {
                 Button { Task { await onLike() } } label: {
-                    Image(systemName: isLiked ? "heart.fill" : "heart")
-                        .font(.system(size: 19, weight: .medium))
+                    Image(isLiked ? "icon-heart-filled" : "icon-heart")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 19, height: 19)
                         .foregroundStyle(isLiked ? .red : Color.sjInk)
                 }
                 .buttonStyle(.plain)
@@ -1585,7 +1609,7 @@ struct FeedCard: View {
                 if likesCount > 0 {
                     Button { activeSheet = .likers } label: {
                         Text("\(likesCount)")
-                            .font(.system(size: 14, weight: .medium))
+                            .font(.jakarta(14, weight: .medium))
                             .foregroundStyle(isLiked ? .red : Color.sjMuted)
                             .contentShape(Rectangle())
                     }
@@ -1596,8 +1620,10 @@ struct FeedCard: View {
             // Comment group: icon + count
             HStack(spacing: 5) {
                 Button { activeSheet = .comments } label: {
-                    Image(systemName: "bubble.left")
-                        .font(.system(size: 19, weight: .medium))
+                    Image("icon-message-circle")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 19, height: 19)
                         .foregroundStyle(Color.sjInk)
                 }
                 .buttonStyle(.plain)
@@ -1605,7 +1631,7 @@ struct FeedCard: View {
 
                 if commentsCount > 0 {
                     Text("\(commentsCount)")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.jakarta(14, weight: .medium))
                         .foregroundStyle(Color.sjMuted)
                 }
             }
@@ -1650,8 +1676,12 @@ struct LikersSheetView: View {
                     ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if likers.isEmpty {
                     VStack(spacing: 12) {
-                        Image(systemName: "heart").font(.system(size: 36)).foregroundStyle(Color.sjBorder)
-                        Text("No likes yet").font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                        Image("icon-heart")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 36, height: 36)
+                            .foregroundStyle(Color.sjBorder)
+                        Text("No likes yet").font(.jakarta(15)).foregroundStyle(Color.sjMuted)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.sjCream.ignoresSafeArea())
@@ -1662,11 +1692,9 @@ struct LikersSheetView: View {
                             handle: liker.profiles?.handle ?? String(localized: "someone")
                         )) {
                             HStack(spacing: 11) {
-                                Image(systemName: "person.circle.fill")
-                                    .font(.system(size: 32))
-                                    .foregroundStyle(Color(uiColor: .systemGray3))
+                                DefaultAvatarView(size: 32)
                                 Text("@" + (liker.profiles?.handle ?? String(localized: "someone")))
-                                    .font(.system(size: 14, weight: .semibold))
+                                    .font(.jakarta(14, weight: .semibold))
                                     .foregroundStyle(Color.sjInk)
                             }
                             .padding(.vertical, 4)
@@ -1729,8 +1757,12 @@ struct SongLikersSheetView: View {
                     ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if likers.isEmpty {
                     VStack(spacing: 12) {
-                        Image(systemName: "heart").font(.system(size: 36)).foregroundStyle(Color.sjBorder)
-                        Text("No likes yet").font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                        Image("icon-heart")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 36, height: 36)
+                            .foregroundStyle(Color.sjBorder)
+                        Text("No likes yet").font(.jakarta(15)).foregroundStyle(Color.sjMuted)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.sjCream.ignoresSafeArea())
@@ -1741,11 +1773,9 @@ struct SongLikersSheetView: View {
                             handle: liker.profiles?.handle ?? String(localized: "someone")
                         )) {
                             HStack(spacing: 11) {
-                                Image(systemName: "person.circle.fill")
-                                    .font(.system(size: 32))
-                                    .foregroundStyle(Color(uiColor: .systemGray3))
+                                DefaultAvatarView(size: 32)
                                 Text("@" + (liker.profiles?.handle ?? String(localized: "someone")))
-                                    .font(.system(size: 14, weight: .semibold))
+                                    .font(.jakarta(14, weight: .semibold))
                                     .foregroundStyle(Color.sjInk)
                             }
                             .padding(.vertical, 4)
@@ -1781,10 +1811,12 @@ struct FindPeopleLinkButton: View {
     var body: some View {
         NavigationLink(value: FindPeopleDestination()) {
             HStack(spacing: 8) {
-                Image(systemName: "person.badge.plus")
-                    .font(.system(size: 14, weight: .semibold))
+                Image("icon-user-plus")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 14, height: 14)
                 Text("Find people to follow")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.jakarta(14, weight: .semibold))
             }
             .foregroundStyle(Color.sjBlue)
             .frame(maxWidth: .infinity)
@@ -1816,18 +1848,20 @@ private struct ReportSheet: View {
             VStack(alignment: .leading, spacing: 0) {
                 if submitted {
                     VStack(spacing: 14) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 44))
+                        Image("icon-check-circle")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 44, height: 44)
                             .foregroundStyle(Color.sjBlue)
                         Text("Report submitted")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.jakarta(16, weight: .semibold))
                             .foregroundStyle(Color.sjInk)
                         Text("Thanks for helping keep sillajuku safe.")
-                            .font(.system(size: 14))
+                            .font(.jakarta(14))
                             .foregroundStyle(Color.sjMuted)
                             .multilineTextAlignment(.center)
                         Button("Done") { dismiss() }
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.jakarta(15, weight: .semibold))
                             .foregroundStyle(Color.sjBlue)
                             .padding(.top, 4)
                     }
@@ -1836,13 +1870,13 @@ private struct ReportSheet: View {
                 } else {
                     if let error = errorMessage {
                         Text(error)
-                            .font(.system(size: 13))
+                            .font(.jakarta(13))
                             .foregroundStyle(.red)
                             .padding(.horizontal, 20)
                             .padding(.bottom, 8)
                     }
                     Text("Why are you reporting this post?")
-                        .font(.system(size: 13))
+                        .font(.jakarta(13))
                         .foregroundStyle(Color.sjMuted)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 12)
@@ -1856,14 +1890,16 @@ private struct ReportSheet: View {
                         } label: {
                             HStack {
                                 Text(label)
-                                    .font(.system(size: 15))
+                                    .font(.jakarta(15))
                                     .foregroundStyle(Color.sjInk)
                                 Spacer()
                                 if isSubmitting {
                                     ProgressView().scaleEffect(0.8)
                                 } else {
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 12, weight: .medium))
+                                    Image("icon-chevron-right")
+                                        .renderingMode(.template)
+                                        .resizable().scaledToFit()
+                                        .frame(width: 12, height: 12)
                                         .foregroundStyle(Color.sjMuted)
                                 }
                             }

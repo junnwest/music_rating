@@ -222,14 +222,16 @@ struct MixLibraryView: View {
     // (with retry) instead of falling into "No mixes yet".
     private var failedState: some View {
         VStack(spacing: 12) {
-            Image(systemName: "wifi.slash")
-                .font(.system(size: 36))
+            Image("icon-wifi-off")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 36, height: 36)
                 .foregroundStyle(Color.sjBorder)
             Text("Couldn't load your mixes.")
-                .font(.system(size: 15))
+                .font(.jakarta(15))
                 .foregroundStyle(Color.sjMuted)
             Button("Retry") { Task { await viewModel.reload(userId: userId) } }
-                .font(.system(size: 14, weight: .semibold))
+                .font(.jakarta(14, weight: .semibold))
                 .foregroundStyle(Color.sjAmber)
         }
         .frame(maxWidth: .infinity, alignment: .top)
@@ -238,14 +240,16 @@ struct MixLibraryView: View {
 
     private var emptyState: some View {
         VStack(spacing: 12) {
-            Image(systemName: "music.note.list")
-                .font(.system(size: 36))
+            Image("icon-list-music")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 36, height: 36)
                 .foregroundStyle(Color.sjBorder)
             Text("No mixes yet")
-                .font(.system(size: 15))
+                .font(.jakarta(15))
                 .foregroundStyle(Color.sjMuted)
             Button("Create a Mix") { showCreate = true }
-                .font(.system(size: 14, weight: .semibold))
+                .font(.jakarta(14, weight: .semibold))
                 .foregroundStyle(Color.sjAmber)
         }
         .frame(maxWidth: .infinity, alignment: .top)
@@ -258,11 +262,13 @@ struct MixLibraryView: View {
                 showCreate = true
             } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 16))
+                    Image("icon-plus-circle")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 16, height: 16)
                         .foregroundStyle(Color.sjAmber)
                     Text("Create a Mix")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.jakarta(14, weight: .semibold))
                         .foregroundStyle(Color.sjAmber)
                     Spacer()
                 }
@@ -298,30 +304,34 @@ struct MixRow: View {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color.sjAmber.opacity(0.12))
                     .frame(width: 52, height: 52)
-                Image(systemName: mix.isDefault ? "clock.fill" : "music.note.list")
-                    .font(.system(size: 20))
+                Image(mix.isDefault ? "icon-clock" : "icon-list-music")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 20, height: 20)
                     .foregroundStyle(Color.sjAmber)
             }
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(mix.name)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.jakarta(15, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
 
                 HStack(spacing: 6) {
                     Text(count == 1 ? String(localized: "1 release") : String(format: String(localized: "%d releases"), count))
-                        .font(.system(size: 12))
+                        .font(.jakarta(12))
                         .foregroundStyle(Color.sjMuted)
 
                     if mix.isPublic {
                         Text("·")
-                            .font(.system(size: 12))
+                            .font(.jakarta(12))
                             .foregroundStyle(Color.sjBorder)
                         HStack(spacing: 3) {
-                            Image(systemName: "globe")
-                                .font(.system(size: 10))
+                            Image("icon-globe")
+                                .renderingMode(.template)
+                                .resizable().scaledToFit()
+                                .frame(width: 10, height: 10)
                             Text("Public")
-                                .font(.system(size: 12))
+                                .font(.jakarta(12))
                         }
                         .foregroundStyle(Color.sjMuted)
                     }
@@ -330,8 +340,10 @@ struct MixRow: View {
 
             Spacer(minLength: 0)
 
-            Image(systemName: "chevron.right")
-                .font(.system(size: 11, weight: .medium))
+            Image("icon-chevron-right")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 11, height: 11)
                 .foregroundStyle(Color.sjBorder)
         }
         .padding(.horizontal, 18)
@@ -498,14 +510,16 @@ struct MixDetailView: View {
 
     private var emptyStateRow: some View {
         VStack(spacing: 12) {
-            Image(systemName: "music.note")
-                .font(.system(size: 40))
+            Image("icon-music")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 40, height: 40)
                 .foregroundStyle(Color.sjBorder)
             Text("Nothing in this mix yet")
-                .font(.system(size: 15))
+                .font(.jakarta(15))
                 .foregroundStyle(Color.sjMuted)
             Text("Save releases from your feed to add them here.")
-                .font(.system(size: 13))
+                .font(.jakarta(13))
                 .foregroundStyle(Color.sjMuted)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
@@ -523,7 +537,7 @@ struct MixDetailView: View {
                         // focused -- a visible box is the only thing that tells
                         // the user these are tappable, not just labels.
                         TextField("Mix name", text: $editableName)
-                            .font(.system(size: 22, weight: .bold))
+                            .font(.jakarta(22, weight: .bold))
                             .foregroundStyle(Color.sjInk)
                             .textFieldStyle(.plain)
                             .padding(.horizontal, 10)
@@ -535,7 +549,7 @@ struct MixDetailView: View {
                                     .stroke(Color.sjBorder, lineWidth: 1)
                             }
                         TextField("Add a description…", text: $editableDescription, axis: .vertical)
-                            .font(.system(size: 14))
+                            .font(.jakarta(14))
                             .foregroundStyle(Color.sjMuted)
                             .textFieldStyle(.plain)
                             .lineLimit(1...4)
@@ -548,10 +562,12 @@ struct MixDetailView: View {
                                     .stroke(Color.sjBorder, lineWidth: 1)
                             }
                         HStack(spacing: 6) {
-                            Image(systemName: "globe")
-                                .font(.system(size: 10))
+                            Image("icon-globe")
+                                .renderingMode(.template)
+                                .resizable().scaledToFit()
+                                .frame(width: 10, height: 10)
                             Text("Public")
-                                .font(.system(size: 12))
+                                .font(.jakarta(12))
                             Toggle("", isOn: $editableIsPublic)
                                 .labelsHidden()
                                 .tint(Color.sjAmber)
@@ -561,19 +577,21 @@ struct MixDetailView: View {
                 } else {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(mix.name)
-                            .font(.system(size: 22, weight: .bold))
+                            .font(.jakarta(22, weight: .bold))
                             .foregroundStyle(Color.sjInk)
                         if let d = mix.description, !d.isEmpty {
                             Text(d)
-                                .font(.system(size: 14))
+                                .font(.jakarta(14))
                                 .foregroundStyle(Color.sjMuted)
                         }
                         if mix.isPublic {
                             HStack(spacing: 3) {
-                                Image(systemName: "globe")
-                                    .font(.system(size: 10))
+                                Image("icon-globe")
+                                    .renderingMode(.template)
+                                    .resizable().scaledToFit()
+                                    .frame(width: 10, height: 10)
                                 Text("Public")
-                                    .font(.system(size: 12))
+                                    .font(.jakarta(12))
                             }
                             .foregroundStyle(Color.sjMuted)
                         }
@@ -585,7 +603,10 @@ struct MixDetailView: View {
             HStack(spacing: 20) {
                 Button { Task { await toggleMixLike() } } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: isLiked ? "heart.fill" : "heart")
+                        Image(isLiked ? "icon-heart-filled" : "icon-heart")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 15, height: 15)
                             .foregroundStyle(isLiked ? .red : Color.sjInk)
                         Text("\(likeCount)")
                             .foregroundStyle(Color.sjMuted)
@@ -599,15 +620,18 @@ struct MixDetailView: View {
                     // just your own external image, so it's available regardless.
                     if mix.isPublic {
                         Button { showShareComposer = true } label: {
-                            Label("Share to Feed", systemImage: "person.2")
+                            Label("Share to Feed", image: "icon-users")
                         }
                     }
                     Button { Task { await prepareShare() } } label: {
-                        Label("Share to Instagram", systemImage: "camera")
+                        Label("Share to Instagram", image: "icon-camera")
                     }
                 } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: "square.and.arrow.up")
+                        Image("icon-share")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 15, height: 15)
                             .foregroundStyle(Color.sjBlue)
                         Text("Share")
                             .foregroundStyle(Color.sjBlue)
@@ -617,13 +641,16 @@ struct MixDetailView: View {
 
                 if isOwnMix, !mix.isDefault {
                     Button { showDeleteConfirm = true } label: {
-                        Image(systemName: "trash")
+                        Image("icon-trash")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 15, height: 15)
                             .foregroundStyle(.red)
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .font(.system(size: 15, weight: .medium))
+            .font(.jakarta(15, weight: .medium))
         }
         .padding(.horizontal, 20)
         .padding(.top, 16)
@@ -634,7 +661,7 @@ struct MixDetailView: View {
     private var sharedBySection: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Shared by")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.jakarta(11, weight: .semibold))
                 .foregroundStyle(Color.sjMuted)
                 .textCase(.uppercase)
                 .tracking(0.6)
@@ -646,11 +673,9 @@ struct MixDetailView: View {
                     ForEach(sharePosts) { share in
                         NavigationLink(value: UserProfileDestination(userId: share.userId, handle: share.profiles?.handle ?? String(localized: "someone"))) {
                             VStack(spacing: 6) {
-                                Image(systemName: "person.circle.fill")
-                                    .font(.system(size: 40))
-                                    .foregroundStyle(Color(uiColor: .systemGray3))
+                                DefaultAvatarView(size: 40)
                                 Text("@" + (share.profiles?.handle ?? String(localized: "someone")))
-                                    .font(.system(size: 12, weight: .medium))
+                                    .font(.jakarta(12, weight: .medium))
                                     .foregroundStyle(Color.sjInk)
                                     .lineLimit(1)
                                     .frame(width: 64)
@@ -885,11 +910,11 @@ private struct MixItemRow: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.releases.displayTitle)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.jakarta(14, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(1)
                 Text(item.releases.typeLabel + " · " + item.releases.displayArtist)
-                    .font(.system(size: 12))
+                    .font(.jakarta(12))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
             }
@@ -912,18 +937,18 @@ private struct MixSongItemRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 5) {
                     Text(item.recordings.title)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.jakarta(14, weight: .semibold))
                         .foregroundStyle(Color.sjInk)
                         .lineLimit(1)
                     Text("Song")
-                        .font(.system(size: 9, weight: .medium))
+                        .font(.jakarta(9, weight: .medium))
                         .foregroundStyle(Color.sjAmber)
                         .padding(.horizontal, 4).padding(.vertical, 1)
                         .background(Color.sjAmber.opacity(0.12))
                         .clipShape(RoundedRectangle(cornerRadius: 3))
                 }
                 Text(item.releaseGroups.displayArtist)
-                    .font(.system(size: 12))
+                    .font(.jakarta(12))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
             }
@@ -950,7 +975,7 @@ struct CreateMixView: View {
             Form {
                 Section {
                     TextField("Mix name", text: $name)
-                        .font(.system(size: 16))
+                        .font(.jakarta(16))
                 } header: {
                     Text("Name")
                 }
@@ -969,14 +994,14 @@ struct CreateMixView: View {
                     Text(isPublic
                          ? "Anyone can see this mix on your profile."
                          : "Only you can see this mix.")
-                        .font(.system(size: 12))
+                        .font(.jakarta(12))
                         .foregroundStyle(Color.sjMuted)
                 }
 
                 if let err = errorMessage {
                     Section {
                         Text(err)
-                            .font(.system(size: 13))
+                            .font(.jakarta(13))
                             .foregroundStyle(.red)
                     }
                 }
@@ -1064,19 +1089,24 @@ struct MixPickerView: View {
                             }
                         } label: {
                             HStack(spacing: 14) {
-                                Image(systemName: mix.isDefault ? "clock.fill" : "music.note.list")
-                                    .font(.system(size: 16))
+                                Image(mix.isDefault ? "icon-clock" : "icon-list-music")
+                                    .renderingMode(.template)
+                                    .resizable().scaledToFit()
+                                    .frame(width: 16, height: 16)
                                     .foregroundStyle(Color.sjAmber)
                                     .frame(width: 24)
 
                                 Text(mix.name)
-                                    .font(.system(size: 15))
+                                    .font(.jakarta(15))
                                     .foregroundStyle(Color.sjInk)
 
                                 Spacer()
 
                                 if selectedIds.contains(mix.id) {
-                                    Image(systemName: "checkmark.circle.fill")
+                                    Image("icon-check-circle")
+                                        .renderingMode(.template)
+                                        .resizable().scaledToFit()
+                                        .frame(width: 18, height: 18)
                                         .foregroundStyle(Color.sjAmber)
                                 }
                             }
@@ -1214,19 +1244,24 @@ struct SongMixPickerView: View {
                             }
                         } label: {
                             HStack(spacing: 14) {
-                                Image(systemName: mix.isDefault ? "clock.fill" : "music.note.list")
-                                    .font(.system(size: 16))
+                                Image(mix.isDefault ? "icon-clock" : "icon-list-music")
+                                    .renderingMode(.template)
+                                    .resizable().scaledToFit()
+                                    .frame(width: 16, height: 16)
                                     .foregroundStyle(Color.sjAmber)
                                     .frame(width: 24)
 
                                 Text(mix.name)
-                                    .font(.system(size: 15))
+                                    .font(.jakarta(15))
                                     .foregroundStyle(Color.sjInk)
 
                                 Spacer()
 
                                 if selectedIds.contains(mix.id) {
-                                    Image(systemName: "checkmark.circle.fill")
+                                    Image("icon-check-circle")
+                                        .renderingMode(.template)
+                                        .resizable().scaledToFit()
+                                        .frame(width: 18, height: 18)
                                         .foregroundStyle(Color.sjAmber)
                                 }
                             }

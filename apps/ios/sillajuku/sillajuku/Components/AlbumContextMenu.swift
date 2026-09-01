@@ -74,11 +74,11 @@ private struct AlbumMenuPreview: View {
             CoverImage(url: release.coverUrl, cornerRadius: 12)
                 .frame(width: 220, height: 220)
             Text(release.displayTitle)
-                .font(.system(size: 15, weight: .bold))
+                .font(.jakarta(15, weight: .bold))
                 .foregroundStyle(Color.sjInk)
                 .lineLimit(2)
             Text(release.displayArtist)
-                .font(.system(size: 13))
+                .font(.jakarta(13))
                 .foregroundStyle(Color.sjMuted)
                 .lineLimit(1)
         }
@@ -106,25 +106,25 @@ struct AlbumContextMenu<ExtraItems: View>: ViewModifier {
                 Button {
                     openRateSheet()
                 } label: {
-                    Label("Rate", systemImage: "star")
+                    Label("Rate", image: "icon-star")
                 }
                 Button {
                     showMixPicker = true
                 } label: {
-                    Label("Add to Mix", systemImage: "text.badge.plus")
+                    Label("Add to Mix", image: "icon-bookmark")
                 }
                 ShareLink(item: shareURL, subject: Text(release.displayTitle + " · " + release.displayArtist)) {
-                    Label("Share", systemImage: "square.and.arrow.up")
+                    Label("Share", image: "icon-share")
                 }
                 Button {
                     Task { await prepareShare() }
                 } label: {
-                    Label("Share to Instagram", systemImage: "camera")
+                    Label("Share to Instagram", image: "icon-camera")
                 }
                 Button {
                     artistDestination = ArtistDestination(artistId: nil, name: release.displayArtist)
                 } label: {
-                    Label("View Artist", systemImage: "music.mic")
+                    Label("View Artist", image: "icon-mic")
                 }
                 Button {
                     Task {
@@ -133,7 +133,7 @@ struct AlbumContextMenu<ExtraItems: View>: ViewModifier {
                         }
                     }
                 } label: {
-                    Label("Not Interested", systemImage: "hand.thumbsdown")
+                    Label("Not Interested", image: "icon-thumbs-down")
                 }
                 extraItems()
             } preview: {

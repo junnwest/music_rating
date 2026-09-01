@@ -73,6 +73,25 @@ body {
   display: none;
 }
 
+/* Slim, always-visible horizontal scrollbar for the Quick Add shelves. */
+.shelf-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(130, 130, 130, 0.45) transparent;
+}
+.shelf-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+.shelf-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.shelf-scroll::-webkit-scrollbar-thumb {
+  background: rgba(130, 130, 130, 0.42);
+  border-radius: 999px;
+}
+.shelf-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(130, 130, 130, 0.62);
+}
+
 /* ── Micro-interactions ──────────────────────────────────────────────────
    Fast, quiet entrances for transient surfaces (menus, popovers, modals)
    plus one tactile accent (the like heart). All disabled under

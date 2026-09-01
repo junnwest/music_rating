@@ -1,8 +1,10 @@
 import { ImageResponse } from 'next/og';
 import type { NextRequest } from 'next/server';
 import { truncateUsernameForDisplay } from '../../../../lib/username';
+import { loadJakartaFonts } from '../../../../lib/og-fonts';
 
-export const runtime = 'edge';
+// Node.js runtime (the default) -- loadJakartaFonts reads the bundled font
+// files via node:fs, which isn't available on the edge runtime.
 
 // GET /api/daily-question/card?question=…&title=…&artist=…&cover=…&username=…&date=…&format=story|square
 // Generates a shareable PNG card (1080×1920 story or 1080×1080 square).
@@ -23,6 +25,8 @@ export async function GET(req: NextRequest) {
   const coverSrc = cover || null;
   const coverSize = isStory ? 720 : 560;
 
+  const fonts = await loadJakartaFonts();
+
   return new ImageResponse(
     (
       <div
@@ -34,7 +38,7 @@ export async function GET(req: NextRequest) {
           alignItems: 'center',
           background: '#F8F8F6',
           position: 'relative',
-          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+          fontFamily: 'Plus Jakarta Sans',
         }}
       >
         {/* Amber top stripe */}
@@ -291,6 +295,6 @@ export async function GET(req: NextRequest) {
         </div>
       </div>
     ),
-    { width: W, height: H }
+    { width: W, height: H, fonts }
   );
 }

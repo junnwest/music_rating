@@ -56,7 +56,6 @@ export default function InviteLandingPage() {
         gap: '16px',
         padding: '24px',
         textAlign: 'center',
-        fontFamily: '-apple-system, BlinkMacSystemFont, system-ui, sans-serif',
         background: '#F8F8F5',
         color: '#1A1A18',
       }}

@@ -16,6 +16,7 @@ final class TasteViewModel {
     // masquerade as a low rating count and falsely show the lock screen to a
     // user who's well past it.
     private(set) var loadFailed = false
+    private(set) var isRefreshing = false
     private var hasLoaded = false
 
     var isUnlocked: Bool { ratingCount >= Self.unlockThreshold }
@@ -74,6 +75,22 @@ final class TasteViewModel {
         hasLoaded = true
         isLoading = false
     }
+
+    /// Manually bypasses the route's 60s cache -- the **only** path allowed to
+    /// pass `refresh=1` (mirrors web's `page.tsx` Refresh button, and its
+    /// explicit warning not to auto-bypass on every load, which burned Vercel
+    /// CPU before it was removed 2026-07-15). Deliberately separate from
+    /// `load()` rather than a parameter on it, so that guarantee holds
+    /// structurally instead of by convention. Keeps the existing `report` on
+    /// screen while in flight and on failure, rather than blanking the page.
+    func refresh() async {
+        guard !isRefreshing, isUnlocked else { return }
+        isRefreshing = true
+        if let fresh: TasteProfileResponse = await WebAPI.get("/api/taste/profile", authed: true, query: ["refresh": "1"]) {
+            report = fresh
+        }
+        isRefreshing = false
+    }
 }
 
 // MARK: - TasteView (root)
@@ -92,7 +109,11 @@ struct TasteView: View {
                 } else if !viewModel.isUnlocked {
                     TasteLockView(ratingCount: viewModel.ratingCount, onGoToAdd: onGoToAdd)
                 } else if let report = viewModel.report {
-                    TasteReportView(report: report)
+                    TasteReportView(
+                        report: report,
+                        isRefreshing: viewModel.isRefreshing,
+                        onRefresh: { Task { await viewModel.refresh() } }
+                    )
                 } else {
                     // Unreachable via load() now (unlocked-but-no-report routes through
                     // loadFailed above) -- kept as a safety net so an unlocked user with
@@ -117,14 +138,16 @@ struct TasteView: View {
         ZStack {
             Color.sjCream.ignoresSafeArea()
             VStack(spacing: 12) {
-                Image(systemName: "wifi.slash")
-                    .font(.system(size: 36))
+                Image("icon-wifi-off")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 36, height: 36)
                     .foregroundStyle(Color.sjBorder)
                 Text("Couldn't load your taste progress.")
-                    .font(.system(size: 15))
+                    .font(.jakarta(15))
                     .foregroundStyle(Color.sjMuted)
                 Button("Retry") { Task { await viewModel.load() } }
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.jakarta(14, weight: .semibold))
                     .foregroundStyle(Color.sjAmber)
             }
         }
@@ -140,6 +163,8 @@ struct TasteView: View {
 /// and disliked chips. Every chart carries web's plain-language sentence.
 private struct TasteReportView: View {
     let report: TasteProfileResponse
+    let isRefreshing: Bool
+    let onRefresh: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -165,7 +190,7 @@ private struct TasteReportView: View {
         let flags = [
             hasMap,                                                       // 0 Map
             true,                                                        // 1 Numbers
-            charts.years.count > 1 && stats.meanYear != nil,             // 2 Years
+            charts.years.count > 1 && stats.meanYear != nil && stats.avgScore != nil,  // 2 Years
             charts.scoreDist.reduce(0, +) > 0 && stats.avgScore != nil,  // 3 Score
             !sceneShares.isEmpty,                                        // 4 Scene
             true,                                                        // 5 Canon
@@ -192,15 +217,15 @@ private struct TasteReportView: View {
                     numbersContent
                 }
 
-                if flags[2] {
+                if flags[2], let avgScore = stats.avgScore {
                     ReportSection(no: nos[2], title: String(localized: "Across the years"), lead: yearsLeadText) {
                         YearChartView(
                             years: charts.years,
-                            label: String(localized: "ratings"),
-                            trendLabel: String(localized: "trend"),
-                            meanYear: stats.meanYear,
-                            sdYears: stats.sdYears,
-                            eraLabel: String(localized: "your era")
+                            avgScore: avgScore,
+                            aboveLabel: String(localized: "above average"),
+                            belowLabel: String(localized: "below average"),
+                            paceLabel: String(localized: "pace"),
+                            avgLabel: String(localized: "avg")
                         )
                     }
                 }
@@ -244,7 +269,7 @@ private struct TasteReportView: View {
                 }
 
                 Text("That's your taste snapshot.")
-                    .font(.system(size: 11.5))
+                    .font(.jakarta(11.5))
                     .foregroundStyle(Color.sjMuted.opacity(0.5))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
@@ -283,20 +308,45 @@ private struct TasteReportView: View {
 
     private var heroCard: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Taste Report")
-                .font(.system(size: 10, weight: .black))
-                .kerning(1.2)
-                .textCase(.uppercase)
-                .foregroundStyle(Color.sjBlue.opacity(0.7))
+            HStack(alignment: .top) {
+                Text("Taste Report")
+                    .font(.jakarta(10, weight: .black))
+                    .kerning(1.2)
+                    .textCase(.uppercase)
+                    .foregroundStyle(Color.sjBlue.opacity(0.7))
+                Spacer(minLength: 8)
+                Button(action: onRefresh) {
+                    HStack(spacing: 6) {
+                        if isRefreshing {
+                            ProgressView().tint(Color.sjBlue).scaleEffect(0.7)
+                        } else {
+                            Image("icon-rotate-cw")
+                                .renderingMode(.template)
+                                .resizable().scaledToFit()
+                                .frame(width: 12, height: 12)
+                        }
+                        Text(isRefreshing ? String(localized: "Refreshing…") : String(localized: "Refresh"))
+                            .font(.jakarta(12, weight: .semibold))
+                    }
+                    .foregroundStyle(Color.sjBlue)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 6)
+                    .background(Color.sjSurface.opacity(0.7))
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(Color.sjBlue.opacity(0.25), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .disabled(isRefreshing)
+            }
             Text(report.clusters.count >= 2
                  ? String(format: String(localized: "Your taste lives in\n%d worlds."), report.clusters.count)
                  : String(localized: "Your taste lives in\none world."))
-                .font(.system(size: 24, weight: .black))
+                .font(.jakarta(24, weight: .black))
                 .foregroundStyle(Color.sjInk)
                 .padding(.top, 8)
             Text(String(format: String(localized: "Based on %1$d ratings across %2$d genres, analyzed into %3$d worlds."),
                         report.ratingCount, report.totalTags, report.clusters.count))
-                .font(.system(size: 12.5))
+                .font(.jakarta(12.5))
                 .foregroundStyle(Color.sjMuted)
                 .padding(.top, 6)
             HStack(spacing: 18) {
@@ -319,10 +369,10 @@ private struct TasteReportView: View {
     private func heroStat(value: Int, label: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             CountUpText(value: value)
-                .font(.system(size: 22, weight: .black))
+                .font(.jakarta(22, weight: .black))
                 .foregroundStyle(Color.sjInk)
             Text(label)
-                .font(.system(size: 10, weight: .bold))
+                .font(.jakarta(10, weight: .bold))
                 .kerning(0.6)
                 .textCase(.uppercase)
                 .foregroundStyle(Color.sjMuted)
@@ -367,10 +417,10 @@ private struct TasteReportView: View {
                     HStack(spacing: 6) {
                         Circle().fill(s.color).frame(width: 10, height: 10)
                         Text(s.label)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.jakarta(12, weight: .semibold))
                             .foregroundStyle(Color.sjInk)
                         Text("\(Int((s.share * 100).rounded()))%")
-                            .font(.system(size: 12))
+                            .font(.jakarta(12))
                             .monospacedDigit()
                             .foregroundStyle(Color.sjMuted)
                     }
@@ -387,7 +437,7 @@ private struct TasteReportView: View {
             CanonRadialGauge(pct: stats.prestigeShare ?? 0, label: String(localized: "in the canon"))
             Text(String(format: String(localized: "%d%% of what you rate sits in the curated canon; the rest is your own discovery."),
                         Int(((stats.prestigeShare ?? 0) * 100).rounded())))
-                .font(.system(size: 12.5))
+                .font(.jakarta(12.5))
                 .foregroundStyle(Color.sjMuted)
         }
         .padding(.top, 10)
@@ -397,55 +447,55 @@ private struct TasteReportView: View {
 
     private var numbersContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let top = report.topAlbum {
-                HStack(spacing: 14) {
-                    Group {
-                        if let s = top.coverUrl, let url = URL(string: s) {
-                            CachedImage(url: url) { Color.sjBorder }
-                                .scaledToFill()
-                        } else {
-                            Color.sjBorder
-                        }
-                    }
-                    .frame(width: 88, height: 88)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Your #1 Album")
-                            .font(.system(size: 10, weight: .black))
-                            .kerning(1)
-                            .textCase(.uppercase)
-                            .foregroundStyle(Color.sjBlue.opacity(0.7))
-                        Text(top.title)
-                            .font(.system(size: 13.5, weight: .bold))
-                            .foregroundStyle(Color.sjInk)
-                            .lineLimit(2)
-                        Text(top.artist)
-                            .font(.system(size: 12))
-                            .foregroundStyle(Color.sjMuted)
-                            .lineLimit(1)
-                        Text(String(format: "%.1f", top.score))
-                            .font(.system(size: 15, weight: .black))
-                            .foregroundStyle(Color.sjBlue)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(.top, 12)
+            if !report.topAlbums.isEmpty {
+                HallOfFameView(albums: report.topAlbums, score: report.topScore ?? report.topAlbums[0].score)
+                    .padding(.top, 14)
             }
             let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
             LazyVGrid(columns: columns, spacing: 10) {
-                StatTileView(value: "\(report.ratingCount)", label: String(localized: "ratings"))
                 StatTileView(
                     value: stats.avgScore.map { String(format: "%.2f", $0) } ?? "—",
-                    label: stats.sdScore.map { "\(String(localized: "average score")) (±\(String(format: "%.2f", $0)))" }
-                        ?? String(localized: "average score")
-                )
-                StatTileView(value: "\(stats.fiveStars)", label: String(localized: "perfect scores"))
-                StatTileView(value: peakMonthName ?? "—", label: String(localized: "peak month"))
+                    label: String(localized: "average score")
+                ) {
+                    if let sd = stats.sdScore {
+                        Text("±\(String(format: "%.2f", sd)) \(String(localized: "spread"))")
+                            .font(.jakarta(10.5, weight: .semibold))
+                            .foregroundStyle(Color.sjMuted.opacity(0.8))
+                    }
+                }
+                StatTileView(
+                    value: stats.median.map { String(format: "%.1f", $0) } ?? "—",
+                    label: String(localized: "median score")
+                ) {
+                    if let hint = skewHint {
+                        Text(hint)
+                            .font(.jakarta(10.5, weight: .semibold))
+                            .foregroundStyle(Color.sjMuted.opacity(0.8))
+                    }
+                }
+                StatTileView(
+                    value: stats.effectiveGenres.map { String(format: "%.1f", $0) } ?? "—",
+                    label: String(localized: "effective genres")
+                ) {
+                    Text(String(format: String(localized: "across %d rated"), report.totalTags))
+                        .font(.jakarta(10.5, weight: .semibold))
+                        .foregroundStyle(Color.sjMuted.opacity(0.8))
+                }
+                StatTileView(
+                    value: stats.communityDelta.map { "\($0 >= 0 ? "+" : "−")\(String(format: "%.2f", abs($0)))" } ?? "—",
+                    label: String(localized: "vs. the crowd")
+                ) {
+                    if let hint = crowdHint {
+                        Text(hint)
+                            .font(.jakarta(10.5, weight: .semibold))
+                            .foregroundStyle(crowdHintColor)
+                    }
+                }
             }
             .padding(.top, 12)
             VStack(alignment: .leading, spacing: 8) {
                 Text(String(localized: "12-month activity"))
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.jakarta(11, weight: .bold))
                     .foregroundStyle(Color.sjMuted)
                 ActivitySparkView(timeline: charts.timeline, peakIndex: charts.peakMonthIndex, monthLabel: monthTooltipLabel)
             }
@@ -458,13 +508,28 @@ private struct TasteReportView: View {
         }
     }
 
-    private var peakMonthName: String? {
-        guard let i = charts.peakMonthIndex, charts.timeline.indices.contains(i) else { return nil }
-        let month = Int(charts.timeline[i].month.suffix(2)) ?? 1
-        var comps = DateComponents(); comps.month = month
-        let date = Calendar.current.date(from: comps) ?? Date()
-        let fmt = DateFormatter(); fmt.dateFormat = "MMM"
-        return fmt.string(from: date)
+    /// Median-vs-mean skew read: which way the score distribution leans.
+    /// Negative moment-skew = a long tail of harsh scores below a generous
+    /// hump. Port of web's `skewHint()` (page.tsx).
+    private var skewHint: String? {
+        guard let skew = stats.skew, stats.median != nil, stats.avgScore != nil else { return nil }
+        if abs(skew) < 0.25 { return String(localized: "evenly balanced") }
+        return skew < 0
+            ? String(localized: "clusters high, harsh tail")
+            : String(localized: "clusters low, generous tail")
+    }
+
+    /// Turns the signed community gap into a plain-language grader read.
+    /// Port of web's `crowdHint()` (page.tsx).
+    private var crowdHint: String? {
+        guard let delta = stats.communityDelta else { return nil }
+        if abs(delta) < 0.05 { return String(localized: "right in line") }
+        return delta > 0 ? String(localized: "a softer grader") : String(localized: "a tougher grader")
+    }
+
+    private var crowdHintColor: Color {
+        guard let delta = stats.communityDelta, abs(delta) >= 0.05 else { return Color.sjMuted.opacity(0.8) }
+        return delta > 0 ? Color.sjBlue : YearChartView.belowColor
     }
 
     /// "Aug 2026" -- full month + year for `ActivitySparkView`'s drag tooltip.
@@ -491,11 +556,11 @@ private struct TasteReportView: View {
                 Spacer()
                 HStack(spacing: 4) {
                     Circle().fill(Color.sjBlue).frame(width: 9, height: 9)
-                    Text("You").font(.system(size: 11)).foregroundStyle(Color.sjMuted)
+                    Text("You").font(.jakarta(11)).foregroundStyle(Color.sjMuted)
                 }
                 HStack(spacing: 4) {
                     Circle().fill(Color.sjMuted.opacity(0.5)).frame(width: 9, height: 9)
-                    Text("Community").font(.system(size: 11)).foregroundStyle(Color.sjMuted)
+                    Text("Community").font(.jakarta(11)).foregroundStyle(Color.sjMuted)
                 }
             }
             DumbbellAxisView()
@@ -505,14 +570,16 @@ private struct TasteReportView: View {
                     VStack(spacing: 6) {
                         HStack(alignment: .firstTextBaseline) {
                             Text(s.genre)
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.jakarta(13, weight: .bold))
                                 .foregroundStyle(Color.sjInk)
                             Spacer()
                             HStack(spacing: 3) {
-                                Image(systemName: diff >= 0 ? "arrow.up" : "arrow.down")
-                                    .font(.system(size: 9, weight: .bold))
+                                Image(diff >= 0 ? "icon-arrow-up" : "icon-arrow-down")
+                                    .renderingMode(.template)
+                                    .resizable().scaledToFit()
+                                    .frame(width: 9, height: 9)
                                 Text("\(String(format: "%.2f", abs(diff))) \(diff >= 0 ? String(localized: "above average") : String(localized: "below average"))")
-                                    .font(.system(size: 11.5, weight: .semibold))
+                                    .font(.jakarta(11.5, weight: .semibold))
                             }
                             .foregroundStyle(diff >= 0 ? Color.sjBlue : Color.sjMuted)
                         }
@@ -546,7 +613,7 @@ private struct ColumnChartView: View {
                             VStack(spacing: 2) {
                                 if i == peakIndex && count > 0 {
                                     Text("\(count)")
-                                        .font(.system(size: 10, weight: .semibold))
+                                        .font(.jakarta(10, weight: .semibold))
                                         .monospacedDigit()
                                         .foregroundStyle(Color.sjMuted)
                                 }
@@ -569,7 +636,7 @@ private struct ColumnChartView: View {
                             .frame(width: 1)
                             .position(x: x, y: geo.size.height / 2)
                         Text(mean.label)
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.jakarta(10, weight: .semibold))
                             .foregroundStyle(Color.sjMuted)
                             .fixedSize()
                             .position(x: geo.size.width * CGFloat(min(0.9, max(0.1, mean.pos))), y: -8)
@@ -580,7 +647,7 @@ private struct ColumnChartView: View {
             HStack(spacing: 2) {
                 ForEach(Array(xLabels.enumerated()), id: \.offset) { _, label in
                     Text(label ?? " ")
-                        .font(.system(size: 10))
+                        .font(.jakarta(10))
                         .monospacedDigit()
                         .foregroundStyle(Color.sjMuted.opacity(0.7))
                         .lineLimit(1)
@@ -593,9 +660,13 @@ private struct ColumnChartView: View {
     }
 }
 
-/// Part-to-whole stacked bar with 2pt gaps.
+/// Part-to-whole stacked bar with 2pt gaps. Grows in from zero width when
+/// scrolled into view -- port of web's `tr-grow` (`SceneBar`, 0.8s, 0.15s
+/// delay), scaleX(0)→1 with a left transform-origin.
 private struct StackedBarView: View {
     let segments: [(share: Double, color: Color)]
+
+    @State private var grown = UIAccessibility.isReduceMotionEnabled
 
     var body: some View {
         GeometryReader { geo in
@@ -608,8 +679,14 @@ private struct StackedBarView: View {
                         .frame(width: max(6, available * CGFloat(s.share)))
                 }
             }
+            .scaleEffect(x: grown ? 1 : 0, anchor: .leading)
+            .animation(.easeOut(duration: 0.8).delay(0.15), value: grown)
         }
         .frame(height: 14)
+        .onScrollVisibilityChange(threshold: 0.15) { visible in
+            guard !grown, visible else { return }
+            grown = true
+        }
     }
 }
 
@@ -667,7 +744,7 @@ private struct DumbbellAxisView: View {
         GeometryReader { geo in
             ForEach(ticks, id: \.self) { v in
                 Text("\(v)")
-                    .font(.system(size: 10))
+                    .font(.jakarta(10))
                     .monospacedDigit()
                     .foregroundStyle(Color.sjMuted.opacity(0.6))
                     .position(x: geo.size.width * pos(Double(v)), y: 7)
@@ -686,7 +763,7 @@ private struct BinTooltip: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.jakarta(11, weight: .semibold))
             .foregroundStyle(Color.sjCream)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
@@ -709,25 +786,6 @@ private func binHoverGesture(count: Int, width: CGFloat, hover: Binding<Int?>) -
         .onEnded { _ in hover.wrappedValue = nil }
 }
 
-/// Straight-segment line through `values` (0...maxValue), normalized to the
-/// shape's own frame -- the release-year trend line.
-private struct TrendPath: Shape {
-    let values: [Double]
-    let maxValue: Double
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        guard values.count > 1, maxValue > 0 else { return path }
-        let step = rect.width / CGFloat(values.count - 1)
-        for (i, v) in values.enumerated() {
-            let x = CGFloat(i) * step
-            let y = rect.height - CGFloat(v / maxValue) * rect.height
-            if i == 0 { path.move(to: CGPoint(x: x, y: y)) } else { path.addLine(to: CGPoint(x: x, y: y)) }
-        }
-        return path
-    }
-}
-
 /// `1 ▓▓▓▓ 5 · label` gradient swatch stating the score ramp's scale --
 /// reused by the score chart and the taste map's legend. Port of web's
 /// `RampLegend`.
@@ -737,98 +795,108 @@ struct RampLegendView: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Text("1").font(.system(size: 10)).monospacedDigit().foregroundStyle(Color.sjMuted)
+            Text("1").font(.jakarta(10)).monospacedDigit().foregroundStyle(Color.sjMuted)
             LinearGradient(
                 colors: (1...5).map { Spectrum.color(score: Double($0), lightness: 0.62, chromaScale: 1) },
                 startPoint: .leading, endPoint: .trailing
             )
             .frame(width: width, height: 6)
             .clipShape(Capsule())
-            Text("5").font(.system(size: 10)).monospacedDigit().foregroundStyle(Color.sjMuted)
-            Text(label).font(.system(size: 10)).foregroundStyle(Color.sjMuted)
+            Text("5").font(.jakarta(10)).monospacedDigit().foregroundStyle(Color.sjMuted)
+            Text(label).font(.jakarta(10)).foregroundStyle(Color.sjMuted)
         }
     }
 }
 
-/// Release-year histogram: accent bars, a centred 5-year moving-average
-/// trend line, and a shaded mean±sd "your era" band. Drag-scrub tooltip
-/// shows year · count. Port of web's `YearChart`.
+/// Release-year histogram, redrawn (2026-08-27 web rebuild) as a grouped
+/// diverging frequency chart: two bars per year -- how many of that year's
+/// ratings landed above your overall average (accent) versus below it (a
+/// warm red) -- plus a smoothed 5-year moving-average "pace" line over the
+/// per-year total. Your average is stated in a chip above the plot instead
+/// of a shaded band. Drag-scrub tooltip shows year · above▲ below▼. Port of
+/// web's `YearChart` (TasteCharts.tsx).
 private struct YearChartView: View {
     let years: [TasteProfileResponse.TasteCharts.YearBin]
-    let label: String
-    let trendLabel: String
-    let meanYear: Int?
-    let sdYears: Double?
-    let eraLabel: String
+    let avgScore: Double
+    let aboveLabel: String
+    let belowLabel: String
+    let paceLabel: String
+    let avgLabel: String
 
     @State private var hover: Int? = nil
 
-    private var maxCount: Int { max(1, years.map(\.count).max() ?? 1) }
-    private var peakIndex: Int { years.indices.max(by: { years[$0].count < years[$1].count }) ?? 0 }
+    private var totals: [Int] { years.map { $0.above + $0.below } }
+    private var maxTotal: Int { max(1, totals.max() ?? 1) }
     private var tickEvery: Int { max(1, Int((Double(years.count) / 6).rounded(.up))) }
 
-    private var trend: [Double] {
+    private func barHeight(_ v: Int) -> CGFloat {
+        v > 0 ? max(3, CGFloat(v) / CGFloat(maxTotal) * 76) : 0
+    }
+
+    /// Centred 5-year moving average of the per-year total -- the "pace" line.
+    private var pace: [Double] {
         let w = 2
-        return years.indices.map { i in
-            let lo = max(0, i - w), hi = min(years.count - 1, i + w)
-            let slice = years[lo...hi]
-            return slice.reduce(0.0) { $0 + Double($1.count) } / Double(slice.count)
+        return totals.indices.map { i in
+            let lo = max(0, i - w), hi = min(totals.count - 1, i + w)
+            let slice = totals[lo...hi]
+            return slice.reduce(0.0) { $0 + Double($1) } / Double(slice.count)
         }
     }
 
-    private var band: (lo: CGFloat, hi: CGFloat)? {
-        guard let meanYear, let sdYears, sdYears > 0, let first = years.first?.year, !years.isEmpty else { return nil }
-        func slot(_ y: Double) -> CGFloat {
-            CGFloat(min(1, max(0, (y - Double(first) + 0.5) / Double(years.count))))
-        }
-        return (slot(Double(meanYear) - sdYears), slot(Double(meanYear) + sdYears))
-    }
+    /// Matches web's `--tr-dn` (below-your-average bars): #D8433D light / #EF655D dark.
+    fileprivate static let belowColor = Color(UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(red: 0.937, green: 0.396, blue: 0.365, alpha: 1)
+            : UIColor(red: 0.847, green: 0.263, blue: 0.239, alpha: 1)
+    })
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Spacer(minLength: 0)
+                HStack(spacing: 5) {
+                    Circle().fill(Color.sjInk.opacity(0.4)).frame(width: 6, height: 6)
+                    Text(avgLabel).font(.jakarta(11, weight: .semibold)).foregroundStyle(Color.sjMuted)
+                    Text(String(format: "%.2f", avgScore)).font(.jakarta(11, weight: .semibold)).foregroundStyle(Color.sjInk)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Color.sjSurface)
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(Color.sjBorder.opacity(0.7), lineWidth: 1))
+            }
             GeometryReader { geo in
                 ZStack(alignment: .topLeading) {
-                    if let band {
-                        let x0 = geo.size.width * band.lo
-                        let w = geo.size.width * (band.hi - band.lo)
-                        Rectangle()
-                            .fill(Color.sjBlue.opacity(0.07))
-                            .overlay(Rectangle().stroke(Color.sjBlue.opacity(0.2), lineWidth: 1))
-                            .frame(width: max(0, w), height: 96)
-                            .offset(x: x0)
-                        Text(eraLabel)
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(Color.sjBlue.opacity(0.8))
-                            .fixedSize()
-                            .position(x: x0 + w / 2, y: -8)
-                    }
                     VStack(spacing: 0) {
                         HStack(alignment: .bottom, spacing: 2) {
                             ForEach(Array(years.enumerated()), id: \.offset) { i, y in
-                                VStack(spacing: 2) {
-                                    if i == peakIndex, y.count > 0, hover == nil {
-                                        Text("\(y.count)")
-                                            .font(.system(size: 9, weight: .semibold))
-                                            .monospacedDigit()
-                                            .foregroundStyle(Color.sjMuted)
-                                    }
+                                HStack(alignment: .bottom, spacing: 2) {
                                     RoundedRectangle(cornerRadius: 2)
-                                        .fill(hover == i ? Color.sjBlue : Color.sjBlue.opacity(0.7))
-                                        .frame(height: y.count > 0 ? max(3, CGFloat(y.count) / CGFloat(maxCount) * 76) : 0)
+                                        .fill(Color.sjBlue)
+                                        .frame(maxWidth: 11)
+                                        .frame(height: barHeight(y.above))
+                                        .opacity(hover == nil || hover == i ? 1 : 0.7)
+                                    RoundedRectangle(cornerRadius: 2)
+                                        .fill(Self.belowColor)
+                                        .frame(maxWidth: 11)
+                                        .frame(height: barHeight(y.below))
+                                        .opacity(hover == nil || hover == i ? 1 : 0.7)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .bottom)
+                                .background(hover == i ? Color.sjInk.opacity(0.05) : .clear)
                             }
                         }
                         .frame(height: 96, alignment: .bottom)
                         Rectangle().fill(Color.sjBorder).frame(height: 1)
                     }
-                    if years.count > 2 {
-                        TrendPath(values: trend, maxValue: Double(maxCount))
-                            .stroke(Color.sjInk.opacity(0.45), style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                    if years.count > 1 {
+                        PaceTrendPath(values: pace, maxValue: Double(maxTotal))
+                            .stroke(Color.sjInk.opacity(0.45), style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
                             .frame(height: 96)
                     }
                     if let hover, years.indices.contains(hover) {
-                        BinTooltip(text: "\(years[hover].year) · \(years[hover].count)")
+                        let y = years[hover]
+                        BinTooltip(text: "\(y.year) · \(y.above)▲ \(y.below)▼")
                             .position(x: geo.size.width * (CGFloat(hover) + 0.5) / CGFloat(years.count), y: -14)
                     }
                 }
@@ -840,7 +908,7 @@ private struct YearChartView: View {
             HStack(spacing: 2) {
                 ForEach(Array(years.enumerated()), id: \.offset) { i, y in
                     Text(i % tickEvery == 0 || i == years.count - 1 ? String(y.year) : "")
-                        .font(.system(size: 9))
+                        .font(.jakarta(9))
                         .monospacedDigit()
                         .foregroundStyle(Color.sjMuted.opacity(0.7))
                         .lineLimit(1)
@@ -848,14 +916,18 @@ private struct YearChartView: View {
                         .frame(maxWidth: .infinity)
                 }
             }
-            HStack(spacing: 14) {
+            HStack(spacing: 12) {
                 HStack(spacing: 6) {
-                    RoundedRectangle(cornerRadius: 2).fill(Color.sjBlue.opacity(0.7)).frame(width: 10, height: 10)
-                    Text(label).font(.system(size: 11)).foregroundStyle(Color.sjMuted)
+                    RoundedRectangle(cornerRadius: 2).fill(Color.sjBlue).frame(width: 10, height: 10)
+                    Text(aboveLabel).font(.jakarta(11)).foregroundStyle(Color.sjMuted)
+                }
+                HStack(spacing: 6) {
+                    RoundedRectangle(cornerRadius: 2).fill(Self.belowColor).frame(width: 10, height: 10)
+                    Text(belowLabel).font(.jakarta(11)).foregroundStyle(Color.sjMuted)
                 }
                 HStack(spacing: 6) {
                     Rectangle().fill(Color.sjInk.opacity(0.45)).frame(width: 16, height: 2)
-                    Text(trendLabel).font(.system(size: 11)).foregroundStyle(Color.sjMuted)
+                    Text(paceLabel).font(.jakarta(11)).foregroundStyle(Color.sjMuted)
                 }
             }
             .padding(.top, 4)
@@ -864,15 +936,80 @@ private struct YearChartView: View {
     }
 }
 
+/// Smooth trend line through a per-index value series via monotone cubic
+/// Hermite interpolation, normalized to the shape's own frame. Port of web's
+/// `PaceTrendPath` usage of `monotonePath()`.
+private struct PaceTrendPath: Shape {
+    let values: [Double]
+    let maxValue: Double
+
+    func path(in rect: CGRect) -> Path {
+        guard !values.isEmpty, maxValue > 0 else { return Path() }
+        let n = values.count
+        let points: [CGPoint] = values.enumerated().map { i, v in
+            let xPct = (CGFloat(i) + 0.5) / CGFloat(n)
+            let yPct = 1 - CGFloat(v / maxValue) * 0.94
+            return CGPoint(x: xPct * rect.width, y: yPct * rect.height)
+        }
+        return monotonePath(points)
+    }
+}
+
+/// Shape-preserving smooth path through `points` (x-ascending) via monotone
+/// cubic Hermite interpolation (Fritsch–Carlson tangents) -- the curve never
+/// overshoots the values it connects, so it eases onto a run of zero values
+/// instead of dipping below or ringing. Port of web's `monotonePath()`
+/// (TasteCharts.tsx).
+private func monotonePath(_ points: [CGPoint]) -> Path {
+    var path = Path()
+    let n = points.count
+    guard n > 0 else { return path }
+    guard n > 1 else {
+        path.move(to: points[0])
+        return path
+    }
+
+    var h = [CGFloat](); var s = [CGFloat]()
+    for i in 0..<(n - 1) {
+        let dx = points[i + 1].x - points[i].x
+        h.append(dx)
+        s.append(dx == 0 ? 0 : (points[i + 1].y - points[i].y) / dx)
+    }
+
+    var t = [CGFloat](repeating: 0, count: n)
+    t[0] = s[0]
+    t[n - 1] = s[n - 2]
+    for i in 1..<(n - 1) {
+        if s[i - 1] * s[i] <= 0 {
+            t[i] = 0
+        } else {
+            let w1 = 2 * h[i] + h[i - 1]
+            let w2 = h[i] + 2 * h[i - 1]
+            t[i] = (w1 + w2) / (w1 / s[i - 1] + w2 / s[i])
+        }
+    }
+
+    path.move(to: points[0])
+    for i in 0..<(n - 1) {
+        let c1 = CGPoint(x: points[i].x + h[i] / 3, y: points[i].y + (t[i] * h[i]) / 3)
+        let c2 = CGPoint(x: points[i + 1].x - h[i] / 3, y: points[i + 1].y - (t[i + 1] * h[i]) / 3)
+        path.addCurve(to: points[i + 1], control1: c1, control2: c2)
+    }
+    return path
+}
+
 /// Half-star score bins, each bar colored by the OKLCh score ramp at its own
 /// score (color restates the x-axis, never the sole encoding). Drag-scrub
-/// tooltip shows score · count. Port of web's `ScoreChart`.
+/// tooltip shows score · count. Bars grow in, staggered, when scrolled into
+/// view -- port of web's `tr-bar` (`ScoreChart`, 0.7s per bar, 35ms stagger).
+/// Port of web's `ScoreChart`.
 private struct ScoreRampChartView: View {
     let bins: [Int]
     let mean: (pos: Double, label: String)?
     let legend: String
 
     @State private var hover: Int? = nil
+    @State private var grown = UIAccessibility.isReduceMotionEnabled
 
     private var maxCount: Int { max(1, bins.max() ?? 1) }
     private var peakIndex: Int { bins.indices.max(by: { bins[$0] < bins[$1] }) ?? 0 }
@@ -889,7 +1026,7 @@ private struct ScoreRampChartView: View {
                                     VStack(spacing: 2) {
                                         if i == peakIndex, count > 0, hover == nil {
                                             Text("\(count)")
-                                                .font(.system(size: 9, weight: .semibold))
+                                                .font(.jakarta(9, weight: .semibold))
                                                 .monospacedDigit()
                                                 .foregroundStyle(Color.sjMuted)
                                         }
@@ -897,18 +1034,24 @@ private struct ScoreRampChartView: View {
                                             .fill(Spectrum.color(score: scoreAt(i), lightness: 0.62, chromaScale: hover == i ? 1 : 0.9))
                                             .frame(height: count > 0 ? max(3, CGFloat(count) / CGFloat(maxCount) * 76) : 0)
                                             .frame(maxWidth: 24)
+                                            .scaleEffect(y: grown ? 1 : 0, anchor: .bottom)
+                                            .animation(.timingCurve(0.22, 0.61, 0.36, 1, duration: 0.7).delay(Double(i) * 0.035), value: grown)
                                     }
                                     .frame(maxWidth: .infinity, alignment: .bottom)
                                 }
                             }
                             .frame(height: 88, alignment: .bottom)
+                            .onScrollVisibilityChange(threshold: 0.15) { visible in
+                                guard !grown, visible else { return }
+                                grown = true
+                            }
                             Rectangle().fill(Color.sjBorder).frame(height: 1)
                         }
                         if let mean {
                             let x = geo.size.width * CGFloat(min(0.98, max(0.02, mean.pos)))
                             Rectangle().fill(Color.sjInk.opacity(0.35)).frame(width: 1).position(x: x, y: 44)
                             Text(mean.label)
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.jakarta(10, weight: .semibold))
                                 .foregroundStyle(Color.sjMuted)
                                 .fixedSize()
                                 .position(x: geo.size.width * CGFloat(min(0.9, max(0.1, mean.pos))), y: -8)
@@ -926,7 +1069,7 @@ private struct ScoreRampChartView: View {
                 HStack(spacing: 3) {
                     ForEach(bins.indices, id: \.self) { i in
                         Text(i % 2 == 1 ? String(format: "%g", scoreAt(i)) : "")
-                            .font(.system(size: 10))
+                            .font(.jakarta(10))
                             .monospacedDigit()
                             .foregroundStyle(Color.sjMuted.opacity(0.7))
                             .frame(maxWidth: .infinity)
@@ -957,11 +1100,11 @@ private struct CanonRadialGauge: View {
                 .rotationEffect(.degrees(-90))
             VStack(spacing: 2) {
                 Text("\(Int((pct * 100).rounded()))%")
-                    .font(.system(size: 22, weight: .black))
+                    .font(.jakarta(22, weight: .black))
                     .monospacedDigit()
                     .foregroundStyle(Color.sjInk)
                 Text(label)
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.jakarta(9, weight: .semibold))
                     .foregroundStyle(Color.sjMuted)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 10)
@@ -981,13 +1124,16 @@ private struct CanonRadialGauge: View {
 }
 
 /// Monthly rating counts; the peak month wears accent. Drag-scrub tooltip
-/// shows month · count. Port of web's `ActivitySpark`.
+/// shows month · count. Bars grow in, staggered, when scrolled into view --
+/// port of web's `tr-bar` (`ActivitySpark`, 30ms stagger). Port of web's
+/// `ActivitySpark`.
 private struct ActivitySparkView: View {
     let timeline: [TasteProfileResponse.TasteCharts.TimelineEntry]
     let peakIndex: Int?
     let monthLabel: (String) -> String
 
     @State private var hover: Int? = nil
+    @State private var grown = UIAccessibility.isReduceMotionEnabled
 
     private var maxCount: Int { max(1, timeline.map(\.count).max() ?? 1) }
 
@@ -1000,9 +1146,15 @@ private struct ActivitySparkView: View {
                             .fill(i == peakIndex ? Color.sjBlue : (hover == i ? Color.sjBlue.opacity(0.6) : Color.sjBorder))
                             .frame(height: max(2, CGFloat(m.count) / CGFloat(maxCount) * 24))
                             .frame(maxWidth: .infinity)
+                            .scaleEffect(y: grown ? 1 : 0, anchor: .bottom)
+                            .animation(.timingCurve(0.22, 0.61, 0.36, 1, duration: 0.7).delay(Double(i) * 0.03), value: grown)
                     }
                 }
                 .frame(height: 24, alignment: .bottom)
+                .onScrollVisibilityChange(threshold: 0.15) { visible in
+                    guard !grown, visible else { return }
+                    grown = true
+                }
                 if let hover, timeline.indices.contains(hover) {
                     BinTooltip(text: "\(monthLabel(timeline[hover].month)) · \(timeline[hover].count)")
                         .position(x: geo.size.width * (CGFloat(hover) + 0.5) / CGFloat(timeline.count), y: -14)
@@ -1062,6 +1214,132 @@ private struct RevealSection<Content: View>: View {
     }
 }
 
+/// Mobile adaptation of web's rotating 3D "hall of fame" ring for albums tied
+/// at the user's top score -- web's version spins a CSS `perspective`/
+/// `rotateY` ring, a desktop-hover-oriented effect with no touch equivalent,
+/// so this ports the same "your #1, possibly tied" idea as a native swipeable
+/// paging carousel instead (matching how the taste map's own treemap was
+/// already replaced with a flat ranked list for the same reason). A single
+/// top album renders as one static card with no pager, mirroring web's
+/// `n === 1` branch.
+private struct HallOfFameView: View {
+    let albums: [TasteProfileResponse.TasteTopAlbum]
+    let score: Double
+
+    @State private var scrollPosition: UUID?
+    @State private var floated = false
+
+    private var currentIndex: Int {
+        guard let scrollPosition, let i = albums.firstIndex(where: { $0.id == scrollPosition }) else { return 0 }
+        return i
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text("Your #1 Album")
+                .font(.jakarta(10, weight: .black))
+                .kerning(1)
+                .textCase(.uppercase)
+                .foregroundStyle(Color.sjBlue.opacity(0.7))
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if albums.count == 1 {
+                card(albums[0])
+                    .offset(y: floated ? -7 : 0)
+                    .onAppear {
+                        guard !UIAccessibility.isReduceMotionEnabled else { return }
+                        withAnimation(.easeInOut(duration: 2.75).repeatForever(autoreverses: true)) {
+                            floated = true
+                        }
+                    }
+            } else {
+                ScrollView(.horizontal) {
+                    LazyHStack(spacing: 0) {
+                        ForEach(albums, id: \.id) { album in
+                            card(album)
+                                .containerRelativeFrame(.horizontal)
+                        }
+                    }
+                    .scrollTargetLayout()
+                }
+                .scrollTargetBehavior(.paging)
+                .scrollPosition(id: $scrollPosition)
+                .scrollIndicators(.hidden)
+                .frame(height: 234)
+                .task { await autoRotate() }
+
+                HStack(spacing: 5) {
+                    ForEach(albums.indices, id: \.self) { i in
+                        Capsule()
+                            .fill(i == currentIndex ? Color.sjBlue : Color.sjMuted.opacity(0.35))
+                            .frame(width: i == currentIndex ? 16 : 6, height: 6)
+                            .animation(.easeOut(duration: 0.25), value: currentIndex)
+                    }
+                }
+
+                Text(String(format: String(localized: "%1$d albums tied at %2$@"), albums.count, String(format: "%.1f", score)))
+                    .font(.jakarta(11))
+                    .foregroundStyle(Color.sjMuted)
+            }
+        }
+    }
+
+    /// Auto-advances through the tied albums every 3.4s, same cadence as
+    /// web's `HallOfFame` ring -- structured-concurrency equivalent of its
+    /// `setInterval`, cancelled automatically when the view disappears.
+    /// Off under Reduce Motion, matching web's `usePrefersReducedMotion` gate.
+    private func autoRotate() async {
+        guard !UIAccessibility.isReduceMotionEnabled, albums.count > 1 else { return }
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(3.4))
+            guard !Task.isCancelled else { return }
+            let next = (currentIndex + 1) % albums.count
+            withAnimation(.easeInOut(duration: 0.6)) {
+                scrollPosition = albums[next].id
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func card(_ album: TasteProfileResponse.TasteTopAlbum) -> some View {
+        VStack(spacing: 10) {
+            Group {
+                if let s = album.coverUrl, let url = URL(string: s) {
+                    CachedImage(url: url) { Color.sjBorder }
+                        .scaledToFill()
+                } else {
+                    Color.sjBorder
+                }
+            }
+            .frame(width: 152, height: 152)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
+
+            VStack(spacing: 2) {
+                Text(album.title)
+                    .font(.jakarta(14, weight: .bold))
+                    .foregroundStyle(Color.sjInk)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                Text(album.artist)
+                    .font(.jakarta(12))
+                    .foregroundStyle(Color.sjMuted)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: 240)
+
+            Text(String(format: "%.1f", album.score))
+                .font(.jakarta(14, weight: .black))
+                .foregroundStyle(Spectrum.number(album.score))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 3)
+                .background(Spectrum.fill(album.score))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
 private struct StatTileView<Content: View>: View {
     let value: String
     let label: String
@@ -1076,10 +1354,10 @@ private struct StatTileView<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value)
-                .font(.system(size: 19, weight: .black))
+                .font(.jakarta(19, weight: .black))
                 .foregroundStyle(Color.sjInk)
             Text(label)
-                .font(.system(size: 11))
+                .font(.jakarta(11))
                 .foregroundStyle(Color.sjMuted)
             content
         }
@@ -1100,7 +1378,7 @@ private struct FlowChips: View {
         FlowLayout(spacing: 8) {
             ForEach(items, id: \.self) { item in
                 Text(item)
-                    .font(.system(size: 12.5))
+                    .font(.jakarta(12.5))
                     .strikethrough(true, color: Color.sjMuted.opacity(0.5))
                     .foregroundStyle(Color.sjMuted)
                     .padding(.horizontal, 12)
@@ -1168,7 +1446,7 @@ private struct CardTitle: View {
     init(_ text: String) { self.text = text }
     var body: some View {
         Text(text)
-            .font(.system(size: 15, weight: .bold))
+            .font(.jakarta(15, weight: .bold))
             .foregroundStyle(Color.sjInk)
     }
 }
@@ -1178,7 +1456,7 @@ private struct CardSub: View {
     init(_ text: String) { self.text = text }
     var body: some View {
         Text(text)
-            .font(.system(size: 12.5))
+            .font(.jakarta(12.5))
             .foregroundStyle(Color.sjMuted)
             .padding(.top, 4)
             .fixedSize(horizontal: false, vertical: true)
@@ -1199,7 +1477,7 @@ private struct ReportSection<Content: View>: View {
             ReportCard {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(no)
-                        .font(.system(size: 11, weight: .black))
+                        .font(.jakarta(11, weight: .black))
                         .monospacedDigit()
                         .foregroundStyle(Color.sjBlue.opacity(0.6))
                     CardTitle(title)
@@ -1274,19 +1552,21 @@ private struct TasteLockView: View {
             VStack(spacing: 0) {
                 Spacer()
 
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 36, weight: .medium))
+                Image("icon-lock")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 36, height: 36)
                     .foregroundStyle(Color.sjAmber)
                     .padding(.bottom, 24)
 
                 Text(String(format: String(localized: "Rate %d more\nreleases to unlock Taste"), Self.threshold - ratingCount))
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.jakarta(24, weight: .bold))
                     .foregroundStyle(Color.sjInk)
                     .multilineTextAlignment(.center)
                     .padding(.bottom, 12)
 
                 Text("We need enough ratings to surface\nmeaningful insights about your taste.")
-                    .font(.system(size: 15))
+                    .font(.jakarta(15))
                     .foregroundStyle(Color.sjMuted)
                     .multilineTextAlignment(.center)
                     .padding(.bottom, 40)
@@ -1310,14 +1590,14 @@ private struct TasteLockView: View {
                     .padding(.horizontal, 48)
 
                     Text(String(format: String(localized: "%d of %d"), ratingCount, Self.threshold))
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.jakarta(13, weight: .semibold))
                         .foregroundStyle(Color.sjMuted)
                 }
 
                 if let onGoToAdd {
                     Button(action: onGoToAdd) {
                         Text("Find releases to rate")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.jakarta(14, weight: .semibold))
                             .foregroundStyle(Color.sjCream)
                             .frame(maxWidth: .infinity)
                             .frame(height: 44)
@@ -1334,7 +1614,7 @@ private struct TasteLockView: View {
                 // Teaser strip
                 VStack(spacing: 10) {
                     Text("Coming to you")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.jakarta(10, weight: .bold))
                         .foregroundStyle(Color.sjMuted.opacity(0.6))
                         .kerning(0.8)
                         .textCase(.uppercase)
@@ -1342,11 +1622,13 @@ private struct TasteLockView: View {
                     HStack(spacing: 0) {
                         ForEach(teaserItems, id: \.1) { icon, label in
                             VStack(spacing: 5) {
-                                Image(systemName: icon)
-                                    .font(.system(size: 20))
+                                Image(icon)
+                                    .renderingMode(.template)
+                                    .resizable().scaledToFit()
+                                    .frame(width: 20, height: 20)
                                     .foregroundStyle(Color.sjAmber.opacity(0.4))
                                 Text(label)
-                                    .font(.system(size: 10))
+                                    .font(.jakarta(10))
                                     .foregroundStyle(Color.sjMuted.opacity(0.7))
                             }
                             .frame(maxWidth: .infinity)
@@ -1361,9 +1643,9 @@ private struct TasteLockView: View {
     }
 
     private let teaserItems: [(String, String)] = [
-        ("star.fill",      "Top Album"),
-        ("chart.bar.fill", "Activity"),
-        ("theatermasks",   "Your Style"),
-        ("waveform",       "Genre DNA")
+        ("icon-star-filled", "Top Album"),
+        ("icon-bar-chart",   "Activity"),
+        ("icon-drama",       "Your Style"),
+        ("icon-waveform",    "Genre DNA")
     ]
 }

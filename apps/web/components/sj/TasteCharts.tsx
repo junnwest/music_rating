@@ -35,6 +35,25 @@ export const TASTE_MOTION_CSS = `
   .tr-reveal .tr-bar,.tr-reveal .tr-grow{transform:none;transition:none}
   .tr-reveal .tr-gauge-arc{transition:none}
 }
+/* 3D hall-of-fame carousel for the tied #1 albums */
+.hof-stage{position:relative;perspective:1000px;perspective-origin:50% 44%}
+.hof-ring{position:absolute;inset:0;transform-style:preserve-3d;transition:transform .95s cubic-bezier(.22,.61,.36,1)}
+.hof-card{position:absolute;left:50%;top:0;transition:opacity .55s ease,filter .55s ease;backface-visibility:hidden}
+/* Cover art fills its rounded frame under 3D rotation: overscan the image a hair
+   so a sub-pixel seam of the light placeholder background can't show as a white
+   hairline along a tilted cover's edge. Native image-drag is disabled and pointer
+   events pass through to the card so a press-drag anywhere on a cover spins the
+   ring (not the browser's ghost-drag) while taps still reach the link/button. */
+.hof-cover img{transform:scale(1.035);-webkit-user-drag:none;user-select:none;pointer-events:none}
+.hof-float{animation:hof-float 5.5s ease-in-out infinite}
+@keyframes hof-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+.hof-meta{animation:hof-meta-in .5s ease}
+@keyframes hof-meta-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){
+  .hof-ring{transition:none}
+  .hof-float{animation:none}
+  .hof-meta{animation:none}
+}
 `;
 
 /** Scroll-triggered fade-up wrapper. Fires once, ~15% visible. */
@@ -156,118 +175,168 @@ export function RampLegend({ label }: { label: string }) {
 // ── Release-year histogram ──────────────────────────────────────────────────
 
 /**
- * Rated releases per release-year: accent bars, a centred 5-year moving
- * average, and a shaded mean±sd "your era" band. Hover shows year · count.
+ * A smooth SVG path through (x,y) points using **monotone cubic Hermite**
+ * interpolation (Fritsch–Carlson tangents). Chosen over Catmull-Rom because it
+ * is shape-preserving: the curve never overshoots the values it connects, so a
+ * trend line falling into a run of zero-count years eases down onto the baseline
+ * instead of dipping below it or ringing — the discontinuity is handled, not
+ * papered over. Points must be x-ascending; y is in SVG space (down = larger).
+ */
+function monotonePath(pts: { x: number; y: number }[]): string {
+  const n = pts.length;
+  if (n === 0) return '';
+  if (n === 1) return `M${pts[0].x.toFixed(2)},${pts[0].y.toFixed(2)}`;
+
+  // Secant slopes between consecutive points.
+  const h: number[] = [];
+  const s: number[] = [];
+  for (let i = 0; i < n - 1; i += 1) {
+    const dx = pts[i + 1].x - pts[i].x;
+    h.push(dx);
+    s.push(dx === 0 ? 0 : (pts[i + 1].y - pts[i].y) / dx);
+  }
+
+  // Tangents: endpoints take the adjacent secant; interior points use the
+  // weighted harmonic mean, forced flat at local extrema (where the sign flips)
+  // so no segment can overshoot — this is what keeps the curve off the axis.
+  const t: number[] = new Array(n);
+  t[0] = s[0];
+  t[n - 1] = s[n - 2];
+  for (let i = 1; i < n - 1; i += 1) {
+    if (s[i - 1] * s[i] <= 0) {
+      t[i] = 0;
+    } else {
+      const w1 = 2 * h[i] + h[i - 1];
+      const w2 = h[i] + 2 * h[i - 1];
+      t[i] = (w1 + w2) / (w1 / s[i - 1] + w2 / s[i]);
+    }
+  }
+
+  // Emit one cubic Bézier per interval; control points ride the tangents at h/3.
+  let d = `M${pts[0].x.toFixed(2)},${pts[0].y.toFixed(2)}`;
+  for (let i = 0; i < n - 1; i += 1) {
+    const c1x = pts[i].x + h[i] / 3;
+    const c1y = pts[i].y + (t[i] * h[i]) / 3;
+    const c2x = pts[i + 1].x - h[i] / 3;
+    const c2y = pts[i + 1].y - (t[i + 1] * h[i]) / 3;
+    d += ` C${c1x.toFixed(2)},${c1y.toFixed(2)} ${c2x.toFixed(2)},${c2y.toFixed(2)} ${pts[
+      i + 1
+    ].x.toFixed(2)},${pts[i + 1].y.toFixed(2)}`;
+  }
+  return d;
+}
+
+/**
+ * Your library across the years, drawn as a grouped frequency histogram.
+ *
+ * For each release year, two side-by-side bars count how many of your ratings
+ * from that year landed **above your overall average** (blue) versus **below**
+ * it (red) — so the chart shows both *how much* you rated from an era and
+ * *how you felt* about it. Both bars grow up from a shared count baseline; a
+ * year you rated nothing from is simply blank.
+ *
+ * A centred 5-year moving average of the per-year total rides on top as the
+ * "rating pace" line (the moving average of the frequency, on the same count
+ * axis as the bars). Your overall average — the split threshold — is stated in
+ * a chip above the plot, not drawn over the bars where it used to hide.
+ *
+ * Hover snaps to a year: its above/below counts.
  */
 export function YearChart({
   years,
-  label,
-  trendLabel,
-  meanYear,
-  sdYears,
-  eraLabel,
+  avgScore,
+  aboveLabel,
+  belowLabel,
+  paceLabel,
+  avgLabel,
 }: {
-  years: { year: number; count: number }[];
-  label: string;
-  trendLabel: string;
-  meanYear: number | null;
-  sdYears: number | null;
-  eraLabel: string;
+  years: { year: number; above: number; below: number }[];
+  avgScore: number;
+  aboveLabel: string;
+  belowLabel: string;
+  paceLabel: string;
+  avgLabel: string;
 }) {
   const { ref, hover, onPointerMove, onPointerLeave } = useBinHover(years.length);
-  const max = Math.max(1, ...years.map((y) => y.count));
-  const peak = years.reduce((best, y, i) => (y.count > years[best].count ? i : best), 0);
+  const n = years.length;
+  // Column centres (percent) — ticks, hover guide and the pace line key off
+  // these so every layer stays aligned with the bar groups.
+  const cx = (i: number) => ((i + 0.5) / n) * 100;
 
-  // Centred moving average with an edge-shrinking window, so the line spans
-  // the full range instead of stopping two years short.
+  // One shared count axis: bars and the pace line both scale to the busiest
+  // year's *total*, so a tall bar and a high pace read as the same magnitude.
+  const totals = years.map((y) => y.above + y.below);
+  const maxTotal = Math.max(1, ...totals);
+  const SCALE = 94; // % of panel height the busiest year fills
+  const barH = (v: number) => (v > 0 ? Math.max(4, (v / maxTotal) * SCALE) : 0);
+
+  // Centred 5-year moving average of the per-year total → the pace line.
   const W = 2;
-  const trend = years.map((_, i) => {
+  const pace = totals.map((_, i) => {
     let sum = 0;
-    let n = 0;
-    for (let j = Math.max(0, i - W); j <= Math.min(years.length - 1, i + W); j += 1) {
-      sum += years[j].count;
-      n += 1;
+    let k = 0;
+    for (let j = Math.max(0, i - W); j <= Math.min(n - 1, i + W); j += 1) {
+      sum += totals[j];
+      k += 1;
     }
-    return sum / n;
+    return sum / k;
   });
+  const pacePath = monotonePath(pace.map((v, i) => ({ x: cx(i), y: 100 - (v / maxTotal) * SCALE })));
 
-  const H = 100;
-  const step = years.length > 1 ? 100 / (years.length - 1) : 0;
-  const path = trend
-    .map(
-      (v, i) => `${i === 0 ? 'M' : 'L'}${(i * step).toFixed(2)},${(H - (v / max) * H).toFixed(2)}`,
-    )
-    .join(' ');
-
-  // Era band: mean ± sd mapped onto slot centres, clamped to the domain.
-  const first = years[0]?.year ?? 0;
-  const slot = (y: number) =>
-    Math.max(0, Math.min(100, ((y - first + 0.5) / years.length) * 100));
-  const band =
-    meanYear != null && sdYears != null && sdYears > 0
-      ? { lo: slot(meanYear - sdYears), hi: slot(meanYear + sdYears) }
-      : null;
-
-  const tickEvery = Math.max(1, Math.ceil(years.length / 6));
+  const tickEvery = Math.max(1, Math.ceil(n / 6));
+  const hy = hover != null ? years[hover] : null;
+  const hoverX = hover != null ? cx(hover) : 0;
+  const tipLeft = Math.max(8, Math.min(92, hoverX));
 
   return (
     <div className="mt-5">
-      <div className="relative">
-        {band && (
-          <div
-            className="absolute inset-y-0 rounded-md bg-accent/[0.07] border-x border-accent/20 pointer-events-none"
-            style={{ left: `${band.lo}%`, width: `${Math.max(0, band.hi - band.lo)}%` }}
-          >
-            <span className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full pb-0.5 text-[10px] font-bold text-accent-deep/80 whitespace-nowrap">
-              {eraLabel}
-            </span>
+      {/* your-average chip — the split threshold, above the plot so no bar hides it */}
+      <div className="mb-2 flex justify-end">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-divider/70 bg-page px-2.5 py-1 text-[11px] font-semibold text-muted">
+          <span className="w-1.5 h-1.5 rounded-full bg-ink/40" />
+          {avgLabel} <span className="text-ink tabular-nums">{avgScore.toFixed(2)}</span>
+        </span>
+      </div>
+
+      <div ref={ref} onPointerMove={onPointerMove} onPointerLeave={onPointerLeave} className="relative">
+        <div className="relative h-44 border-b border-divider">
+          {/* grouped bars */}
+          <div className="absolute inset-0 flex items-end gap-[3px]">
+            {years.map((y, i) => (
+              <div
+                key={y.year}
+                className={`relative flex-1 min-w-0 h-full flex items-end justify-center gap-[2px] rounded-sm ${
+                  hover === i ? 'bg-ink/[0.05]' : ''
+                }`}
+              >
+                <span
+                  className="w-[42%] max-w-[11px] rounded-t"
+                  style={{
+                    height: `${barH(y.above)}%`,
+                    background: 'var(--tr-up)',
+                    opacity: hover == null || hover === i ? 1 : 0.7,
+                  }}
+                />
+                <span
+                  className="w-[42%] max-w-[11px] rounded-t"
+                  style={{
+                    height: `${barH(y.below)}%`,
+                    background: 'var(--tr-dn)',
+                    opacity: hover == null || hover === i ? 1 : 0.7,
+                  }}
+                />
+              </div>
+            ))}
           </div>
-        )}
-        <div
-          ref={ref}
-          onPointerMove={onPointerMove}
-          onPointerLeave={onPointerLeave}
-          className="relative flex items-end gap-[2px] h-32 border-b border-divider"
-          aria-label={label}
-        >
-          {years.map((y, i) => (
-            <div
-              key={y.year}
-              className={`flex-1 min-w-0 h-full flex flex-col items-center justify-end rounded-sm ${
-                hover === i ? 'bg-ink/[0.05]' : ''
-              }`}
-            >
-              {i === peak && y.count > 0 && hover == null && (
-                <span className="text-[10px] font-semibold text-muted mb-0.5 tabular-nums">
-                  {y.count}
-                </span>
-              )}
-              <span
-                className={`tr-bar w-full rounded-t ${hover === i ? 'bg-accent' : 'bg-accent/70'}`}
-                style={{
-                  height: y.count > 0 ? Math.max(3, Math.round((y.count / max) * 100)) : 0,
-                  transitionDelay: `${Math.min(i * 9, 350)}ms`,
-                }}
-              />
-            </div>
-          ))}
-          {hover != null && years[hover] && (
-            <BinTooltip
-              i={hover}
-              count={years.length}
-              text={`${years[hover].year} · ${years[hover].count}`}
-            />
-          )}
-        </div>
-        {years.length > 2 && (
+          {/* pace line */}
           <svg
-            viewBox={`0 0 100 ${H}`}
+            viewBox="0 0 100 100"
             preserveAspectRatio="none"
-            className="absolute inset-x-0 bottom-0 h-32 pointer-events-none"
+            className="absolute inset-0 h-full w-full pointer-events-none"
             aria-hidden
           >
             <path
-              d={path}
+              d={pacePath}
               fill="none"
               stroke="currentColor"
               className="text-ink/45"
@@ -277,26 +346,54 @@ export function YearChart({
               strokeLinejoin="round"
             />
           </svg>
+          {/* hover guide + tooltip */}
+          {hover != null && (
+            <span
+              className="absolute inset-y-0 w-px bg-ink/20 pointer-events-none"
+              style={{ left: `${hoverX}%` }}
+            />
+          )}
+          {hy && (
+            <div
+              className="pointer-events-none absolute top-0 z-10 -translate-x-1/2 -translate-y-full rounded-md bg-ink/90 px-2 py-1 text-[11px] font-semibold text-page whitespace-nowrap shadow-sm"
+              style={{ left: `${tipLeft}%` }}
+            >
+              {hy.year} ·{' '}
+              <span style={{ color: 'var(--tr-up)' }}>{hy.above}▲</span>{' '}
+              <span style={{ color: 'var(--tr-dn)' }}>{hy.below}▼</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* year axis */}
+      <div className="relative mt-1 h-3">
+        {years.map((y, i) =>
+          i % tickEvery === 0 || i === n - 1 ? (
+            <span
+              key={y.year}
+              className="absolute -translate-x-1/2 text-[10px] text-muted/70 tabular-nums"
+              style={{ left: `${Math.max(3, Math.min(97, cx(i)))}%` }}
+            >
+              {y.year}
+            </span>
+          ) : null,
         )}
       </div>
-      <div className="flex gap-[2px] mt-1">
-        {years.map((y, i) => (
-          <span
-            key={y.year}
-            className="flex-1 min-w-0 text-center text-[10px] text-muted/70 tabular-nums"
-          >
-            {i % tickEvery === 0 || i === years.length - 1 ? y.year : ''}
-          </span>
-        ))}
-      </div>
-      <div className="mt-2.5 flex items-center gap-4 text-[11px] text-muted">
+
+      {/* legend */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted">
         <span className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-sm bg-accent/70 shrink-0" />
-          {label}
+          <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: 'var(--tr-up)' }} />
+          {aboveLabel}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: 'var(--tr-dn)' }} />
+          {belowLabel}
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-4 h-[2px] rounded-full bg-ink/45 shrink-0" />
-          {trendLabel}
+          {paceLabel}
         </span>
       </div>
     </div>

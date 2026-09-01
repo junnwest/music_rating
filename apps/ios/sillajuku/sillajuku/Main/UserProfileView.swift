@@ -57,12 +57,14 @@ final class UserProfileViewModel {
         let avatarUrl: String?
         let badgeColor: String?
         let isVerified: Bool?
+        let isBetaTester: Bool?
         enum CodingKeys: String, CodingKey {
             case id, username, bio
             case displayName = "display_name"
             case avatarUrl   = "avatar_url"
             case badgeColor  = "badge_color"
             case isVerified  = "is_verified"
+            case isBetaTester = "is_beta_tester"
         }
         var handle: String { username ?? displayName ?? String(localized: "someone") }
         var displayLabel: String { displayName ?? username ?? String(localized: "someone") }
@@ -257,7 +259,7 @@ final class UserProfileViewModel {
     private func loadProfile() async -> OtherProfile? {
         try? await supabase
             .from("profiles")
-            .select("id, username, display_name, bio, avatar_url, badge_color, is_verified")
+            .select("id, username, display_name, bio, avatar_url, badge_color, is_verified, is_beta_tester")
             .eq("id", value: userId)
             .single()
             .execute()
@@ -472,9 +474,7 @@ struct UserProfileView: View {
                     CoverImage(url: url, cornerRadius: 40)
                         .frame(width: 80, height: 80)
                 } else {
-                    Image(systemName: "person.circle.fill")
-                        .font(.system(size: 80))
-                        .foregroundStyle(Color(uiColor: .systemGray3))
+                    DefaultAvatarView(size: 80)
                 }
             }
             .padding(.top, 24)
@@ -482,13 +482,13 @@ struct UserProfileView: View {
 
             VStack(spacing: 4) {
                 Text(vm.profile?.displayLabel ?? initialHandle)
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.jakarta(22, weight: .bold))
                     .foregroundStyle(Color.sjInk)
                 // Badges sit next to the @handle (the account's actual
                 // identity), not the display name.
                 HStack(spacing: 5) {
                     Text("@" + (vm.profile?.handle ?? initialHandle))
-                        .font(.system(size: 14))
+                        .font(.jakarta(14))
                         .foregroundStyle(Color.sjMuted)
                     if let raw = vm.profile?.badgeColor, let badge = QuestBadgeColor(rawValue: raw) {
                         QuestBadgeView(color: badge.color)
@@ -500,12 +500,17 @@ struct UserProfileView: View {
                             .frame(width: 15, height: 15)
                             .accessibilityLabel(String(localized: "Verified"))
                     }
+                    if vm.profile?.isBetaTester == true {
+                        BetaBadgeView()
+                            .frame(width: 15, height: 15)
+                            .accessibilityLabel(String(localized: "Beta tester"))
+                    }
                 }
             }
 
             if vm.access.profileVisible, let bio = vm.profile?.bio, !bio.isEmpty {
                 Text(bio)
-                    .font(.system(size: 14))
+                    .font(.jakarta(14))
                     .foregroundStyle(Color.sjMuted)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
@@ -548,10 +553,10 @@ struct UserProfileView: View {
     private func statCell(value: Int, label: LocalizedStringKey) -> some View {
         VStack(spacing: 3) {
             Text("\(value)")
-                .font(.system(size: 18, weight: .bold))
+                .font(.jakarta(18, weight: .bold))
                 .foregroundStyle(Color.sjInk)
             Text(label)
-                .font(.system(size: 12))
+                .font(.jakarta(12))
                 .foregroundStyle(Color.sjMuted)
         }
     }
@@ -564,7 +569,7 @@ struct UserProfileView: View {
                 ProgressView().scaleEffect(0.8).frame(width: 130, height: 36)
             } else {
                 Text("Unblock")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.jakarta(14, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 130, height: 36)
                     .background(Color.red.opacity(0.8))
@@ -582,7 +587,7 @@ struct UserProfileView: View {
                 ProgressView().scaleEffect(0.8).frame(width: 130, height: 36)
             } else {
                 Text(vm.isFollowing ? "Following" : "Follow")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.jakarta(14, weight: .semibold))
                     .foregroundStyle(vm.isFollowing ? Color.sjInk : .white)
                     .frame(width: 130, height: 36)
                     .background(vm.isFollowing ? Color.sjBorder.opacity(0.4) : Color.sjAmber)
@@ -603,8 +608,10 @@ struct UserProfileView: View {
                     withAnimation(.easeInOut(duration: 0.15)) { activeTab = tab }
                 } label: {
                     VStack(spacing: 0) {
-                        Image(systemName: activeTab == tab ? tab.activeIcon : tab.icon)
-                            .font(.system(size: 20))
+                        Image(tab.icon)
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 20, height: 20)
                             .foregroundStyle(activeTab == tab ? Color.sjInk : Color.sjMuted)
                             .frame(maxWidth: .infinity)
                             .frame(height: 44)
@@ -692,11 +699,13 @@ struct UserProfileView: View {
 
         if !hasAny {
             VStack(spacing: 12) {
-                Image(systemName: "square.grid.2x2")
-                    .font(.system(size: 36))
+                Image("icon-layout-grid")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 36, height: 36)
                     .foregroundStyle(Color.sjMuted)
                 Text("No ratings yet")
-                    .font(.system(size: 15))
+                    .font(.jakarta(15))
                     .foregroundStyle(Color.sjMuted)
             }
             .frame(maxWidth: .infinity)
@@ -707,7 +716,7 @@ struct UserProfileView: View {
                     ForEach(RatingTypeFilter.allCases, id: \.self) { filter in
                         Button { ratingTypeFilter = filter } label: {
                             Text(LocalizedStringKey(filter.rawValue))
-                                .font(.system(size: 12, weight: ratingTypeFilter == filter ? .semibold : .regular))
+                                .font(.jakarta(12, weight: ratingTypeFilter == filter ? .semibold : .regular))
                                 .foregroundStyle(ratingTypeFilter == filter ? Color.sjBlue : Color.sjMuted)
                                 .padding(.horizontal, 12).padding(.vertical, 6)
                                 .background(ratingTypeFilter == filter ? Color.sjBlue.opacity(0.1) : Color.clear)
@@ -719,8 +728,10 @@ struct UserProfileView: View {
                     HStack(spacing: 2) {
                         ForEach([RatingDisplayMode.list, .posts], id: \.self) { mode in
                             Button { ratingDisplayMode = mode } label: {
-                                Image(systemName: mode == .list ? "list.bullet" : "newspaper")
-                                    .font(.system(size: 14))
+                                Image(mode == .list ? "icon-list" : "icon-newspaper")
+                                    .renderingMode(.template)
+                                    .resizable().scaledToFit()
+                                    .frame(width: 14, height: 14)
                                     .foregroundStyle(ratingDisplayMode == mode ? Color.sjBlue : Color.sjMuted)
                                     .frame(width: 32, height: 28)
                                     .background(ratingDisplayMode == mode ? Color.sjBlue.opacity(0.1) : Color.clear)
@@ -735,22 +746,28 @@ struct UserProfileView: View {
 
                 HStack {
                     Text(String(format: String(localized: "%d %@"), items.count, ratingTypeFilter == .all ? String(localized: "ratings") : String(localized: String.LocalizationValue(ratingTypeFilter.rawValue)).lowercased()))
-                        .font(.system(size: 12))
+                        .font(.jakarta(12))
                         .foregroundStyle(Color.sjMuted)
                     Spacer()
                     Menu {
                         ForEach(RatingSortOrder.allCases, id: \.self) { order in
                             Button { ratingSortOrder = order } label: {
-                                Label(LocalizedStringKey(order.rawValue),
-                                      systemImage: ratingSortOrder == order ? "checkmark" : "")
+                                if ratingSortOrder == order {
+                                    Label(LocalizedStringKey(order.rawValue), image: "icon-check")
+                                } else {
+                                    Text(LocalizedStringKey(order.rawValue))
+                                }
                             }
                         }
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: "line.3.horizontal.decrease")
+                            Image("icon-sliders-horizontal")
+                                .renderingMode(.template)
+                                .resizable().scaledToFit()
+                                .frame(width: 14, height: 14)
                             Text(LocalizedStringKey(ratingSortOrder.rawValue))
                         }
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.jakarta(12, weight: .medium))
                         .foregroundStyle(Color.sjAmber)
                     }
                 }
@@ -758,38 +775,43 @@ struct UserProfileView: View {
 
                 if items.isEmpty {
                     VStack(spacing: 10) {
-                        Image(systemName: ratingTypeFilter == .songs ? "music.note" : "square.grid.2x2")
-                            .font(.system(size: 28)).foregroundStyle(Color.sjMuted)
+                        Image(ratingTypeFilter == .songs ? "icon-music" : "icon-layout-grid")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 28, height: 28)
+                            .foregroundStyle(Color.sjMuted)
                         Text(String(format: String(localized: "No %@ rated yet"), String(localized: String.LocalizationValue(ratingTypeFilter.rawValue)).lowercased()))
-                            .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                            .font(.jakarta(14)).foregroundStyle(Color.sjMuted)
                     }
                     .frame(maxWidth: .infinity).padding(.top, 40)
                 } else if ratingDisplayMode == .list {
                     ForEach(items) { item in
-                        NavigationLink(value: item.asRelease) {
-                            RatingListRow(
-                                coverUrl: item.coverUrl,
-                                title: item.displayTitle,
-                                artistLine: item.artistLine,
-                                score: item.score,
-                                isSong: item.isSong,
-                                releaseType: item.releaseType
-                            )
-                        }
-                        .buttonStyle(.plain)
+                        ExpandableRatingListRow(
+                            release: item.asRelease,
+                            coverUrl: item.coverUrl,
+                            title: item.displayTitle,
+                            artistLine: item.artistLine,
+                            score: item.score,
+                            isSong: item.isSong,
+                            releaseType: item.releaseType,
+                            reviewText: item.reviewText,
+                            createdAt: item.createdAt
+                        )
                         // No delete/edit affordance -- viewer isn't the owner --
                         // but the standard long-press quick actions still apply.
                         .albumContextMenu(item.asRelease)
-                        Divider().padding(.leading, 70)
                     }
                 } else {
                     let albumItems = items.filter { !$0.isSong }
                     if albumItems.isEmpty {
                         VStack(spacing: 10) {
-                            Image(systemName: "newspaper")
-                                .font(.system(size: 28)).foregroundStyle(Color.sjMuted)
+                            Image("icon-newspaper")
+                                .renderingMode(.template)
+                                .resizable().scaledToFit()
+                                .frame(width: 28, height: 28)
+                                .foregroundStyle(Color.sjMuted)
                             Text("No album ratings yet")
-                                .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                                .font(.jakarta(14)).foregroundStyle(Color.sjMuted)
                         }
                         .frame(maxWidth: .infinity).padding(.top, 40)
                     } else {
@@ -803,6 +825,8 @@ struct UserProfileView: View {
                                     onLike: { await vm.toggleLike(ratingId: rating.id) },
                                     headerHandle: vm.profile?.handle ?? initialHandle,
                                     headerVerified: vm.profile?.isVerified == true,
+                                    headerBadgeColor: vm.profile?.badgeColor,
+                                    headerBetaTester: vm.profile?.isBetaTester == true,
                                     onNotInterested: { Task { await vm.notInterested(rating: rating) } }
                                 )
                                 .padding(.horizontal, 12)
@@ -823,11 +847,13 @@ struct UserProfileView: View {
         Group {
             if vm.mixes.isEmpty {
                 VStack(spacing: 12) {
-                    Image(systemName: "music.note.list")
-                        .font(.system(size: 36))
+                    Image("icon-list-music")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 36, height: 36)
                         .foregroundStyle(Color.sjBorder)
                     Text("No public mixes")
-                        .font(.system(size: 15))
+                        .font(.jakarta(15))
                         .foregroundStyle(Color.sjMuted)
                 }
                 .frame(maxWidth: .infinity, alignment: .top)
@@ -874,19 +900,19 @@ struct SubtabLockedView: View {
                 .foregroundStyle(Color.sjBlue)
 
             Text(headline)
-                .font(.system(size: 16, weight: .bold))
+                .font(.jakarta(16, weight: .bold))
                 .foregroundStyle(Color.sjInk)
                 .multilineTextAlignment(.center)
 
             Text("Private accounts are only visible to followers.")
-                .font(.system(size: 13))
+                .font(.jakarta(13))
                 .foregroundStyle(Color.sjMuted)
                 .multilineTextAlignment(.center)
 
             if !isFollowing {
                 Button(action: onFollow) {
                     Text("Follow")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.jakarta(14, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(width: 130, height: 36)
                         .background(Color.sjAmber)

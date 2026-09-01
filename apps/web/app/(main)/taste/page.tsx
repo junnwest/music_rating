@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Lock, Star, BarChart3, Drama, AudioWaveform, RotateCw } from 'lucide-react';
 import Cover from '../../../components/sj/Cover';
@@ -55,7 +55,7 @@ interface TasteReport {
   graph?: TasteGraphData;
   charts: {
     decades: { decade: number; count: number }[];
-    years?: { year: number; count: number }[];
+    years?: { year: number; above: number; below: number }[];
     scoreDist: number[];
     scenes: { counts: Record<Scene, number>; total: number } | null;
     timeline: { month: string; count: number }[];
@@ -65,17 +65,26 @@ interface TasteReport {
     avgScore: number | null;
     sdScore: number | null;
     fiveStars: number;
+    perfectRate: number | null;
+    median: number | null;
+    skew: number | null;
+    effectiveGenres: number | null;
+    communityDelta: number | null;
     meanYear: number | null;
     sdYears: number | null;
     prestigeShare: number | null;
   };
-  topAlbum: {
-    id: string;
-    title: string;
-    artist: string;
-    coverUrl: string | null;
-    score: number;
-  } | null;
+  topScore: number | null;
+  topAlbums: TopAlbum[];
+  topAlbum: TopAlbum | null;
+}
+
+interface TopAlbum {
+  id: string;
+  title: string;
+  artist: string;
+  coverUrl: string | null;
+  score: number;
 }
 
 // Categorical series slots for scenes — a fixed-order palette validated (CVD
@@ -84,9 +93,11 @@ interface TasteReport {
 // color alone: every use is paired with a named legend or a direct label.
 // (The taste map uses the score ramp instead — magnitude, not identity.)
 const SERIES = ['var(--viz-1)', 'var(--viz-2)', 'var(--viz-3)', 'var(--viz-4)', 'var(--viz-5)'];
+// --tr-up / --tr-dn drive the diverging "stock" year chart: blue where a year's
+// mean rating sits above your overall average, red where it falls below.
 const VIZ_VARS = `
-.taste-report{--viz-1:#2a78d6;--viz-2:#1baf7a;--viz-3:#eda100;--viz-4:#008300;--viz-5:#4a3aa7;}
-.dark .taste-report{--viz-1:#3987e5;--viz-2:#199e70;--viz-3:#c98500;--viz-4:#008300;--viz-5:#9085e9;}
+.taste-report{--viz-1:#2a78d6;--viz-2:#1baf7a;--viz-3:#eda100;--viz-4:#008300;--viz-5:#4a3aa7;--tr-up:#2a78d6;--tr-dn:#d8433d;}
+.dark .taste-report{--viz-1:#3987e5;--viz-2:#199e70;--viz-3:#c98500;--viz-4:#008300;--viz-5:#9085e9;--tr-up:#4a92ea;--tr-dn:#ef655d;}
 `;
 /** Scenes keep fixed slots (color follows the entity, not its rank). */
 const SCENE_ORDER: Scene[] = ['kr', 'jp', 'west', 'other'];
@@ -273,9 +284,6 @@ function ReportView({
     String(Math.round((stats.prestigeShare ?? 0) * 100)),
   );
 
-  const peakMonth =
-    charts.peakMonthIndex != null ? charts.timeline[charts.peakMonthIndex] : null;
-
   // Sorted by how far the user diverges above the community — the story the
   // section is telling — not by the RPC's row order.
   const standings = useMemo(
@@ -354,57 +362,50 @@ function ReportView({
         </Section>
       )}
 
-      {/* ── Numbers: #1 album + stat tiles + 12-month activity ── */}
+      {/* ── Numbers: rotating #1 hall of fame + meaningful stat tiles + activity ── */}
       <Section no={nextNo()} title={t('sj.taste.statsHeader')}>
-        <div className="mt-5 flex flex-col sm:flex-row gap-6">
-          {report.topAlbum && (
-            <Link
-              href={`/album/${report.topAlbum.id}`}
-              className="flex sm:flex-col items-center sm:items-start gap-4 sm:gap-2.5 sm:w-44 shrink-0 group"
-            >
-              <Cover
-                url={report.topAlbum.coverUrl}
-                thumb={false}
-                className="w-24 h-24 sm:w-44 sm:h-44"
-                rounded="rounded-xl"
-              />
-              <span className="min-w-0">
-                <span className="block text-[10px] font-black tracking-[0.1em] uppercase text-accent-deep/70">
-                  {t('sj.taste.topAlbum')}
-                </span>
-                <span className="block mt-0.5 text-[14px] font-bold text-ink line-clamp-2 group-hover:underline">
-                  {report.topAlbum.title}
-                </span>
-                <span className="block text-[12px] text-muted truncate">
-                  {report.topAlbum.artist}
-                </span>
-                <span
-                  className="inline-block mt-1.5 rounded-md px-2 py-0.5 text-[14px] font-black tabular-nums"
-                  style={{
-                    background: spectrumFill(report.topAlbum.score),
-                    color: spectrumNumber(report.topAlbum.score),
-                  }}
-                >
-                  {report.topAlbum.score.toFixed(1)}
-                </span>
-              </span>
-            </Link>
+        <div className="mt-5 flex flex-col lg:flex-row gap-7 lg:gap-9">
+          {report.topAlbums.length > 0 && (
+            <HallOfFame albums={report.topAlbums} score={report.topScore ?? report.topAlbums[0].score} t={t} />
           )}
-          <div className="flex-1 flex flex-col gap-4">
+          <div className="flex-1 min-w-0 flex flex-col gap-4">
             <div className="grid grid-cols-2 gap-3">
-              <StatTile value={String(report.ratingCount)} label={t('sj.taste.statRated')} />
               <StatTile
                 value={stats.avgScore != null ? stats.avgScore.toFixed(2) : '—'}
-                label={
-                  stats.sdScore != null
-                    ? `${t('sj.taste.statAvg')} (±${stats.sdScore.toFixed(2)})`
-                    : t('sj.taste.statAvg')
-                }
+                label={t('sj.taste.statAvg')}
+                hint={stats.sdScore != null ? `±${stats.sdScore.toFixed(2)} ${t('sj.taste.statSpread')}` : undefined}
+                tip={t('sj.taste.statAvgTip')}
               />
-              <StatTile value={String(stats.fiveStars)} label={t('sj.taste.perfectScores')} />
               <StatTile
-                value={peakMonth ? monthName(parseInt(peakMonth.month.slice(5), 10) - 1, lang) : '—'}
-                label={t('sj.taste.statPeak')}
+                value={stats.median != null ? stats.median.toFixed(1) : '—'}
+                label={t('sj.taste.statMedian')}
+                hint={skewHint(stats.skew, stats.median, stats.avgScore, t)}
+                hintTone="neutral"
+                tip={t('sj.taste.statMedianTip')}
+              />
+              <StatTile
+                value={stats.effectiveGenres != null ? stats.effectiveGenres.toFixed(1) : '—'}
+                label={t('sj.taste.statDiversity')}
+                hint={t('sj.taste.statDiversityHint').replace('{n}', String(report.totalTags))}
+                hintTone="neutral"
+                tip={t('sj.taste.statDiversityTip')}
+              />
+              <StatTile
+                value={
+                  stats.communityDelta != null
+                    ? `${stats.communityDelta >= 0 ? '+' : '−'}${Math.abs(stats.communityDelta).toFixed(2)}`
+                    : '—'
+                }
+                label={t('sj.taste.statVsCrowd')}
+                hint={crowdHint(stats.communityDelta, t)}
+                tip={t('sj.taste.statVsCrowdTip')}
+                hintTone={
+                  stats.communityDelta == null || Math.abs(stats.communityDelta) < 0.05
+                    ? 'neutral'
+                    : stats.communityDelta > 0
+                      ? 'up'
+                      : 'down'
+                }
               />
             </div>
             <div className="rounded-xl bg-page border border-divider/60 px-4 py-3">
@@ -422,15 +423,15 @@ function ReportView({
       </Section>
 
       {/* ── Release years ── */}
-      {years.length > 1 && stats.meanYear != null && (
+      {years.length > 1 && stats.meanYear != null && stats.avgScore != null && (
         <Section no={nextNo()} title={t('sj.taste.yearsHeader')} lead={eraText}>
           <YearChart
             years={years}
-            label={t('sj.taste.yearsLegend')}
-            trendLabel={t('sj.taste.yearsTrend')}
-            meanYear={stats.meanYear}
-            sdYears={stats.sdYears}
-            eraLabel={t('sj.taste.eraBand')}
+            avgScore={stats.avgScore}
+            aboveLabel={t('sj.taste.yearsAbove')}
+            belowLabel={t('sj.taste.yearsBelow')}
+            paceLabel={t('sj.taste.yearsTrend')}
+            avgLabel={t('sj.taste.yearsBaseline')}
           />
         </Section>
       )}
@@ -608,13 +609,318 @@ function worldNote(world: TasteWorld, t: (k: string) => string): string {
   return parts.join(' · ');
 }
 
-function StatTile({ value, label }: { value: string; label: string }) {
+function StatTile({
+  value,
+  label,
+  hint,
+  hintTone = 'neutral',
+  tip,
+}: {
+  value: string;
+  label: string;
+  hint?: string;
+  hintTone?: 'neutral' | 'up' | 'down';
+  tip?: string;
+}) {
+  const tone =
+    hintTone === 'up'
+      ? 'text-accent-deep'
+      : hintTone === 'down'
+        ? 'text-[color:var(--tr-dn)]'
+        : 'text-muted/80';
   return (
-    <div className="rounded-xl bg-page border border-divider/60 px-4 py-3.5">
+    <div className="group relative rounded-xl bg-page border border-divider/60 px-4 py-3.5">
       <p className="text-[22px] font-black text-ink leading-tight tabular-nums">{value}</p>
       <p className="text-[11px] text-muted mt-0.5">{label}</p>
+      {hint && <p className={`text-[10.5px] font-semibold mt-1 tabular-nums ${tone}`}>{hint}</p>}
+      {tip && (
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute left-3 right-3 bottom-full z-20 mb-1.5 rounded-lg bg-ink px-3 py-2 text-[11px] leading-snug text-page opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+        >
+          {tip}
+        </span>
+      )}
     </div>
   );
+}
+
+/** Median-vs-mean skew read: which way your scale leans. */
+function skewHint(
+  skew: number | null,
+  median: number | null,
+  mean: number | null,
+  t: (k: string) => string,
+): string | undefined {
+  if (skew == null || median == null || mean == null) return undefined;
+  if (Math.abs(skew) < 0.25) return t('sj.taste.statSkewEven');
+  // Negative moment-skew = a long tail of harsh scores below a generous hump.
+  return t(skew < 0 ? 'sj.taste.statSkewHigh' : 'sj.taste.statSkewLow');
+}
+
+/** Turn the signed community gap into a plain-language grader read. */
+function crowdHint(delta: number | null, t: (k: string) => string): string | undefined {
+  if (delta == null) return undefined;
+  if (Math.abs(delta) < 0.05) return t('sj.taste.statAligned');
+  return t(delta > 0 ? 'sj.taste.statGenerous' : 'sj.taste.statCritical');
+}
+
+/**
+ * Rotating 3D "hall of fame" for the albums tied at the user's top score. The
+ * covers sit on a ring in 3D space; the ring auto-advances so each tied album
+ * takes the front in turn, with its title/artist crossfading below. A single
+ * top album just floats (no ring); clicking any cover brings it to the front,
+ * and the front cover links to the album. All motion collapses under
+ * prefers-reduced-motion — the ring snaps instead of sweeping and the front
+ * album is navigable via the dots.
+ */
+function HallOfFame({
+  albums,
+  score,
+  t,
+}: {
+  albums: TopAlbum[];
+  score: number;
+  t: (k: string) => string;
+}) {
+  const n = albums.length;
+  // `turn` is an unbounded, monotonically-moving index: auto-spin and a
+  // rightward drag only ever *increase* it, so the ring rotates forward past the
+  // last cover into the first instead of unwinding all the way back. The album
+  // shown at the front is `turn` folded into range.
+  const [turn, setTurn] = useState(0);
+  const active = ((turn % n) + n) % n;
+  const reduced = usePrefersReducedMotion();
+  // Bumped on every user interaction so the auto-spin timer restarts from zero
+  // rather than firing immediately after the user just moved the ring.
+  const [resetKey, setResetKey] = useState(0);
+
+  useEffect(() => {
+    if (reduced || n <= 1) return;
+    const id = setInterval(() => setTurn((x) => x + 1), 3400);
+    return () => clearInterval(id);
+  }, [reduced, n, resetKey]);
+
+  /** Move to a specific album by the shortest signed path, then restart timer. */
+  const goTo = useCallback(
+    (i: number) => {
+      setTurn((x) => {
+        const cur = ((x % n) + n) % n;
+        let d = ((i - cur) % n + n) % n; // 0..n-1 forward
+        if (d > n / 2) d -= n; // take the shorter way round
+        return x + d;
+      });
+      setResetKey((k) => k + 1);
+    },
+    [n],
+  );
+
+  // ── Drag to spin ──────────────────────────────────────────────────────────
+  // `turn` is read through a ref so the pointer handlers never re-create (and so
+  // a press captures the *current* turn without listing it as a dep).
+  const turnRef = useRef(turn);
+  turnRef.current = turn;
+  const drag = useRef<{ startX: number; startTurn: number; moved: boolean } | null>(null);
+  const DRAG_PX_PER_STEP = 70; // horizontal travel that advances one cover
+
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    if (n <= 1 || e.button !== 0) return;
+    // Don't capture yet: capturing on press retargets pointer events off the
+    // covers, which swallows their click (goTo) and nav. Capture only once a
+    // real drag starts, in onPointerMove.
+    drag.current = { startX: e.clientX, startTurn: turnRef.current, moved: false };
+  }, [n]);
+
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    const dx = e.clientX - d.startX;
+    if (!d.moved) {
+      if (Math.abs(dx) < 4) return; // a click, not a drag — leave covers clickable
+      d.moved = true;
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+      setResetKey((k) => k + 1); // pause auto-spin now that a drag is underway
+    }
+    // Drag left → advance forward (matches the auto-spin direction).
+    setTurn(d.startTurn - Math.round(dx / DRAG_PX_PER_STEP));
+  }, []);
+
+  const endDrag = useCallback((e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+    // Keep `moved` readable through the click that immediately follows so cover
+    // taps that were actually drags don't also navigate / jump.
+    if (d.moved) setTimeout(() => (drag.current = null), 0);
+    else drag.current = null;
+  }, []);
+
+  const front = albums[active];
+  const COVER = 168; // px — fixed so the 3D ring geometry is stable
+  const step = n > 0 ? 360 / n : 0;
+  // Radius so neighbouring covers don't collide; ample gap for a coverflow feel.
+  const radius = n <= 1 ? 0 : Math.max(150, COVER / 2 / Math.tan(Math.PI / n) + 26);
+
+  return (
+    <div className="shrink-0 w-full lg:w-1/2 flex flex-col items-center">
+      <span className="self-start text-[10px] font-black tracking-[0.1em] uppercase text-accent-deep/70">
+        {t('sj.taste.topAlbum')}
+      </span>
+
+      {n === 1 ? (
+        <Link href={`/album/${front.id}`} className="group mt-3">
+          <div className="hof-float">
+            <Cover
+              url={front.coverUrl}
+              thumb={false}
+              className="w-44 h-44 shadow-xl"
+              rounded="rounded-xl"
+            />
+          </div>
+        </Link>
+      ) : (
+        <div
+          className="hof-stage mt-3 w-full overflow-hidden touch-pan-y select-none cursor-grab active:cursor-grabbing"
+          style={{ height: COVER + 24 }}
+          role="group"
+          aria-roledescription="carousel"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+        >
+          <div
+            className="hof-ring"
+            style={{ transform: `translateZ(-${radius}px) rotateY(${-turn * step}deg)` }}
+          >
+            {albums.map((al, i) => {
+              const dist = Math.min((i - active + n) % n, (active - i + n) % n);
+              const isFront = i === active;
+              const card = (
+                <Cover
+                  url={al.coverUrl}
+                  thumb={false}
+                  className={`hof-cover w-full h-full ${isFront ? 'shadow-xl ring-2 ring-accent/40' : 'shadow-md'}`}
+                  rounded="rounded-xl"
+                />
+              );
+              return (
+                <div
+                  key={al.id}
+                  className="hof-card"
+                  style={{
+                    width: COVER,
+                    height: COVER,
+                    marginLeft: -COVER / 2,
+                    transform: `rotateY(${i * step}deg) translateZ(${radius}px)`,
+                    opacity: isFront ? 1 : Math.max(0.22, 1 - dist * 0.32),
+                    filter: isFront ? 'none' : `brightness(${Math.max(0.55, 1 - dist * 0.16)})`,
+                    zIndex: n - dist,
+                  }}
+                  aria-hidden={!isFront}
+                >
+                  {isFront ? (
+                    <Link
+                      href={`/album/${al.id}`}
+                      className="block w-full h-full"
+                      draggable={false}
+                      onClick={(e) => {
+                        // A drag that happened to end on the front cover shouldn't
+                        // navigate.
+                        if (drag.current?.moved) {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }
+                      }}
+                    >
+                      {card}
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!drag.current?.moved) goTo(i); // plain tap → bring to front
+                      }}
+                      className="block w-full h-full"
+                      draggable={false}
+                      tabIndex={-1}
+                    >
+                      {card}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* front album meta — crossfades as the ring turns. The title box reserves
+          a fixed two-line height (leading-[1.25] × 2 = 2.5em) so a long, wrapping
+          title and a short one-liner take the same vertical space — otherwise the
+          meta block, and the whole "By the numbers" box, would jump height as the
+          ring rotates through titles of different lengths. The title bottom-aligns
+          within that box so the gap between the album name and the artist stays
+          constant whether the title is one or two lines. */}
+      <Link href={`/album/${front.id}`} className="group mt-4 text-center max-w-[240px]">
+        <span key={front.id} className="hof-meta block">
+          <span
+            className="flex flex-col justify-end text-[14px] font-bold leading-[1.25] text-ink"
+            style={{ height: '2.5em' }}
+          >
+            <span className="line-clamp-2 group-hover:underline">{front.title}</span>
+          </span>
+          <span className="block text-[12px] text-muted truncate">{front.artist}</span>
+        </span>
+      </Link>
+
+      <span
+        className="inline-block mt-2 rounded-md px-2 py-0.5 text-[14px] font-black tabular-nums"
+        style={{ background: spectrumFill(score), color: spectrumNumber(score) }}
+      >
+        {score.toFixed(1)}
+      </span>
+
+      {n > 1 && (
+        <>
+          <p className="mt-2 text-[11px] text-muted">
+            {t('sj.taste.hofTied')
+              .replace('{n}', String(n))
+              .replace('{score}', score.toFixed(1))}
+          </p>
+          <div className="mt-2 flex flex-wrap justify-center gap-1.5" role="tablist">
+            {albums.map((al, i) => (
+              <button
+                key={al.id}
+                type="button"
+                role="tab"
+                aria-selected={i === active}
+                aria-label={al.title}
+                onClick={() => goTo(i)}
+                className={`h-1.5 rounded-full transition-all ${
+                  i === active ? 'w-4 bg-accent' : 'w-1.5 bg-muted/40 hover:bg-muted/70'
+                }`}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** True when the user has asked the OS to reduce motion (live, not one-shot). */
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setReduced(mq.matches);
+    const on = () => setReduced(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return reduced;
 }
 
 function monthName(index: number, lang: string): string {

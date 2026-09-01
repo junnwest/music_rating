@@ -144,7 +144,7 @@ struct ScoreBadge: View {
                 // Text with no scale fallback. Explicit width + a scale
                 // floor guarantees every "X.X" fits without ever ellipsizing.
                 Text(String(format: "%.1f", score))
-                    .font(.system(size: numberSize, weight: .heavy).width(.condensed))
+                    .font(.jakarta(numberSize, weight: .heavy).width(.condensed))
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
                     .frame(width: badgeSize * 0.86)

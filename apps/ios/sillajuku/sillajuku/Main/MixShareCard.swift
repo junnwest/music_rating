@@ -44,11 +44,13 @@ struct MixShareCard: View {
                     StackedCoversView(coverUrls: post.coverUrls, size: 64, overlapFraction: 0.45)
                         .padding(.horizontal, 14)
                     HStack(spacing: 6) {
-                        Image(systemName: "music.note.list")
-                            .font(.system(size: 12))
+                        Image("icon-list-music")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 12, height: 12)
                             .foregroundStyle(Color.sjBlue)
                         Text(post.mixName)
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.jakarta(15, weight: .bold))
                             .foregroundStyle(Color.sjInk)
                     }
                     .padding(.horizontal, 14)
@@ -59,7 +61,7 @@ struct MixShareCard: View {
             .buttonStyle(.plain)
             if let caption = post.caption, !caption.isEmpty {
                 Text(caption)
-                    .font(.system(size: 14))
+                    .font(.jakarta(14))
                     .foregroundStyle(Color.sjInk)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 14)
@@ -102,24 +104,26 @@ struct MixShareCard: View {
             usernameLink
 
             Text("shared a mix")
-                .font(.system(size: 13))
+                .font(.jakarta(13))
                 .foregroundStyle(Color.sjMuted)
 
-            Text("·").font(.system(size: 13)).foregroundStyle(Color.sjBorder)
+            Text("·").font(.jakarta(13)).foregroundStyle(Color.sjBorder)
 
             Text(post.createdAt.relativeTimeString)
-                .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                .font(.jakarta(12)).foregroundStyle(Color.sjMuted)
 
             Spacer(minLength: 0)
 
             if !isOwnPost {
                 Menu {
                     Button(role: .destructive) { showBlockConfirm = true } label: {
-                        Label("Block this user", systemImage: "hand.raised")
+                        Label("Block this user", image: "icon-hand")
                     }
                 } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 14, weight: .medium))
+                    Image("icon-more-horizontal")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 14, height: 14)
                         .foregroundStyle(Color.sjMuted)
                         .frame(width: 34, height: 34)
                         .contentShape(Rectangle())
@@ -133,9 +137,7 @@ struct MixShareCard: View {
 
     @ViewBuilder
     private var avatarLink: some View {
-        let icon = Image(systemName: "person.circle.fill")
-            .font(.system(size: 30))
-            .foregroundStyle(Color(uiColor: .systemGray3))
+        let icon = DefaultAvatarView(size: 30)
         let handle = post.profile?.handle
         let label = handle.map { String(format: String(localized: "View @%@'s profile"), $0) }
             ?? String(localized: "View profile")
@@ -159,12 +161,22 @@ struct MixShareCard: View {
     private var usernameLink: some View {
         let label = HStack(spacing: 4) {
             Text("@" + (post.profile?.handle ?? String(localized: "someone")))
-                .font(.system(size: 13.5, weight: .semibold))
+                .font(.jakarta(13.5, weight: .semibold))
                 .foregroundStyle(Color.sjInk)
+            if let raw = post.profile?.badgeColor, let badge = QuestBadgeColor(rawValue: raw) {
+                QuestBadgeView(color: badge.color)
+                    .frame(width: 13, height: 13)
+                    .accessibilityLabel(String(localized: "Quests complete"))
+            }
             if post.profile?.isVerified == true {
                 VerifiedBadgeView()
                     .frame(width: 13, height: 13)
                     .accessibilityLabel(String(localized: "Verified"))
+            }
+            if post.profile?.isBetaTester == true {
+                BetaBadgeView()
+                    .frame(width: 13, height: 13)
+                    .accessibilityLabel(String(localized: "Beta tester"))
             }
         }
 
@@ -187,8 +199,10 @@ struct MixShareCard: View {
         HStack(spacing: 16) {
             HStack(spacing: 5) {
                 Button { Task { await onLike() } } label: {
-                    Image(systemName: isLiked ? "heart.fill" : "heart")
-                        .font(.system(size: 19, weight: .medium))
+                    Image(isLiked ? "icon-heart-filled" : "icon-heart")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 19, height: 19)
                         .foregroundStyle(isLiked ? .red : Color.sjInk)
                 }
                 .buttonStyle(.plain)
@@ -199,7 +213,7 @@ struct MixShareCard: View {
                 if likesCount > 0 {
                     Button { activeSheet = .likers } label: {
                         Text("\(likesCount)")
-                            .font(.system(size: 14, weight: .medium))
+                            .font(.jakarta(14, weight: .medium))
                             .foregroundStyle(isLiked ? .red : Color.sjMuted)
                             .contentShape(Rectangle())
                     }
@@ -209,8 +223,10 @@ struct MixShareCard: View {
 
             HStack(spacing: 5) {
                 Button { activeSheet = .comments } label: {
-                    Image(systemName: "bubble.left")
-                        .font(.system(size: 19, weight: .medium))
+                    Image("icon-message-circle")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 19, height: 19)
                         .foregroundStyle(Color.sjInk)
                 }
                 .buttonStyle(.plain)
@@ -218,7 +234,7 @@ struct MixShareCard: View {
 
                 if commentsCount > 0 {
                     Text("\(commentsCount)")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.jakarta(14, weight: .medium))
                         .foregroundStyle(Color.sjMuted)
                 }
             }
@@ -263,8 +279,12 @@ struct MixShareLikersSheetView: View {
                     ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if likers.isEmpty {
                     VStack(spacing: 12) {
-                        Image(systemName: "heart").font(.system(size: 36)).foregroundStyle(Color.sjBorder)
-                        Text("No likes yet").font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                        Image("icon-heart")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 36, height: 36)
+                            .foregroundStyle(Color.sjBorder)
+                        Text("No likes yet").font(.jakarta(15)).foregroundStyle(Color.sjMuted)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.sjCream.ignoresSafeArea())
@@ -275,11 +295,9 @@ struct MixShareLikersSheetView: View {
                             handle: liker.profiles?.handle ?? String(localized: "someone")
                         )) {
                             HStack(spacing: 11) {
-                                Image(systemName: "person.circle.fill")
-                                    .font(.system(size: 32))
-                                    .foregroundStyle(Color(uiColor: .systemGray3))
+                                DefaultAvatarView(size: 32)
                                 Text("@" + (liker.profiles?.handle ?? String(localized: "someone")))
-                                    .font(.system(size: 14, weight: .semibold))
+                                    .font(.jakarta(14, weight: .semibold))
                                     .foregroundStyle(Color.sjInk)
                             }
                             .padding(.vertical, 4)

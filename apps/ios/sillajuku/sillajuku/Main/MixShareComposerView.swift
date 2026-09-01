@@ -25,11 +25,11 @@ struct MixShareComposerView: View {
                     }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(mix.name)
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.jakarta(16, weight: .semibold))
                             .foregroundStyle(Color.sjInk)
                         if let d = mix.description, !d.isEmpty {
                             Text(d)
-                                .font(.system(size: 13))
+                                .font(.jakarta(13))
                                 .foregroundStyle(Color.sjMuted)
                         }
                     }
@@ -43,7 +43,7 @@ struct MixShareComposerView: View {
 
                 if let err = errorMessage {
                     Text(err)
-                        .font(.system(size: 13))
+                        .font(.jakarta(13))
                         .foregroundStyle(.red)
                 }
             }

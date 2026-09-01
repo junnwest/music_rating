@@ -1,0 +1,25 @@
+-- get_quick_add_candidates (20260719000000) filters on exact equality
+-- (`artist_display = ANY(p_artist_names)`), but the only index touching that column is
+-- idx_release_groups_display_trgm (20260624000001) -- a GIN trigram index built for
+-- fuzzy/LIKE search, not equality. Postgres still uses it (it's the only option), but a
+-- trigram bitmap scan for `=` is inherently imprecise: it has to gather every row whose
+-- trigram signature could plausibly match, then recheck each one exactly. Confirmed live via
+-- EXPLAIN ANALYZE (service_role, _debug_explain helper) against production: a single-artist
+-- shelf lookup spends ~78 of its ~80ms entirely inside that one Bitmap Index Scan (685
+-- candidate rows gathered off a 4-name search, most discarded on recheck) -- this is the Add
+-- (quick-add) page's dominant per-shelf cost, run 4x concurrently on every cold visit (the
+-- seed-assembly effect must finish before shelf fetching starts, so this sits squarely on the
+-- page's critical path).
+--
+-- 20260712000011 diagnosed and fixed the identical shape of problem for the song-candidates
+-- sibling RPC (recordings.artist_display), explicitly noting release_groups' trigram index
+-- was "good enough" at the time because the table was ~10x smaller. The catalog has grown
+-- past 480k release_groups since (was ~50k in July) -- large enough now for the same
+-- trigram-scan-for-equality inefficiency to show up here too, and it will keep getting worse
+-- as the catalog keeps growing (a trigram bitmap scan's cost tracks posting-list size, unlike
+-- a btree equality lookup which stays ~O(log n) regardless of table growth).
+--
+-- CONCURRENTLY can't run inside a transaction block -- must be applied as its own statement,
+-- same as idx_recordings_artist_display / idx_release_groups_genres_gin.
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_release_groups_artist_display
+  ON release_groups (artist_display);

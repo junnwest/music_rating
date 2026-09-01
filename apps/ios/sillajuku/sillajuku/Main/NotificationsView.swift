@@ -154,10 +154,10 @@ struct AppNotification: Codable, Identifiable {
 
     var iconName: String {
         switch type {
-        case "like", "mix_like", "mix_share_like", "track_rating_like": return "heart.fill"
-        case "comment", "mix_share_comment", "track_rating_comment":    return "bubble.right.fill"
-        case "follow":                                                  return "person.fill.badge.plus"
-        default:                                                        return "bell.fill"
+        case "like", "mix_like", "mix_share_like", "track_rating_like": return "icon-heart-filled"
+        case "comment", "mix_share_comment", "track_rating_comment":    return "icon-message-square"
+        case "follow":                                                  return "icon-user-plus"
+        default:                                                        return "icon-bell"
         }
     }
 
@@ -184,11 +184,13 @@ struct NotificationsView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if notifications.isEmpty {
                 VStack(spacing: 14) {
-                    Image(systemName: "bell")
-                        .font(.system(size: 44))
+                    Image("icon-bell")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 44, height: 44)
                         .foregroundStyle(Color.sjBorder)
                     Text("No notifications yet")
-                        .font(.system(size: 15))
+                        .font(.jakarta(15))
                         .foregroundStyle(Color.sjMuted)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -288,10 +290,7 @@ private struct NotificationRow: View {
     }
 
     private var defaultAvatar: some View {
-        Image(systemName: "person.circle.fill")
-            .resizable()
-            .scaledToFit()
-            .foregroundStyle(Color(uiColor: .systemGray3))
+        DefaultAvatarView(size: 38)
     }
 
     private var typeBadge: some View {
@@ -299,8 +298,10 @@ private struct NotificationRow: View {
             Circle()
                 .fill(notif.iconColor)
                 .frame(width: 18, height: 18)
-            Image(systemName: notif.iconName)
-                .font(.system(size: 8, weight: .bold))
+            Image(notif.iconName)
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 9, height: 9)
                 .foregroundStyle(.white)
         }
         .overlay(Circle().stroke(Color.sjCream, lineWidth: 2))
@@ -317,11 +318,11 @@ private struct NotificationRow: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(notif.bodyText)
-                    .font(.system(size: 14))
+                    .font(.jakarta(14))
                     .foregroundStyle(Color.sjInk)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(notif.createdAt.relativeTimeString)
-                    .font(.system(size: 12))
+                    .font(.jakarta(12))
                     .foregroundStyle(Color.sjMuted)
             }
 
@@ -363,6 +364,8 @@ struct AlbumPostDetailView: View {
     @State private var isLiked = false
     @State private var myHandle: String? = nil
     @State private var myVerified = false
+    @State private var myBadgeColor: String? = nil
+    @State private var myBetaTester = false
 
     var body: some View {
         Group {
@@ -377,17 +380,22 @@ struct AlbumPostDetailView: View {
                         isLiked: isLiked,
                         onLike: toggleLike,
                         headerHandle: myHandle,
-                        headerVerified: myVerified
+                        headerVerified: myVerified,
+                        headerBadgeColor: myBadgeColor,
+                        headerBetaTester: myBetaTester
                     )
                     .padding(.horizontal, 12)
                     .padding(.top, 12)
                 }
             } else {
                 VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.circle")
-                        .font(.system(size: 36)).foregroundStyle(Color.sjBorder)
+                    Image("icon-alert-circle")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 36, height: 36)
+                        .foregroundStyle(Color.sjBorder)
                     Text("This rating is no longer available")
-                        .font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                        .font(.jakarta(15)).foregroundStyle(Color.sjMuted)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -415,13 +423,20 @@ struct AlbumPostDetailView: View {
         struct MyProfile: Decodable {
             let username: String?
             let isVerified: Bool?
-            enum CodingKeys: String, CodingKey { case username; case isVerified = "is_verified" }
+            let badgeColor: String?
+            let isBetaTester: Bool?
+            enum CodingKeys: String, CodingKey {
+                case username; case isVerified = "is_verified"
+                case badgeColor = "badge_color"; case isBetaTester = "is_beta_tester"
+            }
         }
         if let p: MyProfile = try? await supabase.from("profiles")
-            .select("username, is_verified").eq("id", value: userId)
+            .select("username, is_verified, badge_color, is_beta_tester").eq("id", value: userId)
             .single().execute().value {
             myHandle = p.username
             myVerified = p.isVerified == true
+            myBadgeColor = p.badgeColor
+            myBetaTester = p.isBetaTester == true
         }
 
         if let r = try? await supabase.from("ratings").select("*", count: .exact)
@@ -487,6 +502,8 @@ struct SongPostDetailView: View {
     @State private var isLiked = false
     @State private var myHandle: String? = nil
     @State private var myVerified = false
+    @State private var myBadgeColor: String? = nil
+    @State private var myBetaTester = false
 
     var body: some View {
         Group {
@@ -501,17 +518,22 @@ struct SongPostDetailView: View {
                         isLiked: isLiked,
                         onLike: toggleLike,
                         headerHandle: myHandle,
-                        headerVerified: myVerified
+                        headerVerified: myVerified,
+                        headerBadgeColor: myBadgeColor,
+                        headerBetaTester: myBetaTester
                     )
                     .padding(.horizontal, 12)
                     .padding(.top, 12)
                 }
             } else {
                 VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.circle")
-                        .font(.system(size: 36)).foregroundStyle(Color.sjBorder)
+                    Image("icon-alert-circle")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 36, height: 36)
+                        .foregroundStyle(Color.sjBorder)
                     Text("This rating is no longer available")
-                        .font(.system(size: 15)).foregroundStyle(Color.sjMuted)
+                        .font(.jakarta(15)).foregroundStyle(Color.sjMuted)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -602,13 +624,20 @@ struct SongPostDetailView: View {
         struct MyProfile: Decodable {
             let username: String?
             let isVerified: Bool?
-            enum CodingKeys: String, CodingKey { case username; case isVerified = "is_verified" }
+            let badgeColor: String?
+            let isBetaTester: Bool?
+            enum CodingKeys: String, CodingKey {
+                case username; case isVerified = "is_verified"
+                case badgeColor = "badge_color"; case isBetaTester = "is_beta_tester"
+            }
         }
         if let p: MyProfile = try? await supabase.from("profiles")
-            .select("username, is_verified").eq("id", value: userId)
+            .select("username, is_verified, badge_color, is_beta_tester").eq("id", value: userId)
             .single().execute().value {
             myHandle = p.username
             myVerified = p.isVerified == true
+            myBadgeColor = p.badgeColor
+            myBetaTester = p.isBetaTester == true
         }
 
         if let r = try? await supabase.from("track_rating_likes").select("*", count: .exact)

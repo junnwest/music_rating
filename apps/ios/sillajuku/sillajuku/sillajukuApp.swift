@@ -95,15 +95,22 @@ struct sillajukuApp: App {
                 .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
                     // Universal Link path — only relevant when the app is already
                     // installed (the rare case for an invite; the clipboard handoff
-                    // in ReferralClipboardHandoff.swift covers the common one).
-                    // Saved unconditionally, not just attempted directly — if this
-                    // fires while signed out (no auth.uid() for the RPC to key on),
-                    // a direct attempt would just throw and be lost. Persisting it
-                    // lets observeAuth() retry once a real session shows up, rather
-                    // than silently dropping a genuine link tap.
-                    guard let url = activity.webpageURL, let code = InviteLink.code(from: url) else { return }
-                    PendingReferralStore.save(code)
-                    Task { await PendingReferralStore.consumeAndRedeem() }
+                    // in ReferralClipboardHandoff.swift/BetaInvite.swift covers the
+                    // common one). Saved unconditionally, not just attempted
+                    // directly — if this fires while signed out (no auth.uid() for
+                    // the RPC to key on), a direct attempt would just throw and be
+                    // lost. Persisting it lets observeAuth() retry once a real
+                    // session shows up, rather than silently dropping a genuine
+                    // link tap. The two path shapes (/i/<code>, /beta/<token>) are
+                    // mutually exclusive, so only one of these ever matches.
+                    guard let url = activity.webpageURL else { return }
+                    if let code = InviteLink.code(from: url) {
+                        PendingReferralStore.save(code)
+                        Task { await PendingReferralStore.consumeAndRedeem() }
+                    } else if let token = BetaInviteLink.token(from: url) {
+                        PendingBetaTokenStore.save(token)
+                        Task { await PendingBetaTokenStore.consumeAndRedeem() }
+                    }
                 }
         }
     }
@@ -124,7 +131,7 @@ struct RootView: View {
         Group {
             switch appState.authState {
             case .loading:
-                Color.white.ignoresSafeArea()
+                LaunchLoadingView()
             case .unauthenticated:
                 AuthView()
             case .onboarding(let provider):
@@ -159,6 +166,8 @@ struct RootView: View {
             // any Universal-Link code that arrived before a session existed.
             Task { await ReferralClipboardHandoff.checkAndRedeemOnce() }
             Task { await PendingReferralStore.consumeAndRedeem() }
+            Task { await BetaTokenClipboardHandoff.checkAndRedeemOnce() }
+            Task { await PendingBetaTokenStore.consumeAndRedeem() }
             let onboarded = await checkOnboarded(userId: session.user.id)
             if onboarded {
                 appState.authState = .authenticated
@@ -186,5 +195,129 @@ struct RootView: View {
         } catch {
             return false
         }
+    }
+}
+
+// MARK: - Launch loading
+
+/// Shown while `RootView.observeAuth()` waits for Supabase's first auth
+/// event — the very first thing on screen on a cold launch, before there's
+/// even a session to know whether the user is signed in or not. Two states:
+/// a percentage gauge while waiting normally, or a "no internet" notice the
+/// instant `NetworkMonitor` reports the path down — without this, a
+/// disconnected device (this auth check needs network for anything beyond a
+/// cached signed-out state) would otherwise sit on a blank screen
+/// indefinitely with no explanation.
+private struct LaunchLoadingView: View {
+    private let networkMonitor = NetworkMonitor.shared
+
+    @State private var progress: Double = 0
+    @State private var progressTask: Task<Void, Never>?
+    @State private var breathing = false
+
+    var body: some View {
+        ZStack {
+            Color.white.ignoresSafeArea()
+            VStack(spacing: 18) {
+                Image("logo-flower")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 152, height: 152)
+                    .scaleEffect(breathing ? 1.04 : 1.0)
+                    .opacity(breathing ? 0.88 : 1.0)
+                    .animation(.easeInOut(duration: 3).repeatForever(autoreverses: true), value: breathing)
+
+                Image("logo-text")
+                    .resizable()
+                    .renderingMode(.template)
+                    .scaledToFit()
+                    .frame(height: 16)
+                    .foregroundStyle(Color.sjInk)
+                    .opacity(0.5)
+
+                Group {
+                    if networkMonitor.isConnected {
+                        progressGauge.transition(.opacity)
+                    } else {
+                        disconnectedNotice.transition(.opacity)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.25), value: networkMonitor.isConnected)
+            }
+        }
+        .onAppear {
+            breathing = true
+            startProgress()
+        }
+        .onDisappear { progressTask?.cancel() }
+        // Same reasoning as MainTabView's AppLoadingView: forced light so the
+        // wordmark stays legible against the literal-white background
+        // regardless of system/app dark mode.
+        .colorScheme(.light)
+    }
+
+    // MARK: Progress gauge
+
+    private var progressGauge: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.sjBorder, lineWidth: 3)
+                .frame(width: 34, height: 34)
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(Color.sjAmber, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .frame(width: 34, height: 34)
+                .rotationEffect(.degrees(-90))
+            Text("\(Int(progress * 100))%")
+                .font(.jakarta(10, weight: .bold).width(.condensed))
+                .foregroundStyle(Color.sjMuted)
+        }
+        .padding(.top, 6)
+    }
+
+    /// Time-based easing toward a cap short of 100% — there's no set of
+    /// discrete sub-steps to measure here (unlike the Home feed's
+    /// multi-fetch load), just one opaque wait for Supabase's first auth
+    /// event, so this approximates progress by feel rather than claiming a
+    /// literal percent-of-work-done. Deliberately never reaches 100% on its
+    /// own: `RootView` swaps this whole view out the instant auth actually
+    /// resolves, so hitting "100%" here first would either be a lie (still
+    /// waiting) or a race against the real transition.
+    private func startProgress() {
+        progressTask?.cancel()
+        progressTask = Task {
+            let start = Date()
+            while !Task.isCancelled {
+                let elapsed = Date().timeIntervalSince(start)
+                progress = 0.92 * (1 - exp(-elapsed / 1.4))
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+        }
+    }
+
+    // MARK: Disconnected notice
+
+    private var disconnectedNotice: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 6) {
+                Image("icon-wifi-off")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 13, height: 13)
+                Text("No internet connection")
+                    .font(.jakarta(13, weight: .semibold))
+            }
+            .foregroundStyle(Color.sjInk)
+
+            Text("Waiting for a connection to sign you in.")
+                .font(.jakarta(12))
+                .foregroundStyle(Color.sjMuted)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.top, 6)
+        // No retry button needed — NWPathMonitor pushes the update the
+        // instant the path comes back, which flips this back to
+        // progressGauge on its own (the real auth check never stopped
+        // running underneath and just completes normally once it can).
     }
 }

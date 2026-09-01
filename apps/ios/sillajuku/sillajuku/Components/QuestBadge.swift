@@ -47,15 +47,33 @@ struct QuestBadgeView: View {
     }
 }
 
-/// The verified badge for known critics/artists/creators -- a plain system
-/// glyph, not a custom shape, so it renders pixel-identical to every other
-/// iOS app's own verified mark.
+/// The verified badge for known critics/artists/creators.
 struct VerifiedBadgeView: View {
     var body: some View {
-        Image(systemName: "checkmark.seal.fill")
+        Image("icon-verified")
+            .renderingMode(.template)
             .resizable()
             .scaledToFit()
             .foregroundStyle(Color.sjBlue)
+    }
+}
+
+/// The beta-tester badge -- granted manually (same pattern as `is_verified`,
+/// see `is_beta_tester` migration) to early private-outreach accounts. A
+/// rocket, so it can't be mistaken for the flower (quest completion) or the
+/// seal (verified) sharing a profile with it. Tinted a dedicated launch-
+/// orange rather than `Color.sjAmber` -- that token is now an alias for
+/// `sjBlue` (see Theme.swift) after an earlier rebrand, which would put this
+/// badge in the same blue as Verified right next to it.
+struct BetaBadgeView: View {
+    private static let launchOrange = Color(red: 1.0, green: 0.478, blue: 0.0) // #FF7A00
+
+    var body: some View {
+        Image("icon-rocket-filled")
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .foregroundStyle(Self.launchOrange)
     }
 }
 
@@ -88,10 +106,10 @@ struct BadgeRedeemView: View {
                     .animation(.easeInOut(duration: 0.15), value: selected)
 
                 Text("Quests complete!")
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.jakarta(22, weight: .bold))
                     .foregroundStyle(Color.sjInk)
                 Text("Pick a color for your badge. This is permanent — choose carefully, it can't be changed later.")
-                    .font(.system(size: 14))
+                    .font(.jakarta(14))
                     .foregroundStyle(Color.sjMuted)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
@@ -112,7 +130,7 @@ struct BadgeRedeemView: View {
                                         .padding(-3)
                                 }
                             Text(option.label)
-                                .font(.system(size: 11, weight: .medium))
+                                .font(.jakarta(11, weight: .medium))
                                 .foregroundStyle(Color.sjMuted)
                         }
                     }
@@ -135,7 +153,7 @@ struct BadgeRedeemView: View {
                     ProgressView().tint(.white).frame(maxWidth: .infinity)
                 } else {
                     Text("Claim Badge")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.jakarta(15, weight: .semibold))
                         .frame(maxWidth: .infinity)
                 }
             }

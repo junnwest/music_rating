@@ -790,10 +790,13 @@ struct SearchView: View {
 
     private var searchBar: some View {
         HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
+            Image("icon-search")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 16, height: 16)
                 .foregroundStyle(Color.sjMuted)
             TextField("Artists, albums, songs…", text: $searchVM.query)
-                .font(.system(size: 16))
+                .font(.jakarta(16))
                 .foregroundStyle(Color.sjInk)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
@@ -815,7 +818,10 @@ struct SearchView: View {
                     searchVM.albumResults  = []
                     searchVM.songResults   = []
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
+                    Image("icon-x-circle")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 16, height: 16)
                         .foregroundStyle(Color.sjMuted)
                 }
                 .accessibilityLabel(String(localized: "Clear search"))
@@ -845,16 +851,18 @@ struct SearchView: View {
             // SwiftUI then centers vertically instead of pinning to the top
             // (the "search bar floating in blank space" bug).
             VStack(spacing: 14) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 44))
+                Image("icon-search")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 44, height: 44)
                     .foregroundStyle(Color.sjBorder)
                 if searchVM.query.trimmingCharacters(in: .whitespaces).count >= 2 {
                     Text(String(format: String(localized: "No results for \"%@\""), searchVM.query))
-                        .font(.system(size: 15))
+                        .font(.jakarta(15))
                         .foregroundStyle(Color.sjMuted)
                 } else {
                     Text("Keep typing to search…")
-                        .font(.system(size: 15))
+                        .font(.jakarta(15))
                         .foregroundStyle(Color.sjMuted)
                 }
             }
@@ -875,7 +883,7 @@ struct SearchView: View {
                                                 CachedImage(url: url) {
                                                     Circle().fill(Color.sjBorder)
                                                         .overlay(Text(String(artist.name.prefix(1)).uppercased())
-                                                            .font(.system(size: 16, weight: .bold))
+                                                            .font(.jakarta(16, weight: .bold))
                                                             .foregroundStyle(Color.sjMuted))
                                                 }
                                                 .aspectRatio(contentMode: .fill)
@@ -883,7 +891,7 @@ struct SearchView: View {
                                                 ZStack {
                                                     Circle().fill(Color.sjBorder)
                                                     Text(String(artist.name.prefix(1)).uppercased())
-                                                        .font(.system(size: 16, weight: .bold))
+                                                        .font(.jakarta(16, weight: .bold))
                                                         .foregroundStyle(Color.sjMuted)
                                                 }
                                             }
@@ -894,21 +902,23 @@ struct SearchView: View {
 
                                         VStack(alignment: .leading, spacing: 2) {
                                             Text(artist.name)
-                                                .font(.system(size: 14, weight: .semibold))
+                                                .font(.jakarta(14, weight: .semibold))
                                                 .foregroundStyle(Color.sjInk)
                                             if let native = artist.displayNativeName {
                                                 Text(native)
-                                                    .font(.system(size: 12))
+                                                    .font(.jakarta(12))
                                                     .foregroundStyle(Color.sjMuted)
                                             }
                                             Text(artist.releaseCount == 1 ? String(localized: "1 release") : String(format: String(localized: "%d releases"), artist.releaseCount))
-                                                .font(.system(size: 12))
+                                                .font(.jakarta(12))
                                                 .foregroundStyle(Color.sjMuted)
                                         }
 
                                         Spacer()
-                                        Image(systemName: "chevron.right")
-                                            .font(.system(size: 11))
+                                        Image("icon-chevron-right")
+                                            .renderingMode(.template)
+                                            .resizable().scaledToFit()
+                                            .frame(width: 11, height: 11)
                                             .foregroundStyle(Color.sjBorder)
                                     }
                                     .padding(.horizontal, 16)
@@ -1109,10 +1119,10 @@ struct SearchView: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Setting up?")
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.jakarta(16, weight: .bold))
                     .foregroundStyle(Color.sjInk)
                 Text("Half-star rate albums you've probably already heard")
-                    .font(.system(size: 12))
+                    .font(.jakarta(12))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
             }
@@ -1121,15 +1131,16 @@ struct SearchView: View {
 
             Button { quickAddTapped() } label: {
                 Text("Quick Add")
-                    .font(.system(size: 14, weight: .semibold))
-                    // sjCream, not .white -- sjInk flips light in dark mode, so a hardcoded
-                    // white label disappears there (cream flips dark in step, like the
-                    // other sjInk-background buttons: InviteView, onboarding steps).
-                    .foregroundStyle(Color.sjCream)
+                    .font(.jakarta(14, weight: .semibold))
+                    // Plain .white, not sjCream -- sjBlue is a fixed brand
+                    // color that doesn't flip in dark mode (unlike sjInk),
+                    // so the label doesn't need to flip either.
+                    .foregroundStyle(.white)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
-                    .background(Color.sjInk)
-                    .clipShape(Capsule())
+                    // Liquid Glass, matching ScoreBadge/FlowerRateControl's
+                    // tinted-glass treatment instead of a flat color fill.
+                    .glassEffect(.regular.tint(Color.sjBlue), in: Capsule())
             }
             .buttonStyle(.plain)
         }
@@ -1142,7 +1153,7 @@ struct SearchView: View {
 
     private func sectionLabel(_ text: LocalizedStringKey) -> some View {
         Text(text)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.jakarta(11, weight: .semibold))
             .foregroundStyle(Color.sjMuted)
             .tracking(1)
             .textCase(.uppercase)
@@ -1152,7 +1163,7 @@ struct SearchView: View {
 
     private func discoverySectionTitle(_ text: LocalizedStringKey) -> some View {
         Text(text)
-            .font(.system(size: 20, weight: .bold))
+            .font(.jakarta(20, weight: .bold))
             .foregroundStyle(Color.sjInk)
             .padding(.horizontal, 16)
             .padding(.top, 20)
@@ -1162,7 +1173,7 @@ struct SearchView: View {
 
     private func discoverySubheader(_ text: LocalizedStringKey) -> some View {
         Text(text)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.jakarta(11, weight: .semibold))
             .foregroundStyle(Color.sjAmber)
             .textCase(.uppercase)
             .tracking(1)
@@ -1182,12 +1193,14 @@ struct SearchView: View {
                     // aware resolution itself, behind its own spinner, when
                     // `artistId` is nil -- matching how the Apple Music row below
                     // already navigates.
-                    NavigationLink(value: ArtistDestination(artistId: nil, name: artist.name)) {
+                    NavigationLink(value: ArtistDestination(
+                        artistId: nil, name: artist.name, avatarHint: artist.imageUrl
+                    )) {
                         VStack(spacing: 7) {
                             CachedImage(url: URL(string: artist.imageUrl?.thumbnailUrl ?? "")) {
                                 Color.sjBorder.overlay(
                                     Text(String(artist.name.prefix(1)))
-                                        .font(.system(size: 20, weight: .bold))
+                                        .font(.jakarta(20, weight: .bold))
                                         .foregroundStyle(Color.sjMuted)
                                 )
                             }
@@ -1197,7 +1210,7 @@ struct SearchView: View {
                             .accessibilityHidden(true) // name text below already describes it
 
                             Text(artist.name)
-                                .font(.system(size: 11, weight: .medium))
+                                .font(.jakarta(11, weight: .medium))
                                 .foregroundStyle(Color.sjInk)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.center)
@@ -1216,12 +1229,14 @@ struct SearchView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(alignment: .top, spacing: 14) {
                 ForEach(artists) { artist in
-                    NavigationLink(value: ArtistDestination(artistId: nil, name: artist.name)) {
+                    NavigationLink(value: ArtistDestination(
+                        artistId: nil, name: artist.name, avatarHint: artist.artworkURL?.absoluteString
+                    )) {
                         VStack(spacing: 7) {
                             CachedImage(url: artist.artworkURL) {
                                 Color.sjBorder.overlay(
                                     Text(String(artist.name.prefix(1)))
-                                        .font(.system(size: 20, weight: .bold))
+                                        .font(.jakarta(20, weight: .bold))
                                         .foregroundStyle(Color.sjMuted)
                                 )
                             }
@@ -1231,7 +1246,7 @@ struct SearchView: View {
                             .accessibilityHidden(true) // name text below already describes it
 
                             Text(artist.name)
-                                .font(.system(size: 11, weight: .medium))
+                                .font(.jakarta(11, weight: .medium))
                                 .foregroundStyle(Color.sjInk)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.center)
@@ -1309,7 +1324,7 @@ struct SearchView: View {
                     expanded?.wrappedValue = true
                 } label: {
                     Text(String(format: String(localized: "View all %d songs"), visible.count))
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.jakarta(13, weight: .semibold))
                         .foregroundStyle(Color.sjAmber)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 16)
@@ -1339,8 +1354,10 @@ private struct DiscoveryAlbumCard: View {
                             .fill(Color.sjBlue)
                             .frame(width: 28, height: 28)
                             .shadow(color: .black.opacity(0.15), radius: 4, y: 1)
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 11, weight: .bold))
+                        Image("icon-check")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 11, height: 11)
                             .foregroundStyle(.white)
                     }
                     .allowsHitTesting(false)
@@ -1352,21 +1369,21 @@ private struct DiscoveryAlbumCard: View {
             }
 
             Text(release.title)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.jakarta(13, weight: .semibold))
                 .foregroundStyle(Color.sjInk)
                 .lineLimit(1)
                 .frame(width: 128, alignment: .leading)
 
             HStack(spacing: 5) {
                 Text(release.typeLabel)
-                    .font(.system(size: 9, weight: .medium))
+                    .font(.jakarta(9, weight: .medium))
                     .foregroundStyle(Color.sjBlue)
                     .lineLimit(1)
                     .padding(.horizontal, 4).padding(.vertical, 2)
                     .background(Color.sjBlue.opacity(0.1))
                     .clipShape(RoundedRectangle(cornerRadius: 3))
                 Text(release.artist)
-                    .font(.system(size: 12))
+                    .font(.jakarta(12))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
             }
@@ -1390,18 +1407,18 @@ struct SongRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(song.title)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.jakarta(14, weight: .semibold))
                         .foregroundStyle(Color.sjInk)
                         .lineLimit(1)
                     Text("Song")
-                        .font(.system(size: 9, weight: .medium))
+                        .font(.jakarta(9, weight: .medium))
                         .foregroundStyle(Color.sjBlue)
                         .padding(.horizontal, 4).padding(.vertical, 2)
                         .background(Color.sjBlue.opacity(0.1))
                         .clipShape(RoundedRectangle(cornerRadius: 3))
                 }
                 Text(song.releases.title + " · " + (song.artists ?? song.releases.artist))
-                    .font(.system(size: 12))
+                    .font(.jakarta(12))
                     .foregroundStyle(Color.sjMuted)
                     .lineLimit(1)
             }
@@ -1413,8 +1430,10 @@ struct SongRow: View {
                     Circle()
                         .fill(Color.sjBlue)
                         .frame(width: 30, height: 30)
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 11, weight: .bold))
+                    Image("icon-check")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 11, height: 11)
                         .foregroundStyle(.white)
                 }
                 .allowsHitTesting(false)
@@ -1435,6 +1454,15 @@ struct SongRow: View {
 struct ArtistDestination: Hashable {
     let artistId: UUID?
     let name: String
+    // Optional avatar the caller already has on hand (Spotify/Apple Music's own cached
+    // artist photo) -- `artists.cover_url` is populated for only ~2.7% of the catalog
+    // (1,793 / 67,629, checked directly), so most artist pages have no DB photo to show at
+    // all. Seeding from a hint the caller already fetched means a real photo shows up for
+    // exactly the artists a user is most likely to visit (their own top/recent artists)
+    // instead of falling back to an initial letter almost every time. The DB's own
+    // `cover_url`, when it exists, still wins once `load()` resolves -- this is only a
+    // stand-in for however long that takes, or forever if the catalog has nothing.
+    var avatarHint: String? = nil
 }
 
 private struct ArtistSong: Identifiable {
@@ -1496,6 +1524,7 @@ struct ArtistPageView: View {
     @State private var albumSortOrder:  ArtistAlbumSortOrder  = .newest
     @State private var communityDisplayMode: ArtistCommunityDisplayMode = .posts
     @State private var songNavTarget: SongNavTarget? = nil
+    @Namespace private var artistTabBubble
 
     private struct SongNavTarget: Identifiable, Hashable {
         let id: UUID
@@ -1536,178 +1565,44 @@ struct ArtistPageView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // ── Header ──────────────────────────────────────
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .center, spacing: 12) {
-                    if let urlStr = artistAvatarUrl, let url = URL(string: urlStr) {
-                        CachedImage(url: url) { Color.sjBorder }
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 56, height: 56)
-                            .clipShape(Circle())
-                            .accessibilityHidden(true) // artist name text alongside already describes it
-                    }
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Artist")
-                            .font(.system(size: 10, weight: .semibold))
-                            .tracking(1.4)
-                            .foregroundStyle(Color.sjMuted)
-                        Text(canonicalName ?? artist.name)
-                            .font(.system(size: 28, weight: .heavy))
-                            .foregroundStyle(Color.sjInk)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.75)
-                    }
-                }
-                .padding(.horizontal, 18)
-                .padding(.top, 16)
-                .padding(.bottom, 14)
+            // Tab bar lives outside the scroll entirely -- genuinely fixed chrome,
+            // like the nav bar above it, always reachable with no scrolling back up.
+            // A `Section`/`pinnedViews: [.sectionHeaders]` version of this was tried
+            // first (kept the tab bar "pinned" inside the same ScrollView as the
+            // hero) but had a real rendering bug: the pinned header didn't fully
+            // occlude the content scrolling behind it, leaving a visible sliver of
+            // the next row peeking out from under its bottom edge once settled --
+            // not just a mid-scroll animation artifact, confirmed after letting the
+            // scroll fully stop. Simply keeping the tab bar outside the ScrollView
+            // sidesteps that whole class of bug -- nothing needs to "pin," it's just
+            // never part of the scrolled content to begin with.
+            tabBarView
 
-                HStack(spacing: 12) {
-                    artistStat(value: communityAvg.map { String(format: "%.1f", $0) } ?? "—",
-                               label: "community avg")
-                    Divider().frame(height: 28)
-                    artistStat(value: "\(communityCount)", label: "ratings")
-                    Divider().frame(height: 28)
-                    // "—" while loading: rendering a live "0" here during the
-                    // fetch is what read as "this artist has 0 releases".
-                    artistStat(value: isLoading ? "—" : "\(releases.count)", label: "releases")
-                }
-                .padding(.horizontal, 18)
-                .padding(.bottom, 14)
-
-                if myRatedCount > 0, let avg = myAvg {
-                    HStack(spacing: 6) {
-                        Text("You")
-                            .font(.system(size: 10, weight: .semibold))
-                            .tracking(0.5)
-                            .foregroundStyle(Color.sjMuted)
-                        Text(String(format: String(localized: "%d rated · %@ avg"), myRatedCount, String(format: "%.1f", avg)))
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(Color.sjInk)
-                    }
-                    .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(Color.sjAmber.opacity(0.12))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.sjAmber.opacity(0.4), lineWidth: 1))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .padding(.horizontal, 18).padding(.bottom, 12)
-                }
-            }
-
-            // ── Tab bar ──────────────────────────────────────
-            HStack(spacing: 0) {
-                ForEach(tabLabels.indices, id: \.self) { i in
-                    Button { selectedTab = i } label: {
-                        Text(tabLabels[i])
-                            .font(.system(size: 11, weight: selectedTab == i ? .bold : .medium))
-                            .foregroundStyle(selectedTab == i ? Color.sjInk : Color.sjMuted)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 9)
-                            .overlay(alignment: .bottom) {
-                                if selectedTab == i {
-                                    Rectangle().frame(height: 2).foregroundStyle(Color.sjInk)
-                                }
-                            }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .overlay(alignment: .bottom) { Divider() }
-
-            // ── Swipeable content ────────────────────────────
             if isLoading {
+                // Hero shown fixed here too -- name/avatar are already known
+                // instantly (avatarHint / canonicalName), so there's no reason to
+                // hide them behind the spinner. Once loaded it moves into the
+                // scroll view below instead (see the note on `headerContent`).
+                headerContent
                 Spacer()
                 ProgressView()
                 Spacer()
             } else {
-                TabView(selection: $selectedTab) {
-                    // Albums
-                    ScrollView(showsIndicators: false) {
-                        LazyVStack(spacing: 0) {
-                            if loadFailed {
-                                VStack(spacing: 12) {
-                                    Text("Couldn't load this artist's releases.")
-                                        .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
-                                    Button {
-                                        isLoading = true
-                                        Task { await load() }
-                                    } label: {
-                                        Text("Retry")
-                                            .font(.system(size: 13, weight: .semibold))
-                                            .foregroundStyle(Color.sjCream)
-                                            .padding(.horizontal, 18).padding(.vertical, 8)
-                                            .background(Color.sjInk)
-                                            .clipShape(Capsule())
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                                .frame(maxWidth: .infinity).padding(.top, 40)
-                            } else if releases.isEmpty {
-                                Text("No releases in the catalogue yet.")
-                                    .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
-                                    .frame(maxWidth: .infinity).padding(.top, 40)
-                            } else {
-                                albumFilterSortBar
-                                let list = filteredSortedReleases
-                                if list.isEmpty {
-                                    Text("No releases match this filter.")
-                                        .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
-                                        .frame(maxWidth: .infinity).padding(.top, 40)
-                                } else {
-                                    ForEach(Array(list.enumerated()), id: \.element.id) { idx, release in
-                                        ArtistReleaseRow(release: release,
-                                                         communityScore: releaseScores[release.id],
-                                                         userScore: myRatings[release.id])
-                                        if idx < list.count - 1 {
-                                            Divider().padding(.leading, 68).foregroundStyle(Color.sjBorder)
-                                        }
-                                    }
-                                }
-                            }
+                // Hero + whichever tab's content is selected, in one continuous
+                // scroll -- the hero exists exactly once (not duplicated per tab,
+                // which was the previous attempt's bug: each tab kept its own
+                // scroll offset, so the hero visibly reset itself on every switch).
+                ScrollView(showsIndicators: false) {
+                    LazyVStack(spacing: 0) {
+                        headerContent
+                        switch selectedTab {
+                        case 0: albumsContent
+                        case 1: songsContent
+                        case 2: communityContent
+                        default: statsContent
                         }
                     }
-                    .tag(0)
-
-                    // Songs
-                    ScrollView(showsIndicators: false) {
-                        LazyVStack(spacing: 0) {
-                            if isLoadingSongs {
-                                ProgressView()
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.top, 40)
-                            } else if songs.isEmpty {
-                                Text("No songs in the catalogue yet.")
-                                    .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
-                                    .frame(maxWidth: .infinity).padding(.top, 40)
-                            } else {
-                                ForEach(Array(songs.enumerated()), id: \.element.id) { idx, song in
-                                    ArtistSongRow(song: song) {
-                                        guard let albumId = song.albumId else { return }
-                                        let release = Release(
-                                            id: albumId, title: song.albumTitle, artist: artist.name,
-                                            coverUrl: song.albumCoverUrl, releaseType: nil,
-                                            releaseDate: song.releaseDate, titleNative: nil, artistNative: nil,
-                                            tracklist: nil, totalTracks: nil)
-                                        let track = TrackEntry(
-                                            trackId: song.id, position: song.position, title: song.title,
-                                            durationMs: nil, artists: artist.name)
-                                        songNavTarget = SongNavTarget(id: song.id, track: track, release: release)
-                                    }
-                                    if idx < songs.count - 1 {
-                                        Divider().padding(.leading, 68).foregroundStyle(Color.sjBorder)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .tag(1)
-
-                    // Community
-                    communityTab.tag(2)
-
-                    // Stats
-                    statsTab.tag(3)
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
             }
         }
         .background(Color.sjCream.ignoresSafeArea())
@@ -1728,17 +1623,221 @@ struct ArtistPageView: View {
         .task { await load() }
     }
 
+    /// Avatar/name/stat-tiles/"you rated" hero. Was permanently fixed at the top
+    /// of the page (outside the tab content), which meant it always ate the same
+    /// chunk of vertical space no matter how far the user scrolled -- on a page
+    /// whose whole point is a long list below it, that made the actual content
+    /// area noticeably short. Rendered exactly once, as the first item in the
+    /// page's single shared `ScrollView` (see `body`), so it scrolls away like any
+    /// other row once the user scrolls down and the list gets the full screen
+    /// height -- only the tab bar below it stays pinned as a `Section` header.
     @ViewBuilder
-    private func artistStat(value: String, label: LocalizedStringKey) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(value).font(.system(size: 22, weight: .heavy)).foregroundStyle(Color.sjInk)
-            Text(label).font(.system(size: 10)).foregroundStyle(Color.sjMuted)
+    private var headerContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: 12) {
+                // `artists.cover_url` is null for a real slice of the catalog (same
+                // class of gap as missing album art) -- previously the whole avatar
+                // slot just vanished when that happened. Same initial-letter fallback
+                // spotifyArtistScroll already uses for exactly this case, so a name
+                // with no catalog photo still reads as an avatar, not an empty gap.
+                CachedImage(url: artistAvatarUrl.flatMap { URL(string: $0) }) {
+                    Color.sjBorder.overlay(
+                        Text(String((canonicalName ?? artist.name).prefix(1)))
+                            .font(.jakarta(20, weight: .bold))
+                            .foregroundStyle(Color.sjMuted)
+                    )
+                }
+                .aspectRatio(contentMode: .fill)
+                .frame(width: 56, height: 56)
+                .clipShape(Circle())
+                .accessibilityHidden(true) // artist name text alongside already describes it
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Artist")
+                        .font(.jakarta(10, weight: .semibold))
+                        .tracking(1.4)
+                        .foregroundStyle(Color.sjMuted)
+                    Text(canonicalName ?? artist.name)
+                        .font(.jakarta(28, weight: .heavy))
+                        .foregroundStyle(Color.sjInk)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.75)
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 16)
+            .padding(.bottom, 14)
+
+            HStack(spacing: 10) {
+                artistStatBox(value: communityAvg.map { String(format: "%.1f", $0) } ?? "—",
+                              label: "Community Avg", showIcon: true)
+                artistStatBox(value: "\(communityCount)",
+                              label: communityCount == 1 ? "Rating" : "Ratings", showIcon: false)
+                // "—" while loading: rendering a live "0" here during the
+                // fetch is what read as "this artist has 0 releases".
+                artistStatBox(value: isLoading ? "—" : "\(releases.count)",
+                              label: "Releases", showIcon: false)
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 14)
+
+            if myRatedCount > 0, let avg = myAvg {
+                HStack(spacing: 6) {
+                    Text("You")
+                        .font(.jakarta(10, weight: .semibold))
+                        .tracking(0.5)
+                        .foregroundStyle(Color.sjMuted)
+                    Text(String(format: String(localized: "%d rated · %@ avg"), myRatedCount, String(format: "%.1f", avg)))
+                        .font(.jakarta(12, weight: .bold))
+                        .foregroundStyle(Color.sjInk)
+                }
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(Color.sjAmber.opacity(0.12))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.sjAmber.opacity(0.4), lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .padding(.horizontal, 18).padding(.bottom, 12)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var albumsContent: some View {
+        if loadFailed {
+            VStack(spacing: 12) {
+                Text("Couldn't load this artist's releases.")
+                    .font(.jakarta(14)).foregroundStyle(Color.sjMuted)
+                Button {
+                    isLoading = true
+                    Task { await load() }
+                } label: {
+                    Text("Retry")
+                        .font(.jakarta(13, weight: .semibold))
+                        .foregroundStyle(Color.sjCream)
+                        .padding(.horizontal, 18).padding(.vertical, 8)
+                        .background(Color.sjInk)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(maxWidth: .infinity).padding(.top, 40)
+        } else if releases.isEmpty {
+            Text("No releases in the catalogue yet.")
+                .font(.jakarta(14)).foregroundStyle(Color.sjMuted)
+                .frame(maxWidth: .infinity).padding(.top, 40)
+        } else {
+            albumFilterSortBar
+            let list = filteredSortedReleases
+            if list.isEmpty {
+                Text("No releases match this filter.")
+                    .font(.jakarta(14)).foregroundStyle(Color.sjMuted)
+                    .frame(maxWidth: .infinity).padding(.top, 40)
+            } else {
+                ForEach(list) { release in
+                    ArtistReleaseRow(release: release,
+                                     communityScore: releaseScores[release.id],
+                                     userScore: myRatings[release.id])
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var songsContent: some View {
+        if isLoadingSongs {
+            ProgressView()
+                .frame(maxWidth: .infinity)
+                .padding(.top, 40)
+        } else if songs.isEmpty {
+            Text("No songs in the catalogue yet.")
+                .font(.jakarta(14)).foregroundStyle(Color.sjMuted)
+                .frame(maxWidth: .infinity).padding(.top, 40)
+        } else {
+            ForEach(songs) { song in
+                ArtistSongRow(song: song, artistName: artist.name) {
+                    guard let albumId = song.albumId else { return }
+                    let release = Release(
+                        id: albumId, title: song.albumTitle, artist: artist.name,
+                        coverUrl: song.albumCoverUrl, releaseType: nil,
+                        releaseDate: song.releaseDate, titleNative: nil, artistNative: nil,
+                        tracklist: nil, totalTracks: nil)
+                    let track = TrackEntry(
+                        trackId: song.id, position: song.position, title: song.title,
+                        durationMs: nil, artists: artist.name)
+                    songNavTarget = SongNavTarget(id: song.id, track: track, release: release)
+                }
+            }
+        }
+    }
+
+    /// Floating glass-capsule bubble behind the selected label, sliding via
+    /// matchedGeometryEffect -- same pattern as Home's Explore/Following switcher
+    /// (`feedTabButton`), not a flat underline indicator. Lives outside the
+    /// ScrollView entirely (see `body`) -- genuinely fixed chrome, not pinned.
+    private var tabBarView: some View {
+        HStack(spacing: 4) {
+            ForEach(tabLabels.indices, id: \.self) { i in
+                artistTabButton(i, label: tabLabels[i])
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    private func artistTabButton(_ i: Int, label: LocalizedStringKey) -> some View {
+        Button { selectedTab = i } label: {
+            Text(label)
+                .font(.jakarta(12.5, weight: selectedTab == i ? .bold : .medium))
+                .foregroundStyle(selectedTab == i ? Color.sjInk : Color.sjMuted)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background {
+                    if selectedTab == i {
+                        Capsule()
+                            .fill(Color.clear)
+                            .glassEffect(.regular, in: Capsule())
+                            .matchedGeometryEffect(id: "artistTabBubble", in: artistTabBubble)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Bordered stat tile -- same visual spec as `AlbumDetailView.communityStatBox`
+    /// (rounded 10, `sjSurface` fill, `sjBorder` stroke, icon+value+label), so the
+    /// artist page's summary numbers read as the same kind of object as the
+    /// album page's, instead of the bare number+divider row this replaced.
+    @ViewBuilder
+    private func artistStatBox(value: String, label: LocalizedStringKey, showIcon: Bool) -> some View {
+        HStack(spacing: 6) {
+            if showIcon {
+                Image("icon-flower")
+                    .renderingMode(.template).resizable().scaledToFit()
+                    .frame(width: 12, height: 12).foregroundStyle(Color.sjBlue)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(value)
+                    .font(.jakarta(16, weight: .bold)).foregroundStyle(Color.sjInk)
+                Text(label)
+                    .font(.jakarta(10)).foregroundStyle(Color.sjMuted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .background(Color.sjSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.sjBorder, lineWidth: 1))
     }
 
     private func load() async {
         loadFailed = false
+        // Show the caller's photo (if it handed one over) immediately, before any network
+        // round trip -- overwritten below only if the catalog turns out to have its own.
+        artistAvatarUrl = artist.avatarHint
         var loaded: [Release]
         // Spotify/Apple Music rows only carry a name -- resolve the real catalog id via the same
         // identity-aware, alias-aware RPC used by search results (DiscoveryViewModel.resolveArtistId),
@@ -1775,7 +1874,14 @@ struct ArtistPageView: View {
                 .eq("id", value: artistId.uuidString).limit(1).execute().value) ?? []
 
             var (releasesResult, arows) = await (releasesFetch, artistRowFetch)
-            if let row = arows.first { artistAvatarUrl = row.coverUrl; canonicalName = row.name }
+            if let row = arows.first {
+                canonicalName = row.name
+                // The catalog's own photo wins once it's in -- the avatarHint seeded above
+                // is only a placeholder for however long that takes, or for good if
+                // `cover_url` turns out to be null (the common case, see the doc comment
+                // on ArtistDestination.avatarHint).
+                if let coverUrl = row.coverUrl { artistAvatarUrl = coverUrl }
+            }
             if releasesResult == nil { releasesResult = await fetchReleases() }  // one retry
             guard let releasesResult else {
                 loadFailed = true
@@ -1968,7 +2074,7 @@ struct ArtistPageView: View {
             ForEach(ArtistAlbumTypeFilter.allCases, id: \.self) { filter in
                 Button { albumTypeFilter = filter } label: {
                     Text(LocalizedStringKey(filter.rawValue))
-                        .font(.system(size: 12, weight: albumTypeFilter == filter ? .semibold : .regular))
+                        .font(.jakarta(12, weight: albumTypeFilter == filter ? .semibold : .regular))
                         .foregroundStyle(albumTypeFilter == filter ? Color.sjBlue : Color.sjMuted)
                         .padding(.horizontal, 12).padding(.vertical, 6)
                         .background(albumTypeFilter == filter ? Color.sjBlue.opacity(0.1) : Color.clear)
@@ -1984,16 +2090,22 @@ struct ArtistPageView: View {
                     Button {
                         albumSortOrder = order
                     } label: {
-                        Label(LocalizedStringKey(order.rawValue),
-                              systemImage: albumSortOrder == order ? "checkmark" : "")
+                        if albumSortOrder == order {
+                            Label(LocalizedStringKey(order.rawValue), image: "icon-check")
+                        } else {
+                            Text(LocalizedStringKey(order.rawValue))
+                        }
                     }
                 }
             } label: {
                 HStack(spacing: 4) {
-                    Image(systemName: "line.3.horizontal.decrease")
+                    Image("icon-sliders-horizontal")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 14, height: 14)
                     Text(LocalizedStringKey(albumSortOrder.rawValue))
                 }
-                .font(.system(size: 12, weight: .medium))
+                .font(.jakarta(12, weight: .medium))
                 .foregroundStyle(Color.sjAmber)
             }
         }
@@ -2004,27 +2116,22 @@ struct ArtistPageView: View {
     // MARK: - Community tab
 
     @ViewBuilder
-    private var communityTab: some View {
+    private var communityContent: some View {
         if communityFeed.isEmpty {
             Text("No community ratings yet.")
-                .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                .font(.jakarta(14)).foregroundStyle(Color.sjMuted)
                 .frame(maxWidth: .infinity).padding(.top, 40)
         } else {
-            ScrollView(showsIndicators: false) {
-                LazyVStack(spacing: 0) {
-                    communityDisplayToggle
-                    if communityDisplayMode == .list {
-                        ForEach(communityFeed) { entry in
-                            communityRow(entry)
-                            Divider().padding(.leading, 54)
-                        }
-                    } else {
-                        ForEach(communityFeed) { entry in
-                            communityPostCard(entry)
-                        }
-                    }
+            communityDisplayToggle
+            if communityDisplayMode == .list {
+                ForEach(communityFeed) { entry in
+                    communityRow(entry)
+                    Divider().padding(.leading, 54)
                 }
-                .padding(.top, 4)
+            } else {
+                ForEach(communityFeed) { entry in
+                    communityPostCard(entry)
+                }
             }
         }
     }
@@ -2035,8 +2142,10 @@ struct ArtistPageView: View {
             HStack(spacing: 2) {
                 ForEach([ArtistCommunityDisplayMode.list, .posts], id: \.self) { mode in
                     Button { communityDisplayMode = mode } label: {
-                        Image(systemName: mode == .list ? "list.bullet" : "newspaper")
-                            .font(.system(size: 14))
+                        Image(mode == .list ? "icon-list" : "icon-newspaper")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 14, height: 14)
                             .foregroundStyle(communityDisplayMode == mode ? Color.sjBlue : Color.sjMuted)
                             .frame(width: 32, height: 28)
                             .background(communityDisplayMode == mode ? Color.sjBlue.opacity(0.1) : Color.clear)
@@ -2059,13 +2168,13 @@ struct ArtistPageView: View {
                 ZStack {
                     Circle().fill(Color.sjAmber.opacity(0.15)).frame(width: 32, height: 32)
                     Text(entry.profiles?.initial ?? "?")
-                        .font(.system(size: 13, weight: .bold)).foregroundStyle(Color.sjAmber)
+                        .font(.jakarta(13, weight: .bold)).foregroundStyle(Color.sjAmber)
                 }
                 Text("@" + (entry.profiles?.handle ?? String(localized: "someone")))
-                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.sjInk)
+                    .font(.jakarta(13, weight: .semibold)).foregroundStyle(Color.sjInk)
                 Text("·").foregroundStyle(Color.sjBorder)
                 Text(entry.createdAt.relativeTimeString)
-                    .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                    .font(.jakarta(12)).foregroundStyle(Color.sjMuted)
                 Spacer()
             }
             .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 8)
@@ -2078,20 +2187,13 @@ struct ArtistPageView: View {
                             .accessibilityHidden(true) // title text alongside already describes it
                         VStack(alignment: .leading, spacing: 3) {
                             Text(release.displayTitle)
-                                .font(.system(size: 15, weight: .bold)).foregroundStyle(Color.sjInk).lineLimit(1)
+                                .font(.jakarta(15, weight: .bold)).foregroundStyle(Color.sjInk).lineLimit(1)
                             Text(release.typeLabel)
-                                .font(.system(size: 12)).foregroundStyle(Color.sjMuted)
+                                .font(.jakarta(12)).foregroundStyle(Color.sjMuted)
                         }
                         Spacer()
                         if let score = entry.displayScore {
-                            HStack(spacing: 3) {
-                                Image("icon-flower")
-                                    .renderingMode(.template).resizable().scaledToFit()
-                                    .frame(width: 11, height: 11).foregroundStyle(Color.sjAmber)
-                                Text(score.truncatingRemainder(dividingBy: 1) == 0
-                                     ? "\(Int(score))" : String(format: "%.1f", score))
-                                    .font(.system(size: 13, weight: .bold)).foregroundStyle(Color.sjAmber)
-                            }
+                            ScoreBadge(score: score, badgeSize: 32, ringStroke: 2, ringGap: 1.5)
                         }
                     }
                     .padding(.horizontal, 14)
@@ -2102,7 +2204,7 @@ struct ArtistPageView: View {
 
             if let text = entry.reviewText, !text.isEmpty {
                 Text(text)
-                    .font(.system(size: 13))
+                    .font(.jakarta(13))
                     .foregroundStyle(Color.sjInk)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 14)
@@ -2123,33 +2225,28 @@ struct ArtistPageView: View {
             ZStack {
                 Circle().fill(Color.sjAmber.opacity(0.15)).frame(width: 36, height: 36)
                 Text(entry.profiles?.initial ?? "?")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.jakarta(14, weight: .bold))
                     .foregroundStyle(Color.sjAmber)
             }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text("@" + (entry.profiles?.handle ?? String(localized: "someone")))
-                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.sjInk)
+                        .font(.jakarta(12, weight: .semibold)).foregroundStyle(Color.sjInk)
                         .lineLimit(1)
                     Text("·").foregroundStyle(Color.sjBorder)
                     Text(entry.createdAt.relativeTimeString)
-                        .font(.system(size: 11)).foregroundStyle(Color.sjMuted)
+                        .font(.jakarta(11)).foregroundStyle(Color.sjMuted)
                 }
                 if let r = release {
                     Text(r.displayTitle)
-                        .font(.system(size: 12)).foregroundStyle(Color.sjMuted).lineLimit(1)
+                        .font(.jakarta(12)).foregroundStyle(Color.sjMuted).lineLimit(1)
                 }
             }
             Spacer()
+            // One person's own rating -- ScoreBadge, same as everywhere else an
+            // individual rating shows (see the note on ArtistReleaseRow's userScore).
             if let score = entry.displayScore {
-                HStack(spacing: 3) {
-                    Image("icon-flower")
-                        .renderingMode(.template).resizable().scaledToFit()
-                        .frame(width: 10, height: 10).foregroundStyle(Color.sjAmber)
-                    Text(score.truncatingRemainder(dividingBy: 1) == 0
-                         ? "\(Int(score))" : String(format: "%.1f", score))
-                        .font(.system(size: 12, weight: .bold)).foregroundStyle(Color.sjAmber)
-                }
+                ScoreBadge(score: score, badgeSize: 24, ringStroke: 1.5, ringGap: 1)
             }
             if let r = release {
                 CoverImage(url: r.coverUrl, cornerRadius: 6).frame(width: 36, height: 36)
@@ -2163,37 +2260,35 @@ struct ArtistPageView: View {
     // MARK: - Stats tab
 
     @ViewBuilder
-    private var statsTab: some View {
+    private var statsContent: some View {
         if allRatingScores.isEmpty && myRatings.isEmpty {
             Text("No ratings yet.")
-                .font(.system(size: 14)).foregroundStyle(Color.sjMuted)
+                .font(.jakarta(14)).foregroundStyle(Color.sjMuted)
                 .frame(maxWidth: .infinity).padding(.top, 40)
         } else {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 20) {
-                    if !allRatingScores.isEmpty {
-                        statsSectionView("Score Distribution") { distributionChart }
-                        statsSectionView("Popular Albums") { topReleasesView }
-                    }
-                    if songs.contains(where: { $0.ratingCount > 0 }) {
-                        statsSectionView("Popular Songs") { topSongsView }
-                    }
-                    if !myRatings.isEmpty {
-                        statsSectionView("Your Coverage") { coverageView }
-                    }
-                    if typeStats.count > 1 {
-                        statsSectionView("By Release Type") { typeBreakdownView }
-                    }
+            VStack(alignment: .leading, spacing: 20) {
+                if !allRatingScores.isEmpty {
+                    statsSectionView("Score Distribution") { distributionChart }
+                    statsSectionView("Popular Albums") { topReleasesView }
                 }
-                .padding(18)
+                if songs.contains(where: { $0.ratingCount > 0 }) {
+                    statsSectionView("Popular Songs") { topSongsView }
+                }
+                if !myRatings.isEmpty {
+                    statsSectionView("Your Coverage") { coverageView }
+                }
+                if typeStats.count > 1 {
+                    statsSectionView("By Release Type") { typeBreakdownView }
+                }
             }
+            .padding(18)
         }
     }
 
     private func statsSectionView(_ title: LocalizedStringKey, @ViewBuilder content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.jakarta(11, weight: .semibold))
                 .foregroundStyle(Color.sjMuted)
                 .textCase(.uppercase)
                 .tracking(0.8)
@@ -2209,7 +2304,7 @@ struct ArtistPageView: View {
             ForEach(bins, id: \.label) { bin in
                 HStack(spacing: 8) {
                     Text(bin.label)
-                        .font(.system(size: 11, weight: .medium)).foregroundStyle(Color.sjMuted)
+                        .font(.jakarta(11, weight: .medium)).foregroundStyle(Color.sjMuted)
                         .frame(width: 26, alignment: .trailing)
                     GeometryReader { geo in
                         RoundedRectangle(cornerRadius: 3)
@@ -2218,7 +2313,7 @@ struct ArtistPageView: View {
                     }
                     .frame(height: 14)
                     Text("\(bin.count)")
-                        .font(.system(size: 11)).foregroundStyle(Color.sjMuted)
+                        .font(.jakarta(11)).foregroundStyle(Color.sjMuted)
                 }
             }
         }
@@ -2254,16 +2349,16 @@ struct ArtistPageView: View {
                 NavigationLink(value: release) {
                     HStack(spacing: 10) {
                         Text("#\(idx + 1)")
-                            .font(.system(size: 11, weight: .bold)).foregroundStyle(Color.sjMuted)
+                            .font(.jakarta(11, weight: .bold)).foregroundStyle(Color.sjMuted)
                             .frame(width: 20)
                         CoverImage(url: release.coverUrl, cornerRadius: 5)
                             .frame(width: 36, height: 36)
                             .accessibilityHidden(true) // title text alongside already describes it
                         VStack(alignment: .leading, spacing: 2) {
                             Text(release.displayTitle)
-                                .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.sjInk).lineLimit(1)
+                                .font(.jakarta(12, weight: .semibold)).foregroundStyle(Color.sjInk).lineLimit(1)
                             Text(count == 1 ? String(localized: "1 rating") : String(format: String(localized: "%d ratings"), count))
-                                .font(.system(size: 10)).foregroundStyle(Color.sjMuted)
+                                .font(.jakarta(10)).foregroundStyle(Color.sjMuted)
                         }
                         Spacer()
                         HStack(spacing: 3) {
@@ -2271,7 +2366,7 @@ struct ArtistPageView: View {
                                 .renderingMode(.template).resizable().scaledToFit()
                                 .frame(width: 10, height: 10).foregroundStyle(Color.sjAmber)
                             Text(String(format: "%.1f", score))
-                                .font(.system(size: 12, weight: .bold)).foregroundStyle(Color.sjAmber)
+                                .font(.jakarta(12, weight: .bold)).foregroundStyle(Color.sjAmber)
                         }
                     }
                     .padding(.vertical, 8)
@@ -2294,16 +2389,16 @@ struct ArtistPageView: View {
                 let album = song.albumId.flatMap { id in releases.first { $0.id == id } }
                 let row = HStack(spacing: 10) {
                     Text("#\(idx + 1)")
-                        .font(.system(size: 11, weight: .bold)).foregroundStyle(Color.sjMuted)
+                        .font(.jakarta(11, weight: .bold)).foregroundStyle(Color.sjMuted)
                         .frame(width: 20)
                     CoverImage(url: song.albumCoverUrl, cornerRadius: 5)
                         .frame(width: 36, height: 36)
                         .accessibilityHidden(true) // title text alongside already describes it
                     VStack(alignment: .leading, spacing: 2) {
                         Text(song.title)
-                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.sjInk).lineLimit(1)
+                            .font(.jakarta(12, weight: .semibold)).foregroundStyle(Color.sjInk).lineLimit(1)
                         Text(song.ratingCount == 1 ? String(localized: "1 rating") : String(format: String(localized: "%d ratings"), song.ratingCount))
-                            .font(.system(size: 10)).foregroundStyle(Color.sjMuted)
+                            .font(.jakarta(10)).foregroundStyle(Color.sjMuted)
                     }
                     Spacer()
                     HStack(spacing: 3) {
@@ -2311,7 +2406,7 @@ struct ArtistPageView: View {
                             .renderingMode(.template).resizable().scaledToFit()
                             .frame(width: 10, height: 10).foregroundStyle(Color.sjAmber)
                         Text(String(format: "%.1f", song.avgScore ?? 0))
-                            .font(.system(size: 12, weight: .bold)).foregroundStyle(Color.sjAmber)
+                            .font(.jakarta(12, weight: .bold)).foregroundStyle(Color.sjAmber)
                     }
                 }
                 .padding(.vertical, 8)
@@ -2334,23 +2429,23 @@ struct ArtistPageView: View {
         let pct    = total > 0 ? Int(Double(rated) / Double(total) * 100) : 0
         return HStack(spacing: 20) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(rated)/\(total)").font(.system(size: 20, weight: .heavy)).foregroundStyle(Color.sjInk)
-                Text("releases rated").font(.system(size: 10)).foregroundStyle(Color.sjMuted)
+                Text("\(rated)/\(total)").font(.jakarta(20, weight: .heavy)).foregroundStyle(Color.sjInk)
+                Text("releases rated").font(.jakarta(10)).foregroundStyle(Color.sjMuted)
             }
             if rated > 0 {
                 Divider().frame(height: 32)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(String(format: "%.1f", myAvgV)).font(.system(size: 20, weight: .heavy)).foregroundStyle(Color.sjInk)
-                    Text("your avg").font(.system(size: 10)).foregroundStyle(Color.sjMuted)
+                    Text(String(format: "%.1f", myAvgV)).font(.jakarta(20, weight: .heavy)).foregroundStyle(Color.sjInk)
+                    Text("your avg").font(.jakarta(10)).foregroundStyle(Color.sjMuted)
                 }
                 if let cAvg = communityAvg {
                     Divider().frame(height: 32)
                     VStack(alignment: .leading, spacing: 2) {
                         let diff = myAvgV - cAvg
                         Text((diff >= 0 ? "+" : "") + String(format: "%.1f", diff))
-                            .font(.system(size: 20, weight: .heavy))
+                            .font(.jakarta(20, weight: .heavy))
                             .foregroundStyle(diff >= 0 ? Color.sjBlue : Color.sjMuted)
-                        Text("vs community").font(.system(size: 10)).foregroundStyle(Color.sjMuted)
+                        Text("vs community").font(.jakarta(10)).foregroundStyle(Color.sjMuted)
                     }
                 }
             }
@@ -2377,16 +2472,16 @@ struct ArtistPageView: View {
             ForEach(typeStats, id: \.type) { stat in
                 HStack {
                     Text(LocalizedStringKey(stat.type))
-                        .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.sjInk)
+                        .font(.jakarta(12, weight: .medium)).foregroundStyle(Color.sjInk)
                     Text("(\(stat.count))")
-                        .font(.system(size: 11)).foregroundStyle(Color.sjMuted)
+                        .font(.jakarta(11)).foregroundStyle(Color.sjMuted)
                     Spacer()
                     HStack(spacing: 3) {
                         Image("icon-flower")
                             .renderingMode(.template).resizable().scaledToFit()
                             .frame(width: 10, height: 10).foregroundStyle(Color.sjAmber)
                         Text(String(format: "%.1f", stat.avg))
-                            .font(.system(size: 12, weight: .bold)).foregroundStyle(Color.sjAmber)
+                            .font(.jakarta(12, weight: .bold)).foregroundStyle(Color.sjAmber)
                     }
                 }
             }
@@ -2408,37 +2503,54 @@ struct ArtistPageView: View {
 
 private struct ArtistSongRow: View {
     let song: ArtistSong
+    let artistName: String
     let onTap: () -> Void
+
+    // Built here (not just inside onTap's nav-target closure) so `SongRateButton`
+    // below has the same `TrackEntry`/`Release` the row already needs for
+    // navigation -- same construction the caller used to do alone.
+    private var track: TrackEntry {
+        TrackEntry(trackId: song.id, position: song.position, title: song.title,
+                   durationMs: nil, artists: artistName)
+    }
+    private var release: Release? {
+        guard let albumId = song.albumId else { return nil }
+        return Release(id: albumId, title: song.albumTitle, artist: artistName,
+                        coverUrl: song.albumCoverUrl, releaseType: nil,
+                        releaseDate: song.releaseDate, titleNative: nil, artistNative: nil,
+                        tracklist: nil, totalTracks: nil)
+    }
 
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 12) {
-                CoverImage(url: song.albumCoverUrl, cornerRadius: 6)
-                    .frame(width: 44, height: 44)
+            HStack(spacing: 14) {
+                CoverImage(url: song.albumCoverUrl, cornerRadius: 8)
+                    .frame(width: 58, height: 58)
                     .accessibilityHidden(true) // title/album text alongside already describes it
                 VStack(alignment: .leading, spacing: 3) {
                     Text(song.title)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.jakarta(13, weight: .semibold))
                         .foregroundStyle(Color.sjInk).lineLimit(1)
                     Text(song.albumTitle)
-                        .font(.system(size: 11))
+                        .font(.jakarta(11))
                         .foregroundStyle(Color.sjMuted).lineLimit(1)
                 }
                 Spacer()
 
-                if let s = song.myScore {
-                    scoreBadge(s, color: Color.sjBlue)
-                } else if let s = song.avgScore {
-                    scoreBadge(s, color: Color.sjAmber)
-                } else {
-                    ZStack {
-                        Circle().stroke(Color.sjBorder, lineWidth: 1.5).frame(width: 24, height: 24)
-                        Image(systemName: "plus").font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(Color.sjMuted)
-                    }
+                // Same split as ArtistReleaseRow: community avg (an aggregate, not my
+                // own rating) shown as plain text only when I haven't rated it myself;
+                // the actual interactive control is always the real SongRateButton --
+                // previously this slot was a static, non-interactive flower-in-circle
+                // for the unrated case, which read as a disabled/grayed-out button
+                // because it was one (no tap target, no gesture, nothing behind it).
+                if song.myScore == nil, let avg = song.avgScore {
+                    scoreBadge(avg, color: Color.sjAmber)
+                }
+                if let release {
+                    SongRateButton(track: track, release: release, initialScore: song.myScore, size: 30)
                 }
             }
-            .padding(.horizontal, 16).padding(.vertical, 11)
+            .padding(.horizontal, 16).padding(.vertical, 14)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -2450,7 +2562,7 @@ private struct ArtistSongRow: View {
                 .renderingMode(.template).resizable().scaledToFit()
                 .frame(width: 11, height: 11).foregroundStyle(color)
             Text(String(format: "%.1f", score))
-                .font(.system(size: 12, weight: .bold)).foregroundStyle(color)
+                .font(.jakarta(12, weight: .bold)).foregroundStyle(color)
         }
     }
 }
@@ -2467,21 +2579,14 @@ private struct ArtistReleaseRow: View {
 
     var body: some View {
         NavigationLink(value: release) {
-            HStack(spacing: 12) {
-                ZStack(alignment: .bottomTrailing) {
-                    CoverImage(url: release.coverUrl, cornerRadius: 6)
-                        .frame(width: 44, height: 44)
-                        .accessibilityHidden(true) // title text alongside already describes it
-
-                    if userScore == nil {
-                        AlbumRateButton(release: release, size: 22)
-                            .offset(x: 3, y: 3)
-                    }
-                }
+            HStack(spacing: 14) {
+                CoverImage(url: release.coverUrl, cornerRadius: 8)
+                    .frame(width: 58, height: 58)
+                    .accessibilityHidden(true) // title text alongside already describes it
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(release.displayTitle)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.jakarta(13, weight: .semibold))
                         .foregroundStyle(Color.sjInk).lineLimit(1)
                     HStack(spacing: 3) {
                         if let t = release.releaseType {
@@ -2489,24 +2594,28 @@ private struct ArtistReleaseRow: View {
                         }
                         if let y = year { Text("·"); Text(y) }
                     }
-                    .font(.system(size: 11)).foregroundStyle(Color.sjMuted)
+                    .font(.jakarta(11)).foregroundStyle(Color.sjMuted)
                 }
 
                 Spacer()
 
-                if let s = userScore {
-                    flowerScore(s, color: Color.sjBlue)
-                } else if let s = communityScore {
+                // Community avg is an aggregate, not anyone's specific rating -- shown
+                // only when I haven't rated it myself, as plain text beside the button
+                // rather than implied to be part of "your" rating.
+                if userScore == nil, let s = communityScore {
                     flowerScore(s, color: Color.sjAmber)
-                } else {
-                    ZStack {
-                        Circle().stroke(Color.sjBorder, lineWidth: 1.5).frame(width: 24, height: 24)
-                        Image(systemName: "plus").font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(Color.sjMuted)
-                    }
                 }
+
+                // The one flower per row, on the trailing edge like every other row
+                // affordance -- no more separate cover-corner overlay. Also replaces the
+                // ScoreBadge this used to show for my own rating: FlowerRateControl's own
+                // rated state (a filled, score-tinted circle with the number inside, sized
+                // proportionally) is designed to read correctly at any size, where
+                // ScoreBadge's glass ring + flower watermark only holds together near its
+                // own default size -- shrinking it to fit a row was what looked off.
+                AlbumRateButton(release: release, initialScore: userScore, size: 30)
             }
-            .padding(.horizontal, 16).padding(.vertical, 11)
+            .padding(.horizontal, 16).padding(.vertical, 14)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -2518,7 +2627,7 @@ private struct ArtistReleaseRow: View {
                 .renderingMode(.template).resizable().scaledToFit()
                 .frame(width: 11, height: 11).foregroundStyle(color)
             Text(String(format: "%.1f", score))
-                .font(.system(size: 12, weight: .bold)).foregroundStyle(color)
+                .font(.jakarta(12, weight: .bold)).foregroundStyle(color)
         }
     }
 }

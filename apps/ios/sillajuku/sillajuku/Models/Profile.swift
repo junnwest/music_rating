@@ -28,6 +28,9 @@ struct Profile: Codable, Identifiable {
     var badgeColor: String?
     // Manually granted (no self-serve flow) -- see `is_verified` migration.
     var isVerified: Bool?
+    // Manually granted, permanent -- private beta-outreach accounts. See
+    // `is_beta_tester` migration.
+    var isBetaTester: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -48,6 +51,7 @@ struct Profile: Codable, Identifiable {
         case referralCode = "referral_code"
         case badgeColor   = "badge_color"
         case isVerified   = "is_verified"
+        case isBetaTester = "is_beta_tester"
     }
 }
 

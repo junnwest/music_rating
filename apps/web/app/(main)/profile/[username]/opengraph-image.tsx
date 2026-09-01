@@ -1,7 +1,9 @@
 import { ImageResponse } from 'next/og';
 import { truncateUsernameForDisplay } from '../../../../lib/username';
+import { loadJakartaFonts } from '../../../../lib/og-fonts';
 
-export const runtime = 'edge';
+// Node.js runtime (the default) -- loadJakartaFonts reads the bundled font
+// files via node:fs, which isn't available on the edge runtime.
 export const alt = 'sillajuku profile';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
@@ -58,6 +60,8 @@ export default async function ProfileOgImage({ params }: Props) {
 
   const ratingLabel = ratingCount === 1 ? '1 release rated' : `${ratingCount.toLocaleString()} releases rated`;
 
+  const fonts = await loadJakartaFonts();
+
   return new ImageResponse(
     (
       <div
@@ -69,7 +73,7 @@ export default async function ProfileOgImage({ params }: Props) {
           justifyContent: 'flex-end',
           background: '#F8F8F6',
           padding: '72px 80px',
-          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+          fontFamily: 'Plus Jakarta Sans',
           position: 'relative',
         }}
       >
@@ -156,6 +160,6 @@ export default async function ProfileOgImage({ params }: Props) {
         </div>
       </div>
     ),
-    { ...size }
+    { ...size, fonts }
   );
 }

@@ -157,27 +157,21 @@ struct FlowerRateControl: View {
 
     private var buttonContent: some View {
         ZStack {
-            Circle()
-                .fill(
-                    isOverDeleteZone ? AnyShapeStyle(Color.red)
-                        : showNumber ? AnyShapeStyle(ScoreSpectrum.fill(for: shown!))
-                        : AnyShapeStyle(.white)
-                )
-                .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
-
             FlowerGlyph(size: size * 0.56)
                 .foregroundStyle(Color.sjBlue)
                 .opacity(showNumber || isOverDeleteZone ? 0 : 1)
                 .scaleEffect(showNumber ? 0.82 : 1)
 
-            Image(systemName: "trash.fill")
-                .font(.system(size: size * 0.4, weight: .bold))
+            Image("icon-trash")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: size * 0.4, height: size * 0.4)
                 .foregroundStyle(.white)
                 .opacity(isOverDeleteZone ? 1 : 0)
                 .scaleEffect(isOverDeleteZone ? 1 : 0.6)
 
             Text(shown != nil ? String(format: "%.1f", shown!) : "")
-                .font(.system(size: size * 0.4, weight: .black))
+                .font(.jakarta(size * 0.4, weight: .black))
                 .foregroundStyle(showNumber ? ScoreSpectrum.numberColor(for: shown!) : .clear)
                 .opacity(showNumber && !isOverDeleteZone ? 1 : 0)
                 .scaleEffect(showNumber ? 1 : 0.6)
@@ -185,6 +179,19 @@ struct FlowerRateControl: View {
                 .lineLimit(1)
         }
         .frame(width: size, height: size)
+        // Liquid Glass, matching ScoreBadge's own rated-circle treatment --
+        // was a flat opaque `Circle().fill(.white)` before, which read as a
+        // plain solid button with no material at all next to every other
+        // rating surface in the app (ScoreBadge, the artist-tab bubble) that
+        // already uses `.glassEffect`. Neutral/untinted at rest, tinted with
+        // the same score-spectrum color ScoreBadge uses once rated, red while
+        // hovering the delete zone.
+        .glassEffect(
+            isOverDeleteZone ? .regular.tint(Color.red)
+                : showNumber ? .regular.tint(ScoreSpectrum.fill(for: shown!))
+                : .regular,
+            in: Circle()
+        )
         .contentShape(Circle())
         // Hidden while dragging -- the overlay window (RateGaugeOverlay)
         // draws a duplicate of this exact content lifted and popped forward
@@ -315,23 +322,19 @@ struct RateGaugeView: View {
     private var poppedFlower: some View {
         let showNumber = score != nil
         return ZStack {
-            Circle()
-                .fill(
-                    isOverDeleteZone ? AnyShapeStyle(Color.red)
-                        : showNumber ? AnyShapeStyle(ScoreSpectrum.fill(for: score!))
-                        : AnyShapeStyle(.white)
-                )
             FlowerGlyph(size: size * 0.56)
                 .foregroundStyle(Color.sjBlue)
                 .opacity(showNumber || isOverDeleteZone ? 0 : 1)
                 .scaleEffect(showNumber ? 0.82 : 1)
-            Image(systemName: "trash.fill")
-                .font(.system(size: size * 0.4, weight: .bold))
+            Image("icon-trash")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: size * 0.4, height: size * 0.4)
                 .foregroundStyle(.white)
                 .opacity(isOverDeleteZone ? 1 : 0)
                 .scaleEffect(isOverDeleteZone ? 1 : 0.6)
             Text(score != nil ? String(format: "%.1f", score!) : "")
-                .font(.system(size: size * 0.4, weight: .black))
+                .font(.jakarta(size * 0.4, weight: .black))
                 .foregroundStyle(showNumber ? ScoreSpectrum.numberColor(for: score!) : .clear)
                 .opacity(showNumber && !isOverDeleteZone ? 1 : 0)
                 .scaleEffect(showNumber ? 1 : 0.6)
@@ -339,6 +342,15 @@ struct RateGaugeView: View {
                 .lineLimit(1)
         }
         .frame(width: size, height: size)
+        // Same glass treatment as the in-flow buttonContent this is a popped-forward
+        // duplicate of -- kept in sync so the control doesn't visibly switch from
+        // glass to a flat fill the moment a drag starts.
+        .glassEffect(
+            isOverDeleteZone ? .regular.tint(Color.red)
+                : showNumber ? .regular.tint(ScoreSpectrum.fill(for: score!))
+                : .regular,
+            in: Circle()
+        )
         .shadow(color: .black.opacity(popped ? 0.6 : 0.3), radius: popped ? 12 : 3, y: popped ? 8 : 1)
         .shadow(color: .black.opacity(popped ? 0.4 : 0), radius: popped ? 5 : 0, y: popped ? 3 : 0)
         .scaleEffect(popped ? 1.22 : 1)
@@ -356,8 +368,10 @@ struct RateGaugeView: View {
             Circle()
                 .fill(isOverDeleteZone ? Color.red : Color.red.opacity(0.85))
                 .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
-            Image(systemName: "trash.fill")
-                .font(.system(size: size * 0.42, weight: .semibold))
+            Image("icon-trash")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: size * 0.42, height: size * 0.42)
                 .foregroundStyle(.white)
         }
         .frame(width: size, height: size)
