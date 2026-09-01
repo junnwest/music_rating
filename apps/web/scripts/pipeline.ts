@@ -101,6 +101,14 @@ const INGEST_MAX_HANGS   = envInt('INGEST_MAX_HANGS', 3);
 // plus whenever the queue is empty) so growth never fully starves re-checks. QC is
 // DB-only, so it runs as its own concurrent lane.
 const FRESHNESS_EVERY = envInt('FRESHNESS_EVERY', FRESH_FOCUS ? 3 : 20); // 1 re-poll per N new ingests (0 = off)
+// How far out to park an artist whose re-poll can NEVER succeed (heavily-featured, > MAX_INGEST_RGS
+// — Dylan/Beatles/Mozart class). The queue path skips these terminally; freshness has no "skipped"
+// state, so a far-future next_check_at is the equivalent. Deliberately NOT null: bootstrapFreshness()
+// re-schedules every null next_check_at at startup, which would walk straight back into the loop.
+const FRESHNESS_HEAVY_SKIP_DAYS = envInt('FRESHNESS_HEAVY_SKIP_DAYS', 3650); // ~10y = "don't come back"
+// Backoff for a re-poll that failed for any OTHER reason (network blip, MB 503, bad data). Short,
+// because those are usually transient — but never zero, or the same artist is re-claimed forever.
+const FRESHNESS_ERROR_BACKOFF_DAYS = envInt('FRESHNESS_ERROR_BACKOFF_DAYS', 1);
 // When a user searches for an artist MusicBrainz doesn't have (common for niche/underground
 // acts — MB's coverage is thinnest exactly there), recover it from Deezer instead of dropping
 // the miss. Demand-driven + confident-match-only, so it's naturally bounded and clean. Default
@@ -324,7 +332,28 @@ async function ingestLoop(db: DB) {
     const due = await claimDueFreshness(db);
     if (!due) return false;
     try { await refreshArtist(db, due, ++freshDone); }
-    catch (e) { console.log(`  [freshness] ERROR ${due.name}: ${(e as Error).message}`); }
+    catch (e) {
+      // refreshArtist throwing leaves next_check_at exactly as it was, so the next pass re-claims
+      // THIS SAME artist and fails identically — a livelock that silently parks the entire MB
+      // worker. It is silent because the lane's heartbeat lives at the END of refreshArtist, so
+      // the lane never beats and never reports an error: `pipeline:status` shows a stale
+      // "idle" freshness lane and an "idle" ingest lane while the catalog quietly stops growing.
+      // The queue path already guards exactly this (see the HeavilyFeaturedError branch below,
+      // "skip terminally, don't fail+requeue into a loop") — freshness never got the same guard,
+      // and the 2026-08-10 hot-tier-first ordering change made it reachable immediately, since
+      // the >MAX_INGEST_RGS artists are concentrated in the hot tier. Always advance the
+      // schedule so the loop moves on, whatever the failure was.
+      const heavy = e instanceof HeavilyFeaturedError;
+      const days = heavy ? FRESHNESS_HEAVY_SKIP_DAYS : FRESHNESS_ERROR_BACKOFF_DAYS;
+      const until = new Date(Date.now() + days * 86_400_000).toISOString();
+      const { error: schedErr } = await db.from('artists').update({ next_check_at: until }).eq('id', due.id);
+      // If the reschedule itself fails we WILL re-claim the same artist next pass. Say so loudly
+      // rather than let it look like a normal error line.
+      if (schedErr) console.log(`  [freshness] WARN could not reschedule ${due.name} (${schedErr.message}) — may retry-loop`);
+      console.log(heavy
+        ? `  [freshness] skipped (heavily featured) ${due.name} — parked until ${until.slice(0, 10)}`
+        : `  [freshness] ERROR ${due.name}: ${(e as Error).message} — retry ${until.slice(0, 10)}`);
+    }
     return true;
   };
   // When the queue is idle, spend MB time resolving logged search misses → queue confident

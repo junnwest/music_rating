@@ -55,6 +55,8 @@
     "covers:caa:dry": "tsx --env-file=.env.local scripts/backfill-rg-covers-caa.ts --limit=200 --dry-run",
     "covers:deezer": "tsx --env-file=.env.local scripts/backfill-rg-covers-deezer.ts",
     "covers:deezer:dry": "tsx --env-file=.env.local scripts/backfill-rg-covers-deezer.ts --dry-run --limit=40",
+    "covers:all": "tsx --env-file=.env.local scripts/backfill-rg-covers-all.ts --all --write",
+    "covers:all:dry": "tsx --env-file=.env.local scripts/backfill-rg-covers-all.ts --all --limit=60",
     "health:audit": "tsx --env-file=.env.local scripts/health-audit.ts",
     "backfill:rg-credits": "tsx --env-file=.env.local scripts/backfill-rg-credits.ts",
     "backfill:avatars": "tsx --env-file=.env.local scripts/backfill-artist-avatars.ts",
