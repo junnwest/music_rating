@@ -193,10 +193,25 @@ class ProfileViewModel {
     private var statsSnapshot: RatingStatsSnapshot {
         RatingStatsSnapshot.compute(ratings: ratings, songRatings: songRatings)
     }
+    // NOT the header's "Rated" count -- `ratings`/`songRatings` are capped at
+    // 60 each (see fetchAlbumRatings/fetchSongRatings) to keep the tab fast to
+    // open, so this undercounts anyone with more than that. Fine for the Stats
+    // tab's distribution/top-artists visuals, which only ever needed a recent
+    // sample -- see `ratedTotal` below for the real total.
     var totalRatings: Int { statsSnapshot.totalRatings }
     var avgScore: Double { statsSnapshot.avgScore }
     var scoreDistribution: [ScoreBucket] { statsSnapshot.scoreDistribution }
     var topArtists: [ArtistCount] { statsSnapshot.topArtists }
+
+    // The header stat cell's actual "Rated" number -- a live exact count,
+    // not the size of the (60-capped) loaded arrays above. Someone with more
+    // than 60 album or song ratings would barely see this move after a
+    // delete under the old totalRatings-based display, since the next load
+    // just re-fetches the next 60 most-recent rows.
+    // nil (not 0) until the fetch resolves -- 0 read as "no ratings yet"
+    // during the brief load, which is wrong and confusing for anyone who
+    // actually has some. Same reasoning for followingCount/followerCount below.
+    var ratedTotal: Int? = nil
 
     var likeCounts:    [UUID: Int] = [:]
     var commentCounts: [UUID: Int] = [:]
@@ -205,8 +220,8 @@ class ProfileViewModel {
     var likedMixShareIds: Set<UUID> = []
     var likedSongRatingIds: Set<UUID> = []
 
-    var followingCount = 0
-    var followerCount  = 0
+    var followingCount: Int? = nil
+    var followerCount:  Int? = nil
 
     func toggleLike(ratingId: UUID) async {
         guard let userId = supabase.auth.currentUser?.id else { return }
@@ -240,6 +255,7 @@ class ProfileViewModel {
 
     func deleteRating(_ item: ProfileRatedItem) async {
         guard let userId = supabase.auth.currentUser?.id else { return }
+        ratedTotal = ratedTotal.map { max(0, $0 - 1) }
         switch item {
         case .album(let r):
             ratings.removeAll { $0.id == r.id }
@@ -271,6 +287,7 @@ class ProfileViewModel {
         async let songsFetch    = fetchSongRatings(userId: user.id)
         async let followsFetch  = fetchFollowCounts(userId: user.id)
         async let sharesFetch   = fetchMixShares(userId: user.id)
+        async let ratedTotalFetch = fetchRatedTotal(userId: user.id)
 
         profile = await profileFetch
         ratings = await ratingsFetch
@@ -286,6 +303,7 @@ class ProfileViewModel {
         let follows = await followsFetch
         followingCount = follows.following
         followerCount  = follows.followers
+        ratedTotal = await ratedTotalFetch
 
         mixShares = await HomeViewModel.hydrateCovers(await sharesFetch)
         await loadMixShareSocialData()
@@ -347,12 +365,34 @@ class ProfileViewModel {
         }
     }
 
+    // Same exact-count pattern as fetchFollowCounts, for the same reason:
+    // ratings/songRatings (used by statsSnapshot.totalRatings) are capped at
+    // 60 rows each to keep the tab fast to open, so their size undercounts
+    // anyone above that -- this is a real live total instead.
+    private func fetchRatedTotal(userId: UUID) async -> Int {
+        // `head: true` -- without it this is a normal GET that downloads every
+        // matching row's full columns (review_text included) just to read the
+        // count off the response header. Fine for follows' tiny rows, but for
+        // a rating history that's real payload weight, and is almost
+        // certainly why this (and fetchFollowCounts below, same bug) turned
+        // multi-second for anyone with a substantial history. `head: true`
+        // makes it a HEAD request -- count-only, no body.
+        async let albumsFetch = try? await supabase.from("ratings")
+            .select("*", head: true, count: .exact)
+            .eq("user_id", value: userId).execute()
+        async let songsFetch = try? await supabase.from("track_ratings")
+            .select("*", head: true, count: .exact)
+            .eq("user_id", value: userId).execute()
+        let (albums, songs) = await (albumsFetch, songsFetch)
+        return (albums?.count ?? 0) + (songs?.count ?? 0)
+    }
+
     private func fetchFollowCounts(userId: UUID) async -> (following: Int, followers: Int) {
         async let followingFetch = try? await supabase.from("follows")
-            .select("*", count: .exact)
+            .select("*", head: true, count: .exact)
             .eq("follower_id", value: userId).execute()
         async let followersFetch = try? await supabase.from("follows")
-            .select("*", count: .exact)
+            .select("*", head: true, count: .exact)
             .eq("following_id", value: userId).execute()
         let (following, followers) = await (followingFetch, followersFetch)
         return (following?.count ?? 0, followers?.count ?? 0)
@@ -960,19 +1000,19 @@ struct ProfileView: View {
                 .frame(width: 76, height: 76)
 
             HStack(spacing: 0) {
-                ProfileStatCell(value: "\(viewModel.totalRatings)", label: "Rated")
+                ProfileStatCell(value: viewModel.ratedTotal, label: "Rated")
                 Button {
                     followModalInitTab = .following
                     showFollowModal = true
                 } label: {
-                    ProfileStatCell(value: "\(viewModel.followingCount)", label: "Following")
+                    ProfileStatCell(value: viewModel.followingCount, label: "Following")
                 }
                 .buttonStyle(.plain)
                 Button {
                     followModalInitTab = .followers
                     showFollowModal = true
                 } label: {
-                    ProfileStatCell(value: "\(viewModel.followerCount)", label: "Followers")
+                    ProfileStatCell(value: viewModel.followerCount, label: "Followers")
                 }
                 .buttonStyle(.plain)
             }
@@ -1161,7 +1201,13 @@ struct ProfileView: View {
 
                 // Count + sort
                 HStack {
-                    Text(String(format: String(localized: "%d %@"), items.count, ratingTypeFilter == .all ? String(localized: "ratings") : String(localized: String.LocalizationValue(ratingTypeFilter.rawValue)).lowercased()))
+                    // For "All", prefer the exact ratedTotal over items.count -- the
+                    // latter is the size of the loaded (60-capped per type) arrays,
+                    // same undercount as the header stat used to have, just showing
+                    // up here too. Falls back to items.count until ratedTotal's fetch
+                    // resolves. Per-type filters (Albums/Songs) still use items.count --
+                    // there's no exact per-type total fetched, only the combined one.
+                    Text(String(format: String(localized: "%d %@"), ratingTypeFilter == .all ? (viewModel.ratedTotal ?? items.count) : items.count, ratingTypeFilter == .all ? String(localized: "ratings") : String(localized: String.LocalizationValue(ratingTypeFilter.rawValue)).lowercased()))
                         .font(.jakarta(12))
                         .foregroundStyle(Color.sjMuted)
                     Spacer()
@@ -1559,14 +1605,17 @@ private class ProfileShareItem: NSObject, UIActivityItemSource {
 // MARK: - Sub-views
 
 private struct ProfileStatCell: View {
-    let value: String
+    /// nil while the count is still loading -- shown as a dash rather than
+    /// "0", which read as "no ratings/followers yet" during the brief window
+    /// before the real number arrives.
+    let value: Int?
     let label: LocalizedStringKey
 
     var body: some View {
         VStack(spacing: 2) {
-            Text(value)
+            Text(value.map { "\($0)" } ?? "–")
                 .font(.jakarta(18, weight: .bold))
-                .foregroundStyle(Color.sjInk)
+                .foregroundStyle(value == nil ? Color.sjMuted : Color.sjInk)
             Text(label)
                 .font(.jakarta(10.5))
                 .foregroundStyle(Color.sjMuted)

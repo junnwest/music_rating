@@ -1,6 +1,7 @@
 import SwiftUI
 import Supabase
 import UIKit
+import UserNotifications
 
 // A per-subtab visibility override: .inherit stores NULL in the DB (falls
 // back to profileVisibility), .pub/.priv store an explicit value that wins
@@ -27,6 +28,7 @@ struct SettingsView: View {
     @AppStorage("appearanceMode") private var appearanceMode = "system"
     @Environment(\.dismiss) private var dismiss
     @Environment(AppState.self) private var appState
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var ratingStep: Double  = 0.5
 
@@ -36,6 +38,11 @@ struct SettingsView: View {
     @State private var notifyFollowers   = true
     @State private var notifyRankings    = true
     @State private var notifyCapsule     = true
+    // OS-level permission -- distinct from the in-app toggles above, which
+    // stay meaningless (saved, but never delivered) while this isn't
+    // .authorized/.provisional/.ephemeral.
+    @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
+    @State private var isRequestingNotifications = false
 
     // Privacy -- profileVisibility is the general Public/Private account
     // toggle; the three Advanced overrides default to .inherit (NULL in the
@@ -86,7 +93,8 @@ struct SettingsView: View {
                 }
 
                 // MARK: Notifications
-                Section("Notifications") {
+                Section {
+                    notificationsPermissionRow
                     Toggle("Likes on my ratings",    isOn: $notifyLikes)
                         .onChange(of: notifyLikes)    { _, v in saveBool("notify_likes",      v) }
                     Toggle("Replies to my comments", isOn: $notifyReplies)
@@ -97,6 +105,12 @@ struct SettingsView: View {
                         .onChange(of: notifyRankings) { _, v in saveBool("notify_rankings",   v) }
                     Toggle("Monthly capsule",        isOn: $notifyCapsule)
                         .onChange(of: notifyCapsule)  { _, v in saveBool("notify_capsule",    v) }
+                } header: {
+                    Text("Notifications")
+                } footer: {
+                    if !isNotificationsAuthorized {
+                        Text("Notifications are off in iOS Settings — the toggles above won't do anything until you turn them back on.")
+                    }
                 }
                 .tint(Color.sjAmber)
 
@@ -197,9 +211,77 @@ struct SettingsView: View {
             .sheet(isPresented: $showDeleteConfirm) { deleteAccountSheet }
             .onAppear { loadPreferences() }
             .task { await loadVerifiedInviteCount() }
+            .task { await refreshNotificationStatus() }
             .onChange(of: viewModel.profile?.ratingStep)          { _, _ in loadPreferences() }
             .onChange(of: viewModel.profile?.notifyLikes)         { _, _ in loadPreferences() }
             .onChange(of: viewModel.profile?.profileVisibility)   { _, _ in loadPreferences() }
+            .onChange(of: scenePhase) { _, phase in
+                // Covers the "denied -> Settings app -> granted" round trip,
+                // which returns here with no callback of our own to hook.
+                if phase == .active { Task { await refreshNotificationStatus() } }
+            }
+        }
+    }
+
+    // MARK: - OS notification permission
+
+    private var isNotificationsAuthorized: Bool {
+        [.authorized, .provisional, .ephemeral].contains(notificationStatus)
+    }
+
+    private var notificationsPermissionRow: some View {
+        HStack(spacing: 12) {
+            Image("icon-bell")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 16, height: 16)
+                .foregroundStyle(Color.sjInk)
+                .frame(width: 24)
+
+            Text("Push notifications")
+                .foregroundStyle(Color.sjInk)
+
+            Spacer()
+
+            if isNotificationsAuthorized {
+                Text("On")
+                    .font(.jakarta(12, weight: .semibold))
+                    .foregroundStyle(Color.sjMuted)
+            } else {
+                Button {
+                    Task { await enableNotifications() }
+                } label: {
+                    if isRequestingNotifications {
+                        ProgressView().scaleEffect(0.75)
+                    } else {
+                        // Denied can't be re-prompted in-app -- only iOS Settings can
+                        // change it now (same reasoning as ConnectedAccountsView's
+                        // Apple Music row).
+                        Text(notificationStatus == .notDetermined ? "Turn On" : "Open Settings")
+                            .font(.jakarta(13, weight: .semibold))
+                            .foregroundStyle(Color.sjBlue)
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(isRequestingNotifications)
+            }
+        }
+    }
+
+    private func refreshNotificationStatus() async {
+        notificationStatus = await PushTokenService.authorizationStatus()
+    }
+
+    private func enableNotifications() async {
+        if notificationStatus == .notDetermined {
+            isRequestingNotifications = true
+            await PushTokenService.requestAndRegister()
+            await refreshNotificationStatus()
+            isRequestingNotifications = false
+            return
+        }
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            await UIApplication.shared.open(url)
         }
     }
 

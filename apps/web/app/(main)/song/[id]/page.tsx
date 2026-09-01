@@ -29,7 +29,8 @@ function SongPageInner() {
   const searchParams = useSearchParams();
   const rgHint = searchParams.get('rg');
   const { t } = useLanguage();
-  const { userId } = useSession();
+  const { userId, profile } = useSession();
+  const ratingStep = profile?.manual_rating_step ?? 0.5;
 
   const [track, setTrack] = useState<{
     title: string;
@@ -262,6 +263,7 @@ function SongPageInner() {
           release={release}
           track={{ recordingId, title: track.title }}
           existingScore={userScore}
+          ratingStep={ratingStep}
           onSave={rate}
         />
       )}

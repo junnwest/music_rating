@@ -734,7 +734,7 @@ export default function AlbumPage() {
             title: trackManualTarget.title,
           }}
           existingScore={trackRatings[trackManualTarget.recordingId] ?? null}
-          ratingStep={0.5}
+          ratingStep={ratingStep}
           onSave={(score) => rateTrack(trackManualTarget.recordingId, score)}
         />
       )}

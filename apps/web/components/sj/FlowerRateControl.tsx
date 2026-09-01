@@ -85,14 +85,19 @@ export default function FlowerRateControl({
   const [drag, setDrag] = useState<DragState | null>(null);
   const dragRef = useRef<DragState | null>(null);
   dragRef.current = drag;
+  // The pressed button, kept across the drag so the origin can be re-read from
+  // its live position on every move (see onPointerMove).
+  const elRef = useRef<HTMLElement | null>(null);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    const el = e.currentTarget as HTMLElement;
+    elRef.current = el;
+    el.setPointerCapture(e.pointerId);
     // Anchor the gauge to the button's centre so it stays put no matter where
     // on the flower the press landed.
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const rect = el.getBoundingClientRect();
     setDrag({
       ox: rect.left + rect.width / 2,
       oy: rect.top + rect.height / 2,
@@ -106,11 +111,21 @@ export default function FlowerRateControl({
     const d = dragRef.current;
     if (!d) return;
     e.preventDefault();
-    const dx = e.clientX - d.ox;
-    const dy = e.clientY - d.oy;
+    // Re-read the origin from the button's live rect rather than the stale
+    // pointerdown snapshot — the page can scroll under an active drag (a
+    // scrollable list, iOS momentum, the address bar collapsing), and a frozen
+    // origin makes the gauge drift out of sync with where the flower actually
+    // is. The button stays mounted (just opacity: 0) while dragging, so its
+    // rect is always current.
+    const rect = elRef.current?.getBoundingClientRect();
+    const ox = rect ? rect.left + rect.width / 2 : d.ox;
+    const oy = rect ? rect.top + rect.height / 2 : d.oy;
+    const dx = e.clientX - ox;
+    const dy = e.clientY - oy;
     const dist = Math.hypot(dx, dy);
     setDrag({
-      ...d,
+      ox,
+      oy,
       angle: dist > 1 ? Math.atan2(dy, dx) : d.angle,
       score: distanceToScore(dist, ratingStep),
       maxDist: Math.max(d.maxDist, dist),
@@ -150,8 +165,14 @@ export default function FlowerRateControl({
     [finish],
   );
 
-  // What the button shows right now: the live drag score wins over the stored one.
-  const shown = drag?.score ?? (drag ? null : currentScore);
+  // What the button shows right now: the live drag score wins over the stored
+  // one. Crucially, a rated album keeps showing its *stored* score's color
+  // while the drag is still sitting in the dead zone (drag.score is null
+  // there) — otherwise the button's fill blanked to white the instant you
+  // touched it, before you'd moved your finger at all, which read as the
+  // rating vanishing. An unrated album has nothing to fall back to, so it
+  // stays blank in the dead zone exactly as before.
+  const shown = drag ? (drag.score ?? (rated ? currentScore : null)) : currentScore;
   const showNumber = shown != null;
 
   return (
@@ -219,7 +240,10 @@ export default function FlowerRateControl({
         </span>
       </button>
       {drag && typeof document !== 'undefined' &&
-        createPortal(<DragGauge state={drag} rated={rated} size={size} />, document.body)}
+        createPortal(
+          <DragGauge state={drag} rated={rated} displayScore={shown} size={size} />,
+          document.body,
+        )}
     </>
   );
 }
@@ -235,7 +259,22 @@ const ARC_SEGMENTS = 22;
  * with whole-star ticks, plus one thin arc at the current score's radius,
  * centred on the cursor's angle and fading toward both ends.
  */
-function DragGauge({ state, rated, size }: { state: DragState; rated: boolean; size: number }) {
+function DragGauge({
+  state,
+  rated,
+  displayScore,
+  size,
+}: {
+  state: DragState;
+  rated: boolean;
+  /** What the popped-forward flower's fill/number should show — the live
+   *  drag score, or (in the dead zone) the stored score for an already-rated
+   *  album so its color doesn't blank out the instant the drag starts. The
+   *  ring/arc below stay keyed off the raw `score` — they signal what
+   *  releasing *right now* would do, which is a dead zone regardless. */
+  displayScore: number | null;
+  size: number;
+}) {
   const { ox, oy, angle, score } = state;
   const cancel = score == null;
   // In the dead zone on an already-rated album, releasing removes the rating —
@@ -243,7 +282,7 @@ function DragGauge({ state, rated, size }: { state: DragState; rated: boolean; s
   const willVoid = cancel && rated;
   const color = spectrumRing(score ?? 0.5);
   const radius = scoreRadius(score ?? 0.5);
-  const showNumber = score != null;
+  const showNumber = displayScore != null;
 
   // Fade the whole overlay in on mount so the scrim doesn't hard-cut over the
   // page the instant a drag starts.
@@ -349,7 +388,7 @@ function DragGauge({ state, rated, size }: { state: DragState; rated: boolean; s
           r={OFFSET}
           fill="none"
           stroke={willVoid ? 'rgb(220,72,72)' : cancel ? 'rgb(150,150,150)' : color}
-          strokeOpacity={willVoid ? 0.85 : cancel ? 0.4 : 0.18}
+          strokeOpacity={cancel ? 0.6 : 0.18}
           strokeWidth={willVoid ? 1.5 : 1}
           strokeDasharray="2 4"
         />
@@ -380,7 +419,7 @@ function DragGauge({ state, rated, size }: { state: DragState; rated: boolean; s
           top: oy,
           width: size,
           height: size,
-          background: showNumber ? spectrumFill(score!) : '#fff',
+          background: showNumber ? spectrumFill(displayScore!) : '#fff',
           transform: `translate(-50%, -50%) translateY(${shown ? -3 : 0}px) scale(${shown ? 1.22 : 1})`,
           boxShadow: shown
             ? '0 14px 30px -6px rgba(0,0,0,0.6), 0 5px 12px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.10), inset 0 1px 1px rgba(255,255,255,0.35)'
@@ -405,14 +444,14 @@ function DragGauge({ state, rated, size }: { state: DragState; rated: boolean; s
           style={{
             gridArea: '1 / 1',
             fontSize: Math.round(size * 0.4),
-            color: showNumber ? spectrumNumber(score!) : 'transparent',
+            color: showNumber ? spectrumNumber(displayScore!) : 'transparent',
             opacity: showNumber ? 1 : 0,
             transform: showNumber ? 'scale(1)' : 'scale(0.6)',
             transition:
               'opacity 130ms ease-out, transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1), color 140ms ease-out',
           }}
         >
-          {showNumber ? formatScore(score!) : ''}
+          {showNumber ? formatScore(displayScore!) : ''}
         </span>
       </div>
     </div>

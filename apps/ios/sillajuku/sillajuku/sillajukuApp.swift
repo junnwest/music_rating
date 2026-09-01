@@ -59,13 +59,31 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 // MARK: - Push token persistence
 
 enum PushTokenService {
+    /// Fire-and-forget entry point (app launch) -- wraps `requestAndRegister()`
+    /// for callers that don't need the result.
     static func requestPermissionAndRegister() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
-            guard granted else { return }
-            DispatchQueue.main.async {
-                UIApplication.shared.registerForRemoteNotifications()
-            }
+        Task { await requestAndRegister() }
+    }
+
+    /// Same request, awaitable -- lets UI (e.g. a Settings row) re-check
+    /// `authorizationStatus()` the instant the system prompt resolves,
+    /// instead of guessing with a delay.
+    @discardableResult
+    static func requestAndRegister() async -> Bool {
+        let granted = (try? await UNUserNotificationCenter.current()
+            .requestAuthorization(options: [.alert, .badge, .sound])) ?? false
+        if granted {
+            await MainActor.run { UIApplication.shared.registerForRemoteNotifications() }
         }
+        return granted
+    }
+
+    /// Current OS-level permission, for UI that needs to nudge a user who's
+    /// denied/never-decided rather than just fire-and-forget requesting it
+    /// (once denied, `requestAuthorization` silently re-returns `.denied` --
+    /// only the Settings app can change it from there).
+    static func authorizationStatus() async -> UNAuthorizationStatus {
+        await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
     }
 
     static func save(token: String) async {

@@ -587,6 +587,7 @@ export default function QuickAddPage() {
           release={target.release}
           track={target.kind === 'song' ? { recordingId: target.recordingId, title: target.title } : null}
           existingScore={null}
+          ratingStep={ratingStep}
           onSave={saveTarget}
         />
       )}

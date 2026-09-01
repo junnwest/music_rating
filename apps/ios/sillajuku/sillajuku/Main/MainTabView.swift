@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UserNotifications
 
 enum AppTab: Hashable { case home, rankings, add, taste, profile }
 
@@ -9,6 +10,13 @@ struct MainTabView: View {
     @State private var profileVM   = ProfileViewModel()
     @State private var discoveryVM = DiscoveryViewModel()
     @State private var tasteVM     = TasteViewModel()
+
+    // Nudges a user who's denied (or never decided) the OS notification
+    // prompt -- nil until the first check resolves, so the banner never
+    // flashes in for an instant on a normally-authorized launch.
+    @State private var notificationsAuthorized: Bool? = nil
+    @State private var notificationBannerDismissed = false
+    @Environment(\.scenePhase) private var scenePhase
     // Hoisted (not owned by ProfileView) so the tab badge, the nav-bar dot in
     // Profile, and the checklist sheet itself all read the SAME loaded state --
     // the badge/dot show based on actual completion (isFullyComplete), not a
@@ -186,7 +194,24 @@ struct MainTabView: View {
                 }
                 .tint(Color.sjAmber)
                 .sensoryFeedback(.selection, trigger: selectedTab)
+                .safeAreaInset(edge: .top) {
+                    if notificationsAuthorized == false && !notificationBannerDismissed {
+                        NotificationsNudgeBanner(
+                            onOpenSettings: { Task { await openNotificationSettings() } },
+                            onDismiss: { notificationBannerDismissed = true }
+                        )
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                    }
+                }
             }
+        }
+        .task { await refreshNotificationStatus() }
+        .onChange(of: scenePhase) { _, phase in
+            // Covers the "denied -> Settings app -> granted" round trip,
+            // which returns here with no callback of our own to hook --
+            // same reasoning as ConnectedAccountsView's Apple Music status.
+            if phase == .active { Task { await refreshNotificationStatus() } }
         }
         .task {
             // Charts and Discovery are deliberately NOT preloaded here anymore --
@@ -219,6 +244,27 @@ struct MainTabView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .mixShared)) { _ in
             goTo(.profile)
+        }
+    }
+
+    private func refreshNotificationStatus() async {
+        let status = await PushTokenService.authorizationStatus()
+        notificationsAuthorized = [.authorized, .provisional, .ephemeral].contains(status)
+    }
+
+    // Denied can't be re-prompted in-app (requestAuthorization just returns
+    // the same status again) -- only iOS Settings can change it now. The rare
+    // .notDetermined case (banner appeared before the launch-time prompt
+    // resolved) re-requests instead, same as ConnectedAccountsView's
+    // Apple Music row.
+    private func openNotificationSettings() async {
+        if await PushTokenService.authorizationStatus() == .notDetermined {
+            await PushTokenService.requestAndRegister()
+            await refreshNotificationStatus()
+            return
+        }
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            await UIApplication.shared.open(url)
         }
     }
 }
