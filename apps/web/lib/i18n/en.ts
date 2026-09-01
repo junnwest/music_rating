@@ -820,6 +820,7 @@ const en = {
       noneOfType: 'Nothing rated yet',
       deleteRatingTitle: 'Delete Rating?',
       deleteRatingDesc: 'This will permanently remove this rating.',
+      deleteRatingDontAskAgain: "Don't ask me again",
       noStats: 'Rate some albums to see your stats',
       avgScore: 'Avg Score',
       avgShort: 'avg',

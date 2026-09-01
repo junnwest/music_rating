@@ -40,6 +40,8 @@ import ProfileRatedList, {
 import { RG_EMBED_NATIVE } from '../../lib/sj/data';
 import type { MixRow } from '../../lib/db/types';
 
+const SKIP_DELETE_CONFIRM_KEY = 'sj:skipDeleteRatingConfirm';
+
 export interface ProfileRatingItem {
   ratingId: string;
   key: string;
@@ -103,6 +105,18 @@ export default function ProfileView({ username }: { username?: string }) {
   const [displayMode, setDisplayMode] = useState<'list' | 'posts'>('list');
   const [followModal, setFollowModal] = useState<null | 'following' | 'followers'>(null);
   const [pendingDelete, setPendingDelete] = useState<ProfileRatingItem | null>(null);
+  const [skipDeleteConfirmChecked, setSkipDeleteConfirmChecked] = useState(false);
+
+  /** Opens the delete-confirm modal, unless the user previously checked
+   *  "Don't ask again" for it (persisted per-browser, not per-account, since
+   *  it's a local UI preference rather than data). */
+  const requestDeleteRating = useCallback((item: ProfileRatingItem) => {
+    if (typeof window !== 'undefined' && localStorage.getItem(SKIP_DELETE_CONFIRM_KEY) === '1') {
+      deleteRating(item);
+      return;
+    }
+    setPendingDelete(item);
+  }, []);
 
   const load = useCallback(async () => {
     if (!supabase) return;
@@ -649,7 +663,7 @@ export default function ProfileView({ username }: { username?: string }) {
                         commentsCount={commentCounts[item.ratingId] ?? 0}
                         isLiked={likedIds.has(item.ratingId)}
                         onLike={() => toggleSongLike(item.ratingId)}
-                        onDelete={() => setPendingDelete(item)}
+                        onDelete={() => requestDeleteRating(item)}
                       />
                     ) : (
                       <ProfilePostCard
@@ -659,7 +673,7 @@ export default function ProfileView({ username }: { username?: string }) {
                         commentsCount={commentCounts[item.ratingId] ?? 0}
                         isLiked={likedIds.has(item.ratingId)}
                         onLike={() => toggleLike(item.ratingId)}
-                        onDelete={() => setPendingDelete(item)}
+                        onDelete={() => requestDeleteRating(item)}
                       />
                     ),
                   )}
@@ -674,7 +688,7 @@ export default function ProfileView({ username }: { username?: string }) {
                     setSortCol(c);
                     setSortDesc(d);
                   }}
-                  onDelete={isSelf ? (item) => setPendingDelete(item) : undefined}
+                  onDelete={isSelf ? (item) => requestDeleteRating(item) : undefined}
                   canExport={isSelf}
                 />
               )}
@@ -702,15 +716,30 @@ export default function ProfileView({ username }: { username?: string }) {
       {/* Delete confirm */}
       <Modal
         open={pendingDelete != null}
-        onClose={() => setPendingDelete(null)}
+        onClose={() => {
+          setPendingDelete(null);
+          setSkipDeleteConfirmChecked(false);
+        }}
         title={t('sj.profile.deleteRatingTitle')}
         maxWidth="max-w-sm"
       >
         <div className="px-5 pb-5">
           <p className="text-[13.5px] text-muted">{t('sj.profile.deleteRatingDesc')}</p>
+          <label className="mt-3 flex items-center gap-2 text-[12.5px] text-muted cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={skipDeleteConfirmChecked}
+              onChange={(e) => setSkipDeleteConfirmChecked(e.target.checked)}
+              className="rounded border-divider accent-red-500"
+            />
+            {t('sj.profile.deleteRatingDontAskAgain')}
+          </label>
           <div className="flex justify-end gap-2 mt-4">
             <button
-              onClick={() => setPendingDelete(null)}
+              onClick={() => {
+                setPendingDelete(null);
+                setSkipDeleteConfirmChecked(false);
+              }}
               className="px-4 py-2 rounded-[10px] text-[13.5px] font-medium text-muted hover:text-ink transition"
             >
               {t('sj.common.cancel')}
@@ -718,7 +747,9 @@ export default function ProfileView({ username }: { username?: string }) {
             <button
               onClick={() => {
                 if (pendingDelete) deleteRating(pendingDelete);
+                if (skipDeleteConfirmChecked) localStorage.setItem(SKIP_DELETE_CONFIRM_KEY, '1');
                 setPendingDelete(null);
+                setSkipDeleteConfirmChecked(false);
               }}
               className="px-4 py-2 rounded-[10px] bg-red-500 text-white text-[13.5px] font-semibold hover:opacity-90 transition"
             >
