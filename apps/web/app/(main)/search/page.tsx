@@ -12,6 +12,7 @@ import ManualRateModal from '../../../components/sj/ManualRateModal';
 import FlowerRateControl from '../../../components/sj/FlowerRateControl';
 import AlbumBookmarkButton from '../../../components/sj/AlbumBookmarkButton';
 import AlbumPeek from '../../../components/sj/AlbumPeek';
+import DragScrollShelf from '../../../components/sj/DragScrollShelf';
 import { Skeleton, SkeletonLine } from '../../../components/sj/Loading';
 import { useSession } from '../../../components/sj/SessionContext';
 import { useRatings } from '../../../components/sj/RatingsStore';
@@ -658,7 +659,7 @@ function Discovery({
       {sections.map(({ title, albums }) => (
         <section key={title}>
           <h2 className="text-[19px] font-bold text-ink mb-3">{title}</h2>
-          <div className="flex gap-4 overflow-x-auto scrollbar-hide -mx-4 px-4 md:-mx-6 md:px-6">
+          <DragScrollShelf scrollClassName="gap-4 pb-2.5">
             {albums.slice(0, 24).map((release) => (
               <div key={release.id} className="w-36 shrink-0">
                 <AlbumCard
@@ -671,7 +672,7 @@ function Discovery({
                 />
               </div>
             ))}
-          </div>
+          </DragScrollShelf>
         </section>
       ))}
     </div>

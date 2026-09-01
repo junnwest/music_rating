@@ -822,6 +822,7 @@ const ko: Translations = {
       noneOfType: '아직 평가한 항목이 없어요',
       deleteRatingTitle: '평가를 삭제할까요?',
       deleteRatingDesc: '이 평가가 영구적으로 삭제됩니다.',
+      deleteRatingDontAskAgain: '다시 묻지 않기',
       noStats: '앨범을 평가하면 통계를 볼 수 있어요',
       avgScore: '평균 점수',
       avgShort: '평균',
