@@ -82,21 +82,49 @@ private struct ShimmerView: View {
     }
 }
 
+// MARK: - No-cover placeholder
+
+/// Static stand-in for a release with no cover art at all -- distinct from
+/// `ShimmerView` (whose looping animation reads as "still fetching") so a
+/// permanently missing cover doesn't look like it's eternally loading.
+private struct NoCoverView: View {
+    var body: some View {
+        GeometryReader { geo in
+            Color.sjBorder
+                .overlay {
+                    Image("icon-music")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: geo.size.width * 0.34, height: geo.size.width * 0.34)
+                        .foregroundStyle(Color.sjMuted)
+                }
+        }
+    }
+}
+
 // MARK: - Shared cover image component
 
 /// Drop-in replacement for AsyncImage on release covers.
-/// Applies thumbnailUrl downsizing, shows an animated shimmer while loading,
-/// and clips to a rounded rectangle. Set size via .frame() on the call site.
+/// Applies thumbnailUrl downsizing, shows an animated shimmer while an actual
+/// URL is loading, a static music-note placeholder when there's no URL at
+/// all (nothing to fetch, so nothing to wait on), and clips to a rounded
+/// rectangle. Set size via .frame() on the call site.
 struct CoverImage: View {
     let url: String?
     var cornerRadius: CGFloat = 10
 
     var body: some View {
         GeometryReader { geo in
-            CachedImage(url: URL(string: url?.thumbnailUrl ?? "")) { ShimmerView() }
-                .aspectRatio(contentMode: .fill)
-                .frame(width: geo.size.width, height: geo.size.height)
-                .clipped()
+            if let url, !url.isEmpty {
+                CachedImage(url: URL(string: url.thumbnailUrl)) { ShimmerView() }
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
+            } else {
+                NoCoverView()
+                    .frame(width: geo.size.width, height: geo.size.height)
+            }
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
     }

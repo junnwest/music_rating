@@ -51,10 +51,13 @@ enum RateGaugeGeometry {
 /// When `currentScore` is already set (re-rating an existing item) and the
 /// caller supplies `onDelete`, dragging into the fixed delete zone (see
 /// `RateGaugeGeometry.deleteZoneCenter`) instead deletes the rating -- the
-/// overlay blurs the background and shows a trash target so this is
-/// discoverable without adding any new chrome to the flower itself. Fresh
-/// ratings (`currentScore == nil`) never show this -- there's nothing yet to
-/// delete.
+/// overlay shows a trash target so this is discoverable without adding any
+/// new chrome to the flower itself. The background treatment (the diffusing
+/// scrim) is otherwise identical to a fresh rating's drag -- it used to swap
+/// to a full-screen material blur here, which made re-rating an already-rated
+/// item look and feel like a different gesture from rating a fresh one.
+/// Fresh ratings (`currentScore == nil`) never show the trash target -- there's
+/// nothing yet to delete.
 struct FlowerRateControl: View {
     /// Commit a drag-selected score (0.5-5.0).
     let onRate: (Double) -> Void
@@ -217,10 +220,11 @@ private let arcSegments = 22
 /// current score's radius, centred on the drag angle and fading toward both
 /// ends. Ports web's `DragGauge` (part of `FlowerRateControl.tsx`) -- same
 /// "flower lifts in front of a fade that diffuses outward from behind it"
-/// treatment. When `canDelete` is set, also draws a full-screen blur + the
-/// fixed trash target described on `FlowerRateControl`; the diffusing scrim
-/// is skipped there since the material blur already handles background
-/// dimming for that flow and layering both looked muddy.
+/// treatment, used identically whether this is a fresh rating or a re-rate.
+/// When `canDelete` is set, also draws the fixed trash target described on
+/// `FlowerRateControl`, layered on top of the same scrim -- this used to
+/// swap the scrim out for a full-screen material blur instead, which made
+/// the two flows feel inconsistent with each other.
 struct RateGaugeView: View {
     let origin: CGPoint
     let angle: Double
@@ -241,14 +245,7 @@ struct RateGaugeView: View {
 
     var body: some View {
         ZStack {
-            if canDelete {
-                Rectangle()
-                    .fill(.regularMaterial)
-                    .opacity(isOverDeleteZone ? 1 : 0.85)
-                    .transition(.opacity)
-            } else {
-                diffusingScrim
-            }
+            diffusingScrim
 
             // Arc/rings/baseline fade out once primed to delete -- they no
             // longer mean anything (the drag isn't going to commit a score).
@@ -261,7 +258,7 @@ struct RateGaugeView: View {
 
             poppedFlower
         }
-        // On the whole ZStack, not just the blur Rectangle -- `origin` and
+        // On the whole ZStack -- `origin` and
         // `deleteZoneCenter` are both raw global/window coordinates (from
         // DragGesture's .global space and UIScreen.main.bounds), but without
         // this, the ZStack's own layout frame -- and so trashTarget's

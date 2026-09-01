@@ -455,7 +455,8 @@ private struct TasteReportView: View {
             LazyVGrid(columns: columns, spacing: 10) {
                 StatTileView(
                     value: stats.avgScore.map { String(format: "%.2f", $0) } ?? "—",
-                    label: String(localized: "average score")
+                    label: String(localized: "average score"),
+                    tip: String(localized: "The mean of every score you have given — where your ratings sit on average.")
                 ) {
                     if let sd = stats.sdScore {
                         Text("±\(String(format: "%.2f", sd)) \(String(localized: "spread"))")
@@ -465,7 +466,8 @@ private struct TasteReportView: View {
                 }
                 StatTileView(
                     value: stats.median.map { String(format: "%.1f", $0) } ?? "—",
-                    label: String(localized: "median score")
+                    label: String(localized: "median score"),
+                    tip: String(localized: "Your middle score: half your ratings fall above it, half below. Less swayed by extremes than the average.")
                 ) {
                     if let hint = skewHint {
                         Text(hint)
@@ -475,7 +477,8 @@ private struct TasteReportView: View {
                 }
                 StatTileView(
                     value: stats.effectiveGenres.map { String(format: "%.1f", $0) } ?? "—",
-                    label: String(localized: "effective genres")
+                    label: String(localized: "effective genres"),
+                    tip: String(localized: "How many genres you effectively spread across, weighted by how much you rate each. Higher means a broader palette.")
                 ) {
                     Text(String(format: String(localized: "across %d rated"), report.totalTags))
                         .font(.jakarta(10.5, weight: .semibold))
@@ -483,7 +486,8 @@ private struct TasteReportView: View {
                 }
                 StatTileView(
                     value: stats.communityDelta.map { "\($0 >= 0 ? "+" : "−")\(String(format: "%.2f", abs($0)))" } ?? "—",
-                    label: String(localized: "vs. the crowd")
+                    label: String(localized: "vs. the crowd"),
+                    tip: String(localized: "How your scores compare with the community average on the same albums. Positive means you rate more generously than the crowd.")
                 ) {
                     if let hint = crowdHint {
                         Text(hint)
@@ -1214,25 +1218,50 @@ private struct RevealSection<Content: View>: View {
     }
 }
 
-/// Mobile adaptation of web's rotating 3D "hall of fame" ring for albums tied
-/// at the user's top score -- web's version spins a CSS `perspective`/
-/// `rotateY` ring, a desktop-hover-oriented effect with no touch equivalent,
-/// so this ports the same "your #1, possibly tied" idea as a native swipeable
-/// paging carousel instead (matching how the taste map's own treemap was
-/// already replaced with a flat ranked list for the same reason). A single
-/// top album renders as one static card with no pager, mirroring web's
-/// `n === 1` branch.
+/// Mobile port of web's rotating 3D "hall of fame" ring for albums tied at
+/// the user's top score. Web spins a real CSS `perspective`/`rotateY` ring
+/// where several covers are visible at once, tilted and dimmed by distance
+/// from the front; this reproduces that same geometry natively with
+/// `rotation3DEffect` + a manually computed arc position per card (SwiftUI
+/// has no direct equivalent of "rotate a group, then counter-rotate each
+/// child" the way nested CSS transforms do, so each card's angle is computed
+/// directly as `(index - turn) * stepDegrees` instead). `turn` is continuous
+/// (not integer-snapped) during an active drag for 1:1 finger tracking, then
+/// eases to the nearest whole step on release -- same idea as web's
+/// monotonic `turn` counter, which is also what makes wrapping past the last
+/// album continue smoothly into the first rather than bouncing at an edge.
+/// A single top album renders as one static, non-orbiting card, mirroring
+/// web's `n === 1` branch.
 private struct HallOfFameView: View {
     let albums: [TasteProfileResponse.TasteTopAlbum]
     let score: Double
 
-    @State private var scrollPosition: UUID?
+    private var n: Int { albums.count }
+    private let cover: CGFloat = 184
+    private var stepDeg: Double { n > 0 ? 360.0 / Double(n) : 0 }
+    // Radius so neighbouring covers don't collide -- same formula as web's,
+    // just working in points instead of px and scaled to `cover`'s size.
+    private var radius: CGFloat {
+        guard n > 1 else { return 0 }
+        return max(148, cover / 2 / CGFloat(tan(Double.pi / Double(n))) + 20)
+    }
+    private let dragPxPerStep: CGFloat = 70
+
+    @State private var turn: Double = 0
+    @State private var dragStartTurn: Double = 0
+    @State private var isDragging = false
+    @State private var autoRotateTask: Task<Void, Never>?
     @State private var floated = false
 
-    private var currentIndex: Int {
-        guard let scrollPosition, let i = albums.firstIndex(where: { $0.id == scrollPosition }) else { return 0 }
-        return i
+    /// `turn` folded onto `albums` and rounded to the nearest whole step --
+    /// what the dots/meta/front-card-highlight all read as "current", even
+    /// while `turn` itself is mid-drag and fractional.
+    private var activeIndex: Int {
+        guard n > 0 else { return 0 }
+        let r = Int(turn.rounded())
+        return ((r % n) + n) % n
     }
+    private var front: TasteProfileResponse.TasteTopAlbum { albums[min(activeIndex, max(n - 1, 0))] }
 
     var body: some View {
         VStack(spacing: 10) {
@@ -1243,8 +1272,9 @@ private struct HallOfFameView: View {
                 .foregroundStyle(Color.sjBlue.opacity(0.7))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            if albums.count == 1 {
-                card(albums[0])
+            if n == 1 {
+                coverArt(albums[0], isFront: true)
+                    .frame(width: cover, height: cover)
                     .offset(y: floated ? -7 : 0)
                     .onAppear {
                         guard !UIAccessibility.isReduceMotionEnabled else { return }
@@ -1253,113 +1283,228 @@ private struct HallOfFameView: View {
                         }
                     }
             } else {
-                ScrollView(.horizontal) {
-                    LazyHStack(spacing: 0) {
-                        ForEach(albums, id: \.id) { album in
-                            card(album)
-                                .containerRelativeFrame(.horizontal)
-                        }
+                ZStack {
+                    ForEach(Array(albums.enumerated()), id: \.element.id) { i, album in
+                        ringCard(album, index: i)
                     }
-                    .scrollTargetLayout()
                 }
-                .scrollTargetBehavior(.paging)
-                .scrollPosition(id: $scrollPosition)
-                .scrollIndicators(.hidden)
-                .frame(height: 234)
-                .task { await autoRotate() }
+                .frame(maxWidth: .infinity)
+                .frame(height: cover + 24)
+                .clipped()
+                .contentShape(Rectangle())
+                .gesture(dragGesture)
+                .onAppear { restartAutoRotate() }
+                .onDisappear { autoRotateTask?.cancel() }
 
+                // Tappable, like web's dots (jump straight to that album) --
+                // previously purely decorative here.
                 HStack(spacing: 5) {
                     ForEach(albums.indices, id: \.self) { i in
-                        Capsule()
-                            .fill(i == currentIndex ? Color.sjBlue : Color.sjMuted.opacity(0.35))
-                            .frame(width: i == currentIndex ? 16 : 6, height: 6)
-                            .animation(.easeOut(duration: 0.25), value: currentIndex)
+                        Button {
+                            goTo(i)
+                        } label: {
+                            Capsule()
+                                .fill(i == activeIndex ? Color.sjBlue : Color.sjMuted.opacity(0.35))
+                                .frame(width: i == activeIndex ? 16 : 6, height: 6)
+                                .animation(.easeOut(duration: 0.25), value: activeIndex)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(albums[i].title)
                     }
                 }
 
-                Text(String(format: String(localized: "%1$d albums tied at %2$@"), albums.count, String(format: "%.1f", score)))
+                Text(String(format: String(localized: "%1$d albums tied at %2$@"), n, String(format: "%.1f", score)))
                     .font(.jakarta(11))
                     .foregroundStyle(Color.sjMuted)
             }
+
+            // Front album's meta -- a single shared block below the ring/card
+            // (not per-card) that swaps content as the front album changes,
+            // same structure as web's.
+            VStack(spacing: 2) {
+                Text(front.title)
+                    .font(.jakarta(14, weight: .bold))
+                    .foregroundStyle(Color.sjInk)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                Text(front.artist)
+                    .font(.jakarta(12))
+                    .foregroundStyle(Color.sjMuted)
+                    .lineLimit(1)
+                Text(String(format: "%.1f", front.score))
+                    .font(.jakarta(14, weight: .black))
+                    .foregroundStyle(Spectrum.number(front.score))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 3)
+                    .background(Spectrum.fill(front.score))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .padding(.top, 2)
+            }
+            .id(front.id)
+            .transition(.opacity)
+            .animation(.easeOut(duration: 0.25), value: front.id)
+            .frame(maxWidth: 240)
+            .padding(.top, n == 1 ? 10 : 2)
         }
+    }
+
+    /// One cover positioned on the ring: `theta` is its angle relative to
+    /// the current front (`(index - turn) * stepDeg`), which drives both its
+    /// arc position (`sin`) and its own facing tilt (`rotation3DEffect`) --
+    /// together these read as a card mounted on a slowly spinning drum, the
+    /// same illusion web's nested `rotateY`/`translateZ` transforms create.
+    /// Depth (`cos`) drives scale/z-order; angular distance from front drives
+    /// opacity/brightness falloff, matching web's per-step dimming curve.
+    @ViewBuilder
+    private func ringCard(_ album: TasteProfileResponse.TasteTopAlbum, index: Int) -> some View {
+        let theta = (Double(index) - turn) * stepDeg
+        let rad = theta * .pi / 180
+        let depth = cos(rad)
+        let xOffset = CGFloat(sin(rad)) * radius
+        let dist = circularDistance(index, activeIndex)
+        let isFront = index == activeIndex
+        let scale = 0.62 + 0.38 * ((depth + 1) / 2)
+        let opacity = isFront ? 1.0 : max(0.22, 1 - Double(dist) * 0.32)
+        let dim = isFront ? 0.0 : -(1 - max(0.55, 1 - Double(dist) * 0.16))
+
+        coverArt(album, isFront: isFront)
+            .frame(width: cover, height: cover)
+            .rotation3DEffect(.degrees(theta), axis: (x: 0, y: 1, z: 0), perspective: 0.3)
+            .scaleEffect(scale)
+            .opacity(opacity)
+            .brightness(dim)
+            .offset(x: xOffset)
+            .zIndex(depth)
+    }
+
+    private func circularDistance(_ i: Int, _ active: Int) -> Int {
+        guard n > 0 else { return 0 }
+        return min((i - active + n) % n, (active - i + n) % n)
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 4)
+            .onChanged { value in
+                if !isDragging {
+                    isDragging = true
+                    dragStartTurn = turn
+                    autoRotateTask?.cancel() // don't fight an active drag
+                }
+                // Continuous, not step-quantized -- tracks the finger 1:1 rather
+                // than jumping a whole cover per fixed pixel distance.
+                turn = dragStartTurn - Double(value.translation.width) / Double(dragPxPerStep)
+            }
+            .onEnded { _ in
+                isDragging = false
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
+                    turn = turn.rounded()
+                }
+                restartAutoRotate()
+            }
+    }
+
+    /// Jump straight to album `i` (dot tap) by the shortest signed path, then
+    /// restart the auto-rotate timer from zero -- otherwise a tap right
+    /// before the next auto-tick could get immediately overridden, same
+    /// reasoning as web's `resetKey`.
+    private func goTo(_ i: Int) {
+        guard albums.indices.contains(i), n > 0 else { return }
+        let cur = activeIndex
+        var d = ((i - cur) % n + n) % n
+        if d > n / 2 { d -= n }
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+            turn += Double(d)
+        }
+        restartAutoRotate()
+    }
+
+    private func restartAutoRotate() {
+        autoRotateTask?.cancel()
+        autoRotateTask = Task { await autoRotate() }
     }
 
     /// Auto-advances through the tied albums every 3.4s, same cadence as
     /// web's `HallOfFame` ring -- structured-concurrency equivalent of its
-    /// `setInterval`, cancelled automatically when the view disappears.
+    /// `setInterval`, restarted (not just left running) on manual interaction
+    /// via `restartAutoRotate()`, and stopped when the view disappears.
     /// Off under Reduce Motion, matching web's `usePrefersReducedMotion` gate.
     private func autoRotate() async {
-        guard !UIAccessibility.isReduceMotionEnabled, albums.count > 1 else { return }
+        guard !UIAccessibility.isReduceMotionEnabled, n > 1 else { return }
         while !Task.isCancelled {
             try? await Task.sleep(for: .seconds(3.4))
             guard !Task.isCancelled else { return }
-            let next = (currentIndex + 1) % albums.count
-            withAnimation(.easeInOut(duration: 0.6)) {
-                scrollPosition = albums[next].id
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) {
+                turn += 1
             }
         }
     }
 
     @ViewBuilder
-    private func card(_ album: TasteProfileResponse.TasteTopAlbum) -> some View {
-        VStack(spacing: 10) {
-            Group {
-                if let s = album.coverUrl, let url = URL(string: s) {
-                    CachedImage(url: url) { Color.sjBorder }
-                        .scaledToFill()
-                } else {
-                    Color.sjBorder
-                }
+    private func coverArt(_ album: TasteProfileResponse.TasteTopAlbum, isFront: Bool) -> some View {
+        Group {
+            if let s = album.coverUrl, let url = URL(string: s) {
+                CachedImage(url: url) { Color.sjBorder }
+                    .scaledToFill()
+            } else {
+                Color.sjBorder
             }
-            .frame(width: 152, height: 152)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
-
-            VStack(spacing: 2) {
-                Text(album.title)
-                    .font(.jakarta(14, weight: .bold))
-                    .foregroundStyle(Color.sjInk)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-                Text(album.artist)
-                    .font(.jakarta(12))
-                    .foregroundStyle(Color.sjMuted)
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: 240)
-
-            Text(String(format: "%.1f", album.score))
-                .font(.jakarta(14, weight: .black))
-                .foregroundStyle(Spectrum.number(album.score))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 3)
-                .background(Spectrum.fill(album.score))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
         }
-        .frame(maxWidth: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.sjBlue.opacity(isFront ? 0.4 : 0), lineWidth: 2)
+        )
+        .shadow(color: .black.opacity(isFront ? 0.18 : 0.10), radius: isFront ? 10 : 5, y: isFront ? 4 : 2)
     }
 }
 
 private struct StatTileView<Content: View>: View {
     let value: String
     let label: String
+    /// Explanation of what the stat means -- web's hover tooltip ported as a
+    /// tap-to-reveal disclosure instead, since touch has no hover.
+    var tip: String? = nil
     @ViewBuilder var content: Content
 
-    init(value: String, label: String, @ViewBuilder content: () -> Content = { EmptyView() }) {
+    @State private var showTip = false
+
+    init(value: String, label: String, tip: String? = nil, @ViewBuilder content: () -> Content = { EmptyView() }) {
         self.value = value
         self.label = label
+        self.tip = tip
         self.content = content()
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(value)
-                .font(.jakarta(19, weight: .black))
-                .foregroundStyle(Color.sjInk)
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(value)
+                    .font(.jakarta(19, weight: .black))
+                    .foregroundStyle(Color.sjInk)
+                if tip != nil {
+                    Spacer(minLength: 0)
+                    Button {
+                        withAnimation(.easeOut(duration: 0.15)) { showTip.toggle() }
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.sjMuted.opacity(0.55))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
             Text(label)
                 .font(.jakarta(11))
                 .foregroundStyle(Color.sjMuted)
             content
+            if showTip, let tip {
+                Text(tip)
+                    .font(.jakarta(10.5))
+                    .foregroundStyle(Color.sjMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 4)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { Music } from 'lucide-react';
 import { thumbnailUrl } from '../../lib/sj/display';
 
 /** CAA covers 307-redirect to archive.org and take 1.5–2.5s each; the
@@ -18,7 +19,9 @@ const isCaa = (u: string) => {
 
 /**
  * Release cover image — the web mirror of iOS `CoverImage`.
- * Renders a neutral placeholder block while loading / when there's no art,
+ * Renders a neutral placeholder block while loading, a distinct music-note
+ * glyph when the release genuinely has no art (`url` is null/empty — nothing
+ * to fetch, so there's no reason to look like it's still loading),
  * downsizes known CDN URLs for thumbnails, routes slow CAA art through the
  * caching proxy (falling back to the direct URL if the proxy errors), and
  * clips to a rounded rect. Size via className (e.g. "w-20 h-20").
@@ -86,14 +89,20 @@ export default function Cover({
       ref={containerRef}
       className={`relative overflow-hidden bg-divider shrink-0 ${rounded} ${className}`}
     >
-      {src && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={src}
-          alt={alt}
-          onError={() => setAttempt((a) => (url && isCaa(url) && a === 0 ? 1 : 2))}
-          className="absolute inset-0 h-full w-full object-cover"
-        />
+      {!url ? (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Music className="w-[34%] h-[34%] text-muted" strokeWidth={1.75} />
+        </div>
+      ) : (
+        src && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={src}
+            alt={alt}
+            onError={() => setAttempt((a) => (url && isCaa(url) && a === 0 ? 1 : 2))}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        )
       )}
     </div>
   );
