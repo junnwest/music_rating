@@ -26,17 +26,23 @@ function getRedis(): Redis | null {
 }
 
 export async function assertSpotifyCircuitClosed(): Promise<void> {
-  const redis = getRedis();
-  if (!redis) return;
-  const until = await redis.get<number>(CIRCUIT_KEY);
-  if (!until || Date.now() >= until) return;
-  const remainingMs = until - Date.now();
+  const remainingMs = await spotifyCircuitRemainingMs();
+  if (remainingMs <= 0) return;
   const mins = Math.ceil(remainingMs / 60_000);
   throw new Error(
-    `Spotify circuit breaker is OPEN (~${mins}min remaining, until ${new Date(until).toISOString()}). ` +
+    `Spotify circuit breaker is OPEN (~${mins}min remaining). ` +
     `Production is currently rate-limited; running this script would prolong the outage. ` +
     `Wait until the breaker clears, then retry.`
   );
+}
+
+/** Non-throwing check: how long until the shared circuit clears (0 if already closed). */
+export async function spotifyCircuitRemainingMs(): Promise<number> {
+  const redis = getRedis();
+  if (!redis) return 0;
+  const until = await redis.get<number>(CIRCUIT_KEY);
+  if (!until) return 0;
+  return Math.max(0, until - Date.now());
 }
 
 export async function recordSpotify429(retryAfterSec: number, source: string): Promise<void> {

@@ -13,10 +13,19 @@
  * rotate through country stores to find a release) -- one market is enough.
  */
 
-import { recordSpotify429 } from './spotify-circuit';
+import { recordSpotify429, spotifyCircuitRemainingMs } from './spotify-circuit';
 
 const API_BASE = 'https://api.spotify.com/v1';
 const MARKET = 'US'; // broad catalog coverage; client-credentials search needs *a* market
+
+// Found live: with zero spacing between calls, a 25-artist batch (each artist making a
+// search + paginated discography + per-new-album tracklist call) fired essentially
+// back-to-back and tripped a multi-HOUR Spotify penalty (not the few-second Retry-After
+// a normal rate limit gives) — this app's credentials are shared with the production web
+// server, so that penalty degraded real users' Spotify search too. Mirrors
+// itunes-client.ts's ITUNES_DELAY, which this module never had.
+const REQUEST_DELAY_MS = 300;
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
 let token: string | null = null;
 let tokenExpiry = 0;
@@ -63,6 +72,12 @@ export function resetSpotifyBlock(): void { consecutive429 = 0; }
 const REQUEST_TIMEOUT_MS = 15_000;
 
 async function spotifyGet(path: string, source: string): Promise<any | null> {
+  // The shared circuit is keyed off the SAME app credentials the production web server
+  // uses — found live: without this check a script kept calling Spotify (and each fresh
+  // 429 re-published a still-open `until`) straight through an already-open block instead
+  // of backing off, needlessly prolonging the real-user-facing outage.
+  if ((await spotifyCircuitRemainingMs()) > 0) return null;
+  await sleep(REQUEST_DELAY_MS + Math.floor(Math.random() * 200));
   const t = await getToken();
   if (!t) return null;
   let res: Response;

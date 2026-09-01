@@ -52,6 +52,7 @@ import { SEED } from './seed-artists';
 import { scanArtistRecency, type RecencyArtist } from './discover-itunes-recency';
 import { scanArtistRecencySpotify, type RecencyArtist as RecencyArtistSpotify } from './discover-spotify-recency';
 import { SpotifyBlockedError, resetSpotifyBlock, spotifyBlocked } from './spotify-client';
+import { spotifyCircuitRemainingMs } from './spotify-circuit';
 import { reconcileItunesMb } from './reconcile-itunes-mb';
 import { discoverArea } from './discover-mb-area';
 import { discoverNewReleases } from './discover-mb-newreleases';
@@ -689,6 +690,16 @@ async function recencySpotifyLoop(db: DB) {
       if (spotifyBlocked()) { // own circuit — independent of iTunes's RECENCY/GAPFILL block
         await beat(db, 'recency-spotify', { status: 'blocked (Spotify 429)', last_active: now(), errors: errs });
         await sleep(GAPFILL_BLOCK_COOLDOWN_MS); continue;
+      }
+      // Shared circuit (production web server + every script using these credentials).
+      // Checked BEFORE claiming a batch, not just before each Spotify call — the cursor
+      // advances unconditionally per artist below, so claiming a batch while blocked
+      // would silently skip-scan it (every artist resolves false-negative-fast) and
+      // permanently lose that slice of the sweep once the circuit clears.
+      const sharedRemainingMs = await spotifyCircuitRemainingMs();
+      if (sharedRemainingMs > 0) {
+        await beat(db, 'recency-spotify', { status: 'blocked (shared circuit)', last_active: now(), errors: errs, current_item: `~${Math.ceil(sharedRemainingMs / 60000)}m remaining` });
+        await sleep(Math.min(sharedRemainingMs, GAPFILL_BLOCK_COOLDOWN_MS)); continue;
       }
       const after = recencySpotifyCursor();
       let q = db.from('artists')
