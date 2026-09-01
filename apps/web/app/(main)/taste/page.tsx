@@ -859,14 +859,16 @@ function HallOfFame({
           a fixed two-line height (leading-[1.25] × 2 = 2.5em) so a long, wrapping
           title and a short one-liner take the same vertical space — otherwise the
           meta block, and the whole "By the numbers" box, would jump height as the
-          ring rotates through titles of different lengths. */}
+          ring rotates through titles of different lengths. The title bottom-aligns
+          within that box so the gap between the album name and the artist stays
+          constant whether the title is one or two lines. */}
       <Link href={`/album/${front.id}`} className="group mt-4 text-center max-w-[240px]">
         <span key={front.id} className="hof-meta block">
           <span
-            className="block text-[14px] font-bold leading-[1.25] text-ink line-clamp-2 group-hover:underline"
+            className="flex flex-col justify-end text-[14px] font-bold leading-[1.25] text-ink"
             style={{ height: '2.5em' }}
           >
-            {front.title}
+            <span className="line-clamp-2 group-hover:underline">{front.title}</span>
           </span>
           <span className="block text-[12px] text-muted truncate">{front.artist}</span>
         </span>
