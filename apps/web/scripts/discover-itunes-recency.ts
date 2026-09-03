@@ -39,7 +39,7 @@ import {
 } from './itunes-ingest-core';
 import { searchAlbum, fetchDiscography, fetchAlbumTracks } from './itunes-client';
 
-export interface RecencyArtist { id: string; name: string; name_native: string | null; native_language: string | null }
+export interface RecencyArtist { id: string; name: string; name_native: string | null; native_language: string | null; country: string | null }
 export interface RecencyResult { resolved: boolean; ingested: number; gaps: { title: string; date: string }[] }
 
 /**
@@ -130,7 +130,7 @@ async function main() {
   const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
   const db = getDB();
-  let q = db.from('artists').select('id, name, name_native, native_language').eq('ingest_state', 'tracks_done');
+  let q = db.from('artists').select('id, name, name_native, native_language, country').eq('ingest_state', 'tracks_done');
   if (ARTIST) q = q.ilike('name', ARTIST);
   else q = q.eq('country', COUNTRY).order('id').limit(LIMIT);
   const { data: artists, error } = await q;

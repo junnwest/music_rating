@@ -79,12 +79,30 @@ function albumKey(title: string): string {
   return releaseGroupKey(stripped);
 }
 
+// A GENERIC title (a short/common word — exactly the shape of many real album titles:
+// "0%", "DRIP", "SIMPLE") can exact-match a totally unrelated artist's album of the same
+// name. The old second-tier fallback matched on title ALONE with zero artist check, and
+// that's exactly what happened live: $NOT (a real MB-verified rapper)'s seed title
+// collided with an unrelated stock-instrumental-covers catalog's identically-titled
+// album, and 28 of ITS releases got attached to OUR $NOT with no verification at all.
+// Loose-but-nonzero artist check: same first token, or one name contains the other —
+// still forgiving of romanization/format differences (the reason a loose tier exists at
+// all) without accepting an artist match with NO resemblance whatsoever.
+function artistLooseMatch(a: string, b: string): boolean {
+  const na = norm(a), nb = norm(b);
+  if (!na || !nb) return false;
+  if (na.includes(nb) || nb.includes(na)) return true;
+  const fa = na.split(' ')[0], fb = nb.split(' ')[0];
+  return !!fa && fa === fb;
+}
+
 function pickAlbum(results: any[], title: string, artist: string): ItunesAlbum | null {
   const nt = albumKey(title), na = norm(artist);
   const cols = results.filter(r => r.wrapperType === 'collection' || r.collectionId);
   const hit =
     cols.find(r => albumKey(r.collectionName ?? '') === nt && norm(r.artistName ?? '') === na) ??
-    cols.find(r => albumKey(r.collectionName ?? '') === nt) ?? null;
+    cols.find(r => albumKey(r.collectionName ?? '') === nt && artistLooseMatch(r.artistName ?? '', artist)) ??
+    null;
   return hit ? (hit as ItunesAlbum) : null;
 }
 

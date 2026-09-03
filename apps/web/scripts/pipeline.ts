@@ -50,6 +50,9 @@ import { ItunesBlockedError, resetBlock, itunesBlocked } from './itunes-client';
 import { mbLastActivityAt } from './mb-client';
 import { SEED } from './seed-artists';
 import { scanArtistRecency, type RecencyArtist } from './discover-itunes-recency';
+import { scanArtistRecencySpotify, type RecencyArtist as RecencyArtistSpotify } from './discover-spotify-recency';
+import { SpotifyBlockedError, resetSpotifyBlock, spotifyBlocked } from './spotify-client';
+import { spotifyCircuitRemainingMs } from './spotify-circuit';
 import { reconcileItunesMb } from './reconcile-itunes-mb';
 import { discoverArea } from './discover-mb-area';
 import { discoverNewReleases } from './discover-mb-newreleases';
@@ -131,19 +134,43 @@ const GAPFILL_ARTIST_BATCH = envInt('GAPFILL_ARTIST_BATCH', 3);      // MB-skipp
 const GAPFILL_BLOCK_COOLDOWN_MS = envInt('GAPFILL_BLOCK_COOLDOWN_MS', 7_200_000); // back off 2h on a 403 block
 const GAPFILL_RECOVER_ARTISTS = process.env.GAPFILL_RECOVER_ARTISTS === '1'; // job C (iTunes skipped-artist recovery) — OFF: pollutes with shadow artists
 
-// ── RECENCY + RECONCILE lanes (iTunes) — bridge MB's lag on recent KR releases ──
+// ── RECENCY + RECONCILE lanes (iTunes) — bridge MB's lag on recent releases ──
 // RECENCY sweeps owned artists in small batches, auto-ingesting recent releases iTunes has but MB
 // doesn't yet, through the multi-signal dedup gate (see discover-itunes-recency.ts — "auto but
 // safe"). RECONCILE fills mb_release_group_id on those rows once MB catches up so MB's upsert
 // dedups against them. Both bounded + gentle (iTunes IP-blocks on volume; shares the block state
 // with GAPFILL). ON by default; set RECENCY=0 to disable both.
+//
+// Catalog-wide as of 2026-09-02 (was hard-scoped to country='KR'): that exact-match filter also
+// silently dropped artists who ARE Korean but have a null `country` value (a data gap, not a
+// scope decision — e.g. SUPERBEE, Rosy Pereira) and structurally excluded every non-KR artist
+// (Fat Joe, Lil Wayne, ...) from any MB-lag mitigation at all, leaving them with no path to a
+// new release except MB cataloging it — which for exactly this class of recent/underground drop
+// is what's slow in the first place. searchAlbum/fetchDiscography (itunes-client.ts) already try
+// a store-agnostic lookup before falling back to a country-specific one, so dropping the WHERE
+// filter and passing each artist's OWN `country` (for the ko-search-hint fallback only) is a
+// straight widening, not a redesign. Batch/interval bumped 5/30m -> 25/10m so a full sweep of the
+// whole catalog (~68k artists, was ~12k KR-only) finishes in comparable wall-clock time to the
+// old KR-only cadence instead of stretching to months; iTunes call volume per unit time roughly
+// triples, still well inside what the existing 403 cooldown is built to absorb if that's wrong.
 const RECENCY = process.env.RECENCY !== '0';
-const RECENCY_COUNTRY   = process.env.RECENCY_COUNTRY ?? 'KR';
-const RECENCY_BATCH     = envInt('RECENCY_BATCH', 5);            // artists scanned per cycle
-const RECENCY_POLL_MS   = envInt('RECENCY_POLL_MS', 1_800_000); // 30m between cycles (slow full sweep)
+const RECENCY_BATCH     = envInt('RECENCY_BATCH', 25);          // artists scanned per cycle
+const RECENCY_POLL_MS   = envInt('RECENCY_POLL_MS', 600_000);   // 10m between cycles
 const RECENCY_SINCE_MONTHS = envInt('RECENCY_SINCE_MONTHS', 12);
 const RECONCILE_POLL_MS = envInt('RECONCILE_POLL_MS', 86_400_000); // daily
 const RECENCY_STATE = path.resolve('scripts/pipeline-recency-state.json');
+
+// ── RECENCY-SPOTIFY lane: a second, independent MB-lag bridge alongside the iTunes one.
+// Added 2026-09-02 after checking 9 releases confirmed absent from BOTH MusicBrainz and
+// iTunes — Spotify had 6 of them, same-day. The two sources don't fully overlap (neither
+// covers everything), so this runs alongside RECENCY rather than replacing it, with its
+// own cursor file/circuit state so a block on one source never stalls the other. Same
+// "auto but safe" dedup gate as the iTunes version (see discover-spotify-recency.ts).
+// ON by default alongside RECENCY; RECENCY=0 disables both (one flag, since they serve
+// the same purpose and there's no scenario for wanting one without the other).
+const RECENCY_SPOTIFY_BATCH   = envInt('RECENCY_SPOTIFY_BATCH', 25);
+const RECENCY_SPOTIFY_POLL_MS = envInt('RECENCY_SPOTIFY_POLL_MS', 600_000);
+const RECENCY_SPOTIFY_STATE = path.resolve('scripts/pipeline-recency-spotify-state.json');
 
 // ── DEEZER fallback lane (recover genuinely MB-missing artists from Deezer) — OFF by
 // default; opt in with DEEZER_FALLBACK=1 once standalone runs prove it clean. Clean by
@@ -592,8 +619,8 @@ async function deezerLoop(db: DB) {
 
 // ── RECENCY lane: sweep owned artists for recent iTunes releases MB lacks, auto-ingest the
 // confidently-missing (multi-signal dedup gate inside scanArtistRecency). Rotates through the
-// whole COUNTRY set via a persisted id cursor, then wraps and re-sweeps. iTunes-only (no MB
-// contention); shares the iTunes block state with GAPFILL. ──
+// WHOLE catalog (every country) via a persisted id cursor, then wraps and re-sweeps. iTunes-only
+// (no MB contention); shares the iTunes block state with GAPFILL. ──
 function recencyCursor(): string { try { return JSON.parse(fs.readFileSync(RECENCY_STATE, 'utf8')).afterId ?? ''; } catch { return ''; } }
 function saveRecencyCursor(id: string) { try { fs.writeFileSync(RECENCY_STATE, JSON.stringify({ afterId: id })); } catch { /* best-effort */ } }
 
@@ -606,11 +633,21 @@ async function recencyLoop(db: DB) {
         await beat(db, 'recency', { status: 'blocked (iTunes 403)', last_active: now(), errors: errs });
         await sleep(GAPFILL_BLOCK_COOLDOWN_MS); continue;
       }
+      // `id` is a uuid column — .gt('id', '') throws 22P02 (invalid uuid syntax), NOT "no rows",
+      // and this call never checked `error`, so that throw was silently read as "swept the whole
+      // set." The cursor resets to '' at the end of every full sweep (below), so this permanently
+      // stuck the lane at "0 ingested" the moment it ever finished one pass — every query after
+      // that point failed the same way forever. Found 2026-09-02 while widening this lane to the
+      // whole catalog; unrelated to that change, but explains why "idle (swept) · 0 ingested" had
+      // been showing long before this session touched anything.
       const after = recencyCursor();
-      const { data: artists } = await db.from('artists')
-        .select('id, name, name_native, native_language')
-        .eq('country', RECENCY_COUNTRY).eq('ingest_state', 'tracks_done')
-        .gt('id', after).order('id').limit(RECENCY_BATCH);
+      let q = db.from('artists')
+        .select('id, name, name_native, native_language, country')
+        .eq('ingest_state', 'tracks_done')
+        .order('id').limit(RECENCY_BATCH);
+      if (after) q = q.gt('id', after);
+      const { data: artists, error: qErr } = await q;
+      if (qErr) throw new Error(`recency query: ${qErr.message}`);
       if (!artists?.length) { // swept the whole set → wrap and re-sweep next cycle
         saveRecencyCursor('');
         await beat(db, 'recency', { status: 'idle (swept)', last_active: now(), items_done: ingested, current_item: `full sweep done · ${ingested} ingested` });
@@ -618,7 +655,7 @@ async function recencyLoop(db: DB) {
       }
       let batch = 0;
       for (const a of artists) {
-        const r = await scanArtistRecency(db, a as RecencyArtist, { sinceMonths: RECENCY_SINCE_MONTHS, ingest: true, country: RECENCY_COUNTRY });
+        const r = await scanArtistRecency(db, a as RecencyArtist, { sinceMonths: RECENCY_SINCE_MONTHS, ingest: true, country: (a as RecencyArtist).country ?? undefined });
         scanned++; batch += r.ingested; ingested += r.ingested;
         for (const g of r.gaps) console.log(`  [recency] +"${(a as any).name}" — ${g.date} ${g.title}`);
         saveRecencyCursor(a.id as string); // advance per-artist so a crash resumes mid-batch
@@ -636,6 +673,67 @@ async function recencyLoop(db: DB) {
       await beat(db, 'recency', { status: 'error', last_active: now(), errors: errs, current_item: (e as Error).message.slice(0, 120) });
       console.log(`  [recency] ERROR: ${(e as Error).message}`);
       await sleep(RECENCY_POLL_MS);
+    }
+  }
+}
+
+// ── RECENCY-SPOTIFY lane: same shape as RECENCY above, against Spotify instead of iTunes.
+// Independent cursor + circuit state so a block on one source never stalls the other. ──
+function recencySpotifyCursor(): string { try { return JSON.parse(fs.readFileSync(RECENCY_SPOTIFY_STATE, 'utf8')).afterId ?? ''; } catch { return ''; } }
+function saveRecencySpotifyCursor(id: string) { try { fs.writeFileSync(RECENCY_SPOTIFY_STATE, JSON.stringify({ afterId: id })); } catch { /* best-effort */ } }
+
+async function recencySpotifyLoop(db: DB) {
+  if (!RECENCY) { await beat(db, 'recency-spotify', { status: 'off', last_active: now() }); return; }
+  let ingested = 0, scanned = 0, errs = 0;
+  for (;;) {
+    try {
+      if (spotifyBlocked()) { // own circuit — independent of iTunes's RECENCY/GAPFILL block
+        await beat(db, 'recency-spotify', { status: 'blocked (Spotify 429)', last_active: now(), errors: errs });
+        await sleep(GAPFILL_BLOCK_COOLDOWN_MS); continue;
+      }
+      // Shared circuit (production web server + every script using these credentials).
+      // Checked BEFORE claiming a batch, not just before each Spotify call — the cursor
+      // advances unconditionally per artist below, so claiming a batch while blocked
+      // would silently skip-scan it (every artist resolves false-negative-fast) and
+      // permanently lose that slice of the sweep once the circuit clears.
+      const sharedRemainingMs = await spotifyCircuitRemainingMs();
+      if (sharedRemainingMs > 0) {
+        await beat(db, 'recency-spotify', { status: 'blocked (shared circuit)', last_active: now(), errors: errs, current_item: `~${Math.ceil(sharedRemainingMs / 60000)}m remaining` });
+        await sleep(Math.min(sharedRemainingMs, GAPFILL_BLOCK_COOLDOWN_MS)); continue;
+      }
+      const after = recencySpotifyCursor();
+      let q = db.from('artists')
+        .select('id, name, name_native')
+        .eq('ingest_state', 'tracks_done')
+        .order('id').limit(RECENCY_SPOTIFY_BATCH);
+      if (after) q = q.gt('id', after);
+      const { data: artists, error: qErr } = await q;
+      if (qErr) throw new Error(`recency-spotify query: ${qErr.message}`);
+      if (!artists?.length) {
+        saveRecencySpotifyCursor('');
+        await beat(db, 'recency-spotify', { status: 'idle (swept)', last_active: now(), items_done: ingested, current_item: `full sweep done · ${ingested} ingested` });
+        await sleep(RECENCY_SPOTIFY_POLL_MS); continue;
+      }
+      let batch = 0;
+      for (const a of artists) {
+        const r = await scanArtistRecencySpotify(db, a as RecencyArtistSpotify, { sinceMonths: RECENCY_SINCE_MONTHS, ingest: true });
+        scanned++; batch += r.ingested; ingested += r.ingested;
+        for (const g of r.gaps) console.log(`  [recency-spotify] +"${(a as any).name}" — ${g.date} ${g.title}`);
+        saveRecencySpotifyCursor(a.id as string);
+      }
+      await beat(db, 'recency-spotify', { status: batch ? 'running' : 'idle', last_active: now(), items_done: ingested, errors: errs, current_item: `scanned ${scanned} · +${batch} batch · ${ingested} total` });
+      await sleep(RECENCY_SPOTIFY_POLL_MS);
+    } catch (e) {
+      if (e instanceof SpotifyBlockedError) {
+        errs++; resetSpotifyBlock();
+        await beat(db, 'recency-spotify', { status: 'blocked (Spotify 429)', last_active: now(), errors: errs, current_item: `cooldown ${Math.round(GAPFILL_BLOCK_COOLDOWN_MS / 60000)}m` });
+        console.log(`  [recency-spotify] rate-limited — backing off ${Math.round(GAPFILL_BLOCK_COOLDOWN_MS / 60000)}m`);
+        await sleep(GAPFILL_BLOCK_COOLDOWN_MS); continue;
+      }
+      errs++;
+      await beat(db, 'recency-spotify', { status: 'error', last_active: now(), errors: errs, current_item: (e as Error).message.slice(0, 120) });
+      console.log(`  [recency-spotify] ERROR: ${(e as Error).message}`);
+      await sleep(RECENCY_SPOTIFY_POLL_MS);
     }
   }
 }
@@ -856,7 +954,8 @@ async function main() {
     supervise(db, 'qc', qcLoop),
     supervise(db, 'gapfill', gapfillLoop),
     supervise(db, 'deezer', deezerLoop),
-    supervise(db, 'recency', recencyLoop),     // iTunes — recent KR releases MB lacks (auto but safe)
+    supervise(db, 'recency', recencyLoop),     // iTunes — recent releases MB lacks (auto but safe)
+    supervise(db, 'recency-spotify', recencySpotifyLoop), // Spotify — same job, independent circuit/cursor
     supervise(db, 'reconcile', reconcileLoop), // link source='itunes' rows to MB once it catches up
     supervise(db, 'area', areaLoop),           // MB country/area re-sweep — keeps KR coverage current (weekly)
     supervise(db, 'newreleases', newReleasesLoop), // MB date-window sweep — flags artists with actual new releases (daily)
