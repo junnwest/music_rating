@@ -5,6 +5,7 @@ import { Bell } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
 import { USERNAME_REGEX, normalizeUsername } from '../../../lib/username';
+import { getInviteTokenPreview } from '../../../lib/sj/founding';
 
 type Step = 'name' | 'username' | 'notifications';
 
@@ -29,6 +30,14 @@ export default function OnboardingPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [provider, setProvider] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  // sillajuku is closed/invite-only — no profile row (i.e. no account) gets
+  // created without a still-valid pending invite token. This is the actual
+  // account-creation checkpoint (finish() below), not /beta/claim — that
+  // page only attaches the founding number, which happens *after* the
+  // profile already exists. Checked once, independent of `ready` above, so
+  // an invite-less visitor sees the block screen immediately rather than
+  // after filling in a name/username they can't use anyway.
+  const [inviteGate, setInviteGate] = useState<'checking' | 'blocked' | 'ok'>('checking');
   const nameInput = useRef<HTMLInputElement>(null);
   const usernameInput = useRef<HTMLInputElement>(null);
   const checkTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -58,6 +67,17 @@ export default function OnboardingPage() {
       if (provided) setDisplayName((v) => v || provided);
       setProvider(user?.app_metadata?.provider ?? null);
       setReady(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? window.localStorage.getItem('sj_pending_beta_token') : null;
+    if (!token) {
+      setInviteGate('blocked');
+      return;
+    }
+    getInviteTokenPreview(token).then((preview) => {
+      setInviteGate(preview.valid ? 'ok' : 'blocked');
     });
   }, []);
 
@@ -144,8 +164,27 @@ export default function OnboardingPage() {
     }
   }
 
-  if (!ready) {
+  if (!ready || inviteGate === 'checking') {
     return <div className="min-h-screen bg-page" />;
+  }
+
+  if (inviteGate === 'blocked') {
+    return (
+      <div className="min-h-screen bg-page flex flex-col items-center justify-center px-6 text-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo-flower.svg" alt="" className="w-14 h-14 mb-5 opacity-40" />
+        <h1 className="text-[20px] font-extrabold tracking-tight text-ink mb-2">초대가 필요해요.</h1>
+        <p className="text-[14px] leading-relaxed text-ink/70 max-w-[280px] mb-8">
+          sillajuku는 지금 초대받은 분만 가입할 수 있어요. 초대 링크로 다시 시도해주세요.
+        </p>
+        <a
+          href="https://sillajuku.com"
+          className="px-6 py-3 rounded-full border border-divider text-ink text-[13px] font-semibold hover:bg-ink/5 transition"
+        >
+          sillajuku 둘러보기
+        </a>
+      </div>
+    );
   }
 
   return (

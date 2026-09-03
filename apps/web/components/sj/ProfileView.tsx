@@ -24,10 +24,20 @@ import { Skeleton, SkeletonLine, SkeletonRows } from './Loading';
 import ProfilePostCard from './ProfilePostCard';
 import ProfileSongPostCard from './ProfileSongPostCard';
 import ProfileStats from './ProfileStats';
+import FoundingBadge from './FoundingBadge';
+import FoundingLineage from './FoundingLineage';
 import { useSession } from './SessionContext';
 import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
 import { displayName } from '../../lib/sj/display';
+import {
+  getFoundingMember,
+  listInvitees,
+  countInvitees,
+  setTeamTagVisibility,
+  type FoundingMember,
+  type Invitee,
+} from '../../lib/sj/founding';
 import ProfileRatedList, {
   FULL_RANGE,
   RatedFilterBar,
@@ -106,6 +116,42 @@ export default function ProfileView({ username }: { username?: string }) {
   const [followModal, setFollowModal] = useState<null | 'following' | 'followers'>(null);
   const [pendingDelete, setPendingDelete] = useState<ProfileRatingItem | null>(null);
   const [skipDeleteConfirmChecked, setSkipDeleteConfirmChecked] = useState(false);
+
+  // Founding badge + lineage — independent of the main `load()` above (own
+  // fetch, own loading state) so a slow/failed founding-data lookup never
+  // blocks or breaks the rest of the profile.
+  const [founding, setFounding] = useState<{
+    member: FoundingMember;
+    inviter: { username: string | null; display_name: string | null; avatar_url: string | null } | null;
+  } | null>(null);
+  const [invitees, setInvitees] = useState<Invitee[]>([]);
+  const [inviteesTotal, setInviteesTotal] = useState(0);
+  const INVITEES_PAGE = 3;
+
+  useEffect(() => {
+    if (!targetId) return;
+    let cancelled = false;
+    (async () => {
+      const [fm, total, page] = await Promise.all([
+        getFoundingMember(targetId),
+        countInvitees(targetId),
+        listInvitees(targetId, INVITEES_PAGE),
+      ]);
+      if (cancelled) return;
+      setFounding(fm);
+      setInviteesTotal(total);
+      setInvitees(page);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [targetId]);
+
+  const loadMoreInvitees = useCallback(async () => {
+    if (!targetId) return;
+    const all = await listInvitees(targetId, inviteesTotal);
+    setInvitees(all);
+  }, [targetId, inviteesTotal]);
 
   /** Opens the delete-confirm modal, unless the user previously checked
    *  "Don't ask again" for it (persisted per-browser, not per-account, since
@@ -550,11 +596,32 @@ export default function ProfileView({ username }: { username?: string }) {
       <div className="mt-4">
         {/* The handle is the identity — the display name is a freeform label,
             so it reads as the secondary line (see also FollowListModal). */}
-        <p className="text-[16px] font-semibold text-ink">@{handle}</p>
+        <div className="flex items-center gap-2">
+          <p className="text-[16px] font-semibold text-ink">@{handle}</p>
+          {founding && (
+            <FoundingBadge direction="chip" status={founding.member.status} number={founding.member.number} size={20} />
+          )}
+        </div>
         {display?.displayName && (
           <p className="text-[13px] text-muted">{display.displayName}</p>
         )}
         {display?.bio && <p className="mt-1 text-[13.5px] text-muted">{display.bio}</p>}
+        {founding && (
+          <div className="mt-3">
+            <FoundingLineage
+              member={founding.member}
+              inviter={founding.inviter}
+              invitees={invitees}
+              totalInvitees={inviteesTotal}
+              onLoadMore={loadMoreInvitees}
+              isSelf={isSelf}
+              onToggleTeamTag={async (visible) => {
+                const ok = await setTeamTagVisibility(visible);
+                if (ok) setFounding((f) => (f ? { ...f, member: { ...f.member, show_team_tag: visible } } : f));
+              }}
+            />
+          </div>
+        )}
         {!isSelf && myId && myId !== targetId && (
           <div className="mt-3">
             {isBlocked ? (

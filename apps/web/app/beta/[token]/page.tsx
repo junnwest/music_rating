@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import BetaSwipeFlow from '../../../components/BetaSwipeFlow';
+import InviteSwipeFlow from '../../../components/InviteSwipeFlow';
 
 // Same fallback as the invite-link landing page (app/i/[code]/page.tsx) —
 // the app hasn't been submitted to the App Store yet.
@@ -36,7 +36,7 @@ export default function BetaRedeemLandingPage() {
     return <MobileAppStoreBounce token={token} />;
   }
 
-  return <BetaSwipeFlow token={token} />;
+  return <InviteSwipeFlow token={token} />;
 }
 
 function MobileAppStoreBounce({ token }: { token: string }) {
@@ -88,8 +88,8 @@ function MobileAppStoreBounce({ token }: { token: string }) {
       <img src="/logo-flower.png" alt="" width={64} height={64} style={{ opacity: 0.9 }} />
       <p style={{ fontSize: '15px', color: '#8C8C8A', maxWidth: '320px' }}>
         {status === 'error'
-          ? '앱으로 이동 중이에요 — 자동으로 넘어가지 않으면, 설치 후 앱을 열어 베타 배지를 마저 받아주세요.'
-          : 'sillajuku 베타에 초대되셨어요 — 앱으로 이동할게요…'}
+          ? '앱으로 이동 중이에요. 자동으로 넘어가지 않으면, 설치 후 앱을 열어 초대를 마저 받아주세요.'
+          : 'sillajuku에 초대되셨어요. 앱으로 이동할게요…'}
       </p>
       <a
         href={APP_STORE_URL}
