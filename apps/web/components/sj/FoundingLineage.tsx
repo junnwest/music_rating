@@ -70,7 +70,7 @@ export default function FoundingLineage({
                   onClick={() => onToggleTeamTag(true)}
                   className="text-[11.5px] text-muted hover:text-ink transition-colors shrink-0"
                 >
-                  Show "invited by sillajuku"
+                  Show &quot;invited by sillajuku&quot;
                 </button>
               )}
             </>

@@ -104,8 +104,8 @@ export default function AdminInvitesPage() {
     <div style={{ maxWidth: 720, margin: '48px auto', padding: '0 20px' }}>
       <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Team-issued invites</h1>
       <p style={{ fontSize: 13, color: '#666', marginBottom: 24 }}>
-        No upstream member — these are sillajuku's own direct outreach (seeded influencers, ongoing
-        recruitment). Doesn't touch any member's peer allotment.
+        No upstream member — these are sillajuku&apos;s own direct outreach (seeded influencers, ongoing
+        recruitment). Doesn&apos;t touch any member&apos;s peer allotment.
       </p>
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>

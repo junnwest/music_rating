@@ -79,10 +79,10 @@ export default function InvitePage() {
       <div className="max-w-[560px] mx-auto px-6 py-16">
         <h1 className="text-[24px] font-extrabold tracking-tight text-ink mb-3">Invites</h1>
         <div className="rounded-2xl border border-divider bg-surface px-6 py-8 text-center">
-          <p className="text-[15px] font-semibold text-ink mb-2">Your badge isn't locked in yet</p>
+          <p className="text-[15px] font-semibold text-ink mb-2">Your badge isn&apos;t locked in yet</p>
           <p className="text-[13.5px] text-muted leading-relaxed max-w-[380px] mx-auto">
-            Invite privileges open up once your founding badge locks in — that's what keeps every
-            invite traceable to someone who's actually here.
+            Invite privileges open up once your founding badge locks in — that&apos;s what keeps every
+            invite traceable to someone who&apos;s actually here.
           </p>
         </div>
       </div>
