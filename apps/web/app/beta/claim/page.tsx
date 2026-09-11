@@ -2,26 +2,30 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Rocket, ShieldCheck, Check } from 'lucide-react';
+import { ShieldCheck, Check } from 'lucide-react';
 import { supabase } from '../../../lib/supabaseClient';
+import { redeemInviteToken } from '../../../lib/sj/founding';
+import FoundingBadge from '../../../components/sj/FoundingBadge';
 
 type Status = 'loading' | 'ready' | 'claiming' | 'claimed' | 'error';
 
 /**
- * The post-auth half of the beta invite flow (see BetaSwipeFlow.tsx for the
- * pre-auth pages). Landed on two ways: an already-onboarded user is sent
- * here directly by /auth/callback's `next` param; a brand-new user is sent
- * here by onboarding's finish() once their profiles row actually exists
- * (redeem_beta_token needs that row to attach the badge to). Either way the
- * token itself travels via localStorage (sj_pending_beta_token, set by
- * BetaSwipeFlow before the OAuth redirect) rather than the URL, since it has
- * to survive a provider round-trip and, for new users, the whole onboarding
- * flow too.
+ * The post-auth half of the (now sole) signup path — see
+ * InviteSwipeFlow.tsx for the pre-auth pages (was BetaSwipeFlow). Landed on
+ * two ways: an already-onboarded user is sent here directly by
+ * /auth/callback's `next` param; a brand-new user is sent here by
+ * onboarding's finish() once their profiles row actually exists
+ * (redeem_invite_token needs that row to attach the founding number to).
+ * Either way the token itself travels via localStorage
+ * (sj_pending_beta_token, set by InviteSwipeFlow before the OAuth redirect)
+ * rather than the URL, since it has to survive a provider round-trip and,
+ * for new users, the whole onboarding flow too.
  */
-export default function BetaClaimPage() {
+export default function ClaimInvitePage() {
   const router = useRouter();
   const [status, setStatus] = useState<Status>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [number, setNumber] = useState<number | null>(null);
 
   useEffect(() => {
     async function init() {
@@ -46,20 +50,20 @@ export default function BetaClaimPage() {
   }, []);
 
   async function claim() {
-    if (!supabase) return;
     const token = window.localStorage.getItem('sj_pending_beta_token');
     if (!token) {
       router.replace('/');
       return;
     }
     setStatus('claiming');
-    const { data, error } = await supabase.rpc('redeem_beta_token', { p_token: token });
+    const result = await redeemInviteToken(token);
     window.localStorage.removeItem('sj_pending_beta_token');
-    if (error || data !== true) {
-      setErrorMessage('이미 사용되었거나 유효하지 않은 링크예요.');
+    if (!result.ok) {
+      setErrorMessage(errorCopy(result.reason));
       setStatus('error');
       return;
     }
+    setNumber(result.number ?? null);
     setStatus('claimed');
   }
 
@@ -77,10 +81,19 @@ export default function BetaClaimPage() {
 
         <div className="w-full flex flex-col gap-2.5 mb-7">
           <BenefitRow
-            icon={<Rocket size={17} />}
-            iconColor="#FF7A00"
-            title="베타 테스터 배지"
-            desc="프로필에 표시돼요"
+            icon={
+              claimed && number != null ? (
+                <FoundingBadge direction="chip" status="pending" number={number} size={22} />
+              ) : (
+                <span className="text-[13px] font-bold text-ink/30">#</span>
+              )
+            }
+            title={claimed && number != null ? `창립 멤버 #${number}` : '창립 멤버 번호'}
+            desc={
+              claimed
+                ? '활동을 시작하면 번호가 확정돼요'
+                : '가입 즉시 번호가 예약돼요'
+            }
             claimed={claimed}
           />
           <BenefitRow
@@ -102,8 +115,7 @@ export default function BetaClaimPage() {
           <button
             onClick={claim}
             disabled={status === 'claiming'}
-            className="w-full py-3.5 rounded-xl text-white text-[14px] font-bold transition disabled:opacity-70"
-            style={{ background: '#FF7A00' }}
+            className="w-full py-3.5 rounded-xl bg-ink text-page text-[14px] font-bold transition disabled:opacity-70 hover:opacity-90"
           >
             {status === 'claiming' ? '받는 중…' : '혜택 받기'}
           </button>
@@ -129,6 +141,17 @@ export default function BetaClaimPage() {
   );
 }
 
+function errorCopy(reason?: string): string {
+  switch (reason) {
+    case 'already_a_member':
+      return '이미 창립 멤버로 등록되어 있어요.';
+    case 'cap_reached':
+      return '창립 멤버 999명이 모두 채워졌어요.';
+    default:
+      return '이미 사용되었거나 유효하지 않은 링크예요.';
+  }
+}
+
 function BenefitRow({
   icon,
   iconColor,
@@ -137,7 +160,7 @@ function BenefitRow({
   claimed,
 }: {
   icon: React.ReactNode;
-  iconColor: string;
+  iconColor?: string;
   title: string;
   desc: string;
   claimed: boolean;
@@ -150,7 +173,7 @@ function BenefitRow({
     >
       <div
         className="w-[34px] h-[34px] rounded-[10px] bg-page border border-divider flex items-center justify-center shrink-0"
-        style={{ color: iconColor }}
+        style={iconColor ? { color: iconColor } : undefined}
       >
         {icon}
       </div>

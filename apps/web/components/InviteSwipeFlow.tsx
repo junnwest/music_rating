@@ -1,13 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { getInviteTokenPreview, getFoundingCohortSummary, type InviteTokenPreview } from '../lib/sj/founding';
 
 type Provider = 'spotify' | 'apple' | 'google';
 
 // Same "force the account picker back open" params as app/(auth)/login/page.tsx —
 // kept in sync there since this duplicates that OAuth call rather than importing
-// it, to keep the beta redirectTo/next wiring self-contained.
+// it, to keep the invite flow self-contained.
 function accountChooserParams(provider: Provider): Record<string, string> {
   switch (provider) {
     case 'google':
@@ -22,19 +23,42 @@ function accountChooserParams(provider: Provider): Record<string, string> {
 const PAGE_COUNT = 4;
 
 /**
- * The pre-auth half of the beta invite flow (apps/web/app/beta/[token]/page.tsx,
- * desktop branch only — mobile gets bounced to the App Store instead, see that
- * file). Four pages: philosophy -> mélomane -> thank you -> sign up. The fifth
- * page (claiming the actual benefits) can't happen here since it needs a real
- * session -- that's app/beta/claim/page.tsx, landed on via the OAuth
- * redirectTo/next below (existing users) or onboarding's finish() (new users,
- * see the pending-token check added there).
+ * The pre-auth half of the (now sole) signup path — sillajuku is fully
+ * closed/invite-only, so every account arrives through here, whether the
+ * token is team-issued or a peer invite. Was BetaSwipeFlow — renamed since
+ * "beta" undersold what this is now (see app/beta/[token]/page.tsx, which
+ * keeps its URL for Universal Link / already-sent-link compatibility even
+ * though the component underneath changed).
+ *
+ * Fetches invite_token_preview() before rendering anything else: an invalid,
+ * expired, revoked, already-redeemed, or cap-reached token gets its own
+ * blocking screen instead of ever reaching the swipe pages — a redeemer who
+ * arrives after the founding cohort is full should never get as far as
+ * OAuth before finding that out.
  */
-export default function BetaSwipeFlow({ token }: { token: string }) {
+export default function InviteSwipeFlow({ token }: { token: string }) {
+  const [preview, setPreview] = useState<InviteTokenPreview | 'loading'>('loading');
   const [index, setIndex] = useState(0);
   const [more, setMore] = useState(false);
   const [loading, setLoading] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // "XXX of 999" — framed as trust (real people already here), not scarcity
+  // ("hurry, only N left"). Locked-in count specifically, not pending — a
+  // pending number isn't a real member yet, so it shouldn't inflate this.
+  const [lockedIn, setLockedIn] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getInviteTokenPreview(token).then((p) => {
+      if (!cancelled) setPreview(p);
+    });
+    getFoundingCohortSummary().then((s) => {
+      if (!cancelled && s) setLockedIn(s.lockedIn);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   function goTo(i: number) {
     setIndex(Math.max(0, Math.min(PAGE_COUNT - 1, i)));
@@ -48,6 +72,8 @@ export default function BetaSwipeFlow({ token }: { token: string }) {
     // navigating out to the provider and back) -- read by app/beta/claim and
     // by onboarding's finish() for the brand-new-account path, since a new
     // profiles row doesn't exist yet for the RPC to attach to until then.
+    // Key name kept as-is (sj_pending_beta_token) — onboarding/claim already
+    // read this exact key, and it's opaque to what kind of invite it is.
     window.localStorage.setItem('sj_pending_beta_token', token);
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
@@ -62,6 +88,16 @@ export default function BetaSwipeFlow({ token }: { token: string }) {
       setLoading(null);
     }
   }
+
+  if (preview === 'loading') {
+    return <div className="min-h-screen bg-page" />;
+  }
+
+  if (!preview.valid) {
+    return <InvalidTokenScreen reason={preview.reason} />;
+  }
+
+  const isPeer = preview.source === 'peer' && preview.inviterUsername;
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-page flex flex-col items-center justify-center px-6">
@@ -95,11 +131,18 @@ export default function BetaSwipeFlow({ token }: { token: string }) {
         </div>
 
         {index === 0 && (
-          <PageShell
-            headline="당신이 사랑했던 모든 음반."
-            body="언젠가 가슴을 뛰게 했던 그 음악을 기록하세요."
-            onNext={() => goTo(1)}
-          />
+          <>
+            <PageShell
+              headline="당신이 사랑했던 모든 음반."
+              body="언젠가 가슴을 뛰게 했던 그 음악을 기록하세요."
+              onNext={() => goTo(1)}
+            />
+            {lockedIn != null && (
+              <p className="mt-5 text-[11.5px] text-muted">
+                지금까지 <span className="font-semibold text-ink/70">{lockedIn}명</span>이 실제로 활동하며 창립 멤버 자리를 지키고 있어요 (999명 중)
+              </p>
+            )}
+          </>
         )}
 
         {index === 1 && (
@@ -118,12 +161,40 @@ export default function BetaSwipeFlow({ token }: { token: string }) {
         )}
 
         {index === 2 && (
-          <PageShell
-            eyebrow="감사 인사"
-            headline="당신이, 가장 먼저입니다."
-            body="오로지 실라주쿠가 직접 선정한 베타 유저에게만 전하는 초대장."
-            onNext={() => goTo(3)}
-          />
+          <div className="flex flex-col items-center text-center w-full">
+            {isPeer ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={preview.inviterAvatarUrl || '/logo-flower.svg'}
+                  alt=""
+                  className="w-14 h-14 rounded-full object-cover mb-5 border border-divider"
+                />
+                <div className="text-[11px] font-bold tracking-[0.08em] text-muted mb-3">초대장</div>
+                <h1 className="text-[22px] font-extrabold tracking-tight text-ink mb-2 max-w-[280px]">
+                  {preview.inviterDisplayName || `@${preview.inviterUsername}`}님이 당신을 초대했어요.
+                </h1>
+                <p className="text-[14px] leading-relaxed text-ink/70 max-w-[260px] mb-8">
+                  아무나 받는 초대가 아니에요 — 실라주쿠는 지금 이렇게만 들어올 수 있어요.
+                </p>
+              </>
+            ) : (
+              <PageShell
+                eyebrow="감사 인사"
+                headline="당신이, 가장 먼저입니다."
+                body="오로지 실라주쿠가 직접 선정한 창립 멤버에게만 전하는 초대장."
+                onNext={() => goTo(3)}
+              />
+            )}
+            {isPeer && (
+              <button
+                onClick={() => goTo(3)}
+                className="px-6 py-3 rounded-full bg-ink text-page text-[13px] font-semibold hover:opacity-90 transition"
+              >
+                계속
+              </button>
+            )}
+          </div>
         )}
 
         {index === 3 && (
@@ -206,6 +277,60 @@ export default function BetaSwipeFlow({ token }: { token: string }) {
   );
 }
 
+/** The cap-reached / expired / revoked / already-used blocking screen — seen
+ *  before OAuth, not just as a post-auth failure. Cap-reached gets its own
+ *  distinct copy (the deliverable this session asked for); everything else
+ *  collapses into one plain "this link isn't valid" state. */
+function InvalidTokenScreen({ reason }: { reason?: InviteTokenPreview['reason'] }) {
+  const capReached = reason === 'cap_reached';
+  return (
+    <div className="relative min-h-screen overflow-hidden bg-page flex flex-col items-center justify-center px-6">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/logo-flower.svg"
+        alt=""
+        aria-hidden
+        className="pointer-events-none select-none absolute -top-40 -right-40 w-[560px] opacity-[0.09]"
+      />
+      <div className="relative w-full max-w-sm flex flex-col items-center text-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo-flower.svg" alt="" className={`w-14 h-14 mb-5 ${capReached ? '' : 'opacity-40'}`} />
+        {capReached ? (
+          <>
+            <h1 className="text-[20px] font-extrabold tracking-tight text-ink mb-2">
+              창립 멤버 999명이 모두 채워졌어요.
+            </h1>
+            <p className="text-[14px] leading-relaxed text-ink/70 max-w-[280px] mb-8">
+              이 초대장은 유효했지만, 자리가 그사이 다 찼습니다. 다음 시즌이 열리면 가장 먼저 알려드릴게요.
+            </p>
+          </>
+        ) : (
+          <>
+            <h1 className="text-[20px] font-extrabold tracking-tight text-ink mb-2">
+              유효하지 않은 초대예요.
+            </h1>
+            <p className="text-[14px] leading-relaxed text-ink/70 max-w-[280px] mb-8">
+              {reason === 'already_redeemed'
+                ? '이미 사용된 링크예요.'
+                : reason === 'revoked'
+                  ? '초대한 분이 이 링크를 취소했어요.'
+                  : reason === 'expired'
+                    ? '유효 기간이 지난 링크예요.'
+                    : '더 이상 유효하지 않은 링크예요.'}
+            </p>
+          </>
+        )}
+        <a
+          href="https://sillajuku.com"
+          className="px-6 py-3 rounded-full border border-divider text-ink text-[13px] font-semibold hover:bg-ink/5 transition"
+        >
+          sillajuku 둘러보기
+        </a>
+      </div>
+    </div>
+  );
+}
+
 function PageShell({
   eyebrow,
   headline,
@@ -242,8 +367,8 @@ function PageShell({
 }
 
 // Identical to the icons in app/(auth)/login/page.tsx — duplicated rather
-// than imported, matching this file's existing choice to keep the beta flow
-// self-contained rather than reaching into the main login page.
+// than imported, matching this file's existing choice to keep the invite
+// flow self-contained.
 function SpotifyIcon() {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
