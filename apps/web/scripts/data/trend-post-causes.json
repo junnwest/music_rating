@@ -1,0 +1,101 @@
+[
+  {
+    "artist": "Crush",
+    "wikiTitle": "Crush (singer)",
+    "spikeYm": "202404",
+    "headline": "크러쉬 화제성,<br>한 달 만에 3배",
+    "causeLabel": "j-hope 솔로 EP",
+    "chartForm": "line"
+  },
+  {
+    "artist": "Kendrick Lamar",
+    "wikiTitle": "Kendrick Lamar",
+    "spikeYm": "202502",
+    "headline": "켄드릭 라마 화제성,<br>역대 최고치를 찍었던 순간",
+    "causeLabel": "제68회 그래미 5관왕",
+    "chartForm": "bignum"
+  },
+  {
+    "artist": "Drake",
+    "wikiTitle": "Drake (musician)",
+    "spikeYm": "202405",
+    "headline": "드레이크 vs 켄드릭,<br>화제성으로 증명됐다",
+    "causeLabel": "켄드릭과의 디스전",
+    "chartForm": "bars"
+  },
+  {
+    "artist": "David Bowie",
+    "wikiTitle": "David Bowie",
+    "spikeYm": "202601",
+    "headline": "데이비드 보위,<br>10년이 지나도 잊히지 않았다",
+    "causeLabel": "사망 10주기",
+    "chartForm": "bignum"
+  },
+  {
+    "artist": "Beyoncé",
+    "wikiTitle": "Beyoncé",
+    "spikeYm": "202403",
+    "headline": "비욘세,<br>장르를 넘나든 화제성으로 돌아왔다",
+    "causeLabel": "'카우보이 카터' 발매",
+    "chartForm": "line"
+  },
+  {
+    "artist": "Glen Check",
+    "wikiTitle": "Glen Check (band)",
+    "spikeYm": "202407",
+    "headline": "글렌체크가<br>이스포츠와 만났을 때",
+    "causeLabel": "T1과의 콜라보",
+    "chartForm": "bars"
+  },
+  {
+    "artist": "Michael Jackson",
+    "wikiTitle": "Michael Jackson",
+    "spikeYm": "202605",
+    "headline": "마이클 잭슨,<br>전기 영화로 다시 조명받다",
+    "causeLabel": "전기 영화 'Michael' 개봉",
+    "chartForm": "bignum"
+  },
+  {
+    "artist": "Colde",
+    "wikiTitle": "Colde",
+    "spikeYm": "202408",
+    "headline": "콜드의 신곡,<br>화제성으로 증명했다",
+    "causeLabel": "'I Color You' 발매",
+    "chartForm": "line"
+  },
+  {
+    "artist": "Heize",
+    "wikiTitle": "Heize",
+    "spikeYm": "202405",
+    "headline": "헤이즈,<br>차트와 화제성 둘 다 잡았다",
+    "causeLabel": "'Where Are You' 차트인",
+    "chartForm": "bars"
+  },
+  {
+    "artist": "Dynamic Duo",
+    "wikiTitle": "Dynamic Duo (South Korean duo)",
+    "spikeYm": "202503",
+    "headline": "다이나믹듀오,<br>일본에서도 통했다",
+    "causeLabel": "첫 일본 단독 공연",
+    "chartForm": "line"
+  },
+  {
+    "artist": "The Miseducation of Lauryn Hill — Lauryn Hill",
+    "wikiTitle": "The Miseducation of Lauryn Hill",
+    "spikeYm": "202405",
+    "headline": "로린 힐, 25년 전 앨범이<br>다시 화제성을 얻었다",
+    "causeLabel": "그래미 명예의 전당 헌액",
+    "chartForm": "timeline",
+    "fromYear": "1998",
+    "fromLabel": "발매",
+    "toLabel": "그래미 명예의 전당 헌액"
+  },
+  {
+    "artist": "Take Care — Drake",
+    "wikiTitle": "Take Care",
+    "spikeYm": "202605",
+    "headline": "드레이크의 신보가<br>'Take Care'를 다시 불렀다",
+    "causeLabel": "깜짝 3연작 발매",
+    "chartForm": "bars"
+  }
+]
