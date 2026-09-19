@@ -1,0 +1,15 @@
+{
+  "_comment": "Manually maintained exclusion list for select-trend-candidates.ts --type=artist. Exists because neither automatic signal in the schema actually distinguishes 'mainstream idol group' from 'artist-led/indie Korean act': the genres column tags Crush, Heize, and Dynamic Duo as k-pop right alongside BIGBANG and TWICE (checked live, 2026-09-11), and prestige_score — the field the app's own design intends as a commercial-penalty signal for exactly this — is unpopulated (null) for every artist in the catalog as of the same check. Until one of those is actually populated with real, verified data, this list is the honest mechanism, not a workaround. Update by hand as new major-label idol groups debut or leave; err toward NOT adding solo artists, producers, or indie/rock/hip-hop acts here even if Korean — this list is specifically for choreographed idol groups from major entertainment companies (HYBE, SM, YG, JYP, and comparable), which is the actual thing the brand's anti-mainstream positioning is reacting to.",
+  "groups": [
+    "BTS", "BLACKPINK", "TWICE", "EXO", "BIGBANG", "SHINee", "Red Velvet",
+    "Girls' Generation", "Girls’ Generation", "SNSD", "NCT", "NCT 127", "NCT DREAM", "NCT Dream",
+    "WayV", "SEVENTEEN", "Seventeen", "ENHYPEN", "TXT", "TOMORROW X TOGETHER",
+    "Stray Kids", "ITZY", "aespa", "NewJeans", "IVE", "LE SSERAFIM", "(G)I-DLE", "GIDLE",
+    "MONSTA X", "GOT7", "ATEEZ", "THE BOYZ", "Kep1er", "fromis_9", "STAYC",
+    "SUPER JUNIOR", "Super Junior", "SHINHWA", "TVXQ", "KARA", "2NE1", "Wonder Girls",
+    "PENTAGON", "DREAMCATCHER", "Apink", "MAMAMOO", "OH MY GIRL", "WJSN", "Cosmic Girls",
+    "TREASURE", "ZEROBASEONE", "RIIZE", "BABYMONSTER", "ILLIT", "KISS OF LIFE",
+    "JENNIE", "LISA", "ROSÉ", "Jisoo", "TAEYANG", "G-Dragon", "Daesung",
+    "PSY", "Big Bang"
+  ]
+}
