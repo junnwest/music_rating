@@ -818,6 +818,26 @@ struct SearchView: View {
     @State private var userRatingStep: Double = 0.5
     @State private var ratedReleaseIds: Set<UUID> = []   // loaded from DB at launch — used to hide pre-rated items
     @State private var sessionRatedIds: Set<UUID>  = []   // tapped in this session — shows checkmark
+    // Real scores for rated releases, kept in sync with the two sets above (insert/remove
+    // together everywhere) -- lets a rated row show the actual score circle like every other
+    // screen in the app, instead of a plain non-interactive checkmark.
+    @State private var scoresByRelease: [UUID: Double] = [:]
+
+    private func scoreBinding(for releaseId: UUID) -> Binding<Double?> {
+        Binding(
+            get: { scoresByRelease[releaseId] },
+            set: { newValue in
+                scoresByRelease[releaseId] = newValue
+                if newValue != nil {
+                    sessionRatedIds.insert(releaseId)
+                    ratedReleaseIds.insert(releaseId)
+                } else {
+                    sessionRatedIds.remove(releaseId)
+                    ratedReleaseIds.remove(releaseId)
+                }
+            }
+        )
+    }
     @State private var showAllPersonalizedSongs = false
     @State private var showAllPopularSongs      = false
     @Environment(\.scenePhase) private var scenePhase
@@ -906,6 +926,7 @@ struct SearchView: View {
         // its own row) needs to flip every other row's "already rated" state too.
         .onReceive(NotificationCenter.default.publisher(for: .ratingChanged)) { note in
             guard let info = note.object as? RatingChangeInfo else { return }
+            scoresByRelease[info.releaseGroupId] = info.score
             if info.score != nil {
                 sessionRatedIds.insert(info.releaseGroupId)
                 ratedReleaseIds.insert(info.releaseGroupId)
@@ -924,15 +945,17 @@ struct SearchView: View {
         guard let userId = supabase.auth.currentUser?.id else { return }
         struct Row: Decodable {
             let releaseGroupId: UUID
-            enum CodingKeys: String, CodingKey { case releaseGroupId = "release_group_id" }
+            let score: Double?
+            enum CodingKeys: String, CodingKey { case releaseGroupId = "release_group_id"; case score }
         }
         let rows: [Row] = (try? await supabase
             .from("ratings")
-            .select("release_group_id")
+            .select("release_group_id, score")
             .eq("user_id", value: userId)
             .execute()
             .value) ?? []
         ratedReleaseIds = Set(rows.map(\.releaseGroupId))
+        for row in rows { scoresByRelease[row.releaseGroupId] = row.score }
     }
 
     private func loadUserRatingStep() async {
@@ -977,6 +1000,7 @@ struct SearchView: View {
             .execute()
         sessionRatedIds.insert(release.id)
         ratedReleaseIds.insert(release.id)
+        scoresByRelease[release.id] = score
         NotificationCenter.default.post(name: .ratingChanged,
             object: RatingChangeInfo(releaseGroupId: release.id, score: score))
     }
@@ -1157,9 +1181,8 @@ struct SearchView: View {
                         VStack(spacing: 0) {
                             ForEach(searchVM.songResults) { song in
                                 let pr = songParentRelease(song)
-                                let rated = ratedReleaseIds.contains(song.releases.id)
                                 NavigationLink(value: pr) {
-                                    SongRow(song: song, isRated: rated, ratingStep: userRatingStep)
+                                    SongRow(song: song, scoreBinding: scoreBinding(for: song.releases.id), ratingStep: userRatingStep)
                                 }
                                 .buttonStyle(.plain)
                                 .albumContextMenu(pr)
@@ -1518,9 +1541,8 @@ struct SearchView: View {
             LazyHStack(spacing: 12) {
                 ForEach(items) { item in
                     if let release = discoveryVM.resolvedPreviewCache[item.id] {
-                        let checked = sessionRatedIds.contains(release.id) || ratedReleaseIds.contains(release.id)
                         NavigationLink(value: release) {
-                            DiscoveryAlbumCard(release: release, isRated: checked, ratingStep: userRatingStep)
+                            DiscoveryAlbumCard(release: release, scoreBinding: scoreBinding(for: release.id), ratingStep: userRatingStep)
                         }
                         .buttonStyle(.plain)
                         .albumContextMenu(release)
@@ -1545,12 +1567,8 @@ struct SearchView: View {
         return ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 12) {
                 ForEach(visible) { release in
-                    // Not just session-rated -- an unfiltered list (hideRated: false) can include
-                    // releases rated in an earlier session too, which should also show the
-                    // checkmark rather than a misleading "add" button.
-                    let checked = sessionRatedIds.contains(release.id) || ratedReleaseIds.contains(release.id)
                     NavigationLink(value: release) {
-                        DiscoveryAlbumCard(release: release, isRated: checked, ratingStep: userRatingStep)
+                        DiscoveryAlbumCard(release: release, scoreBinding: scoreBinding(for: release.id), ratingStep: userRatingStep)
                     }
                     .buttonStyle(.plain)
                     .albumContextMenu(release)
@@ -1570,9 +1588,8 @@ struct SearchView: View {
         return VStack(spacing: 0) {
             ForEach(Array(shown.enumerated()), id: \.element.id) { index, song in
                 let pr = songParentRelease(song)
-                let checked = sessionRatedIds.contains(pr.id)
                 NavigationLink(value: pr) {
-                    SongRow(song: song, isRated: checked, ratingStep: userRatingStep)
+                    SongRow(song: song, scoreBinding: scoreBinding(for: pr.id), ratingStep: userRatingStep)
                 }
                 .buttonStyle(.plain)
                 .albumContextMenu(pr)
@@ -1602,7 +1619,7 @@ struct SearchView: View {
 
 private struct DiscoveryAlbumCard: View {
     let release: Release
-    var isRated: Bool = false
+    var scoreBinding: Binding<Double?> = .constant(nil)
     // The user's manual rating precision -- was never threaded this far before, so this card's
     // rate button (used across almost every Add tab section) silently used FlowerRateControl's
     // own 0.5 default regardless of the account's actual setting.
@@ -1615,24 +1632,14 @@ private struct DiscoveryAlbumCard: View {
                     .frame(width: 128, height: 128)
                     .accessibilityHidden(true) // title/artist text below already describes it
 
-                if isRated {
-                    ZStack {
-                        Circle()
-                            .fill(Color.sjBlue)
-                            .frame(width: 28, height: 28)
-                            .shadow(color: .black.opacity(0.15), radius: 4, y: 1)
-                        Image("icon-check")
-                            .renderingMode(.template)
-                            .resizable().scaledToFit()
-                            .frame(width: 11, height: 11)
-                            .foregroundStyle(.white)
-                    }
-                    .allowsHitTesting(false)
-                    .padding(6)
-                } else {
-                    AlbumRateButton(release: release, ratingStep: ratingStep, size: 30)
-                        .padding(4)
-                }
+                // Previously swapped to a static, non-interactive checkmark once rated --
+                // inconsistent with every other rating surface in the app (Home, Charts,
+                // Album detail), which keep showing the real score and stay tappable/
+                // draggable to change it. Now the same AlbumRateButton in both states,
+                // bound to the tab's shared per-release score cache so it also stays in
+                // sync with every other row showing the same release.
+                AlbumRateButton(release: release, externalScore: scoreBinding, ratingStep: ratingStep, size: 30)
+                    .padding(4)
             }
 
             Text(release.title)
@@ -1692,7 +1699,7 @@ private struct RecentlyPlayedPreviewCard: View {
 
 struct SongRow: View {
     let song: SongResult
-    var isRated: Bool = false
+    var scoreBinding: Binding<Double?> = .constant(nil)
     var ratingStep: Double = 0.5
 
     var body: some View {
@@ -1722,23 +1729,11 @@ struct SongRow: View {
 
             Spacer()
 
-            if isRated {
-                ZStack {
-                    Circle()
-                        .fill(Color.sjBlue)
-                        .frame(width: 30, height: 30)
-                    Image("icon-check")
-                        .renderingMode(.template)
-                        .resizable().scaledToFit()
-                        .frame(width: 11, height: 11)
-                        .foregroundStyle(.white)
-                }
-                .allowsHitTesting(false)
-            } else {
-                // Keyed on the song's *parent release*, not the individual recording --
-                // this row has never rated the song itself, only quick-added its album.
-                AlbumRateButton(release: song.releases.asRelease, ratingStep: ratingStep, size: 30)
-            }
+            // Keyed on the song's *parent release*, not the individual recording -- this
+            // row has never rated the song itself, only quick-added its album. Previously
+            // swapped to a static, non-interactive checkmark once rated -- see
+            // DiscoveryAlbumCard's comment for why that's now the real, live score circle.
+            AlbumRateButton(release: song.releases.asRelease, externalScore: scoreBinding, ratingStep: ratingStep, size: 30)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

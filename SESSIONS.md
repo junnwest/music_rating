@@ -46,6 +46,15 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-21 (Mac) — Add tab: rated albums/songs now show the real score circle (matching every other screen), instead of a static, non-interactive checkmark.**
+
+- **User asked**: "when i rate an album with the flower button, it should turn into a circle with the number on it. however, when i rate on the add tab it turns into a check instead of the number. is this expected?"
+- **Confirmed it wasn't a deliberate discovery-specific design** (no comment explaining it, no equivalent anywhere else in the app) — `DiscoveryAlbumCard`/`SongRow` (Popular, New Releases, Trending, genre clusters, Recently Listened, search-results songs) special-cased a rated release to a static blue checkmark circle with `allowsHitTesting(false)` — no score shown, and impossible to tap to re-rate — while every other rating surface (Home, Charts, Album detail, Quick Add) shows the actual score in the circle and keeps it interactive. **Asked the user to confirm the desired scope via `AskUserQuestion`** rather than assume; chose the full fix (real score + stays tappable/draggable), not just swapping the icon for a static number.
+- **Fixed by making these rows use `AlbumRateButton` exactly like every other screen does** — dropped the `isRated: Bool`/checkmark branch entirely, replaced with the same button in both states, bound to a real score via `externalScore` instead of a one-shot `initialScore`. Needed a real per-release score cache on `SearchView` to back that binding (previously only had `ratedReleaseIds`/`sessionRatedIds`, boolean sets with no score attached): added `scoresByRelease: [UUID: Double]`, kept in sync everywhere the two existing sets already were (`loadRatedReleaseIds()` now also selects `score`, `saveQuickRating` sets it, the `.ratingChanged` observer from the duplicate-row-sync fix now also writes `scoresByRelease[id] = score`) — so this also means the actual live score (not just the rated/unrated boolean) now stays in sync across every duplicate row showing the same release, building directly on last round's fix.
+- **Verified via clean simulator build** — **BUILD SUCCEEDED**.
+
+---
+
 **2026-09-21 (Mac) — Added a "Connect Spotify/Apple Music" nudge + the genre explorer to the bottom of the Add tab itself, not just inside Quick Add's empty state.**
 
 - **User asked specifically**: display "Connect Spotify or Apple Music" (only for whichever isn't connected) and "Explore other genres" at the bottom of the main Add tab. Both already existed, but only inside `QuickAddView`'s empty/seedless state — a screen most users with SOME data would never see.
