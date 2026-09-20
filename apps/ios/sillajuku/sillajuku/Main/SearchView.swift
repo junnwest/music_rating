@@ -212,7 +212,9 @@ class DiscoveryViewModel {
     // see that function's comment for why exact-first + gated-fuzzy, no blind closest-title
     // fallback). Kept here too since this now needs to run eagerly at load time rather than
     // lazily per-tap from the view.
-    private static func fetchRelease(name: String, artist: String) async -> Release? {
+    // fileprivate (not private) so ResolvingAlbumView can reuse it for its own on-tap
+    // resolution -- same reasoning as resolveArtistId below being fileprivate for ArtistPageView.
+    fileprivate static func fetchRelease(name: String, artist: String) async -> Release? {
         let al = artist.lowercased()
         let artistId = await resolveArtistId(name: artist)
         func accept(_ r: Release) -> Bool {
@@ -766,6 +768,7 @@ struct SearchView: View {
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
             .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
+            .navigationDestination(for: RecentlyPlayedDestination.self) { ResolvingAlbumView(item: $0) }
             .navigationDestination(isPresented: $showQuickAdd) {
                 QuickAddView(discoveryVM: discoveryVM, onGoToSettings: onGoToSettings)
             }
@@ -1082,14 +1085,20 @@ struct SearchView: View {
                     }
 
                     // ── Spotify: Recently Listened ────────────
-                    // Resolved against the catalog up front (resolveRecentlyPlayedIfNeeded) --
-                    // renders through the same albumScroll every other section uses, so a real
-                    // cover size, add button, and context menu all come for free, and anything
-                    // that didn't resolve to a real release is simply not shown instead of
-                    // leading to a dead-end "not in catalog" tap.
-                    if !discoveryVM.recentlyPlayedReleases.isEmpty {
+                    // Renders straight from Spotify's own raw data (recentlyPlayedPreviewScroll),
+                    // not the catalog-matched recentlyPlayedReleases -- tappable immediately,
+                    // resolving against the catalog on tap instead (ResolvingAlbumView), same
+                    // shape as spotifyArtistScroll's ArtistDestination(artistId: nil, ...) above.
+                    // Used to wait for resolveRecentlyPlayedIfNeeded() to finish for every item
+                    // before showing the row at all -- confirmed live 2026-09-21 that a real,
+                    // unavoidable extra DB round trip (matching against the catalog) meant this
+                    // row always appeared several seconds after every other section, read as
+                    // "not uniform/not immediate." resolveRecentlyPlayedIfNeeded() still runs in
+                    // the background (see load()) to warm the Apple Music row below, which keeps
+                    // the old eager-resolution behavior for now.
+                    if !discoveryVM.recentlyPlayed.isEmpty {
                         discoverySectionTitle("Recently Listened")
-                        albumScroll(discoveryVM.recentlyPlayedReleases, hideRated: false)
+                        recentlyPlayedPreviewScroll(discoveryVM.recentlyPlayed)
                         Spacer().frame(height: 24)
                     }
 
@@ -1103,7 +1112,7 @@ struct SearchView: View {
                     // ── Apple Music: Recently Listened ────────
                     if !discoveryVM.appleMusicRecentlyPlayedReleases.isEmpty {
                         discoverySectionTitle(
-                            discoveryVM.recentlyPlayedReleases.isEmpty ? "Recently Listened" : "Recently Listened (Apple)"
+                            discoveryVM.recentlyPlayed.isEmpty ? "Recently Listened" : "Recently Listened (Apple)"
                         )
                         albumScroll(discoveryVM.appleMusicRecentlyPlayedReleases, hideRated: false)
                         Spacer().frame(height: 24)
@@ -1352,6 +1361,26 @@ struct SearchView: View {
     // still see what you recently played whether you've rated it or not (was silently dropping
     // already-rated albums, e.g. one rated 4 days before ever showing up here, when this was
     // switched onto the shared component).
+    // Renders raw Spotify/Apple Music data directly (SpotifyAlbumDisplay), not a resolved
+    // Release -- see the call site's comment (discoveryView) for why. RecentlyPlayedPreviewCard
+    // is deliberately simpler than DiscoveryAlbumCard (no rate button/checkmark overlay): we
+    // don't know a real release id or rating status for an unresolved item yet.
+    private func recentlyPlayedPreviewScroll(_ items: [SpotifyAlbumDisplay]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: 12) {
+                ForEach(items) { item in
+                    NavigationLink(value: RecentlyPlayedDestination(
+                        name: item.name, artist: item.artistName, imageUrl: item.imageUrl
+                    )) {
+                        RecentlyPlayedPreviewCard(name: item.name, artist: item.artistName, imageUrl: item.imageUrl)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+
     private func albumScroll(_ albums: [Release], hideRated: Bool = true) -> some View {
         let visible = hideRated
             ? albums.filter { !ratedReleaseIds.contains($0.id) || sessionRatedIds.contains($0.id) }
@@ -1469,6 +1498,35 @@ private struct DiscoveryAlbumCard: View {
     }
 }
 
+// Deliberately simpler than DiscoveryAlbumCard: no rate button/checkmark overlay, since an
+// unresolved recently-played item has no known release id or rating status yet -- see
+// recentlyPlayedPreviewScroll's comment.
+private struct RecentlyPlayedPreviewCard: View {
+    let name: String
+    let artist: String
+    let imageUrl: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            CoverImage(url: imageUrl)
+                .frame(width: 128, height: 128)
+                .accessibilityHidden(true) // title/artist text below already describes it
+
+            Text(name)
+                .font(.jakarta(13, weight: .semibold))
+                .foregroundStyle(Color.sjInk)
+                .lineLimit(1)
+                .frame(width: 128, alignment: .leading)
+
+            Text(artist)
+                .font(.jakarta(12))
+                .foregroundStyle(Color.sjMuted)
+                .lineLimit(1)
+                .frame(width: 128, alignment: .leading)
+        }
+    }
+}
+
 // MARK: - Song row
 
 struct SongRow: View {
@@ -1540,6 +1598,72 @@ struct ArtistDestination: Hashable {
     // `cover_url`, when it exists, still wins once `load()` resolves -- this is only a
     // stand-in for however long that takes, or forever if the catalog has nothing.
     var avatarHint: String? = nil
+}
+
+// Same idea as ArtistDestination(artistId: nil, ...) above, for albums: pushed with just
+// Spotify's raw name/artist/cover, resolved against the catalog on appear by ResolvingAlbumView
+// instead of up front -- see recentlyPlayedPreviewScroll's comment for why.
+struct RecentlyPlayedDestination: Hashable {
+    let name: String
+    let artist: String
+    let imageUrl: String?
+}
+
+// Mirrors ArtistPageView's own artistId == nil resolution pattern for albums: shown immediately
+// with just Spotify's raw data while resolving in the background, behind its own loading state,
+// rather than blocking the row's appearance on every item resolving up front.
+struct ResolvingAlbumView: View {
+    let item: RecentlyPlayedDestination
+
+    @State private var resolvedRelease: Release?
+    @State private var notFound = false
+
+    var body: some View {
+        Group {
+            if let resolvedRelease {
+                AlbumDetailView(release: resolvedRelease)
+            } else if notFound {
+                VStack(spacing: 12) {
+                    Image(systemName: "questionmark.circle")
+                        .font(.system(size: 32))
+                        .foregroundStyle(Color.sjMuted)
+                    Text("Not in our catalog yet")
+                        .font(.jakarta(15, weight: .semibold))
+                        .foregroundStyle(Color.sjInk)
+                    Text(item.name + " · " + item.artist)
+                        .font(.jakarta(13))
+                        .foregroundStyle(Color.sjMuted)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.sjCream.ignoresSafeArea())
+            } else {
+                VStack(spacing: 16) {
+                    CoverImage(url: item.imageUrl)
+                        .frame(width: 160, height: 160)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    Text(item.name)
+                        .font(.jakarta(17, weight: .bold))
+                        .foregroundStyle(Color.sjInk)
+                        .multilineTextAlignment(.center)
+                    Text(item.artist)
+                        .font(.jakarta(14))
+                        .foregroundStyle(Color.sjMuted)
+                    ProgressView()
+                        .padding(.top, 8)
+                }
+                .padding(24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.sjCream.ignoresSafeArea())
+            }
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            resolvedRelease = await DiscoveryViewModel.fetchRelease(name: item.name, artist: item.artist)
+            if resolvedRelease == nil { notFound = true }
+        }
+    }
 }
 
 private struct ArtistSong: Identifiable {
