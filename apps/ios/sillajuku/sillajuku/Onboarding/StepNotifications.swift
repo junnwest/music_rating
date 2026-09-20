@@ -80,9 +80,10 @@ struct StepNotifications: View {
                 .padding(.horizontal, 24)
 
                 Button(action: { Task { await onNext() } }) {
-                    Text(isSaving ? "Saving…" : "Continue without notifications")
+                    Text(isSaving ? "Saving…" : "Skip")
                         .font(.jakarta(14, weight: .semibold))
                         .foregroundStyle(Color.sjMuted)
+                        .frame(maxWidth: .infinity)
                 }
                 .disabled(isSaving)
                 .padding(.top, 14)
