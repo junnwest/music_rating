@@ -156,7 +156,16 @@
     "pipeline:status": "tsx --env-file=.env.local scripts/pipeline-status.ts",
     "pipeline:verify": "tsx --env-file=.env.local scripts/pipeline-verify.ts",
     "queue:ingest:albums": "tsx --env-file=.env.local scripts/ingest-itunes-queue.ts --skip-singles",
-    "queue:ingest:albums:fast": "tsx --env-file=.env.local scripts/ingest-itunes-queue.ts --skip-singles --no-tracks"
+    "queue:ingest:albums:fast": "tsx --env-file=.env.local scripts/ingest-itunes-queue.ts --skip-singles --no-tracks",
+    "ig:resolve-artists": "tsx --env-file=.env.local scripts/resolve-famous-artists.ts",
+    "ig:resolve-artists:write": "tsx --env-file=.env.local scripts/resolve-famous-artists.ts --write",
+    "ig:discover": "tsx --env-file=.env.local scripts/discover-ig-newreleases.ts",
+    "ig:discover:ingest": "tsx --env-file=.env.local scripts/discover-ig-newreleases.ts --ingest",
+    "ig:sync-catalog": "tsx --env-file=.env.local scripts/sync-ig-artists-to-catalog.ts",
+    "ig:sync-catalog:all": "tsx --env-file=.env.local scripts/sync-ig-artists-to-catalog.ts --all",
+    "ig:cover": "tsx --env-file=.env.local scripts/fetch-ig-cover.ts",
+    "ig:render": "tsx --env-file=.env.local scripts/render-ig-poster.ts",
+    "ig:pipeline": "tsx --env-file=.env.local scripts/run-ig-pipeline.ts"
   },
   "dependencies": {
     "@sentry/nextjs": "^8.55.0",
@@ -182,6 +191,7 @@
     "@types/react-dom": "18.3.0",
     "eslint": "8.57.0",
     "eslint-config-next": "14.2.35",
+    "playwright": "^1.63.0",
     "tsx": "^4.21.0",
     "typescript": "5.5.4",
     "vitest": "^4.1.9"
