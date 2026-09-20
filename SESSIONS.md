@@ -55,6 +55,16 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-21 (Mac) — Quick Add rows weren't tappable through to the album's detail page — only the flower rate button was interactive.**
+
+- **User asked**: "the releases aren't clickable in the Quick Add page. is this expected?"
+- **Confirmed not expected/intentional**: `QuickAddRow`/`QuickAddSongRow` (`Main/QuickAddView.swift`) had no `NavigationLink` at all — cover art and title/artist text were dead space, unlike every other album row in the app (`DiscoveryAlbumCard`, `FeedCard`, chart rows, ...), which all push `AlbumDetailView` on tap.
+- **Fixed for albums**: wrapped both `QuickAddRow(...)` construction sites (the main album candidate list, and the genre-shelf rows inside `GenreExplorerView.genreSection` — the latter shared with the bottom-of-Add-tab genre explorer too) in `NavigationLink(value: release) { ... }`. `QuickAddView` is pushed onto `SearchView`'s own `NavigationStack` (`.navigationDestination(isPresented: $showQuickAdd)`), which already declares `.navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }` — so this needed no new destination, just the missing `NavigationLink` wrapper, matching the exact pattern every other tappable album row already uses.
+- **Deliberately NOT fixed for songs** (`QuickAddSongRow`): `SongCandidate` (the RPC-returned model backing the Songs tab) has no real `release_group_id` at all — only a display-only synthetic `Release` (`song.displayRelease`) whose `id` is actually the song's own recording id, not a real catalog release. Navigating with that id would either push a broken/empty album page or silently load the wrong album. Fixing this properly needs `get_quick_add_song_candidates` to also return the real parent release_group id — a backend RPC change, out of scope without being asked. Flagged to the user as a known, distinct limitation from the (now fixed) albums case.
+- **Verified via clean simulator build** — **BUILD SUCCEEDED**. Live simulator verification (tap-to-navigate actually works, flower rate button still works independently) in progress as of this writing — see the next dated entry once it lands.
+
+---
+
 **2026-09-21 (Mac) — Added a "Connect Spotify/Apple Music" nudge + the genre explorer to the bottom of the Add tab itself, not just inside Quick Add's empty state.**
 
 - **User asked specifically**: display "Connect Spotify or Apple Music" (only for whichever isn't connected) and "Explore other genres" at the bottom of the main Add tab. Both already existed, but only inside `QuickAddView`'s empty/seedless state — a screen most users with SOME data would never see.

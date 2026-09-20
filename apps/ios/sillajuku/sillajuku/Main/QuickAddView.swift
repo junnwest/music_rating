@@ -543,11 +543,21 @@ struct QuickAddView: View {
                     LazyVStack(spacing: 4) {
                         Color.clear.frame(height: 0).id("album-top")
                         ForEach(vm.albumCandidates) { release in
-                            QuickAddRow(release: release, ratedScore: vm.ratedScores[release.id], ratingStep: vm.ratingStep) { score in
-                                withAnimation(.easeOut(duration: 0.2)) {
-                                    vm.rate(release, score: score)
+                            // Every other album row in the app (DiscoveryAlbumCard, FeedCard,
+                            // charts rows, ...) pushes AlbumDetailView on tap -- this one never
+                            // did, the cover/title were dead space with only the flower
+                            // interactive. QuickAddView is pushed onto SearchView's own
+                            // NavigationStack (`.navigationDestination(isPresented: $showQuickAdd)`),
+                            // which already declares `.navigationDestination(for: Release.self)`,
+                            // so this Just Works with no new destination needed.
+                            NavigationLink(value: release) {
+                                QuickAddRow(release: release, ratedScore: vm.ratedScores[release.id], ratingStep: vm.ratingStep) { score in
+                                    withAnimation(.easeOut(duration: 0.2)) {
+                                        vm.rate(release, score: score)
+                                    }
                                 }
                             }
+                            .buttonStyle(.plain)
                             .onAppear {
                                 if release.id == vm.albumCandidates.last?.id {
                                     Task { await vm.loadNextAlbumPage() }
@@ -795,11 +805,14 @@ struct GenreExplorerView: View {
             } else if let items = vm.genreShelves[genre], !items.isEmpty {
                 VStack(spacing: 0) {
                     ForEach(items) { release in
-                        QuickAddRow(release: release, ratedScore: vm.ratedScores[release.id], ratingStep: vm.ratingStep) { score in
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                vm.rate(release, score: score)
+                        NavigationLink(value: release) {
+                            QuickAddRow(release: release, ratedScore: vm.ratedScores[release.id], ratingStep: vm.ratingStep) { score in
+                                withAnimation(.easeOut(duration: 0.2)) {
+                                    vm.rate(release, score: score)
+                                }
                             }
                         }
+                        .buttonStyle(.plain)
                     }
                 }
                 .background(Color.sjCream)
