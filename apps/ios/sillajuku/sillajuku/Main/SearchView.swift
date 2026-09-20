@@ -145,13 +145,18 @@ class DiscoveryViewModel {
         // failure -- see loadSpotify) until a manual pull-to-refresh. Same "optional fetch, one
         // retry" pattern already used by TasteViewModel/MixLibraryViewModel for this exact shape
         // of bug.
-        if !hasDiscoveryData {
-            await reloadDiscoverySections()
+        //
+        // Runs concurrently with resolveRecentlyPlayedIfNeeded(), not sequentially before it --
+        // that one only needs the recently-played lists loadSpotify/loadAppleMusic already
+        // populated in the wave above, it has no dependency on Discovery at all. Confirmed live
+        // 2026-09-21: sequencing them meant "Recently Listened" sat waiting on an entire *unrelated*
+        // Discovery retry (a real extra network round trip, ~6s per the comment above) even though
+        // its own data was ready seconds earlier -- exactly the "why did this take 10+ seconds when
+        // everything else appeared immediately" symptom the user reported.
+        await withTaskGroup(of: Void.self) { g in
+            if !hasDiscoveryData { g.addTask { await self.reloadDiscoverySections() } }
+            g.addTask { await self.resolveRecentlyPlayedIfNeeded() }
         }
-        // Only needs the recently-played lists loadSpotify/loadAppleMusic just populated above --
-        // has its own hasResolvedRecentlyPlayed guard, so this really must stay sequenced after
-        // the wave above (unlike Discovery, it has a genuine dependency on Spotify/Apple Music).
-        await resolveRecentlyPlayedIfNeeded()
         prefetchDiscoveryCovers()
     }
 
