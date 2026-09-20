@@ -38,12 +38,31 @@ export function getDB(): DB {
 
 // ── Normalization ─────────────────────────────────────────────────────────────
 
-// Lowercase, strip punctuation, keep word chars + CJK. Shared by every match.
+// Lowercase, strip punctuation, keep letters and digits in EVERY script. Shared by every match.
+//
+// This used to whitelist `\w` (ASCII only) plus Hangul/Kana/CJK, which silently DELETED every other
+// script instead of normalizing it — so the "key" for a title could lose most of its information:
+//
+//   'Береги' -> ''            'Пара ангелов' -> ''       (all Cyrillic collapsed to one empty key)
+//   'P.O.E.M. Ⅲ' -> 'p o e m' == 'P.O.E.M.' -> 'p o e m'  (U+2162 dropped entirely)
+//
+// That is not a cosmetic issue: releaseGroupKey() is built on this and is the DEDUP KEY in
+// findOrCreateReleaseGroup, so two genuinely different albums hash together and the second is filed
+// as an extra EDITION of the first. Observed live on 2026-09-20 — ingesting Owen Ovadoz's
+// "P.O.E.M. Ⅲ" (2021, 11 tracks) attached it to his "P.O.E.M." (2016) release group instead of
+// creating its own, and the album vanished from his page. It also left 1,221 artist_aliases rows
+// with alias_norm = '' (676 Cyrillic), making those artists unfindable by those names.
+//
+// `\p{L}\p{N}` with the u flag keeps letters/digits from all scripts, and NFKC first folds
+// compatibility forms (U+2162 -> 'III', full-width -> ASCII) so they normalize rather than vanish.
+// Rows written under the old key are NOT retroactively fixed — a re-ingest can now create the
+// correct group alongside a previously-merged one, which an audit has to reconcile.
 export function normalizeStr(s: string): string {
   return s
     .toLowerCase()
+    .normalize('NFKC')
     .replace(/[''`'"'""]/g, '')
-    .replace(/[^\w\s가-힣぀-ゟ゠-ヿ一-鿿]/gu, ' ')
+    .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
