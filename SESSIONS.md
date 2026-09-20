@@ -35,6 +35,17 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-21 (Mac) — Made new ratings appear in the Profile tab instantly instead of via a full-page reload-and-spinner.**
+
+- **User reported**: on a fresh account, ratings made elsewhere in the app didn't "instantly" appear in the Profile tab.
+- **Verified server-side before writing any fix** — queried the `ratings` table directly for the account in question (username `junnwest`): all 11 ratings the user had made were genuinely present with correct scores and timestamps. **Ruled out data loss / a failed write as the cause** — this is purely a client-side refresh/UX issue, not a persistence bug.
+- **Root cause**: `ProfileView`'s only `.ratingChanged` handler called `viewModel.reload()` unconditionally — which sets `hasLoaded = false` then re-runs the *entire* `load()` (profile, all ratings, song ratings, follow counts, mix shares, social data), gated behind `isLoading` blanking the whole tab to a spinner while it re-fetches everything from scratch. Technically correct eventually, but not remotely instant, and it also discards scroll position on every single rating made anywhere in the app while Profile happens to be open.
+- **Fixed with a targeted in-place update instead of a full reload**: `.ratingChanged` now carries a `RatingChangeInfo{releaseGroupId, score}` payload (added in the previous round's duplicate-row-sync fix). `ProfileViewModel.applyRatingChange(releaseGroupId:score:)` re-fetches just the one changed `ratings` row (same shape `fetchAlbumRatings` already uses, one lightweight query) and either updates it in place if already in the grid, or prepends it if it's a new rating (incrementing `ratedTotal` to match) — or removes it from the grid if the score is `nil` (rating deleted). `ProfileView`'s `.onReceive(.ratingChanged)` now calls this instead of `reload()` whenever a `RatingChangeInfo` payload is present, falling back to the old full `reload()` only for the rarer notification posts that don't carry one yet (track-level rating changes). No spinner flash, no lost scroll position, no unrelated data re-fetched.
+- **Scope note, not fixed**: while investigating, found `AlbumRateButton.quickRate`/`saveModal` and `SearchView.saveQuickRating` still use the pre-hardening `try?`-and-notify-unconditionally pattern that `AlbumContextMenu.saveManualScore`'s own comment already documents as a real bug class elsewhere in this codebase (a failed write would look "rated" in the UI with nothing to show for it). Confirmed NOT the cause of this particular report (writes verified landing correctly), so left untouched per scope — flagged to the user as a latent gap worth a future pass.
+- **Verified via clean simulator build** — **BUILD SUCCEEDED**.
+
+---
+
 **2026-09-21 (Mac) — Added a "Connect Spotify/Apple Music" nudge + the genre explorer to the bottom of the Add tab itself, not just inside Quick Add's empty state.**
 
 - **User asked specifically**: display "Connect Spotify or Apple Music" (only for whichever isn't connected) and "Explore other genres" at the bottom of the main Add tab. Both already existed, but only inside `QuickAddView`'s empty/seedless state — a screen most users with SOME data would never see.

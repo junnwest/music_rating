@@ -632,6 +632,46 @@ class ProfileViewModel {
         await load()
     }
 
+    /// Applies one album rating change in place, instead of `reload()`'s full
+    /// teardown-and-refetch (which blanks the whole tab behind a spinner and
+    /// loses scroll position) -- called for `.ratingChanged` posts that carry a
+    /// `RatingChangeInfo`, so a rating made anywhere else in the app (Add tab,
+    /// album detail, a duplicate row, ...) shows up here the instant it lands,
+    /// not just on this tab's next full open.
+    func applyRatingChange(releaseGroupId: UUID, score: Double?) async {
+        // Nothing loaded yet -- the eventual first `.task { load() }` will
+        // already pick this up from the DB, no patching needed.
+        guard hasLoaded, let userId = supabase.auth.currentUser?.id else { return }
+
+        guard let score else {
+            if ratings.contains(where: { $0.releases.id == releaseGroupId }) {
+                ratings.removeAll { $0.releases.id == releaseGroupId }
+                ratedTotal = ratedTotal.map { max(0, $0 - 1) }
+            }
+            return
+        }
+
+        // Re-fetches just this one row (same shape as fetchAlbumRatings) rather than
+        // trusting the notification's bare score -- picks up the real rating id,
+        // created_at, and joined release fields a brand-new grid entry needs.
+        guard let fresh: UserRating = try? await supabase
+            .from("ratings")
+            .select("id, score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native))")
+            .eq("user_id", value: userId)
+            .eq("release_group_id", value: releaseGroupId)
+            .single()
+            .execute()
+            .value
+        else { return }
+
+        if let idx = ratings.firstIndex(where: { $0.releases.id == releaseGroupId }) {
+            ratings[idx] = fresh
+        } else {
+            ratings.insert(fresh, at: 0)
+            ratedTotal = ratedTotal.map { $0 + 1 }
+        }
+    }
+
     func signOut() async {
         SpotifyService.clearCache()
         try? await supabase.auth.signOut()
@@ -834,8 +874,14 @@ struct ProfileView: View {
             }
         }
         .task { await viewModel.load() }
-        .onReceive(NotificationCenter.default.publisher(for: .ratingChanged)) { _ in
-            Task { await viewModel.reload() }
+        .onReceive(NotificationCenter.default.publisher(for: .ratingChanged)) { note in
+            if let info = note.object as? RatingChangeInfo {
+                Task { await viewModel.applyRatingChange(releaseGroupId: info.releaseGroupId, score: info.score) }
+            } else {
+                // Older/track-level posts still carry no payload -- fall back
+                // to the full reload rather than silently no-op-ing.
+                Task { await viewModel.reload() }
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .followChanged)) { _ in
             Task { await viewModel.reload() }
