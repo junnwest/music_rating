@@ -2,6 +2,7 @@ import SwiftUI
 import Observation
 import Supabase
 import MusicKit
+import Sentry
 
 // MARK: - Song model
 
@@ -312,6 +313,19 @@ class DiscoveryViewModel {
     // immediately regardless; in the rare race case this section just pops
     // in a couple seconds after the others instead of never appearing.
     private func loadSpotify() async {
+        var lastLinkedSpotify = false
+        var reachedLayer3 = false
+        defer {
+            // Only fires if every attempt exhausted without ever hitting the
+            // `return` inside Layer 3 -- one summary event with the full
+            // picture (which gate the loop kept failing at) instead of
+            // having to reconstruct it from whichever individual capture did
+            // or didn't fire, which is what the last two rounds of this bug
+            // required.
+            if !hasSpotifyData {
+                SentrySDK.capture(message: "loadSpotify exhausted retries: lastLinkedSpotify=\(lastLinkedSpotify) reachedLayer3=\(reachedLayer3)")
+            }
+        }
         for attempt in 0..<5 {
             if attempt > 0 { try? await Task.sleep(for: .milliseconds(600)) }
             let isLastAttempt = attempt == 4
@@ -325,8 +339,26 @@ class DiscoveryViewModel {
             // completely defeated for this specific gate (every other layer in this loop retried
             // for real; this one didn't). Doing a real network call on each attempt instead means
             // a genuine timing race actually has a chance to resolve across retries.
-            let identities = (try? await supabase.auth.userIdentities()) ?? []
+            let identities: [UserIdentity]
+            do {
+                identities = try await supabase.auth.userIdentities()
+            } catch {
+                // Previously `(try? ...) ?? []` -- indistinguishable from a
+                // real "genuinely not linked" empty result, with nothing
+                // logged either way. Confirmed live 2026-09-21: a DB check
+                // showed an account WAS actually linked server-side while
+                // the client kept landing on this exact gate every attempt
+                // and never once reached the topArtists/recentlyPlayed calls
+                // (which already had their own Sentry capture, and stayed
+                // silent) -- meaning this call itself, not Layer 3, is the
+                // most likely place still failing without any visibility.
+                identities = []
+                if isLastAttempt {
+                    SentrySDK.capture(error: error)
+                }
+            }
             let linkedSpotify = identities.contains { $0.provider == Provider.spotify.rawValue }
+            lastLinkedSpotify = linkedSpotify
             if !linkedSpotify {
                 if isLastAttempt {
                     SpotifyService.clearCache()
@@ -360,6 +392,7 @@ class DiscoveryViewModel {
             hasSpotifyData = !spotifyArtists.isEmpty || !recentlyPlayed.isEmpty
 
             // Layer 3: Live Spotify API (when token is valid — refreshes both caches)
+            reachedLayer3 = true
             guard let token = await SpotifyService.validToken() else {
                 if isLastAttempt { needsSpotifyReconnect = !hasSpotifyData }
                 continue
