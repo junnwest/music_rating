@@ -43,3 +43,7 @@ apps/web/scripts/data/*-report-*.json
 # Tooling scratch
 .understand-anything/
 backups/
+
+# Run logs from scripts/ and scripts/data/ — transcripts of a single run, not source.
+apps/web/scripts/*.log
+apps/web/scripts/data/*.log
