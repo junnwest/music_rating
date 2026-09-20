@@ -537,6 +537,14 @@ struct SettingsView: View {
 
     private func saveRatingStep(_ value: Double) {
         guard let user = supabase.auth.currentUser else { return }
+        // Without this, viewModel.profile (the ONLY thing loadPreferences() -- called on
+        // every SettingsView .onAppear -- actually reads from) never learns about this
+        // change, since it's never refetched after a save. Confirmed live 2026-09-21: close
+        // Settings and reopen it right after changing this showed the value from before the
+        // change, even though the DB write itself succeeded. Updating the local cache
+        // immediately keeps it in sync with the `ratingStep` @State this button already
+        // updates on tap, so a reopen reads the same value the button visibly shows.
+        viewModel.profile?.ratingStep = value
         Task {
             try? await supabase.from("profiles")
                 .update(["manual_rating_step": value])

@@ -4,6 +4,16 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-21 (Mac) — Fixed Settings' Rating Precision toggle not persisting visually across a close/reopen, despite the DB write succeeding.**
+
+- **User reported: change Rating Precision in Settings, close Settings, reopen it — shows the value from before the change**, even though the underlying setting change itself (used when rating albums) did take effect.
+- **Root-caused precisely**: `saveRatingStep(_:)` writes `manual_rating_step` straight to the `profiles` table but never touches `viewModel.profile` (the cached `ProfileViewModel` instance shared across the tab) — and `loadPreferences()`, which runs on every `SettingsView.onAppear`, reads its `ratingStep` @State exclusively from `viewModel.profile?.ratingStep`. Since nothing ever refetches or updates that cached profile after a save, reopening Settings always re-read the stale value from whenever the profile was first loaded, regardless of how many times the setting had actually been changed and saved since.
+- **Fixed**: `saveRatingStep` now also sets `viewModel.profile?.ratingStep = value` immediately, alongside the existing DB write — keeps the shared cache in sync with what the button itself already shows on tap, so a later `loadPreferences()` (on reopen) reads the correct, current value instead of stale data.
+- **Scope note, not fixed**: `saveBool`/`saveText` (used for the notification toggles and profile-visibility settings in this same file) follow the identical pattern — write to the DB, never update `viewModel.profile` — and almost certainly have the same latent bug. Not touched since the user only reported Rating Precision specifically; flagged here in case it's worth a follow-up.
+- **Verified via clean simulator build** — **BUILD SUCCEEDED**. NOT YET COMMITTED.
+
+---
+
 **2026-09-20 (Mac) — iOS: fixed the "notifications enabling doesn't work" onboarding bug, and reworked the Apple-sign-in "Connect Apple Music" step to also offer Spotify and explain both connections.**
 
 - **User reported no iPhone popup appeared when tapping Continue on the notifications onboarding step.** Root-caused via the existing codebase's own documented pattern for the same permission elsewhere (`MainTabView.openNotificationSettings()`'s comment: "Denied can't be re-prompted in-app — only iOS Settings can change it now"): `StepNotifications.swift` always called `requestAuthorization()` unconditionally with no prior status check, so once notification permission was already `.denied` on a device (from an earlier TestFlight/dev build, or a prior account on the same test device), the call silently re-returned `.denied` with no popup at all — tapping Continue looked broken but was actually a no-op by iOS design.
