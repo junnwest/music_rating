@@ -2,6 +2,26 @@ import SwiftUI
 import Observation
 import Supabase
 
+/// Set to `true` only inside a `TasteShareCard` snapshot. Several charts
+/// (`StackedBarView`, `ScoreRampChartView`, `ActivitySparkView`) grow their
+/// bars in only once `onScrollVisibilityChange` reports them visible --
+/// correct for the live, scrolling page, but that callback never fires
+/// inside an `ImageRenderer` snapshot (there's no real scroll happening),
+/// so left alone every bar would export at zero height. Read at the same
+/// call sites that already gate on `UIAccessibility.isReduceMotionEnabled`,
+/// which is exactly the existing precedent for "skip the animation, just
+/// show the end state."
+private struct IsTasteShareSnapshotKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var isTasteShareSnapshot: Bool {
+        get { self[IsTasteShareSnapshotKey.self] }
+        set { self[IsTasteShareSnapshotKey.self] = newValue }
+    }
+}
+
 // MARK: - ViewModel
 
 @Observable
@@ -146,7 +166,10 @@ struct TasteView: View {
                 Text("Couldn't load your taste progress.")
                     .font(.jakarta(15))
                     .foregroundStyle(Color.sjMuted)
-                Button("Retry") { Task { await viewModel.load() } }
+                Button("Retry") {
+                    Haptics.light()
+                    Task { await viewModel.load() }
+                }
                     .font(.jakarta(14, weight: .semibold))
                     .foregroundStyle(Color.sjAmber)
             }
@@ -167,118 +190,218 @@ private struct TasteReportView: View {
     let onRefresh: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+    /// The hero page's own share button state -- every other section shares
+    /// through `TastePageChrome`'s identical mechanism, but the hero page
+    /// doesn't use that chrome (it has its own full-bleed aurora layout), so
+    /// it needs this one directly.
+    @State private var pendingShare: TasteShareBox?
 
     private var stats: TasteProfileResponse.TasteStats { report.stats }
     private var charts: TasteProfileResponse.TasteCharts { report.charts }
 
-    /// Section numbers stay sequential no matter which sections this profile
-    /// has -- port of web's `nextNo()` counter. `flags[i]` false ⇒ `""`,
-    /// otherwise the running count zero-padded, e.g. "01".
-    private func sectionNumbers(_ flags: [Bool]) -> [String] {
-        var n = 0
-        return flags.map { flag in
-            guard flag else { return "" }
-            n += 1
-            return String(format: "%02d", n)
-        }
-    }
-
     private var hasMap: Bool { report.graph != nil && !(report.graph?.worlds.isEmpty ?? true) }
+
+    /// Builds this profile's page sequence -- which sections this report has
+    /// (same gating the old single-scroll layout used) plus an unnumbered
+    /// hero page up front. Numbers stay sequential regardless of which
+    /// optional pages are present, port of web's `nextNo()` counter. The
+    /// pager's own `loopsAround` appends the wrap-back-to-the-top transition
+    /// after whatever page ends up last here -- no explicit outro page
+    /// needed to hand off to it.
+    private func buildPages(sceneShares: [(label: String, share: Double, color: Color)]) -> ([TastePageKind], [String]) {
+        var kinds: [TastePageKind] = []
+        var nos: [String] = []
+        var n = 0
+        func add(_ kind: TastePageKind, numbered: Bool = true) {
+            kinds.append(kind)
+            if numbered { n += 1; nos.append(String(format: "%02d", n)) } else { nos.append("") }
+        }
+        add(.hero, numbered: false)
+        if hasMap { add(.map) }
+        if !report.topAlbums.isEmpty { add(.hallOfFame) }
+        add(.numbers)
+        if charts.years.count > 1 && stats.meanYear != nil && stats.avgScore != nil { add(.years) }
+        if charts.scoreDist.reduce(0, +) > 0 && stats.avgScore != nil { add(.score) }
+        // Unconditional, not gated on `sceneShares` -- canon reach (merged
+        // in below) never had a gating condition of its own, so this page
+        // must keep appearing even on the rare profile with no scene data,
+        // just without the scene half.
+        add(.scene)
+        if !report.standings.isEmpty { add(.standings) }
+        if !report.disliked.isEmpty { add(.disliked) }
+        return (kinds, nos)
+    }
 
     var body: some View {
         let sceneShares = TasteViz.sceneShares(charts.scenes)
-        let flags = [
-            hasMap,                                                       // 0 Map
-            true,                                                        // 1 Numbers
-            charts.years.count > 1 && stats.meanYear != nil && stats.avgScore != nil,  // 2 Years
-            charts.scoreDist.reduce(0, +) > 0 && stats.avgScore != nil,  // 3 Score
-            !sceneShares.isEmpty,                                        // 4 Scene
-            true,                                                        // 5 Canon
-            !report.standings.isEmpty,                                   // 6 Standings
-            !report.disliked.isEmpty,                                    // 7 Disliked
-        ]
-        let nos = sectionNumbers(flags)
+        let (kinds, nos) = buildPages(sceneShares: sceneShares)
 
-        return ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 16) {
-                heroCard
-
-                if flags[0], let graph = report.graph {
-                    ReportSection(
-                        no: nos[0],
-                        title: String(localized: "Your taste map"),
-                        lead: String(localized: "Tap a world to explore its sub-genres, then a sub-genre to see your albums and recommendations.")
-                    ) {
-                        TasteMapView(data: graph)
+        return TastePagerContainer(count: kinds.count, loopsAround: true) { i, topInset, bottomInset in
+            page(kinds[i], no: nos[i], sceneShares: sceneShares, topInset: topInset, bottomInset: bottomInset)
+                .overlay(alignment: .top) {
+                    // User ask: swiping up from the hero page shows a hard
+                    // seam where its aurora wash meets the next page's plain
+                    // cream. Root cause: the third aurora glow is centered
+                    // at y: 0.96 -- almost the very bottom edge -- so it's
+                    // still near full strength exactly where the page gets
+                    // clipped, then the next page starts from flat cream
+                    // with nothing to bridge the two. Rather than moving the
+                    // glow (which would flatten the hero page's own
+                    // intentional full-bleed look), the second page gets a
+                    // matching fade at its own top that "continues" the same
+                    // color down to nothing -- always page index 1, since
+                    // `buildPages` puts hero at index 0 unconditionally, so
+                    // index 1 is always whatever section actually follows it.
+                    if i == 1, let seamColor = auroraColors.last {
+                        LinearGradient(colors: [seamColor.opacity(0.45), .clear],
+                                       startPoint: .top, endPoint: .bottom)
+                            .frame(height: 200)
+                            .allowsHitTesting(false)
                     }
                 }
-
-                ReportSection(no: nos[1], title: String(localized: "By the numbers")) {
-                    numbersContent
-                }
-
-                if flags[2], let avgScore = stats.avgScore {
-                    ReportSection(no: nos[2], title: String(localized: "Across the years"), lead: yearsLeadText) {
-                        YearChartView(
-                            years: charts.years,
-                            avgScore: avgScore,
-                            aboveLabel: String(localized: "above average"),
-                            belowLabel: String(localized: "below average"),
-                            paceLabel: String(localized: "pace"),
-                            avgLabel: String(localized: "avg")
-                        )
-                    }
-                }
-
-                if flags[3] {
-                    ReportSection(no: nos[3], title: String(localized: "How you score"), lead: scoreLeadText) {
-                        ScoreRampChartView(
-                            bins: charts.scoreDist,
-                            mean: (pos: ((stats.avgScore ?? 0) - 0.25) / 5,
-                                   label: "\(String(localized: "avg")) \(String(format: "%.2f", stats.avgScore ?? 0))"),
-                            legend: String(localized: "score")
-                        )
-                    }
-                }
-
-                if flags[4] {
-                    ReportSection(no: nos[4], title: String(localized: "Where your music comes from"), lead: sceneLeadText(sceneShares)) {
-                        sceneContent(sceneShares)
-                    }
-                }
-
-                ReportSection(no: nos[5], title: String(localized: "Canon reach")) {
-                    canonContent
-                }
-
-                if flags[6] {
-                    ReportSection(
-                        no: nos[6],
-                        title: String(localized: "You vs the community"),
-                        lead: String(localized: "How your average compares to the community's, genre by genre.")
-                    ) {
-                        standingsContent
-                    }
-                }
-
-                if flags[7] {
-                    ReportSection(no: nos[7], title: String(localized: "Not your thing")) {
-                        FlowChips(items: report.disliked.map(\.display))
-                            .padding(.top, 10)
-                    }
-                }
-
-                Text("That's your taste snapshot.")
-                    .font(.jakarta(11.5))
-                    .foregroundStyle(Color.sjMuted.opacity(0.5))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
-            .padding(.bottom, 24)
         }
-        .background(Color.sjCream.ignoresSafeArea())
+        .sheet(item: $pendingShare) { box in
+            SharePreviewSheet { box.view }
+        }
+    }
+
+    /// A compact restatement of the hero page's own headline + stat row --
+    /// not the full aurora-background layout (`heroCard` fills an entire
+    /// screen; `TasteShareCard` already gives every shared section its own
+    /// cream card treatment, so reusing the full hero layout verbatim would
+    /// double up on background/padding meant for two different contexts).
+    /// Deliberately plain `Text`, not `heroStat`/`CountUpText` -- the
+    /// count-up animates from 0 over ~0.9s on appear, and `SharePreviewSheet`
+    /// snapshots the card within a frame or two of it appearing, so reusing
+    /// it here would very likely export a card showing "0" for every stat.
+    private var heroShareContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(report.clusters.count >= 2
+                 ? String(format: String(localized: "Your taste lives in\n%d worlds."), report.clusters.count)
+                 : String(localized: "Your taste lives in\none world."))
+                .font(.jakarta(26, weight: .black))
+                .foregroundStyle(Color.sjInk)
+            Text(String(format: String(localized: "Based on %1$d ratings across %2$d genres, analyzed into %3$d worlds."),
+                        report.ratingCount, report.totalTags, report.clusters.count))
+                .font(.jakarta(13))
+                .foregroundStyle(Color.sjMuted)
+            HStack(spacing: 16) {
+                heroShareStat(value: report.ratingCount, label: String(localized: "rated"))
+                Rectangle().fill(Color.sjBlue.opacity(0.2)).frame(width: 1, height: 30)
+                heroShareStat(value: report.totalTags, label: String(localized: "genres"))
+                Rectangle().fill(Color.sjBlue.opacity(0.2)).frame(width: 1, height: 30)
+                heroShareStat(value: report.clusters.count, label: String(localized: "worlds"))
+            }
+            .padding(.top, 6)
+        }
+    }
+
+    private func heroShareStat(value: Int, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("\(value)")
+                .font(.jakarta(28, weight: .black))
+                .foregroundStyle(Color.sjInk)
+            Text(label)
+                .font(.jakarta(11, weight: .bold))
+                .kerning(0.6)
+                .textCase(.uppercase)
+                .foregroundStyle(Color.sjMuted)
+        }
+    }
+
+    /// One full-screen page's content, dispatched by kind. Everything but
+    /// `.hero` is wrapped in the shared `TastePageChrome` (numbered title +
+    /// lead + card), matching the old `ReportSection` chrome. `topInset`/
+    /// `bottomInset` are the real status-bar/tab-bar clearance for this
+    /// page to apply to its own *content* -- each page applies these
+    /// itself, rather than the pager padding every row from the outside,
+    /// so a page with its own full-bleed background (the hero page's
+    /// aurora wash) can still reach the actual screen edges instead of
+    /// leaving a gap where that outer padding used to shrink it.
+    @ViewBuilder
+    private func page(_ kind: TastePageKind, no: String, sceneShares: [(label: String, share: Double, color: Color)],
+                       topInset: CGFloat, bottomInset: CGFloat) -> some View {
+        switch kind {
+        case .hero:
+            heroPage(topInset: topInset, bottomInset: bottomInset)
+        case .map:
+            if let graph = report.graph {
+                TastePageChrome(
+                    no: no,
+                    title: String(localized: "Your taste map"),
+                    lead: String(localized: "Tap a world to explore its sub-genres, then a sub-genre to see your albums and recommendations."),
+                    topInset: topInset, bottomInset: bottomInset
+                ) {
+                    TasteMapView(data: graph)
+                }
+            }
+        case .hallOfFame:
+            TastePageChrome(no: no, title: String(localized: "Your #1 Album"), topInset: topInset, bottomInset: bottomInset) {
+                HallOfFameView(albums: report.topAlbums, score: report.topScore ?? report.topAlbums[0].score)
+            }
+        case .numbers:
+            TastePageChrome(no: no, title: String(localized: "By the numbers"), topInset: topInset, bottomInset: bottomInset) {
+                numbersContent
+            }
+        case .years:
+            if let avgScore = stats.avgScore {
+                TastePageChrome(no: no, title: String(localized: "Across the years"), lead: yearsLeadText,
+                                 topInset: topInset, bottomInset: bottomInset) {
+                    YearChartView(
+                        years: charts.years,
+                        avgScore: avgScore,
+                        aboveLabel: String(localized: "above average"),
+                        belowLabel: String(localized: "below average"),
+                        paceLabel: String(localized: "pace"),
+                        avgLabel: String(localized: "avg")
+                    )
+                }
+            }
+        case .score:
+            TastePageChrome(no: no, title: String(localized: "How you score"), lead: scoreLeadText,
+                             topInset: topInset, bottomInset: bottomInset) {
+                ScoreRampChartView(
+                    bins: charts.scoreDist,
+                    mean: (pos: ((stats.avgScore ?? 0) - 0.25) / 5,
+                           label: "\(String(localized: "avg")) \(String(format: "%.2f", stats.avgScore ?? 0))"),
+                    legend: String(localized: "score")
+                )
+            }
+        case .scene:
+            // Canon reach merged in below (was its own page) -- user ask.
+            // Canon has no gating condition of its own (always shown), so
+            // it renders regardless; the scene half only renders -- and
+            // only gets a divider above canon -- when there's scene data.
+            // Wrapped in its own `ScrollView` since the combined height can
+            // now exceed one screen (each half used to comfortably fit
+            // alone) -- without it, `TastePageChrome`'s content frame
+            // centers overflow vertically rather than pinning it to the
+            // top, pushing content off *both* edges and rendering nothing
+            // at all, confirmed live before adding this.
+            TastePageChrome(no: no, title: String(localized: "Where your music comes from"),
+                             lead: sceneShares.isEmpty ? nil : sceneLeadText(sceneShares),
+                             topInset: topInset, bottomInset: bottomInset) {
+                SceneCanonContent(sceneShares: sceneShares, prestigeShare: stats.prestigeShare)
+            }
+        case .standings:
+            TastePageChrome(
+                no: no,
+                title: String(localized: "You vs the community"),
+                lead: String(localized: "How your average compares to the community's, genre by genre."),
+                topInset: topInset, bottomInset: bottomInset
+            ) {
+                StandingsList(standings: sortedStandings)
+            }
+        case .disliked:
+            TastePageChrome(no: no, title: String(localized: "Not your thing"), topInset: topInset, bottomInset: bottomInset) {
+                FlowChips(items: report.disliked.map(\.display))
+                    .padding(.top, 10)
+            }
+        }
+    }
+
+    private func heroPage(topInset: CGFloat, bottomInset: CGFloat) -> some View {
+        heroCard(topInset: topInset, bottomInset: bottomInset)
     }
 
     // ── Hero ──
@@ -306,16 +429,27 @@ private struct TasteReportView: View {
         }
     }
 
-    private var heroCard: some View {
+    /// The hero/title page's full-bleed content -- was a small rounded-rect
+    /// "card" centered on an otherwise-empty page; now the aurora wash and
+    /// content fill the whole screen, with the title/stats distributed by
+    /// the two `Spacer`s rather than clustered at the top over dead space.
+    private func heroCard(topInset: CGFloat, bottomInset: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top) {
+            HStack(alignment: .top, spacing: 10) {
                 Text("Taste Report")
                     .font(.jakarta(10, weight: .black))
                     .kerning(1.2)
                     .textCase(.uppercase)
                     .foregroundStyle(Color.sjBlue.opacity(0.7))
                 Spacer(minLength: 8)
-                Button(action: onRefresh) {
+                TasteShareButton {
+                    Haptics.light()
+                    pendingShare = TasteShareBox(view: AnyView(TasteShareCard(no: "", title: "") { heroShareContent }))
+                }
+                Button(action: {
+                    Haptics.light()
+                    onRefresh()
+                }) {
                     HStack(spacing: 6) {
                         if isRefreshing {
                             ProgressView().tint(Color.sjBlue).scaleEffect(0.7)
@@ -338,41 +472,40 @@ private struct TasteReportView: View {
                 .buttonStyle(.plain)
                 .disabled(isRefreshing)
             }
+            Spacer(minLength: 24)
             Text(report.clusters.count >= 2
                  ? String(format: String(localized: "Your taste lives in\n%d worlds."), report.clusters.count)
                  : String(localized: "Your taste lives in\none world."))
-                .font(.jakarta(24, weight: .black))
+                .font(.jakarta(40, weight: .black))
                 .foregroundStyle(Color.sjInk)
-                .padding(.top, 8)
             Text(String(format: String(localized: "Based on %1$d ratings across %2$d genres, analyzed into %3$d worlds."),
                         report.ratingCount, report.totalTags, report.clusters.count))
-                .font(.jakarta(12.5))
+                .font(.jakarta(14.5))
                 .foregroundStyle(Color.sjMuted)
-                .padding(.top, 6)
-            HStack(spacing: 18) {
+                .padding(.top, 10)
+            Spacer(minLength: 24)
+            HStack(spacing: 20) {
                 heroStat(value: report.ratingCount, label: String(localized: "rated"))
-                Rectangle().fill(Color.sjBlue.opacity(0.2)).frame(width: 1, height: 30)
+                Rectangle().fill(Color.sjBlue.opacity(0.2)).frame(width: 1, height: 34)
                 heroStat(value: report.totalTags, label: String(localized: "genres"))
-                Rectangle().fill(Color.sjBlue.opacity(0.2)).frame(width: 1, height: 30)
+                Rectangle().fill(Color.sjBlue.opacity(0.2)).frame(width: 1, height: 34)
                 heroStat(value: report.clusters.count, label: String(localized: "worlds"))
             }
-            .padding(.top, 18)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 20)
-        .padding(.vertical, 20)
+        .padding(.horizontal, 24)
+        .padding(.top, 28 + topInset)
+        .padding(.bottom, 40 + bottomInset)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(ZStack { Color.sjBlue.opacity(0.07); auroraBackground })
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.sjBlue.opacity(0.15), lineWidth: 1))
     }
 
     private func heroStat(value: Int, label: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             CountUpText(value: value)
-                .font(.jakarta(22, weight: .black))
+                .font(.jakarta(28, weight: .black))
                 .foregroundStyle(Color.sjInk)
             Text(label)
-                .font(.jakarta(10, weight: .bold))
+                .font(.jakarta(11, weight: .bold))
                 .kerning(0.6)
                 .textCase(.uppercase)
                 .foregroundStyle(Color.sjMuted)
@@ -408,51 +541,12 @@ private struct TasteReportView: View {
                        lead.label, Int((lead.share * 100).rounded()))
     }
 
-    private func sceneContent(_ shares: [(label: String, share: Double, color: Color)]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            StackedBarView(segments: shares.map { (share: $0.share, color: $0.color) })
-                .padding(.top, 12)
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(Array(shares.enumerated()), id: \.offset) { _, s in
-                    HStack(spacing: 6) {
-                        Circle().fill(s.color).frame(width: 10, height: 10)
-                        Text(s.label)
-                            .font(.jakarta(12, weight: .semibold))
-                            .foregroundStyle(Color.sjInk)
-                        Text("\(Int((s.share * 100).rounded()))%")
-                            .font(.jakarta(12))
-                            .monospacedDigit()
-                            .foregroundStyle(Color.sjMuted)
-                    }
-                }
-            }
-            .padding(.top, 10)
-        }
-    }
-
-    // ── Canon reach ──
-
-    private var canonContent: some View {
-        HStack(alignment: .center, spacing: 18) {
-            CanonRadialGauge(pct: stats.prestigeShare ?? 0, label: String(localized: "in the canon"))
-            Text(String(format: String(localized: "%d%% of what you rate sits in the curated canon; the rest is your own discovery."),
-                        Int(((stats.prestigeShare ?? 0) * 100).rounded())))
-                .font(.jakarta(12.5))
-                .foregroundStyle(Color.sjMuted)
-        }
-        .padding(.top, 10)
-    }
-
-    // ── Numbers (top album + stat tiles + 12-month activity) ──
+    // ── Numbers (stat tiles + 12-month activity; top album is its own page) ──
 
     private var numbersContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if !report.topAlbums.isEmpty {
-                HallOfFameView(albums: report.topAlbums, score: report.topScore ?? report.topAlbums[0].score)
-                    .padding(.top, 14)
-            }
-            let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
-            LazyVGrid(columns: columns, spacing: 10) {
+            let columns = [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)]
+            LazyVGrid(columns: columns, spacing: 14) {
                 StatTileView(
                     value: stats.avgScore.map { String(format: "%.2f", $0) } ?? "—",
                     label: String(localized: "average score"),
@@ -496,19 +590,19 @@ private struct TasteReportView: View {
                     }
                 }
             }
-            .padding(.top, 12)
-            VStack(alignment: .leading, spacing: 8) {
+            .padding(.top, 28)
+            VStack(alignment: .leading, spacing: 10) {
                 Text(String(localized: "12-month activity"))
-                    .font(.jakarta(11, weight: .bold))
+                    .font(.jakarta(12, weight: .bold))
                     .foregroundStyle(Color.sjMuted)
                 ActivitySparkView(timeline: charts.timeline, peakIndex: charts.peakMonthIndex, monthLabel: monthTooltipLabel)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(Color.sjCream)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.sjBorder.opacity(0.6), lineWidth: 1))
-            .padding(.top, 10)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 20)
+            .background(Color.sjSurface)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.sjBorder.opacity(0.6), lineWidth: 1))
+            .padding(.top, 14)
         }
     }
 
@@ -553,46 +647,1043 @@ private struct TasteReportView: View {
     private var sortedStandings: [TasteProfileResponse.GenreStandingRow] {
         report.standings.sorted { ($0.userAvg - $0.communityAvg) > ($1.userAvg - $1.communityAvg) }
     }
+}
 
-    private var standingsContent: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
-                Spacer()
-                HStack(spacing: 4) {
-                    Circle().fill(Color.sjBlue).frame(width: 9, height: 9)
-                    Text("You").font(.jakarta(11)).foregroundStyle(Color.sjMuted)
-                }
-                HStack(spacing: 4) {
-                    Circle().fill(Color.sjMuted.opacity(0.5)).frame(width: 9, height: 9)
-                    Text("Community").font(.jakarta(11)).foregroundStyle(Color.sjMuted)
-                }
+// MARK: - Haptics
+
+/// Thin wrapper over `UIFeedbackGenerator` -- centralizes the taps the Taste
+/// tab fires (page snap, dot/card jump, tap-to-reveal, map drill-in) so the
+/// feel stays consistent instead of each call site picking its own
+/// generator/style. Internal, not file-private: `TasteMapView.swift` uses it
+/// too.
+enum Haptics {
+    static func light() { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+    static func medium() { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
+    /// A sharper, less springy impact than `.medium` -- reads as hitting a
+    /// hard limit rather than a soft confirmation, so it's reserved for
+    /// resistance/boundary feedback (e.g. the loop swipe's guarded gate)
+    /// rather than ordinary taps.
+    static func rigid() { UIImpactFeedbackGenerator(style: .rigid).impactOccurred() }
+    static func heavy() { UIImpactFeedbackGenerator(style: .heavy).impactOccurred() }
+    /// `UINotificationFeedbackGenerator`'s distinctive multi-pulse pattern,
+    /// not another single impact -- reserved for a genuine "arrived/done"
+    /// moment (the loop transition landing back on the hero page) rather
+    /// than an ordinary tap, so it reads as celebratory instead of just louder.
+    static func success() { UINotificationFeedbackGenerator().notificationOccurred(.success) }
+    static func selection() { UISelectionFeedbackGenerator().selectionChanged() }
+}
+
+// MARK: - Full-screen pager
+
+/// One swipeable "page" of the taste report -- an unnumbered hero up front,
+/// then every gated section from the old single-scroll report (now one
+/// section per screen instead of one card in a long scroll). The pager's
+/// own `loopsAround` handles wrapping past the last of these back to `.hero`.
+private enum TastePageKind {
+    case hero, map, hallOfFame, numbers, years, score, scene, standings, disliked
+}
+
+/// True one-swipe-one-page paging -- every gesture moves at most one page,
+/// like `UIScrollView.isPagingEnabled`, plus the wrap-around loop row's
+/// extra resistance. Landed on this type across two user asks:
+///
+/// 1. "the scroll shouldn't be continuous... a single vertical swipe
+///    should go to the section right below and snap almost immediately."
+///    The built-in `.scrollTargetBehavior(.paging)` snaps to the nearest
+///    multiple of the container height from the system's *momentum-
+///    projected* target -- for a hard flick that projection can land two
+///    or three pages away, so one strong swipe could glide straight past
+///    several sections instead of landing on the very next one. Fixed by
+///    reducing that projection to its direction only, not its magnitude:
+///    `rawDelta` (how far past `fromPage` the projected target landed, in
+///    page units) decides *which way*, but the actual target is always
+///    clamped to `fromPage` or one page beyond it.
+/// 2. The last-page-to-first-page swipe should be stickier than that: it
+///    only commits once the drag has crossed `resistantFraction` of a
+///    full page, otherwise it springs back to the last page (with a
+///    firm "hit a wall" haptic marking the failed attempt). Every other
+///    adjacent-page swipe (`guardedPage == nil`, or any transition not
+///    landing on it) keeps the plain one-page paging above untouched.
+///
+/// A third attempt (now reverted) tried to make settle *speed* independent
+/// of swipe speed too ("when i swipe slowly the motion also becomes slow"):
+/// telling this type's own `target.rect` to stay put while separately
+/// driving the real `UIScrollView.contentOffset` with a manual
+/// `UIView.animate`. That broke the pager outright -- confirmed live, not
+/// just reasoned: reporting `target.rect.origin.y = fromY` (i.e. "nothing
+/// moved") left SwiftUI's own `scrollPosition(id:)` binding believing the
+/// page genuinely hadn't changed, so on its next reconciliation pass it
+/// re-asserted the *old* position, fighting the one-shot manual animation
+/// and winning -- the pager was stuck on page 0, unable to advance at all.
+/// Reverted to reporting the real target truthfully after that regression;
+/// re-adding fixed-duration settling (below) took a structurally different
+/// approach this time specifically to avoid repeating it.
+///
+/// **Second attempt at fixed-duration settling, same user ask, different
+/// mechanism.** The first attempt (reverted above) manipulated the real
+/// `UIScrollView.contentOffset` directly via raw UIKit, while telling this
+/// type's own `target.rect` that nothing had moved -- SwiftUI's
+/// `scrollPosition(id:)` binding never learned the page actually changed
+/// (its `get` closure kept reading the stale, never-updated `currentPage`),
+/// so it kept re-asserting the old position and winning the fight, forever.
+/// This time, a swipe that decides to change pages doesn't touch
+/// `UIScrollView` at all: it tells native to stay put (`target.rect` = the
+/// starting position, same as the rejected-swipe case just below) and hands
+/// off entirely to `onCommit`, which the container wires directly to `jump`
+/// -- the exact same `currentPage = target; withAnimation { proxy.scrollTo }`
+/// path a dot-rail tap already uses successfully, every round this session.
+/// Because that path writes `currentPage` itself (not through the
+/// `scrollPosition` binding's own set closure), SwiftUI's binding is never
+/// left stale, and there's nothing for it to fight.
+private struct LoopGuardedPaging: ScrollTargetBehavior {
+    /// The invisible loop-trigger row's index (`count` in
+    /// `TastePagerContainer`), or nil on a page that doesn't loop -- falls
+    /// back to plain one-page-per-swipe paging with no guarded transition.
+    let guardedPage: Int?
+    /// Wired to `jump(to:proxy:)` by `TastePagerContainer` -- see this
+    /// type's own doc comment for why handing off to it (rather than
+    /// touching `UIScrollView` directly) is the load-bearing difference
+    /// from the reverted first attempt.
+    let onCommit: (Int) -> Void
+    private let resistantFraction: CGFloat = 0.82
+
+    func updateTarget(_ target: inout ScrollTarget, context: ScrollTargetBehaviorContext) {
+        let pageHeight = context.containerSize.height
+        guard pageHeight > 0 else { return }
+
+        let fromY = context.originalTarget.rect.origin.y
+        let fromPage = (fromY / pageHeight).rounded()
+
+        // The system's own proposed target already bakes release velocity
+        // into its distance (that's exactly what let a hard flick glide
+        // past several pages) -- so direction alone, off a simple >half-a-
+        // page threshold, is enough to decide advance/retreat/stay; no
+        // need to separately consult `context.velocity`.
+        let rawDelta = (target.rect.origin.y - fromY) / pageHeight
+        var page = fromPage
+        if rawDelta > 0.5 {
+            page = fromPage + 1
+        } else if rawDelta < -0.5 {
+            page = fromPage - 1
+        }
+
+        if let guardedPage, page == CGFloat(guardedPage), fromPage == CGFloat(guardedPage) - 1 {
+            guard rawDelta >= resistantFraction else {
+                Haptics.rigid()
+                target.rect.origin.y = fromY
+                return
             }
-            DumbbellAxisView()
-            VStack(spacing: 16) {
-                ForEach(Array(sortedStandings.enumerated()), id: \.offset) { _, s in
-                    let diff = s.userAvg - s.communityAvg
-                    VStack(spacing: 6) {
-                        HStack(alignment: .firstTextBaseline) {
-                            Text(s.genre)
-                                .font(.jakarta(13, weight: .bold))
-                                .foregroundStyle(Color.sjInk)
-                            Spacer()
-                            HStack(spacing: 3) {
-                                Image(diff >= 0 ? "icon-arrow-up" : "icon-arrow-down")
-                                    .renderingMode(.template)
-                                    .resizable().scaledToFit()
-                                    .frame(width: 9, height: 9)
-                                Text("\(String(format: "%.2f", abs(diff))) \(diff >= 0 ? String(localized: "above average") : String(localized: "below average"))")
-                                    .font(.jakarta(11.5, weight: .semibold))
+        }
+
+        // Tell native to stay exactly where the live drag ended -- we're
+        // taking over the actual move via `onCommit` below, same as a
+        // dot-rail tap already does. Deferred one run-loop tick (matching
+        // `PagerScrollViewFinder`'s own precedent elsewhere in this file)
+        // so this state write never lands mid-gesture-callback.
+        target.rect.origin.y = fromY
+        guard page != fromPage else { return }
+        let targetPage = Int(page)
+        DispatchQueue.main.async {
+            onCommit(targetPage)
+        }
+    }
+}
+
+/// Sets the pager's `UIScrollView.decelerationRate` a bit more aggressive
+/// than the system's own `.fast` preset (0.99) -- a safe, partial answer to
+/// "make the swipe feel snappier" that doesn't fight SwiftUI's own scroll
+/// reconciliation the way a manual `contentOffset` override did (see
+/// `LoopGuardedPaging`'s doc comment for that regression). SwiftUI's
+/// `ScrollView` exposes no modifier for `decelerationRate`, so this places
+/// an invisible, zero-size `UIView` inside the scroll content and walks its
+/// `superview` chain to find the real `UIScrollView` SwiftUI creates under
+/// the hood -- must live *inside* the scrollable content (not a
+/// `.background{}` on the `ScrollView` itself, which composites as a
+/// sibling, not a descendant -- confirmed live to never find anything).
+///
+/// Deferred to the next run-loop tick (`DispatchQueue.main.async`): reading
+/// `superview` the instant `makeUIView` runs, before this view has actually
+/// been inserted into the real hierarchy, would silently find nothing.
+private struct PagerScrollViewFinder: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.isHidden = true
+        view.isUserInteractionEnabled = false
+        DispatchQueue.main.async { Self.apply(startingFrom: view) }
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        DispatchQueue.main.async { Self.apply(startingFrom: uiView) }
+    }
+
+    private static func apply(startingFrom view: UIView) {
+        var current: UIView? = view
+        while let v = current {
+            if let scrollView = v as? UIScrollView {
+                scrollView.decelerationRate = UIScrollView.DecelerationRate(rawValue: 0.85)
+                return
+            }
+            current = v.superview
+        }
+    }
+}
+
+/// Vertical, Reels/Shorts-style paging container: one full-screen page per
+/// index, snapping via `LoopGuardedPaging` (standard page-to-page paging,
+/// with extra resistance on the specific swipe into the wrap-around loop
+/// row -- see its own doc comment). A real swipe is tracked read-only via
+/// `.scrollPosition(id:)` (for the dot rail + page-change haptic); a dot
+/// tap/drag jumps via `ScrollViewReader.scrollTo(_:anchor:)` instead -- the
+/// purpose-built API for jumping straight to an arbitrary id, vs. driving
+/// the same `scrollPosition` binding both ways.
+private struct TastePagerContainer<Content: View>: View {
+    let count: Int
+    /// When true, swiping past the last page doesn't just stop -- one more
+    /// row is appended (index `count`, outside the numbered/dot-indicated
+    /// range) that triggers a full-screen bubble-rise transition, then jumps
+    /// back to page 0 underneath it while fully covered. Reached by a
+    /// perfectly normal forward swipe like any other page, so it needs no
+    /// custom overscroll-detection gesture of its own.
+    let loopsAround: Bool
+    /// Page index, plus the real top/bottom safe-area insets (status bar,
+    /// tab bar) for that page to apply *itself* -- deliberately not applied
+    /// by this container from the outside (see the `body` note on why that
+    /// broke full-bleed backgrounds like the hero page's aurora wash).
+    let content: (Int, CGFloat, CGFloat) -> Content
+
+    @State private var currentPage: Int = 0
+    @State private var isLooping = false
+    /// Non-nil only while the wrap-around transition is actively running --
+    /// `HalftoneLoopOverlay` times its whole animation off this start mark,
+    /// and its `TimelineView` only exists (and only ticks every frame)
+    /// while this is set, so the pager pays nothing for it the rest of the
+    /// time.
+    @State private var loopTransitionStart: Date?
+    /// Debounces the loop trigger against `currentPage` landing on the
+    /// guarded row -- see `scheduleLoopCheck` for why this exists instead
+    /// of firing immediately.
+    @State private var pendingLoopCheck: Task<Void, Never>?
+
+    init(count: Int, loopsAround: Bool = false, @ViewBuilder content: @escaping (Int, CGFloat, CGFloat) -> Content) {
+        self.count = count
+        self.loopsAround = loopsAround
+        self.content = content
+    }
+
+    private var totalRows: Int { loopsAround ? count + 1 : count }
+
+    var body: some View {
+        // Measure-then-ignore: an outer `GeometryReader` that does *not*
+        // ignore safe area exists purely to read `probeGeo.safeAreaInsets`
+        // correctly -- including the tab bar's reserved height when this is
+        // embedded in `MainTabView`, which is real, automatic SwiftUI
+        // safe-area propagation, not something bespoke. The *inner*
+        // `GeometryReader` carries the actual `.ignoresSafeArea()` (see its
+        // own note for why that specific placement is load-bearing for the
+        // paging math) and uses the probe's insets to pad every page
+        // manually instead of guessing. Two failed simpler attempts before
+        // this one: a full `.ignoresSafeArea()` alone let the first page
+        // render underneath the tab bar (it escapes *every* ambient
+        // safe-area context, not just the device notch this container
+        // wants to bleed under); reading insets from `UIWindow` directly
+        // (instead of this probe) got the device's physical home-indicator
+        // inset but had no idea a tab bar was reserving additional space on
+        // top of it.
+        GeometryReader { probeGeo in
+            let topInset = probeGeo.safeAreaInsets.top
+            let bottomInset = probeGeo.safeAreaInsets.bottom
+
+            // `.ignoresSafeArea()` on this reader (not just its background)
+            // is load-bearing, confirmed live: a plain `GeometryReader`
+            // reports its *safe-area-excluded* size, but
+            // `.scrollTargetBehavior(.paging)` snaps against the view's
+            // *full* bounds regardless -- a small, constant per-page gap
+            // between "declared page height" and "actual snap distance"
+            // that compounds linearly with page index. Landing on a page
+            // several swipes in came up short of its own top, with the
+            // next page's edge already bleeding in at the bottom.
+            GeometryReader { outerGeo in
+                ScrollViewReader { proxy in
+                    ScrollView(.vertical) {
+                        VStack(spacing: 0) {
+                            ForEach(0..<totalRows, id: \.self) { i in
+                                Group {
+                                    if i == count {
+                                        // Present but invisible -- its only job is to
+                                        // give the pager one more page to land on
+                                        // past the last real one. Detecting "the
+                                        // user swiped past the last real page" is
+                                        // handled by `currentPage` landing here
+                                        // (below), not by this row itself -- see
+                                        // that handler's comment for why.
+                                        Color.clear
+                                    } else {
+                                        content(i, topInset, bottomInset)
+                                    }
+                                }
+                                .frame(width: outerGeo.size.width, height: outerGeo.size.height)
+                                .clipped()
+                                .id(i)
                             }
-                            .foregroundStyle(diff >= 0 ? Color.sjBlue : Color.sjMuted)
                         }
-                        DumbbellView(user: s.userAvg, community: s.communityAvg)
+                        .scrollTargetLayout()
+                        .background {
+                            // Must live *inside* the ScrollView's own
+                            // scrollable content, not as a `.background{}`
+                            // on the `ScrollView` itself -- that would place
+                            // it as a *sibling* of the real `UIScrollView`,
+                            // not a descendant, so walking `superview` from
+                            // there would climb past it and never find it
+                            // (confirmed live). See `PagerScrollViewFinder`'s
+                            // own doc comment for what it's for.
+                            PagerScrollViewFinder()
+                        }
+                    }
+                    .scrollTargetBehavior(LoopGuardedPaging(guardedPage: loopsAround ? count : nil, onCommit: { page in
+                        jump(to: page, proxy: proxy)
+                    }))
+                    .scrollPosition(id: Binding(
+                        get: { Optional(currentPage) },
+                        set: { if let v = $0 { currentPage = v } }
+                    ))
+                    .scrollIndicators(.hidden)
+                    .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+                    .background(Color.sjCream.ignoresSafeArea())
+                    .overlay(alignment: .trailing) {
+                        if count > 1 {
+                            PageIndicatorDots(count: count, current: currentPage) { target in
+                                jump(to: target, proxy: proxy)
+                            }
+                            .padding(.trailing, 6)
+                        }
+                    }
+                    // Triggers the loop off `currentPage` landing on the
+                    // guarded row, debounced -- not off visibility. The
+                    // previous approach (`onScrollVisibilityChange`,
+                    // threshold 0.6) fired the instant the row crossed 60%
+                    // visible, which for a real finger-drag swipe happens
+                    // well *before* release, not after: `runLoopTransition`
+                    // was starting the cover/reset sequence while the
+                    // user's finger was potentially still down and the
+                    // gesture still live, racing the reset against whatever
+                    // the still-active drag did next. That race could never
+                    // show up in any prior verification here, since every
+                    // debug harness used `scrollTo`/`jump()` to arrive at
+                    // the guarded row -- never a real touch, so never an
+                    // active gesture to race against.
+                    //
+                    // Debouncing sidesteps needing to know exactly when
+                    // `currentPage` updates relative to touch-up (continuously
+                    // during a drag, or only after it settles -- genuinely
+                    // unclear, and unverifiable here either way): every
+                    // change to `currentPage` restarts a short wait, so the
+                    // real transition only ever commits once the position
+                    // has actually stopped changing, regardless of whether
+                    // that stability arrived because the finger lifted or
+                    // because the scroll simply settled.
+                    .onChange(of: currentPage) { old, new in
+                        guard old != new else { return }
+                        if loopsAround, new == count {
+                            scheduleLoopCheck(proxy: proxy)
+                        } else {
+                            pendingLoopCheck?.cancel()
+                            pendingLoopCheck = nil
+                            Haptics.light()
+                        }
                     }
                 }
             }
+            .ignoresSafeArea()
         }
-        .padding(.top, 10)
+        .overlay {
+            if loopsAround, let start = loopTransitionStart {
+                // Hit-testable, not ignored -- this sits above the whole
+                // pager (ScrollView + dot rail), so while it's on screen it
+                // also doubles as a shield absorbing any stray touch during
+                // the transition. Earlier this was `.allowsHitTesting(false)`
+                // plus `.scrollDisabled(isLooping)` on the ScrollView itself
+                // and a matching `.allowsHitTesting(!isLooping)` on the dot
+                // rail -- three separate flags for one goal. Dropped in
+                // favor of this single mechanism after a report that the
+                // scroll-disabled approach could still leave the pager
+                // landing on a blank page: toggling a `ScrollView`'s own
+                // `scrollDisabled` state mid-gesture-settle is a plausible
+                // way to disrupt the view's real scroll-decelerating
+                // physics; this shield never touches the ScrollView's own
+                // enabled state at all, so it can't interfere with
+                // `runLoopTransition`'s reset no matter how or when the
+                // preceding swipe settled.
+                HalftoneLoopOverlay(startDate: start)
+                    .ignoresSafeArea()
+            }
+        }
+    }
+
+    private func jump(to target: Int, proxy: ScrollViewProxy) {
+        currentPage = target
+        // A soft spring, not a fixed-time ease -- user feedback on the
+        // swipe-triggered path (which also lands here via `LoopGuardedPaging`'s
+        // `onCommit`) was "too fast, make it a bit looser," then, after a
+        // first bump (0.4/0.8), still "too fast, i can't see the swiping
+        // motion" -- so `response` (roughly the time to settle) needed a
+        // real jump, not another small nudge, to actually become visible as
+        // motion rather than a snap. Shared by dot-tap/drag-scrub jumps too
+        // -- deliberately not split into a separate swipe-only duration,
+        // since a settle feeling different depending on how you triggered
+        // it would be its own bug.
+        withAnimation(.spring(response: 2.5, dampingFraction: 0.75)) {
+            proxy.scrollTo(target, anchor: .top)
+        }
+    }
+
+    /// Waits a short quiet period after `currentPage` lands on the guarded
+    /// row before actually committing to the loop transition. Cancelled and
+    /// restarted every time `currentPage` changes again (see the
+    /// `.onChange` above) -- so a swipe that's still actively moving
+    /// through or past the guarded row keeps deferring the real trigger,
+    /// and it only fires once the position has genuinely stopped changing
+    /// for 220ms, however that stability came about.
+    private func scheduleLoopCheck(proxy: ScrollViewProxy) {
+        pendingLoopCheck?.cancel()
+        pendingLoopCheck = Task {
+            try? await Task.sleep(for: .milliseconds(220))
+            guard !Task.isCancelled else { return }
+            runLoopTransition(proxy: proxy)
+        }
+    }
+
+    /// Starts `HalftoneLoopOverlay`'s self-timed animation and schedules the
+    /// one side effect it can't do itself: jumping the pager back to page 0
+    /// underneath it. Timed against `HalftoneLoopOverlay.coverDuration` --
+    /// the moment the ignite sweep finishes and the screen is fully inked,
+    /// same "swap underneath while covered" trick as before, just keyed to
+    /// the new per-dot sweep instead of a rigid rise/hold/rise offset.
+    ///
+    /// Haptics are a deliberate two-beat arc, not one flat tap -- user ask:
+    /// make this "more dramatic." A heavy impact lands the instant the
+    /// commit is decided (the drag has already crossed the resistant
+    /// gate -- this is the payoff for pushing through it), then a
+    /// `.success` notification pattern marks the moment the reveal
+    /// actually completes and the hero page is back on screen -- the
+    /// "you've arrived" beat, distinct in feel from the "it's happening"
+    /// beat at the start.
+    private func runLoopTransition(proxy: ScrollViewProxy) {
+        guard !isLooping else { return }
+        isLooping = true
+        Haptics.heavy()
+        loopTransitionStart = Date()
+        Task {
+            try? await Task.sleep(for: .milliseconds(Int(HalftoneLoopOverlay.coverDuration * 1000)))
+            // A short, real animation rather than `disablesAnimations` --
+            // still completely hidden (the overlay stays fully opaque for
+            // ~260ms after this point, easily long enough to cover a
+            // 150ms scroll), but goes through the same code path an
+            // ordinary animated `scrollTo` would, rather than relying on
+            // animation-suppression machinery that's never been confirmed
+            // safe to combine with whatever state a real gesture's gone
+            // through settling onto the guarded page.
+            currentPage = 0
+            withAnimation(.linear(duration: 0.15)) {
+                proxy.scrollTo(0, anchor: .top)
+            }
+            let remaining = HalftoneLoopOverlay.totalDuration - HalftoneLoopOverlay.coverDuration
+            try? await Task.sleep(for: .milliseconds(Int(remaining * 1000)))
+            loopTransitionStart = nil
+            isLooping = false
+            Haptics.success()
+        }
+    }
+}
+
+/// One dot in the wrap-around transition's halftone field: a fixed screen
+/// position plus a reveal `threshold` in 0...1, driven mostly by how close
+/// the dot sits to the bottom edge (so the sweep climbs bottom-to-top) with
+/// a little per-dot jitter mixed in so the frontier reads as scattered ink
+/// rather than a ruled line. Both the covering sweep and the uncovering
+/// sweep read this *same* threshold -- a dot that ignites early also
+/// extinguishes early, so the cover and the reveal are one continuous
+/// bottom-up motion instead of a mirrored reverse.
+private struct HalftoneDot {
+    let x: CGFloat
+    let y: CGFloat
+    let radius: CGFloat
+    let color: Color
+    let threshold: Double
+}
+
+/// The wrap-around transition's visual: the app's own flower-mark halftone
+/// (see `logo-flower.svg` -- cyan/magenta/yellow dot grids at the classic
+/// offset-print screen angles, 15°/75°/0°, plus a sparse black key layer at
+/// 45°, composited with multiply blending) instead of the flat bubble field
+/// this replaced. Live feedback on that version ("the last to first slide
+/// transition is a bit off") led to trying the logo's own texture directly;
+/// a follow-up ("dots a bit smaller... I want the dots to appear randomly
+/// and cover the screen from bottom up, and disappear bottom up again")
+/// set the two concrete requirements this implements: no sliding image --
+/// every dot ignites/extinguishes individually from its own fixed
+/// position -- and a bottom-up direction on both halves, not a mirror.
+///
+/// Rendered as a fixed overlay on the *whole* pager (see
+/// `TastePagerContainer.body`), independent of scroll position, same
+/// reasoning as the bubble field it replaced: the reveal has to land on
+/// something still on screen, not a row that already scrolled away.
+/// `TimelineView(.animation)` + `Canvas` (not individual `Circle()` views --
+/// several thousand of those would be prohibitively expensive) redraws the
+/// whole field every frame purely from elapsed time since `startDate`, the
+/// pattern Apple's own Canvas/TimelineView guidance recommends for
+/// procedural animation that isn't just interpolating a single SwiftUI
+/// layout property.
+private struct HalftoneLoopOverlay: View {
+    let startDate: Date
+
+    /// Total transition length and its four phases as fractions of the
+    /// whole: covering (bottom-up ignite), held (fully inked -- this is
+    /// when `runLoopTransition` jumps the pager back to page 0
+    /// underneath), uncovering (the same per-dot thresholds, bottom-up
+    /// extinguish), then a short gap before the field goes idle.
+    static let totalDuration: Double = 1.3
+    private static let coverEnd = 0.35
+    private static let holdEnd = 0.55
+    private static let uncoverEnd = 0.90
+    static var coverDuration: Double { totalDuration * coverEnd }
+
+    private static let pitch: CGFloat = 13
+    private static let fill: CGFloat = 0.58
+    private static let yellowBias: CGFloat = 0.68
+    private static let blackAmount: CGFloat = 0.18
+    private static let jitter: Double = 0.35
+    private static let popWidth: Double = 0.11
+
+    private enum Phase { case cover, hold, uncover, gap }
+
+    var body: some View {
+        GeometryReader { geo in
+            let dots = Self.dots(for: geo.size)
+            TimelineView(.animation) { timeline in
+                Canvas { context, size in
+                    let elapsed = timeline.date.timeIntervalSince(startDate)
+                    Self.draw(context: &context, size: size, dots: dots, t: elapsed / Self.totalDuration)
+                }
+            }
+        }
+    }
+
+    private static func draw(context: inout GraphicsContext, size: CGSize, dots: [HalftoneDot], t: Double) {
+        let phase: Phase
+        let rawProgress: Double
+        if t < coverEnd {
+            phase = .cover; rawProgress = t / coverEnd
+        } else if t < holdEnd {
+            phase = .hold; rawProgress = 1
+        } else if t < uncoverEnd {
+            phase = .uncover; rawProgress = (t - holdEnd) / (uncoverEnd - holdEnd)
+        } else {
+            phase = .gap; rawProgress = 0
+        }
+        let progress = easeInOutCubic(clamp01(rawProgress))
+
+        // Dot gaps alone rarely add up to full opacity -- fill solid during
+        // the hold so the page swap underneath is genuinely hidden, not
+        // just mostly hidden.
+        if phase == .hold {
+            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Color.sjCream))
+        }
+
+        context.blendMode = .multiply
+        for dot in dots {
+            let alpha: Double
+            switch phase {
+            case .cover:
+                alpha = easeOutCubic(clamp01((progress - dot.threshold) / popWidth))
+            case .hold:
+                alpha = 1
+            case .uncover:
+                alpha = 1 - easeOutCubic(clamp01((progress - dot.threshold) / popWidth))
+            case .gap:
+                alpha = 0
+            }
+            guard alpha > 0.01 else { continue }
+            let r = dot.radius * (0.55 + 0.45 * alpha)
+            let rect = CGRect(x: dot.x - r, y: dot.y - r, width: r * 2, height: r * 2)
+            context.fill(Path(ellipseIn: rect), with: .color(dot.color.opacity(alpha)))
+        }
+    }
+
+    private static func clamp01(_ x: Double) -> Double { min(1, max(0, x)) }
+    private static func easeInOutCubic(_ x: Double) -> Double { x < 0.5 ? 4 * x * x * x : 1 - pow(-2 * x + 2, 3) / 2 }
+    private static func easeOutCubic(_ x: Double) -> Double { 1 - pow(1 - x, 3) }
+
+    /// Builds the fixed dot field once per screen size (not per frame -- a
+    /// `TimelineView` tick redraws its own `Canvas` subtree without forcing
+    /// this `GeometryReader` to re-run). A deterministic PRNG (not
+    /// `.random`, which would reshuffle the ignite order every redraw)
+    /// lays out each channel's rotated grid; thresholds are then min-max
+    /// normalized across the whole field so the sweep spans the full
+    /// 0...1 range regardless of screen size.
+    private static func dots(for size: CGSize) -> [HalftoneDot] {
+        guard size.width > 0, size.height > 0 else { return [] }
+        var rng = SeededRNG(seed: 20_260_911)
+
+        struct Layer { let angleDeg: Double; let color: Color; let radius: CGFloat; let pitchMultiplier: CGFloat }
+        let layers: [Layer] = [
+            Layer(angleDeg: 15, color: Color(red: 0, green: 1, blue: 1), radius: (pitch / 2) * fill, pitchMultiplier: 1),
+            Layer(angleDeg: 75, color: Color(red: 1, green: 0, blue: 1), radius: (pitch / 2) * fill * 0.97, pitchMultiplier: 1),
+            Layer(angleDeg: 0, color: Color(red: 1, green: 1, blue: 0), radius: (pitch / 2) * fill * yellowBias, pitchMultiplier: 1),
+            Layer(angleDeg: 45, color: .black, radius: (pitch / 2) * fill * blackAmount, pitchMultiplier: 1.4)
+        ]
+
+        var raw: [(x: CGFloat, y: CGFloat, radius: CGFloat, color: Color, rand: Double)] = []
+        for layer in layers {
+            let p = pitch * layer.pitchMultiplier
+            let a = layer.angleDeg * .pi / 180
+            let cosA = CGFloat(cos(a)), sinA = CGFloat(sin(a))
+            let diag = sqrt(size.width * size.width + size.height * size.height) * 0.75 + p
+            var ly = -diag
+            while ly <= diag {
+                var lx = -diag
+                while lx <= diag {
+                    let sx = size.width / 2 + lx * cosA - ly * sinA
+                    let sy = size.height / 2 + lx * sinA + ly * cosA
+                    if sx >= -layer.radius, sx <= size.width + layer.radius,
+                       sy >= -layer.radius, sy <= size.height + layer.radius {
+                        raw.append((sx, sy, layer.radius, layer.color, rng.nextUnit()))
+                    }
+                    lx += p
+                }
+                ly += p
+            }
+        }
+
+        var minT = Double.infinity, maxT = -Double.infinity
+        var thresholds: [Double] = []
+        thresholds.reserveCapacity(raw.count)
+        for d in raw {
+            let yNorm = min(1, max(0, Double(d.y / size.height)))
+            let base = 1 - yNorm // bottom (yNorm~1) ignites early; top (yNorm~0) ignites late
+            let threshold = base + (d.rand - 0.5) * jitter
+            minT = min(minT, threshold)
+            maxT = max(maxT, threshold)
+            thresholds.append(threshold)
+        }
+        let span = max(1e-6, maxT - minT)
+        return zip(raw, thresholds).map { d, threshold in
+            HalftoneDot(x: d.x, y: d.y, radius: d.radius, color: d.color, threshold: (threshold - minT) / span)
+        }
+    }
+}
+
+/// Deterministic PRNG (mulberry32) so the halftone field's per-dot jitter
+/// is stable across redraws -- `.random` would reshuffle the ignite order
+/// every time the field is rebuilt.
+private struct SeededRNG {
+    private var state: UInt32
+    init(seed: UInt32) { state = seed }
+    mutating func nextUnit() -> Double {
+        state = state &+ 0x6D2B_79F5
+        var z = state
+        z = (z ^ (z >> 15)) &* (z | 1)
+        z ^= (z &+ (z ^ (z >> 7)) &* (z | 61))
+        z ^= (z >> 14)
+        return Double(z) / Double(UInt32.max)
+    }
+}
+
+/// Trailing vertical dot rail -- current page reads as a taller capsule.
+/// A single `DragGesture(minimumDistance: 0)` over the whole rail handles
+/// both a tap (fires once, at the touch-down location) and a press-and-drag
+/// scrub (maps the finger's position along the rail to a page index
+/// continuously, jumping as it changes) -- the quick way to cross many
+/// sections at once instead of swiping through each one.
+private struct PageIndicatorDots: View {
+    let count: Int
+    let current: Int
+    let onSelect: (Int) -> Void
+
+    @State private var isDragging = false
+
+    private let dotHeight: CGFloat = 16
+    private let dotSpacing: CGFloat = 4
+    private var totalHeight: CGFloat { CGFloat(count) * dotHeight + CGFloat(max(0, count - 1)) * dotSpacing }
+
+    var body: some View {
+        GeometryReader { geo in
+            VStack(spacing: dotSpacing) {
+                ForEach(0..<count, id: \.self) { i in
+                    let isActive = i == current
+                    Capsule()
+                        .fill(isActive ? Color.sjBlue : Color.sjMuted.opacity(0.28))
+                        .frame(width: isActive ? (isDragging ? 6 : 4) : 3, height: isActive ? 14 : 5)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        isDragging = true
+                        let ratio = min(max(value.location.y / geo.size.height, 0), 1)
+                        let index = min(count - 1, max(0, Int(ratio * CGFloat(count))))
+                        if index != current { onSelect(index) }
+                    }
+                    .onEnded { _ in isDragging = false }
+            )
+        }
+        .frame(width: 24, height: totalHeight)
+        .animation(.easeOut(duration: 0.2), value: current)
+        .animation(.easeOut(duration: 0.15), value: isDragging)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(String(localized: "Section"))
+        .accessibilityValue(String(format: String(localized: "%1$d of %2$d"), current + 1, count))
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: onSelect(min(count - 1, current + 1))
+            case .decrement: onSelect(max(0, current - 1))
+            @unknown default: break
+            }
+        }
+    }
+}
+
+/// Shared full-page chrome: numbered title + optional lead sentence pinned
+/// near the top, content filling the rest of the screen directly (no boxed
+/// card) -- a plain white "surface" card here was reading as a small,
+/// centered card floating on a mostly-empty screen rather than a native
+/// full-bleed page, live feedback after the first full-screen pass. Content
+/// now sits straight on the page's own cream canvas -- the same layering
+/// every other screen in this app already uses (colorful content directly
+/// on `sjCream`, not everything boxed in a white card) -- and fills the
+/// full remaining height instead of being centered inside dead space.
+private struct TastePageChrome<Content: View>: View {
+    let no: String
+    let title: String
+    var lead: String? = nil
+    var topInset: CGFloat = 0
+    var bottomInset: CGFloat = 0
+    @ViewBuilder var content: Content
+
+    /// Boxed so `.sheet(item:)` has the `Identifiable` it needs -- a fresh
+    /// box (and so a fresh `SharePreviewSheet`) each tap, rather than one
+    /// long-lived optional view reused across taps.
+    @State private var pendingShare: TasteShareBox?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(no)
+                        .font(.jakarta(11, weight: .black))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.sjBlue.opacity(0.6))
+                    Text(title)
+                        .font(.jakarta(23, weight: .black))
+                        .foregroundStyle(Color.sjInk)
+                }
+                Spacer(minLength: 8)
+                TasteShareButton {
+                    Haptics.light()
+                    pendingShare = TasteShareBox(view: AnyView(TasteShareCard(no: no, title: title) { content }))
+                }
+            }
+            if let lead {
+                Text(lead)
+                    .font(.jakarta(13.5))
+                    .foregroundStyle(Color.sjMuted)
+                    .padding(.top, 6)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            RevealSection {
+                VStack(alignment: .leading, spacing: 0) { content }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: .infinity)
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 28 + topInset)
+        .padding(.bottom, 36 + bottomInset)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .sheet(item: $pendingShare) { box in
+            SharePreviewSheet { box.view }
+        }
+    }
+}
+
+/// Boxes an `AnyView` share card so it can be handed to `.sheet(item:)`,
+/// which needs `Identifiable` -- used by both `TastePageChrome` (every
+/// numbered section) and the hero page's own share button.
+private struct TasteShareBox: Identifiable {
+    let id = UUID()
+    let view: AnyView
+}
+
+/// Top-right share button, same visual language as the hero page's existing
+/// Refresh pill (translucent surface, blue hairline) -- one shared button
+/// so every section's share affordance looks identical.
+private struct TasteShareButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image("icon-share")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 14, height: 14)
+                .foregroundStyle(Color.sjInk)
+                .frame(width: 36, height: 36)
+                .background {
+                    Circle()
+                        .fill(Color.clear)
+                        .glassEffect(.regular, in: Circle())
+                }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Generic branded card for sharing any Taste-tab section to Instagram --
+/// user ask: "make each section shareable... same as sharing a post." Wraps
+/// whichever section's own `content` closure is handed to it (reused
+/// as-is, no separate bespoke redesign per section) in a fixed-width,
+/// sillajuku-branded frame sized for a story sticker, through the exact
+/// same `SharePreviewSheet` pipeline (background picker, drag/resize,
+/// Instagram Story/Reels/Post, Save, More) every other share in this app
+/// already uses.
+///
+/// The content area is a *fixed* height, not `maxHeight: .infinity` --
+/// several sections' own content (`TasteMapView`'s and `StandingsList`'s
+/// internal `ScrollView`s in particular) size themselves relative to
+/// whatever height their parent proposes, and this card's parent (an
+/// `ImageRenderer` snapshot with no ancestor `GeometryReader` bounding it)
+/// would otherwise propose an unbounded height, rendering the section's
+/// *entire* unscrolled content at whatever size that turns out to be
+/// instead of a consistent, story-shaped card.
+private struct TasteShareCard<Content: View>: View {
+    let no: String
+    let title: String
+    @ViewBuilder var content: Content
+
+    private static var cardWidth: CGFloat { 320 }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if !no.isEmpty {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(no)
+                        .font(.jakarta(11, weight: .black))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.sjBlue.opacity(0.6))
+                    // `.fixedSize` forces genuine multi-line wrapping instead
+                    // of the ideal-single-line-then-truncate default an
+                    // `HStack` child otherwise gets -- this card is
+                    // narrower than the full-screen page these titles were
+                    // written for, so several truncate to an ellipsis
+                    // without it (confirmed live: "Where your music
+                    // comes…").
+                    Text(title)
+                        .font(.jakarta(19, weight: .black))
+                        .foregroundStyle(Color.sjInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            content
+                .environment(\.isTasteShareSnapshot, true)
+                .frame(width: Self.cardWidth - 40, height: 420, alignment: .top)
+                .clipped()
+            HStack(spacing: 6) {
+                Image("logo-flower")
+                    .resizable().scaledToFit()
+                    .frame(width: 15, height: 15)
+                Image("logo-text")
+                    .resizable()
+                    .renderingMode(.template)
+                    .scaledToFit()
+                    .frame(height: 9)
+                    .foregroundStyle(Color.sjInk.opacity(0.55))
+            }
+        }
+        .padding(20)
+        .frame(width: Self.cardWidth)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 22))
+    }
+}
+
+/// The "Where your music comes from" page's content -- scene breakdown (when
+/// present) plus canon reach, merged into one page and wrapped in its own
+/// `ScrollView` since the combined height can exceed one screen (see the
+/// `.scene` case in `page(_:no:...)`). A dedicated `View` type, not inline
+/// content, specifically so it can read `isTasteShareSnapshot` itself: that
+/// environment value is set by `TasteShareCard` at the exact point this
+/// content is re-embedded for the share sheet, and only a distinct view type
+/// gets re-evaluated (and so re-reads the environment) at each embed site --
+/// inline content built once inside `TasteReportView.page()` would resolve
+/// its branch a single time, in the live page's context, and that same
+/// resolved value would be reused verbatim in the share card too.
+private struct SceneCanonContent: View {
+    let sceneShares: [(label: String, share: Double, color: Color)]
+    let prestigeShare: Double?
+
+    /// See `StandingsList`'s matching property for why: a `ScrollView`
+    /// renders blank when snapshotted by `ImageRenderer` outside a window,
+    /// confirmed with an isolated repro. Swapped for a plain `VStack` (still
+    /// bounded by the parent's fixed-height `.clipped()` frame) when sharing.
+    @Environment(\.isTasteShareSnapshot) private var isTasteShareSnapshot
+
+    var body: some View {
+        Group {
+            if isTasteShareSnapshot {
+                rows
+            } else {
+                ScrollView(.vertical) {
+                    rows
+                }
+                .scrollIndicators(.hidden)
+            }
+        }
+        .frame(maxHeight: .infinity)
+    }
+
+    private var rows: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if !sceneShares.isEmpty {
+                sceneBreakdown
+                Divider().padding(.vertical, 24)
+            }
+            Text(String(localized: "Canon reach"))
+                .font(.jakarta(11, weight: .bold))
+                .kerning(0.4)
+                .textCase(.uppercase)
+                .foregroundStyle(Color.sjMuted.opacity(0.7))
+                .padding(.bottom, 16)
+            canonGauge
+                .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var sceneBreakdown: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            StackedBarView(segments: sceneShares.map { (share: $0.share, color: $0.color) })
+                .padding(.top, 12)
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(sceneShares.enumerated()), id: \.offset) { _, s in
+                    HStack(spacing: 6) {
+                        Circle().fill(s.color).frame(width: 10, height: 10)
+                        Text(s.label)
+                            .font(.jakarta(12, weight: .semibold))
+                            .foregroundStyle(Color.sjInk)
+                        Text("\(Int((s.share * 100).rounded()))%")
+                            .font(.jakarta(12))
+                            .monospacedDigit()
+                            .foregroundStyle(Color.sjMuted)
+                    }
+                }
+            }
+            .padding(.top, 10)
+        }
+    }
+
+    private var canonGauge: some View {
+        VStack(spacing: 24) {
+            CanonRadialGauge(pct: prestigeShare ?? 0, label: String(localized: "in the canon"))
+            Text(String(format: String(localized: "%d%% of what you rate sits in the curated canon; the rest is your own discovery."),
+                        Int(((prestigeShare ?? 0) * 100).rounded())))
+                .font(.jakarta(15))
+                .foregroundStyle(Color.sjMuted)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 300)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+/// Vertical list of every genre's you-vs-community comparison, shown all at
+/// once inside its own scroll region -- user ask: "remove the horizontal
+/// swipe and display everything at once." Was a horizontally-paged
+/// one-card-at-a-time carousel (see git history), built specifically to
+/// avoid a long vertical list running past the screen on a full-height
+/// page; that's solved here by capping this list's own height instead of
+/// avoiding vertical layout altogether -- a nested `ScrollView(.vertical)`
+/// inside the pager's own vertical `ScrollView` coordinates through the
+/// standard same-axis nested-scroll behavior (the inner list scrolls until
+/// it can't, then the pager's own vertical swipe takes over), unlike the
+/// orthogonal horizontal-vs-vertical gesture conflict a sideways carousel
+/// had to dodge.
+private struct StandingsList: View {
+    let standings: [TasteProfileResponse.GenreStandingRow]
+
+    /// `ImageRenderer` (used to snapshot this content for Instagram sharing)
+    /// never attaches its source view to a real window -- and a `ScrollView`
+    /// backed by `UIScrollView` renders as entirely blank when snapshotted
+    /// that way (confirmed with an isolated repro: identical row content,
+    /// same fixed-height frame, only the `ScrollView` wrapper differed --
+    /// live view rendered correctly, the exported image was blank). Live
+    /// scrolling has no meaning in a static export anyway, so the snapshot
+    /// path swaps in a plain `VStack` (still bounded by the parent's fixed
+    /// height + `.clipped()`) instead of trying to work around the
+    /// limitation. See the same fix on `TasteMapView` and `SceneCanonContent`.
+    @Environment(\.isTasteShareSnapshot) private var isTasteShareSnapshot
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 14) {
+                Spacer()
+                HStack(spacing: 5) {
+                    Circle().fill(Color.sjBlue).frame(width: 11, height: 11)
+                    Text("You").font(.jakarta(13)).foregroundStyle(Color.sjMuted)
+                }
+                HStack(spacing: 5) {
+                    Circle().fill(Color.sjMuted.opacity(0.5)).frame(width: 11, height: 11)
+                    Text("Community").font(.jakarta(13)).foregroundStyle(Color.sjMuted)
+                }
+            }
+            DumbbellAxisView()
+
+            Group {
+                if isTasteShareSnapshot {
+                    cardStack
+                } else {
+                    ScrollView(.vertical) {
+                        cardStack
+                    }
+                    .scrollIndicators(.hidden)
+                }
+            }
+            .frame(maxHeight: .infinity)
+        }
+    }
+
+    private var cardStack: some View {
+        VStack(spacing: 12) {
+            ForEach(Array(standings.enumerated()), id: \.offset) { _, s in
+                card(s)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func card(_ s: TasteProfileResponse.GenreStandingRow) -> some View {
+        let diff = s.userAvg - s.communityAvg
+        VStack(alignment: .leading, spacing: 14) {
+            Text(s.genre)
+                .font(.jakarta(22, weight: .black))
+                .foregroundStyle(Color.sjInk)
+            HStack(spacing: 4) {
+                Image(diff >= 0 ? "icon-arrow-up" : "icon-arrow-down")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 11, height: 11)
+                Text("\(String(format: "%.2f", abs(diff))) \(diff >= 0 ? String(localized: "above average") : String(localized: "below average"))")
+                    .font(.jakarta(14, weight: .semibold))
+            }
+            .foregroundStyle(diff >= 0 ? Color.sjBlue : Color.sjMuted)
+            DumbbellView(user: s.userAvg, community: s.communityAvg)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 18)
+        .background(Color.sjSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.sjBorder.opacity(0.6), lineWidth: 1))
+        .padding(.horizontal, 2)
     }
 }
 
@@ -670,6 +1761,7 @@ private struct ColumnChartView: View {
 private struct StackedBarView: View {
     let segments: [(share: Double, color: Color)]
 
+    @Environment(\.isTasteShareSnapshot) private var isTasteShareSnapshot
     @State private var grown = UIAccessibility.isReduceMotionEnabled
 
     var body: some View {
@@ -683,7 +1775,7 @@ private struct StackedBarView: View {
                         .frame(width: max(6, available * CGFloat(s.share)))
                 }
             }
-            .scaleEffect(x: grown ? 1 : 0, anchor: .leading)
+            .scaleEffect(x: (grown || isTasteShareSnapshot) ? 1 : 0, anchor: .leading)
             .animation(.easeOut(duration: 0.8).delay(0.15), value: grown)
         }
         .frame(height: 14)
@@ -719,11 +1811,11 @@ private struct DumbbellView: View {
                     .frame(width: abs(u - c), height: 2)
                     .position(x: mid, y: geo.size.height / 2)
                 Circle().fill(Color.sjMuted.opacity(0.5))
-                    .frame(width: 10, height: 10)
+                    .frame(width: 14, height: 14)
                     .overlay(Circle().stroke(Color.sjSurface, lineWidth: 2))
                     .position(x: c, y: geo.size.height / 2)
                 Circle().fill(Color.sjBlue)
-                    .frame(width: 10, height: 10)
+                    .frame(width: 14, height: 14)
                     .overlay(Circle().stroke(Color.sjSurface, lineWidth: 2))
                     .position(x: u, y: geo.size.height / 2)
                 if showTip {
@@ -732,9 +1824,12 @@ private struct DumbbellView: View {
                 }
             }
             .contentShape(Rectangle())
-            .onTapGesture { showTip.toggle() }
+            .onTapGesture {
+                Haptics.selection()
+                showTip.toggle()
+            }
         }
-        .frame(height: 18)
+        .frame(height: 22)
     }
 }
 
@@ -748,13 +1843,13 @@ private struct DumbbellAxisView: View {
         GeometryReader { geo in
             ForEach(ticks, id: \.self) { v in
                 Text("\(v)")
-                    .font(.jakarta(10))
+                    .font(.jakarta(12))
                     .monospacedDigit()
                     .foregroundStyle(Color.sjMuted.opacity(0.6))
-                    .position(x: geo.size.width * pos(Double(v)), y: 7)
+                    .position(x: geo.size.width * pos(Double(v)), y: 8)
             }
         }
-        .frame(height: 14)
+        .frame(height: 16)
     }
 }
 
@@ -1012,6 +2107,7 @@ private struct ScoreRampChartView: View {
     let mean: (pos: Double, label: String)?
     let legend: String
 
+    @Environment(\.isTasteShareSnapshot) private var isTasteShareSnapshot
     @State private var hover: Int? = nil
     @State private var grown = UIAccessibility.isReduceMotionEnabled
 
@@ -1038,7 +2134,7 @@ private struct ScoreRampChartView: View {
                                             .fill(Spectrum.color(score: scoreAt(i), lightness: 0.62, chromaScale: hover == i ? 1 : 0.9))
                                             .frame(height: count > 0 ? max(3, CGFloat(count) / CGFloat(maxCount) * 76) : 0)
                                             .frame(maxWidth: 24)
-                                            .scaleEffect(y: grown ? 1 : 0, anchor: .bottom)
+                                            .scaleEffect(y: (grown || isTasteShareSnapshot) ? 1 : 0, anchor: .bottom)
                                             .animation(.timingCurve(0.22, 0.61, 0.36, 1, duration: 0.7).delay(Double(i) * 0.035), value: grown)
                                     }
                                     .frame(maxWidth: .infinity, alignment: .bottom)
@@ -1097,24 +2193,24 @@ private struct CanonRadialGauge: View {
 
     var body: some View {
         ZStack {
-            Circle().stroke(Color.sjBlue.opacity(0.12), lineWidth: 9)
+            Circle().stroke(Color.sjBlue.opacity(0.12), lineWidth: 13)
             Circle()
                 .trim(from: 0, to: animatedPct)
-                .stroke(Color.sjBlue, style: StrokeStyle(lineWidth: 9, lineCap: .round))
+                .stroke(Color.sjBlue, style: StrokeStyle(lineWidth: 13, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-            VStack(spacing: 2) {
+            VStack(spacing: 4) {
                 Text("\(Int((pct * 100).rounded()))%")
-                    .font(.jakarta(22, weight: .black))
+                    .font(.jakarta(34, weight: .black))
                     .monospacedDigit()
                     .foregroundStyle(Color.sjInk)
                 Text(label)
-                    .font(.jakarta(9, weight: .semibold))
+                    .font(.jakarta(11, weight: .semibold))
                     .foregroundStyle(Color.sjMuted)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 10)
             }
         }
-        .frame(width: 112, height: 112)
+        .frame(width: 180, height: 180)
         .onAppear {
             if UIAccessibility.isReduceMotionEnabled {
                 animatedPct = min(1, max(0, pct))
@@ -1136,6 +2232,7 @@ private struct ActivitySparkView: View {
     let peakIndex: Int?
     let monthLabel: (String) -> String
 
+    @Environment(\.isTasteShareSnapshot) private var isTasteShareSnapshot
     @State private var hover: Int? = nil
     @State private var grown = UIAccessibility.isReduceMotionEnabled
 
@@ -1146,15 +2243,15 @@ private struct ActivitySparkView: View {
             ZStack(alignment: .topLeading) {
                 HStack(alignment: .bottom, spacing: 2) {
                     ForEach(Array(timeline.enumerated()), id: \.offset) { i, m in
-                        RoundedRectangle(cornerRadius: 1)
+                        RoundedRectangle(cornerRadius: 2)
                             .fill(i == peakIndex ? Color.sjBlue : (hover == i ? Color.sjBlue.opacity(0.6) : Color.sjBorder))
-                            .frame(height: max(2, CGFloat(m.count) / CGFloat(maxCount) * 24))
+                            .frame(height: max(3, CGFloat(m.count) / CGFloat(maxCount) * 52))
                             .frame(maxWidth: .infinity)
-                            .scaleEffect(y: grown ? 1 : 0, anchor: .bottom)
+                            .scaleEffect(y: (grown || isTasteShareSnapshot) ? 1 : 0, anchor: .bottom)
                             .animation(.timingCurve(0.22, 0.61, 0.36, 1, duration: 0.7).delay(Double(i) * 0.03), value: grown)
                     }
                 }
-                .frame(height: 24, alignment: .bottom)
+                .frame(height: 52, alignment: .bottom)
                 .onScrollVisibilityChange(threshold: 0.15) { visible in
                     guard !grown, visible else { return }
                     grown = true
@@ -1167,7 +2264,7 @@ private struct ActivitySparkView: View {
             .contentShape(Rectangle())
             .gesture(binHoverGesture(count: timeline.count, width: geo.size.width, hover: $hover))
         }
-        .frame(height: 24)
+        .frame(height: 52)
         .padding(.top, 4)
     }
 }
@@ -1237,7 +2334,7 @@ private struct HallOfFameView: View {
     let score: Double
 
     private var n: Int { albums.count }
-    private let cover: CGFloat = 184
+    private let cover: CGFloat = 208
     private var stepDeg: Double { n > 0 ? 360.0 / Double(n) : 0 }
     // Radius so neighbouring covers don't collide -- same formula as web's,
     // just working in points instead of px and scaled to `cover`'s size.
@@ -1273,7 +2370,7 @@ private struct HallOfFameView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             if n == 1 {
-                coverArt(albums[0], isFront: true)
+                coverArt(albums[0], frontAmount: 1)
                     .frame(width: cover, height: cover)
                     .offset(y: floated ? -7 : 0)
                     .onAppear {
@@ -1292,9 +2389,13 @@ private struct HallOfFameView: View {
                 .frame(height: cover + 24)
                 .clipped()
                 .contentShape(Rectangle())
-                .gesture(dragGesture)
+                .simultaneousGesture(dragGesture)
                 .onAppear { restartAutoRotate() }
                 .onDisappear { autoRotateTask?.cancel() }
+                .onChange(of: activeIndex) { old, new in
+                    guard old != new else { return }
+                    Haptics.light()
+                }
 
                 // Tappable, like web's dots (jump straight to that album) --
                 // previously purely decorative here.
@@ -1353,21 +2454,33 @@ private struct HallOfFameView: View {
     /// arc position (`sin`) and its own facing tilt (`rotation3DEffect`) --
     /// together these read as a card mounted on a slowly spinning drum, the
     /// same illusion web's nested `rotateY`/`translateZ` transforms create.
-    /// Depth (`cos`) drives scale/z-order; angular distance from front drives
-    /// opacity/brightness falloff, matching web's per-step dimming curve.
+    /// Depth (`cos`) drives scale/z-order *and* opacity/brightness/border
+    /// falloff -- continuous functions of `depth`, not the discrete "is this
+    /// the front card" boolean an earlier version used (that caused its own
+    /// glitch: those properties snapping instantly at the transition's
+    /// halfway point). Live feedback after that fix: the edge-on moment
+    /// (`depth ≈ 0`, where `rotation3DEffect` alone already renders a card
+    /// near zero-width) was *still* visible as a stray vertical line,
+    /// because `frontAmount`'s old floor kept every off-front card at a
+    /// minimum 22% opacity -- including right at its thinnest. `frontAmount`
+    /// cubed pushes opacity to (imperceptibly close to) zero well before a
+    /// card reaches edge-on, so only the current "spotlight" cover -- and
+    /// whichever neighbor is actively swinging into or out of it -- are
+    /// ever visibly on screen, matching the ask directly: the rest are
+    /// effectively invisible, not just dimmed.
     @ViewBuilder
     private func ringCard(_ album: TasteProfileResponse.TasteTopAlbum, index: Int) -> some View {
         let theta = (Double(index) - turn) * stepDeg
         let rad = theta * .pi / 180
-        let depth = cos(rad)
+        let depth = cos(rad)                    // 1 at front, -1 at the far back -- continuous
         let xOffset = CGFloat(sin(rad)) * radius
-        let dist = circularDistance(index, activeIndex)
-        let isFront = index == activeIndex
+        let frontAmount = max(0, depth)          // 0...1, continuous "how front-facing"
+        let spotlight = frontAmount * frontAmount * frontAmount // steep falloff -- invisible well before edge-on
         let scale = 0.62 + 0.38 * ((depth + 1) / 2)
-        let opacity = isFront ? 1.0 : max(0.22, 1 - Double(dist) * 0.32)
-        let dim = isFront ? 0.0 : -(1 - max(0.55, 1 - Double(dist) * 0.16))
+        let opacity = spotlight
+        let dim = -(0.45 * (1 - spotlight))
 
-        coverArt(album, isFront: isFront)
+        coverArt(album, frontAmount: spotlight)
             .frame(width: cover, height: cover)
             .rotation3DEffect(.degrees(theta), axis: (x: 0, y: 1, z: 0), perspective: 0.3)
             .scaleEffect(scale)
@@ -1377,14 +2490,27 @@ private struct HallOfFameView: View {
             .zIndex(depth)
     }
 
-    private func circularDistance(_ i: Int, _ active: Int) -> Int {
-        guard n > 0 else { return 0 }
-        return min((i - active + n) % n, (active - i + n) % n)
-    }
-
+    /// Horizontal-only, and attached with `.simultaneousGesture` (not plain
+    /// `.gesture`) -- this ring now lives on a page inside a *vertically*
+    /// paging `ScrollView`, and a bare `DragGesture` with no axis check would
+    /// compete with (and could win against) that ancestor's own pan gesture
+    /// for any touch that starts inside the ring's `cover+24`-tall hit box,
+    /// stalling the page-swipe. Web sidesteps the same conflict with CSS
+    /// `touch-action: pan-y` on the ring wrapper (`page.tsx`'s `HallOfFame`),
+    /// which has no SwiftUI `DragGesture` equivalent -- reproduced here by
+    /// (1) `simultaneousGesture` so this never exclusively claims the touch
+    /// away from the ScrollView, and (2) only reacting once the drag's
+    /// horizontal component dominates its vertical one, so an intended
+    /// vertical page-swipe that happens to start over the ring never spins it.
+    /// `minimumDistance: 10`, not the ~4pt SwiftUI default -- live feedback
+    /// was that swiping still felt off after the axis check alone; a wider
+    /// margin gives a vertical swipe more room to declare itself unambiguous
+    /// before this gesture engages at all, rather than engaging almost
+    /// immediately and relying purely on the per-frame axis guard below.
     private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 4)
+        DragGesture(minimumDistance: 10)
             .onChanged { value in
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
                 if !isDragging {
                     isDragging = true
                     dragStartTurn = turn
@@ -1395,6 +2521,7 @@ private struct HallOfFameView: View {
                 turn = dragStartTurn - Double(value.translation.width) / Double(dragPxPerStep)
             }
             .onEnded { _ in
+                guard isDragging else { return }
                 isDragging = false
                 withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
                     turn = turn.rounded()
@@ -1439,8 +2566,15 @@ private struct HallOfFameView: View {
         }
     }
 
+    /// `frontAmount` (0...1, continuous) replaces an earlier plain `isFront`
+    /// boolean for the same reason as `ringCard`'s own switch to continuous
+    /// values -- a hard on/off border and shadow here were popping in sync
+    /// with that same discrete flip. The shadow was also toned down
+    /// outright, not just made continuous: live feedback was that even its
+    /// old *resting* value on back covers ("a grey border beneath the
+    /// album cover") read as an unwanted border rather than a depth cue.
     @ViewBuilder
-    private func coverArt(_ album: TasteProfileResponse.TasteTopAlbum, isFront: Bool) -> some View {
+    private func coverArt(_ album: TasteProfileResponse.TasteTopAlbum, frontAmount: Double) -> some View {
         Group {
             if let s = album.coverUrl, let url = URL(string: s) {
                 CachedImage(url: url) { Color.sjBorder }
@@ -1452,9 +2586,9 @@ private struct HallOfFameView: View {
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(
             RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.sjBlue.opacity(isFront ? 0.4 : 0), lineWidth: 2)
+                .stroke(Color.sjBlue.opacity(0.4 * frontAmount), lineWidth: 2)
         )
-        .shadow(color: .black.opacity(isFront ? 0.18 : 0.10), radius: isFront ? 10 : 5, y: isFront ? 4 : 2)
+        .shadow(color: .black.opacity(0.04 + 0.10 * frontAmount), radius: 3 + 5 * frontAmount, y: 1 + 2 * frontAmount)
     }
 }
 
@@ -1476,25 +2610,26 @@ private struct StatTileView<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(value)
-                    .font(.jakarta(19, weight: .black))
+                    .font(.jakarta(28, weight: .black))
                     .foregroundStyle(Color.sjInk)
                 if tip != nil {
                     Spacer(minLength: 0)
                     Button {
+                        Haptics.selection()
                         withAnimation(.easeOut(duration: 0.15)) { showTip.toggle() }
                     } label: {
                         Image(systemName: "info.circle")
-                            .font(.system(size: 12))
+                            .font(.system(size: 13))
                             .foregroundStyle(Color.sjMuted.opacity(0.55))
                     }
                     .buttonStyle(.plain)
                 }
             }
             Text(label)
-                .font(.jakarta(11))
+                .font(.jakarta(12.5))
                 .foregroundStyle(Color.sjMuted)
             content
             if showTip, let tip {
@@ -1507,11 +2642,11 @@ private struct StatTileView<Content: View>: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(Color.sjCream)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.sjBorder.opacity(0.6), lineWidth: 1))
+        .padding(.horizontal, 18)
+        .padding(.vertical, 22)
+        .background(Color.sjSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.sjBorder.opacity(0.6), lineWidth: 1))
     }
 }
 
@@ -1567,71 +2702,6 @@ private struct FlowLayout: Layout {
             subview.place(at: CGPoint(x: x, y: y), proposal: .unspecified)
             x += size.width + spacing
             rowHeight = max(rowHeight, size.height)
-        }
-    }
-}
-
-// MARK: - Shared card chrome
-
-private struct ReportCard<Content: View>: View {
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) { content }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 18)
-            .background(Color.sjSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 16))
-    }
-}
-
-private struct CardTitle: View {
-    let text: String
-    init(_ text: String) { self.text = text }
-    var body: some View {
-        Text(text)
-            .font(.jakarta(15, weight: .bold))
-            .foregroundStyle(Color.sjInk)
-    }
-}
-
-private struct CardSub: View {
-    let text: String
-    init(_ text: String) { self.text = text }
-    var body: some View {
-        Text(text)
-            .font(.jakarta(12.5))
-            .foregroundStyle(Color.sjMuted)
-            .padding(.top, 4)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-}
-
-/// Numbered, scroll-revealed report section card -- port of web's `Section`.
-/// Wraps the existing `ReportCard` chrome with a running section number chip
-/// and `RevealSection`'s fade-up-on-scroll.
-private struct ReportSection<Content: View>: View {
-    let no: String
-    let title: String
-    var lead: String? = nil
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        RevealSection {
-            ReportCard {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(no)
-                        .font(.jakarta(11, weight: .black))
-                        .monospacedDigit()
-                        .foregroundStyle(Color.sjBlue.opacity(0.6))
-                    CardTitle(title)
-                }
-                if let lead {
-                    CardSub(lead)
-                }
-                content
-            }
         }
     }
 }
@@ -1740,7 +2810,10 @@ private struct TasteLockView: View {
                 }
 
                 if let onGoToAdd {
-                    Button(action: onGoToAdd) {
+                    Button(action: {
+                        Haptics.light()
+                        onGoToAdd()
+                    }) {
                         Text("Find releases to rate")
                             .font(.jakarta(14, weight: .semibold))
                             .foregroundStyle(Color.sjCream)

@@ -271,23 +271,47 @@ struct MainTabView: View {
 
 // MARK: - Loading view
 
+/// Static, not animated -- per user request, the breathing logo and the
+/// bouncing wave dots were both removed in favor of the same calm,
+/// motionless treatment `AuthView`'s sign-up screen already uses: flower +
+/// wordmark centered over a cream canvas, with two oversized, low-opacity
+/// flowers watermarked into the corners.
 private struct AppLoadingView: View {
-    @State private var breathing = false
-    @State private var dotPhase  = false
-
     var body: some View {
         ZStack {
-            // Deliberately literal white, not the adaptive sjCream — stays white even in
-            // dark mode (user request; a prior attempt at this apparently never landed).
-            Color.white.ignoresSafeArea()
+            // sjCream, not the prior literal white -- matches AuthView now.
+            // Still forced light below, same reasoning as before: sjInk is
+            // adaptive (its dark value is near-white), so without forcing
+            // the wordmark would lose contrast against this cream canvas
+            // the moment the system/app is in dark mode.
+            Color.sjCream.ignoresSafeArea()
+
+            // Decorative flowers -- same positions/sizes as AuthView's,
+            // ignoresSafeArea so geo covers the full screen (no .clipped()
+            // needed, physical screen edges handle it).
+            GeometryReader { geo in
+                let topFlowerSize = geo.size.width * 1.4
+                Image("logo-flower")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: topFlowerSize)
+                    .opacity(0.09)
+                    .position(x: geo.size.width * 0.82, y: geo.size.width * 0.22 + topFlowerSize * 0.5 - geo.size.width * 0.3)
+
+                Image("logo-flower")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: geo.size.width)
+                    .opacity(0.09)
+                    .position(x: geo.size.width * 0.18, y: geo.size.height - geo.size.width * 0.22)
+            }
+            .ignoresSafeArea()
+
             VStack(spacing: 14) {
                 Image("logo-flower")
                     .resizable()
                     .scaledToFit()
                     .frame(width: 152, height: 152)
-                    .scaleEffect(breathing ? 1.04 : 1.0)
-                    .opacity(breathing ? 0.88 : 1.0)
-                    .animation(.easeInOut(duration: 3).repeatForever(autoreverses: true), value: breathing)
 
                 Image("logo-text")
                     .resizable()
@@ -295,28 +319,8 @@ private struct AppLoadingView: View {
                     .scaledToFit()
                     .frame(height: 16)
                     .foregroundStyle(Color.sjInk)
-                    .opacity(0.5)
-
-                HStack(spacing: 6) {
-                    ForEach(0..<3, id: \.self) { i in
-                        Circle()
-                            .fill(Color.sjAmber)
-                            .frame(width: 5, height: 5)
-                            .offset(y: dotPhase ? -5 : 0)
-                            .opacity(dotPhase ? 1.0 : 0.4)
-                            .animation(
-                                .easeInOut(duration: 0.45).repeatForever(autoreverses: true).delay(Double(i) * 0.15),
-                                value: dotPhase
-                            )
-                    }
-                }
-                .padding(.top, 4)
             }
         }
-        .onAppear { breathing = true; dotPhase = true }
-        // sjInk/sjMuted are adaptive (sjInk's dark value is near-white) — force this whole
-        // subtree to resolve light-mode colors so the wordmark stays legible against the
-        // literal-white background above regardless of system/app dark mode.
         .colorScheme(.light)
     }
 }

@@ -297,77 +297,102 @@ class DiscoveryViewModel {
         hasAppleMusicData = !a.isEmpty || !r.isEmpty || !l.isEmpty
     }
 
+    // Retried up to 5 times (600ms apart, ~3s worst case) instead of a single
+    // attempt -- right after a BRAND-NEW Spotify signup specifically (as
+    // opposed to an existing account returning later), both the account's
+    // "providers" identity list and the locally-saved provider token can
+    // still be settling when this first runs, and a single-shot check used
+    // to give up permanently the instant either read came back empty.
+    // Confirmed live: a fresh Spotify signup's very first Add-tab visit
+    // could show zero Spotify suggestions with no way to recover short of
+    // fully reopening the app -- not acceptable, nothing should ever
+    // require that. Safe to retry the whole flow (not just re-check a flag)
+    // since `load()` runs this inside a task group alongside every other
+    // section (see its own comment) -- the rest of the page renders
+    // immediately regardless; in the rare race case this section just pops
+    // in a couple seconds after the others instead of never appearing.
     private func loadSpotify() async {
-        // If this account has never linked Spotify, any cached data belongs to a previous
-        // account on this device — clear it and bail out immediately. Checks the FULL
-        // "providers" identity list, not just the singular "provider" field (the account's
-        // original signup method) — a multi-identity account that signed up via email/Google
-        // and linked Spotify afterward always reports provider == "email"/"google", never
-        // "spotify", even right after a fresh Spotify sign-in (confirmed live: this silently
-        // wiped a real, working Spotify connection's cached data on every single load).
-        let providers = supabase.auth.currentUser?.appMetadata["providers"]
-        var linkedSpotify = false
-        if case .array(let list) = providers {
-            linkedSpotify = list.contains(.string("spotify"))
-        }
-        if !linkedSpotify {
-            SpotifyService.clearCache()
+        for attempt in 0..<5 {
+            if attempt > 0 { try? await Task.sleep(for: .milliseconds(600)) }
+            let isLastAttempt = attempt == 4
+
+            // If this account has never linked Spotify, any cached data belongs to a previous
+            // account on this device — clear it and bail out. Checks the FULL "providers"
+            // identity list, not just the singular "provider" field (the account's original
+            // signup method) — a multi-identity account that signed up via email/Google and
+            // linked Spotify afterward always reports provider == "email"/"google", never
+            // "spotify", even right after a fresh Spotify sign-in (confirmed live: this silently
+            // wiped a real, working Spotify connection's cached data on every single load).
+            let providers = supabase.auth.currentUser?.appMetadata["providers"]
+            var linkedSpotify = false
+            if case .array(let list) = providers {
+                linkedSpotify = list.contains(.string("spotify"))
+            }
+            if !linkedSpotify {
+                if isLastAttempt {
+                    SpotifyService.clearCache()
+                    needsSpotifyReconnect = false
+                }
+                continue
+            }
+
+            // Layer 1: UserDefaults (instant, device-local)
+            if spotifyArtists.isEmpty { spotifyArtists = SpotifyService.loadCachedArtists() }
+            if recentlyPlayed.isEmpty { recentlyPlayed  = SpotifyService.loadCachedRecentlyPlayed() }
+
+            // Layer 2: Supabase DB (persistent across reinstalls and devices) -- independent
+            // of each other, run concurrently instead of stacking two DB round-trips when
+            // both caches are empty (e.g. every cold app launch).
+            async let dbArtistsTask: [SpotifyArtistDisplay] =
+                spotifyArtists.isEmpty ? await SpotifyService.loadArtistsFromDB() : []
+            async let dbRecentTask: [SpotifyAlbumDisplay] =
+                recentlyPlayed.isEmpty ? await SpotifyService.loadRecentlyPlayedFromDB() : []
+            let dbArtists = await dbArtistsTask
+            let dbRecent  = await dbRecentTask
+            if !dbArtists.isEmpty {
+                spotifyArtists = dbArtists
+                SpotifyService.saveArtists(dbArtists)  // backfill local cache
+            }
+            if !dbRecent.isEmpty {
+                recentlyPlayed = dbRecent
+                SpotifyService.saveRecentlyPlayed(dbRecent)
+            }
+
+            hasSpotifyData = !spotifyArtists.isEmpty || !recentlyPlayed.isEmpty
+
+            // Layer 3: Live Spotify API (when token is valid — refreshes both caches)
+            guard let token = await SpotifyService.validToken() else {
+                if isLastAttempt { needsSpotifyReconnect = !hasSpotifyData }
+                continue
+            }
             needsSpotifyReconnect = false
+
+            // Independent of each other -- were two full sequential live Spotify API round-trips
+            // (each with its own network latency) stacked one after the other; now concurrent.
+            async let freshTask  = SpotifyService.topArtists(token: token, limit: 10)
+            async let recentTask = SpotifyService.recentlyPlayed(token: token, limit: 50)
+            let (fresh, recent) = await (freshTask, recentTask)
+
+            if !fresh.isEmpty {
+                spotifyArtists = fresh
+                SpotifyService.saveArtists(fresh)
+            }
+            if !recent.isEmpty {
+                recentlyPlayed = recent
+                SpotifyService.saveRecentlyPlayed(recent)
+            }
+            // DB writebacks are independent of each other too -- same treatment.
+            await withTaskGroup(of: Void.self) { g in
+                if !fresh.isEmpty  { g.addTask { await SpotifyService.saveArtistsToDB(fresh) } }
+                if !recent.isEmpty { g.addTask { await SpotifyService.saveRecentlyPlayedToDB(recent) } }
+            }
+
+            hasSpotifyData = !spotifyArtists.isEmpty || !recentlyPlayed.isEmpty
+            // A token was obtained and the live API actually answered -- a
+            // definitive result (even if genuinely empty, e.g. a Spotify
+            // account with no listening history yet), not a race. Stop.
             return
         }
-
-        // Layer 1: UserDefaults (instant, device-local)
-        if spotifyArtists.isEmpty { spotifyArtists = SpotifyService.loadCachedArtists() }
-        if recentlyPlayed.isEmpty { recentlyPlayed  = SpotifyService.loadCachedRecentlyPlayed() }
-
-        // Layer 2: Supabase DB (persistent across reinstalls and devices) -- independent
-        // of each other, run concurrently instead of stacking two DB round-trips when
-        // both caches are empty (e.g. every cold app launch).
-        async let dbArtistsTask: [SpotifyArtistDisplay] =
-            spotifyArtists.isEmpty ? await SpotifyService.loadArtistsFromDB() : []
-        async let dbRecentTask: [SpotifyAlbumDisplay] =
-            recentlyPlayed.isEmpty ? await SpotifyService.loadRecentlyPlayedFromDB() : []
-        let dbArtists = await dbArtistsTask
-        let dbRecent  = await dbRecentTask
-        if !dbArtists.isEmpty {
-            spotifyArtists = dbArtists
-            SpotifyService.saveArtists(dbArtists)  // backfill local cache
-        }
-        if !dbRecent.isEmpty {
-            recentlyPlayed = dbRecent
-            SpotifyService.saveRecentlyPlayed(dbRecent)
-        }
-
-        hasSpotifyData = !spotifyArtists.isEmpty || !recentlyPlayed.isEmpty
-
-        // Layer 3: Live Spotify API (when token is valid — refreshes both caches)
-        guard let token = await SpotifyService.validToken() else {
-            needsSpotifyReconnect = !hasSpotifyData
-            return
-        }
-        needsSpotifyReconnect = false
-
-        // Independent of each other -- were two full sequential live Spotify API round-trips
-        // (each with its own network latency) stacked one after the other; now concurrent.
-        async let freshTask  = SpotifyService.topArtists(token: token, limit: 10)
-        async let recentTask = SpotifyService.recentlyPlayed(token: token, limit: 50)
-        let (fresh, recent) = await (freshTask, recentTask)
-
-        if !fresh.isEmpty {
-            spotifyArtists = fresh
-            SpotifyService.saveArtists(fresh)
-        }
-        if !recent.isEmpty {
-            recentlyPlayed = recent
-            SpotifyService.saveRecentlyPlayed(recent)
-        }
-        // DB writebacks are independent of each other too -- same treatment.
-        await withTaskGroup(of: Void.self) { g in
-            if !fresh.isEmpty  { g.addTask { await SpotifyService.saveArtistsToDB(fresh) } }
-            if !recent.isEmpty { g.addTask { await SpotifyService.saveRecentlyPlayedToDB(recent) } }
-        }
-
-        hasSpotifyData = !spotifyArtists.isEmpty || !recentlyPlayed.isEmpty
     }
 
     // Called when app returns to foreground — picks up the new token if OAuth completed.
@@ -990,7 +1015,7 @@ struct SearchView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
+                LazyVStack(alignment: .leading, spacing: 0) {
 
                     quickAddBanner
                         .padding(.horizontal, 16)
@@ -1184,7 +1209,7 @@ struct SearchView: View {
 
     private func spotifyArtistScroll(_ artists: [SpotifyArtistDisplay]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: 14) {
+            LazyHStack(alignment: .top, spacing: 14) {
                 ForEach(artists) { artist in
                     // Navigates immediately (was previously gated behind an async
                     // search_artists resolution that blocked the page push for
@@ -1227,7 +1252,7 @@ struct SearchView: View {
 
     private func appleMusicArtistScroll(_ artists: [AppleMusicArtistDisplay]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: 14) {
+            LazyHStack(alignment: .top, spacing: 14) {
                 ForEach(artists) { artist in
                     NavigationLink(value: ArtistDestination(
                         artistId: nil, name: artist.name, avatarHint: artist.artworkURL?.absoluteString
@@ -1280,7 +1305,7 @@ struct SearchView: View {
             ? albums.filter { !ratedReleaseIds.contains($0.id) || sessionRatedIds.contains($0.id) }
             : albums
         return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
+            LazyHStack(spacing: 12) {
                 ForEach(visible) { release in
                     // Not just session-rated -- an unfiltered list (hideRated: false) can include
                     // releases rated in an earlier session too, which should also show the

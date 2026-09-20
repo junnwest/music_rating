@@ -3,6 +3,11 @@ import SwiftUI
 struct AuthView: View {
     @State private var viewModel = AuthViewModel()
     @State private var showMoreOptions = false
+    // Set when the Universal Link handler in sillajukuApp.swift catches a
+    // /auth/confirmed open — a Spotify signup that needed Supabase's email
+    // confirmation step lands back here, and without this the user would
+    // just see the same bare sign-in screen with no sign anything happened.
+    @State private var emailConfirmed = false
 
     var body: some View {
         ZStack {
@@ -58,6 +63,24 @@ struct AuthView: View {
                     .foregroundStyle(Color.sjInk.opacity(0.6))
                     .padding(.bottom, 18)
                     .padding(.horizontal, 24)
+
+                if emailConfirmed {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(Color.sjSpotifyGreen)
+                        Text("Email confirmed — continue with Spotify below to finish signing in.")
+                            .font(.jakarta(13, weight: .medium))
+                            .foregroundStyle(Color.sjInk.opacity(0.8))
+                            .multilineTextAlignment(.leading)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color.sjSpotifyGreen.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 18)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
 
                 // Auth buttons
                 VStack(spacing: 12) {
@@ -115,6 +138,9 @@ struct AuthView: View {
             Button("OK") { viewModel.errorMessage = nil }
         } message: {
             Text(viewModel.errorMessage ?? "")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .sjEmailConfirmed)) { _ in
+            withAnimation(.easeInOut(duration: 0.25)) { emailConfirmed = true }
         }
     }
 

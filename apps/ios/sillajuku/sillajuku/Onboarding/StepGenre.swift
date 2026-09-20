@@ -8,6 +8,7 @@ struct StepUsername: View {
     @FocusState private var isFocused: Bool
     @State private var usernameAvailable: Bool? = nil
     @State private var isChecking = false
+    @State private var checkFailed = false
     @State private var checkTask: Task<Void, Never>? = nil
 
     var canContinue: Bool {
@@ -44,6 +45,12 @@ struct StepUsername: View {
 
                     if isChecking {
                         ProgressView().scaleEffect(0.75)
+                    } else if checkFailed {
+                        Image("icon-circle-x")
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 18, height: 18)
+                            .foregroundStyle(.red)
                     } else if let available = usernameAvailable {
                         Image(available ? "icon-check-circle" : "icon-circle-x")
                             .renderingMode(.template)
@@ -57,7 +64,16 @@ struct StepUsername: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.sjBorder, lineWidth: 1))
 
-                if usernameAvailable == false {
+                if checkFailed {
+                    HStack(spacing: 4) {
+                        Text("Couldn't check availability — check your connection.")
+                        Button(String(localized: "Retry")) { scheduleCheck() }
+                            .fontWeight(.semibold)
+                    }
+                    .font(.jakarta(12))
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, 2)
+                } else if usernameAvailable == false {
                     Text("That username is already taken.")
                         .font(.jakarta(12))
                         .foregroundStyle(.red)
@@ -86,6 +102,7 @@ struct StepUsername: View {
 
     private func scheduleCheck() {
         usernameAvailable = nil
+        checkFailed = false
         checkTask?.cancel()
         let username = data.username
         guard Username.isValid(username) else { return }
@@ -95,17 +112,40 @@ struct StepUsername: View {
             guard !Task.isCancelled, data.username == username else { return }
             struct Row: Decodable { let id: UUID }
             do {
-                let rows: [Row] = try await supabase
-                    .from("profiles")
-                    .select("id")
-                    .eq("username", value: username)
-                    .limit(1)
-                    .execute()
-                    .value
+                // Raced against a manual timeout -- the Supabase call itself has
+                // no timeout of its own, so a hung request (bad connection, a
+                // server that's up but not responding) used to leave `isChecking`
+                // spinning forever with no error, no retry, and Continue stuck
+                // disabled. Confirmed live as the cause of a real TestFlight
+                // report ("infinite loading" on this exact step).
+                let rows: [Row] = try await withThrowingTaskGroup(of: [Row].self) { group in
+                    group.addTask {
+                        try await supabase
+                            .from("profiles")
+                            .select("id")
+                            .eq("username", value: username)
+                            .limit(1)
+                            .execute()
+                            .value
+                    }
+                    group.addTask {
+                        try await Task.sleep(for: .seconds(10))
+                        throw CancellationError()
+                    }
+                    defer { group.cancelAll() }
+                    return try await group.next()!
+                }
+                guard !Task.isCancelled, data.username == username else { return }
                 usernameAvailable = rows.isEmpty
             } catch {
+                guard !Task.isCancelled, data.username == username else { return }
                 usernameAvailable = nil
+                checkFailed = true
             }
+            // Guarded the same way -- an old, superseded check finishing late
+            // (cancelled or for a since-edited username) must not clear the
+            // spinner out from under whichever newer check is still running.
+            guard !Task.isCancelled, data.username == username else { return }
             isChecking = false
         }
     }

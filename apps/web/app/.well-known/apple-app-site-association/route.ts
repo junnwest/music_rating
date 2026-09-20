@@ -7,15 +7,18 @@ import { NextResponse } from 'next/server';
 // APNS_TEAM_ID/APNS_BUNDLE_ID, same team used for push notifications).
 //
 // /i/* is the invite-link flow; /beta/* is the private beta-tester redeem
-// flow (see BetaInviteLink.swift) — both listed explicitly rather than a
-// catch-all, since those are the only two universal-link consumers built so far.
+// flow (see BetaInviteLink.swift); /auth/confirmed is the post-email-
+// verification landing page (see app/auth/confirmed/page.tsx) — routes a
+// Supabase email confirmation straight back into the app instead of a plain
+// web onboarding flow. All listed explicitly rather than a catch-all, since
+// these are the only universal-link consumers built so far.
 const AASA = {
   applinks: {
     apps: [],
     details: [
       {
         appID: 'GGJ5HX3A4M.com.sillajuku.app',
-        paths: ['/i/*', '/beta/*'],
+        paths: ['/i/*', '/beta/*', '/auth/confirmed'],
       },
     ],
   },
