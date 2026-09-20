@@ -137,7 +137,15 @@ struct StepNotifications: View {
     }
 
     private func openSettings() async {
-        if let url = URL(string: UIApplication.openSettingsURLString) {
+        // Jumps straight to Settings > sillajuku > Notifications (one tap
+        // from Allow) instead of openSettingsURLString's general app page,
+        // which would still require the user to find and tap "Notifications"
+        // themselves. There's no way to shortcut past Settings entirely --
+        // once permission is decided, iOS blocks every app, not just this
+        // one, from ever re-showing the real system Allow/Don't Allow prompt.
+        let url = URL(string: UIApplication.openNotificationSettingsURLString)
+            ?? URL(string: UIApplication.openSettingsURLString)
+        if let url {
             await UIApplication.shared.open(url)
         }
     }

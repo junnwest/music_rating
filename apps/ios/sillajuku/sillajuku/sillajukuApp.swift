@@ -109,6 +109,20 @@ struct sillajukuApp: App {
                 .environment(appState)
                 .preferredColorScheme(colorScheme)
                 .onOpenURL { url in
+                    // sillajuku://auth/confirmed -- the web confirmed page's
+                    // fallback trigger for this same custom scheme (see
+                    // app/(auth)/auth/confirmed/page.tsx), used because the
+                    // Universal Link version (onContinueUserActivity below)
+                    // can't reach it: Supabase's email confirmation link
+                    // routes through <project>.supabase.co/auth/v1/verify
+                    // and 30x-redirects here, and Universal Links only ever
+                    // intercept a DIRECT user tap on a matching https:// link,
+                    // never a page merely reached via a redirect chain. A
+                    // custom scheme has no such restriction.
+                    if url.host == "auth", url.path == "/confirmed" {
+                        NotificationCenter.default.post(name: .sjEmailConfirmed, object: nil)
+                        return
+                    }
                     Task { try? await supabase.auth.session(from: url) }
                 }
                 .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
