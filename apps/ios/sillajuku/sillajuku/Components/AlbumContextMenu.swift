@@ -36,7 +36,8 @@ enum AlbumQuickRate {
             print("AlbumQuickRate.saveManualScore(\(releaseGroupId)) failed: \(error)")
             return false
         }
-        NotificationCenter.default.post(name: .ratingChanged, object: nil)
+        NotificationCenter.default.post(name: .ratingChanged,
+            object: RatingChangeInfo(releaseGroupId: releaseGroupId, score: score))
         return true
     }
 
