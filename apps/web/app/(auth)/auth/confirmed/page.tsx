@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 /**
  * Landing page for a confirmed email (Supabase's "Confirm signup" link),
@@ -38,8 +38,16 @@ import { useEffect } from 'react';
 const APP_SCHEME_URL = 'sillajuku://auth/confirmed';
 
 export default function AuthConfirmedPage() {
+  // Gates the manual fallback link below -- it opens a sillajuku:// custom
+  // scheme, meaningless on a desktop/wide device with no app to open. Not
+  // used to gate the copy above (the user explicitly asked for that to stay
+  // as plain, unconditional text regardless of device).
+  const [isMobile, setIsMobile] = useState(false);
+
   useEffect(() => {
-    if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+    const mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    setIsMobile(mobile);
+    if (mobile) {
       window.location.href = APP_SCHEME_URL;
     }
   }, []);
@@ -53,13 +61,16 @@ export default function AuthConfirmedPage() {
         앱으로 돌아가서 가입을 완료해주세요.
       </p>
       {/* Manual fallback -- some mobile browsers only honor a custom-scheme
-          navigation triggered by a direct tap, not the useEffect above. */}
-      <a
-        href={APP_SCHEME_URL}
-        className="text-[13px] font-semibold text-ink/60 underline underline-offset-2"
-      >
-        앱이 자동으로 열리지 않았다면 여기를 눌러주세요
-      </a>
+          navigation triggered by a direct tap, not the useEffect above.
+          Mobile-only: on desktop there's no app to open at all. */}
+      {isMobile && (
+        <a
+          href={APP_SCHEME_URL}
+          className="text-[13px] font-semibold text-ink/60 underline underline-offset-2"
+        >
+          앱이 자동으로 열리지 않았다면 여기를 눌러주세요
+        </a>
+      )}
     </div>
   );
 }
