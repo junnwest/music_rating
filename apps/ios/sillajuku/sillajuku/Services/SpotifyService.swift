@@ -112,17 +112,6 @@ struct SpotifyTrack: Decodable {
     }
 }
 
-// Spotify's /api/token refresh response -- refresh_token is only present when Spotify rotates
-// it on this particular refresh, not every time (see SpotifyService.refreshAccessToken()).
-private struct SpotifyRefreshResponse: Decodable {
-    let accessToken: String
-    let refreshToken: String?
-    enum CodingKeys: String, CodingKey {
-        case accessToken = "access_token"
-        case refreshToken = "refresh_token"
-    }
-}
-
 // MARK: - Simplified display models
 
 struct SpotifyArtistDisplay: Identifiable, Codable {
@@ -186,6 +175,9 @@ enum SpotifyService {
     // NOTE: Supabase's refreshSession() does NOT return a provider token —
     // providerToken only appears in the initial OAuth callback URL.
     // The auth observer in sillajukuApp.swift captures it at sign-in time.
+    // Does NOT attempt to refresh an expired token itself -- see
+    // refreshViaBackend() below for why that has to happen server-side, and
+    // loadSpotify() (SearchView.swift) for how a caller should react to nil.
     static func validToken() async -> String? {
         guard let token = providerToken() else {
             // No token saved in UserDefaults at all -- distinct from "saved
@@ -199,65 +191,41 @@ enum SpotifyService {
             SentrySDK.capture(message: "SpotifyService.validToken: no provider token in UserDefaults")
             return nil
         }
-        if await tokenIsLive(token) { return token }
-        // Access token expired (confirmed live 2026-09-21: a real 401 from
-        // /me, Spotify access tokens are only valid ~1 hour) -- try
-        // refreshing with the saved refresh token before giving up entirely.
-        // Previously this just returned nil here, silently falling back to
-        // stale cached/DB data (or a "reconnect Spotify" prompt) for the
-        // rest of the session with no attempt to actually recover.
-        return await refreshAccessToken()
+        return await tokenIsLive(token) ? token : nil
     }
 
-    // Spotify's own /api/token endpoint, bypassing Supabase entirely --
-    // Supabase's signInWithOAuth()/session(from:) only ever handles the
-    // INITIAL sign-in code exchange, it has no equivalent for refreshing a
-    // provider access token later (session.providerToken only ever appears
-    // once, on that first exchange -- see validToken()'s own note above).
-    // Safe to call directly with just client_id (no client secret) since
-    // this is the public/PKCE side of Spotify's OAuth -- refresh tokens
-    // issued this way don't require re-authenticating as a confidential
-    // client. Spotify may rotate the refresh token itself on any given
-    // refresh; both the local cache and the DB-persisted copy
-    // (spotify_taste_tokens, used elsewhere for a server-side refresh) are
-    // updated when that happens so neither goes stale independently.
-    static func refreshAccessToken() async -> String? {
-        guard let refreshToken = UserDefaults.standard.string(forKey: "sj_spotify_provider_refresh_token") else {
-            SentrySDK.capture(message: "SpotifyService.refreshAccessToken: no refresh token saved")
-            return nil
-        }
-        guard let url = URL(string: "https://accounts.spotify.com/api/token") else { return nil }
-        var req = URLRequest(url: url)
+    // Asks our own backend to refresh this user's Spotify access token and rewrite their
+    // DB-cached spotify_artists/spotify_recently_played, instead of trying to refresh the token
+    // client-side. A first attempt at doing this directly against accounts.spotify.com/api/token
+    // (client_id only, no secret) got a real 400 invalid_request from Spotify -- confirmed live
+    // 2026-09-21 this project's registered Spotify app is a confidential client, and refreshing
+    // requires Basic auth with SPOTIFY_CLIENT_SECRET (same as the already-working
+    // export/route.ts and refresh-spotify-taste cron on web), a secret that must never live
+    // on-device. POST /api/spotify/refresh-my-data (new) is the on-demand, single-user version of
+    // that same cron job, authenticated the same way every other WebAPI-adjacent call in this app
+    // already is (Bearer supabase session token). Returns whether it succeeded; deliberately
+    // doesn't return the refreshed data itself -- the caller re-reads
+    // loadArtistsFromDB()/loadRecentlyPlayedFromDB() afterward (loadSpotify()'s existing Layer 2),
+    // so there's exactly one place that decodes those DB columns into Swift models.
+    static func refreshViaBackend() async -> Bool {
+        guard let session = try? await supabase.auth.session else { return false }
+        var req = URLRequest(url: Config.webBaseURL.appendingPathComponent("/api/spotify/refresh-my-data"))
         req.httpMethod = "POST"
-        req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        var body = URLComponents()
-        body.queryItems = [
-            URLQueryItem(name: "grant_type", value: "refresh_token"),
-            URLQueryItem(name: "refresh_token", value: refreshToken),
-            URLQueryItem(name: "client_id", value: Config.spotifyClientId),
-        ]
-        req.httpBody = body.percentEncodedQuery?.data(using: .utf8)
-
+        req.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
         guard let (data, response) = try? await URLSession.shared.data(for: req) else {
-            SentrySDK.capture(message: "SpotifyService.refreshAccessToken: request failed (network)")
-            return nil
+            SentrySDK.capture(message: "SpotifyService.refreshViaBackend: request failed (network)")
+            return false
         }
         let status = (response as? HTTPURLResponse)?.statusCode
-        guard status == 200, let parsed = try? JSONDecoder().decode(SpotifyRefreshResponse.self, from: data) else {
-            // A 400 with error=invalid_grant means the refresh token itself was revoked/expired --
-            // the user genuinely needs to reconnect, not something a retry fixes. Any other status
-            // is unexpected. Both logged the same way so the distinction is visible next time
-            // instead of guessed at, matching every other Spotify API failure path in this file.
-            captureSpotifyAPIFailure(endpoint: "accounts/api/token (refresh)", status: status, data: data)
-            return nil
+        guard status == 200 else {
+            // A 404 means this user has no spotify_taste_tokens row at all (never captured a
+            // refresh token to begin with); a 502 means Spotify itself rejected the refresh
+            // token (revoked/expired -- genuinely needs reconnecting). Both logged so the
+            // distinction is visible, matching every other Spotify path in this file.
+            captureSpotifyAPIFailure(endpoint: "spotify/refresh-my-data", status: status, data: data)
+            return false
         }
-
-        UserDefaults.standard.set(parsed.accessToken, forKey: "sj_spotify_provider_token")
-        if let newRefreshToken = parsed.refreshToken {
-            UserDefaults.standard.set(newRefreshToken, forKey: "sj_spotify_provider_refresh_token")
-            await saveTasteRefreshToken(newRefreshToken)
-        }
-        return parsed.accessToken
+        return true
     }
 
     // Lightweight liveness check — one request to /me.

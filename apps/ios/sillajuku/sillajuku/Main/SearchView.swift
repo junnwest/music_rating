@@ -425,6 +425,31 @@ class DiscoveryViewModel {
             // Layer 3: Live Spotify API (when token is valid — refreshes both caches)
             reachedLayer3 = true
             guard let token = await SpotifyService.validToken() else {
+                // The client's own access token is dead and can't be refreshed here -- doing so
+                // needs a Spotify client secret that must never live on-device (confirmed live
+                // 2026-09-21: a direct client-side refresh attempt got a real Spotify 400
+                // invalid_request, since this project's app registration is a confidential
+                // client). Delegate to the backend instead (refreshViaBackend() -- refreshes and
+                // rewrites this user's DB-cached Spotify data server-side, where the secret
+                // safely lives), then re-read the DB directly -- NOT gated on
+                // spotifyArtists/recentlyPlayed already being non-empty like Layer 2 above,
+                // since the whole point here is picking up whatever the backend just wrote,
+                // not skipping because stale local data already exists.
+                if await SpotifyService.refreshViaBackend() {
+                    let refreshedArtists = await SpotifyService.loadArtistsFromDB()
+                    let refreshedRecent  = await SpotifyService.loadRecentlyPlayedFromDB()
+                    if !refreshedArtists.isEmpty {
+                        spotifyArtists = refreshedArtists
+                        SpotifyService.saveArtists(refreshedArtists)
+                    }
+                    if !refreshedRecent.isEmpty {
+                        recentlyPlayed = refreshedRecent
+                        SpotifyService.saveRecentlyPlayed(refreshedRecent)
+                    }
+                    hasSpotifyData = !spotifyArtists.isEmpty || !recentlyPlayed.isEmpty
+                    needsSpotifyReconnect = !hasSpotifyData
+                    return
+                }
                 if isLastAttempt { needsSpotifyReconnect = !hasSpotifyData }
                 continue
             }
