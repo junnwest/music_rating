@@ -43,29 +43,72 @@ struct SpotifyRecentlyPlayedResponse: Decodable {
     }
 }
 
-struct SpotifyPlayItem: Codable {
-    let track: SpotifyTrack?   // nil for podcast episodes
+struct SpotifyPlayItem: Decodable {
+    let track: SpotifyTrack?   // nil for podcast episodes, or a track that itself failed to decode
     let playedAt: String
 
     enum CodingKeys: String, CodingKey {
         case track
         case playedAt = "played_at"
     }
+
+    // Lenient like everything below it, for the same reason (see SpotifyAlbum's
+    // comment) -- belt and suspenders alongside the outer LenientPlayItem
+    // wrapper, since a missing/malformed `track` shouldn't fail `playedAt`
+    // either, or vice versa.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        track = try? c.decode(SpotifyTrack.self, forKey: .track)
+        playedAt = (try? c.decode(String.self, forKey: .playedAt)) ?? ""
+    }
 }
 
-struct SpotifyTrack: Codable {
+struct SpotifyTrack: Decodable {
     let name: String
     let artists: [SpotifyTrackArtist]
     let album: SpotifyAlbum?   // nil for podcast episodes — those are skipped
 
-    struct SpotifyTrackArtist: Codable { let name: String }
+    struct SpotifyTrackArtist: Decodable {
+        let name: String
+        enum CodingKeys: String, CodingKey { case name }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            name = (try? c.decode(String.self, forKey: .name)) ?? ""
+        }
+    }
 
-    struct SpotifyAlbum: Codable {
-        let id: String
+    struct SpotifyAlbum: Decodable {
+        // Confirmed live via Sentry 2026-09-21: a real recently-played item
+        // existed (raw items=1) but still failed to decode even under the
+        // per-item LenientPlayItem wrapper -- something *inside* this nested
+        // structure was throwing, not the top-level shape. Most likely a
+        // locally-uploaded file, which Spotify can return with fields a
+        // normal catalog album always has left out or null -- `id` in
+        // particular. Every field here now decodes leniently with a safe
+        // fallback instead of letting one missing/null field kill the whole
+        // item a second time.
+        let id: String?
         let name: String
         let artists: [SpotifyTrackArtist]
         let images: [SpotifyArtist.SpotifyImage]
         var imageUrl: String? { images.first?.url }
+
+        enum CodingKeys: String, CodingKey { case id, name, artists, images }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try? c.decode(String.self, forKey: .id)
+            name = (try? c.decode(String.self, forKey: .name)) ?? ""
+            artists = (try? c.decode([SpotifyTrackArtist].self, forKey: .artists)) ?? []
+            images = (try? c.decode([SpotifyArtist.SpotifyImage].self, forKey: .images)) ?? []
+        }
+    }
+
+    enum CodingKeys: String, CodingKey { case name, artists, album }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = (try? c.decode(String.self, forKey: .name)) ?? ""
+        artists = (try? c.decode([SpotifyTrackArtist].self, forKey: .artists)) ?? []
+        album = try? c.decode(SpotifyAlbum.self, forKey: .album)
     }
 }
 
@@ -313,15 +356,22 @@ enum SpotifyService {
         }
 
         // Deduplicate albums by id, preserving order (most recent first); skip podcasts (nil track or
-        // nil album) and any item that failed to decode at all (LenientPlayItem.value nil -- see its
-        // own comment on SpotifyRecentlyPlayedResponse).
+        // nil album), items with nothing worth showing (empty album name -- SpotifyAlbum's own
+        // lenient decode falls back to "" rather than failing), and any item that failed to decode
+        // at all (LenientPlayItem.value nil -- see its own comment on SpotifyRecentlyPlayedResponse).
         var seen = Set<String>()
         var albums: [SpotifyAlbumDisplay] = []
         for wrapped in response.items {
-            guard let item = wrapped.value, let track = item.track, let album = track.album else { continue }
-            if seen.insert(album.id).inserted {
+            guard let item = wrapped.value, let track = item.track, let album = track.album,
+                  !album.name.isEmpty else { continue }
+            // Local files can come back with a null album id (see SpotifyAlbum's own comment) --
+            // falls back to a synthetic id built from the name, which is fine here since this id is
+            // only ever used for local dedup/SwiftUI Identifiable, never sent back to Spotify or
+            // matched against it directly (catalog matching elsewhere goes by name+artist text).
+            let albumId = album.id ?? "local:\(album.name)"
+            if seen.insert(albumId).inserted {
                 albums.append(SpotifyAlbumDisplay(
-                    id: album.id,
+                    id: albumId,
                     name: album.name,
                     artistName: album.artists.first?.name ?? track.artists.first?.name ?? "",
                     imageUrl: album.imageUrl
