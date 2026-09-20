@@ -872,12 +872,19 @@ struct SearchView: View {
             }
         }
         .task {
-            await discoveryVM.load()
-            await withTaskGroup(of: Void.self) { g in
-                g.addTask { await loadUserRatingStep() }
-                g.addTask { await loadRatedReleaseIds() }
-                g.addTask { await bottomGenreVM.loadLikedGenres() }
-            }
+            // loadUserRatingStep/loadRatedReleaseIds/loadLikedGenres are all plain
+            // `profiles`/`ratings` reads with zero dependency on Discovery's own
+            // Spotify/Apple Music/catalog-resolution chain -- they used to run only
+            // after discoveryVM.load() fully finished, which meant every rate button
+            // on this tab silently used the 0.5 default (not the account's real
+            // rating-precision setting) for however long that load took, sometimes
+            // the better part of a minute on a slow network. Run everything
+            // concurrently instead; nothing here actually depends on anything else.
+            async let discovery: Void = discoveryVM.load()
+            async let ratingStep: Void = loadUserRatingStep()
+            async let ratedIds: Void = loadRatedReleaseIds()
+            async let likedGenres: Void = bottomGenreVM.loadLikedGenres()
+            _ = await (discovery, ratingStep, ratedIds, likedGenres)
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
