@@ -123,7 +123,20 @@ struct sillajukuApp: App {
                         NotificationCenter.default.post(name: .sjEmailConfirmed, object: nil)
                         return
                     }
-                    Task { try? await supabase.auth.session(from: url) }
+                    Task {
+                        // Was `try? await ... session(from: url)` -- completely silent on
+                        // failure, no way to tell "this genuinely wasn't an auth callback URL"
+                        // (harmless, expected) from "this WAS one and the exchange failed"
+                        // (a real problem with no error shown anywhere). Confirmed live
+                        // 2026-09-21: linking Apple from Connected Accounts visually completed
+                        // (Face ID, no error dialog) but the identity never actually landed --
+                        // this silent catch is the only place that could be swallowing why.
+                        do {
+                            try await supabase.auth.session(from: url)
+                        } catch {
+                            SentrySDK.capture(error: error)
+                        }
+                    }
                 }
                 .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
                     // Universal Link path — only relevant when the app is already
