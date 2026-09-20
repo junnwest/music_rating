@@ -431,6 +431,17 @@ class DiscoveryViewModel {
     func refreshSpotifyIfNeeded() async {
         guard needsSpotifyReconnect || !hasSpotifyData else { return }
         await loadSpotify()
+        // resolveRecentlyPlayedIfNeeded() otherwise only ever runs once per
+        // ViewModel lifetime (from load()/refresh()) -- without resetting its
+        // guard here, loadSpotify() populating `recentlyPlayed` for the
+        // FIRST time on a retry that happens after that one call (e.g. once
+        // a background token refresh finally succeeds) would never get
+        // catalog-matched short of a full app relaunch or a manual
+        // pull-to-refresh. Confirmed live 2026-09-21: real data reached
+        // `recentlyPlayed`/the DB, but "Recently Listened" never appeared
+        // because of exactly this gap.
+        hasResolvedRecentlyPlayed = false
+        await resolveRecentlyPlayedIfNeeded()
     }
 
     // Same idea for Apple Music, triggered from Settings' new "Connect Apple Music" row
@@ -439,6 +450,9 @@ class DiscoveryViewModel {
     func refreshAppleMusicIfNeeded() async {
         guard !hasAppleMusicData else { return }
         await loadAppleMusic()
+        // Same gap as refreshSpotifyIfNeeded() above, same fix.
+        hasResolvedRecentlyPlayed = false
+        await resolveRecentlyPlayedIfNeeded()
     }
 
     // Artists behind ratings >= 3.5, best-first -- QuickAddViewModel's seed source. Kept as its
