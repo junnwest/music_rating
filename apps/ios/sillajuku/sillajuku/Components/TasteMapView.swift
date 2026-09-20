@@ -21,6 +21,25 @@ struct TasteMapView: View {
 
     @State private var worldIndex: Int? = nil
     @State private var sheetTarget: TasteMapSheetTarget? = nil
+    /// Which way the row-list transition should slide -- forward (into a
+    /// world's sub-genres) or back (to the world list). A plain cross-fade
+    /// here read as flat/abrupt (live feedback: "the transitions on click
+    /// is a bit awkward"); a directional slide gives drilling in and
+    /// backing out an actual sense of depth, matching how `NavigationStack`
+    /// itself would feel for a real push/pop.
+    @State private var navigatingForward = true
+
+    /// `ImageRenderer` (used to snapshot this content for Instagram sharing,
+    /// see `TasteShareCard`) never attaches its source view to a real
+    /// window -- and a `ScrollView` backed by `UIScrollView` renders as
+    /// entirely blank when snapshotted that way (confirmed with an isolated
+    /// repro: identical row content, same fixed-height frame, only the
+    /// `ScrollView` wrapper differed -- live view rendered correctly, the
+    /// exported image was blank white). Live scrolling has no meaning in a
+    /// static export anyway, so the snapshot path swaps in a plain `VStack`
+    /// (still bounded by the parent's fixed-height `.clipped()` frame)
+    /// instead of trying to work around the limitation.
+    @Environment(\.isTasteShareSnapshot) private var isTasteShareSnapshot
 
     /// Every rated album, indexed by each tag it carries -- built once per
     /// render and threaded through the cover lookups below rather than
@@ -69,11 +88,9 @@ struct TasteMapView: View {
     }
 
     var body: some View {
-        let byTag = albumsByTag
-
         VStack(alignment: .leading, spacing: 12) {
             if let openWorld {
-                Button(action: { withAnimation(.easeOut(duration: 0.22)) { worldIndex = nil } }) {
+                Button(action: goBack) {
                     HStack(spacing: 4) {
                         Image("icon-chevron-left")
                             .renderingMode(.template)
@@ -87,43 +104,93 @@ struct TasteMapView: View {
                 .transition(.opacity)
             }
 
-            VStack(spacing: 0) {
-                if let openWorld {
-                    ForEach(Array(tagOrder.enumerated()), id: \.element) { i, idx in
-                        let tag = openWorld.tags[idx]
-                        if i > 0 { Divider() }
-                        MapRow(
-                            label: tag.display,
-                            meta: "\(Int((tag.share * 100).rounded()))% \(String(localized: "share"))",
-                            avg: tag.avg,
-                            pct: tag.share,
-                            cover: tagHeroCover(tag, in: byTag),
-                            onTap: { openSheet(world: openWorld, tag: tag) }
-                        )
-                    }
+            // Height-capped and internally scrollable -- a long list (many
+            // worlds, or a world with many sub-genres) used to just keep
+            // growing this whole page's content past the screen, crowding
+            // `RampLegendView`'s score gradient right up against the tab
+            // bar. `.frame(maxHeight: .infinity)` makes this the flexible
+            // element in the outer VStack (the back button and the legend
+            // keep their natural size), so the legend always has room right
+            // below it and the list scrolls internally once it can't fit.
+            Group {
+                if isTasteShareSnapshot {
+                    rowList
                 } else {
-                    ForEach(Array(worldOrder.enumerated()), id: \.element) { i, idx in
-                        let w = data.worlds[idx]
-                        if i > 0 { Divider() }
-                        MapRow(
-                            label: w.primary,
-                            meta: "\(Int((w.share * 100).rounded()))% \(String(localized: "share"))",
-                            avg: w.avg,
-                            pct: w.share,
-                            cover: worldHeroCover(w, in: byTag),
-                            onTap: { withAnimation(.easeOut(duration: 0.22)) { worldIndex = idx } }
-                        )
+                    ScrollView(.vertical) {
+                        rowList
+                            .transition(navigatingForward
+                                ? .asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
+                                               removal: .move(edge: .leading).combined(with: .opacity))
+                                : .asymmetric(insertion: .move(edge: .leading).combined(with: .opacity),
+                                               removal: .move(edge: .trailing).combined(with: .opacity)))
                     }
+                    .scrollIndicators(.hidden)
                 }
             }
-            .id(openWorld?.key ?? "worlds")
-            .transition(.opacity)
+            .frame(maxHeight: .infinity)
 
             RampLegendView(label: String(localized: "score"), width: 64)
         }
+        // "Suitable padding" below the page's own title/lead header --
+        // previously the back button (or the row list, when there's no
+        // button to show) sat flush against the lead text with no gap at
+        // all, since neither `TastePageChrome` nor this view's own VStack
+        // added any spacing there.
+        .padding(.top, 12)
+        .clipped()
         .sheet(item: $sheetTarget) { target in
             TasteMapSheet(target: target)
         }
+    }
+
+    @ViewBuilder
+    private var rowList: some View {
+        let byTag = albumsByTag
+        VStack(spacing: 0) {
+            if let openWorld {
+                ForEach(Array(tagOrder.enumerated()), id: \.element) { i, idx in
+                    let tag = openWorld.tags[idx]
+                    if i > 0 { Divider() }
+                    MapRow(
+                        label: tag.display,
+                        meta: "\(Int((tag.share * 100).rounded()))% \(String(localized: "share"))",
+                        avg: tag.avg,
+                        pct: tag.share,
+                        cover: tagHeroCover(tag, in: byTag),
+                        onTap: {
+                            Haptics.light()
+                            openSheet(world: openWorld, tag: tag)
+                        }
+                    )
+                }
+            } else {
+                ForEach(Array(worldOrder.enumerated()), id: \.element) { i, idx in
+                    let w = data.worlds[idx]
+                    if i > 0 { Divider() }
+                    MapRow(
+                        label: w.primary,
+                        meta: "\(Int((w.share * 100).rounded()))% \(String(localized: "share"))",
+                        avg: w.avg,
+                        pct: w.share,
+                        cover: worldHeroCover(w, in: byTag),
+                        onTap: { drillIn(idx) }
+                    )
+                }
+            }
+        }
+        .id(openWorld?.key ?? "worlds")
+    }
+
+    private func drillIn(_ idx: Int) {
+        Haptics.selection()
+        navigatingForward = true
+        withAnimation(.easeOut(duration: 0.28)) { worldIndex = idx }
+    }
+
+    private func goBack() {
+        Haptics.selection()
+        navigatingForward = false
+        withAnimation(.easeOut(duration: 0.28)) { worldIndex = nil }
     }
 
     private func openSheet(world: TasteProfileResponse.TasteGraph.GraphWorld,
@@ -206,8 +273,22 @@ private struct MapRow: View {
             .padding(.vertical, 12)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(RowPressStyle())
         .accessibilityLabel("\(label) · \(meta)")
+    }
+}
+
+/// `.buttonStyle(.plain)` gives a row zero visual response to a touch --
+/// live feedback ("could have more interactive UI") flagged this row
+/// specifically as feeling inert until the tap's *result* (the drill-in
+/// slide, or the sheet) appeared. A light background tint + slight scale
+/// while pressed closes that gap without needing a full row-card redesign.
+private struct RowPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(Color.sjBlue.opacity(configuration.isPressed ? 0.06 : 0))
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
     }
 }
 
@@ -272,6 +353,7 @@ private struct TasteMapSheet: View {
                                                       trailing: String(format: "%.1f", a.score))
                                 }
                                 .buttonStyle(.plain)
+                                .simultaneousGesture(TapGesture().onEnded { Haptics.light() })
                             }
                         }
                     } else {
@@ -292,6 +374,7 @@ private struct TasteMapSheet: View {
                                     TasteMapAlbumRow(title: r.title, artist: r.artist, coverUrl: r.coverUrl, trailing: nil)
                                 }
                                 .buttonStyle(.plain)
+                                .simultaneousGesture(TapGesture().onEnded { Haptics.light() })
                             }
                         }
                     }

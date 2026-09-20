@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../lib/supabaseServer';
+import { getAuthedUserId } from '../../../../lib/authGuard';
 
-// Scheduled (Vercel Cron) job — refreshes every connected user's Spotify top-artists and
-// recently-played data server-side, independent of whether they've opened the app. Mirrors
-// SpotifyService.swift's topArtists()/recentlyPlayed() shapes exactly so this write path and
-// the client's own opportunistic write path always produce identical JSON.
+// On-demand version of the refresh-spotify-taste cron, scoped to one user -- called by the iOS
+// app (SpotifyService.swift's refreshViaBackend()) when its own cached Spotify access token has
+// expired. Confirmed live 2026-09-21: this project's Spotify app registration is a confidential
+// client (refresh requires Basic auth with SPOTIFY_CLIENT_SECRET, same as export/route.ts and the
+// cron below), so an iOS-only refresh using just client_id (no secret) always fails with a real
+// Spotify 400 invalid_request -- the secret can never safely live in the app, so this refresh has
+// to happen server-side. The iOS client re-reads profiles.spotify_artists/spotify_recently_played
+// afterward (its existing DB-read layer) rather than this endpoint returning the data directly,
+// so there's exactly one place (this file + the cron) that knows Spotify's response shape.
 //
-// Deliberately duplicates the refresh-token exchange from app/api/spotify/export/route.ts
-// rather than importing a shared helper -- that file backs an unrelated, currently-working
-// feature (playlist export) and isn't touched here.
+// Deliberately duplicates the refresh-token exchange + fetch logic from
+// app/api/cron/refresh-spotify-taste/route.ts rather than importing a shared helper -- same
+// reasoning as that file's own comment about not touching export/route.ts.
 
 interface SpotifyArtistDisplay {
   id: string;
@@ -57,8 +63,6 @@ async function fetchRecentlyPlayed(accessToken: string): Promise<SpotifyAlbumDis
   const data = await res.json();
   const items: any[] = data.items ?? [];
 
-  // Dedup by album id, preserving order (most recent first); skip podcasts (nil track/album) --
-  // ports SpotifyService.swift's recentlyPlayed() dedup loop exactly.
   const seen = new Set<string>();
   const albums: SpotifyAlbumDisplay[] = [];
   for (const item of items) {
@@ -77,54 +81,50 @@ async function fetchRecentlyPlayed(accessToken: string): Promise<SpotifyAlbumDis
   return albums;
 }
 
-export async function GET(req: NextRequest) {
-  const auth = req.headers.get('authorization');
-  if (!process.env.CRON_SECRET || auth !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+export async function POST(req: NextRequest) {
+  const userId = await getAuthedUserId(req.headers.get('Authorization'));
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const supabase = createServerClient();
   if (!supabase) return NextResponse.json({ error: 'Unavailable' }, { status: 503 });
 
-  const { data: rows } = await supabase
+  const { data: row } = await supabase
     .from('spotify_taste_tokens')
-    .select('user_id, refresh_token');
+    .select('refresh_token')
+    .eq('user_id', userId)
+    .single();
 
-  let refreshed = 0;
-  let failed = 0;
-  const total = rows?.length ?? 0;
-
-  for (const row of rows ?? []) {
-    const tokens = await refreshAccessToken(row.refresh_token);
-    if (!tokens) {
-      failed++;
-      continue;
-    }
-
-    // Spotify may rotate the refresh token on any refresh -- persist it if so.
-    if (tokens.refresh_token && tokens.refresh_token !== row.refresh_token) {
-      await supabase
-        .from('spotify_taste_tokens')
-        .update({ refresh_token: tokens.refresh_token, updated_at: new Date().toISOString() })
-        .eq('user_id', row.user_id);
-    }
-
-    const [artists, recentlyPlayed] = await Promise.all([
-      fetchTopArtists(tokens.access_token),
-      fetchRecentlyPlayed(tokens.access_token),
-    ]);
-
-    await supabase
-      .from('profiles')
-      .update({
-        spotify_artists: artists,
-        spotify_recently_played: recentlyPlayed,
-        spotify_data_updated_at: new Date().toISOString(),
-      })
-      .eq('id', row.user_id);
-
-    refreshed++;
+  if (!row?.refresh_token) {
+    return NextResponse.json({ error: 'Not connected' }, { status: 404 });
   }
 
-  return NextResponse.json({ refreshed, failed, total });
+  const tokens = await refreshAccessToken(row.refresh_token);
+  if (!tokens) {
+    // The refresh token itself is dead (revoked/expired) -- the user genuinely needs to
+    // reconnect Spotify, not something this endpoint can recover from.
+    return NextResponse.json({ error: 'Refresh failed' }, { status: 502 });
+  }
+
+  if (tokens.refresh_token && tokens.refresh_token !== row.refresh_token) {
+    await supabase
+      .from('spotify_taste_tokens')
+      .update({ refresh_token: tokens.refresh_token, updated_at: new Date().toISOString() })
+      .eq('user_id', userId);
+  }
+
+  const [artists, recentlyPlayed] = await Promise.all([
+    fetchTopArtists(tokens.access_token),
+    fetchRecentlyPlayed(tokens.access_token),
+  ]);
+
+  await supabase
+    .from('profiles')
+    .update({
+      spotify_artists: artists,
+      spotify_recently_played: recentlyPlayed,
+      spotify_data_updated_at: new Date().toISOString(),
+    })
+    .eq('id', userId);
+
+  return NextResponse.json({ success: true });
 }

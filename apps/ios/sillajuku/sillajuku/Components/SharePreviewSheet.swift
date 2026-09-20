@@ -54,7 +54,28 @@ enum ShareBackgroundStyle: Int, CaseIterable, Identifiable {
 /// started; separating them removes that ambiguity structurally instead of
 /// arbitrating it with gesture priority.
 struct SharePreviewSheet: View {
-    let pending: PendingShare
+    /// Non-nil for the original "post card" flow (album/song/mix rating) --
+    /// `customCard` is the generalization added for arbitrary content (e.g.
+    /// a Taste-tab section) that isn't shaped like a rating at all. Kept as
+    /// two optionals rather than an enum so every existing call site
+    /// (`AlbumContextMenu`, `AlbumDetailView` ×2, `MixLibraryView`) needed
+    /// zero changes -- `init(pending:)` is untouched.
+    let pending: PendingShare?
+    private let customCard: AnyView?
+
+    init(pending: PendingShare) {
+        self.pending = pending
+        self.customCard = nil
+    }
+
+    /// For content that isn't a "post" at all -- takes any view, rendered
+    /// through the exact same canvas/background-picker/drag-resize/export
+    /// pipeline as the post-card flow, minus the "Blurred Cover" background
+    /// option (there's no cover image to blur here; see `availableStyles`).
+    init<Content: View>(@ViewBuilder card: () -> Content) {
+        self.pending = nil
+        self.customCard = AnyView(card())
+    }
 
     @Environment(\.dismiss) private var dismiss
     @State private var renderedImage: UIImage?
@@ -63,8 +84,8 @@ struct SharePreviewSheet: View {
 
     // Background style state
     @State private var backgroundStyle: ShareBackgroundStyle = .solid
-    @State private var solidColor = SharePreviewSheet.creamColor
-    @State private var gradientTop = SharePreviewSheet.creamColor
+    @State private var solidColor = Color.white
+    @State private var gradientTop = Color.white
     @State private var gradientBottom = Color.sjBlue
     @State private var blurredCover: UIImage?
     @State private var pickedMedia: PickedShareMedia?
@@ -102,9 +123,12 @@ struct SharePreviewSheet: View {
     @State private var snappedX = false
     @State private var snappedY = false
 
-    /// The brand cream (#F8F8F5) the pre-carousel share flow always used —
-    /// a fixed value, not the adaptive `Color.sjCream`, because the exported
-    /// story must not depend on the phone's light/dark mode.
+    /// Fallback backdrop for the "Blurred Cover"/"Photo & Video" styles when
+    /// there's no actual cover or picked media yet to show -- a fixed value,
+    /// not the adaptive `Color.sjCream`, because the exported story must not
+    /// depend on the phone's light/dark mode. No longer the default/first
+    /// "Solid Color" swatch -- that's plain white now, since this brand
+    /// cream read as dingy gray next to it in the picker (user feedback).
     private static let creamColor = Color(red: 0.973, green: 0.973, blue: 0.961)
 
     // Brand accent colors, matching `QuestBadgeColor`'s exact palette
@@ -123,7 +147,7 @@ struct SharePreviewSheet: View {
     /// above, rather than generic story-gradient colors unrelated to
     /// sillajuku's actual palette.
     private static let solidPresets: [Color] = [
-        creamColor,
+        .white,
         Color(red: 0.10, green: 0.10, blue: 0.10),   // ink
         Color.sjBlue,
         goldAccent,
@@ -133,7 +157,7 @@ struct SharePreviewSheet: View {
         roseAccent,
     ]
     private static let gradientPresets: [(top: Color, bottom: Color)] = [
-        (creamColor, Color.sjBlue),
+        (.white, Color.sjBlue),
         (Color(red: 0.10, green: 0.10, blue: 0.10), Color.sjBlue),   // ink → brand blue
         (Color.sjBlue, violetAccent),                                 // brand blue → violet
         (goldAccent, roseAccent),                                     // gold → rose
@@ -142,6 +166,13 @@ struct SharePreviewSheet: View {
     ]
 
     private var canShareToInstagram: Bool { InstagramShare.canShareToInstagramStories() }
+
+    /// "Blurred Cover" only makes sense for a post card (there's an actual
+    /// cover image to blur) -- omitted for `customCard` content, which has
+    /// no single image to draw a backdrop from.
+    private var availableStyles: [ShareBackgroundStyle] {
+        pending != nil ? ShareBackgroundStyle.allCases : ShareBackgroundStyle.allCases.filter { $0 != .cover }
+    }
 
     private var isVideoSelected: Bool {
         if backgroundStyle == .photo, case .video = pickedMedia { return true }
@@ -157,7 +188,7 @@ struct SharePreviewSheet: View {
             return .colors(top: UIColor(gradientTop), bottom: UIColor(gradientBottom))
         case .cover:
             if let blurredCover { return .image(blurredCover) }
-            if let cover = pending.coverImages.first ?? nil { return .image(InstagramShare.blurredCoverBackdrop(from: cover)) }
+            if let cover = pending?.coverImages.first ?? nil { return .image(InstagramShare.blurredCoverBackdrop(from: cover)) }
             return .colors(top: UIColor(Self.creamColor), bottom: UIColor(Self.creamColor))
         case .photo:
             switch pickedMedia {
@@ -330,7 +361,7 @@ struct SharePreviewSheet: View {
             // The export-resolution blur is a one-time ~100ms of CoreImage
             // work — precompute off the main actor so neither a style switch
             // nor the share tap hitches.
-            guard let cover = pending.coverImages.first ?? nil else { return }
+            guard let cover = pending?.coverImages.first ?? nil else { return }
             blurredCover = await Task.detached(priority: .userInitiated) {
                 InstagramShare.blurredCoverBackdrop(from: cover)
             }.value
@@ -354,28 +385,42 @@ struct SharePreviewSheet: View {
         }
     }
 
+    @ViewBuilder
     private var shareCard: some View {
-        ShareCardView(
-            username: pending.username,
-            coverImages: pending.coverImages,
-            title: pending.title,
-            subtitle: pending.subtitle,
-            score: pending.score,
-            reviewText: pending.reviewText
-        )
+        Group {
+            if let pending {
+                ShareCardView(
+                    username: pending.username,
+                    coverImages: pending.coverImages,
+                    title: pending.title,
+                    subtitle: pending.subtitle,
+                    score: pending.score,
+                    reviewText: pending.reviewText
+                )
+            } else if let customCard {
+                customCard
+            }
+        }
         .environment(\.colorScheme, cardScheme)
     }
 
     private func renderSticker() {
-        renderedImage = InstagramShare.renderStickerImage(
-            username: pending.username,
-            coverImages: pending.coverImages,
-            title: pending.title,
-            subtitle: pending.subtitle,
-            score: pending.score,
-            reviewText: pending.reviewText,
-            colorScheme: cardScheme
-        )
+        if let pending {
+            renderedImage = InstagramShare.renderStickerImage(
+                username: pending.username,
+                coverImages: pending.coverImages,
+                title: pending.title,
+                subtitle: pending.subtitle,
+                score: pending.score,
+                reviewText: pending.reviewText,
+                colorScheme: cardScheme
+            )
+        } else if let customCard {
+            let renderer = ImageRenderer(content: customCard.environment(\.colorScheme, cardScheme))
+            renderer.isOpaque = false
+            renderer.scale = UIScreen.main.scale
+            renderedImage = renderer.uiImage
+        }
     }
 
     // MARK: - Canvas
@@ -474,7 +519,7 @@ struct SharePreviewSheet: View {
         case .gradient:
             LinearGradient(colors: [gradientTop, gradientBottom], startPoint: .top, endPoint: .bottom)
         case .cover:
-            if let cover = pending.coverImages.first ?? nil {
+            if let cover = pending?.coverImages.first ?? nil {
                 // SwiftUI-blur stand-in for the CoreImage export blur:
                 // sigma 60 at 1080px ≈ radius 12 at this preview width;
                 // the 1.15 upscale pushes the blur's faded edges outside
@@ -630,7 +675,7 @@ struct SharePreviewSheet: View {
     /// already uses for filter chips elsewhere (see `RankingsView.filterChip`).
     private var styleSelectorRow: some View {
         HStack(spacing: 8) {
-            ForEach(ShareBackgroundStyle.allCases) { style in
+            ForEach(availableStyles) { style in
                 let selected = backgroundStyle == style
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) { backgroundStyle = style }

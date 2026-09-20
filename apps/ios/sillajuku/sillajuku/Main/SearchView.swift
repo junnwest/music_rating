@@ -2,6 +2,7 @@ import SwiftUI
 import Observation
 import Supabase
 import MusicKit
+import Sentry
 
 // MARK: - Song model
 
@@ -48,6 +49,16 @@ class DiscoveryViewModel {
     var appleMusicLibraryAlbums: [AppleMusicAlbumDisplay] = []
     var hasAppleMusicData = false
 
+    // Whether each service is actually connected -- distinct from hasSpotifyData/
+    // hasAppleMusicData above, which only say whether a fetch has ever returned real taste
+    // data, not whether the account/device permission is linked at all. Drives the Add tab's
+    // bottom "Connect Spotify"/"Connect Apple Music" nudge (discoveryView), which needs the
+    // real connection state, not a data-presence proxy -- a linked account with genuinely no
+    // listening history yet would otherwise show a "Connect" nudge for a service it's already
+    // connected to. Checked once via checkConnectionStatus() below, not on every load().
+    var isSpotifyLinked = false
+    var isAppleMusicAuthorized = false
+
     // DB-personalized (based on user's ratings)
     var personalizedAlbums: [Release] = []
     var personalizedSongs:  [SongResult] = []
@@ -82,11 +93,22 @@ class DiscoveryViewModel {
     var blockedArtists: Set<String> = []
 
     // Spotify/Apple "Recently Listened" resolved against the catalog -- see
-    // resolveRecentlyPlayedIfNeeded() below. Rendered via the same albumScroll/DiscoveryAlbumCard
-    // every other section uses (proper cover size, add button, context menu) instead of the old
-    // raw-metadata row that couldn't offer any of that since it had no Release until tap.
+    // resolveRecentlyPlayedIfNeeded() below. Apple's row still renders directly from this via
+    // albumScroll/DiscoveryAlbumCard; Spotify's row instead renders from the raw `recentlyPlayed`
+    // list above (recentlyPlayedPreviewScroll) so it appears the instant loadSpotify() finishes,
+    // not gated on this resolution -- recentlyPlayedReleases and resolvedPreviewCache below both
+    // still get populated from it, just used differently (see each call site's own comment).
     var recentlyPlayedReleases: [Release] = []
     var appleMusicRecentlyPlayedReleases: [Release] = []
+
+    // Keyed by SpotifyAlbumDisplay.id -- once an item resolves to a real Release (via the
+    // background resolveRecentlyPlayedIfNeeded() below, or a user's own tap through
+    // ResolvingAlbumView), recentlyPlayedPreviewScroll switches that item over to the full
+    // DiscoveryAlbumCard treatment (rate button, type label, direct navigation, no loading
+    // screen) instead of the raw preview card -- confirmed live 2026-09-21 the user expected a
+    // resolved item to "act as all other items" from then on, not re-show the loading screen or
+    // stay missing those UI elements on every subsequent tap.
+    var resolvedPreviewCache: [String: Release] = [:]
 
     var isLoading = true
     var needsSpotifyReconnect = false  // no cached data AND token is gone
@@ -121,37 +143,61 @@ class DiscoveryViewModel {
         // already uses (see its load()).
         isLoading = false
 
-        // Spotify/Apple Music and Discovery/Recommendations are independent of each other --
-        // Discovery moved to web's own /api/discovery + /api/recommendations a while back and no
-        // longer needs Spotify/Apple Music seed artists (see reloadDiscoverySections' own
-        // loaders), but this kept waiting for the music-service fetch to finish first anyway,
-        // stacking two full network legs in series (measured live: ~6s Spotify+Apple Music, THEN
-        // ~6s Discovery on top of it -- ~12s total for a cold Add-tab visit). Merged into one
-        // wave; each still has its own hasXData-based guard so a retry only re-fetches what's
-        // actually missing, same as before.
+        // Spotify/Apple Music/Recently-Listened-resolution vs. Discovery/Recommendations are two
+        // fully independent chains -- Discovery moved to web's own /api/discovery +
+        // /api/recommendations a while back and no longer needs Spotify/Apple Music seed artists
+        // (see reloadDiscoverySections' own loaders). Run as two concurrent `async let` chains
+        // instead of interleaved task groups: confirmed live 2026-09-21 that putting Discovery's
+        // FIRST attempt in the same group as loadSpotify/loadAppleMusic (an earlier version of this
+        // fix only separated out Discovery's *retry*) still let "Recently Listened" sit blocked on
+        // Discovery's first attempt finishing (~6s) even though its own dependency — the
+        // recently-played lists — was ready seconds earlier, since a task group only completes once
+        // ALL its members do. Two independent chains, each internally sequential where it has a real
+        // dependency (Spotify/Apple Music -> resolveRecentlyPlayedIfNeeded; Discovery -> its own
+        // retry), removes the false dependency between the two chains entirely -- "Recently Listened"
+        // now starts resolving the moment loadSpotify/loadAppleMusic finish, full stop, regardless of
+        // how long Discovery takes on either attempt.
+        async let discoveryChain: Void = {
+            if !hasDiscoveryData { await reloadDiscoverySections() }
+            // One retry if discovery/recommendations came back empty -- loadDiscovery/
+            // loadRecommendations/loadRatedArtists each silently swallow a failed fetch (network
+            // blip, timeout, or cold-launch contention with Home/Quest's own concurrent queries) as
+            // "no data" rather than surfacing an error, so `hasDiscoveryData` false here is far more
+            // likely a transient failure than a real empty state (popular/trending are global feeds,
+            // not personalized -- they're essentially never genuinely empty). Without this, the user
+            // was stuck seeing only Spotify's locally-cached "Your Top Artists" (immune to this
+            // failure -- see loadSpotify) until a manual pull-to-refresh. Same "optional fetch, one
+            // retry" pattern already used by TasteViewModel/MixLibraryViewModel for this exact shape
+            // of bug.
+            if !hasDiscoveryData { await reloadDiscoverySections() }
+        }()
+
+        // Independent of both chains above -- doesn't block or get blocked by either, just
+        // needs to eventually settle so the Add tab's bottom connect nudge knows what to show.
+        async let connectionCheck: Void = checkConnectionStatus()
+
         await withTaskGroup(of: Void.self) { g in
             if !hasSpotifyData    { g.addTask { await self.loadSpotify() } }
             if !hasAppleMusicData { g.addTask { await self.loadAppleMusic() } }
-            if !hasDiscoveryData  { g.addTask { await self.reloadDiscoverySections() } }
         }
-        // One retry if discovery/recommendations came back empty -- loadDiscovery/
-        // loadRecommendations/loadRatedArtists each silently swallow a failed fetch (network
-        // blip, timeout, or cold-launch contention with Home/Quest's own concurrent queries) as
-        // "no data" rather than surfacing an error, so `hasDiscoveryData` false here is far more
-        // likely a transient failure than a real empty state (popular/trending are global feeds,
-        // not personalized -- they're essentially never genuinely empty). Without this, the user
-        // was stuck seeing only Spotify's locally-cached "Your Top Artists" (immune to this
-        // failure -- see loadSpotify) until a manual pull-to-refresh. Same "optional fetch, one
-        // retry" pattern already used by TasteViewModel/MixLibraryViewModel for this exact shape
-        // of bug.
-        if !hasDiscoveryData {
-            await reloadDiscoverySections()
-        }
-        // Only needs the recently-played lists loadSpotify/loadAppleMusic just populated above --
-        // has its own hasResolvedRecentlyPlayed guard, so this really must stay sequenced after
-        // the wave above (unlike Discovery, it has a genuine dependency on Spotify/Apple Music).
         await resolveRecentlyPlayedIfNeeded()
+
+        await discoveryChain
+        await connectionCheck
         prefetchDiscoveryCovers()
+    }
+
+    // Live check, not inferred from hasSpotifyData/hasAppleMusicData (see those properties'
+    // own comment for why that would be wrong). Spotify: same userIdentities() call
+    // loadSpotify()'s retry loop already uses for this exact question, just surfaced as a
+    // persisted property here instead of a local value re-checked on every retry attempt.
+    // Apple Music: MusicAuthorization.currentStatus, the same check
+    // ConnectedAccountsView's own Apple Music row already uses -- a device permission, not a
+    // Supabase identity, so it's unrelated to whether "apple" shows under Connected Accounts.
+    private func checkConnectionStatus() async {
+        let identities = (try? await supabase.auth.userIdentities()) ?? []
+        isSpotifyLinked = identities.contains { $0.provider == Provider.spotify.rawValue }
+        isAppleMusicAuthorized = MusicAuthorization.currentStatus == .authorized
     }
 
     // Recently-played rows come back as raw Spotify/Apple Music metadata (name + artist string),
@@ -168,21 +214,33 @@ class DiscoveryViewModel {
         guard !hasResolvedRecentlyPlayed else { return }
         guard !recentlyPlayed.isEmpty || !appleMusicRecentlyPlayed.isEmpty else { return }
         hasResolvedRecentlyPlayed = true
+        let spotifyItems = Array(recentlyPlayed.prefix(24))
         async let spotifyMatches = Self.resolveCatalogMatches(
-            Array(recentlyPlayed.prefix(24)).map { (name: $0.name, artist: $0.artistName) }
+            spotifyItems.map { (name: $0.name, artist: $0.artistName) }
         )
         async let appleMatches = Self.resolveCatalogMatches(
             appleMusicRecentlyPlayed.map { (name: $0.name, artist: $0.artistName) }
         )
-        recentlyPlayedReleases = await spotifyMatches
-        appleMusicRecentlyPlayedReleases = await appleMatches
+        let spotifyResolved = await spotifyMatches
+        recentlyPlayedReleases = spotifyResolved.compactMap { $0 }
+        appleMusicRecentlyPlayedReleases = (await appleMatches).compactMap { $0 }
+        // Feeds recentlyPlayedPreviewScroll's per-item cache check -- an item that resolves here,
+        // in the background, upgrades to the full DiscoveryAlbumCard treatment (and skips
+        // ResolvingAlbumView's loading screen entirely) the moment this finishes, often before
+        // the user has even looked at the row.
+        for (item, release) in zip(spotifyItems, spotifyResolved) {
+            if let release { resolvedPreviewCache[item.id] = release }
+        }
     }
 
     // Batches concurrency at 8 rather than firing every lookup at once -- confirmed elsewhere
     // this session (the web sitemap's pagination fetch) that a burst of many simultaneous
     // PostgREST requests can silently drop results from otherwise-valid concurrent requests in
     // the same batch. Preserves input order (task completion order isn't submission order).
-    private static func resolveCatalogMatches(_ items: [(name: String, artist: String)]) async -> [Release] {
+    // Returns one entry per input item (nil for an unmatched one), not just the compacted matches
+    // -- callers that need to know WHICH item resolved to WHICH release (resolvedPreviewCache
+    // below) need that alignment; callers that only want the matched list can compactMap it.
+    private static func resolveCatalogMatches(_ items: [(name: String, artist: String)]) async -> [Release?] {
         var resolved = [Int: Release]()
         var i = 0
         while i < items.count {
@@ -198,14 +256,16 @@ class DiscoveryViewModel {
             }
             i += 8
         }
-        return (0..<items.count).compactMap { resolved[$0] }
+        return (0..<items.count).map { resolved[$0] }
     }
 
     // Same matching logic as SearchView's own fetchRelease (tuned live against real misses --
     // see that function's comment for why exact-first + gated-fuzzy, no blind closest-title
     // fallback). Kept here too since this now needs to run eagerly at load time rather than
     // lazily per-tap from the view.
-    private static func fetchRelease(name: String, artist: String) async -> Release? {
+    // fileprivate (not private) so ResolvingAlbumView can reuse it for its own on-tap
+    // resolution -- same reasoning as resolveArtistId below being fileprivate for ArtistPageView.
+    fileprivate static func fetchRelease(name: String, artist: String) async -> Release? {
         let al = artist.lowercased()
         let artistId = await resolveArtistId(name: artist)
         func accept(_ r: Release) -> Bool {
@@ -297,83 +357,175 @@ class DiscoveryViewModel {
         hasAppleMusicData = !a.isEmpty || !r.isEmpty || !l.isEmpty
     }
 
+    // Retried up to 5 times (600ms apart, ~3s worst case) instead of a single
+    // attempt -- right after a BRAND-NEW Spotify signup specifically (as
+    // opposed to an existing account returning later), both the account's
+    // "providers" identity list and the locally-saved provider token can
+    // still be settling when this first runs, and a single-shot check used
+    // to give up permanently the instant either read came back empty.
+    // Confirmed live: a fresh Spotify signup's very first Add-tab visit
+    // could show zero Spotify suggestions with no way to recover short of
+    // fully reopening the app -- not acceptable, nothing should ever
+    // require that. Safe to retry the whole flow (not just re-check a flag)
+    // since `load()` runs this inside a task group alongside every other
+    // section (see its own comment) -- the rest of the page renders
+    // immediately regardless; in the rare race case this section just pops
+    // in a couple seconds after the others instead of never appearing.
     private func loadSpotify() async {
-        // If this account has never linked Spotify, any cached data belongs to a previous
-        // account on this device — clear it and bail out immediately. Checks the FULL
-        // "providers" identity list, not just the singular "provider" field (the account's
-        // original signup method) — a multi-identity account that signed up via email/Google
-        // and linked Spotify afterward always reports provider == "email"/"google", never
-        // "spotify", even right after a fresh Spotify sign-in (confirmed live: this silently
-        // wiped a real, working Spotify connection's cached data on every single load).
-        let providers = supabase.auth.currentUser?.appMetadata["providers"]
-        var linkedSpotify = false
-        if case .array(let list) = providers {
-            linkedSpotify = list.contains(.string("spotify"))
+        var lastLinkedSpotify = false
+        var reachedLayer3 = false
+        defer {
+            // Only fires if every attempt exhausted without ever hitting the
+            // `return` inside Layer 3 -- one summary event with the full
+            // picture (which gate the loop kept failing at) instead of
+            // having to reconstruct it from whichever individual capture did
+            // or didn't fire, which is what the last two rounds of this bug
+            // required.
+            if !hasSpotifyData {
+                SentrySDK.capture(message: "loadSpotify exhausted retries: lastLinkedSpotify=\(lastLinkedSpotify) reachedLayer3=\(reachedLayer3)")
+            }
         }
-        if !linkedSpotify {
-            SpotifyService.clearCache()
+        for attempt in 0..<5 {
+            if attempt > 0 { try? await Task.sleep(for: .milliseconds(600)) }
+            let isLastAttempt = attempt == 4
+
+            // If this account has never linked Spotify, any cached data belongs to a previous
+            // account on this device — clear it and bail out. A LIVE call (userIdentities()),
+            // not a re-read of the cached currentUser.appMetadata["providers"] snapshot this used
+            // to check: confirmed live that snapshot can still be stale/incomplete on a fresh
+            // sign-in, and since nothing between retry attempts ever refreshed it, re-checking the
+            // same frozen value 5 times never once self-corrected -- the retry loop below was
+            // completely defeated for this specific gate (every other layer in this loop retried
+            // for real; this one didn't). Doing a real network call on each attempt instead means
+            // a genuine timing race actually has a chance to resolve across retries.
+            let identities: [UserIdentity]
+            do {
+                identities = try await supabase.auth.userIdentities()
+            } catch {
+                // Previously `(try? ...) ?? []` -- indistinguishable from a
+                // real "genuinely not linked" empty result, with nothing
+                // logged either way. Confirmed live 2026-09-21: a DB check
+                // showed an account WAS actually linked server-side while
+                // the client kept landing on this exact gate every attempt
+                // and never once reached the topArtists/recentlyPlayed calls
+                // (which already had their own Sentry capture, and stayed
+                // silent) -- meaning this call itself, not Layer 3, is the
+                // most likely place still failing without any visibility.
+                identities = []
+                if isLastAttempt {
+                    SentrySDK.capture(error: error)
+                }
+            }
+            let linkedSpotify = identities.contains { $0.provider == Provider.spotify.rawValue }
+            lastLinkedSpotify = linkedSpotify
+            if !linkedSpotify {
+                if isLastAttempt {
+                    SpotifyService.clearCache()
+                    needsSpotifyReconnect = false
+                }
+                continue
+            }
+
+            // Layer 1: UserDefaults (instant, device-local)
+            if spotifyArtists.isEmpty { spotifyArtists = SpotifyService.loadCachedArtists() }
+            if recentlyPlayed.isEmpty { recentlyPlayed  = SpotifyService.loadCachedRecentlyPlayed() }
+
+            // Layer 2: Supabase DB (persistent across reinstalls and devices) -- independent
+            // of each other, run concurrently instead of stacking two DB round-trips when
+            // both caches are empty (e.g. every cold app launch).
+            async let dbArtistsTask: [SpotifyArtistDisplay] =
+                spotifyArtists.isEmpty ? await SpotifyService.loadArtistsFromDB() : []
+            async let dbRecentTask: [SpotifyAlbumDisplay] =
+                recentlyPlayed.isEmpty ? await SpotifyService.loadRecentlyPlayedFromDB() : []
+            let dbArtists = await dbArtistsTask
+            let dbRecent  = await dbRecentTask
+            if !dbArtists.isEmpty {
+                spotifyArtists = dbArtists
+                SpotifyService.saveArtists(dbArtists)  // backfill local cache
+            }
+            if !dbRecent.isEmpty {
+                recentlyPlayed = dbRecent
+                SpotifyService.saveRecentlyPlayed(dbRecent)
+            }
+
+            hasSpotifyData = !spotifyArtists.isEmpty || !recentlyPlayed.isEmpty
+
+            // Layer 3: Live Spotify API (when token is valid — refreshes both caches)
+            reachedLayer3 = true
+            guard let token = await SpotifyService.validToken() else {
+                // The client's own access token is dead and can't be refreshed here -- doing so
+                // needs a Spotify client secret that must never live on-device (confirmed live
+                // 2026-09-21: a direct client-side refresh attempt got a real Spotify 400
+                // invalid_request, since this project's app registration is a confidential
+                // client). Delegate to the backend instead (refreshViaBackend() -- refreshes and
+                // rewrites this user's DB-cached Spotify data server-side, where the secret
+                // safely lives), then re-read the DB directly -- NOT gated on
+                // spotifyArtists/recentlyPlayed already being non-empty like Layer 2 above,
+                // since the whole point here is picking up whatever the backend just wrote,
+                // not skipping because stale local data already exists.
+                if await SpotifyService.refreshViaBackend() {
+                    let refreshedArtists = await SpotifyService.loadArtistsFromDB()
+                    let refreshedRecent  = await SpotifyService.loadRecentlyPlayedFromDB()
+                    if !refreshedArtists.isEmpty {
+                        spotifyArtists = refreshedArtists
+                        SpotifyService.saveArtists(refreshedArtists)
+                    }
+                    if !refreshedRecent.isEmpty {
+                        recentlyPlayed = refreshedRecent
+                        SpotifyService.saveRecentlyPlayed(refreshedRecent)
+                    }
+                    hasSpotifyData = !spotifyArtists.isEmpty || !recentlyPlayed.isEmpty
+                    needsSpotifyReconnect = !hasSpotifyData
+                    return
+                }
+                if isLastAttempt { needsSpotifyReconnect = !hasSpotifyData }
+                continue
+            }
             needsSpotifyReconnect = false
+
+            // Independent of each other -- were two full sequential live Spotify API round-trips
+            // (each with its own network latency) stacked one after the other; now concurrent.
+            async let freshTask  = SpotifyService.topArtists(token: token, limit: 10)
+            async let recentTask = SpotifyService.recentlyPlayed(token: token, limit: 50)
+            let (fresh, recent) = await (freshTask, recentTask)
+
+            if !fresh.isEmpty {
+                spotifyArtists = fresh
+                SpotifyService.saveArtists(fresh)
+            }
+            if !recent.isEmpty {
+                recentlyPlayed = recent
+                SpotifyService.saveRecentlyPlayed(recent)
+            }
+            // DB writebacks are independent of each other too -- same treatment.
+            await withTaskGroup(of: Void.self) { g in
+                if !fresh.isEmpty  { g.addTask { await SpotifyService.saveArtistsToDB(fresh) } }
+                if !recent.isEmpty { g.addTask { await SpotifyService.saveRecentlyPlayedToDB(recent) } }
+            }
+
+            hasSpotifyData = !spotifyArtists.isEmpty || !recentlyPlayed.isEmpty
+            // A token was obtained and the live API actually answered -- a
+            // definitive result (even if genuinely empty, e.g. a Spotify
+            // account with no listening history yet), not a race. Stop.
             return
         }
-
-        // Layer 1: UserDefaults (instant, device-local)
-        if spotifyArtists.isEmpty { spotifyArtists = SpotifyService.loadCachedArtists() }
-        if recentlyPlayed.isEmpty { recentlyPlayed  = SpotifyService.loadCachedRecentlyPlayed() }
-
-        // Layer 2: Supabase DB (persistent across reinstalls and devices) -- independent
-        // of each other, run concurrently instead of stacking two DB round-trips when
-        // both caches are empty (e.g. every cold app launch).
-        async let dbArtistsTask: [SpotifyArtistDisplay] =
-            spotifyArtists.isEmpty ? await SpotifyService.loadArtistsFromDB() : []
-        async let dbRecentTask: [SpotifyAlbumDisplay] =
-            recentlyPlayed.isEmpty ? await SpotifyService.loadRecentlyPlayedFromDB() : []
-        let dbArtists = await dbArtistsTask
-        let dbRecent  = await dbRecentTask
-        if !dbArtists.isEmpty {
-            spotifyArtists = dbArtists
-            SpotifyService.saveArtists(dbArtists)  // backfill local cache
-        }
-        if !dbRecent.isEmpty {
-            recentlyPlayed = dbRecent
-            SpotifyService.saveRecentlyPlayed(dbRecent)
-        }
-
-        hasSpotifyData = !spotifyArtists.isEmpty || !recentlyPlayed.isEmpty
-
-        // Layer 3: Live Spotify API (when token is valid — refreshes both caches)
-        guard let token = await SpotifyService.validToken() else {
-            needsSpotifyReconnect = !hasSpotifyData
-            return
-        }
-        needsSpotifyReconnect = false
-
-        // Independent of each other -- were two full sequential live Spotify API round-trips
-        // (each with its own network latency) stacked one after the other; now concurrent.
-        async let freshTask  = SpotifyService.topArtists(token: token, limit: 10)
-        async let recentTask = SpotifyService.recentlyPlayed(token: token, limit: 50)
-        let (fresh, recent) = await (freshTask, recentTask)
-
-        if !fresh.isEmpty {
-            spotifyArtists = fresh
-            SpotifyService.saveArtists(fresh)
-        }
-        if !recent.isEmpty {
-            recentlyPlayed = recent
-            SpotifyService.saveRecentlyPlayed(recent)
-        }
-        // DB writebacks are independent of each other too -- same treatment.
-        await withTaskGroup(of: Void.self) { g in
-            if !fresh.isEmpty  { g.addTask { await SpotifyService.saveArtistsToDB(fresh) } }
-            if !recent.isEmpty { g.addTask { await SpotifyService.saveRecentlyPlayedToDB(recent) } }
-        }
-
-        hasSpotifyData = !spotifyArtists.isEmpty || !recentlyPlayed.isEmpty
     }
 
     // Called when app returns to foreground — picks up the new token if OAuth completed.
     func refreshSpotifyIfNeeded() async {
         guard needsSpotifyReconnect || !hasSpotifyData else { return }
         await loadSpotify()
+        // resolveRecentlyPlayedIfNeeded() otherwise only ever runs once per
+        // ViewModel lifetime (from load()/refresh()) -- without resetting its
+        // guard here, loadSpotify() populating `recentlyPlayed` for the
+        // FIRST time on a retry that happens after that one call (e.g. once
+        // a background token refresh finally succeeds) would never get
+        // catalog-matched short of a full app relaunch or a manual
+        // pull-to-refresh. Confirmed live 2026-09-21: real data reached
+        // `recentlyPlayed`/the DB, but "Recently Listened" never appeared
+        // because of exactly this gap.
+        hasResolvedRecentlyPlayed = false
+        await resolveRecentlyPlayedIfNeeded()
     }
 
     // Same idea for Apple Music, triggered from Settings' new "Connect Apple Music" row
@@ -382,6 +534,9 @@ class DiscoveryViewModel {
     func refreshAppleMusicIfNeeded() async {
         guard !hasAppleMusicData else { return }
         await loadAppleMusic()
+        // Same gap as refreshSpotifyIfNeeded() above, same fix.
+        hasResolvedRecentlyPlayed = false
+        await resolveRecentlyPlayedIfNeeded()
     }
 
     // Artists behind ratings >= 3.5, best-first -- QuickAddViewModel's seed source. Kept as its
@@ -649,6 +804,12 @@ class SearchViewModel {
 struct SearchView: View {
     let discoveryVM: DiscoveryViewModel
     let onGoToSettings: () -> Void
+    // Own instance, separate from whatever backs the Quick Add sheet -- only ever used for its
+    // genre-explorer state (genresToShow/likedGenres/openedGenres/genreShelves), never the
+    // album/song candidate loaders, so the artistNames snapshot QuickAddViewModel.init computes
+    // from discoveryVM being stale at this point (discoveryVM.load() hasn't necessarily run
+    // yet) is harmless -- nothing the bottom-of-Add-tab genre explorer does ever reads it.
+    @State private var bottomGenreVM: QuickAddViewModel
     @State private var showQuickAdd          = false
     @State private var searchVM           = SearchViewModel()
     @State private var searchTask: Task<Void, Never>?
@@ -664,6 +825,12 @@ struct SearchView: View {
     private let threeColumns = [GridItem(.flexible(), spacing: 12),
                                 GridItem(.flexible(), spacing: 12),
                                 GridItem(.flexible(), spacing: 12)]
+
+    init(discoveryVM: DiscoveryViewModel, onGoToSettings: @escaping () -> Void) {
+        self.discoveryVM = discoveryVM
+        self.onGoToSettings = onGoToSettings
+        _bottomGenreVM = State(initialValue: QuickAddViewModel(discoveryVM: discoveryVM))
+    }
 
     private var hasQuery: Bool {
         !searchVM.query.trimmingCharacters(in: .whitespaces).isEmpty
@@ -689,8 +856,9 @@ struct SearchView: View {
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
             .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
+            .navigationDestination(for: RecentlyPlayedDestination.self) { ResolvingAlbumView(item: $0, discoveryVM: discoveryVM) }
             .navigationDestination(isPresented: $showQuickAdd) {
-                QuickAddView(discoveryVM: discoveryVM, onGoToSettings: onGoToSettings)
+                QuickAddView(discoveryVM: discoveryVM, ratingStep: userRatingStep, onGoToSettings: onGoToSettings)
             }
             .sheet(item: $quickRateRelease) { release in
                 ManualRatingSheet(
@@ -708,6 +876,7 @@ struct SearchView: View {
             await withTaskGroup(of: Void.self) { g in
                 g.addTask { await loadUserRatingStep() }
                 g.addTask { await loadRatedReleaseIds() }
+                g.addTask { await bottomGenreVM.loadLikedGenres() }
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -761,6 +930,10 @@ struct SearchView: View {
             .execute()
             .value {
             userRatingStep = p.manualRatingStep ?? 0.5
+            // bottomGenreVM was constructed at SearchView's own init time, before this load
+            // could possibly have finished -- keep its copy in sync now that the real value
+            // is known, same reasoning as ratingStep's own comment on QuickAddViewModel.
+            bottomGenreVM.ratingStep = userRatingStep
         }
     }
 
@@ -964,7 +1137,7 @@ struct SearchView: View {
                                 let pr = songParentRelease(song)
                                 let rated = ratedReleaseIds.contains(song.releases.id)
                                 NavigationLink(value: pr) {
-                                    SongRow(song: song, isRated: rated)
+                                    SongRow(song: song, isRated: rated, ratingStep: userRatingStep)
                                 }
                                 .buttonStyle(.plain)
                                 .albumContextMenu(pr)
@@ -990,7 +1163,7 @@ struct SearchView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
+                LazyVStack(alignment: .leading, spacing: 0) {
 
                     quickAddBanner
                         .padding(.horizontal, 16)
@@ -1005,14 +1178,20 @@ struct SearchView: View {
                     }
 
                     // ── Spotify: Recently Listened ────────────
-                    // Resolved against the catalog up front (resolveRecentlyPlayedIfNeeded) --
-                    // renders through the same albumScroll every other section uses, so a real
-                    // cover size, add button, and context menu all come for free, and anything
-                    // that didn't resolve to a real release is simply not shown instead of
-                    // leading to a dead-end "not in catalog" tap.
-                    if !discoveryVM.recentlyPlayedReleases.isEmpty {
+                    // Renders straight from Spotify's own raw data (recentlyPlayedPreviewScroll),
+                    // not the catalog-matched recentlyPlayedReleases -- tappable immediately,
+                    // resolving against the catalog on tap instead (ResolvingAlbumView), same
+                    // shape as spotifyArtistScroll's ArtistDestination(artistId: nil, ...) above.
+                    // Used to wait for resolveRecentlyPlayedIfNeeded() to finish for every item
+                    // before showing the row at all -- confirmed live 2026-09-21 that a real,
+                    // unavoidable extra DB round trip (matching against the catalog) meant this
+                    // row always appeared several seconds after every other section, read as
+                    // "not uniform/not immediate." resolveRecentlyPlayedIfNeeded() still runs in
+                    // the background (see load()) to warm the Apple Music row below, which keeps
+                    // the old eager-resolution behavior for now.
+                    if !discoveryVM.recentlyPlayed.isEmpty {
                         discoverySectionTitle("Recently Listened")
-                        albumScroll(discoveryVM.recentlyPlayedReleases, hideRated: false)
+                        recentlyPlayedPreviewScroll(discoveryVM.recentlyPlayed)
                         Spacer().frame(height: 24)
                     }
 
@@ -1026,7 +1205,7 @@ struct SearchView: View {
                     // ── Apple Music: Recently Listened ────────
                     if !discoveryVM.appleMusicRecentlyPlayedReleases.isEmpty {
                         discoverySectionTitle(
-                            discoveryVM.recentlyPlayedReleases.isEmpty ? "Recently Listened" : "Recently Listened (Apple)"
+                            discoveryVM.recentlyPlayed.isEmpty ? "Recently Listened" : "Recently Listened (Apple)"
                         )
                         albumScroll(discoveryVM.appleMusicRecentlyPlayedReleases, hideRated: false)
                         Spacer().frame(height: 24)
@@ -1104,6 +1283,34 @@ struct SearchView: View {
                         albumScroll(discoveryVM.trendingAlbums)
                         Spacer().frame(height: 24)
                     }
+
+                    // ── Connect nudge + Explore other genres ──
+                    // Per explicit request: shown at the bottom of the Add tab itself, not
+                    // just inside Quick Add's empty state. Each connect row is independent of
+                    // the other -- discoveryVM.isSpotifyLinked/isAppleMusicAuthorized are real
+                    // connection checks (see their own comment), not data-presence proxies, so
+                    // a linked-but-no-data-yet account doesn't get a wrong "Connect" nudge.
+                    // GenreExplorerView is the exact same component/state Quick Add's own
+                    // explorer uses (bottomGenreVM, a separate instance -- see its declaration).
+                    VStack(spacing: 10) {
+                        if !discoveryVM.isSpotifyLinked {
+                            Button { onGoToSettings() } label: {
+                                NudgeRow(icon: "icon-link", title: "Connect Spotify")
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        if !discoveryVM.isAppleMusicAuthorized {
+                            Button { onGoToSettings() } label: {
+                                NudgeRow(icon: "icon-link", title: "Connect Apple Music")
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, discoveryVM.isSpotifyLinked && discoveryVM.isAppleMusicAuthorized ? 0 : 16)
+
+                    GenreExplorerView(vm: bottomGenreVM)
+                        .padding(.horizontal, 16)
 
                     Spacer().frame(height: 36)
                 }
@@ -1184,7 +1391,7 @@ struct SearchView: View {
 
     private func spotifyArtistScroll(_ artists: [SpotifyArtistDisplay]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: 14) {
+            LazyHStack(alignment: .top, spacing: 14) {
                 ForEach(artists) { artist in
                     // Navigates immediately (was previously gated behind an async
                     // search_artists resolution that blocked the page push for
@@ -1227,7 +1434,7 @@ struct SearchView: View {
 
     private func appleMusicArtistScroll(_ artists: [AppleMusicArtistDisplay]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: 14) {
+            LazyHStack(alignment: .top, spacing: 14) {
                 ForEach(artists) { artist in
                     NavigationLink(value: ArtistDestination(
                         artistId: nil, name: artist.name, avatarHint: artist.artworkURL?.absoluteString
@@ -1275,19 +1482,53 @@ struct SearchView: View {
     // still see what you recently played whether you've rated it or not (was silently dropping
     // already-rated albums, e.g. one rated 4 days before ever showing up here, when this was
     // switched onto the shared component).
+    // Renders raw Spotify/Apple Music data directly (SpotifyAlbumDisplay) for anything not yet
+    // resolved -- see the call site's comment (discoveryView) for why. Once
+    // discoveryVM.resolvedPreviewCache has a real Release for an item (populated by the
+    // background resolveRecentlyPlayedIfNeeded(), or by a previous tap through
+    // ResolvingAlbumView), that item switches to the exact same DiscoveryAlbumCard/NavigationLink
+    // treatment every other section uses -- rate button, type label, direct navigation, no
+    // loading screen -- instead of staying on the stripped-down preview forever. Confirmed live
+    // 2026-09-21: without this, a resolved item re-showed the loading screen and lacked those UI
+    // elements on every single tap, not just the first.
+    private func recentlyPlayedPreviewScroll(_ items: [SpotifyAlbumDisplay]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: 12) {
+                ForEach(items) { item in
+                    if let release = discoveryVM.resolvedPreviewCache[item.id] {
+                        let checked = sessionRatedIds.contains(release.id) || ratedReleaseIds.contains(release.id)
+                        NavigationLink(value: release) {
+                            DiscoveryAlbumCard(release: release, isRated: checked, ratingStep: userRatingStep)
+                        }
+                        .buttonStyle(.plain)
+                        .albumContextMenu(release)
+                    } else {
+                        NavigationLink(value: RecentlyPlayedDestination(
+                            id: item.id, name: item.name, artist: item.artistName, imageUrl: item.imageUrl
+                        )) {
+                            RecentlyPlayedPreviewCard(name: item.name, artist: item.artistName, imageUrl: item.imageUrl)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+
     private func albumScroll(_ albums: [Release], hideRated: Bool = true) -> some View {
         let visible = hideRated
             ? albums.filter { !ratedReleaseIds.contains($0.id) || sessionRatedIds.contains($0.id) }
             : albums
         return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
+            LazyHStack(spacing: 12) {
                 ForEach(visible) { release in
                     // Not just session-rated -- an unfiltered list (hideRated: false) can include
                     // releases rated in an earlier session too, which should also show the
                     // checkmark rather than a misleading "add" button.
                     let checked = sessionRatedIds.contains(release.id) || ratedReleaseIds.contains(release.id)
                     NavigationLink(value: release) {
-                        DiscoveryAlbumCard(release: release, isRated: checked)
+                        DiscoveryAlbumCard(release: release, isRated: checked, ratingStep: userRatingStep)
                     }
                     .buttonStyle(.plain)
                     .albumContextMenu(release)
@@ -1309,7 +1550,7 @@ struct SearchView: View {
                 let pr = songParentRelease(song)
                 let checked = sessionRatedIds.contains(pr.id)
                 NavigationLink(value: pr) {
-                    SongRow(song: song, isRated: checked)
+                    SongRow(song: song, isRated: checked, ratingStep: userRatingStep)
                 }
                 .buttonStyle(.plain)
                 .albumContextMenu(pr)
@@ -1340,6 +1581,10 @@ struct SearchView: View {
 private struct DiscoveryAlbumCard: View {
     let release: Release
     var isRated: Bool = false
+    // The user's manual rating precision -- was never threaded this far before, so this card's
+    // rate button (used across almost every Add tab section) silently used FlowerRateControl's
+    // own 0.5 default regardless of the account's actual setting.
+    var ratingStep: Double = 0.5
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -1363,7 +1608,7 @@ private struct DiscoveryAlbumCard: View {
                     .allowsHitTesting(false)
                     .padding(6)
                 } else {
-                    AlbumRateButton(release: release, size: 30)
+                    AlbumRateButton(release: release, ratingStep: ratingStep, size: 30)
                         .padding(4)
                 }
             }
@@ -1392,11 +1637,41 @@ private struct DiscoveryAlbumCard: View {
     }
 }
 
+// Deliberately simpler than DiscoveryAlbumCard: no rate button/checkmark overlay, since an
+// unresolved recently-played item has no known release id or rating status yet -- see
+// recentlyPlayedPreviewScroll's comment.
+private struct RecentlyPlayedPreviewCard: View {
+    let name: String
+    let artist: String
+    let imageUrl: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            CoverImage(url: imageUrl)
+                .frame(width: 128, height: 128)
+                .accessibilityHidden(true) // title/artist text below already describes it
+
+            Text(name)
+                .font(.jakarta(13, weight: .semibold))
+                .foregroundStyle(Color.sjInk)
+                .lineLimit(1)
+                .frame(width: 128, alignment: .leading)
+
+            Text(artist)
+                .font(.jakarta(12))
+                .foregroundStyle(Color.sjMuted)
+                .lineLimit(1)
+                .frame(width: 128, alignment: .leading)
+        }
+    }
+}
+
 // MARK: - Song row
 
 struct SongRow: View {
     let song: SongResult
     var isRated: Bool = false
+    var ratingStep: Double = 0.5
 
     var body: some View {
         HStack(spacing: 12) {
@@ -1440,7 +1715,7 @@ struct SongRow: View {
             } else {
                 // Keyed on the song's *parent release*, not the individual recording --
                 // this row has never rated the song itself, only quick-added its album.
-                AlbumRateButton(release: song.releases.asRelease, size: 30)
+                AlbumRateButton(release: song.releases.asRelease, ratingStep: ratingStep, size: 30)
             }
         }
         .padding(.horizontal, 16)
@@ -1463,6 +1738,84 @@ struct ArtistDestination: Hashable {
     // `cover_url`, when it exists, still wins once `load()` resolves -- this is only a
     // stand-in for however long that takes, or forever if the catalog has nothing.
     var avatarHint: String? = nil
+}
+
+// Same idea as ArtistDestination(artistId: nil, ...) above, for albums: pushed with just
+// Spotify's raw name/artist/cover, resolved against the catalog on appear by ResolvingAlbumView
+// instead of up front -- see recentlyPlayedPreviewScroll's comment for why. `id` matches the
+// source SpotifyAlbumDisplay.id, needed so ResolvingAlbumView can write a successful resolution
+// back into DiscoveryViewModel.resolvedPreviewCache under the right key.
+struct RecentlyPlayedDestination: Hashable {
+    let id: String
+    let name: String
+    let artist: String
+    let imageUrl: String?
+}
+
+// Mirrors ArtistPageView's own artistId == nil resolution pattern for albums: shown immediately
+// with just Spotify's raw data while resolving in the background, behind its own loading state,
+// rather than blocking the row's appearance on every item resolving up front. `discoveryVM` is
+// passed through (not read some other way) so a successful resolution can be written back to
+// resolvedPreviewCache -- without that, this same item would re-show this loading screen and
+// lack DiscoveryAlbumCard's rate button/type label on every subsequent tap, not just the first.
+struct ResolvingAlbumView: View {
+    let item: RecentlyPlayedDestination
+    let discoveryVM: DiscoveryViewModel
+
+    @State private var resolvedRelease: Release?
+    @State private var notFound = false
+
+    var body: some View {
+        Group {
+            if let resolvedRelease {
+                AlbumDetailView(release: resolvedRelease)
+            } else if notFound {
+                VStack(spacing: 12) {
+                    Image(systemName: "questionmark.circle")
+                        .font(.system(size: 32))
+                        .foregroundStyle(Color.sjMuted)
+                    Text("Not in our catalog yet")
+                        .font(.jakarta(15, weight: .semibold))
+                        .foregroundStyle(Color.sjInk)
+                    Text(item.name + " · " + item.artist)
+                        .font(.jakarta(13))
+                        .foregroundStyle(Color.sjMuted)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.sjCream.ignoresSafeArea())
+            } else {
+                VStack(spacing: 16) {
+                    CoverImage(url: item.imageUrl)
+                        .frame(width: 160, height: 160)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    Text(item.name)
+                        .font(.jakarta(17, weight: .bold))
+                        .foregroundStyle(Color.sjInk)
+                        .multilineTextAlignment(.center)
+                    Text(item.artist)
+                        .font(.jakarta(14))
+                        .foregroundStyle(Color.sjMuted)
+                    ProgressView()
+                        .padding(.top, 8)
+                }
+                .padding(24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.sjCream.ignoresSafeArea())
+            }
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            let release = await DiscoveryViewModel.fetchRelease(name: item.name, artist: item.artist)
+            resolvedRelease = release
+            if let release {
+                discoveryVM.resolvedPreviewCache[item.id] = release
+            } else {
+                notFound = true
+            }
+        }
+    }
 }
 
 private struct ArtistSong: Identifiable {
@@ -1497,6 +1850,10 @@ enum ArtistCommunityDisplayMode { case list, posts }
 struct ArtistPageView: View {
     let artist: ArtistDestination
 
+    // Reached from many unrelated screens -- simpler for this leaf destination
+    // to load its own copy of the setting than to thread a param through
+    // every one of those callers.
+    @State private var ratingStep: Double = 0.5
     @State private var releases:       [Release]     = []
     @State private var songs:          [ArtistSong]  = []
     @State private var communityAvg:   Double?        = nil
@@ -1621,6 +1978,7 @@ struct ArtistPageView: View {
                 .onDisappear { if songNavTarget?.id == target.id { songNavTarget = nil } }
         }
         .task { await load() }
+        .task { await loadRatingStep() }
     }
 
     /// Avatar/name/stat-tiles/"you rated" hero. Was permanently fixed at the top
@@ -1734,7 +2092,8 @@ struct ArtistPageView: View {
                 ForEach(list) { release in
                     ArtistReleaseRow(release: release,
                                      communityScore: releaseScores[release.id],
-                                     userScore: myRatings[release.id])
+                                     userScore: myRatings[release.id],
+                                     ratingStep: ratingStep)
                 }
             }
         }
@@ -1752,7 +2111,7 @@ struct ArtistPageView: View {
                 .frame(maxWidth: .infinity).padding(.top, 40)
         } else {
             ForEach(songs) { song in
-                ArtistSongRow(song: song, artistName: artist.name) {
+                ArtistSongRow(song: song, artistName: artist.name, ratingStep: ratingStep) {
                     guard let albumId = song.albumId else { return }
                     let release = Release(
                         id: albumId, title: song.albumTitle, artist: artist.name,
@@ -1831,6 +2190,19 @@ struct ArtistPageView: View {
         .background(Color.sjSurface)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.sjBorder, lineWidth: 1))
+    }
+
+    private func loadRatingStep() async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        struct P: Decodable {
+            let manualRatingStep: Double?
+            enum CodingKeys: String, CodingKey { case manualRatingStep = "manual_rating_step" }
+        }
+        if let p: P = try? await supabase.from("profiles")
+            .select("manual_rating_step").eq("id", value: userId)
+            .single().execute().value {
+            ratingStep = p.manualRatingStep ?? 0.5
+        }
     }
 
     private func load() async {
@@ -2504,6 +2876,7 @@ struct ArtistPageView: View {
 private struct ArtistSongRow: View {
     let song: ArtistSong
     let artistName: String
+    var ratingStep: Double = 0.5
     let onTap: () -> Void
 
     // Built here (not just inside onTap's nav-target closure) so `SongRateButton`
@@ -2547,7 +2920,7 @@ private struct ArtistSongRow: View {
                     scoreBadge(avg, color: Color.sjAmber)
                 }
                 if let release {
-                    SongRateButton(track: track, release: release, initialScore: song.myScore, size: 30)
+                    SongRateButton(track: track, release: release, initialScore: song.myScore, ratingStep: ratingStep, size: 30)
                 }
             }
             .padding(.horizontal, 16).padding(.vertical, 14)
@@ -2571,6 +2944,7 @@ private struct ArtistReleaseRow: View {
     let release:        Release
     let communityScore: Double?
     let userScore:      Double?
+    var ratingStep:     Double = 0.5
 
     private var year: String? {
         guard let d = release.releaseDate, d.count >= 4 else { return nil }
@@ -2613,7 +2987,7 @@ private struct ArtistReleaseRow: View {
                 // proportionally) is designed to read correctly at any size, where
                 // ScoreBadge's glass ring + flower watermark only holds together near its
                 // own default size -- shrinking it to fit a row was what looked off.
-                AlbumRateButton(release: release, initialScore: userScore, size: 30)
+                AlbumRateButton(release: release, initialScore: userScore, ratingStep: ratingStep, size: 30)
             }
             .padding(.horizontal, 16).padding(.vertical, 14)
             .contentShape(Rectangle())

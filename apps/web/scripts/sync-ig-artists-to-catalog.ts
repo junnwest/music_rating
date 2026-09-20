@@ -19,8 +19,22 @@
  * where catalog_synced=false get re-ingested, then those rows are marked
  * synced. Since ingestArtist pulls the artist's WHOLE current discography,
  * one call covers every pending detection for that artist at once.
+ *
+ * PACING: ingestArtist does its DB writes sequentially (no internal
+ * parallelism), but a large-discography artist is still hundreds of
+ * back-to-back upserts (Beyoncé alone: 102 release-groups, 599 recordings,
+ * plus releases/tracks on top). Running artist after artist with zero pause
+ * gives Supabase's connection pool no idle time to recycle between those
+ * bursts -- confirmed live (2026-09-19) as the cause of a real incident:
+ * `--all` ingested only 4 artists before "timed out acquiring connection
+ * from connection pool" errors, and the Postgres instance went fully
+ * unresponsive for a period afterward. INTER_ARTIST_DELAY_MS below is the
+ * fix -- don't remove it or run this without it.
  */
 import { getDB, ingestArtist, HeavilyFeaturedError, type DB } from './mb-ingest';
+
+const INTER_ARTIST_DELAY_MS = 5000;
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function artistsToSync(db: DB, all: boolean): Promise<{ id: string; name: string; mbid: string }[]> {
   if (all) {
@@ -50,7 +64,8 @@ async function main() {
   console.log(`${ALL ? 'FULL BACKFILL' : 'INCREMENTAL SYNC'} — ${artists.length} artist(s)\n`);
 
   let ok = 0, skipped = 0, failed = 0;
-  for (const a of artists) {
+  for (let i = 0; i < artists.length; i++) {
+    const a = artists[i];
     try {
       const res = await ingestArtist(db, a.mbid);
       console.log(`  ✓ ${a.name} (${res.isNew ? 'new' : 'existing'}) → ${res.rgCount} release-groups, ${res.recCount} recordings`);
@@ -61,6 +76,11 @@ async function main() {
       if (e instanceof HeavilyFeaturedError) { console.log(`  ⚠ ${a.name}: skipped — ${e.message}`); skipped++; }
       else { console.log(`  ✗ ${a.name}: ${(e as Error).message}`); failed++; }
     }
+    // See INTER_ARTIST_DELAY_MS's doc comment above -- this is the actual
+    // fix for the 2026-09-19 connection-pool-exhaustion incident. Skipped
+    // after the last artist, since there's nothing left to give the pool
+    // room before.
+    if (i < artists.length - 1) await sleep(INTER_ARTIST_DELAY_MS);
   }
   console.log(`\n=== SUMMARY === synced ${ok} · skipped (heavily-featured) ${skipped} · failed ${failed} (of ${artists.length})`);
 }

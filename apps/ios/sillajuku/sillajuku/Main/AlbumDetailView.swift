@@ -974,7 +974,8 @@ struct AlbumDetailView: View {
             TrackRatingSheet(
                 track: track,
                 release: release,
-                existingScore: track.trackId.flatMap { viewModel.trackRatings[$0] }
+                existingScore: track.trackId.flatMap { viewModel.trackRatings[$0] },
+                ratingStep: viewModel.ratingStep
             ) { t, score in
                 Task {
                     if let recordingId = t.trackId {
@@ -1252,7 +1253,8 @@ struct AlbumDetailView: View {
                         Task { await viewModel.loadRatings(releaseGroupId: release.id) }
                     },
                     isDraft: isDraft,
-                    matchedGeometryNamespace: isDraft ? ratingNamespace : nil
+                    matchedGeometryNamespace: isDraft ? ratingNamespace : nil,
+                    ratingStep: viewModel.ratingStep
                 )
             } else if isDraft {
                 // Mid-flow, before the post-shaped row (myPost) has loaded --
@@ -1297,7 +1299,8 @@ struct AlbumDetailView: View {
                         { (score: Double) in
                             Task { await viewModel.rateTrack(recordingId: recordingId, score: score) }
                         }
-                    }
+                    },
+                    ratingStep: viewModel.ratingStep
                 )
                 if i < viewModel.tracks.count - 1 {
                     Divider().padding(.leading, 56)
@@ -1707,6 +1710,7 @@ private struct TrackRow: View {
     // Takes the drag-committed score directly -- MorphingRateButton, not a
     // plain tap-to-open-sheet button (see body).
     var onAdd: ((Double) -> Void)? = nil
+    var ratingStep: Double = 0.5
 
     @State private var didMarkNotInterested = false
 
@@ -1759,6 +1763,7 @@ private struct TrackRow: View {
                     },
                     idleShape: AnyShape(Circle()),
                     idleTintOpacity: 0.35,
+                    ratingStep: ratingStep,
                     accessibilityLabelText: String(format: String(localized: "Rate %@"), track.title),
                     onRate: onAdd
                 )
@@ -1788,6 +1793,7 @@ struct TrackRatingSheet: View {
     let track: TrackEntry
     let release: Release
     let existingScore: Double?
+    var ratingStep: Double = 0.5
     let onSave: (TrackEntry, Double?) -> Void
 
     // nil until the user actually drags -- shows the neutral flower glyph
@@ -1795,11 +1801,12 @@ struct TrackRatingSheet: View {
     @State private var draftScore: Double?
     @Environment(\.dismiss) private var dismiss
 
-    init(track: TrackEntry, release: Release, existingScore: Double?,
+    init(track: TrackEntry, release: Release, existingScore: Double?, ratingStep: Double = 0.5,
          onSave: @escaping (TrackEntry, Double?) -> Void) {
         self.track = track
         self.release = release
         self.existingScore = existingScore
+        self.ratingStep = ratingStep
         self.onSave = onSave
         self._draftScore = State(initialValue: existingScore)
     }
@@ -1811,15 +1818,12 @@ struct TrackRatingSheet: View {
         VStack(spacing: 20) {
             Spacer(minLength: 0)
 
-            // NOTE: hardcoded to 0.5 -- unlike ManualRatingSheet, this sheet has
-            // never threaded the user's manual_rating_step precision setting
-            // through (pre-existing gap, not introduced by this change).
             FlowerRateControl(
                 onRate: { draftScore = $0 },
                 size: 90,
                 currentScore: draftScore,
                 accessibilityLabelText: "Rate \(track.title)",
-                ratingStep: 0.5,
+                ratingStep: ratingStep,
                 onDelete: existingScore != nil ? { onSave(track, nil); dismiss() } : nil
             )
 
@@ -1975,6 +1979,11 @@ struct SongDetailView: View {
     let track: TrackEntry
     let release: Release
 
+    // Reached from several unrelated screens (album detail, mixes, search) --
+    // simpler for this leaf destination to load its own copy of the setting,
+    // same pattern AlbumDetailViewModel already uses, than to thread a param
+    // through every one of those callers.
+    @State private var ratingStep: Double = 0.5
     @State private var communityAvg: Double? = nil
     @State private var communityCount: Int = 0
     @State private var userScore: Double? = nil
@@ -2088,9 +2097,10 @@ struct SongDetailView: View {
             isLoaded = true
             await loadStats()
             await loadOtherRatings()
+            await loadRatingStep()
         }
         .sheet(isPresented: $showRatingSheet) {
-            TrackRatingSheet(track: track, release: release, existingScore: userScore) { _, score in
+            TrackRatingSheet(track: track, release: release, existingScore: userScore, ratingStep: ratingStep) { _, score in
                 userScore = score
                 Task { await loadMyRow() }
             }
@@ -2139,6 +2149,7 @@ struct SongDetailView: View {
                             track: track,
                             release: release,
                             externalScore: $userScore,
+                            ratingStep: ratingStep,
                             onScoreChange: { _ in Task { await loadStats() } },
                             size: 32
                         )
@@ -2345,6 +2356,19 @@ struct SongDetailView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 20)
+    }
+
+    private func loadRatingStep() async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        struct P: Decodable {
+            let manualRatingStep: Double?
+            enum CodingKeys: String, CodingKey { case manualRatingStep = "manual_rating_step" }
+        }
+        if let p: P = try? await supabase.from("profiles")
+            .select("manual_rating_step").eq("id", value: userId)
+            .single().execute().value {
+            ratingStep = p.manualRatingStep ?? 0.5
+        }
     }
 
     private func loadStats() async {

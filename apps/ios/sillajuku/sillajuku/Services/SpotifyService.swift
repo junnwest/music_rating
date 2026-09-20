@@ -1,5 +1,6 @@
 import Foundation
 import Supabase
+import Sentry
 
 // MARK: - Response models
 
@@ -21,33 +22,93 @@ struct SpotifyArtist: Codable, Identifiable {
     var imageUrl: String? { images.first?.url }
 }
 
-struct SpotifyRecentlyPlayedResponse: Codable {
-    let items: [SpotifyPlayItem]
+struct SpotifyRecentlyPlayedResponse: Decodable {
+    let items: [LenientPlayItem]
+
+    // Confirmed live via Sentry 2026-09-21: a genuine 200 response with real
+    // track data still failed to decode as [SpotifyPlayItem] -- Swift's
+    // JSONDecoder fails an array atomically the instant ANY single element
+    // throws (e.g. a locally-uploaded file or another edge-case entry
+    // Spotify's recently-played history can include, which doesn't fully
+    // match this schema), silently discarding every other valid item in the
+    // same response. Decoding item-by-item and dropping only the ones that
+    // fail, instead of the whole batch, fixes this without needing to know
+    // exactly which field/shape was the culprit -- and stays correct if
+    // Spotify includes some other edge case later.
+    struct LenientPlayItem: Decodable {
+        let value: SpotifyPlayItem?
+        init(from decoder: Decoder) throws {
+            value = try? SpotifyPlayItem(from: decoder)
+        }
+    }
 }
 
-struct SpotifyPlayItem: Codable {
-    let track: SpotifyTrack?   // nil for podcast episodes
+struct SpotifyPlayItem: Decodable {
+    let track: SpotifyTrack?   // nil for podcast episodes, or a track that itself failed to decode
     let playedAt: String
 
     enum CodingKeys: String, CodingKey {
         case track
         case playedAt = "played_at"
     }
+
+    // Lenient like everything below it, for the same reason (see SpotifyAlbum's
+    // comment) -- belt and suspenders alongside the outer LenientPlayItem
+    // wrapper, since a missing/malformed `track` shouldn't fail `playedAt`
+    // either, or vice versa.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        track = try? c.decode(SpotifyTrack.self, forKey: .track)
+        playedAt = (try? c.decode(String.self, forKey: .playedAt)) ?? ""
+    }
 }
 
-struct SpotifyTrack: Codable {
+struct SpotifyTrack: Decodable {
     let name: String
     let artists: [SpotifyTrackArtist]
     let album: SpotifyAlbum?   // nil for podcast episodes — those are skipped
 
-    struct SpotifyTrackArtist: Codable { let name: String }
+    struct SpotifyTrackArtist: Decodable {
+        let name: String
+        enum CodingKeys: String, CodingKey { case name }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            name = (try? c.decode(String.self, forKey: .name)) ?? ""
+        }
+    }
 
-    struct SpotifyAlbum: Codable {
-        let id: String
+    struct SpotifyAlbum: Decodable {
+        // Confirmed live via Sentry 2026-09-21: a real recently-played item
+        // existed (raw items=1) but still failed to decode even under the
+        // per-item LenientPlayItem wrapper -- something *inside* this nested
+        // structure was throwing, not the top-level shape. Most likely a
+        // locally-uploaded file, which Spotify can return with fields a
+        // normal catalog album always has left out or null -- `id` in
+        // particular. Every field here now decodes leniently with a safe
+        // fallback instead of letting one missing/null field kill the whole
+        // item a second time.
+        let id: String?
         let name: String
         let artists: [SpotifyTrackArtist]
         let images: [SpotifyArtist.SpotifyImage]
         var imageUrl: String? { images.first?.url }
+
+        enum CodingKeys: String, CodingKey { case id, name, artists, images }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try? c.decode(String.self, forKey: .id)
+            name = (try? c.decode(String.self, forKey: .name)) ?? ""
+            artists = (try? c.decode([SpotifyTrackArtist].self, forKey: .artists)) ?? []
+            images = (try? c.decode([SpotifyArtist.SpotifyImage].self, forKey: .images)) ?? []
+        }
+    }
+
+    enum CodingKeys: String, CodingKey { case name, artists, album }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = (try? c.decode(String.self, forKey: .name)) ?? ""
+        artists = (try? c.decode([SpotifyTrackArtist].self, forKey: .artists)) ?? []
+        album = try? c.decode(SpotifyAlbum.self, forKey: .album)
     }
 }
 
@@ -114,9 +175,57 @@ enum SpotifyService {
     // NOTE: Supabase's refreshSession() does NOT return a provider token —
     // providerToken only appears in the initial OAuth callback URL.
     // The auth observer in sillajukuApp.swift captures it at sign-in time.
+    // Does NOT attempt to refresh an expired token itself -- see
+    // refreshViaBackend() below for why that has to happen server-side, and
+    // loadSpotify() (SearchView.swift) for how a caller should react to nil.
     static func validToken() async -> String? {
-        guard let token = providerToken() else { return nil }
+        guard let token = providerToken() else {
+            // No token saved in UserDefaults at all -- distinct from "saved
+            // but expired" (tokenIsLive below), and was previously silent.
+            // Confirmed live 2026-09-21: a fresh Spotify signup's DB columns
+            // (spotify_artists/spotify_recently_played) stayed null even
+            // though the account's identity WAS genuinely linked server-side
+            // (verified directly against auth.identities) -- meaning
+            // whichever of these two guards is actually firing needs to be
+            // distinguishable, not both collapsing into the same silent nil.
+            SentrySDK.capture(message: "SpotifyService.validToken: no provider token in UserDefaults")
+            return nil
+        }
         return await tokenIsLive(token) ? token : nil
+    }
+
+    // Asks our own backend to refresh this user's Spotify access token and rewrite their
+    // DB-cached spotify_artists/spotify_recently_played, instead of trying to refresh the token
+    // client-side. A first attempt at doing this directly against accounts.spotify.com/api/token
+    // (client_id only, no secret) got a real 400 invalid_request from Spotify -- confirmed live
+    // 2026-09-21 this project's registered Spotify app is a confidential client, and refreshing
+    // requires Basic auth with SPOTIFY_CLIENT_SECRET (same as the already-working
+    // export/route.ts and refresh-spotify-taste cron on web), a secret that must never live
+    // on-device. POST /api/spotify/refresh-my-data (new) is the on-demand, single-user version of
+    // that same cron job, authenticated the same way every other WebAPI-adjacent call in this app
+    // already is (Bearer supabase session token). Returns whether it succeeded; deliberately
+    // doesn't return the refreshed data itself -- the caller re-reads
+    // loadArtistsFromDB()/loadRecentlyPlayedFromDB() afterward (loadSpotify()'s existing Layer 2),
+    // so there's exactly one place that decodes those DB columns into Swift models.
+    static func refreshViaBackend() async -> Bool {
+        guard let session = try? await supabase.auth.session else { return false }
+        var req = URLRequest(url: Config.webBaseURL.appendingPathComponent("/api/spotify/refresh-my-data"))
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
+        guard let (data, response) = try? await URLSession.shared.data(for: req) else {
+            SentrySDK.capture(message: "SpotifyService.refreshViaBackend: request failed (network)")
+            return false
+        }
+        let status = (response as? HTTPURLResponse)?.statusCode
+        guard status == 200 else {
+            // A 404 means this user has no spotify_taste_tokens row at all (never captured a
+            // refresh token to begin with); a 502 means Spotify itself rejected the refresh
+            // token (revoked/expired -- genuinely needs reconnecting). Both logged so the
+            // distinction is visible, matching every other Spotify path in this file.
+            captureSpotifyAPIFailure(endpoint: "spotify/refresh-my-data", status: status, data: data)
+            return false
+        }
+        return true
     }
 
     // Lightweight liveness check — one request to /me.
@@ -124,8 +233,26 @@ enum SpotifyService {
         guard let url = URL(string: "\(baseURL)/me") else { return false }
         var req = URLRequest(url: url)
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        guard let (_, response) = try? await URLSession.shared.data(for: req) else { return false }
-        return (response as? HTTPURLResponse)?.statusCode == 200
+        guard let (data, response) = try? await URLSession.shared.data(for: req) else {
+            SentrySDK.capture(message: "SpotifyService.tokenIsLive: request failed (network)")
+            return false
+        }
+        let status = (response as? HTTPURLResponse)?.statusCode
+        if status != 200 {
+            captureSpotifyAPIFailure(endpoint: "me (liveness check)", status: status, data: data)
+        }
+        return status == 200
+    }
+
+    // Centralizes what gets attached to the Sentry event for every Spotify
+    // API failure path above -- status code plus a truncated response body
+    // (Spotify's own error JSON, e.g. {"error":{"status":403,"message":
+    // "..."}}, is the one thing that actually distinguishes an expired
+    // token from an insufficient-scope grant from a genuine empty result,
+    // none of which were ever visible before this).
+    private static func captureSpotifyAPIFailure(endpoint: String, status: Int?, data: Data?) {
+        let bodySnippet = data.flatMap { String(data: $0, encoding: .utf8) }?.prefix(300)
+        SentrySDK.capture(message: "SpotifyService.\(endpoint) failed: status=\(status.map(String.init) ?? "none") body=\(bodySnippet ?? "nil")")
     }
 
     // MARK: - DB persistence (survives reinstalls and device switches)
@@ -215,14 +342,44 @@ enum SpotifyService {
     }
 
     static func topArtists(token: String, limit: Int = 10) async -> [SpotifyArtistDisplay] {
-        guard let url = URL(string: "\(baseURL)/me/top/artists?limit=\(limit)&time_range=short_term") else { return [] }
+        // medium_term (~6 months), not short_term (~4 weeks) -- confirmed live 2026-09-21 that
+        // short_term genuinely returned 0 items for an account with real, established listening
+        // history just because it hadn't been active in the last few weeks specifically.
+        // medium_term trades some "what you're into right now" freshness for showing real data
+        // to far more accounts, per explicit user request.
+        guard let url = URL(string: "\(baseURL)/me/top/artists?limit=\(limit)&time_range=medium_term") else { return [] }
         var req = URLRequest(url: url)
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
-        guard let (data, _) = try? await URLSession.shared.data(for: req),
-              let response = try? decoder.decode(SpotifyTopArtistsResponse.self, from: data) else { return [] }
+        // Both this and recentlyPlayed() used to discard the HTTP response
+        // entirely on failure (`try? data(for:)` + `try? decode`, no way to
+        // tell a 401/expired-token from a 403/insufficient-scope from a
+        // genuinely-empty 200) -- confirmed live 2026-09-21: a fresh Spotify
+        // signup's DB columns stayed null forever (spotify_data_updated_at)
+        // with zero visibility into why. Logging the status/body on any
+        // non-200 is the only way the next occurrence gives a real answer
+        // instead of another guess.
+        guard let (data, response) = try? await URLSession.shared.data(for: req) else {
+            captureSpotifyAPIFailure(endpoint: "top/artists", status: nil, data: nil)
+            return []
+        }
+        let status = (response as? HTTPURLResponse)?.statusCode
+        guard status == 200, let parsed = try? decoder.decode(SpotifyTopArtistsResponse.self, from: data) else {
+            captureSpotifyAPIFailure(endpoint: "top/artists", status: status, data: data)
+            return []
+        }
 
-        return response.items.map { SpotifyArtistDisplay(id: $0.id, name: $0.name, imageUrl: $0.imageUrl) }
+        if parsed.items.isEmpty {
+            // Structurally successful (200, decoded fine) but zero artists --
+            // can still legitimately happen even at time_range=medium_term
+            // for an account with very little Spotify listening history at
+            // all, NOT a bug by itself. Logged anyway since the "3 rows
+            // only" investigation needed exactly this kind of visibility to
+            // confirm what's happening rather than infer it from the
+            // absence of a failure capture.
+            SentrySDK.capture(message: "SpotifyService.top/artists: 200 OK, 0 items (time_range=medium_term)")
+        }
+        return parsed.items.map { SpotifyArtistDisplay(id: $0.id, name: $0.name, imageUrl: $0.imageUrl) }
     }
 
     static func recentlyPlayed(token: String, limit: Int = 50) async -> [SpotifyAlbumDisplay] {
@@ -230,22 +387,50 @@ enum SpotifyService {
         var req = URLRequest(url: url)
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
-        guard let (data, _) = try? await URLSession.shared.data(for: req),
-              let response = try? decoder.decode(SpotifyRecentlyPlayedResponse.self, from: data) else { return [] }
+        guard let (data, urlResponse) = try? await URLSession.shared.data(for: req) else {
+            captureSpotifyAPIFailure(endpoint: "recently-played", status: nil, data: nil)
+            return []
+        }
+        let recentStatus = (urlResponse as? HTTPURLResponse)?.statusCode
+        guard recentStatus == 200, let response = try? decoder.decode(SpotifyRecentlyPlayedResponse.self, from: data) else {
+            captureSpotifyAPIFailure(endpoint: "recently-played", status: recentStatus, data: data)
+            return []
+        }
 
-        // Deduplicate albums by id, preserving order (most recent first); skip podcasts (nil track or nil album)
+        // Deduplicate albums by id, preserving order (most recent first); skip podcasts (nil track or
+        // nil album), items with nothing worth showing (empty album name -- SpotifyAlbum's own
+        // lenient decode falls back to "" rather than failing), and any item that failed to decode
+        // at all (LenientPlayItem.value nil -- see its own comment on SpotifyRecentlyPlayedResponse).
         var seen = Set<String>()
         var albums: [SpotifyAlbumDisplay] = []
-        for item in response.items {
-            guard let track = item.track, let album = track.album else { continue }
-            if seen.insert(album.id).inserted {
+        for wrapped in response.items {
+            guard let item = wrapped.value, let track = item.track, let album = track.album,
+                  !album.name.isEmpty else { continue }
+            // Local files can come back with a null album id (see SpotifyAlbum's own comment) --
+            // falls back to a synthetic id built from the name, which is fine here since this id is
+            // only ever used for local dedup/SwiftUI Identifiable, never sent back to Spotify or
+            // matched against it directly (catalog matching elsewhere goes by name+artist text).
+            let albumId = album.id ?? "local:\(album.name)"
+            if seen.insert(albumId).inserted {
                 albums.append(SpotifyAlbumDisplay(
-                    id: album.id,
+                    id: albumId,
                     name: album.name,
                     artistName: album.artists.first?.name ?? track.artists.first?.name ?? "",
                     imageUrl: album.imageUrl
                 ))
             }
+        }
+        // Reported every time now, not just when the final count is zero -- confirmed live
+        // 2026-09-21 that a suspiciously LOW-but-nonzero count (1, when the user expected several)
+        // needs the same raw-vs-final visibility a fully empty result already got two rounds ago.
+        // Distinguishes: genuinely few items in Spotify's own response (rawCount itself low),
+        // items present but failing individual decode (rawCount > decodedCount), or items decoding
+        // fine but being a podcast/local-file/duplicate with nothing to show (decodedCount >
+        // albums.count).
+        let rawCount = response.items.count
+        let decodedCount = response.items.compactMap(\.value).count
+        if albums.count < rawCount {
+            SentrySDK.capture(message: "SpotifyService.recently-played: 200 OK, \(albums.count) albums after filtering (raw items=\(rawCount), individually-decoded=\(decodedCount))")
         }
         return albums
     }
