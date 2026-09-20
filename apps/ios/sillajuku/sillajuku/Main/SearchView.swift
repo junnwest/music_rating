@@ -810,7 +810,6 @@ struct SearchView: View {
     // from discoveryVM being stale at this point (discoveryVM.load() hasn't necessarily run
     // yet) is harmless -- nothing the bottom-of-Add-tab genre explorer does ever reads it.
     @State private var bottomGenreVM: QuickAddViewModel
-    @State private var showQuickAdd          = false
     @State private var searchVM           = SearchViewModel()
     @State private var searchTask: Task<Void, Never>?
     @State private var quickRateRelease: Release?
@@ -877,7 +876,17 @@ struct SearchView: View {
             .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
             .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
             .navigationDestination(for: RecentlyPlayedDestination.self) { ResolvingAlbumView(item: $0, discoveryVM: discoveryVM) }
-            .navigationDestination(isPresented: $showQuickAdd) {
+            // Was `.navigationDestination(isPresented: $showQuickAdd)` -- mixing an isPresented-
+            // bound destination with further NavigationLink(value:) pushes made from *within* the
+            // view it presents (QuickAddView's own rows push Release) confused this stack's path
+            // bookkeeping: tapping a Quick Add row did correctly push AlbumDetailView, but then
+            // QuickAddView got silently re-pushed on top of it too (showQuickAdd was still true),
+            // so the user just saw Quick Add again until backing out of that to reveal the album
+            // page underneath (confirmed live). Same class of bug as the comment on
+            // ArtistPageView's own navigationDestination handling elsewhere in this file --
+            // value-based `for:` destinations only, never mixed with an isPresented boolean, on
+            // one NavigationStack.
+            .navigationDestination(for: QuickAddDestination.self) { _ in
                 QuickAddView(discoveryVM: discoveryVM, ratingStep: userRatingStep, onGoToSettings: onGoToSettings)
             }
             .sheet(item: $quickRateRelease) { release in
@@ -935,10 +944,6 @@ struct SearchView: View {
                 ratedReleaseIds.remove(info.releaseGroupId)
             }
         }
-    }
-
-    private func quickAddTapped() {
-        showQuickAdd = true
     }
 
     private func loadRatedReleaseIds() async {
@@ -1381,7 +1386,7 @@ struct SearchView: View {
 
             Spacer(minLength: 8)
 
-            Button { quickAddTapped() } label: {
+            NavigationLink(value: QuickAddDestination()) {
                 Text("Quick Add")
                     .font(.jakarta(14, weight: .semibold))
                     // Plain .white, not sjCream -- sjBlue is a fixed brand
@@ -1768,6 +1773,11 @@ struct RecentlyPlayedDestination: Hashable {
     let artist: String
     let imageUrl: String?
 }
+
+// Value-based marker for the Quick Add push -- was a plain Bool with
+// `.navigationDestination(isPresented:)` (see the comment at that call site for why
+// that broke tapping through to an album from inside Quick Add).
+struct QuickAddDestination: Hashable {}
 
 // Mirrors ArtistPageView's own artistId == nil resolution pattern for albums: shown immediately
 // with just Spotify's raw data while resolving in the background, behind its own loading state,

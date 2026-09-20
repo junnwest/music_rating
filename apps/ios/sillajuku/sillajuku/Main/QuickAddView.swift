@@ -547,9 +547,9 @@ struct QuickAddView: View {
                             // charts rows, ...) pushes AlbumDetailView on tap -- this one never
                             // did, the cover/title were dead space with only the flower
                             // interactive. QuickAddView is pushed onto SearchView's own
-                            // NavigationStack (`.navigationDestination(isPresented: $showQuickAdd)`),
-                            // which already declares `.navigationDestination(for: Release.self)`,
-                            // so this Just Works with no new destination needed.
+                            // NavigationStack (`.navigationDestination(for: QuickAddDestination.self)`),
+                            // which already declares `.navigationDestination(for: Release.self)`
+                            // too, so this Just Works with no new destination needed.
                             NavigationLink(value: release) {
                                 QuickAddRow(release: release, ratedScore: vm.ratedScores[release.id], ratingStep: vm.ratingStep) { score in
                                     withAnimation(.easeOut(duration: 0.2)) {
