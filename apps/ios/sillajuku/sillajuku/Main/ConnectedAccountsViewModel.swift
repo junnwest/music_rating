@@ -28,7 +28,17 @@ final class ConnectedAccountsViewModel {
 
     func load() async {
         isLoading = true
-        identities = (try? await supabase.auth.userIdentities()) ?? []
+        // Was `(try? ...) ?? []` -- a failed call here silently shows EVERY
+        // provider as "not connected" regardless of the account's real
+        // identities, with nothing logged to distinguish that from a
+        // genuinely-unlinked account. Same class of gap this session already
+        // found and fixed repeatedly elsewhere (Spotify, link() above).
+        do {
+            identities = try await supabase.auth.userIdentities()
+        } catch {
+            SentrySDK.capture(error: error)
+            identities = []
+        }
         isLoading = false
     }
 
