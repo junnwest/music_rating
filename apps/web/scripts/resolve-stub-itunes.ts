@@ -62,7 +62,7 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { getDB, normalizeStr, releaseGroupKey, releaseType, type DB } from './itunes-ingest-core';
+import { getDB, normalizeStr, stripEditionSuffix, releaseType, type DB } from './itunes-ingest-core';
 import { makeItunesGet, pool } from './itunes-fetch';
 
 const arg = (f: string) => process.argv.find(a => a.startsWith(`${f}=`))?.split('=').slice(1).join('=');
@@ -81,7 +81,7 @@ const ANY_STATE = process.argv.includes('--any-state');
 const DISCOGRAPHY_CAP = 200;
 // More than this many exact-name candidates means the name is too common to be worth the calls even
 // with anchors (we'd still refuse most of them).
-const MAX_CANDIDATES = 3;
+const MAX_CANDIDATES = 4;
 const CONCURRENCY = 1;
 
 const itunesGet = makeItunesGet({ perMin: Number(arg('--per-min') ?? 40), userAgent: 'sillajuku-stub-report/1.0' });
@@ -116,11 +116,16 @@ function titleKey(title: string): string {
     if (next === t) break;
     t = next;
   }
-  // stripEditionSuffix (via releaseGroupKey) still owns remaster/deluxe handling; run it first on
-  // the raw string, then apply the script-agnostic normalizer to whatever it returns.
-  const stripped = t.trim() || title;
-  const viaShared = releaseGroupKey(stripped);
-  return viaShared || unicodeNorm(stripped);
+  // stripEditionSuffix owns remaster/deluxe handling and is worth reusing; normalizeStr is NOT.
+  // Routing through releaseGroupKey (= normalizeStr . stripEditionSuffix) silently DELETES every
+  // character outside ASCII \w + Hangul/Kana/CJK, so a Unicode Roman numeral vanishes:
+  //   "P.O.E.M. Ⅲ" -> "p o e m"  ==  "P.O.E.M." -> "p o e m"
+  // which made Owen Ovadoz's P.O.E.M. III register as an anchor we already hold and drop out of the
+  // ingest set entirely. A prior guard only fell back when the shared key came back EMPTY; here it
+  // came back plausible-but-wrong, so the guard never fired. unicodeNorm NFKC-folds Ⅲ to "iii"
+  // and keeps every script, so it is the primary normalizer now and the shared one is not used.
+  const stripped = stripEditionSuffix(t.trim() || title);
+  return unicodeNorm(stripped);
 }
 
 // iTunes packs a collaboration credit into one string: "HAON, nowimyoung, JMIN & KC". Split it into
@@ -268,27 +273,40 @@ async function get(url: string): Promise<any | null> {
 async function findCandidates(names: string[], stores: (string | null)[], allowFuzzy: boolean) {
   const wanted = new Set(names.map(normalizeStr));
   let blocked = false;
-  const fuzzy: any[] = [];
+  const byId = new Map<number, any>();
   for (const store of stores) {
     for (const name of names.slice(0, 3)) {
       const c = store ? `&country=${store}` : '';
       const data = await get(
         `https://itunes.apple.com/search?term=${encodeURIComponent(name)}&entity=musicArtist&limit=10${c}`);
       if (data === null) { blocked = true; continue; }
-      const artists = (data.results ?? []).filter((r: any) => r.wrapperType === 'artist');
-      const hits = artists.filter((r: any) => wanted.has(normalizeStr(r.artistName ?? '')));
-      if (hits.length) {
-        const byId = new Map<number, any>();
-        for (const h of hits) if (!byId.has(h.artistId)) byId.set(h.artistId, h);
-        return { cands: [...byId.values()], store, blocked: false, nameMatch: 'exact' as const };
+      for (const a of (data.results ?? []).filter((r: any) => r.wrapperType === 'artist')) {
+        const exact = wanted.has(normalizeStr(a.artistName ?? ''));
+        const prev = byId.get(a.artistId);
+        if (!prev) byId.set(a.artistId, { ...a, _exact: exact, _store: store });
+        else if (exact) prev._exact = true;
       }
-      for (const a of artists) if (!fuzzy.some(f => f.artistId === a.artistId)) fuzzy.push({ ...a, _store: store });
     }
+    // One store round is enough once an exact-name candidate exists; otherwise try the next store.
+    if ([...byId.values()].some(c => c._exact)) break;
   }
-  if (allowFuzzy && fuzzy.length) {
-    return { cands: fuzzy.slice(0, MAX_CANDIDATES), store: fuzzy[0]._store ?? null, blocked: false, nameMatch: 'fuzzy' as const };
-  }
-  return { cands: [] as any[], store: null as string | null, blocked, nameMatch: 'exact' as const };
+  const all = [...byId.values()];
+  const exacts = all.filter(c => c._exact);
+  const others = all.filter(c => !c._exact);
+  // Exact-name candidates are RANKED first but no longer WIN outright, because an exact name is a
+  // weaker signal than anchor evidence and this got it badly wrong: searching "Owen Ovadoz" returns
+  //   976034588  "Owen"        (오왼)  — the real artist, 74 releases, FIRST result
+  //   1539087817 "Owen Ovadoz"         — a near-empty duplicate with 1 release
+  // The old code filtered to exact matches and returned immediately, so it locked onto the empty
+  // duplicate and never even looked at the right artist. Now every candidate is scored against the
+  // anchors and the evidence decides; the name only breaks ties. A winner that did NOT match by name
+  // is still held to the stricter fuzzy gate.
+  const cands = allowFuzzy ? [...exacts, ...others] : exacts;
+  return {
+    cands: cands.slice(0, MAX_CANDIDATES),
+    store: cands[0]?._store ?? null,
+    blocked: blocked && cands.length === 0,
+  };
 }
 
 /**
@@ -317,17 +335,41 @@ async function discography(artistId: number, store: string | null): Promise<any[
  * SOME OTHER artist we have no credit link to. The anchor rule can't see these. Exact-title match
  * batched through .in(), then compared on the normalized key so edition suffixes don't hide a hit.
  */
-async function findCollisions(db: DB, titles: string[]) {
-  const out = new Map<string, { title: string; artist: string; date: string | null }>();
+const COLLISION_MAX_DAYS = 730;
+
+/**
+ * A shared title is NOT a duplicate. Withholding on title alone dropped Owen Ovadoz's "Cry" (2022,
+ * 11-track album) because Michael Jackson has a 2001 single called "Cry" — as do John Klemmer,
+ * Johnnie Ray, The Sundays, System F and Simple Minds. Common titles are common.
+ *
+ * A genuine cross-source duplicate is the SAME release reaching us twice, which means the existing
+ * row's credit must actually involve this artist AND the dates must be close. Both are required:
+ * artist overlap alone would flag a re-recording decades later, and date proximity alone would flag
+ * two unrelated artists releasing "Cry" in the same year. This mirrors reconcile-itunes-mb's
+ * daysApart guard rather than inventing a new rule.
+ */
+async function findCollisions(db: DB, titles: string[], ourNames: string[]) {
+  const rows = new Map<string, { title: string; artist: string; date: string | null }[]>();
   for (let i = 0; i < titles.length; i += 50) {
     const { data } = await db.from('release_groups')
       .select('title, artist_display, first_release_date').in('title', titles.slice(i, i + 50));
     for (const r of (data ?? []) as any[]) {
       const k = titleKey(r.title);
-      if (!out.has(k)) out.set(k, { title: r.title, artist: r.artist_display, date: r.first_release_date ?? null });
+      const list = rows.get(k);
+      const row = { title: r.title, artist: r.artist_display ?? '', date: r.first_release_date ?? null };
+      if (list) list.push(row); else rows.set(k, [row]);
     }
   }
-  return out;
+  return (key: string, albumDate: string | null) => {
+    for (const r of rows.get(key) ?? []) {
+      const sharesArtist = creditNames(r.artist).some(c => ourNames.includes(c));
+      if (!sharesArtist) continue;
+      if (!albumDate || !r.date) return r;            // undated on either side → be conservative
+      const days = Math.abs(Date.parse(albumDate) - Date.parse(r.date)) / 86_400_000;
+      if (Number.isFinite(days) && days <= COLLISION_MAX_DAYS) return r;
+    }
+    return null;
+  };
 }
 
 async function inspect(db: DB, stub: StubRow): Promise<Report> {
@@ -338,10 +380,9 @@ async function inspect(db: DB, stub: StubRow): Promise<Report> {
     discographySize: 0, anchorHits: [], newAlbums: [],
   };
   const names = await knownNames(db, stub);
-  const { cands, store, blocked, nameMatch } = await findCandidates(names, storesFor(stub, names), ALLOW_FUZZY);
+  const { cands, store, blocked } = await findCandidates(names, storesFor(stub, names), ALLOW_FUZZY);
   base.candidates = cands.length;
   base.store = store;
-  base.nameMatch = nameMatch;
   if (!cands.length) {
     // Never record "iTunes has no such artist" when iTunes simply refused to answer.
     if (blocked) { base.verdict = 'SOURCE_ERROR'; base.note = 'iTunes refused the search (throttled) — retry'; }
@@ -384,6 +425,9 @@ async function inspect(db: DB, stub: StubRow): Promise<Report> {
 
   base.itunesArtistId = best.cand.artistId;
   base.itunesArtistName = best.cand.artistName;
+  // Decided by which candidate WON on evidence, not by how the batch was gathered.
+  const nameMatch: 'exact' | 'fuzzy' = best.cand._exact ? 'exact' : 'fuzzy';
+  base.nameMatch = nameMatch;
   base.discographySize = best.disc.length;
   base.anchorHits = best.hits.map((h: any) => h.trackName ?? h.collectionName);
   if (sawOversized) base.note = 'one or more same-name candidates hit the lookup cap and were skipped';
@@ -435,7 +479,7 @@ async function inspect(db: DB, stub: StubRow): Promise<Report> {
 
   base.verdict = 'CORROBORATED';
   const fresh = best.disc.filter((a: any) => !anchorKeys.has(titleKey(a.collectionName)));
-  const collisions = await findCollisions(db, fresh.map((a: any) => a.collectionName));
+  const collidesWith = await findCollisions(db, fresh.map((a: any) => a.collectionName), ourNames);
   base.newAlbums = fresh.map((a: any): NewAlbum => {
     const raw = (a.collectionName ?? '') as string;
     const type = releaseType(a.trackCount ?? 0, raw);
@@ -457,7 +501,7 @@ async function inspect(db: DB, stub: StubRow): Promise<Report> {
       primary: a.artistId === best!.cand.artistId,
       creditedAs: (a.artistName ?? '') as string,
       flags,
-      collides: collisions.get(titleKey(raw)) ?? null,
+      collides: collidesWith(titleKey(raw), a.releaseDate ? String(a.releaseDate).slice(0, 10) : null),
     };
   });
   return base;
