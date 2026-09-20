@@ -49,6 +49,16 @@ class DiscoveryViewModel {
     var appleMusicLibraryAlbums: [AppleMusicAlbumDisplay] = []
     var hasAppleMusicData = false
 
+    // Whether each service is actually connected -- distinct from hasSpotifyData/
+    // hasAppleMusicData above, which only say whether a fetch has ever returned real taste
+    // data, not whether the account/device permission is linked at all. Drives the Add tab's
+    // bottom "Connect Spotify"/"Connect Apple Music" nudge (discoveryView), which needs the
+    // real connection state, not a data-presence proxy -- a linked account with genuinely no
+    // listening history yet would otherwise show a "Connect" nudge for a service it's already
+    // connected to. Checked once via checkConnectionStatus() below, not on every load().
+    var isSpotifyLinked = false
+    var isAppleMusicAuthorized = false
+
     // DB-personalized (based on user's ratings)
     var personalizedAlbums: [Release] = []
     var personalizedSongs:  [SongResult] = []
@@ -162,6 +172,10 @@ class DiscoveryViewModel {
             if !hasDiscoveryData { await reloadDiscoverySections() }
         }()
 
+        // Independent of both chains above -- doesn't block or get blocked by either, just
+        // needs to eventually settle so the Add tab's bottom connect nudge knows what to show.
+        async let connectionCheck: Void = checkConnectionStatus()
+
         await withTaskGroup(of: Void.self) { g in
             if !hasSpotifyData    { g.addTask { await self.loadSpotify() } }
             if !hasAppleMusicData { g.addTask { await self.loadAppleMusic() } }
@@ -169,7 +183,21 @@ class DiscoveryViewModel {
         await resolveRecentlyPlayedIfNeeded()
 
         await discoveryChain
+        await connectionCheck
         prefetchDiscoveryCovers()
+    }
+
+    // Live check, not inferred from hasSpotifyData/hasAppleMusicData (see those properties'
+    // own comment for why that would be wrong). Spotify: same userIdentities() call
+    // loadSpotify()'s retry loop already uses for this exact question, just surfaced as a
+    // persisted property here instead of a local value re-checked on every retry attempt.
+    // Apple Music: MusicAuthorization.currentStatus, the same check
+    // ConnectedAccountsView's own Apple Music row already uses -- a device permission, not a
+    // Supabase identity, so it's unrelated to whether "apple" shows under Connected Accounts.
+    private func checkConnectionStatus() async {
+        let identities = (try? await supabase.auth.userIdentities()) ?? []
+        isSpotifyLinked = identities.contains { $0.provider == Provider.spotify.rawValue }
+        isAppleMusicAuthorized = MusicAuthorization.currentStatus == .authorized
     }
 
     // Recently-played rows come back as raw Spotify/Apple Music metadata (name + artist string),
@@ -776,6 +804,12 @@ class SearchViewModel {
 struct SearchView: View {
     let discoveryVM: DiscoveryViewModel
     let onGoToSettings: () -> Void
+    // Own instance, separate from whatever backs the Quick Add sheet -- only ever used for its
+    // genre-explorer state (genresToShow/likedGenres/openedGenres/genreShelves), never the
+    // album/song candidate loaders, so the artistNames snapshot QuickAddViewModel.init computes
+    // from discoveryVM being stale at this point (discoveryVM.load() hasn't necessarily run
+    // yet) is harmless -- nothing the bottom-of-Add-tab genre explorer does ever reads it.
+    @State private var bottomGenreVM: QuickAddViewModel
     @State private var showQuickAdd          = false
     @State private var searchVM           = SearchViewModel()
     @State private var searchTask: Task<Void, Never>?
@@ -791,6 +825,12 @@ struct SearchView: View {
     private let threeColumns = [GridItem(.flexible(), spacing: 12),
                                 GridItem(.flexible(), spacing: 12),
                                 GridItem(.flexible(), spacing: 12)]
+
+    init(discoveryVM: DiscoveryViewModel, onGoToSettings: @escaping () -> Void) {
+        self.discoveryVM = discoveryVM
+        self.onGoToSettings = onGoToSettings
+        _bottomGenreVM = State(initialValue: QuickAddViewModel(discoveryVM: discoveryVM))
+    }
 
     private var hasQuery: Bool {
         !searchVM.query.trimmingCharacters(in: .whitespaces).isEmpty
@@ -836,6 +876,7 @@ struct SearchView: View {
             await withTaskGroup(of: Void.self) { g in
                 g.addTask { await loadUserRatingStep() }
                 g.addTask { await loadRatedReleaseIds() }
+                g.addTask { await bottomGenreVM.loadLikedGenres() }
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -1238,6 +1279,34 @@ struct SearchView: View {
                         albumScroll(discoveryVM.trendingAlbums)
                         Spacer().frame(height: 24)
                     }
+
+                    // ── Connect nudge + Explore other genres ──
+                    // Per explicit request: shown at the bottom of the Add tab itself, not
+                    // just inside Quick Add's empty state. Each connect row is independent of
+                    // the other -- discoveryVM.isSpotifyLinked/isAppleMusicAuthorized are real
+                    // connection checks (see their own comment), not data-presence proxies, so
+                    // a linked-but-no-data-yet account doesn't get a wrong "Connect" nudge.
+                    // GenreExplorerView is the exact same component/state Quick Add's own
+                    // explorer uses (bottomGenreVM, a separate instance -- see its declaration).
+                    VStack(spacing: 10) {
+                        if !discoveryVM.isSpotifyLinked {
+                            Button { onGoToSettings() } label: {
+                                NudgeRow(icon: "icon-link", title: "Connect Spotify")
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        if !discoveryVM.isAppleMusicAuthorized {
+                            Button { onGoToSettings() } label: {
+                                NudgeRow(icon: "icon-link", title: "Connect Apple Music")
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, discoveryVM.isSpotifyLinked && discoveryVM.isAppleMusicAuthorized ? 0 : 16)
+
+                    GenreExplorerView(vm: bottomGenreVM)
+                        .padding(.horizontal, 16)
 
                     Spacer().frame(height: 36)
                 }

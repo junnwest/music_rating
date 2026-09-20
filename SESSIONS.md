@@ -4,6 +4,18 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-21 (Mac) — Added a "Connect Spotify/Apple Music" nudge + the genre explorer to the bottom of the Add tab itself, not just inside Quick Add's empty state.**
+
+- **User asked specifically**: display "Connect Spotify or Apple Music" (only for whichever isn't connected) and "Explore other genres" at the bottom of the main Add tab. Both already existed, but only inside `QuickAddView`'s empty/seedless state — a screen most users with SOME data would never see.
+- **Two real design decisions surfaced before building, both resolved via `AskUserQuestion`** rather than assumed: (1) reuse the exact same genre-explorer component/state Quick Add uses (chosen) vs. a lighter chips-only version that deep-links into Quick Add; (2) show each connect option independently based on its own real connection status (chosen) vs. an all-or-nothing nudge like Quick Add's existing one.
+- **Extracted `GenreExplorerView` and `NudgeRow` out of `QuickAddView`'s private helpers into standalone, reusable views** (still in `QuickAddView.swift`, just no longer `private`/nested) — same exact code, no behavior change for Quick Add itself, just made callable from `SearchView.swift` too.
+- **Added real connection-status tracking to `DiscoveryViewModel`**: `isSpotifyLinked`/`isAppleMusicAuthorized`, deliberately NOT inferred from the existing `hasSpotifyData`/`hasAppleMusicData` (those only mean "a fetch has ever returned real taste data," not "the account/device is actually linked" — a linked-but-no-history-yet account would incorrectly get a "Connect" nudge for a service it's already connected to). Spotify checked via the same `userIdentities()` call `loadSpotify()`'s retry loop already uses for this exact question; Apple Music via `MusicAuthorization.currentStatus`, matching `ConnectedAccountsView`'s own check. Runs once per `load()`, concurrently with the existing Spotify/Discovery chains, blocking neither.
+- **Added a second `QuickAddViewModel` instance (`bottomGenreVM`) owned by `SearchView`** rather than sharing the Quick Add sheet's own instance — confirmed safe because the bottom section only ever touches the genre-explorer state (`genresToShow`/`likedGenres`/`openedGenres`/`genreShelves`), never the album/song candidate loaders, so the `artistNames` snapshot `QuickAddViewModel.init` computes from `discoveryVM` being stale at `SearchView`'s own init time (before `discoveryVM.load()` has necessarily run) is completely harmless. Required adding `SearchView` its first custom `init` (previously relied on the synthesized memberwise one) — all other `@State` properties keep their existing inline defaults untouched.
+- **Placed at the very bottom of `discoveryView`**, after every existing section (Popular/New Releases/Trending/etc.): independent Spotify/Apple Music connect rows (each only shown if not connected), then the full `GenreExplorerView`.
+- **Verified via clean simulator build** — **BUILD SUCCEEDED**, no new warnings. NOT YET COMMITTED.
+
+---
+
 **2026-09-21 (Mac) — Added error visibility to Connected Accounts' "link" flow after the user hit a generic "Couldn't connect that account" error trying to add Apple to an already-Spotify-linked account.**
 
 - **`ConnectedAccountsViewModel.link()`'s catch block only ever `print()`-ed** — no Sentry capture, same class of gap this session already found and fixed repeatedly for Spotify (Sentry visibility → real answer, instead of guessing). Added `SentrySDK.capture(error:)` so the next attempt gives a definitive cause.

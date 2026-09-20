@@ -626,49 +626,75 @@ struct QuickAddView: View {
 
             VStack(spacing: 10) {
                 Button { dismiss() } label: {
-                    nudgeRow(icon: "icon-search", title: "Search & rate a few albums")
+                    NudgeRow(icon: "icon-search", title: "Search & rate a few albums")
                 }
                 Button { onGoToSettings() } label: {
-                    nudgeRow(icon: "icon-link", title: "Connect Spotify or Apple Music")
+                    NudgeRow(icon: "icon-link", title: "Connect Spotify or Apple Music")
                 }
             }
             .buttonStyle(.plain)
         }
     }
 
-    private func nudgeRow(icon: String, title: LocalizedStringKey) -> some View {
-        HStack(spacing: 12) {
-            Image(icon)
-                .renderingMode(.template)
-                .resizable().scaledToFit()
-                .frame(width: 16, height: 16)
-                .foregroundStyle(Color.sjCream)
-                .frame(width: 32, height: 32)
-                .background(Color.sjInk)
-                .clipShape(Circle())
-            Text(title)
-                .font(.jakarta(14.5, weight: .semibold))
-                .foregroundStyle(Color.sjInk)
-            Spacer(minLength: 8)
-            Image("icon-chevron-right")
-                .renderingMode(.template)
-                .resizable().scaledToFit()
-                .frame(width: 12, height: 12)
-                .foregroundStyle(Color.sjMuted)
-        }
-        .padding(14)
-        .background(Color.sjSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-    }
-
     // MARK: Genre explorer
 
-    /// iOS counterpart of web's `GenreExplorer` (`quick-add/page.tsx`) -- same RPC
-    /// (`get_quick_add_genre_candidates`), same two-action chip (label opens a shelf,
-    /// heart likes/persists the genre), same permanent-vs-session shelf split. Albums
-    /// only, matching the RPC (`release_group_type IN ('album','ep')`) and web's own
-    /// scope call that songs are rated in runs, not browsed.
     private var genreExplorer: some View {
+        GenreExplorerView(vm: vm)
+    }
+}
+
+/// Minimal left-aligned wrapping layout for genre chips. Self-contained here rather than
+/// reusing TasteView.swift's private `FlowLayout` of the same shape, to avoid a cross-file
+/// dependency for a five-line utility.
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > width {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return CGSize(width: width, height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX {
+                x = bounds.minX
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), proposal: .unspecified)
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+    }
+}
+
+// MARK: - Genre explorer (shared)
+
+/// iOS counterpart of web's `GenreExplorer` (`quick-add/page.tsx`) -- same RPC
+/// (`get_quick_add_genre_candidates`), same two-action chip (label opens a shelf, heart
+/// likes/persists the genre), same permanent-vs-session shelf split. Albums only, matching
+/// the RPC (`release_group_type IN ('album','ep')`) and web's own scope call that songs are
+/// rated in runs, not browsed.
+/// Not private/nested in QuickAddView -- also used at the bottom of the main Add tab
+/// (SearchView.swift's discoveryView, its own `bottomGenreVM` instance), reusing the exact
+/// same behavior rather than a second reimplementation, per explicit request.
+struct GenreExplorerView: View {
+    let vm: QuickAddViewModel
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Image("icon-compass")
@@ -759,40 +785,34 @@ struct QuickAddView: View {
     }
 }
 
-/// Minimal left-aligned wrapping layout for genre chips. Self-contained here rather than
-/// reusing TasteView.swift's private `FlowLayout` of the same shape, to avoid a cross-file
-/// dependency for a five-line utility.
-private struct FlowLayout: Layout {
-    var spacing: CGFloat = 8
+/// Extracted from what used to be QuickAddView's own private `nudgeRow` helper -- also used
+/// by the Add tab's "Connect Spotify"/"Connect Apple Music" nudge (SearchView.swift).
+struct NudgeRow: View {
+    let icon: String
+    let title: LocalizedStringKey
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? .infinity
-        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x > 0, x + size.width > width {
-                x = 0
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(icon)
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 16, height: 16)
+                .foregroundStyle(Color.sjCream)
+                .frame(width: 32, height: 32)
+                .background(Color.sjInk)
+                .clipShape(Circle())
+            Text(title)
+                .font(.jakarta(14.5, weight: .semibold))
+                .foregroundStyle(Color.sjInk)
+            Spacer(minLength: 8)
+            Image("icon-chevron-right")
+                .renderingMode(.template)
+                .resizable().scaledToFit()
+                .frame(width: 12, height: 12)
+                .foregroundStyle(Color.sjMuted)
         }
-        return CGSize(width: width, height: y + rowHeight)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x > bounds.minX, x + size.width > bounds.maxX {
-                x = bounds.minX
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            subview.place(at: CGPoint(x: x, y: y), proposal: .unspecified)
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
+        .padding(14)
+        .background(Color.sjSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 }
