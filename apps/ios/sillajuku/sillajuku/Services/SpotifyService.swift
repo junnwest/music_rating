@@ -22,8 +22,25 @@ struct SpotifyArtist: Codable, Identifiable {
     var imageUrl: String? { images.first?.url }
 }
 
-struct SpotifyRecentlyPlayedResponse: Codable {
-    let items: [SpotifyPlayItem]
+struct SpotifyRecentlyPlayedResponse: Decodable {
+    let items: [LenientPlayItem]
+
+    // Confirmed live via Sentry 2026-09-21: a genuine 200 response with real
+    // track data still failed to decode as [SpotifyPlayItem] -- Swift's
+    // JSONDecoder fails an array atomically the instant ANY single element
+    // throws (e.g. a locally-uploaded file or another edge-case entry
+    // Spotify's recently-played history can include, which doesn't fully
+    // match this schema), silently discarding every other valid item in the
+    // same response. Decoding item-by-item and dropping only the ones that
+    // fail, instead of the whole batch, fixes this without needing to know
+    // exactly which field/shape was the culprit -- and stays correct if
+    // Spotify includes some other edge case later.
+    struct LenientPlayItem: Decodable {
+        let value: SpotifyPlayItem?
+        init(from decoder: Decoder) throws {
+            value = try? SpotifyPlayItem(from: decoder)
+        }
+    }
 }
 
 struct SpotifyPlayItem: Codable {
@@ -285,11 +302,13 @@ enum SpotifyService {
             return []
         }
 
-        // Deduplicate albums by id, preserving order (most recent first); skip podcasts (nil track or nil album)
+        // Deduplicate albums by id, preserving order (most recent first); skip podcasts (nil track or
+        // nil album) and any item that failed to decode at all (LenientPlayItem.value nil -- see its
+        // own comment on SpotifyRecentlyPlayedResponse).
         var seen = Set<String>()
         var albums: [SpotifyAlbumDisplay] = []
-        for item in response.items {
-            guard let track = item.track, let album = track.album else { continue }
+        for wrapped in response.items {
+            guard let item = wrapped.value, let track = item.track, let album = track.album else { continue }
             if seen.insert(album.id).inserted {
                 albums.append(SpotifyAlbumDisplay(
                     id: album.id,
