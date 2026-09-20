@@ -79,7 +79,12 @@ export default function ArtistPage() {
       let loaded: SJRelease[] = [];
       if (isId) {
         const [{ data: rgs }, { data: artistRows }] = await Promise.all([
-          supabase!.rpc('get_artist_release_groups', { p_artist_id: rawId, lim: 60 }),
+          // lim 500, not 60: 1,572 artists have more than 60 release groups, and since the cut was
+          // newest-first it removed their actual albums — Nirvana showed 0 of Bleach/Nevermind/In
+          // Utero, Ed Sheeran 1 of 4. Only 28 artists exceed 400 groups, so this truncates nobody in
+          // practice. See migration 20260920000001, which also reorders so albums/EPs outrank
+          // compilations and live records if a cut ever does happen.
+          supabase!.rpc('get_artist_release_groups', { p_artist_id: rawId, lim: 500 }),
           supabase!.from('artists').select('name, cover_url').eq('id', rawId).limit(1),
         ]);
         loaded = ((rgs as any[] | null) ?? []).map((r) => ({
@@ -123,10 +128,16 @@ export default function ArtistPage() {
         const artistName = isId ? undefined : rawId;
         const nameForSongs = artistName ?? loaded[0]?.artist;
         if (!nameForSongs) return;
+        // eq, not ilike: ILIKE cannot use idx_recordings_artist_display (case-insensitive match on a
+        // plain btree), so this seq-scanned the 1.37GB recordings table on every artist page load —
+        // 4.2s and ~630MB of reads, measured. `nameForSongs` is either the URL segment or an
+        // artist_display string this app itself wrote, so exact match is the correct comparison.
+        // (The release_groups lookup above still uses ilike on purpose: its input is a user-typed
+        // URL, where casing genuinely cannot be trusted.)
         const { data: hits } = await supabase!
           .from('recordings')
           .select('id, title')
-          .ilike('artist_display', nameForSongs)
+          .eq('artist_display', nameForSongs)
           .order('title')
           .limit(200);
         const hitRows = (hits as { id: string; title: string }[] | null) ?? [];

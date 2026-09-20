@@ -19,6 +19,13 @@ const STATE = `${__dirname}/backfill-artist-avatars-state.json`;
 const args = process.argv.slice(2);
 const DRY = args.includes('--dry-run');
 const LIMIT = (() => { const a = args.find(x => x.startsWith('--limit=')); return a ? parseInt(a.split('=')[1], 10) : Infinity; })();
+// Optional pre-ordered id list. The default ordering below sorts by `popularity`, which is
+// 0/68,153 populated (a dead Spotify column — Spotify was retired from data collection), so it is
+// effectively random and has never actually put famous artists first. An ids file lets the caller
+// supply a real priority order; scripts/data/avatar-priority.json is built from critic scores,
+// user ratings and discography size, and excludes the 45,319 artists with no releases at all
+// (credit stubs, where an exact-name Deezer match is most likely to attach the wrong face).
+const IDS_FILE = (() => { const a = args.find(x => x.startsWith('--ids-file=')); return a ? a.split('=').slice(1).join('=') : null; })();
 
 const norm = (s: string | null | undefined) => (s ?? '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
@@ -29,16 +36,33 @@ async function main() {
   const done = loadState();
   const PAGE = 1000;
   let artists: { id: string; name: string; name_native: string | null }[] = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await db.from('artists')
-      .select('id, name, name_native')
-      .is('cover_url', null)
-      .order('popularity', { ascending: false, nullsFirst: false })
-      .range(from, from + PAGE - 1);
-    if (error) { console.error('fetch error:', error.message); break; }
-    if (!data?.length) break;
-    artists.push(...(data as any[]));
-    if (data.length < PAGE) break;
+  if (IDS_FILE) {
+    // Preserve the file's order exactly — it IS the priority. Fetch in batches of 100 (a few
+    // hundred UUIDs overflows the PostgREST request URL and returns nothing), then re-sort back
+    // into file order, since the DB returns each batch in arbitrary order.
+    const ids: string[] = JSON.parse(readFileSync(IDS_FILE, 'utf8'));
+    const pending = ids.filter(id => !done.has(id));
+    const rank = new Map(pending.map((id, i) => [id, i]));
+    const want = Number.isFinite(LIMIT) ? pending.slice(0, LIMIT) : pending;
+    for (let i = 0; i < want.length; i += 100) {
+      const { data, error } = await db.from('artists')
+        .select('id, name, name_native').is('cover_url', null).in('id', want.slice(i, i + 100));
+      if (error) { console.error(`fetch error: ${error.message}`); break; }
+      artists.push(...(data as any[] ?? []));
+    }
+    artists.sort((a, b) => (rank.get(a.id) ?? 1e9) - (rank.get(b.id) ?? 1e9));
+  } else {
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await db.from('artists')
+        .select('id, name, name_native')
+        .is('cover_url', null)
+        .order('popularity', { ascending: false, nullsFirst: false })
+        .range(from, from + PAGE - 1);
+      if (error) { console.error('fetch error:', error.message); break; }
+      if (!data?.length) break;
+      artists.push(...(data as any[]));
+      if (data.length < PAGE) break;
+    }
   }
   artists = artists.filter(a => !done.has(a.id));
   if (artists.length > LIMIT) artists = artists.slice(0, LIMIT);
