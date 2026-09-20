@@ -317,17 +317,16 @@ class DiscoveryViewModel {
             let isLastAttempt = attempt == 4
 
             // If this account has never linked Spotify, any cached data belongs to a previous
-            // account on this device — clear it and bail out. Checks the FULL "providers"
-            // identity list, not just the singular "provider" field (the account's original
-            // signup method) — a multi-identity account that signed up via email/Google and
-            // linked Spotify afterward always reports provider == "email"/"google", never
-            // "spotify", even right after a fresh Spotify sign-in (confirmed live: this silently
-            // wiped a real, working Spotify connection's cached data on every single load).
-            let providers = supabase.auth.currentUser?.appMetadata["providers"]
-            var linkedSpotify = false
-            if case .array(let list) = providers {
-                linkedSpotify = list.contains(.string("spotify"))
-            }
+            // account on this device — clear it and bail out. A LIVE call (userIdentities()),
+            // not a re-read of the cached currentUser.appMetadata["providers"] snapshot this used
+            // to check: confirmed live that snapshot can still be stale/incomplete on a fresh
+            // sign-in, and since nothing between retry attempts ever refreshed it, re-checking the
+            // same frozen value 5 times never once self-corrected -- the retry loop below was
+            // completely defeated for this specific gate (every other layer in this loop retried
+            // for real; this one didn't). Doing a real network call on each attempt instead means
+            // a genuine timing race actually has a chance to resolve across retries.
+            let identities = (try? await supabase.auth.userIdentities()) ?? []
+            let linkedSpotify = identities.contains { $0.provider == Provider.spotify.rawValue }
             if !linkedSpotify {
                 if isLastAttempt {
                     SpotifyService.clearCache()

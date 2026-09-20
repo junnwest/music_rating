@@ -28,6 +28,15 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-21 (Mac) — Found the real root cause of the "fresh Spotify signup shows only 3 generic rows" bug: the retry loop from the earlier fix was silently defeated for its own gating check.**
+
+- **User signed up fresh with Spotify again (on a build confirmed to include the earlier retry fix) and hit the exact same symptom**: only Popular/New Releases/Trending, no "Your Top Artists," no "Recently Listened" — confirmed via `AskUserQuestion` that Top Artists wasn't showing either (ruling out the separate `resolveRecentlyPlayedIfNeeded()` catalog-matching path as the cause; this was the same original bug, not a new one).
+- **Root-caused precisely this time, not just re-applied the same pattern**: `loadSpotify()`'s `linkedSpotify` gate read `supabase.auth.currentUser?.appMetadata["providers"]` — a purely local, cached snapshot of the SDK's in-memory user object. The bounded retry loop (5 attempts, 600ms apart) re-checked this exact same cached value on every attempt without ever refreshing it, so if that snapshot was stale or incomplete at the moment `loadSpotify()` first ran (plausible right after this account's two-step signup — Spotify's OAuth callback doesn't assert a verified email, so Supabase's own confirmation-email step sits in between the first OAuth attempt and the one that actually establishes a working session), **the retry loop could never self-correct**: it was faithfully retrying everything else in the function (DB fetch, live Spotify token check) while retrying nothing for this one gate, since re-reading a frozen local value 5 times returns the same answer 5 times.
+- **Fixed by replacing the local snapshot check with `supabase.auth.userIdentities()`** — a live network call (same one `ConnectedAccountsViewModel` already uses to answer this exact "is provider X linked" question), so every retry attempt now does a genuine, fresh check instead of re-reading stale local state. A real timing race can now actually resolve across the retry window instead of being permanently masked.
+- **Verified via a clean simulator build** — **BUILD SUCCEEDED**. Not verified live against a real fresh-signup repro (same limitation as the original fix — can't drive a real interactive OAuth flow from this environment); NOT YET COMMITTED.
+
+---
+
 **2026-09-20 (Mac) — Fixed a stale "invite-only" gate on the web onboarding flow, and built a mobile-deep-link landing page so a post-signup Spotify email confirmation returns straight to the iOS app instead of the plain website.**
 
 - **User deleted and recreated their account with the same Spotify connection to test the previous round's fix, and hit a new sign-up failure: "email is unverified."** Traced this to a real, independent Supabase behavior, not a bug in this codebase — Spotify's OAuth response doesn't assert `email_verified` (unlike Google), so Supabase's own "Confirm email" project setting can gate a brand-new signup on this provider specifically. Confirmed via the existing session's OAuth code that this app is otherwise fully OAuth-only (no email/password flow to instrument).
