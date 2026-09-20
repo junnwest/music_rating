@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import Supabase
+import Sentry
 
 /// Backs the Settings -> Connected Accounts screen: which OAuth identities
 /// are linked (Spotify/Apple/Google) and whether a phone number is attached.
@@ -52,8 +53,21 @@ final class ConnectedAccountsViewModel {
             // Nothing to reload yet -- linking finishes asynchronously via the
             // OAuth redirect + onOpenURL, not this call returning.
         } catch {
-            print("ConnectedAccountsViewModel.link(\(provider.rawValue)) failed: \(error)")
-            errorMessage = String(localized: "Couldn't connect that account. Try again.")
+            // Was print()-only -- no way to actually see why a link failed
+            // beyond a local Xcode console, same class of gap this session
+            // already found and fixed repeatedly for Spotify. Sentry capture
+            // added so the next occurrence gives a real answer.
+            SentrySDK.capture(error: error)
+            // Same distinguishable message AuthViewModel.signInWithApple()
+            // already gives for this exact case (a different account already
+            // owns this identity) -- linkIdentity() can hit it too, e.g. an
+            // Apple ID previously used to sign into (and since deleted) a
+            // different sillajuku account.
+            if let authError = error as? AuthError, authError.errorCode == .identityAlreadyExists {
+                errorMessage = String(localized: "This \(provider.rawValue.capitalized) account is already linked to a different sillajuku account. Sign in with the account you originally used, or contact support to unlink it.")
+            } else {
+                errorMessage = String(localized: "Couldn't connect that account. Try again.")
+            }
         }
     }
 

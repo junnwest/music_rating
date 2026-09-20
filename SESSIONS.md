@@ -4,6 +4,15 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-21 (Mac) — Added error visibility to Connected Accounts' "link" flow after the user hit a generic "Couldn't connect that account" error trying to add Apple to an already-Spotify-linked account.**
+
+- **`ConnectedAccountsViewModel.link()`'s catch block only ever `print()`-ed** — no Sentry capture, same class of gap this session already found and fixed repeatedly for Spotify (Sentry visibility → real answer, instead of guessing). Added `SentrySDK.capture(error:)` so the next attempt gives a definitive cause.
+- **Also gave `link()` the same distinguishable error message `AuthViewModel.signInWithApple()` already has for one specific, plausible cause**: `AuthError.errorCode == .identityAlreadyExists` (this exact Apple/Google/Spotify identity already belongs to a *different* sillajuku account — plausible here given the user has deleted and recreated their own account multiple times this session, and Apple ID identity links don't necessarily get cleaned up by account deletion) now shows "This Apple account is already linked to a different sillajuku account..." instead of the generic message. Any other failure still falls back to the generic message, now backed by a real Sentry event.
+- **Scope note, not touched**: `unlink()` and `disconnectPhone()` in the same file have the identical print-only gap; not fixed since only `link()`'s failure was reported.
+- **Verified via clean simulator build** — **BUILD SUCCEEDED**. NOT YET COMMITTED. Waiting on the user's retry + a Sentry check to confirm the actual cause.
+
+---
+
 **2026-09-21 (Mac) — Fixed Settings' Rating Precision toggle not persisting visually across a close/reopen, despite the DB write succeeding.**
 
 - **User reported: change Rating Precision in Settings, close Settings, reopen it — shows the value from before the change**, even though the underlying setting change itself (used when rating albums) did take effect.
