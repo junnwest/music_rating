@@ -96,15 +96,15 @@ struct SettingsView: View {
                 Section {
                     notificationsPermissionRow
                     Toggle("Likes on my ratings",    isOn: $notifyLikes)
-                        .onChange(of: notifyLikes)    { _, v in saveBool("notify_likes",      v) }
+                        .onChange(of: notifyLikes)    { _, v in saveBool("notify_likes",      v, \.notifyLikes) }
                     Toggle("Replies to my comments", isOn: $notifyReplies)
-                        .onChange(of: notifyReplies)  { _, v in saveBool("notify_replies",    v) }
+                        .onChange(of: notifyReplies)  { _, v in saveBool("notify_replies",    v, \.notifyReplies) }
                     Toggle("New followers",          isOn: $notifyFollowers)
-                        .onChange(of: notifyFollowers){ _, v in saveBool("notify_followers",  v) }
+                        .onChange(of: notifyFollowers){ _, v in saveBool("notify_followers",  v, \.notifyFollowers) }
                     Toggle("Ranking updates",        isOn: $notifyRankings)
-                        .onChange(of: notifyRankings) { _, v in saveBool("notify_rankings",   v) }
+                        .onChange(of: notifyRankings) { _, v in saveBool("notify_rankings",   v, \.notifyRankings) }
                     Toggle("Monthly capsule",        isOn: $notifyCapsule)
-                        .onChange(of: notifyCapsule)  { _, v in saveBool("notify_capsule",    v) }
+                        .onChange(of: notifyCapsule)  { _, v in saveBool("notify_capsule",    v, \.notifyCapsule) }
                 } header: {
                     Text("Notifications")
                 } footer: {
@@ -117,12 +117,12 @@ struct SettingsView: View {
                 // MARK: Privacy
                 Section {
                     Picker("Account", selection: $profileVisibility) { generalVisibilityOptions }
-                        .onChange(of: profileVisibility) { _, v in saveText("profile_visibility", v) }
+                        .onChange(of: profileVisibility) { _, v in saveText("profile_visibility", v, \.profileVisibility) }
 
                     DisclosureGroup("Advanced") {
-                        overrideRow("Catalog", $catalogOverride, column: "catalog_visibility")
-                        overrideRow("Library", $libraryOverride, column: "library_visibility")
-                        overrideRow("Stats",   $statsOverride,   column: "stats_visibility")
+                        overrideRow("Catalog", $catalogOverride, column: "catalog_visibility", keyPath: \.catalogVisibility)
+                        overrideRow("Library", $libraryOverride, column: "library_visibility", keyPath: \.libraryVisibility)
+                        overrideRow("Stats",   $statsOverride,   column: "stats_visibility", keyPath: \.statsVisibility)
                     }
                 } header: {
                     Text("Privacy")
@@ -419,13 +419,13 @@ struct SettingsView: View {
         }
     }
 
-    private func overrideRow(_ label: LocalizedStringKey, _ selection: Binding<VisibilityOverride>, column: String) -> some View {
+    private func overrideRow(_ label: LocalizedStringKey, _ selection: Binding<VisibilityOverride>, column: String, keyPath: WritableKeyPath<Profile, String?>) -> some View {
         Picker(label, selection: selection) {
             ForEach(VisibilityOverride.allCases, id: \.self) { option in
                 Text(option.label).tag(option)
             }
         }
-        .onChange(of: selection.wrappedValue) { _, v in saveNullableText(column, v.dbValue) }
+        .onChange(of: selection.wrappedValue) { _, v in saveNullableText(column, v.dbValue, keyPath) }
     }
 
     private func segmentButton(icon: String, label: LocalizedStringKey, selected: Bool, action: @escaping () -> Void) -> some View {
@@ -552,8 +552,14 @@ struct SettingsView: View {
         }
     }
 
-    private func saveBool(_ column: String, _ value: Bool) {
+    // `keyPath` keeps viewModel.profile (the ONLY thing loadPreferences() -- called on every
+    // SettingsView .onAppear -- reads from) in sync with what just got saved, same fix as
+    // saveRatingStep above and for the identical reason: without it, reopening Settings kept
+    // showing whatever the profile was when first loaded, not the actual current value, even
+    // though the DB write itself succeeded every time.
+    private func saveBool(_ column: String, _ value: Bool, _ keyPath: WritableKeyPath<Profile, Bool?>) {
         guard let user = supabase.auth.currentUser else { return }
+        viewModel.profile?[keyPath: keyPath] = value
         Task {
             try? await supabase.from("profiles")
                 .update([column: value])
@@ -561,8 +567,9 @@ struct SettingsView: View {
         }
     }
 
-    private func saveText(_ column: String, _ value: String) {
+    private func saveText(_ column: String, _ value: String, _ keyPath: WritableKeyPath<Profile, String?>) {
         guard let user = supabase.auth.currentUser else { return }
+        viewModel.profile?[keyPath: keyPath] = value
         Task {
             try? await supabase.from("profiles")
                 .update([column: value])
@@ -574,8 +581,9 @@ struct SettingsView: View {
     // PostgrestQueryBuilder.update() + Swift's Optional: Encodable
     // conformance), correctly clearing an override column back to "inherit
     // from profileVisibility" rather than merely omitting the field.
-    private func saveNullableText(_ column: String, _ value: String?) {
+    private func saveNullableText(_ column: String, _ value: String?, _ keyPath: WritableKeyPath<Profile, String?>) {
         guard let user = supabase.auth.currentUser else { return }
+        viewModel.profile?[keyPath: keyPath] = value
         Task {
             try? await supabase.from("profiles")
                 .update([column: value])
