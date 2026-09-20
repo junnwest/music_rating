@@ -284,6 +284,16 @@ enum SpotifyService {
             return []
         }
 
+        if parsed.items.isEmpty {
+            // Structurally successful (200, decoded fine) but zero artists --
+            // real, legitimate Spotify behavior for time_range=short_term
+            // when there isn't enough ~4-week-recent listening activity, NOT
+            // a bug by itself. Logged anyway (once) since the last two
+            // rounds of the "3 rows only" investigation need to actually
+            // confirm this is what's happening rather than infer it from the
+            // absence of a failure capture.
+            SentrySDK.capture(message: "SpotifyService.top/artists: 200 OK, 0 items (time_range=short_term)")
+        }
         return parsed.items.map { SpotifyArtistDisplay(id: $0.id, name: $0.name, imageUrl: $0.imageUrl) }
     }
 
@@ -317,6 +327,16 @@ enum SpotifyService {
                     imageUrl: album.imageUrl
                 ))
             }
+        }
+        if albums.isEmpty {
+            // Distinguishes, for the first time, the three ways this can end
+            // up empty: genuinely zero items in the response, every item
+            // present but failing individual decode (LenientPlayItem.value
+            // nil for all of them), or every item decoding but being a
+            // podcast/local-file with no track+album to build a row from.
+            let rawCount = response.items.count
+            let decodedCount = response.items.compactMap(\.value).count
+            SentrySDK.capture(message: "SpotifyService.recently-played: 200 OK, 0 albums after filtering (raw items=\(rawCount), individually-decoded=\(decodedCount))")
         }
         return albums
     }
