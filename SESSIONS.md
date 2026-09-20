@@ -75,6 +75,21 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-21 (Mac) — Fixed comments not appearing immediately after rating: the album page's own post view, and Profile, both showed the comment only after revisiting minutes later.**
+
+- **User reported**: rate an album with a comment on the album page — the screen turns into a post-view card immediately, but the comment isn't in it; it only shows up after leaving and coming back a few minutes later. Same delay in the Profile tab. Home's feed showed it correctly and immediately, though.
+- **Investigated first (read-only)** to trace the actual mechanism before touching code — found **four separate places** in the codebase that write `ratings.review_text`, and only one of them (`AlbumDetailViewModel.updateReviewText`, used by the dedicated "Edit Comment" menu action) refreshed anything afterward. The two paths that actually back the reported flow did not:
+  - `AlbumDetailView.saveReviewText(_:)` — the primary "rate → morphs into post view → type a comment → Done" flow. Wrote `review_text` directly to Supabase, but never touched `viewModel.myPost` (the exact `FeedItem` the post view renders from) and posted no notification at all.
+  - `ManualRatingSheet.saveReviewAndDismiss(text:)` — the sheet-based "Edit rating" re-rate flow. Same shape: writes, then just `dismiss()`s.
+  - Root cause of "only shows up after revisiting": `viewModel.myPost` is populated by `loadMyPost()`, which only ever runs once — *before* the comment is typed, as part of committing the score. Nothing ever called it again after the comment itself was saved, so the immediate post view kept rendering the same stale, comment-less `FeedItem` object until the page's next full load.
+  - Root cause of the Profile-tab gap: `RatingChangeInfo` (the payload added in an earlier round's duplicate-row-sync fix) carries only `releaseGroupId`/`score`, no comment signal — and none of the four review-text writers posted `.ratingChanged` at all, so `ProfileViewModel.applyRatingChange`'s own (already-correct, already `review_text`-selecting) refetch was simply never triggered by a comment edit.
+  - Home's feed only appeared to work correctly by coincidence, not a real sync mechanism: it has no per-row patch/notification path of its own at all, just a one-shot-per-session full fetch (`hasLoadedExplore`/`hasLoadedFollowing` guards) that happens to read fully-correct data whenever it actually runs, since by then both the score and comment writes have already landed.
+- **Fixed**: `AlbumDetailView.saveReviewText(_:)` now delegates to `viewModel.updateReviewText(text)` (the already-correct function) instead of duplicating a raw write — gets the `loadMyPost()` refresh for free. Added a `.ratingChanged` post (with the real score, so Profile's `applyRatingChange` re-fetches this row's now-current `review_text`) to `updateReviewText` itself and to `ManualRatingSheet.saveReviewAndDismiss`. Also added an `.onChange(of: showManualSheet)` safety net on `AlbumDetailView`'s own sheet presentation, re-loading `viewModel.myPost` whenever that sheet closes, regardless of exactly which internal path changed what.
+- **Scope note**: the same gap exists in `SongDetailViewModel.updateTrackReviewText` (track-level comments) — not touched, since the report was specifically about the album page.
+- **Verified via clean simulator build** — **BUILD SUCCEEDED**.
+
+---
+
 **2026-09-21 (Mac) — Added a "Connect Spotify/Apple Music" nudge + the genre explorer to the bottom of the Add tab itself, not just inside Quick Add's empty state.**
 
 - **User asked specifically**: display "Connect Spotify or Apple Music" (only for whichever isn't connected) and "Explore other genres" at the bottom of the main Add tab. Both already existed, but only inside `QuickAddView`'s empty/seedless state — a screen most users with SOME data would never see.

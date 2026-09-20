@@ -305,6 +305,13 @@ class AlbumDetailViewModel {
             .eq("id", value: rid)
             .execute()
         await loadMyPost()
+        // Score didn't change, but .ratingChanged is also what tells Profile's
+        // applyRatingChange to re-fetch this row (review_text included) -- a
+        // comment-only edit otherwise has no way to reach it at all.
+        if let releaseGroupId {
+            NotificationCenter.default.post(name: .ratingChanged,
+                object: RatingChangeInfo(releaseGroupId: releaseGroupId, score: userScore))
+        }
     }
 
     private func loadRatingStep() async {
@@ -789,6 +796,11 @@ struct ManualRatingSheet: View {
                 .update(Update(reviewText: text))
                 .eq("id", value: rid)
                 .execute()
+            // The parent's own post view only refreshes from onSave's score callback --
+            // a comment-only change here has nothing else telling it (or Profile) to
+            // re-fetch, so it silently wouldn't show until the page was reopened.
+            NotificationCenter.default.post(name: .ratingChanged,
+                object: RatingChangeInfo(releaseGroupId: release.id, score: existingScore))
         }
         dismiss()
     }
@@ -943,6 +955,13 @@ struct AlbumDetailView: View {
                     if score != nil { onRated?(release.id) }
                 }
             }
+        }
+        // Refreshes the post view on close regardless of exactly which path inside the
+        // sheet changed what -- setRating's own reload already covers a score change,
+        // this is the safety net for a comment added/edited there (saveReviewAndDismiss
+        // writes review_text directly and has no other way to tell this page to re-fetch).
+        .onChange(of: showManualSheet) { wasShown, isShown in
+            if wasShown && !isShown { Task { await viewModel.loadMyPost() } }
         }
         .sheet(isPresented: $showMixPicker) {
             MixPickerView(releaseId: release.id, releaseTitle: release.displayTitle)
@@ -1215,17 +1234,13 @@ struct AlbumDetailView: View {
     // the sheet-based edit path -- duplicated rather than shared since that
     // struct is intentionally untouched by this change.
     private func saveReviewText(_ text: String?) async {
-        guard let text, let userId = supabase.auth.currentUser?.id else { return }
-        struct Update: Encodable {
-            let reviewText: String
-            enum CodingKeys: String, CodingKey { case reviewText = "review_text" }
-        }
-        try? await supabase
-            .from("ratings")
-            .update(Update(reviewText: text))
-            .eq("user_id", value: userId)
-            .eq("release_group_id", value: release.id)
-            .execute()
+        guard let text else { return }
+        // Was a raw, standalone write straight to Supabase -- never touched
+        // viewModel.myPost (the card this same step immediately renders) and
+        // posted no notification, so the comment silently didn't appear until
+        // the page was next reopened, and Profile never found out at all.
+        // updateReviewText already does both correctly.
+        await viewModel.updateReviewText(text)
     }
 
     /// The user's own rating rendered as a regular feed post card, with an
