@@ -122,41 +122,42 @@ class DiscoveryViewModel {
         // already uses (see its load()).
         isLoading = false
 
-        // Spotify/Apple Music and Discovery/Recommendations are independent of each other --
-        // Discovery moved to web's own /api/discovery + /api/recommendations a while back and no
-        // longer needs Spotify/Apple Music seed artists (see reloadDiscoverySections' own
-        // loaders), but this kept waiting for the music-service fetch to finish first anyway,
-        // stacking two full network legs in series (measured live: ~6s Spotify+Apple Music, THEN
-        // ~6s Discovery on top of it -- ~12s total for a cold Add-tab visit). Merged into one
-        // wave; each still has its own hasXData-based guard so a retry only re-fetches what's
-        // actually missing, same as before.
+        // Spotify/Apple Music/Recently-Listened-resolution vs. Discovery/Recommendations are two
+        // fully independent chains -- Discovery moved to web's own /api/discovery +
+        // /api/recommendations a while back and no longer needs Spotify/Apple Music seed artists
+        // (see reloadDiscoverySections' own loaders). Run as two concurrent `async let` chains
+        // instead of interleaved task groups: confirmed live 2026-09-21 that putting Discovery's
+        // FIRST attempt in the same group as loadSpotify/loadAppleMusic (an earlier version of this
+        // fix only separated out Discovery's *retry*) still let "Recently Listened" sit blocked on
+        // Discovery's first attempt finishing (~6s) even though its own dependency — the
+        // recently-played lists — was ready seconds earlier, since a task group only completes once
+        // ALL its members do. Two independent chains, each internally sequential where it has a real
+        // dependency (Spotify/Apple Music -> resolveRecentlyPlayedIfNeeded; Discovery -> its own
+        // retry), removes the false dependency between the two chains entirely -- "Recently Listened"
+        // now starts resolving the moment loadSpotify/loadAppleMusic finish, full stop, regardless of
+        // how long Discovery takes on either attempt.
+        async let discoveryChain: Void = {
+            if !hasDiscoveryData { await reloadDiscoverySections() }
+            // One retry if discovery/recommendations came back empty -- loadDiscovery/
+            // loadRecommendations/loadRatedArtists each silently swallow a failed fetch (network
+            // blip, timeout, or cold-launch contention with Home/Quest's own concurrent queries) as
+            // "no data" rather than surfacing an error, so `hasDiscoveryData` false here is far more
+            // likely a transient failure than a real empty state (popular/trending are global feeds,
+            // not personalized -- they're essentially never genuinely empty). Without this, the user
+            // was stuck seeing only Spotify's locally-cached "Your Top Artists" (immune to this
+            // failure -- see loadSpotify) until a manual pull-to-refresh. Same "optional fetch, one
+            // retry" pattern already used by TasteViewModel/MixLibraryViewModel for this exact shape
+            // of bug.
+            if !hasDiscoveryData { await reloadDiscoverySections() }
+        }()
+
         await withTaskGroup(of: Void.self) { g in
             if !hasSpotifyData    { g.addTask { await self.loadSpotify() } }
             if !hasAppleMusicData { g.addTask { await self.loadAppleMusic() } }
-            if !hasDiscoveryData  { g.addTask { await self.reloadDiscoverySections() } }
         }
-        // One retry if discovery/recommendations came back empty -- loadDiscovery/
-        // loadRecommendations/loadRatedArtists each silently swallow a failed fetch (network
-        // blip, timeout, or cold-launch contention with Home/Quest's own concurrent queries) as
-        // "no data" rather than surfacing an error, so `hasDiscoveryData` false here is far more
-        // likely a transient failure than a real empty state (popular/trending are global feeds,
-        // not personalized -- they're essentially never genuinely empty). Without this, the user
-        // was stuck seeing only Spotify's locally-cached "Your Top Artists" (immune to this
-        // failure -- see loadSpotify) until a manual pull-to-refresh. Same "optional fetch, one
-        // retry" pattern already used by TasteViewModel/MixLibraryViewModel for this exact shape
-        // of bug.
-        //
-        // Runs concurrently with resolveRecentlyPlayedIfNeeded(), not sequentially before it --
-        // that one only needs the recently-played lists loadSpotify/loadAppleMusic already
-        // populated in the wave above, it has no dependency on Discovery at all. Confirmed live
-        // 2026-09-21: sequencing them meant "Recently Listened" sat waiting on an entire *unrelated*
-        // Discovery retry (a real extra network round trip, ~6s per the comment above) even though
-        // its own data was ready seconds earlier -- exactly the "why did this take 10+ seconds when
-        // everything else appeared immediately" symptom the user reported.
-        await withTaskGroup(of: Void.self) { g in
-            if !hasDiscoveryData { g.addTask { await self.reloadDiscoverySections() } }
-            g.addTask { await self.resolveRecentlyPlayedIfNeeded() }
-        }
+        await resolveRecentlyPlayedIfNeeded()
+
+        await discoveryChain
         prefetchDiscoveryCovers()
     }
 
