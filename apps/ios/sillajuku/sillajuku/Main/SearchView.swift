@@ -83,11 +83,22 @@ class DiscoveryViewModel {
     var blockedArtists: Set<String> = []
 
     // Spotify/Apple "Recently Listened" resolved against the catalog -- see
-    // resolveRecentlyPlayedIfNeeded() below. Rendered via the same albumScroll/DiscoveryAlbumCard
-    // every other section uses (proper cover size, add button, context menu) instead of the old
-    // raw-metadata row that couldn't offer any of that since it had no Release until tap.
+    // resolveRecentlyPlayedIfNeeded() below. Apple's row still renders directly from this via
+    // albumScroll/DiscoveryAlbumCard; Spotify's row instead renders from the raw `recentlyPlayed`
+    // list above (recentlyPlayedPreviewScroll) so it appears the instant loadSpotify() finishes,
+    // not gated on this resolution -- recentlyPlayedReleases and resolvedPreviewCache below both
+    // still get populated from it, just used differently (see each call site's own comment).
     var recentlyPlayedReleases: [Release] = []
     var appleMusicRecentlyPlayedReleases: [Release] = []
+
+    // Keyed by SpotifyAlbumDisplay.id -- once an item resolves to a real Release (via the
+    // background resolveRecentlyPlayedIfNeeded() below, or a user's own tap through
+    // ResolvingAlbumView), recentlyPlayedPreviewScroll switches that item over to the full
+    // DiscoveryAlbumCard treatment (rate button, type label, direct navigation, no loading
+    // screen) instead of the raw preview card -- confirmed live 2026-09-21 the user expected a
+    // resolved item to "act as all other items" from then on, not re-show the loading screen or
+    // stay missing those UI elements on every subsequent tap.
+    var resolvedPreviewCache: [String: Release] = [:]
 
     var isLoading = true
     var needsSpotifyReconnect = false  // no cached data AND token is gone
@@ -175,21 +186,33 @@ class DiscoveryViewModel {
         guard !hasResolvedRecentlyPlayed else { return }
         guard !recentlyPlayed.isEmpty || !appleMusicRecentlyPlayed.isEmpty else { return }
         hasResolvedRecentlyPlayed = true
+        let spotifyItems = Array(recentlyPlayed.prefix(24))
         async let spotifyMatches = Self.resolveCatalogMatches(
-            Array(recentlyPlayed.prefix(24)).map { (name: $0.name, artist: $0.artistName) }
+            spotifyItems.map { (name: $0.name, artist: $0.artistName) }
         )
         async let appleMatches = Self.resolveCatalogMatches(
             appleMusicRecentlyPlayed.map { (name: $0.name, artist: $0.artistName) }
         )
-        recentlyPlayedReleases = await spotifyMatches
-        appleMusicRecentlyPlayedReleases = await appleMatches
+        let spotifyResolved = await spotifyMatches
+        recentlyPlayedReleases = spotifyResolved.compactMap { $0 }
+        appleMusicRecentlyPlayedReleases = (await appleMatches).compactMap { $0 }
+        // Feeds recentlyPlayedPreviewScroll's per-item cache check -- an item that resolves here,
+        // in the background, upgrades to the full DiscoveryAlbumCard treatment (and skips
+        // ResolvingAlbumView's loading screen entirely) the moment this finishes, often before
+        // the user has even looked at the row.
+        for (item, release) in zip(spotifyItems, spotifyResolved) {
+            if let release { resolvedPreviewCache[item.id] = release }
+        }
     }
 
     // Batches concurrency at 8 rather than firing every lookup at once -- confirmed elsewhere
     // this session (the web sitemap's pagination fetch) that a burst of many simultaneous
     // PostgREST requests can silently drop results from otherwise-valid concurrent requests in
     // the same batch. Preserves input order (task completion order isn't submission order).
-    private static func resolveCatalogMatches(_ items: [(name: String, artist: String)]) async -> [Release] {
+    // Returns one entry per input item (nil for an unmatched one), not just the compacted matches
+    // -- callers that need to know WHICH item resolved to WHICH release (resolvedPreviewCache
+    // below) need that alignment; callers that only want the matched list can compactMap it.
+    private static func resolveCatalogMatches(_ items: [(name: String, artist: String)]) async -> [Release?] {
         var resolved = [Int: Release]()
         var i = 0
         while i < items.count {
@@ -205,7 +228,7 @@ class DiscoveryViewModel {
             }
             i += 8
         }
-        return (0..<items.count).compactMap { resolved[$0] }
+        return (0..<items.count).map { resolved[$0] }
     }
 
     // Same matching logic as SearchView's own fetchRelease (tuned live against real misses --
@@ -768,7 +791,7 @@ struct SearchView: View {
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
             .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
-            .navigationDestination(for: RecentlyPlayedDestination.self) { ResolvingAlbumView(item: $0) }
+            .navigationDestination(for: RecentlyPlayedDestination.self) { ResolvingAlbumView(item: $0, discoveryVM: discoveryVM) }
             .navigationDestination(isPresented: $showQuickAdd) {
                 QuickAddView(discoveryVM: discoveryVM, onGoToSettings: onGoToSettings)
             }
@@ -1361,20 +1384,34 @@ struct SearchView: View {
     // still see what you recently played whether you've rated it or not (was silently dropping
     // already-rated albums, e.g. one rated 4 days before ever showing up here, when this was
     // switched onto the shared component).
-    // Renders raw Spotify/Apple Music data directly (SpotifyAlbumDisplay), not a resolved
-    // Release -- see the call site's comment (discoveryView) for why. RecentlyPlayedPreviewCard
-    // is deliberately simpler than DiscoveryAlbumCard (no rate button/checkmark overlay): we
-    // don't know a real release id or rating status for an unresolved item yet.
+    // Renders raw Spotify/Apple Music data directly (SpotifyAlbumDisplay) for anything not yet
+    // resolved -- see the call site's comment (discoveryView) for why. Once
+    // discoveryVM.resolvedPreviewCache has a real Release for an item (populated by the
+    // background resolveRecentlyPlayedIfNeeded(), or by a previous tap through
+    // ResolvingAlbumView), that item switches to the exact same DiscoveryAlbumCard/NavigationLink
+    // treatment every other section uses -- rate button, type label, direct navigation, no
+    // loading screen -- instead of staying on the stripped-down preview forever. Confirmed live
+    // 2026-09-21: without this, a resolved item re-showed the loading screen and lacked those UI
+    // elements on every single tap, not just the first.
     private func recentlyPlayedPreviewScroll(_ items: [SpotifyAlbumDisplay]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 12) {
                 ForEach(items) { item in
-                    NavigationLink(value: RecentlyPlayedDestination(
-                        name: item.name, artist: item.artistName, imageUrl: item.imageUrl
-                    )) {
-                        RecentlyPlayedPreviewCard(name: item.name, artist: item.artistName, imageUrl: item.imageUrl)
+                    if let release = discoveryVM.resolvedPreviewCache[item.id] {
+                        let checked = sessionRatedIds.contains(release.id) || ratedReleaseIds.contains(release.id)
+                        NavigationLink(value: release) {
+                            DiscoveryAlbumCard(release: release, isRated: checked)
+                        }
+                        .buttonStyle(.plain)
+                        .albumContextMenu(release)
+                    } else {
+                        NavigationLink(value: RecentlyPlayedDestination(
+                            id: item.id, name: item.name, artist: item.artistName, imageUrl: item.imageUrl
+                        )) {
+                            RecentlyPlayedPreviewCard(name: item.name, artist: item.artistName, imageUrl: item.imageUrl)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 16)
@@ -1602,8 +1639,11 @@ struct ArtistDestination: Hashable {
 
 // Same idea as ArtistDestination(artistId: nil, ...) above, for albums: pushed with just
 // Spotify's raw name/artist/cover, resolved against the catalog on appear by ResolvingAlbumView
-// instead of up front -- see recentlyPlayedPreviewScroll's comment for why.
+// instead of up front -- see recentlyPlayedPreviewScroll's comment for why. `id` matches the
+// source SpotifyAlbumDisplay.id, needed so ResolvingAlbumView can write a successful resolution
+// back into DiscoveryViewModel.resolvedPreviewCache under the right key.
 struct RecentlyPlayedDestination: Hashable {
+    let id: String
     let name: String
     let artist: String
     let imageUrl: String?
@@ -1611,9 +1651,13 @@ struct RecentlyPlayedDestination: Hashable {
 
 // Mirrors ArtistPageView's own artistId == nil resolution pattern for albums: shown immediately
 // with just Spotify's raw data while resolving in the background, behind its own loading state,
-// rather than blocking the row's appearance on every item resolving up front.
+// rather than blocking the row's appearance on every item resolving up front. `discoveryVM` is
+// passed through (not read some other way) so a successful resolution can be written back to
+// resolvedPreviewCache -- without that, this same item would re-show this loading screen and
+// lack DiscoveryAlbumCard's rate button/type label on every subsequent tap, not just the first.
 struct ResolvingAlbumView: View {
     let item: RecentlyPlayedDestination
+    let discoveryVM: DiscoveryViewModel
 
     @State private var resolvedRelease: Release?
     @State private var notFound = false
@@ -1660,8 +1704,13 @@ struct ResolvingAlbumView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            resolvedRelease = await DiscoveryViewModel.fetchRelease(name: item.name, artist: item.artist)
-            if resolvedRelease == nil { notFound = true }
+            let release = await DiscoveryViewModel.fetchRelease(name: item.name, artist: item.artist)
+            resolvedRelease = release
+            if let release {
+                discoveryVM.resolvedPreviewCache[item.id] = release
+            } else {
+                notFound = true
+            }
         }
     }
 }
