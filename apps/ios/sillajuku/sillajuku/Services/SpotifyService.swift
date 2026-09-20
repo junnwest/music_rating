@@ -378,15 +378,17 @@ enum SpotifyService {
                 ))
             }
         }
-        if albums.isEmpty {
-            // Distinguishes, for the first time, the three ways this can end
-            // up empty: genuinely zero items in the response, every item
-            // present but failing individual decode (LenientPlayItem.value
-            // nil for all of them), or every item decoding but being a
-            // podcast/local-file with no track+album to build a row from.
-            let rawCount = response.items.count
-            let decodedCount = response.items.compactMap(\.value).count
-            SentrySDK.capture(message: "SpotifyService.recently-played: 200 OK, 0 albums after filtering (raw items=\(rawCount), individually-decoded=\(decodedCount))")
+        // Reported every time now, not just when the final count is zero -- confirmed live
+        // 2026-09-21 that a suspiciously LOW-but-nonzero count (1, when the user expected several)
+        // needs the same raw-vs-final visibility a fully empty result already got two rounds ago.
+        // Distinguishes: genuinely few items in Spotify's own response (rawCount itself low),
+        // items present but failing individual decode (rawCount > decodedCount), or items decoding
+        // fine but being a podcast/local-file/duplicate with nothing to show (decodedCount >
+        // albums.count).
+        let rawCount = response.items.count
+        let decodedCount = response.items.compactMap(\.value).count
+        if albums.count < rawCount {
+            SentrySDK.capture(message: "SpotifyService.recently-played: 200 OK, \(albums.count) albums after filtering (raw items=\(rawCount), individually-decoded=\(decodedCount))")
         }
         return albums
     }
