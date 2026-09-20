@@ -36,8 +36,11 @@ async function refreshAccessToken(refreshToken: string): Promise<{ access_token:
   return data.access_token ? data : null;
 }
 
+// medium_term (~6 months), not short_term (~4 weeks) -- matches SpotifyService.swift's
+// topArtists(), widened 2026-09-21 per explicit request after short_term returned 0 items for a
+// real account whose listening just hadn't been active in the last few weeks specifically.
 async function fetchTopArtists(accessToken: string): Promise<SpotifyArtistDisplay[]> {
-  const res = await fetch('https://api.spotify.com/v1/me/top/artists?limit=10&time_range=short_term', {
+  const res = await fetch('https://api.spotify.com/v1/me/top/artists?limit=10&time_range=medium_term', {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) return [];

@@ -342,7 +342,12 @@ enum SpotifyService {
     }
 
     static func topArtists(token: String, limit: Int = 10) async -> [SpotifyArtistDisplay] {
-        guard let url = URL(string: "\(baseURL)/me/top/artists?limit=\(limit)&time_range=short_term") else { return [] }
+        // medium_term (~6 months), not short_term (~4 weeks) -- confirmed live 2026-09-21 that
+        // short_term genuinely returned 0 items for an account with real, established listening
+        // history just because it hadn't been active in the last few weeks specifically.
+        // medium_term trades some "what you're into right now" freshness for showing real data
+        // to far more accounts, per explicit user request.
+        guard let url = URL(string: "\(baseURL)/me/top/artists?limit=\(limit)&time_range=medium_term") else { return [] }
         var req = URLRequest(url: url)
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
@@ -366,13 +371,13 @@ enum SpotifyService {
 
         if parsed.items.isEmpty {
             // Structurally successful (200, decoded fine) but zero artists --
-            // real, legitimate Spotify behavior for time_range=short_term
-            // when there isn't enough ~4-week-recent listening activity, NOT
-            // a bug by itself. Logged anyway (once) since the last two
-            // rounds of the "3 rows only" investigation need to actually
-            // confirm this is what's happening rather than infer it from the
+            // can still legitimately happen even at time_range=medium_term
+            // for an account with very little Spotify listening history at
+            // all, NOT a bug by itself. Logged anyway since the "3 rows
+            // only" investigation needed exactly this kind of visibility to
+            // confirm what's happening rather than infer it from the
             // absence of a failure capture.
-            SentrySDK.capture(message: "SpotifyService.top/artists: 200 OK, 0 items (time_range=short_term)")
+            SentrySDK.capture(message: "SpotifyService.top/artists: 200 OK, 0 items (time_range=medium_term)")
         }
         return parsed.items.map { SpotifyArtistDisplay(id: $0.id, name: $0.name, imageUrl: $0.imageUrl) }
     }
