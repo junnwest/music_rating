@@ -770,6 +770,11 @@ enum FeedTab: Hashable { case explore, following }
 struct HomeView: View {
     var viewModel: HomeViewModel
     let scrollToTopTrigger: UUID
+    // The user's manual rating precision (0.5 half-star / 0.1 decimal) -- was never threaded
+    // this far before, so every rate button on this tab silently used FlowerRateControl's own
+    // 0.5 default regardless of the account's actual setting. See FeedCard below for where it
+    // actually reaches the button.
+    let ratingStep: Double
     let onOwnProfileTap: () -> Void
 
     @State private var activeTab: FeedTab = .explore
@@ -1058,7 +1063,8 @@ struct HomeView: View {
             onNotInterested: { await viewModel.notInterested(item: item) },
             onOwnProfileTap: onOwnProfileTap,
             myScore: viewModel.myScores[item.releases.id],
-            onMyScoreChange: { viewModel.myScores[item.releases.id] = $0 }
+            onMyScoreChange: { viewModel.myScores[item.releases.id] = $0 },
+            ratingStep: ratingStep
         )
     }
 
@@ -1305,6 +1311,11 @@ struct FeedCard: View {
     /// that flower's morph instead of appearing as an unrelated new view.
     /// nil (the normal case, every other caller) opts out entirely.
     var matchedGeometryNamespace: Namespace.ID? = nil
+    /// The user's manual rating precision -- appended at the end (rather than nearer
+    /// myScore/onMyScoreChange, which it's logically related to) so every existing call site
+    /// stays valid without reordering; defaults to 0.5 only as a last-resort fallback, every
+    /// real caller should pass the account's actual setting.
+    var ratingStep: Double = 0.5
 
     @State private var activeSheet: CardSheet?
     @State private var showBlockConfirm = false
@@ -1549,6 +1560,7 @@ struct FeedCard: View {
                         AlbumRateButton(
                             release: item.releases.asRelease,
                             initialScore: myScore,
+                            ratingStep: ratingStep,
                             onScoreChange: onMyScoreChange,
                             size: 26
                         )
@@ -1954,5 +1966,5 @@ private struct ReportSheet: View {
 }
 
 #Preview {
-    HomeView(viewModel: HomeViewModel(), scrollToTopTrigger: UUID(), onOwnProfileTap: {})
+    HomeView(viewModel: HomeViewModel(), scrollToTopTrigger: UUID(), ratingStep: 0.5, onOwnProfileTap: {})
 }

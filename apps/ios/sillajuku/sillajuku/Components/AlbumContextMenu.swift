@@ -1,6 +1,13 @@
 import SwiftUI
 import Supabase
 
+// Nested local types aren't allowed inside a generic type's methods (AlbumContextMenu
+// is generic over ExtraItems), so this decode target has to live at file scope.
+private struct RatingStepRow: Decodable {
+    let manualRatingStep: Double?
+    enum CodingKeys: String, CodingKey { case manualRatingStep = "manual_rating_step" }
+}
+
 // Shared long-press quick actions for bare album cover art (grids, carousels,
 // chart rows) -- surfaces that today require navigating all the way into
 // AlbumDetailView just to rate or save something. Not used on full post
@@ -97,6 +104,10 @@ struct AlbumContextMenu<ExtraItems: View>: ViewModifier {
     @State private var artistDestination: ArtistDestination? = nil
     @State private var didMarkNotInterested = false
     @State private var pendingShare: PendingShare? = nil
+    // Attached to bare cover art on many unrelated screens -- simpler for this
+    // modifier to load its own copy of the setting than to thread a param
+    // through every attachment site.
+    @State private var ratingStep: Double = 0.5
 
     private var shareURL: URL { URL(string: "https://sillajuku.com/album/\(release.id.uuidString)")! }
 
@@ -141,11 +152,12 @@ struct AlbumContextMenu<ExtraItems: View>: ViewModifier {
             }
             .sensoryFeedback(.success, trigger: didMarkNotInterested)
             .sheet(isPresented: $showManualSheet) {
-                ManualRatingSheet(release: release, existingScore: $quickScore) { score in
+                ManualRatingSheet(release: release, existingScore: $quickScore, ratingStep: ratingStep) { score in
                     guard let score else { return }
                     Task { await AlbumQuickRate.saveManualScore(releaseGroupId: release.id, score: score) }
                 }
             }
+            .task { await loadRatingStep() }
             .sheet(isPresented: $showMixPicker) {
                 MixPickerView(releaseId: release.id, releaseTitle: release.displayTitle)
                     .presentationDetents([.medium, .large])
@@ -162,6 +174,15 @@ struct AlbumContextMenu<ExtraItems: View>: ViewModifier {
     private func openRateSheet() {
         quickScore = nil
         showManualSheet = true
+    }
+
+    private func loadRatingStep() async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        if let p: RatingStepRow = try? await supabase.from("profiles")
+            .select("manual_rating_step").eq("id", value: userId)
+            .single().execute().value {
+            ratingStep = p.manualRatingStep ?? 0.5
+        }
     }
 
     /// Shares the album itself, not a rating of it -- this modifier has no

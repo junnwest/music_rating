@@ -858,7 +858,7 @@ struct SearchView: View {
             .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
             .navigationDestination(for: RecentlyPlayedDestination.self) { ResolvingAlbumView(item: $0, discoveryVM: discoveryVM) }
             .navigationDestination(isPresented: $showQuickAdd) {
-                QuickAddView(discoveryVM: discoveryVM, onGoToSettings: onGoToSettings)
+                QuickAddView(discoveryVM: discoveryVM, ratingStep: userRatingStep, onGoToSettings: onGoToSettings)
             }
             .sheet(item: $quickRateRelease) { release in
                 ManualRatingSheet(
@@ -930,6 +930,10 @@ struct SearchView: View {
             .execute()
             .value {
             userRatingStep = p.manualRatingStep ?? 0.5
+            // bottomGenreVM was constructed at SearchView's own init time, before this load
+            // could possibly have finished -- keep its copy in sync now that the real value
+            // is known, same reasoning as ratingStep's own comment on QuickAddViewModel.
+            bottomGenreVM.ratingStep = userRatingStep
         }
     }
 
@@ -1133,7 +1137,7 @@ struct SearchView: View {
                                 let pr = songParentRelease(song)
                                 let rated = ratedReleaseIds.contains(song.releases.id)
                                 NavigationLink(value: pr) {
-                                    SongRow(song: song, isRated: rated)
+                                    SongRow(song: song, isRated: rated, ratingStep: userRatingStep)
                                 }
                                 .buttonStyle(.plain)
                                 .albumContextMenu(pr)
@@ -1494,7 +1498,7 @@ struct SearchView: View {
                     if let release = discoveryVM.resolvedPreviewCache[item.id] {
                         let checked = sessionRatedIds.contains(release.id) || ratedReleaseIds.contains(release.id)
                         NavigationLink(value: release) {
-                            DiscoveryAlbumCard(release: release, isRated: checked)
+                            DiscoveryAlbumCard(release: release, isRated: checked, ratingStep: userRatingStep)
                         }
                         .buttonStyle(.plain)
                         .albumContextMenu(release)
@@ -1524,7 +1528,7 @@ struct SearchView: View {
                     // checkmark rather than a misleading "add" button.
                     let checked = sessionRatedIds.contains(release.id) || ratedReleaseIds.contains(release.id)
                     NavigationLink(value: release) {
-                        DiscoveryAlbumCard(release: release, isRated: checked)
+                        DiscoveryAlbumCard(release: release, isRated: checked, ratingStep: userRatingStep)
                     }
                     .buttonStyle(.plain)
                     .albumContextMenu(release)
@@ -1546,7 +1550,7 @@ struct SearchView: View {
                 let pr = songParentRelease(song)
                 let checked = sessionRatedIds.contains(pr.id)
                 NavigationLink(value: pr) {
-                    SongRow(song: song, isRated: checked)
+                    SongRow(song: song, isRated: checked, ratingStep: userRatingStep)
                 }
                 .buttonStyle(.plain)
                 .albumContextMenu(pr)
@@ -1577,6 +1581,10 @@ struct SearchView: View {
 private struct DiscoveryAlbumCard: View {
     let release: Release
     var isRated: Bool = false
+    // The user's manual rating precision -- was never threaded this far before, so this card's
+    // rate button (used across almost every Add tab section) silently used FlowerRateControl's
+    // own 0.5 default regardless of the account's actual setting.
+    var ratingStep: Double = 0.5
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -1600,7 +1608,7 @@ private struct DiscoveryAlbumCard: View {
                     .allowsHitTesting(false)
                     .padding(6)
                 } else {
-                    AlbumRateButton(release: release, size: 30)
+                    AlbumRateButton(release: release, ratingStep: ratingStep, size: 30)
                         .padding(4)
                 }
             }
@@ -1663,6 +1671,7 @@ private struct RecentlyPlayedPreviewCard: View {
 struct SongRow: View {
     let song: SongResult
     var isRated: Bool = false
+    var ratingStep: Double = 0.5
 
     var body: some View {
         HStack(spacing: 12) {
@@ -1706,7 +1715,7 @@ struct SongRow: View {
             } else {
                 // Keyed on the song's *parent release*, not the individual recording --
                 // this row has never rated the song itself, only quick-added its album.
-                AlbumRateButton(release: song.releases.asRelease, size: 30)
+                AlbumRateButton(release: song.releases.asRelease, ratingStep: ratingStep, size: 30)
             }
         }
         .padding(.horizontal, 16)
@@ -1841,6 +1850,10 @@ enum ArtistCommunityDisplayMode { case list, posts }
 struct ArtistPageView: View {
     let artist: ArtistDestination
 
+    // Reached from many unrelated screens -- simpler for this leaf destination
+    // to load its own copy of the setting than to thread a param through
+    // every one of those callers.
+    @State private var ratingStep: Double = 0.5
     @State private var releases:       [Release]     = []
     @State private var songs:          [ArtistSong]  = []
     @State private var communityAvg:   Double?        = nil
@@ -1965,6 +1978,7 @@ struct ArtistPageView: View {
                 .onDisappear { if songNavTarget?.id == target.id { songNavTarget = nil } }
         }
         .task { await load() }
+        .task { await loadRatingStep() }
     }
 
     /// Avatar/name/stat-tiles/"you rated" hero. Was permanently fixed at the top
@@ -2078,7 +2092,8 @@ struct ArtistPageView: View {
                 ForEach(list) { release in
                     ArtistReleaseRow(release: release,
                                      communityScore: releaseScores[release.id],
-                                     userScore: myRatings[release.id])
+                                     userScore: myRatings[release.id],
+                                     ratingStep: ratingStep)
                 }
             }
         }
@@ -2096,7 +2111,7 @@ struct ArtistPageView: View {
                 .frame(maxWidth: .infinity).padding(.top, 40)
         } else {
             ForEach(songs) { song in
-                ArtistSongRow(song: song, artistName: artist.name) {
+                ArtistSongRow(song: song, artistName: artist.name, ratingStep: ratingStep) {
                     guard let albumId = song.albumId else { return }
                     let release = Release(
                         id: albumId, title: song.albumTitle, artist: artist.name,
@@ -2175,6 +2190,19 @@ struct ArtistPageView: View {
         .background(Color.sjSurface)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.sjBorder, lineWidth: 1))
+    }
+
+    private func loadRatingStep() async {
+        guard let userId = supabase.auth.currentUser?.id else { return }
+        struct P: Decodable {
+            let manualRatingStep: Double?
+            enum CodingKeys: String, CodingKey { case manualRatingStep = "manual_rating_step" }
+        }
+        if let p: P = try? await supabase.from("profiles")
+            .select("manual_rating_step").eq("id", value: userId)
+            .single().execute().value {
+            ratingStep = p.manualRatingStep ?? 0.5
+        }
     }
 
     private func load() async {
@@ -2848,6 +2876,7 @@ struct ArtistPageView: View {
 private struct ArtistSongRow: View {
     let song: ArtistSong
     let artistName: String
+    var ratingStep: Double = 0.5
     let onTap: () -> Void
 
     // Built here (not just inside onTap's nav-target closure) so `SongRateButton`
@@ -2891,7 +2920,7 @@ private struct ArtistSongRow: View {
                     scoreBadge(avg, color: Color.sjAmber)
                 }
                 if let release {
-                    SongRateButton(track: track, release: release, initialScore: song.myScore, size: 30)
+                    SongRateButton(track: track, release: release, initialScore: song.myScore, ratingStep: ratingStep, size: 30)
                 }
             }
             .padding(.horizontal, 16).padding(.vertical, 14)
@@ -2915,6 +2944,7 @@ private struct ArtistReleaseRow: View {
     let release:        Release
     let communityScore: Double?
     let userScore:      Double?
+    var ratingStep:     Double = 0.5
 
     private var year: String? {
         guard let d = release.releaseDate, d.count >= 4 else { return nil }
@@ -2957,7 +2987,7 @@ private struct ArtistReleaseRow: View {
                 // proportionally) is designed to read correctly at any size, where
                 // ScoreBadge's glass ring + flower watermark only holds together near its
                 // own default size -- shrinking it to fit a row was what looked off.
-                AlbumRateButton(release: release, initialScore: userScore, size: 30)
+                AlbumRateButton(release: release, initialScore: userScore, ratingStep: ratingStep, size: 30)
             }
             .padding(.horizontal, 16).padding(.vertical, 14)
             .contentShape(Rectangle())

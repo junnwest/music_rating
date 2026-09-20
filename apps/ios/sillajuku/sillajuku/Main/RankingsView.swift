@@ -427,6 +427,10 @@ class ChartsViewModel {
 
 struct ChartsView: View {
     var viewModel: ChartsViewModel
+    // The user's manual rating precision -- was never threaded this far before, so every rate
+    // button on this tab silently used FlowerRateControl's own 0.5 default regardless of the
+    // account's actual setting.
+    let ratingStep: Double
     @Namespace private var chartBubbleNamespace
 
     var body: some View {
@@ -442,7 +446,7 @@ struct ChartsView: View {
             .navigationDestination(for: ChartDetailType.self)      { ChartDetailView(type: $0) }
             .navigationDestination(for: ChartGenre.self)           { GenreDetailView(genre: $0) }
             .navigationDestination(for: RankingDetailDestination.self) { _ in
-                RankingDetailView()
+                RankingDetailView(ratingStep: ratingStep)
             }
         }
         .task { await viewModel.load() }
@@ -523,7 +527,8 @@ struct ChartsView: View {
                             title: "Most Rated",
                             entries: viewModel.mostRated,
                             destination: ChartDetailType.mostRated,
-                            showScore: false
+                            showScore: false,
+                            ratingStep: ratingStep
                         )
                         .padding(.bottom, 30)
 
@@ -557,14 +562,16 @@ struct ChartsView: View {
                         SongHorizSection(
                             title: "Top Rated",
                             entries: viewModel.topRatedSongs,
-                            showScore: true
+                            showScore: true,
+                            ratingStep: ratingStep
                         )
                         .padding(.bottom, 30)
 
                         SongHorizSection(
                             title: "Most Rated Songs",
                             entries: viewModel.mostRatedSongs,
-                            showScore: false
+                            showScore: false,
+                            ratingStep: ratingStep
                         )
                         .padding(.bottom, 30)
 
@@ -668,6 +675,7 @@ private struct SongHorizSection: View {
     let title: LocalizedStringKey
     let entries: [ChartSongEntry]
     let showScore: Bool
+    var ratingStep: Double = 0.5
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -686,7 +694,7 @@ private struct SongHorizSection: View {
                     HStack(spacing: 10) {
                         ForEach(Array(entries.prefix(20).enumerated()), id: \.element.id) { idx, entry in
                             NavigationLink(value: entry.asRelease) {
-                                HorizSongCard(rank: idx + 1, entry: entry, showScore: showScore)
+                                HorizSongCard(rank: idx + 1, entry: entry, showScore: showScore, ratingStep: ratingStep)
                             }
                             .buttonStyle(.plain)
                             .albumContextMenu(entry.asRelease)
@@ -703,6 +711,7 @@ private struct HorizSongCard: View {
     let rank: Int
     let entry: ChartSongEntry
     let showScore: Bool
+    var ratingStep: Double = 0.5
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -743,7 +752,7 @@ private struct HorizSongCard: View {
                 VStack {
                     Spacer()
                     HStack {
-                        AlbumRateButton(release: entry.asRelease, size: 26)
+                        AlbumRateButton(release: entry.asRelease, ratingStep: ratingStep, size: 26)
                             .padding(5)
                         Spacer(minLength: 0)
                     }
@@ -1146,6 +1155,7 @@ private struct RankingBlock: View {
 // MARK: - RankingDetailView
 
 struct RankingDetailView: View {
+    let ratingStep: Double
     @State private var entries:    [ChartEntry] = []
     @State private var isLoading   = true
     @State private var selectedGenre:   String? = nil
@@ -1462,6 +1472,7 @@ private struct ChartHorizSection: View {
     let entries: [ChartEntry]
     let destination: ChartDetailType
     let showScore: Bool
+    var ratingStep: Double = 0.5
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1489,7 +1500,7 @@ private struct ChartHorizSection: View {
                     HStack(spacing: 10) {
                         ForEach(Array(entries.prefix(20).enumerated()), id: \.element.id) { idx, entry in
                             NavigationLink(value: entry.asRelease) {
-                                HorizAlbumCard(rank: idx + 1, entry: entry, showScore: showScore)
+                                HorizAlbumCard(rank: idx + 1, entry: entry, showScore: showScore, ratingStep: ratingStep)
                             }
                             .buttonStyle(.plain)
                             .albumContextMenu(entry.asRelease)
@@ -1506,6 +1517,7 @@ private struct HorizAlbumCard: View {
     let rank: Int
     let entry: ChartEntry
     let showScore: Bool
+    var ratingStep: Double = 0.5
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -1544,7 +1556,7 @@ private struct HorizAlbumCard: View {
                 VStack {
                     Spacer()
                     HStack {
-                        AlbumRateButton(release: entry.asRelease, size: 26)
+                        AlbumRateButton(release: entry.asRelease, ratingStep: ratingStep, size: 26)
                             .padding(5)
                         Spacer(minLength: 0)
                     }
@@ -2212,5 +2224,5 @@ struct CoverThumb: View {
 // MARK: - Preview
 
 #Preview {
-    ChartsView(viewModel: ChartsViewModel())
+    ChartsView(viewModel: ChartsViewModel(), ratingStep: 0.5)
 }

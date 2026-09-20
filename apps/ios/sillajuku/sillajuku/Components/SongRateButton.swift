@@ -10,6 +10,10 @@ struct SongRateButton: View {
     let release: Release
     var initialScore: Double? = nil
     var externalScore: Binding<Double?>? = nil
+    // The user's manual rating precision -- was previously not even a parameter here (not just
+    // unused, there was no way for a caller to pass it at all), so every song rating in the app
+    // silently used FlowerRateControl's own 0.5 default regardless of the account's setting.
+    var ratingStep: Double = 0.5
     var onScoreChange: ((Double?) -> Void)? = nil
     var size: CGFloat = 30
 
@@ -19,11 +23,13 @@ struct SongRateButton: View {
     private var shown: Double? { externalScore?.wrappedValue ?? internalShown }
 
     init(track: TrackEntry, release: Release, initialScore: Double? = nil,
-         externalScore: Binding<Double?>? = nil, onScoreChange: ((Double?) -> Void)? = nil, size: CGFloat = 30) {
+         externalScore: Binding<Double?>? = nil, ratingStep: Double = 0.5,
+         onScoreChange: ((Double?) -> Void)? = nil, size: CGFloat = 30) {
         self.track = track
         self.release = release
         self.initialScore = initialScore
         self.externalScore = externalScore
+        self.ratingStep = ratingStep
         self.onScoreChange = onScoreChange
         self.size = size
         self._internalShown = State(initialValue: initialScore)
@@ -37,10 +43,11 @@ struct SongRateButton: View {
                 size: size,
                 currentScore: shown,
                 accessibilityLabelText: String(format: String(localized: "Rate %@"), track.title),
+                ratingStep: ratingStep,
                 onDelete: shown != nil ? { Task { await saveModal(nil) } } : nil
             )
             .sheet(isPresented: $modalOpen) {
-                TrackRatingSheet(track: track, release: release, existingScore: shown) { _, s in
+                TrackRatingSheet(track: track, release: release, existingScore: shown, ratingStep: ratingStep) { _, s in
                     Task { await saveModal(s) }
                 }
             }

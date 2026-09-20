@@ -53,6 +53,11 @@ final class QuickAddViewModel {
     // Set when a rate write actually fails (rate()/rateSong() roll the optimistic score
     // back at the same time) -- surfaced as an alert rather than failing silently.
     var rateErrorMessage: String?
+    // The user's manual rating precision -- a live, settable property (not just an init
+    // parameter) because both callers (QuickAddView, SearchView's bottomGenreVM) construct
+    // this before their own copy of the real value has necessarily finished loading;
+    // defaults to 0.5 only as a placeholder until whoever owns this instance updates it.
+    var ratingStep: Double = 0.5
 
     // MARK: Genre explorer ("Explore other genres")
 
@@ -324,6 +329,7 @@ final class QuickAddViewModel {
 private struct QuickAddRow: View {
     let release: Release
     let ratedScore: Double?
+    var ratingStep: Double = 0.5
     let onRate: (Double) -> Void
 
     @State private var showPrecise = false
@@ -354,13 +360,14 @@ private struct QuickAddRow: View {
                 onRequestPrecise: { showPrecise = true },
                 size: 34,
                 currentScore: ratedScore,
-                accessibilityLabelText: String(format: String(localized: "Rate %@"), release.title)
+                accessibilityLabelText: String(format: String(localized: "Rate %@"), release.title),
+                ratingStep: ratingStep
             )
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .sheet(isPresented: $showPrecise) {
-            ManualRatingSheet(release: release, existingScore: .constant(ratedScore)) { score in
+            ManualRatingSheet(release: release, existingScore: .constant(ratedScore), ratingStep: ratingStep) { score in
                 if let score { onRate(score) }
             }
         }
@@ -370,6 +377,7 @@ private struct QuickAddRow: View {
 private struct QuickAddSongRow: View {
     let song: SongCandidate
     let ratedScore: Double?
+    var ratingStep: Double = 0.5
     let onRate: (Double) -> Void
 
     @State private var showPrecise = false
@@ -398,13 +406,14 @@ private struct QuickAddSongRow: View {
                 onRequestPrecise: { showPrecise = true },
                 size: 34,
                 currentScore: ratedScore,
-                accessibilityLabelText: String(format: String(localized: "Rate %@"), song.title)
+                accessibilityLabelText: String(format: String(localized: "Rate %@"), song.title),
+                ratingStep: ratingStep
             )
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .sheet(isPresented: $showPrecise) {
-            TrackRatingSheet(track: song.asTrackEntry, release: song.displayRelease, existingScore: ratedScore) { _, score in
+            TrackRatingSheet(track: song.asTrackEntry, release: song.displayRelease, existingScore: ratedScore, ratingStep: ratingStep) { _, score in
                 if let score { onRate(score) }
             }
         }
@@ -421,8 +430,10 @@ struct QuickAddView: View {
     @Environment(\.dismiss) private var dismiss
     private let onGoToSettings: () -> Void
 
-    init(discoveryVM: DiscoveryViewModel, onGoToSettings: @escaping () -> Void) {
-        _vm = State(initialValue: QuickAddViewModel(discoveryVM: discoveryVM))
+    init(discoveryVM: DiscoveryViewModel, ratingStep: Double, onGoToSettings: @escaping () -> Void) {
+        let newVM = QuickAddViewModel(discoveryVM: discoveryVM)
+        newVM.ratingStep = ratingStep
+        _vm = State(initialValue: newVM)
         self.onGoToSettings = onGoToSettings
     }
 
@@ -514,7 +525,7 @@ struct QuickAddView: View {
                     LazyVStack(spacing: 4) {
                         Color.clear.frame(height: 0).id("album-top")
                         ForEach(vm.albumCandidates) { release in
-                            QuickAddRow(release: release, ratedScore: vm.ratedScores[release.id]) { score in
+                            QuickAddRow(release: release, ratedScore: vm.ratedScores[release.id], ratingStep: vm.ratingStep) { score in
                                 withAnimation(.easeOut(duration: 0.2)) {
                                     vm.rate(release, score: score)
                                 }
@@ -565,7 +576,7 @@ struct QuickAddView: View {
                     LazyVStack(spacing: 4) {
                         Color.clear.frame(height: 0).id("song-top")
                         ForEach(vm.songCandidates) { song in
-                            QuickAddSongRow(song: song, ratedScore: vm.ratedScores[song.id]) { score in
+                            QuickAddSongRow(song: song, ratedScore: vm.ratedScores[song.id], ratingStep: vm.ratingStep) { score in
                                 withAnimation(.easeOut(duration: 0.2)) {
                                     vm.rateSong(song, score: score)
                                 }
@@ -766,7 +777,7 @@ struct GenreExplorerView: View {
             } else if let items = vm.genreShelves[genre], !items.isEmpty {
                 VStack(spacing: 0) {
                     ForEach(items) { release in
-                        QuickAddRow(release: release, ratedScore: vm.ratedScores[release.id]) { score in
+                        QuickAddRow(release: release, ratedScore: vm.ratedScores[release.id], ratingStep: vm.ratingStep) { score in
                             withAnimation(.easeOut(duration: 0.2)) {
                                 vm.rate(release, score: score)
                             }

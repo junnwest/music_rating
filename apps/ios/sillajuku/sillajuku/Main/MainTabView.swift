@@ -123,6 +123,7 @@ struct MainTabView: View {
                     HomeView(
                         viewModel: homeVM,
                         scrollToTopTrigger: homeScrollTrigger,
+                        ratingStep: profileVM.profile?.ratingStep ?? 0.5,
                         onOwnProfileTap: { goTo(.profile) }
                     )
                     .tabItem {
@@ -133,7 +134,7 @@ struct MainTabView: View {
 
                     Group {
                         if visitedTabs.contains(.rankings) {
-                            ChartsView(viewModel: chartsVM)
+                            ChartsView(viewModel: chartsVM, ratingStep: profileVM.profile?.ratingStep ?? 0.5)
                         } else {
                             Color.clear
                         }
