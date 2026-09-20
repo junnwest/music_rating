@@ -77,6 +77,8 @@ struct AlbumRateButton: View {
                     onConflict: "user_id,release_group_id")
             .execute()
         onScoreChange?(s)
+        NotificationCenter.default.post(name: .ratingChanged,
+            object: RatingChangeInfo(releaseGroupId: release.id, score: s))
     }
 
     private func saveModal(_ s: Double?) async {
@@ -101,5 +103,7 @@ struct AlbumRateButton: View {
                 .execute()
         }
         onScoreChange?(s)
+        NotificationCenter.default.post(name: .ratingChanged,
+            object: RatingChangeInfo(releaseGroupId: release.id, score: s))
     }
 }

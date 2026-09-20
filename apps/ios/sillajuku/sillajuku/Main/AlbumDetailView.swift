@@ -9,6 +9,16 @@ extension Notification.Name {
     static let mixShared         = Notification.Name("com.sillajuku.mixShared")
 }
 
+/// Payload for `.ratingChanged` when the change is a known album (release_group)
+/// rating -- lets a listener update just the one matching row/cache entry instead
+/// of a blanket reload. `score == nil` means the rating was removed. Older posts
+/// that predate this payload (e.g. track-level rating changes) still post with
+/// `object: nil`, which listeners that only care about album-level changes ignore.
+struct RatingChangeInfo {
+    let releaseGroupId: UUID
+    let score: Double?
+}
+
 // MARK: - Shared hero background
 
 /// Full-bleed blurred cover art, used behind both `AlbumDetailView` and
@@ -339,7 +349,8 @@ class AlbumDetailViewModel {
             }
             await reloadCommunityStats(releaseGroupId: releaseGroupId, currentUserId: userId)
             await loadMyPost()
-            NotificationCenter.default.post(name: .ratingChanged, object: nil)
+            NotificationCenter.default.post(name: .ratingChanged,
+                object: RatingChangeInfo(releaseGroupId: releaseGroupId, score: score))
         } catch {
             userScore = old
         }

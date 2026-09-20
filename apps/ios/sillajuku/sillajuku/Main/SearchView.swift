@@ -900,6 +900,20 @@ struct SearchView: View {
         .onReceive(NotificationCenter.default.publisher(for: .sjAppleMusicAuthorized)) { _ in
             Task { await discoveryVM.refreshAppleMusicIfNeeded() }
         }
+        // Same release can legitimately appear in several sections at once (Popular,
+        // New Releases, a genre cluster, search results...) -- a rating made from any
+        // one of them (including a bare AlbumRateButton drag, which used to update only
+        // its own row) needs to flip every other row's "already rated" state too.
+        .onReceive(NotificationCenter.default.publisher(for: .ratingChanged)) { note in
+            guard let info = note.object as? RatingChangeInfo else { return }
+            if info.score != nil {
+                sessionRatedIds.insert(info.releaseGroupId)
+                ratedReleaseIds.insert(info.releaseGroupId)
+            } else {
+                sessionRatedIds.remove(info.releaseGroupId)
+                ratedReleaseIds.remove(info.releaseGroupId)
+            }
+        }
     }
 
     private func quickAddTapped() {
@@ -963,7 +977,8 @@ struct SearchView: View {
             .execute()
         sessionRatedIds.insert(release.id)
         ratedReleaseIds.insert(release.id)
-        NotificationCenter.default.post(name: .ratingChanged, object: nil)
+        NotificationCenter.default.post(name: .ratingChanged,
+            object: RatingChangeInfo(releaseGroupId: release.id, score: score))
     }
 
     // MARK: - Search bar

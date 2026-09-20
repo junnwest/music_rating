@@ -92,6 +92,7 @@ final class QuickAddViewModel {
 
     private let pageSize = 20
     private let artistNames: [String]
+    private var ratingObserver: NSObjectProtocol?
 
     /// Ordered by confidence, not deduped into a Set -- Spotify top artists (strongest
     /// "probably knows this artist" signal) first, then Spotify recently-played, then Apple
@@ -116,6 +117,23 @@ final class QuickAddViewModel {
         for a in discoveryVM.appleMusicLibraryAlbums { add(a.artistName) }
         for a in discoveryVM.ratedArtists { add(a) }
         artistNames = ordered
+
+        // This VM's own rate(_:score:) already updates ratedScores locally, but the same
+        // album can also appear in a completely different QuickAddViewModel instance
+        // (QuickAddView's own `vm` vs. SearchView's `bottomGenreVM` are separate instances)
+        // or get rated from elsewhere entirely (a bare AlbumRateButton row, the album detail
+        // page, the long-press context menu). Without this, those rows keep showing the
+        // rate control after the album's already been rated somewhere else on the Add tab.
+        ratingObserver = NotificationCenter.default.addObserver(
+            forName: .ratingChanged, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let info = note.object as? RatingChangeInfo else { return }
+            self?.ratedScores[info.releaseGroupId] = info.score
+        }
+    }
+
+    deinit {
+        if let ratingObserver { NotificationCenter.default.removeObserver(ratingObserver) }
     }
 
     // MARK: Albums
