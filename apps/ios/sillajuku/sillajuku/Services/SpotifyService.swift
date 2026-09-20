@@ -1,5 +1,6 @@
 import Foundation
 import Supabase
+import Sentry
 
 // MARK: - Response models
 
@@ -115,7 +116,18 @@ enum SpotifyService {
     // providerToken only appears in the initial OAuth callback URL.
     // The auth observer in sillajukuApp.swift captures it at sign-in time.
     static func validToken() async -> String? {
-        guard let token = providerToken() else { return nil }
+        guard let token = providerToken() else {
+            // No token saved in UserDefaults at all -- distinct from "saved
+            // but expired" (tokenIsLive below), and was previously silent.
+            // Confirmed live 2026-09-21: a fresh Spotify signup's DB columns
+            // (spotify_artists/spotify_recently_played) stayed null even
+            // though the account's identity WAS genuinely linked server-side
+            // (verified directly against auth.identities) -- meaning
+            // whichever of these two guards is actually firing needs to be
+            // distinguishable, not both collapsing into the same silent nil.
+            SentrySDK.capture(message: "SpotifyService.validToken: no provider token in UserDefaults")
+            return nil
+        }
         return await tokenIsLive(token) ? token : nil
     }
 
@@ -124,8 +136,26 @@ enum SpotifyService {
         guard let url = URL(string: "\(baseURL)/me") else { return false }
         var req = URLRequest(url: url)
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        guard let (_, response) = try? await URLSession.shared.data(for: req) else { return false }
-        return (response as? HTTPURLResponse)?.statusCode == 200
+        guard let (data, response) = try? await URLSession.shared.data(for: req) else {
+            SentrySDK.capture(message: "SpotifyService.tokenIsLive: request failed (network)")
+            return false
+        }
+        let status = (response as? HTTPURLResponse)?.statusCode
+        if status != 200 {
+            captureSpotifyAPIFailure(endpoint: "me (liveness check)", status: status, data: data)
+        }
+        return status == 200
+    }
+
+    // Centralizes what gets attached to the Sentry event for every Spotify
+    // API failure path above -- status code plus a truncated response body
+    // (Spotify's own error JSON, e.g. {"error":{"status":403,"message":
+    // "..."}}, is the one thing that actually distinguishes an expired
+    // token from an insufficient-scope grant from a genuine empty result,
+    // none of which were ever visible before this).
+    private static func captureSpotifyAPIFailure(endpoint: String, status: Int?, data: Data?) {
+        let bodySnippet = data.flatMap { String(data: $0, encoding: .utf8) }?.prefix(300)
+        SentrySDK.capture(message: "SpotifyService.\(endpoint) failed: status=\(status.map(String.init) ?? "none") body=\(bodySnippet ?? "nil")")
     }
 
     // MARK: - DB persistence (survives reinstalls and device switches)
@@ -219,10 +249,25 @@ enum SpotifyService {
         var req = URLRequest(url: url)
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
-        guard let (data, _) = try? await URLSession.shared.data(for: req),
-              let response = try? decoder.decode(SpotifyTopArtistsResponse.self, from: data) else { return [] }
+        // Both this and recentlyPlayed() used to discard the HTTP response
+        // entirely on failure (`try? data(for:)` + `try? decode`, no way to
+        // tell a 401/expired-token from a 403/insufficient-scope from a
+        // genuinely-empty 200) -- confirmed live 2026-09-21: a fresh Spotify
+        // signup's DB columns stayed null forever (spotify_data_updated_at)
+        // with zero visibility into why. Logging the status/body on any
+        // non-200 is the only way the next occurrence gives a real answer
+        // instead of another guess.
+        guard let (data, response) = try? await URLSession.shared.data(for: req) else {
+            captureSpotifyAPIFailure(endpoint: "top/artists", status: nil, data: nil)
+            return []
+        }
+        let status = (response as? HTTPURLResponse)?.statusCode
+        guard status == 200, let parsed = try? decoder.decode(SpotifyTopArtistsResponse.self, from: data) else {
+            captureSpotifyAPIFailure(endpoint: "top/artists", status: status, data: data)
+            return []
+        }
 
-        return response.items.map { SpotifyArtistDisplay(id: $0.id, name: $0.name, imageUrl: $0.imageUrl) }
+        return parsed.items.map { SpotifyArtistDisplay(id: $0.id, name: $0.name, imageUrl: $0.imageUrl) }
     }
 
     static func recentlyPlayed(token: String, limit: Int = 50) async -> [SpotifyAlbumDisplay] {
@@ -230,8 +275,15 @@ enum SpotifyService {
         var req = URLRequest(url: url)
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
-        guard let (data, _) = try? await URLSession.shared.data(for: req),
-              let response = try? decoder.decode(SpotifyRecentlyPlayedResponse.self, from: data) else { return [] }
+        guard let (data, urlResponse) = try? await URLSession.shared.data(for: req) else {
+            captureSpotifyAPIFailure(endpoint: "recently-played", status: nil, data: nil)
+            return []
+        }
+        let recentStatus = (urlResponse as? HTTPURLResponse)?.statusCode
+        guard recentStatus == 200, let response = try? decoder.decode(SpotifyRecentlyPlayedResponse.self, from: data) else {
+            captureSpotifyAPIFailure(endpoint: "recently-played", status: recentStatus, data: data)
+            return []
+        }
 
         // Deduplicate albums by id, preserving order (most recent first); skip podcasts (nil track or nil album)
         var seen = Set<String>()
