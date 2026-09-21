@@ -96,6 +96,25 @@ final class TasteViewModel {
         isLoading = false
     }
 
+    /// `load()` only ever runs once per session (`hasLoaded`) -- fine for the report
+    /// itself, but it means the lock screen's "X of 25" count never moved again after
+    /// the user rated more albums elsewhere in the app, even though the count query
+    /// itself is cheap and instant. Called from `.ratingChanged` while still locked;
+    /// a no-op once unlocked, since the lock screen (and its count) is no longer shown.
+    func refreshRatingCount() async {
+        guard !isUnlocked, let user = supabase.auth.currentUser else { return }
+        async let albumTask = fetchCount(table: "ratings", userId: user.id)
+        async let songTask  = fetchCount(table: "track_ratings", userId: user.id)
+        guard let albumCount = await albumTask, let songCount = await songTask else { return }
+        ratingCount = albumCount + songCount
+        // Crossed the threshold right now -- fetch the report and unlock in place
+        // instead of leaving the user stuck on a stale lock screen until their next visit.
+        if isUnlocked && report == nil {
+            report = await WebAPI.get("/api/taste/profile", authed: true)
+            if report != nil { hasLoaded = true }
+        }
+    }
+
     /// Manually bypasses the route's 60s cache -- the **only** path allowed to
     /// pass `refresh=1` (mirrors web's `page.tsx` Refresh button, and its
     /// explicit warning not to auto-bypass on every load, which burned Vercel
@@ -145,6 +164,9 @@ struct TasteView: View {
             .navigationBarHidden(true)
         }
         .task { await viewModel.load() }
+        .onReceive(NotificationCenter.default.publisher(for: .ratingChanged)) { _ in
+            Task { await viewModel.refreshRatingCount() }
+        }
     }
 
     private var tasteLoader: some View {

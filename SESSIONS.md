@@ -90,6 +90,15 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-21 (Mac) — Fixed the Taste tab's locked-state "X of 25 rated" count not updating after rating more albums elsewhere in the app.**
+
+- **User reported**: the Taste tab's locked page (shown below the 25-rating unlock threshold) doesn't update its progress count fast enough.
+- **Investigated first (read-only)** — same bug class as the last several rounds: `TasteViewModel.ratingCount` (`Main/TasteView.swift:31`) is a real, cheap, live `count: .exact` query against `ratings`/`track_ratings` (identical pattern to `ProfileViewModel.fetchRatedTotal`) — no DB-side lag at all. But it's only ever fetched once per session, gated by `load()`'s own `hasLoaded` latch, and `TasteView.swift` had zero `.ratingChanged` observers anywhere (confirmed via grep) — the exact same "no live-sync, only refetches on next full appear" shape as the Profile/Search/Quick Add bugs fixed earlier today, just not yet applied here.
+- **Fixed**: added `TasteViewModel.refreshRatingCount()` — re-runs just the cheap album+song count query (not the full `load()`, and not the report fetch) whenever `.ratingChanged` fires while still locked; no-ops once unlocked. `TasteView` now observes `.ratingChanged` and calls it. As a direct extension of the same fix: if a rating pushes the count past the 25 threshold, it now also fetches the report and unlocks in place, instead of leaving the user stuck on a stale lock screen with the wrong "X of 25" math until their next visit.
+- **Verified via clean simulator build** — **BUILD SUCCEEDED**.
+
+---
+
 **2026-09-21 (Mac) — Added a "Connect Spotify/Apple Music" nudge + the genre explorer to the bottom of the Add tab itself, not just inside Quick Add's empty state.**
 
 - **User asked specifically**: display "Connect Spotify or Apple Music" (only for whichever isn't connected) and "Explore other genres" at the bottom of the main Add tab. Both already existed, but only inside `QuickAddView`'s empty/seedless state — a screen most users with SOME data would never see.
