@@ -39,6 +39,17 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **🔵 SESSION CLOSE (2026-09-21, Mac) — Long round of iOS bug-fix/polish work, all committed and pushed. Build is 19. Full round-by-round detail in the entries directly below and in SESSIONS.md (2026-09-21).**
+> **Needs the user's own live test before being trusted** (build-verified only, several after prior attempts in the same area failed live despite looking correct on paper):
+> - `FlowerRateControl`'s scroll-vs-accidental-rating fix (hold-delay approach, `LongPressGesture(0.12).sequenced(before: DragGesture)`) — two earlier attempts at this specific bug failed live testing before landing here.
+> - Profile's new own-post ⋯ menu (`ProfilePostCard`/`ProfileSongPostCard` — Share/Edit/Add to Mix/Edit Comment/Delete) — a real feature build, not yet exercised end-to-end.
+> - Profile's List-mode row sizing tweak (smaller covers, tighter padding) — cosmetic-only, lower risk.
+> **Known-open, deliberately left unfixed** (flagged to the user each time, not silently skipped):
+> - Holding the flower button also opens the album row's long-press context menu underneath it — two fix attempts both failed live (one did nothing, one broke the rating gesture itself); reverted rather than risk a third guess. The scroll-vs-rate fix itself is unaffected.
+> - Quick Add's Songs tab rows still aren't tappable through to a detail page (only the Albums tab was fixed) — `SongCandidate` has no real `release_group_id` to navigate with; needs a backend RPC change.
+> - `AlbumRateButton`/`SearchView.saveQuickRating` still swallow rating-write failures via `try?` rather than checking success — the exact bug class already fixed once elsewhere (`AlbumContextMenu.saveManualScore`), just not here yet.
+> - `SongDetailViewModel.updateTrackReviewText` and `AlbumDetailViewModel.rateTrack`'s delete branch have the same missing-`.ratingChanged`-notification gap already fixed for album-level ratings/comments this session, just not for track-level ones.
+>
 > **▶ IN PROGRESS (2026-09-21, Mac) — Build bumped to 19; Profile's post-view cards gained the same own-post ⋯ menu Home's cards have. Full detail in SESSIONS.md (2026-09-21).**
 > Build number 18 → 19 (both configs), plain bump. Separately: Profile's own "post" display-mode cards (`ProfilePostCard`/`ProfileSongPostCard`) had no own-post ⋯ menu at all — only a hidden long-press "Delete Rating." Investigated first, then built real parity with `FeedCard`'s existing own-post menu (Share/Edit/Add to Mix/Edit Comment/Delete), not just a button: reused `ManualRatingSheet`/`TrackRatingSheet`/`CommentEditSheet`/`MixPickerView`/`SharePreviewSheet` throughout rather than new UI. New `ProfileViewModel` methods `editRating`/`editSongRating`/`editComment`/`editSongComment` (album writes ride the existing `.ratingChanged`/`applyRatingChange` pipeline for free; song writes patch `songRatings` locally since that notification is release-group-scoped only). New item-scoped `@State` sheets on `ProfileView` (Profile's list can have many ratings in play at once, unlike the single-item pages this pattern was copied from). Removed the now-redundant long-press-only delete once the real menu offered it too. Verified via clean simulator build — **BUILD SUCCEEDED**. **Committed and pushed** (`5296ba3`); not yet live-tested by the user given the scope.
 >
