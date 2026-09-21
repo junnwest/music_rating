@@ -359,7 +359,20 @@ async function ingestEditionFromPrefetched(
   if (editions.length === 0) return 0;
   const rep = pickRepresentative(editions);
   // Cover Art Archive front art (hotlink, never cached). MB's flag tells us if it exists.
-  const coverUrl = rep.coverFront ? `https://coverartarchive.org/release/${rep.id}/front-500` : null;
+  //
+  // RELEASE-GROUP, not release. /release/{id} returns the art of THAT ONE PRESSING — a Japanese
+  // edition, a vinyl reissue, a deluxe variant — whichever pickRepresentative happened to choose.
+  // /release-group/{id} returns the cover MusicBrainz editors DESIGNATED as representing the album,
+  // i.e. the one people recognise. Using the per-release endpoint is why the catalog is full of
+  // alternative covers: 347,614 rows (77.7% of all cover art) came in this way, and a 30-album
+  // sample found 15 of them resolve to a different image than the release-group cover.
+  // Sampled 30/30 release-group lookups returned 200. It CAN 404 when a group has no designated
+  // front even though an edition does; HEAD-checking here would add a ~1.5s CAA redirect per
+  // release group and is not worth it inside the ingest loop, so repairing that residue is the
+  // covers backfill's job (it already HEAD-checks) rather than ingest's.
+  const coverUrl = rep.coverFront
+    ? `https://coverartarchive.org/release-group/${rg.id}/front-500`
+    : null;
 
   const releaseId = randomUUID();
   const { error: upErr } = await db.from('releases').upsert({
