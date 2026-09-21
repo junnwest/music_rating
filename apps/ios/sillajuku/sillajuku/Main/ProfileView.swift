@@ -1881,7 +1881,7 @@ struct RatingListRow: View {
     var body: some View {
         HStack(spacing: 14) {
             CoverImage(url: coverUrl, cornerRadius: 8)
-                .frame(width: 58, height: 58)
+                .frame(width: 50, height: 50)
                 .accessibilityHidden(true) // title text alongside already describes it
 
             VStack(alignment: .leading, spacing: 2) {
@@ -1931,7 +1931,7 @@ struct RatingListRow: View {
                     .frame(width: 11, height: 11).foregroundStyle(Color.sjMuted)
             }
         }
-        .padding(.horizontal, 16).padding(.vertical, 14)
+        .padding(.horizontal, 16).padding(.vertical, 10)
         .contentShape(Rectangle())
     }
 }
@@ -1996,7 +1996,9 @@ struct ExpandableRatingListRow: View {
                             .foregroundStyle(Color.sjMuted)
                     }
                 }
-                .padding(.leading, 88)
+                // 16 (row's own leading padding) + 50 (cover) + 14 (row spacing) --
+                // keeps the expanded comment text aligned under the title above it.
+                .padding(.leading, 80)
                 .padding(.trailing, 16)
                 .padding(.bottom, 12)
                 .transition(.opacity.combined(with: .move(edge: .top)))

@@ -4,6 +4,14 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-21 (Mac) — Profile's list-view rows made more compact: less vertical padding, slightly smaller covers.**
+
+- **User asked**: on Profile's List display mode, decrease the vertical padding between rows and shrink the covers slightly.
+- **Fixed in `RatingListRow`** (`Main/ProfileView.swift`, the row both the plain list and the comment-expandable list use): cover `58×58` → `50×50`, row vertical padding `14` → `10`. Also updated `ExpandableRatingListRow`'s expanded-comment leading indent (`88` → `80`) to match the smaller cover, so the comment text stays aligned under the title above it instead of drifting out of alignment.
+- **Verified via clean simulator build** — **BUILD SUCCEEDED**.
+
+---
+
 **2026-09-21 (Mac) — iOS build number bumped to 19, and Profile's post-view cards gained the same ⋯ own-post menu Home's post cards already have.**
 
 - **Build bump**: `CURRENT_PROJECT_VERSION` 18 → 19 in both Debug and Release configs (`sillajuku.xcodeproj/project.pbxproj`) — plain build-number increment, `MARKETING_VERSION` (1.0) untouched. Verified via clean simulator build.
