@@ -279,6 +279,83 @@ class ProfileViewModel {
         }
     }
 
+    /// Re-rating an already-rated album via the ⋯ menu's Edit action. A `nil`
+    /// score (the sheet's own "Remove Rating") is routed to `deleteRating` rather
+    /// than duplicating that logic here. On a real score, `AlbumQuickRate
+    /// .saveManualScore` posts `.ratingChanged` with the real payload, which
+    /// `applyRatingChange` (already wired below) picks up to refresh this exact
+    /// row -- no local patch needed here, unlike the song version below.
+    func editRating(_ item: UserRating, score: Double?) async {
+        guard let score else {
+            await deleteRating(.album(item))
+            return
+        }
+        _ = await AlbumQuickRate.saveManualScore(releaseGroupId: item.releases.id, score: score)
+    }
+
+    /// Same, for a song rating. `track_ratings` has no `applyRatingChange`-style
+    /// wiring (the shared `.ratingChanged` payload is release-group scoped only),
+    /// so this patches `songRatings` locally after a successful write instead.
+    func editSongRating(_ item: SongRatingRow, score: Double?) async {
+        guard let score else {
+            await deleteRating(.song(item))
+            return
+        }
+        let ok = await AlbumQuickRate.saveManualTrackScore(recordingId: item.recordingId, score: score)
+        guard ok, let idx = songRatings.firstIndex(where: { $0.recordingId == item.recordingId }) else { return }
+        songRatings[idx] = SongRatingRow(
+            ratingId: item.ratingId, recordingId: item.recordingId, score: score,
+            reviewText: item.reviewText, trackTitle: item.trackTitle,
+            release: item.release, createdAt: item.createdAt
+        )
+    }
+
+    /// Comment-only edit for an album rating -- same explicit-null encode as
+    /// `AlbumDetailViewModel.updateReviewText` (so clearing the comment writes
+    /// SQL NULL, not just omits the key), reused here since Profile has no
+    /// per-item `AlbumDetailViewModel` instance of its own to delegate to.
+    func editComment(_ item: UserRating, text: String?) async {
+        struct Update: Encodable {
+            let reviewText: String?
+            enum CodingKeys: String, CodingKey { case reviewText = "review_text" }
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                if let reviewText { try container.encode(reviewText, forKey: .reviewText) }
+                else { try container.encodeNil(forKey: .reviewText) }
+            }
+        }
+        _ = try? await supabase.from("ratings")
+            .update(Update(reviewText: text))
+            .eq("id", value: item.id)
+            .execute()
+        NotificationCenter.default.post(name: .ratingChanged,
+            object: RatingChangeInfo(releaseGroupId: item.releases.id, score: item.score))
+    }
+
+    /// Same, for a song rating's comment -- patches `songRatings` locally, same
+    /// reasoning as `editSongRating`.
+    func editSongComment(_ item: SongRatingRow, text: String?) async {
+        struct Update: Encodable {
+            let reviewText: String?
+            enum CodingKeys: String, CodingKey { case reviewText = "review_text" }
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                if let reviewText { try container.encode(reviewText, forKey: .reviewText) }
+                else { try container.encodeNil(forKey: .reviewText) }
+            }
+        }
+        _ = try? await supabase.from("track_ratings")
+            .update(Update(reviewText: text))
+            .eq("id", value: item.ratingId)
+            .execute()
+        guard let idx = songRatings.firstIndex(where: { $0.recordingId == item.recordingId }) else { return }
+        songRatings[idx] = SongRatingRow(
+            ratingId: item.ratingId, recordingId: item.recordingId, score: item.score,
+            reviewText: text, trackTitle: item.trackTitle,
+            release: item.release, createdAt: item.createdAt
+        )
+    }
+
     func load() async {
         guard !hasLoaded else { return }
         guard let user = supabase.auth.currentUser else { isLoading = false; return }
@@ -821,6 +898,15 @@ struct ProfileView: View {
     @State private var ratingTypeFilter:   RatingTypeFilter = .all
     @State private var ratingDisplayMode:  RatingDisplayMode = .posts
     @State private var pendingDeleteItem:  ProfileRatedItem? = nil
+    // Own-post ⋯ menu plumbing for the "post" display mode's rating cards --
+    // mirrors AlbumDetailView/SongDetailView's identical own-rating menu
+    // (Share/Edit/Add to Mix/Edit Comment/Delete), item-scoped (unlike those
+    // single-item pages) since this list can show many ratings at once.
+    @State private var editRatingTarget:   ProfileRatedItem? = nil
+    @State private var editCommentTarget:  ProfileRatedItem? = nil
+    @State private var mixPickerTarget:    UserRating? = nil
+    @State private var pendingShare:       PendingShare? = nil
+    @State private var isPreparingShare    = false
     // Explicit path (rather than a plain NavigationStack {}) so a mix share
     // posted from deep in this stack (e.g. Lists tab -> MixDetailView) can be
     // popped back to the profile root once the share succeeds.
@@ -1369,7 +1455,87 @@ struct ProfileView: View {
             } message: {
                 Text("This will permanently remove this rating.")
             }
+            .sheet(item: $editRatingTarget) { item in
+                switch item {
+                case .album(let rating):
+                    ManualRatingSheet(
+                        release: rating.releases.asRelease,
+                        existingScore: .constant(rating.score),
+                        ratingStep: viewModel.profile?.ratingStep ?? 0.5
+                    ) { score in
+                        Task { await viewModel.editRating(rating, score: score) }
+                    }
+                case .song(let song):
+                    TrackRatingSheet(
+                        track: TrackEntry(trackId: song.recordingId, position: 0,
+                                          title: song.trackTitle ?? "", durationMs: nil,
+                                          artists: song.release.artist),
+                        release: song.release.asRelease,
+                        existingScore: song.score,
+                        ratingStep: viewModel.profile?.ratingStep ?? 0.5
+                    ) { _, score in
+                        Task { await viewModel.editSongRating(song, score: score) }
+                    }
+                }
+            }
+            .sheet(item: $editCommentTarget) { item in
+                switch item {
+                case .album(let rating):
+                    CommentEditSheet(
+                        release: rating.releases.asRelease,
+                        initialComment: rating.reviewText ?? ""
+                    ) { text in
+                        Task { await viewModel.editComment(rating, text: text) }
+                        editCommentTarget = nil
+                    }
+                    .presentationBackground(Color.sjCream)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+                case .song(let song):
+                    CommentEditSheet(
+                        release: song.release.asRelease,
+                        trackTitle: song.trackTitle,
+                        initialComment: song.reviewText ?? ""
+                    ) { text in
+                        Task { await viewModel.editSongComment(song, text: text) }
+                        editCommentTarget = nil
+                    }
+                    .presentationBackground(Color.sjCream)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+                }
+            }
+            .sheet(item: $mixPickerTarget) { rating in
+                MixPickerView(releaseId: rating.releases.id, releaseTitle: rating.releases.title)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(item: $pendingShare) { pending in
+                SharePreviewSheet(pending: pending)
+            }
         }
+    }
+
+    /// Mirrors AlbumDetailView/SongDetailView's own `prepareShare` -- resolves the
+    /// real data the share card needs, then opens the same preview sheet. Skips
+    /// the extra `profiles` fetch those do (Profile already has the username
+    /// cached in `viewModel.profile`).
+    private func prepareShare(for item: ProfileRatedItem) async {
+        isPreparingShare = true
+        defer { isPreparingShare = false }
+        let release = item.asRelease
+        let coverImage: UIImage? = await {
+            guard let coverUrl = item.coverUrl, let url = URL(string: coverUrl) else { return nil }
+            return try? await InstagramShare.downloadImage(from: url)
+        }()
+        pendingShare = PendingShare(
+            username: viewModel.profile?.username ?? "someone",
+            coverImages: [coverImage],
+            title: item.displayTitle,
+            subtitle: item.isSong ? "Song · " + release.displayArtist : release.typeLabel + " · " + release.displayArtist,
+            score: item.score,
+            reviewText: item.reviewText
+        )
     }
 
     // Extracted out of the posts-mode ForEach -- a switch with two multi-arg
@@ -1393,6 +1559,14 @@ struct ProfileView: View {
             commentsCount: viewModel.commentCounts[song.ratingId] ?? 0,
             isLiked: viewModel.likedSongRatingIds.contains(song.ratingId),
             onLike: { await viewModel.toggleSongLike(ratingId: song.ratingId) },
+            // Matches FeedCard/AlbumDetailView's own-post ⋯ menu (Share/Edit/Edit
+            // Comment/Delete -- songs have no "Add to Mix", mixes are album-level).
+            ownActions: SongOwnRatingMenuActions(
+                onShare: { Task { await prepareShare(for: .song(song)) } },
+                onEdit: { editRatingTarget = .song(song) },
+                onEditComment: { editCommentTarget = .song(song) },
+                onDelete: { pendingDeleteItem = .song(song) }
+            ),
             headerHandle: viewModel.profile?.username ?? "me",
             headerVerified: viewModel.profile?.isVerified == true,
             headerBadgeColor: viewModel.profile?.badgeColor,
@@ -1400,13 +1574,6 @@ struct ProfileView: View {
         )
         .padding(.horizontal, 12)
         .padding(.top, 8)
-        .contextMenu {
-            Button(role: .destructive) {
-                pendingDeleteItem = .song(song)
-            } label: {
-                Label("Delete Rating", image: "icon-trash")
-            }
-        }
     }
 
     private func ratingCard(_ rating: UserRating) -> some View {
@@ -1419,17 +1586,20 @@ struct ProfileView: View {
             headerHandle: viewModel.profile?.username ?? "me",
             headerVerified: viewModel.profile?.isVerified == true,
             headerBadgeColor: viewModel.profile?.badgeColor,
-            headerBetaTester: viewModel.profile?.isBetaTester == true
+            headerBetaTester: viewModel.profile?.isBetaTester == true,
+            // Matches FeedCard/AlbumDetailView's own-post ⋯ menu exactly (Share/
+            // Edit/Add to Mix/Edit Comment/Delete) -- see ProfilePostCard's own
+            // doc comment on `ownActions`.
+            ownActions: OwnRatingMenuActions(
+                onShare: { Task { await prepareShare(for: .album(rating)) } },
+                onEdit: { editRatingTarget = .album(rating) },
+                onAddToMix: { mixPickerTarget = rating },
+                onEditComment: { editCommentTarget = .album(rating) },
+                onDelete: { pendingDeleteItem = .album(rating) }
+            )
         )
         .padding(.horizontal, 12)
         .padding(.top, 8)
-        .contextMenu {
-            Button(role: .destructive) {
-                pendingDeleteItem = .album(rating)
-            } label: {
-                Label("Delete Rating", image: "icon-trash")
-            }
-        }
     }
 
     private func mixShareCard(_ share: MixSharePost) -> some View {
@@ -2289,6 +2459,13 @@ struct ProfilePostCard: View {
     // Only offered on someone else's post (UserProfileView) -- redundant on your
     // own ratings, which are already excluded from Quick Add via the ratings table.
     var onNotInterested: (() -> Void)? = nil
+    // Own-post management (share/edit/add to mix/edit comment/delete) -- only
+    // offered on the current user's own profile, mirroring FeedCard's identical
+    // `ownRatingActions` mechanism (Main/HomeView.swift) so a rating rendered as a
+    // "post" reads and behaves the same on Profile as it does on Home/Album detail.
+    // Mutually exclusive with `onNotInterested` in practice (never both set for the
+    // same card -- one is for someone else's profile, this is for your own).
+    var ownActions: OwnRatingMenuActions? = nil
 
     @State private var showComments = false
     @State private var showLikers = false
@@ -2302,13 +2479,22 @@ struct ProfilePostCard: View {
                 PostCardHeader(handle: handle, isVerified: headerVerified,
                                badgeColor: headerBadgeColor, isBetaTester: headerBetaTester,
                                createdAt: rating.createdAt) {
-                    if let onNotInterested {
+                    if onNotInterested != nil || ownActions != nil {
                         Menu {
-                            Button {
-                                onNotInterested()
-                                didMarkNotInterested.toggle()
-                            } label: {
-                                Label("Not Interested", image: "icon-thumbs-down")
+                            if let own = ownActions {
+                                Button { own.onShare() } label: { Label("Share", image: "icon-share") }
+                                Button { own.onEdit() } label: { Label("Edit", image: "icon-square-pen") }
+                                Button { own.onAddToMix() } label: { Label("Add to Mix", image: "icon-bookmark") }
+                                Button { own.onEditComment() } label: { Label("Edit Comment", image: "icon-message-square") }
+                                Divider()
+                                Button(role: .destructive) { own.onDelete() } label: { Label("Delete", image: "icon-trash") }
+                            } else if let onNotInterested {
+                                Button {
+                                    onNotInterested()
+                                    didMarkNotInterested.toggle()
+                                } label: {
+                                    Label("Not Interested", image: "icon-thumbs-down")
+                                }
                             }
                         } label: {
                             Image("icon-more-horizontal")
