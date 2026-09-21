@@ -106,7 +106,17 @@ struct FlowerRateControl: View {
                 // ordinary fast tap needs its own, separate, undelayed
                 // recognizer to still open the precise sheet.
                 .onTapGesture { onRequestPrecise?() }
-                .gesture(
+                // `.highPriorityGesture`, not `.gesture` -- this button is almost always
+                // layered on top of a row/card that has its own `.contextMenu` (see
+                // `.albumContextMenu`), which is ALSO fundamentally a long-press
+                // interaction. Once this gesture became a `LongPressGesture` (for the
+                // scroll-vs-rate fix above), holding on the flower started triggering
+                // both: the drag-to-rate gauge AND the row's context menu underneath it,
+                // confirmed live. `.highPriorityGesture` tells SwiftUI this view's own
+                // gesture should win over an ancestor's competing one for touches that
+                // start here, without otherwise changing the row's context menu for
+                // touches anywhere else on it (cover art, title, etc.).
+                .highPriorityGesture(
                     LongPressGesture(minimumDuration: Self.holdBeforeDrag)
                         .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .global))
                         .onChanged { value in
