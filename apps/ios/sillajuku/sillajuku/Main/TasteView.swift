@@ -830,12 +830,16 @@ private struct LoopGuardedPaging: ScrollTargetBehavior {
 /// the swipe feel snappier," but that turned out to overshoot badly: at 0.85
 /// the glide after lifting a finger decays almost instantly, so the page
 /// snap completes in a single abrupt jump instead of a smooth transition --
-/// confirmed live as "way too fast." Reverted to the system's own `.normal`
-/// preset (0.998, notably slower than even `.fast` -- these values are
-/// exponential-decay rates, so the gap between 0.99 and 0.998 is much
-/// larger than the numbers alone suggest) for the deliberate, gliding
-/// Reels/Shorts-style feel this pager was always meant to have. This
-/// doesn't fight SwiftUI's own scroll reconciliation the way a manual
+/// confirmed live as "way too fast." First reverted to the system's own
+/// `.normal` preset (0.998) -- still confirmed live as "way too fast," so
+/// pushed further still, to `0.9993`. These are exponential-decay rates
+/// applied continuously while the page glides into its settled position
+/// (not a fixed-duration animation), so small increments this close to 1.0
+/// produce a much larger jump in visual glide duration than the raw numbers
+/// suggest -- `0.9993` reads as a clearly slower, more deliberate transition
+/// than `.normal` did, without going so close to 1.0 that the page appears
+/// to drift rather than settle. This doesn't fight SwiftUI's own scroll
+/// reconciliation the way a manual
 /// `contentOffset` override did (see `LoopGuardedPaging`'s doc comment for
 /// that regression). SwiftUI's
 /// `ScrollView` exposes no modifier for `decelerationRate`, so this places
@@ -865,7 +869,7 @@ private struct PagerScrollViewFinder: UIViewRepresentable {
         var current: UIView? = view
         while let v = current {
             if let scrollView = v as? UIScrollView {
-                scrollView.decelerationRate = .normal
+                scrollView.decelerationRate = UIScrollView.DecelerationRate(rawValue: 0.9993)
                 return
             }
             current = v.superview
