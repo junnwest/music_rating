@@ -825,11 +825,19 @@ private struct LoopGuardedPaging: ScrollTargetBehavior {
     }
 }
 
-/// Sets the pager's `UIScrollView.decelerationRate` a bit more aggressive
-/// than the system's own `.fast` preset (0.99) -- a safe, partial answer to
-/// "make the swipe feel snappier" that doesn't fight SwiftUI's own scroll
-/// reconciliation the way a manual `contentOffset` override did (see
-/// `LoopGuardedPaging`'s doc comment for that regression). SwiftUI's
+/// Sets the pager's `UIScrollView.decelerationRate`. Originally tuned well
+/// below the system's own `.fast` preset (0.99) -- down to 0.85 -- to "make
+/// the swipe feel snappier," but that turned out to overshoot badly: at 0.85
+/// the glide after lifting a finger decays almost instantly, so the page
+/// snap completes in a single abrupt jump instead of a smooth transition --
+/// confirmed live as "way too fast." Reverted to the system's own `.normal`
+/// preset (0.998, notably slower than even `.fast` -- these values are
+/// exponential-decay rates, so the gap between 0.99 and 0.998 is much
+/// larger than the numbers alone suggest) for the deliberate, gliding
+/// Reels/Shorts-style feel this pager was always meant to have. This
+/// doesn't fight SwiftUI's own scroll reconciliation the way a manual
+/// `contentOffset` override did (see `LoopGuardedPaging`'s doc comment for
+/// that regression). SwiftUI's
 /// `ScrollView` exposes no modifier for `decelerationRate`, so this places
 /// an invisible, zero-size `UIView` inside the scroll content and walks its
 /// `superview` chain to find the real `UIScrollView` SwiftUI creates under
@@ -857,7 +865,7 @@ private struct PagerScrollViewFinder: UIViewRepresentable {
         var current: UIView? = view
         while let v = current {
             if let scrollView = v as? UIScrollView {
-                scrollView.decelerationRate = UIScrollView.DecelerationRate(rawValue: 0.85)
+                scrollView.decelerationRate = .normal
                 return
             }
             current = v.superview

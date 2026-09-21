@@ -110,6 +110,15 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-21 (Mac) — Slowed down the Taste tab's page-swipe transition, which an earlier round had (over-)tuned to feel "way too fast."**
+
+- **User reported**: the Taste tab's vertical page swipe is "wayyy too fast," asked to slow it down dramatically.
+- **Root cause, found immediately from the code's own history**: `PagerScrollViewFinder` (`Main/TasteView.swift`) reaches into the pager's underlying `UIScrollView` and sets `decelerationRate` — a prior round had deliberately tuned this to `0.85`, well below even the system's aggressive `.fast` preset (0.99), specifically to "make the swipe feel snappier." That overshot: `decelerationRate` values are exponential-decay rates, so the actual gap between 0.85 and the presets is far larger than the raw numbers suggest — at 0.85, the glide after lifting a finger decays almost instantly, so a page-swipe snap completes in one abrupt jump instead of a smooth transition. Exactly the reported symptom.
+- **Fixed**: reverted to `UIScrollView.DecelerationRate.normal` (0.998, the system's own slower/default preset) — restores the deliberate, gliding Reels/Shorts-style feel this pager's own design comments say it was always meant to have.
+- **Verified via clean simulator build** — **BUILD SUCCEEDED**. This is a feel/tuning change — flagged to the user that further adjustment may be needed once tried live (no single numeric preset is guaranteed to match "dramatically slower" exactly on the first try).
+
+---
+
 **2026-09-21 (Mac) — Added a "Connect Spotify/Apple Music" nudge + the genre explorer to the bottom of the Add tab itself, not just inside Quick Add's empty state.**
 
 - **User asked specifically**: display "Connect Spotify or Apple Music" (only for whichever isn't connected) and "Explore other genres" at the bottom of the main Add tab. Both already existed, but only inside `QuickAddView`'s empty/seedless state — a screen most users with SOME data would never see.
