@@ -138,6 +138,16 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-21 (Mac) — The direction-gated fix above still wasn't enough: switched the Taste tab's chart tooltips from drag-to-scrub to tap-to-reveal, which eliminates the swipe conflict entirely instead of tuning it further.**
+
+- **User reported**: swiping directly on top of the chart region still doesn't register as a page swipe, even after the previous round's fix. Asked for the entire screen to be reliably swipable.
+- **Root cause of why the previous fix wasn't sufficient**: the `minimumDistance: 10` + axis-check gating only controls what the gesture's *callback* does with the touch data — it doesn't stop the underlying `DragGesture` from engaging and competing for the touch stream in the first place, which happens the moment total movement crosses 10pt **in any direction**, not specifically horizontal. A vertical swipe that happens to cross that 10pt threshold before the axis becomes unambiguous can still cause the drag gesture to win recognition priority over the pager's own scroll gesture, even though the callback itself correctly no-ops for it.
+- **Presented two options via `AskUserQuestion`** rather than guessing at another threshold tweak: keep drag-to-scrub and attempt a more involved custom-gesture-recognizer fix (uncertain to fully resolve it, more engineering risk) vs. switch to tap-to-reveal, which sidesteps the whole conflict class since a tap has no press-and-move recognition phase to race a pan gesture over at all. **User chose tap-to-reveal.**
+- **Fixed**: `binHoverGesture` renamed to `binTapGesture` and rewritten around `SpatialTapGesture` instead of `DragGesture` — tapping a bin shows its tooltip, tapping the same one again hides it, tapping a different one switches to it. Same shared function, same three call sites (`YearChartView`/section 4, `ScoreRampChartView`/section 5, `ActivitySparkView`/section 6), still attached via `.simultaneousGesture` for safety. **Known trade-off, confirmed with the user**: the old live drag-across-bins preview is gone — each bin now needs its own tap.
+- **Verified via clean simulator build** — **BUILD SUCCEEDED**.
+
+---
+
 **2026-09-21 (Mac) — Added a "Connect Spotify/Apple Music" nudge + the genre explorer to the bottom of the Add tab itself, not just inside Quick Add's empty state.**
 
 - **User asked specifically**: display "Connect Spotify or Apple Music" (only for whichever isn't connected) and "Explore other genres" at the bottom of the main Add tab. Both already existed, but only inside `QuickAddView`'s empty/seedless state — a screen most users with SOME data would never see.

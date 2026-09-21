@@ -1917,29 +1917,33 @@ private struct BinTooltip: View {
     }
 }
 
-/// Press-and-drag-to-scrub gesture over `count` equal-width bins spanning
-/// `width` -- touch equivalent of web's pointer-hover `useBinHover`.
+/// Tap-to-reveal gesture over `count` equal-width bins spanning `width` --
+/// touch equivalent of web's pointer-hover `useBinHover`. Tapping a bin shows
+/// its tooltip; tapping the same one again hides it; tapping a different one
+/// switches to it.
 ///
-/// `minimumDistance: 10` (not 0) plus only updating `hover` once the drag's
-/// horizontal component dominates its vertical one -- same fix as
-/// `HallOfFameView`'s ring gesture (see its own doc comment): these charts
-/// sit inside the vertical page pager, and the original zero-threshold,
-/// no-axis-check version swallowed an intended page-swipe as a scrub the
-/// instant it started over a chart, even for a purely vertical swipe
-/// (confirmed live, worst on sections 4/5's year and score charts). A
-/// deliberate horizontal drag over the chart still scrubs immediately, no
-/// added delay -- a vertical swipe now reaches the pager instead. Attached
-/// via `.simultaneousGesture` at each call site (never `.gesture`, which
-/// would claim the touch exclusively away from the pager's own ScrollView).
-private func binHoverGesture(count: Int, width: CGFloat, hover: Binding<Int?>) -> some Gesture {
-    DragGesture(minimumDistance: 10)
-        .onChanged { value in
-            guard count > 0, width > 0,
-                  abs(value.translation.width) > abs(value.translation.height) else { return }
-            let i = Int((value.location.x / width) * CGFloat(count))
-            hover.wrappedValue = min(count - 1, max(0, i))
+/// Was a `DragGesture`-based press-and-drag-to-scrub (live preview while
+/// dragging across bins). Even direction-gated -- `minimumDistance: 10` +
+/// only updating `hover` once horizontal translation dominated vertical,
+/// the same fix already proven on `HallOfFameView`'s ring -- it still
+/// swallowed some intended page-swipes: that gating only controls what this
+/// gesture's *callback* does, not whether the `DragGesture` itself engages
+/// and competes for the touch in the first place, which happens the moment
+/// total movement crosses `minimumDistance` regardless of direction.
+/// Confirmed live still too unreliable ("swiping on top of the chart
+/// doesn't recognize it as a swipe"). A `SpatialTapGesture` sidesteps the
+/// whole class of conflict -- a tap has no press-and-move recognition phase
+/// to race a pan/swipe gesture over in the first place, so every part of
+/// these charts is reliably swipeable now, tap-to-reveal or not. Trade-off
+/// confirmed with the user: no more live drag-across-bins preview, just
+/// tap each bin individually.
+private func binTapGesture(count: Int, width: CGFloat, hover: Binding<Int?>) -> some Gesture {
+    SpatialTapGesture()
+        .onEnded { value in
+            guard count > 0, width > 0 else { return }
+            let i = min(count - 1, max(0, Int((value.location.x / width) * CGFloat(count))))
+            hover.wrappedValue = (hover.wrappedValue == i) ? nil : i
         }
-        .onEnded { _ in hover.wrappedValue = nil }
 }
 
 /// `1 ▓▓▓▓ 5 · label` gradient swatch stating the score ramp's scale --
@@ -2057,7 +2061,7 @@ private struct YearChartView: View {
                     }
                 }
                 .contentShape(Rectangle())
-                .simultaneousGesture(binHoverGesture(count: years.count, width: geo.size.width, hover: $hover))
+                .simultaneousGesture(binTapGesture(count: years.count, width: geo.size.width, hover: $hover))
             }
             .frame(height: 96)
             .padding(.top, 16)
@@ -2219,7 +2223,7 @@ private struct ScoreRampChartView: View {
                         }
                     }
                     .contentShape(Rectangle())
-                    .simultaneousGesture(binHoverGesture(count: bins.count, width: geo.size.width, hover: $hover))
+                    .simultaneousGesture(binTapGesture(count: bins.count, width: geo.size.width, hover: $hover))
                 }
                 .frame(height: 88)
                 .padding(.top, mean != nil ? 16 : 0)
@@ -2319,7 +2323,7 @@ private struct ActivitySparkView: View {
                 }
             }
             .contentShape(Rectangle())
-            .simultaneousGesture(binHoverGesture(count: timeline.count, width: geo.size.width, hover: $hover))
+            .simultaneousGesture(binTapGesture(count: timeline.count, width: geo.size.width, hover: $hover))
         }
         .frame(height: 52)
         .padding(.top, 4)
