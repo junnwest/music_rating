@@ -19,16 +19,24 @@ import { getDB } from './itunes-ingest-core';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 
 const db = getDB();
-const STATE = `${__dirname}/backfill-rg-covers-caa-state.json`;
 const args = process.argv.slice(2);
 const DRY = args.includes('--dry-run');
 const ALL = args.includes('--all');
 const LIMIT = (() => { const a = args.find(x => x.startsWith('--limit=')); return a ? parseInt(a.split('=')[1], 10) : Infinity; })();
+// --replace-edition: the OTHER half of this problem. mb-ingest.ts used to store the cover of ONE
+// PRESSING (coverartarchive.org/release/{releaseMbid}) rather than the release GROUP's designated
+// front, so 347,614 rows (77.7% of all cover art) show whichever edition was picked -- a Japanese
+// press, a vinyl reissue, a deluxe variant -- instead of the cover people recognise. A 30-album
+// sample found 15 resolve to a DIFFERENT image than the group cover, i.e. roughly half are wrong.
+// This mode targets those rows instead of null ones and overwrites them; the default append-only
+// behaviour (fill nulls, never touch existing art) is unchanged.
+const REPLACE_EDITION = args.includes('--replace-edition');
+const STATE_FILE = REPLACE_EDITION ? `${__dirname}/backfill-rg-covers-caa-replace-state.json` : `${__dirname}/backfill-rg-covers-caa-state.json`;
 const CONCURRENCY = 4;
 const SPACING_MS = 120; // polite pacing per request slot
 
-function loadState(): { done: string[] } { try { return existsSync(STATE) ? JSON.parse(readFileSync(STATE, 'utf8')) : { done: [] }; } catch { return { done: [] }; } }
-function saveState(s: { done: string[] }) { writeFileSync(STATE, JSON.stringify({ done: s.done }, null, 0)); }
+function loadState(): { done: string[] } { try { return existsSync(STATE_FILE) ? JSON.parse(readFileSync(STATE_FILE, 'utf8')) : { done: [] }; } catch { return { done: [] }; } }
+function saveState(s: { done: string[] }) { writeFileSync(STATE_FILE, JSON.stringify({ done: s.done }, null, 0)); }
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 /** Returns the stable front-500 release-group URL if CAA has art for this group, else null. */
@@ -37,7 +45,11 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 async function caaCover(mbid: string): Promise<{ status: 'filled' | 'none' | 'retry'; url?: string }> {
   const url = `https://coverartarchive.org/release-group/${mbid}/front-500`;
   try {
-    const res = await fetch(url, { method: 'GET', redirect: 'follow' });
+    // HEAD, not GET: we only need to know whether art EXISTS, and the URL is stored as a hotlink
+    // rather than cached. A GET downloads the whole 500px JPEG -- across 347k rows that is tens of
+    // GB of pointless transfer, and it is slower per row. Verified HEAD returns the same 200/404
+    // through CAA's redirect chain to archive.org.
+    const res = await fetch(url, { method: 'HEAD', redirect: 'follow' });
     if (res.status === 200) return { status: 'filled', url };
     if (res.status === 404) return { status: 'none' };
     return { status: 'retry' }; // 429/503/5xx
@@ -53,14 +65,17 @@ async function main() {
   const PAGE = 1000;
   let rows: { id: string; mb_release_group_id: string; title: string }[] = [];
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await db
+    let q = db
       .from('release_groups')
       .select('id, mb_release_group_id, title')
-      .is('cover_url', null)
       .not('mb_release_group_id', 'is', null)
       .in('release_group_type', types)
       .order('prestige_score', { ascending: false, nullsFirst: false })
       .range(from, from + PAGE - 1);
+    q = REPLACE_EDITION
+      ? q.like('cover_url', '%coverartarchive.org/release/%')  // wrong-endpoint rows
+      : q.is('cover_url', null);                               // classic append-only gap fill
+    const { data, error } = await q;
     if (error) { console.error('fetch error:', error.message); break; }
     if (!data?.length) break;
     rows.push(...(data as any[]));
@@ -82,8 +97,13 @@ async function main() {
       processed++;
       if (res.status === 'filled') {
         if (!DRY) {
-          const { error } = await db.from('release_groups')
-            .update({ cover_url: res.url }).eq('id', r.id).is('cover_url', null);
+          // Append-only mode keeps the is-null guard so it never races the iTunes GAPFILL lane.
+          // Replace mode must overwrite, but is still narrow: it only touches rows whose cover is
+          // an edition-endpoint CAA URL, so it can never clobber iTunes/Deezer art or a null.
+          const upd = db.from('release_groups').update({ cover_url: res.url }).eq('id', r.id);
+          const { error } = await (REPLACE_EDITION
+            ? upd.like('cover_url', '%coverartarchive.org/release/%')
+            : upd.is('cover_url', null));
           if (error) { console.warn(`  ! ${r.id}: ${error.message}`); }
         }
         filled++; doneSet.add(r.id);
