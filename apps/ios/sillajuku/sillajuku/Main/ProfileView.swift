@@ -260,6 +260,11 @@ class ProfileViewModel {
         case .album(let r):
             ratings.removeAll { $0.id == r.id }
             _ = try? await supabase.from("ratings").delete().eq("id", value: r.id).execute()
+            // Nothing else in the app knew this rating went away (e.g. the Taste tab's
+            // lock-threshold count, which sums this same table) -- this delete never
+            // posted anything at all, unlike every other rating-write path.
+            NotificationCenter.default.post(name: .ratingChanged,
+                object: RatingChangeInfo(releaseGroupId: r.releases.id, score: nil))
         case .song(let r):
             songRatings.removeAll { $0.recordingId == r.recordingId }
             _ = try? await supabase.from("track_ratings")
@@ -267,6 +272,10 @@ class ProfileViewModel {
                 .eq("user_id", value: userId)
                 .eq("recording_id", value: r.recordingId)
                 .execute()
+            // No release_group_id to attach here (this is a track-level delete), but
+            // TasteViewModel.refreshRatingCount ignores the payload and just recounts
+            // both tables, so a bare post still reaches it correctly.
+            NotificationCenter.default.post(name: .ratingChanged, object: nil)
         }
     }
 

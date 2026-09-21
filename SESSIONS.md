@@ -99,6 +99,17 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-21 (Mac) — Fixed the Taste tab not re-locking after a delete drops the rating count back below 25.**
+
+- **User reported**: at exactly 25 ratings, deleted one (down to 24) — the Taste tab should immediately lock again, but didn't.
+- **Two independent bugs, both fixed**:
+  1. The previous round's `refreshRatingCount()` fix had `guard !isUnlocked` at its top — meaning once unlocked, it became a permanent no-op for the rest of the session and could never notice a later drop back below threshold. Removed that guard; the function now always re-counts on every `.ratingChanged`, and separately handles both directions: fetches/attaches a report when crossing up into unlocked (only if one isn't already held), and clears `report`/`hasLoaded` when dropping back below threshold so a later re-unlock fetches a fresh report instead of reusing a stale one from before the delete. `TasteView`'s own branching already checks `!isUnlocked` before ever looking at `report`, so clearing `ratingCount` alone is sufficient to flip the screen back to locked.
+  2. **The likelier actual cause of what the user hit**: `ProfileViewModel.deleteRating(_:)` (the Profile tab's own "Delete Rating" action — the natural place to delete a past rating from) never posted `.ratingChanged` at all, for either the album or song case. Every other rating-write path in the app does; this one was simply missed. Fixed both branches: album deletes now post a real `RatingChangeInfo(releaseGroupId:, score: nil)`; song/track deletes post a bare notification (no release-group id to attach, but `TasteViewModel.refreshRatingCount()` ignores the payload and just recounts both tables, so it still reaches Taste correctly).
+- **Scope note**: `AlbumDetailViewModel.rateTrack(recordingId:score: nil)` (a track-rating delete reachable from within the album page's own track rows/sheet) has the identical missing-notification gap — not fixed, wasn't part of what was reported.
+- **Verified via clean simulator build** — **BUILD SUCCEEDED**.
+
+---
+
 **2026-09-21 (Mac) — Added a "Connect Spotify/Apple Music" nudge + the genre explorer to the bottom of the Add tab itself, not just inside Quick Add's empty state.**
 
 - **User asked specifically**: display "Connect Spotify or Apple Music" (only for whichever isn't connected) and "Explore other genres" at the bottom of the main Add tab. Both already existed, but only inside `QuickAddView`'s empty/seedless state — a screen most users with SOME data would never see.

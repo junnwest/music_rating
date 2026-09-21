@@ -98,20 +98,34 @@ final class TasteViewModel {
 
     /// `load()` only ever runs once per session (`hasLoaded`) -- fine for the report
     /// itself, but it means the lock screen's "X of 25" count never moved again after
-    /// the user rated more albums elsewhere in the app, even though the count query
-    /// itself is cheap and instant. Called from `.ratingChanged` while still locked;
-    /// a no-op once unlocked, since the lock screen (and its count) is no longer shown.
+    /// the user rated/unrated albums elsewhere in the app, even though the count query
+    /// itself is cheap and instant. Called from every `.ratingChanged` post, in both
+    /// directions -- NOT just while locked: a delete that drops the count back below
+    /// threshold has to be able to re-lock a currently-unlocked session, so this can't
+    /// early-return on `isUnlocked` the way an earlier version of this fix did.
     func refreshRatingCount() async {
-        guard !isUnlocked, let user = supabase.auth.currentUser else { return }
+        guard let user = supabase.auth.currentUser else { return }
         async let albumTask = fetchCount(table: "ratings", userId: user.id)
         async let songTask  = fetchCount(table: "track_ratings", userId: user.id)
         guard let albumCount = await albumTask, let songCount = await songTask else { return }
         ratingCount = albumCount + songCount
-        // Crossed the threshold right now -- fetch the report and unlock in place
-        // instead of leaving the user stuck on a stale lock screen until their next visit.
-        if isUnlocked && report == nil {
-            report = await WebAPI.get("/api/taste/profile", authed: true)
-            if report != nil { hasLoaded = true }
+
+        if isUnlocked {
+            // Crossed up into (or still) unlocked -- make sure there's a report to show;
+            // don't re-fetch one that's already there (e.g. an unrelated score edit that
+            // didn't change the count at all).
+            if report == nil {
+                report = await WebAPI.get("/api/taste/profile", authed: true)
+                if report != nil { hasLoaded = true }
+            }
+        } else {
+            // Dropped back below threshold -- clear the stale report so a later
+            // re-unlock fetches a fresh one instead of showing what was true before
+            // the delete. `isUnlocked` alone already re-locks the screen (TasteView's
+            // branching checks it before ever looking at `report`); this just keeps
+            // the two pieces of state consistent with each other.
+            report = nil
+            hasLoaded = false
         }
     }
 
