@@ -1070,17 +1070,22 @@ private struct TastePagerContainer<Content: View>: View {
 
     private func jump(to target: Int, proxy: ScrollViewProxy) {
         currentPage = target
-        // A soft spring, not a fixed-time ease -- user feedback on the
-        // swipe-triggered path (which also lands here via `LoopGuardedPaging`'s
-        // `onCommit`) was "too fast, make it a bit looser," then, after a
-        // first bump (0.4/0.8), still "too fast, i can't see the swiping
-        // motion" -- so `response` (roughly the time to settle) needed a
-        // real jump, not another small nudge, to actually become visible as
-        // motion rather than a snap. Shared by dot-tap/drag-scrub jumps too
-        // -- deliberately not split into a separate swipe-only duration,
-        // since a settle feeling different depending on how you triggered
-        // it would be its own bug.
-        withAnimation(.spring(response: 2.5, dampingFraction: 0.75)) {
+        // Was a `.spring(response: 2.5, dampingFraction: 0.75)` -- tuned up from
+        // 0.4/0.8 across two earlier rounds of "still too fast," each time by
+        // raising `response` (roughly the settle time). Still confirmed "way too
+        // fast" after all that, with the user's own hunch pointing at exactly
+        // the right thing: "maybe it's the snap." A spring's motion is
+        // front-loaded regardless of how long `response` is -- it attacks
+        // quickly toward the target and only the *tail* (a barely-visible
+        // wobble/settle) stretches out over the rest of that time, so a longer
+        // response doesn't actually make the visible motion look slower, just
+        // extends an invisible tail. Switched to a plain `.easeInOut`, which
+        // spends its entire duration in uniform, gradual motion with no fast
+        // attack phase -- the right tool for "slow gliding transition," which a
+        // spring never was regardless of its parameters. Same sharing rationale
+        // as before: used by dot-tap/drag-scrub jumps too, not split into a
+        // separate swipe-only duration.
+        withAnimation(.easeInOut(duration: 0.85)) {
             proxy.scrollTo(target, anchor: .top)
         }
     }
