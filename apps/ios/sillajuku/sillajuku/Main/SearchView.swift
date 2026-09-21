@@ -810,7 +810,6 @@ struct SearchView: View {
     // from discoveryVM being stale at this point (discoveryVM.load() hasn't necessarily run
     // yet) is harmless -- nothing the bottom-of-Add-tab genre explorer does ever reads it.
     @State private var bottomGenreVM: QuickAddViewModel
-    @State private var showQuickAdd          = false
     @State private var searchVM           = SearchViewModel()
     @State private var searchTask: Task<Void, Never>?
     @State private var quickRateRelease: Release?
@@ -818,6 +817,26 @@ struct SearchView: View {
     @State private var userRatingStep: Double = 0.5
     @State private var ratedReleaseIds: Set<UUID> = []   // loaded from DB at launch — used to hide pre-rated items
     @State private var sessionRatedIds: Set<UUID>  = []   // tapped in this session — shows checkmark
+    // Real scores for rated releases, kept in sync with the two sets above (insert/remove
+    // together everywhere) -- lets a rated row show the actual score circle like every other
+    // screen in the app, instead of a plain non-interactive checkmark.
+    @State private var scoresByRelease: [UUID: Double] = [:]
+
+    private func scoreBinding(for releaseId: UUID) -> Binding<Double?> {
+        Binding(
+            get: { scoresByRelease[releaseId] },
+            set: { newValue in
+                scoresByRelease[releaseId] = newValue
+                if newValue != nil {
+                    sessionRatedIds.insert(releaseId)
+                    ratedReleaseIds.insert(releaseId)
+                } else {
+                    sessionRatedIds.remove(releaseId)
+                    ratedReleaseIds.remove(releaseId)
+                }
+            }
+        )
+    }
     @State private var showAllPersonalizedSongs = false
     @State private var showAllPopularSongs      = false
     @Environment(\.scenePhase) private var scenePhase
@@ -857,7 +876,17 @@ struct SearchView: View {
             .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
             .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
             .navigationDestination(for: RecentlyPlayedDestination.self) { ResolvingAlbumView(item: $0, discoveryVM: discoveryVM) }
-            .navigationDestination(isPresented: $showQuickAdd) {
+            // Was `.navigationDestination(isPresented: $showQuickAdd)` -- mixing an isPresented-
+            // bound destination with further NavigationLink(value:) pushes made from *within* the
+            // view it presents (QuickAddView's own rows push Release) confused this stack's path
+            // bookkeeping: tapping a Quick Add row did correctly push AlbumDetailView, but then
+            // QuickAddView got silently re-pushed on top of it too (showQuickAdd was still true),
+            // so the user just saw Quick Add again until backing out of that to reveal the album
+            // page underneath (confirmed live). Same class of bug as the comment on
+            // ArtistPageView's own navigationDestination handling elsewhere in this file --
+            // value-based `for:` destinations only, never mixed with an isPresented boolean, on
+            // one NavigationStack.
+            .navigationDestination(for: QuickAddDestination.self) { _ in
                 QuickAddView(discoveryVM: discoveryVM, ratingStep: userRatingStep, onGoToSettings: onGoToSettings)
             }
             .sheet(item: $quickRateRelease) { release in
@@ -906,6 +935,7 @@ struct SearchView: View {
         // its own row) needs to flip every other row's "already rated" state too.
         .onReceive(NotificationCenter.default.publisher(for: .ratingChanged)) { note in
             guard let info = note.object as? RatingChangeInfo else { return }
+            scoresByRelease[info.releaseGroupId] = info.score
             if info.score != nil {
                 sessionRatedIds.insert(info.releaseGroupId)
                 ratedReleaseIds.insert(info.releaseGroupId)
@@ -916,23 +946,21 @@ struct SearchView: View {
         }
     }
 
-    private func quickAddTapped() {
-        showQuickAdd = true
-    }
-
     private func loadRatedReleaseIds() async {
         guard let userId = supabase.auth.currentUser?.id else { return }
         struct Row: Decodable {
             let releaseGroupId: UUID
-            enum CodingKeys: String, CodingKey { case releaseGroupId = "release_group_id" }
+            let score: Double?
+            enum CodingKeys: String, CodingKey { case releaseGroupId = "release_group_id"; case score }
         }
         let rows: [Row] = (try? await supabase
             .from("ratings")
-            .select("release_group_id")
+            .select("release_group_id, score")
             .eq("user_id", value: userId)
             .execute()
             .value) ?? []
         ratedReleaseIds = Set(rows.map(\.releaseGroupId))
+        for row in rows { scoresByRelease[row.releaseGroupId] = row.score }
     }
 
     private func loadUserRatingStep() async {
@@ -977,6 +1005,7 @@ struct SearchView: View {
             .execute()
         sessionRatedIds.insert(release.id)
         ratedReleaseIds.insert(release.id)
+        scoresByRelease[release.id] = score
         NotificationCenter.default.post(name: .ratingChanged,
             object: RatingChangeInfo(releaseGroupId: release.id, score: score))
     }
@@ -1157,9 +1186,8 @@ struct SearchView: View {
                         VStack(spacing: 0) {
                             ForEach(searchVM.songResults) { song in
                                 let pr = songParentRelease(song)
-                                let rated = ratedReleaseIds.contains(song.releases.id)
                                 NavigationLink(value: pr) {
-                                    SongRow(song: song, isRated: rated, ratingStep: userRatingStep)
+                                    SongRow(song: song, scoreBinding: scoreBinding(for: song.releases.id), ratingStep: userRatingStep)
                                 }
                                 .buttonStyle(.plain)
                                 .albumContextMenu(pr)
@@ -1358,7 +1386,7 @@ struct SearchView: View {
 
             Spacer(minLength: 8)
 
-            Button { quickAddTapped() } label: {
+            NavigationLink(value: QuickAddDestination()) {
                 Text("Quick Add")
                     .font(.jakarta(14, weight: .semibold))
                     // Plain .white, not sjCream -- sjBlue is a fixed brand
@@ -1518,9 +1546,8 @@ struct SearchView: View {
             LazyHStack(spacing: 12) {
                 ForEach(items) { item in
                     if let release = discoveryVM.resolvedPreviewCache[item.id] {
-                        let checked = sessionRatedIds.contains(release.id) || ratedReleaseIds.contains(release.id)
                         NavigationLink(value: release) {
-                            DiscoveryAlbumCard(release: release, isRated: checked, ratingStep: userRatingStep)
+                            DiscoveryAlbumCard(release: release, scoreBinding: scoreBinding(for: release.id), ratingStep: userRatingStep)
                         }
                         .buttonStyle(.plain)
                         .albumContextMenu(release)
@@ -1545,12 +1572,8 @@ struct SearchView: View {
         return ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 12) {
                 ForEach(visible) { release in
-                    // Not just session-rated -- an unfiltered list (hideRated: false) can include
-                    // releases rated in an earlier session too, which should also show the
-                    // checkmark rather than a misleading "add" button.
-                    let checked = sessionRatedIds.contains(release.id) || ratedReleaseIds.contains(release.id)
                     NavigationLink(value: release) {
-                        DiscoveryAlbumCard(release: release, isRated: checked, ratingStep: userRatingStep)
+                        DiscoveryAlbumCard(release: release, scoreBinding: scoreBinding(for: release.id), ratingStep: userRatingStep)
                     }
                     .buttonStyle(.plain)
                     .albumContextMenu(release)
@@ -1570,9 +1593,8 @@ struct SearchView: View {
         return VStack(spacing: 0) {
             ForEach(Array(shown.enumerated()), id: \.element.id) { index, song in
                 let pr = songParentRelease(song)
-                let checked = sessionRatedIds.contains(pr.id)
                 NavigationLink(value: pr) {
-                    SongRow(song: song, isRated: checked, ratingStep: userRatingStep)
+                    SongRow(song: song, scoreBinding: scoreBinding(for: pr.id), ratingStep: userRatingStep)
                 }
                 .buttonStyle(.plain)
                 .albumContextMenu(pr)
@@ -1602,7 +1624,7 @@ struct SearchView: View {
 
 private struct DiscoveryAlbumCard: View {
     let release: Release
-    var isRated: Bool = false
+    var scoreBinding: Binding<Double?> = .constant(nil)
     // The user's manual rating precision -- was never threaded this far before, so this card's
     // rate button (used across almost every Add tab section) silently used FlowerRateControl's
     // own 0.5 default regardless of the account's actual setting.
@@ -1615,24 +1637,14 @@ private struct DiscoveryAlbumCard: View {
                     .frame(width: 128, height: 128)
                     .accessibilityHidden(true) // title/artist text below already describes it
 
-                if isRated {
-                    ZStack {
-                        Circle()
-                            .fill(Color.sjBlue)
-                            .frame(width: 28, height: 28)
-                            .shadow(color: .black.opacity(0.15), radius: 4, y: 1)
-                        Image("icon-check")
-                            .renderingMode(.template)
-                            .resizable().scaledToFit()
-                            .frame(width: 11, height: 11)
-                            .foregroundStyle(.white)
-                    }
-                    .allowsHitTesting(false)
-                    .padding(6)
-                } else {
-                    AlbumRateButton(release: release, ratingStep: ratingStep, size: 30)
-                        .padding(4)
-                }
+                // Previously swapped to a static, non-interactive checkmark once rated --
+                // inconsistent with every other rating surface in the app (Home, Charts,
+                // Album detail), which keep showing the real score and stay tappable/
+                // draggable to change it. Now the same AlbumRateButton in both states,
+                // bound to the tab's shared per-release score cache so it also stays in
+                // sync with every other row showing the same release.
+                AlbumRateButton(release: release, externalScore: scoreBinding, ratingStep: ratingStep, size: 30)
+                    .padding(4)
             }
 
             Text(release.title)
@@ -1692,7 +1704,7 @@ private struct RecentlyPlayedPreviewCard: View {
 
 struct SongRow: View {
     let song: SongResult
-    var isRated: Bool = false
+    var scoreBinding: Binding<Double?> = .constant(nil)
     var ratingStep: Double = 0.5
 
     var body: some View {
@@ -1722,23 +1734,11 @@ struct SongRow: View {
 
             Spacer()
 
-            if isRated {
-                ZStack {
-                    Circle()
-                        .fill(Color.sjBlue)
-                        .frame(width: 30, height: 30)
-                    Image("icon-check")
-                        .renderingMode(.template)
-                        .resizable().scaledToFit()
-                        .frame(width: 11, height: 11)
-                        .foregroundStyle(.white)
-                }
-                .allowsHitTesting(false)
-            } else {
-                // Keyed on the song's *parent release*, not the individual recording --
-                // this row has never rated the song itself, only quick-added its album.
-                AlbumRateButton(release: song.releases.asRelease, ratingStep: ratingStep, size: 30)
-            }
+            // Keyed on the song's *parent release*, not the individual recording -- this
+            // row has never rated the song itself, only quick-added its album. Previously
+            // swapped to a static, non-interactive checkmark once rated -- see
+            // DiscoveryAlbumCard's comment for why that's now the real, live score circle.
+            AlbumRateButton(release: song.releases.asRelease, externalScore: scoreBinding, ratingStep: ratingStep, size: 30)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -1773,6 +1773,11 @@ struct RecentlyPlayedDestination: Hashable {
     let artist: String
     let imageUrl: String?
 }
+
+// Value-based marker for the Quick Add push -- was a plain Bool with
+// `.navigationDestination(isPresented:)` (see the comment at that call site for why
+// that broke tapping through to an album from inside Quick Add).
+struct QuickAddDestination: Hashable {}
 
 // Mirrors ArtistPageView's own artistId == nil resolution pattern for albums: shown immediately
 // with just Spotify's raw data while resolving in the background, behind its own loading state,

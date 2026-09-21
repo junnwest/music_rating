@@ -35,6 +35,99 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-21 (Mac) — Made new ratings appear in the Profile tab instantly instead of via a full-page reload-and-spinner.**
+
+- **User reported**: on a fresh account, ratings made elsewhere in the app didn't "instantly" appear in the Profile tab.
+- **Verified server-side before writing any fix** — queried the `ratings` table directly for the account in question (username `junnwest`): all 11 ratings the user had made were genuinely present with correct scores and timestamps. **Ruled out data loss / a failed write as the cause** — this is purely a client-side refresh/UX issue, not a persistence bug.
+- **Root cause**: `ProfileView`'s only `.ratingChanged` handler called `viewModel.reload()` unconditionally — which sets `hasLoaded = false` then re-runs the *entire* `load()` (profile, all ratings, song ratings, follow counts, mix shares, social data), gated behind `isLoading` blanking the whole tab to a spinner while it re-fetches everything from scratch. Technically correct eventually, but not remotely instant, and it also discards scroll position on every single rating made anywhere in the app while Profile happens to be open.
+- **Fixed with a targeted in-place update instead of a full reload**: `.ratingChanged` now carries a `RatingChangeInfo{releaseGroupId, score}` payload (added in the previous round's duplicate-row-sync fix). `ProfileViewModel.applyRatingChange(releaseGroupId:score:)` re-fetches just the one changed `ratings` row (same shape `fetchAlbumRatings` already uses, one lightweight query) and either updates it in place if already in the grid, or prepends it if it's a new rating (incrementing `ratedTotal` to match) — or removes it from the grid if the score is `nil` (rating deleted). `ProfileView`'s `.onReceive(.ratingChanged)` now calls this instead of `reload()` whenever a `RatingChangeInfo` payload is present, falling back to the old full `reload()` only for the rarer notification posts that don't carry one yet (track-level rating changes). No spinner flash, no lost scroll position, no unrelated data re-fetched.
+- **Scope note, not fixed**: while investigating, found `AlbumRateButton.quickRate`/`saveModal` and `SearchView.saveQuickRating` still use the pre-hardening `try?`-and-notify-unconditionally pattern that `AlbumContextMenu.saveManualScore`'s own comment already documents as a real bug class elsewhere in this codebase (a failed write would look "rated" in the UI with nothing to show for it). Confirmed NOT the cause of this particular report (writes verified landing correctly), so left untouched per scope — flagged to the user as a latent gap worth a future pass.
+- **Verified via clean simulator build** — **BUILD SUCCEEDED**.
+
+---
+
+**2026-09-21 (Mac) — Add tab: rated albums/songs now show the real score circle (matching every other screen), instead of a static, non-interactive checkmark.**
+
+- **User asked**: "when i rate an album with the flower button, it should turn into a circle with the number on it. however, when i rate on the add tab it turns into a check instead of the number. is this expected?"
+- **Confirmed it wasn't a deliberate discovery-specific design** (no comment explaining it, no equivalent anywhere else in the app) — `DiscoveryAlbumCard`/`SongRow` (Popular, New Releases, Trending, genre clusters, Recently Listened, search-results songs) special-cased a rated release to a static blue checkmark circle with `allowsHitTesting(false)` — no score shown, and impossible to tap to re-rate — while every other rating surface (Home, Charts, Album detail, Quick Add) shows the actual score in the circle and keeps it interactive. **Asked the user to confirm the desired scope via `AskUserQuestion`** rather than assume; chose the full fix (real score + stays tappable/draggable), not just swapping the icon for a static number.
+- **Fixed by making these rows use `AlbumRateButton` exactly like every other screen does** — dropped the `isRated: Bool`/checkmark branch entirely, replaced with the same button in both states, bound to a real score via `externalScore` instead of a one-shot `initialScore`. Needed a real per-release score cache on `SearchView` to back that binding (previously only had `ratedReleaseIds`/`sessionRatedIds`, boolean sets with no score attached): added `scoresByRelease: [UUID: Double]`, kept in sync everywhere the two existing sets already were (`loadRatedReleaseIds()` now also selects `score`, `saveQuickRating` sets it, the `.ratingChanged` observer from the duplicate-row-sync fix now also writes `scoresByRelease[id] = score`) — so this also means the actual live score (not just the rated/unrated boolean) now stays in sync across every duplicate row showing the same release, building directly on last round's fix.
+- **Verified via clean simulator build** — **BUILD SUCCEEDED**.
+
+---
+
+**2026-09-21 (Mac) — Quick Add rows weren't tappable through to the album's detail page — only the flower rate button was interactive.**
+
+- **User asked**: "the releases aren't clickable in the Quick Add page. is this expected?"
+- **Confirmed not expected/intentional**: `QuickAddRow`/`QuickAddSongRow` (`Main/QuickAddView.swift`) had no `NavigationLink` at all — cover art and title/artist text were dead space, unlike every other album row in the app (`DiscoveryAlbumCard`, `FeedCard`, chart rows, ...), which all push `AlbumDetailView` on tap.
+- **Fixed for albums**: wrapped both `QuickAddRow(...)` construction sites (the main album candidate list, and the genre-shelf rows inside `GenreExplorerView.genreSection` — the latter shared with the bottom-of-Add-tab genre explorer too) in `NavigationLink(value: release) { ... }`. `QuickAddView` is pushed onto `SearchView`'s own `NavigationStack` (`.navigationDestination(isPresented: $showQuickAdd)`), which already declares `.navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }` — so this needed no new destination, just the missing `NavigationLink` wrapper, matching the exact pattern every other tappable album row already uses.
+- **Deliberately NOT fixed for songs** (`QuickAddSongRow`): `SongCandidate` (the RPC-returned model backing the Songs tab) has no real `release_group_id` at all — only a display-only synthetic `Release` (`song.displayRelease`) whose `id` is actually the song's own recording id, not a real catalog release. Navigating with that id would either push a broken/empty album page or silently load the wrong album. Fixing this properly needs `get_quick_add_song_candidates` to also return the real parent release_group id — a backend RPC change, out of scope without being asked. Flagged to the user as a known, distinct limitation from the (now fixed) albums case.
+- **Verified via clean simulator build** — **BUILD SUCCEEDED**. A live simulator check was attempted but blocked on an unrelated issue: the simulator's signed-in session had expired (Spotify refresh token came back `invalid_grant` from Supabase), landing on the login screen instead of a working session — nothing to do with this change. User opted to skip live verification rather than re-sign-in, given the fix follows the exact same `NavigationLink` pattern already proven working elsewhere in the app (`DiscoveryAlbumCard`, `SongRow`).
+- **This turned out to be wrong** — see the next entry.
+
+---
+
+**2026-09-21 (Mac) — Fixed the real bug behind the Quick Add tap-through fix above: `NavigationLink(value:)` pushed correctly, but the boolean-presented QuickAddView itself got silently re-pushed on top of it.**
+
+- **User reported**: tapping a Quick Add row does open the album's detail page — but the Quick Add screen immediately reopens on top of it, so all the user actually sees is Quick Add again. Closing that (now-duplicate) Quick Add screen reveals the album page underneath.
+- **Root cause**: `QuickAddView` was itself presented via `.navigationDestination(isPresented: $showQuickAdd)` — a boolean-bound destination — rather than a value-based one. Pushing a *further* destination from within a view that was itself presented this way (the just-added `NavigationLink(value: release)`) confuses `NavigationStack`'s path bookkeeping: since `showQuickAdd` was still `true`, the stack re-inserted the isPresented-bound `QuickAddView` on top of the freshly-pushed `AlbumDetailView` the moment anything caused a re-evaluation. **Exact same class of bug** already documented and fixed once before in this same file, on `ArtistPageView`'s own navigation handling (see that comment: "a second declaration... causes SwiftUI to double-push") — different mechanism (duplicate `for:` declaration vs. mixing `isPresented` with `for:`), same underlying lesson: don't mix `.navigationDestination(isPresented:)` with further pushes on the same `NavigationStack`.
+- **Fixed by converting Quick Add's own entry point to the same value-based pattern every other destination in this stack already uses**: added `QuickAddDestination: Hashable` (an empty marker type, no data needed), replaced `.navigationDestination(isPresented: $showQuickAdd)` with `.navigationDestination(for: QuickAddDestination.self)`, and changed the "Quick Add" banner button from a plain `Button` to `NavigationLink(value: QuickAddDestination())`. Removed the now-unused `showQuickAdd` `@State` and `quickAddTapped()` entirely rather than leaving dead code behind.
+- **Verified via clean simulator build** — **BUILD SUCCEEDED**.
+
+---
+
+**2026-09-21 (Mac) — Fixed comments not appearing immediately after rating: the album page's own post view, and Profile, both showed the comment only after revisiting minutes later.**
+
+- **User reported**: rate an album with a comment on the album page — the screen turns into a post-view card immediately, but the comment isn't in it; it only shows up after leaving and coming back a few minutes later. Same delay in the Profile tab. Home's feed showed it correctly and immediately, though.
+- **Investigated first (read-only)** to trace the actual mechanism before touching code — found **four separate places** in the codebase that write `ratings.review_text`, and only one of them (`AlbumDetailViewModel.updateReviewText`, used by the dedicated "Edit Comment" menu action) refreshed anything afterward. The two paths that actually back the reported flow did not:
+  - `AlbumDetailView.saveReviewText(_:)` — the primary "rate → morphs into post view → type a comment → Done" flow. Wrote `review_text` directly to Supabase, but never touched `viewModel.myPost` (the exact `FeedItem` the post view renders from) and posted no notification at all.
+  - `ManualRatingSheet.saveReviewAndDismiss(text:)` — the sheet-based "Edit rating" re-rate flow. Same shape: writes, then just `dismiss()`s.
+  - Root cause of "only shows up after revisiting": `viewModel.myPost` is populated by `loadMyPost()`, which only ever runs once — *before* the comment is typed, as part of committing the score. Nothing ever called it again after the comment itself was saved, so the immediate post view kept rendering the same stale, comment-less `FeedItem` object until the page's next full load.
+  - Root cause of the Profile-tab gap: `RatingChangeInfo` (the payload added in an earlier round's duplicate-row-sync fix) carries only `releaseGroupId`/`score`, no comment signal — and none of the four review-text writers posted `.ratingChanged` at all, so `ProfileViewModel.applyRatingChange`'s own (already-correct, already `review_text`-selecting) refetch was simply never triggered by a comment edit.
+  - Home's feed only appeared to work correctly by coincidence, not a real sync mechanism: it has no per-row patch/notification path of its own at all, just a one-shot-per-session full fetch (`hasLoadedExplore`/`hasLoadedFollowing` guards) that happens to read fully-correct data whenever it actually runs, since by then both the score and comment writes have already landed.
+- **Fixed**: `AlbumDetailView.saveReviewText(_:)` now delegates to `viewModel.updateReviewText(text)` (the already-correct function) instead of duplicating a raw write — gets the `loadMyPost()` refresh for free. Added a `.ratingChanged` post (with the real score, so Profile's `applyRatingChange` re-fetches this row's now-current `review_text`) to `updateReviewText` itself and to `ManualRatingSheet.saveReviewAndDismiss`. Also added an `.onChange(of: showManualSheet)` safety net on `AlbumDetailView`'s own sheet presentation, re-loading `viewModel.myPost` whenever that sheet closes, regardless of exactly which internal path changed what.
+- **Scope note**: the same gap exists in `SongDetailViewModel.updateTrackReviewText` (track-level comments) — not touched, since the report was specifically about the album page.
+- **Verified via clean simulator build** — **BUILD SUCCEEDED**.
+
+---
+
+**2026-09-21 (Mac) — Fixed the Taste tab's locked-state "X of 25 rated" count not updating after rating more albums elsewhere in the app.**
+
+- **User reported**: the Taste tab's locked page (shown below the 25-rating unlock threshold) doesn't update its progress count fast enough.
+- **Investigated first (read-only)** — same bug class as the last several rounds: `TasteViewModel.ratingCount` (`Main/TasteView.swift:31`) is a real, cheap, live `count: .exact` query against `ratings`/`track_ratings` (identical pattern to `ProfileViewModel.fetchRatedTotal`) — no DB-side lag at all. But it's only ever fetched once per session, gated by `load()`'s own `hasLoaded` latch, and `TasteView.swift` had zero `.ratingChanged` observers anywhere (confirmed via grep) — the exact same "no live-sync, only refetches on next full appear" shape as the Profile/Search/Quick Add bugs fixed earlier today, just not yet applied here.
+- **Fixed**: added `TasteViewModel.refreshRatingCount()` — re-runs just the cheap album+song count query (not the full `load()`, and not the report fetch) whenever `.ratingChanged` fires while still locked; no-ops once unlocked. `TasteView` now observes `.ratingChanged` and calls it. As a direct extension of the same fix: if a rating pushes the count past the 25 threshold, it now also fetches the report and unlocks in place, instead of leaving the user stuck on a stale lock screen with the wrong "X of 25" math until their next visit.
+- **Verified via clean simulator build** — **BUILD SUCCEEDED**.
+
+---
+
+**2026-09-21 (Mac) — Fixed the Taste tab not re-locking after a delete drops the rating count back below 25.**
+
+- **User reported**: at exactly 25 ratings, deleted one (down to 24) — the Taste tab should immediately lock again, but didn't.
+- **Two independent bugs, both fixed**:
+  1. The previous round's `refreshRatingCount()` fix had `guard !isUnlocked` at its top — meaning once unlocked, it became a permanent no-op for the rest of the session and could never notice a later drop back below threshold. Removed that guard; the function now always re-counts on every `.ratingChanged`, and separately handles both directions: fetches/attaches a report when crossing up into unlocked (only if one isn't already held), and clears `report`/`hasLoaded` when dropping back below threshold so a later re-unlock fetches a fresh report instead of reusing a stale one from before the delete. `TasteView`'s own branching already checks `!isUnlocked` before ever looking at `report`, so clearing `ratingCount` alone is sufficient to flip the screen back to locked.
+  2. **The likelier actual cause of what the user hit**: `ProfileViewModel.deleteRating(_:)` (the Profile tab's own "Delete Rating" action — the natural place to delete a past rating from) never posted `.ratingChanged` at all, for either the album or song case. Every other rating-write path in the app does; this one was simply missed. Fixed both branches: album deletes now post a real `RatingChangeInfo(releaseGroupId:, score: nil)`; song/track deletes post a bare notification (no release-group id to attach, but `TasteViewModel.refreshRatingCount()` ignores the payload and just recounts both tables, so it still reaches Taste correctly).
+- **Scope note**: `AlbumDetailViewModel.rateTrack(recordingId:score: nil)` (a track-rating delete reachable from within the album page's own track rows/sheet) has the identical missing-notification gap — not fixed, wasn't part of what was reported.
+- **Verified via clean simulator build** — **BUILD SUCCEEDED**.
+
+---
+
+**2026-09-21 (Mac) — Slowed down the Taste tab's page-swipe transition, which an earlier round had (over-)tuned to feel "way too fast."**
+
+- **User reported**: the Taste tab's vertical page swipe is "wayyy too fast," asked to slow it down dramatically.
+- **Root cause, found immediately from the code's own history**: `PagerScrollViewFinder` (`Main/TasteView.swift`) reaches into the pager's underlying `UIScrollView` and sets `decelerationRate` — a prior round had deliberately tuned this to `0.85`, well below even the system's aggressive `.fast` preset (0.99), specifically to "make the swipe feel snappier." That overshot: `decelerationRate` values are exponential-decay rates, so the actual gap between 0.85 and the presets is far larger than the raw numbers suggest — at 0.85, the glide after lifting a finger decays almost instantly, so a page-swipe snap completes in one abrupt jump instead of a smooth transition. Exactly the reported symptom.
+- **Fixed**: reverted to `UIScrollView.DecelerationRate.normal` (0.998, the system's own slower/default preset) — restores the deliberate, gliding Reels/Shorts-style feel this pager's own design comments say it was always meant to have.
+- **Verified via clean simulator build** — **BUILD SUCCEEDED**. This is a feel/tuning change — flagged to the user that further adjustment may be needed once tried live (no single numeric preset is guaranteed to match "dramatically slower" exactly on the first try).
+
+---
+
+**2026-09-21 (Mac) — Fixed the "Your #1 Album" ring (Taste tab, section 2) spinning through multiple covers on one long swipe instead of advancing one at a time.**
+
+- **User reported**: swiping the ring on section 2 of the Taste page should only ever advance one album per swipe; a strong/long swipe spins it around multiple times instead.
+- **Root cause**: `HallOfFameView`'s drag gesture (`Main/TasteView.swift`, the ring of tied #1 albums) maps drag distance to rotation with no ceiling — `turn = dragStartTurn - translation.width / dragPxPerStep` (`dragPxPerStep = 70`), so a swipe covering, say, 300pt of screen travel rotates a full 4+ steps in one continuous gesture, `onEnded` just rounding to whichever whole step it landed on. Not a velocity/fling issue (there's no momentum physics here at all) — purely a distance issue, matching "swipe strong enough" (i.e. far enough) rather than "fast enough."
+- **Fixed**: clamped the computed `turn` to `dragStartTurn ± 1` during the drag — still tracks the finger continuously/1:1 within that one-step window (preserves the existing analog drag feel), but can never rotate past a single neighboring album regardless of how far the finger travels in one gesture.
+- **Verified via clean simulator build** — **BUILD SUCCEEDED**.
+
+---
+
 **2026-09-21 (Mac) — Added a "Connect Spotify/Apple Music" nudge + the genre explorer to the bottom of the Add tab itself, not just inside Quick Add's empty state.**
 
 - **User asked specifically**: display "Connect Spotify or Apple Music" (only for whichever isn't connected) and "Explore other genres" at the bottom of the main Add tab. Both already existed, but only inside `QuickAddView`'s empty/seedless state — a screen most users with SOME data would never see.

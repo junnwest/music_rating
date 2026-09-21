@@ -96,6 +96,39 @@ final class TasteViewModel {
         isLoading = false
     }
 
+    /// `load()` only ever runs once per session (`hasLoaded`) -- fine for the report
+    /// itself, but it means the lock screen's "X of 25" count never moved again after
+    /// the user rated/unrated albums elsewhere in the app, even though the count query
+    /// itself is cheap and instant. Called from every `.ratingChanged` post, in both
+    /// directions -- NOT just while locked: a delete that drops the count back below
+    /// threshold has to be able to re-lock a currently-unlocked session, so this can't
+    /// early-return on `isUnlocked` the way an earlier version of this fix did.
+    func refreshRatingCount() async {
+        guard let user = supabase.auth.currentUser else { return }
+        async let albumTask = fetchCount(table: "ratings", userId: user.id)
+        async let songTask  = fetchCount(table: "track_ratings", userId: user.id)
+        guard let albumCount = await albumTask, let songCount = await songTask else { return }
+        ratingCount = albumCount + songCount
+
+        if isUnlocked {
+            // Crossed up into (or still) unlocked -- make sure there's a report to show;
+            // don't re-fetch one that's already there (e.g. an unrelated score edit that
+            // didn't change the count at all).
+            if report == nil {
+                report = await WebAPI.get("/api/taste/profile", authed: true)
+                if report != nil { hasLoaded = true }
+            }
+        } else {
+            // Dropped back below threshold -- clear the stale report so a later
+            // re-unlock fetches a fresh one instead of showing what was true before
+            // the delete. `isUnlocked` alone already re-locks the screen (TasteView's
+            // branching checks it before ever looking at `report`); this just keeps
+            // the two pieces of state consistent with each other.
+            report = nil
+            hasLoaded = false
+        }
+    }
+
     /// Manually bypasses the route's 60s cache -- the **only** path allowed to
     /// pass `refresh=1` (mirrors web's `page.tsx` Refresh button, and its
     /// explicit warning not to auto-bypass on every load, which burned Vercel
@@ -145,6 +178,9 @@ struct TasteView: View {
             .navigationBarHidden(true)
         }
         .task { await viewModel.load() }
+        .onReceive(NotificationCenter.default.publisher(for: .ratingChanged)) { _ in
+            Task { await viewModel.refreshRatingCount() }
+        }
     }
 
     private var tasteLoader: some View {
@@ -789,11 +825,19 @@ private struct LoopGuardedPaging: ScrollTargetBehavior {
     }
 }
 
-/// Sets the pager's `UIScrollView.decelerationRate` a bit more aggressive
-/// than the system's own `.fast` preset (0.99) -- a safe, partial answer to
-/// "make the swipe feel snappier" that doesn't fight SwiftUI's own scroll
-/// reconciliation the way a manual `contentOffset` override did (see
-/// `LoopGuardedPaging`'s doc comment for that regression). SwiftUI's
+/// Sets the pager's `UIScrollView.decelerationRate`. Originally tuned well
+/// below the system's own `.fast` preset (0.99) -- down to 0.85 -- to "make
+/// the swipe feel snappier," but that turned out to overshoot badly: at 0.85
+/// the glide after lifting a finger decays almost instantly, so the page
+/// snap completes in a single abrupt jump instead of a smooth transition --
+/// confirmed live as "way too fast." Reverted to the system's own `.normal`
+/// preset (0.998, notably slower than even `.fast` -- these values are
+/// exponential-decay rates, so the gap between 0.99 and 0.998 is much
+/// larger than the numbers alone suggest) for the deliberate, gliding
+/// Reels/Shorts-style feel this pager was always meant to have. This
+/// doesn't fight SwiftUI's own scroll reconciliation the way a manual
+/// `contentOffset` override did (see `LoopGuardedPaging`'s doc comment for
+/// that regression). SwiftUI's
 /// `ScrollView` exposes no modifier for `decelerationRate`, so this places
 /// an invisible, zero-size `UIView` inside the scroll content and walks its
 /// `superview` chain to find the real `UIScrollView` SwiftUI creates under
@@ -821,7 +865,7 @@ private struct PagerScrollViewFinder: UIViewRepresentable {
         var current: UIView? = view
         while let v = current {
             if let scrollView = v as? UIScrollView {
-                scrollView.decelerationRate = UIScrollView.DecelerationRate(rawValue: 0.85)
+                scrollView.decelerationRate = .normal
                 return
             }
             current = v.superview
@@ -2517,8 +2561,14 @@ private struct HallOfFameView: View {
                     autoRotateTask?.cancel() // don't fight an active drag
                 }
                 // Continuous, not step-quantized -- tracks the finger 1:1 rather
-                // than jumping a whole cover per fixed pixel distance.
-                turn = dragStartTurn - Double(value.translation.width) / Double(dragPxPerStep)
+                // than jumping a whole cover per fixed pixel distance. Clamped to
+                // ±1 step from where the drag started so one swipe can only ever
+                // advance a single album, no matter how far the finger travels --
+                // unclamped, a swipe covering several multiples of dragPxPerStep
+                // spun straight through multiple covers in one gesture (confirmed
+                // live -- "goes around the carousel multiple times" on a long swipe).
+                let raw = dragStartTurn - Double(value.translation.width) / Double(dragPxPerStep)
+                turn = min(dragStartTurn + 1, max(dragStartTurn - 1, raw))
             }
             .onEnded { _ in
                 guard isDragging else { return }
