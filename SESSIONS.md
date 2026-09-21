@@ -119,6 +119,15 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-21 (Mac) — Fixed the "Your #1 Album" ring (Taste tab, section 2) spinning through multiple covers on one long swipe instead of advancing one at a time.**
+
+- **User reported**: swiping the ring on section 2 of the Taste page should only ever advance one album per swipe; a strong/long swipe spins it around multiple times instead.
+- **Root cause**: `HallOfFameView`'s drag gesture (`Main/TasteView.swift`, the ring of tied #1 albums) maps drag distance to rotation with no ceiling — `turn = dragStartTurn - translation.width / dragPxPerStep` (`dragPxPerStep = 70`), so a swipe covering, say, 300pt of screen travel rotates a full 4+ steps in one continuous gesture, `onEnded` just rounding to whichever whole step it landed on. Not a velocity/fling issue (there's no momentum physics here at all) — purely a distance issue, matching "swipe strong enough" (i.e. far enough) rather than "fast enough."
+- **Fixed**: clamped the computed `turn` to `dragStartTurn ± 1` during the drag — still tracks the finger continuously/1:1 within that one-step window (preserves the existing analog drag feel), but can never rotate past a single neighboring album regardless of how far the finger travels in one gesture.
+- **Verified via clean simulator build** — **BUILD SUCCEEDED**.
+
+---
+
 **2026-09-21 (Mac) — Added a "Connect Spotify/Apple Music" nudge + the genre explorer to the bottom of the Add tab itself, not just inside Quick Add's empty state.**
 
 - **User asked specifically**: display "Connect Spotify or Apple Music" (only for whichever isn't connected) and "Explore other genres" at the bottom of the main Add tab. Both already existed, but only inside `QuickAddView`'s empty/seedless state — a screen most users with SOME data would never see.

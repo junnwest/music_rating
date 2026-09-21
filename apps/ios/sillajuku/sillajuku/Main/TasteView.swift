@@ -2561,8 +2561,14 @@ private struct HallOfFameView: View {
                     autoRotateTask?.cancel() // don't fight an active drag
                 }
                 // Continuous, not step-quantized -- tracks the finger 1:1 rather
-                // than jumping a whole cover per fixed pixel distance.
-                turn = dragStartTurn - Double(value.translation.width) / Double(dragPxPerStep)
+                // than jumping a whole cover per fixed pixel distance. Clamped to
+                // ±1 step from where the drag started so one swipe can only ever
+                // advance a single album, no matter how far the finger travels --
+                // unclamped, a swipe covering several multiples of dragPxPerStep
+                // spun straight through multiple covers in one gesture (confirmed
+                // live -- "goes around the carousel multiple times" on a long swipe).
+                let raw = dragStartTurn - Double(value.translation.width) / Double(dragPxPerStep)
+                turn = min(dragStartTurn + 1, max(dragStartTurn - 1, raw))
             }
             .onEnded { _ in
                 guard isDragging else { return }
