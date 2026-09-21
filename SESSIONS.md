@@ -128,6 +128,16 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-21 (Mac) — Fixed the Taste tab's drag-scrub charts (sections 4/5, worst there) swallowing a page-swipe as a chart interaction.**
+
+- **User reported**: a vertical swipe intended to turn the page was often instead getting picked up as chart interaction, especially on sections 4 ("Across the years") and 5 ("How you score"). Asked whether this made sense and whether I understood the issue before proposing anything.
+- **Confirmed the mechanism precisely before touching code**: `binHoverGesture` (`Main/TasteView.swift`) — a shared drag-to-scrub-and-see-a-tooltip gesture used by `YearChartView` (section 4), `ScoreRampChartView` (section 5), and `ActivitySparkView` (section 6, not mentioned by the user but has the identical gap) — was `DragGesture(minimumDistance: 0)` attached via `.gesture(...)` (an exclusive claim, not shared with the page's own ScrollView). Zero minimum distance means it activates on the very first pixel of any touch movement, winning the gesture race against the vertical pager almost instantly for any swipe starting over a chart, in any direction.
+- **Presented two options via `AskUserQuestion`** rather than building the user's specific ask unreviewed: their proposed hold-to-activate delay (simple, but adds a small delay to every *intentional* scrub too) vs. the same direction-gated fix already proven live on `HallOfFameView`'s ring (no delay at all — a horizontal drag still scrubs instantly, only a vertical one now reaches the pager). **User chose the direction-gated approach.**
+- **Fixed**: `binHoverGesture` now uses `DragGesture(minimumDistance: 10)` (gives a vertical swipe room to declare itself before this gesture engages at all, matching the ring's tuning) and only updates `hover` once `abs(translation.width) > abs(translation.height)`. All three call sites switched from `.gesture(...)` to `.simultaneousGesture(...)` so the gesture no longer exclusively claims the touch away from the pager's own ScrollView.
+- **Verified via clean simulator build** — **BUILD SUCCEEDED**.
+
+---
+
 **2026-09-21 (Mac) — Added a "Connect Spotify/Apple Music" nudge + the genre explorer to the bottom of the Add tab itself, not just inside Quick Add's empty state.**
 
 - **User asked specifically**: display "Connect Spotify or Apple Music" (only for whichever isn't connected) and "Explore other genres" at the bottom of the main Add tab. Both already existed, but only inside `QuickAddView`'s empty/seedless state — a screen most users with SOME data would never see.

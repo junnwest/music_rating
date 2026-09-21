@@ -1919,10 +1919,23 @@ private struct BinTooltip: View {
 
 /// Press-and-drag-to-scrub gesture over `count` equal-width bins spanning
 /// `width` -- touch equivalent of web's pointer-hover `useBinHover`.
+///
+/// `minimumDistance: 10` (not 0) plus only updating `hover` once the drag's
+/// horizontal component dominates its vertical one -- same fix as
+/// `HallOfFameView`'s ring gesture (see its own doc comment): these charts
+/// sit inside the vertical page pager, and the original zero-threshold,
+/// no-axis-check version swallowed an intended page-swipe as a scrub the
+/// instant it started over a chart, even for a purely vertical swipe
+/// (confirmed live, worst on sections 4/5's year and score charts). A
+/// deliberate horizontal drag over the chart still scrubs immediately, no
+/// added delay -- a vertical swipe now reaches the pager instead. Attached
+/// via `.simultaneousGesture` at each call site (never `.gesture`, which
+/// would claim the touch exclusively away from the pager's own ScrollView).
 private func binHoverGesture(count: Int, width: CGFloat, hover: Binding<Int?>) -> some Gesture {
-    DragGesture(minimumDistance: 0)
+    DragGesture(minimumDistance: 10)
         .onChanged { value in
-            guard count > 0, width > 0 else { return }
+            guard count > 0, width > 0,
+                  abs(value.translation.width) > abs(value.translation.height) else { return }
             let i = Int((value.location.x / width) * CGFloat(count))
             hover.wrappedValue = min(count - 1, max(0, i))
         }
@@ -2044,7 +2057,7 @@ private struct YearChartView: View {
                     }
                 }
                 .contentShape(Rectangle())
-                .gesture(binHoverGesture(count: years.count, width: geo.size.width, hover: $hover))
+                .simultaneousGesture(binHoverGesture(count: years.count, width: geo.size.width, hover: $hover))
             }
             .frame(height: 96)
             .padding(.top, 16)
@@ -2206,7 +2219,7 @@ private struct ScoreRampChartView: View {
                         }
                     }
                     .contentShape(Rectangle())
-                    .gesture(binHoverGesture(count: bins.count, width: geo.size.width, hover: $hover))
+                    .simultaneousGesture(binHoverGesture(count: bins.count, width: geo.size.width, hover: $hover))
                 }
                 .frame(height: 88)
                 .padding(.top, mean != nil ? 16 : 0)
@@ -2306,7 +2319,7 @@ private struct ActivitySparkView: View {
                 }
             }
             .contentShape(Rectangle())
-            .gesture(binHoverGesture(count: timeline.count, width: geo.size.width, hover: $hover))
+            .simultaneousGesture(binHoverGesture(count: timeline.count, width: geo.size.width, hover: $hover))
         }
         .frame(height: 52)
         .padding(.top, 4)
