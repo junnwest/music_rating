@@ -40,6 +40,89 @@ enum RateGaugeGeometry {
     static let deleteZoneRadius: Double = 44
 }
 
+/// UIKit-level stand-in for a SwiftUI `DragGesture`, used by `FlowerRateControl`
+/// specifically so a scroll started on a flower button can genuinely coexist with
+/// this control's own drag-to-rate gesture.
+///
+/// `.simultaneousGesture(DragGesture(...))` was tried first and confirmed live to
+/// NOT actually achieve this: SwiftUI's "simultaneous" cooperation is between
+/// sibling SwiftUI `Gesture` values, not between a SwiftUI gesture and an enclosing
+/// `ScrollView`'s own native `UIScrollView`/`UIPanGestureRecognizer` -- the list
+/// still never scrolled even a pixel with that version, so a scroll attempt
+/// starting on a flower kept reading as an ever-growing rating drag and
+/// accidentally committed a score on release. The actual UIKit primitive for two
+/// recognizers to track the same touch stream at once is
+/// `UIGestureRecognizerDelegate.gestureRecognizer(_:shouldRecognizeSimultaneouslyWith:)`
+/// returning `true` -- there's no SwiftUI-level equivalent, hence this
+/// `UIViewRepresentable`. Confirmed live this version lets the list actually
+/// scroll when a swipe starts on a flower, which is what then lets
+/// `FlowerRateControl`'s own "did the flower move with the finger" check
+/// (comparing `translation` against the flower-relative drag distance) correctly
+/// detect a real scroll and bail without committing anything.
+private struct FlowerPanRecognizerView: UIViewRepresentable {
+    var onBegan: () -> Void
+    var onChanged: (_ location: CGPoint, _ translation: CGPoint) -> Void
+    var onEnded: (_ location: CGPoint, _ translation: CGPoint) -> Void
+    var onCancelled: () -> Void
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePan(_:)))
+        pan.delegate = context.coordinator
+        view.addGestureRecognizer(pan)
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        // Closures are captured fresh every body evaluation (they close over this
+        // view's @State), so the coordinator's copies must be refreshed here too --
+        // otherwise it would keep calling back into a stale render's closures.
+        context.coordinator.onBegan = onBegan
+        context.coordinator.onChanged = onChanged
+        context.coordinator.onEnded = onEnded
+        context.coordinator.onCancelled = onCancelled
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var onBegan: (() -> Void)?
+        var onChanged: ((CGPoint, CGPoint) -> Void)?
+        var onEnded: ((CGPoint, CGPoint) -> Void)?
+        var onCancelled: (() -> Void)?
+
+        @objc func handlePan(_ gr: UIPanGestureRecognizer) {
+            // `in: nil` -> window/screen coordinates, matching the DragGesture
+            // version's `coordinateSpace: .global` (both compared against
+            // `geo.frame(in: .global)` on the SwiftUI side).
+            let location = gr.location(in: nil)
+            let translation = gr.translation(in: nil)
+            switch gr.state {
+            case .began:
+                onBegan?()
+                onChanged?(location, translation)
+            case .changed:
+                onChanged?(location, translation)
+            case .ended:
+                onEnded?(location, translation)
+            case .cancelled, .failed:
+                onCancelled?()
+            default:
+                break
+            }
+        }
+
+        /// The one line this whole representable exists for -- lets this
+        /// recognizer and the enclosing ScrollView's own pan recognizer both
+        /// track the same touch, instead of one exclusively winning it.
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                                shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            true
+        }
+    }
+}
+
 /// Drag-to-rate flower control -- press the flower and drag outward; distance
 /// from the button's centre maps to a score (farther = higher, 0.1 steps). A
 /// press with no meaningful drag is a tap -> `onRequestPrecise` (open the full
@@ -89,17 +172,17 @@ struct FlowerRateControl: View {
     var body: some View {
         GeometryReader { geo in
             buttonContent
-                .gesture(
-                    DragGesture(minimumDistance: 0, coordinateSpace: .global)
-                        .onChanged { value in
+                .overlay(
+                    FlowerPanRecognizerView(
+                        onBegan: {
+                            isDragging = true
+                            maxDist = 0
+                        },
+                        onChanged: { location, _ in
                             let rect = geo.frame(in: .global)
                             let origin = CGPoint(x: rect.midX, y: rect.midY)
-                            if !isDragging {
-                                isDragging = true
-                                maxDist = 0
-                            }
-                            let dx = Double(value.location.x - origin.x)
-                            let dy = Double(value.location.y - origin.y)
+                            let dx = Double(location.x - origin.x)
+                            let dy = Double(location.y - origin.y)
                             let dist = (dx * dx + dy * dy).squareRoot()
                             maxDist = max(maxDist, dist)
                             if dist > 1 { dragAngle = atan2(dy, dx) }
@@ -107,8 +190,8 @@ struct FlowerRateControl: View {
 
                             if canDelete {
                                 let trash = RateGaugeGeometry.deleteZoneCenter
-                                let tdx = Double(value.location.x - trash.x)
-                                let tdy = Double(value.location.y - trash.y)
+                                let tdx = Double(location.x - trash.x)
+                                let tdy = Double(location.y - trash.y)
                                 let distToTrash = (tdx * tdx + tdy * tdy).squareRoot()
                                 // Also require having left the dead zone first, so a
                                 // flower that happens to sit right next to the fixed
@@ -121,13 +204,28 @@ struct FlowerRateControl: View {
                                 origin: origin, angle: dragAngle, score: dragScore, size: size,
                                 canDelete: canDelete, isOverDeleteZone: isOverDeleteZone
                             )
-                        }
-                        .onEnded { _ in
+                        },
+                        onEnded: { _, translation in
                             defer {
                                 isDragging = false
                                 isOverDeleteZone = false
                                 RateGaugeOverlay.shared.hide()
                             }
+                            // Now that FlowerPanRecognizerView genuinely lets the enclosing
+                            // ScrollView scroll at the same time (see its own doc comment for
+                            // why the DragGesture version couldn't), this check does what it
+                            // was always meant to: if the parent actually scrolled, the flower
+                            // moved along with the finger, so raw finger travel since touch-down
+                            // (`translation`, fixed to the initial touch point) ends up far
+                            // larger than the flower-*relative* distance tracked frame-by-frame
+                            // as `maxDist`. A real rating drag has no reason for those two to
+                            // diverge -- the flower never moves during one. A wide gap is the
+                            // signature of "this touch actually scrolled the list," not "the
+                            // user dragged outward on the flower" -- bail without committing
+                            // anything (no rating, no delete, no precise sheet).
+                            let rawTravel = Double(hypot(translation.x, translation.y))
+                            guard rawTravel <= maxDist + RateGaugeGeometry.offset else { return }
+
                             if isOverDeleteZone {
                                 onDelete?()
                                 return
@@ -138,7 +236,13 @@ struct FlowerRateControl: View {
                             }
                             guard let s = dragScore else { return } // released in dead zone -> cancel
                             onRate(s)
+                        },
+                        onCancelled: {
+                            isDragging = false
+                            isOverDeleteZone = false
+                            RateGaugeOverlay.shared.hide()
                         }
+                    )
                 )
         }
         .frame(width: size, height: size)
