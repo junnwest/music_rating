@@ -40,65 +40,6 @@ enum RateGaugeGeometry {
     static let deleteZoneRadius: Double = 44
 }
 
-/// Purely to stop an ancestor `.contextMenu` (e.g. `.albumContextMenu` on the row/
-/// card a flower sits inside) from firing when a long-press starts on the flower
-/// itself. `.contextMenu`'s long-press is implemented via `UIContextMenuInteraction`,
-/// a UIKit-level `UIInteraction` -- entirely outside SwiftUI's own `Gesture` system,
-/// so SwiftUI-level priority modifiers like `.highPriorityGesture` don't reach it
-/// (confirmed live: holding the flower still opened the row's context menu
-/// underneath after that fix, for the same underlying reason `.simultaneousGesture`
-/// never reached the ScrollView's native pan gesture in the scroll-vs-rate fix
-/// above -- SwiftUI's declarative gesture-composition modifiers only arbitrate
-/// between SwiftUI-declared gestures, not real UIKit interactions).
-///
-/// The one thing that DOES reach across that boundary is the standard
-/// `UIGestureRecognizerDelegate` negotiation UIKit runs between every pair of
-/// recognizers that could compete for the same touch, regardless of who added
-/// them -- including a private recognizer owned by a system interaction like
-/// `UIContextMenuInteraction`. This adds a real (invisible, functionally inert)
-/// `UILongPressGestureRecognizer` over just the flower's own bounds purely so its
-/// delegate can answer `shouldBeRequiredToFailBy` with `true`: any other recognizer
-/// sharing this touch -- the context menu's included -- must wait for this one to
-/// fail before it's allowed to begin. Since this recognizer never actually fails
-/// while the touch continues (0 minimum duration, no cancel condition), the
-/// context menu is held off for the flower's whole touch, without touching or
-/// replacing the actual rating gesture (`FlowerRateControl.body`'s own
-/// `LongPressGesture`/`DragGesture`), which keeps working exactly as before.
-private struct ContextMenuBlockerView: UIViewRepresentable {
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
-        view.backgroundColor = .clear
-        let press = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.noop))
-        press.minimumPressDuration = 0
-        press.delegate = context.coordinator
-        press.cancelsTouchesInView = false
-        view.addGestureRecognizer(press)
-        return view
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {}
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
-        @objc func noop() {}
-
-        /// The one line this whole view exists for.
-        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
-                                shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-            true
-        }
-
-        /// Otherwise inert -- let every other recognizer (the flower's own rating
-        /// gesture, the row's scroll) keep working normally; this view only holds
-        /// the context menu back, it never claims the touch for itself.
-        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
-                                shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-            true
-        }
-    }
-}
-
 /// Drag-to-rate flower control -- press the flower and drag outward; distance
 /// from the button's centre maps to a score (farther = higher, 0.1 steps). A
 /// press with no meaningful drag is a tap -> `onRequestPrecise` (open the full
@@ -159,24 +100,13 @@ struct FlowerRateControl: View {
     var body: some View {
         GeometryReader { geo in
             buttonContent
-                .overlay(ContextMenuBlockerView())
                 // A quick tap (shorter than `holdBeforeDrag`) would never reach
                 // the sequenced gesture below at all -- LongPressGesture only
                 // fires once its minimum duration has actually elapsed, so an
                 // ordinary fast tap needs its own, separate, undelayed
                 // recognizer to still open the precise sheet.
                 .onTapGesture { onRequestPrecise?() }
-                // `.highPriorityGesture`, not `.gesture` -- this button is almost always
-                // layered on top of a row/card that has its own `.contextMenu` (see
-                // `.albumContextMenu`), which is ALSO fundamentally a long-press
-                // interaction. Once this gesture became a `LongPressGesture` (for the
-                // scroll-vs-rate fix above), holding on the flower started triggering
-                // both: the drag-to-rate gauge AND the row's context menu underneath it,
-                // confirmed live. `.highPriorityGesture` tells SwiftUI this view's own
-                // gesture should win over an ancestor's competing one for touches that
-                // start here, without otherwise changing the row's context menu for
-                // touches anywhere else on it (cover art, title, etc.).
-                .highPriorityGesture(
+                .gesture(
                     LongPressGesture(minimumDuration: Self.holdBeforeDrag)
                         .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .global))
                         .onChanged { value in
