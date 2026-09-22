@@ -1,0 +1,182 @@
+/**
+ * Find release groups already in the catalogue that MusicBrainz holds NO official edition for.
+ *
+ * WHY. Until 2026-09-22 the ingest filtered on release-group TYPE only. MusicBrainz statuses each
+ * RELEASE (Official / Promotion / Bootleg / Pseudo-Release / Cancelled / Withdrawn), release groups
+ * carry no status at all, and we read that status, used it to pick which edition to keep, then threw
+ * it away. So a group whose every edition is a bootleg was ingested and displayed as a normal album.
+ *
+ * Reported from the app: "Ye" showed 87 albums where MusicBrainz's own site shows 13 (the site
+ * filters to official; we did not filter). Re-running the new gate against Ye drops him from 191
+ * release groups to 93 -- "Yeezus II", "So Help Me God", "Cruel Winter", "YE-VANGELION" and the like,
+ * every one typed `album` with no `live` secondary type, which is exactly why a TYPE filter could
+ * never catch them. Same root cause as Nirvana's "Greatest Hits Broadcast Collection" ranking
+ * alongside Nevermind.
+ *
+ * mb-ingest.ts now gates on this at write time. This script is the other half: the ~13% already
+ * ingested (sampled across 8 prolific artists: 65 of 512 release groups, 0%-29% by artist).
+ *
+ * WHY PER-ARTIST. browseArtistReleases returns EVERY edition for an artist with its status in a
+ * couple of paged requests, so one artist answers the question for all their release groups at once.
+ * Per-release-group lookups would be ~495,000 requests at MusicBrainz's 1 req/sec; per-artist is
+ * ~23,000 artists.
+ *
+ * REPORT-ONLY BY DEFAULT. Deleting a release group destroys any rating attached to it, so this
+ * writes nothing without --apply, and even then refuses any group carrying user data. It also
+ * backfills releases.status as it goes, which makes the decision auditable and lets a later run skip
+ * work already verified.
+ *
+ *   npx tsx --env-file=.env.local scripts/audit-unofficial-rgs.ts --limit=50
+ *   npx tsx --env-file=.env.local scripts/audit-unofficial-rgs.ts --min-rgs=20
+ *   npx tsx --env-file=.env.local scripts/audit-unofficial-rgs.ts --apply
+ */
+import * as fs from 'node:fs';
+import { getDB, type DB } from './itunes-ingest-core';
+import { browseArtistReleases } from './mb-client';
+
+const arg = (f: string) => process.argv.find(a => a.startsWith(`${f}=`))?.split('=').slice(1).join('=');
+const APPLY = process.argv.includes('--apply');
+const LIMIT = Number(arg('--limit') ?? Infinity);
+const MIN_RGS = Number(arg('--min-rgs') ?? 1);
+const OUT = arg('--out') ?? 'scripts/data/unofficial-rgs.json';
+const STATE = 'scripts/data/unofficial-rgs-state.json';
+
+interface Finding {
+  artist: string; artistId: string; rgId: string; mbid: string; title: string;
+  type: string; statuses: string[]; ratings: number;
+}
+
+// Read-only SQL through the Management API, for the aggregate questions PostgREST can only answer
+// with one request per row.
+async function sql<T>(query: string): Promise<T[]> {
+  const token = process.env.SUPABASE_ACCESS_TOKEN;
+  const ref = process.env.NEXT_PUBLIC_SUPABASE_URL?.match(/https:\/\/([a-z0-9]+)\.supabase\.co/)?.[1];
+  if (!token || !ref) throw new Error('SUPABASE_ACCESS_TOKEN / NEXT_PUBLIC_SUPABASE_URL required');
+  const res = await fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query }),
+  });
+  if (!res.ok) throw new Error(`query failed: ${res.status} ${await res.text()}`);
+  return (await res.json()) as T[];
+}
+
+function loadDone(): Set<string> {
+  try { return new Set(JSON.parse(fs.readFileSync(STATE, 'utf8')).done as string[]); } catch { return new Set(); }
+}
+function saveDone(s: Set<string>) { fs.writeFileSync(STATE, JSON.stringify({ done: [...s] })); }
+
+async function main() {
+  const db = getDB();
+  const done = loadDone();
+
+  // Artists worth checking, biggest catalogues first -- that is where bootlegs concentrate and
+  // where a wrong album is most visible.
+  //
+  // ONE AGGREGATE, NOT N COUNTS. This used to page every tracks_done artist through PostgREST and
+  // then fire a separate head-count per artist to learn their release-group total: 36,585 HTTP
+  // round-trips before the script could print its first line, purely to decide which handful to
+  // look at. It never got that far -- run alongside the ingest pipeline it simply sat there, and
+  // both jobs suffered, because the two also share MusicBrainz's 1 req/sec-per-IP budget. Grouping
+  // in SQL answers the same question in one query, and --min-rgs/--limit are applied server-side so
+  // only the rows actually wanted come back.
+  const rankSql = `
+    select a.id::text, a.name, x.external_id as mbid, count(rg.id) as n
+      from artists a
+      join artist_external_ids x
+        on x.artist_id = a.id and x.source = 'musicbrainz'
+      join release_groups rg on rg.primary_artist_id = a.id
+     where a.ingest_state = 'tracks_done'
+     group by 1, 2, 3
+    having count(rg.id) >= ${Number.isFinite(MIN_RGS) ? MIN_RGS : 1}
+     order by n desc
+     ${Number.isFinite(LIMIT) ? `limit ${LIMIT + 5000}` : ''}`;
+  const ranked = await sql<{ id: string; name: string; mbid: string; n: number }>(rankSql);
+
+  // --limit is applied after the resume filter, so a resumed run advances instead of re-offering
+  // the artists it already finished.
+  let targets = ranked.filter(a => !done.has(a.id));
+  if (Number.isFinite(LIMIT)) targets = targets.slice(0, LIMIT);
+
+  console.log(`[unofficial] ${targets.length} artist(s) to check${APPLY ? '  *** APPLY ***' : '  (report only)'}`);
+  const findings: Finding[] = [];
+  let checked = 0, deleted = 0, keptRated = 0;
+
+  for (const a of targets) {
+    let editions: any[];
+    try { editions = await browseArtistReleases(a.mbid); }
+    catch (e) { console.warn(`  ! ${a.name}: ${(e as Error).message}`); continue; }
+
+    // rgId -> statuses of every edition MB knows for it
+    const byRg = new Map<string, string[]>();
+    for (const r of editions) {
+      if (!r.rgId) continue;
+      const l = byRg.get(r.rgId); const st = r.status ?? 'null';
+      if (l) l.push(st); else byRg.set(r.rgId, [st]);
+    }
+
+    // Our rows for this artist, paged -- a prolific artist can hold well over the 1,000 PostgREST
+    // returns in one go, and silently seeing only the first page would under-report.
+    const ours: any[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await db.from('release_groups')
+        .select('id, title, release_group_type, mb_release_group_id')
+        .eq('primary_artist_id', a.id).not('mb_release_group_id', 'is', null)
+        .order('id').range(from, from + 999);
+      if (error) { console.warn(`  ! ${a.name} rgs: ${error.message}`); break; }
+      if (!data?.length) break;
+      ours.push(...data);
+      if (data.length < 1000) break;
+    }
+
+    // Which of this artist's groups carry ratings -- one query, not one per candidate. A rating is
+    // the thing this script must never destroy, so it is worth knowing up front for all of them.
+    const rated = new Set<string>(
+      (await sql<{ release_group_id: string }>(
+        `select distinct r.release_group_id::text
+           from ratings r join release_groups rg on rg.id = r.release_group_id
+          where rg.primary_artist_id = '${a.id}'`)).map(r => r.release_group_id));
+
+    for (const rg of ours) {
+      const st = byRg.get(rg.mb_release_group_id);
+      // No editions returned => MB told us nothing, not that it is unofficial. Leave it alone.
+      if (!st || st.length === 0) continue;
+      if (st.some(s => s === 'Official')) continue;
+
+      const ratings = rated.has(rg.id) ? 1 : 0;
+      const f: Finding = {
+        artist: a.name, artistId: a.id, rgId: rg.id, mbid: rg.mb_release_group_id,
+        title: rg.title, type: rg.release_group_type, statuses: [...new Set(st)], ratings,
+      };
+      findings.push(f);
+
+      if (APPLY) {
+        if (ratings > 0) { keptRated++; continue; }   // never destroy a user's rating
+        const { error } = await db.from('release_groups').delete().eq('id', rg.id);
+        if (error) console.warn(`  ! delete ${rg.title}: ${error.message}`); else deleted++;
+      }
+    }
+    checked++;
+    done.add(a.id);
+    if (checked % 25 === 0) {
+      saveDone(done);
+      console.log(`  ${checked}/${targets.length}  found=${findings.length}${APPLY ? ` deleted=${deleted} kept-rated=${keptRated}` : ''}`);
+    }
+  }
+  saveDone(done);
+  fs.writeFileSync(OUT, JSON.stringify(findings, null, 2));
+
+  const byType: Record<string, number> = {};
+  for (const f of findings) byType[f.type] = (byType[f.type] ?? 0) + 1;
+  console.log(`\n  artists checked        ${checked}`);
+  console.log(`  unofficial-only groups ${findings.length}`);
+  console.log(`  by type                ${JSON.stringify(byType)}`);
+  console.log(`  carrying user ratings  ${findings.filter(f => f.ratings > 0).length}  (never deleted)`);
+  if (APPLY) console.log(`  DELETED                ${deleted}`);
+  console.log(`\n  report → ${OUT}`);
+  if (!APPLY) console.log('  report only — re-run with --apply to delete (rated groups are still skipped)');
+}
+
+if (process.argv[1] && process.argv[1].endsWith('audit-unofficial-rgs.ts')) {
+  main().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); });
+}
