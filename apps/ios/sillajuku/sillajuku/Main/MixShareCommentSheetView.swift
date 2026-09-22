@@ -42,6 +42,8 @@ struct MixShareCommentSheetView: View {
     @State private var newComment = ""
     @State private var isSending = false
     @State private var errorMessage: String?
+    @State private var editingComment: MixShareComment?
+    @FocusState private var isInputFocused: Bool
 
     private var currentUserId: UUID? { supabase.auth.currentUser?.id }
 
@@ -102,7 +104,16 @@ struct MixShareCommentSheetView: View {
                             userId: comment.userId,
                             handle: comment.profiles?.handle ?? String(localized: "someone")
                         )) {
-                            MixShareCommentRow(comment: comment)
+                            MixShareCommentRow(
+                                comment: comment,
+                                isOwn: comment.userId == currentUserId,
+                                onRequestEdit: {
+                                    editingComment = comment
+                                    newComment = comment.content
+                                    isInputFocused = true
+                                },
+                                onDelete: { Task { await deleteComment(comment) } }
+                            )
                         }
                         .buttonStyle(.plain)
                         if comment.id != comments.last?.id {
@@ -114,36 +125,61 @@ struct MixShareCommentSheetView: View {
         }
     }
 
+    /// See `CommentSheetView.inputBar`'s own comment for why editing
+    /// happens in this bar (Instagram-style) rather than inline in the row.
     private var inputBar: some View {
-        HStack(spacing: 10) {
-            DefaultAvatarView(size: 30)
-
-            TextField("Add a comment…", text: $newComment, axis: .vertical)
-                .font(.jakarta(14))
-                .lineLimit(1...4)
-                .submitLabel(.send)
-                .onSubmit { Task { await sendComment() } }
-
-            if !newComment.trimmingCharacters(in: .whitespaces).isEmpty {
-                Button {
-                    Task { await sendComment() }
-                } label: {
-                    if isSending {
-                        ProgressView().scaleEffect(0.75)
-                    } else {
-                        Image("icon-arrow-up-circle")
-                            .renderingMode(.template)
-                            .resizable().scaledToFit()
-                            .frame(width: 28, height: 28)
-                            .foregroundStyle(Color.sjAmber)
+        VStack(alignment: .leading, spacing: 0) {
+            if editingComment != nil {
+                HStack {
+                    Text("Editing comment")
+                        .font(.jakarta(12, weight: .medium))
+                        .foregroundStyle(Color.sjMuted)
+                    Spacer()
+                    Button {
+                        editingComment = nil
+                        newComment = ""
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Color.sjMuted)
                     }
+                    .accessibilityLabel(String(localized: "Cancel editing"))
                 }
-                .disabled(isSending)
-                .accessibilityLabel(String(localized: "Send comment"))
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.bottom, 2)
             }
+            HStack(spacing: 10) {
+                DefaultAvatarView(size: 30)
+
+                TextField("Add a comment…", text: $newComment, axis: .vertical)
+                    .font(.jakarta(14))
+                    .lineLimit(1...4)
+                    .focused($isInputFocused)
+                    .submitLabel(.send)
+                    .onSubmit { Task { await submitInput() } }
+
+                if !newComment.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Button {
+                        Task { await submitInput() }
+                    } label: {
+                        if isSending {
+                            ProgressView().scaleEffect(0.75)
+                        } else {
+                            Image("icon-arrow-up-circle")
+                                .renderingMode(.template)
+                                .resizable().scaledToFit()
+                                .frame(width: 28, height: 28)
+                                .foregroundStyle(Color.sjAmber)
+                        }
+                    }
+                    .disabled(isSending)
+                    .accessibilityLabel(String(localized: "Send comment"))
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
         .background(Color.sjSurface)
     }
 
@@ -157,6 +193,52 @@ struct MixShareCommentSheetView: View {
             .value) ?? [MixShareComment]()
         comments  = fetched
         isLoading = false
+    }
+
+    private func submitInput() async {
+        if editingComment != nil {
+            await saveEditedComment()
+        } else {
+            await sendComment()
+        }
+    }
+
+    private func saveEditedComment() async {
+        guard let editing = editingComment else { return }
+        let text = newComment.trimmingCharacters(in: .whitespaces)
+        editingComment = nil
+        newComment = ""
+        guard !text.isEmpty, text != editing.content else { return }
+        await editComment(editing, newContent: text)
+    }
+
+    private func editComment(_ comment: MixShareComment, newContent: String) async {
+        struct Payload: Encodable { let content: String }
+        do {
+            try await supabase
+                .from("mix_share_comments")
+                .update(Payload(content: newContent))
+                .eq("id", value: comment.id)
+                .execute()
+            errorMessage = nil
+            await loadComments()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func deleteComment(_ comment: MixShareComment) async {
+        do {
+            try await supabase
+                .from("mix_share_comments")
+                .delete()
+                .eq("id", value: comment.id)
+                .execute()
+            errorMessage = nil
+            await loadComments()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func sendComment() async {
@@ -191,8 +273,16 @@ struct MixShareCommentSheetView: View {
 
 // MARK: - Comment row
 
+// See CommentSheetView.swift's own CommentRow for why edit/delete are plain
+// text links under the comment (Instagram-style) and editing happens in the
+// compose bar rather than inline in this row.
 private struct MixShareCommentRow: View {
     let comment: MixShareComment
+    var isOwn: Bool = false
+    var onRequestEdit: () -> Void = {}
+    var onDelete: () -> Void = {}
+
+    @State private var showDeleteConfirm = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -212,11 +302,36 @@ private struct MixShareCommentRow: View {
                     .font(.jakarta(14))
                     .foregroundStyle(Color.sjInk)
                     .fixedSize(horizontal: false, vertical: true)
+                if isOwn {
+                    HStack(spacing: 14) {
+                        Button(action: onRequestEdit) {
+                            Text("Edit")
+                                .font(.jakarta(12, weight: .semibold))
+                                .foregroundStyle(Color.sjMuted)
+                        }
+                        Button {
+                            showDeleteConfirm = true
+                        } label: {
+                            Text("Delete")
+                                .font(.jakarta(12, weight: .semibold))
+                                .foregroundStyle(Color.sjMuted)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 3)
+                }
             }
 
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+        .confirmationDialog(
+            String(localized: "Delete this comment?"),
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "Delete"), role: .destructive) { onDelete() }
+        }
     }
 }
