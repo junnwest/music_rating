@@ -55,11 +55,27 @@ export const embeddingsEnabled = () => !!JINA_KEY;
  * Embed one batch of release_groups missing an embedding.
  * Returns: rows embedded (0 = nothing pending; -1 = transient API error, retry later).
  */
-export async function embedReleaseGroupsBatch(db: DB, batchSize = 64): Promise<number> {
+/**
+ * Embed a batch of release groups.
+ *
+ * `types` restricts which release-group types are eligible. This exists because embedding the whole
+ * catalogue does not fit the plan: the HNSW index already measures 1,893 MB for 237,545 embedded
+ * rows (~8.0 KB/row on top of ~4.1 KB/row for the vector(1024) column itself), against a database
+ * that is at 6,923 MB of a 12 GB limit. The 253,612 unembedded rows split almost evenly between
+ * singles (107,667) and album/EP (107,090); embedding all of them adds roughly 3.1 GB and lands at
+ * ~10.0 GB with the stub drain still holding 33,598 artists to ingest, whereas album/EP only adds
+ * ~1.3 GB. Singles are also the least useful rows in semantic search -- backfill-embeddings.ts,
+ * which does the equivalent job over `releases`, already excludes them for the same reason.
+ */
+export async function embedReleaseGroupsBatch(
+  db: DB, batchSize = 64, types?: string[],
+): Promise<number> {
   if (!JINA_KEY) return 0;
-  const { data, error } = await db.from('release_groups')
+  let q = db.from('release_groups')
     .select('id, title, native_title, artist_display, genres, first_release_date')
-    .is('embedding', null).order('id').limit(batchSize);
+    .is('embedding', null);
+  if (types?.length) q = q.in('release_group_type', types);
+  const { data, error } = await q.order('id').limit(batchSize);
   if (error) throw new Error(`embed fetch: ${error.message}`);
   const rows = (data ?? []) as RgRow[];
   if (rows.length === 0) return 0;

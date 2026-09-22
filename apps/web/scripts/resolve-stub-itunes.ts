@@ -156,6 +156,10 @@ function creditNames(artistName: string | null | undefined): string[] {
  */
 const ORDINAL_ALBUM_RE = /\s*[-–—:]?\s*(the\s+)?\d+(\.\d+)?\s*(st|nd|rd|th)\s+(mini\s+|full\s+|repackage\s+)?(album|ep|single).*$/i;
 const FORMAT_TAIL_RE   = /\s*[-–—:]?\s*(the\s+)?(mini\s+|full\s+)?(album|ep|single)\s*$/i;
+// As ORDINAL_ALBUM_RE but WITHOUT the trailing `.*$`, so it removes only the ordinal phrase and
+// leaves whatever follows it intact. Needed for "<Artist> <N>th Single <Title>", where the real
+// title comes after the ordinal rather than before it.
+const ORDINAL_INFIX_RE = /\s*[-–—:]?\s*(the\s+)?\d+(\.\d+)?\s*(st|nd|rd|th)\s+(mini\s+|full\s+|repackage\s+)?(album|ep|single)\b\s*/i;
 const PAREN_GROUP_RE   = /[([]([^)\]]{2,})[)\]]/g;
 // Descriptors, not titles. Never promote one of these to a standalone alternate title.
 const GENERIC_PAREN_RE = /^\s*(original\s+)?(motion\s+picture\s+|television\s+|game\s+|broadway\s+|cast\s+)?(sound\s?track|ost|score|album|ep|single|deluxe|expanded|special|standard|remaster(ed)?|reissue|remix(es)?|instrumental(s)?|live|acoustic|version|edition|mix|explicit|clean|bonus|disc\s*\d+|vol\.?\s*\d+|pt\.?\s*\d+|part\s*\d+|feat\.?.*|with\s+.*|inst\.?)\s*\d*\s*$/i;
@@ -193,21 +197,62 @@ export function titleVariants(raw: string, artistNames: string[] = []): Set<stri
   for (const m of base.matchAll(PAREN_GROUP_RE)) if (isAlternateTitle(m[1])) seeds.add(m[1]);
   seeds.add(base.replace(PAREN_GROUP_RE, ' '));
 
-  for (const seed of seeds) {
-    let t = seed;
-    add(t);
+  // ONE REDUCTION STEP. Returns every shorter form of `t` reachable by removing one decoration.
+  const reduce = (t: string): string[] => {
+    const outs: string[] = [];
     // Drop an ordinal-album tail: "Starry Night - The 2nd Mini Album" -> "Starry Night"
     const noOrd = t.replace(ORDINAL_ALBUM_RE, '');
-    if (noOrd.trim()) add(noOrd);
+    if (noOrd.trim() && noOrd !== t) outs.push(noOrd);
+    // Drop an ordinal phrase that sits MID-string, keeping what follows. ORDINAL_ALBUM_RE ends in
+    // `.*$`, so on the very common Korean format "<Artist> <N>th Single <Title>" it swallowed the
+    // real title: "Afterschool 3rd Single BANG" reduced to "afterschool" and therefore never
+    // matched the "Bang!" already in the catalogue.
+    const noOrdIn = t.replace(ORDINAL_INFIX_RE, ' ');
+    if (noOrdIn.trim() && noOrdIn !== t) outs.push(noOrdIn);
     // Drop a bare format tail: "The 2nd EP" -> "The 2nd"
     const noFmt = t.replace(FORMAT_TAIL_RE, '');
-    if (noFmt.trim()) add(noFmt);
-    // Drop a leading artist name: "10cm The First EP" -> "The First EP"
+    if (noFmt.trim() && noFmt !== t) outs.push(noFmt);
+    // Drop a leading artist name: "10cm The First EP" -> "The First EP".
+    // Compared with spaces removed, because the artist field and the title often disagree about
+    // them -- the row is credited "After School" while the title reads "Afterschool".
+    const tn = unicodeNorm(t);
     for (const an of artistNames) {
       const n = unicodeNorm(an);
       if (n.length < 2) continue;
-      const tn = unicodeNorm(t);
-      if (tn.startsWith(n + ' ') && tn.length > n.length + 1) add(tn.slice(n.length + 1));
+      const nNo = n.replace(/\s+/g, '');
+      let acc = '';
+      for (let i = 0; i < tn.length; i++) {
+        acc += tn[i];
+        if (acc.replace(/\s+/g, '').length > nNo.length) break;
+        if (acc.replace(/\s+/g, '') === nNo) {
+          const rest = tn.slice(i + 1).trim();
+          if (rest.length >= 2) outs.push(rest);
+          break;
+        }
+      }
+    }
+    return outs;
+  };
+
+  // REDUCTIONS MUST COMPOSE. Each rule used to be applied once, to the seed only, so a title
+  // carrying two decorations at once never reduced past the first one:
+  // "NCT#127 LIMITLESS - The 2nd Mini Album" yielded "nct 127 limitless" (artist kept, tail
+  // dropped) and "limitless the 2nd mini album" (artist dropped, tail kept) but never plain
+  // "limitless" -- so it did not match the LIMITLESS we already hold, and would have been written
+  // as a duplicate. Iterating to a fixed point produces the fully-stripped form as well. Four
+  // rounds is far more than any real title needs and bounds the work.
+  for (const seed of seeds) {
+    add(seed);
+    let frontier = [seed];
+    for (let round = 0; round < 4 && frontier.length; round++) {
+      const next: string[] = [];
+      for (const t of frontier) {
+        for (const r of reduce(t)) {
+          const n = unicodeNorm(r);
+          if (n.length >= 2 && !out.has(n)) { out.add(n); next.push(r); }
+        }
+      }
+      frontier = next;
     }
   }
   return out;

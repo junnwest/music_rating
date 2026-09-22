@@ -64,7 +64,14 @@ async function caaCover(mbid: string): Promise<{ status: 'filled' | 'none' | 're
 async function main() {
   const state = loadState();
   const doneSet = new Set(state.done);
-  const types = ALL ? ['album', 'ep', 'single'] : ['album', 'ep'];
+  // --all stops at single, so compilation and soundtrack rows -- ~70,000 of them still on the
+  // wrong endpoint -- were unreachable by any flag. --types= names them explicitly rather than
+  // redefining --all, whose meaning is referenced in earlier run logs.
+  //   --types=compilation,soundtrack
+  const TYPES_ARG = args.find(x => x.startsWith('--types='))?.split('=')[1];
+  const types = TYPES_ARG ? TYPES_ARG.split(',').map(s => s.trim()).filter(Boolean)
+              : ALL ? ['album', 'ep', 'single']
+              : ['album', 'ep'];
 
   // Pull the addressable set (null cover + has mbid), priority types first.
   const PAGE = 1000;
