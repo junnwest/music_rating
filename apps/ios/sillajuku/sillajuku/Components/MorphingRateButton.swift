@@ -59,7 +59,18 @@ struct MorphingRateButton<IdleLabel: View>: View {
                 Button {
                     withAnimation(.bouncy) { phase = .rating }
                 } label: {
+                    // A `Button`'s tappable region follows its label's
+                    // rendered/opaque content, not its full layout frame --
+                    // `idleLabel()` fills the pill's width via
+                    // `.frame(maxWidth: .infinity)`, but that just centers
+                    // its icon+text inside a wider *transparent* frame,
+                    // which alone only makes that centered content tappable
+                    // (confirmed live: "only the center of the button is
+                    // clickable"). `idleShape` -- the same shape `glassEffect`
+                    // below renders -- makes the whole visual pill/circle
+                    // tappable, matching what it looks like.
                     idleLabel()
+                        .contentShape(idleShape)
                 }
                 .buttonStyle(.plain)
                 .glassEffect(.regular.tint(idleTint.opacity(idleTintOpacity)), in: idleShape)

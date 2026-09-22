@@ -40,6 +40,148 @@ enum RateGaugeGeometry {
     static let deleteZoneRadius: Double = 44
 }
 
+/// Exclusive-by-default long-press-then-drag recognizer, replacing the plain
+/// SwiftUI `LongPressGesture.sequenced(before: DragGesture(...))`
+/// `FlowerRateControl` used to attach. Three attempts before landing here:
+///
+/// 1. Plain `.gesture()` (exclusive) -- reported live as blocking scroll
+///    outright when a touch started on this control.
+/// 2. `.simultaneousGesture()`, later a custom `UIGestureRecognizer` with
+///    `shouldRecognizeSimultaneouslyWith` opting in to concurrency
+///    specifically with `UIPanGestureRecognizer`. This "fixed" scroll by
+///    letting both this control *and* the scroll view genuinely,
+///    independently track the same touch at once -- which is exactly the
+///    problem confirmed live afterward: once both are truly simultaneous,
+///    nothing this control does *after* activating (disabling the scroll
+///    view, `.scrollDisabled`, anything reactive) can retroactively decouple
+///    a scroll that was never coupled to this control's own state in the
+///    first place. Simultaneity wasn't a partial fix, it was the actual bug.
+/// 3. Landed here: back to *not* simultaneous with pan at all -- plain UIKit
+///    priority governs the conflict instead, the same mechanism a native
+///    context menu already relies on to coexist correctly with scrolling in
+///    every iOS app (hold still on an app icon in a horizontal carousel:
+///    the menu wins; swipe instead: the scroll wins -- nobody needs to
+///    "unstick" anything after the fact, because only one of them was ever
+///    actually tracking). What attempt 1 almost certainly got wrong wasn't
+///    exclusivity itself, but `allowableMovement` -- how far a touch can
+///    drift during the hold before this recognizer gives up and lets the
+///    scroll view's own (non-simultaneous, so *waiting-on-us*) pan proceed.
+///    Left at the system default (10pt) in earlier rounds, a fast flick
+///    still has to travel that whole 10pt, held back by this control the
+///    entire way, before the scroll view is released -- read as "blocked"
+///    rather than "brief lag." Tightened significantly below.
+///
+/// `shouldBeRequiredToFailBy` still explicitly forces every *non-pan*
+/// recognizer -- including whatever internal recognizer a context menu's
+/// press-and-hold uses -- to wait for this one to resolve first, rather than
+/// leaving that conflict to an ordinary priority race; confirmed live this
+/// part already worked correctly.
+///
+/// `UILongPressGestureRecognizer` is used directly (not a custom subclass)
+/// since its own built-in behavior already matches what's needed: it holds
+/// in `.possible` and fails if the touch moves more than `allowableMovement`
+/// before `minimumPressDuration` elapses, then once `.began` fires it keeps
+/// reporting `.changed` on any further movement with no distance cap --
+/// exactly the "hold still, then drag freely in any direction" shape a
+/// sequenced LongPress+Drag was reconstructing by hand.
+private struct FlowerPressDragRecognizer: UIGestureRecognizerRepresentable {
+    var minimumPressDuration: TimeInterval
+    var allowableMovement: CGFloat
+    /// Fires on `.began` and every `.changed`, with the current touch
+    /// location in the same `.global` coordinate space `FlowerRateControl`
+    /// already computes its button-center origin in.
+    var onUpdate: (CGPoint) -> Void
+    /// Fires once on `.ended` -- a press that reached `.began` and was then
+    /// released normally. Never fires for a press that failed before
+    /// `.began` (a quick tap, or movement past `allowableMovement`, e.g. a
+    /// scroll) -- nothing was ever shown for those, so there's nothing to
+    /// commit or clean up.
+    var onEnded: () -> Void
+    /// Fires on `.cancelled` (system-interrupted after `.began` -- an
+    /// incoming call, a system gesture, etc.). Distinct from the ordinary
+    /// pre-`.began` failure case above, which needs no cleanup at all.
+    var onCancelled: () -> Void
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        /// Set true on `.began`, cleared on every terminal state (`.ended`,
+        /// `.cancelled`, `.failed`) via `handleUIGestureRecognizerAction`
+        /// below. `RateGaugeOverlay` is a single global singleton (the
+        /// floating gauge window is shared across every flower in the app,
+        /// not per-instance), so if *this* recognizer's own view is torn
+        /// down mid-drag -- confirmed live: a paginated list loading a new
+        /// row while a flower was actively being dragged -- without a
+        /// terminal state ever reaching `handleUIGestureRecognizerAction`
+        /// first, nothing would ever call `RateGaugeOverlay.shared.hide()`,
+        /// leaving its floating gauge window stuck on screen ("the flower
+        /// target is left in the screen idle") for good. `deinit` runs
+        /// deterministically once this Coordinator's last reference (held by
+        /// the torn-down recognizer/view) goes away, regardless of whether
+        /// UIKit ever got to deliver a clean terminal state first, so it's
+        /// used here as the guaranteed last chance to catch that and clean
+        /// up.
+        var isActive = false
+
+        deinit {
+            guard isActive else { return }
+            // `deinit` is nonisolated even though this whole app runs on the
+            // main actor by default -- UIKit view/gesture-recognizer
+            // teardown (what triggers this) always happens on the main
+            // thread in practice, so this is the standard escape hatch for
+            // telling the compiler what's already true at runtime rather
+            // than a genuine cross-actor hop.
+            MainActor.assumeIsolated {
+                RateGaugeOverlay.shared.hide()
+            }
+        }
+
+        // No `shouldRecognizeSimultaneouslyWith` override -- UIKit's default
+        // (exclusive/non-simultaneous) is exactly what's wanted now for
+        // *every* other recognizer, pan included: let plain priority decide
+        // who actually wins a given touch, rather than letting both track it
+        // independently. See this type's own doc comment for why the
+        // opposite choice (opting in to simultaneity with pan) was the bug,
+        // not the fix.
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            !(otherGestureRecognizer is UIPanGestureRecognizer)
+        }
+    }
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIGestureRecognizer(context: Context) -> UILongPressGestureRecognizer {
+        let recognizer = UILongPressGestureRecognizer()
+        recognizer.minimumPressDuration = minimumPressDuration
+        recognizer.allowableMovement = allowableMovement
+        recognizer.delegate = context.coordinator
+        return recognizer
+    }
+
+    func updateUIGestureRecognizer(_ recognizer: UILongPressGestureRecognizer, context: Context) {
+        recognizer.minimumPressDuration = minimumPressDuration
+        recognizer.allowableMovement = allowableMovement
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: UILongPressGestureRecognizer, context: Context) {
+        switch recognizer.state {
+        case .began:
+            context.coordinator.isActive = true
+            onUpdate(context.converter.location(in: .global))
+        case .changed:
+            onUpdate(context.converter.location(in: .global))
+        case .ended:
+            context.coordinator.isActive = false
+            onEnded()
+        case .cancelled, .failed:
+            context.coordinator.isActive = false
+            onCancelled()
+        default:
+            break
+        }
+    }
+}
+
 /// Drag-to-rate flower control -- press the flower and drag outward; distance
 /// from the button's centre maps to a score (farther = higher, 0.1 steps). A
 /// press with no meaningful drag is a tap -> `onRequestPrecise` (open the full
@@ -87,15 +229,27 @@ struct FlowerRateControl: View {
     private var canDelete: Bool { currentScore != nil && onDelete != nil }
 
     /// How long a press must hold still before the drag-to-rate gesture starts
-    /// tracking at all. Below this, a touch that starts moving (a normal scroll
-    /// swipe through a flower badge in a list) never gets claimed by this control
-    /// in the first place -- `LongPressGesture` fails on its own built-in movement
-    /// tolerance before `minimumDuration` elapses, and since that's the *first*
-    /// stage of the sequenced gesture below, the whole thing never recognizes,
-    /// leaving the enclosing ScrollView free to scroll normally. A deliberate
-    /// press-and-drag-to-rate still works exactly as before, just with this
-    /// short hold before it visibly engages.
-    private static let holdBeforeDrag: TimeInterval = 0.12
+    /// tracking at all -- so a quick tap still reads as a tap (see the
+    /// separate, undelayed `.onTapGesture` below) rather than immediately
+    /// engaging the drag machinery. Also, indirectly, what lets this control
+    /// reliably win against a context menu's own (longer) press-and-hold
+    /// threshold on the same touch -- see `FlowerPressDragRecognizer`'s doc
+    /// comment for the full mechanism.
+    private static let holdBeforeDrag: TimeInterval = 0.2
+    /// How far a press can move before `holdBeforeDrag` elapses without
+    /// failing this control's own recognizer -- passed straight through to
+    /// `UILongPressGestureRecognizer.allowableMovement` (system default is
+    /// `10`). This control's recognizer is exclusive with an enclosing
+    /// `ScrollView`'s own pan (see `FlowerPressDragRecognizer`'s doc
+    /// comment), so the scroll view has to wait for this one to fail before
+    /// it can begin, for the entire distance set here -- at the system
+    /// default, a fast flick starting on this control had to travel the
+    /// full 10pt, held back the whole way, before scrolling was released,
+    /// which read as "blocked" rather than a brief lag. Tightened well below
+    /// the default so that hand-off happens close to instantly for anything
+    /// resembling a real scroll, while still comfortably covering the small,
+    /// mostly-still wobble of an intentional press-and-hold.
+    private static let allowableMovement: CGFloat = 4
 
     var body: some View {
         GeometryReader { geo in
@@ -106,19 +260,25 @@ struct FlowerRateControl: View {
                 // ordinary fast tap needs its own, separate, undelayed
                 // recognizer to still open the precise sheet.
                 .onTapGesture { onRequestPrecise?() }
+                // See `FlowerPressDragRecognizer`'s own doc comment for why
+                // this needs to be a real `UIGestureRecognizer` + delegate
+                // rather than a plain SwiftUI `LongPressGesture.sequenced`:
+                // `.gesture()`/`.simultaneousGesture()` can't tell this
+                // control's two different ancestor conflicts (scroll,
+                // context menu) apart, and each needs the opposite answer.
                 .gesture(
-                    LongPressGesture(minimumDuration: Self.holdBeforeDrag)
-                        .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .global))
-                        .onChanged { value in
-                            guard case .second(true, let drag) = value, let drag else { return }
+                    FlowerPressDragRecognizer(
+                        minimumPressDuration: Self.holdBeforeDrag,
+                        allowableMovement: Self.allowableMovement,
+                        onUpdate: { location in
                             let rect = geo.frame(in: .global)
                             let origin = CGPoint(x: rect.midX, y: rect.midY)
                             if !isDragging {
                                 isDragging = true
                                 maxDist = 0
                             }
-                            let dx = Double(drag.location.x - origin.x)
-                            let dy = Double(drag.location.y - origin.y)
+                            let dx = Double(location.x - origin.x)
+                            let dy = Double(location.y - origin.y)
                             let dist = (dx * dx + dy * dy).squareRoot()
                             maxDist = max(maxDist, dist)
                             if dist > 1 { dragAngle = atan2(dy, dx) }
@@ -126,8 +286,8 @@ struct FlowerRateControl: View {
 
                             if canDelete {
                                 let trash = RateGaugeGeometry.deleteZoneCenter
-                                let tdx = Double(drag.location.x - trash.x)
-                                let tdy = Double(drag.location.y - trash.y)
+                                let tdx = Double(location.x - trash.x)
+                                let tdy = Double(location.y - trash.y)
                                 let distToTrash = (tdx * tdx + tdy * tdy).squareRoot()
                                 // Also require having left the dead zone first, so a
                                 // flower that happens to sit right next to the fixed
@@ -140,12 +300,8 @@ struct FlowerRateControl: View {
                                 origin: origin, angle: dragAngle, score: dragScore, size: size,
                                 canDelete: canDelete, isOverDeleteZone: isOverDeleteZone
                             )
-                        }
-                        .onEnded { value in
-                            // The long press never actually succeeded (released too
-                            // soon, or the touch moved enough to fail it, e.g. a
-                            // scroll) -- nothing was ever shown, nothing to clean up.
-                            guard case .second(true, _) = value else { return }
+                        },
+                        onEnded: {
                             defer {
                                 isDragging = false
                                 isOverDeleteZone = false
@@ -161,7 +317,14 @@ struct FlowerRateControl: View {
                             }
                             guard let s = dragScore else { return } // released in dead zone -> cancel
                             onRate(s)
+                        },
+                        onCancelled: {
+                            guard isDragging else { return }
+                            isDragging = false
+                            isOverDeleteZone = false
+                            RateGaugeOverlay.shared.hide()
                         }
+                    )
                 )
         }
         .frame(width: size, height: size)
