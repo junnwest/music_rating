@@ -259,6 +259,25 @@ function sortGenresByVotes(genres: any[] | null | undefined): string[] {
     .filter(Boolean);
 }
 
+/**
+ * How many release groups MusicBrainz holds for this artist, in ONE request.
+ *
+ * The freshness lane's actual question is "has anything changed since last time?", and a full
+ * browse (N requests, then a full re-ingest) is an absurdly expensive way to ask it. MusicBrainz
+ * reports `release-group-count` on every browse response, so limit=1 answers it directly. Uses the
+ * same type filter as browseReleaseGroups so the two counts are comparable.
+ *
+ * Returns null when MusicBrainz does not report a count, so callers can tell "unknown" from 0 and
+ * fall back to the expensive path rather than concluding nothing exists.
+ */
+export async function countArtistReleaseGroups(artistMbid: string): Promise<number | null> {
+  const data = await mbGet(
+    `/release-group?artist=${artistMbid}&type=${enc('album|ep|single')}&limit=1&offset=0`,
+  );
+  const n = data?.['release-group-count'];
+  return typeof n === 'number' ? n : null;
+}
+
 export async function browseReleaseGroups(artistMbid: string): Promise<MbReleaseGroup[]> {
   const out: MbReleaseGroup[] = [];
   let offset = 0;
@@ -391,8 +410,34 @@ export interface MbArtistRelease {
 const MAX_RELEASE_PAGES = 40; // cap heavily-featured artists (Future/Drake) at 4000 releases
 
 export async function browseArtistReleases(artistMbid: string): Promise<MbArtistRelease[]> {
+  return (await browseArtistReleasesDetailed(artistMbid)).releases;
+}
+
+/**
+ * As browseArtistReleases, but reports whether the listing was cut short.
+ *
+ * THE CAP IS NOT COSMETIC FOR EVERY CALLER. `/release?artist=` returns every release the artist is
+ * CREDITED on, features and compilation appearances included, so prolific or heavily-featured
+ * artists blow past MAX_RELEASE_PAGES -- measured on the 12 largest catalogues here, 5 truncated,
+ * the worst at 1,530 of 3,563 editions (43%). For the ingest that only means fewer editions
+ * considered. For any caller reasoning about ABSENCE -- "this release group has no Official
+ * edition, so delete it" -- a truncated list is actively dangerous: the official pressing may
+ * simply be past the cap. Such callers must check `truncated` and decline to conclude.
+ */
+export async function browseArtistReleasesDetailed(
+  artistMbid: string,
+  opts: { maxTotal?: number } = {},
+): Promise<{ releases: MbArtistRelease[]; truncated: boolean; seen: number; total: number }> {
   const out: MbArtistRelease[] = [];
+  let truncated = false, total = 0;
   let offset = 0, page = 0;
+  // EARLY BAIL. MusicBrainz reports `release-count` on the very first page, so a caller that cannot
+  // use a partial listing should not pay to page one. Without this, discovering that an artist
+  // truncates costs the full MAX_RELEASE_PAGES -- 40 requests at 1 req/sec, ~3.5 minutes each --
+  // only to throw the result away. maxTotal is deliberately set below the observed cut-off rather
+  // than at MAX_RELEASE_PAGES*100: pages come back well short of the 100 requested (1,530 rows over
+  // 40 pages for the Rolling Stones), so real capacity is far under 4,000 and cannot be computed
+  // from the page size.
   for (;;) {
     const data = await mbGet(
       `/release?artist=${artistMbid}&inc=${enc('recordings isrcs artist-credits media release-groups')}&limit=100&offset=${offset}`,
@@ -410,16 +455,22 @@ export async function browseArtistReleases(artistMbid: string): Promise<MbArtist
         tracks: parseMedia(r.media),
       });
     }
-    const total = data?.['release-count'] ?? out.length;
+    total = data?.['release-count'] ?? out.length;
     offset += rs.length;
     page++;
+    if (opts.maxTotal != null && total > opts.maxTotal && offset < total) {
+      process.stdout.write(`\n  [mb] ${total} releases for ${artistMbid} exceeds maxTotal ${opts.maxTotal} — not paging `);
+      truncated = true;
+      break;
+    }
     if (rs.length === 0 || offset >= total) break;
     if (page >= MAX_RELEASE_PAGES) {
       process.stdout.write(`\n  [mb] capped at ${offset}/${total} releases for ${artistMbid} (heavily featured) `);
+      truncated = true;
       break;
     }
   }
-  return out;
+  return { releases: out, truncated, seen: offset, total: total || out.length };
 }
 
 // Ordered artist credits for a single release group (for the release_group_artists backfill).

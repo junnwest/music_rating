@@ -53,7 +53,10 @@ async function main() {
   // ── canonical integrity: each release_group must have exactly 1 canonical edition ──
   let from = 0; const rels: { release_group_id: string; is_canonical: boolean }[] = [];
   for (;;) {
-    const { data } = await db.from('releases').select('release_group_id, is_canonical').range(from, from + 999);
+    // .order('id') is required, not cosmetic: .range() over an unordered query has no defined row
+    // order at all, so pages silently overlap and skip and the audit under-counts.
+    const { data } = await db.from('releases').select('release_group_id, is_canonical')
+      .order('id', { ascending: true }).range(from, from + 999);
     if (!data || data.length === 0) break;
     rels.push(...data as any);
     from += data.length;

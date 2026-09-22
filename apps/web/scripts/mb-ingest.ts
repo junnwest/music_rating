@@ -385,6 +385,9 @@ async function ingestEditionFromPrefetched(
     artist: rg.artistCredit || '(unknown)',
     release_date: padDate(rep.date),
     release_type: TITLE_TYPE[mbTypeToGroupType(rg.primaryType, rg.secondaryTypes)] ?? 'Album',
+    // Persisted now rather than discarded, so the official-edition decision is auditable later
+    // and the cleanup pass can find what earlier ingests let through. See migration 20260922000001.
+    status: rep.status ?? null,
     // rep.trackCount is MB's raw media count (includes video tracks); rep.tracks is
     // already filtered to audio-only by parseMedia(), so use its length to keep
     // total_tracks consistent with what's actually written to release_tracks below.
@@ -445,7 +448,7 @@ export function nextCheckAt(priority: string | null | undefined, from: Date = ne
   return new Date(from.getTime() + days * 86_400_000).toISOString();
 }
 
-export async function ingestArtist(db: DB, mbid: string): Promise<{ artistId: string; isNew: boolean; rgCount: number; recCount: number }> {
+export async function ingestArtist(db: DB, mbid: string): Promise<{ artistId: string; isNew: boolean; rgCount: number; recCount: number; skippedUnofficial: number; skippedEmpty: number }> {
   // Belt-and-suspenders for the ListenBrainz path (carries an MBID directly, bypassing the
   // resolver's candidate filter): never ingest a special-purpose placeholder.
   if (SPECIAL_MBIDS.has(mbid)) throw new Error(`refusing special-purpose MBID ${mbid} (Various Artists / [unknown] / …)`);
@@ -472,9 +475,31 @@ export async function ingestArtist(db: DB, mbid: string): Promise<{ artistId: st
     if (arr) arr.push(r); else byRg.set(r.rgId, [r]);
   }
 
-  let recCount = 0, kept = 0;
+  let recCount = 0, kept = 0, skippedUnofficial = 0, skippedEmpty = 0;
   for (const rg of rgs) {
     if (!shouldIngestRG(rg, mbid)) continue;           // composition filter (trim to core)
+    // OFFICIAL-EDITION GATE. MusicBrainz statuses each RELEASE (Official / Promotion / Bootleg /
+    // Pseudo-Release / Cancelled / Withdrawn); release GROUPS carry no status, which is why this
+    // cannot live in shouldIngestRG. We already hold every edition here from browseArtistReleases,
+    // so the check is free.
+    //
+    // Without it a group whose editions are all bootlegs ingests as a normal album. Reported from
+    // the app 2026-09-22: "Ye" showed 87 albums against MusicBrainz's own 13, because the MB site
+    // filters to official and we did not filter at all. "YE LIVE IN MEXICO" is one Bootleg edition
+    // typed `album` with no `live` secondary type, so SKIP_SECONDARY could never catch it -- a
+    // type-based filter cannot see a status problem. Sampled rate: 13% of release groups for
+    // prolific artists have no official edition (0% to 29% by artist).
+    //
+    // Conservative on unknowns: an EMPTY edition list is kept, because that means MB returned no
+    // releases for the group rather than that we know they are unofficial.
+    const eds = byRg.get(rg.id) ?? [];
+    // No editions at all => nothing to ingest. Creating the group anyway leaves an EMPTY SHELL: it
+    // renders on the artist page with no tracks, nothing to play and nothing to rate, and sits next
+    // to the real record looking like a duplicate. Reported 2026-09-22: Ye's page showed "BULLY"
+    // twice, and the second was this -- 0 editions, 0 tracks, against the real one's 13. 3,986 such
+    // rows existed catalogue-wide (2,539 of them compilations).
+    if (eds.length === 0) { skippedEmpty++; continue; }
+    if (!eds.some(e => e.status === 'Official')) { skippedUnofficial++; continue; }
     kept++;
     const rgId = await findOrCreateReleaseGroup(db, rg, artistId);
     // Multi-artist credits (Work Item A). Guarded: if the release_group_artists migration isn't
@@ -494,9 +519,22 @@ export async function ingestArtist(db: DB, mbid: string): Promise<{ artistId: st
 
   // Schedule the next freshness re-poll from the artist's priority tier (default 'known').
   const { data: pr } = await db.from('artists').select('ingest_priority').eq('id', artistId).maybeSingle();
+  // Record MusicBrainz's OWN release-group total while we have it for free. browseReleaseGroups
+  // pages until offset >= release-group-count, so rgs.length is exactly that count -- unfiltered,
+  // which is the point: the freshness lane compares MusicBrainz's previous answer to its current
+  // one, and must not be given a number our official-edition gate has already shrunk. Writing it
+  // here means every artist the drain touches gets a usable baseline immediately, instead of each
+  // one having to burn a full re-poll before the cheap path can ever apply.
   await db.from('artists')
-    .update({ ingest_state: 'tracks_done', last_ingested_at: new Date().toISOString(), next_check_at: nextCheckAt(pr?.ingest_priority) })
+    .update({
+      ingest_state: 'tracks_done',
+      last_ingested_at: new Date().toISOString(),
+      next_check_at: nextCheckAt(pr?.ingest_priority),
+      mb_rg_count: rgs.length,
+    })
     .eq('id', artistId);
 
-  return { artistId, isNew, rgCount: kept, recCount };
+  // skippedUnofficial is surfaced so the caller can log it: a silent filter is how the old
+  // type-only filter hid the bootleg problem for months.
+  return { artistId, isNew, rgCount: kept, recCount, skippedUnofficial, skippedEmpty };
 }

@@ -136,6 +136,134 @@ function creditNames(artistName: string | null | undefined): string[] {
     .map(unicodeNorm).filter(Boolean);
 }
 
+/**
+ * All the shapes one release's title legitimately takes across sources, as normalized strings.
+ * Two titles are "the same release" when their variant sets INTERSECT.
+ *
+ * Exact key equality was not enough and the cost was real: the 2026-09-22 sweep reported albums as
+ * missing that the catalogue already held, because iTunes and MusicBrainz title the same record
+ * differently. Measured false-positive rate 33% overall, 65% for artists past the old anchor cap:
+ *
+ *   iTunes "10cm The First EP"               MB "The First EP"        artist name prefixed
+ *   iTunes "Starry Night - The 2nd Mini Album" MB "Starry Night"       ordinal-album suffix
+ *   iTunes "YOUNHA 7th Album 'GROWTH THEORY'"  MB "GROWTH THEORY"      both, plus quotes
+ *   iTunes "Spring Rain"                     MB "봄비 (Spring Rain)"   bilingual parenthetical
+ *   iTunes "The 2nd"                         MB "The 2nd EP"          format tail
+ *
+ * Deliberately EQUALITY over a variant set, not substring containment. Containment over-matches --
+ * it pairs "The Greatest" with "make a secret -The Greatest ver.-", which are different releases --
+ * and a wrong merge silently hides a real album, which is the failure this whole pass exists to fix.
+ */
+const ORDINAL_ALBUM_RE = /\s*[-–—:]?\s*(the\s+)?\d+(\.\d+)?\s*(st|nd|rd|th)\s+(mini\s+|full\s+|repackage\s+)?(album|ep|single).*$/i;
+const FORMAT_TAIL_RE   = /\s*[-–—:]?\s*(the\s+)?(mini\s+|full\s+)?(album|ep|single)\s*$/i;
+// As ORDINAL_ALBUM_RE but WITHOUT the trailing `.*$`, so it removes only the ordinal phrase and
+// leaves whatever follows it intact. Needed for "<Artist> <N>th Single <Title>", where the real
+// title comes after the ordinal rather than before it.
+const ORDINAL_INFIX_RE = /\s*[-–—:]?\s*(the\s+)?\d+(\.\d+)?\s*(st|nd|rd|th)\s+(mini\s+|full\s+|repackage\s+)?(album|ep|single)\b\s*/i;
+const PAREN_GROUP_RE   = /[([]([^)\]]{2,})[)\]]/g;
+// Descriptors, not titles. Never promote one of these to a standalone alternate title.
+const GENERIC_PAREN_RE = /^\s*(original\s+)?(motion\s+picture\s+|television\s+|game\s+|broadway\s+|cast\s+)?(sound\s?track|ost|score|album|ep|single|deluxe|expanded|special|standard|remaster(ed)?|reissue|remix(es)?|instrumental(s)?|live|acoustic|version|edition|mix|explicit|clean|bonus|disc\s*\d+|vol\.?\s*\d+|pt\.?\s*\d+|part\s*\d+|feat\.?.*|with\s+.*|inst\.?)\s*\d*\s*$/i;
+
+/**
+ * Is this parenthetical a real alternate TITLE, or just an aside?
+ * Generic descriptors are excluded by GENERIC_PAREN_RE, but so must short filler words be: Sagisu's
+ * "...EVANGELION 2.0 YOU CAN (NOT) ADVANCE." and "...3.0 you can (not) redo" are different films
+ * that matched purely because "(NOT)" became a shared variant on both sides.
+ */
+function isAlternateTitle(inner: string): boolean {
+  const t = inner.trim();
+  if (t.length < 4) return false;                       // "NOT", "ver", "pt2"
+  if (GENERIC_PAREN_RE.test(t)) return false;           // "Original Motion Picture Soundtrack"
+  if (/^[A-Za-z]+$/.test(t) && t.length < 6) return false; // a single short latin word is filler
+  return true;
+}
+
+export function titleVariants(raw: string, artistNames: string[] = []): Set<string> {
+  const out = new Set<string>();
+  const add = (v: string) => { const n = unicodeNorm(v); if (n.length >= 2) out.add(n); };
+  const base = (raw ?? '').replace(FEAT_PAREN_RE, '').trim();
+  if (!base) return out;
+
+  const seeds = new Set<string>([base, stripEditionSuffix(base)]);
+
+  // Quoted inner title: "YOUNHA 7th Album 'GROWTH THEORY'" -> GROWTH THEORY
+  for (const m of base.matchAll(/['"“”‘’「『]([^'"“”‘’」』]{2,})['"“”‘’」』]/g)) seeds.add(m[1]);
+
+  // Parenthetical alternates, both directions: "봄비 (Spring Rain)" -> 봄비 AND Spring Rain.
+  // But ONLY when the parenthetical is a real alternate title. A generic descriptor must never
+  // become a standalone variant: promoting "(Original Motion Picture Soundtrack)" made every
+  // soundtrack match every other one, which flagged Sagisu's "Attack on Titan (OST)" as a duplicate
+  // of his "An Endless Sunday (OST)". Stripping it is still right -- it is only PROMOTION that is wrong.
+  for (const m of base.matchAll(PAREN_GROUP_RE)) if (isAlternateTitle(m[1])) seeds.add(m[1]);
+  seeds.add(base.replace(PAREN_GROUP_RE, ' '));
+
+  // ONE REDUCTION STEP. Returns every shorter form of `t` reachable by removing one decoration.
+  const reduce = (t: string): string[] => {
+    const outs: string[] = [];
+    // Drop an ordinal-album tail: "Starry Night - The 2nd Mini Album" -> "Starry Night"
+    const noOrd = t.replace(ORDINAL_ALBUM_RE, '');
+    if (noOrd.trim() && noOrd !== t) outs.push(noOrd);
+    // Drop an ordinal phrase that sits MID-string, keeping what follows. ORDINAL_ALBUM_RE ends in
+    // `.*$`, so on the very common Korean format "<Artist> <N>th Single <Title>" it swallowed the
+    // real title: "Afterschool 3rd Single BANG" reduced to "afterschool" and therefore never
+    // matched the "Bang!" already in the catalogue.
+    const noOrdIn = t.replace(ORDINAL_INFIX_RE, ' ');
+    if (noOrdIn.trim() && noOrdIn !== t) outs.push(noOrdIn);
+    // Drop a bare format tail: "The 2nd EP" -> "The 2nd"
+    const noFmt = t.replace(FORMAT_TAIL_RE, '');
+    if (noFmt.trim() && noFmt !== t) outs.push(noFmt);
+    // Drop a leading artist name: "10cm The First EP" -> "The First EP".
+    // Compared with spaces removed, because the artist field and the title often disagree about
+    // them -- the row is credited "After School" while the title reads "Afterschool".
+    const tn = unicodeNorm(t);
+    for (const an of artistNames) {
+      const n = unicodeNorm(an);
+      if (n.length < 2) continue;
+      const nNo = n.replace(/\s+/g, '');
+      let acc = '';
+      for (let i = 0; i < tn.length; i++) {
+        acc += tn[i];
+        if (acc.replace(/\s+/g, '').length > nNo.length) break;
+        if (acc.replace(/\s+/g, '') === nNo) {
+          const rest = tn.slice(i + 1).trim();
+          if (rest.length >= 2) outs.push(rest);
+          break;
+        }
+      }
+    }
+    return outs;
+  };
+
+  // REDUCTIONS MUST COMPOSE. Each rule used to be applied once, to the seed only, so a title
+  // carrying two decorations at once never reduced past the first one:
+  // "NCT#127 LIMITLESS - The 2nd Mini Album" yielded "nct 127 limitless" (artist kept, tail
+  // dropped) and "limitless the 2nd mini album" (artist dropped, tail kept) but never plain
+  // "limitless" -- so it did not match the LIMITLESS we already hold, and would have been written
+  // as a duplicate. Iterating to a fixed point produces the fully-stripped form as well. Four
+  // rounds is far more than any real title needs and bounds the work.
+  for (const seed of seeds) {
+    add(seed);
+    let frontier = [seed];
+    for (let round = 0; round < 4 && frontier.length; round++) {
+      const next: string[] = [];
+      for (const t of frontier) {
+        for (const r of reduce(t)) {
+          const n = unicodeNorm(r);
+          if (n.length >= 2 && !out.has(n)) { out.add(n); next.push(r); }
+        }
+      }
+      frontier = next;
+    }
+  }
+  return out;
+}
+
+/** True when two titles are plausibly the same release, by variant-set intersection. */
+export function titlesMatch(a: Set<string>, b: Set<string>): boolean {
+  for (const v of a) if (b.has(v)) return true;
+  return false;
+}
+
 // A title distinctive enough that ONE match is real corroboration rather than a coincidence.
 // "colors of the feather" yes; "goosebumps" no (Travis Scott and a dozen others). Mirrors the
 // generic-name guard in resolve-thin-artists.ts, applied to the anchor instead of the name.
@@ -213,7 +341,16 @@ async function knownNames(db: DB, stub: StubRow): Promise<string[]> {
 async function creditAnchors(db: DB, stubId: string): Promise<Anchor[]> {
   const { data, error } = await db.from('release_group_artists')
     .select('release_groups!inner(title, first_release_date, artist_display)')
-    .eq('artist_id', stubId).limit(60);
+    // NO practical cap. This was .limit(60), written when the population was credit stubs, which
+    // have one or two credits. --any-state later widened this script to fully-ingested artists, and
+    // the limit silently came along: for anyone with more than 60 release groups the anchor set was
+    // TRUNCATED, so everything past the cap looked absent and was reported as missing. Measured on
+    // 2026-09-22: BoA holds 165 release groups but only 60 anchors loaded, and a 40-artist sample
+    // came back 98% false positives -- titles like "I believe" and "Disturbance" that we already
+    // hold verbatim. Same failure as the artist page's LIMIT 60: a cap written for one population
+    // inherited by another. 1000 is above the largest discography in the catalogue (1,094) while
+    // still bounding a runaway.
+    .eq('artist_id', stubId).limit(1000);
   if (error) throw new Error(`anchors for ${stubId}: ${error.message}`);
   return (data ?? []).map((r: any) => ({
     title: r.release_groups.title as string,
@@ -389,7 +526,12 @@ async function inspect(db: DB, stub: StubRow): Promise<Report> {
     return base;
   }
 
-  const anchorKeys = new Set(anchors.map(a => titleKey(a.title)));
+  // Union of every legitimate form of every title we already hold for this artist. `names` gives
+  // titleVariants the artist name so an iTunes title that prefixes it ("10cm The First EP") reduces
+  // to the bare title we store.
+  const anchorKeys = new Set<string>();
+  for (const a of anchors) for (const v of titleVariants(a.title, names)) anchorKeys.add(v);
+  const matchesAnchor = (t: string) => titlesMatch(titleVariants(t, names), anchorKeys);
   let best: { cand: any; disc: any[]; hits: any[] } | null = null;
   let sawOversized = false;
   let discBlocked = false;
@@ -397,7 +539,7 @@ async function inspect(db: DB, stub: StubRow): Promise<Report> {
     const disc = await discography(cand.artistId, store);
     if (disc === null) { discBlocked = true; continue; }
     if (disc.length >= DISCOGRAPHY_CAP) { sawOversized = true; continue; }
-    let hits = disc.filter((a: any) => anchorKeys.has(titleKey(a.collectionName)));
+    let hits = disc.filter((a: any) => matchesAnchor(a.collectionName));
     // FEATURE-CREDIT FALLBACK. `entity=album` only returns collections the artist is the COLLECTION
     // artist of, so a "feat." guest spot on someone else's single is invisible to it — and that is
     // the ONLY credit most of these stubs have (택연's sole anchor "Classic" is credited 박진영, 택연,
@@ -408,7 +550,7 @@ async function inspect(db: DB, stub: StubRow): Promise<Report> {
       const songs = await songCredits(cand.artistId, store);
       if (songs === null) discBlocked = true;
       else hits = songs.filter((t: any) =>
-        anchorKeys.has(titleKey(t.trackName ?? '')) || anchorKeys.has(titleKey(t.collectionName ?? '')));
+        matchesAnchor(t.trackName ?? '') || matchesAnchor(t.collectionName ?? ''));
     }
     if (!best || hits.length > best.hits.length) best = { cand, disc, hits };
   }
@@ -444,7 +586,7 @@ async function inspect(db: DB, stub: StubRow): Promise<Report> {
   // and strength counts would be computed against the wrong string.
   const hitKeys = new Set<string>(best.hits.map((h: any) => {
     const tk = titleKey(h.trackName ?? '');
-    return anchorKeys.has(tk) ? tk : titleKey(h.collectionName ?? '');
+    return matchesAnchor(h.trackName ?? '') ? tk : titleKey(h.collectionName ?? '');
   }));
   const strongHits = [...hitKeys].filter(isDistinctive).length;
   // The hardest signal available: a matched album that iTunes files under SOMEONE ELSE yet whose
@@ -478,7 +620,11 @@ async function inspect(db: DB, stub: StubRow): Promise<Report> {
   }
 
   base.verdict = 'CORROBORATED';
-  const fresh = best.disc.filter((a: any) => !anchorKeys.has(titleKey(a.collectionName)));
+  // The skip set. Anything matching ANY variant of a title we hold is already ours -- this is the
+  // guard that stops the write pass creating "Starry Night - The 2nd Mini Album" beside "Starry
+  // Night". Bias is deliberate: when unsure, treat as already-held. A missed album can be picked up
+  // on a later run; a duplicate pollutes the catalogue and needs a manual merge.
+  const fresh = best.disc.filter((a: any) => !matchesAnchor(a.collectionName));
   const collidesWith = await findCollisions(db, fresh.map((a: any) => a.collectionName), ourNames);
   base.newAlbums = fresh.map((a: any): NewAlbum => {
     const raw = (a.collectionName ?? '') as string;
@@ -595,4 +741,9 @@ async function main() {
   console.log(`\n  full report → ${OUT}`);
 }
 
-main().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); });
+// Only run when invoked directly. titleVariants/titlesMatch are exported so they can be tested
+// against real data, and importing this file to reach them must not kick off a 5,000-artist sweep.
+// Same guard mb-qc.ts uses.
+if (process.argv[1] && process.argv[1].endsWith('resolve-stub-itunes.ts')) {
+  main().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); });
+}

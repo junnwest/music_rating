@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../lib/supabaseServer';
 import { getAuthedUserId } from '../../../../lib/authGuard';
+import { recordUnknownArtists } from '../../../../lib/taste/demandSignal';
 
 // On-demand version of the refresh-spotify-taste cron, scoped to one user -- called by the iOS
 // app (SpotifyService.swift's refreshViaBackend()) when its own cached Spotify access token has
@@ -125,6 +126,19 @@ export async function POST(req: NextRequest) {
       spotify_data_updated_at: new Date().toISOString(),
     })
     .eq('id', userId);
+
+  // Feed the catalogue: any artist this user actually listens to that we do not hold is the
+  // strongest demand signal available -- revealed preference, and the name comes from Spotify
+  // rather than being typed. recordUnknownArtists writes those into search_misses, which the
+  // pipeline's tryMisses() already knows how to resolve (MusicBrainz first, Deezer on repeated
+  // demand for artists MB lacks). Best-effort and awaited only so errors cannot escape it; it
+  // swallows its own failures rather than breaking the refresh.
+  const names = [
+    ...artists.map(a => a.name),
+    ...recentlyPlayed.map(r => r.artistName),
+  ].filter(Boolean);
+  const queued = await recordUnknownArtists(supabase, names, 'spotify_taste');
+  if (queued.length) console.log(`[taste-demand] ${queued.length} unknown artist(s) queued: ${queued.slice(0, 5).join(', ')}`);
 
   return NextResponse.json({ success: true });
 }

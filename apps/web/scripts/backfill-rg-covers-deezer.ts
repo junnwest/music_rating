@@ -47,6 +47,12 @@ async function main() {
       .select('id, title, native_title, artist_display')
       .is('cover_url', null)
       .order('prestige_score', { ascending: false, nullsFirst: false })
+      // STABLE TIE-BREAK. prestige_score is NULL on all but ~1,589 rows, so ordering by it alone
+      // leaves Postgres free to return the ties in a different order on every page request --
+      // .range() then skips some rows and repeats others. The CAA cover pass carried this exact bug
+      // and reported "processed 132,020" while its state file held only 85,326 distinct ids; roughly
+      // 47,000 release groups were never fetched at all. Ordering by id as well makes the sort total.
+      .order('id', { ascending: true })
       .range(from, from + PAGE - 1);
     if (error) { console.error('fetch error:', error.message); break; }
     if (!data?.length) break;
