@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ArrowUpCircle, MessageSquare } from 'lucide-react';
+import { ArrowUpCircle, MessageSquare, X } from 'lucide-react';
 import Avatar from './Avatar';
 import Modal from './Modal';
 import { useSession } from './SessionContext';
@@ -23,7 +23,9 @@ interface CommentRow {
  * track_rating_comments/track_rating_id instead of rating_comments/rating_id. Kept as its own
  * component rather than a generalized prop on CommentsModal, matching this codebase's existing
  * precedent of separate components per social-object type (MixShareCommentSheetView vs.
- * CommentSheetView on iOS) instead of retrofitting the album one. */
+ * CommentSheetView on iOS) instead of retrofitting the album one. Edit UX mirrors
+ * CommentsModal.tsx's own comment for why editing moves to the compose bar rather than inline
+ * in the row. */
 export default function TrackCommentsModal({
   open,
   onClose,
@@ -42,6 +44,9 @@ export default function TrackCommentsModal({
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   async function load() {
     if (!supabase) return;
@@ -65,6 +70,25 @@ export default function TrackCommentsModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, trackRatingId]);
 
+  function requestEdit(c: CommentRow) {
+    setEditingId(c.id);
+    setText(c.content);
+    inputRef.current?.focus();
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setText('');
+  }
+
+  async function submit() {
+    if (editingId) {
+      await saveEdit(editingId);
+    } else {
+      await send();
+    }
+  }
+
   async function send() {
     if (!supabase) return;
     const trimmed = text.trim();
@@ -82,6 +106,40 @@ export default function TrackCommentsModal({
       await load();
     }
     setSending(false);
+  }
+
+  async function saveEdit(id: string) {
+    if (!supabase) return;
+    const trimmed = text.trim();
+    const original = comments.find((c) => c.id === id)?.content;
+    setEditingId(null);
+    setText('');
+    if (!trimmed || trimmed === original) return;
+    const { error: updateError } = await supabase
+      .from('track_rating_comments')
+      .update({ content: trimmed })
+      .eq('id', id);
+    if (updateError) {
+      setError(updateError.message);
+    } else {
+      setError(null);
+      await load();
+    }
+  }
+
+  async function deleteComment(id: string) {
+    if (!supabase) return;
+    setConfirmDeleteId(null);
+    const { error: deleteError } = await supabase
+      .from('track_rating_comments')
+      .delete()
+      .eq('id', id);
+    if (deleteError) {
+      setError(deleteError.message);
+    } else {
+      setError(null);
+      await load();
+    }
   }
 
   const title = loading
@@ -105,27 +163,65 @@ export default function TrackCommentsModal({
             </div>
           ) : (
             <ul className="divide-y divide-divider">
-              {comments.map((c) => (
-                <li key={c.id} className="flex items-start gap-3 px-5 py-3.5">
-                  <Avatar url={c.profiles?.avatar_url} size={32} />
-                  <div className="min-w-0">
-                    <p className="flex items-baseline gap-2">
-                      <Link
-                        href={`/profile/${c.profiles?.username ?? ''}`}
-                        className="text-[13px] font-semibold text-ink hover:underline"
-                      >
-                        @{profileHandle(c.profiles)}
-                      </Link>
-                      <span className="text-[11.5px] text-muted">
-                        {relativeTime(c.created_at, lang)}
-                      </span>
-                    </p>
-                    <p className="mt-0.5 text-[14px] text-ink whitespace-pre-wrap break-words">
-                      {c.content}
-                    </p>
-                  </div>
-                </li>
-              ))}
+              {comments.map((c) => {
+                const isOwn = userId != null && c.user_id === userId;
+                return (
+                  <li key={c.id} className="flex items-start gap-3 px-5 py-3.5">
+                    <Avatar url={c.profiles?.avatar_url} size={32} />
+                    <div className="min-w-0 flex-1">
+                      <p className="flex items-baseline gap-2">
+                        <Link
+                          href={`/profile/${c.profiles?.username ?? ''}`}
+                          className="text-[13px] font-semibold text-ink hover:underline"
+                        >
+                          @{profileHandle(c.profiles)}
+                        </Link>
+                        <span className="text-[11.5px] text-muted">
+                          {relativeTime(c.created_at, lang)}
+                        </span>
+                      </p>
+                      <p className="mt-0.5 text-[14px] text-ink whitespace-pre-wrap break-words">
+                        {c.content}
+                      </p>
+                      {isOwn && (
+                        <div className="flex gap-3.5 mt-1">
+                          <button
+                            onClick={() => requestEdit(c)}
+                            className="text-[12px] font-medium text-muted hover:text-ink"
+                          >
+                            {t('sj.common.edit')}
+                          </button>
+                          <button
+                            onClick={() => setConfirmDeleteId(c.id)}
+                            className="text-[12px] font-medium text-muted hover:text-ink"
+                          >
+                            {t('sj.common.delete')}
+                          </button>
+                        </div>
+                      )}
+                      {confirmDeleteId === c.id && (
+                        <div className="mt-2 flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-red-500/[0.06] border border-red-500/20">
+                          <p className="text-[12px] text-ink">{t('sj.comments.deleteConfirm')}</p>
+                          <div className="flex gap-2 shrink-0">
+                            <button
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="px-2 py-1 rounded-lg text-[11.5px] font-medium text-muted hover:text-ink"
+                            >
+                              {t('sj.common.cancel')}
+                            </button>
+                            <button
+                              onClick={() => deleteComment(c.id)}
+                              className="px-2 py-1 rounded-lg text-[11.5px] font-medium text-red-500 hover:bg-red-500/10"
+                            >
+                              {t('sj.common.delete')}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -134,24 +230,41 @@ export default function TrackCommentsModal({
           <p className="px-5 py-2 text-[12px] text-red-500 bg-red-500/[0.06]">{error}</p>
         )}
 
-        <div className="sticky bottom-0 flex items-center gap-2.5 px-4 py-3 bg-surface border-t border-divider">
-          <input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && send()}
-            placeholder={t('sj.comments.placeholder')}
-            className="flex-1 bg-transparent text-[14px] text-ink placeholder-placeholder outline-none"
-          />
-          {text.trim() !== '' && (
-            <button
-              onClick={send}
-              disabled={sending}
-              aria-label={t('sj.comments.send')}
-              className="text-accent hover:opacity-80 disabled:opacity-50 transition"
-            >
-              <ArrowUpCircle size={26} />
-            </button>
+        <div className="sticky bottom-0 bg-surface border-t border-divider">
+          {editingId && (
+            <div className="flex items-center justify-between px-4 pt-2.5">
+              <span className="text-[12px] font-medium text-muted">
+                {t('sj.comments.editing')}
+              </span>
+              <button
+                onClick={cancelEdit}
+                aria-label={t('sj.common.cancel')}
+                className="p-1 text-muted hover:text-ink transition"
+              >
+                <X size={13} />
+              </button>
+            </div>
           )}
+          <div className="flex items-center gap-2.5 px-4 py-3">
+            <input
+              ref={inputRef}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && submit()}
+              placeholder={editingId ? t('sj.comments.editPlaceholder') : t('sj.comments.placeholder')}
+              className="flex-1 bg-transparent text-[14px] text-ink placeholder-placeholder outline-none"
+            />
+            {text.trim() !== '' && (
+              <button
+                onClick={submit}
+                disabled={sending}
+                aria-label={t('sj.comments.send')}
+                className="text-accent hover:opacity-80 disabled:opacity-50 transition"
+              >
+                <ArrowUpCircle size={26} />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </Modal>

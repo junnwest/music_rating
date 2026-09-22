@@ -446,6 +446,9 @@ const en = {
       placeholder: 'Add a comment…',
       send: 'Send comment',
       signInRequired: 'You must be signed in to comment',
+      editPlaceholder: 'Edit comment…',
+      editing: 'Editing comment',
+      deleteConfirm: 'Delete this comment?',
     },
     likes: {
       title: 'Likes',

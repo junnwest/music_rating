@@ -448,6 +448,9 @@ const ko: Translations = {
       placeholder: '댓글 달기…',
       send: '댓글 보내기',
       signInRequired: '댓글을 달려면 로그인해야 합니다',
+      editPlaceholder: '댓글 수정…',
+      editing: '댓글 수정 중',
+      deleteConfirm: '이 댓글을 삭제할까요?',
     },
     likes: {
       title: '좋아요',
