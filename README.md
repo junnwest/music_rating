@@ -39,6 +39,13 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **🔵 SESSION CLOSE (2026-09-22, Mac) — Taste tab pager/carousel speed overhaul, a flower-button scroll-conflict fix, and a new edit/delete-comments feature on both iOS and web, all committed and pushed. Build is 20. Full detail in SESSIONS.md (2026-09-22).**
+> **Needs the user's own live test before being trusted:**
+> - `FlowerRateControl`'s latest scroll-vs-rate fix (non-simultaneous UIKit priority + `allowableMovement` tightened to 4pt) — several earlier attempts in this same saga looked correct on paper and failed live; this round's diagnostic (live console logging proved **zero `UIScrollView` instances exist in the view hierarchy** on this iOS/SwiftUI version) is solid, but the fix itself hasn't been re-confirmed live yet.
+> - The Taste tab pager's new `PagingScrollTargetBehavior.paging`-delegating design, and the carousel's `dragPxPerStep` fix — both build-verified only; this was an unusually long trial-and-error round (many intermediate states already confirmed broken live by the user before landing here).
+> - The new comment edit/delete feature (iOS: plain text links + compose-bar editing, matching the user's own Instagram reference; web: identical port) — the Supabase migration adding UPDATE RLS was applied by the user directly via Supabase Studio (Claude couldn't apply it — no linked Supabase CLI session on this Mac, and the auto-mode safety classifier declined a command that would have printed `.env.local` credentials). Delete needed no migration and should already work; edit depends on that migration having taken effect.
+> **Not a bug, no code change**: app's Home Screen name appearing blank was diagnosed as iOS's Home Screen icon-name cache glitch from many rapid Xcode reinstalls this session — nothing in the project sets `CFBundleDisplayName` at all, so nothing here could have caused it.
+>
 > **🔵 SESSION CLOSE (2026-09-21, Mac) — Long round of iOS bug-fix/polish work, all committed and pushed. Build is 19. Full round-by-round detail in the entries directly below and in SESSIONS.md (2026-09-21).**
 > **Needs the user's own live test before being trusted** (build-verified only, several after prior attempts in the same area failed live despite looking correct on paper):
 > - `FlowerRateControl`'s scroll-vs-accidental-rating fix (hold-delay approach, `LongPressGesture(0.12).sequenced(before: DragGesture)`) — two earlier attempts at this specific bug failed live testing before landing here.
