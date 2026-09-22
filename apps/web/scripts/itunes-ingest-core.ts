@@ -154,6 +154,55 @@ export function detectLanguage(s: string): string | null {
 
 export const LANGUAGE_TO_STORE: Record<string, string> = { ko: 'KR', ja: 'JP', zh: 'TW' };
 
+/**
+ * THE KR STOREFRONT IS DEAD, AND IT FAILS QUIETLY (measured 2026-09-22).
+ *
+ * `itunes.apple.com/search?...&country=KR` returns HTTP 200 with resultCount 0 for EVERY term,
+ * including ones that obviously exist -- "BTS" returns 0 on KR while returning 5 on US, GB, JP, TW,
+ * DE and BR. It is not rate limiting (a 429/403 would be visible) and not our query shape; the
+ * Korean storefront simply does not answer this IP. Since 200-with-no-results is indistinguishable
+ * from "iTunes has never heard of them", every KR-targeted lookup silently degrades to a false
+ * negative rather than a retryable error.
+ *
+ * DROPPING THE COUNTRY PARAM IS NOT A FIX FOR A KOREAN TERM. The default (US) storefront does not
+ * index Hangul queries, and instead of returning nothing it returns a CONSTANT six-row set of
+ * unrelated Latin-American and Chinese artists -- byte-identical for "잔나비", "아이유" and "씨잼",
+ * on both entity=album and entity=musicArtist. So a Hangul query against any non-KR store yields
+ * confident-looking wrong answers. That is strictly more dangerous than an empty result, and it is
+ * why `isUsableItunesResult` exists: name-equality guards have caught it so far (the kr-scene sweep
+ * matched 0 of 2,020 rows to the sextet), but nothing should rely on a guard it never declared.
+ *
+ * Romanized names still work on the default store, which is why Korean artists resolve at all --
+ * the sweep corroborates Hangul-named artists at 73% versus 76% for Latin-named ones, via their
+ * Latin name. So: query Korean artists by their ROMANIZED name with no country param, and treat a
+ * Hangul-term iTunes lookup as unavailable rather than as evidence of absence.
+ */
+export const ITUNES_DEAD_STORES = new Set(['KR']);
+
+const ITUNES_HANGUL_DECOY_ARTIST_IDS = new Set([
+  1818422529, 1816932852, 1574741285, 1818581102, 1825694116, 1439383709,
+]);
+
+/**
+ * False when an iTunes result must not be believed: either the row is one of the fixed decoys the
+ * US store returns for Hangul input, or a Hangul term was sent to a store that cannot index it.
+ * Callers should treat false as "no answer" (retryable / unknown), never as "no such release".
+ */
+export function isUsableItunesResult(
+  term: string,
+  store: string | null,
+  row?: { artistId?: number | null } | null,
+): boolean {
+  if (row?.artistId != null && ITUNES_HANGUL_DECOY_ARTIST_IDS.has(row.artistId)) return false;
+  const hangul = /[가-힣ᄀ-ᇿ]/.test(term);
+  if (!hangul) return true;
+  // A Hangul term is only meaningful on the Korean storefront, and that storefront is dead -- so
+  // today this is always false. It is written as two steps rather than `return false` so that if KR
+  // comes back, removing it from ITUNES_DEAD_STORES is the only change needed.
+  if (store !== 'KR') return false;
+  return !ITUNES_DEAD_STORES.has(store);
+}
+
 // Collaboration / featured-credit detection — these are Last.fm collab nodes,
 // not standalone artist entities, and should not become their own artist rows.
 const LEGIT_COMPOUND_ACTS = new Set([
