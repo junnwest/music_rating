@@ -751,37 +751,111 @@ private enum TastePageKind {
 /// page genuinely hadn't changed, so on its next reconciliation pass it
 /// re-asserted the *old* position, fighting the one-shot manual animation
 /// and winning -- the pager was stuck on page 0, unable to advance at all.
-/// Reverted to reporting the real target truthfully after that regression;
-/// re-adding fixed-duration settling (below) took a structurally different
-/// approach this time specifically to avoid repeating it.
 ///
-/// **Second attempt at fixed-duration settling, same user ask, different
-/// mechanism.** The first attempt (reverted above) manipulated the real
-/// `UIScrollView.contentOffset` directly via raw UIKit, while telling this
-/// type's own `target.rect` that nothing had moved -- SwiftUI's
-/// `scrollPosition(id:)` binding never learned the page actually changed
-/// (its `get` closure kept reading the stale, never-updated `currentPage`),
-/// so it kept re-asserting the old position and winning the fight, forever.
-/// This time, a swipe that decides to change pages doesn't touch
-/// `UIScrollView` at all: it tells native to stay put (`target.rect` = the
-/// starting position, same as the rejected-swipe case just below) and hands
-/// off entirely to `onCommit`, which the container wires directly to `jump`
-/// -- the exact same `currentPage = target; withAnimation { proxy.scrollTo }`
-/// path a dot-rail tap already uses successfully, every round this session.
-/// Because that path writes `currentPage` itself (not through the
-/// `scrollPosition` binding's own set closure), SwiftUI's binding is never
-/// left stale, and there's nothing for it to fight.
+/// A fourth attempt tried the same "freeze + hand off" shape but routed the
+/// actual move through SwiftUI instead of raw UIKit: `target.rect` still
+/// reported "nothing moved," and a `DispatchQueue.main.async`-deferred call
+/// wrote `currentPage` directly (bypassing the `scrollPosition` binding's own
+/// `set` closure, so nothing was left stale to re-assert), then drove an
+/// explicit `withAnimation { proxy.scrollTo }`. This one didn't break --
+/// but it froze the live drag's momentum to a dead stop at the moment of
+/// release, then restarted motion from zero velocity a tick later once the
+/// deferred call landed. Confirmed live as reading like an abrupt "commit"
+/// no matter how long or gentle the animation that followed the freeze
+/// was -- the stop-then-restart itself was the jarring part, not the
+/// glide's own timing.
+///
+/// A fifth attempt tried reporting `target.rect` *truthfully* (the real
+/// resolved page's offset, not a frozen "nothing moved") specifically to let
+/// native scroll physics carry the settle straight out of the drag's
+/// existing velocity, avoiding the fourth attempt's dead-stop-then-restart.
+/// Reverted after two live regressions: (1) landing on the guarded
+/// loop-trigger row went blank -- `runLoopTransition`'s cover animation
+/// never appeared, because it only fires off `.onChange(of: currentPage)`,
+/// and with nothing left writing `currentPage` directly (the fourth
+/// attempt's deferred write was deleted along with its freeze),
+/// `scrollPosition(id:)`'s own binding either never updated to the guarded
+/// index or updated too late/unreliably for the debounce to catch it --
+/// either way the invisible placeholder row (`Color.clear`) sat exposed
+/// on screen with nothing covering it. (2) native decay-based settling is
+/// *inherently* velocity-dependent -- the whole point of reporting the
+/// target truthfully was to hand the glide to real physics -- so a hard
+/// flick visibly completed faster than a gentle one, which read at the time
+/// as a regression versus the fourth attempt's fixed duration.
+///
+/// Back to the fourth attempt's freeze + `withAnimation` shape after that,
+/// with the curve/duration retuned across a few more rounds ("too fast now
+/// again" after `.easeOut`; "still too strong" pointing at `commitThreshold`
+/// below) -- until live testing surfaced the actual bug behind *all* of
+/// those reports: `jump(to:proxy:)` wrote `currentPage` in the ambient,
+/// unanimated transaction, one line above the `withAnimation` block that was
+/// supposed to animate the move. `.scrollPosition(id:)`'s binding reads
+/// `currentPage` directly, so that write let SwiftUI's own scroll
+/// reconciliation snap to the destination immediately, before the explicit
+/// animated `scrollTo` a moment later had anything left to visibly cover --
+/// every duration and curve change up to that point was tuning an animation
+/// that mostly wasn't playing. See `jump(to:proxy:)`'s own doc comment for
+/// that fix.
+///
+/// That fix made the freeze-based glide visible for the first time -- and
+/// exposed it for what it actually was: a fixed multi-second `withAnimation`
+/// gliding across the *entire* page on every commit, nothing like the native
+/// feed-paging feel of Reels/Shorts/TikTok it was meant to approximate.
+/// Those apps are, per research into their underlying mechanism, ordinary
+/// `UIScrollView`/`UICollectionView` paging (`isPagingEnabled`, or
+/// `UICollectionViewCompositionalLayout`'s `.paging` orthogonal behavior) --
+/// real velocity-driven deceleration physics, not a scripted animation.
+///
+/// A sixth attempt tried reporting `target.rect` truthfully (no freeze) with
+/// `PagerScrollViewFinder`'s `decelerationRate` pushed toward the system's
+/// own `.fast` preset, on the theory that this was now just native momentum
+/// physics like any other paging scroll. Confirmed live as still too fast
+/// and "doesn't feel like reels or shorts" -- at *any* `decelerationRate`
+/// tried across every attempt so far (0.85 through `.fast`), independent of
+/// the actual number. That pattern -- a UIKit-level property that never
+/// once produced a perceptible difference no matter how far it moved --
+/// points at the real explanation: a `target.rect` this type computes and
+/// assigns by hand is not the same thing as SwiftUI's own built-in
+/// `.paging` behavior's *own* resolved target, even when the two land on an
+/// identical number. The system's own `.paging` almost certainly routes its
+/// result through a genuine touch-momentum-continuing internal path that a
+/// hand-set `target.rect` -- however it was computed -- never gets access
+/// to; `decelerationRate` may only ever have applied to natural
+/// direct-manipulation scrolling in the first place, not to any
+/// programmatically-resolved target at all, which would explain why tuning
+/// it never once produced a confirmed, repeatable effect on a committed
+/// transition's felt speed across this whole file's history.
+///
+/// Landed here: delegate the actual resolution to `PagingScrollTargetBehavior`
+/// itself -- the literal system behavior backing `.scrollTargetBehavior(.paging)`,
+/// `TabView(.page)`, and (per the research above) real native paging feeds --
+/// instead of re-deriving an equivalent target by hand. For the common case
+/// (a swipe `.paging` already resolves to an adjacent page, which is most
+/// swipes), `target.rect` is left completely untouched after that delegated
+/// call, so whatever native-momentum treatment the system's own behavior
+/// gets, this transition gets too. This type only steps in for the two
+/// things `.paging` doesn't do on its own: capping a hard flick that would
+/// otherwise skip multiple pages down to one (the original reason this type
+/// exists at all), and the wrap-around row's extra resistance.
 private struct LoopGuardedPaging: ScrollTargetBehavior {
     /// The invisible loop-trigger row's index (`count` in
     /// `TastePagerContainer`), or nil on a page that doesn't loop -- falls
     /// back to plain one-page-per-swipe paging with no guarded transition.
     let guardedPage: Int?
-    /// Wired to `jump(to:proxy:)` by `TastePagerContainer` -- see this
-    /// type's own doc comment for why handing off to it (rather than
-    /// touching `UIScrollView` directly) is the load-bearing difference
-    /// from the reverted first attempt.
+    /// Deferred, explicit `currentPage` write -- see this type's own doc
+    /// comment for why this stays even though `target.rect` is reported
+    /// truthfully now: it's the only reliable trigger for the loop-check
+    /// and haptics, since `scrollPosition(id:)`'s own binding update wasn't
+    /// dependable enough on its own (confirmed live, blank guarded-row
+    /// regression). Just a state write, not a move -- `TastePagerContainer`
+    /// wires this directly to `currentPage = page`, not to `jump`.
     let onCommit: (Int) -> Void
     private let resistantFraction: CGFloat = 0.82
+    /// The real system paging behavior -- delegated to for its actual
+    /// target resolution (see this type's own doc comment for why a
+    /// hand-computed equivalent never produced a native feel no matter how
+    /// `decelerationRate` was tuned against it).
+    private let native = PagingScrollTargetBehavior.paging
 
     func updateTarget(_ target: inout ScrollTarget, context: ScrollTargetBehaviorContext) {
         let pageHeight = context.containerSize.height
@@ -790,20 +864,16 @@ private struct LoopGuardedPaging: ScrollTargetBehavior {
         let fromY = context.originalTarget.rect.origin.y
         let fromPage = (fromY / pageHeight).rounded()
 
-        // The system's own proposed target already bakes release velocity
-        // into its distance (that's exactly what let a hard flick glide
-        // past several pages) -- so direction alone, off a simple >half-a-
-        // page threshold, is enough to decide advance/retreat/stay; no
-        // need to separately consult `context.velocity`.
+        // Let `.paging` decide everything first: which direction, how
+        // decisive the swipe needs to be, and -- for the common case below
+        // -- the actual glide. This is the same decision logic (distance +
+        // velocity) real Reels/Shorts-style paging uses, rather than a
+        // hand-rolled threshold reimplementing it.
+        native.updateTarget(&target, context: context)
         let rawDelta = (target.rect.origin.y - fromY) / pageHeight
-        var page = fromPage
-        if rawDelta > 0.5 {
-            page = fromPage + 1
-        } else if rawDelta < -0.5 {
-            page = fromPage - 1
-        }
+        let nativePage = (target.rect.origin.y / pageHeight).rounded()
 
-        if let guardedPage, page == CGFloat(guardedPage), fromPage == CGFloat(guardedPage) - 1 {
+        if let guardedPage, nativePage >= CGFloat(guardedPage), fromPage == CGFloat(guardedPage) - 1 {
             guard rawDelta >= resistantFraction else {
                 Haptics.rigid()
                 target.rect.origin.y = fromY
@@ -811,14 +881,20 @@ private struct LoopGuardedPaging: ScrollTargetBehavior {
             }
         }
 
-        // Tell native to stay exactly where the live drag ended -- we're
-        // taking over the actual move via `onCommit` below, same as a
-        // dot-rail tap already does. Deferred one run-loop tick (matching
-        // `PagerScrollViewFinder`'s own precedent elsewhere in this file)
-        // so this state write never lands mid-gesture-callback.
-        target.rect.origin.y = fromY
-        guard page != fromPage else { return }
-        let targetPage = Int(page)
+        // Cap a flick hard enough to make `.paging` want to skip multiple
+        // pages down to exactly one -- the one thing `.paging` alone
+        // doesn't give us (see this type's own doc comment). Anything
+        // already within one page of `fromPage` (the common case) leaves
+        // `target.rect` exactly as `.paging` resolved it, untouched.
+        if nativePage > fromPage + 1 {
+            target.rect.origin.y = (fromPage + 1) * pageHeight
+        } else if nativePage < fromPage - 1 {
+            target.rect.origin.y = (fromPage - 1) * pageHeight
+        }
+
+        let finalPage = (target.rect.origin.y / pageHeight).rounded()
+        guard finalPage != fromPage else { return }
+        let targetPage = Int(finalPage)
         DispatchQueue.main.async {
             onCommit(targetPage)
         }
@@ -832,14 +908,29 @@ private struct LoopGuardedPaging: ScrollTargetBehavior {
 /// snap completes in a single abrupt jump instead of a smooth transition --
 /// confirmed live as "way too fast." First reverted to the system's own
 /// `.normal` preset (0.998) -- still confirmed live as "way too fast," so
-/// pushed further still, to `0.9993`. These are exponential-decay rates
-/// applied continuously while the page glides into its settled position
-/// (not a fixed-duration animation), so small increments this close to 1.0
-/// produce a much larger jump in visual glide duration than the raw numbers
-/// suggest -- `0.9993` reads as a clearly slower, more deliberate transition
-/// than `.normal` did, without going so close to 1.0 that the page appears
-/// to drift rather than settle. This doesn't fight SwiftUI's own scroll
-/// reconciliation the way a manual
+/// pushed further still, to `0.9993`, then later (once `LoopGuardedPaging`
+/// stopped freezing committed transitions -- see its own doc comment) all
+/// the way to `0.9996`. Both of those rounds predate the discovery that
+/// `jump(to:proxy:)` had a state-ordering bug making its animation mostly
+/// invisible regardless of any curve or duration set anywhere in this file
+/// (again, see `LoopGuardedPaging`'s doc comment) -- everything "confirmed
+/// live" as too fast or too slow during that whole stretch was tuning
+/// blind, against a mechanism that wasn't actually the one producing what
+/// was on screen half the time.
+///
+/// Back to only covering the rejected-swipe bounce-back and the guarded-row
+/// resistance reject (see `LoopGuardedPaging`'s own doc comment for why a
+/// stretch of this rate's history briefly assumed, incorrectly, that it
+/// also governed every committed transition's visible speed once that type
+/// stopped freezing them -- confirmed live it never did, at any value tried
+/// from 0.85 through `.fast`, which is exactly what led to delegating
+/// committed transitions to `PagingScrollTargetBehavior.paging` directly
+/// instead of hand-computing a target for this rate to apply to). Left at
+/// `.fast` since the reject/bounce-back case is a real direct-manipulation
+/// scroll this rate does genuinely apply to, and a quick bounce-back reads
+/// better than a slow one.
+///
+/// This doesn't fight SwiftUI's own scroll reconciliation the way a manual
 /// `contentOffset` override did (see `LoopGuardedPaging`'s doc comment for
 /// that regression). SwiftUI's
 /// `ScrollView` exposes no modifier for `decelerationRate`, so this places
@@ -869,7 +960,7 @@ private struct PagerScrollViewFinder: UIViewRepresentable {
         var current: UIView? = view
         while let v = current {
             if let scrollView = v as? UIScrollView {
-                scrollView.decelerationRate = UIScrollView.DecelerationRate(rawValue: 0.9993)
+                scrollView.decelerationRate = .fast
                 return
             }
             current = v.superview
@@ -989,7 +1080,7 @@ private struct TastePagerContainer<Content: View>: View {
                         }
                     }
                     .scrollTargetBehavior(LoopGuardedPaging(guardedPage: loopsAround ? count : nil, onCommit: { page in
-                        jump(to: page, proxy: proxy)
+                        currentPage = page
                     }))
                     .scrollPosition(id: Binding(
                         get: { Optional(currentPage) },
@@ -1068,24 +1159,25 @@ private struct TastePagerContainer<Content: View>: View {
         }
     }
 
+    /// Dot-rail tap/scrub only now -- a real swipe no longer routes through
+    /// here at all; `LoopGuardedPaging` reports its resolved page directly
+    /// to native scroll physics instead (see its own doc comment for the
+    /// long history of why). A tap has no live drag velocity to continue
+    /// out of, so starting this glide from rest is correct here in a way it
+    /// stopped being for a real swipe.
+    ///
+    /// `currentPage = target` lives *inside* the `withAnimation` block, not
+    /// before it -- confirmed live as load-bearing back when this also
+    /// handled real swipes: `.scrollPosition(id:)` binds its `get` straight
+    /// to `currentPage`, so writing it in the ambient (unanimated)
+    /// transaction let SwiftUI's own scroll reconciliation snap to the
+    /// destination immediately, before this explicit `scrollTo` had
+    /// anything left to visibly cover. Keeping the write inside still
+    /// matters here for the same reason, even though this path no longer
+    /// carries the swipe traffic that originally surfaced the bug.
     private func jump(to target: Int, proxy: ScrollViewProxy) {
-        currentPage = target
-        // Was a `.spring(response: 2.5, dampingFraction: 0.75)` -- tuned up from
-        // 0.4/0.8 across two earlier rounds of "still too fast," each time by
-        // raising `response` (roughly the settle time). Still confirmed "way too
-        // fast" after all that, with the user's own hunch pointing at exactly
-        // the right thing: "maybe it's the snap." A spring's motion is
-        // front-loaded regardless of how long `response` is -- it attacks
-        // quickly toward the target and only the *tail* (a barely-visible
-        // wobble/settle) stretches out over the rest of that time, so a longer
-        // response doesn't actually make the visible motion look slower, just
-        // extends an invisible tail. Switched to a plain `.easeInOut`, which
-        // spends its entire duration in uniform, gradual motion with no fast
-        // attack phase -- the right tool for "slow gliding transition," which a
-        // spring never was regardless of its parameters. Same sharing rationale
-        // as before: used by dot-tap/drag-scrub jumps too, not split into a
-        // separate swipe-only duration.
-        withAnimation(.easeInOut(duration: 0.85)) {
+        withAnimation(.easeInOut(duration: 0.4)) {
+            currentPage = target
             proxy.scrollTo(target, anchor: .top)
         }
     }
@@ -2342,9 +2434,21 @@ private struct ActivitySparkView: View {
 /// Ease-out count-up via SwiftUI's native numeric content transition --
 /// simpler and more idiomatic than reimplementing web's `requestAnimationFrame`
 /// loop. Instant under Reduce Motion, matching web's `prefers-reduced-motion`.
+///
+/// Three of these fire at once on the hero page (`heroStat`), the very
+/// first page shown when the Taste tab opens -- reported live as making the
+/// *first* swipe of a session feel harder than every swipe after it, though
+/// confirmed to be pure launch-time contention (the tab feels normal if you
+/// wait a couple seconds before swiping), not anything in the swipe/paging
+/// logic itself, which has no first-time-only branching anywhere. Shortened
+/// from `0.9` to reduce how long these three animations compete with the
+/// pager's own gesture/layout setup on that first render -- not a
+/// guaranteed fix (there's likely other launch-time work, like image
+/// decoding and the initial view-hierarchy compile, contributing too), just
+/// the one concrete, scoped lever available without profiling in Instruments.
 private struct CountUpText: View {
     let value: Int
-    var duration: Double = 0.9
+    var duration: Double = 0.5
 
     @State private var shown: Int = 0
 
@@ -2412,7 +2516,16 @@ private struct HallOfFameView: View {
         guard n > 1 else { return 0 }
         return max(148, cover / 2 / CGFloat(tan(Double.pi / Double(n))) + 20)
     }
-    private let dragPxPerStep: CGFloat = 70
+    // Was 70 -- small enough that an ordinary swipe (150-300pt on a phone)
+    // hit the ±1 clamp below while the finger was still down: the whole
+    // step-rotation completed instantly, un-animated, mid-drag, so by
+    // release `turn` already sat exactly on the next integer and the
+    // eased snap in `dragGesture`'s `onEnded` had zero distance left to
+    // animate -- no duration set there could ever look smooth, because
+    // there was nothing left for it to smooth. Raised so a normal swipe
+    // stays in the live 1:1-tracked zone for most of its length, leaving
+    // real distance for the release animation to actually glide over.
+    private let dragPxPerStep: CGFloat = 260
 
     @State private var turn: Double = 0
     @State private var dragStartTurn: Double = 0
@@ -2599,7 +2712,7 @@ private struct HallOfFameView: View {
             .onEnded { _ in
                 guard isDragging else { return }
                 isDragging = false
-                withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
+                withAnimation(.easeInOut(duration: 0.65)) {
                     turn = turn.rounded()
                 }
                 restartAutoRotate()
@@ -2615,7 +2728,7 @@ private struct HallOfFameView: View {
         let cur = activeIndex
         var d = ((i - cur) % n + n) % n
         if d > n / 2 { d -= n }
-        withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+        withAnimation(.easeInOut(duration: 0.55)) {
             turn += Double(d)
         }
         restartAutoRotate()
@@ -2636,7 +2749,7 @@ private struct HallOfFameView: View {
         while !Task.isCancelled {
             try? await Task.sleep(for: .seconds(3.4))
             guard !Task.isCancelled else { return }
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.85)) {
+            withAnimation(.easeInOut(duration: 0.6)) {
                 turn += 1
             }
         }
