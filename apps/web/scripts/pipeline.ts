@@ -87,6 +87,12 @@ const DISCOVER_TARGET    = envInt('DISCOVER_TARGET', 200);     // refill pending
 const DISCOVER_CEILING   = envInt('DISCOVER_CEILING', 12000);  // lifetime cap on auto-discovered rows
 const DISCOVER_POLL_MS   = envInt('DISCOVER_POLL_MS', 60_000); // re-check cadence while above low-water
 
+// Demand-driven queue priorities; see migration 20260922000000 (200 listening / 100 miss / 0 bulk).
+const MISS_PRIORITY = 100;
+const TASTE_PRIORITY = 200;
+// Check logged search misses every Nth ingest rather than only when the queue is fully idle.
+const MISSES_EVERY = envInt('MISSES_EVERY', 25);
+
 // Watchdog: the supervisor only restarts a lane that THROWS; a lane hung on an unguarded
 // await (e.g. a Supabase call with no timeout) never throws → it stalls forever. For the MB
 // worker we arm a watchdog that forces a restart once it's been idle this long — judged by
@@ -301,8 +307,14 @@ async function discoverLoop(db: DB) {
 
 // ── INGEST: claim one pending artist → MB resolve → full ingest → mark done ─────
 async function claimNext(db: DB): Promise<{ id: string; name: string; source: string; source_id: string | null } | null> {
+  // priority DESC before created_at ASC: demand-driven rows (a user searched for this, or it is in
+  // a user's connected listening library) must not sit behind a bulk backlog. On 2026-09-22 a stub
+  // drain put ~35k rows in the queue, which at MB's 1 req/s is ~39 hours -- strict FIFO meant a
+  // miss queued by a real user today would not be ingested until Wednesday. Within a priority band
+  // it is still oldest-first, so bulk ordering is unchanged. Matches idx_artist_queue_claim.
   const { data } = await db.from('artist_ingestion_queue')
-    .select('id, name, source, source_id').eq('status', 'pending').order('created_at').limit(1).maybeSingle();
+    .select('id, name, source, source_id').eq('status', 'pending')
+    .order('priority', { ascending: false }).order('created_at').limit(1).maybeSingle();
   if (!data) return null;
   // Single-worker lease: flip to processing (conditional on still pending).
   const { data: claimed } = await db.from('artist_ingestion_queue')
@@ -411,14 +423,20 @@ async function ingestLoop(db: DB) {
   const tryMisses = async (): Promise<boolean> => {
     if (DRAIN_ONCE) return false;
     const { data, error } = await db.from('search_misses')
-      .select('id, query, db_count').is('queued_at', null).order('searched_at').limit(5);
+      .select('id, query, db_count, type').is('queued_at', null).order('searched_at').limit(5);
     if (error || !data?.length) return false; // table without queued_at → migration not applied yet
-    for (const m of data as { id: string; query: string; db_count: number | null }[]) {
+    for (const m of data as { id: string; query: string; db_count: number | null; type: string | null }[]) {
+      // Listening data outranks a typed search: a top-artists entry is revealed preference and the
+      // name came from Spotify/Apple rather than a keyboard, so it is both higher-signal and
+      // cleaner. See lib/taste/demandSignal.ts and migration 20260922000000.
+      const prio = (m.type === 'spotify_taste' || m.type === 'apple_taste') ? TASTE_PRIORITY : MISS_PRIORITY;
       try {
         const r = await resolveArtist(m.query, null);
         if (r.best && !r.ambiguous) {
           await db.from('artist_ingestion_queue').upsert(
-            { name: m.query, source: 'mbid', source_id: r.best.id, status: 'pending' },
+            // priority 100: a real user asked for this and got nothing. See migration
+            // 20260922000000 for the scale (200 listening data / 100 search miss / 0 bulk).
+            { name: m.query, source: 'mbid', source_id: r.best.id, status: 'pending', priority: prio },
             { onConflict: 'name,source', ignoreDuplicates: true });
           console.log(`  [misses] ${m.query} → ${r.best.name} [${r.best.country ?? '--'}]`);
         } else if (MISS_DEEZER_FALLBACK && (m.db_count ?? 0) === 0) {
@@ -440,10 +458,19 @@ async function ingestLoop(db: DB) {
     return true;
   };
   await beat(db, 'freshness', { status: FRESHNESS_EVERY > 0 && !DRAIN_ONCE ? 'idle' : 'off', last_active: now() });
+  let sinceMiss = 0;
   for (;;) {
     // Spend one MB cycle on a due re-poll every FRESHNESS_EVERY new ingests, so catalog
     // growth (INGEST) never fully starves re-checks. No-op when nothing is due.
     if (sinceFresh >= FRESHNESS_EVERY) { sinceFresh = 0; if (await tryFreshness()) continue; }
+
+    // Same treatment for search misses. These USED to run only in the `if (!row)` idle branch
+    // below -- i.e. only when the queue was completely empty -- which silently starved them for as
+    // long as any bulk backlog existed. The 2026-09-22 stub drain (~35k rows, ~39h at MB's 1 req/s)
+    // made that concrete: user-driven demand would not have been looked at for nearly two days.
+    // Resolving a miss costs one MB lookup, so interleaving it is cheap; the idle-branch call is
+    // kept below for the case where the queue drains entirely.
+    if (sinceMiss >= MISSES_EVERY) { sinceMiss = 0; if (await tryMisses()) continue; }
 
     const row = await claimNext(db);
     if (!row) {
@@ -488,7 +515,7 @@ async function ingestLoop(db: DB) {
       await mark(db, row.id, 'failed', { error: (e as Error).message.slice(0, 255) });
       failed++; console.log(`ERROR: ${(e as Error).message}`);
     }
-    sinceFresh++;
+    sinceFresh++; sinceMiss++;
     await beat(db, 'ingest', { status: 'running', last_active: now(), items_done: done, errors: failed });
     if (done + skipped + failed >= LIMIT) { console.log(`\n  [ingest] hit --limit=${LIMIT} — done ${done}, skipped ${skipped}, failed ${failed}`); return; }
   }
