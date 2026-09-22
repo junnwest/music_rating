@@ -1,0 +1,142 @@
+# Genre taxonomy rebuild — design & execution log
+
+> **Status:** Design locked; Phase 0 COMPLETE (2026-09-21); **Phase 1 (resolver + storage) COMPLETE & APPLIED** (2026-09-21) — resolver + unit tests green; migration `20260921000000_release_genres.sql` **applied** to Supabase (via `scripts/db-exec.ts`); taxonomy grown 164→**304 nodes** (Phase 1.5, coverage 90.3%→**96.3%** of catalog support); backfill **run** → **~850k `release_genres` rows across ~339k releases** (`is_primary` set on every release), **35,469 `genre_unmapped`** rows as the review queue. **Next: Phase 2 (repoint consumers) — primary genre → taxonomy walk first. ⚠ coordinate `genre_weights` key changes with iOS before starting.**
+> This is the single working doc for the from-scratch rebuild of how genres/subgenres
+> are organized, coordinated, and acquired. Update the **Work log** at the bottom after
+> every meaningful step. When a phase in the **Execution checklist** is done, check it off
+> here *and* add a SESSIONS.md line + a README START HERE note (see CLAUDE.md doc rules).
+
+---
+
+## 1. Why (the problem being replaced)
+
+Genre knowledge is currently re-encoded in **six independent, drifting systems**, none authoritative:
+
+| # | Where | Encodes | Format |
+|---|-------|---------|--------|
+| 1 | `release_groups.genres` (`text[]`) + legacy `releases.genres` (`text`) | raw tags | free-form strings, alphabetical, vote counts discarded |
+| 2 | `apps/web/lib/genre-categories.ts` | ~30 homepage buckets | substring `genreFilters` |
+| 3 | `apps/web/lib/taste/primaryGenre.ts` `PRECEDENCE` | which tag "wins" | flat ordered list — **duplicated in 3 places** (this file, `scripts/backfill-primary-genre.ts`, SQL migrations `20260706000020` / `20260712000010`) |
+| 4 | `apps/web/lib/taste/genreSynonyms.ts` | spelling variants | structural fold + alias table |
+| 5 | `apps/web/lib/taste/profile.ts` `NEAR_DUP_COSINE` | near-twin genres | embedding cosine ≥ 0.93 |
+| 6 | `apps/web/lib/taste/albumVector.ts` `tagScene` | kr/jp origin | regex on tag names |
+
+Root causes: **no canonical vocabulary** (k-pop / kpop / korean pop fold differently in each system), **no declared hierarchy** (shoegaze→rock lineage is implicit in precedence ordering + embedding geometry), and **acquisition is a pile of independent backfills** (`backfill-genres{,-lastfm,-itunes,-rg,-rg-lastfm}.ts`, `enrich-genres-lastfm.ts`, `enrich-subgenres-lastfm.ts`, `genre-overrides.json`) writing one `text[]` with no provenance, confidence, or source precedence — last writer wins.
+
+**Goal:** one canonical taxonomy graph as the source of truth; every consumer becomes a projection of it; acquisition normalizes every source into it with provenance.
+
+---
+
+## 2. Locked design decisions (2026-09-21)
+
+1. **Multi-parent DAG**, not a strict tree. A node may have several parents. Two *kinds* of parent edge:
+   - **sound parent** — the musical lineage (shoegaze → dream-pop, alt-rock).
+   - **scene parent** — the origin/scene root (k-pop → Korean; city-pop → Japanese).
+   This is how scene stops being baked into genre *names* / regex: `k-pop` is simply a node whose parents are `pop` (sound) **and** `korean` (scene). Scene = "does the node have `korean`/`japanese`/… in its ancestor set," derived from the same graph that gives lineage.
+2. **3 levels**: **Family → Genre → Subgenre**. (Scene roots are a parallel small set of top nodes reachable via scene edges, not a 4th sound level.)
+3. **Single-subgenre collapse**: if a Genre ends up with exactly **one** Subgenre after pruning to catalog vocab, **promote** that subgenre to Genre (merge the pair) so we never render a 1-child branch. Applied repeatedly until no Genre has exactly one child.
+4. **Adapt an existing spine**: start from an established genre tree (MusicBrainz genre tree first — it's the closest to our primary ingest source and license-clean; RYM's structure as a secondary reference for parenting decisions), then **prune to our catalog vocabulary** (only keep nodes that have real support in our `genreVocab()`), then apply the collapse rule.
+
+---
+
+## 3. Target model
+
+### 3.1 Node schema (`apps/web/lib/genres/taxonomy.ts` — the source of truth)
+
+```ts
+export interface GenreNode {
+  id: string;                       // stable canonical slug — the ONLY key used app-wide
+  level: 'family' | 'genre' | 'subgenre';
+  display: { en: string; ko: string };
+  soundParents: string[];           // musical-lineage parents (ids) — [] for a family
+  sceneParents: string[];           // scene-root parents (ids), e.g. ['korean'] — usually []
+  aliases: string[];                // every source/spelling variant that maps here
+  rank: number;                     // tie-break within siblings (specificity/precedence)
+  surface: boolean;                 // eligible as a homepage category row
+}
+// Scene roots ('korean','japanese','western',...) are GenreNodes too, level:'family',
+// but flagged isScene so they're only reachable via sceneParents, never sound rows.
+```
+
+Invariants (enforced by a build-time validator script): every id unique; every parent id exists; **no sound-cycle**; alias→id map is 1:1 (no alias claimed by two nodes); no Genre with exactly one Subgenre (collapse rule); every node's scene set derivable.
+
+### 3.2 Everything else is DERIVED — nothing hand-maintained twice
+
+- **Primary genre** — walk a tag's ancestor chain; the most specific present node (highest `level`, then `rank`) wins. **Deletes the triplicated `PRECEDENCE`.**
+- **Homepage categories** — nodes with `surface:true`; a category's members = that node **+ all descendants** (replaces hand-written `genreFilters` substrings).
+- **Synonyms** — the `aliases` array (replaces `genreSynonyms.ts` fold + alias table; the fold stays only as a *safety net* for un-mapped tags).
+- **Scene** — ancestor-set membership of a scene root (replaces the `tagScene` regex and the k-pop/j-pop hardcoding in `albumVector.ts`).
+- **Embeddings** — keep `scripts/build-genre-embeddings.ts` (co-occurrence → PPMI → eigendecomp) but key vectors on canonical ids; `NEAR_DUP_COSINE` fold in `profile.ts` demotes to a safety net.
+
+### 3.3 Storage — normalize at ingest, keep provenance
+
+Replace the free-form array with a join table:
+
+```
+release_genres(release_group_id, genre_id, source, confidence, is_primary, PRIMARY KEY(release_group_id, genre_id))
+```
+
+- `genre_id` = canonical taxonomy id resolved **at write time**; an unresolvable source tag goes to a `genre_unmapped` staging table (title, raw tag, source) — **never silently dropped**.
+- `source ∈ {musicbrainz, lastfm, itunes, deezer, manual}` with a fixed trust order.
+- `confidence` from vote count / tag weight where the source provides it.
+- `is_primary` computed once by the taxonomy walk; stored + indexed (replaces the `_compute_primary_genre` SQL trigger).
+- The old `text[]` becomes a generated/cached denormalization for display only.
+
+### 3.4 Acquisition — one resolver, layered by trust
+
+Collapse the 5+ backfill scripts into **one idempotent resolver** all sources feed:
+
+```
+raw source tag → normalize (alias map) → canonical genre_id (or → genre_unmapped)
+              → upsert release_genres(source, confidence)
+```
+
+A single **merge step** then picks the displayed set per release by trust + confidence + cross-source agreement (2 sources agreeing on "shoegaze" beats 1 source's "rock"). `genre-overrides.json` becomes `source='manual'` at top priority. Re-running one source never clobbers another's rows.
+
+---
+
+## 4. Execution checklist (future work)
+
+Phased so each step is a strict, independently-shippable simplification with the old behavior as a golden test. **Do not big-bang.**
+
+### Phase 0 — Taxonomy authoring (the one genuinely manual step)
+- [x] Dump current catalog vocab + support: `genreVocab()` with `genreSupport()` counts, sorted desc (new `scripts/dump-genre-vocab.ts`). **Done 2026-09-21** — 1009 distinct tags, 824,760 support units. Head-coverage: top 12 tags = 50%, top 74 = 80%, **top 153 = 90%**, top 257 = 95%. Confirms the "author the top ~150, fold the long tail" plan: hand-authoring the top ~150 covers 90% of catalog support. Full ranked list in `GENRE_VOCAB_DUMP.tsv` (repo root, gitignored working data). Re-generate anytime with `npx tsx scripts/dump-genre-vocab.ts --write` from `apps/web/`.
+- [x] Pull the MusicBrainz genre tree (and RYM structure as reference) as the spine. **Done 2026-09-21** — `scripts/dump-mb-genre-tree.ts` (`npm run taxonomy:mb`). **Finding:** MB's `/genre/all` is a *flat* controlled vocab (2206 genres); the hierarchy is NOT in the API, so parent edges are hand-authored (RYM structure as the reference). Crucially, **1007/1009 catalog tags ARE canonical MB genres (100% of support)** — our MB-primary ingest means our vocab ⊂ MB vocab, so "prune the spine to catalog support" reduces to *select supported MB genres + impose edges by hand*. Only 2 non-MB tags: `alternative` (→ alias of alternative-rock) and `asian music` (dropped).
+- [x] Prune spine to nodes with real catalog support; hand-assign `soundParents` / `sceneParents` / `aliases` / `rank` / `surface` for the top ~150 tags. **Done 2026-09-21** — authored `lib/genres/taxonomy.ts`: **164 nodes** (16 sound families, 137 genres, 5 subgenres, 6 scene roots), 36 surface nodes. Validator coverage: **top-150 head = 100% of head support; 165 nodes cover 90.3% of all catalog support** (the ~9.7% tail folds via the Phase-1 resolver safety net). Absorbs the knowledge from all six old systems — PRECEDENCE → `rank`+level, `genreSynonyms` alias groups → `aliases`, `tagScene` regex → `sceneParents` (korean/japanese/chinese/indian/brazilian/western scene roots), `genre-categories` buckets → `surface`.
+- [x] Apply the single-subgenre collapse rule; re-check no 1-child Genres remain. **Done** — enforced by invariant I5 in the validator (only `house` uses the subgenre level, with 5 children); most nodes are leaf genres directly under a family, which structurally avoids 1-child branches. Validator green.
+- [x] Write `apps/web/lib/genres/taxonomy.ts` + `scripts/validate-taxonomy.ts` (all §3.1 invariants I1–I8). **Done 2026-09-21** — `npm run taxonomy:validate` (also `:vocab`, `:mb`). All invariants hold; type-checks clean under `tsc -p apps/web`. Wire `taxonomy:validate` into CI.
+
+### Phase 1 — Resolver + storage
+- [x] Build `resolveGenre(rawTag) → genreId | null` (alias map from the taxonomy) + `ancestorsOf` / `primaryOf` helpers. **Done 2026-09-21** — `lib/genres/resolver.ts` (dependency-light: imports only `taxonomy.ts`, so client/server/script-safe). `resolveGenre` = memoized fold map (id-first, then aliases; fold is byte-identical to `genreSynonyms.ts`). `ancestorsOf(id)` = visited-guarded sound+scene walk. `primaryOf(tags[])` = most-specific by level (subgenre>genre>family) then `rank`, then tag order — replaces PRECEDENCE. Golden-tested against known albums in `lib/genres/resolver.test.ts` (11 cases, all green: MBV→shoegaze, k-pop album→k-pop, fold variants, alias words, tail→null).
+- [x] Migration: `release_genres` join table + `genre_unmapped` staging table + indexes. **Done 2026-09-21; APPLIED 2026-09-21** — `supabase/migrations/20260921000000_release_genres.sql` per §3.3: `release_genres(release_group_id, genre_id, source, confidence, is_primary, PK(rg,genre_id))` with a source CHECK (the five sources + `legacy` for the provenance-less backfill), `genre_unmapped(release_group_id, title, raw_tag, source)` staging with a uniqueness constraint for idempotency, permissive catalog-table RLS (matching `release_groups`), and indexes (`genre_id`, partial `is_primary`, `raw_tag`). **Applied via `scripts/db-exec.ts` (Management API — no CLI/psql on this box); tables + indexes + CHECK verified live.** Strictly additive: does not touch `release_groups.genres[]`.
+- [x] **Phase 1.5 — taxonomy coverage expansion. Done 2026-09-21** — the first backfill dry run surfaced the top unmapped tags (all ≥~196× in catalog): common genres with no node yet (death/black/thrash/doom/power/prog/symphonic/industrial metal, metalcore, grindcore, grunge, arena/southern/glam/space/stoner/gothic/krautrock/noise/experimental/jazz/rap/funk/electronic/industrial rock, southern/alternative/experimental/underground hip-hop, drill/crunk/emo-rap/g-funk, bedroom/chamber/baroque/psych/noise/ambient/jazz/hyper/teen/traditional pop, doo-wop, synthwave/vaporwave/chiptune/breakcore/jungle/happy-hardcore/gabber/hardstyle/psytrance/big-beat/future-bass/glitch/drone/dark-ambient/ebm/darkwave/eurodance/nu-disco/hip-house/acid-house, bebop/ragtime/jazz-fusion/acid/avant-garde/afro-cuban jazz, new-jack-swing/deep/smooth/southern/blue-eyed soul/afrobeat, contemporary folk/neofolk/celtic/flamenco/qawwali, classic/alt country, symphony/renaissance/requiem/prelude/classical-crossover/cinematic/indian/hindustani classical, country/delta/piano/texas blues, rocksteady/reggae-pop/calypso, samba/forró/bolero/bachata/ranchera/regional-mexicano/mariachi/norteño/merengue/cumbia/mambo/guaracha/latin-trap, afrobeats/enka/cantopop/chanson/contemporary-christian, noise). Added ~140 nodes → **taxonomy 164→304** (16 families, 274 genres, 8 subgenres, 6 scene roots), plus alias extensions (`psychedelic`→psychedelic-rock, `progressive`→progressive-rock, `chillout`→downtempo, `rap/hip hop`→hip-hop, `comedy`→non-music). `npm run taxonomy:validate` green (I1–I8); coverage **90.3%→96.3%** of all catalog support (top-150 head still 100%). Golden tests still 11/11 (swapped the stale `vaporwave` unresolvable-placeholder → `yodeling`, since vaporwave is now a node).
+- [x] Backfill: map current `release_groups.genres[]` through the resolver → `release_genres`; report unmapped tags for review. **Done 2026-09-21; RUN 2026-09-21** — `scripts/backfill-release-genres.ts` (`npm run taxonomy:backfill` / `:dry`): pages tagged release groups, resolves each tag (dedup per release), sets `is_primary` from `primaryOf`, routes misses to `genre_unmapped(source='legacy')`, chunked upserts with timeout backoff (Supabase Micro), prints the top-40 unmapped tags. Idempotent (upserts on natural keys). **Fixed a real paging bug found during the run:** `pageAll()` used `.range()` with no `.order()`, so PostgREST pagination silently skipped ~144k releases (dupes collapsed on the PK) — a first run wrote only ~198k of 342k releases; added `.order('id')` and re-ran. **Final: ~850k `release_genres` rows over ~339k releases (`is_primary` on each), 35,469 `genre_unmapped` (919 distinct tags — the true long tail: children's music, rage, digicore, plugg, stride, mod, vallenato, …).**
+
+### Phase 2 — Repoint consumers (one at a time, golden-tested)
+- [ ] **Primary genre** → taxonomy walk; delete `PRECEDENCE` from all 3 copies + retire the SQL compute trigger.
+- [ ] **Homepage categories** → derive from `surface` nodes; replace `genre-categories.ts` `genreFilters`.
+- [ ] **Synonyms / scene** → derive from `aliases` / scene ancestry; demote `genreSynonyms.ts` fold + `tagScene` regex to safety nets.
+- [ ] **Embeddings** → rebuild keyed on canonical ids; demote `NEAR_DUP_COSINE`.
+
+### Phase 3 — Acquisition consolidation & cleanup
+- [ ] Fold `backfill-genres*.ts` + `enrich-*` into the single resolver-fed pipeline with `source`/`confidence`.
+- [ ] Merge step (trust + confidence + agreement) → displayed set.
+- [ ] Retire legacy `releases.genres` reads (`category-resolver.ts` and the prestige/silla SQL still read the old comma-string table).
+- [ ] Delete dead per-source backfill scripts once the pipeline is proven.
+
+### Open questions (revisit before the phase that needs them)
+- Family set + scene-root set: enumerate them explicitly in Phase 0 (candidate families: Rock, Pop, Hip-Hop, R&B/Soul, Electronic, Jazz, Folk, Country, Classical, Metal, Punk, Experimental; scene roots: Korean, Japanese, Western, + others as vocab demands).
+- ~~Do surface categories need scene-qualified variants (e.g. "K-Pop" = Pop ∩ Korean) as first-class rows, or is `surface:true` on the `k-pop` node itself enough?~~ **Decided (Phase 0): the node itself.** `k-pop`/`j-pop`/`city-pop`/`k-rap`/`korean-indie`/`k-r-and-b`/`bossa-nova` are authored as scene-qualified genre nodes carrying `surface:true` — the multi-parent DAG already expresses the intersection, so no separate "K-Pop" surface row type is needed.
+- **New (Phase 0):** should `latin` stay a *sound* family, or become a scene root (like korean/japanese)? Left it as a sound family for now (salsa/reggaeton/bossa-nova/mpb are its sound children; bossa-nova/mpb additionally carry `scene:['brazilian']`). Revisit if a `latin-american` scene root proves needed for the taste map's scene shares.
+- **New (Phase 0):** `display.ko` is a first pass (accurate for families/major genres, transliterated/English-fallback for niche nodes) — review before any Korean UI ships from these labels.
+- iOS reads stored `genre_weights` raw keys — coordinate any key change with the iOS side before Phase 2.
+
+---
+
+## 5. Work log (newest first)
+
+- **2026-09-21 (Windows, web) — Phase 1 APPLIED + Phase 1.5 taxonomy expansion.** Applied migration `20260921000000_release_genres.sql` to Supabase via `scripts/db-exec.ts` (the Management-API path — no supabase CLI/psql on this machine; `SUPABASE_ACCESS_TOKEN` in `apps/web/.env.local`); verified `release_genres` + `genre_unmapped` + indexes + source CHECK live. Ran `taxonomy:backfill:dry` → top unmapped tags were mostly *legitimate genres with no node yet* (death metal, black metal, metalcore, grunge, synthwave, breakcore, jungle, samba, afrobeat, bebop, …). Chose to grow the taxonomy first: added **~140 nodes (164→304)** covering the top ~160 unmapped tags (all ≥~196× in catalog) + a few alias extensions; `taxonomy:validate` green (I1–I8), coverage **90.3%→96.3%** of total support; golden tests 11/11 (swapped the now-real `vaporwave` placeholder → `yodeling`). Backfill: first run wrote only ~198k of 342k releases — root-caused to **`pageAll()` paging without `.order()`** (unstable PostgREST `.range()` → skipped ~144k releases, dupes collapsed on the PK). Added `.order('id')`, re-ran → **~850k `release_genres` rows / ~339k releases (`is_primary` on each) / 35,469 `genre_unmapped`** (a couple hundred rows left by a transient timeout chunk, cleared by an idempotent re-run). **Next: Phase 2 (repoint consumers) — primary genre → taxonomy walk first; coordinate `genre_weights` key changes with iOS before starting.** Left untouched per scope: `lib/taste/embeddings.ts` `displayGenre`'s hardcoded SPECIAL map (Phase 2 should derive it from taxonomy `display`).
+- **2026-09-21 (Windows, web) — Phase 1 COMPLETE (resolver + storage).** Built `lib/genres/resolver.ts` — the one place a raw tag becomes a canonical id, derived purely from `taxonomy.ts` (no embedding/DB import, so usable client/server/script). `resolveGenre` folds against a memoized id/alias map (fold byte-identical to `genreSynonyms.ts`; ids seeded first so an alias can't shadow an id); `ancestorsOf(id)` walks sound+scene parents (visited-guarded, DAG-safe); `primaryOf(tags[])` picks the most-specific tag by level then `rank` then order — the PRECEDENCE replacement. Golden unit tests in `lib/genres/resolver.test.ts` (11 cases) pass: MBV `[indie rock, rock, shoegaze]`→shoegaze, `[hip hop, k-pop, pop]`→k-pop, fold variants (K-Pop/k pop/kpop), alias words (rap→hip-hop, bollywood→filmi, alternative→alternative-rock), tail→null. Wrote migration `20260921000000_release_genres.sql` (§3.3): `release_genres` join table (canonical `genre_id`, `source`+CHECK, `confidence`, `is_primary`, PK(rg,genre_id)) + `genre_unmapped` staging + indexes (`genre_id`, partial `is_primary`, `raw_tag`) + permissive catalog RLS — **authored, not applied** (handed off to run manually per pipeline convention). Added `source='legacy'` to the CHECK set for the provenance-less `genres[]` backfill (the five real ingest sources land in Phase 3). Wrote `scripts/backfill-release-genres.ts` + `taxonomy:backfill`/`:dry` npm scripts: resolves the whole `genres[]` array into `release_genres`, `is_primary` from `primaryOf`, misses → `genre_unmapped`, prints the top-40 unmapped tags, chunked/idempotent upserts. **Backfill not yet run** (waits on the applied migration + `.env.local`). Type-checks clean; nothing existing repointed — all additive, so the six legacy systems still run untouched until Phase 2. **Hand-off:** apply the migration SQL, then `npm run taxonomy:backfill:dry` (preview + unmapped report) → `npm run taxonomy:backfill`.
+- **2026-09-21 (Windows, web) — Phase 0 COMPLETE.** Pulled the MB genre vocab (`scripts/dump-mb-genre-tree.ts`): it's a *flat* 2206-genre controlled vocab (no hierarchy in the API), and **1007/1009 of our tags are canonical MB genres (100% of support)** — so the spine is really "our vocab, with hand-authored edges." Authored `lib/genres/taxonomy.ts` — **164 nodes** (16 sound families, 137 genres, 5 subgenres under `house`, 6 scene roots: western/korean/japanese/chinese/indian/brazilian), 36 surface nodes. It folds in the knowledge from all six legacy systems (PRECEDENCE→rank+level, alias groups→`aliases`, `tagScene`→`sceneParents`, `genre-categories`→`surface`). Wrote `scripts/validate-taxonomy.ts` (invariants I1–I8 incl. the single-subgenre collapse) → **all pass**; coverage = **100% of the top-150 head, 90.3% of all catalog support**. Added `taxonomy:validate` / `:vocab` / `:mb` npm scripts (wire `:validate` into CI). Type-checks clean. **Still no schema/consumer code touched** — this is all new, self-contained authoring; Phase 1 (resolver + `release_genres` migration) is next.
+- **2026-09-21 (Windows, web) — Phase 0 started.** Wrote `apps/web/scripts/dump-genre-vocab.ts` (ranks `genreVocab()` by `genreSupport()`, reports head-coverage percentiles, `--write` dumps full TSV). Ran it: **1009 tags / 824,760 support units**; top 12 = 50% of support, top 153 = 90%. Wrote `GENRE_VOCAB_DUMP.tsv` (repo root, gitignored). Next Phase-0 action: pull the MusicBrainz genre tree as the spine and start pruning it to these 1009 tags. **No schema/consumer code touched.**
+- **2026-09-21 (Windows, web)** — Brainstormed the rebuild; diagnosed the six drifting systems (§1). Locked the design decisions (§2): multi-parent DAG with sound + scene parent edges, 3 levels (Family→Genre→Subgenre) with single-subgenre collapse, adapt the MusicBrainz spine pruned to catalog vocab. Wrote this doc (target model §3, phased execution checklist §4). **No code or schema changed yet** — Phase 0 is the next action. Grounding read this session: `lib/genre-categories.ts`, `lib/category-resolver.ts`, `lib/taste/{primaryGenre,genreSynonyms,albumVector,embeddings,profile}.ts`, `lib/db/types.ts`, album page, `initial_schema` + `db_renovation` migrations, `mb-client.ts`, `genre-overrides.json`.

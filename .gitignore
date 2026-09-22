@@ -43,3 +43,5 @@ apps/web/scripts/data/*-report-*.json
 # Tooling scratch
 .understand-anything/
 backups/
+GENRE_VOCAB_DUMP.tsv
+MB_GENRES.txt

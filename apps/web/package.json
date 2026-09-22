@@ -142,7 +142,12 @@
     "pipeline:status": "tsx --env-file=.env.local scripts/pipeline-status.ts",
     "pipeline:verify": "tsx --env-file=.env.local scripts/pipeline-verify.ts",
     "queue:ingest:albums": "tsx --env-file=.env.local scripts/ingest-itunes-queue.ts --skip-singles",
-    "queue:ingest:albums:fast": "tsx --env-file=.env.local scripts/ingest-itunes-queue.ts --skip-singles --no-tracks"
+    "queue:ingest:albums:fast": "tsx --env-file=.env.local scripts/ingest-itunes-queue.ts --skip-singles --no-tracks",
+    "taxonomy:validate": "tsx scripts/validate-taxonomy.ts",
+    "taxonomy:vocab": "tsx scripts/dump-genre-vocab.ts",
+    "taxonomy:mb": "tsx scripts/dump-mb-genre-tree.ts",
+    "taxonomy:backfill": "tsx --env-file=.env.local scripts/backfill-release-genres.ts",
+    "taxonomy:backfill:dry": "tsx --env-file=.env.local scripts/backfill-release-genres.ts --dry-run"
   },
   "dependencies": {
     "@sentry/nextjs": "^8.55.0",
