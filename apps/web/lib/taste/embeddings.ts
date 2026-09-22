@@ -9,6 +9,8 @@
  */
 import raw from './genre-embeddings.json';
 import { primaryTagOf, tagWeight } from './primaryGenre';
+import { resolveGenre } from '../genres/resolver';
+import { NODE_BY_ID } from '../genres/taxonomy';
 
 interface GenreEmbeddingData {
   version: number;
@@ -24,12 +26,47 @@ const data = raw as unknown as GenreEmbeddingData;
 
 export const EMBEDDING_DIMS: number = data.dims;
 
+/**
+ * Resolve a lookup tag to the artifact key that carries its vector, so every
+ * spelling of a genre (k-pop / kpop / korean pop) hits ONE canonical vector:
+ *   • exact raw hit                     → the raw tag (fast path; unmapped tail)
+ *   • v2 (id-keyed) artifact            → the taxonomy id itself
+ *   • v1 (raw-keyed) artifact           → the id's dominant raw spelling
+ * Self-contained (imports only the resolver) to avoid a cycle with genreSynonyms.
+ */
+let ID_TO_CANONICAL: Map<string, string> | null = null;
+function idToCanonical(): Map<string, string> {
+  if (ID_TO_CANONICAL) return ID_TO_CANONICAL;
+  // id → the highest-support raw vocab spelling that resolves to it (v1 artifact).
+  const best = new Map<string, { tag: string; support: number }>();
+  for (const tag of Object.keys(data.vectors)) {
+    const id = resolveGenre(tag);
+    if (!id) continue;
+    const s = data.support[tag] ?? 0;
+    const cur = best.get(id);
+    if (!cur || s > cur.support) best.set(id, { tag, support: s });
+  }
+  ID_TO_CANONICAL = new Map([...best].map(([id, v]) => [id, v.tag]));
+  return ID_TO_CANONICAL;
+}
+
+function embKey(tag: string): string {
+  if (data.vectors[tag]) return tag; // exact raw hit (incl. the unmapped tail)
+  const id = resolveGenre(tag);
+  if (id) {
+    if (data.vectors[id]) return id; // v2 id-keyed artifact
+    const canon = idToCanonical().get(id); // v1: id → dominant raw spelling
+    if (canon) return canon;
+  }
+  return tag;
+}
+
 export function genreVector(tag: string): number[] | null {
-  return data.vectors[tag] ?? null;
+  return data.vectors[embKey(tag)] ?? null;
 }
 
 export function genreSupport(tag: string): number {
-  return data.support[tag] ?? 0;
+  return data.support[embKey(tag)] ?? 0;
 }
 
 /** Every genre tag the embedding artifact knows a vector for — the catalog's
@@ -83,8 +120,18 @@ export function albumCentroid(genres: string[] | null | undefined): number[] | n
 /**
  * Human display form of an MB/Last.fm genre tag ("dream pop" → "Dream Pop",
  * "k-pop" → "K-Pop", "r&b" → "R&B").
+ *
+ * DERIVED FROM THE TAXONOMY (Phase 2, 2026-09-22): if the tag resolves to a node,
+ * use that node's authored `display.en` — so the casing/spelling is maintained in
+ * ONE place (taxonomy.ts) instead of this hand-kept SPECIAL map. The SPECIAL map
+ * + title-caser are kept only as SAFETY NETS for tags with no taxonomy node.
  */
 export function displayGenre(tag: string): string {
+  const id = resolveGenre(tag);
+  if (id) {
+    const node = NODE_BY_ID.get(id);
+    if (node) return node.display.en;
+  }
   const SPECIAL: Record<string, string> = {
     'r&b': 'R&B',
     'contemporary r&b': 'Contemporary R&B',
