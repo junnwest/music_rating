@@ -39,6 +39,20 @@ apps/web/scripts/bot-roster.json
 apps/web/scripts/data/*-state.json
 apps/web/scripts/data/*-report.json
 apps/web/scripts/data/*-report-*.json
+# The patterns above only caught names ending -state/-report. Audit and cleanup passes added in
+# 2026-09 write their findings under other names (kr-scene-clean.json and kr-scene-snapshot.json are
+# 16MB each), plus rollback journals and generated one-off SQL. Same rule, wider net: a file a script
+# WRITES is not source, whatever it is called.
+apps/web/scripts/data/*.bak.json
+apps/web/scripts/data/*.ndjson
+apps/web/scripts/data/kr-scene-*.json
+apps/web/scripts/data/dedup-*.json
+apps/web/scripts/data/writepass-*.json
+apps/web/scripts/data/unofficial-*.json
+apps/web/scripts/data/native-language-*.json
+apps/web/scripts/data/kr-cover-*.json
+apps/web/scripts/data/stub-itunes-*.json
+apps/web/scripts/data/delete-*.sql
 
 # Tooling scratch
 .understand-anything/
