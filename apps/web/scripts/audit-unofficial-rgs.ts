@@ -32,14 +32,18 @@
  */
 import * as fs from 'node:fs';
 import { getDB, type DB } from './itunes-ingest-core';
-import { browseArtistReleases } from './mb-client';
+import { browseArtistReleasesDetailed } from './mb-client';
 
 const arg = (f: string) => process.argv.find(a => a.startsWith(`${f}=`))?.split('=').slice(1).join('=');
 const APPLY = process.argv.includes('--apply');
 const LIMIT = Number(arg('--limit') ?? Infinity);
 const MIN_RGS = Number(arg('--min-rgs') ?? 1);
 const OUT = arg('--out') ?? 'scripts/data/unofficial-rgs.json';
-const STATE = 'scripts/data/unofficial-rgs-state.json';
+// SEPARATE STATE PER MODE. saveDone() runs whether or not --apply was passed, so a shared file let a
+// report-only run mark artists done and the subsequent --apply silently skip exactly the artists you
+// had just reviewed -- the run would look clean because it never examined them. backfill-rg-covers-caa
+// splits its state the same way for the same reason.
+const STATE = APPLY ? 'scripts/data/unofficial-rgs-state.json' : 'scripts/data/unofficial-rgs-state.report.json';
 
 interface Finding {
   artist: string; artistId: string; rgId: string; mbid: string; title: string;
@@ -100,12 +104,29 @@ async function main() {
 
   console.log(`[unofficial] ${targets.length} artist(s) to check${APPLY ? '  *** APPLY ***' : '  (report only)'}`);
   const findings: Finding[] = [];
-  let checked = 0, deleted = 0, keptRated = 0;
+  let checked = 0, deleted = 0, keptRated = 0, truncatedSkips = 0;
 
   for (const a of targets) {
+    // TRUNCATION MAKES ABSENCE UNPROVABLE. This script deletes on the strength of "MusicBrainz
+    // showed us every edition of this group and none was Official". When browseArtistReleases hits
+    // MAX_RELEASE_PAGES that premise is false -- the official pressing may just be past the cap. On
+    // the 12 largest catalogues here, 5 of 12 truncated, the worst at 1,530 of 3,563 editions, and
+    // the findings skewed heavily to `compilation` precisely because /release?artist= returns every
+    // compilation the artist is featured on. Skipping these artists costs coverage; not skipping
+    // them costs real release groups. The artist is NOT marked done, so a later run with a higher
+    // cap (or a per-release-group check) can still do them.
     let editions: any[];
-    try { editions = await browseArtistReleases(a.mbid); }
-    catch (e) { console.warn(`  ! ${a.name}: ${(e as Error).message}`); continue; }
+    try {
+      // 1,200 is under the lowest observed real cut-off (1,530 of 3,563), so anything above it
+      // would truncate anyway -- bail on page 1 instead of paying 40 requests to learn that.
+      const browsed = await browseArtistReleasesDetailed(a.mbid, { maxTotal: 1200 });
+      if (browsed.truncated) {
+        console.warn(`  ~ ${a.name}: listing truncated at ${browsed.seen}/${browsed.total} — skipped, cannot prove absence`);
+        truncatedSkips++;
+        continue;
+      }
+      editions = browsed.releases;
+    } catch (e) { console.warn(`  ! ${a.name}: ${(e as Error).message}`); continue; }
 
     // rgId -> statuses of every edition MB knows for it
     const byRg = new Map<string, string[]>();
