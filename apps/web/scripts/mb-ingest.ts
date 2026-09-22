@@ -519,8 +519,19 @@ export async function ingestArtist(db: DB, mbid: string): Promise<{ artistId: st
 
   // Schedule the next freshness re-poll from the artist's priority tier (default 'known').
   const { data: pr } = await db.from('artists').select('ingest_priority').eq('id', artistId).maybeSingle();
+  // Record MusicBrainz's OWN release-group total while we have it for free. browseReleaseGroups
+  // pages until offset >= release-group-count, so rgs.length is exactly that count -- unfiltered,
+  // which is the point: the freshness lane compares MusicBrainz's previous answer to its current
+  // one, and must not be given a number our official-edition gate has already shrunk. Writing it
+  // here means every artist the drain touches gets a usable baseline immediately, instead of each
+  // one having to burn a full re-poll before the cheap path can ever apply.
   await db.from('artists')
-    .update({ ingest_state: 'tracks_done', last_ingested_at: new Date().toISOString(), next_check_at: nextCheckAt(pr?.ingest_priority) })
+    .update({
+      ingest_state: 'tracks_done',
+      last_ingested_at: new Date().toISOString(),
+      next_check_at: nextCheckAt(pr?.ingest_priority),
+      mb_rg_count: rgs.length,
+    })
     .eq('id', artistId);
 
   // skippedUnofficial is surfaced so the caller can log it: a silent filter is how the old

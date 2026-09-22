@@ -47,7 +47,7 @@ import { gapfillGroups, gapfillSkippedArtists, MigrationNeeded } from './mb-gapf
 import { runDeezerFallback, pickArtist, ingestDeezerArtist } from './mb-deezer-fallback';
 import { searchArtists as dzSearchArtists } from './deezer-client';
 import { ItunesBlockedError, resetBlock, itunesBlocked } from './itunes-client';
-import { mbLastActivityAt } from './mb-client';
+import { mbLastActivityAt, countArtistReleaseGroups } from './mb-client';
 import { SEED } from './seed-artists';
 import { scanArtistRecency, type RecencyArtist } from './discover-itunes-recency';
 import { scanArtistRecencySpotify, type RecencyArtist as RecencyArtistSpotify } from './discover-spotify-recency';
@@ -379,9 +379,37 @@ async function claimDueFreshness(db: DB): Promise<{ id: string; name: string; mb
   return null;
 }
 async function refreshArtist(db: DB, a: { id: string; name: string; mbid: string }, fcount: number): Promise<void> {
+  // CHEAP CHECK FIRST. A re-poll used to run a full ingestArtist() -- every release group, release
+  // and recording -- just to discover that an artist has released nothing since last time. At 1
+  // req/sec shared with new-artist ingest, that is why ~24,000 artists sit ~170 days overdue, and
+  // why the watchdog fired mid-re-poll on Erik Satie (267 groups): it times MB calls, and the long
+  // DB-write phase of a big artist makes none.
+  //
+  // MusicBrainz reports release-group-count on any browse, so one request answers "is there
+  // anything new?". We compare THEIR previous answer to THEIR current one -- never to our own row
+  // count, which the official-edition gate deliberately makes smaller and which would therefore
+  // report "new releases" on every poll forever.
+  //
+  // FAIL-SAFE IN EVERY DIRECTION: no stored count, no count returned, or the request throwing all
+  // fall through to the full re-ingest. The fast path is taken only on a positive match.
+  let mbCount: number | null = null;
+  try {
+    const { data: prev } = await db.from('artists').select('mb_rg_count').eq('id', a.id).maybeSingle();
+    const stored = (prev as { mb_rg_count: number | null } | null)?.mb_rg_count ?? null;
+    mbCount = await countArtistReleaseGroups(a.mbid);
+    if (stored != null && mbCount != null && mbCount === stored) {
+      console.log(`  [freshness] ${a.name} — no change (MB count ${mbCount}, 1 request)`);
+      await beat(db, 'freshness', { status: 'running', last_active: now(), items_done: fcount, current_item: `${a.name} ·` });
+      return;
+    }
+  } catch { mbCount = null; }   // fall through to the full path
+
   const before = await countArtistRGs(db, a.id);
   const res = await ingestArtist(db, a.mbid); // idempotent; resets last_ingested_at + next_check_at
   const delta = Math.max(0, (await countArtistRGs(db, a.id)) - before);
+  // Recorded only after a successful ingest, so an interrupted re-poll cannot leave a count that
+  // makes the next poll skip work it never actually did.
+  if (mbCount != null) await db.from('artists').update({ mb_rg_count: mbCount }).eq('id', a.id);
   console.log(`  [freshness] ${a.name} — ${delta > 0 ? `+${delta} new groups` : 'no change'} (${res.rgCount} total)`);
   await beat(db, 'freshness', { status: 'running', last_active: now(), items_done: fcount, current_item: `${a.name} ${delta > 0 ? `+${delta}` : '·'}` });
 }
