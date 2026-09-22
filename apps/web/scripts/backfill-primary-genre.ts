@@ -1,4 +1,14 @@
 /**
+ * ⚠️ DEPRECATED / SUPERSEDED (2026-09-22, Phase 2 task 2). DO NOT RUN.
+ * The chart-primary path was repointed onto the canonical taxonomy: `rg_primary_genre.primary_genre`
+ * now stores a taxonomy NODE ID (not the coarse PRECEDENCE display string below), computed by the
+ * SQL `_compute_primary_genre` → `_primary_genre_id` and matched via `_taxonomy_closure`
+ * (`supabase/migrations/20260922000001_chart_primary_taxonomy.sql`). Population is handled by the
+ * `trg_sync_primary_genre` trigger + that migration's backfill. This script still writes the old
+ * PRECEDENCE strings to the DEAD `release_groups.primary_genre` column (nothing reads it), so running
+ * it is a no-op at best and format-inconsistent at worst. Kept only as the historical record of the
+ * retired scene-first precedence. See GENRE_TAXONOMY.md §4 Phase 2.
+ *
  * backfill-primary-genre.ts — assign each release_group a single PRIMARY genre by a scene-first
  * precedence, so genre charts show an album in exactly ONE ranking (its dominant scene/style)
  * instead of every genre it's tagged with.
