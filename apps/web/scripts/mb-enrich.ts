@@ -68,17 +68,28 @@ export const embeddingsEnabled = () => !!JINA_KEY;
  * which does the equivalent job over `releases`, already excludes them for the same reason.
  */
 export async function embedReleaseGroupsBatch(
-  db: DB, batchSize = 64, types?: string[],
+  db: DB, batchSize = 64, types?: string[], cursor?: { after?: string },
 ): Promise<number> {
+  const afterId = cursor?.after;
   if (!JINA_KEY) return 0;
   let q = db.from('release_groups')
     .select('id, title, native_title, artist_display, genres, first_release_date')
     .is('embedding', null);
   if (types?.length) q = q.in('release_group_type', types);
+  // KEYSET CURSOR, NOT A BARE ORDER BY. "the next N rows where embedding is null, ordered by id"
+  // gets slower every batch: the already-embedded head of the table has to be scanned past before
+  // the first match is found, so the same query that was instant at the start eventually exceeds
+  // the statement timeout. That is exactly how the 2026-09-22 album/EP run died -- "canceling
+  // statement due to statement timeout" after 11,647 of 107,090 rows. Passing the last id forward
+  // keeps every batch the same cost as the first.
+  if (afterId) q = q.gt('id', afterId);
   const { data, error } = await q.order('id').limit(batchSize);
   if (error) throw new Error(`embed fetch: ${error.message}`);
   const rows = (data ?? []) as RgRow[];
   if (rows.length === 0) return 0;
+  // Advance the cursor BEFORE embedding, so a Jina failure still moves past this batch on the next
+  // attempt instead of retrying the same rows forever.
+  if (cursor) cursor.after = rows[rows.length - 1].id;
 
   const vecs = await embedBatch(rows.map(buildText));
   if (!vecs) return -1;

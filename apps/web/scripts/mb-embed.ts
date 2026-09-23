@@ -21,9 +21,13 @@ const TYPES = process.argv.find(a => a.startsWith('--types='))?.split('=')[1]
 async function main() {
   if (!embeddingsEnabled()) { console.error('JINA_API_KEY not set in .env.local'); process.exit(1); }
   const db = getDB();
+  // Keyset cursor: without it each batch scans past every row already embedded, and the query
+  // eventually exceeds the statement timeout (which is how the first album/EP run died at 11,647
+  // of 107,090).
+  const cursor: { after?: string } = {};
   let total = 0;
   for (;;) {
-    const n = await embedReleaseGroupsBatch(db, BATCH, TYPES);
+    const n = await embedReleaseGroupsBatch(db, BATCH, TYPES, cursor);
     if (n === 0) break;
     if (n < 0) { console.log('\n  Jina error — re-run to resume.'); break; }
     total += n;
