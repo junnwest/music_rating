@@ -66,6 +66,15 @@ export function resolveGenre(rawTag: string | null | undefined): string | null {
 }
 
 /**
+ * True for a scene ROOT (korean/japanese/western/…): a provenance/scene signal,
+ * not a genre — a source tag like Last.fm "korean" resolves here. Kept as
+ * evidence in release_genres, but excluded from any displayed genre set.
+ */
+export function isSceneRoot(id: string): boolean {
+  return !!NODE_BY_ID.get(id)?.isScene;
+}
+
+/**
  * Every ancestor of a node — both sound and scene parents, transitively —
  * excluding the node itself. Used for homepage category membership (a surface
  * node's row = node + all descendants, i.e. every node whose ancestor set

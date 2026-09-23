@@ -194,3 +194,33 @@ export async function writeSourceGenres(
   }
   return res;
 }
+
+// Live-ingest paths (mb-ingest, itunes-ingest-core, mb-deezer-fallback) must never fail an
+// ingest over a genre write. Set once when release_genres is unusable (table/constraint
+// missing — migrations 20260921000000 / 20260922000002 not applied) so the rest of the run
+// skips it. RELEASE_GENRES_WRITE=0 turns live per-source genre writes off entirely.
+let liveWritesDisabled = process.env.RELEASE_GENRES_WRITE === '0';
+
+/**
+ * writeSourceGenres for live ingest: errors are logged and swallowed (a schema problem
+ * disables further attempts for the run). `label` names the artist/album in the warning.
+ */
+export async function writeSourceGenresBestEffort(
+  db: SupabaseClient,
+  source: AcquisitionSource,
+  items: readonly SourceGenreInput[],
+  label: string,
+): Promise<void> {
+  if (liveWritesDisabled || !items.length) return;
+  try {
+    await writeSourceGenres(db, source, items);
+  } catch (e) {
+    const msg = (e as Error).message;
+    if (/does not exist|no unique or exclusion constraint/i.test(msg)) {
+      liveWritesDisabled = true;
+      console.warn(`  [genres] release_genres unavailable — disabling per-source genre writes for this run (${msg})`);
+    } else {
+      console.warn(`  [genres] ${source} genre write failed for ${label} (skipped): ${msg}`);
+    }
+  }
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveGenre, ancestorsOf, primaryOf } from './resolver';
+import { resolveGenre, ancestorsOf, primaryOf, isSceneRoot } from './resolver';
 
 describe('resolveGenre', () => {
   it('resolves an exact canonical id', () => {
@@ -83,5 +83,15 @@ describe('primaryOf — replaces PRECEDENCE', () => {
     expect(primaryOf(['yodeling', 'asian music'])).toBeNull();
     expect(primaryOf([])).toBeNull();
     expect(primaryOf(null)).toBeNull();
+  });
+});
+
+describe('isSceneRoot', () => {
+  it('flags scene roots (a nationality tag resolves there) but not genres', () => {
+    expect(resolveGenre('korean')).toBe('korean');
+    expect(isSceneRoot('korean')).toBe(true);
+    expect(isSceneRoot('western')).toBe(true);
+    expect(isSceneRoot('k-pop')).toBe(false);
+    expect(isSceneRoot('not-a-node')).toBe(false);
   });
 });

@@ -61,6 +61,17 @@ describe('mergeGenres', () => {
     expect(merged[0].score).toBeGreaterThan(merged[1].score);
   });
 
+  it('drops ids the caller marks non-displayable (e.g. scene roots)', () => {
+    const merged = mergeGenres(
+      [
+        { genreId: 'korean', source: 'lastfm', confidence: 100 },
+        { genreId: 'k-pop', source: 'musicbrainz' },
+      ],
+      { displayable: (id) => id !== 'korean' },
+    );
+    expect(merged.map((m) => m.genreId)).toEqual(['k-pop']);
+  });
+
   it('respects the limit and is deterministic on ties', () => {
     const rows: GenreAssignment[] = [
       { genreId: 'b', source: 'musicbrainz' },

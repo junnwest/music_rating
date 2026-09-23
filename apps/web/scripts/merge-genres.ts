@@ -17,7 +17,7 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { mergeGenres, type GenreAssignment, type GenreSource } from '../lib/genres/merge';
-import { resolveGenre } from '../lib/genres/resolver';
+import { resolveGenre, isSceneRoot } from '../lib/genres/resolver';
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -73,7 +73,7 @@ async function main() {
         source: r.source as GenreSource,
         confidence: r.confidence as number | null,
       })) as GenreAssignment[],
-      { limit: TOPN },
+      { limit: TOPN, displayable: (id) => !isSceneRoot(id) },
     );
     const mergedIds = merged.map((m) => m.genreId);
     for (const m of merged) {
@@ -85,7 +85,11 @@ async function main() {
     }
     // Current displayed set, mapped to canonical ids for an apples-to-apples diff.
     const currentIds = [
-      ...new Set((g.genres as string[]).map((t) => resolveGenre(t)).filter(Boolean) as string[]),
+      ...new Set(
+        (g.genres as string[])
+          .map((t) => resolveGenre(t))
+          .filter((id): id is string => !!id && !isSceneRoot(id)),
+      ),
     ];
 
     const same =

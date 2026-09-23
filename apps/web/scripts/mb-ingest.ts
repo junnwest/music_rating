@@ -12,7 +12,7 @@ import {
 } from './mb-client';
 import { getDB, normalizeStr, detectLanguage, type DB } from './itunes-ingest-core';
 import { MB_ARTIST_OVERRIDES } from './mb-overrides';
-import { writeSourceGenres, type SourceGenreInput } from '../lib/genres/sourceWriter';
+import { writeSourceGenresBestEffort, type SourceGenreInput } from '../lib/genres/sourceWriter';
 
 export { detectLanguage, getDB };
 export type { DB };
@@ -33,13 +33,6 @@ export const SPECIAL_MBIDS = new Set<string>([
 // Set once if the release_group_artists table is absent (migration 20260630000001 not applied)
 // so we stop attempting credit writes for the rest of the run instead of throwing per RG.
 let creditsTableMissing = false;
-
-// Per-source genre write (GENRE_TAXONOMY.md Phase 3): every ingest/freshness re-poll lands the
-// artist's MB genres + vote counts in release_genres(source='musicbrainz'). Best-effort — it must
-// never fail an ingest: errors warn and are skipped; a missing table/constraint (migrations
-// 20260921000000 / 20260922000002 not applied) disables it for the rest of the run.
-// MB_RELEASE_GENRES=0 turns it off entirely.
-let releaseGenresDisabled = process.env.MB_RELEASE_GENRES === '0';
 
 // Above this many release-groups an artist is a composer/Various-Artists-tier entity (Mozart has
 // thousands): ingesting them floods the catalog with classical comps and stalls the watchdog.
@@ -493,19 +486,10 @@ export async function ingestArtist(db: DB, mbid: string): Promise<{ artistId: st
     recCount += await ingestEditionFromPrefetched(db, rgId, rg, artistId, byRg.get(rg.id) ?? []);
   }
 
-  if (!releaseGenresDisabled && genreInputs.length) {
-    try {
-      await writeSourceGenres(db, 'musicbrainz', genreInputs);
-    } catch (e) {
-      const msg = (e as Error).message;
-      if (/release_genres|genre_unmapped|ON CONFLICT|does not exist/i.test(msg) && /constraint|relation|does not exist/i.test(msg)) {
-        releaseGenresDisabled = true;
-        console.warn(`  [genres] release_genres unavailable — disabling per-source genre writes for this run (${msg})`);
-      } else {
-        console.warn(`  [genres] release_genres write failed for ${detail.name} (skipped): ${msg}`);
-      }
-    }
-  }
+  // Per-source genres (GENRE_TAXONOMY.md Phase 3): every ingest AND freshness re-poll lands the
+  // artist's MB genres + vote counts in release_genres(source='musicbrainz') — so re-polls
+  // backfill existing albums with no extra MB calls. Best-effort: never fails the ingest.
+  await writeSourceGenresBestEffort(db, 'musicbrainz', genreInputs, detail.name);
 
   // Schedule the next freshness re-poll from the artist's priority tier (default 'known').
   const { data: pr } = await db.from('artists').select('ingest_priority').eq('id', artistId).maybeSingle();

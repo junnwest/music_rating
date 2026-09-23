@@ -81,11 +81,18 @@ export function confidenceWeight(
  */
 export function mergeGenres(
   assignments: readonly GenreAssignment[],
-  opts?: { limit?: number },
+  opts?: {
+    limit?: number;
+    /** Ids eligible for DISPLAY (e.g. `id => !isSceneRoot(id)`); others are scored
+     *  out of the displayed set. Kept as a predicate so this module stays free of
+     *  taxonomy imports. */
+    displayable?: (genreId: string) => boolean;
+  },
 ): MergedGenre[] {
   const byId = new Map<string, { score: number; sources: Set<GenreSource> }>();
   for (const a of assignments) {
     if (!a.genreId || !(a.source in SOURCE_TRUST)) continue;
+    if (opts?.displayable && !opts.displayable(a.genreId)) continue;
     let e = byId.get(a.genreId);
     if (!e) byId.set(a.genreId, (e = { score: 0, sources: new Set() }));
     e.score += SOURCE_TRUST[a.source] * confidenceWeight(a.confidence, a.source);
