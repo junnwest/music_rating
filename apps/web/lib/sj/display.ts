@@ -104,7 +104,14 @@ export function thumbnailUrl(url: string): string {
   return url
     .replace('600x600bb', '300x300bb')
     .replace('1200x1200bb', '300x300bb')
-    .replace('front-500', 'front-250');
+    .replace('front-500', 'front-250')
+    // Deezer had no rule here, so all 32,479 Deezer covers -- stored at 1000x1000, the only size
+    // the cover backfills write -- were shipped at full size into 38-112px list rows: 181,873 bytes
+    // where 21,165 would do, ~8.6x. Not our bandwidth (Deezer is a fast CDN and Cover.tsx sends it
+    // straight to the client, unlike CAA) but squarely the viewer's, and it is the dominant cost of
+    // a long scroll. The size is a plain path segment, so this is the same string swap as the other
+    // two rules.
+    .replace('1000x1000-000000', '250x250-000000');
 }
 
 /** "3m" / "2h" / "5d" style relative time, mirroring iOS `Date.relativeTimeString`. */

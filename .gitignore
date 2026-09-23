@@ -53,6 +53,8 @@ apps/web/scripts/data/native-language-*.json
 apps/web/scripts/data/kr-cover-*.json
 apps/web/scripts/data/stub-itunes-*.json
 apps/web/scripts/data/delete-*.sql
+apps/web/scripts/data/deezer-cover-coverage.json
+apps/web/scripts/data/cover-upgrade*.json
 
 # Tooling scratch
 .understand-anything/
