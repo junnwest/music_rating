@@ -14,6 +14,9 @@
  *     provenance-less `legacy` text[] backfill (lowest — it's the merged past).
  *   - confidenceWeight: a source's own signal (MB tag vote count / Last.fm tag
  *     weight) saturated into [0.5,1]; NULL (source asserted it with no count) = 1.
+ *     Each source's raw signal lives on its own scale (MB votes are ~1–10s, Last.fm
+ *     weights 0–100), so the saturation point is per-source — the DB keeps the raw
+ *     value and this is the one place it is normalized.
  *   - agreementBoost: a genre multiple independent sources agree on is more
  *     trustworthy than a single source's assertion.
  *
@@ -49,16 +52,27 @@ export const SOURCE_TRUST: Record<GenreSource, number> = {
   legacy: 0.4,
 };
 
-/** Confidence at which a counted source reaches ~0.75 of its full weight. */
-const CONFIDENCE_FLOOR = 3;
+/**
+ * Confidence at which a counted source reaches 0.75 of its full weight, per source
+ * (its raw signal's scale). Sources not listed use DEFAULT_CONFIDENCE_FLOOR.
+ */
+const DEFAULT_CONFIDENCE_FLOOR = 3;
+export const CONFIDENCE_FLOOR: Partial<Record<GenreSource, number>> = {
+  musicbrainz: 3, // community vote count (most tagged groups carry 1–5 votes)
+  lastfm: 30, //     tag weight, 0–100 relative to the album's top tag
+};
 /** Per-extra-agreeing-source multiplicative bonus. */
 const AGREEMENT_BONUS = 0.25;
 
 /** Saturate a source's raw confidence into a [0.5, 1] multiplier. */
-export function confidenceWeight(confidence: number | null | undefined): number {
+export function confidenceWeight(
+  confidence: number | null | undefined,
+  source?: GenreSource,
+): number {
   if (confidence == null) return 1; // asserted without a count → full base weight
   if (confidence <= 0) return 0.5;
-  return 0.5 + 0.5 * (confidence / (confidence + CONFIDENCE_FLOOR));
+  const floor = (source && CONFIDENCE_FLOOR[source]) ?? DEFAULT_CONFIDENCE_FLOOR;
+  return 0.5 + 0.5 * (confidence / (confidence + floor));
 }
 
 /**
@@ -74,7 +88,7 @@ export function mergeGenres(
     if (!a.genreId || !(a.source in SOURCE_TRUST)) continue;
     let e = byId.get(a.genreId);
     if (!e) byId.set(a.genreId, (e = { score: 0, sources: new Set() }));
-    e.score += SOURCE_TRUST[a.source] * confidenceWeight(a.confidence);
+    e.score += SOURCE_TRUST[a.source] * confidenceWeight(a.confidence, a.source);
     e.sources.add(a.source);
   }
 

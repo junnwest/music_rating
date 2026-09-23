@@ -12,6 +12,8 @@
  *   npx tsx --env-file=.env.local scripts/merge-genres.ts            # sample 40 groups
  *   npx tsx --env-file=.env.local scripts/merge-genres.ts --sample=200
  *   npx tsx --env-file=.env.local scripts/merge-genres.ts --limit=6  # top-N per group
+ *   npx tsx --env-file=.env.local scripts/merge-genres.ts --source=musicbrainz
+ *       # sample only groups that have rows from that source (validate one source's cutover)
  */
 import { createClient } from '@supabase/supabase-js';
 import { mergeGenres, type GenreAssignment, type GenreSource } from '../lib/genres/merge';
@@ -31,19 +33,33 @@ const argNum = (name: string, def: number) => {
 };
 const SAMPLE = argNum('sample', 40);
 const TOPN = argNum('limit', 6);
+const SOURCE = process.argv.find((x) => x.startsWith('--source='))?.split('=')[1] as GenreSource | undefined;
+
+/** Up to SAMPLE release-group ids that carry at least one row from `source`. */
+async function idsWithSource(source: GenreSource): Promise<string[]> {
+  const { data, error } = await db
+    .from('release_genres')
+    .select('release_group_id')
+    .eq('source', source)
+    .order('release_group_id')
+    .limit(Math.min(SAMPLE * 12, 1000));
+  if (error) throw new Error(error.message);
+  return [...new Set((data ?? []).map((r) => r.release_group_id as string))].slice(0, SAMPLE);
+}
 
 async function main() {
-  // Sample release groups that have both a displayed genres[] and release_genres rows.
-  const { data: groups, error } = await db
-    .from('release_groups')
-    .select('id, title, genres')
-    .not('genres', 'is', null)
-    .order('id')
-    .limit(SAMPLE);
+  // Sample release groups that have both a displayed genres[] and release_genres rows
+  // (or, with --source, groups that carry that source's rows).
+  let q = db.from('release_groups').select('id, title, genres').not('genres', 'is', null);
+  if (SOURCE) q = q.in('id', await idsWithSource(SOURCE));
+  const { data: groups, error } = await q.order('id').limit(SAMPLE);
   if (error) throw new Error(error.message);
 
   let changed = 0;
   let shown = 0;
+  let multiSourceIds = 0;
+  let mergedIdTotal = 0;
+  const sourcesSeen = new Map<string, number>();
   for (const g of groups ?? []) {
     const { data: rows } = await db
       .from('release_genres')
@@ -60,6 +76,13 @@ async function main() {
       { limit: TOPN },
     );
     const mergedIds = merged.map((m) => m.genreId);
+    for (const m of merged) {
+      mergedIdTotal++;
+      if (m.sources.length > 1) multiSourceIds++;
+    }
+    for (const src of new Set(rows.map((r) => r.source as string))) {
+      sourcesSeen.set(src, (sourcesSeen.get(src) ?? 0) + 1);
+    }
     // Current displayed set, mapped to canonical ids for an apples-to-apples diff.
     const currentIds = [
       ...new Set((g.genres as string[]).map((t) => resolveGenre(t)).filter(Boolean) as string[]),
@@ -72,7 +95,9 @@ async function main() {
       shown++;
       console.log(`\n${g.title}`);
       console.log(`  now:    ${currentIds.join(', ') || '(none resolve)'}`);
-      console.log(`  merged: ${mergedIds.join(', ')}`);
+      console.log(
+        `  merged: ${merged.map((m) => `${m.genreId}[${m.sources.join('+')}]`).join(', ')}`,
+      );
     }
   }
 
@@ -80,7 +105,11 @@ async function main() {
   console.log(
     `\n— sampled ${n} groups; ${changed} would change ranked-set vs today's genres[] (${
       n ? Math.round((changed / n) * 100) : 0
-    }%). Sources present today: legacy-only until per-source acquisition lands.`,
+    }%).`,
+  );
+  console.log(
+    `  sources present (groups): ${[...sourcesSeen].map(([k, v]) => `${k}=${v}`).join(', ') || '(none)'}; ` +
+      `${multiSourceIds}/${mergedIdTotal} displayed ids backed by >1 source.`,
   );
 }
 

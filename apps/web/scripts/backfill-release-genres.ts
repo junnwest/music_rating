@@ -157,7 +157,7 @@ async function upsertChunked<T extends object>(
   }
 
   console.log('\nWriting…');
-  const g = await upsertChunked('release_genres', genreRows, 'release_group_id,genre_id');
+  const g = await upsertChunked('release_genres', genreRows, 'release_group_id,genre_id,source');
   const u = await upsertChunked('genre_unmapped', unmappedRows, 'release_group_id,raw_tag,source', true);
   console.log(`\n  done — release_genres: ${g.written} written${g.failed ? ` (${g.failed} failed)` : ''}; ` +
     `genre_unmapped: ${u.written} staged${u.failed ? ` (${u.failed} failed)` : ''}.`);

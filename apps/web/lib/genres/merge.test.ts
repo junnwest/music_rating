@@ -13,6 +13,17 @@ describe('confidenceWeight', () => {
     expect(confidenceWeight(100)).toBeGreaterThan(0.97);
     expect(confidenceWeight(100)).toBeLessThan(1);
   });
+
+  it('saturates on each source’s own scale (MB votes vs Last.fm 0–100 weights)', () => {
+    // At its own floor each source sits at exactly 0.75.
+    expect(confidenceWeight(3, 'musicbrainz')).toBeCloseTo(0.75, 5);
+    expect(confidenceWeight(30, 'lastfm')).toBeCloseTo(0.75, 5);
+    // A middling Last.fm weight must NOT read as near-certain (it would on the MB scale).
+    expect(confidenceWeight(20, 'lastfm')).toBeLessThan(0.75);
+    expect(confidenceWeight(20, 'musicbrainz')).toBeGreaterThan(0.9);
+    // Unlisted sources fall back to the default scale.
+    expect(confidenceWeight(3, 'itunes')).toBeCloseTo(0.75, 5);
+  });
 });
 
 describe('mergeGenres', () => {

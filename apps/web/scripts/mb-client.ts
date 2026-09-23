@@ -113,6 +113,11 @@ export interface MbReleaseGroup {
   primaryArtistMbid: string | null; // first credited artist's MBID (to detect guest features)
   credits: MbCredit[];              // ordered artist credits (for the release_group_artists join)
   genres: string[];
+  genreVotes: MbGenreVote[];        // same genres WITH their community vote counts (release_genres confidence)
+}
+export interface MbGenreVote {
+  name: string;
+  count: number;
 }
 export interface MbReleaseStub {
   id: string;
@@ -253,10 +258,16 @@ export async function getArtist(mbid: string): Promise<MbArtistDetail | null> {
 // sort by votes so genres[] is importance-ordered (main genre first) instead
 // of alphabetical. Ties keep MB's alphabetical order (stable sort).
 function sortGenresByVotes(genres: any[] | null | undefined): string[] {
+  return genreVotes(genres).map((g) => g.name);
+}
+
+// The vote-sorted genres keeping each vote count — the per-source `confidence`
+// the release_genres writer stores (GENRE_TAXONOMY.md Phase 3).
+function genreVotes(genres: any[] | null | undefined): MbGenreVote[] {
   return [...(genres ?? [])]
     .sort((a, b) => (b?.count ?? 0) - (a?.count ?? 0))
-    .map((g: any) => g.name)
-    .filter(Boolean);
+    .filter((g: any) => g?.name)
+    .map((g: any) => ({ name: g.name as string, count: Number(g.count ?? 0) }));
 }
 
 export async function browseReleaseGroups(artistMbid: string): Promise<MbReleaseGroup[]> {
@@ -278,6 +289,7 @@ export async function browseReleaseGroups(artistMbid: string): Promise<MbRelease
         primaryArtistMbid: rg['artist-credit']?.[0]?.artist?.id ?? null,
         credits: parseCredits(rg['artist-credit']),
         genres: sortGenresByVotes(rg.genres),
+        genreVotes: genreVotes(rg.genres),
       });
     }
     const total = data?.['release-group-count'] ?? out.length;
