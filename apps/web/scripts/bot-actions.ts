@@ -61,19 +61,6 @@ async function rate(albumId: string, score: number) {
   console.log(`✓ @${BOT_USERNAME} rated album ${albumId} → ★${score}`);
 }
 
-async function comment(albumId: string, body: string) {
-  const botId = await getBotId();
-  const { error } = await db.from('reviews').insert({
-    release_id: albumId,
-    user_id: botId,
-    username: BOT_USERNAME,
-    body,
-    visibility: 'public',
-  });
-  if (error) { console.error('Comment error:', error.message); process.exit(1); }
-  console.log(`✓ @${BOT_USERNAME} commented on ${albumId}: "${body}"`);
-}
-
 async function status() {
   const botId = await getBotId();
   const [{ count: following }, { count: followers }, { count: ratings }] = await Promise.all([
@@ -94,8 +81,7 @@ switch (cmd) {
   case 'follow':   follow(arg1); break;
   case 'unfollow': unfollow(arg1); break;
   case 'rate':     rate(arg1, parseInt(arg2)); break;
-  case 'comment':  comment(arg1, arg2); break;
   case 'status':   status(); break;
   default:
-    console.log('Commands: follow <username> | unfollow <username> | rate <albumId> <score> | comment <albumId> "<text>" | status');
+    console.log('Commands: follow <username> | unfollow <username> | rate <albumId> <score> | status');
 }
