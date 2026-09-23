@@ -184,11 +184,16 @@ private struct FlowerPressDragRecognizer: UIGestureRecognizerRepresentable {
 
 /// Drag-to-rate flower control -- press the flower and drag outward; distance
 /// from the button's centre maps to a score (farther = higher, 0.1 steps). A
-/// press with no meaningful drag is a tap -> `onRequestPrecise` (open the full
-/// rating sheet). Ports web's `components/sj/FlowerRateControl.tsx` gesture
-/// math; the live gauge (arc + dotted baseline) renders in a floating
-/// overlay window (`RateGaugeOverlay`) so it isn't clipped by whatever
-/// scrolling container the button sits inside.
+/// plain tap does nothing (2026-09-23: removed the old tap-opens-the-precise-
+/// sheet fallback this control used to have) -- `onRequestPrecise` now fires
+/// ONLY from VoiceOver's `.accessibilityAction(.default)` below, since a drag
+/// gesture isn't something VoiceOver's standard double-tap-to-activate
+/// navigation can perform; every sighted/touch caller loses the tap shortcut
+/// but keeps the drag. Ports web's `components/sj/FlowerRateControl.tsx`
+/// gesture math (web still has its own tap fallback -- this removal is
+/// iOS-only, not a parity change); the live gauge (arc + dotted baseline)
+/// renders in a floating overlay window (`RateGaugeOverlay`) so it isn't
+/// clipped by whatever scrolling container the button sits inside.
 ///
 /// When `currentScore` is already set (re-rating an existing item) and the
 /// caller supplies `onDelete`, dragging into the fixed delete zone (see
@@ -229,13 +234,17 @@ struct FlowerRateControl: View {
     private var canDelete: Bool { currentScore != nil && onDelete != nil }
 
     /// How long a press must hold still before the drag-to-rate gesture starts
-    /// tracking at all -- so a quick tap still reads as a tap (see the
-    /// separate, undelayed `.onTapGesture` below) rather than immediately
-    /// engaging the drag machinery. Also, indirectly, what lets this control
-    /// reliably win against a context menu's own (longer) press-and-hold
-    /// threshold on the same touch -- see `FlowerPressDragRecognizer`'s doc
-    /// comment for the full mechanism.
-    private static let holdBeforeDrag: TimeInterval = 0.2
+    /// tracking at all -- so a quick tap still reads as a tap (does nothing --
+    /// see the body's own comment on why there's no tap handler here anymore)
+    /// rather than immediately engaging the drag machinery. Also, indirectly,
+    /// what lets this control reliably win against a context menu's own
+    /// (longer) press-and-hold threshold on the same touch -- see
+    /// `FlowerPressDragRecognizer`'s doc comment for the full mechanism.
+    /// 0.06s -- shortened again from 0.12s per the user's own request
+    /// (2026-09-23, same day as the 0.2s -> 0.12s change above). Neither
+    /// change was a bug fix; both were direct asks to make the hold feel
+    /// snappier.
+    private static let holdBeforeDrag: TimeInterval = 0.06
     /// How far a press can move before `holdBeforeDrag` elapses without
     /// failing this control's own recognizer -- passed straight through to
     /// `UILongPressGestureRecognizer.allowableMovement` (system default is
@@ -254,12 +263,13 @@ struct FlowerRateControl: View {
     var body: some View {
         GeometryReader { geo in
             buttonContent
-                // A quick tap (shorter than `holdBeforeDrag`) would never reach
-                // the sequenced gesture below at all -- LongPressGesture only
-                // fires once its minimum duration has actually elapsed, so an
-                // ordinary fast tap needs its own, separate, undelayed
-                // recognizer to still open the precise sheet.
-                .onTapGesture { onRequestPrecise?() }
+                // A plain tap (mouse click's iOS equivalent) intentionally does
+                // nothing now -- the old tap-opens-the-precise-sheet fallback is
+                // gone; only a real drag rates. VoiceOver still reaches the sheet
+                // via the explicit .accessibilityAction below, since a drag
+                // gesture isn't something VoiceOver's standard navigation can
+                // perform -- that's the one path this removal deliberately keeps.
+                //
                 // See `FlowerPressDragRecognizer`'s own doc comment for why
                 // this needs to be a real `UIGestureRecognizer` + delegate
                 // rather than a plain SwiftUI `LongPressGesture.sequenced`:
@@ -311,10 +321,10 @@ struct FlowerRateControl: View {
                                 onDelete?()
                                 return
                             }
-                            if maxDist < RateGaugeGeometry.tapThreshold {
-                                onRequestPrecise?()
-                                return
-                            }
+                            // Held past holdBeforeDrag but barely moved -- still just a
+                            // tap, not a drag. Does nothing now (see body's own comment
+                            // on why the old onRequestPrecise fallback was removed).
+                            if maxDist < RateGaugeGeometry.tapThreshold { return }
                             guard let s = dragScore else { return } // released in dead zone -> cancel
                             onRate(s)
                         },
@@ -393,6 +403,13 @@ struct FlowerRateControl: View {
         .animation(.easeOut(duration: 0.13), value: showNumber)
         .animation(.easeOut(duration: 0.13), value: isOverDeleteZone)
         .accessibilityLabel(accessibilityLabelText)
+        // VoiceOver's double-tap-to-activate routes through this action, not the
+        // plain .onTapGesture that used to be here (now removed) or the drag
+        // recognizer -- a drag gesture isn't something VoiceOver's own
+        // navigation can perform, so this stays the one way VoiceOver users
+        // reach the precise rating sheet. Sighted/touch users no longer have a
+        // tap shortcut to it at all (see FlowerRateControl's own doc comment).
+        .accessibilityAction(.default) { onRequestPrecise?() }
     }
 }
 

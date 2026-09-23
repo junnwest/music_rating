@@ -185,6 +185,9 @@ export interface SearchReleaseGroupRPC {
   release_group_type: string | null;
   first_release_date: string | null;
   artist_native: string | null;
+  /** Relevance score (20260923000000) — same scale as SearchArtistRPC.score, so the
+   *  two are directly comparable to decide which category's top hit is the better match. */
+  score: number;
 }
 
 /** search_artists(q, lim) — 20260703000006 (name_phonetic_ko aware) */
@@ -194,6 +197,21 @@ export interface SearchArtistRPC {
   name_native: string | null;
   cover_url: string | null;
   release_count: number;
+  /** Relevance score (20260923000000) — same scale as SearchReleaseGroupRPC.score. */
+  score: number;
+}
+
+/** search_users(q, lim) — 20260924000000. Not compared against
+ *  SearchArtistRPC/SearchReleaseGroupRPC.score for Top Match — Users is
+ *  deliberately its own section, never promoted into that hero card. */
+export interface SearchUserRPC {
+  id: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  is_verified: boolean;
+  is_bot: boolean;
+  score: number;
 }
 
 /** get_artist_release_groups(p_artist_id, lim) — 20260630000001 */

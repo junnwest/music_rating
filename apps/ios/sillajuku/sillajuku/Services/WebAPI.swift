@@ -47,6 +47,27 @@ enum WebAPI {
             return nil
         }
     }
+
+    // Fire-and-forget POST -- no return value, matching the "failure is harmless" telemetry
+    // spirit of the callers using this (Popular Searches query logging). Not decoded/awaited
+    // for a result on purpose; a caller that needs the response should add a typed variant
+    // rather than repurpose this one.
+    static func post<B: Encodable>(_ path: String, body: B, authed: Bool = false) async {
+        let url = Config.webBaseURL.appendingPathComponent(path)
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if authed {
+            guard let session = try? await supabase.auth.session else {
+                print("WebAPI.post(\(path)): no auth session available")
+                return
+            }
+            request.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
+        }
+        guard let bodyData = try? JSONEncoder().encode(body) else { return }
+        request.httpBody = bodyData
+        _ = try? await URLSession.shared.data(for: request)
+    }
 }
 
 // MARK: - /api/discovery (unauthenticated)
@@ -55,6 +76,12 @@ struct DiscoveryResponse: Decodable {
     let popular: [Release]
     let newReleases: [Release]
     let trending: [Release]
+}
+
+// MARK: - /api/search/popular (unauthenticated)
+
+struct PopularSearchesResponse: Decodable {
+    let queries: [String]
 }
 
 // MARK: - /api/recommendations (authenticated)

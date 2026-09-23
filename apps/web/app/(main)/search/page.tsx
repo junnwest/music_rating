@@ -23,6 +23,7 @@ import { RG_COLS, type SJRelease } from '../../../lib/sj/data';
 import type {
   SearchArtistRPC,
   SearchReleaseGroupRPC,
+  SearchUserRPC,
 } from '../../../lib/db/types';
 
 interface SongResult {
@@ -30,6 +31,37 @@ interface SongResult {
   title: string;
   artists: string | null;
   release: SJRelease;
+}
+
+type SearchCategory = 'albums' | 'songs' | 'artists' | 'users';
+
+// search_release_groups' score is on the same scale as SearchArtistRPC.score
+// (see 20260923000000) — kept alongside the mapped SJRelease just for the
+// cross-category "Top Match" comparison below, not part of SJRelease itself.
+interface SearchAlbumResult extends SJRelease {
+  score: number;
+}
+
+type TopResult =
+  | { kind: 'artist'; artist: SearchArtistRPC }
+  | { kind: 'album'; album: SearchAlbumResult };
+
+function pickTopResult(
+  artists: SearchArtistRPC[],
+  albums: SearchAlbumResult[],
+): TopResult | null {
+  const topArtist = artists[0];
+  const topAlbum = albums[0];
+  if (!topArtist && !topAlbum) return null;
+  // `?? 0` also keeps this artist-first (today's order) if the `score` column
+  // isn't live yet (migration 20260923000000 not yet applied) rather than
+  // silently defaulting to the album branch: unlike a bare comparison,
+  // `undefined >= undefined` is false in JS, which would otherwise fall
+  // through to `album` even when neither side has a real score.
+  if (topArtist && (!topAlbum || (topArtist.score ?? 0) >= (topAlbum.score ?? 0))) {
+    return { kind: 'artist', artist: topArtist };
+  }
+  return { kind: 'album', album: topAlbum };
 }
 
 /**
@@ -53,10 +85,25 @@ function SearchPageInner() {
   const [query, setQuery] = useState(searchParams.get('q') ?? '');
   const [searching, setSearching] = useState(false);
   const [artists, setArtists] = useState<SearchArtistRPC[]>([]);
-  const [albums, setAlbums] = useState<SJRelease[]>([]);
+  const [albums, setAlbums] = useState<SearchAlbumResult[]>([]);
   const [songs, setSongs] = useState<SongResult[]>([]);
+  const [users, setUsers] = useState<SearchUserRPC[]>([]);
+  // Category filter pills (All / Albums / Songs / Artists / Users) beneath
+  // the search bar — client-side only, all four categories are already
+  // fetched concurrently regardless of this filter, so toggling is instant
+  // with no network round-trip. Empty set = "All" (the default) — see
+  // toggleCategory/selectAllCategories below for why that representation.
+  const [categoryFilter, setCategoryFilter] = useState<Set<SearchCategory>>(new Set());
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const runSeqRef = useRef(0);
+  // Popular Searches telemetry: a separate, longer debounce from the 300ms
+  // one that triggers the actual search below — logging every keystroke-
+  // driven RPC call would flood search_query_log with prefixes ("b", "be",
+  // "bey"…) instead of the terms people actually meant. loggedQueryRef
+  // dedupes repeated settles of the identical string (e.g. focus/blur churn
+  // with no real query change).
+  const logDebounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const loggedQueryRef = useRef<string | null>(null);
 
   // Quick-rate state
   const [ratedIds, setRatedIds] = useState<Set<string>>(new Set());
@@ -91,6 +138,7 @@ function SearchPageInner() {
       setArtists([]);
       setAlbums([]);
       setSongs([]);
+      setUsers([]);
       return;
     }
     // Stale-request guard: a slower earlier query must never overwrite a newer
@@ -117,6 +165,7 @@ function SearchPageInner() {
             releaseDate: r.first_release_date,
             titleNative: r.native_title,
             artistNative: r.artist_native,
+            score: r.score,
           })),
         );
       });
@@ -125,6 +174,15 @@ function SearchPageInner() {
       .rpc('search_artists', { q: trimmed, lim: 10 })
       .then(({ data }) => {
         if (fresh()) setArtists((data as SearchArtistRPC[] | null) ?? []);
+      });
+
+    // Users never enters the Top Match comparison (pickTopResult stays
+    // artist-vs-album only, by design) — a strong username match shouldn't
+    // outrank a real artist/album match for that slot. Always its own section.
+    const usersP = supabase
+      .rpc('search_users', { q: trimmed, lim: 10 })
+      .then(({ data }) => {
+        if (fresh()) setUsers((data as SearchUserRPC[] | null) ?? []);
       });
 
     // Song hits → parent release group (canonical preferred), like iOS
@@ -176,7 +234,7 @@ function SearchPageInner() {
       );
     })();
 
-    await Promise.allSettled([albumsP, artistsP, songsP]);
+    await Promise.allSettled([albumsP, artistsP, songsP, usersP]);
     if (fresh()) setSearching(false);
   }, []);
 
@@ -186,6 +244,55 @@ function SearchPageInner() {
     debounceRef.current = setTimeout(() => runSearch(query), 300);
     return () => clearTimeout(debounceRef.current);
   }, [query, runSearch]);
+
+  // Popular Searches telemetry — logs the query only once typing has settled
+  // for 1.5s, separate from the 300ms debounce above that triggers the real
+  // search RPCs. Routed through /api/search/popular's POST handler (service
+  // role) rather than a direct client insert — confirmed live that a
+  // logged-out (anon-role) client insert is rejected by this project's RLS,
+  // the same trap search_misses' own real write path already avoids by
+  // going through a server route instead of a raw client insert. Fire-and-
+  // forget; failure is harmless, same spirit as the existing search_misses
+  // writes.
+  useEffect(() => {
+    clearTimeout(logDebounceRef.current);
+    const trimmed = query.trim();
+    if (trimmed.length < 2) return;
+    logDebounceRef.current = setTimeout(() => {
+      if (loggedQueryRef.current === trimmed) return;
+      loggedQueryRef.current = trimmed;
+      fetch('/api/search/popular', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: trimmed, platform: 'web' }),
+      }).catch(() => {});
+    }, 1500);
+    return () => clearTimeout(logDebounceRef.current);
+  }, [query]);
+
+  // "All" is a reset action (always selects every category), not an
+  // independent toggle, mutually exclusive with the individual category
+  // pills — an EMPTY set *is* "All" (show every category), so selecting All
+  // always clears any specific selection.
+  function selectAllCategories() {
+    setCategoryFilter(new Set());
+  }
+
+  // Choosing an individual category always deselects All (moving off the
+  // empty set does that automatically). From All, the first tap narrows
+  // down to just that one category rather than adding to an implicit
+  // "everything" set; further taps multi-select normally. Deselecting the
+  // last remaining category empties the set again, which — under this same
+  // model — naturally falls back to All rather than needing a special case.
+  function toggleCategory(cat: SearchCategory) {
+    setCategoryFilter((prev) => {
+      if (prev.size === 0) return new Set([cat]);
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  }
 
   function addRelease(release: SJRelease) {
     setManualTarget(release);
@@ -257,11 +364,32 @@ function SearchPageInner() {
         )}
       </div>
 
+      {hasQuery && (
+        <div className="flex gap-1.5 overflow-x-auto scrollbar-hide mt-3 max-w-2xl">
+          <CategoryPill active={categoryFilter.size === 0} onClick={selectAllCategories}>
+            {t('sj.search.all')}
+          </CategoryPill>
+          <CategoryPill active={categoryFilter.has('albums')} onClick={() => toggleCategory('albums')}>
+            {t('sj.search.albums')}
+          </CategoryPill>
+          <CategoryPill active={categoryFilter.has('songs')} onClick={() => toggleCategory('songs')}>
+            {t('sj.search.songs')}
+          </CategoryPill>
+          <CategoryPill active={categoryFilter.has('artists')} onClick={() => toggleCategory('artists')}>
+            {t('sj.search.artists')}
+          </CategoryPill>
+          <CategoryPill active={categoryFilter.has('users')} onClick={() => toggleCategory('users')}>
+            {t('sj.search.users')}
+          </CategoryPill>
+        </div>
+      )}
+
       {hasQuery ? (
         <SearchResults
-          artists={artists}
-          albums={albums}
-          songs={songs}
+          artists={categoryFilter.size === 0 || categoryFilter.has('artists') ? artists : []}
+          albums={categoryFilter.size === 0 || categoryFilter.has('albums') ? albums : []}
+          songs={categoryFilter.size === 0 || categoryFilter.has('songs') ? songs : []}
+          users={categoryFilter.size === 0 || categoryFilter.has('users') ? users : []}
           searching={searching}
           query={query}
           ratedIds={ratedIds}
@@ -287,6 +415,7 @@ function SearchPageInner() {
               </Link>
             </div>
           )}
+          <PopularSearchChips onSelect={setQuery} />
           <Discovery
             ratedIds={ratedIds}
             sessionRatedIds={sessionRatedIds}
@@ -316,6 +445,7 @@ function SearchResults({
   artists,
   albums,
   songs,
+  users,
   searching,
   query,
   ratedIds,
@@ -324,8 +454,9 @@ function SearchResults({
   onRate,
 }: {
   artists: SearchArtistRPC[];
-  albums: SJRelease[];
+  albums: SearchAlbumResult[];
   songs: SongResult[];
+  users: SearchUserRPC[];
   searching: boolean;
   query: string;
   ratedIds: Set<string>;
@@ -336,9 +467,11 @@ function SearchResults({
   const { t } = useLanguage();
   const { profile } = useSession();
   const ratingStep = profile?.manual_rating_step ?? 0.5;
-  const hasAny = artists.length > 0 || albums.length > 0 || songs.length > 0;
+  const hasAny =
+    artists.length > 0 || albums.length > 0 || songs.length > 0 || users.length > 0;
 
-  // One menu instance for the whole artist column (see useContextMenuFor).
+  // One menu instance for the whole artist column (see useContextMenuFor),
+  // shared with the Top Match card below when the top match is an artist.
   const { onContextMenu: onArtistContextMenu, menu: artistContextMenu } =
     useContextMenuFor<SearchArtistRPC>((a) => [
       {
@@ -346,6 +479,16 @@ function SearchResults({
         label: t('sj.context.openNewTab'),
         icon: <ExternalLink size={15} />,
         onSelect: () => openInNewTab(`/artist/${a.id}`),
+      },
+    ]);
+
+  const { onContextMenu: onUserContextMenu, menu: userContextMenu } =
+    useContextMenuFor<SearchUserRPC>((u) => [
+      {
+        key: 'open-new-tab',
+        label: t('sj.context.openNewTab'),
+        icon: <ExternalLink size={15} />,
+        onSelect: () => openInNewTab(`/profile/${u.username}`),
       },
     ]);
 
@@ -361,97 +504,224 @@ function SearchResults({
     );
   }
 
+  // Each category is ranked internally, but scores are comparable across
+  // categories (same scale, see 20260923000000) — pull whichever category's
+  // best hit is the stronger match out into its own card above both
+  // sections, so a great album match isn't buried under a mediocre artist
+  // list (or vice versa).
+  const topResult = pickTopResult(artists, albums);
+  const restArtists = topResult?.kind === 'artist' ? artists.slice(1) : artists;
+  const restAlbums = topResult?.kind === 'album' ? albums.slice(1) : albums;
+
   return (
-    <div className="mt-7 grid lg:grid-cols-[280px_1fr] gap-8 items-start">
-      {/* Artists (left column on desktop) */}
-      {artists.length > 0 && (
-        <section className="lg:sticky lg:top-[76px]">
-          <SectionLabel>{t('sj.search.artists')}</SectionLabel>
-          <ul className="rounded-2xl bg-surface border border-divider/60 divide-y divide-divider overflow-hidden">
-            {artists.map((a) => {
-              const native =
-                a.name_native && isPredominantlyHangul(a.name_native) ? a.name_native : null;
-              return (
-                <li key={a.id} onContextMenu={(e) => onArtistContextMenu(e, a)}>
-                  <ArtistLink
-                    href={`/artist/${a.id}`}
-                    className="flex items-center gap-3 px-3.5 py-2.5 hover:bg-page/60 transition"
-                  >
-                    {a.cover_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={a.cover_url}
-                        alt=""
-                        className="w-11 h-11 rounded-full object-cover shrink-0"
-                      />
-                    ) : (
-                      <span className="flex w-11 h-11 rounded-full bg-divider text-muted items-center justify-center text-[15px] font-bold shrink-0">
-                        {a.name.slice(0, 1).toUpperCase()}
-                      </span>
-                    )}
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-[13.5px] font-semibold text-ink truncate">
-                        {a.name}
-                      </span>
-                      {native && (
-                        <span className="block text-[11.5px] text-muted truncate">{native}</span>
-                      )}
-                      <span className="block text-[11.5px] text-muted">
-                        {a.release_count === 1
-                          ? t('sj.search.oneRelease')
-                          : t('sj.search.nReleases').replace('{n}', String(a.release_count))}
-                      </span>
-                    </span>
-                    <ChevronRight size={13} className="text-divider" />
-                  </ArtistLink>
-                </li>
-              );
-            })}
-          </ul>
-          {artistContextMenu}
+    <div className="mt-7">
+      {topResult && (
+        <section className="mb-7">
+          <SectionLabel>{t('sj.search.topMatch')}</SectionLabel>
+          {topResult.kind === 'artist' ? (
+            <ul className="max-w-sm rounded-2xl bg-surface border border-divider/60 divide-y divide-divider overflow-hidden">
+              <ArtistRow artist={topResult.artist} onContextMenu={onArtistContextMenu} />
+            </ul>
+          ) : (
+            // w-36, matching the compact card size Discovery's shelves already
+            // use (AlbumCard's bare w-full otherwise fills whatever container
+            // it's given, which — alone in this row — read as oversized).
+            <div className="w-36">
+              <AlbumCard
+                release={topResult.album}
+                rated={ratedIds.has(topResult.album.id)}
+                sessionRated={sessionRatedIds.has(topResult.album.id)}
+                ratingStep={ratingStep}
+                onAdd={() => onAdd(topResult.album)}
+                onRate={(score) => onRate(topResult.album, score)}
+              />
+            </div>
+          )}
         </section>
       )}
 
-      <div className={artists.length === 0 ? 'lg:col-span-2' : ''}>
-        {/* Albums grid */}
-        {albums.length > 0 && (
-          <section>
-            <SectionLabel>{t('sj.search.albums')}</SectionLabel>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
-              {albums.map((release) => (
-                <AlbumCard
-                  key={release.id}
-                  release={release}
-                  rated={ratedIds.has(release.id)}
-                  sessionRated={sessionRatedIds.has(release.id)}
-                  ratingStep={ratingStep}
-                  onAdd={() => onAdd(release)}
-                  onRate={(score) => onRate(release, score)}
-                />
+      <div className="grid lg:grid-cols-[280px_1fr] gap-8 items-start">
+        {/* Artists (left column on desktop) */}
+        {restArtists.length > 0 && (
+          <section className="lg:sticky lg:top-[76px]">
+            <SectionLabel>{t('sj.search.artists')}</SectionLabel>
+            <ul className="rounded-2xl bg-surface border border-divider/60 divide-y divide-divider overflow-hidden">
+              {restArtists.map((a) => (
+                <ArtistRow key={a.id} artist={a} onContextMenu={onArtistContextMenu} />
               ))}
-            </div>
+            </ul>
+            {artistContextMenu}
           </section>
         )}
 
-        {/* Songs */}
-        {songs.length > 0 && (
-          <section className="mt-8">
-            <SectionLabel>{t('sj.search.songs')}</SectionLabel>
-            <ul className="rounded-2xl bg-surface border border-divider/60 divide-y divide-divider overflow-hidden">
-              {songs.map((song) => (
-                <SongRow
-                  key={song.id}
-                  song={song}
-                  rated={ratedIds.has(song.release.id)}
-                  sessionRated={sessionRatedIds.has(song.release.id)}
-                  ratingStep={ratingStep}
-                  onAdd={() => onAdd(song.release)}
-                  onRate={(score) => onRate(song.release, score)}
-                />
-              ))}
-            </ul>
-          </section>
+        <div className={restArtists.length === 0 ? 'lg:col-span-2' : ''}>
+          {/* Albums grid */}
+          {restAlbums.length > 0 && (
+            <section>
+              <SectionLabel>{t('sj.search.albums')}</SectionLabel>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
+                {restAlbums.map((release) => (
+                  <AlbumCard
+                    key={release.id}
+                    release={release}
+                    rated={ratedIds.has(release.id)}
+                    sessionRated={sessionRatedIds.has(release.id)}
+                    ratingStep={ratingStep}
+                    onAdd={() => onAdd(release)}
+                    onRate={(score) => onRate(release, score)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Songs */}
+          {songs.length > 0 && (
+            <section className="mt-8">
+              <SectionLabel>{t('sj.search.songs')}</SectionLabel>
+              <ul className="rounded-2xl bg-surface border border-divider/60 divide-y divide-divider overflow-hidden">
+                {songs.map((song) => (
+                  <SongRow
+                    key={song.id}
+                    song={song}
+                    rated={ratedIds.has(song.release.id)}
+                    sessionRated={sessionRatedIds.has(song.release.id)}
+                    ratingStep={ratingStep}
+                    onAdd={() => onAdd(song.release)}
+                    onRate={(score) => onRate(song.release, score)}
+                  />
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {/* Users */}
+          {users.length > 0 && (
+            <section className="mt-8">
+              <SectionLabel>{t('sj.search.users')}</SectionLabel>
+              <ul className="rounded-2xl bg-surface border border-divider/60 divide-y divide-divider overflow-hidden">
+                {users.map((u) => (
+                  <UserRow key={u.id} user={u} onContextMenu={onUserContextMenu} />
+                ))}
+              </ul>
+              {userContextMenu}
+            </section>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ArtistRow({
+  artist: a,
+  onContextMenu,
+}: {
+  artist: SearchArtistRPC;
+  onContextMenu: (e: React.MouseEvent, a: SearchArtistRPC) => void;
+}) {
+  const { t } = useLanguage();
+  const native = a.name_native && isPredominantlyHangul(a.name_native) ? a.name_native : null;
+  return (
+    <li onContextMenu={(e) => onContextMenu(e, a)}>
+      <ArtistLink
+        href={`/artist/${a.id}`}
+        className="flex items-center gap-3 px-3.5 py-2.5 hover:bg-page/60 transition"
+      >
+        {a.cover_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={a.cover_url}
+            alt=""
+            className="w-11 h-11 rounded-full object-cover shrink-0"
+          />
+        ) : (
+          <span className="flex w-11 h-11 rounded-full bg-divider text-muted items-center justify-center text-[15px] font-bold shrink-0">
+            {a.name.slice(0, 1).toUpperCase()}
+          </span>
         )}
+        <span className="min-w-0 flex-1">
+          <span className="block text-[13.5px] font-semibold text-ink truncate">{a.name}</span>
+          {native && <span className="block text-[11.5px] text-muted truncate">{native}</span>}
+          <span className="block text-[11.5px] text-muted">
+            {a.release_count === 1
+              ? t('sj.search.oneRelease')
+              : t('sj.search.nReleases').replace('{n}', String(a.release_count))}
+          </span>
+        </span>
+        <ChevronRight size={13} className="text-divider" />
+      </ArtistLink>
+    </li>
+  );
+}
+
+function UserRow({
+  user: u,
+  onContextMenu,
+}: {
+  user: SearchUserRPC;
+  onContextMenu: (e: React.MouseEvent, u: SearchUserRPC) => void;
+}) {
+  const label = u.display_name || u.username;
+  return (
+    <li onContextMenu={(e) => onContextMenu(e, u)}>
+      <Link
+        href={`/profile/${u.username}`}
+        className="flex items-center gap-3 px-3.5 py-2.5 hover:bg-page/60 transition"
+      >
+        {u.avatar_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={u.avatar_url}
+            alt=""
+            className="w-11 h-11 rounded-full object-cover shrink-0"
+          />
+        ) : (
+          <span className="flex w-11 h-11 rounded-full bg-divider text-muted items-center justify-center text-[15px] font-bold shrink-0">
+            {label.slice(0, 1).toUpperCase()}
+          </span>
+        )}
+        <span className="min-w-0 flex-1">
+          <span className="block text-[13.5px] font-semibold text-ink truncate">{label}</span>
+          <span className="block text-[11.5px] text-muted truncate">@{u.username}</span>
+        </span>
+        <ChevronRight size={13} className="text-divider" />
+      </Link>
+    </li>
+  );
+}
+
+// ── Popular Searches (empty query) ──────────────────────────────────────────
+
+/** Cross-user trending query chips, fed by /api/search/popular (Redis-cached,
+ *  mirrors /api/discovery). Renders nothing while empty — the route itself
+ *  already hides a too-sparse list rather than returning a half-populated one. */
+function PopularSearchChips({ onSelect }: { onSelect: (q: string) => void }) {
+  const { t } = useLanguage();
+  const [queries, setQueries] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch('/api/search/popular')
+      .then((r) => (r.ok ? r.json() : { queries: [] }))
+      .then((d: { queries?: string[] }) => setQueries(d.queries ?? []))
+      .catch(() => {});
+  }, []);
+
+  if (queries.length === 0) return null;
+
+  return (
+    <div className="mt-6">
+      <SectionLabel>{t('sj.search.popularSearches')}</SectionLabel>
+      <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
+        {queries.map((q) => (
+          <button
+            key={q}
+            onClick={() => onSelect(q)}
+            className="px-3 py-1 rounded-full text-[12px] font-medium whitespace-nowrap transition bg-page text-muted border border-divider hover:text-ink"
+          >
+            {q}
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -676,6 +946,29 @@ function Discovery({
         </section>
       ))}
     </div>
+  );
+}
+
+/** Round-rectangular filter pill — same visual convention as charts/page.tsx's
+ *  FilterRow, reused here for the search category filter row. */
+function CategoryPill({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-3 py-1 rounded-full text-[12px] font-medium whitespace-nowrap transition ${
+        active ? 'bg-accent text-white' : 'bg-page text-muted border border-divider hover:text-ink'
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
