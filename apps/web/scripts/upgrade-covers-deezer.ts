@@ -41,9 +41,14 @@
  *      AND exact artist equality, no fuzzy, no prefix.
  *   3. Only rows whose cover is currently a CAA/archive.org URL are touched, and the UPDATE repeats
  *      that condition, so it can never clobber iTunes/Deezer art or a null.
- *   4. REVERSIBLE. Every change appends {id, old, new} to a rollback journal BEFORE the write, so a
- *      run that goes wrong can be undone row by row, and a crash still leaves completed writes
- *      undoable. --rollback=<file> restores.
+ *   4. REVERSIBLE, AND HONEST ABOUT WHAT LANDED. Every change that SUCCEEDS appends {id, old, new}
+ *      to a rollback journal, so a run that goes wrong can be undone row by row; --rollback=<file>
+ *      restores. The journal was originally written before the update, which was wrong in both
+ *      directions: a failed write still recorded a swap that never happened, and the row was never
+ *      retried because its artist is marked done immediately after. Writes now retry with backoff,
+ *      and a row that still fails is recorded in --failed-file rather than lost. Statement timeouts
+ *      are real here — they appeared as soon as this pass and backfill-rg-covers-caa were both
+ *      updating cover_url on overlapping rows, which is why the two should not run together.
  *
  * REPORT-ONLY unless --apply.
  *
@@ -70,6 +75,9 @@ const TYPES = (arg('--types') ?? 'album,ep,single,soundtrack').split(',').map(s 
 const ORDER = arg('--order') ?? 'n';
 const ROLLBACK = arg('--rollback-file') ?? 'scripts/data/cover-upgrade-rollback.ndjson';
 const STATE = 'scripts/data/cover-upgrade-state.json';
+// Rows whose write failed after retries — recorded rather than silently dropped, so they can be
+// re-run instead of staying on the proxy forever.
+const FAILED = arg('--failed-file') ?? 'scripts/data/cover-upgrade-failed.ndjson';
 
 const norm = (s: string | null | undefined) => (s ?? '').toLowerCase().normalize('NFKC').replace(/[^\p{L}\p{N}]/gu, '');
 const exactArtist = (a: string, b: string) => { const x = norm(a), y = norm(b); return !!x && x === y; };
@@ -187,10 +195,26 @@ async function main() {
         if (how === 'artist') viaArtist++; else viaSearch++;
         const swap: Swap = { id: r.id, artist: r.artist_display, title: r.title, old: r.cover_url, new: cover, via, how };
         if (APPLY) {
-          fs.appendFileSync(ROLLBACK, JSON.stringify(swap) + '\n');
-          const { error } = await db.from('release_groups').update({ cover_url: cover }).eq('id', r.id)
-            .or('cover_url.like.%coverartarchive.org%,cover_url.like.%archive.org%');
-          if (error) console.warn(`  ! ${r.id}: ${error.message}`);
+          // RETRY, AND JOURNAL ONLY WHAT ACTUALLY LANDED. This used to append the rollback entry
+          // first and treat any error as a warning, which was wrong twice over: a failed write left
+          // a journal line claiming a swap that never happened (so a later --rollback would set the
+          // row to a value it already had), and the row was never retried because its artist is
+          // marked done straight after. Statement timeouts are not hypothetical here -- they showed
+          // up as soon as this pass and backfill-rg-covers-caa were both updating cover_url on
+          // overlapping rows. Rows that still fail after retries go to a file instead of being lost.
+          let wrote = false;
+          for (let attempt = 0; attempt < 3 && !wrote; attempt++) {
+            if (attempt) await new Promise(res => setTimeout(res, 500 * 2 ** attempt));
+            const { error } = await db.from('release_groups').update({ cover_url: cover }).eq('id', r.id)
+              .or('cover_url.like.%coverartarchive.org%,cover_url.like.%archive.org%');
+            if (!error) wrote = true;
+            else if (attempt === 2) {
+              console.warn(`  ! ${r.id}: ${error.message}`);
+              fs.appendFileSync(FAILED, JSON.stringify({ id: r.id, title: r.title, reason: error.message }) + '\n');
+            }
+          }
+          if (wrote) fs.appendFileSync(ROLLBACK, JSON.stringify(swap) + '\n');
+          else if (how === 'artist') viaArtist--; else viaSearch--;
         } else if (viaArtist + viaSearch <= 20) {
           console.log(`  ↻ [${how}] ${r.artist_display} — ${r.title}  →  ${via}`);
         }
