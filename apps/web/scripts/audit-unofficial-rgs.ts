@@ -52,17 +52,39 @@ interface Finding {
 
 // Read-only SQL through the Management API, for the aggregate questions PostgREST can only answer
 // with one request per row.
+// RETRIED, because this is called once per artist across a run that takes tens of minutes at
+// MusicBrainz's 1 req/sec, and a single transient blip used to destroy the whole thing: the
+// 2026-09-22 rerun died on `ConnectTimeoutError: api.supabase.com:443` at artist ~50 of 220, after
+// ~20 minutes of MusicBrainz budget, and left the previous run's report in place — so the findings
+// file looked fresh while describing a superseded run.
 async function sql<T>(query: string): Promise<T[]> {
   const token = process.env.SUPABASE_ACCESS_TOKEN;
   const ref = process.env.NEXT_PUBLIC_SUPABASE_URL?.match(/https:\/\/([a-z0-9]+)\.supabase\.co/)?.[1];
   if (!token || !ref) throw new Error('SUPABASE_ACCESS_TOKEN / NEXT_PUBLIC_SUPABASE_URL required');
-  const res = await fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query }),
-  });
-  if (!res.ok) throw new Error(`query failed: ${res.status} ${await res.text()}`);
-  return (await res.json()) as T[];
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt) await new Promise(r => setTimeout(r, 1000 * 2 ** attempt));
+    try {
+      const res = await fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      // 4xx is a bad query and will fail identically on every retry; only 5xx is worth repeating.
+      if (!res.ok) {
+        const body = await res.text();
+        if (res.status < 500) throw new Error(`query failed: ${res.status} ${body}`);
+        lastErr = new Error(`query failed: ${res.status} ${body}`);
+        continue;
+      }
+      return (await res.json()) as T[];
+    } catch (e) {
+      lastErr = e;
+      if (e instanceof Error && e.message.startsWith('query failed: 4')) throw e;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
 function loadDone(): Set<string> {
@@ -70,7 +92,49 @@ function loadDone(): Set<string> {
 }
 function saveDone(s: Set<string>) { fs.writeFileSync(STATE, JSON.stringify({ done: [...s] })); }
 
+/**
+ * Delete exactly the findings of a report that was already reviewed.
+ *
+ * WHY NOT JUST RE-RUN WITH --apply. Because that re-derives the set from MusicBrainz, so what gets
+ * deleted is not necessarily what was read: the catalogue moves, MusicBrainz edits land, and a
+ * truncated listing or a 503 in the second pass silently changes the answer. Reviewing report A and
+ * deleting set B is not review at all. It also costs a second full pass at 1 req/sec while the
+ * ingest pipeline sits paused for it.
+ *
+ * Re-checks ratings at delete time rather than trusting the report's count, because a rating can be
+ * added between the report and the apply and a rating is the one thing here that cannot be undone.
+ */
+async function applyFromReport(file: string) {
+  const db = getDB();
+  const findings: Finding[] = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const ids = findings.map(f => f.rgId);
+  console.log(`[apply-report] ${findings.length} finding(s) from ${file}`);
+
+  const ratedNow = new Set<string>();
+  for (let i = 0; i < ids.length; i += 200) {
+    const rows = await sql<{ release_group_id: string }>(
+      `select distinct release_group_id::text from ratings
+        where release_group_id in (${ids.slice(i, i + 200).map(x => `'${x}'`).join(',')})`);
+    for (const r of rows) ratedNow.add(r.release_group_id);
+  }
+
+  const deletable = findings.filter(f => !ratedNow.has(f.rgId));
+  console.log(`  carrying ratings, kept: ${findings.length - deletable.length}`);
+
+  let deleted = 0;
+  const delIds = deletable.map(f => f.rgId);
+  for (let i = 0; i < delIds.length; i += 100) {
+    const slice = delIds.slice(i, i + 100);
+    const { error } = await db.from('release_groups').delete().in('id', slice);
+    if (error) console.warn(`  ! batch ${i}: ${error.message}`); else deleted += slice.length;
+    if ((i / 100) % 5 === 0) console.log(`  ${Math.min(i + 100, delIds.length)}/${delIds.length} deleted`);
+  }
+  console.log(`\n  DELETED ${deleted} release group(s)`);
+}
+
 async function main() {
+  const fromReport = arg('--from-report');
+  if (fromReport) return applyFromReport(fromReport);
   const db = getDB();
   const done = loadDone();
 
@@ -104,7 +168,7 @@ async function main() {
 
   console.log(`[unofficial] ${targets.length} artist(s) to check${APPLY ? '  *** APPLY ***' : '  (report only)'}`);
   const findings: Finding[] = [];
-  let checked = 0, deleted = 0, keptRated = 0, truncatedSkips = 0;
+  let checked = 0, deleted = 0, keptRated = 0, truncatedSkips = 0, unknownStatus = 0;
 
   for (const a of targets) {
     // TRUNCATION MAKES ABSENCE UNPROVABLE. This script deletes on the strength of "MusicBrainz
@@ -164,10 +228,21 @@ async function main() {
       if (!st || st.length === 0) continue;
       if (st.some(s => s === 'Official')) continue;
 
+      // ABSENT STATUS IS NOT AN UNOFFICIAL STATUS. MusicBrainz leaves `status` unset on a great many
+      // releases -- browseArtistReleases records that as the string 'null' -- and "nobody has filled
+      // this field in" says nothing about whether the release is official. Treating it as
+      // not-Official made 1,606 of 4,096 findings (39%) deletable on no evidence at all, almost all
+      // of them old compilations: half of Bing Crosby's catalogue came back as "unofficial" purely
+      // because 1940s compilations are poorly statused. The releases_status migration says this in
+      // its own comment -- "NULL = not yet known, which is NOT the same as Official" -- and the
+      // check then did the opposite. Require at least one edition with a REAL unofficial status.
+      const known = st.filter(s => s !== 'null');
+      if (known.length === 0) { unknownStatus++; continue; }
+
       const ratings = rated.has(rg.id) ? 1 : 0;
       const f: Finding = {
         artist: a.name, artistId: a.id, rgId: rg.id, mbid: rg.mb_release_group_id,
-        title: rg.title, type: rg.release_group_type, statuses: [...new Set(st)], ratings,
+        title: rg.title, type: rg.release_group_type, statuses: [...new Set(known)], ratings,
       };
       findings.push(f);
 
@@ -191,6 +266,8 @@ async function main() {
   for (const f of findings) byType[f.type] = (byType[f.type] ?? 0) + 1;
   console.log(`\n  artists checked        ${checked}`);
   console.log(`  unofficial-only groups ${findings.length}`);
+  console.log(`  skipped (status unset) ${unknownStatus}  — MusicBrainz records no status; unknown is not unofficial`);
+  console.log(`  skipped (truncated)    ${truncatedSkips}  — absence unprovable, left for a later pass`);
   console.log(`  by type                ${JSON.stringify(byType)}`);
   console.log(`  carrying user ratings  ${findings.filter(f => f.ratings > 0).length}  (never deleted)`);
   if (APPLY) console.log(`  DELETED                ${deleted}`);
