@@ -32,8 +32,13 @@ const LIMIT = (() => { const a = args.find(x => x.startsWith('--limit=')); retur
 // behaviour (fill nulls, never touch existing art) is unchanged.
 const REPLACE_EDITION = args.includes('--replace-edition');
 const STATE_FILE = REPLACE_EDITION ? `${__dirname}/backfill-rg-covers-caa-replace-state.json` : `${__dirname}/backfill-rg-covers-caa-state.json`;
-const CONCURRENCY = 4;
-const SPACING_MS = 120; // polite pacing per request slot
+// Tunable, because the defaults are too aggressive once CAA has seen a lot of traffic. Passes 1-2
+// ran at 97-99% hit; by pass 3 the same settings returned 51% `retry` (429/5xx), while a manual
+// probe at 1 req/s answered cleanly -- i.e. the throttling was ours, not an outage. 4 workers at
+// 120ms is ~33 req/s. Lower both and the run is slower but actually completes work instead of
+// burning rows into the retry bucket.
+const CONCURRENCY = (() => { const a = args.find(x => x.startsWith('--concurrency=')); return a ? parseInt(a.split('=')[1], 10) : 4; })();
+const SPACING_MS = (() => { const a = args.find(x => x.startsWith('--spacing=')); return a ? parseInt(a.split('=')[1], 10) : 120; })();
 
 function loadState(): { done: string[] } { try { return existsSync(STATE_FILE) ? JSON.parse(readFileSync(STATE_FILE, 'utf8')) : { done: [] }; } catch { return { done: [] }; } }
 function saveState(s: { done: string[] }) { writeFileSync(STATE_FILE, JSON.stringify({ done: s.done }, null, 0)); }
@@ -59,7 +64,14 @@ async function caaCover(mbid: string): Promise<{ status: 'filled' | 'none' | 're
 async function main() {
   const state = loadState();
   const doneSet = new Set(state.done);
-  const types = ALL ? ['album', 'ep', 'single'] : ['album', 'ep'];
+  // --all stops at single, so compilation and soundtrack rows -- ~70,000 of them still on the
+  // wrong endpoint -- were unreachable by any flag. --types= names them explicitly rather than
+  // redefining --all, whose meaning is referenced in earlier run logs.
+  //   --types=compilation,soundtrack
+  const TYPES_ARG = args.find(x => x.startsWith('--types='))?.split('=')[1];
+  const types = TYPES_ARG ? TYPES_ARG.split(',').map(s => s.trim()).filter(Boolean)
+              : ALL ? ['album', 'ep', 'single']
+              : ['album', 'ep'];
 
   // Pull the addressable set (null cover + has mbid), priority types first.
   const PAGE = 1000;
@@ -71,6 +83,14 @@ async function main() {
       .not('mb_release_group_id', 'is', null)
       .in('release_group_type', types)
       .order('prestige_score', { ascending: false, nullsFirst: false })
+      // `id` is a REQUIRED tiebreaker, not a nicety. prestige_score is NULL on all but ~1,589 rows,
+      // so ordering by it alone leaves the sort arbitrary and Postgres may return a different row
+      // order per page -- the same row lands in two pages while another is never fetched at all.
+      // The 2026-09-20 --replace-edition run hit exactly this: it reported 132,020 processed and
+      // 129,926 filled, but the state file held only 85,326 DISTINCT ids and ~50,948 album/EP rows
+      // were never selected. (Same failure class as the dedup:releases incident in
+      // requeue-affected.ts: "pagination without ORDER BY caused self-matches".)
+      .order('id', { ascending: true })
       .range(from, from + PAGE - 1);
     q = REPLACE_EDITION
       ? q.like('cover_url', '%coverartarchive.org/release/%')  // wrong-endpoint rows

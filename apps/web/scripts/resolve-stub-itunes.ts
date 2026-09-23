@@ -93,6 +93,12 @@ const itunesGet = makeItunesGet({ perMin: Number(arg('--per-min') ?? 40), userAg
 // hand to the shared key so edition/remaster handling stays in one place.
 const FORMAT_SUFFIX_RE = /\s*[-–—]\s*(ep|single|maxi[- ]single)\s*$/i;
 const FEAT_PAREN_RE = /\s*[([](?:feat\.?|featuring|with|prod\.?(?: by)?)\s[^)\]]*[)\]]/gi;
+// "(From \"Chhaava\")" / "[From the Motion Picture X]" names the WORK A TRACK COMES FROM, not an
+// alternate title for it. It has to be removed before the quoted-inner-title rule runs, because
+// that rule extracts any quoted substring as a candidate title: "Jaane Tu (From \"Chhaava\")" gave
+// up the seed "Chhaava" and so took the cover of the album "Chhaava (Telugu)". Stripping it also
+// gives the correct reduction, "Jaane Tu".
+const FROM_PAREN_RE = /\s*[([]\s*from\s[^)\]]*[)\]]/gi;
 
 // Deliberately NOT normalizeStr(). That helper whitelists \w (ASCII) + Hangul + Kana + CJK, so
 // EVERY other script — Cyrillic, Greek, Thai, Devanagari, Arabic — normalizes to the empty string:
@@ -134,6 +140,227 @@ function titleKey(title: string): string {
 function creditNames(artistName: string | null | undefined): string[] {
   return (artistName ?? '').split(/\s*(?:,|&|feat\.?|featuring|with|\/|\bx\b|×)\s*/i)
     .map(unicodeNorm).filter(Boolean);
+}
+
+/**
+ * All the shapes one release's title legitimately takes across sources, as normalized strings.
+ * Two titles are "the same release" when their variant sets INTERSECT.
+ *
+ * Exact key equality was not enough and the cost was real: the 2026-09-22 sweep reported albums as
+ * missing that the catalogue already held, because iTunes and MusicBrainz title the same record
+ * differently. Measured false-positive rate 33% overall, 65% for artists past the old anchor cap:
+ *
+ *   iTunes "10cm The First EP"               MB "The First EP"        artist name prefixed
+ *   iTunes "Starry Night - The 2nd Mini Album" MB "Starry Night"       ordinal-album suffix
+ *   iTunes "YOUNHA 7th Album 'GROWTH THEORY'"  MB "GROWTH THEORY"      both, plus quotes
+ *   iTunes "Spring Rain"                     MB "봄비 (Spring Rain)"   bilingual parenthetical
+ *   iTunes "The 2nd"                         MB "The 2nd EP"          format tail
+ *
+ * Deliberately EQUALITY over a variant set, not substring containment. Containment over-matches --
+ * it pairs "The Greatest" with "make a secret -The Greatest ver.-", which are different releases --
+ * and a wrong merge silently hides a real album, which is the failure this whole pass exists to fix.
+ */
+const ORDINAL_ALBUM_RE = /\s*[-–—:]?\s*(the\s+)?\d+(\.\d+)?\s*(st|nd|rd|th)\s+(mini\s+|full\s+|repackage\s+)?(album|ep|single).*$/i;
+const FORMAT_TAIL_RE   = /\s*[-–—:]?\s*(the\s+)?(mini\s+|full\s+)?(album|ep|single)\s*$/i;
+// As ORDINAL_ALBUM_RE but WITHOUT the trailing `.*$`, so it removes only the ordinal phrase and
+// leaves whatever follows it intact. Needed for "<Artist> <N>th Single <Title>", where the real
+// title comes after the ordinal rather than before it.
+// A repackage is its own release group, not an edition of the album it repackages (owner's call,
+// 2026-09-22), so reductions must never strip this marker away. Covers the English word and the
+// Korean 리패키지.
+// A trailing group fenced by dashes -- "AGGRESSIVE -The Greatest ver.-" -- which J-pop and K-pop
+// releases use where Western ones use parentheses. Non-greedy inner so it takes the LAST such
+// group, and requires the closing dash at end-of-string so an ordinary hyphenated title
+// ("Jekyll -and- Hyde" is not a thing, but "A - B" is) is not mistaken for one.
+const DASH_GROUP_RE = /[-–—]\s*([^-–—]{2,}?)\s*[-–—]\s*$/;
+const REPACKAGE_RE = /repackage|repack|리패키지/i;
+const ORDINAL_INFIX_RE = /\s*[-–—:]?\s*(the\s+)?\d+(\.\d+)?\s*(st|nd|rd|th)\s+(mini\s+|full\s+|repackage\s+)?(album|ep|single)\b\s*/i;
+const PAREN_GROUP_RE   = /[([]([^)\]]{2,})[)\]]/g;
+// Descriptors, not titles. Never promote one of these to a standalone alternate title.
+const GENERIC_PAREN_RE = /^\s*(original\s+)?(motion\s+picture\s+|television\s+|game\s+|broadway\s+|cast\s+)?(sound\s?track|ost|score|album|ep|single|deluxe|expanded|special|standard|remaster(ed)?|reissue|remix(es)?|instrumental(s)?|live|acoustic|version|edition|mix|explicit|clean|bonus|disc\s*\d+|vol\.?\s*\d+|pt\.?\s*\d+|part\s*\d+|feat\.?.*|with\s+.*|inst\.?)\s*\d*\s*$/i;
+
+/**
+ * Is this parenthetical a real alternate TITLE, or just an aside?
+ * Generic descriptors are excluded by GENERIC_PAREN_RE, but so must short filler words be: Sagisu's
+ * "...EVANGELION 2.0 YOU CAN (NOT) ADVANCE." and "...3.0 you can (not) redo" are different films
+ * that matched purely because "(NOT)" became a shared variant on both sides.
+ */
+/**
+ * Every word here is a DESCRIPTOR: it says something about the edition, format, language or source
+ * of a release rather than naming one. A parenthetical built only from these is an aside, never an
+ * alternate title.
+ *
+ * Token matching, not one anchored regex. GENERIC_PAREN_RE is anchored around a SINGLE descriptor
+ * with a small set of allowed prefixes, so any multi-word descriptor escaped it and was promoted to
+ * a standalone variant -- which then matched every other release sharing that aside. Measured live
+ * on 2026-09-22 against 14,873 real cover swaps: "(Instrumental Version)" matched `instrumental` or
+ * `version` but not both in sequence, "(Japanese Version)" had no vocabulary at all, and
+ * "(Original Background Score)" failed because `background` was not an allowed prefix. The result
+ * was RichaadEB's "Lyin' 2 Me (Instrumental Version)" taking the cover of "Raise Up Your Bat
+ * (Instrumental Version)", and A. R. Rahman's "Kochadaiiyaan (Original Background Score)" taking
+ * "Raayan (Original Background Score)" -- different songs, different films, same aside.
+ *
+ * Languages are included deliberately: "(Telugu)" and "(Japanese Version)" tag the same work in
+ * another language, so they identify an EDITION, not a different release.
+ */
+const DESCRIPTOR_WORDS = new Set([
+  'original', 'motion', 'picture', 'television', 'tv', 'game', 'video', 'broadway', 'cast',
+  'recording', 'recordings', 'soundtrack', 'sound', 'ost', 'score', 'background', 'theme',
+  'album', 'ep', 'lp', 'single', 'deluxe', 'expanded', 'special', 'standard', 'limited',
+  'remaster', 'remastered', 'reissue', 'remix', 'remixes', 'instrumental', 'instrumentals', 'inst',
+  'live', 'acoustic', 'unplugged', 'version', 'ver', 'edition', 'edit', 'mix', 'explicit', 'clean',
+  'bonus', 'track', 'tracks', 'disc', 'disk', 'vol', 'volume', 'pt', 'part', 'extended', 'radio',
+  'karaoke', 'demo', 'mono', 'stereo', 'anniversary', 'complete', 'collection', 'digital',
+  'feat', 'featuring', 'with', 'from', 'the', 'and', 'a', 'of',
+  // Language tags identify an edition of the same work, not a different one.
+  'japanese', 'korean', 'english', 'chinese', 'mandarin', 'cantonese', 'spanish', 'french',
+  'german', 'italian', 'portuguese', 'hindi', 'tamil', 'telugu', 'malayalam', 'kannada',
+  'bengali', 'punjabi', 'marathi', 'thai', 'vietnamese', 'indonesian', 'russian', 'turkish',
+  'arabic', 'jp', 'kr', 'cn', 'en', 'us', 'uk',
+]);
+
+/** True when a parenthetical consists ONLY of descriptor words and/or numbers. */
+function isGenericParen(inner: string): boolean {
+  const toks = inner.toLowerCase().normalize('NFKC')
+    .replace(/[^\p{L}\p{N}\s]+/gu, ' ').split(/\s+/).filter(Boolean);
+  if (toks.length === 0) return true;
+  return toks.every(t => DESCRIPTOR_WORDS.has(t) || /^\d+$/.test(t));
+}
+
+function isAlternateTitle(inner: string): boolean {
+  const t = inner.trim();
+  if (t.length < 4) return false;                       // "NOT", "ver", "pt2"
+  if (GENERIC_PAREN_RE.test(t)) return false;           // "Original Motion Picture Soundtrack"
+  if (isGenericParen(t)) return false;                  // "Instrumental Version", "Telugu"
+  if (/^[A-Za-z]+$/.test(t) && t.length < 6) return false; // a single short latin word is filler
+  return true;
+}
+
+export function titleVariants(raw: string, artistNames: string[] = []): Set<string> {
+  const out = new Set<string>();
+  const add = (v: string) => { const n = unicodeNorm(v); if (n.length >= 2) out.add(n); };
+  const base = (raw ?? '').replace(FEAT_PAREN_RE, '').replace(FROM_PAREN_RE, '').trim();
+  if (!base) return out;
+
+  // A repackage is its own release group (owner's call, 2026-09-22), so NO reduction anywhere in
+  // this function may quietly turn one into the album it repackages. Re-attach the marker whenever
+  // a reduction drops it. This has to wrap the SEED reductions as well as the ones in reduce():
+  // guarding only the latter left "&TWICE - Repackage -" reducing, at seed time, to "&TWICE" and
+  // matching the base album we have held since 2019 — the policy violated by the very rule added to
+  // enforce it.
+  const keepRepack = (from: string, reduced: string): string =>
+    REPACKAGE_RE.test(from) && !REPACKAGE_RE.test(reduced) ? `${reduced.trim()} repackage` : reduced;
+
+  const seeds = new Set<string>([base, keepRepack(base, stripEditionSuffix(base))]);
+
+  // Quoted inner title: "YOUNHA 7th Album 'GROWTH THEORY'" -> GROWTH THEORY
+  for (const m of base.matchAll(/['"“”‘’「『]([^'"“”‘’」』]{2,})['"“”‘’」』]/g)) seeds.add(m[1]);
+
+  // Parenthetical alternates, both directions: "봄비 (Spring Rain)" -> 봄비 AND Spring Rain.
+  // But ONLY when the parenthetical is a real alternate title. A generic descriptor must never
+  // become a standalone variant: promoting "(Original Motion Picture Soundtrack)" made every
+  // soundtrack match every other one, which flagged Sagisu's "Attack on Titan (OST)" as a duplicate
+  // of his "An Endless Sunday (OST)". Stripping it is still right -- it is only PROMOTION that is wrong.
+  for (const m of base.matchAll(PAREN_GROUP_RE)) if (isAlternateTitle(m[1])) seeds.add(m[1]);
+  seeds.add(keepRepack(base, base.replace(PAREN_GROUP_RE, ' ')));
+
+  // Dash-delimited trailing group, the J-pop/K-pop equivalent of a parenthetical:
+  // "AGGRESSIVE -The Greatest ver.-". Only the bracketed form was recognised, so the two spellings
+  // of one release never met -- iTunes offered "AGGRESSIVE (The Greatest Version)", which reduces
+  // to "aggressive", while the "AGGRESSIVE -The Greatest ver.-" already in the catalogue reduced to
+  // nothing shorter than itself. It would have been written as a duplicate of a row we have held
+  // since 2022. Handling the delimiter also makes the ver./Version spelling difference irrelevant,
+  // which is why no abbreviation table is needed here.
+  // STRIPPED, NEVER PROMOTED. Unlike a parenthetical -- which often carries a genuine alternate
+  // title, "봄비 (Spring Rain)" -- a dash-fenced group in this convention is always an edition or
+  // version marker. Promoting it to a standalone variant made every song in a reissue series match
+  // every other: "AGGRESSIVE -The Greatest ver.-" matched "LISTEN TO MY HEART -The Greatest ver.-"
+  // through the shared "the greatest ver". Same failure the generic-parenthetical guard exists to
+  // prevent, so the same conclusion applies -- stripping is right, promotion is not.
+  if (DASH_GROUP_RE.test(base)) seeds.add(keepRepack(base, base.replace(DASH_GROUP_RE, ' ')));
+
+  // ONE REDUCTION STEP. Returns every shorter form of `t` reachable by removing one decoration.
+  //
+  // REPACKAGES STAY SEPARATE (owner's call, 2026-09-22). A K-pop repackage is the same album
+  // reissued months later with extra tracks and new art -- "CLASS" then "CLASS ADDITION" -- and we
+  // treat it as its own release group rather than pooling it with the original. They are rare
+  // enough for that to be cheap: 27 of 491,157 release groups say "repackage", 25 of them Korean.
+  //
+  // That makes plain reduction wrong here. ORDINAL_ALBUM_RE ends in `.*$`, so "LOVE SHOT - The 5th
+  // Album Repackage" reduced straight to "LOVE SHOT" and matched the original -- which, under this
+  // policy, is a different album. So when the input carries a repackage marker, every reduction
+  // that would drop it gets the marker re-attached instead of being discarded. Two spellings of the
+  // SAME repackage still converge ("... - The 5th Album Repackage" and "... (Repackage)" both reach
+  // "love shot repackage"), so this does not simply disable matching for them -- it only stops a
+  // repackage from collapsing into the album it is a repackage OF.
+  const reduce = (t: string): string[] => {
+    const outs: string[] = [];
+    const keep = (v: string) => {
+      const trimmed = v.trim();
+      if (trimmed) outs.push(keepRepack(t, trimmed));
+    };
+    // Drop an ordinal-album tail: "Starry Night - The 2nd Mini Album" -> "Starry Night"
+    const noOrd = t.replace(ORDINAL_ALBUM_RE, '');
+    if (noOrd.trim() && noOrd !== t) keep(noOrd);
+    // Drop an ordinal phrase that sits MID-string, keeping what follows. ORDINAL_ALBUM_RE ends in
+    // `.*$`, so on the very common Korean format "<Artist> <N>th Single <Title>" it swallowed the
+    // real title: "Afterschool 3rd Single BANG" reduced to "afterschool" and therefore never
+    // matched the "Bang!" already in the catalogue.
+    const noOrdIn = t.replace(ORDINAL_INFIX_RE, ' ');
+    if (noOrdIn.trim() && noOrdIn !== t) keep(noOrdIn);
+    // Drop a bare format tail: "The 2nd EP" -> "The 2nd"
+    const noFmt = t.replace(FORMAT_TAIL_RE, '');
+    if (noFmt.trim() && noFmt !== t) keep(noFmt);
+    // Drop a leading artist name: "10cm The First EP" -> "The First EP".
+    // Compared with spaces removed, because the artist field and the title often disagree about
+    // them -- the row is credited "After School" while the title reads "Afterschool".
+    const tn = unicodeNorm(t);
+    for (const an of artistNames) {
+      const n = unicodeNorm(an);
+      if (n.length < 2) continue;
+      const nNo = n.replace(/\s+/g, '');
+      let acc = '';
+      for (let i = 0; i < tn.length; i++) {
+        acc += tn[i];
+        if (acc.replace(/\s+/g, '').length > nNo.length) break;
+        if (acc.replace(/\s+/g, '') === nNo) {
+          const rest = tn.slice(i + 1).trim();
+          if (rest.length >= 2) keep(rest);
+          break;
+        }
+      }
+    }
+    return outs;
+  };
+
+  // REDUCTIONS MUST COMPOSE. Each rule used to be applied once, to the seed only, so a title
+  // carrying two decorations at once never reduced past the first one:
+  // "NCT#127 LIMITLESS - The 2nd Mini Album" yielded "nct 127 limitless" (artist kept, tail
+  // dropped) and "limitless the 2nd mini album" (artist dropped, tail kept) but never plain
+  // "limitless" -- so it did not match the LIMITLESS we already hold, and would have been written
+  // as a duplicate. Iterating to a fixed point produces the fully-stripped form as well. Four
+  // rounds is far more than any real title needs and bounds the work.
+  for (const seed of seeds) {
+    add(seed);
+    let frontier = [seed];
+    for (let round = 0; round < 4 && frontier.length; round++) {
+      const next: string[] = [];
+      for (const t of frontier) {
+        for (const r of reduce(t)) {
+          const n = unicodeNorm(r);
+          if (n.length >= 2 && !out.has(n)) { out.add(n); next.push(r); }
+        }
+      }
+      frontier = next;
+    }
+  }
+  return out;
+}
+
+/** True when two titles are plausibly the same release, by variant-set intersection. */
+export function titlesMatch(a: Set<string>, b: Set<string>): boolean {
+  for (const v of a) if (b.has(v)) return true;
+  return false;
 }
 
 // A title distinctive enough that ONE match is real corroboration rather than a coincidence.
@@ -213,7 +440,16 @@ async function knownNames(db: DB, stub: StubRow): Promise<string[]> {
 async function creditAnchors(db: DB, stubId: string): Promise<Anchor[]> {
   const { data, error } = await db.from('release_group_artists')
     .select('release_groups!inner(title, first_release_date, artist_display)')
-    .eq('artist_id', stubId).limit(60);
+    // NO practical cap. This was .limit(60), written when the population was credit stubs, which
+    // have one or two credits. --any-state later widened this script to fully-ingested artists, and
+    // the limit silently came along: for anyone with more than 60 release groups the anchor set was
+    // TRUNCATED, so everything past the cap looked absent and was reported as missing. Measured on
+    // 2026-09-22: BoA holds 165 release groups but only 60 anchors loaded, and a 40-artist sample
+    // came back 98% false positives -- titles like "I believe" and "Disturbance" that we already
+    // hold verbatim. Same failure as the artist page's LIMIT 60: a cap written for one population
+    // inherited by another. 1000 is above the largest discography in the catalogue (1,094) while
+    // still bounding a runaway.
+    .eq('artist_id', stubId).limit(1000);
   if (error) throw new Error(`anchors for ${stubId}: ${error.message}`);
   return (data ?? []).map((r: any) => ({
     title: r.release_groups.title as string,
@@ -389,7 +625,12 @@ async function inspect(db: DB, stub: StubRow): Promise<Report> {
     return base;
   }
 
-  const anchorKeys = new Set(anchors.map(a => titleKey(a.title)));
+  // Union of every legitimate form of every title we already hold for this artist. `names` gives
+  // titleVariants the artist name so an iTunes title that prefixes it ("10cm The First EP") reduces
+  // to the bare title we store.
+  const anchorKeys = new Set<string>();
+  for (const a of anchors) for (const v of titleVariants(a.title, names)) anchorKeys.add(v);
+  const matchesAnchor = (t: string) => titlesMatch(titleVariants(t, names), anchorKeys);
   let best: { cand: any; disc: any[]; hits: any[] } | null = null;
   let sawOversized = false;
   let discBlocked = false;
@@ -397,7 +638,7 @@ async function inspect(db: DB, stub: StubRow): Promise<Report> {
     const disc = await discography(cand.artistId, store);
     if (disc === null) { discBlocked = true; continue; }
     if (disc.length >= DISCOGRAPHY_CAP) { sawOversized = true; continue; }
-    let hits = disc.filter((a: any) => anchorKeys.has(titleKey(a.collectionName)));
+    let hits = disc.filter((a: any) => matchesAnchor(a.collectionName));
     // FEATURE-CREDIT FALLBACK. `entity=album` only returns collections the artist is the COLLECTION
     // artist of, so a "feat." guest spot on someone else's single is invisible to it — and that is
     // the ONLY credit most of these stubs have (택연's sole anchor "Classic" is credited 박진영, 택연,
@@ -408,7 +649,7 @@ async function inspect(db: DB, stub: StubRow): Promise<Report> {
       const songs = await songCredits(cand.artistId, store);
       if (songs === null) discBlocked = true;
       else hits = songs.filter((t: any) =>
-        anchorKeys.has(titleKey(t.trackName ?? '')) || anchorKeys.has(titleKey(t.collectionName ?? '')));
+        matchesAnchor(t.trackName ?? '') || matchesAnchor(t.collectionName ?? ''));
     }
     if (!best || hits.length > best.hits.length) best = { cand, disc, hits };
   }
@@ -444,7 +685,7 @@ async function inspect(db: DB, stub: StubRow): Promise<Report> {
   // and strength counts would be computed against the wrong string.
   const hitKeys = new Set<string>(best.hits.map((h: any) => {
     const tk = titleKey(h.trackName ?? '');
-    return anchorKeys.has(tk) ? tk : titleKey(h.collectionName ?? '');
+    return matchesAnchor(h.trackName ?? '') ? tk : titleKey(h.collectionName ?? '');
   }));
   const strongHits = [...hitKeys].filter(isDistinctive).length;
   // The hardest signal available: a matched album that iTunes files under SOMEONE ELSE yet whose
@@ -478,7 +719,11 @@ async function inspect(db: DB, stub: StubRow): Promise<Report> {
   }
 
   base.verdict = 'CORROBORATED';
-  const fresh = best.disc.filter((a: any) => !anchorKeys.has(titleKey(a.collectionName)));
+  // The skip set. Anything matching ANY variant of a title we hold is already ours -- this is the
+  // guard that stops the write pass creating "Starry Night - The 2nd Mini Album" beside "Starry
+  // Night". Bias is deliberate: when unsure, treat as already-held. A missed album can be picked up
+  // on a later run; a duplicate pollutes the catalogue and needs a manual merge.
+  const fresh = best.disc.filter((a: any) => !matchesAnchor(a.collectionName));
   const collidesWith = await findCollisions(db, fresh.map((a: any) => a.collectionName), ourNames);
   base.newAlbums = fresh.map((a: any): NewAlbum => {
     const raw = (a.collectionName ?? '') as string;
@@ -595,4 +840,9 @@ async function main() {
   console.log(`\n  full report → ${OUT}`);
 }
 
-main().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); });
+// Only run when invoked directly. titleVariants/titlesMatch are exported so they can be tested
+// against real data, and importing this file to reach them must not kick off a 5,000-artist sweep.
+// Same guard mb-qc.ts uses.
+if (process.argv[1] && process.argv[1].endsWith('resolve-stub-itunes.ts')) {
+  main().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); });
+}

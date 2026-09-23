@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../lib/supabaseServer';
+import { recordUnknownArtists } from '../../../../lib/taste/demandSignal';
 
 // Scheduled (Vercel Cron) job — refreshes every connected user's Spotify top-artists and
 // recently-played data server-side, independent of whether they've opened the app. Mirrors
@@ -122,6 +123,13 @@ export async function GET(req: NextRequest) {
         spotify_data_updated_at: new Date().toISOString(),
       })
       .eq('id', row.user_id);
+
+    // Same catalogue-demand signal as the on-demand route: artists this user listens to that we
+    // do not hold go into search_misses for the pipeline to resolve. Running it here too means
+    // demand keeps arriving on the cron's schedule, not only when someone opens the iOS app.
+    const names = [...artists.map(a => a.name), ...recentlyPlayed.map(r => r.artistName)].filter(Boolean);
+    const queued = await recordUnknownArtists(supabase, names, 'spotify_taste');
+    if (queued.length) console.log(`[taste-demand] ${row.user_id}: ${queued.length} unknown artist(s) queued`);
 
     refreshed++;
   }

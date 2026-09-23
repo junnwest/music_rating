@@ -57,6 +57,11 @@ async function main() {
         .select('id, name, name_native')
         .is('cover_url', null)
         .order('popularity', { ascending: false, nullsFirst: false })
+        // STABLE TIE-BREAK -- popularity is NULL or equal across most rows, and an .order() that
+        // does not uniquely determine the sort lets Postgres return ties in a different order per
+        // page, so .range() skips some rows and repeats others. The CAA cover pass shipped with this
+        // bug and left ~47,000 release groups never fetched while reporting them processed.
+        .order('id', { ascending: true })
         .range(from, from + PAGE - 1);
       if (error) { console.error('fetch error:', error.message); break; }
       if (!data?.length) break;
