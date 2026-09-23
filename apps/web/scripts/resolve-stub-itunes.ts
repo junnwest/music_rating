@@ -159,6 +159,15 @@ const FORMAT_TAIL_RE   = /\s*[-–—:]?\s*(the\s+)?(mini\s+|full\s+)?(album|ep|
 // As ORDINAL_ALBUM_RE but WITHOUT the trailing `.*$`, so it removes only the ordinal phrase and
 // leaves whatever follows it intact. Needed for "<Artist> <N>th Single <Title>", where the real
 // title comes after the ordinal rather than before it.
+// A repackage is its own release group, not an edition of the album it repackages (owner's call,
+// 2026-09-22), so reductions must never strip this marker away. Covers the English word and the
+// Korean 리패키지.
+// A trailing group fenced by dashes -- "AGGRESSIVE -The Greatest ver.-" -- which J-pop and K-pop
+// releases use where Western ones use parentheses. Non-greedy inner so it takes the LAST such
+// group, and requires the closing dash at end-of-string so an ordinary hyphenated title
+// ("Jekyll -and- Hyde" is not a thing, but "A - B" is) is not mistaken for one.
+const DASH_GROUP_RE = /[-–—]\s*([^-–—]{2,}?)\s*[-–—]\s*$/;
+const REPACKAGE_RE = /repackage|repack|리패키지/i;
 const ORDINAL_INFIX_RE = /\s*[-–—:]?\s*(the\s+)?\d+(\.\d+)?\s*(st|nd|rd|th)\s+(mini\s+|full\s+|repackage\s+)?(album|ep|single)\b\s*/i;
 const PAREN_GROUP_RE   = /[([]([^)\]]{2,})[)\]]/g;
 // Descriptors, not titles. Never promote one of these to a standalone alternate title.
@@ -184,7 +193,16 @@ export function titleVariants(raw: string, artistNames: string[] = []): Set<stri
   const base = (raw ?? '').replace(FEAT_PAREN_RE, '').trim();
   if (!base) return out;
 
-  const seeds = new Set<string>([base, stripEditionSuffix(base)]);
+  // A repackage is its own release group (owner's call, 2026-09-22), so NO reduction anywhere in
+  // this function may quietly turn one into the album it repackages. Re-attach the marker whenever
+  // a reduction drops it. This has to wrap the SEED reductions as well as the ones in reduce():
+  // guarding only the latter left "&TWICE - Repackage -" reducing, at seed time, to "&TWICE" and
+  // matching the base album we have held since 2019 — the policy violated by the very rule added to
+  // enforce it.
+  const keepRepack = (from: string, reduced: string): string =>
+    REPACKAGE_RE.test(from) && !REPACKAGE_RE.test(reduced) ? `${reduced.trim()} repackage` : reduced;
+
+  const seeds = new Set<string>([base, keepRepack(base, stripEditionSuffix(base))]);
 
   // Quoted inner title: "YOUNHA 7th Album 'GROWTH THEORY'" -> GROWTH THEORY
   for (const m of base.matchAll(/['"“”‘’「『]([^'"“”‘’」』]{2,})['"“”‘’」』]/g)) seeds.add(m[1]);
@@ -195,23 +213,55 @@ export function titleVariants(raw: string, artistNames: string[] = []): Set<stri
   // soundtrack match every other one, which flagged Sagisu's "Attack on Titan (OST)" as a duplicate
   // of his "An Endless Sunday (OST)". Stripping it is still right -- it is only PROMOTION that is wrong.
   for (const m of base.matchAll(PAREN_GROUP_RE)) if (isAlternateTitle(m[1])) seeds.add(m[1]);
-  seeds.add(base.replace(PAREN_GROUP_RE, ' '));
+  seeds.add(keepRepack(base, base.replace(PAREN_GROUP_RE, ' ')));
+
+  // Dash-delimited trailing group, the J-pop/K-pop equivalent of a parenthetical:
+  // "AGGRESSIVE -The Greatest ver.-". Only the bracketed form was recognised, so the two spellings
+  // of one release never met -- iTunes offered "AGGRESSIVE (The Greatest Version)", which reduces
+  // to "aggressive", while the "AGGRESSIVE -The Greatest ver.-" already in the catalogue reduced to
+  // nothing shorter than itself. It would have been written as a duplicate of a row we have held
+  // since 2022. Handling the delimiter also makes the ver./Version spelling difference irrelevant,
+  // which is why no abbreviation table is needed here.
+  // STRIPPED, NEVER PROMOTED. Unlike a parenthetical -- which often carries a genuine alternate
+  // title, "봄비 (Spring Rain)" -- a dash-fenced group in this convention is always an edition or
+  // version marker. Promoting it to a standalone variant made every song in a reissue series match
+  // every other: "AGGRESSIVE -The Greatest ver.-" matched "LISTEN TO MY HEART -The Greatest ver.-"
+  // through the shared "the greatest ver". Same failure the generic-parenthetical guard exists to
+  // prevent, so the same conclusion applies -- stripping is right, promotion is not.
+  if (DASH_GROUP_RE.test(base)) seeds.add(keepRepack(base, base.replace(DASH_GROUP_RE, ' ')));
 
   // ONE REDUCTION STEP. Returns every shorter form of `t` reachable by removing one decoration.
+  //
+  // REPACKAGES STAY SEPARATE (owner's call, 2026-09-22). A K-pop repackage is the same album
+  // reissued months later with extra tracks and new art -- "CLASS" then "CLASS ADDITION" -- and we
+  // treat it as its own release group rather than pooling it with the original. They are rare
+  // enough for that to be cheap: 27 of 491,157 release groups say "repackage", 25 of them Korean.
+  //
+  // That makes plain reduction wrong here. ORDINAL_ALBUM_RE ends in `.*$`, so "LOVE SHOT - The 5th
+  // Album Repackage" reduced straight to "LOVE SHOT" and matched the original -- which, under this
+  // policy, is a different album. So when the input carries a repackage marker, every reduction
+  // that would drop it gets the marker re-attached instead of being discarded. Two spellings of the
+  // SAME repackage still converge ("... - The 5th Album Repackage" and "... (Repackage)" both reach
+  // "love shot repackage"), so this does not simply disable matching for them -- it only stops a
+  // repackage from collapsing into the album it is a repackage OF.
   const reduce = (t: string): string[] => {
     const outs: string[] = [];
+    const keep = (v: string) => {
+      const trimmed = v.trim();
+      if (trimmed) outs.push(keepRepack(t, trimmed));
+    };
     // Drop an ordinal-album tail: "Starry Night - The 2nd Mini Album" -> "Starry Night"
     const noOrd = t.replace(ORDINAL_ALBUM_RE, '');
-    if (noOrd.trim() && noOrd !== t) outs.push(noOrd);
+    if (noOrd.trim() && noOrd !== t) keep(noOrd);
     // Drop an ordinal phrase that sits MID-string, keeping what follows. ORDINAL_ALBUM_RE ends in
     // `.*$`, so on the very common Korean format "<Artist> <N>th Single <Title>" it swallowed the
     // real title: "Afterschool 3rd Single BANG" reduced to "afterschool" and therefore never
     // matched the "Bang!" already in the catalogue.
     const noOrdIn = t.replace(ORDINAL_INFIX_RE, ' ');
-    if (noOrdIn.trim() && noOrdIn !== t) outs.push(noOrdIn);
+    if (noOrdIn.trim() && noOrdIn !== t) keep(noOrdIn);
     // Drop a bare format tail: "The 2nd EP" -> "The 2nd"
     const noFmt = t.replace(FORMAT_TAIL_RE, '');
-    if (noFmt.trim() && noFmt !== t) outs.push(noFmt);
+    if (noFmt.trim() && noFmt !== t) keep(noFmt);
     // Drop a leading artist name: "10cm The First EP" -> "The First EP".
     // Compared with spaces removed, because the artist field and the title often disagree about
     // them -- the row is credited "After School" while the title reads "Afterschool".
@@ -226,7 +276,7 @@ export function titleVariants(raw: string, artistNames: string[] = []): Set<stri
         if (acc.replace(/\s+/g, '').length > nNo.length) break;
         if (acc.replace(/\s+/g, '') === nNo) {
           const rest = tn.slice(i + 1).trim();
-          if (rest.length >= 2) outs.push(rest);
+          if (rest.length >= 2) keep(rest);
           break;
         }
       }
