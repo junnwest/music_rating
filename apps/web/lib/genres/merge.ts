@@ -20,7 +20,7 @@
  *   - agreementBoost: a genre multiple independent sources agree on is more
  *     trustworthy than a single source's assertion.
  *
- * Ties break on id for determinism. The taxonomy `level`/`rank` are NOT consulted
+ * Ties break on the caller's `tieBreak`, then id, for determinism. The taxonomy `level`/`rank` are NOT consulted
  * here — that is the PRIMARY-genre walk's job (resolver.primaryOf); this step only
  * ranks which genres are strong enough to display, from the acquisition evidence.
  */
@@ -87,6 +87,9 @@ export function mergeGenres(
      *  out of the displayed set. Kept as a predicate so this module stays free of
      *  taxonomy imports. */
     displayable?: (genreId: string) => boolean;
+    /** Order for EQUAL scores (before the id fallback) — e.g. keep an album's existing
+     *  display order when its only evidence is provenance-less legacy rows. */
+    tieBreak?: (a: string, b: string) => number;
   },
 ): MergedGenre[] {
   const byId = new Map<string, { score: number; sources: Set<GenreSource> }>();
@@ -104,7 +107,12 @@ export function mergeGenres(
     score: e.score * (1 + AGREEMENT_BONUS * (e.sources.size - 1)),
     sources: [...e.sources].sort((x, y) => SOURCE_TRUST[y] - SOURCE_TRUST[x]),
   }));
-  merged.sort((a, b) => b.score - a.score || a.genreId.localeCompare(b.genreId));
+  merged.sort(
+    (a, b) =>
+      b.score - a.score ||
+      (opts?.tieBreak?.(a.genreId, b.genreId) ?? 0) ||
+      a.genreId.localeCompare(b.genreId),
+  );
 
   return opts?.limit != null ? merged.slice(0, opts.limit) : merged;
 }

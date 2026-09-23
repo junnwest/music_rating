@@ -14,13 +14,18 @@
  *     steady-state re-poll (e.g. the pipeline's freshness lane) costs one read per
  *     chunk and no writes — the Supabase Micro IO budget matters here.
  *   - `is_primary` is always false on per-source rows; the primary is a property of
- *     the MERGED set (lib/genres/merge.ts), computed at display cutover.
+ *     the MERGED set (lib/genres/merge.ts).
+ *   - Display sync: albums whose rows changed get their displayed `release_groups.genres`
+ *     re-derived (lib/genres/display.ts — which also retires `legacy` rows once MB covers
+ *     the album). Opt out with `syncDisplay: false`.
  *
  * The pure pieces (resolveSourceTags, diffSourceRows) are exported for tests.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { resolveGenre } from './resolver';
 import type { GenreSource } from './merge';
+import { syncDisplayGenres } from './display';
+import { pgRetry } from './pgRetry';
 
 /** Sources that write through this path (`legacy` is the one-off Phase-1 backfill). */
 export type AcquisitionSource = Exclude<GenreSource, 'legacy'>;
@@ -96,18 +101,6 @@ export interface WriteSourceResult {
 }
 
 const CHUNK = 100;
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const isTimeout = (msg: string) => /timeout|57014|canceling statement/i.test(msg);
-
-/** Run a PostgREST call, retrying statement timeouts with backoff; throw on anything else. */
-async function withRetry(label: string, fn: () => PromiseLike<{ error: { message: string } | null }>) {
-  for (let attempt = 0; ; attempt++) {
-    if (attempt > 0) await sleep(400 * attempt);
-    const { error } = await fn();
-    if (!error) return;
-    if (!isTimeout(error.message) || attempt >= 3) throw new Error(`${label}: ${error.message}`);
-  }
-}
 
 /**
  * Write a batch of release groups' tags for ONE source. Throws on a non-timeout DB
@@ -119,7 +112,7 @@ export async function writeSourceGenres(
   db: SupabaseClient,
   source: AcquisitionSource,
   items: readonly SourceGenreInput[],
-  opts: { dryRun?: boolean; stageUnmapped?: (rawTag: string) => boolean } = {},
+  opts: { dryRun?: boolean; stageUnmapped?: (rawTag: string) => boolean; syncDisplay?: boolean } = {},
 ): Promise<WriteSourceResult> {
   const res: WriteSourceResult = { releaseGroups: 0, upserted: 0, deleted: 0, unmappedStaged: 0, unchanged: 0 };
 
@@ -127,12 +120,9 @@ export async function writeSourceGenres(
     const chunk = items.slice(i, i + CHUNK);
     const ids = chunk.map((c) => c.releaseGroupId);
 
-    const { data, error } = await db
-      .from('release_genres')
-      .select('release_group_id, genre_id, confidence')
-      .eq('source', source)
-      .in('release_group_id', ids);
-    if (error) throw new Error(`release_genres read: ${error.message}`);
+    const data = await pgRetry('release_genres read', () =>
+      db.from('release_genres').select('release_group_id, genre_id, confidence').eq('source', source).in('release_group_id', ids),
+    );
     const existing = new Map<string, Map<string, number | null>>();
     for (const r of (data ?? []) as { release_group_id: string; genre_id: string; confidence: number | null }[]) {
       let m = existing.get(r.release_group_id);
@@ -143,11 +133,13 @@ export async function writeSourceGenres(
     const upsertRows: object[] = [];
     const deletes: { rg: string; genreIds: string[] }[] = [];
     const unmappedRows: object[] = [];
+    const changed: string[] = [];
     for (const item of chunk) {
       res.releaseGroups++;
       const { genres, unmapped } = resolveSourceTags(item.tags);
       const diff = diffSourceRows(existing.get(item.releaseGroupId) ?? new Map(), genres);
       if (!diff.upserts.length && !diff.deletes.length) res.unchanged++;
+      else changed.push(item.releaseGroupId);
       for (const g of diff.upserts) {
         upsertRows.push({
           release_group_id: item.releaseGroupId,
@@ -170,12 +162,12 @@ export async function writeSourceGenres(
     if (opts.dryRun) continue;
 
     if (upsertRows.length) {
-      await withRetry('release_genres upsert', () =>
+      await pgRetry('release_genres upsert', () =>
         db.from('release_genres').upsert(upsertRows, { onConflict: 'release_group_id,genre_id,source' }),
       );
     }
     for (const d of deletes) {
-      await withRetry('release_genres delete', () =>
+      await pgRetry('release_genres delete', () =>
         db
           .from('release_genres')
           .delete()
@@ -185,12 +177,13 @@ export async function writeSourceGenres(
       );
     }
     if (unmappedRows.length) {
-      await withRetry('genre_unmapped stage', () =>
+      await pgRetry('genre_unmapped stage', () =>
         db
           .from('genre_unmapped')
           .upsert(unmappedRows, { onConflict: 'release_group_id,raw_tag,source', ignoreDuplicates: true }),
       );
     }
+    if (changed.length && opts.syncDisplay !== false) await syncDisplayGenres(db, changed);
   }
   return res;
 }
