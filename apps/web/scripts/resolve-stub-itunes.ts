@@ -93,6 +93,12 @@ const itunesGet = makeItunesGet({ perMin: Number(arg('--per-min') ?? 40), userAg
 // hand to the shared key so edition/remaster handling stays in one place.
 const FORMAT_SUFFIX_RE = /\s*[-–—]\s*(ep|single|maxi[- ]single)\s*$/i;
 const FEAT_PAREN_RE = /\s*[([](?:feat\.?|featuring|with|prod\.?(?: by)?)\s[^)\]]*[)\]]/gi;
+// "(From \"Chhaava\")" / "[From the Motion Picture X]" names the WORK A TRACK COMES FROM, not an
+// alternate title for it. It has to be removed before the quoted-inner-title rule runs, because
+// that rule extracts any quoted substring as a candidate title: "Jaane Tu (From \"Chhaava\")" gave
+// up the seed "Chhaava" and so took the cover of the album "Chhaava (Telugu)". Stripping it also
+// gives the correct reduction, "Jaane Tu".
+const FROM_PAREN_RE = /\s*[([]\s*from\s[^)\]]*[)\]]/gi;
 
 // Deliberately NOT normalizeStr(). That helper whitelists \w (ASCII) + Hangul + Kana + CJK, so
 // EVERY other script — Cyrillic, Greek, Thai, Devanagari, Arabic — normalizes to the empty string:
@@ -179,10 +185,53 @@ const GENERIC_PAREN_RE = /^\s*(original\s+)?(motion\s+picture\s+|television\s+|g
  * "...EVANGELION 2.0 YOU CAN (NOT) ADVANCE." and "...3.0 you can (not) redo" are different films
  * that matched purely because "(NOT)" became a shared variant on both sides.
  */
+/**
+ * Every word here is a DESCRIPTOR: it says something about the edition, format, language or source
+ * of a release rather than naming one. A parenthetical built only from these is an aside, never an
+ * alternate title.
+ *
+ * Token matching, not one anchored regex. GENERIC_PAREN_RE is anchored around a SINGLE descriptor
+ * with a small set of allowed prefixes, so any multi-word descriptor escaped it and was promoted to
+ * a standalone variant -- which then matched every other release sharing that aside. Measured live
+ * on 2026-09-22 against 14,873 real cover swaps: "(Instrumental Version)" matched `instrumental` or
+ * `version` but not both in sequence, "(Japanese Version)" had no vocabulary at all, and
+ * "(Original Background Score)" failed because `background` was not an allowed prefix. The result
+ * was RichaadEB's "Lyin' 2 Me (Instrumental Version)" taking the cover of "Raise Up Your Bat
+ * (Instrumental Version)", and A. R. Rahman's "Kochadaiiyaan (Original Background Score)" taking
+ * "Raayan (Original Background Score)" -- different songs, different films, same aside.
+ *
+ * Languages are included deliberately: "(Telugu)" and "(Japanese Version)" tag the same work in
+ * another language, so they identify an EDITION, not a different release.
+ */
+const DESCRIPTOR_WORDS = new Set([
+  'original', 'motion', 'picture', 'television', 'tv', 'game', 'video', 'broadway', 'cast',
+  'recording', 'recordings', 'soundtrack', 'sound', 'ost', 'score', 'background', 'theme',
+  'album', 'ep', 'lp', 'single', 'deluxe', 'expanded', 'special', 'standard', 'limited',
+  'remaster', 'remastered', 'reissue', 'remix', 'remixes', 'instrumental', 'instrumentals', 'inst',
+  'live', 'acoustic', 'unplugged', 'version', 'ver', 'edition', 'edit', 'mix', 'explicit', 'clean',
+  'bonus', 'track', 'tracks', 'disc', 'disk', 'vol', 'volume', 'pt', 'part', 'extended', 'radio',
+  'karaoke', 'demo', 'mono', 'stereo', 'anniversary', 'complete', 'collection', 'digital',
+  'feat', 'featuring', 'with', 'from', 'the', 'and', 'a', 'of',
+  // Language tags identify an edition of the same work, not a different one.
+  'japanese', 'korean', 'english', 'chinese', 'mandarin', 'cantonese', 'spanish', 'french',
+  'german', 'italian', 'portuguese', 'hindi', 'tamil', 'telugu', 'malayalam', 'kannada',
+  'bengali', 'punjabi', 'marathi', 'thai', 'vietnamese', 'indonesian', 'russian', 'turkish',
+  'arabic', 'jp', 'kr', 'cn', 'en', 'us', 'uk',
+]);
+
+/** True when a parenthetical consists ONLY of descriptor words and/or numbers. */
+function isGenericParen(inner: string): boolean {
+  const toks = inner.toLowerCase().normalize('NFKC')
+    .replace(/[^\p{L}\p{N}\s]+/gu, ' ').split(/\s+/).filter(Boolean);
+  if (toks.length === 0) return true;
+  return toks.every(t => DESCRIPTOR_WORDS.has(t) || /^\d+$/.test(t));
+}
+
 function isAlternateTitle(inner: string): boolean {
   const t = inner.trim();
   if (t.length < 4) return false;                       // "NOT", "ver", "pt2"
   if (GENERIC_PAREN_RE.test(t)) return false;           // "Original Motion Picture Soundtrack"
+  if (isGenericParen(t)) return false;                  // "Instrumental Version", "Telugu"
   if (/^[A-Za-z]+$/.test(t) && t.length < 6) return false; // a single short latin word is filler
   return true;
 }
@@ -190,7 +239,7 @@ function isAlternateTitle(inner: string): boolean {
 export function titleVariants(raw: string, artistNames: string[] = []): Set<string> {
   const out = new Set<string>();
   const add = (v: string) => { const n = unicodeNorm(v); if (n.length >= 2) out.add(n); };
-  const base = (raw ?? '').replace(FEAT_PAREN_RE, '').trim();
+  const base = (raw ?? '').replace(FEAT_PAREN_RE, '').replace(FROM_PAREN_RE, '').trim();
   if (!base) return out;
 
   // A repackage is its own release group (owner's call, 2026-09-22), so NO reduction anywhere in

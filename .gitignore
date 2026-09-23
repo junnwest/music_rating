@@ -55,6 +55,8 @@ apps/web/scripts/data/stub-itunes-*.json
 apps/web/scripts/data/delete-*.sql
 apps/web/scripts/data/deezer-cover-coverage.json
 apps/web/scripts/data/cover-upgrade*.json
+apps/web/scripts/data/cover-swap-revalidation.json
+apps/web/scripts/data/romaji-duplicates.json
 
 # Tooling scratch
 .understand-anything/
