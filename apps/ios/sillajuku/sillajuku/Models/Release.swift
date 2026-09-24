@@ -45,6 +45,10 @@ struct Release: Codable, Identifiable, Hashable {
     // decodes as nil otherwise. Lets album matching fall back to artist-id equality when the
     // native artist_display can't string-overlap a romanized external artist name.
     var primaryArtistId: UUID? = nil
+    // Relevance score, same convention as primaryArtistId above -- only present when the RPC
+    // returns it (search_release_groups, 20260923000000). Same scale as SearchArtist.score,
+    // so the two can be compared directly to pick a cross-category "Top Match" in search.
+    var score: Double? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, title
@@ -57,6 +61,7 @@ struct Release: Codable, Identifiable, Hashable {
         case tracklist                         // not on release_groups; decodes as nil
         case totalTracks = "total_tracks"      // not on release_groups; decodes as nil
         case primaryArtistId = "primary_artist_id" // only when selected; decodes as nil otherwise
+        case score                                 // only when selected; decodes as nil otherwise
     }
 
     // native_title/name_native are mixed-provenance across backfill eras — many non-Korean

@@ -87,6 +87,12 @@ class DiscoveryViewModel {
     var popularAlbums: [Release] = []
     var popularSongs:  [SongResult] = []
 
+    // Cross-user trending search-query strings, shown as tappable chips at the top of
+    // discoveryView -- fetched from web's /api/search/popular (same route/cache/aggregation
+    // web's search page uses, not a second Swift implementation). Empty until real traffic
+    // accumulates 6+ distinct popular queries -- see that route's own MIN_TO_SHOW comment.
+    var popularSearchQueries: [String] = []
+
     // Artists with any rating <=1.5 -- suppressed from every section above. Populated by
     // loadRecommendations() (the only endpoint that knows this), applied there and retroactively
     // to Discovery's own concurrently-fetched sections.
@@ -333,6 +339,7 @@ class DiscoveryViewModel {
             g.addTask { await self.loadRatedArtists() }
             g.addTask { await self.loadDiscovery() }
             g.addTask { await self.loadRecommendations() }
+            g.addTask { await self.loadPopularSearches() }
         }
     }
 
@@ -586,6 +593,11 @@ class DiscoveryViewModel {
         popularSongs = []  // songs in discovery deferred until Windows rebuilds search RPCs
     }
 
+    private func loadPopularSearches() async {
+        guard let resp: PopularSearchesResponse = await WebAPI.get("/api/search/popular", authed: false) else { return }
+        popularSearchQueries = resp.queries
+    }
+
     // "From Your Taste" / "For You" / genre-cluster "worlds" -- calls web's own
     // /api/recommendations directly instead of the old client-side exploit+explore blend, so iOS
     // gets the same taste-vector/genre-embedding clustering web has (see Services/WebAPI.swift).
@@ -623,10 +635,14 @@ struct SearchArtist: Codable, Identifiable {
     // Romanization aliases (e.g. "HYUKOH" for the Hangul-named 혁오). search_artists matches on
     // these but its canonical `name` may be native-script, so the resolve gate checks them too.
     let aliases: [String]?
+    // Relevance score (20260923000000) -- same scale as Release.score, letting SearchView pick a
+    // cross-category "Top Match" between the two. Optional/decodes nil so this struct doesn't
+    // break if search_artists is ever called before that migration lands.
+    let score: Double?
     enum CodingKeys: String, CodingKey {
         case id; case name; case nameNative = "name_native"
         case coverUrl = "cover_url"; case releaseCount = "release_count"
-        case aliases
+        case aliases; case score
     }
 
     // name_native is mixed-provenance (some rows hold a non-Korean transliteration instead
@@ -634,6 +650,68 @@ struct SearchArtist: Codable, Identifiable {
     var displayNativeName: String? {
         guard let nameNative, nameNative.isPredominantlyHangul else { return nil }
         return nameNative
+    }
+}
+
+// search_users(q, lim) — 20260924000000. Own struct, not a reuse of the unrelated
+// FindPeopleView/SearchProfile flow (ProfileView.swift) -- that's a different, already-shipped
+// feature (follow-list search). Never enters Top Match (see SearchView.pickTopResult) -- a strong
+// username match shouldn't outrank a real artist/album match for that slot, matching the web port.
+struct SearchUserResult: Codable, Identifiable {
+    let id: UUID
+    let username: String
+    let displayName: String?
+    let avatarUrl: String?
+    let isVerified: Bool?
+    let isBot: Bool?
+    let score: Double?
+    enum CodingKeys: String, CodingKey {
+        case id, username
+        case displayName = "display_name"
+        case avatarUrl   = "avatar_url"
+        case isVerified  = "is_verified"
+        case isBot       = "is_bot"
+        case score
+    }
+
+    var displayLabel: String {
+        (displayName?.isEmpty == false) ? displayName! : username
+    }
+}
+
+// The single best-scoring result across both search categories, promoted into its own
+// "Top Match" card above the normal Artists/Albums sections. See SearchView.pickTopResult.
+enum SearchTopResult {
+    case artist(SearchArtist)
+    case album(Release)
+}
+
+// Category filter pills (All/Albums/Songs/Artists/Users) beneath the search bar. Empty
+// SearchView.categoryFilter set == "All" -- see toggleCategory's own comment for why.
+enum SearchCategory: Hashable {
+    case albums, songs, artists, users
+}
+
+// Same capsule pill styling as RankingsView's SortChip (private to that file, not reused
+// directly) -- used both for the category filter pills above and, with `active` always false,
+// the Popular Searches suggestion chips in discoveryView.
+private struct SearchChip: View {
+    let label: String
+    let active: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(LocalizedStringKey(label))
+                .font(.jakarta(12, weight: .bold))
+                .foregroundStyle(active ? Color.sjSurface : Color.sjMuted)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background(active ? Color.sjInk : Color.sjSurface)
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(active ? Color.clear : Color.sjBorder, lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -651,6 +729,7 @@ class SearchViewModel {
     var artistResults: [SearchArtist] = []
     var albumResults:  [Release] = []
     var songResults:   [SongResult] = []
+    var userResults:   [SearchUserResult] = []
     var isSearching = false
 
     // Monotonic token so a superseded search can never clobber a newer one's
@@ -658,6 +737,10 @@ class SearchViewModel {
     // after a fast new one (web's search got the same stale-request guard
     // 2026-07-17).
     private var searchGeneration = 0
+
+    // Popular Searches telemetry dedup -- mirrors web's loggedQueryRef, so a
+    // repeated "settled" debounce firing on the same string doesn't re-log it.
+    private var lastLoggedQuery: String?
 
     func search() async {
         let q = query.trimmingCharacters(in: .whitespaces)
@@ -667,6 +750,7 @@ class SearchViewModel {
             artistResults = []
             albumResults  = []
             songResults   = []
+            userResults   = []
             isSearching   = false
             return
         }
@@ -692,6 +776,10 @@ class SearchViewModel {
             .rpc("search_artists", params: SearchParams(q: q, lim: 10))
             .execute()
             .value) ?? []
+        async let usersTask: [SearchUserResult] = (try? await supabase
+            .rpc("search_users", params: SearchParams(q: q, lim: 10))
+            .execute()
+            .value) ?? []
 
         let albums = await albumsTask
         guard generation == searchGeneration else { return }
@@ -700,7 +788,11 @@ class SearchViewModel {
         let artists = await artistsTask
         guard generation == searchGeneration else { return }
         artistResults = artists
-        // The fast pair is in -- stop the spinner while songs stream in.
+
+        let users = await usersTask
+        guard generation == searchGeneration else { return }
+        userResults = users
+        // The fast group is in -- stop the spinner while songs stream in.
         isSearching = false
 
         let songs = await songsTask
@@ -717,6 +809,20 @@ class SearchViewModel {
                 .insert(SearchMiss(query: missQuery, type: "ios_search", db_count: 0))
                 .execute() }
         }
+    }
+
+    // Popular Searches telemetry -- called from a SEPARATE, longer "settled" debounce
+    // (SearchView's own onChange handler, ~1500ms, distinct from search()'s 300ms trigger) so
+    // keystroke-by-keystroke prefixes never get logged. Routed through /api/search/popular's POST
+    // handler (service role), not a direct client insert into search_query_log -- that path is
+    // rejected by this project's RLS for anon-role requests (confirmed live on web the same
+    // session this was built), the same trap search_misses' own insert above is actually still
+    // exposed to. Fire-and-forget; failure is harmless, same spirit as that search_misses write.
+    func logSettledQuery(_ q: String) async {
+        guard lastLoggedQuery != q else { return }
+        lastLoggedQuery = q
+        struct LogBody: Encodable { let query: String; let platform: String }
+        await WebAPI.post("/api/search/popular", body: LogBody(query: q, platform: "ios"))
     }
 
     // Raced against a timeout below -- this step alone has no dedicated
@@ -812,6 +918,14 @@ struct SearchView: View {
     @State private var bottomGenreVM: QuickAddViewModel
     @State private var searchVM           = SearchViewModel()
     @State private var searchTask: Task<Void, Never>?
+    // Separate, longer-debounce task for Popular Searches telemetry -- see the onChange
+    // handler in searchBar and SearchViewModel.logSettledQuery's own comment for why this
+    // can't just piggyback on searchTask's 300ms trigger.
+    @State private var logTask: Task<Void, Never>?
+    // Category filter pills (All/Albums/Songs/Artists/Users). Empty == "All" -- see
+    // toggleCategory below for why an empty set is the right representation, not a derived
+    // "all four happen to be selected" check.
+    @State private var categoryFilter: Set<SearchCategory> = []
     @State private var quickRateRelease: Release?
     @State private var quickRateScore: Double?     = nil
     @State private var userRatingStep: Double = 0.5
@@ -855,6 +969,51 @@ struct SearchView: View {
         !searchVM.query.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
+    // `?? 0` on both sides keeps this artist-first (the old fixed order) if `score` isn't
+    // populated yet -- e.g. the search_artists/search_release_groups migration exposing it
+    // (20260923000000) hasn't been applied -- rather than a bare `nil >= nil` comparison,
+    // which Swift optionals resolve to `false` and would silently fall through to the album
+    // branch instead. Matches the same guard on the web port (apps/web's pickTopResult).
+    //
+    // Takes the category-filtered arrays (not searchVM's raw results directly) so a filtered-out
+    // category can never surface via Top Match either -- e.g. deselecting Artists should hide an
+    // artist from Top Match too, not just from its own section.
+    private func pickTopResult(artists: [SearchArtist], albums: [Release]) -> SearchTopResult? {
+        let topArtist = artists.first
+        let topAlbum  = albums.first
+        guard topArtist != nil || topAlbum != nil else { return nil }
+        if let topArtist, topAlbum == nil || (topArtist.score ?? 0) >= (topAlbum?.score ?? 0) {
+            return .artist(topArtist)
+        }
+        return .album(topAlbum!)
+    }
+
+    private func categoryIncluded(_ cat: SearchCategory) -> Bool {
+        categoryFilter.isEmpty || categoryFilter.contains(cat)
+    }
+
+    // "All" is a reset action (clears any specific selection), mutually exclusive with the
+    // individual pills -- an EMPTY set *is* "All" (show every category), matching the web port's
+    // identical model exactly (apps/web's page.tsx toggleCategory/selectAllCategories).
+    private func selectAllCategories() {
+        categoryFilter = []
+    }
+
+    // Choosing an individual category always deselects All (moving off the empty set does that
+    // automatically). From All, the first tap narrows down to just that one category rather than
+    // adding to an implicit "everything" set; further taps multi-select normally. Deselecting the
+    // last remaining category empties the set again, which -- under this same model -- naturally
+    // falls back to All rather than needing a special case.
+    private func toggleCategory(_ cat: SearchCategory) {
+        if categoryFilter.isEmpty {
+            categoryFilter = [cat]
+        } else if categoryFilter.contains(cat) {
+            categoryFilter.remove(cat)
+        } else {
+            categoryFilter.insert(cat)
+        }
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -863,6 +1022,11 @@ struct SearchView: View {
                     .padding(.top, 10)
                     .padding(.bottom, 10)
                 Divider()
+
+                if hasQuery {
+                    categoryFilterRow
+                        .padding(.top, 10)
+                }
 
                 if hasQuery {
                     searchResultsView
@@ -875,6 +1039,7 @@ struct SearchView: View {
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
             .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
+            .navigationDestination(for: UserProfileDestination.self) { UserProfileView(userId: $0.userId, initialHandle: $0.handle) }
             .navigationDestination(for: RecentlyPlayedDestination.self) { ResolvingAlbumView(item: $0, discoveryVM: discoveryVM) }
             // Was `.navigationDestination(isPresented: $showQuickAdd)` -- mixing an isPresented-
             // bound destination with further NavigationLink(value:) pushes made from *within* the
@@ -1032,6 +1197,17 @@ struct SearchView: View {
                         guard !Task.isCancelled, searchVM.query == q else { return }
                         await searchVM.search()
                     }
+                    // Popular Searches telemetry: a separate, longer debounce from the 300ms one
+                    // above -- logging every keystroke-driven search would flood the log with
+                    // prefixes ("b", "be", "bey"…) instead of the terms people actually meant.
+                    logTask?.cancel()
+                    logTask = Task {
+                        try? await Task.sleep(for: .milliseconds(1500))
+                        guard !Task.isCancelled, searchVM.query == q else { return }
+                        let trimmed = q.trimmingCharacters(in: .whitespaces)
+                        guard trimmed.count >= 2 else { return }
+                        await searchVM.logSettledQuery(trimmed)
+                    }
                 }
             if searchVM.isSearching {
                 ProgressView().scaleEffect(0.75)
@@ -1041,6 +1217,7 @@ struct SearchView: View {
                     searchVM.artistResults = []
                     searchVM.albumResults  = []
                     searchVM.songResults   = []
+                    searchVM.userResults   = []
                 } label: {
                     Image("icon-x-circle")
                         .renderingMode(.template)
@@ -1057,18 +1234,38 @@ struct SearchView: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.sjBorder, lineWidth: 1))
     }
 
+    // MARK: - Category filter
+
+    private var categoryFilterRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                SearchChip(label: "All", active: categoryFilter.isEmpty, action: selectAllCategories)
+                SearchChip(label: "Albums", active: categoryFilter.contains(.albums)) { toggleCategory(.albums) }
+                SearchChip(label: "Songs", active: categoryFilter.contains(.songs)) { toggleCategory(.songs) }
+                SearchChip(label: "Artists", active: categoryFilter.contains(.artists)) { toggleCategory(.artists) }
+                SearchChip(label: "Users", active: categoryFilter.contains(.users)) { toggleCategory(.users) }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+
     // MARK: - Search results
 
     @ViewBuilder
     private var searchResultsView: some View {
-        let hasArtists = !searchVM.artistResults.isEmpty
-        let hasAlbums  = !searchVM.albumResults.isEmpty
-        let hasSongs   = !searchVM.songResults.isEmpty
+        let filteredArtists = categoryIncluded(.artists) ? searchVM.artistResults : []
+        let filteredAlbums  = categoryIncluded(.albums)  ? searchVM.albumResults  : []
+        let filteredSongs   = categoryIncluded(.songs)   ? searchVM.songResults   : []
+        let filteredUsers   = categoryIncluded(.users)   ? searchVM.userResults   : []
+        let hasArtists = !filteredArtists.isEmpty
+        let hasAlbums  = !filteredAlbums.isEmpty
+        let hasSongs   = !filteredSongs.isEmpty
+        let hasUsers   = !filteredUsers.isEmpty
 
         if searchVM.isSearching {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if !hasArtists && !hasAlbums && !hasSongs {
+        } else if !hasArtists && !hasAlbums && !hasSongs && !hasUsers {
             // Always render something here, even for a too-short query (no
             // search has run yet) -- an empty branch collapses this whole
             // screen's content to just the search bar + divider, which
@@ -1092,66 +1289,55 @@ struct SearchView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
+            let topResult = pickTopResult(artists: filteredArtists, albums: filteredAlbums)
+            let restArtists: [SearchArtist] = {
+                if case .artist = topResult { return Array(filteredArtists.dropFirst()) }
+                return filteredArtists
+            }()
+            let restAlbums: [Release] = {
+                if case .album = topResult { return Array(filteredAlbums.dropFirst()) }
+                return filteredAlbums
+            }()
+
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
 
+                    // ── Top Match ─────────────────────────────
+                    // Each category is ranked internally (search_artists / search_release_groups,
+                    // both via the same score scale -- 20260923000000), but this app used to always
+                    // list every artist before any album regardless of which actually matched
+                    // better. Pull whichever category's best hit is the stronger match into its own
+                    // card above both sections, matching the web port's identical fix.
+                    if let topResult {
+                        sectionLabel("Top Match")
+                        switch topResult {
+                        case .artist(let artist):
+                            artistRow(artist)
+                                .padding(.bottom, 24)
+                        case .album(let release):
+                            let rated = ratedReleaseIds.contains(release.id)
+                            NavigationLink(value: release) {
+                                AlbumCard(
+                                    release: release,
+                                    onAdd: rated ? nil : { addRelease(release) },
+                                    isRated: rated
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .albumContextMenu(release)
+                            .frame(width: 140)
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 24)
+                        }
+                    }
+
                     // ── Artists ───────────────────────────────
-                    if hasArtists {
+                    if !restArtists.isEmpty {
                         sectionLabel("Artists")
                         VStack(spacing: 0) {
-                            ForEach(searchVM.artistResults) { artist in
-                                NavigationLink(value: ArtistDestination(artistId: artist.id, name: artist.name)) {
-                                    HStack(spacing: 12) {
-                                        Group {
-                                            if let urlStr = artist.coverUrl, let url = URL(string: urlStr) {
-                                                CachedImage(url: url) {
-                                                    Circle().fill(Color.sjBorder)
-                                                        .overlay(Text(String(artist.name.prefix(1)).uppercased())
-                                                            .font(.jakarta(16, weight: .bold))
-                                                            .foregroundStyle(Color.sjMuted))
-                                                }
-                                                .aspectRatio(contentMode: .fill)
-                                            } else {
-                                                ZStack {
-                                                    Circle().fill(Color.sjBorder)
-                                                    Text(String(artist.name.prefix(1)).uppercased())
-                                                        .font(.jakarta(16, weight: .bold))
-                                                        .foregroundStyle(Color.sjMuted)
-                                                }
-                                            }
-                                        }
-                                        .frame(width: 44, height: 44)
-                                        .clipShape(Circle())
-                                        .accessibilityHidden(true) // name text alongside already describes it
-
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(artist.name)
-                                                .font(.jakarta(14, weight: .semibold))
-                                                .foregroundStyle(Color.sjInk)
-                                            if let native = artist.displayNativeName {
-                                                Text(native)
-                                                    .font(.jakarta(12))
-                                                    .foregroundStyle(Color.sjMuted)
-                                            }
-                                            Text(artist.releaseCount == 1 ? String(localized: "1 release") : String(format: String(localized: "%d releases"), artist.releaseCount))
-                                                .font(.jakarta(12))
-                                                .foregroundStyle(Color.sjMuted)
-                                        }
-
-                                        Spacer()
-                                        Image("icon-chevron-right")
-                                            .renderingMode(.template)
-                                            .resizable().scaledToFit()
-                                            .frame(width: 11, height: 11)
-                                            .foregroundStyle(Color.sjBorder)
-                                    }
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 10)
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-
-                                if artist.id != searchVM.artistResults.last?.id {
+                            ForEach(restArtists) { artist in
+                                artistRow(artist)
+                                if artist.id != restArtists.last?.id {
                                     Divider().padding(.leading, 72)
                                 }
                             }
@@ -1160,10 +1346,10 @@ struct SearchView: View {
                     }
 
                     // ── Albums ────────────────────────────────
-                    if hasAlbums {
+                    if !restAlbums.isEmpty {
                         sectionLabel("Albums")
                         LazyVGrid(columns: threeColumns, spacing: 14) {
-                            ForEach(searchVM.albumResults) { release in
+                            ForEach(restAlbums) { release in
                                 let rated = ratedReleaseIds.contains(release.id)
                                 NavigationLink(value: release) {
                                     AlbumCard(
@@ -1184,14 +1370,28 @@ struct SearchView: View {
                     if hasSongs {
                         sectionLabel("Songs")
                         VStack(spacing: 0) {
-                            ForEach(searchVM.songResults) { song in
+                            ForEach(filteredSongs) { song in
                                 let pr = songParentRelease(song)
                                 NavigationLink(value: pr) {
                                     SongRow(song: song, scoreBinding: scoreBinding(for: song.releases.id), ratingStep: userRatingStep)
                                 }
                                 .buttonStyle(.plain)
                                 .albumContextMenu(pr)
-                                if song.id != searchVM.songResults.last?.id {
+                                if song.id != filteredSongs.last?.id {
+                                    Divider().padding(.leading, 72)
+                                }
+                            }
+                        }
+                        .padding(.bottom, 32)
+                    }
+
+                    // ── Users ─────────────────────────────────
+                    if hasUsers {
+                        sectionLabel("Users")
+                        VStack(spacing: 0) {
+                            ForEach(filteredUsers) { user in
+                                usersRow(user)
+                                if user.id != filteredUsers.last?.id {
                                     Divider().padding(.leading, 72)
                                 }
                             }
@@ -1219,6 +1419,26 @@ struct SearchView: View {
                         .padding(.horizontal, 16)
                         .padding(.top, 4)
                         .padding(.bottom, 20)
+
+                    // ── Popular Searches ──────────────────────
+                    // Cross-user trending query chips -- see DiscoveryViewModel.popularSearchQueries's
+                    // own comment. Tapping one fills the search bar and runs it immediately, same as
+                    // the web port's PopularSearchChips onSelect behavior.
+                    if !discoveryVM.popularSearchQueries.isEmpty {
+                        sectionLabel("Popular Searches")
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(discoveryVM.popularSearchQueries, id: \.self) { q in
+                                    SearchChip(label: q, active: false) {
+                                        searchVM.query = q
+                                        Task { await searchVM.search() }
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                        }
+                        Spacer().frame(height: 24)
+                    }
 
                     // ── Spotify: Your Top Artists ─────────────
                     if !discoveryVM.spotifyArtists.isEmpty {
@@ -1407,6 +1627,109 @@ struct SearchView: View {
     }
 
     // MARK: - Helpers
+
+    // Shared by the Artists list and the Top Match card so both render identically.
+    private func artistRow(_ artist: SearchArtist) -> some View {
+        NavigationLink(value: ArtistDestination(artistId: artist.id, name: artist.name)) {
+            HStack(spacing: 12) {
+                Group {
+                    if let urlStr = artist.coverUrl, let url = URL(string: urlStr) {
+                        CachedImage(url: url) {
+                            Circle().fill(Color.sjBorder)
+                                .overlay(Text(String(artist.name.prefix(1)).uppercased())
+                                    .font(.jakarta(16, weight: .bold))
+                                    .foregroundStyle(Color.sjMuted))
+                        }
+                        .aspectRatio(contentMode: .fill)
+                    } else {
+                        ZStack {
+                            Circle().fill(Color.sjBorder)
+                            Text(String(artist.name.prefix(1)).uppercased())
+                                .font(.jakarta(16, weight: .bold))
+                                .foregroundStyle(Color.sjMuted)
+                        }
+                    }
+                }
+                .frame(width: 44, height: 44)
+                .clipShape(Circle())
+                .accessibilityHidden(true) // name text alongside already describes it
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(artist.name)
+                        .font(.jakarta(14, weight: .semibold))
+                        .foregroundStyle(Color.sjInk)
+                    if let native = artist.displayNativeName {
+                        Text(native)
+                            .font(.jakarta(12))
+                            .foregroundStyle(Color.sjMuted)
+                    }
+                    Text(artist.releaseCount == 1 ? String(localized: "1 release") : String(format: String(localized: "%d releases"), artist.releaseCount))
+                        .font(.jakarta(12))
+                        .foregroundStyle(Color.sjMuted)
+                }
+
+                Spacer()
+                Image("icon-chevron-right")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 11, height: 11)
+                    .foregroundStyle(Color.sjBorder)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // Shared by the Users list -- same avatar/name/chevron shape as artistRow above.
+    private func usersRow(_ user: SearchUserResult) -> some View {
+        NavigationLink(value: UserProfileDestination(userId: user.id, handle: user.username)) {
+            HStack(spacing: 12) {
+                Group {
+                    if let urlStr = user.avatarUrl, let url = URL(string: urlStr) {
+                        CachedImage(url: url) {
+                            Circle().fill(Color.sjBorder)
+                                .overlay(Text(String(user.displayLabel.prefix(1)).uppercased())
+                                    .font(.jakarta(16, weight: .bold))
+                                    .foregroundStyle(Color.sjMuted))
+                        }
+                        .aspectRatio(contentMode: .fill)
+                    } else {
+                        ZStack {
+                            Circle().fill(Color.sjBorder)
+                            Text(String(user.displayLabel.prefix(1)).uppercased())
+                                .font(.jakarta(16, weight: .bold))
+                                .foregroundStyle(Color.sjMuted)
+                        }
+                    }
+                }
+                .frame(width: 44, height: 44)
+                .clipShape(Circle())
+                .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(user.displayLabel)
+                        .font(.jakarta(14, weight: .semibold))
+                        .foregroundStyle(Color.sjInk)
+                    Text("@\(user.username)")
+                        .font(.jakarta(12))
+                        .foregroundStyle(Color.sjMuted)
+                }
+
+                Spacer()
+                Image("icon-chevron-right")
+                    .renderingMode(.template)
+                    .resizable().scaledToFit()
+                    .frame(width: 11, height: 11)
+                    .foregroundStyle(Color.sjBorder)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
 
     private func sectionLabel(_ text: LocalizedStringKey) -> some View {
         Text(text)

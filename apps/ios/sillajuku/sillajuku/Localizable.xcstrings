@@ -943,6 +943,16 @@
         }
       }
     },
+    "Back to Top" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "맨 위로"
+          }
+        }
+      }
+    },
     "Based on %1$d ratings across %2$d genres, analyzed into %3$d worlds." : {
       "localizations" : {
         "ko" : {
@@ -3347,6 +3357,16 @@
         }
       }
     },
+    "Popular Searches" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "인기 검색어"
+          }
+        }
+      }
+    },
     "Popular Songs" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4806,6 +4826,16 @@
         }
       }
     },
+    "Top Match" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "최적의 결과"
+          }
+        }
+      }
+    },
     "Top Rated" : {
       "localizations" : {
         "ko" : {
@@ -4994,6 +5024,16 @@
       }
     },
     "User" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사용자"
+          }
+        }
+      }
+    },
+    "Users" : {
       "localizations" : {
         "ko" : {
           "stringUnit" : {

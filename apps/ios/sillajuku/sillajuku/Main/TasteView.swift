@@ -241,9 +241,9 @@ private struct TasteReportView: View {
     /// (same gating the old single-scroll layout used) plus an unnumbered
     /// hero page up front. Numbers stay sequential regardless of which
     /// optional pages are present, port of web's `nextNo()` counter. The
-    /// pager's own `loopsAround` appends the wrap-back-to-the-top transition
-    /// after whatever page ends up last here -- no explicit outro page
-    /// needed to hand off to it.
+    /// pager itself shows an explicit "back to top" button on whichever page
+    /// ends up last here (see `TastePagerContainer.body`'s bottom overlay) --
+    /// no explicit outro page needed to hand off to it.
     private func buildPages(sceneShares: [(label: String, share: Double, color: Color)]) -> ([TastePageKind], [String]) {
         var kinds: [TastePageKind] = []
         var nos: [String] = []
@@ -272,7 +272,7 @@ private struct TasteReportView: View {
         let sceneShares = TasteViz.sceneShares(charts.scenes)
         let (kinds, nos) = buildPages(sceneShares: sceneShares)
 
-        return TastePagerContainer(count: kinds.count, loopsAround: true) { i, topInset, bottomInset in
+        return TastePagerContainer(count: kinds.count) { i, topInset, bottomInset in
             page(kinds[i], no: nos[i], sceneShares: sceneShares, topInset: topInset, bottomInset: bottomInset)
                 .overlay(alignment: .top) {
                     // User ask: swiping up from the hero page shows a hard
@@ -695,17 +695,6 @@ private struct TasteReportView: View {
 enum Haptics {
     static func light() { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
     static func medium() { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
-    /// A sharper, less springy impact than `.medium` -- reads as hitting a
-    /// hard limit rather than a soft confirmation, so it's reserved for
-    /// resistance/boundary feedback (e.g. the loop swipe's guarded gate)
-    /// rather than ordinary taps.
-    static func rigid() { UIImpactFeedbackGenerator(style: .rigid).impactOccurred() }
-    static func heavy() { UIImpactFeedbackGenerator(style: .heavy).impactOccurred() }
-    /// `UINotificationFeedbackGenerator`'s distinctive multi-pulse pattern,
-    /// not another single impact -- reserved for a genuine "arrived/done"
-    /// moment (the loop transition landing back on the hero page) rather
-    /// than an ordinary tap, so it reads as celebratory instead of just louder.
-    static func success() { UINotificationFeedbackGenerator().notificationOccurred(.success) }
     static func selection() { UISelectionFeedbackGenerator().selectionChanged() }
 }
 
@@ -713,15 +702,15 @@ enum Haptics {
 
 /// One swipeable "page" of the taste report -- an unnumbered hero up front,
 /// then every gated section from the old single-scroll report (now one
-/// section per screen instead of one card in a long scroll). The pager's
-/// own `loopsAround` handles wrapping past the last of these back to `.hero`.
+/// section per screen instead of one card in a long scroll). The pager
+/// shows an explicit "back to top" button on whichever of these ends up
+/// last, rather than auto-wrapping past it.
 private enum TastePageKind {
     case hero, map, hallOfFame, numbers, years, score, scene, standings, disliked
 }
 
 /// True one-swipe-one-page paging -- every gesture moves at most one page,
-/// like `UIScrollView.isPagingEnabled`, plus the wrap-around loop row's
-/// extra resistance. Landed on this type across two user asks:
+/// like `UIScrollView.isPagingEnabled`. Landed on this type for:
 ///
 /// 1. "the scroll shouldn't be continuous... a single vertical swipe
 ///    should go to the section right below and snap almost immediately."
@@ -734,12 +723,14 @@ private enum TastePageKind {
 ///    `rawDelta` (how far past `fromPage` the projected target landed, in
 ///    page units) decides *which way*, but the actual target is always
 ///    clamped to `fromPage` or one page beyond it.
-/// 2. The last-page-to-first-page swipe should be stickier than that: it
-///    only commits once the drag has crossed `resistantFraction` of a
-///    full page, otherwise it springs back to the last page (with a
-///    firm "hit a wall" haptic marking the failed attempt). Every other
-///    adjacent-page swipe (`guardedPage == nil`, or any transition not
-///    landing on it) keeps the plain one-page paging above untouched.
+///
+/// (2026-09-23: this type used to also gate a wrap-around last-page-to-
+/// first-page swipe behind extra resistance, landing on a `HalftoneLoopOverlay`
+/// transition back to page 0 -- removed per user ask, replaced with an
+/// explicit "back to top" button on the last page instead, see
+/// `TastePagerContainer.body`'s bottom overlay. `HalftoneLoopOverlay`/
+/// `HalftoneDot`/`SeededRNG` were deleted along with it -- nothing else used
+/// them.)
 ///
 /// A third attempt (now reverted) tried to make settle *speed* independent
 /// of swipe speed too ("when i swipe slowly the motion also becomes slow"):
@@ -838,19 +829,12 @@ private enum TastePageKind {
 /// otherwise skip multiple pages down to one (the original reason this type
 /// exists at all), and the wrap-around row's extra resistance.
 private struct LoopGuardedPaging: ScrollTargetBehavior {
-    /// The invisible loop-trigger row's index (`count` in
-    /// `TastePagerContainer`), or nil on a page that doesn't loop -- falls
-    /// back to plain one-page-per-swipe paging with no guarded transition.
-    let guardedPage: Int?
     /// Deferred, explicit `currentPage` write -- see this type's own doc
     /// comment for why this stays even though `target.rect` is reported
-    /// truthfully now: it's the only reliable trigger for the loop-check
-    /// and haptics, since `scrollPosition(id:)`'s own binding update wasn't
-    /// dependable enough on its own (confirmed live, blank guarded-row
-    /// regression). Just a state write, not a move -- `TastePagerContainer`
-    /// wires this directly to `currentPage = page`, not to `jump`.
+    /// truthfully now: it's the only reliable trigger for the page-change
+    /// haptic. Just a state write, not a move -- `TastePagerContainer` wires
+    /// this directly to `currentPage = page`, not to `jump`.
     let onCommit: (Int) -> Void
-    private let resistantFraction: CGFloat = 0.82
     /// The real system paging behavior -- delegated to for its actual
     /// target resolution (see this type's own doc comment for why a
     /// hand-computed equivalent never produced a native feel no matter how
@@ -870,16 +854,7 @@ private struct LoopGuardedPaging: ScrollTargetBehavior {
         // velocity) real Reels/Shorts-style paging uses, rather than a
         // hand-rolled threshold reimplementing it.
         native.updateTarget(&target, context: context)
-        let rawDelta = (target.rect.origin.y - fromY) / pageHeight
         let nativePage = (target.rect.origin.y / pageHeight).rounded()
-
-        if let guardedPage, nativePage >= CGFloat(guardedPage), fromPage == CGFloat(guardedPage) - 1 {
-            guard rawDelta >= resistantFraction else {
-                Haptics.rigid()
-                target.rect.origin.y = fromY
-                return
-            }
-        }
 
         // Cap a flick hard enough to make `.paging` want to skip multiple
         // pages down to exactly one -- the one thing `.paging` alone
@@ -969,22 +944,17 @@ private struct PagerScrollViewFinder: UIViewRepresentable {
 }
 
 /// Vertical, Reels/Shorts-style paging container: one full-screen page per
-/// index, snapping via `LoopGuardedPaging` (standard page-to-page paging,
-/// with extra resistance on the specific swipe into the wrap-around loop
-/// row -- see its own doc comment). A real swipe is tracked read-only via
+/// index, snapping via `LoopGuardedPaging` (standard one-page-per-swipe
+/// paging -- see its own doc comment). A real swipe is tracked read-only via
 /// `.scrollPosition(id:)` (for the dot rail + page-change haptic); a dot
 /// tap/drag jumps via `ScrollViewReader.scrollTo(_:anchor:)` instead -- the
 /// purpose-built API for jumping straight to an arbitrary id, vs. driving
-/// the same `scrollPosition` binding both ways.
+/// the same `scrollPosition` binding both ways. The last page also gets an
+/// explicit "back to top" button (see `body`'s bottom overlay) -- replaces
+/// the wrap-around swipe-past-the-last-page transition this container used
+/// to have, removed 2026-09-23 per user ask.
 private struct TastePagerContainer<Content: View>: View {
     let count: Int
-    /// When true, swiping past the last page doesn't just stop -- one more
-    /// row is appended (index `count`, outside the numbered/dot-indicated
-    /// range) that triggers a full-screen bubble-rise transition, then jumps
-    /// back to page 0 underneath it while fully covered. Reached by a
-    /// perfectly normal forward swipe like any other page, so it needs no
-    /// custom overscroll-detection gesture of its own.
-    let loopsAround: Bool
     /// Page index, plus the real top/bottom safe-area insets (status bar,
     /// tab bar) for that page to apply *itself* -- deliberately not applied
     /// by this container from the outside (see the `body` note on why that
@@ -992,25 +962,11 @@ private struct TastePagerContainer<Content: View>: View {
     let content: (Int, CGFloat, CGFloat) -> Content
 
     @State private var currentPage: Int = 0
-    @State private var isLooping = false
-    /// Non-nil only while the wrap-around transition is actively running --
-    /// `HalftoneLoopOverlay` times its whole animation off this start mark,
-    /// and its `TimelineView` only exists (and only ticks every frame)
-    /// while this is set, so the pager pays nothing for it the rest of the
-    /// time.
-    @State private var loopTransitionStart: Date?
-    /// Debounces the loop trigger against `currentPage` landing on the
-    /// guarded row -- see `scheduleLoopCheck` for why this exists instead
-    /// of firing immediately.
-    @State private var pendingLoopCheck: Task<Void, Never>?
 
-    init(count: Int, loopsAround: Bool = false, @ViewBuilder content: @escaping (Int, CGFloat, CGFloat) -> Content) {
+    init(count: Int, @ViewBuilder content: @escaping (Int, CGFloat, CGFloat) -> Content) {
         self.count = count
-        self.loopsAround = loopsAround
         self.content = content
     }
-
-    private var totalRows: Int { loopsAround ? count + 1 : count }
 
     var body: some View {
         // Measure-then-ignore: an outer `GeometryReader` that does *not*
@@ -1046,24 +1002,11 @@ private struct TastePagerContainer<Content: View>: View {
                 ScrollViewReader { proxy in
                     ScrollView(.vertical) {
                         VStack(spacing: 0) {
-                            ForEach(0..<totalRows, id: \.self) { i in
-                                Group {
-                                    if i == count {
-                                        // Present but invisible -- its only job is to
-                                        // give the pager one more page to land on
-                                        // past the last real one. Detecting "the
-                                        // user swiped past the last real page" is
-                                        // handled by `currentPage` landing here
-                                        // (below), not by this row itself -- see
-                                        // that handler's comment for why.
-                                        Color.clear
-                                    } else {
-                                        content(i, topInset, bottomInset)
-                                    }
-                                }
-                                .frame(width: outerGeo.size.width, height: outerGeo.size.height)
-                                .clipped()
-                                .id(i)
+                            ForEach(0..<count, id: \.self) { i in
+                                content(i, topInset, bottomInset)
+                                    .frame(width: outerGeo.size.width, height: outerGeo.size.height)
+                                    .clipped()
+                                    .id(i)
                             }
                         }
                         .scrollTargetLayout()
@@ -1079,8 +1022,26 @@ private struct TastePagerContainer<Content: View>: View {
                             PagerScrollViewFinder()
                         }
                     }
-                    .scrollTargetBehavior(LoopGuardedPaging(guardedPage: loopsAround ? count : nil, onCommit: { page in
-                        currentPage = page
+                    .scrollTargetBehavior(LoopGuardedPaging(onCommit: { page in
+                        // 2026-09-23: a real swipe's commit was reading as a hard cut with
+                        // zero visible motion, even though LoopGuardedPaging delegates target
+                        // resolution to the real native PagingScrollTargetBehavior.paging.
+                        // Same root cause `jump(to:proxy:)` above already had fixed for the
+                        // dot-tap path: `.scrollPosition(id:)`'s binding reconciles directly
+                        // off `currentPage`, so writing it in the ambient (unanimated)
+                        // transaction lets SwiftUI's own reconciliation snap to the new
+                        // position instantly, on top of/ahead of whatever native glide the
+                        // resolved target was supposed to produce. `jump` already writes its
+                        // own `currentPage` inside `withAnimation` for exactly this reason --
+                        // this call site never got the same treatment. Short, easeOut duration
+                        // (not jump's 0.4s easeInOut) since a real swipe's remaining distance
+                        // at release is typically small, not a full page -- a long duration
+                        // here risks the "fixed multi-second glide across the entire page"
+                        // feel a much earlier freeze-based attempt already ran into (see
+                        // LoopGuardedPaging's own doc comment).
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            currentPage = page
+                        }
                     }))
                     .scrollPosition(id: Binding(
                         get: { Optional(currentPage) },
@@ -1097,74 +1058,56 @@ private struct TastePagerContainer<Content: View>: View {
                             .padding(.trailing, 6)
                         }
                     }
-                    // Triggers the loop off `currentPage` landing on the
-                    // guarded row, debounced -- not off visibility. The
-                    // previous approach (`onScrollVisibilityChange`,
-                    // threshold 0.6) fired the instant the row crossed 60%
-                    // visible, which for a real finger-drag swipe happens
-                    // well *before* release, not after: `runLoopTransition`
-                    // was starting the cover/reset sequence while the
-                    // user's finger was potentially still down and the
-                    // gesture still live, racing the reset against whatever
-                    // the still-active drag did next. That race could never
-                    // show up in any prior verification here, since every
-                    // debug harness used `scrollTo`/`jump()` to arrive at
-                    // the guarded row -- never a real touch, so never an
-                    // active gesture to race against.
-                    //
-                    // Debouncing sidesteps needing to know exactly when
-                    // `currentPage` updates relative to touch-up (continuously
-                    // during a drag, or only after it settles -- genuinely
-                    // unclear, and unverifiable here either way): every
-                    // change to `currentPage` restarts a short wait, so the
-                    // real transition only ever commits once the position
-                    // has actually stopped changing, regardless of whether
-                    // that stability arrived because the finger lifted or
-                    // because the scroll simply settled.
+                    // Replaces the old wrap-around loop transition's "back to page 0"
+                    // affordance -- swiping past the last page used to trigger that
+                    // automatically; now it just stops (plain paging), and this button
+                    // (shown only on the last page) is the explicit way back to the top.
+                    .overlay(alignment: .bottom) {
+                        if count > 1, currentPage == count - 1 {
+                            Button {
+                                Haptics.light()
+                                jump(to: 0, proxy: proxy)
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image("icon-arrow-up")
+                                        .renderingMode(.template)
+                                        .resizable().scaledToFit()
+                                        .frame(width: 11, height: 11)
+                                    Text("Back to Top")
+                                        .font(.jakarta(13, weight: .bold))
+                                }
+                                .foregroundStyle(Color.sjInk)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background {
+                                    Capsule()
+                                        .fill(Color.clear)
+                                        .glassEffect(.regular, in: Capsule())
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.bottom, 24 + bottomInset)
+                            .transition(.opacity)
+                        }
+                    }
+                    .animation(.easeOut(duration: 0.2), value: currentPage == count - 1)
                     .onChange(of: currentPage) { old, new in
                         guard old != new else { return }
-                        if loopsAround, new == count {
-                            scheduleLoopCheck(proxy: proxy)
-                        } else {
-                            pendingLoopCheck?.cancel()
-                            pendingLoopCheck = nil
-                            Haptics.light()
-                        }
+                        Haptics.light()
                     }
                 }
             }
             .ignoresSafeArea()
         }
-        .overlay {
-            if loopsAround, let start = loopTransitionStart {
-                // Hit-testable, not ignored -- this sits above the whole
-                // pager (ScrollView + dot rail), so while it's on screen it
-                // also doubles as a shield absorbing any stray touch during
-                // the transition. Earlier this was `.allowsHitTesting(false)`
-                // plus `.scrollDisabled(isLooping)` on the ScrollView itself
-                // and a matching `.allowsHitTesting(!isLooping)` on the dot
-                // rail -- three separate flags for one goal. Dropped in
-                // favor of this single mechanism after a report that the
-                // scroll-disabled approach could still leave the pager
-                // landing on a blank page: toggling a `ScrollView`'s own
-                // `scrollDisabled` state mid-gesture-settle is a plausible
-                // way to disrupt the view's real scroll-decelerating
-                // physics; this shield never touches the ScrollView's own
-                // enabled state at all, so it can't interfere with
-                // `runLoopTransition`'s reset no matter how or when the
-                // preceding swipe settled.
-                HalftoneLoopOverlay(startDate: start)
-                    .ignoresSafeArea()
-            }
-        }
     }
 
-    /// Dot-rail tap/scrub only now -- a real swipe no longer routes through
-    /// here at all; `LoopGuardedPaging` reports its resolved page directly
-    /// to native scroll physics instead (see its own doc comment for the
-    /// long history of why). A tap has no live drag velocity to continue
-    /// out of, so starting this glide from rest is correct here in a way it
-    /// stopped being for a real swipe.
+    /// Dot-rail tap/scrub, and the last page's "back to top" button -- a
+    /// real swipe no longer routes through here at all; `LoopGuardedPaging`
+    /// reports its resolved page directly to native scroll physics instead
+    /// (see its own doc comment for the long history of why). Neither of
+    /// this function's callers have live drag velocity to continue out of,
+    /// so starting this glide from rest is correct here in a way it stopped
+    /// being for a real swipe.
     ///
     /// `currentPage = target` lives *inside* the `withAnimation` block, not
     /// before it -- confirmed live as load-bearing back when this also
@@ -1180,257 +1123,6 @@ private struct TastePagerContainer<Content: View>: View {
             currentPage = target
             proxy.scrollTo(target, anchor: .top)
         }
-    }
-
-    /// Waits a short quiet period after `currentPage` lands on the guarded
-    /// row before actually committing to the loop transition. Cancelled and
-    /// restarted every time `currentPage` changes again (see the
-    /// `.onChange` above) -- so a swipe that's still actively moving
-    /// through or past the guarded row keeps deferring the real trigger,
-    /// and it only fires once the position has genuinely stopped changing
-    /// for 220ms, however that stability came about.
-    private func scheduleLoopCheck(proxy: ScrollViewProxy) {
-        pendingLoopCheck?.cancel()
-        pendingLoopCheck = Task {
-            try? await Task.sleep(for: .milliseconds(220))
-            guard !Task.isCancelled else { return }
-            runLoopTransition(proxy: proxy)
-        }
-    }
-
-    /// Starts `HalftoneLoopOverlay`'s self-timed animation and schedules the
-    /// one side effect it can't do itself: jumping the pager back to page 0
-    /// underneath it. Timed against `HalftoneLoopOverlay.coverDuration` --
-    /// the moment the ignite sweep finishes and the screen is fully inked,
-    /// same "swap underneath while covered" trick as before, just keyed to
-    /// the new per-dot sweep instead of a rigid rise/hold/rise offset.
-    ///
-    /// Haptics are a deliberate two-beat arc, not one flat tap -- user ask:
-    /// make this "more dramatic." A heavy impact lands the instant the
-    /// commit is decided (the drag has already crossed the resistant
-    /// gate -- this is the payoff for pushing through it), then a
-    /// `.success` notification pattern marks the moment the reveal
-    /// actually completes and the hero page is back on screen -- the
-    /// "you've arrived" beat, distinct in feel from the "it's happening"
-    /// beat at the start.
-    private func runLoopTransition(proxy: ScrollViewProxy) {
-        guard !isLooping else { return }
-        isLooping = true
-        Haptics.heavy()
-        loopTransitionStart = Date()
-        Task {
-            try? await Task.sleep(for: .milliseconds(Int(HalftoneLoopOverlay.coverDuration * 1000)))
-            // A short, real animation rather than `disablesAnimations` --
-            // still completely hidden (the overlay stays fully opaque for
-            // ~260ms after this point, easily long enough to cover a
-            // 150ms scroll), but goes through the same code path an
-            // ordinary animated `scrollTo` would, rather than relying on
-            // animation-suppression machinery that's never been confirmed
-            // safe to combine with whatever state a real gesture's gone
-            // through settling onto the guarded page.
-            currentPage = 0
-            withAnimation(.linear(duration: 0.15)) {
-                proxy.scrollTo(0, anchor: .top)
-            }
-            let remaining = HalftoneLoopOverlay.totalDuration - HalftoneLoopOverlay.coverDuration
-            try? await Task.sleep(for: .milliseconds(Int(remaining * 1000)))
-            loopTransitionStart = nil
-            isLooping = false
-            Haptics.success()
-        }
-    }
-}
-
-/// One dot in the wrap-around transition's halftone field: a fixed screen
-/// position plus a reveal `threshold` in 0...1, driven mostly by how close
-/// the dot sits to the bottom edge (so the sweep climbs bottom-to-top) with
-/// a little per-dot jitter mixed in so the frontier reads as scattered ink
-/// rather than a ruled line. Both the covering sweep and the uncovering
-/// sweep read this *same* threshold -- a dot that ignites early also
-/// extinguishes early, so the cover and the reveal are one continuous
-/// bottom-up motion instead of a mirrored reverse.
-private struct HalftoneDot {
-    let x: CGFloat
-    let y: CGFloat
-    let radius: CGFloat
-    let color: Color
-    let threshold: Double
-}
-
-/// The wrap-around transition's visual: the app's own flower-mark halftone
-/// (see `logo-flower.svg` -- cyan/magenta/yellow dot grids at the classic
-/// offset-print screen angles, 15°/75°/0°, plus a sparse black key layer at
-/// 45°, composited with multiply blending) instead of the flat bubble field
-/// this replaced. Live feedback on that version ("the last to first slide
-/// transition is a bit off") led to trying the logo's own texture directly;
-/// a follow-up ("dots a bit smaller... I want the dots to appear randomly
-/// and cover the screen from bottom up, and disappear bottom up again")
-/// set the two concrete requirements this implements: no sliding image --
-/// every dot ignites/extinguishes individually from its own fixed
-/// position -- and a bottom-up direction on both halves, not a mirror.
-///
-/// Rendered as a fixed overlay on the *whole* pager (see
-/// `TastePagerContainer.body`), independent of scroll position, same
-/// reasoning as the bubble field it replaced: the reveal has to land on
-/// something still on screen, not a row that already scrolled away.
-/// `TimelineView(.animation)` + `Canvas` (not individual `Circle()` views --
-/// several thousand of those would be prohibitively expensive) redraws the
-/// whole field every frame purely from elapsed time since `startDate`, the
-/// pattern Apple's own Canvas/TimelineView guidance recommends for
-/// procedural animation that isn't just interpolating a single SwiftUI
-/// layout property.
-private struct HalftoneLoopOverlay: View {
-    let startDate: Date
-
-    /// Total transition length and its four phases as fractions of the
-    /// whole: covering (bottom-up ignite), held (fully inked -- this is
-    /// when `runLoopTransition` jumps the pager back to page 0
-    /// underneath), uncovering (the same per-dot thresholds, bottom-up
-    /// extinguish), then a short gap before the field goes idle.
-    static let totalDuration: Double = 1.3
-    private static let coverEnd = 0.35
-    private static let holdEnd = 0.55
-    private static let uncoverEnd = 0.90
-    static var coverDuration: Double { totalDuration * coverEnd }
-
-    private static let pitch: CGFloat = 13
-    private static let fill: CGFloat = 0.58
-    private static let yellowBias: CGFloat = 0.68
-    private static let blackAmount: CGFloat = 0.18
-    private static let jitter: Double = 0.35
-    private static let popWidth: Double = 0.11
-
-    private enum Phase { case cover, hold, uncover, gap }
-
-    var body: some View {
-        GeometryReader { geo in
-            let dots = Self.dots(for: geo.size)
-            TimelineView(.animation) { timeline in
-                Canvas { context, size in
-                    let elapsed = timeline.date.timeIntervalSince(startDate)
-                    Self.draw(context: &context, size: size, dots: dots, t: elapsed / Self.totalDuration)
-                }
-            }
-        }
-    }
-
-    private static func draw(context: inout GraphicsContext, size: CGSize, dots: [HalftoneDot], t: Double) {
-        let phase: Phase
-        let rawProgress: Double
-        if t < coverEnd {
-            phase = .cover; rawProgress = t / coverEnd
-        } else if t < holdEnd {
-            phase = .hold; rawProgress = 1
-        } else if t < uncoverEnd {
-            phase = .uncover; rawProgress = (t - holdEnd) / (uncoverEnd - holdEnd)
-        } else {
-            phase = .gap; rawProgress = 0
-        }
-        let progress = easeInOutCubic(clamp01(rawProgress))
-
-        // Dot gaps alone rarely add up to full opacity -- fill solid during
-        // the hold so the page swap underneath is genuinely hidden, not
-        // just mostly hidden.
-        if phase == .hold {
-            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Color.sjCream))
-        }
-
-        context.blendMode = .multiply
-        for dot in dots {
-            let alpha: Double
-            switch phase {
-            case .cover:
-                alpha = easeOutCubic(clamp01((progress - dot.threshold) / popWidth))
-            case .hold:
-                alpha = 1
-            case .uncover:
-                alpha = 1 - easeOutCubic(clamp01((progress - dot.threshold) / popWidth))
-            case .gap:
-                alpha = 0
-            }
-            guard alpha > 0.01 else { continue }
-            let r = dot.radius * (0.55 + 0.45 * alpha)
-            let rect = CGRect(x: dot.x - r, y: dot.y - r, width: r * 2, height: r * 2)
-            context.fill(Path(ellipseIn: rect), with: .color(dot.color.opacity(alpha)))
-        }
-    }
-
-    private static func clamp01(_ x: Double) -> Double { min(1, max(0, x)) }
-    private static func easeInOutCubic(_ x: Double) -> Double { x < 0.5 ? 4 * x * x * x : 1 - pow(-2 * x + 2, 3) / 2 }
-    private static func easeOutCubic(_ x: Double) -> Double { 1 - pow(1 - x, 3) }
-
-    /// Builds the fixed dot field once per screen size (not per frame -- a
-    /// `TimelineView` tick redraws its own `Canvas` subtree without forcing
-    /// this `GeometryReader` to re-run). A deterministic PRNG (not
-    /// `.random`, which would reshuffle the ignite order every redraw)
-    /// lays out each channel's rotated grid; thresholds are then min-max
-    /// normalized across the whole field so the sweep spans the full
-    /// 0...1 range regardless of screen size.
-    private static func dots(for size: CGSize) -> [HalftoneDot] {
-        guard size.width > 0, size.height > 0 else { return [] }
-        var rng = SeededRNG(seed: 20_260_911)
-
-        struct Layer { let angleDeg: Double; let color: Color; let radius: CGFloat; let pitchMultiplier: CGFloat }
-        let layers: [Layer] = [
-            Layer(angleDeg: 15, color: Color(red: 0, green: 1, blue: 1), radius: (pitch / 2) * fill, pitchMultiplier: 1),
-            Layer(angleDeg: 75, color: Color(red: 1, green: 0, blue: 1), radius: (pitch / 2) * fill * 0.97, pitchMultiplier: 1),
-            Layer(angleDeg: 0, color: Color(red: 1, green: 1, blue: 0), radius: (pitch / 2) * fill * yellowBias, pitchMultiplier: 1),
-            Layer(angleDeg: 45, color: .black, radius: (pitch / 2) * fill * blackAmount, pitchMultiplier: 1.4)
-        ]
-
-        var raw: [(x: CGFloat, y: CGFloat, radius: CGFloat, color: Color, rand: Double)] = []
-        for layer in layers {
-            let p = pitch * layer.pitchMultiplier
-            let a = layer.angleDeg * .pi / 180
-            let cosA = CGFloat(cos(a)), sinA = CGFloat(sin(a))
-            let diag = sqrt(size.width * size.width + size.height * size.height) * 0.75 + p
-            var ly = -diag
-            while ly <= diag {
-                var lx = -diag
-                while lx <= diag {
-                    let sx = size.width / 2 + lx * cosA - ly * sinA
-                    let sy = size.height / 2 + lx * sinA + ly * cosA
-                    if sx >= -layer.radius, sx <= size.width + layer.radius,
-                       sy >= -layer.radius, sy <= size.height + layer.radius {
-                        raw.append((sx, sy, layer.radius, layer.color, rng.nextUnit()))
-                    }
-                    lx += p
-                }
-                ly += p
-            }
-        }
-
-        var minT = Double.infinity, maxT = -Double.infinity
-        var thresholds: [Double] = []
-        thresholds.reserveCapacity(raw.count)
-        for d in raw {
-            let yNorm = min(1, max(0, Double(d.y / size.height)))
-            let base = 1 - yNorm // bottom (yNorm~1) ignites early; top (yNorm~0) ignites late
-            let threshold = base + (d.rand - 0.5) * jitter
-            minT = min(minT, threshold)
-            maxT = max(maxT, threshold)
-            thresholds.append(threshold)
-        }
-        let span = max(1e-6, maxT - minT)
-        return zip(raw, thresholds).map { d, threshold in
-            HalftoneDot(x: d.x, y: d.y, radius: d.radius, color: d.color, threshold: (threshold - minT) / span)
-        }
-    }
-}
-
-/// Deterministic PRNG (mulberry32) so the halftone field's per-dot jitter
-/// is stable across redraws -- `.random` would reshuffle the ignite order
-/// every time the field is rebuilt.
-private struct SeededRNG {
-    private var state: UInt32
-    init(seed: UInt32) { state = seed }
-    mutating func nextUnit() -> Double {
-        state = state &+ 0x6D2B_79F5
-        var z = state
-        z = (z ^ (z >> 15)) &* (z | 1)
-        z ^= (z &+ (z ^ (z >> 7)) &* (z | 61))
-        z ^= (z >> 14)
-        return Double(z) / Double(UInt32.max)
     }
 }
 
