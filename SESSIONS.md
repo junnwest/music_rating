@@ -4,6 +4,16 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-25 (Mac) — Taste tab: charts in sections 4 ("Across the years") and 5 ("How you score") get press-and-hold-then-drag scrubbing back, using the flower button's own hold mechanism.**
+
+- **User reported** the charts' interactions as broken, suspecting the pager speed fix. Asked for the exact symptom first: taps showed tooltips, but hold-and-drag didn't. **Not a regression from the pager work.** Drag-to-scrub was removed on purpose on 2026-09-21 (`binHoverGesture` became tap-only `binTapGesture`) because a `DragGesture` engages on movement in any direction and kept swallowing page swipes. User wants it back, working like the flower button: hold for the same delay, then drag freely.
+- **Fixed**: new `BinScrubRecognizer` (`Main/TasteView.swift`), a `UIGestureRecognizerRepresentable` built on `UILongPressGestureRecognizer`, the same mechanism as `FlowerPressDragRecognizer`. It is not simultaneous with pan, so a touch that moves more than 4pt before the 0.06s hold elapses fails and the pager takes the swipe. It reads `FlowerRateControl.holdBeforeDrag`/`allowableMovement` directly (made non-`private` for this) so the two stay in sync. A selection haptic fires on every bin change. The last bin stays shown on release, the same as a tap. A press that starts on the already-shown bin and never leaves it hides the tooltip, so "tap again to hide" still works even though most real taps last longer than 0.06s and land in this recognizer. `binTapGesture` stays for sub-0.06s taps.
+- **Scope**: attached to `YearChartView` and `ScoreRampChartView` only. `ActivitySparkView` (By the numbers) uses the same tap helper but wasn't part of the ask; it's still tap-only and can get the same one-line addition.
+- **Verified via simulator build**: **BUILD SUCCEEDED**. **Not yet tested live on device.**
+- **Build number 20 → 21** (both configs) for a TestFlight upload. Since build 20 it covers the 2026-09-23 search overhaul, removal of the flower tap-to-sheet, the Taste tab's Back to Top button, and this chart scrub.
+
+---
+
 **2026-09-23 (Mac) — Taste tab: removed the wrap-around last-page-to-first-page swipe transition entirely, replaced with an explicit "Back to Top" button on the last page.**
 
 - **User asked**: remove the loop-back swipe transition, add a button that jumps to the top page instead.
