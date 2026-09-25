@@ -84,6 +84,51 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-22/23 (Windows) — Data-collection session: catalogue truncation, bootleg albums, the Korean-artist blind spot, and moving 117,000 covers off our own bandwidth. Most of the work was finding that the measurements were wrong, not the data.**
+
+- **Reported by the user**: nowimyoung showed 1 release; Ye showed 87 albums where MusicBrainz shows 13; 오보에 had the wrong cover; Keung displayed romanised instead of 킁. Each turned out to be an instance of a much wider bug, which is how they were handled.
+
+- **Artist pages were truncating.** `artist/[id]/page.tsx` fetched `lim: 60`, so any artist with more release groups silently lost the rest — 1,572 artists affected. Nirvana showed 0 of 3 core albums, Ed Sheeran 1 of 4. Raised to 500 and added type-tier ordering (`20260920000001`). Separately the songs query used `.ilike('artist_display', …)` where `.eq` was correct: **4,167ms → 4.5ms**.
+
+- **Bootleg albums ranked as real ones.** MusicBrainz statuses each RELEASE (Official/Promotion/Bootleg/Pseudo-Release/Cancelled/Withdrawn); release groups carry no status. `mb-client` parsed it, `pickRepresentative` used it to choose an edition, then threw it away — so a group whose every edition is a bootleg was ingested and displayed as a normal album. A TYPE filter could never catch it: "YE LIVE IN MEXICO" is typed `album` with no `live` secondary type. Added `releases.status` (`20260922000001`), gated `mb-ingest` on having an Official edition, and wrote `audit-unofficial-rgs.ts` for the rows already ingested. **Result: Ye 191 → 111 release groups, 87 → 26 albums; 2,487 deleted catalogue-wide; ratings 10,443 unchanged, 0 orphaned.**
+
+- **That audit needed three guards before it was safe, each found by a dry run:**
+  - *Truncated listings.* `browseArtistReleases` caps at `MAX_RELEASE_PAGES`, and `/release?artist=` returns everything an artist is CREDITED on. 5 of the 12 largest catalogues truncated, worst at 1,530 of 3,563 editions — on a truncated list "no Official edition" is unprovable. Added `browseArtistReleasesDetailed` reporting `truncated`, plus an early bail using the `release-count` MusicBrainz returns on page 1 (discovering truncation had cost 40 requests per artist).
+  - *Unset status is not unofficial status.* MusicBrainz leaves `status` NULL on a great many releases, and treating that as not-Official made **1,606 of 4,096 findings (39%) deletable on no evidence** — almost all old compilations; half of Bing Crosby's catalogue came back "unofficial". The `releases_status` migration says this in its own comment and the check did the opposite.
+  - *Shared resume state.* `saveDone()` ran regardless of `--apply`, so a report-only run marked artists done and the subsequent `--apply` skipped exactly the artists just reviewed — and would have looked clean.
+  - Also added `--from-report`, so the apply deletes exactly the reviewed set rather than re-deriving it from MusicBrainz (reviewing report A and deleting set B is not review), and retry/backoff on `sql()` after a single `ConnectTimeoutError` killed a 20-minute run.
+
+- **~40% of Korean artists were invisible to every Korean backfill.** `native_language` is derived only from Hangul in `name_native` — the counts matched exactly, 9,116 artists with Hangul `name_native` and 9,116 tagged `ko`. Korean acts styling their name in Latin script (C Jamm, YANGHONGWON, Owen Ovadoz) were never tagged, and `native_language` is the targeting field for every Korean backfill. 957 untagged artists release Korean-titled material against 1,416 tagged. `fix-native-language-korean-gaps.ts` tagged the **779 that are also `country='KR'`** — the guard `fix-native-language-mistags.ts` settled on after the 2026-07-05 incident that tagged Taylor Swift as Korean. The 165 null-country rows were deliberately left alone; the 13 JP/US/GB/AU/DE/SU rows are the collab false positives the gate exists to reject.
+
+- **The iTunes Korean storefront is dead, and fails silently.** `country=KR` returns HTTP 200 with `resultCount: 0` for every term, BTS included, while US/GB/JP/TW/DE/BR all answer. Dropping the country param is not a fix for a Korean term either: the US store returns a **constant six-row set of unrelated Latin-American artists**, byte-identical for 잔나비, 아이유 and 씨잼. `isUsableItunesResult()` now rejects both so callers treat them as "no answer" rather than "no such release". The running sweep matched 0 of 2,020 rows to the decoys, so existing name guards held — but nothing should depend on a guard it never declared.
+
+- **Five matcher bugs in `titleVariants`, all found by checking output rather than logs.** The refilter that validates a write report went **1 → 30 → 43 → 71** already-held albums caught as each was fixed; every "clean" number before that was a broken measurement, not clean data.
+  - *Anchor cap.* `.limit(60)` written for stubs, inherited when `--any-state` widened scope — 65% false positives for artists holding more than 60 release groups, 33% overall.
+  - *Reductions never composed.* Each rule applied once, to the seed only, so "NCT#127 LIMITLESS - The 2nd Mini Album" never reduced to "limitless" and would have duplicated a row held since 2017. Now iterates to a fixed point.
+  - *Greedy ordinal stripper.* `ORDINAL_ALBUM_RE` ends in `.*$`, so on the common Korean format `<Artist> <N>th Single <Title>` it ate the title — "Afterschool 3rd Single BANG" reduced to "afterschool". Added `ORDINAL_INFIX_RE`.
+  - *Dash-fenced edition groups.* The J-pop/K-pop equivalent of a parenthetical was unrecognised, so iTunes' "AGGRESSIVE (The Greatest Version)" never met the "AGGRESSIVE -The Greatest ver.-" held since 2022. Stripped, never promoted — promoting it made every song in a reissue series match every other.
+  - *Generic parentheticals by single word.* `isAlternateTitle` used a regex anchored around one descriptor, so multi-word descriptors escaped: "Instrumental Version" matched `instrumental` OR `version` but not both in sequence. Replaced with token matching. Also `(From "X")` names the work a track comes FROM, and the quoted-title rule was extracting it, so a track took its own soundtrack's cover.
+
+- **Repackages are their own release groups** (owner's call) — 27 of 491,157 rows say "repackage", rare enough that keeping them separate is cheap. The first guard sat only in `reduce()` while the seed-stage stripping bypassed it, so "&TWICE - Repackage -" still matched the base album; both stages now share one helper.
+
+- **Covers: 117,000 moved off Vercel's bandwidth.** `Cover.tsx` routes CAA through `/api/img` because archive.org takes 1.5–2.5s cold, so CAA covers cost us bandwidth on every view while iTunes/Deezer go direct. 75.5% of the catalogue was on the proxied path. Measured two lookup strategies side by side on the same rows — artist-first 45.1%, per-album search 42.3%, **both together 53.3%** — because they fail differently: search misses a title whose wording differs, artist misses an artist whose name Deezer spells differently and then loses every row for them at once. Live rate is holding **55%**. Also found `thumbnailUrl()` had rules for iTunes and CAA but **none for Deezer**, so all 32,479 Deezer covers shipped at 1000×1000 into 38–112px list rows — 181,873 bytes where 21,165 would do.
+
+- **That pass assigned wrong covers before the parenthetical fix, and the rollback journal caught it.** Auditing the journal by match-tightness showed 4.1% matching on neither an exact title nor a containment; reading those showed RichaadEB's "Lyin' 2 Me (Instrumental Version)" holding "Raise Up Your Bat"'s cover. Wrote `revalidate-cover-swaps.ts`, **restored 190 of 9,913** artist-strategy swaps. Also fixed a silent data-loss path: the journal was written BEFORE the update and any error was a warning, so a failed write recorded a swap that never happened and the row was never retried.
+
+- **A duplicate class no title matcher here can see.** iTunes returns romanised titles for Japanese releases while MusicBrainz stores native script — held `コノヨノシルシ -The Greatest ver.-` versus pending `KONOYONOSHIRUSHI (The Greatest Version)`. Found by reading a verification sample **by eye**; `verify-writepass-sample` reported 0 duplicates because it calls `titlesMatch`, the component that is blind here. `audit-romaji-duplicates.ts` measures it via kana→romaji; **~10 real duplicates in 26,998 pending writes (0.04%)**. Kanji cannot be romanised from a table, so the count is a floor; **Hangul is not covered at all**, which is the gap that matters most for this app.
+
+- **Embedding backfill was dying by design.** The batch query asked for "the next N rows where embedding is null, ordered by id", so every batch scanned further past the embedded head of the table until it exceeded the statement timeout — it died at 11,647 of 107,090. Fixed with a keyset cursor, later persisted so the job can be paused cheaply. Limited to `album,ep` via a new `--types`: the HNSW index is ~8 KB/row on top of ~4.1 KB/row for the vector column, and including singles projects to ~10 GB against a 12 GB plan limit.
+
+- **The HNSW index is a standing maintenance cost.** `idx_release_groups_embedding_hnsw` is **2,252 MB — roughly 30% of the database**. Autovacuum sat 11.8 hours in `vacuuming indexes` at `index_vacuum_count: 0` while dead tuples climbed to 21.4% and pipeline timeouts went 4 → 22; pgvector must walk the whole graph. Manual `VACUUM` is not possible through the Supabase Management API (~120s statement timeout, and `SET statement_timeout` can't be combined with VACUUM because multi-statement requests run in an implicit transaction), and there is no `DATABASE_URL` in any env file. It **did** complete unassisted after ~8 hours — 21.4% → 3.8% — so it is a periodic-slowdown problem rather than an unmaintainable one, but a direct connection string should be available before it matters.
+
+- **Three concurrent writers on `release_groups` cause timeouts.** The CAA endpoint pass and the Deezer cover pass both `UPDATE cover_url` on overlapping rows (both filter on CAA URLs), with embeddings on the same table. Separating them stopped the errors. Net damage across the whole episode: 22 timeouts, 8 retryable queue rows out of 41,000+ ingests (**0.02%**).
+
+- **Also shipped**: search misses queued at priority 100 and unknown artists in a user's own Spotify/Apple taste data at priority 200 (`lib/taste/demandSignal.ts`, `20260922000003`); the freshness lane now asks MusicBrainz for a release-group COUNT (one request) instead of running a full `ingestArtist` to discover nothing changed — it compares MusicBrainz's previous answer to its current one, never to our own row count, which the official-edition gate deliberately makes smaller (`artists.mb_rg_count`, `20260922000002`); unstable `.range()` pagination fixed in three more scripts (ordering by a column that doesn't uniquely determine the sort had already cost ~47,000 silently unfetched rows once); `normalizeStr` made Unicode-aware after an ASCII-only `\w` class was deleting Cyrillic, Greek and Thai titles entirely.
+
+- **Open, awaiting a decision**: the kr-scene write pass (sweep complete, 5,359/5,359; **26,998 releases** after refilter, ~10 known romaji duplicates); whether to finish the remaining 62,132 album/EP embeddings given the index cost; the CAA endpoint pass parked at 21,073 of 144,458 behind the Deezer one; ~9,500 same-title duplicates beyond the 31-day window, deliberately untouched because the dedup key strips punctuation and would collapse `T.W.E !!` into `T.W.E !!!`.
+
+---
+
 **2026-09-22 (Mac) — iOS build number bumped to 20; new feature: edit/delete comments, shipped on both iOS and web with a matching Instagram-style UX.**
 
 - **Build bump**: `CURRENT_PROJECT_VERSION` 19 → 20 in both Debug and Release configs (`sillajuku.xcodeproj/project.pbxproj`), for distribution. `MARKETING_VERSION` untouched.
@@ -4403,7 +4448,6 @@ Local commits to push (5 total):
 ---
 
 
-
 **2026-06-01 — Silla Score recompute + Discovery slider + recommendation buckets:**
 
 - **Silla Score recomputed**: formula now combines calibrated Bayesian star ratings (55%) + normalized tierlist-position score (45%). Per-user calibration: z-score against each user's mean and volatility (std dev), clamped to ±2.5σ, mapped back to [0.5, 5]. Bayesian damping: `(v/(v+10))*R_calibrated + (10/(v+10))*C_global` pulls low-rating-count albums toward the global mean. Rankings + album-page rank display both use the new formula. `rankings/[slug]/page.tsx` cache key bumped to `v2` to force recomputation.
@@ -4414,7 +4458,6 @@ Local commits to push (5 total):
 - **ExplorePage** now fetches genres from liked (≥3★) rated albums, `recommendation_adventurousness` from profile, and user ID — all passed to the recommendations API.
 
 ---
-
 
 
 **2026-06-01 — Silla Score fix (ratings now actually move the leaderboard):**
@@ -4429,7 +4472,6 @@ Diagnosed why ratings had no visible effect on rankings and fixed it end-to-end.
 Implementation: extracted shared math to `apps/web/lib/sillaScore.ts` (`computeTierlistScores`, `combineSillaScores`) — kills the triplicated `computeSillaScores` that had drifted between `leaderboard/[slug]`, `rankings/[slug]`, and `album/[mbid]`. All three now use the identical blend, so an album's "#N in category" on its page matches the leaderboard exactly. Cache key bumped `v2`→`v3`. Migration `20260601000011_silla_score_tuning.sql` re-tunes `get_calibrated_bayesian_scores` to m=3 + adds `get_silla_rating_scores`.
 
 ---
-
 
 
 **2026-06-01 — Prod migration apply + Streaming Platform rebuild:**
