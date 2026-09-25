@@ -466,6 +466,23 @@ async function ingestLoop(db: DB) {
             // 20260922000000 for the scale (200 listening data / 100 search miss / 0 bulk).
             { name: m.query, source: 'mbid', source_id: r.best.id, status: 'pending', priority: prio },
             { onConflict: 'name,source', ignoreDuplicates: true });
+
+          // RAISE THE PRIORITY OF THE ROW THAT ALREADY EXISTS. The upsert above cannot: the unique
+          // key is (name, source), and `ignoreDuplicates` makes a conflict a no-op. Nearly every
+          // artist a user searches for is ALREADY queued at priority 0 from the bulk stub seed, so
+          // the demand signal was being recorded, resolved, and then discarded at the last step --
+          // 201 recorded misses produced 39 prioritised rows, and "John K" sat at priority 0 behind
+          // 25,000 others while a user was looking at his empty page.
+          //
+          // Keyed on the resolved MBID rather than the query string, because the query rarely
+          // matches the seeded name exactly: "john k" and "John K" are different rows under a
+          // (name, source) key, so matching by name would both miss the seeded row AND create a
+          // duplicate. Only ever raises, and only for rows still pending.
+          await db.from('artist_ingestion_queue')
+            .update({ priority: prio })
+            .eq('source_id', r.best.id)
+            .eq('status', 'pending')
+            .lt('priority', prio);
           console.log(`  [misses] ${m.query} → ${r.best.name} [${r.best.country ?? '--'}]`);
         } else if (MISS_DEEZER_FALLBACK && (m.db_count ?? 0) === 0) {
           // MB has no confident match AND the catalog returned NOTHING → the artist may simply

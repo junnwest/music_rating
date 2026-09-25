@@ -57,6 +57,7 @@ apps/web/scripts/data/deezer-cover-coverage.json
 apps/web/scripts/data/cover-upgrade*.json
 apps/web/scripts/data/cover-swap-revalidation.json
 apps/web/scripts/data/romaji-duplicates.json
+apps/web/scripts/data/stub-targets-*.json
 
 # Tooling scratch
 .understand-anything/
