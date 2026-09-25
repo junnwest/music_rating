@@ -244,7 +244,7 @@ struct FlowerRateControl: View {
     /// (2026-09-23, same day as the 0.2s -> 0.12s change above). Neither
     /// change was a bug fix; both were direct asks to make the hold feel
     /// snappier.
-    private static let holdBeforeDrag: TimeInterval = 0.06
+    static let holdBeforeDrag: TimeInterval = 0.06
     /// How far a press can move before `holdBeforeDrag` elapses without
     /// failing this control's own recognizer -- passed straight through to
     /// `UILongPressGestureRecognizer.allowableMovement` (system default is
@@ -258,7 +258,7 @@ struct FlowerRateControl: View {
     /// the default so that hand-off happens close to instantly for anything
     /// resembling a real scroll, while still comfortably covering the small,
     /// mostly-still wobble of an intentional press-and-hold.
-    private static let allowableMovement: CGFloat = 4
+    static let allowableMovement: CGFloat = 4
 
     var body: some View {
         GeometryReader { geo in

@@ -1739,6 +1739,79 @@ private func binTapGesture(count: Int, width: CGFloat, hover: Binding<Int?>) -> 
         }
 }
 
+/// Press-and-hold-then-drag scrub over the same bins -- brings back the live
+/// drag-across-bins preview `binTapGesture` gave up (2026-09-25 user ask:
+/// "this should work like the flower button... after a certain delay... they
+/// should be able to drag and hover around"). Same mechanism and the same
+/// constants as `FlowerPressDragRecognizer` (see its doc comment): a plain,
+/// non-simultaneous `UILongPressGestureRecognizer`, so a touch that moves more
+/// than `FlowerRateControl.allowableMovement` before
+/// `FlowerRateControl.holdBeforeDrag` elapses fails this recognizer and the
+/// pager's own pan takes the swipe -- the conflict the old `DragGesture`
+/// scrub lost, since a drag gesture engages on movement in any direction.
+/// Once it begins, it tracks freely until release; the last bin stays
+/// shown afterwards, the same as a tap leaves it.
+///
+/// A normal-speed tap often lasts longer than the 0.06s hold, so this
+/// recognizer handles most taps too, not `binTapGesture`. To keep "tap the
+/// shown bin again to hide it" working, a press that started on the
+/// already-shown bin and never left it hides the tooltip on release.
+private struct BinScrubRecognizer: UIGestureRecognizerRepresentable {
+    let count: Int
+    let width: CGFloat
+    @Binding var hover: Int?
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var hoverAtPress: Int?
+        var startIndex: Int?
+        var leftStartBin = false
+
+        // Same as `FlowerPressDragRecognizer.Coordinator`: every non-pan
+        // recognizer (the tap below included) waits for this one to resolve.
+        // Pan is left to plain priority so a real swipe still reaches the pager.
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            !(otherGestureRecognizer is UIPanGestureRecognizer)
+        }
+    }
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIGestureRecognizer(context: Context) -> UILongPressGestureRecognizer {
+        let recognizer = UILongPressGestureRecognizer()
+        recognizer.minimumPressDuration = FlowerRateControl.holdBeforeDrag
+        recognizer.allowableMovement = FlowerRateControl.allowableMovement
+        recognizer.delegate = context.coordinator
+        return recognizer
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: UILongPressGestureRecognizer, context: Context) {
+        guard count > 0, width > 0 else { return }
+        let x = context.converter.location(in: .local).x
+        let i = min(count - 1, max(0, Int((x / width) * CGFloat(count))))
+        let c = context.coordinator
+        switch recognizer.state {
+        case .began:
+            c.hoverAtPress = hover
+            c.startIndex = i
+            c.leftStartBin = false
+            if hover != i { Haptics.selection() }
+            hover = i
+        case .changed:
+            if i != c.startIndex { c.leftStartBin = true }
+            if hover != i {
+                Haptics.selection()
+                hover = i
+            }
+        case .ended:
+            if !c.leftStartBin, c.hoverAtPress == c.startIndex { hover = nil }
+        default:
+            break
+        }
+    }
+}
+
 /// `1 ▓▓▓▓ 5 · label` gradient swatch stating the score ramp's scale --
 /// reused by the score chart and the taste map's legend. Port of web's
 /// `RampLegend`.
@@ -1855,6 +1928,7 @@ private struct YearChartView: View {
                 }
                 .contentShape(Rectangle())
                 .simultaneousGesture(binTapGesture(count: years.count, width: geo.size.width, hover: $hover))
+                .gesture(BinScrubRecognizer(count: years.count, width: geo.size.width, hover: $hover))
             }
             .frame(height: 96)
             .padding(.top, 16)
@@ -2017,6 +2091,7 @@ private struct ScoreRampChartView: View {
                     }
                     .contentShape(Rectangle())
                     .simultaneousGesture(binTapGesture(count: bins.count, width: geo.size.width, hover: $hover))
+                    .gesture(BinScrubRecognizer(count: bins.count, width: geo.size.width, hover: $hover))
                 }
                 .frame(height: 88)
                 .padding(.top, mean != nil ? 16 : 0)
