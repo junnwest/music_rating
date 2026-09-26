@@ -260,13 +260,25 @@ export async function searchReleaseGroupsByQuery(luceneQuery: string, limit = 10
   return { count: data?.count ?? 0, groups };
 }
 
+/**
+ * An artist's ISO 3166-1 country. MB's own `country` is only set when the
+ * artist's area IS a country; when the area is a subdivision it's null, but
+ * the area still carries an ISO 3166-2 code ("JP-13") whose prefix is the
+ * country. The birthplace (begin-area) is deliberately not used — where an
+ * artist was born isn't where they're from as an act.
+ */
+export function artistCountry(a: any): string | null {
+  const c = a?.country ?? a?.area?.['iso-3166-1-codes']?.[0] ?? a?.area?.['iso-3166-2-codes']?.[0]?.slice(0, 2);
+  return typeof c === 'string' && /^[A-Z]{2}$/i.test(c) ? c.toUpperCase() : null;
+}
+
 export async function getArtist(mbid: string): Promise<MbArtistDetail | null> {
   const a = await mbGet(`/artist/${mbid}?inc=${enc('aliases genres')}`);
   if (!a) return null;
   return {
     id: a.id,
     name: a.name,
-    country: a.country ?? null,
+    country: artistCountry(a),
     area: a.area?.name ?? null,
     disambiguation: a.disambiguation ?? null,
     aliases: (a.aliases ?? []).map((al: any): MbAlias => ({

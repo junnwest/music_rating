@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -28,9 +28,11 @@ import { loadMixEntries, mixEntryHref, mixEntryRef, type MixEntry } from '../../
 /**
  * P3 — the Mix Dock: a browser-style side panel on the right edge.
  *
- * Closed, it's a slim rail (bookmark + item count). Open,
- * it pushes the page at ≥xl and overlays below that; hidden under md, where the
- * "Saved to…" dropdown is the whole UX. While it's open, the dock's mix *is*
+ * Closed, it's a slim rail (bookmark + item count) on every page of the app
+ * shell, so page layouts don't jump between pages that have it and pages that
+ * don't. Open, the panel slides in; at ≥xl it pushes the page by only as much as
+ * it would otherwise cover (neededPush), below that it overlays. Hidden under
+ * md, where the "Saved to…" dropdown is the whole UX. While it's open, the dock's mix *is*
  * the save target (D1), so every bookmark in the app lands here — with a cover
  * flying in from the button that saved it.
  *
@@ -41,13 +43,6 @@ const RAIL = 48;
 const MIN_W = 280;
 const MAX_W = 480;
 const DEFAULT_W = 320;
-
-/** Where saving makes sense — the dock only appears on these pages. */
-const DOCK_PATHS = ['/', '/search', '/album', '/artist', '/song', '/charts', '/mix', '/profile'];
-
-function onDockPage(pathname: string) {
-  return DOCK_PATHS.some((p) => (p === '/' ? pathname === '/' : pathname.startsWith(p)));
-}
 
 const prefsKey = (userId: string) => `sj-mix-dock:${userId}`;
 
@@ -96,8 +91,17 @@ function useMedia(query: string) {
  */
 function neededPush(panelW: number): number {
   const main = document.querySelector<HTMLElement>('[data-dock-main]');
-  const container = main?.firstElementChild as HTMLElement | null | undefined;
-  if (!main || !container) return panelW;
+  if (!main) return panelW;
+  // The page's width-limited container: the first element down the
+  // first-child chain with a max-width (pages may wrap it in a plain div).
+  let container = main.firstElementChild as HTMLElement | null;
+  for (let el = container, depth = 0; el && depth < 4; el = el.firstElementChild as HTMLElement | null, depth++) {
+    if (getComputedStyle(el).maxWidth !== 'none') {
+      container = el;
+      break;
+    }
+  }
+  if (!container) return panelW;
   const vw = document.documentElement.clientWidth;
   const colRect = main.getBoundingClientRect();
   const rect = container.getBoundingClientRect();
@@ -144,7 +148,7 @@ export default function MixDock() {
   const [prefs, setPrefs] = useState({ open: false, width: DEFAULT_W });
   const [loadedPrefsFor, setLoadedPrefsFor] = useState<string | null>(null);
 
-  const available = !!userId && isMd && onDockPage(pathname);
+  const available = !!userId && isMd;
   const open = available && prefs.open;
 
   useEffect(() => {
@@ -292,8 +296,11 @@ export default function MixDock() {
   // ≥xl the open dock pushes the page — but only by what the panel would
   // otherwise cover (see neededPush). Re-measured on resize, route change and
   // whenever the page swaps its top-level container (skeleton → content).
+  // Layout effect + a RAIL fallback: the width goes rail → measured push in one
+  // transition. (Falling back to the full panel width and then correcting was
+  // the visible "bounce" on open.)
   const [push, setPush] = useState<number | null>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open || !isXl) {
       setPush(null);
       return;
@@ -323,7 +330,7 @@ export default function MixDock() {
     <aside
       aria-label={t('sj.dock.title')}
       className="hidden md:block sticky top-0 h-screen shrink-0 z-30 transition-[width] duration-200 ease-out"
-      style={{ width: open && isXl ? push ?? width : RAIL }}
+      style={{ width: open && isXl ? push ?? RAIL : RAIL }}
     >
       {/* Rail — always there; the open panel covers it. Clipped: the rail sits
           on the viewport's right edge, and the count badge's save pulse
@@ -351,93 +358,103 @@ export default function MixDock() {
         </button>
       </div>
 
-      {open && (
+      {/* Panel — always mounted and slid in/out, so open and close animate the
+          same way on every page. `fixed` (the aside has no transform, so this
+          pins to the viewport's right edge exactly like the sticky aside): a
+          fixed box slid off-screen adds no page overflow, unlike an absolute
+          one, which would jolt the layout sideways. Hidden (not focusable)
+          once slid out. */}
+      <div
+        aria-hidden={!open}
+        className={`fixed inset-y-0 right-0 z-10 flex flex-col bg-page border-l border-divider ${
+          isXl && push != null && push >= width ? '' : 'shadow-2xl'
+        }`}
+        style={{
+          width,
+          transform: open ? 'translateX(0)' : 'translateX(100%)',
+          visibility: open ? 'visible' : 'hidden',
+          transition: `transform 220ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear ${open ? '0ms' : '220ms'}`,
+        }}
+        onDragOver={onDragOver}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropping(false);
+        }}
+        onDrop={onDrop}
+      >
+        {/* Resize handle */}
         <div
-          className={`absolute inset-y-0 right-0 z-10 flex flex-col bg-page border-l border-divider ${
-            isXl && push != null && push >= width ? '' : 'shadow-2xl'
-          }`}
-          style={{ width }}
-          onDragOver={onDragOver}
-          onDragLeave={(e) => {
-            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropping(false);
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t('sj.dock.resize')}
+          className="absolute inset-y-0 -left-1 w-2 cursor-col-resize z-10 hover:bg-accent/20 active:bg-accent/30 transition"
+          onPointerDown={(e) => {
+            resizeRef.current = { startX: e.clientX, startW: width };
+            (e.target as HTMLElement).setPointerCapture(e.pointerId);
           }}
-          onDrop={onDrop}
-        >
-          {/* Resize handle */}
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label={t('sj.dock.resize')}
-            className="absolute inset-y-0 -left-1 w-2 cursor-col-resize z-10 hover:bg-accent/20 active:bg-accent/30 transition"
-            onPointerDown={(e) => {
-              resizeRef.current = { startX: e.clientX, startW: width };
-              (e.target as HTMLElement).setPointerCapture(e.pointerId);
-            }}
-            onPointerMove={(e) => {
-              const r = resizeRef.current;
-              if (!r) return;
-              setLiveWidth(Math.min(MAX_W, Math.max(MIN_W, r.startW + (r.startX - e.clientX))));
-            }}
-            onPointerUp={endResize}
-            onPointerCancel={endResize}
-          />
+          onPointerMove={(e) => {
+            const r = resizeRef.current;
+            if (!r) return;
+            setLiveWidth(Math.min(MAX_W, Math.max(MIN_W, r.startW + (r.startX - e.clientX))));
+          }}
+          onPointerUp={endResize}
+          onPointerCancel={endResize}
+        />
 
-          <DockHeader
-            onClose={() => updatePrefs({ open: false })}
-            onPick={setTarget}
-            onCreate={async (name) => {
-              const mix = await createMix(name);
-              if (mix) setTarget(mix.id);
-              return !!mix;
-            }}
-          />
+        <DockHeader
+          onClose={() => updatePrefs({ open: false })}
+          onPick={setTarget}
+          onCreate={async (name) => {
+            const mix = await createMix(name);
+            if (mix) setTarget(mix.id);
+            return !!mix;
+          }}
+        />
 
-          <div ref={listRef} className="relative flex-1 overflow-y-auto">
-            {failed ? (
-              <p className="px-4 py-6 text-[12.5px] text-muted">{t('sj.common.loadError')}</p>
-            ) : entries === null || mixes === null ? (
-              <div className="px-3 py-2 space-y-2" aria-hidden>
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-2.5">
-                    <span className="w-10 h-10 rounded-md bg-surface animate-pulse" />
-                    <span className="flex-1 space-y-1.5">
-                      <span className="block h-2.5 w-3/4 rounded bg-surface animate-pulse" />
-                      <span className="block h-2 w-1/2 rounded bg-surface animate-pulse" />
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : entries.length === 0 ? (
-              <div className="px-6 py-12 text-center">
-                <Bookmark size={28} className="mx-auto text-divider" />
-                <p className="mt-3 text-[13px] font-semibold text-ink">{t('sj.mix.empty')}</p>
-                <p className="mt-1 text-[12px] text-muted">{t('sj.dock.emptyDesc')}</p>
-              </div>
-            ) : (
-              <DockList
-                entries={entries}
-                mixId={targetId!}
-                highlight={highlight}
-                onRemove={async (entry) => {
-                  const before = entries;
-                  setEntries((prev) => prev?.filter((x) => x.id !== entry.id) ?? prev);
-                  const ok = await remove(mixEntryRef(entry), targetId!, { coverUrl: entry.coverUrl });
-                  // Put the row back if the delete didn't land.
-                  if (!ok) setEntries(before);
-                }}
-              />
-            )}
-            {dropping && (
-              <div className="absolute inset-2 rounded-xl border-2 border-dashed border-accent bg-accent/10 grid place-items-center text-[13px] font-semibold text-accent pointer-events-none">
-                {t('sj.dock.dropHere').replace('{mix}', mixName(target))}
-              </div>
-            )}
-          </div>
-          <p className="px-4 py-2 border-t border-divider text-[11px] text-muted">
-            {t('sj.dock.hint')}
-          </p>
+        <div ref={listRef} className="relative flex-1 overflow-y-auto">
+          {failed ? (
+            <p className="px-4 py-6 text-[12.5px] text-muted">{t('sj.common.loadError')}</p>
+          ) : entries === null || mixes === null ? (
+            <div className="px-3 py-2 space-y-2" aria-hidden>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-2.5">
+                  <span className="w-10 h-10 rounded-md bg-surface animate-pulse" />
+                  <span className="flex-1 space-y-1.5">
+                    <span className="block h-2.5 w-3/4 rounded bg-surface animate-pulse" />
+                    <span className="block h-2 w-1/2 rounded bg-surface animate-pulse" />
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : entries.length === 0 ? (
+            <div className="px-6 py-12 text-center">
+              <Bookmark size={28} className="mx-auto text-divider" />
+              <p className="mt-3 text-[13px] font-semibold text-ink">{t('sj.mix.empty')}</p>
+              <p className="mt-1 text-[12px] text-muted">{t('sj.dock.emptyDesc')}</p>
+            </div>
+          ) : (
+            <DockList
+              entries={entries}
+              mixId={targetId!}
+              highlight={highlight}
+              onRemove={async (entry) => {
+                const before = entries;
+                setEntries((prev) => prev?.filter((x) => x.id !== entry.id) ?? prev);
+                const ok = await remove(mixEntryRef(entry), targetId!, { coverUrl: entry.coverUrl });
+                // Put the row back if the delete didn't land.
+                if (!ok) setEntries(before);
+              }}
+            />
+          )}
+          {dropping && (
+            <div className="absolute inset-2 rounded-xl border-2 border-dashed border-accent bg-accent/10 grid place-items-center text-[13px] font-semibold text-accent pointer-events-none">
+              {t('sj.dock.dropHere').replace('{mix}', mixName(target))}
+            </div>
+          )}
         </div>
-      )}
+        <p className="px-4 py-2 border-t border-divider text-[11px] text-muted">
+          {t('sj.dock.hint')}
+        </p>
+      </div>
     </aside>
   );
 }

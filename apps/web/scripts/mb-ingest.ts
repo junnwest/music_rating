@@ -243,6 +243,13 @@ async function findOrCreateArtistByMbid(db: DB, detail: MbArtistDetail): Promise
       await db.from('artists').update({ name: detail.name })
         .eq('id', existing.artist_id).neq('name', detail.name);
     }
+    // Same self-heal for a missing country: 60k+ rows were created before MB had one (or
+    // via a path that never set it), so every re-poll fills it in. Only ever fills a NULL
+    // -- a country already on the row (possibly curated) is never overwritten.
+    if (detail.country) {
+      await db.from('artists').update({ country: detail.country })
+        .eq('id', existing.artist_id).is('country', null);
+    }
     return { id: existing.artist_id as string, isNew: false };
   }
 

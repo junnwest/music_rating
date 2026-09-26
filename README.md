@@ -42,6 +42,8 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **🌍 (2026-09-26, Windows) — `artists.country` backfill available: `npm run backfill:artist-country`** (60,550 artists lack a country; MB has one for nearly all). Rated artists done (13/14). The full backlog is ~17h at MB's 1 req/s — run it on the pipeline device (or in `--limit=` chunks) when convenient; the pipeline also self-heals on re-poll once it pulls this code.
+>
 > **🔧 (2026-09-26, Windows, later) — Mix Dock stale-cover fix + default mix names; album page comments → "Ratings" (all ratings, commented first; `20260926000005_album_ratings_list.sql` ✅ applied); album comment box has a saved/edit state.** Needs a signed-in browser pass. See SESSIONS.md.
 >
 > **🔀 (2026-09-26, Windows) — PR #1 (genre taxonomy) + PR #2 (UX round 2) merged into `main` and deployed.** Comments migration renumbered to `20260926000003`, ingest-priorities to `...0004` (filenames only). Song/track community stats now use the anonymous-scores RPC so private accounts count. Still needs: browser click-through of UX round 2 on prod, iOS build. See SESSIONS.md 2026-09-26 (Windows, merge).

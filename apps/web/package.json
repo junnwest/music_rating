@@ -25,6 +25,7 @@
     "seed:missing:dry": "tsx --env-file=.env.local scripts/seed-missing-artists.ts --dry-run",
     "seed:missing-from-external": "tsx --env-file=.env.local scripts/seed-missing-from-external.ts",
     "seed:missing-from-external:dry": "tsx --env-file=.env.local scripts/seed-missing-from-external.ts --dry-run",
+    "backfill:artist-country": "tsx --env-file=.env.local scripts/backfill-artist-country.ts",
     "backfill:external-mbids": "tsx --env-file=.env.local scripts/backfill-external-mbids.ts",
     "backfill:external-mbids:dry": "tsx --env-file=.env.local scripts/backfill-external-mbids.ts --dry-run",
     "backfill:phonetic-ko": "tsx --env-file=.env.local scripts/backfill-phonetic-ko.ts",
