@@ -275,8 +275,11 @@ export default function MixDock() {
       className="hidden md:block sticky top-0 h-screen shrink-0 z-30 transition-[width] duration-200 ease-out"
       style={{ width: open && isXl ? width : RAIL }}
     >
-      {/* Rail — always there; the open panel covers it. */}
-      <div className="absolute inset-y-0 right-0 flex flex-col items-center gap-2 pt-4 border-l border-divider bg-page" style={{ width: RAIL }}>
+      {/* Rail — always there; the open panel covers it. Clipped: the rail sits
+          on the viewport's right edge, and the count badge's save pulse
+          (scale 1.45) otherwise pokes past it, briefly overflowing the page
+          horizontally and jolting the whole layout sideways mid-animation. */}
+      <div className="absolute inset-y-0 right-0 flex flex-col items-center gap-2 pt-4 border-l border-divider bg-page overflow-hidden" style={{ width: RAIL }}>
         <button
           ref={railBtnRef}
           type="button"
