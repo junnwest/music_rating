@@ -23,7 +23,7 @@ Build order: **P1 first** (every "add to mix" surface consumes it) →
 | P6 | Album page — ranked comments section | — | 🟡 built, migration applied |
 | P7 | Song page — full redesign | P1 | 🟡 built |
 | P8 | Taste — replace "scene" with artist country | — | 🟡 built |
-| P9 | Popular searches (new) at top of Add page, from clicked/viewed entities | P2 (banner removed) | ⬜ **⚠ confirm** |
+| P9 | Popular searches (new) at top of Add page, from clicked/viewed entities | P2 (banner removed) | ⏸ deferred by Jun (2026-09-26) |
 
 ---
 
@@ -212,6 +212,8 @@ Acceptance: picking an entity from search records one row. The chip row reflects
 - **2026-09-26** — D1 target order confirmed (dock → last used → Listen Later). Last-used mix lives in **localStorage**. Quick Add is removed on **web + iOS** (DB RPCs stay until old iOS builds age out). The Mix Dock is **hidden on mobile**. "Popular searches" = the top of the Add page, but nothing search-based exists there, so P9 builds it new (⚠ Jun to confirm that's the intent).
 
 ## ⚠ Still open
+
+- **2026-09-26:** Jun chose to skip P9 for now (not built). P1–P8 committed on branch `ux-round-2`.
 
 - **P9** — confirm that a new "Popular searches" chip row (ranked by clicked entities) is what you meant, rather than a change to the existing "Popular" album shelf.
 - **P8** — default: only the country chart changes; the taste-world labels ("2020s · Korean scene") keep using scenes, because clustering depends on them. Say so if the labels should switch too.
