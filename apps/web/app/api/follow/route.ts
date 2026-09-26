@@ -17,12 +17,21 @@ export async function POST(req: NextRequest) {
   const authedId = await getAuthedUserId(req.headers.get('Authorization'));
   if (!authedId || authedId !== followerId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
+  // A follow on a private account is turned into a follow_requests row by
+  // a DB trigger (migration 20260926000000), so check which one happened.
   const { error } = await supabase
     .from('follows')
     .insert({ follower_id: followerId, following_id: followingId });
 
   if (error && error.code !== '23505') return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+
+  const { data: follow } = await supabase
+    .from('follows')
+    .select('follower_id')
+    .eq('follower_id', followerId)
+    .eq('following_id', followingId)
+    .maybeSingle();
+  return NextResponse.json({ ok: true, state: follow ? 'following' : 'requested' });
 }
 
 export async function DELETE(req: NextRequest) {
@@ -35,11 +44,11 @@ export async function DELETE(req: NextRequest) {
   const authedId = await getAuthedUserId(req.headers.get('Authorization'));
   if (!authedId || authedId !== followerId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  await supabase
-    .from('follows')
-    .delete()
-    .eq('follower_id', followerId)
-    .eq('following_id', followingId);
+  // Unfollow, or withdraw a pending request.
+  await Promise.all([
+    supabase.from('follows').delete().eq('follower_id', followerId).eq('following_id', followingId),
+    supabase.from('follow_requests').delete().eq('requester_id', followerId).eq('target_id', followingId),
+  ]);
 
   return NextResponse.json({ ok: true });
 }

@@ -86,7 +86,11 @@ final class UserProfileViewModel {
 
     private(set) var followerCount  = 0
     private(set) var followingCount = 0
-    private(set) var isFollowing = false
+    private(set) var ratingsCount   = 0
+    private(set) var followState: FollowState = .none
+    private(set) var isPrivate = false
+    private(set) var isDeactivated = false
+    var isFollowing: Bool { followState == .following }
     private(set) var isBlocked   = false
     var isTogglingFollow = false
     var isTogglingBlock  = false
@@ -114,14 +118,19 @@ final class UserProfileViewModel {
 
         async let profileFetch: OtherProfile? = loadProfile()
         async let accessFetch: ProfileSubtabAccess = loadAccess()
-        async let countsFetch: (Int, Int, Bool, Bool) = loadCounts()
+        async let statusFetch: FollowService.Status? = FollowService.status(of: userId)
+        async let blockedFetch: Bool = loadIsBlocked()
 
-        let (p, a, (fwer, fwing, following, blocked)) = await (profileFetch, accessFetch, countsFetch)
+        let (p, a, status, blocked) = await (profileFetch, accessFetch, statusFetch, blockedFetch)
         profile        = p
         access         = a
-        followerCount  = fwer
-        followingCount = fwing
-        isFollowing    = following
+        followerCount  = status?.followersCount ?? 0
+        followingCount = status?.followingCount ?? 0
+        ratingsCount   = status?.ratingsCount ?? 0
+        followState    = status?.state ?? .none
+        isPrivate      = status?.isPrivate ?? false
+        isDeactivated  = (status?.isDeactivated ?? false) && userId != currentUserId
+        if isDeactivated { isLoading = false; return }
         isBlocked      = blocked
 
         // Each RPC re-checks visibility itself (returns empty if disallowed)
@@ -279,26 +288,12 @@ final class UserProfileViewModel {
             .value) ?? .allHidden
     }
 
-    private func loadCounts() async -> (Int, Int, Bool, Bool) {
-        async let followersResp = supabase.from("follows").select("*", count: .exact).eq("following_id", value: userId).execute()
-        async let followingResp = supabase.from("follows").select("*", count: .exact).eq("follower_id", value: userId).execute()
-
-        let fwer  = (try? await followersResp)?.count ?? 0
-        let fwing = (try? await followingResp)?.count ?? 0
-
-        var following = false
-        var blocked   = false
-        if let cid = currentUserId {
-            struct FollowRow: Codable { let followerId: UUID; enum CodingKeys: String, CodingKey { case followerId = "follower_id" } }
-            struct BlockRow:  Codable { let blockedId: UUID;  enum CodingKeys: String, CodingKey { case blockedId  = "blocked_id"  } }
-            let followRows: [FollowRow] = (try? await supabase.from("follows").select("follower_id")
-                .eq("follower_id", value: cid).eq("following_id", value: userId).execute().value) ?? []
-            following = !followRows.isEmpty
-            let blockRows: [BlockRow] = (try? await supabase.from("blocked_users").select("blocked_id")
-                .eq("blocker_id", value: cid).eq("blocked_id", value: userId).execute().value) ?? []
-            blocked = !blockRows.isEmpty
-        }
-        return (fwer, fwing, following, blocked)
+    private func loadIsBlocked() async -> Bool {
+        guard let cid = currentUserId else { return false }
+        struct BlockRow: Codable { let blockedId: UUID; enum CodingKeys: String, CodingKey { case blockedId = "blocked_id" } }
+        let blockRows: [BlockRow] = (try? await supabase.from("blocked_users").select("blocked_id")
+            .eq("blocker_id", value: cid).eq("blocked_id", value: userId).execute().value) ?? []
+        return !blockRows.isEmpty
     }
 
     func toggleBlock() async {
@@ -322,36 +317,22 @@ final class UserProfileViewModel {
         }
     }
 
+    /// Follow / Request when not following; unfollow or withdraw the
+    /// request otherwise. Unfollowing a private account locks it again,
+    /// so the view confirms that case before calling this.
     func toggleFollow() async {
-        guard let cid = currentUserId else { return }
+        guard currentUserId != nil else { return }
         isTogglingFollow = true
         defer { isTogglingFollow = false }
-        do {
-            if isFollowing {
-                try await supabase.from("follows").delete()
-                    .eq("follower_id", value: cid)
-                    .eq("following_id", value: userId)
-                    .execute()
-                isFollowing = false
-                followerCount = max(0, followerCount - 1)
-            } else {
-                struct Payload: Encodable {
-                    let followerId: UUID; let followingId: UUID
-                    enum CodingKeys: String, CodingKey {
-                        case followerId = "follower_id"; case followingId = "following_id"
-                    }
-                }
-                try await supabase.from("follows")
-                    .insert(Payload(followerId: cid, followingId: userId))
-                    .execute()
-                isFollowing = true
-                followerCount += 1
-            }
-            NotificationCenter.default.post(name: .followChanged, object: nil)
-            // A follow/unfollow can change what's visible (Private ==
-            // followers-only) -- reload access + whatever just unlocked.
-            await load()
-        } catch { /* silently handle */ }
+        if followState == .none {
+            followState = await FollowService.follow(userId)
+        } else {
+            await FollowService.unfollow(userId)
+            followState = .none
+        }
+        // Following/unfollowing changes what's visible -- reload access,
+        // counts and whatever just unlocked or locked.
+        await load()
     }
 
     func toggleLike(ratingId: UUID) async {
@@ -398,6 +379,7 @@ struct UserProfileView: View {
     @State private var ratingDisplayMode: RatingDisplayMode = .posts
     @State private var showFollowModal = false
     @State private var followModalInitTab: FollowMode = .followers
+    @State private var confirmPrivateUnfollow = false
     // Same height-floor purpose as ProfileView's identical pair -- see SwipeableTabPager's
     // minHeight parameter.
     @State private var heroHeight: CGFloat = 0
@@ -415,13 +397,31 @@ struct UserProfileView: View {
         Group {
             if vm.isLoading {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if vm.isDeactivated {
+                VStack(spacing: 12) {
+                    Image("icon-user")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 36, height: 36)
+                        .foregroundStyle(Color.sjBorder)
+                        .accessibilityHidden(true)
+                    Text("This account isn't available")
+                        .font(.jakarta(15, weight: .semibold))
+                        .foregroundStyle(Color.sjInk)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if !vm.access.profileVisible {
                 ScrollView {
                     profileHeaderCore
+                    // The header already carries the Follow/Requested button.
                     SubtabLockedView(
-                        headline: String(format: String(localized: "@%@'s profile is private"), vm.profile?.handle ?? initialHandle),
+                        headline: String(localized: "This account is private"),
+                        subtitle: vm.followState == .requested
+                            ? String(localized: "You'll see their ratings and Mixes once they approve your request.")
+                            : String(localized: "Follow this account to see their ratings and Mixes."),
                         isFollowing: vm.isFollowing,
-                        onFollow: { Task { await vm.toggleFollow() } }
+                        showsFollowButton: false,
+                        onFollow: {}
                     )
                     .padding(.top, 20)
                 }
@@ -461,6 +461,15 @@ struct UserProfileView: View {
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showFollowModal) {
             FollowListModal(userId: userId, initialTab: followModalInitTab)
+        }
+        .confirmationDialog(
+            String(format: String(localized: "Unfollow @%@?"), vm.profile?.handle ?? initialHandle),
+            isPresented: $confirmPrivateUnfollow,
+            titleVisibility: .visible
+        ) {
+            Button("Unfollow", role: .destructive) { Task { await vm.toggleFollow() } }
+        } message: {
+            Text("Their ratings and Mixes will be hidden until they approve a new request.")
         }
         .task { await vm.load() }
     }
@@ -516,7 +525,7 @@ struct UserProfileView: View {
                     .padding(.horizontal, 32)
             }
 
-            if vm.access.profileVisible { statsRow }
+            statsRow
 
             if let cid = currentUserId, cid != userId {
                 if vm.isBlocked {
@@ -532,7 +541,8 @@ struct UserProfileView: View {
 
     private var statsRow: some View {
         HStack(spacing: 24) {
-            statCell(value: vm.catalogAlbums.count + vm.catalogSongs.count, label: "Ratings")
+            statCell(value: vm.ratingsCount, label: "Ratings")
+            // A private account's lists stay closed to non-followers.
             Button {
                 followModalInitTab = .followers
                 showFollowModal = true
@@ -540,6 +550,7 @@ struct UserProfileView: View {
                 statCell(value: vm.followerCount, label: "Followers")
             }
             .buttonStyle(.plain)
+            .disabled(!vm.access.profileVisible)
             Button {
                 followModalInitTab = .following
                 showFollowModal = true
@@ -547,6 +558,7 @@ struct UserProfileView: View {
                 statCell(value: vm.followingCount, label: "Following")
             }
             .buttonStyle(.plain)
+            .disabled(!vm.access.profileVisible)
         }
     }
 
@@ -581,22 +593,35 @@ struct UserProfileView: View {
 
     private var followButton: some View {
         Button {
-            Task { await vm.toggleFollow() }
+            if vm.followState == .following && vm.isPrivate {
+                confirmPrivateUnfollow = true
+            } else {
+                Task { await vm.toggleFollow() }
+            }
         } label: {
             if vm.isTogglingFollow {
                 ProgressView().scaleEffect(0.8).frame(width: 130, height: 36)
             } else {
-                Text(vm.isFollowing ? "Following" : "Follow")
+                let active = vm.followState != .none
+                Text(followButtonLabel)
                     .font(.jakarta(14, weight: .semibold))
-                    .foregroundStyle(vm.isFollowing ? Color.sjInk : .white)
+                    .foregroundStyle(active ? Color.sjInk : .white)
                     .frame(width: 130, height: 36)
-                    .background(vm.isFollowing ? Color.sjBorder.opacity(0.4) : Color.sjAmber)
+                    .background(active ? Color.sjBorder.opacity(0.4) : Color.sjAmber)
                     .clipShape(RoundedRectangle(cornerRadius: 18))
             }
         }
         .buttonStyle(.plain)
-        .animation(.easeInOut(duration: 0.15), value: vm.isFollowing)
-        .sensoryFeedback(.impact(weight: .light), trigger: vm.isFollowing)
+        .animation(.easeInOut(duration: 0.15), value: vm.followState)
+        .sensoryFeedback(.impact(weight: .light), trigger: vm.followState)
+    }
+
+    private var followButtonLabel: LocalizedStringKey {
+        switch vm.followState {
+        case .following: return "Following"
+        case .requested: return "Requested"
+        case .none:      return vm.isPrivate ? "Request" : "Follow"
+        }
     }
 
     // MARK: Tab bar (mirrors ProfileView's own icon tab bar)
@@ -889,7 +914,9 @@ struct UserProfileView: View {
 // following is the literal unlock path, hence the Follow button.
 struct SubtabLockedView: View {
     let headline: String
+    var subtitle: String = String(localized: "Private accounts are only visible to followers.")
     let isFollowing: Bool
+    var showsFollowButton = true
     let onFollow: () -> Void
 
     var body: some View {
@@ -904,12 +931,12 @@ struct SubtabLockedView: View {
                 .foregroundStyle(Color.sjInk)
                 .multilineTextAlignment(.center)
 
-            Text("Private accounts are only visible to followers.")
+            Text(subtitle)
                 .font(.jakarta(13))
                 .foregroundStyle(Color.sjMuted)
                 .multilineTextAlignment(.center)
 
-            if !isFollowing {
+            if showsFollowButton && !isFollowing {
                 Button(action: onFollow) {
                     Text("Follow")
                         .font(.jakarta(14, weight: .semibold))

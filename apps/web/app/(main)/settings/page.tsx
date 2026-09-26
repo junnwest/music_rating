@@ -32,6 +32,9 @@ export default function SettingsPage() {
   const [profileSaved, setProfileSaved] = useState(false);
 
   const [showSignOut, setShowSignOut] = useState(false);
+  const [showDeactivate, setShowDeactivate] = useState(false);
+  const [deactivating, setDeactivating] = useState(false);
+  const [deactivateError, setDeactivateError] = useState<string | null>(null);
   const [showDelete, setShowDelete] = useState(false);
   const [deleteInput, setDeleteInput] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -60,6 +63,21 @@ export default function SettingsPage() {
     setSavingProfile(false);
     setProfileSaved(true);
     setTimeout(() => setProfileSaved(false), 2000);
+  }
+
+  // Hides the account everywhere (migration 20260926000002); signing in
+  // again offers Reactivate.
+  async function deactivateAccount() {
+    if (!supabase) return;
+    setDeactivating(true);
+    setDeactivateError(null);
+    const { error } = await supabase.rpc('deactivate_my_account');
+    if (!error) {
+      await signOut();
+      return;
+    }
+    setDeactivateError(t('sj.settings.deactivateFailed'));
+    setDeactivating(false);
   }
 
   async function deleteAccount() {
@@ -207,17 +225,28 @@ export default function SettingsPage() {
             value={profile.profile_visibility ?? 'Public'}
             onChange={(v) => patch({ profile_visibility: v })}
           />
-          <VisibilityRow
-            label={t('sj.settings.catalogVisibility')}
-            value={profile.catalog_visibility ?? 'Public'}
-            onChange={(v) => patch({ catalog_visibility: v })}
-          />
-          <VisibilityRow
-            label={t('sj.settings.listenLaterVisibility')}
-            value={profile.library_visibility ?? 'Public'}
-            onChange={(v) => patch({ library_visibility: v })}
-          />
+          {/* A private account hides everything from non-followers, so the
+              per-section overrides only matter for public ones. */}
+          {profile.profile_visibility !== 'Private' && (
+            <>
+              <VisibilityRow
+                label={t('sj.settings.catalogVisibility')}
+                value={profile.catalog_visibility ?? 'Public'}
+                onChange={(v) => patch({ catalog_visibility: v })}
+              />
+              <VisibilityRow
+                label={t('sj.settings.listenLaterVisibility')}
+                value={profile.library_visibility ?? 'Public'}
+                onChange={(v) => patch({ library_visibility: v })}
+              />
+            </>
+          )}
         </div>
+        <p className="px-4 py-3 text-[12px] text-muted border-t border-divider">
+          {profile.profile_visibility === 'Private'
+            ? t('sj.settings.privateHint')
+            : t('sj.settings.publicHint')}
+        </p>
       </Section>
 
       {/* ── Support + Legal ── */}
@@ -237,6 +266,15 @@ export default function SettingsPage() {
             className="w-full px-4 py-3.5 text-left text-[14px] font-medium text-red-500 hover:bg-page/60 transition"
           >
             {t('sj.settings.signOut')}
+          </button>
+          <button
+            onClick={() => {
+              setDeactivateError(null);
+              setShowDeactivate(true);
+            }}
+            className="w-full px-4 py-3.5 text-left text-[14px] font-medium text-red-500 hover:bg-page/60 transition"
+          >
+            {t('sj.settings.deactivateAccount')}
           </button>
           <button
             onClick={() => {
@@ -270,6 +308,27 @@ export default function SettingsPage() {
             className="px-4 py-2 rounded-[10px] bg-red-500 text-white text-[13.5px] font-semibold hover:opacity-90 transition"
           >
             {t('sj.settings.signOut')}
+          </button>
+        </div>
+      </Modal>
+
+      {/* Deactivate account */}
+      <Modal
+        open={showDeactivate}
+        onClose={() => !deactivating && setShowDeactivate(false)}
+        title={t('sj.settings.deactivateAccount')}
+        maxWidth="max-w-sm"
+      >
+        <div className="px-5 pb-5">
+          <p className="text-[13.5px] text-muted">{t('sj.settings.deactivateWarning')}</p>
+          <p className="mt-2 text-[13.5px] text-muted">{t('sj.settings.deactivateReturn')}</p>
+          {deactivateError && <p className="mt-2 text-[12.5px] text-red-500">{deactivateError}</p>}
+          <button
+            onClick={deactivateAccount}
+            disabled={deactivating}
+            className="mt-4 w-full py-3 rounded-xl bg-red-500 text-white text-[15px] font-semibold hover:opacity-90 disabled:opacity-40 transition"
+          >
+            {deactivating ? '…' : t('sj.settings.deactivateMyAccount')}
           </button>
         </div>
       </Modal>

@@ -27,7 +27,7 @@ struct MainTabView: View {
     @State private var selectedTab: AppTab = .home
     @State private var homeScrollTrigger   = UUID()
     @State private var showBadgeRedeem     = false
-    // Set true by SearchView's Quick Add mode-gate popup ("Go to Settings"); ProfileView
+    // Set true by the Add tab's Connect Spotify/Apple Music rows (onGoToSettings); ProfileView
     // watches this binding and auto-opens its own Settings sheet, then resets it to false.
     @State private var pendingOpenSettings = false
 

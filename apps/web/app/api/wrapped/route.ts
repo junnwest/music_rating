@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../lib/supabaseServer';
+import { isSelfRequest } from '../../../lib/privateAccounts';
 
 export async function GET(req: NextRequest) {
   const userId = req.nextUrl.searchParams.get('userId');
   const yearParam = req.nextUrl.searchParams.get('year');
   if (!userId) return NextResponse.json({ error: 'Missing userId' }, { status: 400 });
+
+  // Returns this user's own ratings via the service role — only to them.
+  if (!(await isSelfRequest(req.headers.get('Authorization'), userId)))
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const year = parseInt(yearParam ?? String(new Date().getFullYear()), 10);
   const start = `${year}-01-01T00:00:00.000Z`;

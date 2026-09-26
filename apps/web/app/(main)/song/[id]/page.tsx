@@ -10,6 +10,7 @@ import ManualRateModal from '../../../../components/sj/ManualRateModal';
 import { SkeletonBlock } from '../../../../components/sj/Loading';
 import { useSession } from '../../../../components/sj/SessionContext';
 import { supabase } from '../../../../lib/supabaseClient';
+import { songCommunityScores } from '../../../../lib/sj/communityScores';
 import { useLanguage } from '../../../../lib/i18n';
 import { displayName, formatScore, typeLabelKey } from '../../../../lib/sj/display';
 import { releaseFromEmbed, type SJRelease, RG_COLS } from '../../../../lib/sj/data';
@@ -94,19 +95,25 @@ function SongPageInner() {
       setRelease(rg);
 
       // Community stats
-      const { data: allRows } = await supabase!
-        .from('track_ratings')
-        .select('score, user_id')
-        .eq('recording_id', recordingId);
-      const scores = ((allRows as { score: number | null; user_id: string }[] | null) ?? [])
-        .map((r) => r.score)
-        .filter((s): s is number => s != null);
+      // Anonymous-scores RPC so private accounts still count; my own row is
+      // read directly.
+      const [allRows, mineRes] = await Promise.all([
+        songCommunityScores([recordingId]),
+        userId
+          ? supabase!
+              .from('track_ratings')
+              .select('score')
+              .eq('user_id', userId)
+              .eq('recording_id', recordingId)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      const scores = allRows.map((r) => r.score).filter((s): s is number => s != null);
       if (cancelled) return;
       setCommunityCount(scores.length);
       setCommunityAvg(scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null);
       if (userId) {
-        const mine = ((allRows as any[] | null) ?? []).find((r) => r.user_id === userId);
-        setUserScore(mine?.score ?? null);
+        setUserScore((mineRes.data as { score: number | null } | null)?.score ?? null);
       }
       setLoading(false);
     })();

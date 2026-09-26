@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Nudges a user whose OS-level notification permission isn't authorized
-/// (denied, or never decided) -- card styling mirrors SearchView's
-/// quickAddBanner. Dismissible for the current app launch only (no
+/// (denied, or never decided) -- card styling mirrors the Add tab's old
+/// Quick Add banner. Dismissible for the current app launch only (no
 /// persisted flag), so it reappears next cold start until the user actually
 /// fixes it in Settings rather than being silenced forever by one tap.
 struct NotificationsNudgeBanner: View {

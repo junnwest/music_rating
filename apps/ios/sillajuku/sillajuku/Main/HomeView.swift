@@ -168,7 +168,8 @@ class HomeViewModel {
     var myScores:               [UUID: Double] = [:]
     var likeCounts:            [UUID: Int] = [:]
     var commentCounts:         [UUID: Int] = [:]
-    var hasUnreadNotifications: Bool       = false
+    var unreadNotificationCount: Int       = 0
+    var hasUnreadNotifications: Bool { unreadNotificationCount > 0 }
     var blockedUserIds:         Set<UUID>  = []
 
     private var hasLoadedExplore   = false
@@ -321,15 +322,14 @@ class HomeViewModel {
 
         var query = supabase
             .from("notifications")
-            .select("*", count: .exact)
+            .select("*", head: true, count: .exact)
             .eq("user_id", value: userId)
 
         if let lastSeen = profile?.notificationsLastSeenAt {
             query = query.gt("created_at", value: lastSeen.ISO8601Format())
         }
 
-        let count = (try? await query.execute())?.count ?? 0
-        hasUnreadNotifications = count > 0
+        unreadNotificationCount = (try? await query.execute())?.count ?? 0
     }
 
     // Same relations as feedSelect but WITHOUT the release_groups/artists embed
@@ -907,16 +907,24 @@ struct HomeView: View {
                 }
                 .overlay(alignment: .topTrailing) {
                     if viewModel.hasUnreadNotifications {
-                        Circle()
-                            .fill(.red)
-                            .frame(width: 9, height: 9)
-                            .offset(x: 3, y: -3)
+                        // Circle for 1-9, stretches into a pill for 10+.
+                        Text(viewModel.unreadNotificationCount > 99 ? "99+" : "\(viewModel.unreadNotificationCount)")
+                            .font(.jakarta(10, weight: .bold))
+                            .monospacedDigit()
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 4)
+                            .frame(minWidth: 16, minHeight: 16)
+                            .background(Capsule().fill(.red))
+                            .fixedSize()
+                            .offset(x: 5, y: -4)
                     }
                 }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(String(localized: "Notifications"))
-        .accessibilityHint(viewModel.hasUnreadNotifications ? String(localized: "Unread notifications") : "")
+        .accessibilityHint(viewModel.hasUnreadNotifications
+            ? String(format: String(localized: "%d unread notifications"), viewModel.unreadNotificationCount)
+            : "")
     }
 
     private func feedTabButton(_ tab: FeedTab, label: LocalizedStringKey) -> some View {
@@ -1092,6 +1100,7 @@ struct FindPeopleView: View {
     @State private var suggestions: [SuggestedUser] = []
     @State private var isLoading = true
     @State private var followedIds: Set<UUID> = []
+    @State private var requestedIds: Set<UUID> = []
 
     struct SuggestedUser: Identifiable {
         let id: UUID
@@ -1123,7 +1132,8 @@ struct FindPeopleView: View {
                         ForEach(suggestions) { user in
                             SuggestedUserRow(
                                 user: user,
-                                isFollowed: followedIds.contains(user.id),
+                                state: followedIds.contains(user.id) ? .following
+                                     : requestedIds.contains(user.id) ? .requested : .none,
                                 onToggle: { await toggleFollow(user) }
                             )
                             .padding(.horizontal, 16)
@@ -1171,8 +1181,11 @@ struct FindPeopleView: View {
         async let followingTask: [FollowRow] = (try? await supabase
             .from("follows").select("following_id").eq("follower_id", value: me).execute().value) ?? []
 
-        let (rows, following) = await (rowsTask, followingTask)
+        async let requestedTask = FollowService.outgoingRequestIds()
+
+        let (rows, following, requested) = await (rowsTask, followingTask, requestedTask)
         followedIds = Set(following.map(\.followingId))
+        requestedIds = requested
         suggestions = rows.map {
             SuggestedUser(id: $0.id, username: $0.username, displayName: $0.displayName,
                           avatarUrl: $0.avatarUrl, ratingCount: $0.ratingCount)
@@ -1180,30 +1193,36 @@ struct FindPeopleView: View {
         isLoading = false
     }
 
+    // Following a private account sends a request instead (DB trigger);
+    // FollowService reports which one happened.
     private func toggleFollow(_ user: SuggestedUser) async {
-        guard let me = supabase.auth.currentUser?.id else { return }
-        struct Payload: Encodable { let followerId, followingId: UUID
-            enum CodingKeys: String, CodingKey { case followerId = "follower_id"; case followingId = "following_id" }
-        }
-        if followedIds.contains(user.id) {
+        if followedIds.contains(user.id) || requestedIds.contains(user.id) {
             followedIds.remove(user.id)
-            _ = try? await supabase.from("follows")
-                .delete().eq("follower_id", value: me).eq("following_id", value: user.id).execute()
+            requestedIds.remove(user.id)
+            await FollowService.unfollow(user.id)
         } else {
             followedIds.insert(user.id)
-            _ = try? await supabase.from("follows")
-                .insert(Payload(followerId: me, followingId: user.id)).execute()
+            let result = await FollowService.follow(user.id)
+            if result != .following { followedIds.remove(user.id) }
+            if result == .requested { requestedIds.insert(user.id) }
         }
-        NotificationCenter.default.post(name: .followChanged, object: nil)
     }
 }
 
 private struct SuggestedUserRow: View {
     let user: FindPeopleView.SuggestedUser
-    let isFollowed: Bool
+    let state: FollowState
     let onToggle: () async -> Void
 
     private var handle: String { user.username ?? user.displayName ?? "" }
+
+    private var label: LocalizedStringKey {
+        switch state {
+        case .following: return "Following"
+        case .requested: return "Requested"
+        case .none:      return "Follow"
+        }
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -1247,12 +1266,12 @@ private struct SuggestedUserRow: View {
             Button {
                 Task { await onToggle() }
             } label: {
-                Text(isFollowed ? "Following" : "Follow")
+                Text(label)
                     .font(.jakarta(12, weight: .semibold))
-                    .foregroundStyle(isFollowed ? Color.sjMuted : Color.sjCream)
+                    .foregroundStyle(state != .none ? Color.sjMuted : Color.sjCream)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 6)
-                    .background(isFollowed ? Color.sjBorder.opacity(0.4) : Color.sjAmber)
+                    .background(state != .none ? Color.sjBorder.opacity(0.4) : Color.sjAmber)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             }
             .buttonStyle(.plain)

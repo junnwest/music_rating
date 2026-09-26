@@ -42,7 +42,7 @@ enum AlbumQuickRate {
     }
 
     /// Standalone version of AlbumDetailView's `rateTrack(recordingId:score:)` -- same table,
-    /// same upsert columns/onConflict target -- for surfaces (Quick Add) that need to write a
+    /// same upsert columns/onConflict target -- for surfaces (e.g. ProfileView) that need to write a
     /// song rating without a full AlbumDetailViewModel instance. Same success-reporting shape
     /// as saveManualScore above, for the same reason.
     @discardableResult

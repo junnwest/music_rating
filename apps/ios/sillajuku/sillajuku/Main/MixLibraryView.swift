@@ -141,25 +141,32 @@ final class MixLibraryViewModel {
             .value
     }
 
+    // Cancellation-safe: SwipeableTabPager renders the Mix page as a
+    // temporary "adjacent" view mid-swipe, then replaces it when the swipe
+    // commits, which cancels this task partway through. Cancelled requests
+    // come back from `try?` as nil/[], so committing them showed every count
+    // as 0 (and latched hasLoaded, so the replacement view never refetched).
+    // Nothing is committed once cancelled, and hasLoaded is only set after
+    // the counts are in.
     func load(userId: UUID) async {
         guard !hasLoaded else { return }
         isLoading = true
         loadFailed = false
         var loaded = await fetchMixes(userId: userId)
-        if loaded == nil { loaded = await fetchMixes(userId: userId) }  // one retry
+        if loaded == nil && !Task.isCancelled { loaded = await fetchMixes(userId: userId) }  // one retry
+        if Task.isCancelled { return }
         guard let loaded else {
             loadFailed = true
             isLoading = false
             return
         }
-        hasLoaded = true
-        mixes = loaded
 
         struct CountRow: Decodable {
             let mixId: UUID
             enum CodingKeys: String, CodingKey { case mixId = "mix_id" }
         }
         let mixIds = loaded.map(\.id.uuidString)
+        var counts: [UUID: Int] = [:]
         if !mixIds.isEmpty {
             async let releaseRows: [CountRow] = (try? await supabase
                 .from("mix_items")
@@ -173,11 +180,13 @@ final class MixLibraryViewModel {
                 .in("mix_id", values: mixIds)
                 .execute()
                 .value) ?? []
-            var counts: [UUID: Int] = [:]
             for r in await releaseRows { counts[r.mixId, default: 0] += 1 }
             for r in await songRows { counts[r.mixId, default: 0] += 1 }
-            itemCounts = counts
         }
+        if Task.isCancelled { return }
+        mixes = loaded
+        itemCounts = counts
+        hasLoaded = true
         isLoading = false
     }
 
@@ -620,7 +629,7 @@ struct MixDetailView: View {
                     // just your own external image, so it's available regardless.
                     if mix.isPublic {
                         Button { showShareComposer = true } label: {
-                            Label("Share to Feed", image: "icon-users")
+                            Label("Post to Feed", image: "icon-users")
                         }
                     }
                     Button { Task { await prepareShare() } } label: {

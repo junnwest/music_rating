@@ -16,6 +16,7 @@ import {
   List as ListIcon,
   Plus,
   ExternalLink,
+  Lock,
 } from 'lucide-react';
 import Modal from './Modal';
 import { useContextMenuFor, openInNewTab } from './ContextMenu';
@@ -97,7 +98,13 @@ export default function ProfileView({ username }: { username?: string }) {
   const [ratedTotal, setRatedTotal] = useState<number | null>(null);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
-  const [isFollowing, setIsFollowing] = useState(false);
+  // 'requested' = a pending follow request to a private account.
+  const [followState, setFollowState] = useState<'none' | 'requested' | 'following'>('none');
+  const [isPrivate, setIsPrivate] = useState(false);
+  // False when this is someone else's private account and we're not an
+  // approved follower: only the header is shown.
+  const [canView, setCanView] = useState(true);
+  const [confirmUnfollow, setConfirmUnfollow] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
@@ -206,6 +213,40 @@ export default function ProfileView({ username }: { username?: string }) {
     }
     setTargetId(uid);
 
+    // Counts + follow relationship in one call (get_follow_state, migration
+    // 20260926000000). Counts come from here rather than counting rows,
+    // because a private account's rows are hidden from non-followers.
+    const { data: stateRows } = await supabase.rpc('get_follow_state', { p_user_id: uid });
+    const fs = (stateRows as any[] | null)?.[0];
+    // Deactivated accounts read as not found to everyone but themselves.
+    if (!isSelf && fs?.is_deactivated) {
+      setNotFound(true);
+      setLoading(false);
+      return;
+    }
+    const visible = isSelf || (fs?.can_view ?? true);
+    setFollowerCount(Number(fs?.followers_count ?? 0));
+    setFollowingCount(Number(fs?.following_count ?? 0));
+    setRatedTotal(fs ? Number(fs.ratings_count) : null);
+    setFollowState(fs?.is_following ? 'following' : fs?.is_requested ? 'requested' : 'none');
+    setIsPrivate(!!fs?.is_private);
+    setCanView(visible);
+
+    if (!isSelf && myId) {
+      const { data: blockRows } = await supabase
+        .from('blocked_users')
+        .select('blocked_id')
+        .eq('blocker_id', myId)
+        .eq('blocked_id', uid);
+      setIsBlocked(((blockRows as any[] | null) ?? []).length > 0);
+    }
+
+    if (!visible) {
+      setItems([]);
+      setLoading(false);
+      return;
+    }
+
     // Album ratings
     const albumP = supabase
       .from('ratings')
@@ -259,36 +300,7 @@ export default function ProfileView({ username }: { username?: string }) {
       });
     })();
 
-    // Follow counts + exact rating totals (+ my relation for other profiles)
-    const countsP = Promise.all([
-      supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', uid),
-      supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', uid),
-      supabase.from('ratings').select('*', { count: 'exact', head: true }).eq('user_id', uid),
-      supabase
-        .from('track_ratings')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', uid),
-      !isSelf && myId
-        ? supabase
-            .from('follows')
-            .select('follower_id')
-            .eq('follower_id', myId)
-            .eq('following_id', uid)
-        : Promise.resolve({ data: null }),
-      !isSelf && myId
-        ? supabase
-            .from('blocked_users')
-            .select('blocked_id')
-            .eq('blocker_id', myId)
-            .eq('blocked_id', uid)
-        : Promise.resolve({ data: null }),
-    ]);
-
-    const [
-      { data: albumRows },
-      songItems,
-      [followingRes, followerRes, albumTotalRes, songTotalRes, relRes, blockRes],
-    ] = await Promise.all([albumP, songP, countsP]);
+    const [{ data: albumRows }, songItems] = await Promise.all([albumP, songP]);
 
     const albumItems: ProfileRatingItem[] = ((albumRows as any[] | null) ?? []).map((r) => {
       const rg = r.release_groups;
@@ -311,14 +323,6 @@ export default function ProfileView({ username }: { username?: string }) {
     });
 
     setItems([...albumItems, ...songItems]);
-    setRatedTotal(
-      ((albumTotalRes as any).count ?? albumItems.length) +
-        ((songTotalRes as any).count ?? songItems.length),
-    );
-    setFollowingCount((followingRes as any).count ?? 0);
-    setFollowerCount((followerRes as any).count ?? 0);
-    setIsFollowing((((relRes as any).data as any[] | null) ?? []).length > 0);
-    setIsBlocked((((blockRes as any).data as any[] | null) ?? []).length > 0);
 
     // Like/comment counts for posts mode -- albums (rating_id) and songs (track_rating_id)
     // merged into the same dicts, keyed by item.ratingId either way. Safe to merge: album
@@ -425,21 +429,27 @@ export default function ProfileView({ username }: { username?: string }) {
     });
   }, [items, kind, range, sortCol, sortDesc]);
 
+  /** Follow / Request, or unfollow / withdraw the request. A follow on a
+   *  private account is turned into a request by a DB trigger. Following
+   *  changes what's visible, so the profile reloads afterwards. */
   async function toggleFollow() {
     if (!supabase || !myId || !targetId) return;
-    if (isFollowing) {
-      setIsFollowing(false);
-      setFollowerCount((c) => Math.max(0, c - 1));
-      await supabase
-        .from('follows')
-        .delete()
-        .eq('follower_id', myId)
-        .eq('following_id', targetId);
-    } else {
-      setIsFollowing(true);
-      setFollowerCount((c) => c + 1);
+    if (followState === 'none') {
+      setFollowState(isPrivate ? 'requested' : 'following');
       await supabase.from('follows').insert({ follower_id: myId, following_id: targetId });
+    } else {
+      setFollowState('none');
+      await Promise.all([
+        supabase.from('follows').delete().eq('follower_id', myId).eq('following_id', targetId),
+        supabase.from('follow_requests').delete().eq('requester_id', myId).eq('target_id', targetId),
+      ]);
     }
+    load();
+  }
+
+  function onFollowClick() {
+    if (followState === 'following' && isPrivate) setConfirmUnfollow(true);
+    else toggleFollow();
   }
 
   async function toggleBlock() {
@@ -574,10 +584,11 @@ export default function ProfileView({ username }: { username?: string }) {
         <Avatar url={display?.avatarUrl} size={76} />
         <div className="flex-1 flex items-center gap-2">
           <StatCell value={ratedTotal ?? items.length} label={t('sj.profile.ratedStat')} />
-          <button onClick={() => setFollowModal('following')} className="flex-1">
+          {/* A private account's lists stay closed to non-followers. */}
+          <button onClick={() => setFollowModal('following')} disabled={!canView} className="flex-1">
             <StatCell value={followingCount} label={t('sj.profile.following')} />
           </button>
-          <button onClick={() => setFollowModal('followers')} className="flex-1">
+          <button onClick={() => setFollowModal('followers')} disabled={!canView} className="flex-1">
             <StatCell value={followerCount} label={t('sj.profile.followers')} />
           </button>
         </div>
@@ -605,7 +616,7 @@ export default function ProfileView({ username }: { username?: string }) {
         {display?.displayName && (
           <p className="text-[13px] text-muted">{display.displayName}</p>
         )}
-        {display?.bio && <p className="mt-1 text-[13.5px] text-muted">{display.bio}</p>}
+        {canView && display?.bio && <p className="mt-1 text-[13.5px] text-muted">{display.bio}</p>}
         {founding && (
           <div className="mt-3">
             <FoundingLineage
@@ -633,20 +644,38 @@ export default function ProfileView({ username }: { username?: string }) {
               </button>
             ) : (
               <button
-                onClick={toggleFollow}
+                onClick={onFollowClick}
                 className={`px-6 py-2 rounded-full text-[13.5px] font-semibold transition ${
-                  isFollowing
+                  followState !== 'none'
                     ? 'bg-divider/50 text-ink'
                     : 'bg-accent text-white hover:opacity-90'
                 }`}
               >
-                {isFollowing ? t('sj.common.followingBtn') : t('sj.common.followBtn')}
+                {followState === 'following'
+                  ? t('sj.common.followingBtn')
+                  : followState === 'requested'
+                    ? t('sj.common.requestedBtn')
+                    : isPrivate
+                      ? t('sj.common.requestBtn')
+                      : t('sj.common.followBtn')}
               </button>
             )}
           </div>
         )}
       </div>
 
+      {!canView && (
+        <div className="mt-6 border-t border-divider py-14 flex flex-col items-center text-center gap-2">
+          <Lock size={28} className="text-muted" />
+          <p className="text-[15px] font-semibold text-ink">{t('sj.profile.privateTitle')}</p>
+          <p className="text-[13px] text-muted max-w-xs">
+            {followState === 'requested' ? t('sj.profile.privateRequestedBody') : t('sj.profile.privateBody')}
+          </p>
+        </div>
+      )}
+
+      {canView && (
+      <>
       {/* Tabs */}
       <div role="tablist" className="flex border-b border-divider mt-6">
         {tabs.map(({ key, icon: Icon, label }) => (
@@ -769,6 +798,37 @@ export default function ProfileView({ username }: { username?: string }) {
 
       {/* ── Stats tab ── */}
       {tab === 'stats' && <ProfileStats items={items} />}
+      </>
+      )}
+
+      {/* Unfollowing a private account locks it again */}
+      <Modal
+        open={confirmUnfollow}
+        onClose={() => setConfirmUnfollow(false)}
+        title={t('sj.profile.unfollowPrivateTitle').replace('{handle}', handle)}
+        maxWidth="max-w-sm"
+      >
+        <div className="px-5 pb-5">
+          <p className="text-[13.5px] text-muted">{t('sj.profile.unfollowPrivateBody')}</p>
+          <div className="flex justify-end gap-2 mt-4">
+            <button
+              onClick={() => setConfirmUnfollow(false)}
+              className="px-4 py-2 rounded-[10px] text-[13.5px] font-medium text-muted hover:text-ink transition"
+            >
+              {t('sj.common.cancel')}
+            </button>
+            <button
+              onClick={() => {
+                setConfirmUnfollow(false);
+                toggleFollow();
+              }}
+              className="px-4 py-2 rounded-[10px] bg-red-500 text-white text-[13.5px] font-semibold hover:opacity-90 transition"
+            >
+              {t('sj.profile.unfollow')}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Follow list modal */}
       {followModal && targetId && (

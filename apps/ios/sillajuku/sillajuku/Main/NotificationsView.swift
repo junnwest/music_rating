@@ -103,7 +103,7 @@ struct AppNotification: Codable, Identifiable {
     }
 
     var actorDestination: UserProfileDestination? {
-        guard type == "follow", let actorId else { return nil }
+        guard ["follow", "follow_request", "follow_accept"].contains(type), let actorId else { return nil }
         return UserProfileDestination(userId: actorId, handle: actor?.handle ?? String(localized: "someone"))
     }
 
@@ -134,6 +134,10 @@ struct AppNotification: Codable, Identifiable {
             return String(format: String(localized: "%@ commented on your rating"), who)
         case "follow":
             return String(format: String(localized: "%@ started following you"), who)
+        case "follow_request":
+            return String(format: String(localized: "%@ requested to follow you"), who)
+        case "follow_accept":
+            return String(format: String(localized: "%@ accepted your follow request"), who)
         case "mix_like":
             if let name = mix?.name {
                 return String(format: String(localized: "%@ liked your mix \"%@\""), who, name)
@@ -156,7 +160,8 @@ struct AppNotification: Codable, Identifiable {
         switch type {
         case "like", "mix_like", "mix_share_like", "track_rating_like": return "icon-heart-filled"
         case "comment", "mix_share_comment", "track_rating_comment":    return "icon-message-square"
-        case "follow":                                                  return "icon-user-plus"
+        case "follow", "follow_request":                                return "icon-user-plus"
+        case "follow_accept":                                           return "icon-check"
         default:                                                        return "icon-bell"
         }
     }
@@ -165,7 +170,7 @@ struct AppNotification: Codable, Identifiable {
         switch type {
         case "like", "mix_like", "mix_share_like", "track_rating_like": return .red
         case "comment", "mix_share_comment", "track_rating_comment":    return Color.sjAmber
-        case "follow":                                                  return Color.sjAmber
+        case "follow", "follow_request", "follow_accept":               return Color.sjAmber
         default:                                                        return Color.sjMuted
         }
     }
@@ -207,7 +212,7 @@ struct NotificationsView: View {
                             }
                         } else if let dest = notif.actorDestination {
                             NavigationLink(value: dest) {
-                                NotificationRow(notif: notif)
+                                NotificationRow(notif: notif, onRespond: respondHandler(for: notif))
                             }
                         } else if let mix = notif.mixDestination {
                             // Direct destination, not NavigationLink(value:) -- this
@@ -250,6 +255,19 @@ struct NotificationsView: View {
         isLoading = false
     }
 
+    private func respondHandler(for notif: AppNotification) -> ((Bool) async -> Void)? {
+        guard notif.type == "follow_request" else { return nil }
+        return { accept in await respond(to: notif, accept: accept) }
+    }
+
+    // The DB trigger deletes the follow_request notification once it's
+    // answered, so dropping it locally matches what a reload would show.
+    private func respond(to notif: AppNotification, accept: Bool) async {
+        guard let requester = notif.actorId else { return }
+        await FollowService.respond(to: requester, accept: accept)
+        withAnimation { notifications.removeAll { $0.id == notif.id } }
+    }
+
     private func markAllRead() async {
         guard let userId = supabase.auth.currentUser?.id else { return }
         struct Patch: Encodable {
@@ -270,6 +288,9 @@ struct NotificationsView: View {
 
 private struct NotificationRow: View {
     let notif: AppNotification
+    /// Set for follow requests: shows Confirm / Delete.
+    var onRespond: ((Bool) async -> Void)? = nil
+    @State private var isResponding = false
 
     // Every notification type in this system is actor-driven (like/comment/follow/mix_like/
     // mix_share_like/mix_share_comment/track_rating_like/track_rating_comment all set actor_id
@@ -327,6 +348,37 @@ private struct NotificationRow: View {
             }
 
             Spacer(minLength: 0)
+
+            if let onRespond {
+                // Borderless so each button takes its own tap instead of
+                // the row's NavigationLink.
+                HStack(spacing: 6) {
+                    Button {
+                        Task { isResponding = true; await onRespond(true); isResponding = false }
+                    } label: {
+                        Text("Confirm")
+                            .font(.jakarta(12, weight: .semibold))
+                            .foregroundStyle(Color.sjCream)
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(Color.sjAmber)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    Button {
+                        Task { isResponding = true; await onRespond(false); isResponding = false }
+                    } label: {
+                        Text("Delete")
+                            .font(.jakarta(12, weight: .semibold))
+                            .foregroundStyle(Color.sjInk)
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(Color.sjBorder.opacity(0.4))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                }
+                .buttonStyle(.borderless)
+                .disabled(isResponding)
+                .opacity(isResponding ? 0.5 : 1)
+                .padding(.top, 4)
+            }
         }
         .padding(.vertical, 10)
     }

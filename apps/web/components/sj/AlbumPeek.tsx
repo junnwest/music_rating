@@ -6,6 +6,7 @@ import FlowerGlyph from './FlowerGlyph';
 import { Skeleton } from './Loading';
 import { useAlbumContextMenu } from './AlbumContextMenu';
 import { supabase } from '../../lib/supabaseClient';
+import { albumCommunityScores } from '../../lib/sj/communityScores';
 import { useLanguage } from '../../lib/i18n';
 import type { SJRelease } from '../../lib/sj/data';
 
@@ -118,12 +119,9 @@ export default function AlbumPeek({
       if (sHit) setStats(sHit);
       else {
         setStats(null);
-        supabase
-          ?.from('ratings')
-          .select('score')
-          .eq('release_group_id', releaseId)
-          .then(({ data }) => {
-            const rows = (data as { score: number | null }[] | null) ?? [];
+        // Anonymous-scores RPC so private accounts still count.
+        albumCommunityScores([releaseId])
+          .then((rows) => {
             const scored = rows.map((r) => r.score).filter((s): s is number => s != null);
             const next: PeekStats = {
               avg: scored.length ? scored.reduce((a, b) => a + b, 0) / scored.length : null,

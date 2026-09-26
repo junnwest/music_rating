@@ -1,9 +1,11 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
-import { Bell, Heart, MessageSquare, UserPlus } from 'lucide-react';
+import { Bell, Heart, MessageSquare, UserCheck, UserPlus } from 'lucide-react';
 import Avatar from './Avatar';
 import { displayName, relativeTime } from '../../lib/sj/display';
+import { supabase } from '../../lib/supabaseClient';
 
 /** Shared between the notifications page and the top-bar popover. */
 
@@ -56,6 +58,10 @@ export function notificationBody(
         : t('sj.notifications.commented').replace('{who}', who);
     case 'follow':
       return t('sj.notifications.followed').replace('{who}', who);
+    case 'follow_request':
+      return t('sj.notifications.followRequested').replace('{who}', who);
+    case 'follow_accept':
+      return t('sj.notifications.followAccepted').replace('{who}', who);
     case 'mix_like':
       return n.mix?.name
         ? t('sj.notifications.mixLikedNamed').replace('{who}', who).replace('{title}', n.mix.name)
@@ -84,7 +90,7 @@ export function notificationHref(n: NotificationEntry): string | null {
   if ((n.type === 'track_rating_like' || n.type === 'track_rating_comment') && n.track_rating_id) {
     return `/post/${n.track_rating_id}?song=1`;
   }
-  if (n.type === 'follow' && n.actor?.username) {
+  if ((n.type === 'follow' || n.type === 'follow_request' || n.type === 'follow_accept') && n.actor?.username) {
     return `/profile/${n.actor.username}`;
   }
   if (n.type === 'mix_like' && n.mix) {
@@ -108,7 +114,10 @@ function typeBadgeStyle(type: string): { icon: typeof Heart; className: string }
     case 'track_rating_comment':
       return { icon: MessageSquare, className: 'bg-accent text-white' };
     case 'follow':
+    case 'follow_request':
       return { icon: UserPlus, className: 'bg-accent text-white' };
+    case 'follow_accept':
+      return { icon: UserCheck, className: 'bg-accent text-white' };
     default:
       return { icon: Bell, className: 'bg-muted text-white' };
   }
@@ -127,6 +136,19 @@ export function NotificationRow({
   onNavigate?: () => void;
   compact?: boolean;
 }) {
+  // Follow requests are answered inline; the DB deletes the notification
+  // once answered, so the row just disappears.
+  const [responded, setResponded] = useState(false);
+  const [responding, setResponding] = useState(false);
+  const isRequest = n.type === 'follow_request' && !!n.actor_id;
+  async function respond(accept: boolean) {
+    if (!supabase || !n.actor_id) return;
+    setResponding(true);
+    await supabase.rpc('respond_follow_request', { p_requester: n.actor_id, p_accept: accept });
+    setResponding(false);
+    setResponded(true);
+  }
+
   const to = notificationHref(n);
   const avatarSize = compact ? 32 : 36;
   const badge = typeBadgeStyle(n.type);
@@ -152,10 +174,32 @@ export function NotificationRow({
       </span>
     </span>
   );
-  if (!to) return inner;
-  return (
-    <Link href={to} onClick={onNavigate} className="block hover:bg-page/60 transition">
+  if (responded) return null;
+  const linked = to ? (
+    <Link href={to} onClick={onNavigate} className="block flex-1 min-w-0 hover:bg-page/60 transition">
       {inner}
     </Link>
+  ) : (
+    inner
+  );
+  if (!isRequest) return linked;
+  return (
+    <span className="flex items-center gap-1.5 pr-3">
+      {linked}
+      <button
+        onClick={() => respond(true)}
+        disabled={responding}
+        className="shrink-0 px-3 py-1.5 rounded-lg bg-accent text-white text-[12px] font-semibold hover:opacity-90 disabled:opacity-50 transition"
+      >
+        {t('sj.common.confirmBtn')}
+      </button>
+      <button
+        onClick={() => respond(false)}
+        disabled={responding}
+        className="shrink-0 px-3 py-1.5 rounded-lg bg-divider/50 text-ink text-[12px] font-semibold hover:opacity-90 disabled:opacity-50 transition"
+      >
+        {t('sj.common.delete')}
+      </button>
+    </span>
   );
 }

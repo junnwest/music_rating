@@ -13,6 +13,7 @@ import FlowerGlyph from '../../../../components/sj/FlowerGlyph';
 import { Skeleton, SkeletonLine, SkeletonRows } from '../../../../components/sj/Loading';
 import { useSession } from '../../../../components/sj/SessionContext';
 import { supabase } from '../../../../lib/supabaseClient';
+import { albumCommunityScores } from '../../../../lib/sj/communityScores';
 import { useLanguage } from '../../../../lib/i18n';
 import {
   displayName,
@@ -170,22 +171,31 @@ export default function ArtistPage() {
       const ratingsP = (async () => {
         const ids = loaded.map((r) => r.id);
         if (ids.length === 0) return;
-        const { data: rows } = await supabase!
-          .from('ratings')
-          .select('release_group_id, user_id, score')
-          .in('release_group_id', ids);
+        // Anonymous-scores RPC so private accounts still count; my own
+        // scores are read directly.
+        const [all, myRes] = await Promise.all([
+          albumCommunityScores(ids),
+          userId
+            ? supabase!
+                .from('ratings')
+                .select('release_group_id, score')
+                .eq('user_id', userId)
+                .in('release_group_id', ids)
+            : Promise.resolve({ data: null }),
+        ]);
         if (cancelled) return;
         const sums: Record<string, { sum: number; count: number }> = {};
         const mine: Record<string, number> = {};
         const scores: number[] = [];
-        const all = (rows as { release_group_id: string; user_id: string; score: number | null }[] | null) ?? [];
         for (const r of all) {
           if (r.score != null) {
             const e = sums[r.release_group_id] ?? { sum: 0, count: 0 };
             sums[r.release_group_id] = { sum: e.sum + r.score, count: e.count + 1 };
             scores.push(r.score);
-            if (r.user_id === userId) mine[r.release_group_id] = r.score;
           }
+        }
+        for (const r of (myRes.data as { release_group_id: string; score: number | null }[] | null) ?? []) {
+          if (r.score != null) mine[r.release_group_id] = r.score;
         }
         setReleaseScores(
           Object.fromEntries(Object.entries(sums).map(([k, v]) => [k, v.sum / v.count])),

@@ -870,7 +870,7 @@ struct ProfileView: View {
     // to the Add tab (to rate/find something to rate) after dismissing this
     // sheet, owned by MainTabView where `selectedTab` actually lives.
     var onGoToAdd: () -> Void
-    // Set true by SearchView's Quick Add mode-gate popup ("Go to Settings"), owned by
+    // Set true by the Add tab's Connect Spotify/Apple Music rows (onGoToSettings), owned by
     // MainTabView where the tab switch to .profile also happens. Watched below to
     // auto-open the existing showSettings sheet, then reset to false.
     @Binding var openSettingsTrigger: Bool
@@ -937,7 +937,7 @@ struct ProfileView: View {
                 }
             }
             // onChange alone misses the case where this is the tab's first-ever mount this
-            // session (e.g. jumping here directly from Quick Add's mode-gate popup on a launch
+            // session (e.g. jumping here directly from the Add tab's Connect row on a launch
             // that never visited Profile before) -- the trigger is already true by the time this
             // view starts observing it, so no false→true transition ever fires. onAppear catches
             // that initial-already-true case; onChange above covers every later trigger while
@@ -1870,13 +1870,9 @@ struct RatingListRow: View {
     let score: Double?
     var isSong: Bool = false
     var releaseType: String? = nil
-
-    private var displayScore: Double? { score }
-
-    private var scoreText: String {
-        guard let v = displayScore else { return "" }
-        return v.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(v))" : String(format: "%.1f", v)
-    }
+    /// False when the caller draws the score itself (ExpandableRatingListRow
+    /// puts its comment chevron between the title and the score).
+    var showsScore = true
 
     var body: some View {
         HStack(spacing: 14) {
@@ -1913,35 +1909,54 @@ struct RatingListRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            if let _ = displayScore {
-                HStack(spacing: 4) {
-                    Image("icon-flower")
-                        .renderingMode(.template).resizable().scaledToFit()
-                        .frame(width: 11, height: 11).foregroundStyle(Color.sjBlue)
-                    Text(scoreText)
-                        .font(.jakarta(13, weight: .bold))
-                        .foregroundStyle(Color.sjBlue)
-                }
-                .padding(.horizontal, 8).padding(.vertical, 4)
-                .background(Color.sjBlue.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-            } else {
-                Image("icon-flower")
-                    .renderingMode(.template).resizable().scaledToFit()
-                    .frame(width: 11, height: 11).foregroundStyle(Color.sjMuted)
+            if showsScore {
+                RatingListScore(score: score)
             }
         }
-        .padding(.horizontal, 16).padding(.vertical, 10)
+        .padding(.leading, 16)
+        .padding(.trailing, showsScore ? 16 : 4)
+        .padding(.vertical, 10)
         .contentShape(Rectangle())
     }
 }
 
-/// Wraps `RatingListRow` with a trailing chevron that expands the row's
-/// written comment inline, without disturbing the row's own tap-to-navigate
-/// behavior. The chevron lives as a sibling to the `NavigationLink` (not
-/// nested inside its label) since this codebase has no precedent for a plain
-/// `Button` nested inside a `NavigationLink` label reliably intercepting its
-/// own taps.
+/// The score pill at the end of a `RatingListRow`.
+struct RatingListScore: View {
+    let score: Double?
+
+    private var scoreText: String {
+        guard let v = score else { return "" }
+        return v.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(v))" : String(format: "%.1f", v)
+    }
+
+    var body: some View {
+        if score != nil {
+            HStack(spacing: 4) {
+                Image("icon-flower")
+                    .renderingMode(.template).resizable().scaledToFit()
+                    .frame(width: 11, height: 11).foregroundStyle(Color.sjBlue)
+                Text(scoreText)
+                    .font(.jakarta(13, weight: .bold))
+                    .foregroundStyle(Color.sjBlue)
+            }
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(Color.sjBlue.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+        } else {
+            Image("icon-flower")
+                .renderingMode(.template).resizable().scaledToFit()
+                .frame(width: 11, height: 11).foregroundStyle(Color.sjMuted)
+        }
+    }
+}
+
+/// Wraps `RatingListRow` with a chevron, just left of the score, that expands
+/// the row's written comment inline without disturbing the row's own
+/// tap-to-navigate behavior. The chevron lives as a sibling to the
+/// `NavigationLink`s (not nested inside a label) since this codebase has no
+/// precedent for a plain `Button` nested inside a `NavigationLink` label
+/// reliably intercepting its own taps -- so the row is split into
+/// [title link] [chevron] [score link].
 struct ExpandableRatingListRow: View {
     let release: Release
     let coverUrl: String?
@@ -1962,7 +1977,8 @@ struct ExpandableRatingListRow: View {
             HStack(spacing: 0) {
                 NavigationLink(value: release) {
                     RatingListRow(coverUrl: coverUrl, title: title, artistLine: artistLine,
-                                  score: score, isSong: isSong, releaseType: releaseType)
+                                  score: score, isSong: isSong, releaseType: releaseType,
+                                  showsScore: false)
                 }
                 .buttonStyle(.plain)
 
@@ -1980,10 +1996,20 @@ struct ExpandableRatingListRow: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .padding(.trailing, 12)
                     .accessibilityLabel(isExpanded ? String(localized: "Hide comment") : String(localized: "Show comment"))
                 }
+
+                NavigationLink(value: release) {
+                    RatingListScore(score: score)
+                        .padding(.leading, 4)
+                        .padding(.trailing, 16)
+                        .frame(maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHidden(true) // the title link already opens the same page
             }
+            .fixedSize(horizontal: false, vertical: true)
             if isExpanded, let reviewText, !reviewText.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(reviewText)
@@ -2459,7 +2485,7 @@ struct ProfilePostCard: View {
     var headerBadgeColor: String? = nil
     var headerBetaTester: Bool = false
     // Only offered on someone else's post (UserProfileView) -- redundant on your
-    // own ratings, which are already excluded from Quick Add via the ratings table.
+    // own ratings.
     var onNotInterested: (() -> Void)? = nil
     // Own-post management (share/edit/add to mix/edit comment/delete) -- only
     // offered on the current user's own profile, mirroring FeedCard's identical

@@ -39,7 +39,7 @@ struct ConnectedAccountsView: View {
             } header: {
                 Text("Music library")
             } footer: {
-                Text("Lets Quick Add and Home suggest albums from your Apple Music library, recently played, and heavy rotation. Skipped this during setup? Connect it here any time.")
+                Text("Lets Home and Add suggest albums from your Apple Music library, recently played, and heavy rotation. Skipped this during setup? Connect it here any time.")
             }
 
             Section {
@@ -201,7 +201,7 @@ struct ConnectedAccountsView: View {
         let granted = await MusicKitService.requestAuthorization()
         appleMusicStatus = MusicAuthorization.currentStatus
         isRequestingAppleMusic = false
-        // DiscoveryViewModel has no reference here -- Quick Add and Home pick this up via
+        // DiscoveryViewModel has no reference here -- Home and the Add tab pick this up via
         // the same scenePhase/notification hooks Spotify already uses (SearchView.swift).
         if granted { NotificationCenter.default.post(name: .sjAppleMusicAuthorized, object: nil) }
     }

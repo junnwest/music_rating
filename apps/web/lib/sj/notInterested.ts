@@ -5,9 +5,7 @@ import { supabase } from '../supabaseClient';
  *
  * Two jobs: write the row when the user dismisses an album, and read the set back
  * so surfaces whose candidates *aren't* filtered in SQL (the Home explore feed,
- * which ranks `ratings` rows client-side) can drop them too. Quick Add's RPC
- * already excludes them server-side; the client filter there is belt-and-braces
- * for the window before the migration lands on an environment.
+ * which ranks `ratings` rows client-side) can drop them too.
  *
  * Every call is best-effort: a missing table or an RLS refusal must never take a
  * feed down, so failures resolve to "nothing dismissed" rather than throwing.

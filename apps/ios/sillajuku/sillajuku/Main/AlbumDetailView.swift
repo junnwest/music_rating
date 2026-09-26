@@ -79,8 +79,10 @@ struct TrackEntry: Codable, Identifiable, Hashable {
     let title: String
     let durationMs: Int?
     let artists: String?      // recordings.artist_display
+    // Not decoded (absent from CodingKeys); only the album tracklist sets it.
+    var discNumber: Int = 1
 
-    var id: String { trackId?.uuidString ?? "\(position)" }
+    var id: String { trackId?.uuidString ?? "\(discNumber)-\(position)" }
 
     enum CodingKeys: String, CodingKey {
         case trackId = "id"
@@ -185,6 +187,7 @@ class AlbumDetailViewModel {
             .from("release_tracks")
             .select("position, disc_number, recordings(id, title, duration_ms, artist_display)")
             .eq("release_id", value: canonical.id)
+            .order("disc_number")
             .order("position")
             .execute()
             .value) ?? []
@@ -195,7 +198,8 @@ class AlbumDetailViewModel {
                 position:  row.position,
                 title:     row.recordings.title,
                 durationMs: row.recordings.durationMs,
-                artists:   row.recordings.artistDisplay
+                artists:   row.recordings.artistDisplay,
+                discNumber: row.discNumber ?? 1
             )
         }
     }
@@ -248,30 +252,8 @@ class AlbumDetailViewModel {
     }
 
     func loadRatings(releaseGroupId: UUID) async {
-        struct Row: Decodable {
-            let id: UUID
-            let score: Double?
-            let userId: UUID
-            let reviewText: String?
-            enum CodingKeys: String, CodingKey {
-                case id, score; case userId = "user_id"; case reviewText = "review_text"
-            }
-        }
-        let rows: [Row] = (try? await supabase
-            .from("ratings").select("id, score, user_id, review_text")
-            .eq("release_group_id", value: releaseGroupId).execute().value) ?? []
-
-        communityCount = rows.count
-        let scored = rows.compactMap(\.score)
-        communityAvg = scored.isEmpty ? nil : scored.reduce(0, +) / Double(scored.count)
-        communitySD = Self.spread(of: scored)
-
-        if let userId = supabase.auth.currentUser?.id {
-            let mine = rows.first(where: { $0.userId == userId })
-            userScore       = mine?.score
-            currentRatingId = mine?.id
-            reviewText      = mine?.reviewText
-        }
+        await reloadCommunityStats(releaseGroupId: releaseGroupId,
+                                   currentUserId: supabase.auth.currentUser?.id)
     }
 
     /// Population standard deviation of the community's scores -- surfaced in
@@ -363,21 +345,31 @@ class AlbumDetailViewModel {
         }
     }
 
-    private func reloadCommunityStats(releaseGroupId: UUID, currentUserId: UUID) async {
+    // Community numbers come from the anonymous-scores RPC so private
+    // accounts still count; the user's own row is read directly.
+    private func reloadCommunityStats(releaseGroupId: UUID, currentUserId: UUID?) async {
         struct Row: Decodable {
-            let id: UUID; let score: Double?; let userId: UUID; let reviewText: String?
+            let id: UUID; let score: Double?; let reviewText: String?
             enum CodingKeys: String, CodingKey {
-                case id, score; case userId = "user_id"; case reviewText = "review_text"
+                case id, score; case reviewText = "review_text"
             }
         }
-        let rows: [Row] = (try? await supabase
-            .from("ratings").select("id, score, user_id, review_text")
-            .eq("release_group_id", value: releaseGroupId).execute().value) ?? []
-        communityCount = rows.count
-        let scored = rows.compactMap(\.score)
+        async let scoresTask = CommunityScores.albums([releaseGroupId])
+        async let mineTask: [Row] = {
+            guard let currentUserId else { return [] }
+            return (try? await supabase
+                .from("ratings").select("id, score, review_text")
+                .eq("release_group_id", value: releaseGroupId)
+                .eq("user_id", value: currentUserId)
+                .limit(1).execute().value) ?? []
+        }()
+        let (scores, mineRows) = await (scoresTask, mineTask)
+        communityCount = scores.count
+        let scored = scores.compactMap(\.score)
         communityAvg = scored.isEmpty ? nil : scored.reduce(0, +) / Double(scored.count)
         communitySD = Self.spread(of: scored)
-        let mine = rows.first(where: { $0.userId == currentUserId })
+        guard currentUserId != nil else { return }
+        let mine = mineRows.first
         userScore       = mine?.score
         currentRatingId = mine?.id
         reviewText      = mine?.reviewText
@@ -1316,7 +1308,13 @@ struct AlbumDetailView: View {
         VStack(alignment: .leading, spacing: 0) {
             sectionLabel("Tracklist")
 
+            // Multi-disc editions get a "Disc N" header at each disc's start
+            // (track numbers restart per disc); single-disc albums look as before.
+            let isMultiDisc = Set(viewModel.tracks.map(\.discNumber)).count > 1
             ForEach(Array(viewModel.tracks.enumerated()), id: \.element.id) { i, track in
+                if isMultiDisc && (i == 0 || viewModel.tracks[i - 1].discNumber != track.discNumber) {
+                    discHeader(track.discNumber, isFirst: i == 0)
+                }
                 TrackRow(
                     track: track,
                     existingScore: track.trackId.flatMap { viewModel.trackRatings[$0] },
@@ -1328,12 +1326,29 @@ struct AlbumDetailView: View {
                     },
                     ratingStep: viewModel.ratingStep
                 )
-                if i < viewModel.tracks.count - 1 {
+                if i < viewModel.tracks.count - 1
+                    && viewModel.tracks[i + 1].discNumber == track.discNumber {
                     Divider().padding(.leading, 56)
                 }
             }
         }
         .padding(.bottom, 20)
+    }
+
+    private func discHeader(_ disc: Int, isFirst: Bool) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "opticaldisc")
+                .font(.system(size: 12))
+                .accessibilityHidden(true)
+            Text(String(format: String(localized: "Disc %d"), disc))
+                .font(.jakarta(12, weight: .semibold))
+        }
+        .foregroundStyle(Color.sjMuted)
+        .padding(.horizontal, 20)
+        .padding(.top, isFirst ? 0 : 16)
+        .padding(.bottom, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityAddTraits(.isHeader)
     }
 
     // MARK: Posts
@@ -2399,12 +2414,7 @@ struct SongDetailView: View {
 
     private func loadStats() async {
         guard let recordingId = track.trackId else { return }
-        struct ScoreRow: Decodable { let score: Double? }
-        let allRows: [ScoreRow] = (try? await supabase
-            .from("track_ratings").select("score")
-            .eq("recording_id", value: recordingId)
-            .execute().value) ?? []
-        let scores = allRows.compactMap(\.score)
+        let scores = await CommunityScores.songs([recordingId]).compactMap(\.score)
         communityCount = scores.count
         communityAvg = scores.isEmpty ? nil : scores.reduce(0, +) / Double(scores.count)
 

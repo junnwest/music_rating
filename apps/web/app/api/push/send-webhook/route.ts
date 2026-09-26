@@ -52,6 +52,8 @@ export async function POST(req: NextRequest) {
     like: releaseTitle ? `${actorName} liked your rating of ${releaseTitle}` : `${actorName} liked your rating`,
     comment: releaseTitle ? `${actorName} commented on your rating of ${releaseTitle}` : `${actorName} commented on your rating`,
     follow: `${actorName} started following you`,
+    follow_request: `${actorName} requested to follow you`,
+    follow_accept: `${actorName} accepted your follow request`,
   };
   const body_ = messages[notification.type] ?? `${actorName} interacted with your activity`;
 

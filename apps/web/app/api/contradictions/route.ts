@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../lib/supabaseServer';
+import { isSelfRequest } from '../../../lib/privateAccounts';
 
 const THRESHOLD = 1.5;
 const MIN_COMMUNITY_RATINGS = 2;
@@ -7,6 +8,10 @@ const MIN_COMMUNITY_RATINGS = 2;
 export async function GET(req: NextRequest) {
   const userId = req.nextUrl.searchParams.get('userId');
   if (!userId) return NextResponse.json({ contradictions: [] });
+
+  // Returns this user's own ratings via the service role — only to them.
+  if (!(await isSelfRequest(req.headers.get('Authorization'), userId)))
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const supabase = createServerClient();
   if (!supabase) return NextResponse.json({ contradictions: [] });

@@ -2,7 +2,7 @@ import Foundation
 import Supabase
 
 /// The "Not interested" signal (tables `not_interested` / `not_interested_songs`, migrations
-/// 20260719000000 / 20260810000000) -- an explicit negative signal so Quick Add stops
+/// 20260719000000 / 20260810000000) -- an explicit negative signal so recommendation surfaces stop
 /// re-surfacing an album/song the user has no intention of hearing. Two separate tables
 /// (album vs. song), not one polymorphic table -- see the songs migration's own comment for why.
 enum NotInterested {

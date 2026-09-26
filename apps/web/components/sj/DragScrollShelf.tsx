@@ -9,9 +9,9 @@ import { useLanguage } from '../../lib/i18n';
  * (`shelf-scroll`), grab-and-drag panning, and paging arrows that show only at
  * the end you can still move toward.
  *
- * Unlike CandidateRow this owns *only* the scroller — the caller keeps its own
+ * This owns *only* the scroller — the caller keeps its own
  * heading and spacing — so a page can bolt these affordances onto an existing
- * row without adopting Quick Add's header design.
+ * row without changing its header design.
  *
  * The arrows are driven by measured overflow, not item count: whether a row of
  * covers overflows depends on the viewport, and only the element knows. They're
@@ -123,13 +123,13 @@ export default function DragScrollShelf({
         dir={-1}
         onClick={() => page(-1)}
         disabled={atStart}
-        label={t('sj.quickAdd.scrollLeft')}
+        label={t('sj.common.scrollLeft')}
       />
       <Arrow
         dir={1}
         onClick={() => page(1)}
         disabled={atEnd}
-        label={t('sj.quickAdd.scrollRight')}
+        label={t('sj.common.scrollRight')}
       />
     </div>
   );

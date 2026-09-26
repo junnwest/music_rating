@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../lib/supabaseServer';
+import { privateUserIds } from '../../../lib/privateAccounts';
 
 export async function GET(req: NextRequest) {
   const userId = req.nextUrl.searchParams.get('userId') ?? null;
@@ -55,10 +56,16 @@ export async function GET(req: NextRequest) {
           .limit(40),
   ]);
 
+  // Unauthenticated route (userId is just a param), so private accounts are
+  // always left out.
+  const hidden = new Set(await privateUserIds(supabase));
+  const visibleRatings = (ratings ?? []).filter((r: any) => !hidden.has(r.user_id));
+  const visibleReviews = (reviews ?? []).filter((r: any) => !hidden.has(r.user_id));
+
   // Build username map from profiles table
   const allUserIds = [...new Set([
-    ...(ratings ?? []).map((r: any) => r.user_id),
-    ...(reviews ?? []).map((r: any) => r.user_id),
+    ...visibleRatings.map((r: any) => r.user_id),
+    ...visibleReviews.map((r: any) => r.user_id),
   ])];
   let userMap = new Map<string, string>();
   if (allUserIds.length > 0) {
@@ -70,14 +77,14 @@ export async function GET(req: NextRequest) {
   }
 
   // Resolve release info for reviews
-  const reviewReleaseIds = [...new Set((reviews ?? []).map((r: any) => r.release_id))];
+  const reviewReleaseIds = [...new Set(visibleReviews.map((r: any) => r.release_id))];
   const { data: reviewReleases } = reviewReleaseIds.length > 0
     ? await supabase.from('releases').select('id, title, artist, cover_url').in('id', reviewReleaseIds)
     : { data: [] };
   const releaseMap = new Map((reviewReleases ?? []).map((r: any) => [r.id, r]));
 
   const feed = [
-    ...(ratings ?? []).map((r: any) => ({
+    ...visibleRatings.map((r: any) => ({
       type: 'rating' as const,
       userId: r.user_id,
       username: userMap.get(r.user_id) ?? 'user',
@@ -88,7 +95,7 @@ export async function GET(req: NextRequest) {
       releaseId: r.release_id,
       ratingId: r.id,
     })),
-    ...(reviews ?? []).map((r: any) => ({
+    ...visibleReviews.map((r: any) => ({
       type: 'review' as const,
       userId: r.user_id,
       username: r.username ?? userMap.get(r.user_id) ?? 'user',

@@ -59,6 +59,11 @@ struct SettingsView: View {
     // Sign out
     @State private var showSignOutConfirm = false
 
+    // Deactivate account
+    @State private var showDeactivateConfirm = false
+    @State private var isDeactivating        = false
+    @State private var deactivateError: String?
+
     // Delete account
     @State private var showDeleteConfirm  = false
     @State private var deleteUsernameInput = ""
@@ -119,17 +124,21 @@ struct SettingsView: View {
                     Picker("Account", selection: $profileVisibility) { generalVisibilityOptions }
                         .onChange(of: profileVisibility) { _, v in saveText("profile_visibility", v, \.profileVisibility) }
 
-                    DisclosureGroup("Advanced") {
-                        overrideRow("Catalog", $catalogOverride, column: "catalog_visibility", keyPath: \.catalogVisibility)
-                        overrideRow("Library", $libraryOverride, column: "library_visibility", keyPath: \.libraryVisibility)
-                        overrideRow("Stats",   $statsOverride,   column: "stats_visibility", keyPath: \.statsVisibility)
+                    // A private account hides everything from non-followers,
+                    // so per-section overrides only matter for public ones.
+                    if profileVisibility != "Private" {
+                        DisclosureGroup("Advanced") {
+                            overrideRow("Catalog", $catalogOverride, column: "catalog_visibility", keyPath: \.catalogVisibility)
+                            overrideRow("Library", $libraryOverride, column: "library_visibility", keyPath: \.libraryVisibility)
+                            overrideRow("Stats",   $statsOverride,   column: "stats_visibility", keyPath: \.statsVisibility)
+                        }
                     }
                 } header: {
                     Text("Privacy")
                 } footer: {
                     Text(profileVisibility == "Private"
-                         ? "Private accounts are only visible to followers."
-                         : "Public accounts are visible to everyone.")
+                         ? "Only followers you approve can see your ratings and Mixes. New followers have to send a request."
+                         : "Public accounts are visible to everyone. Switching to Public approves any pending follow requests.")
                 }
 
                 // MARK: Support
@@ -183,6 +192,12 @@ struct SettingsView: View {
                         Label("Sign Out", image: "icon-log-out")
                     }
                     Button(role: .destructive) {
+                        deactivateError = nil
+                        showDeactivateConfirm = true
+                    } label: {
+                        Label("Deactivate Account", image: "icon-moon")
+                    }
+                    Button(role: .destructive) {
                         deleteUsernameInput = ""
                         deleteError = nil
                         showDeleteConfirm = true
@@ -209,6 +224,7 @@ struct SettingsView: View {
                 Button("Cancel", role: .cancel) {}
             }
             .sheet(isPresented: $showDeleteConfirm) { deleteAccountSheet }
+            .sheet(isPresented: $showDeactivateConfirm) { deactivateAccountSheet }
             .onAppear { loadPreferences() }
             .task { await loadVerifiedInviteCount() }
             .task { await refreshNotificationStatus() }
@@ -448,6 +464,72 @@ struct SettingsView: View {
             )
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - Deactivate account sheet
+
+    private var deactivateAccountSheet: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Your profile, ratings, Mixes, comments and likes will be hidden from everyone, and your scores won't count toward averages or charts. Nothing is deleted.")
+                    .font(.jakarta(14))
+                    .foregroundStyle(Color.sjMuted)
+                Text("Sign in again any time and choose Reactivate to bring everything back.")
+                    .font(.jakarta(14))
+                    .foregroundStyle(Color.sjMuted)
+
+                if let deactivateError {
+                    Text(deactivateError)
+                        .font(.jakarta(13))
+                        .foregroundStyle(.red)
+                }
+
+                Button {
+                    Task { await deactivateAccount() }
+                } label: {
+                    Group {
+                        if isDeactivating {
+                            ProgressView().tint(.white)
+                        } else {
+                            Text("Deactivate My Account")
+                                .font(.jakarta(16, weight: .semibold))
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color.red)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .disabled(isDeactivating)
+                .padding(.top, 4)
+
+                Spacer()
+            }
+            .padding(20)
+            .navigationTitle("Deactivate Account")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { showDeactivateConfirm = false }.disabled(isDeactivating)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    private func deactivateAccount() async {
+        isDeactivating  = true
+        deactivateError = nil
+        do {
+            try await AccountStatus.deactivate()
+            showDeactivateConfirm = false
+            await viewModel.signOut()
+            appState.authState = .unauthenticated
+        } catch {
+            deactivateError = String(localized: "Couldn't deactivate your account. Please try again.")
+        }
+        isDeactivating = false
     }
 
     // MARK: - Delete account sheet

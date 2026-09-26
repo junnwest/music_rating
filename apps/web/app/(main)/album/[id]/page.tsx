@@ -30,6 +30,7 @@ import {
 import { useSession } from '../../../../components/sj/SessionContext';
 import { useRatings } from '../../../../components/sj/RatingsStore';
 import { supabase } from '../../../../lib/supabaseClient';
+import { albumCommunityScores } from '../../../../lib/sj/communityScores';
 import { useLanguage } from '../../../../lib/i18n';
 import {
   displayName,
@@ -133,14 +134,19 @@ export default function AlbumPage() {
 
   const loadRatings = useCallback(async () => {
     if (!supabase) return;
-    const { data } = await supabase
-      .from('ratings')
-      .select('score, user_id, review_text')
-      .eq('release_group_id', releaseGroupId);
-    const rows =
-      (data as
-        | { score: number | null; user_id: string; review_text: string | null }[]
-        | null) ?? [];
+    // Community numbers from the anonymous-scores RPC (private accounts still
+    // count); my own row is read directly.
+    const [rows, mineRes] = await Promise.all([
+      albumCommunityScores([releaseGroupId]),
+      userId
+        ? supabase
+            .from('ratings')
+            .select('score, review_text')
+            .eq('user_id', userId)
+            .eq('release_group_id', releaseGroupId)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
     setCommunityCount(rows.length);
     const scored = rows.map((r) => r.score).filter((s): s is number => s != null);
     setCommunityAvg(scored.length ? scored.reduce((a, b) => a + b, 0) / scored.length : null);
@@ -160,7 +166,7 @@ export default function AlbumPage() {
     }
     setScoreDist(dist);
     if (userId) {
-      const mine = rows.find((r) => r.user_id === userId);
+      const mine = mineRes.data as { score: number | null; review_text: string | null } | null;
       setUserScore(mine?.score ?? null);
       // Keep the app-wide store in sync so every other surface for this album
       // (feed, charts, artist…) reflects edits made here, and vice-versa.

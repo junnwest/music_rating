@@ -120,7 +120,7 @@ export function OverflowMenuSurface({
 /**
  * The one-tap "Not interested" cover button — the visible sibling of the menu
  * item below, for surfaces where the signal deserves first-class placement
- * (Home explore cards, Quick Add candidates). Same optimistic contract: the
+ * (Home explore cards). Same optimistic contract: the
  * caller drops the card, the write follows.
  */
 export function NotInterestedButton({

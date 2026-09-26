@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../lib/supabaseServer';
+import { getAuthedUserId } from '../../../lib/authGuard';
+import { hiddenUserIds } from '../../../lib/privateAccounts';
 
 export async function GET(req: NextRequest) {
   const releaseId = req.nextUrl.searchParams.get('releaseId');
@@ -41,7 +43,11 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Private accounts' reviews, unless the (verified) viewer is an approved follower.
+  const hidden = await hiddenUserIds(supabase, await getAuthedUserId(req.headers.get('Authorization')));
+
   const visible = rows.filter(r => {
+    if (hidden.has(r.user_id)) return false;
     if (r.visibility === 'public') return true;
     if (r.visibility === 'private') return viewerId === r.user_id;
     if (r.visibility === 'friends') return viewerId === r.user_id || followedSet.has(r.user_id);

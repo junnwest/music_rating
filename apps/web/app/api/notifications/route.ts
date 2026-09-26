@@ -15,6 +15,11 @@ export async function GET(req: NextRequest) {
   const userId = req.nextUrl.searchParams.get('userId');
   if (!userId) return NextResponse.json({ notifications: [] });
 
+  // Service-role reads below (followers, followed users' ratings) must only
+  // ever go to that user — otherwise this exposes private accounts' ratings.
+  const authedId = await getAuthedUserId(req.headers.get('Authorization'));
+  if (!authedId || authedId !== userId) return NextResponse.json({ notifications: [] }, { status: 403 });
+
   const supabase = createServerClient();
   if (!supabase) return NextResponse.json({ notifications: [] });
 

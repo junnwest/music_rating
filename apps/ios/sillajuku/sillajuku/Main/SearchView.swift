@@ -64,10 +64,6 @@ class DiscoveryViewModel {
     var personalizedSongs:  [SongResult] = []
     var hasPersonalized = false
 
-    // Artists behind ratings >= 3.5, ordered best-first -- the in-app signal QuickAddViewModel
-    // supplements Spotify/Apple Music with. Populated by loadRatedArtists() below.
-    var ratedArtists: [String] = []
-
     // High-confidence taste recommendations (artists user rated 4+)
     var tasteAlbums: [Release] = []
 
@@ -166,7 +162,7 @@ class DiscoveryViewModel {
         async let discoveryChain: Void = {
             if !hasDiscoveryData { await reloadDiscoverySections() }
             // One retry if discovery/recommendations came back empty -- loadDiscovery/
-            // loadRecommendations/loadRatedArtists each silently swallow a failed fetch (network
+            // loadRecommendations each silently swallow a failed fetch (network
             // blip, timeout, or cold-launch contention with Home/Quest's own concurrent queries) as
             // "no data" rather than surfacing an error, so `hasDiscoveryData` false here is far more
             // likely a transient failure than a real empty state (popular/trending are global feeds,
@@ -336,7 +332,6 @@ class DiscoveryViewModel {
 
     private func reloadDiscoverySections() async {
         await withTaskGroup(of: Void.self) { g in
-            g.addTask { await self.loadRatedArtists() }
             g.addTask { await self.loadDiscovery() }
             g.addTask { await self.loadRecommendations() }
             g.addTask { await self.loadPopularSearches() }
@@ -544,40 +539,6 @@ class DiscoveryViewModel {
         // Same gap as refreshSpotifyIfNeeded() above, same fix.
         hasResolvedRecentlyPlayed = false
         await resolveRecentlyPlayedIfNeeded()
-    }
-
-    // Artists behind ratings >= 3.5, best-first -- QuickAddViewModel's seed source. Kept as its
-    // own small loader (previously a side effect of loadPersonalized(), now that that's gone in
-    // favor of calling web's own /api/recommendations directly).
-    private func loadRatedArtists() async {
-        guard let userId = supabase.auth.currentUser?.id else { return }
-        struct RatedRelease: Codable {
-            let score: Double?
-            let releaseGroups: ArtistOnly
-            struct ArtistOnly: Codable {
-                let artist: String
-                enum CodingKeys: String, CodingKey { case artist = "artist_display" }
-            }
-            enum CodingKeys: String, CodingKey {
-                case score; case releaseGroups = "release_groups"
-            }
-        }
-        let ratedReleases: [RatedRelease] = (try? await supabase
-            .from("ratings")
-            .select("score, release_groups(artist_display)")
-            .eq("user_id", value: userId)
-            .limit(200)
-            .execute()
-            .value) ?? []
-        var seenRatedArtists = Set<String>()
-        ratedArtists = ratedReleases
-            .compactMap { r -> (String, Double)? in
-                guard let d = r.score, d >= 3.5 else { return nil }
-                return (r.releaseGroups.artist, d)
-            }
-            .sorted { $0.1 > $1.1 }
-            .map(\.0)
-            .filter { seenRatedArtists.insert($0).inserted }
     }
 
     // Popular (prestige-ranked, not just newest), New Releases, and bot-weighted Trending --
@@ -910,12 +871,6 @@ class SearchViewModel {
 struct SearchView: View {
     let discoveryVM: DiscoveryViewModel
     let onGoToSettings: () -> Void
-    // Own instance, separate from whatever backs the Quick Add sheet -- only ever used for its
-    // genre-explorer state (genresToShow/likedGenres/openedGenres/genreShelves), never the
-    // album/song candidate loaders, so the artistNames snapshot QuickAddViewModel.init computes
-    // from discoveryVM being stale at this point (discoveryVM.load() hasn't necessarily run
-    // yet) is harmless -- nothing the bottom-of-Add-tab genre explorer does ever reads it.
-    @State private var bottomGenreVM: QuickAddViewModel
     @State private var searchVM           = SearchViewModel()
     @State private var searchTask: Task<Void, Never>?
     // Separate, longer-debounce task for Popular Searches telemetry -- see the onChange
@@ -962,7 +917,6 @@ struct SearchView: View {
     init(discoveryVM: DiscoveryViewModel, onGoToSettings: @escaping () -> Void) {
         self.discoveryVM = discoveryVM
         self.onGoToSettings = onGoToSettings
-        _bottomGenreVM = State(initialValue: QuickAddViewModel(discoveryVM: discoveryVM))
     }
 
     private var hasQuery: Bool {
@@ -1041,19 +995,6 @@ struct SearchView: View {
             .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
             .navigationDestination(for: UserProfileDestination.self) { UserProfileView(userId: $0.userId, initialHandle: $0.handle) }
             .navigationDestination(for: RecentlyPlayedDestination.self) { ResolvingAlbumView(item: $0, discoveryVM: discoveryVM) }
-            // Was `.navigationDestination(isPresented: $showQuickAdd)` -- mixing an isPresented-
-            // bound destination with further NavigationLink(value:) pushes made from *within* the
-            // view it presents (QuickAddView's own rows push Release) confused this stack's path
-            // bookkeeping: tapping a Quick Add row did correctly push AlbumDetailView, but then
-            // QuickAddView got silently re-pushed on top of it too (showQuickAdd was still true),
-            // so the user just saw Quick Add again until backing out of that to reveal the album
-            // page underneath (confirmed live). Same class of bug as the comment on
-            // ArtistPageView's own navigationDestination handling elsewhere in this file --
-            // value-based `for:` destinations only, never mixed with an isPresented boolean, on
-            // one NavigationStack.
-            .navigationDestination(for: QuickAddDestination.self) { _ in
-                QuickAddView(discoveryVM: discoveryVM, ratingStep: userRatingStep, onGoToSettings: onGoToSettings)
-            }
             .sheet(item: $quickRateRelease) { release in
                 ManualRatingSheet(
                     release: release,
@@ -1066,7 +1007,7 @@ struct SearchView: View {
             }
         }
         .task {
-            // loadUserRatingStep/loadRatedReleaseIds/loadLikedGenres are all plain
+            // loadUserRatingStep/loadRatedReleaseIds are plain
             // `profiles`/`ratings` reads with zero dependency on Discovery's own
             // Spotify/Apple Music/catalog-resolution chain -- they used to run only
             // after discoveryVM.load() fully finished, which meant every rate button
@@ -1077,8 +1018,7 @@ struct SearchView: View {
             async let discovery: Void = discoveryVM.load()
             async let ratingStep: Void = loadUserRatingStep()
             async let ratedIds: Void = loadRatedReleaseIds()
-            async let likedGenres: Void = bottomGenreVM.loadLikedGenres()
-            _ = await (discovery, ratingStep, ratedIds, likedGenres)
+            _ = await (discovery, ratingStep, ratedIds)
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
@@ -1144,10 +1084,6 @@ struct SearchView: View {
             .execute()
             .value {
             userRatingStep = p.manualRatingStep ?? 0.5
-            // bottomGenreVM was constructed at SearchView's own init time, before this load
-            // could possibly have finished -- keep its copy in sync now that the real value
-            // is known, same reasoning as ratingStep's own comment on QuickAddViewModel.
-            bottomGenreVM.ratingStep = userRatingStep
         }
     }
 
@@ -1415,11 +1351,6 @@ struct SearchView: View {
             ScrollView(showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 0) {
 
-                    quickAddBanner
-                        .padding(.horizontal, 16)
-                        .padding(.top, 4)
-                        .padding(.bottom, 20)
-
                     // ── Popular Searches ──────────────────────
                     // Cross-user trending query chips -- see DiscoveryViewModel.popularSearchQueries's
                     // own comment. Tapping one fills the search bar and runs it immediately, same as
@@ -1554,14 +1485,11 @@ struct SearchView: View {
                         Spacer().frame(height: 24)
                     }
 
-                    // ── Connect nudge + Explore other genres ──
-                    // Per explicit request: shown at the bottom of the Add tab itself, not
-                    // just inside Quick Add's empty state. Each connect row is independent of
-                    // the other -- discoveryVM.isSpotifyLinked/isAppleMusicAuthorized are real
-                    // connection checks (see their own comment), not data-presence proxies, so
-                    // a linked-but-no-data-yet account doesn't get a wrong "Connect" nudge.
-                    // GenreExplorerView is the exact same component/state Quick Add's own
-                    // explorer uses (bottomGenreVM, a separate instance -- see its declaration).
+                    // ── Connect nudge ──
+                    // Each connect row is independent of the other --
+                    // discoveryVM.isSpotifyLinked/isAppleMusicAuthorized are real connection
+                    // checks (see their own comment), not data-presence proxies, so a
+                    // linked-but-no-data-yet account doesn't get a wrong "Connect" nudge.
                     VStack(spacing: 10) {
                         if !discoveryVM.isSpotifyLinked {
                             Button { onGoToSettings() } label: {
@@ -1579,9 +1507,6 @@ struct SearchView: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, discoveryVM.isSpotifyLinked && discoveryVM.isAppleMusicAuthorized ? 0 : 16)
 
-                    GenreExplorerView(vm: bottomGenreVM)
-                        .padding(.horizontal, 16)
-
                     Spacer().frame(height: 36)
                 }
                 .padding(.top, 4)
@@ -1590,40 +1515,6 @@ struct SearchView: View {
                 await discoveryVM.refresh()
             }
         }
-    }
-
-    private var quickAddBanner: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Setting up?")
-                    .font(.jakarta(16, weight: .bold))
-                    .foregroundStyle(Color.sjInk)
-                Text("Half-star rate albums you've probably already heard")
-                    .font(.jakarta(12))
-                    .foregroundStyle(Color.sjMuted)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 8)
-
-            NavigationLink(value: QuickAddDestination()) {
-                Text("Quick Add")
-                    .font(.jakarta(14, weight: .semibold))
-                    // Plain .white, not sjCream -- sjBlue is a fixed brand
-                    // color that doesn't flip in dark mode (unlike sjInk),
-                    // so the label doesn't need to flip either.
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    // Liquid Glass, matching ScoreBadge/FlowerRateControl's
-                    // tinted-glass treatment instead of a flat color fill.
-                    .glassEffect(.regular.tint(Color.sjBlue), in: Capsule())
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(12)
-        .background(Color.sjSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
     // MARK: - Helpers
@@ -2096,11 +1987,6 @@ struct RecentlyPlayedDestination: Hashable {
     let artist: String
     let imageUrl: String?
 }
-
-// Value-based marker for the Quick Add push -- was a plain Bool with
-// `.navigationDestination(isPresented:)` (see the comment at that call site for why
-// that broke tapping through to an album from inside Quick Add).
-struct QuickAddDestination: Hashable {}
 
 // Mirrors ArtistPageView's own artistId == nil resolution pattern for albums: shown immediately
 // with just Spotify's raw data while resolving in the background, behind its own loading state,
@@ -2645,30 +2531,38 @@ struct ArtistPageView: View {
             isLoadingSongs = false
         }
 
-        struct RRow: Codable {
-            let releaseGroupId: UUID; let userId: UUID; let score: Double?
+        struct MyRow: Codable {
+            let releaseGroupId: UUID; let score: Double?
             enum CodingKeys: String, CodingKey {
-                case releaseGroupId = "release_group_id"; case userId = "user_id"; case score
+                case releaseGroupId = "release_group_id"; case score
             }
         }
         // Independent of each other (the feed doesn't need the stats query's
         // result, or vice versa) -- was two sequential round trips, now concurrent.
-        async let statsRowsFetch: [RRow] = (try? await supabase
-            .from("ratings").select("release_group_id, user_id, score")
-            .in("release_group_id", values: releaseGroupIds).execute().value) ?? []
+        // Community scores come from the anonymous RPC so private accounts
+        // still count; my own scores are read directly.
+        async let statsRowsFetch = CommunityScores.albums(loaded.map(\.id))
+        async let myRowsFetch: [MyRow] = {
+            guard let me = supabase.auth.currentUser?.id else { return [] }
+            return (try? await supabase
+                .from("ratings").select("release_group_id, score")
+                .eq("user_id", value: me)
+                .in("release_group_id", values: releaseGroupIds).execute().value) ?? []
+        }()
         async let communityFeedFetch = loadCommunityFeed(releaseGroupIds: releaseGroupIds)
-        let (rows, feed) = await (statsRowsFetch, communityFeedFetch)
+        let (rows, myRows, feed) = await (statsRowsFetch, myRowsFetch, communityFeedFetch)
         communityFeed = feed
 
-        let currentUserId = supabase.auth.currentUser?.id
         var sumMap: [UUID: (sum: Double, count: Int)] = [:]
         var myMap:  [UUID: Double] = [:]
         for r in rows {
             if let s = r.score {
                 let e = sumMap[r.releaseGroupId] ?? (0, 0)
                 sumMap[r.releaseGroupId] = (e.sum + s, e.count + 1)
-                if r.userId == currentUserId { myMap[r.releaseGroupId] = s }
             }
+        }
+        for r in myRows {
+            if let s = r.score { myMap[r.releaseGroupId] = s }
         }
         releaseScores    = sumMap.mapValues { $0.sum / Double($0.count) }
         releaseCounts   = sumMap.mapValues { $0.count }

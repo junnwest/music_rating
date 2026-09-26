@@ -3,6 +3,7 @@ import { createServerClient } from '../../../lib/supabaseServer';
 import { rateLimit } from '../../../lib/rateLimit';
 import { cacheGet, cacheSet } from '../../../lib/cache';
 import { FEED_SELECT } from '../../../lib/sj/data';
+import { inList, privateUserIds } from '../../../lib/privateAccounts';
 
 // The Home explore pool is identical for every visitor, but each browser was
 // running it live under the anon role (150-row ratings select with two embeds,
@@ -30,16 +31,19 @@ export async function GET(req: NextRequest) {
     'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=300',
   };
 
-  const key = 'feed:explore:v1';
+  const key = 'feed:explore:v2'; // v2: private accounts excluded
   const cached = await cacheGet<FeedPayload>(key);
   if (cached) return NextResponse.json(cached, { headers: cdnHeaders });
 
   const supabase = createServerClient();
   if (!supabase) return NextResponse.json({ error: 'not configured' }, { status: 503 });
 
-  const { data: pool, error } = await supabase
-    .from('ratings')
-    .select(FEED_SELECT)
+  // Shared by every visitor, so private accounts are left out entirely
+  // (their approved followers see them in the Following feed instead).
+  const hidden = await privateUserIds(supabase);
+  let poolQuery = supabase.from('ratings').select(FEED_SELECT);
+  if (hidden.length > 0) poolQuery = poolQuery.not('user_id', 'in', inList(hidden));
+  const { data: pool, error } = await poolQuery
     .order('created_at', { ascending: false })
     .limit(150);
   if (error) {

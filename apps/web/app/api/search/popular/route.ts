@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
     'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=1800',
   };
 
-  const key = 'search:popular:v1';
+  const key = 'search:popular:v2'; // v2: artists/releases only (20260926000001)
   const cached = await cacheGet<Payload>(key);
   if (cached) return NextResponse.json(cached, { headers: cdnHeaders });
 

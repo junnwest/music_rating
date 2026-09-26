@@ -12,6 +12,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabaseClient';
 import type { ProfileRow } from '../../lib/db/types';
 import AuthPromptModal from './AuthPromptModal';
+import DeactivatedGate from './DeactivatedGate';
 
 interface SessionValue {
   /** undefined = still resolving; null = signed out */
@@ -25,6 +26,10 @@ interface SessionValue {
    * out it opens the sign-in nudge modal and returns false, so callers can write
    * `if (!requireAuth()) return;` in place of the old silent `if (!userId) return;`. */
   requireAuth: () => boolean;
+  /** Signed in to a deactivated account: the app is replaced by the reactivate prompt. */
+  deactivated: boolean;
+  /** Re-reads the deactivated flag (after reactivating). */
+  refreshDeactivated: () => Promise<void>;
 }
 
 const SessionContext = createContext<SessionValue>({
@@ -34,6 +39,8 @@ const SessionContext = createContext<SessionValue>({
   refreshProfile: async () => {},
   signOut: async () => {},
   requireAuth: () => false,
+  deactivated: false,
+  refreshDeactivated: async () => {},
 });
 
 const PROFILE_COLS =
@@ -51,6 +58,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const [profileError, setProfileError] = useState(false);
   const [authPromptOpen, setAuthPromptOpen] = useState(false);
+  const [deactivated, setDeactivated] = useState(false);
+
+  // Separate from PROFILE_COLS on purpose: if deactivated_at can't be read
+  // (migration 20260926000002 not applied), this just stays false instead
+  // of failing the whole profile load.
+  const loadDeactivated = useCallback(async (uid: string) => {
+    if (!supabase) return false;
+    const { data } = await supabase.from('profiles').select('deactivated_at').eq('id', uid).maybeSingle();
+    return !!(data as { deactivated_at: string | null } | null)?.deactivated_at;
+  }, []);
 
   const requireAuth = useCallback(() => {
     if (userId) return true;
@@ -100,32 +117,38 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (userId === null) {
       setProfile(null);
       setProfileError(false);
+      setDeactivated(false);
       setReady(true);
       return;
     }
     let cancelled = false;
-    loadProfile(userId).then((p) => {
+    Promise.all([loadProfile(userId), loadDeactivated(userId)]).then(([p, d]) => {
       if (cancelled) return;
       setProfile(p);
+      setDeactivated(d);
       setReady(true);
     });
     return () => {
       cancelled = true;
     };
-  }, [userId, loadProfile]);
+  }, [userId, loadProfile, loadDeactivated]);
 
   // Signed-in but never finished onboarding (no profile row / no username) →
   // route to /onboarding, mirroring iOS AppState.onboarding.
   useEffect(() => {
-    if (!ready || !userId || profileError) return;
+    if (!ready || !userId || profileError || deactivated) return;
     if (!profile?.username && pathname !== '/onboarding') {
       router.replace('/onboarding');
     }
-  }, [ready, userId, profile, profileError, pathname, router]);
+  }, [ready, userId, profile, profileError, deactivated, pathname, router]);
 
   const refreshProfile = useCallback(async () => {
     if (userId) setProfile(await loadProfile(userId));
   }, [userId, loadProfile]);
+
+  const refreshDeactivated = useCallback(async () => {
+    if (userId) setDeactivated(await loadDeactivated(userId));
+  }, [userId, loadDeactivated]);
 
   const signOut = useCallback(async () => {
     await supabase?.auth.signOut();
@@ -133,8 +156,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [router]);
 
   return (
-    <SessionContext.Provider value={{ userId, profile, ready, refreshProfile, signOut, requireAuth }}>
-      {children}
+    <SessionContext.Provider
+      value={{ userId, profile, ready, refreshProfile, signOut, requireAuth, deactivated, refreshDeactivated }}
+    >
+      {ready && userId && deactivated ? (
+        <DeactivatedGate onReactivated={refreshDeactivated} onSignOut={signOut} />
+      ) : (
+        children
+      )}
       <AuthPromptModal open={authPromptOpen} onClose={() => setAuthPromptOpen(false)} />
     </SessionContext.Provider>
   );

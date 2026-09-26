@@ -197,6 +197,8 @@ struct RootView: View {
             case .authenticated:
                 MainTabView()
                     .task { PushTokenService.requestPermissionAndRegister() }
+            case .deactivated:
+                DeactivatedAccountView()
             }
         }
         .task { await observeAuth() }
@@ -226,8 +228,10 @@ struct RootView: View {
             Task { await PendingReferralStore.consumeAndRedeem() }
             Task { await BetaTokenClipboardHandoff.checkAndRedeemOnce() }
             Task { await PendingBetaTokenStore.consumeAndRedeem() }
-            let onboarded = await checkOnboarded(userId: session.user.id)
-            if onboarded {
+            let status = await checkAccount(userId: session.user.id)
+            if status.deactivated {
+                appState.authState = .deactivated
+            } else if status.onboarded {
                 appState.authState = .authenticated
             } else {
                 var provider = "unknown"
@@ -240,19 +244,30 @@ struct RootView: View {
         }
     }
 
-    private func checkOnboarded(userId: UUID) async -> Bool {
-        do {
-            let profile: Profile = try await supabase
+    private func checkAccount(userId: UUID) async -> (onboarded: Bool, deactivated: Bool) {
+        struct Row: Decodable {
+            let username: String?
+            let deactivatedAt: Date?
+            enum CodingKeys: String, CodingKey {
+                case username
+                case deactivatedAt = "deactivated_at"
+            }
+        }
+        // Falls back to username only if deactivated_at can't be read (e.g.
+        // migration 20260926000002 not applied yet) -- otherwise every user
+        // would be sent back to onboarding.
+        for columns in ["username, deactivated_at", "username"] {
+            if let row: Row = try? await supabase
                 .from("profiles")
-                .select("id, username")
+                .select(columns)
                 .eq("id", value: userId)
                 .single()
                 .execute()
-                .value
-            return !(profile.username?.isEmpty ?? true)
-        } catch {
-            return false
+                .value {
+                return (!(row.username?.isEmpty ?? true), row.deactivatedAt != nil)
+            }
         }
+        return (false, false)
     }
 }
 

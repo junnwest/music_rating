@@ -409,6 +409,7 @@ function SuggestedRail() {
   const { userId } = useSession();
   const [users, setUsers] = useState<SuggestedUserRPC[]>([]);
   const [followed, setFollowed] = useState<Set<string>>(new Set());
+  const [requested, setRequested] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!supabase || !userId) return;
@@ -417,23 +418,38 @@ function SuggestedRail() {
       .then(({ data }) => setUsers(((data as SuggestedUserRPC[] | null) ?? []).slice(0, 5)));
   }, [userId]);
 
-  async function toggleFollow(id: string) {
-    if (!supabase || !userId) return;
-    const isFollowed = followed.has(id);
-    setFollowed((prev) => {
+  const setIn = (setter: typeof setFollowed, id: string, on: boolean) =>
+    setter((prev) => {
       const next = new Set(prev);
-      if (isFollowed) next.delete(id);
-      else next.add(id);
+      if (on) next.add(id);
+      else next.delete(id);
       return next;
     });
-    if (isFollowed) {
-      await supabase
-        .from('follows')
-        .delete()
-        .eq('follower_id', userId)
-        .eq('following_id', id);
-    } else {
-      await supabase.from('follows').insert({ follower_id: userId, following_id: id });
+
+  // A follow on a private account becomes a request (DB trigger); check which
+  // one happened so the button can say "Requested".
+  async function toggleFollow(id: string) {
+    if (!supabase || !userId) return;
+    if (followed.has(id) || requested.has(id)) {
+      setIn(setFollowed, id, false);
+      setIn(setRequested, id, false);
+      await Promise.all([
+        supabase.from('follows').delete().eq('follower_id', userId).eq('following_id', id),
+        supabase.from('follow_requests').delete().eq('requester_id', userId).eq('target_id', id),
+      ]);
+      return;
+    }
+    setIn(setFollowed, id, true);
+    await supabase.from('follows').insert({ follower_id: userId, following_id: id });
+    const { data } = await supabase
+      .from('follows')
+      .select('follower_id')
+      .eq('follower_id', userId)
+      .eq('following_id', id)
+      .maybeSingle();
+    if (!data) {
+      setIn(setFollowed, id, false);
+      setIn(setRequested, id, true);
     }
   }
 
@@ -461,6 +477,7 @@ function SuggestedRail() {
         {users.map((u) => {
           const handle = u.username ?? u.display_name ?? 'user';
           const isFollowed = followed.has(u.id);
+          const isRequested = requested.has(u.id);
           return (
             <li
               key={u.id}
@@ -484,12 +501,16 @@ function SuggestedRail() {
               <button
                 onClick={() => toggleFollow(u.id)}
                 className={`px-3 py-1.5 rounded-lg text-[12px] font-semibold transition shrink-0 ${
-                  isFollowed
+                  isFollowed || isRequested
                     ? 'bg-divider/50 text-muted'
                     : 'bg-accent text-white hover:opacity-90'
                 }`}
               >
-                {isFollowed ? t('sj.common.followingBtn') : t('sj.common.followBtn')}
+                {isFollowed
+                  ? t('sj.common.followingBtn')
+                  : isRequested
+                    ? t('sj.common.requestedBtn')
+                    : t('sj.common.followBtn')}
               </button>
             </li>
           );

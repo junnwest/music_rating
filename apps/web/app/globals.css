@@ -73,7 +73,7 @@ body {
   display: none;
 }
 
-/* Slim, always-visible horizontal scrollbar for the Quick Add shelves. */
+/* Slim, always-visible horizontal scrollbar for horizontal shelves (DragScrollShelf). */
 .shelf-scroll {
   scrollbar-width: thin;
   scrollbar-color: rgba(130, 130, 130, 0.45) transparent;
