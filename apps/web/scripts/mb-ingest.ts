@@ -6,7 +6,8 @@
 
 import { randomUUID } from 'crypto';
 import {
-  searchArtists, getArtist, browseReleaseGroups, browseArtistReleases,
+  searchArtists, getArtist, browseReleaseGroups, browseArtistReleases, browseArtistReleasesDetailed,
+  countArtistReleaseGroups,
   type MbArtistCandidate, type MbArtistDetail, type MbReleaseGroup, type MbArtistRelease, type MbTrack,
   type MbCredit,
 } from './mb-client';
@@ -132,9 +133,36 @@ export async function resolveArtist(name: string, region: string | null = null):
   }
 
   pool.sort((a, b) => b.score - a.score);
+
+  // SEVERAL CANDIDATES UNDER THE SAME NAME: ASK WHICH ONE HAS MUSIC.
+  //
+  // MB's `score` is a string-match score, so every candidate whose name equals the query scores 100
+  // and the sort above leaves their order arbitrary. That is how a miss for "Jessie Ware" -- an
+  // artist we already held with 47 release groups -- resolved to a DIFFERENT MusicBrainz "Jessie
+  // Ware" with none, got queued, ingested as `0 groups, 0 recordings`, and added a second, empty
+  // Jessie Ware to the catalogue. The Internet, Ken Carson, Lukas Graham and Ruel went the same way;
+  // 42 such duplicates existed by 2026-09-26. Nothing in the pick asked the one question that
+  // distinguishes a real artist from a stub entity, so ask it: one MB request per tied candidate
+  // (limit=1, so it is a count and not a listing).
+  //
+  // This also turns the `ambiguous` bail-out from a dead end into an answer. Two entities named
+  // "Crush" where one has 30 release groups and the other none are not genuinely ambiguous, and
+  // refusing to choose left the artist absent. Ties are only declared when the probe cannot separate
+  // them -- both at zero, or both holding music, which is the case that really does need review.
+  if (pool.length > 1 && pool[1].score >= pool[0].score - 3) {
+    const tied = pool.filter(c => c.score >= pool[0].score - 3).slice(0, 4);
+    const counts = new Map<string, number>();
+    for (const c of tied) counts.set(c.id, (await countArtistReleaseGroups(c.id)) ?? 0);
+    const ranked = [...tied].sort((a, b) => (counts.get(b.id) ?? 0) - (counts.get(a.id) ?? 0));
+    const top = counts.get(ranked[0].id) ?? 0;
+    const second = ranked.length > 1 ? (counts.get(ranked[1].id) ?? 0) : 0;
+    // A clear winner: it has music and nothing else tied with it is close.
+    if (top > 0 && top > second) return { best: ranked[0], needsReview: false, ambiguous: false, candidates };
+    return { best: ranked[0], needsReview: false, ambiguous: true, candidates };
+  }
+
   const best = pool[0];
-  const ambiguous = pool.length > 1 && pool[1].score >= best.score - 3;
-  return { best, needsReview: false, ambiguous, candidates };
+  return { best, needsReview: false, ambiguous: false, candidates };
 }
 
 // ── DB-writing ingest (race-safe via the MBID UNIQUE constraints) ──────────────
@@ -430,10 +458,40 @@ async function ingestEditionFromPrefetched(
 // album/EP/single (+ compilation/soundtrack, which carry primary-type Album); drop guest
 // features (primary artist ≠ this artist) and live/remix/dj-mix/etc.
 const SKIP_SECONDARY = new Set(['live', 'remix', 'dj-mix', 'interview', 'audiobook', 'spokenword', 'audio drama']);
-export function shouldIngestRG(rg: MbReleaseGroup, artistMbid: string): boolean {
+
+/**
+ * Release groups on a curated list that the `live` filter would otherwise refuse.
+ *
+ * Skipping live albums is right by default -- most are tour documents, not records people rate --
+ * but it also excludes 43 canonical albums, several of them Rolling Stone 500 entries: At Folsom
+ * Prison, Live at Leeds, MTV Unplugged in New York, Alive!, At Fillmore East, Frampton Comes
+ * Alive!, Judy at Carnegie Hall, Live at the Regal, Amazing Grace. CATALOG_GAP_REPORT.md classes
+ * these as "policy, not bugs" and recommends the rule implemented here: a live album earns its
+ * place when a curated list already judged it canonical. Loaded once per ingest from
+ * external_scores, so it costs one query rather than one per release group.
+ */
+let curatedLiveMbids: Set<string> | null = null;
+export async function loadCuratedMbids(db: DB): Promise<Set<string>> {
+  if (curatedLiveMbids) return curatedLiveMbids;
+  const out = new Set<string>();
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db.from('external_scores')
+      .select('mb_release_group_id').not('mb_release_group_id', 'is', null)
+      .order('mb_release_group_id').range(from, from + 999);
+    if (error || !data?.length) break;
+    for (const r of data as any[]) out.add(r.mb_release_group_id);
+    if (data.length < 1000) break;
+  }
+  curatedLiveMbids = out;
+  return out;
+}
+
+export function shouldIngestRG(rg: MbReleaseGroup, artistMbid: string, curated?: Set<string>): boolean {
   if (rg.primaryArtistMbid && rg.primaryArtistMbid !== artistMbid) return false; // guest feature / various artists
   const sec = (rg.secondaryTypes ?? []).map(s => s.toLowerCase());
-  if (sec.some(s => SKIP_SECONDARY.has(s))) return false;
+  // A curated-list album overrides the `live` skip only -- remix/interview/audiobook stay out.
+  const curatedLive = !!curated?.has(rg.id) && sec.every(x => x === 'live' || !SKIP_SECONDARY.has(x));
+  if (!curatedLive && sec.some(s => SKIP_SECONDARY.has(s))) return false;
   const pt = (rg.primaryType ?? '').toLowerCase();
   return pt === 'album' || pt === 'ep' || pt === 'single';
 }
@@ -448,7 +506,35 @@ export function nextCheckAt(priority: string | null | undefined, from: Date = ne
   return new Date(from.getTime() + days * 86_400_000).toISOString();
 }
 
-export async function ingestArtist(db: DB, mbid: string): Promise<{ artistId: string; isNew: boolean; rgCount: number; recCount: number; skippedUnofficial: number; skippedEmpty: number }> {
+/**
+ * `coreOnly` ingests ONLY official albums and EPs, skipping singles entirely.
+ *
+ * WHY IT EXISTS. MAX_INGEST_RGS refuses any artist with more than 800 release groups, because the
+ * DB-write phase runs so long the watchdog mistakes it for a hang and restart-loops the queue. That
+ * refusal is terminal, so 37 artists are permanently absent or frozen -- Frank Sinatra, Johnny
+ * Cash, Grateful Dead, Ennio Morricone, most classical composers and orchestras sit as empty stubs,
+ * while Bob Dylan, Bruce Springsteen, the Rolling Stones, U2, the Beatles and Elvis are frozen on a
+ * partial June ingest (Springsteen missing 11 studio albums, Dylan missing Tempest and Rough and
+ * Rowdy Ways, U2 re-scheduled to 2036). See CATALOG_GAP_REPORT.md cause 2.
+ *
+ * WHAT IT FILTERS, AND WHY DROPPING SINGLES WAS NOT ENOUGH. The first version of this kept every
+ * release group whose primaryType was Album or EP, on the theory that the count is dominated by
+ * singles. That holds for pop artists (the Rolling Stones: 677 rows against 491 MB-eligible) and is
+ * flatly false for everyone else on the list -- classical composers and orchestras are release-group
+ * counts made almost entirely of albums, so the filter removed nothing and every one of them was
+ * refused a second time on the same cap: Prokofiev 1318 -> 1314, Handel 1722 -> 1715, Frank Sinatra
+ * 1203 -> 925. So it also requires an EMPTY secondary-type list, i.e. studio albums only, which
+ * drops the compilations, live albums, soundtracks and remix collections that make up the bulk of a
+ * long-dead artist's release groups.
+ *
+ * AND WHY IT TRUNCATES INSTEAD OF REFUSING. For the composers and orchestras even studio-only can
+ * exceed the cap -- there are genuinely thousands of recordings of Handel credited to Handel. The
+ * cap exists to bound the DB-write phase so the watchdog does not mistake it for a hang, and a slice
+ * bounds it exactly as well as a refusal does, without being terminal. In coreOnly mode the list is
+ * therefore cut to MAX_INGEST_RGS oldest-first (the canonical recordings, not the reissue tail) and
+ * logged as truncated. Ordinary ingest still refuses, unchanged.
+ */
+export async function ingestArtist(db: DB, mbid: string, coreOnly = false): Promise<{ artistId: string; isNew: boolean; rgCount: number; recCount: number; skippedUnofficial: number; skippedEmpty: number }> {
   // Belt-and-suspenders for the ListenBrainz path (carries an MBID directly, bypassing the
   // resolver's candidate filter): never ingest a special-purpose placeholder.
   if (SPECIAL_MBIDS.has(mbid)) throw new Error(`refusing special-purpose MBID ${mbid} (Various Artists / [unknown] / …)`);
@@ -456,18 +542,70 @@ export async function ingestArtist(db: DB, mbid: string): Promise<{ artistId: st
   if (!detail) throw new Error(`MB artist not found: ${mbid}`);
   const { id: artistId, isNew } = await findOrCreateArtistByMbid(db, detail);
 
-  const rgs = await browseReleaseGroups(mbid);
+  let rgs = await browseReleaseGroups(mbid);
+
+  // AN MB ENTITY WITH NO RELEASES MUST NOT BECOME A CATALOGUE ARTIST.
+  //
+  // MusicBrainz holds many same-named entities that carry no release groups at all, and the resolver
+  // can land on one: a search miss for "Jessie Ware" resolved to a different MB "Jessie Ware" with
+  // nothing, and the ingest created a SECOND, empty Jessie Ware beside the one holding 47 groups.
+  // Kiss, Joji, Willow, Alex G, The Internet and Dean all acquired an empty twin the same way, and
+  // those twins are exactly the "artists I have never heard of" that crowd search results.
+  //
+  // Now that mbGet throws instead of returning null (see MbUnavailableError), an empty list here is
+  // a real answer from MusicBrainz rather than a failure wearing the same clothes, so it is safe to
+  // act on. Only a row this call just created is removed -- an artist that already existed is left
+  // alone, because something else put it there and may reference it.
+  if (rgs.length === 0 && isNew) {
+    await db.from('artists').delete().eq('id', artistId);
+    return { artistId, isNew, rgCount: 0, recCount: 0, skippedUnofficial: 0, skippedEmpty: 0 };
+  }
+
+  // In coreOnly mode reduce to studio albums and EPs before the cap is measured. Dropping singles
+  // alone is not enough -- see the note above; the secondary-type test is what actually brings a
+  // composer or an orchestra down to a plausible discography.
+  if (coreOnly) {
+    const before = rgs.length;
+    rgs = rgs.filter(rg =>
+      (rg.primaryType === 'Album' || rg.primaryType === 'EP') && (rg.secondaryTypes ?? []).length === 0);
+    console.log(`  [core] ${detail.name}: ${before} release groups -> ${rgs.length} studio album/EP only`);
+  }
 
   // Hard-skip heavily-featured entities (classical composers like Mozart/Bach, prolific producers)
   // whose thousands of release-groups make the DB-write phase so long the watchdog mistakes it for
   // a hang, restart-loops, and blocks the whole queue. They're not core catalog artists anyway.
   if (rgs.length > MAX_INGEST_RGS) {
-    throw new HeavilyFeaturedError(`heavily-featured (${rgs.length} release groups > ${MAX_INGEST_RGS}) — skipping ${detail.name}`);
+    if (!coreOnly) {
+      throw new HeavilyFeaturedError(`heavily-featured (${rgs.length} release groups > ${MAX_INGEST_RGS}) — skipping ${detail.name}`);
+    }
+    // coreOnly is the deliberate rescue path for exactly these artists, so bound the work instead
+    // of refusing it. Oldest-first keeps the canonical recordings and sheds the reissue tail.
+    const before = rgs.length;
+    rgs = [...rgs]
+      .sort((a, b) => (a.firstReleaseDate ?? '9999').localeCompare(b.firstReleaseDate ?? '9999'))
+      .slice(0, MAX_INGEST_RGS);
+    console.log(`  [core] ${detail.name}: still over the cap at ${before} — truncated to ${rgs.length} oldest`);
   }
 
   // Bulk-fetch ALL editions WITH tracks in pages of 100, then group by release-group —
   // replaces (browseReleases + getReleaseTracks) per RG. ~10–75× fewer MB calls.
-  const editions = await browseArtistReleases(mbid);
+  const browsed = await browseArtistReleasesDetailed(mbid);
+  const editions = browsed.releases;
+  // TRUNCATION MAKES AN EMPTY EDITION LIST MEANINGLESS. browseArtistReleases stops at
+  // MAX_RELEASE_PAGES, and /release?artist= returns everything the artist is CREDITED on, so a
+  // prolific artist blows past it -- Taylor Swift has 2,506 releases and the listing truncates at
+  // roughly 1,500. Any release group whose editions fall beyond the cap comes back with ZERO
+  // editions, which the gate below then reads as "empty shell, drop it". That is how her
+  // TORTURED POETS DEPARTMENT went missing despite having 25 Official releases on MusicBrainz, and
+  // it is the "recent albums missing after a fresh re-poll" cause in CATALOG_GAP_REPORT.md.
+  //
+  // The same hazard was already identified and guarded in audit-unofficial-rgs.ts -- refusing to
+  // conclude absence from a truncated list -- and simply not applied here. When the listing is
+  // truncated, an empty edition list means UNKNOWN, not EMPTY, so the group is kept.
+  const truncated = browsed.truncated;
+  if (truncated) {
+    console.warn(`  [ingest] ${mbid}: edition listing truncated at ${browsed.seen}/${browsed.total} — empty-edition groups will be KEPT, not dropped`);
+  }
   const byRg = new Map<string, MbArtistRelease[]>();
   for (const r of editions) {
     if (!r.rgId) continue;
@@ -475,9 +613,10 @@ export async function ingestArtist(db: DB, mbid: string): Promise<{ artistId: st
     if (arr) arr.push(r); else byRg.set(r.rgId, [r]);
   }
 
+  const curated = await loadCuratedMbids(db);
   let recCount = 0, kept = 0, skippedUnofficial = 0, skippedEmpty = 0;
   for (const rg of rgs) {
-    if (!shouldIngestRG(rg, mbid)) continue;           // composition filter (trim to core)
+    if (!shouldIngestRG(rg, mbid, curated)) continue;  // composition filter (trim to core)
     // OFFICIAL-EDITION GATE. MusicBrainz statuses each RELEASE (Official / Promotion / Bootleg /
     // Pseudo-Release / Cancelled / Withdrawn); release GROUPS carry no status, which is why this
     // cannot live in shouldIngestRG. We already hold every edition here from browseArtistReleases,
@@ -498,8 +637,10 @@ export async function ingestArtist(db: DB, mbid: string): Promise<{ artistId: st
     // to the real record looking like a duplicate. Reported 2026-09-22: Ye's page showed "BULLY"
     // twice, and the second was this -- 0 editions, 0 tracks, against the real one's 13. 3,986 such
     // rows existed catalogue-wide (2,539 of them compilations).
-    if (eds.length === 0) { skippedEmpty++; continue; }
-    if (!eds.some(e => e.status === 'Official')) { skippedUnofficial++; continue; }
+    // Empty is only evidence of an empty shell when we actually saw the whole listing.
+    if (eds.length === 0) {
+      if (!truncated) { skippedEmpty++; continue; }
+    } else if (!eds.some(e => e.status === 'Official')) { skippedUnofficial++; continue; }
     kept++;
     const rgId = await findOrCreateReleaseGroup(db, rg, artistId);
     // Multi-artist credits (Work Item A). Guarded: if the release_group_artists migration isn't

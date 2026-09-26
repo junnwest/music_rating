@@ -39,6 +39,28 @@ function acquire(): Promise<void> {
 /** Wall-clock time of the most recent MB request dispatch (liveness signal). */
 export function mbLastActivityAt(): number { return lastActivity; }
 
+/**
+ * MusicBrainz did not answer. Distinct from a 404, and that distinction is the whole point.
+ *
+ * mbGet used to return null for every failure alike -- exhausted network retries, a 503 after six
+ * backoffs, a non-ok status, a body that would not parse -- and callers turn null into an empty list
+ * (`data?.['release-groups'] ?? []`). So "MusicBrainz is throttling us" reached ingestArtist looking
+ * exactly like "this artist has released nothing", and was WRITTEN DOWN as such: the artist marked
+ * tracks_done with mb_rg_count 0 and next_check_at pushed out, from a transient condition.
+ *
+ * Measured live on 2026-09-26, while two MB-touching lanes ran at once and MB was returning 503s:
+ * 84% of ingests recorded `0 groups, 0 recordings`, in an unbroken run of artists who plainly have
+ * catalogues -- Kiss, Joji, Alex G, Seventeen, Jessie Ware, Ken Carson, The Internet. A failed
+ * request must fail, so the ingest lane can leave the queue row alone and retry later, which is
+ * behaviour it already has. Only a genuine 404 still returns null.
+ */
+export class MbUnavailableError extends Error {
+  constructor(public readonly path: string, public readonly status: number | null) {
+    super(`MusicBrainz unavailable (${status ?? 'network'}) for ${path}`);
+    this.name = 'MbUnavailableError';
+  }
+}
+
 async function mbGet(path: string, attempt = 0): Promise<any> {
   await acquire();
   let res: Response;
@@ -52,7 +74,7 @@ async function mbGet(path: string, attempt = 0): Promise<any> {
       });
     } finally { clearTimeout(timer); }
   } catch {
-    if (attempt >= 5) return null;
+    if (attempt >= 5) throw new MbUnavailableError(path, null);
     await sleep(Math.min(30_000, 2_000 * 2 ** attempt));
     return mbGet(path, attempt + 1);
   }
@@ -60,12 +82,12 @@ async function mbGet(path: string, attempt = 0): Promise<any> {
     const wait = Math.min(60_000, 2_000 * 2 ** attempt); // MB throttle → back off
     process.stdout.write(`\n  [${res.status}] MB throttled — waiting ${wait / 1000}s… `);
     await sleep(wait);
-    if (attempt >= 6) return null;
+    if (attempt >= 6) throw new MbUnavailableError(path, res.status);
     return mbGet(path, attempt + 1);
   }
-  if (res.status === 404) return null;
-  if (!res.ok) return null;
-  try { return await res.json(); } catch { return null; }
+  if (res.status === 404) return null;   // the entity really is not there — the ONE absent case
+  if (!res.ok) throw new MbUnavailableError(path, res.status);
+  try { return await res.json(); } catch { throw new MbUnavailableError(path, res.status); }
 }
 
 const enc = encodeURIComponent;
