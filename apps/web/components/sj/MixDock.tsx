@@ -87,6 +87,35 @@ function useMedia(query: string) {
   return matches;
 }
 
+/**
+ * How much page width the open dock must take (≥xl) so the panel doesn't cover
+ * the page's content: pages centre a `mx-auto max-w-*` container in <main>, so
+ * on a wide screen its side margin absorbs most of the panel and the column
+ * only needs to give up the rest. Pushing the full panel width re-centred the
+ * content a long way left for nothing.
+ */
+function neededPush(panelW: number): number {
+  const main = document.querySelector<HTMLElement>('[data-dock-main]');
+  const container = main?.firstElementChild as HTMLElement | null | undefined;
+  if (!main || !container) return panelW;
+  const vw = document.documentElement.clientWidth;
+  const colRect = main.getBoundingClientRect();
+  const rect = container.getBoundingClientRect();
+  const cs = getComputedStyle(container);
+  const maxW = cs.maxWidth === 'none' ? Infinity : parseFloat(cs.maxWidth) || Infinity;
+  const pr = parseFloat(cs.paddingRight) || 0;
+  // Centred (mx-auto) when its side gaps match; otherwise it hugs the left.
+  const centred = Math.abs(rect.left - colRect.left - (colRect.right - rect.right)) < 2;
+  const limit = vw - panelW - 8; // content must end left of the panel, with a hair of air
+  for (let push = RAIL; push < panelW; push += 4) {
+    const colW = vw - colRect.left - push;
+    const cw = Math.min(maxW, colW);
+    const right = colRect.left + (centred ? (colW + cw) / 2 : cw) - pr;
+    if (right <= limit) return push;
+  }
+  return panelW;
+}
+
 /** /album/<id> or /song/<id>?rg=<rg> dropped from a dragged link → a mix item. */
 function itemFromUrl(raw: string): MixItemRef | null {
   try {
@@ -259,6 +288,27 @@ export default function MixDock() {
   const resizeRef = useRef<{ startX: number; startW: number } | null>(null);
   const [liveWidth, setLiveWidth] = useState<number | null>(null);
   const width = liveWidth ?? prefs.width;
+
+  // ≥xl the open dock pushes the page — but only by what the panel would
+  // otherwise cover (see neededPush). Re-measured on resize, route change and
+  // whenever the page swaps its top-level container (skeleton → content).
+  const [push, setPush] = useState<number | null>(null);
+  useEffect(() => {
+    if (!open || !isXl) {
+      setPush(null);
+      return;
+    }
+    const measure = () => setPush(neededPush(width));
+    measure();
+    window.addEventListener('resize', measure);
+    const main = document.querySelector<HTMLElement>('[data-dock-main]');
+    const mo = main ? new MutationObserver(measure) : null;
+    if (main && mo) mo.observe(main, { childList: true });
+    return () => {
+      window.removeEventListener('resize', measure);
+      mo?.disconnect();
+    };
+  }, [open, isXl, width, pathname]);
   const endResize = () => {
     resizeRef.current = null;
     if (liveWidth != null) updatePrefs({ width: liveWidth });
@@ -273,7 +323,7 @@ export default function MixDock() {
     <aside
       aria-label={t('sj.dock.title')}
       className="hidden md:block sticky top-0 h-screen shrink-0 z-30 transition-[width] duration-200 ease-out"
-      style={{ width: open && isXl ? width : RAIL }}
+      style={{ width: open && isXl ? push ?? width : RAIL }}
     >
       {/* Rail — always there; the open panel covers it. Clipped: the rail sits
           on the viewport's right edge, and the count badge's save pulse
@@ -304,7 +354,7 @@ export default function MixDock() {
       {open && (
         <div
           className={`absolute inset-y-0 right-0 z-10 flex flex-col bg-page border-l border-divider ${
-            isXl ? '' : 'shadow-2xl'
+            isXl && push != null && push >= width ? '' : 'shadow-2xl'
           }`}
           style={{ width }}
           onDragOver={onDragOver}

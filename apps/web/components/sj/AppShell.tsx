@@ -188,7 +188,8 @@ function ShellInner({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 pb-20 md:pb-0">{children}</main>
+        {/* data-dock-main: the Mix Dock measures this page's container to push it only as far as needed. */}
+        <main data-dock-main className="flex-1 pb-20 md:pb-0">{children}</main>
 
         <footer className="hidden md:flex items-center gap-4 px-6 py-5 border-t border-divider text-[12px] text-muted">
           <span className="inline-flex items-center gap-1.5">
