@@ -138,10 +138,7 @@ struct MainTabView: View {
 
                     Group {
                         if visitedTabs.contains(.add) {
-                            SearchView(discoveryVM: discoveryVM, onGoToSettings: {
-                                goTo(.profile)
-                                pendingOpenSettings = true
-                            })
+                            SearchView(discoveryVM: discoveryVM)
                         } else {
                             Color.clear
                         }

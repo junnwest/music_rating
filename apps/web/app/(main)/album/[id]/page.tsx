@@ -1,25 +1,21 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
-  Plus,
   ChevronRight,
   ExternalLink,
   ListMusic,
-  Bookmark,
 } from 'lucide-react';
 import AlbumRateButton from '../../../../components/sj/AlbumRateButton';
 import ArtistLink from '../../../../components/sj/ArtistLink';
-import Avatar from '../../../../components/sj/Avatar';
 import Cover from '../../../../components/sj/Cover';
-import { useContextMenuFor, openInNewTab } from '../../../../components/sj/ContextMenu';
 import FlowerGlyph from '../../../../components/sj/FlowerGlyph';
-import ManualRateModal from '../../../../components/sj/ManualRateModal';
 import InlineRatingEditor from '../../../../components/sj/InlineRatingEditor';
-import MixPickerModal from '../../../../components/sj/MixPickerModal';
-import ScoreBadge from '../../../../components/sj/ScoreBadge';
+import Tracklist from '../../../../components/sj/Tracklist';
+import CommentsSection from '../../../../components/sj/CommentsSection';
+import SaveToMixButton from '../../../../components/sj/SaveToMixButton';
 import RatingHistogram from '../../../../components/sj/RatingHistogram';
 import {
   Skeleton,
@@ -33,36 +29,19 @@ import { supabase } from '../../../../lib/supabaseClient';
 import { useLanguage } from '../../../../lib/i18n';
 import {
   displayName,
-  displayScore,
-  formatScore,
-  relativeTime,
   typeLabelKey,
   yearOf,
 } from '../../../../lib/sj/display';
 import type { SJRelease } from '../../../../lib/sj/data';
+import {
+  loadAlbumTracks,
+  loadMyTrackScores,
+  loadTrackStats,
+  type TrackEntry,
+  type TrackStats,
+} from '../../../../lib/sj/tracks';
+import { saveTrackRating } from '../../../../lib/sj/trackRatings';
 import type { ReleaseGroupCreditRPC } from '../../../../lib/db/types';
-
-interface TrackEntry {
-  recordingId: string;
-  discNumber: number;
-  position: number;
-  title: string;
-  durationMs: number | null;
-  artists: string | null;
-}
-
-interface PostRow {
-  id: string;
-  user_id: string;
-  score: number | null;
-  review_text: string | null;
-  created_at: string;
-  profiles: {
-    username: string | null;
-    display_name: string | null;
-    avatar_url: string | null;
-  } | null;
-}
 
 interface PublicMix {
   id: string;
@@ -88,18 +67,16 @@ export default function AlbumPage() {
   const [credits, setCredits] = useState<ReleaseGroupCreditRPC[]>([]);
   const [tracks, setTracks] = useState<TrackEntry[]>([]);
   const [trackRatings, setTrackRatings] = useState<Record<string, number>>({});
+  const [trackScoresLoading, setTrackScoresLoading] = useState(true);
+  const [trackStats, setTrackStats] = useState<Record<string, TrackStats> | null>(null);
   const [communityAvg, setCommunityAvg] = useState<number | null>(null);
   const [communitySD, setCommunitySD] = useState<number | null>(null);
   const [communityCount, setCommunityCount] = useState(0);
   const [scoreDist, setScoreDist] = useState<number[]>([]);
   const [userScore, setUserScore] = useState<number | null>(null);
-  const [posts, setPosts] = useState<PostRow[]>([]);
   const [publicMixes, setPublicMixes] = useState<PublicMix[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-
-  const [showMixPicker, setShowMixPicker] = useState(false);
-  const [trackManualTarget, setTrackManualTarget] = useState<TrackEntry | null>(null);
 
   // Inline comment (review_text on the user's rating row)
   const [reviewDraft, setReviewDraft] = useState('');
@@ -108,28 +85,6 @@ export default function AlbumPage() {
   const reviewTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const ratingStep = profile?.manual_rating_step ?? 0.5;
-
-  // Right-click menu for the tracklist. One instance for the whole list — each
-  // row hands itself in as the subject (see `useContextMenuFor`).
-  const { onContextMenu: onTrackContextMenu, menu: trackContextMenu } =
-    useContextMenuFor<TrackEntry>((track) => [
-      {
-        key: 'open-new-tab',
-        label: t('sj.context.openNewTab'),
-        icon: <ExternalLink size={15} />,
-        onSelect: () => openInNewTab(`/song/${track.recordingId}?rg=${releaseGroupId}`),
-      },
-      ...(userId
-        ? [
-            {
-              key: 'rate',
-              label: t('sj.context.rate'),
-              icon: <FlowerGlyph size={14} src="/icon-flower.svg" />,
-              onSelect: () => setTrackManualTarget(track),
-            },
-          ]
-        : []),
-    ]);
 
   const loadRatings = useCallback(async () => {
     if (!supabase) return;
@@ -227,23 +182,11 @@ export default function AlbumPage() {
       });
       setGenres(((rgAny.genres as string[] | null) ?? []).slice(0, 4));
 
-      // Parallel: credits, ratings, posts, mixes, tracklist
+      // Parallel: credits, ratings, mixes, tracklist
       const creditsP = supabase!
         .rpc('get_release_group_credits', { p_release_group_id: releaseGroupId })
         .then(({ data }) => {
           if (!cancelled) setCredits((data as ReleaseGroupCreditRPC[] | null) ?? []);
-        });
-
-      const postsP = supabase!
-        .from('ratings')
-        .select(
-          'id, user_id, score, review_text, created_at, profiles(username, display_name, avatar_url)',
-        )
-        .eq('release_group_id', releaseGroupId)
-        .order('created_at', { ascending: false })
-        .limit(20)
-        .then(({ data }) => {
-          if (!cancelled) setPosts((data as unknown as PostRow[] | null) ?? []);
         });
 
       const mixesP = (async () => {
@@ -279,50 +222,28 @@ export default function AlbumPage() {
       })();
 
       const tracksP = (async () => {
-        const { data: canonical } = await supabase!
-          .from('releases')
-          .select('id')
-          .eq('release_group_id', releaseGroupId)
-          .eq('is_canonical', true)
-          .limit(1);
-        const canonicalId = (canonical as { id: string }[] | null)?.[0]?.id;
-        if (!canonicalId) return;
-        const { data: rows } = await supabase!
-          .from('release_tracks')
-          .select('position, disc_number, recordings(id, title, duration_ms, artist_display)')
-          .eq('release_id', canonicalId)
-          // Positions restart on every disc, so disc_number has to lead the sort —
-          // ordering by position alone interleaves disc 2 into disc 1 and renders
-          // as duplicate track numbers.
-          .order('disc_number')
-          .order('position');
+        const loaded = await loadAlbumTracks(releaseGroupId);
         if (cancelled) return;
-        const loaded: TrackEntry[] = ((rows as any[] | null) ?? []).map((r) => ({
-          recordingId: r.recordings.id,
-          discNumber: r.disc_number ?? 1,
-          position: r.position,
-          title: r.recordings.title,
-          durationMs: r.recordings.duration_ms,
-          artists: r.recordings.artist_display,
-        }));
-        setTracks(loaded);
-        // Per-track user ratings
-        if (userId && loaded.length > 0) {
-          const { data: trs } = await supabase!
-            .from('track_ratings')
-            .select('recording_id, score')
-            .eq('user_id', userId)
-            .in('recording_id', loaded.map((tr) => tr.recordingId));
-          if (cancelled) return;
-          const map: Record<string, number> = {};
-          for (const r of (trs as { recording_id: string; score: number | null }[] | null) ?? []) {
-            if (r.score != null) map[r.recording_id] = r.score;
-          }
-          setTrackRatings(map);
-        }
+        const list = loaded ?? [];
+        setTracks(list);
+        const ids = list.map((tr) => tr.recordingId);
+        // Your scores and the community's load side by side; each column keeps
+        // a skeleton until its own data lands, so the rows never shift.
+        await Promise.all([
+          (async () => {
+            const mine = userId ? await loadMyTrackScores(userId, ids) : {};
+            if (cancelled) return;
+            setTrackRatings(mine);
+            setTrackScoresLoading(false);
+          })(),
+          (async () => {
+            const st = await loadTrackStats(ids);
+            if (!cancelled) setTrackStats(st ?? {});
+          })(),
+        ]);
       })();
 
-      await Promise.all([creditsP, postsP, mixesP, tracksP, loadRatings()]);
+      await Promise.all([creditsP, mixesP, tracksP, loadRatings()]);
       if (!cancelled) setLoading(false);
     })();
     return () => {
@@ -352,27 +273,30 @@ export default function AlbumPage() {
   }
 
   async function rateTrack(recordingId: string, score: number | null) {
-    if (!supabase || !userId) return;
-    if (score != null) {
-      await supabase
-        .from('track_ratings')
-        .upsert(
-          { user_id: userId, recording_id: recordingId, score },
-          { onConflict: 'user_id,recording_id' },
-        );
-      setTrackRatings((prev) => ({ ...prev, [recordingId]: score }));
-    } else {
-      await supabase
-        .from('track_ratings')
-        .delete()
-        .eq('user_id', userId)
-        .eq('recording_id', recordingId);
-      setTrackRatings((prev) => {
-        const next = { ...prev };
-        delete next[recordingId];
+    if (!userId) return;
+    const prev = trackRatings[recordingId];
+    const put = (v: number | null | undefined) =>
+      setTrackRatings((cur) => {
+        const next = { ...cur };
+        if (v == null) delete next[recordingId];
+        else next[recordingId] = v;
         return next;
       });
+    put(score);
+    const { error } = await saveTrackRating(userId, recordingId, score);
+    if (error) {
+      put(prev);
+      return;
     }
+    // Refresh just this track's community average.
+    const st = await loadTrackStats([recordingId]);
+    if (st)
+      setTrackStats((cur) => {
+        const next = { ...(cur ?? {}) };
+        if (st[recordingId]) next[recordingId] = st[recordingId];
+        else delete next[recordingId];
+        return next;
+      });
   }
 
   if (notFound) {
@@ -509,15 +433,13 @@ export default function AlbumPage() {
             <h2 className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted">
               {t('sj.album.yourRating')}
             </h2>
-            {userId && (
-              <button
-                onClick={() => setShowMixPicker(true)}
-                aria-label={t('sj.rate.addToList')}
-                className="p-1.5 -my-1.5 rounded-lg text-muted hover:text-accent hover:bg-page transition"
-              >
-                <Bookmark size={17} />
-              </button>
-            )}
+            <SaveToMixButton
+              item={{ kind: 'album', releaseGroupId }}
+              meta={{ coverUrl: release.coverUrl, title: release.title }}
+              variant="inline"
+              size={30}
+              className="-my-1.5"
+            />
           </div>
 
           {!userId ? (
@@ -585,110 +507,39 @@ export default function AlbumPage() {
         </section>
 
         {/* Tracklist */}
-        {tracks.length > 0 && (() => {
-          const multiDisc = tracks.some((tr) => tr.discNumber !== tracks[0].discNumber);
-          return (
+        {tracks.length > 0 && (
           <section className="mt-6">
             <h2 className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted mb-2 px-1">
               {t('sj.album.tracklist')}
             </h2>
-            <div className="rounded-2xl bg-surface border border-divider/60 divide-y divide-divider overflow-hidden">
-              {tracks.map((track, i) => {
-                const trackScore = trackRatings[track.recordingId];
-                // Multi-disc releases restart numbering per disc — label each one so
-                // the repeated track numbers read as "Disc 2, track 1", not a duplicate.
-                const showDiscHeader =
-                  multiDisc && (i === 0 || tracks[i - 1].discNumber !== track.discNumber);
-                return (
-                  <Fragment key={track.recordingId}>
-                  {showDiscHeader && (
-                    <div className="px-4 py-1.5 bg-page/40 text-[11px] font-semibold tracking-[0.06em] uppercase text-muted">
-                      {t('sj.album.discN').replace('{n}', String(track.discNumber))}
-                    </div>
-                  )}
-                  <div
-                    onContextMenu={(e) => onTrackContextMenu(e, track)}
-                    className="flex items-center gap-3 px-4 py-2.5 hover:bg-page/60 transition group"
-                  >
-                    <span className="w-6 text-right text-[13px] text-muted tabular-nums">
-                      {track.position}
-                    </span>
-                    <Link
-                      href={`/song/${track.recordingId}?rg=${releaseGroupId}`}
-                      className="flex-1 min-w-0 text-[14px] text-ink truncate hover:underline"
-                    >
-                      {track.title}
-                    </Link>
-                    {track.durationMs != null && track.durationMs > 0 && (
-                      <span className="text-[12px] text-muted tabular-nums">
-                        {Math.floor(track.durationMs / 60000)}:
-                        {String(Math.floor((track.durationMs % 60000) / 1000)).padStart(2, '0')}
-                      </span>
-                    )}
-                    {trackScore != null ? (
-                      <span className="px-1.5 py-0.5 rounded bg-accent/10 text-accent text-[11px] font-bold tabular-nums">
-                        {formatScore(trackScore)}
-                      </span>
-                    ) : userId ? (
-                      <button
-                        onClick={() => setTrackManualTarget(track)}
-                        aria-label={`${t('sj.album.rateTrack')} ${track.title}`}
-                        className="flex w-[26px] h-[26px] rounded-full bg-accent/10 items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition"
-                      >
-                        <Plus size={12} strokeWidth={2.6} className="text-accent" />
-                      </button>
-                    ) : null}
-                  </div>
-                  </Fragment>
-                );
-              })}
-            </div>
-            {trackContextMenu}
-          </section>
-          );
-        })()}
-
-        {/* Ratings & reviews */}
-        {posts.length > 0 && (
-          <section className="mt-6">
-            <h2 className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted mb-2 px-1">
-              {t('sj.album.ratingsReviews')}
-            </h2>
-            <div className="rounded-2xl bg-surface border border-divider/60 divide-y divide-divider overflow-hidden">
-              {posts.map((post) => {
-                const score = displayScore(post.score);
-                const handle =
-                  post.profiles?.username ?? post.profiles?.display_name ?? 'someone';
-                return (
-                  <div key={post.id} className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <Link
-                        href={`/profile/${post.profiles?.username ?? ''}`}
-                        className="flex items-center gap-3 min-w-0 flex-1 group"
-                      >
-                        <Avatar url={null} size={32} />
-                        <span className="min-w-0">
-                          <span className="block text-[13px] font-medium text-ink truncate group-hover:underline">
-                            @{handle}
-                          </span>
-                          <span className="block text-[11px] text-muted">
-                            {relativeTime(post.created_at, lang)}
-                          </span>
-                        </span>
-                      </Link>
-                      {score != null && <ScoreBadge score={score} size={34} ringStroke={2.5} />}
-                    </div>
-                    {post.review_text && (
-                      <p className="mt-2 ml-11 text-[13px] leading-relaxed text-ink/90 whitespace-pre-wrap break-words">
-                        {post.review_text}
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            <Tracklist
+              tracks={tracks}
+              release={release}
+              myScores={trackRatings}
+              stats={trackStats}
+              scoresLoading={!!userId && trackScoresLoading}
+              onRate={rateTrack}
+            />
           </section>
         )}
+
+        {/* Comments — ranked server-side (get_album_comments); yours pinned first */}
+        <CommentsSection
+          kind="album"
+          parentId={releaseGroupId}
+          mine={
+            userId && userScore != null && reviewDraft.trim() !== ''
+              ? {
+                  score: userScore,
+                  text: reviewDraft,
+                  onEdit: () => {
+                    reviewBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    reviewBoxRef.current?.focus();
+                  },
+                }
+              : null
+          }
+        />
 
         {/* Public mixes */}
         {publicMixes.length > 0 && (
@@ -718,26 +569,6 @@ export default function AlbumPage() {
         )}
       </div>
 
-      {/* ── Modals ── */}
-      <MixPickerModal
-        open={showMixPicker}
-        onClose={() => setShowMixPicker(false)}
-        releaseGroupId={releaseGroupId}
-      />
-      {trackManualTarget && (
-        <ManualRateModal
-          open
-          onClose={() => setTrackManualTarget(null)}
-          release={release}
-          track={{
-            recordingId: trackManualTarget.recordingId,
-            title: trackManualTarget.title,
-          }}
-          existingScore={trackRatings[trackManualTarget.recordingId] ?? null}
-          ratingStep={0.5}
-          onSave={(score) => rateTrack(trackManualTarget.recordingId, score)}
-        />
-      )}
     </div>
   );
 }

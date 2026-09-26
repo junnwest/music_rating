@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Flame, Trophy, Gem, Zap } from 'lucide-react';
 import Cover from '../../../components/sj/Cover';
 import AlbumRateButton from '../../../components/sj/AlbumRateButton';
-import AlbumBookmarkButton from '../../../components/sj/AlbumBookmarkButton';
+import { AlbumSaveButton } from '../../../components/sj/SaveToMixButton';
 import FlowerGlyph from '../../../components/sj/FlowerGlyph';
 import TitleTabs from '../../../components/sj/TitleTabs';
 import AlbumPeek from '../../../components/sj/AlbumPeek';
@@ -435,7 +435,7 @@ function RankingBlock() {
                     className="relative shrink-0"
                   >
                     <Cover url={e.cover_url} className="w-11 h-11" rounded="rounded-lg" />
-                    <AlbumBookmarkButton
+                    <AlbumSaveButton
                       releaseGroupId={e.release_id}
                       size={20}
                       className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
@@ -584,7 +584,7 @@ function TrendingCard({
                 <span className="w-4 text-right text-[12px] font-bold text-muted">{i + 1}</span>
                 <span className="relative shrink-0">
                   <Cover url={e.cover_url} className="w-[46px] h-[46px]" rounded="rounded-lg" />
-                  <AlbumBookmarkButton
+                  <AlbumSaveButton
                     releaseGroupId={e.release_id}
                     size={20}
                     className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
@@ -743,7 +743,7 @@ function ChartHorizSection({
                   size={24}
                   className="absolute bottom-1.5 left-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
                 />
-                <AlbumBookmarkButton
+                <AlbumSaveButton
                   releaseGroupId={e.release_id}
                   size={22}
                   className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"

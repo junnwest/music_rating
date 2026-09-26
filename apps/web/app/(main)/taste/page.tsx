@@ -16,7 +16,9 @@ import {
   CountUp,
   YearChart,
   ScoreChart,
-  SceneBar,
+  CountryMix,
+  countryName,
+  type CountryMixData,
   CanonGauge,
   DumbbellAxis,
   DumbbellRow,
@@ -57,7 +59,9 @@ interface TasteReport {
     decades: { decade: number; count: number }[];
     years?: { year: number; above: number; below: number }[];
     scoreDist: number[];
+    /** Still sent for iOS; the web chart uses `countries`. */
     scenes: { counts: Record<Scene, number>; total: number } | null;
+    countries?: CountryMixData | null;
     timeline: { month: string; count: number }[];
     peakMonthIndex: number | null;
   };
@@ -96,11 +100,10 @@ const SERIES = ['var(--viz-1)', 'var(--viz-2)', 'var(--viz-3)', 'var(--viz-4)', 
 // --tr-up / --tr-dn drive the diverging "stock" year chart: blue where a year's
 // mean rating sits above your overall average, red where it falls below.
 const VIZ_VARS = `
-.taste-report{--viz-1:#2a78d6;--viz-2:#1baf7a;--viz-3:#eda100;--viz-4:#008300;--viz-5:#4a3aa7;--tr-up:#2a78d6;--tr-dn:#d8433d;}
-.dark .taste-report{--viz-1:#3987e5;--viz-2:#199e70;--viz-3:#c98500;--viz-4:#008300;--viz-5:#9085e9;--tr-up:#4a92ea;--tr-dn:#ef655d;}
+.taste-report{--viz-1:#2a78d6;--viz-2:#1baf7a;--viz-3:#eda100;--viz-4:#008300;--viz-5:#4a3aa7;--viz-other:#a9a39c;--tr-up:#2a78d6;--tr-dn:#d8433d;}
+.dark .taste-report{--viz-1:#3987e5;--viz-2:#199e70;--viz-3:#c98500;--viz-4:#008300;--viz-5:#9085e9;--viz-other:#6f6a64;--tr-up:#4a92ea;--tr-dn:#ef655d;}
 `;
-/** Scenes keep fixed slots (color follows the entity, not its rank). */
-const SCENE_ORDER: Scene[] = ['kr', 'jp', 'west', 'other'];
+/** World labels ("2020s · Korean scene") still speak in scenes. */
 const SCENE_KEYS: Record<Scene, string> = {
   kr: 'sj.taste.sceneKr',
   jp: 'sj.taste.sceneJp',
@@ -268,16 +271,9 @@ function ReportView({
           .replace('{avg}', stats.avgScore.toFixed(2))
           .replace('{sd}', (stats.sdScore ?? 0).toFixed(2));
 
-  // ── scene mix ──
-  const scenes = charts.scenes;
-  const sceneShares = scenes
-    ? SCENE_ORDER.map((s, i) => ({
-        scene: s,
-        share: scenes.counts[s] / scenes.total,
-        color: SERIES[i],
-      })).filter((s) => s.share > 0)
-    : [];
-  const sceneLead = sceneShares.length > 0 ? sceneShares.reduce((a, b) => (b.share > a.share ? b : a)) : null;
+  // ── country mix (replaced the kr/jp/west/other scene bar) ──
+  const countries = charts.countries ?? null;
+  const countryLead = countries?.items[0] ?? null;
 
   const reachText = t('sj.taste.reachText').replace(
     '{pct}',
@@ -450,32 +446,17 @@ function ReportView({
         </Section>
       )}
 
-      {/* ── Scene mix + canon reach ── */}
+      {/* ── Country mix + canon reach ── */}
       <div className="grid sm:grid-cols-2 gap-6">
-        {scenes && sceneLead && (
+        {countries && countryLead && (
           <Section
             no={nextNo()}
-            title={t('sj.taste.sceneHeader')}
-            lead={t('sj.taste.sceneLeadText')
-              .replace('{scene}', t(SCENE_KEYS[sceneLead.scene]))
-              .replace('{pct}', String(Math.round(sceneLead.share * 100)))}
+            title={t('sj.taste.countryHeader')}
+            lead={t('sj.taste.countryLeadText')
+              .replace('{country}', countryName(countryLead.code, lang, t))
+              .replace('{pct}', String(Math.round((countryLead.count / Math.max(countries.total, 1)) * 100)))}
           >
-            <SceneBar
-              segments={sceneShares.map((s) => ({
-                share: s.share,
-                color: s.color,
-                title: `${t(SCENE_KEYS[s.scene])} · ${Math.round(s.share * 100)}%`,
-              }))}
-            />
-            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
-              {sceneShares.map((s) => (
-                <span key={s.scene} className="flex items-center gap-1.5 text-[12px] text-muted">
-                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: s.color }} />
-                  <span className="font-semibold text-ink">{t(SCENE_KEYS[s.scene])}</span>
-                  <span className="tabular-nums">{Math.round(s.share * 100)}%</span>
-                </span>
-              ))}
-            </div>
+            <CountryMix data={countries} colors={SERIES} lang={lang} t={t} />
           </Section>
         )}
         <Section no={nextNo()} title={t('sj.taste.canonHeader')}>

@@ -9,9 +9,8 @@ import { useLanguage } from '../../lib/i18n';
  * (`shelf-scroll`), grab-and-drag panning, and paging arrows that show only at
  * the end you can still move toward.
  *
- * Unlike CandidateRow this owns *only* the scroller — the caller keeps its own
- * heading and spacing — so a page can bolt these affordances onto an existing
- * row without adopting Quick Add's header design.
+ * It owns *only* the scroller — the caller keeps its own heading and spacing —
+ * so a page can bolt these affordances onto an existing row.
  *
  * The arrows are driven by measured overflow, not item count: whether a row of
  * covers overflows depends on the viewport, and only the element knows. They're
@@ -104,6 +103,15 @@ export default function DragScrollShelf({
     }
   }, []);
 
+  // Covers are <img>s inside <a>s — both natively draggable. Without this the
+  // browser starts an HTML5 drag (a ghost image of the cover) a few pixels into
+  // the gesture, fires pointercancel, and the shelf never pans. Cancelling
+  // dragstart for the whole subtree is what lets grab-to-scroll win everywhere
+  // a shelf is used, with no per-card `draggable={false}`.
+  const onDragStartCapture = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+  }, []);
+
   return (
     <div className="relative group/row">
       <div
@@ -114,7 +122,8 @@ export default function DragScrollShelf({
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         onClickCapture={onClickCapture}
-        className={`flex overflow-x-auto shelf-scroll cursor-grab active:cursor-grabbing select-none ${scrollClassName}`}
+        onDragStartCapture={onDragStartCapture}
+        className={`flex overflow-x-auto shelf-scroll cursor-grab active:cursor-grabbing select-none [&_img]:[-webkit-user-drag:none] [&_a]:[-webkit-user-drag:none] ${scrollClassName}`}
       >
         {children}
       </div>
@@ -123,13 +132,13 @@ export default function DragScrollShelf({
         dir={-1}
         onClick={() => page(-1)}
         disabled={atStart}
-        label={t('sj.quickAdd.scrollLeft')}
+        label={t('sj.common.scrollLeft')}
       />
       <Arrow
         dir={1}
         onClick={() => page(1)}
         disabled={atEnd}
-        label={t('sj.quickAdd.scrollRight')}
+        label={t('sj.common.scrollRight')}
       />
     </div>
   );

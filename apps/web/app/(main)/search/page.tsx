@@ -2,15 +2,25 @@
 
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
-import { Search as SearchIcon, X, Check, ChevronRight, ExternalLink } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import {
+  Search as SearchIcon,
+  X,
+  Check,
+  ChevronRight,
+  ExternalLink,
+  BookmarkPlus,
+  User,
+} from 'lucide-react';
 import ArtistLink from '../../../components/sj/ArtistLink';
 import FlowerGlyph from '../../../components/sj/FlowerGlyph';
 import { useContextMenu, useContextMenuFor, openInNewTab } from '../../../components/sj/ContextMenu';
 import Cover from '../../../components/sj/Cover';
 import ManualRateModal from '../../../components/sj/ManualRateModal';
 import FlowerRateControl from '../../../components/sj/FlowerRateControl';
-import AlbumBookmarkButton from '../../../components/sj/AlbumBookmarkButton';
+import SaveToMixButton from '../../../components/sj/SaveToMixButton';
+import AlbumOverflowMenu from '../../../components/sj/AlbumOverflowMenu';
+import { useMixTarget } from '../../../components/sj/MixTargetContext';
 import AlbumPeek from '../../../components/sj/AlbumPeek';
 import DragScrollShelf from '../../../components/sj/DragScrollShelf';
 import { Skeleton, SkeletonLine } from '../../../components/sj/Loading';
@@ -18,8 +28,10 @@ import { useSession } from '../../../components/sj/SessionContext';
 import { useRatings } from '../../../components/sj/RatingsStore';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
-import { displayName, isPredominantlyHangul, typeLabelKey } from '../../../lib/sj/display';
+import { displayName, formatScore, isPredominantlyHangul, typeLabelKey } from '../../../lib/sj/display';
 import { RG_COLS, type SJRelease } from '../../../lib/sj/data';
+import { useArtistIdFor } from '../../../lib/sj/artistIds';
+import { saveTrackRating } from '../../../lib/sj/trackRatings';
 import type {
   SearchArtistRPC,
   SearchReleaseGroupRPC,
@@ -47,7 +59,7 @@ export default function SearchPage() {
 
 function SearchPageInner() {
   const { t } = useLanguage();
-  const { userId, profile } = useSession();
+  const { userId, profile, requireAuth } = useSession();
   const { setRating } = useRatings();
   const searchParams = useSearchParams();
   const [query, setQuery] = useState(searchParams.get('q') ?? '');
@@ -61,7 +73,14 @@ function SearchPageInner() {
   // Quick-rate state
   const [ratedIds, setRatedIds] = useState<Set<string>>(new Set());
   const [sessionRatedIds, setSessionRatedIds] = useState<Set<string>>(new Set());
-  const [manualTarget, setManualTarget] = useState<SJRelease | null>(null);
+  const [manualTarget, setManualTarget] = useState<{
+    release: SJRelease;
+    track?: { recordingId: string; title: string };
+  } | null>(null);
+  // Albums dismissed with "Not interested" this visit — dropped from every shelf.
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  // The user's own scores for the song results (song rows rate the *track*).
+  const [trackScores, setTrackScores] = useState<Record<string, number>>({});
 
   const ratingStep = profile?.manual_rating_step ?? 0.5;
   const hasQuery = query.trim().length > 0;
@@ -180,6 +199,32 @@ function SearchPageInner() {
     if (fresh()) setSearching(false);
   }, []);
 
+  useEffect(() => {
+    if (!supabase || !userId || songs.length === 0) return;
+    let cancelled = false;
+    supabase
+      .from('track_ratings')
+      .select('recording_id, score')
+      .eq('user_id', userId)
+      .in('recording_id', songs.map((s) => s.id))
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error('[search] track ratings failed:', error.message);
+          return;
+        }
+        const rows = (data as { recording_id: string; score: number | null }[] | null) ?? [];
+        setTrackScores((prev) => {
+          const next = { ...prev };
+          for (const r of rows) if (r.score != null) next[r.recording_id] = r.score;
+          return next;
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [songs, userId]);
+
   // Debounced search on query change (300ms, like iOS)
   useEffect(() => {
     clearTimeout(debounceRef.current);
@@ -188,7 +233,27 @@ function SearchPageInner() {
   }, [query, runSearch]);
 
   function addRelease(release: SJRelease) {
-    setManualTarget(release);
+    if (!requireAuth()) return;
+    setManualTarget({ release });
+  }
+
+  function dismiss(id: string) {
+    setDismissedIds((prev) => new Set(prev).add(id));
+  }
+
+  async function rateSong(song: SongResult, score: number | null) {
+    if (!userId) return;
+    const prev = trackScores[song.id];
+    const put = (v: number | null | undefined) =>
+      setTrackScores((cur) => {
+        const next = { ...cur };
+        if (v == null) delete next[song.id];
+        else next[song.id] = v;
+        return next;
+      });
+    put(score);
+    const { error } = await saveTrackRating(userId, song.id, score);
+    if (error) put(prev);
   }
 
   async function saveQuickRating(score: number | null, release: SJRelease) {
@@ -221,6 +286,8 @@ function SearchPageInner() {
   // Drag-to-rate: commit a quick score without opening the modal. Optimistically
   // marks the release rated so the card flips to its "rated" state immediately.
   function quickRate(release: SJRelease, score: number | null) {
+    // Signed out, the optimistic ✓ would show for a write that never happens.
+    if (!requireAuth()) return;
     // A drag back into the dead zone commits null → void the rating.
     if (score == null) {
       void saveQuickRating(null, release);
@@ -260,38 +327,33 @@ function SearchPageInner() {
       {hasQuery ? (
         <SearchResults
           artists={artists}
-          albums={albums}
+          albums={albums.filter((a) => !dismissedIds.has(a.id))}
           songs={songs}
           searching={searching}
           query={query}
           ratedIds={ratedIds}
           sessionRatedIds={sessionRatedIds}
+          trackScores={trackScores}
           onAdd={addRelease}
           onRate={quickRate}
+          onRateSong={(song, score) => void rateSong(song, score)}
+          onRateSongPrecise={(song) =>
+            setManualTarget({
+              release: song.release,
+              track: { recordingId: song.id, title: song.title },
+            })
+          }
+          onNotInterested={dismiss}
         />
       ) : (
         <>
-          {/* Quick Add entry banner — mirrors iOS SearchView's quickAddBanner.
-              Manual-mode gating happens on the Quick Add page itself. */}
-          {userId && (
-            <div className="flex items-center gap-3 mt-4 p-3 rounded-2xl bg-surface border border-divider/60">
-              <div className="min-w-0 flex-1">
-                <p className="text-[15px] font-bold text-ink">{t('sj.quickAdd.settingUp')}</p>
-                <p className="text-[12px] text-muted truncate">{t('sj.quickAdd.bannerBody')}</p>
-              </div>
-              <Link
-                href="/quick-add"
-                className="shrink-0 px-3.5 py-2 rounded-full bg-ink text-page text-[13.5px] font-semibold hover:opacity-85 transition"
-              >
-                {t('sj.quickAdd.title')}
-              </Link>
-            </div>
-          )}
           <Discovery
             ratedIds={ratedIds}
             sessionRatedIds={sessionRatedIds}
+            dismissedIds={dismissedIds}
             onAdd={addRelease}
             onRate={quickRate}
+            onNotInterested={dismiss}
           />
         </>
       )}
@@ -300,10 +362,18 @@ function SearchPageInner() {
         <ManualRateModal
           open
           onClose={() => setManualTarget(null)}
-          release={manualTarget}
-          existingScore={null}
+          release={manualTarget.release}
+          track={manualTarget.track ?? null}
+          existingScore={
+            manualTarget.track ? trackScores[manualTarget.track.recordingId] ?? null : null
+          }
           ratingStep={ratingStep}
-          onSave={(score) => saveQuickRating(score, manualTarget)}
+          onSave={(score) => {
+            const tr = manualTarget.track;
+            if (!tr) return saveQuickRating(score, manualTarget.release);
+            const song = songs.find((x) => x.id === tr.recordingId);
+            return song ? rateSong(song, score) : undefined;
+          }}
         />
       )}
     </div>
@@ -320,8 +390,12 @@ function SearchResults({
   query,
   ratedIds,
   sessionRatedIds,
+  trackScores,
   onAdd,
   onRate,
+  onRateSong,
+  onRateSongPrecise,
+  onNotInterested,
 }: {
   artists: SearchArtistRPC[];
   albums: SJRelease[];
@@ -330,8 +404,12 @@ function SearchResults({
   query: string;
   ratedIds: Set<string>;
   sessionRatedIds: Set<string>;
+  trackScores: Record<string, number>;
   onAdd: (release: SJRelease) => void;
   onRate: (release: SJRelease, score: number | null) => void;
+  onRateSong: (song: SongResult, score: number | null) => void;
+  onRateSongPrecise: (song: SongResult) => void;
+  onNotInterested: (id: string) => void;
 }) {
   const { t } = useLanguage();
   const { profile } = useSession();
@@ -427,6 +505,7 @@ function SearchResults({
                   ratingStep={ratingStep}
                   onAdd={() => onAdd(release)}
                   onRate={(score) => onRate(release, score)}
+                  onNotInterested={() => onNotInterested(release.id)}
                 />
               ))}
             </div>
@@ -442,11 +521,10 @@ function SearchResults({
                 <SongRow
                   key={song.id}
                   song={song}
-                  rated={ratedIds.has(song.release.id)}
-                  sessionRated={sessionRatedIds.has(song.release.id)}
+                  score={trackScores[song.id] ?? null}
                   ratingStep={ratingStep}
-                  onAdd={() => onAdd(song.release)}
-                  onRate={(score) => onRate(song.release, score)}
+                  onRatePrecise={() => onRateSongPrecise(song)}
+                  onRate={(score) => onRateSong(song, score)}
                 />
               ))}
             </ul>
@@ -462,13 +540,17 @@ function SearchResults({
 function Discovery({
   ratedIds,
   sessionRatedIds,
+  dismissedIds,
   onAdd,
   onRate,
+  onNotInterested,
 }: {
   ratedIds: Set<string>;
   sessionRatedIds: Set<string>;
+  dismissedIds: Set<string>;
   onAdd: (release: SJRelease) => void;
   onRate: (release: SJRelease, score: number | null) => void;
+  onNotInterested: (id: string) => void;
 }) {
   const { t } = useLanguage();
   const { userId, ready, profile } = useSession();
@@ -622,7 +704,9 @@ function Discovery({
   const visible = (albums: SJRelease[]) =>
     albums.filter(
       (a) =>
-        (!ratedIds.has(a.id) || sessionRatedIds.has(a.id)) && !blockedArtists.has(a.artist),
+        (!ratedIds.has(a.id) || sessionRatedIds.has(a.id)) &&
+        !blockedArtists.has(a.artist) &&
+        !dismissedIds.has(a.id),
     );
 
   if (loading) {
@@ -669,6 +753,7 @@ function Discovery({
                   ratingStep={ratingStep}
                   onAdd={() => onAdd(release)}
                   onRate={(score) => onRate(release, score)}
+                  onNotInterested={() => onNotInterested(release.id)}
                 />
               </div>
             ))}
@@ -689,6 +774,10 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Cover overlays: revealed on hover/focus, always shown on touch (no hover). */
+const REVEAL =
+  'opacity-0 group-hover:opacity-100 focus-within:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 transition';
+
 function AlbumCard({
   release,
   rated,
@@ -696,6 +785,7 @@ function AlbumCard({
   ratingStep = 0.5,
   onAdd,
   onRate,
+  onNotInterested,
 }: {
   release: SJRelease;
   rated: boolean;
@@ -703,27 +793,71 @@ function AlbumCard({
   ratingStep?: number;
   onAdd: () => void;
   onRate: (score: number | null) => void;
+  onNotInterested?: () => void;
 }) {
   const { t } = useLanguage();
+  const router = useRouter();
+  const { isSaved, openChange } = useMixTarget();
+  const artistId = useArtistIdFor(release.id);
+  const menuAnchorRef = useRef<HTMLDivElement>(null);
   const showCheck = sessionRated;
   const showAdd = !rated && !sessionRated;
+  const mixItem = { kind: 'album' as const, releaseGroupId: release.id };
+  const mixMeta = { coverUrl: release.coverUrl, title: release.title };
+  const artistName = displayName(release.artist, release.artistNative);
 
   return (
     <div className="group">
       <AlbumPeek
         releaseId={release.id}
         title={displayName(release.title, release.titleNative)}
-        artist={displayName(release.artist, release.artistNative)}
+        artist={artistName}
         release={release}
+        onNotInterested={onNotInterested}
         className="relative"
       >
-        <Link href={`/album/${release.id}`}>
+        <Link href={`/album/${release.id}`} draggable={false}>
           <Cover url={release.coverUrl} className="w-full aspect-square" rounded="rounded-xl" />
         </Link>
-        <AlbumBookmarkButton
-          releaseGroupId={release.id}
+        <div ref={menuAnchorRef} className={`absolute top-2 left-2 ${REVEAL}`}>
+          <AlbumOverflowMenu
+            releaseGroupId={release.id}
+            onNotInterested={onNotInterested}
+            size={26}
+            items={[
+              {
+                key: 'save-to-other-mix',
+                label: t('sj.mix.saveToAnother'),
+                icon: <BookmarkPlus size={15} />,
+                onSelect: () => {
+                  if (menuAnchorRef.current) openChange(mixItem, menuAnchorRef.current, mixMeta);
+                },
+              },
+              ...(artistId
+                ? [
+                    {
+                      key: 'go-to-artist',
+                      label: t('sj.context.goToArtist'),
+                      icon: <User size={15} />,
+                      onSelect: () => router.push(`/artist/${artistId}`),
+                    },
+                  ]
+                : []),
+              {
+                key: 'open-new-tab',
+                label: t('sj.context.openNewTab'),
+                icon: <ExternalLink size={15} />,
+                onSelect: () => openInNewTab(`/album/${release.id}`),
+              },
+            ]}
+          />
+        </div>
+        <SaveToMixButton
+          item={mixItem}
+          meta={mixMeta}
           size={26}
-          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
+          // A saved album keeps its filled bookmark visible — that's state, not chrome.
+          className={`absolute top-2 right-2 ${isSaved(mixItem) ? '' : REVEAL}`}
         />
         {showCheck && (
           <span className="absolute bottom-2 right-2 flex w-7 h-7 rounded-full bg-accent items-center justify-center shadow">
@@ -741,62 +875,101 @@ function AlbumCard({
           />
         )}
       </AlbumPeek>
-      <Link href={`/album/${release.id}`} className="block mt-1.5">
-        <p className="text-[13px] font-semibold text-ink truncate group-hover:underline">
-          {displayName(release.title, release.titleNative)}
-        </p>
-        <p className="flex items-center gap-1.5 text-[12px] text-muted truncate">
-          <span className="px-1 py-0.5 rounded bg-accent/10 text-accent text-[9px] font-medium shrink-0">
-            {t(typeLabelKey(release.releaseType))}
-          </span>
-          {displayName(release.artist, release.artistNative)}
-        </p>
+      {/* Title → album, artist → artist: two links, not one wrapping both. */}
+      <Link
+        href={`/album/${release.id}`}
+        draggable={false}
+        className="block mt-1.5 text-[13px] font-semibold text-ink truncate hover:underline"
+      >
+        {displayName(release.title, release.titleNative)}
       </Link>
+      <p className="flex items-center gap-1.5 text-[12px] text-muted min-w-0">
+        <span className="px-1 py-0.5 rounded bg-accent/10 text-accent text-[9px] font-medium shrink-0">
+          {t(typeLabelKey(release.releaseType))}
+        </span>
+        {artistId ? (
+          <ArtistLink
+            href={`/artist/${artistId}`}
+            className="truncate hover:text-ink hover:underline"
+          >
+            {artistName}
+          </ArtistLink>
+        ) : (
+          <span className="truncate">{artistName}</span>
+        )}
+      </p>
     </div>
   );
 }
 
+/**
+ * A song result. Rating here rates the *track* (track_ratings), not its album —
+ * the score chip shows your existing track score and reopens the precise sheet.
+ */
 function SongRow({
   song,
-  rated,
-  sessionRated,
+  score,
   ratingStep = 0.5,
-  onAdd,
+  onRatePrecise,
   onRate,
 }: {
   song: SongResult;
-  rated: boolean;
-  sessionRated: boolean;
+  score: number | null;
   ratingStep?: number;
-  onAdd: () => void;
+  onRatePrecise: () => void;
   onRate: (score: number | null) => void;
 }) {
   const { t } = useLanguage();
+  const router = useRouter();
+  const { requireAuth } = useSession();
+  const { isSaved, openChange } = useMixTarget();
+  const pointRef = useRef({ x: 0, y: 0 });
+  const mixItem = {
+    kind: 'song' as const,
+    recordingId: song.id,
+    releaseGroupId: song.release.id,
+  };
+  const mixMeta = { coverUrl: song.release.coverUrl, title: song.title };
+  const href = `/song/${song.id}?rg=${song.release.id}`;
+
   // Right-click parity with album cards (whose menu rides on AlbumPeek).
   const { onContextMenu, menu } = useContextMenu([
-    {
-      key: 'open-new-tab',
-      label: t('sj.context.openNewTab'),
-      icon: <ExternalLink size={15} />,
-      onSelect: () => openInNewTab(`/song/${song.id}?rg=${song.release.id}`),
-    },
     {
       key: 'rate',
       label: t('sj.context.rate'),
       icon: <FlowerGlyph size={14} src="/icon-flower.svg" />,
-      onSelect: onAdd,
+      onSelect: () => requireAuth() && onRatePrecise(),
+    },
+    {
+      key: 'save-to-other-mix',
+      label: t('sj.mix.saveToAnother'),
+      icon: <BookmarkPlus size={15} />,
+      onSelect: () => openChange(mixItem, pointRef.current, mixMeta),
+    },
+    {
+      key: 'open-album',
+      label: t('sj.context.openAlbum'),
+      icon: <ChevronRight size={15} />,
+      onSelect: () => router.push(`/album/${song.release.id}`),
+    },
+    {
+      key: 'open-new-tab',
+      label: t('sj.context.openNewTab'),
+      icon: <ExternalLink size={15} />,
+      onSelect: () => openInNewTab(href),
     },
   ]);
+
   return (
     <li
-      onContextMenu={onContextMenu}
+      onContextMenu={(e) => {
+        pointRef.current = { x: e.clientX, y: e.clientY };
+        onContextMenu(e);
+      }}
       className="flex items-center gap-3 px-3.5 py-2.5 hover:bg-page/60 transition group"
     >
       {menu}
-      <Link
-        href={`/song/${song.id}?rg=${song.release.id}`}
-        className="flex items-center gap-3 min-w-0 flex-1"
-      >
+      <Link href={href} className="flex items-center gap-3 min-w-0 flex-1">
         <Cover url={song.release.coverUrl} className="w-11 h-11" rounded="rounded-md" />
         <span className="min-w-0">
           <span className="flex items-center gap-1.5">
@@ -806,24 +979,36 @@ function SongRow({
             </span>
           </span>
           <span className="block text-[12px] text-muted truncate">
-            {song.release.title} · {song.artists ?? song.release.artist}
+            {song.artists ?? song.release.artist} · {song.release.title}
           </span>
         </span>
       </Link>
-      {sessionRated ? (
-        <span className="flex w-[30px] h-[30px] rounded-full bg-accent items-center justify-center shrink-0">
-          <Check size={12} strokeWidth={3} className="text-white" />
-        </span>
-      ) : !rated ? (
+      <SaveToMixButton
+        item={mixItem}
+        meta={mixMeta}
+        variant="inline"
+        size={30}
+        className={`shrink-0 ${isSaved(mixItem) ? '' : REVEAL}`}
+      />
+      {score != null ? (
+        <button
+          type="button"
+          onClick={onRatePrecise}
+          aria-label={`${t('sj.context.rate')} ${song.title}`}
+          className="shrink-0 min-w-[30px] h-[30px] px-1.5 rounded-full bg-accent/10 text-accent text-[12px] font-bold tabular-nums hover:bg-accent/20 transition"
+        >
+          {formatScore(score)}
+        </button>
+      ) : (
         <FlowerRateControl
-          ariaLabel={`${t('sj.search.add')} ${song.title}`}
-          onRate={onRate}
-          onRequestPrecise={onAdd}
+          ariaLabel={`${t('sj.context.rate')} ${song.title}`}
+          onRate={(s) => requireAuth() && onRate(s)}
+          onRequestPrecise={() => requireAuth() && onRatePrecise()}
           size={30}
           className="shrink-0 !bg-accent/[0.12] !shadow-none"
           ratingStep={ratingStep}
         />
-      ) : null}
+      )}
     </li>
   );
 }

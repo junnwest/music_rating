@@ -6,7 +6,7 @@ import {
   Heart,
   MessageCircle,
   MoreHorizontal,
-  Bookmark,
+  BookmarkPlus,
   Share2,
   Flag,
   Ban,
@@ -16,14 +16,14 @@ import Avatar from './Avatar';
 import Cover from './Cover';
 import ScoreBadge from './ScoreBadge';
 import AlbumRateButton from './AlbumRateButton';
-import AlbumBookmarkButton from './AlbumBookmarkButton';
+import SaveToMixButton from './SaveToMixButton';
+import { useMixTarget } from './MixTargetContext';
 import { NotInterestedButton, type OverflowItem } from './AlbumOverflowMenu';
 import AlbumPeek from './AlbumPeek';
 import { useContextMenu } from './ContextMenu';
 import CommentsModal from './CommentsModal';
 import LikersModal from './LikersModal';
 import ReportModal from './ReportModal';
-import MixPickerModal from './MixPickerModal';
 import { useLanguage } from '../../lib/i18n';
 import {
   profileHandle,
@@ -63,15 +63,23 @@ export default function FeedCard({
   const [showComments, setShowComments] = useState(false);
   const [showLikers, setShowLikers] = useState(false);
   const [showReport, setShowReport] = useState(false);
-  const [showMixPicker, setShowMixPicker] = useState(false);
   const [confirmBlock, setConfirmBlock] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const moreBtnRef = useRef<HTMLButtonElement>(null);
+  const { openChange } = useMixTarget();
 
   const rg = item.release_groups;
   const release = releaseFromEmbed(rg);
   const score = displayScore(item.score);
   const handle = profileHandle(item.profiles);
   const isOwn = currentUserId != null && item.user_id === currentUserId;
+  const mixItem = { kind: 'album' as const, releaseGroupId: rg.id };
+  const mixMeta = { coverUrl: rg.cover_url, title: rg.title };
+  // "Save to another mix…" opens the dropdown's mix list, anchored at the …
+  // button (the bookmark beside it covers the one-tap save to the target).
+  const saveElsewhere = () => {
+    if (moreBtnRef.current) openChange(mixItem, moreBtnRef.current, mixMeta);
+  };
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -102,9 +110,9 @@ export default function FeedCard({
   const postMenuItems: OverflowItem[] = [
     {
       key: 'save-to-mix',
-      label: t('sj.mix.saveToMix'),
-      icon: <Bookmark size={15} />,
-      onSelect: () => setShowMixPicker(true),
+      label: t('sj.mix.saveToAnother'),
+      icon: <BookmarkPlus size={15} />,
+      onSelect: saveElsewhere,
     },
     { key: 'share', label: t('sj.feed.share'), icon: <Share2 size={15} />, onSelect: share },
     ...(onNotInterested
@@ -159,8 +167,16 @@ export default function FeedCard({
         <span className="text-[12px] text-muted shrink-0">
           {relativeTime(item.created_at, lang)}
         </span>
-        <div className="ml-auto relative" ref={menuRef}>
+        <SaveToMixButton
+          item={mixItem}
+          meta={mixMeta}
+          variant="inline"
+          size={32}
+          className="ml-auto"
+        />
+        <div className="relative" ref={menuRef}>
           <button
+            ref={moreBtnRef}
             onClick={() => setMenuOpen((v) => !v)}
             aria-label={t('sj.common.moreOptions')}
             className="p-2 rounded-lg text-muted hover:text-ink hover:bg-page transition"
@@ -170,11 +186,11 @@ export default function FeedCard({
           {menuOpen && (
             <div className="absolute right-0 top-9 z-20 w-52 py-1.5 rounded-xl bg-surface border border-divider shadow-xl">
               <MenuItem
-                icon={<Bookmark size={15} />}
-                label={t('sj.mix.saveToMix')}
+                icon={<BookmarkPlus size={15} />}
+                label={t('sj.mix.saveToAnother')}
                 onClick={() => {
-                  setShowMixPicker(true);
                   setMenuOpen(false);
+                  saveElsewhere();
                 }}
               />
               <MenuItem icon={<Share2 size={15} />} label={t('sj.feed.share')} onClick={share} />
@@ -238,11 +254,6 @@ export default function FeedCard({
               className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
             />
           )}
-          <AlbumBookmarkButton
-            releaseGroupId={rg.id}
-            size={24}
-            className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
-          />
           <AlbumRateButton
             release={release}
             size={26}
@@ -334,11 +345,6 @@ export default function FeedCard({
         onClose={() => setShowReport(false)}
         reportedUserId={item.user_id}
         ratingId={item.id}
-      />
-      <MixPickerModal
-        open={showMixPicker}
-        onClose={() => setShowMixPicker(false)}
-        releaseGroupId={rg.id}
       />
       {postContextMenu}
     </article>

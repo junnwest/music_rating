@@ -53,7 +53,7 @@ class DiscoveryViewModel {
     var personalizedSongs:  [SongResult] = []
     var hasPersonalized = false
 
-    // Artists behind ratings >= 3.5, ordered best-first -- the in-app signal QuickAddViewModel
+    // Artists behind ratings >= 3.5, ordered best-first -- the in-app signal the old Quick Add
     // supplements Spotify/Apple Music with. Populated by loadRatedArtists() below.
     var ratedArtists: [String] = []
 
@@ -384,7 +384,7 @@ class DiscoveryViewModel {
         await loadAppleMusic()
     }
 
-    // Artists behind ratings >= 3.5, best-first -- QuickAddViewModel's seed source. Kept as its
+    // Artists behind ratings >= 3.5, best-first -- the old Quick Add's seed source. Kept as its
     // own small loader (previously a side effect of loadPersonalized(), now that that's gone in
     // favor of calling web's own /api/recommendations directly).
     private func loadRatedArtists() async {
@@ -648,8 +648,6 @@ class SearchViewModel {
 
 struct SearchView: View {
     let discoveryVM: DiscoveryViewModel
-    let onGoToSettings: () -> Void
-    @State private var showQuickAdd          = false
     @State private var searchVM           = SearchViewModel()
     @State private var searchTask: Task<Void, Never>?
     @State private var quickRateRelease: Release?
@@ -689,9 +687,6 @@ struct SearchView: View {
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Release.self) { AlbumDetailView(release: $0) }
             .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
-            .navigationDestination(isPresented: $showQuickAdd) {
-                QuickAddView(discoveryVM: discoveryVM, onGoToSettings: onGoToSettings)
-            }
             .sheet(item: $quickRateRelease) { release in
                 ManualRatingSheet(
                     release: release,
@@ -724,10 +719,6 @@ struct SearchView: View {
         .onReceive(NotificationCenter.default.publisher(for: .sjAppleMusicAuthorized)) { _ in
             Task { await discoveryVM.refreshAppleMusicIfNeeded() }
         }
-    }
-
-    private func quickAddTapped() {
-        showQuickAdd = true
     }
 
     private func loadRatedReleaseIds() async {
@@ -992,11 +983,6 @@ struct SearchView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
 
-                    quickAddBanner
-                        .padding(.horizontal, 16)
-                        .padding(.top, 4)
-                        .padding(.bottom, 20)
-
                     // ── Spotify: Your Top Artists ─────────────
                     if !discoveryVM.spotifyArtists.isEmpty {
                         discoverySectionTitle("Your Top Artists")
@@ -1113,40 +1099,6 @@ struct SearchView: View {
                 await discoveryVM.refresh()
             }
         }
-    }
-
-    private var quickAddBanner: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Setting up?")
-                    .font(.jakarta(16, weight: .bold))
-                    .foregroundStyle(Color.sjInk)
-                Text("Half-star rate albums you've probably already heard")
-                    .font(.jakarta(12))
-                    .foregroundStyle(Color.sjMuted)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 8)
-
-            Button { quickAddTapped() } label: {
-                Text("Quick Add")
-                    .font(.jakarta(14, weight: .semibold))
-                    // Plain .white, not sjCream -- sjBlue is a fixed brand
-                    // color that doesn't flip in dark mode (unlike sjInk),
-                    // so the label doesn't need to flip either.
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    // Liquid Glass, matching ScoreBadge/FlowerRateControl's
-                    // tinted-glass treatment instead of a flat color fill.
-                    .glassEffect(.regular.tint(Color.sjBlue), in: Capsule())
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(12)
-        .background(Color.sjSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
     // MARK: - Helpers
@@ -2634,5 +2586,5 @@ private struct ArtistReleaseRow: View {
 
 
 #Preview {
-    SearchView(discoveryVM: DiscoveryViewModel(), onGoToSettings: {})
+    SearchView(discoveryVM: DiscoveryViewModel())
 }

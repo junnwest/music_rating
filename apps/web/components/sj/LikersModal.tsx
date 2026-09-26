@@ -19,16 +19,21 @@ interface LikerRow {
   } | null;
 }
 
-/** Who liked a rating — mirrors iOS LikersSheetView. */
+/** Who liked a rating (or, with `mixShareId`, a mix post) — mirrors iOS LikersSheetView. */
 export default function LikersModal({
   open,
   onClose,
   ratingId,
+  mixShareId,
 }: {
   open: boolean;
   onClose: () => void;
-  ratingId: string;
+  ratingId?: string;
+  mixShareId?: string;
 }) {
+  const table = mixShareId ? 'mix_share_likes' : 'rating_likes';
+  const fkCol = mixShareId ? 'mix_share_id' : 'rating_id';
+  const parentId = (mixShareId ?? ratingId)!;
   const { t } = useLanguage();
   const [likers, setLikers] = useState<LikerRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,14 +42,14 @@ export default function LikersModal({
     if (!open || !supabase) return;
     setLoading(true);
     supabase
-      .from('rating_likes')
-      .select('user_id, profiles!rating_likes_user_id_fkey(id, username, display_name, avatar_url)')
-      .eq('rating_id', ratingId)
+      .from(table)
+      .select(`user_id, profiles!${table}_user_id_fkey(id, username, display_name, avatar_url)`)
+      .eq(fkCol, parentId)
       .then(({ data }) => {
         setLikers((data as unknown as LikerRow[] | null) ?? []);
         setLoading(false);
       });
-  }, [open, ratingId]);
+  }, [open, parentId, table, fkCol]);
 
   const title = loading
     ? t('sj.likes.title')

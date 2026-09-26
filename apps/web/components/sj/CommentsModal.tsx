@@ -19,18 +19,27 @@ interface CommentRow {
   profiles: { username: string | null; display_name: string | null; avatar_url: string | null } | null;
 }
 
-/** Comment thread on a rating — mirrors iOS CommentSheetView. */
+/**
+ * Comment thread on a rating — mirrors iOS CommentSheetView. Pass
+ * `mixShareId` instead of `ratingId` for a mix post's thread
+ * (`mix_share_comments`, the 1:1 mirror of `rating_comments`).
+ */
 export default function CommentsModal({
   open,
   onClose,
   ratingId,
+  mixShareId,
   onCountChange,
 }: {
   open: boolean;
   onClose: () => void;
-  ratingId: string;
+  ratingId?: string;
+  mixShareId?: string;
   onCountChange?: (count: number) => void;
 }) {
+  const table = mixShareId ? 'mix_share_comments' : 'rating_comments';
+  const fkCol = mixShareId ? 'mix_share_id' : 'rating_id';
+  const parentId = (mixShareId ?? ratingId)!;
   const { t, lang } = useLanguage();
   const { userId, requireAuth } = useSession();
   const [comments, setComments] = useState<CommentRow[]>([]);
@@ -42,11 +51,11 @@ export default function CommentsModal({
   async function load() {
     if (!supabase) return;
     const { data } = await supabase
-      .from('rating_comments')
+      .from(table)
       .select(
-        'id, user_id, content, created_at, profiles!rating_comments_user_id_fkey(username, display_name, avatar_url)',
+        `id, user_id, content, created_at, profiles!${table}_user_id_fkey(username, display_name, avatar_url)`,
       )
-      .eq('rating_id', ratingId)
+      .eq(fkCol, parentId)
       .order('created_at', { ascending: true });
     const rows = (data as unknown as CommentRow[] | null) ?? [];
     setComments(rows);
@@ -59,7 +68,7 @@ export default function CommentsModal({
     setLoading(true);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, ratingId]);
+  }, [open, parentId]);
 
   async function send() {
     if (!supabase) return;
@@ -68,8 +77,8 @@ export default function CommentsModal({
     if (!requireAuth() || !userId) return;
     setSending(true);
     const { error: insertError } = await supabase
-      .from('rating_comments')
-      .insert({ user_id: userId, rating_id: ratingId, content: trimmed });
+      .from(table)
+      .insert({ user_id: userId, [fkCol]: parentId, content: trimmed });
     if (insertError) {
       setError(insertError.message);
     } else {
