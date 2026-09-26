@@ -477,7 +477,6 @@ const ko: Translations = {
     rate: {
 
       saveComment: '저장',
-      commentSaved: '저장됨 · 눌러서 수정',
       editComment: '코멘트 수정',
       addComment: '코멘트 추가',
       commentPlaceholder: '어떻게 들으셨나요?',

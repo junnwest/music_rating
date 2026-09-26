@@ -475,7 +475,6 @@ const en = {
     rate: {
 
       saveComment: 'Save',
-      commentSaved: 'Saved · click to edit',
       editComment: 'Edit comment',
       addComment: 'Add a comment',
       commentPlaceholder: 'What did you think?',

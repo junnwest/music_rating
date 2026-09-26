@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
@@ -180,6 +180,15 @@ export default function AlbumPage() {
     setReviewEditing(false);
     setReviewJustSaved(true);
   }
+
+  // The comment box grows with its lines (CSS max-h caps it, then it scrolls).
+  // Layout effect so the resize lands before paint — no one-frame jump.
+  useLayoutEffect(() => {
+    const el = reviewBoxRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight + (el.offsetHeight - el.clientHeight)}px`;
+  }, [reviewDraft, reviewEditing, savedReview, userScore]);
 
   /** Back to the textarea, caret at the end. */
   function editReview() {
@@ -520,7 +529,8 @@ export default function AlbumPage() {
                   onBlur={() => void saveReview(reviewDraft)}
                   placeholder={t('sj.rate.addComment')}
                   rows={2}
-                  className="block w-full pl-3.5 pr-20 py-2.5 rounded-xl bg-page border border-divider text-[13.5px] leading-relaxed text-ink placeholder-placeholder outline-none focus:border-accent/60 transition resize-none"
+                  // Grows with its content (see the reviewDraft layout effect); scrolls past max-h.
+                  className="block w-full max-h-80 pl-3.5 pr-20 py-2.5 rounded-xl bg-page border border-divider text-[13.5px] leading-relaxed text-ink placeholder-placeholder outline-none focus:border-accent/60 transition-[border-color] resize-none overflow-y-auto"
                 />
                 {(reviewDraft.trim() !== '' || savedReview) && (
                   <button
@@ -542,21 +552,18 @@ export default function AlbumPage() {
                 onClick={editReview}
                 aria-label={t('sj.rate.editComment')}
                 title={t('sj.rate.editComment')}
-                className="group relative block w-full mt-4 pl-3.5 pr-11 py-2.5 rounded-xl bg-accent/[0.05] border border-accent/25 text-left hover:border-accent/50 transition sj-pop-in"
+                className="group relative block w-full mt-4 pl-3.5 pr-9 py-2.5 rounded-xl bg-accent/[0.05] border border-accent/25 text-left hover:border-accent/50 transition sj-pop-in"
               >
                 <span className="block text-[13.5px] leading-relaxed text-ink whitespace-pre-wrap break-words">
                   {savedReview}
                 </span>
                 <span
-                  className={`absolute right-2.5 top-2.5 grid place-items-center w-6 h-6 rounded-full bg-accent text-white ${
+                  className={`absolute right-1.5 top-1.5 grid place-items-center w-5 h-5 rounded-full bg-accent text-white ${
                     reviewJustSaved ? 'sj-heart-pop' : ''
                   }`}
                   aria-hidden
                 >
-                  <Check size={13} strokeWidth={3} />
-                </span>
-                <span className="block mt-1 text-[11px] font-medium text-muted group-hover:text-accent transition">
-                  {t('sj.rate.commentSaved')}
+                  <Check size={11} strokeWidth={3} />
                 </span>
               </button>
             ))}
