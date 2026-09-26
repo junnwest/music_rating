@@ -4,6 +4,16 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-26 (Mac) — Push notifications don't arrive on Xcode builds or on TestFlight.**
+
+- **Traced the chain.** Tokens *are* saved (7 profiles have `push_token`, junnwest included). Notifications rows are being created. The production webhook (`/api/push/send-webhook`) accepts the secret and returns `{"ok":true}`.
+- **Root cause: APNs auth key rejected.** Sending directly to junnwest's token returned `403 InvalidProviderToken` from **both** sandbox and production. Team ID matches the Xcode project (`GGJ5HX3A4M`) and the key parses as a valid P-256 `.p8`, so the key ID/key pair isn't an active APNs key. `~/Downloads/AuthKey_X8DX98BB5M.p8` is a different key and is also rejected. **User action:** create an APNs-enabled key in the developer portal, then update `APNS_KEY_ID`/`APNS_PRIVATE_KEY` locally (both devices) and on Vercel.
+- **Code fixes in `apps/web/lib/apns.ts`:** (1) Xcode debug builds register *sandbox* tokens and TestFlight builds *production* tokens, but there was a single `APNS_PRODUCTION` switch, so one of the two could never work even with a good key. It now tries the configured environment and retries the other on `BadDeviceToken`. (2) `provider.send()` failures were ignored, so the webhook always reported success. They're now logged with `console.error('[apns] …')` and show in the Vercel logs. Typecheck clean. Not deployed yet.
+- **New key.** The user's first new key (`GBCLCU25MX`) was accepted but created as Production-only (sandbox returned `BadEnvironmentKeyInToken`). The second key, **`NNB277RA2M` (Sandbox & Production)**, delivered a sandbox test push to junnwest's device. Through `lib/apns.ts` with `APNS_PRODUCTION=true`, the push went production → `BadDeviceToken` → sandbox → delivered. `APNS_KEY_ID`/`APNS_PRIVATE_KEY` updated in the Mac `.env.local`. **Pending:** Vercel env + deploy, Windows `.env.local`, revoke the old keys.
+- **Noticed, not changed:** two accounts (`nicky`, `kukurella`) share one device token because sign-out doesn't clear `push_token`, so one phone can get the other account's pushes.
+
+---
+
 **2026-09-25 (Mac) — Deleted all 150 bot accounts from production.**
 
 - **User asked** to delete all the bot accounts. Read-only count first: 150 `is_bot` profiles out of 180. The bots owned 10,234 of 10,443 album ratings, about 842 follows and about 1,770 notifications. All 150 existed in `auth.users`; **none had any login method or had ever signed in**, and none had ratings after 2026-07-10. `@wiredcomet` (beta-badge demo, 2026-08-28) is one of them.
