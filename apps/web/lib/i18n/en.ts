@@ -982,8 +982,6 @@ const en = {
       time: 'Time',
       you: 'You',
       summary: '{n} tracks · {time}',
-      ratedProgress: 'rated {x}/{y}',
-      rateRest: 'Rate {n} unrated',
       nRatings: '{n} ratings',
     },
     commentsSection: {

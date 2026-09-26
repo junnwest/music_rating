@@ -984,8 +984,6 @@ const ko: Translations = {
       time: '길이',
       you: '내 평가',
       summary: '{n}곡 · {time}',
-      ratedProgress: '{y}곡 중 {x}곡 평가',
-      rateRest: '미평가 {n}곡 평가하기',
       nRatings: '평가 {n}개',
     },
     commentsSection: {

@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -88,9 +88,6 @@ export default function Tracklist({
   const [sort, setSort] = useState<{ col: TrackSort; desc: boolean }>({ col: 'order', desc: false });
   const [menu, setMenu] = useState<{ x: number; y: number; track: TrackEntry } | null>(null);
   const [precise, setPrecise] = useState<TrackEntry | null>(null);
-  // "Rate the rest": the unrated tracks, stepped through one sheet at a time.
-  const [queue, setQueue] = useState<string[] | null>(null);
-  const savedRef = useRef(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -138,8 +135,6 @@ export default function Tracklist({
   }, [tracks, sort, myScores, stats, compact]);
 
   const totalMs = tracks.reduce((a, tr) => a + (tr.durationMs ?? 0), 0);
-  const ratedCount = tracks.filter((tr) => myScores[tr.recordingId] != null).length;
-  const unrated = tracks.filter((tr) => myScores[tr.recordingId] == null).map((tr) => tr.recordingId);
 
   const songItem = (tr: TrackEntry) => ({
     kind: 'song' as const,
@@ -210,9 +205,7 @@ export default function Tracklist({
     ];
   }
 
-  // Step the "rate the rest" queue: a save advances, a cancel ends the run.
-  const queueTrack = queue?.length ? tracks.find((tr) => tr.recordingId === queue[0]) ?? null : null;
-  const modalTrack = queueTrack ?? precise;
+  const modalTrack = precise;
 
   const SortHead = ({ col, label, className = '' }: { col: TrackSort; label: string; className?: string }) => (
     <span
@@ -241,31 +234,7 @@ export default function Tracklist({
             {t('sj.tracklist.summary')
               .replace('{n}', String(tracks.length))
               .replace('{time}', formatDuration(totalMs) || '—')}
-            {userId && (
-              <>
-                {' · '}
-                {scoresLoading ? (
-                  <span className="inline-block w-16 h-2.5 align-middle rounded bg-divider/50 animate-pulse" />
-                ) : (
-                  t('sj.tracklist.ratedProgress')
-                    .replace('{x}', String(ratedCount))
-                    .replace('{y}', String(tracks.length))
-                )}
-              </>
-            )}
           </p>
-          {userId && !scoresLoading && unrated.length > 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                savedRef.current = false;
-                setQueue(unrated);
-              }}
-              className="text-[12px] font-semibold text-accent hover:underline"
-            >
-              {t('sj.tracklist.rateRest').replace('{n}', String(unrated.length))}
-            </button>
-          )}
         </div>
       )}
 
@@ -433,20 +402,8 @@ export default function Tracklist({
           track={{ recordingId: modalTrack.recordingId, title: modalTrack.title }}
           existingScore={myScores[modalTrack.recordingId] ?? null}
           ratingStep={ratingStep}
-          onSave={async (s) => {
-            savedRef.current = true;
-            await onRate(modalTrack.recordingId, s);
-          }}
-          onClose={() => {
-            if (queue) {
-              // Saved → next unrated track; dismissed → the run ends.
-              const advance = savedRef.current;
-              savedRef.current = false;
-              setQueue(advance && queue.length > 1 ? queue.slice(1) : null);
-            } else {
-              setPrecise(null);
-            }
-          }}
+          onSave={(s) => onRate(modalTrack.recordingId, s)}
+          onClose={() => setPrecise(null)}
         />
       )}
     </div>
