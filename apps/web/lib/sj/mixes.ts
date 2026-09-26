@@ -92,6 +92,41 @@ export async function listMyMixes(
   return { data: ((data as unknown as MixRowWithEmbeds[]) ?? []).map(toSummary), error: null };
 }
 
+/**
+ * One mix's summary, re-read after a membership change. The optimistic patch
+ * can't know which covers remain after a removal (an album and its songs share
+ * a cover), so the count/covers are re-synced from here.
+ */
+export async function getMixSummary(
+  mixId: string,
+): Promise<{ data: MixSummary | null; error: Err }> {
+  if (!supabase) return { data: null, error: { message: 'no client' } };
+  const { data, error } = await supabase
+    .from('mixes')
+    .select(SUMMARY_COLS)
+    .eq('id', mixId)
+    .order('created_at', { referencedTable: 'recent', ascending: false })
+    .limit(4, { referencedTable: 'recent' })
+    .order('created_at', { referencedTable: 'recentSongs', ascending: false })
+    .limit(4, { referencedTable: 'recentSongs' })
+    .maybeSingle();
+  if (error) return { data: null, error };
+  return { data: data ? toSummary(data as unknown as MixRowWithEmbeds) : null, error: null };
+}
+
+/**
+ * The name a mix gets when it's created with a blank name: `base`, then
+ * `base 2`, `base 3`… — the first one none of `existing` already uses.
+ */
+export function defaultMixName(base: string, existing: string[]): string {
+  const taken = new Set(existing.map((n) => n.trim().toLowerCase()));
+  if (!taken.has(base.toLowerCase())) return base;
+  for (let n = 2; ; n++) {
+    const candidate = `${base} ${n}`;
+    if (!taken.has(candidate.toLowerCase())) return candidate;
+  }
+}
+
 const PAGE = 1000;
 
 /**

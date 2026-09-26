@@ -1000,7 +1000,7 @@ function Empty({ label }: { label: string }) {
 
 function MixLibrary({ userId, isSelf }: { userId: string; isSelf: boolean }) {
   const { t } = useLanguage();
-  const { refresh: refreshMixTargets } = useMixTarget();
+  const { refresh: refreshMixTargets, defaultMixName } = useMixTarget();
   const mixName = useMixName();
   const [mixes, setMixes] = useState<MixRow[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
@@ -1046,11 +1046,15 @@ function MixLibrary({ userId, isSelf }: { userId: string; isSelf: boolean }) {
   }, [load]);
 
   async function create() {
-    if (!supabase || name.trim() === '') return;
+    if (!supabase) return;
     setSaving(true);
-    await supabase
-      .from('mixes')
-      .insert({ user_id: userId, name: name.trim(), is_public: isPublic, is_default: false });
+    // A blank name gets the same default as the dock ("New Mix", "New Mix 2"…).
+    await supabase.from('mixes').insert({
+      user_id: userId,
+      name: name.trim() || defaultMixName || t('sj.mix.newMix'),
+      is_public: isPublic,
+      is_default: false,
+    });
     setSaving(false);
     setShowCreate(false);
     setName('');
@@ -1136,7 +1140,9 @@ function MixLibrary({ userId, isSelf }: { userId: string; isSelf: boolean }) {
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder={t('sj.mix.namePlaceholder')}
+            maxLength={100}
+            placeholder={defaultMixName || t('sj.mix.namePlaceholder')}
+            aria-label={t('sj.mix.namePlaceholder')}
             className="w-full px-3.5 py-2.5 rounded-[10px] bg-surface border border-divider text-[14px] text-ink placeholder-placeholder outline-none focus:border-accent/60 transition"
           />
           <label className="flex items-center justify-between mt-4 cursor-pointer">
@@ -1160,7 +1166,7 @@ function MixLibrary({ userId, isSelf }: { userId: string; isSelf: boolean }) {
             </button>
             <button
               onClick={create}
-              disabled={saving || name.trim() === ''}
+              disabled={saving}
               className="px-4 py-2 rounded-[10px] bg-accent text-white text-[13.5px] font-semibold hover:opacity-90 disabled:opacity-50 transition"
             >
               {t('sj.mix.createBtn')}

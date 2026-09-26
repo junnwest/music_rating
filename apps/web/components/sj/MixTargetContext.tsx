@@ -16,6 +16,8 @@ import { useLanguage } from '../../lib/i18n';
 import {
   addToMix,
   createMix as createMixRow,
+  defaultMixName as nextDefaultMixName,
+  getMixSummary,
   itemKey,
   listMyMixes,
   loadMembershipIndex,
@@ -79,8 +81,12 @@ interface MixTargetValue {
       remember?: boolean;
     },
   ) => Promise<boolean>;
-  remove: (item: MixItemRef, mixId: string) => Promise<boolean>;
+  /** `coverUrl`, when known, drops that cover from the mix's thumbnails right away. */
+  remove: (item: MixItemRef, mixId: string, meta?: MixItemMeta) => Promise<boolean>;
+  /** A blank name gets `defaultMixName`. */
   createMix: (name: string, isPublic?: boolean) => Promise<MixSummary | null>;
+  /** What a mix created with a blank name will be called ("New Mix", "New Mix 2"…). */
+  defaultMixName: string;
   /**
    * The bookmark press: unsaved → save to target and show the dropdown;
    * already saved → show the dropdown only (D3, never unsaves). Signed-out
@@ -107,6 +113,7 @@ const MixTargetContext = createContext<MixTargetValue>({
   add: noop,
   remove: noop,
   createMix: async () => null,
+  defaultMixName: '',
   saveAndShow: () => {},
   openChange: () => {},
   lastAdded: null,
@@ -144,6 +151,7 @@ export function useMixName() {
 
 export function MixTargetProvider({ children }: { children: ReactNode }) {
   const { userId, requireAuth } = useSession();
+  const { t } = useLanguage();
   const [mixes, setMixes] = useState<MixSummary[] | null>(null);
   const [index, setIndex] = useState<Map<string, Set<string>>>(new Map());
   const [storedTargetId, setStoredTargetId] = useState<string | null>(null);
@@ -246,21 +254,36 @@ export function MixTargetProvider({ children }: { children: ReactNode }) {
   function patchMix(mixId: string, delta: number, coverUrl?: string | null) {
     setMixes((prev) =>
       prev
-        ? prev.map((m) =>
-            m.id !== mixId
-              ? m
-              : {
-                  ...m,
-                  itemCount: Math.max(0, m.itemCount + delta),
-                  covers:
-                    delta > 0 && coverUrl
-                      ? [coverUrl, ...m.covers.filter((c) => c !== coverUrl)].slice(0, 4)
-                      : m.covers,
-                },
-          )
+        ? prev.map((m) => {
+            if (m.id !== mixId) return m;
+            const itemCount = Math.max(0, m.itemCount + delta);
+            let covers = m.covers;
+            if (itemCount === 0) covers = [];
+            else if (delta > 0 && coverUrl)
+              covers = [coverUrl, ...m.covers.filter((c) => c !== coverUrl)].slice(0, 4);
+            else if (delta < 0 && coverUrl) covers = m.covers.filter((c) => c !== coverUrl);
+            return { ...m, itemCount, covers };
+          })
         : prev,
     );
   }
+
+  // The optimistic patch is a guess (a removed album may share its cover with
+  // a song still in the mix, and the next-newest cover isn't known), so each
+  // change re-reads the mix's real count + covers. Per-mix sequence numbers
+  // drop a slow response that a newer change has already superseded.
+  const syncSeq = useRef(new Map<string, number>());
+  const syncMix = useCallback(async (mixId: string) => {
+    const seq = (syncSeq.current.get(mixId) ?? 0) + 1;
+    syncSeq.current.set(mixId, seq);
+    const { data, error } = await getMixSummary(mixId);
+    if (syncSeq.current.get(mixId) !== seq) return;
+    if (error || !data) {
+      if (error) console.error('[mixes] failed to re-sync mix:', error.message);
+      return;
+    }
+    setMixes((prev) => (prev ? prev.map((m) => (m.id === mixId ? data : m)) : prev));
+  }, []);
 
   const add = useCallback<MixTargetValue['add']>(
     async (item, opts = {}) => {
@@ -282,39 +305,48 @@ export function MixTargetProvider({ children }: { children: ReactNode }) {
         console.error('[mixes] add failed:', error.message);
         patchIndex(item, mixId, false);
         patchMix(mixId, -1);
+        void syncMix(mixId);
         return false;
       }
       setVersion((v) => v + 1);
+      void syncMix(mixId);
       return true;
     },
-    [userId, resolveTarget],
+    [userId, resolveTarget, syncMix],
   );
 
   const remove = useCallback<MixTargetValue['remove']>(
-    async (item, mixId) => {
+    async (item, mixId, meta) => {
       if (!userId) return false;
       // No early-out on "not in the index": a caller (the mix page) may know
       // about an item before the index has loaded.
       const wasPresent = !!indexRef.current.get(itemKey(item))?.has(mixId);
       patchIndex(item, mixId, false);
-      patchMix(mixId, -1);
+      patchMix(mixId, -1, meta?.coverUrl);
       const { error } = await removeFromMix(mixId, item);
       if (error) {
         console.error('[mixes] remove failed:', error.message);
         if (wasPresent) patchIndex(item, mixId, true);
         patchMix(mixId, 1);
+        void syncMix(mixId);
         return false;
       }
       setVersion((v) => v + 1);
+      void syncMix(mixId);
       return true;
     },
-    [userId],
+    [userId, syncMix],
+  );
+
+  const defaultMixName = useMemo(
+    () => nextDefaultMixName(t('sj.mix.newMix'), (mixes ?? []).map((m) => m.name)),
+    [t, mixes],
   );
 
   const createMix = useCallback<MixTargetValue['createMix']>(
     async (name, isPublic = false) => {
-      if (!userId || name.trim() === '') return null;
-      const { data, error } = await createMixRow(userId, name, isPublic);
+      if (!userId) return null;
+      const { data, error } = await createMixRow(userId, name.trim() || defaultMixName, isPublic);
       if (error || !data) {
         console.error('[mixes] create failed:', error?.message);
         return null;
@@ -322,7 +354,7 @@ export function MixTargetProvider({ children }: { children: ReactNode }) {
       setMixes((prev) => [...(prev ?? []), data]);
       return data;
     },
-    [userId],
+    [userId, defaultMixName],
   );
 
   const saveAndShow = useCallback<MixTargetValue['saveAndShow']>(
@@ -374,6 +406,7 @@ export function MixTargetProvider({ children }: { children: ReactNode }) {
     add,
     remove,
     createMix,
+    defaultMixName,
     saveAndShow,
     openChange,
     lastAdded,

@@ -172,8 +172,11 @@ export default function MixDock() {
       cancelled = true;
     };
   }, [open, targetId, version]);
-  // A different mix shouldn't flash the previous one's rows.
-  useEffect(() => setEntries(null), [targetId]);
+  // A different mix shouldn't flash the previous one's rows (or its error).
+  useEffect(() => {
+    setEntries(null);
+    setFailed(false);
+  }, [targetId]);
 
   // ── Add animation ────────────────────────────────────────────────────────
   const railBtnRef = useRef<HTMLButtonElement>(null);
@@ -252,6 +255,11 @@ export default function MixDock() {
   const resizeRef = useRef<{ startX: number; startW: number } | null>(null);
   const [liveWidth, setLiveWidth] = useState<number | null>(null);
   const width = liveWidth ?? prefs.width;
+  const endResize = () => {
+    resizeRef.current = null;
+    if (liveWidth != null) updatePrefs({ width: liveWidth });
+    setLiveWidth(null);
+  };
 
   if (!available || loadedPrefsFor !== userId) return null;
 
@@ -284,14 +292,15 @@ export default function MixDock() {
             </span>
           )}
         </button>
-        {/* The target mix's newest covers, stacked. */}
+        {/* The target mix's newest covers, stacked. An empty mix shows none,
+            even if a stale cover list hasn't re-synced yet. */}
         <button
           type="button"
           onClick={() => updatePrefs({ open: true })}
           aria-label={mixName(target)}
           className="flex flex-col items-center -space-y-5 pt-1 group"
         >
-          {(target?.covers ?? []).slice(0, 3).map((c, i) => (
+          {(count > 0 ? target?.covers ?? [] : []).slice(0, 3).map((c, i) => (
             <span
               key={`${c}-${i}`}
               className="block rounded-md ring-2 ring-page shadow-sm transition group-hover:translate-y-0"
@@ -330,11 +339,8 @@ export default function MixDock() {
               if (!r) return;
               setLiveWidth(Math.min(MAX_W, Math.max(MIN_W, r.startW + (r.startX - e.clientX))));
             }}
-            onPointerUp={() => {
-              resizeRef.current = null;
-              if (liveWidth != null) updatePrefs({ width: liveWidth });
-              setLiveWidth(null);
-            }}
+            onPointerUp={endResize}
+            onPointerCancel={endResize}
           />
 
           <DockHeader
@@ -343,6 +349,7 @@ export default function MixDock() {
             onCreate={async (name) => {
               const mix = await createMix(name);
               if (mix) setTarget(mix.id);
+              return !!mix;
             }}
           />
 
@@ -373,8 +380,11 @@ export default function MixDock() {
                 mixId={targetId!}
                 highlight={highlight}
                 onRemove={async (entry) => {
+                  const before = entries;
                   setEntries((prev) => prev?.filter((x) => x.id !== entry.id) ?? prev);
-                  await remove(mixEntryRef(entry), targetId!);
+                  const ok = await remove(mixEntryRef(entry), targetId!, { coverUrl: entry.coverUrl });
+                  // Put the row back if the delete didn't land.
+                  if (!ok) setEntries(before);
                 }}
               />
             )}
@@ -402,15 +412,24 @@ function DockHeader({
 }: {
   onClose: () => void;
   onPick: (mixId: string) => void;
-  onCreate: (name: string) => Promise<void>;
+  /** Resolves false when the mix couldn't be created (the form stays open). */
+  onCreate: (name: string) => Promise<boolean>;
 }) {
   const { t } = useLanguage();
   const mixName = useMixName();
-  const { mixes, target } = useMixTarget();
+  const { mixes, target, defaultMixName } = useMixTarget();
   const [switching, setSwitching] = useState(false);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+
+  // Closing the switcher abandons a half-typed new mix.
+  useEffect(() => {
+    if (switching) return;
+    setCreating(false);
+    setName('');
+  }, [switching]);
 
   useEffect(() => {
     if (!switching) return;
@@ -503,11 +522,12 @@ function DockHeader({
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
-                  if (!name.trim()) return;
-                  await onCreate(name);
-                  setName('');
-                  setCreating(false);
-                  setSwitching(false);
+                  if (busy) return;
+                  // A blank name is fine — the mix gets defaultMixName.
+                  setBusy(true);
+                  const ok = await onCreate(name);
+                  setBusy(false);
+                  if (ok) setSwitching(false);
                 }}
                 className="flex items-center gap-1.5 p-1"
               >
@@ -515,13 +535,21 @@ function DockHeader({
                   autoFocus
                   value={name}
                   onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      e.stopPropagation();
+                      setCreating(false);
+                      setName('');
+                    }
+                  }}
                   maxLength={100}
-                  placeholder={t('sj.mix.namePlaceholder')}
+                  placeholder={defaultMixName || t('sj.mix.namePlaceholder')}
+                  aria-label={t('sj.mix.namePlaceholder')}
                   className="flex-1 min-w-0 h-8 px-2.5 rounded-lg bg-page border border-divider text-[13px] text-ink placeholder-placeholder outline-none focus:border-accent/60"
                 />
                 <button
                   type="submit"
-                  disabled={!name.trim()}
+                  disabled={busy}
                   className="h-8 px-3 rounded-lg bg-accent text-white text-[12.5px] font-semibold disabled:opacity-50"
                 >
                   {t('sj.mix.createBtn')}

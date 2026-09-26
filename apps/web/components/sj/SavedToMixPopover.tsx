@@ -49,7 +49,7 @@ function anchorRect(anchor: PopoverAnchor): DOMRect | null {
 export default function SavedToMixPopover({ state, onChangeView, onClose }: Props) {
   const { t } = useLanguage();
   const mixName = useMixName();
-  const { mixes, membership, add, remove, setTarget, createMix } = useMixTarget();
+  const { mixes, membership, add, remove, setTarget, createMix, defaultMixName } = useMixTarget();
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const [leaving, setLeaving] = useState(false);
@@ -160,10 +160,10 @@ export default function SavedToMixPopover({ state, onChangeView, onClose }: Prop
   }
 
   async function submitNew() {
-    const name = newName.trim();
-    if (!name || busy) return;
+    if (busy) return;
     setBusy(true);
-    const mix = await createMix(name);
+    // A blank name is fine — createMix falls back to defaultMixName.
+    const mix = await createMix(newName);
     if (mix) {
       setTarget(mix.id);
       await add(item, { mixId: mix.id, meta: state.meta, from: anchorRect(anchor) });
@@ -324,12 +324,13 @@ export default function SavedToMixPopover({ state, onChangeView, onClose }: Prop
                     }
                   }}
                   maxLength={100}
-                  placeholder={t('sj.mix.namePlaceholder')}
+                  placeholder={defaultMixName || t('sj.mix.namePlaceholder')}
+                  aria-label={t('sj.mix.namePlaceholder')}
                   className="flex-1 min-w-0 h-8 px-2.5 rounded-lg bg-page border border-divider text-[13px] text-ink placeholder-placeholder outline-none focus:border-accent/60"
                 />
                 <button
                   type="submit"
-                  disabled={!newName.trim() || busy}
+                  disabled={busy}
                   className="h-8 px-3 rounded-lg bg-accent text-white text-[12.5px] font-semibold disabled:opacity-50 hover:opacity-90 transition"
                 >
                   {t('sj.mix.createBtn')}
