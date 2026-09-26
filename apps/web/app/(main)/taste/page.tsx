@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Lock, Star, BarChart3, Drama, AudioWaveform, RotateCw } from 'lucide-react';
+import { Lock, Star, BarChart3, Drama, AudioWaveform, RotateCw, X } from 'lucide-react';
 import Cover from '../../../components/sj/Cover';
 import { useSession } from '../../../components/sj/SessionContext';
 import { SkeletonBlock, SkeletonLine, FlowerSpinner } from '../../../components/sj/Loading';
@@ -19,6 +19,7 @@ import {
   CountryMix,
   countryName,
   type CountryMixData,
+  type CountrySelection,
   CanonGauge,
   DumbbellAxis,
   DumbbellRow,
@@ -26,7 +27,7 @@ import {
 } from '../../../components/sj/TasteCharts';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
-import { spectrumColor, spectrumFill, spectrumNumber } from '../../../lib/sj/display';
+import { formatScore, spectrumColor, spectrumFill, spectrumNumber } from '../../../lib/sj/display';
 
 const UNLOCK_THRESHOLD = 25;
 
@@ -214,7 +215,15 @@ function ReportView({
   refreshing: boolean;
 }) {
   const { t, lang } = useLanguage();
+  const { userId } = useSession();
   const { stats, clusters, charts } = report;
+
+  // ── drill-down: click a bar in the year / score / country charts to list the
+  // ratings behind it. The user's ratings load once, on the first click.
+  const [selYear, setSelYear] = useState<number | null>(null);
+  const [selScore, setSelScore] = useState<number | null>(null);
+  const [selCountry, setSelCountry] = useState<CountrySelection | null>(null);
+  const myRatings = useMyRatings(userId ?? null, selYear != null || selScore != null || selCountry != null);
 
   const headline =
     clusters.length >= 2
@@ -428,7 +437,17 @@ function ReportView({
             belowLabel={t('sj.taste.yearsBelow')}
             paceLabel={t('sj.taste.yearsTrend')}
             avgLabel={t('sj.taste.yearsBaseline')}
+            selected={selYear}
+            onSelect={(i) => setSelYear((cur) => (cur === i ? null : i))}
           />
+          {selYear != null && years[selYear] && (
+            <BucketList
+              title={String(years[selYear].year)}
+              state={myRatings}
+              filter={(r) => r.score != null && r.year === years[selYear].year}
+              onClose={() => setSelYear(null)}
+            />
+          )}
         </Section>
       )}
 
@@ -442,7 +461,17 @@ function ReportView({
               label: `${t('sj.taste.meanLabel')} ${stats.avgScore.toFixed(2)}`,
             }}
             legend={t('sj.taste.mapLegendScore')}
+            selected={selScore}
+            onSelect={(i) => setSelScore((cur) => (cur === i ? null : i))}
           />
+          {selScore != null && (
+            <BucketList
+              title={`${((selScore + 1) / 2).toFixed(1)}★`}
+              state={myRatings}
+              filter={(r) => r.score != null && scoreBin(r.score) === selScore}
+              onClose={() => setSelScore(null)}
+            />
+          )}
         </Section>
       )}
 
@@ -456,7 +485,24 @@ function ReportView({
               .replace('{country}', countryName(countryLead.code, lang, t))
               .replace('{pct}', String(Math.round((countryLead.count / Math.max(countries.total, 1)) * 100)))}
           >
-            <CountryMix data={countries} colors={SERIES} lang={lang} t={t} />
+            <CountryMix
+              data={countries}
+              colors={SERIES}
+              lang={lang}
+              t={t}
+              selected={selCountry?.key ?? null}
+              onSelect={(sel) => setSelCountry((cur) => (cur?.key === sel.key ? null : sel))}
+            />
+            {selCountry && (
+              <BucketList
+                title={selCountry.label}
+                state={myRatings}
+                filter={(r) =>
+                  selCountry.codes == null ? r.country == null : r.country != null && selCountry.codes.includes(r.country)
+                }
+                onClose={() => setSelCountry(null)}
+              />
+            )}
           </Section>
         )}
         <Section no={nextNo()} title={t('sj.taste.canonHeader')}>
@@ -528,6 +574,149 @@ function ReportView({
       <Reveal>
         <p className="text-center text-[11.5px] text-muted/50 pb-6">{t('sj.taste.snapshotEnd')}</p>
       </Reveal>
+    </div>
+  );
+}
+
+// ── Drill-down lists ────────────────────────────────────────────────────────
+
+interface MyRating {
+  id: string;
+  title: string;
+  artist: string;
+  coverUrl: string | null;
+  score: number | null;
+  year: number | null;
+  country: string | null;
+}
+
+type MyRatingsState = { status: 'idle' | 'loading' | 'error' } | { status: 'ready'; rows: MyRating[] };
+
+/** Half-star bin, same as the report's score distribution (0 = 0.5★ … 9 = 5.0★). */
+function scoreBin(score: number) {
+  return Math.max(0, Math.min(9, Math.round(score * 2) - 1));
+}
+
+/**
+ * The user's album ratings with the fields the drill-downs filter on, loaded
+ * once when first needed. Same buckets as /api/taste/profile: release year from
+ * first_release_date (≥1900), score bins as above, the primary artist's country
+ * (trimmed, upper-cased; missing = Unknown).
+ */
+function useMyRatings(userId: string | null, wanted: boolean): MyRatingsState {
+  const [state, setState] = useState<MyRatingsState>({ status: 'idle' });
+  useEffect(() => {
+    if (!wanted || !userId || !supabase || state.status !== 'idle') return;
+    setState({ status: 'loading' });
+    (async () => {
+      const rows: MyRating[] = [];
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await supabase!
+          .from('ratings')
+          .select(
+            'score, release_groups(id, title, artist_display, cover_url, first_release_date, artists!release_groups_primary_artist_id_fkey(country))',
+          )
+          .eq('user_id', userId)
+          .range(from, from + 999);
+        if (error) {
+          console.error('[taste] drill-down ratings failed:', error.message);
+          setState({ status: 'error' });
+          return;
+        }
+        for (const r of (data as any[]) ?? []) {
+          const rg = r.release_groups;
+          if (!rg) continue;
+          const y = rg.first_release_date ? parseInt(String(rg.first_release_date).slice(0, 4), 10) : NaN;
+          const c = rg.artists?.country?.trim().toUpperCase();
+          rows.push({
+            id: rg.id,
+            title: rg.title,
+            artist: rg.artist_display,
+            coverUrl: rg.cover_url ?? null,
+            score: r.score == null ? null : Number(r.score),
+            year: y >= 1900 ? y : null,
+            country: c || null,
+          });
+        }
+        if (!data || data.length < 1000) break;
+      }
+      setState({ status: 'ready', rows });
+    })();
+  }, [wanted, userId, state.status]);
+  return state;
+}
+
+/** The ratings behind one bar: best first, each linking to its album. */
+function BucketList({
+  title,
+  state,
+  filter,
+  onClose,
+}: {
+  title: string;
+  state: MyRatingsState;
+  filter: (r: MyRating) => boolean;
+  onClose: () => void;
+}) {
+  const { t } = useLanguage();
+  const items =
+    state.status === 'ready'
+      ? state.rows.filter(filter).sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || a.title.localeCompare(b.title))
+      : [];
+  return (
+    <div className="mt-5 rounded-xl bg-page border border-divider/60 sj-fade-in">
+      <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-divider/60">
+        <p className="text-[13px] font-bold text-ink">
+          {title}
+          {state.status === 'ready' && (
+            <span className="ml-2 text-[12px] font-semibold text-muted tabular-nums">
+              {t('sj.taste.bucketCount').replace('{n}', String(items.length))}
+            </span>
+          )}
+        </p>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={t('sj.taste.bucketClose')}
+          className="grid place-items-center w-7 h-7 -mr-1.5 rounded-lg text-muted hover:text-ink hover:bg-surface transition"
+        >
+          <X size={15} />
+        </button>
+      </div>
+      {state.status === 'loading' || state.status === 'idle' ? (
+        <div className="flex justify-center py-6">
+          <FlowerSpinner size={18} />
+        </div>
+      ) : state.status === 'error' ? (
+        <p className="px-4 py-5 text-[12.5px] text-muted">{t('sj.common.loadError')}</p>
+      ) : items.length === 0 ? (
+        <p className="px-4 py-5 text-[12.5px] text-muted">{t('sj.taste.bucketEmpty')}</p>
+      ) : (
+        <ul className="max-h-80 overflow-y-auto divide-y divide-divider/60">
+          {items.map((r) => (
+            <li key={r.id}>
+              <Link href={`/album/${r.id}`} className="flex items-center gap-3 px-4 py-2 hover:bg-surface transition">
+                <Cover url={r.coverUrl} className="w-10 h-10 shrink-0" rounded="rounded-md" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] font-semibold text-ink truncate">{r.title}</span>
+                  <span className="block text-[11.5px] text-muted truncate">
+                    {r.artist}
+                    {r.year != null ? ` · ${r.year}` : ''}
+                  </span>
+                </span>
+                {r.score != null && (
+                  <span
+                    className="shrink-0 min-w-[34px] h-[26px] px-1.5 grid place-items-center rounded-full text-[12px] font-black tabular-nums"
+                    style={{ background: spectrumFill(r.score), color: spectrumNumber(r.score) }}
+                  >
+                    {formatScore(r.score)}
+                  </span>
+                )}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

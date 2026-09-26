@@ -669,6 +669,9 @@ const en = {
       gaugeLabel: '{n} / {target} ratings',
     },
     taste: {
+      bucketCount: '{n} rated',
+      bucketClose: 'Close list',
+      bucketEmpty: 'No ratings here.',
       lockTitle: 'Rate {n} more\nreleases to unlock Taste',
       lockDesc: 'We need enough ratings to surface\nmeaningful insights about your taste.',
       progress: '{n} of {total}',

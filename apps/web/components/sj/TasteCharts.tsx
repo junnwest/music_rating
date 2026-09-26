@@ -137,7 +137,14 @@ function useBinHover(count: number) {
     const i = Math.floor(((e.clientX - rect.left) / rect.width) * count);
     setHover(Math.max(0, Math.min(count - 1, i)));
   };
-  return { ref, hover, onPointerMove, onPointerLeave: () => setHover(null) };
+  /** The bin under a click — same geometry as the hover. */
+  const binAt = (e: React.MouseEvent) => {
+    const el = ref.current;
+    if (!el || count === 0) return null;
+    const rect = el.getBoundingClientRect();
+    return Math.max(0, Math.min(count - 1, Math.floor(((e.clientX - rect.left) / rect.width) * count)));
+  };
+  return { ref, hover, onPointerMove, onPointerLeave: () => setHover(null), binAt };
 }
 
 /** Ink-on-page tooltip pinned above bin `i` of `count`. */
@@ -240,7 +247,8 @@ function monotonePath(pts: { x: number; y: number }[]): string {
  * axis as the bars). Your overall average — the split threshold — is stated in
  * a chip above the plot, not drawn over the bars where it used to hide.
  *
- * Hover snaps to a year: its above/below counts.
+ * Hover snaps to a year: its above/below counts. Click a year (with ratings)
+ * to select it — the page lists those ratings.
  */
 export function YearChart({
   years,
@@ -249,6 +257,8 @@ export function YearChart({
   belowLabel,
   paceLabel,
   avgLabel,
+  selected = null,
+  onSelect,
 }: {
   years: { year: number; above: number; below: number }[];
   avgScore: number;
@@ -256,8 +266,10 @@ export function YearChart({
   belowLabel: string;
   paceLabel: string;
   avgLabel: string;
+  selected?: number | null;
+  onSelect?: (i: number) => void;
 }) {
-  const { ref, hover, onPointerMove, onPointerLeave } = useBinHover(years.length);
+  const { ref, hover, onPointerMove, onPointerLeave, binAt } = useBinHover(years.length);
   const n = years.length;
   // Column centres (percent) — ticks, hover guide and the pace line key off
   // these so every layer stays aligned with the bar groups.
@@ -298,7 +310,16 @@ export function YearChart({
         </span>
       </div>
 
-      <div ref={ref} onPointerMove={onPointerMove} onPointerLeave={onPointerLeave} className="relative">
+      <div
+        ref={ref}
+        onPointerMove={onPointerMove}
+        onPointerLeave={onPointerLeave}
+        onClick={(e) => {
+          const i = binAt(e);
+          if (i != null && onSelect && years[i].above + years[i].below > 0) onSelect(i);
+        }}
+        className={`relative ${onSelect ? 'cursor-pointer' : ''}`}
+      >
         <div className="relative h-44 border-b border-divider">
           {/* grouped bars */}
           <div className="absolute inset-0 flex items-end gap-[3px]">
@@ -306,7 +327,7 @@ export function YearChart({
               <div
                 key={y.year}
                 className={`relative flex-1 min-w-0 h-full flex items-end justify-center gap-[2px] rounded-sm ${
-                  hover === i ? 'bg-ink/[0.05]' : ''
+                  selected === i ? 'bg-accent/[0.12]' : hover === i ? 'bg-ink/[0.05]' : ''
                 }`}
               >
                 <span
@@ -314,7 +335,7 @@ export function YearChart({
                   style={{
                     height: `${barH(y.above)}%`,
                     background: 'var(--tr-up)',
-                    opacity: hover == null || hover === i ? 1 : 0.7,
+                    opacity: selected != null ? (selected === i ? 1 : 0.45) : hover == null || hover === i ? 1 : 0.7,
                   }}
                 />
                 <span
@@ -322,7 +343,7 @@ export function YearChart({
                   style={{
                     height: `${barH(y.below)}%`,
                     background: 'var(--tr-dn)',
-                    opacity: hover == null || hover === i ? 1 : 0.7,
+                    opacity: selected != null ? (selected === i ? 1 : 0.45) : hover == null || hover === i ? 1 : 0.7,
                   }}
                 />
               </div>
@@ -405,18 +426,23 @@ export function YearChart({
 /**
  * Half-star bins where each bar wears the score ramp at its own score — color
  * restates the x-axis (never the sole encoding) and the RampLegend names the
- * scale. Mean marker on top; hover shows score · count.
+ * scale. Mean marker on top; hover shows score · count. Click a bin (with
+ * ratings) to select it — the page lists those ratings.
  */
 export function ScoreChart({
   bins,
   mean,
   legend,
+  selected = null,
+  onSelect,
 }: {
   bins: number[];
   mean: { pos: number; label: string } | null;
   legend: string;
+  selected?: number | null;
+  onSelect?: (i: number) => void;
 }) {
-  const { ref, hover, onPointerMove, onPointerLeave } = useBinHover(bins.length);
+  const { ref, hover, onPointerMove, onPointerLeave, binAt } = useBinHover(bins.length);
   const max = Math.max(1, ...bins);
   const peak = bins.reduce((best, x, i) => (x > bins[best] ? i : best), 0);
   const scoreAt = (i: number) => (i + 1) / 2;
@@ -428,13 +454,17 @@ export function ScoreChart({
           ref={ref}
           onPointerMove={onPointerMove}
           onPointerLeave={onPointerLeave}
-          className="relative flex items-end gap-[3px] h-28 border-b border-divider"
+          onClick={(e) => {
+            const i = binAt(e);
+            if (i != null && onSelect && bins[i] > 0) onSelect(i);
+          }}
+          className={`relative flex items-end gap-[3px] h-28 border-b border-divider ${onSelect ? 'cursor-pointer' : ''}`}
         >
           {bins.map((count, i) => (
             <div
               key={i}
               className={`flex-1 h-full flex flex-col items-center justify-end min-w-0 rounded-sm ${
-                hover === i ? 'bg-ink/[0.05]' : ''
+                selected === i ? 'bg-accent/[0.12]' : hover === i ? 'bg-ink/[0.05]' : ''
               }`}
             >
               {i === peak && count > 0 && hover == null && (
@@ -446,7 +476,8 @@ export function ScoreChart({
                 className="tr-bar w-full max-w-[26px] rounded-t"
                 style={{
                   height: count > 0 ? Math.max(3, Math.round((count / max) * 88)) : 0,
-                  background: spectrumColor(scoreAt(i), 0.62, hover === i ? 1 : 0.9),
+                  background: spectrumColor(scoreAt(i), 0.62, hover === i || selected === i ? 1 : 0.9),
+                  opacity: selected != null && selected !== i ? 0.5 : 1,
                   transitionDelay: `${i * 35}ms`,
                 }}
               />
@@ -514,17 +545,31 @@ export function countryName(code: string, lang: string, t: (k: string) => string
  * wide / 4 narrow), folds the rest into "Other (k countries)" — expandable to
  * the full list — and keeps "Unknown" as its own muted slot, never in Other.
  * Colours follow rank (the categorical series), Other/Unknown are neutral.
+ *
+ * Segments and legend entries are clickable (`onSelect`): a country passes its
+ * code, "Other" the codes it folds, "Unknown" `null` codes.
  */
+export interface CountrySelection {
+  key: string;
+  label: string;
+  /** Country codes in this slice; null = artists with no country ("Unknown"). */
+  codes: string[] | null;
+}
+
 export function CountryMix({
   data,
   colors,
   lang,
   t,
+  selected = null,
+  onSelect,
 }: {
   data: CountryMixData;
   colors: string[];
   lang: string;
   t: (k: string) => string;
+  selected?: string | null;
+  onSelect?: (sel: CountrySelection) => void;
 }) {
   const [wide, setWide] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -555,6 +600,16 @@ export function CountryMix({
   const pct = (n: number) => Math.round((n / total) * 100);
   const pctLabel = (n: number) => (pct(n) === 0 ? '<1%' : `${pct(n)}%`);
 
+  const otherLabel = t('sj.taste.countryOther').replace('{n}', String(rest.length));
+  const selOf = (key: string): CountrySelection =>
+    key === '__other'
+      ? { key, label: otherLabel, codes: rest.map((r) => r.code) }
+      : key === '__unknown'
+        ? { key, label: t('sj.taste.countryUnknown'), codes: null }
+        : { key, label: countryName(key, lang, t), codes: [key] };
+  const pick = (key: string) => onSelect?.(selOf(key));
+  const dim = (key: string) => (selected != null && selected !== key ? 0.4 : 1);
+
   const segments = [
     ...shown.map((it, i) => ({
       key: it.code,
@@ -568,7 +623,7 @@ export function CountryMix({
             key: '__other',
             share: restCount / total,
             color: 'var(--viz-other)',
-            title: `${t('sj.taste.countryOther').replace('{n}', String(rest.length))} · ${pctLabel(restCount)}`,
+            title: `${otherLabel} · ${pctLabel(restCount)}`,
           },
         ]
       : []),
@@ -585,17 +640,48 @@ export function CountryMix({
       : []),
   ];
 
+  // Legend entries become buttons when selectable.
+  const legendName = (key: string, text: string, extra = '') =>
+    onSelect ? (
+      <button
+        type="button"
+        onClick={() => pick(key)}
+        aria-pressed={selected === key}
+        className={`font-semibold text-ink truncate hover:underline ${selected === key ? 'underline' : ''} ${extra}`}
+        title={text}
+      >
+        {text}
+      </button>
+    ) : (
+      <span className={`font-semibold text-ink truncate ${extra}`} title={text}>
+        {text}
+      </span>
+    );
+
   return (
     <div>
       <div className="tr-grow mt-4 flex h-[14px] rounded-full overflow-hidden gap-[2px]">
-        {segments.map((s) => (
-          <span
-            key={s.key}
-            title={s.title}
-            className="min-w-[6px]"
-            style={{ flex: `${s.share} 1 0px`, background: s.color }}
-          />
-        ))}
+        {segments.map((s) =>
+          onSelect ? (
+            <button
+              key={s.key}
+              type="button"
+              title={s.title}
+              aria-label={s.title}
+              aria-pressed={selected === s.key}
+              onClick={() => pick(s.key)}
+              className="min-w-[6px] cursor-pointer hover:brightness-110 transition-opacity"
+              style={{ flex: `${s.share} 1 0px`, background: s.color, opacity: dim(s.key) }}
+            />
+          ) : (
+            <span
+              key={s.key}
+              title={s.title}
+              className="min-w-[6px]"
+              style={{ flex: `${s.share} 1 0px`, background: s.color }}
+            />
+          ),
+        )}
       </div>
       <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
         {shown.map((it, i) => {
@@ -603,9 +689,7 @@ export function CountryMix({
           return (
             <li key={it.code} className="flex items-center gap-1.5 text-[12px] text-muted min-w-0 max-w-full">
               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: colors[i] }} />
-              <span className="font-semibold text-ink truncate max-w-[9rem]" title={name}>
-                {name}
-              </span>
+              {legendName(it.code, name, 'max-w-[9rem]')}
               <span className="tabular-nums shrink-0">{pctLabel(it.count)}</span>
             </li>
           );
@@ -633,7 +717,18 @@ export function CountryMix({
                   'repeating-linear-gradient(135deg, var(--viz-other) 0 2px, transparent 2px 4px)',
               }}
             />
-            <span>{t('sj.taste.countryUnknown')}</span>
+            {onSelect ? (
+              <button
+                type="button"
+                onClick={() => pick('__unknown')}
+                aria-pressed={selected === '__unknown'}
+                className={`hover:underline ${selected === '__unknown' ? 'underline text-ink' : ''}`}
+              >
+                {t('sj.taste.countryUnknown')}
+              </button>
+            ) : (
+              <span>{t('sj.taste.countryUnknown')}</span>
+            )}
             <span className="tabular-nums">{pctLabel(data.unknown)}</span>
           </li>
         )}
@@ -644,9 +739,21 @@ export function CountryMix({
             const name = countryName(it.code, lang, t);
             return (
               <li key={it.code} className="flex items-center justify-between gap-2 text-[11.5px] text-muted min-w-0">
-                <span className="truncate" title={name}>
-                  {name}
-                </span>
+                {onSelect ? (
+                  <button
+                    type="button"
+                    onClick={() => pick(it.code)}
+                    aria-pressed={selected === it.code}
+                    className={`truncate text-left hover:underline ${selected === it.code ? 'underline text-ink' : ''}`}
+                    title={name}
+                  >
+                    {name}
+                  </button>
+                ) : (
+                  <span className="truncate" title={name}>
+                    {name}
+                  </span>
+                )}
                 <span className="tabular-nums shrink-0">{pctLabel(it.count)}</span>
               </li>
             );

@@ -671,6 +671,9 @@ const ko: Translations = {
       gaugeLabel: '{n} / {target} 평가',
     },
     taste: {
+      bucketCount: '{n}개 평가',
+      bucketClose: '목록 닫기',
+      bucketEmpty: '여기에는 평가가 없어요.',
       lockTitle: '{n}개 더 평가하면\n테이스트가 열립니다',
       lockDesc: '취향에 대한 의미 있는 인사이트를 보여드리려면\n충분한 평가가 필요해요.',
       progress: '{n} / {total}',
