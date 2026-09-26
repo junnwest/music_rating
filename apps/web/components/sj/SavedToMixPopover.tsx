@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Clock, ListMusic, Plus, Search, X, AlertCircle } from 'lucide-react';
+import { Check, Clock, ListMusic, Plus, Search, AlertCircle } from 'lucide-react';
 import { useMixName, useMixTarget } from './MixTargetContext';
 import { useLanguage } from '../../lib/i18n';
 import type { MixItemMeta, MixItemRef } from '../../lib/sj/mixes';
@@ -231,24 +231,6 @@ export default function SavedToMixPopover({ state, onChangeView, onClose }: Prop
                 {t('sj.mix.change')}
               </button>
             </div>
-          )}
-          {about && members.includes(about.id) && (
-            <>
-              <div className="h-px bg-divider my-1" />
-              <button
-                type="button"
-                onClick={() => {
-                  void remove(item, about.id);
-                  fadeOut();
-                }}
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] text-left text-red-500 hover:bg-page transition"
-              >
-                <X size={15} className="shrink-0" />
-                <span className="truncate">
-                  {t('sj.mix.removeFrom').replace('{mix}', mixName(about))}
-                </span>
-              </button>
-            </>
           )}
         </div>
       ) : (

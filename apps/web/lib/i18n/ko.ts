@@ -504,7 +504,7 @@ const ko: Translations = {
       emptyDesc: '앨범이나 곡의 북마크를 눌러 여기에 저장하세요.',
       remove: '믹스에서 제거',
       saveTo: '{mix}에 저장',
-      savedManage: '저장됨 · 믹스 관리',
+      unsave: '저장됨 · 눌러서 삭제',
       savedToPrefix: '',
       savedToSuffix: '에 저장됨',
       andNMore: '외 {n}개',

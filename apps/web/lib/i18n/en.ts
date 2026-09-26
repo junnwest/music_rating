@@ -502,7 +502,7 @@ const en = {
       emptyDesc: 'Tap the bookmark on any album or song to save it here.',
       remove: 'Remove from mix',
       saveTo: 'Save to {mix}',
-      savedManage: 'Saved · manage mixes',
+      unsave: 'Saved · click to remove',
       savedToPrefix: 'Saved to ',
       savedToSuffix: '',
       andNMore: '+{n} more',

@@ -8,9 +8,8 @@ import type { MixItemMeta, MixItemRef } from '../../lib/sj/mixes';
 
 /**
  * The bookmark for any album or song (D1–D3). One press saves to the current
- * target mix and opens the "Saved to {mix} · Change" dropdown; a filled
- * bookmark (the item is in *any* of your mixes) opens the dropdown instead of
- * unsaving, so a stray click can't remove anything.
+ * target mix and opens the "Saved to {mix} · Change" dropdown; pressing a
+ * filled bookmark again unsaves it (see MixTargetContext.saveAndShow).
  *
  * - `overlay`: the dark pill that sits on covers.
  * - `inline`: a plain icon button for rows and headers.
@@ -37,7 +36,7 @@ export default function SaveToMixButton({
   const saved = isSaved(item);
 
   const label = saved
-    ? t('sj.mix.savedManage')
+    ? t('sj.mix.unsave')
     : target
       ? t('sj.mix.saveTo').replace('{mix}', mixName(target))
       : t('sj.mix.saveToMix');

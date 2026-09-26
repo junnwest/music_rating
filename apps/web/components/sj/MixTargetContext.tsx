@@ -34,7 +34,8 @@ import {
  *   user saved to (localStorage, per user) → the default "Listen Later" mix.
  *   Choosing a mix anywhere updates it.
  * - **Membership (D3):** one in-memory index of every item the user has saved,
- *   so each bookmark knows its filled state without a query per cover.
+ *   so each bookmark knows its filled state without a query per cover. A
+ *   filled bookmark pressed again unsaves (see `saveAndShow`).
  * - **Popover (D2):** a single anchored "Saved to {mix} · Change" dropdown for
  *   the whole app, opened via `saveAndShow`.
  * - **`lastAdded`:** a signal the dock animates on.
@@ -89,8 +90,9 @@ interface MixTargetValue {
   defaultMixName: string;
   /**
    * The bookmark press: unsaved → save to target and show the dropdown;
-   * already saved → show the dropdown only (D3, never unsaves). Signed-out
-   * users get the auth prompt.
+   * saved → a second press unsaves it (from the target mix, or its only mix;
+   * if it sits in several and the target isn't one, the mix list opens so
+   * the user picks). Signed-out users get the auth prompt.
    */
   saveAndShow: (item: MixItemRef, anchor: PopoverAnchor, meta?: MixItemMeta) => void;
   /** Open the dropdown straight to the mix list ("Save to another mix…"). */
@@ -363,10 +365,16 @@ export function MixTargetProvider({ children }: { children: ReactNode }) {
       const from = anchor instanceof HTMLElement ? anchor.getBoundingClientRect() : null;
       const current = Array.from(indexRef.current.get(itemKey(item)) ?? []);
       if (current.length > 0) {
-        // D3: a filled bookmark opens the membership dropdown, never unsaves.
+        // Press again to unsave (toggle). Unambiguous cases act directly.
         const tgt = resolveTarget(mixesRef.current);
-        const about = tgt && current.includes(tgt.id) ? tgt.id : current[0];
-        setPopover({ item, meta, anchor, mixId: about, view: 'saved', error: false });
+        const from =
+          tgt && current.includes(tgt.id) ? tgt.id : current.length === 1 ? current[0] : null;
+        if (from) {
+          setPopover(null);
+          void remove(item, from, { coverUrl: meta?.coverUrl });
+        } else {
+          setPopover({ item, meta, anchor, mixId: current[0], view: 'change', error: false });
+        }
         return;
       }
       void (async () => {
@@ -383,7 +391,7 @@ export function MixTargetProvider({ children }: { children: ReactNode }) {
         if (!ok) setPopover((p) => (p && itemKey(p.item) === itemKey(item) ? { ...p, error: true } : p));
       })();
     },
-    [requireAuth, resolveTarget, add],
+    [requireAuth, resolveTarget, add, remove],
   );
 
   const openChange = useCallback<MixTargetValue['openChange']>(
