@@ -39,6 +39,7 @@
  */
 
 import { getDB, resolveArtist, ingestArtist, nextCheckAt, HeavilyFeaturedError, type DB } from './mb-ingest';
+import { normalizeStr } from './itunes-ingest-core';
 import { embedReleaseGroupsBatch, embeddingsEnabled } from './mb-enrich';
 import { listenBrainzTopUp } from './mb-discover';
 import { wikipediaTopUp, REGIONS } from './build-global-queue';
@@ -47,7 +48,7 @@ import { gapfillGroups, gapfillSkippedArtists, MigrationNeeded } from './mb-gapf
 import { runDeezerFallback, pickArtist, ingestDeezerArtist } from './mb-deezer-fallback';
 import { searchArtists as dzSearchArtists } from './deezer-client';
 import { ItunesBlockedError, resetBlock, itunesBlocked } from './itunes-client';
-import { mbLastActivityAt, countArtistReleaseGroups } from './mb-client';
+import { mbLastActivityAt, countArtistReleaseGroups, MbUnavailableError } from './mb-client';
 import { SEED } from './seed-artists';
 import { scanArtistRecency, type RecencyArtist } from './discover-itunes-recency';
 import { scanArtistRecencySpotify, type RecencyArtist as RecencyArtistSpotify } from './discover-spotify-recency';
@@ -89,6 +90,10 @@ const DISCOVER_POLL_MS   = envInt('DISCOVER_POLL_MS', 60_000); // re-check caden
 
 // Demand-driven queue priorities; see migration 20260922000000 (200 listening / 100 miss / 0 bulk).
 const MISS_PRIORITY = 100;
+// How long to stand down when MusicBrainz stops answering. mbGet already backs off internally (six
+// attempts, up to 60s each), so reaching here means MB has been unavailable for minutes; re-picking
+// the row immediately would just spin. Env-overridable for tests.
+const MB_UNAVAILABLE_BACKOFF_MS = envInt('MB_UNAVAILABLE_BACKOFF_MS', 120_000);
 const TASTE_PRIORITY = 200;
 // Check logged search misses every Nth ingest rather than only when the queue is fully idle.
 const MISSES_EVERY = envInt('MISSES_EVERY', 25);
@@ -322,6 +327,32 @@ async function claimNext(db: DB): Promise<{ id: string; name: string; source: st
   return claimed ? data : null; // null if another run grabbed it
 }
 
+// Is a searched name already in the catalogue? Matches the primary name case-insensitively and then
+// artist_aliases by normalized alias, which is what makes a Korean query find the artist we hold
+// under a romanized name. Returns the row holding the MOST releases when a name resolves to several,
+// since the question being asked is "do we already have this artist's music".
+async function heldArtistByName(db: DB, query: string): Promise<{ id: string; own: number; mbid: string | null } | null> {
+  const ids = new Set<string>();
+  const { data: byName } = await db.from('artists').select('id').ilike('name', query).limit(5);
+  for (const r of (byName ?? []) as { id: string }[]) ids.add(r.id);
+  if (ids.size === 0) {
+    const { data: byAlias } = await db.from('artist_aliases')
+      .select('artist_id').eq('alias_norm', normalizeStr(query)).limit(5);
+    for (const r of (byAlias ?? []) as { artist_id: string }[]) ids.add(r.artist_id);
+  }
+  if (ids.size === 0) return null;
+
+  let bestRow: { id: string; own: number; mbid: string | null } | null = null;
+  for (const id of ids) {
+    const own = await countArtistRGs(db, id);
+    const { data: ext } = await db.from('artist_external_ids')
+      .select('external_id').eq('artist_id', id).eq('source', 'musicbrainz').limit(1).maybeSingle();
+    const row = { id, own, mbid: (ext as { external_id: string } | null)?.external_id ?? null };
+    if (!bestRow || row.own > bestRow.own) bestRow = row;
+  }
+  return bestRow;
+}
+
 // ── FRESHNESS: re-poll artists whose next_check_at has passed for new releases ───
 // Shares the single MB worker (interleaved inside ingestLoop), since it hits MB too.
 // ingestArtist is MBID-idempotent, so a re-poll just adds any new release groups and
@@ -432,7 +463,27 @@ async function ingestLoop(db: DB) {
       // and the 2026-08-10 hot-tier-first ordering change made it reachable immediately, since
       // the >MAX_INGEST_RGS artists are concentrated in the hot tier. Always advance the
       // schedule so the loop moves on, whatever the failure was.
-      const heavy = e instanceof HeavilyFeaturedError;
+      // HEAVILY FEATURED IS NOT A REASON TO GIVE UP ANY MORE, IT IS A REASON TO ASK FOR LESS.
+      //
+      // Parking the artist for FRESHNESS_HEAVY_SKIP_DAYS (a decade) is what kept Bob Dylan, Bruce
+      // Springsteen and U2 frozen on a partial June ingest with a next re-poll in 2036. It also
+      // silently undid the popularity floor added on 2026-09-26: the floor promoted Dylan to `hot`,
+      // freshness claimed him within the minute, the cap threw, and he was parked until 2036 again.
+      // ingestArtist's coreOnly mode exists precisely for these artists -- studio albums and EPs
+      // only, truncated if still over the cap -- so try that before parking anything. Only a
+      // coreOnly attempt that ALSO fails earns the long park.
+      let heavy = e instanceof HeavilyFeaturedError;
+      if (heavy) {
+        try {
+          const res = await ingestArtist(db, due.mbid, true);
+          console.log(`  [freshness] ${due.name} — over the cap, re-polled studio-only: ${res.rgCount} groups`);
+          await db.from('artists').update({ next_check_at: nextCheckAt('known') }).eq('id', due.id);
+          return true;
+        } catch (e2) {
+          console.log(`  [freshness] ${due.name} — studio-only re-poll also failed: ${(e2 as Error).message.slice(0, 100)}`);
+          heavy = e2 instanceof HeavilyFeaturedError;
+        }
+      }
       const days = heavy ? FRESHNESS_HEAVY_SKIP_DAYS : FRESHNESS_ERROR_BACKOFF_DAYS;
       const until = new Date(Date.now() + days * 86_400_000).toISOString();
       const { error: schedErr } = await db.from('artists').update({ next_check_at: until }).eq('id', due.id);
@@ -459,6 +510,31 @@ async function ingestLoop(db: DB) {
       // cleaner. See lib/taste/demandSignal.ts and migration 20260922000000.
       const prio = (m.type === 'spotify_taste' || m.type === 'apple_taste') ? TASTE_PRIORITY : MISS_PRIORITY;
       try {
+        // DO WE ALREADY HOLD THIS ARTIST? A miss is logged when a SEARCH came back without what the
+        // user wanted, which is not the same thing as the catalogue lacking it. Nothing here checked,
+        // so a search for an artist we already held was treated as a catalogue gap, resolved against
+        // MusicBrainz, and queued -- and when MB holds two entities under that name the resolver
+        // could land on the empty one and ingest a SECOND, empty copy. That is how a second Jessie
+        // Ware (0 groups) appeared beside the one with 47, and the same for The Internet, Ken Carson,
+        // Lukas Graham and Ruel. The empty copies then surface in search results as artists nobody
+        // has heard of, which is the complaint that started this.
+        //
+        // If we hold the name WITH releases, the failure is in surfacing it, not in having it: leave
+        // the catalogue alone. If we hold it EMPTY, the fix is to re-poll the row we already have
+        // rather than to create another one, so un-park its freshness and let that lane do it.
+        const held = await heldArtistByName(db, m.query);
+        if (held && held.own > 0) {
+          console.log(`  [misses] ${m.query} — already held with ${held.own} groups; a search-surfacing miss, not a gap`);
+          await db.from('search_misses').update({ queued_at: now() }).eq('id', m.id);
+          continue;
+        }
+        if (held && held.mbid) {
+          await db.from('artists').update({ next_check_at: now() }).eq('id', held.id);
+          console.log(`  [misses] ${m.query} — held but empty; re-poll scheduled instead of a duplicate`);
+          await db.from('search_misses').update({ queued_at: now() }).eq('id', m.id);
+          continue;
+        }
+
         const r = await resolveArtist(m.query, null);
         if (r.best && !r.ambiguous) {
           await db.from('artist_ingestion_queue').upsert(
@@ -555,6 +631,16 @@ async function ingestLoop(db: DB) {
       if (e instanceof HeavilyFeaturedError) {
         await mark(db, row.id, 'skipped', { error: 'heavily_featured' });
         skipped++; console.log(`skipped (heavily featured)`);
+        continue;
+      }
+      // MusicBrainz being unreachable is not this row's fault, so it must not spend this row's
+      // retry budget: 'failed' rows are requeued by the QC lane only up to QC_MAX_ATTEMPTS, so a
+      // throttling spell long enough to exhaust the budget would strand thousands of artists
+      // permanently. Put it straight back to pending and wait for MB instead.
+      if (e instanceof MbUnavailableError) {
+        await mark(db, row.id, 'pending', { error: null });
+        console.log(`MB unavailable — requeued without consuming an attempt`);
+        await sleep(MB_UNAVAILABLE_BACKOFF_MS);
         continue;
       }
       await mark(db, row.id, 'failed', { error: (e as Error).message.slice(0, 255) });

@@ -96,7 +96,11 @@ async function main() {
     try {
       const d = await getArtist(r.mbid);
       natives = [...new Set((d?.aliases ?? []).map(al => al.name).filter(n => !!n && isNative(n)))];
-    } catch { /* transient — leave for the next run */ done.add(r.id); continue; }
+    } catch {
+      // Genuinely leave it for the next run: adding to `done` here (which this used to do, against
+      // its own comment) would retire the artist on a MusicBrainz throttle and never look again.
+      continue;
+    }
 
     processed++;
     if (natives.length) {

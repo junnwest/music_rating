@@ -7,6 +7,7 @@
 import { randomUUID } from 'crypto';
 import {
   searchArtists, getArtist, browseReleaseGroups, browseArtistReleases, browseArtistReleasesDetailed,
+  countArtistReleaseGroups,
   type MbArtistCandidate, type MbArtistDetail, type MbReleaseGroup, type MbArtistRelease, type MbTrack,
   type MbCredit,
 } from './mb-client';
@@ -132,9 +133,36 @@ export async function resolveArtist(name: string, region: string | null = null):
   }
 
   pool.sort((a, b) => b.score - a.score);
+
+  // SEVERAL CANDIDATES UNDER THE SAME NAME: ASK WHICH ONE HAS MUSIC.
+  //
+  // MB's `score` is a string-match score, so every candidate whose name equals the query scores 100
+  // and the sort above leaves their order arbitrary. That is how a miss for "Jessie Ware" -- an
+  // artist we already held with 47 release groups -- resolved to a DIFFERENT MusicBrainz "Jessie
+  // Ware" with none, got queued, ingested as `0 groups, 0 recordings`, and added a second, empty
+  // Jessie Ware to the catalogue. The Internet, Ken Carson, Lukas Graham and Ruel went the same way;
+  // 42 such duplicates existed by 2026-09-26. Nothing in the pick asked the one question that
+  // distinguishes a real artist from a stub entity, so ask it: one MB request per tied candidate
+  // (limit=1, so it is a count and not a listing).
+  //
+  // This also turns the `ambiguous` bail-out from a dead end into an answer. Two entities named
+  // "Crush" where one has 30 release groups and the other none are not genuinely ambiguous, and
+  // refusing to choose left the artist absent. Ties are only declared when the probe cannot separate
+  // them -- both at zero, or both holding music, which is the case that really does need review.
+  if (pool.length > 1 && pool[1].score >= pool[0].score - 3) {
+    const tied = pool.filter(c => c.score >= pool[0].score - 3).slice(0, 4);
+    const counts = new Map<string, number>();
+    for (const c of tied) counts.set(c.id, (await countArtistReleaseGroups(c.id)) ?? 0);
+    const ranked = [...tied].sort((a, b) => (counts.get(b.id) ?? 0) - (counts.get(a.id) ?? 0));
+    const top = counts.get(ranked[0].id) ?? 0;
+    const second = ranked.length > 1 ? (counts.get(ranked[1].id) ?? 0) : 0;
+    // A clear winner: it has music and nothing else tied with it is close.
+    if (top > 0 && top > second) return { best: ranked[0], needsReview: false, ambiguous: false, candidates };
+    return { best: ranked[0], needsReview: false, ambiguous: true, candidates };
+  }
+
   const best = pool[0];
-  const ambiguous = pool.length > 1 && pool[1].score >= best.score - 3;
-  return { best, needsReview: false, ambiguous, candidates };
+  return { best, needsReview: false, ambiguous: false, candidates };
 }
 
 // ── DB-writing ingest (race-safe via the MBID UNIQUE constraints) ──────────────
@@ -515,6 +543,23 @@ export async function ingestArtist(db: DB, mbid: string, coreOnly = false): Prom
   const { id: artistId, isNew } = await findOrCreateArtistByMbid(db, detail);
 
   let rgs = await browseReleaseGroups(mbid);
+
+  // AN MB ENTITY WITH NO RELEASES MUST NOT BECOME A CATALOGUE ARTIST.
+  //
+  // MusicBrainz holds many same-named entities that carry no release groups at all, and the resolver
+  // can land on one: a search miss for "Jessie Ware" resolved to a different MB "Jessie Ware" with
+  // nothing, and the ingest created a SECOND, empty Jessie Ware beside the one holding 47 groups.
+  // Kiss, Joji, Willow, Alex G, The Internet and Dean all acquired an empty twin the same way, and
+  // those twins are exactly the "artists I have never heard of" that crowd search results.
+  //
+  // Now that mbGet throws instead of returning null (see MbUnavailableError), an empty list here is
+  // a real answer from MusicBrainz rather than a failure wearing the same clothes, so it is safe to
+  // act on. Only a row this call just created is removed -- an artist that already existed is left
+  // alone, because something else put it there and may reference it.
+  if (rgs.length === 0 && isNew) {
+    await db.from('artists').delete().eq('id', artistId);
+    return { artistId, isNew, rgCount: 0, recCount: 0, skippedUnofficial: 0, skippedEmpty: 0 };
+  }
 
   // In coreOnly mode reduce to studio albums and EPs before the cap is measured. Dropping singles
   // alone is not enough -- see the note above; the secondary-type test is what actually brings a
