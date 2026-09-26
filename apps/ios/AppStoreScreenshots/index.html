@@ -1,0 +1,909 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>App Store Shots</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=block" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+/* ───────────────────────── Page chrome (gallery only) ───────────────────────── */
+:root {
+  --page: #E7E5DF; --page-ink: #1A1A18; --page-mut: #7b7a74; --page-line: rgba(26,26,24,.12);
+  --page-surf: rgba(255,255,255,.7);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #111110; --page-ink: #EDEDEA; --page-mut: #8d8c86; --page-line: rgba(255,255,255,.1);
+    --page-surf: rgba(30,30,28,.75); color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #111110; --page-ink: #EDEDEA; --page-mut: #8d8c86; --page-line: rgba(255,255,255,.1);
+  --page-surf: rgba(30,30,28,.75); color-scheme: dark;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--page); color: var(--page-ink);
+  font-family: 'Plus Jakarta Sans', 'Pretendard', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision;
+}
+.bar {
+  position: sticky; top: 0; z-index: 100; display: flex; flex-wrap: wrap; gap: 12px 28px;
+  align-items: center; justify-content: space-between; padding: 16px 28px;
+  background: var(--page-surf); backdrop-filter: blur(18px) saturate(1.4);
+  border-bottom: 1px solid var(--page-line); font-size: 13px;
+}
+.bar h1 { font-size: 15px; font-weight: 700; letter-spacing: -.01em; display: flex; gap: 10px; align-items: center; }
+.bar h1 img { width: 22px; height: 22px; }
+.bar h1 .wm { height: 15px; width: auto; color: var(--page-ink); display: inline-flex; }
+.bar h1 .wm svg { height: 100%; width: auto; }
+.bar .meta { color: var(--page-mut); font-weight: 500; }
+.ctrls { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
+.ctrls label { display: flex; gap: 8px; align-items: center; color: var(--page-mut); font-weight: 600; }
+.ctrls select, .ctrls a.btn-l, .g-cap button, .g-cap a {
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--page-ink); background: transparent;
+  border: 1px solid var(--page-line); border-radius: 999px; padding: 6px 12px; text-decoration: none; cursor: pointer;
+}
+.ctrls a.btn-l:hover, .g-cap button:hover, .g-cap a:hover { background: var(--page-line); }
+.gallery { display: flex; gap: var(--gap, 48px); padding: 44px 28px 60px; overflow-x: auto; align-items: flex-start; }
+.gallery.gapless { --gap: 0px; }
+.gallery.gapless .g-frame { border-radius: 0; box-shadow: none; }
+.g-item { flex: none; display: flex; flex-direction: column; gap: 14px; }
+.g-frame { position: relative; overflow: hidden; border-radius: 18px; box-shadow: 0 30px 60px -30px rgba(0,0,0,.35), 0 0 0 1px var(--page-line); }
+.g-inner { transform-origin: 0 0; }
+.g-cap { display: flex; gap: 8px; align-items: center; font-size: 12px; font-weight: 600; color: var(--page-mut); }
+.g-cap .n { color: var(--page-ink); font-variant-numeric: tabular-nums; }
+.g-cap .sp { flex: 1; }
+@media (max-width: 640px) { .bar { padding: 12px 16px; } .gallery { padding: 28px 16px 40px; } }
+
+/* Raw 1:1 modes used by export.mjs */
+html.raw, html.raw body { background: transparent; overflow: hidden; }
+html.raw body { width: max-content; }
+
+/* Asset-catalog icons, inlined so they tint via currentColor like .renderingMode(.template) */
+.ic { display: inline-block; flex: none; line-height: 0; }
+.ic svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.ic svg:not([fill]) { fill: currentColor; }
+
+/* ───────────────────────── Slide canvas ─────────────────────────
+   Design system lifted from the web app (globals.css, taste/page.tsx) and iOS (AuthView, TasteView):
+   one typeface (Plus Jakarta Sans, heavy + tight), cream page / accent-soft panel / near-black dark,
+   one blue accent, tiny uppercase eyebrows with a section number, the halftone flower at ~9% bleeding
+   off the edges, and plain second-person copy in sentence case. */
+.slide {
+  position: relative; width: 1320px; height: 2868px; overflow: hidden; background: var(--bg);
+  color: var(--fg); font-family: 'Plus Jakarta Sans', 'Pretendard', sans-serif; -webkit-font-smoothing: antialiased;
+}
+.t-cream, .t-paper { --bg: #F8F8F5; --fg: #1A1A18; --mid: #5A5A58; --muted: #8C8C8A; --accent: #2979B7; --accent-deep: #1B5481; --deco-o: .09; }
+.t-soft, .t-blue  { --bg: #E9F1F8; --fg: #1A1A18; --mid: #4E5763; --muted: #8C8C8A; --accent: #2979B7; --accent-deep: #1B5481; --deco-o: .08; }
+.t-dark, .t-ink   { --bg: #050505; --fg: #F0F0EE; --mid: #B2B2B0; --muted: #999997; --accent: #428DC5; --accent-deep: #84B5DB; --deco-o: .13; }
+.aurora { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+
+.grain { display: none; } /* the web and app are flat; kept as a hook */
+.pano { position: absolute; top: 0; height: 100%; z-index: 0; pointer-events: none; }
+.pflower { position: absolute; opacity: var(--deco-o); }
+.pflower img { width: 100%; height: 100%; display: block; }
+.pflower.glyph { color: var(--accent); }
+.pflower .ic { width: 100%; height: 100%; }
+
+.copy { position: absolute; left: 110px; right: 110px; z-index: 6; }
+.copy.center { text-align: center; }
+.eyebrow {
+  display: flex; gap: 24px; align-items: baseline; font-size: 34px; font-weight: 800;
+  letter-spacing: .14em; text-transform: uppercase; color: color-mix(in srgb, var(--accent-deep) 75%, transparent); margin-bottom: 40px;
+}
+.eyebrow .no { color: color-mix(in srgb, var(--accent) 65%, transparent); letter-spacing: .04em; font-variant-numeric: tabular-nums; }
+.copy.center .eyebrow { justify-content: center; }
+.lockup { display: flex; flex-direction: column; gap: 12px; align-items: center; margin-bottom: 56px; color: var(--fg); }
+.lockup img { width: 150px; height: auto; display: block; }
+.lockup .wm { height: 48px; display: inline-flex; }
+.lockup .wm svg { height: 100%; width: auto; }
+.headline { font-size: 124px; line-height: 1.06; letter-spacing: -.035em; font-weight: 800; }
+.headline em { font-style: normal; color: var(--accent); }
+.headline .dot, .sc-title .dot { margin-left: -.07em; }
+/* Korean: looser leading, whole-word wrapping, less tracking on the uppercase-style labels. */
+.lang-ko .headline { line-height: 1.2; letter-spacing: -.02em; word-break: keep-all; }
+.lang-ko .headline .dot { margin-left: 0; }
+.lang-ko .sub, .lang-ko .sc-title { word-break: keep-all; }
+.lang-ko .sub { line-height: 1.5; letter-spacing: -.02em; }
+.lang-ko .eyebrow, .lang-ko .sc-labels div { letter-spacing: .06em; }
+.lang-ko .ui { word-break: keep-all; }
+.sub { margin-top: 40px; font-size: 44px; line-height: 1.42; font-weight: 500; letter-spacing: -.01em; color: var(--mid); max-width: 1000px; text-wrap: balance; }
+.headline { text-wrap: balance; }
+.copy.center .sub { margin-left: auto; margin-right: auto; }
+.mark {
+  width: 240px; height: 240px; margin: 0 auto 64px; border-radius: 54px; overflow: hidden; position: relative;
+  box-shadow: 0 30px 60px -28px rgba(20,20,18,.35), 0 0 0 1.5px rgba(20,20,18,.06);
+}
+.mark img { width: 100%; height: 100%; display: block; }
+
+/* Guides overlay (gallery toggle) */
+.guides .slide::before {
+  content: ''; position: absolute; inset: 0 110px; z-index: 99; pointer-events: none;
+  border-left: 3px dashed rgba(233,69,96,.55); border-right: 3px dashed rgba(233,69,96,.55);
+}
+.guides .slide::after {
+  content: ''; position: absolute; left: 0; right: 0; top: 50%; z-index: 99; border-top: 3px dashed rgba(233,69,96,.35);
+}
+
+/* ───────────────────────── iPhone 17 Pro Max frame ─────────────────────────
+   1em = 1% of body width. Body 100 × 209.5 (163.4 × 78 mm), rim 0.75, total
+   bezel 3.3 → screen 93.4 × 202.9, exactly the 1320 × 2868 display ratio. */
+.dev { position: absolute; transform-origin: 50% 50%; font-size: calc(var(--w) * 1px / 100); z-index: 5; }
+.iphone {
+  position: relative; width: 100em; height: 209.5em; border-radius: 16.6em; background: var(--rim);
+  box-shadow:
+    0 8em 16em -5em rgba(12,12,18,.5),
+    0 3em 6em -2em rgba(12,12,18,.28),
+    inset 0 0 0 .14em rgba(255,255,255,.5),
+    inset 0 0 .6em .1em rgba(0,0,0,.3);
+}
+.iphone::before { /* specular band along the top edge */
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,255,255,.35), transparent 1.2%, transparent 98.8%, rgba(0,0,0,.25));
+}
+.f-silver { --rim: linear-gradient(90deg,#8f9297 0%,#f2f3f5 2%,#c6c8cc 5.5%,#dcdee1 50%,#c6c8cc 94.5%,#f6f7f8 98%,#8f9297 100%); --btn: linear-gradient(90deg,#9a9da2,#eceef0 55%,#a3a6ab); }
+.f-orange { --rim: linear-gradient(90deg,#8e3a12 0%,#ffbb90 2%,#df6f34 5.5%,#ec8146 50%,#df6f34 94.5%,#ffc7a3 98%,#8e3a12 100%); --btn: linear-gradient(90deg,#a4461a,#ffb07f 55%,#b8531f); }
+.f-blue   { --rim: linear-gradient(90deg,#141b28 0%,#71829e 2%,#2d3b54 5.5%,#36465f 50%,#2d3b54 94.5%,#7a8ba6 98%,#141b28 100%); --btn: linear-gradient(90deg,#1b2433,#63748f 55%,#243044); }
+.f-black  { --rim: linear-gradient(90deg,#070708 0%,#5c5c61 2%,#232325 5.5%,#2c2c2f 50%,#232325 94.5%,#646469 98%,#070708 100%); --btn: linear-gradient(90deg,#0d0d0e,#505055 55%,#1a1a1c); }
+.btn { position: absolute; width: .95em; border-radius: .5em; background: var(--btn); z-index: -1; }
+.b-action { left: -.6em; top: 36em; height: 6.6em; }
+.b-volup  { left: -.6em; top: 50em;  height: 12.5em; }
+.b-voldn  { left: -.6em; top: 65.5em; height: 12.5em; }
+.b-power  { right: -.6em; top: 55em;  height: 19em; }
+.b-camctl { right: -.35em; top: 112em; height: 12em; width: .6em; filter: brightness(.82); }
+.bezel { position: absolute; inset: .75em; border-radius: 15.85em; background: #040404; box-shadow: inset 0 0 0 .12em rgba(255,255,255,.07); }
+.screen { position: absolute; inset: 2.55em; border-radius: 13.3em; overflow: hidden; background: #000; isolation: isolate;
+  /* clip-path, not just overflow+radius: glass (backdrop-filter) layers escape a rounded overflow clip in Chrome and show square corners. */
+  clip-path: inset(0 round 13.3em); }
+.island {
+  position: absolute; z-index: 4; top: 5.5em; left: 50%; width: 26.5em; height: 7.8em; margin-left: -13.25em;
+  border-radius: 4em; background: #000;
+}
+.island::after {
+  content: ''; position: absolute; right: 2.6em; top: 50%; width: 3.1em; height: 3.1em; margin-top: -1.55em; border-radius: 50%;
+  background: radial-gradient(circle at 38% 36%, #2a3a5a 0, #0d1220 38%, #020203 70%);
+}
+.shot { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 2; }
+
+/* ───────────────────────── Floating cards (canvas px) ───────────────────────── */
+.card { position: absolute; z-index: 8; }
+/* Floating callouts are real app surfaces (sjSurface, 16pt corners) scaled up, with one soft lift shadow. */
+.card.chip {
+  display: flex; gap: 22px; align-items: center; background: #fff; color: #1A1A18; border-radius: 999px; padding: 26px 50px 26px 26px;
+  font-size: 38px; font-weight: 700; letter-spacing: -.015em;
+  box-shadow: 0 30px 60px -26px rgba(20,20,18,.35), 0 0 0 1.5px rgba(20,20,18,.04);
+}
+.card.chip .plus { width: 72px; height: 72px; border-radius: 50%; background: #E9F1F8; color: #2979B7; display: grid; place-items: center; }
+.card.chip .plus .ic { width: 34px; height: 34px; }
+.card.ui-card { transform-origin: 0 0; }
+.card.ui-card > .ui { width: var(--pw); border-radius: 16px; overflow: hidden;
+  box-shadow: 0 14px 28px -12px rgba(20,20,18,.32), 0 0 0 .5px rgba(20,20,18,.05); }
+.card.badge-card { display: flex; gap: 44px; align-items: center; background: #fff; color: #1A1A18; border-radius: 40px; padding: 44px 70px 44px 44px;
+  box-shadow: 0 30px 60px -26px rgba(20,20,18,.35), 0 0 0 1.5px rgba(20,20,18,.04); font-family: 'Plus Jakarta Sans', 'Pretendard', sans-serif; }
+.badge-card .lb { font-size: 26px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #8C8C8A; }
+.badge-card .tt { font-size: 50px; font-weight: 800; letter-spacing: -.03em; margin-top: 12px; }
+.badge-card .ar { font-size: 36px; font-weight: 500; color: #2979B7; margin-top: 6px; }
+
+/* ───────────────────────── Cover art (abstract, fictional) ───────────────────────── */
+.c0  { background: radial-gradient(circle at 34% 40%, #ffe2b0 0 15%, #ffd08a 15.5%, transparent 24%), radial-gradient(120% 90% at 80% 110%, #6cc0ef, transparent 60%), linear-gradient(165deg, #3a8fcf, #123a63 70%, #0a2340); }
+.c1  { background: linear-gradient(180deg, #e9e2d2 0 46%, #b9c4c4 46% 47%, #52707f 47% 70%, #34505e); }
+.c2  { background: radial-gradient(circle at 70% 26%, #fff3d6 0 10%, transparent 30%), conic-gradient(from 210deg at 50% 62%, #f25c3b, #f7b538, #f2e8cf, #f25c3b); }
+.c3  { background: radial-gradient(circle at 70% 30%, #b8f2e6 0 24%, transparent 24.8%), radial-gradient(circle at 30% 74%, #ffa69e 0 30%, transparent 30.8%), #5e6472; }
+.c4  { background: radial-gradient(circle, #e8e8e6 1.1px, transparent 1.7px) 0 0 / 12% 12%, radial-gradient(circle at 50% 110%, #3b3f7a, #0b0b0f 70%); }
+.c5  { background: radial-gradient(circle at 62% 38%, #fffdf6 0 16%, #f3e9d2 16.5% 17.5%, transparent 18%), linear-gradient(135deg, #f6d6e0, #c9d7f8 58%, #fdf1c7); }
+.c6  { background: repeating-conic-gradient(#1a1a18 0 25%, #efeee8 0 50%) 0 0 / 25% 25%; }
+.c7  { background: radial-gradient(circle at 50% 112%, #ff7a18 0 38%, #af002d 62%, #2d6f8f 100%); }
+.c8  { background: linear-gradient(90deg, #d7263d 0 33.3%, #f46036 33.3% 66.6%, #2e294e 66.6%); }
+.c9  { background: radial-gradient(ellipse at 50% 46%, #fff 0 7%, #a9bccd 30%, #2d3142 72%); }
+.c10 { background: radial-gradient(circle at 76% 30%, #f6e7b8 0 7%, transparent 7.5%), linear-gradient(0deg, #3a5a40 0 38%, #a3b18a 38% 58%, #e3dfd1 58%); }
+.c11 { background: radial-gradient(circle at 50% 44%, #f9c74f 0 21%, transparent 21.8%), linear-gradient(#f3722c, #90323d); }
+.c12 { background: radial-gradient(circle at 30% 30%, #fbe3c3, transparent 45%), linear-gradient(200deg, #7d5ba6, #2b1d3f); }
+.c13 { background: linear-gradient(180deg, #0f3b3a 0 50%, #e9dcc3 50% 53%, #13524f 53%); }
+.c14 { background: radial-gradient(circle at 60% 40%, #ffffff 0 10%, transparent 10.5%), radial-gradient(circle at 60% 40%, #f3b6c8 0 30%, #d95d8a 70%); }
+.cv { position: relative; overflow: hidden; }
+.cv::after { content: ''; position: absolute; inset: 0; opacity: .22; mix-blend-mode: overlay; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); background-size: 160px; }
+.cv .ct { position: absolute; font-family: 'Plus Jakarta Sans', 'Pretendard', sans-serif; line-height: 1; white-space: nowrap; }
+.cv { flex: none; }
+
+/* ───────────────────────── App UI (iOS points; 17 Pro Max is 440 × 956) ─────────────────────────
+   Values below are lifted from the SwiftUI source: Assets.xcassets color sets, Font.jakarta sizes,
+   paddings and corner radii. Comments name the view each block mirrors. */
+.ui {
+  --bg: #F8F8F5; --ink: #1A1A18; --mut: #8C8C8A; --line: #E8E8E6; --surf: #FFFFFF; --blue: #2979B7;
+  --sep: rgba(60,60,67,.18);
+  --glass: rgba(255,255,255,.66); --glass-edge: rgba(255,255,255,.95); --glass-shadow: rgba(0,0,0,.10);
+  background: var(--bg); color: var(--ink); font-family: 'Plus Jakarta Sans', 'Pretendard', sans-serif; font-size: 15px;
+  letter-spacing: 0; line-height: 1.25; -webkit-font-smoothing: antialiased;
+}
+.ui.dark {
+  --bg: #050505; --ink: #F0F0EE; --mut: #999997; --line: #1E1E1E; --surf: #111111;
+  --sep: rgba(84,84,88,.55);
+  --glass: rgba(40,40,40,.62); --glass-edge: rgba(255,255,255,.14); --glass-shadow: rgba(0,0,0,.45);
+}
+.scr { position: absolute; left: 0; top: 0; width: 440px; height: 956px; overflow: hidden; transform-origin: 0 0;
+  transform: scale(calc(var(--w) * .934 / 440)); }
+.sys { font-family: 'Inter', 'Pretendard', -apple-system, system-ui, sans-serif; }
+.glass { background: var(--glass); backdrop-filter: blur(14px) saturate(1.8); -webkit-backdrop-filter: blur(14px) saturate(1.8);
+  box-shadow: 0 6px 18px var(--glass-shadow), inset 0 0 0 .6px var(--glass-edge), inset 0 1px 0 var(--glass-edge); }
+.abs { position: absolute; }
+.row { display: flex; align-items: center; }
+.col { display: flex; flex-direction: column; }
+.sp { flex: 1; min-width: 0; }
+.mut { color: var(--mut); }
+.blue { color: var(--blue); }
+.ell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hr { height: .5px; background: var(--sep); }
+
+.sb { position: absolute; top: 0; left: 0; right: 0; height: 58px; display: flex; align-items: center; justify-content: space-between; padding: 6px 36px 0 52px; font-size: 17px; font-weight: 600; letter-spacing: -.01em; z-index: 20; }
+.sb .r { display: flex; gap: 6px; align-items: center; }
+.sb svg { fill: currentColor; }
+.hi { position: absolute; bottom: 8px; left: 50%; width: 146px; height: 5px; margin-left: -73px; border-radius: 3px; background: var(--ink); z-index: 30; }
+
+/* MainTabView — iOS 26 Liquid Glass tab bar */
+.tb { position: absolute; left: 21px; right: 21px; bottom: 25px; height: 62px; border-radius: 31px; z-index: 25; display: flex; align-items: center; padding: 0 4px; }
+.tb.glass { background: color-mix(in srgb, var(--surf) 93%, transparent); backdrop-filter: blur(22px) saturate(1.8); -webkit-backdrop-filter: blur(22px) saturate(1.8); }
+.tbi { flex: 1; height: 54px; border-radius: 27px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  font-size: 10px; font-weight: 600; color: var(--ink); letter-spacing: .01em; }
+.tbi .ic { width: 24px; height: 24px; }
+.tbi.on { color: var(--blue); background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.addtab { width: 40px; height: 26px; margin-bottom: -1px; }
+
+/* Glass capsule tab switcher (HomeView.floatingHeader / ChartsView.floatingHeader) */
+.seg2 { display: flex; gap: 4px; justify-content: center; }
+.seg2 span { font-size: 17px; padding: 6px 14px; border-radius: 999px; color: var(--mut); font-weight: 400; }
+.seg2 span.on { color: var(--ink); font-weight: 700; }
+.gbtn { border-radius: 50%; display: grid; place-items: center; }
+
+/* ScoreBadge */
+.sbadge { position: relative; display: inline-block; flex: none; }
+.sbadge > svg { position: absolute; inset: 0; }
+.sbadge .gl { position: absolute; border-radius: 50%; display: grid; place-items: center; overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,.08), inset 0 0 0 .6px rgba(255,255,255,.7), inset 0 1px 1px rgba(255,255,255,.9); }
+.sbadge .gl > * { grid-area: 1 / 1; }
+.sbadge .wm { color: rgba(255,255,255,.9); filter: drop-shadow(0 1px 1px rgba(0,0,0,.3)); }
+.sbadge b { font-weight: 800; letter-spacing: -.04em; transform: scale(.86, 1.14); text-shadow: 0 0 3px rgba(255,255,255,.55); }
+
+/* FlowerRateControl (idle) + AlbumCard's rated check */
+.fbtn { border-radius: 50%; display: grid; place-items: center; color: var(--blue); }
+.fbtn b { font-weight: 800; }
+.chk { border-radius: 50%; background: var(--blue); display: grid; place-items: center; color: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+
+/* FeedCard */
+.fc { background: var(--surf); border-radius: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.05); }
+.fc-h { display: flex; align-items: center; gap: 9px; padding: 10px 4px 6px 14px; }
+.fc-h .hn { font-size: 13.5px; font-weight: 600; display: flex; gap: 4px; align-items: center; }
+.fc-a { display: flex; align-items: center; gap: 13px; padding: 0 14px 10px; }
+.fc-a .tt { font-size: 14px; font-weight: 700; line-height: 1.25; }
+.fc-a .ar { font-size: 11.5px; color: var(--mut); margin-top: 4px; }
+.fc-rv { font-size: 14px; line-height: 1.38; padding: 0 14px 10px; }
+.fc-ab { display: flex; gap: 16px; align-items: center; padding: 6px 14px; }
+.fc-ab > div { display: flex; gap: 5px; align-items: center; font-size: 14px; font-weight: 500; color: var(--mut); }
+.av { border-radius: 50%; flex: none; display: grid; place-items: center; overflow: hidden; }
+.av.def { background: var(--line); color: var(--mut); }
+
+/* Small pills (release type, year) */
+.pill { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 999px; }
+.tag { font-size: 10px; font-weight: 500; padding: 2px 5px; border-radius: 4px; color: var(--blue); background: color-mix(in srgb, var(--blue) 10%, transparent); }
+.cap { font-size: 11px; font-weight: 600; color: var(--mut); text-transform: uppercase; letter-spacing: .6px; }
+
+/* Rank / trending rows (RankingsView) */
+.rcard { background: var(--surf); border-radius: 14px; box-shadow: inset 0 0 0 .5px var(--line); overflow: hidden; }
+.chipf { font-size: 12px; font-weight: 500; padding: 5px 12px; border-radius: 14px; color: var(--mut); background: var(--bg); box-shadow: inset 0 0 0 .5px var(--line); white-space: nowrap; }
+.chipf.on { background: var(--blue); color: #fff; box-shadow: none; }
+
+/* Rate gauge (FlowerRateControl drag overlay) */
+.gauge { position: absolute; inset: 0; z-index: 40; pointer-events: none; }
+
+/* ───────────────────────── Showcase board ───────────────────────── */
+.showcase {
+  position: relative; width: 4800px; height: 2700px; overflow: hidden; background: #F8F8F5; color: #1A1A18;
+  font-family: 'Plus Jakarta Sans', 'Pretendard', sans-serif; -webkit-font-smoothing: antialiased;
+}
+.showcase .grain { --grain-o: .07; --grain-blend: multiply; z-index: 0; }
+.sc-head { position: absolute; left: 160px; right: 160px; top: 150px; display: flex; justify-content: space-between; align-items: flex-end; z-index: 2; }
+.sc-title { font-size: 150px; font-weight: 800; letter-spacing: -.035em; line-height: 1.02; }
+.sc-title em { font-style: normal; color: #2979B7; }
+.sc-deco { position: absolute; opacity: .09; z-index: 0; pointer-events: none; }
+.sc-deco img { width: 100%; display: block; }
+.sc-brand { display: flex; gap: 26px; align-items: center; margin-bottom: 44px; color: #1A1A18; }
+.sc-brand img { width: 104px; height: auto; display: block; }
+.sc-brand .wm { height: 52px; display: inline-flex; }
+.sc-brand .wm svg { height: 100%; width: auto; }
+.sc-meta { font-size: 34px; font-weight: 600; color: #8C8C8A; text-align: right; line-height: 1.5; }
+.sc-row { position: absolute; left: 160px; right: 160px; top: 820px; display: flex; justify-content: space-between; z-index: 2; }
+.sc-frame { position: relative; width: 699.6px; height: 1520px; border-radius: 40px; overflow: hidden; box-shadow: 0 60px 100px -50px rgba(20,20,18,.55), 0 0 0 1.5px rgba(20,20,18,.06); }
+.sc-frame .slide { transform: scale(.53); transform-origin: 0 0; }
+.sc-labels { position: absolute; left: 160px; right: 160px; top: 2410px; display: flex; justify-content: space-between; z-index: 2; }
+.sc-labels div { width: 699.6px; font-size: 30px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: rgba(27,84,129,.75); display: flex; gap: 20px; }
+.sc-labels b { font-weight: 800; color: rgba(41,121,183,.65); letter-spacing: .04em; font-variant-numeric: tabular-nums; }
+</style>
+<script src="assets/sj-assets.js"></script>
+<script>
+/* ?lang=ko loads ko/slides.config.js (its copy + output live in that folder); no lang = the English set here. */
+(function () { var l = new URLSearchParams(location.search).get('lang'); document.write('<script src="' + (l ? l + '/' : '') + 'slides.config.js"><\/script>'); })();
+</script>
+</head>
+<body>
+<div id="root"></div>
+<script>
+(() => {
+const C = window.APPSHOTS;
+const W = C.canvas.width, H = C.canvas.height;
+const Q = new URLSearchParams(location.search);
+const root = document.getElementById('root');
+const AS = window.SJ_ASSETS || { icons: {}, logoText: '' };
+if (!window.SJ_ASSETS) console.warn('assets/sj-assets.js missing: run `node sync-assets.mjs`');
+
+/* ── Primitives ─────────────────────────────────────────── */
+// icon-flower path, kept as a fallback for when assets/ hasn't been synced yet.
+const FP = 'M13.4,19c-.13.68-.25,1.38-.44,2.09-.55,2.03-1.9,3.88-3.97,4.48-1.61.47-3.38.03-4.5-1.21-1.01-1.12-1.29-2.64-.92-4.08.61-2.4,2.69-3.78,4.84-4.83-1.01.1-1.93.23-2.91.17-1.51-.1-2.94-.57-4.06-1.58-1.82-1.64-1.99-4.55-.06-6.2,1.02-.88,2.37-1.22,3.72-1.11,2.15.19,3.74,1.44,5.24,2.94-1.39-2.57-2.14-5.6-.27-8.01C10.84.65,11.99.06,13.21,0c1.32-.06,2.5.49,3.37,1.49,2.02,2.33,1.33,5.52-.1,8.13,1.77-1.72,3.69-3.12,6.23-2.89,1.11.1,2.17.54,2.95,1.34,1.58,1.62,1.45,4.2-.19,5.82-1.13,1.12-2.64,1.65-4.23,1.73-.96.05-1.86-.08-2.86-.18,2.18,1.08,4.3,2.5,4.84,4.95.34,1.53-.02,3.11-1.16,4.18-1.28,1.2-3.09,1.5-4.71.84-1.3-.53-2.25-1.49-2.91-2.71-.61-1.14-.84-2.35-1.05-3.71ZM14.93,13.89c0-.84-.69-1.52-1.54-1.52s-1.54.68-1.54,1.52.69,1.52,1.54,1.52,1.54-.68,1.54-1.52Z';
+const svgFor = (n) => AS.icons[n] || (n === 'flower' ? `<svg viewBox="0 0 26.78 25.76"><path d="${FP}"/></svg>` : '');
+/** An asset-catalog icon at `s` points, tinted by `color` (default currentColor). */
+const ic = (n, s = 24, style = '') => `<span class="ic" style="width:${s}px;height:${s}px;${style}">${svgFor(n)}</span>`;
+const wordmark = () => AS.logoText || '<b>sillajuku</b>';
+const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+const LANG = C.lang || 'en';
+document.documentElement.lang = LANG;
+document.documentElement.classList.add('lang-' + LANG);
+/* In-app strings. Korean comes from the app's own Localizable.xcstrings; where iOS has no Korean yet,
+   from apps/web/lib/i18n/ko.ts. Mock content (names, reviews) is localized so the set reads native. */
+const L10N = {
+  ko: {
+    Home: '홈', Charts: '차트', Add: '추가', Taste: '취향', Profile: '프로필',
+    Explore: '탐색', Following: '팔로잉', Followers: '팔로워', Rated: '평가함',
+    'Edit profile': '프로필 수정', 'Share profile': '프로필 공유', All: '전체', Albums: '앨범', Songs: '곡', Recent: '최신순',
+    '%d ratings': '평가 %d개', Album: '정규', EP: 'EP', Single: '싱글',
+    'Your Rating': '내 평가', 'Your rating': '내 평가', Tracklist: '트랙리스트', split: '편차',
+    Ranking: '랭킹', Genre: '장르', Country: '국가', avg: '평균', 'See full ranking': '전체 랭킹 보기', Trending: '트렌딩',
+    Global: '전체', 'For You': '맞춤', '%@ · +%d this week': '%@ · +%d 이번 주',
+    'Your taste map': '취향 지도',
+    'Tap a world to explore its sub-genres, then a sub-genre to see your albums and recommendations.': '세계를 하나 골라 하위 장르와 내 앨범, 추천을 살펴보세요.',
+    '%d% share': '내 기록의 %d%', score: '점수', 'By the numbers': '숫자로 보는 취향', 'Your #1 Album': '내 1위 앨범',
+    'average score': '평균 점수', 'median score': '중앙값', 'effective genres': '유효 장르 수', 'vs. the crowd': '커뮤니티 대비',
+    'a softer grader': '더 후한 평가', 'clusters high, harsh tail': '높은 쪽에 몰림, 낮은 꼬리', 'across %d rated': '전체 %d개 중', spread: '분산',
+    'Artists, albums, songs…': '아티스트, 앨범, 곡…',
+    'Your Top Artists': '내 인기 아티스트', 'From Your Taste': '내 취향 기반', 'Because you love %@': '%@ 취향에 맞는 음악',
+    'Dream Pop': '드림 팝', 'Korean Indie': '한국 인디', 'Neo-Soul': '네오 소울', Jazz: '재즈',
+    'Hana Seo': '서하나', 'Dream pop, city pop, and anything with a saxophone.': '드림팝, 시티팝, 그리고 색소폰이 들어간 모든 음악.',
+    now: '방금', '8m': '8분', '12m': '12분', '1h': '1시간', '3h': '3시간', '5h': '5시간',
+    'the back half of this is unreal. “Porcelain” has been on repeat all week': '후반부가 진짜 말이 안 돼요. “Porcelain” 일주일째 무한반복 중',
+    'no skips. the bridge on track 3 had me sitting in the car for ten minutes': '스킵할 곡이 하나도 없음. 3번 트랙 브릿지 듣고 차에서 10분 동안 못 내렸어요',
+    'perfect for a night drive. the outro drags a little, otherwise a 4.5': '밤 드라이브에 딱이에요. 아웃트로가 조금 늘어져서 4점',
+    'Warm, hazy, and weirdly patient. My album of the year so far.': '따뜻하고 몽롱한데 묘하게 느긋해요. 지금까지 올해의 앨범.',
+    Bora: '보라', Lune: '루네', '%d frames': '%d장',
+  },
+};
+const T = (s) => (L10N[LANG] || {})[s] ?? s;
+const Tn = (key, ...vals) => { let out = T(key); for (const v of vals) out = out.replace(/%[d@]/, v); return out; };
+
+/* ScoreSpectrum — port of Components/ScoreBadge.swift (OKLCh ramp, 0.5 → red … 5.0 → blue). */
+const STOPS = [[0.5, 25, .16], [1.6, 58, .145], [2.7, 126, .15], [3.8, 196, .115], [5, 262, .155]];
+function stopFor(score) {
+  const s = Math.min(Math.max(score, .5), 5);
+  for (let i = 0; i < STOPS.length - 1; i++) {
+    const [s0, h0, c0] = STOPS[i], [s1, h1, c1] = STOPS[i + 1];
+    if (s <= s1) { const t = (s - s0) / (s1 - s0); return [h0 + (h1 - h0) * t, c0 + (c1 - c0) * t]; }
+  }
+  return [262, .155];
+}
+function oklabToLin(L, a, b) {
+  const l = (L + .3963377774 * a + .2158037573 * b) ** 3, m = (L - .1055613458 * a - .0638541728 * b) ** 3, s = (L - .0894841775 * a - 1.291485548 * b) ** 3;
+  return [4.0767416621 * l - 3.3077115913 * m + .2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - .3413193965 * s, -.0041960863 * l - .7034186147 * m + 1.707614701 * s];
+}
+const gammaEnc = (c) => (c <= .0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - .055);
+const clamp01 = (v) => Math.min(1, Math.max(0, v));
+function spectrum(score, L, cs = 1) {
+  const [hue, chroma] = stopFor(score); const r = hue * Math.PI / 180; let c = chroma * cs, rgb;
+  for (let k = 0; k < 24; k++) { rgb = oklabToLin(L, c * Math.cos(r), c * Math.sin(r)); if (rgb.every((v) => v >= -.0005 && v <= 1.0005)) break; c *= .92; }
+  return `rgb(${rgb.map((v) => Math.round(255 * clamp01(gammaEnc(clamp01(v))))).join(',')})`;
+}
+const SPEC = {
+  fill: (s) => spectrum(s, .92, .28), num: (s) => spectrum(s, .45, .95), ring: (s) => spectrum(s, .63, 1),
+  opacity: (s) => Math.max(clamp01((s - .5) / 4.5) ** 9, .06),
+};
+const fmt1 = (s) => s.toFixed(1);
+const fmtScore = (s) => (s % 1 === 0 ? String(s) : s.toFixed(1)); // TrackRow / RatingListRow style
+
+/** ScoreBadge: glass circle (flower watermark + number) inside a score/5 progress ring. */
+function scoreBadge(score, size = 48, stroke = 3, gap = 2) {
+  const D = size + 2 * (gap + stroke), r = (D - stroke) / 2, circ = 2 * Math.PI * r, c = D / 2;
+  return `<span class="sbadge" style="width:${D}px;height:${D}px">
+    <svg viewBox="0 0 ${D} ${D}" width="${D}" height="${D}"><circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="var(--line)" stroke-width="${stroke}"/>
+    <circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${SPEC.ring(score)}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${circ * score / 5} ${circ}" transform="rotate(-90 ${c} ${c})"/></svg>
+    <span class="gl" style="left:${gap + stroke}px;top:${gap + stroke}px;width:${size}px;height:${size}px;background:color-mix(in srgb, ${SPEC.fill(score)} 90%, white)">
+      <span class="wm" style="opacity:${SPEC.opacity(score)}">${ic('flower', size * .66)}</span>
+      <b style="font-size:${size * .37}px;color:${SPEC.num(score)}">${fmt1(score)}</b></span></span>`;
+}
+/** AlbumRateButton / FlowerRateControl idle state: glass circle, blue flower, or the user's score. */
+const rateBtn = (size, score) => score != null
+  ? `<span class="fbtn glass" style="width:${size}px;height:${size}px;background:color-mix(in srgb, ${SPEC.fill(score)} 88%, white)"><b style="font-size:${size * .4}px;color:${SPEC.num(score)}">${fmt1(score)}</b></span>`
+  : `<span class="fbtn glass" style="width:${size}px;height:${size}px">${ic('flower', size * .56)}</span>`;
+const ratedCheck = (s = 28) => `<span class="chk" style="width:${s}px;height:${s}px">${ic('check', 11)}</span>`;
+
+/* Fictional catalog — invented artists and releases (none are real), written to read like a real
+   indie / K-indie library. Swap for real titles once you drop in real screenshots. */
+const A = [
+  ['Saltwater Hymns', 'Juniper Hale', 'Album'],     // 0  hero album: dusk seascape
+  ['Harbor Lights', 'The Marlows', 'Album'],        // 1  night harbor bokeh
+  ['Sunroom Tapes', 'Yeon Sae', 'Album'],           // 2  window light on a wall
+  ['second summer', 'kiwa', 'Album'],               // 3  overexposed film + light leak
+  ['Night Bus 472', 'Odette Nine', 'EP'],           // 4  bus sign + light trails
+  ['Paper Moon', 'Juno Vale', 'Single'],            // 5  paper-cut moon
+  ['Machines Dream Softly', 'Delta Park', 'Album'], // 6  grid + title band
+  ['Moth Season', 'Bora', 'EP'],                    // 7  sunset + moth
+  ['Sunday Static', 'Pale Coast', 'Album'],         // 8  color bars + static
+  ['Afterimage', 'Lune', 'Album'],                  // 9  glow
+  ['Fieldnotes, Vol. 2', 'Oak & Ash', 'Album'],     // 10 landscape
+  ['Golden Hour Drive', 'Rhea', 'Single'],          // 11 road into the sun
+  ['Violet', 'SAE', 'Album'],                       // 12 backlit portrait
+  ['Tidewater', 'North Arcade', 'Album'],           // 13 split horizon
+  ['Cherry Soda', 'PINKLINE', 'EP'],                // 14 fizz + cherries
+].map(([t, a, k], i) => ({ t, a, k, c: 'c' + i }));
+if (LANG === 'ko') { // a few Korean releases so the catalog reads local
+  Object.assign(A[7], { t: '나방의 계절', a: '보라' });
+  Object.assign(A[4], { t: '472번 심야버스', a: '오드나인' });
+  Object.assign(A[9], { t: '잔상', a: '루네' });
+  Object.assign(A[12], { t: '보라색', a: '세이' });
+}
+
+/* Cover art as layered vector scenes (viewBox 0–100). Each id is prefixed with its cover number so
+   repeated covers share identical defs. The .cv::after film grain sits on top of all of them. */
+const COVER_SVG = {
+  0: `<defs><linearGradient id="k0s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#16406f"/><stop offset=".6" stop-color="#6fa6d3"/><stop offset="1" stop-color="#f4cfa3"/></linearGradient>
+      <linearGradient id="k0w" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f6c9f"/><stop offset="1" stop-color="#0b2742"/></linearGradient>
+      <filter id="k0b" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3.5"/></filter></defs>
+    <rect width="100" height="64" fill="url(#k0s)"/><circle cx="66" cy="62" r="11" fill="#ffd9a6" opacity=".9" filter="url(#k0b)"/><circle cx="66" cy="63" r="6" fill="#fff1d6"/>
+    <rect y="64" width="100" height="36" fill="url(#k0w)"/>
+    <g fill="#ffe3b8"><rect x="56" y="65.5" width="20" height=".9" opacity=".85"/><rect x="59" y="68" width="14" height=".8" opacity=".6"/><rect x="61" y="71" width="10" height=".7" opacity=".45"/><rect x="63" y="75" width="6" height=".6" opacity=".3"/></g>
+    <text x="7" y="11" font-family="Plus Jakarta Sans" font-weight="700" font-size="4" letter-spacing=".9" fill="#e8f1fb">JUNIPER HALE</text>
+    <text x="7" y="16.5" font-family="Plus Jakarta Sans" font-weight="500" font-size="3.4" fill="#e8f1fb" opacity=".8">Saltwater Hymns</text>`,
+  1: `<defs><linearGradient id="k1s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#070c18"/><stop offset="1" stop-color="#1b2a45"/></linearGradient>
+      <filter id="k1b" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.6"/></filter><filter id="k1r"><feGaussianBlur stdDeviation="1.2 3"/></filter></defs>
+    <rect width="100" height="100" fill="url(#k1s)"/><rect y="58" width="100" height="42" fill="#060a14"/>
+    <g filter="url(#k1b)"><circle cx="14" cy="54" r="3" fill="#ffb24d"/><circle cx="27" cy="52" r="2.2" fill="#ffe08a"/><circle cx="41" cy="55" r="3.6" fill="#ff7b4f"/><circle cx="58" cy="51" r="2.6" fill="#9fd3ff"/><circle cx="71" cy="54" r="3.2" fill="#ffc86b"/><circle cx="86" cy="52" r="2.4" fill="#ffe7a8"/></g>
+    <g filter="url(#k1r)" opacity=".55"><rect x="12.5" y="60" width="3" height="18" fill="#ffb24d"/><rect x="39.5" y="60" width="3.4" height="22" fill="#ff7b4f"/><rect x="69.5" y="60" width="3" height="19" fill="#ffc86b"/><rect x="56.8" y="60" width="2.4" height="14" fill="#9fd3ff"/></g>
+    <text x="50" y="14" text-anchor="middle" font-family="Plus Jakarta Sans" font-weight="700" font-size="4.2" letter-spacing="1.4" fill="#d9e4f5">THE MARLOWS</text>`,
+  2: `<defs><linearGradient id="k2w" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e7cfae"/><stop offset="1" stop-color="#c99b6c"/></linearGradient>
+      <filter id="k2b"><feGaussianBlur stdDeviation="1.4"/></filter><filter id="k2l"><feGaussianBlur stdDeviation="2.2"/></filter></defs>
+    <rect width="100" height="100" fill="url(#k2w)"/>
+    <g fill="#fff4e0" opacity=".75" filter="url(#k2b)"><polygon points="38,8 62,8 50,52 26,52"/><polygon points="66,8 90,8 78,52 54,52"/><polygon points="24,58 48,58 38,96 14,96"/><polygon points="52,58 76,58 66,96 42,96"/></g>
+    <g fill="#6d4a2b" opacity=".3" filter="url(#k2l)"><ellipse cx="80" cy="70" rx="13" ry="4" transform="rotate(-35 80 70)"/><ellipse cx="72" cy="80" rx="11" ry="3.5" transform="rotate(20 72 80)"/><ellipse cx="88" cy="84" rx="9" ry="3" transform="rotate(-60 88 84)"/></g>
+    <text x="7" y="92" font-family="Plus Jakarta Sans" font-weight="800" font-size="7.5" letter-spacing="-.3" fill="#fff8ec">sunroom tapes</text>`,
+  3: `<defs><linearGradient id="k3s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#bcd9ea"/><stop offset=".7" stop-color="#f1efe6"/></linearGradient>
+      <radialGradient id="k3l" cx="1" cy=".35" r=".75"><stop offset="0" stop-color="#ff5a36" stop-opacity=".85"/><stop offset=".5" stop-color="#ffb070" stop-opacity=".35"/><stop offset="1" stop-color="#ffb070" stop-opacity="0"/></radialGradient>
+      <radialGradient id="k3f" cx=".3" cy=".25" r=".2"><stop offset="0" stop-color="#fff" /><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>
+    <rect width="100" height="100" fill="url(#k3s)"/><rect y="70" width="100" height="30" fill="#d9cdb5"/><rect y="70" width="100" height="1" fill="#b8ab93"/>
+    <rect width="100" height="100" fill="url(#k3f)"/><rect width="100" height="100" fill="url(#k3l)"/>
+    <text x="50" y="88" text-anchor="middle" font-family="Plus Jakarta Sans" font-weight="600" font-size="5" fill="#4a4a46">second summer</text>`,
+  4: `<defs><filter id="k4g" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="1.1"/></filter><filter id="k4t"><feGaussianBlur stdDeviation=".6 .3"/></filter></defs>
+    <rect width="100" height="100" fill="#0b0d16"/>
+    <g filter="url(#k4t)" stroke-linecap="round" fill="none"><path d="M-5 70 Q50 62 105 66" stroke="#ff4d3d" stroke-width="1.2" opacity=".9"/><path d="M-5 74 Q50 67 105 71" stroke="#ffb23f" stroke-width=".9" opacity=".8"/><path d="M-5 80 Q50 74 105 78" stroke="#fff3d6" stroke-width="1.4" opacity=".7"/><path d="M-5 84 Q50 79 105 83" stroke="#ff4d3d" stroke-width=".7" opacity=".6"/></g>
+    <rect x="8" y="12" width="84" height="30" rx="3" fill="#15110a" stroke="#2d2618" stroke-width="1"/>
+    <text x="50" y="35" text-anchor="middle" font-family="Plus Jakarta Sans" font-weight="800" font-size="22" letter-spacing="1" fill="#ffae1a" filter="url(#k4g)">472</text>
+    <text x="50" y="35" text-anchor="middle" font-family="Plus Jakarta Sans" font-weight="800" font-size="22" letter-spacing="1" fill="#ffc34d">472</text>`,
+  5: `<defs><linearGradient id="k5b" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e9ddf4"/><stop offset=".6" stop-color="#cfdcf7"/><stop offset="1" stop-color="#fbe9cf"/></linearGradient>
+      <filter id="k5s" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="1.2" dy="2" stdDeviation="1.8" flood-color="#5b5470" flood-opacity=".35"/></filter></defs>
+    <rect width="100" height="100" fill="url(#k5b)"/><circle cx="58" cy="42" r="19" fill="#fffaf0" filter="url(#k5s)"/><circle cx="66" cy="36" r="17" fill="url(#k5b)"/>
+    <text x="8" y="90" font-family="Plus Jakarta Sans" font-weight="700" font-size="4.6" letter-spacing=".5" fill="#6a6380">JUNO VALE</text>`,
+  7: `<defs><linearGradient id="k7s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2d6f8f"/><stop offset=".55" stop-color="#b3305a"/><stop offset="1" stop-color="#ff8a2a"/></linearGradient></defs>
+    <rect width="100" height="100" fill="url(#k7s)"/>
+    <g fill="#241018" opacity=".92" transform="translate(50 46)"><ellipse cx="-9" cy="-3" rx="11" ry="7" transform="rotate(-25 -9 -3)"/><ellipse cx="9" cy="-3" rx="11" ry="7" transform="rotate(25 9 -3)"/><ellipse cx="-6" cy="7" rx="6.5" ry="4.5" transform="rotate(30 -6 7)"/><ellipse cx="6" cy="7" rx="6.5" ry="4.5" transform="rotate(-30 6 7)"/><rect x="-1.2" y="-8" width="2.4" height="17" rx="1.2"/></g>`,
+  8: `<defs><filter id="k8n"><feTurbulence type="fractalNoise" baseFrequency="2.2" numOctaves="1" seed="4"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 3 -1.1"/></filter></defs>
+    <g><rect width="15" height="72" fill="#c9c9c9"/><rect x="14.3" width="15" height="72" fill="#d6c32c"/><rect x="28.6" width="15" height="72" fill="#2bb8c4"/><rect x="42.9" width="15" height="72" fill="#2fae4b"/><rect x="57.2" width="15" height="72" fill="#b63ba8"/><rect x="71.5" width="15" height="72" fill="#c73a32"/><rect x="85.8" width="15" height="72" fill="#2e3aa6"/></g>
+    <rect y="72" width="100" height="28" fill="#141418"/><rect width="100" height="100" filter="url(#k8n)" opacity=".45"/>
+    <text x="7" y="90" font-family="Plus Jakarta Sans" font-weight="800" font-size="6" letter-spacing="1.2" fill="#f3f3f3">SUNDAY STATIC</text>`,
+  11: `<defs><linearGradient id="kbs" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f7a25c"/><stop offset=".6" stop-color="#f2688a"/><stop offset="1" stop-color="#8f3a6b"/></linearGradient>
+      <filter id="kbg" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter></defs>
+    <rect width="100" height="58" fill="url(#kbs)"/><circle cx="50" cy="56" r="17" fill="#ffe0a3" filter="url(#kbg)"/><circle cx="50" cy="57" r="12" fill="#ffe9b8"/>
+    <path d="M0 58 Q20 50 38 57 T72 55 T100 56 V60 H0Z" fill="#5c2447"/><rect y="58" width="100" height="42" fill="#2b1426"/>
+    <polygon points="44,58 56,58 86,100 14,100" fill="#3d2034"/><g fill="#ffcf7a"><rect x="49.4" y="62" width="1.2" height="4"/><rect x="49.1" y="71" width="1.8" height="6"/><rect x="48.6" y="84" width="2.8" height="9"/></g>`,
+  12: `<defs><linearGradient id="kcb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8c67b8"/><stop offset="1" stop-color="#2a1b40"/></linearGradient>
+      <radialGradient id="kcr" cx=".55" cy=".35" r=".45"><stop offset="0" stop-color="#ffd9b5" stop-opacity=".9"/><stop offset="1" stop-color="#ffd9b5" stop-opacity="0"/></radialGradient>
+      <filter id="kcs"><feGaussianBlur stdDeviation="1.2"/></filter></defs>
+    <rect width="100" height="100" fill="url(#kcb)"/><rect width="100" height="100" fill="url(#kcr)"/>
+    <g fill="#1d1230" filter="url(#kcs)"><ellipse cx="46" cy="44" rx="14" ry="17"/><path d="M14 100 Q18 70 46 66 Q74 70 80 100Z"/></g>
+    <text x="8" y="12" font-family="Plus Jakarta Sans" font-weight="800" font-size="6.5" letter-spacing="2.5" fill="#f3e6ff">SAE</text>`,
+  14: `<defs><linearGradient id="keb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffc2d4"/><stop offset="1" stop-color="#e25d8c"/></linearGradient></defs>
+    <rect width="100" height="100" fill="url(#keb)"/>
+    <g fill="none" stroke="#fff" stroke-opacity=".7" stroke-width=".8"><circle cx="18" cy="22" r="3"/><circle cx="30" cy="12" r="1.8"/><circle cx="78" cy="18" r="2.5"/><circle cx="86" cy="36" r="1.5"/><circle cx="24" cy="44" r="2"/><circle cx="70" cy="62" r="1.8"/><circle cx="14" cy="66" r="2.6"/></g>
+    <path d="M52 30 Q56 42 48 52 M52 30 Q60 40 64 50" stroke="#3d6b2e" stroke-width="1.6" fill="none"/><circle cx="47" cy="56" r="7" fill="#c8102e"/><circle cx="65" cy="54" r="7" fill="#b00d28"/><circle cx="45" cy="54" r="2" fill="#fff" opacity=".6"/><circle cx="63" cy="52" r="2" fill="#fff" opacity=".6"/>
+    <text x="8" y="90" font-family="Plus Jakarta Sans" font-weight="800" font-size="8" fill="#fff">PINKLINE</text>`,
+};
+/* CSS-drawn covers get a type lockup so they read like real sleeves: [text, left%, top%, size (fraction of cover), css]. */
+const COVER_TYPE = {
+  6: ['MACHINES DREAM SOFTLY', 0, 42, .062, 'left:0;right:0;text-align:center;padding:4% 0;background:#f2d03b;color:#1a1a18;font-weight:800;letter-spacing:.06em'],
+  9: ['LUNE', 8, 8, .08, 'font-weight:800;letter-spacing:.35em;color:#e8eef5'],
+  10: ['fieldnotes, vol. 2', 8, 8, .09, 'font-weight:700;letter-spacing:-.03em;color:#3a5a40'],
+  13: ['TIDEWATER', 8, 12, .09, 'font-weight:800;letter-spacing:.3em;color:#e9dcc3'],
+};
+const cv = (i, px, r = 10, extra = '') => {
+  const k = i % A.length, t = COVER_TYPE[k], art = COVER_SVG[k];
+  const svg = art ? `<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;display:block">${art}</svg>` : '';
+  const txt = t ? `<span class="ct" style="left:${t[1]}%;top:${t[2]}%;font-size:${px * t[3]}px;${t[4]}">${t[0]}</span>` : '';
+  return `<div class="cv ${A[k].c}" style="width:${px}px;height:${px}px;border-radius:${r}px;${extra}">${svg}${txt}</div>`;
+};
+const avatar = (u, s = 30) => u.photo
+  ? `<div class="av ${u.photo}" style="width:${s}px;height:${s}px"></div>`
+  : `<div class="av def" style="width:${s}px;height:${s}px">${ic('user-filled', s * .58)}</div>`;
+
+/* ── Shared chrome ───────────────────────────────────────── */
+const statusBar = () => `<div class="sb sys"><span>9:41</span><span class="r">
+  <svg width="19" height="12" viewBox="0 0 19 12"><rect x="0" y="8" width="3.2" height="4" rx="1"/><rect x="5" y="5.5" width="3.2" height="6.5" rx="1"/><rect x="10" y="3" width="3.2" height="9" rx="1"/><rect x="15" y="0" width="3.2" height="12" rx="1"/></svg>
+  <svg width="17" height="12" viewBox="0 0 17 12"><path d="M8.5 2.2c2.4 0 4.6.9 6.3 2.5l1.2-1.2A10.6 10.6 0 0 0 8.5.5 10.6 10.6 0 0 0 1 3.5l1.2 1.2A9 9 0 0 1 8.5 2.2Zm0 3.4c1.5 0 2.9.6 4 1.6l1.2-1.2a7.3 7.3 0 0 0-10.4 0l1.2 1.2c1.1-1 2.5-1.6 4-1.6Zm0 3.3c.6 0 1.2.2 1.6.7L8.5 11.2 6.9 9.6c.4-.5 1-.7 1.6-.7Z"/></svg>
+  <svg width="28" height="13" viewBox="0 0 28 13"><rect x=".5" y=".5" width="24" height="12" rx="3.8" fill="none" stroke="currentColor" opacity=".4"/><rect x="2.5" y="2.5" width="20" height="8" rx="2.2"/><path d="M26 4.5v4c.8-.3 1.3-1.1 1.3-2s-.5-1.7-1.3-2Z" opacity=".45"/></svg>
+</span></div>`;
+
+/** MainTabView: Home · Charts · Add (punched-out plus tile) · Taste · Profile. */
+function tabBar(on, dark) {
+  const addFill = on === 'add' ? '#2979B7' : (dark ? '#fff' : '#000');
+  const addTile = `<svg class="addtab" viewBox="0 0 40 26"><defs><mask id="m-${on}"><rect width="40" height="26" rx="11" fill="#fff"/><rect x="14.5" y="11.9" width="11" height="2.2" fill="#000"/><rect x="18.9" y="7.5" width="2.2" height="11" fill="#000"/></mask></defs><rect width="40" height="26" rx="11" fill="${addFill}" mask="url(#m-${on})"/></svg>`;
+  const items = [['home', 'home', 'Home'], ['charts', 'trophy', 'Charts'], ['add', null, 'Add'], ['taste', 'sparkles', 'Taste'], ['profile', 'user', 'Profile']];
+  // iOS 26 scroll-edge effect: content softly fades out behind the floating tab bar.
+  return `<div class="abs" style="left:0;right:0;bottom:0;height:150px;z-index:24;background:linear-gradient(color-mix(in srgb, var(--bg) 0%, transparent), color-mix(in srgb, var(--bg) 85%, transparent) 45%, var(--bg) 80%)"></div><div class="tb glass sys">${items.map(([k, i, l]) => `<div class="tbi ${k === on ? 'on' : ''}">${i ? ic(i, 24) : addTile}<span>${T(l)}</span></div>`).join('')}</div><div class="hi"></div>`;
+}
+const segHeader = (a, b, onA, top = 74) => `<div class="abs seg2" style="left:0;right:0;top:${top}px">
+  <span class="${onA ? 'on glass' : ''}">${a}</span><span class="${onA ? '' : 'on glass'}">${b}</span></div>`;
+
+/** HomeView.FeedCard */
+function feedCard(p) {
+  const a = A[p.album];
+  return `<div class="fc">
+    <div class="fc-h">${avatar(p.user)}<span class="hn">@${p.user.handle}${p.user.verified ? `<span class="blue" style="display:inline-flex">${ic('verified', 13)}</span>` : ''}</span>
+      <span style="font-size:13px;color:var(--line)">·</span><span style="font-size:12px" class="mut">${T(p.time)}</span><span class="sp"></span>
+      <span style="width:34px;height:34px;display:grid;place-items:center" class="mut">${ic('more-horizontal', 14)}</span></div>
+    <div class="fc-a"><div style="position:relative;flex:none">${cv(p.album, 66)}<span class="abs" style="right:-3px;bottom:-3px">${rateBtn(26, p.mine)}</span></div>
+      <div class="sp"><div class="tt">${a.t}</div><div class="ar ell">${T(a.k)} · ${a.a}</div></div>${scoreBadge(p.score)}</div>
+    ${p.review ? `<div class="fc-rv">${esc(T(p.review))}</div>` : ''}
+    ${p.draft ? '' : `<div class="fc-ab"><div style="${p.liked ? 'color:#FF3B30' : ''}">${ic(p.liked ? 'heart-filled' : 'heart', 19, p.liked ? 'color:#FF3B30' : 'color:var(--ink)')}${p.likes || ''}</div>
+      <div>${ic('message-circle', 19, 'color:var(--ink)')}${p.comments || ''}</div></div>`}
+  </div>`;
+}
+
+const USERS = {
+  nora: { handle: 'nora.wav', photo: 'c14', verified: true }, minseo: { handle: 'minseo', photo: 'c12' },
+  theo: { handle: 'theo.k' }, yuna: { handle: 'yuna', photo: 'c5' }, felix: { handle: 'felix' },
+  me: { handle: 'hana' }, // no photo → DefaultAvatarView, like a fresh account
+};
+
+/* ── Mock screens (one per app surface) ─────────────────── */
+const SCREENS = {
+  /* HomeView — floating Explore/Following header + feed of FeedCards. */
+  feed: (o = {}) => {
+    const posts = o.posts || [
+      { user: USERS.nora, time: '12m', album: 0, score: 4.5, likes: 24, comments: 6, liked: true,
+        review: 'the back half of this is unreal. “Porcelain” has been on repeat all week' },
+      { user: USERS.minseo, time: '1h', album: 7, score: 5, likes: 41, comments: 9, mine: 4.5, review: 'no skips. the bridge on track 3 had me sitting in the car for ten minutes' },
+      { user: USERS.theo, time: '3h', album: 3, score: 3.5, likes: 7, comments: 1 },
+      { user: USERS.yuna, time: '5h', album: 11, score: 4, likes: 12, comments: 2, review: 'perfect for a night drive. the outro drags a little, otherwise a 4.5' },
+    ];
+    return `${statusBar()}
+      <div class="abs" style="left:16px;right:16px;top:114px;display:flex;flex-direction:column;gap:10px">${posts.map(feedCard).join('')}</div>
+      <div class="abs" style="left:0;right:0;top:0;height:128px;z-index:6;background:linear-gradient(var(--bg) 0, color-mix(in srgb,var(--bg) 80%,transparent) 55%, transparent)"></div>
+      <div style="position:relative;z-index:8">${segHeader(T('Explore'), T('Following'), o.explore)}</div>
+      <div class="abs gbtn glass" style="right:16px;top:74px;width:36px;height:36px;z-index:8">${ic('bell', 19)}<span class="abs" style="right:-1px;top:-1px;width:9px;height:9px;border-radius:50%;background:#FF3B30"></span></div>
+      ${tabBar('home', o.dark)}`;
+  },
+
+  /* ProfileView — nav, stats header, action buttons, icon tabs, rated list (RatingListRow). */
+  profile: (o = {}) => {
+    const rows = [[0, 4.5], [7, 5], [2, 4], [9, 4.5], [5, 3.5], [10, 4], [1, 3], [4, 4.5]];
+    const row = ([ai, s]) => { const a = A[ai]; return `<div class="row" style="gap:14px;padding:14px 16px">${cv(ai, 58, 8)}
+      <div class="sp"><div class="row" style="gap:6px"><span class="ell" style="font-size:13px;font-weight:600">${a.t}</span><span class="tag">${T(a.k)}</span></div>
+      <div class="mut ell" style="font-size:12px;margin-top:2px">${a.a}</div></div>
+      <span class="row blue" style="gap:4px;padding:4px 8px;border-radius:6px;background:color-mix(in srgb,var(--blue) 10%,transparent)">${ic('flower', 11)}<b style="font-size:13px;font-weight:700">${fmtScore(s)}</b></span></div>`; };
+    const stat = (v, l) => `<div class="col" style="flex:1;align-items:center;gap:2px"><b style="font-size:18px;font-weight:700">${v}</b><span class="mut" style="font-size:10.5px">${T(l)}</span></div>`;
+    return `${statusBar()}<div class="abs" style="left:0;right:0;top:62px">
+      <div class="row" style="padding:8px 18px 4px;height:36px;position:relative">${ic('user-plus', 16)}<span class="sp"></span>
+        <span class="row" style="gap:8px">${ic('list-checks', 16)}${ic('settings', 16)}</span>
+        <span class="abs row" style="left:0;right:0;justify-content:center;gap:4px;font-size:16px;font-weight:600;pointer-events:none">@${USERS.me.handle}<span class="blue" style="display:inline-flex">${ic('verified', 14)}</span></span></div>
+      <div class="row" style="gap:16px;padding:12px 18px 0">${avatar(USERS.me, 76)}<div class="row sp">${stat('412', 'Rated')}${stat('86', 'Following')}${stat('1,204', 'Followers')}</div></div>
+      <div style="padding:10px 18px 0"><div style="font-size:13px;font-weight:600">${T('Hana Seo')}</div><div class="mut" style="font-size:13px;margin-top:4px">${T('Dream pop, city pop, and anything with a saxophone.')}</div></div>
+      <div class="row" style="gap:8px;padding:10px 18px 0">${['Edit profile', 'Share profile'].map((t) => `<div style="flex:1;height:32px;border-radius:8px;display:grid;place-items:center;font-size:13px;font-weight:600;background:color-mix(in srgb,var(--ink) 8%,transparent)">${T(t)}</div>`).join('')}</div>
+      <div class="row" style="padding-top:14px">${[['layout-grid', 1], ['list-music'], ['bar-chart']].map(([i, on]) => `<div class="col" style="flex:1;align-items:center"><div style="height:44px;display:grid;place-items:center;color:${on ? 'var(--ink)' : 'var(--mut)'}">${ic(i, 20)}</div><div style="height:1.5px;align-self:stretch;background:${on ? 'var(--blue)' : 'transparent'}"></div></div>`).join('')}</div>
+      <div class="row" style="gap:4px;padding:8px 12px 0">${['All', 'Albums', 'Songs'].map((t, i) => `<span style="font-size:12px;padding:6px 12px;border-radius:6px;${i ? 'color:var(--mut)' : 'color:var(--blue);font-weight:600;background:color-mix(in srgb,var(--blue) 10%,transparent)'}">${T(t)}</span>`).join('')}
+        <span class="sp"></span>${[['list', 1], ['newspaper']].map(([i, on]) => `<span style="width:32px;height:28px;border-radius:6px;display:grid;place-items:center;${on ? 'color:var(--blue);background:color-mix(in srgb,var(--blue) 10%,transparent)' : 'color:var(--mut)'}">${ic(i, 14)}</span>`).join('')}</div>
+      <div class="row" style="padding:8px 16px"><span class="mut" style="font-size:12px">${Tn('%d ratings', '412')}</span><span class="sp"></span><span class="row blue" style="gap:4px;font-size:12px;font-weight:500">${ic('sliders-horizontal', 14)}${T('Recent')}</span></div>
+      ${rows.map(row).join('')}</div>${tabBar('profile', o.dark)}`;
+  },
+
+  /* AlbumDetailView — blurred hero, "Your Rating", tracklist. `gauge: 4.5` shows the drag-to-rate overlay. */
+  album: (o = {}) => {
+    const ai = o.album ?? 0, a = A[ai], inset = 106, g = o.gauge;
+    const tracks = [['Low Tide', '3:48', 5], ['Porcelain', '4:12', 4.5], ['Saltwater', '5:01'], ['Glass Houses', '3:26', 4], ['Undertow', '6:40'], ['Letters in Blue', '4:05']];
+    const myPost = { user: USERS.me, time: 'now', album: ai, score: o.score ?? 4.5, mine: o.score ?? 4.5, likes: 3, comments: 1,
+      review: 'Warm, hazy, and weirdly patient. My album of the year so far.' };
+    const hero = `<div class="abs" style="left:0;right:0;top:0;height:${260 + inset}px;overflow:hidden">
+        <div style="position:absolute;inset:-40px;filter:blur(30px);transform:scale(1.2)">${cv(ai, 520, 0, 'width:100%;height:100%')}</div>
+        <div class="abs" style="inset:0;background:linear-gradient(transparent, var(--bg))"></div></div>
+      <div class="abs col" style="left:24px;right:24px;top:${20 + inset}px;align-items:center;text-align:center">
+        <div style="border-radius:12px;box-shadow:0 8px 16px rgba(0,0,0,.25)">${cv(ai, 128, 12)}</div>
+        <div style="font-size:20px;font-weight:700;margin-top:10px">${a.t}</div>
+        <div class="blue" style="font-size:14px;margin-top:6px">${a.a}</div>
+        <div class="row" style="gap:6px;margin-top:8px"><span class="pill blue" style="background:color-mix(in srgb,var(--blue) 10%,transparent)">${T(a.k)}</span><span class="pill mut" style="background:color-mix(in srgb,var(--mut) 10%,transparent)">2025</span></div>
+        <div class="row" style="gap:6px;margin-top:12px;font-size:13px"><span class="blue">${ic('flower', 11)}</span><b style="font-weight:700">4.2</b><span style="color:var(--line)">·</span><span class="mut">${Tn('%d ratings', '2,184')}</span><span style="color:var(--line)">·</span><span class="mut">±0.8 ${T('split')}</span></div></div>`;
+    const nav = `<div class="abs gbtn glass" style="left:16px;top:62px;width:44px;height:44px;z-index:8">${ic('chevron-left', 20)}</div>
+      <div class="abs sys" style="left:80px;right:80px;top:73px;text-align:center;font-size:17px;font-weight:600;z-index:8">${a.t}</div>
+      <div class="abs gbtn glass" style="right:16px;top:62px;width:44px;height:44px;z-index:8">${ic('share', 17)}</div>
+      <div class="abs gbtn glass" style="right:16px;top:${12 + inset}px;width:36px;height:36px;z-index:7">${ic('bookmark', 16)}</div>`;
+    const top = 20 + inset + 128 + 10 + 25 + 6 + 18 + 8 + 20 + 12 + 18 + 16; // hero content height
+    const review = g != null
+      ? `<div style="height:30px"></div>`
+      : `<div>${feedCard(myPost)}</div>`;
+    const body = `<div class="abs" style="left:0;right:0;top:${top}px">
+      <div class="hr" style="margin:0 20px"></div>
+      <div style="padding:18px 20px"><div class="cap" style="margin-bottom:16px">${T('Your Rating')}</div>${review}</div>
+      <div class="hr" style="margin:0 20px"></div>
+      <div class="cap" style="padding:18px 20px 12px">${T('Tracklist')}</div>
+      ${tracks.map(([t, d, s], i) => `<div class="row" style="gap:10px;padding:11px 20px"><span class="mut" style="width:24px;text-align:right;font-size:13px">${i + 1}</span><span class="sp ell" style="font-size:14px">${t}</span>
+        <span class="mut" style="font-size:12px">${d}</span>${s != null
+          ? `<span class="blue" style="font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;background:color-mix(in srgb,var(--blue) 10%,transparent)">${fmtScore(s)}</span>`
+          : `<span class="gbtn glass blue" style="width:26px;height:26px;background:color-mix(in srgb,var(--blue) 30%,var(--glass))">${ic('plus', 11)}</span>`}</div>
+        ${i < tracks.length - 1 ? '<div class="hr" style="margin-left:56px"></div>' : ''}`).join('')}</div>`;
+    return `${statusBar()}${hero}${nav}${body}${tabBar('home', o.dark)}${g != null ? rateGauge(g, 405, top + 18 + 13 + 16 + 15, o.angle ?? -150) : ''}`;
+  },
+
+  /* ChartsView (Albums tab) — RankingBlock expanded + TrendingCard. */
+  charts: (o = {}) => {
+    const rank = [[0, 4.6], [7, 4.5], [9, 4.4], [3, 4.3], [2, 4.3]];
+    const trend = [[11, 128], [8, 96], [6, 71], [12, 64]];
+    const chips = (xs) => `<div class="row" style="gap:7px;padding:0 16px 8px;overflow:hidden">${xs.map((x, i) => `<span class="chipf ${i ? '' : 'on'}">${x}</span>`).join('')}</div>`;
+    const flabel = (t) => `<div class="mut" style="font-size:10px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;padding:10px 16px 4px">${T(t)}</div>`;
+    return `${statusBar()}${segHeader(T('Albums'), T('Songs'), true)}
+      <div class="abs" style="left:0;right:0;top:126px">
+        <div class="rcard" style="margin:0 16px">
+          <div class="row" style="padding:14px 16px"><span class="row" style="gap:8px"><span class="blue">${ic('trophy', 13)}</span><b style="font-size:16px;font-weight:700">${T('Ranking')}</b></span><span class="sp"></span><span class="mut" style="transform:rotate(180deg)">${ic('chevron-down', 13)}</span></div>
+          <div class="hr"></div>
+          ${flabel('Genre')}${chips(['All', 'Hip Hop', 'K-Pop', 'Jazz', 'Electronic', 'Classical'])}
+          ${flabel('Country')}${chips(['Global', 'KR', 'JP', 'US', 'UK', 'FR', 'LA'])}
+          <div class="hr"></div>
+          ${rank.map(([ai, s], i) => `<div class="row" style="gap:10px;padding:10px 16px"><b style="width:24px;text-align:center;font-size:16px;font-weight:800;color:${i < 3 ? 'var(--blue)' : 'var(--line)'}">${i + 1}</b>${cv(ai, 44, 8)}
+            <div class="sp"><div class="ell" style="font-size:13px;font-weight:600">${A[ai].t}</div><div class="mut ell" style="font-size:12px;margin-top:2px">${A[ai].a}</div></div>
+            <div class="col" style="align-items:flex-end;gap:3px"><span style="font-size:12px;font-weight:700;color:#fff;background:var(--blue);padding:3px 9px;border-radius:10px">${fmt1(s)}</span><span class="mut" style="font-size:10px">${T('avg')}</span></div></div>
+            ${i < 4 ? '<div class="hr" style="margin-left:100px"></div>' : ''}`).join('')}
+          <div class="hr"></div>
+          <div class="row blue" style="justify-content:center;gap:4px;padding:12px;font-size:14px;font-weight:600">${T('See full ranking')}${ic('chevron-right', 12)}</div>
+        </div>
+        <div style="padding:30px 0 0">
+          <div class="row" style="padding:0 16px 10px"><span class="row" style="gap:6px"><span class="blue">${ic('flame', 13)}</span><b style="font-size:16px;font-weight:700">${T('Trending')}</b></span><span class="sp"></span>
+            <span class="row" style="border-radius:8px;background:color-mix(in srgb,var(--ink) 6%,transparent);font-size:10px;font-weight:700"><span style="padding:4px 8px;border-radius:6px;background:var(--surf);box-shadow:0 1px 2px rgba(0,0,0,.08)">${T('Global')}</span><span class="mut" style="padding:4px 8px">${T('For You')}</span></span></div>
+          <div class="rcard" style="margin:0 16px;border-radius:12px">${trend.map(([ai, n], i) => `<div class="row" style="gap:8px;padding:10px 16px"><b class="mut" style="width:14px;text-align:right;font-size:12px;font-weight:700">${i + 1}</b>${cv(ai, 52, 8)}
+            <div class="sp" style="padding-left:2px"><div class="ell" style="font-size:13px;font-weight:600">${A[ai].t}</div><div class="mut ell" style="font-size:11px;margin-top:2px">${Tn('%@ · +%d this week', A[ai].a, n)}</div></div><span style="color:var(--line)">${ic('chevron-right', 10)}</span></div>
+            ${i < trend.length - 1 ? '<div class="hr" style="margin-left:84px"></div>' : ''}`).join('')}</div>
+        </div>
+      </div>${tabBar('charts', o.dark)}`;
+  },
+
+  /* TasteView → TasteReportView: aurora hero card + "Your taste map" (TasteMapView rows). */
+  taste: (o = {}) => {
+    const dark = !!o.dark, L = dark ? .3 : .86;
+    const worlds = [['Dream Pop', .34, 4.3, 0], ['Korean Indie', .26, 3.9, 7], ['Neo-Soul', .22, 3.6, 12], ['Jazz', .18, 4.6, 4]];
+    const aur = [[14, 16, 4.3], [86, 8, 3.9], [68, 96, 3.6]].map(([x, y, s]) => `radial-gradient(260px 260px at ${x}% ${y}%, color-mix(in srgb, ${spectrum(s, L, .65)} 55%, transparent), transparent)`).join(',');
+    const ramp = [1, 2, 3, 4, 5].map((s) => spectrum(s, .62, 1)).join(',');
+    const heroStat = (v, l) => `<div class="col" style="gap:3px"><b style="font-size:22px;font-weight:800">${v}</b><span class="mut" style="font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase">${l}</span></div>`;
+    const sepV = '<div style="width:1px;height:30px;background:color-mix(in srgb,var(--blue) 20%,transparent)"></div>';
+const tile = (v, l, h, hc) => `<div style="flex:1;padding:12px 14px;border-radius:12px;background:var(--bg);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--line) 60%,transparent)"><b style="font-size:19px;font-weight:800;display:block">${v}</b><span class="mut" style="font-size:11px">${l}</span><div style="font-size:10.5px;font-weight:600;margin-top:2px;color:${hc || 'color-mix(in srgb,var(--mut) 80%,transparent)'}">${h}</div></div>`;
+    // Scrolled past the Taste Report hero by default, so the slide shows the map + numbers (state: { hero: true } to show it).
+    const topFade = `<div class="abs" style="left:0;right:0;top:0;height:110px;z-index:10;background:linear-gradient(var(--bg) 55%, transparent)"></div>`;
+    return `${statusBar()}${o.hero ? '' : topFade}<div class="abs col" style="left:16px;right:16px;top:${o.hero ? 78 : 74}px;gap:16px">
+      ${o.hero ? `<div style="border-radius:16px;padding:20px;background:${aur}, color-mix(in srgb,var(--blue) 7%,var(--bg));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--blue) 15%,transparent)">
+        <div class="row"><span style="font-size:10px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:color-mix(in srgb,var(--blue) 70%,transparent)">Taste Report</span><span class="sp"></span>
+          <span class="row blue" style="gap:6px;font-size:12px;font-weight:600;padding:6px 11px;border-radius:999px;background:color-mix(in srgb,var(--surf) 70%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--blue) 25%,transparent)">${ic('rotate-cw', 12)}Refresh</span></div>
+        <div style="font-size:24px;font-weight:800;line-height:1.2;margin-top:8px">Your taste lives in<br>4 worlds.</div>
+        <div class="mut" style="font-size:12.5px;margin-top:6px;line-height:1.35">Based on 412 ratings across 38 genres, analyzed into 4 worlds.</div>
+        <div class="row" style="gap:18px;margin-top:18px">${heroStat(412, 'rated')}${sepV}${heroStat(38, 'genres')}${sepV}${heroStat(4, 'worlds')}</div>
+      </div>` : ''}
+      <div style="background:var(--surf);border-radius:16px;padding:18px">
+        <div class="row" style="gap:8px;align-items:baseline"><b style="font-size:11px;font-weight:800;color:color-mix(in srgb,var(--blue) 60%,transparent)">01</b><b style="font-size:15px;font-weight:700">${T('Your taste map')}</b></div>
+        <div class="mut" style="font-size:12.5px;margin-top:4px;line-height:1.35">${T('Tap a world to explore its sub-genres, then a sub-genre to see your albums and recommendations.')}</div>
+        <div style="margin-top:12px">${worlds.map(([n, share, avg, ai], i) => `${i ? '<div class="hr"></div>' : ''}<div class="row" style="gap:14px;padding:12px 0">${cv(ai, 52, 10)}
+          <div class="sp"><div style="font-size:15px;font-weight:600">${T(n)}</div><div class="mut" style="font-size:12px;margin-top:4px">${Tn('%d% share', Math.round(share * 100))}</div>
+          <div style="height:5px;border-radius:3px;background:var(--line);margin-top:6px;overflow:hidden"><div style="height:100%;width:${share * 100 / .34 * .9}%;border-radius:3px;background:${SPEC.ring(avg)}"></div></div></div>
+          ${scoreBadge(avg, 34, 2, 1.5)}<span style="color:var(--line)">${ic('chevron-right', 11)}</span></div>`).join('')}</div>
+        <div class="row mut" style="gap:6px;font-size:10px;margin-top:12px"><span>1</span><span style="width:64px;height:6px;border-radius:3px;background:linear-gradient(90deg,${ramp})"></span><span>5</span><span>${T('score')}</span></div>
+      </div>
+      <div style="background:var(--surf);border-radius:16px;padding:18px">
+        <div class="row" style="gap:8px;align-items:baseline"><b style="font-size:11px;font-weight:800;color:color-mix(in srgb,var(--blue) 60%,transparent)">02</b><b style="font-size:15px;font-weight:700">${T('By the numbers')}</b></div>
+        <div style="font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:color-mix(in srgb,var(--blue) 70%,transparent);margin-top:14px">${T('Your #1 Album')}</div>
+        <div class="col" style="align-items:center;margin-top:10px;gap:10px">${cv(0, 152, 14, 'box-shadow:0 4px 10px rgba(0,0,0,.12)')}
+          <div class="col" style="align-items:center;gap:2px"><b style="font-size:14px;font-weight:700">${A[0].t}</b><span class="mut" style="font-size:12px">${A[0].a}</span></div>
+          <span style="font-size:14px;font-weight:800;padding:3px 10px;border-radius:6px;background:${SPEC.fill(5)};color:${SPEC.num(5)}">5.0</span></div>
+        <div class="col" style="gap:10px;margin-top:14px"><div class="row" style="gap:10px">${tile('3.62', T('average score'), '±0.84 ' + T('spread'))}${tile('4.0', T('median score'), T('clusters high, harsh tail'))}</div>
+          <div class="row" style="gap:10px">${tile('7.4', T('effective genres'), Tn('across %d rated', 38))}${tile('+0.18', T('vs. the crowd'), T('a softer grader'), 'var(--blue)')}</div></div>
+      </div></div>${tabBar('taste', dark)}`;
+  },
+
+  /* SearchView (Add tab) — search field and discovery rows (DiscoveryAlbumCard). */
+  add: (o = {}) => {
+    const card = (ai, st) => `<div style="width:128px;flex:none"><div style="position:relative">${cv(ai, 128, 10)}<span class="abs" style="right:${st === 'rated' ? 6 : 4}px;bottom:${st === 'rated' ? 6 : 4}px">${st === 'rated' ? ratedCheck() : rateBtn(30, typeof st === 'number' ? st : null)}</span></div>
+      <div class="ell" style="font-size:13px;font-weight:600;margin-top:6px">${A[ai].t}</div>
+      <div class="row" style="gap:5px;margin-top:6px"><span class="tag" style="font-size:9px;padding:2px 4px;border-radius:3px">${T(A[ai].k)}</span><span class="mut ell" style="font-size:12px">${A[ai].a}</span></div></div>`;
+    const title = (t, top = 20) => `<div style="font-size:20px;font-weight:700;padding:${top}px 16px 2px">${t}</div>`;
+    const artists = [[0, 'Juniper Hale'], [3, 'kiwa'], [7, 'Bora'], [11, 'Rhea'], [9, 'Lune']];
+    return `${statusBar()}<div class="abs" style="left:0;right:0;top:62px">
+      <div style="padding:10px 16px"><div class="row" style="gap:10px;padding:12px;border-radius:12px;background:var(--surf);box-shadow:inset 0 0 0 1px var(--line)"><span class="mut">${ic('search', 16)}</span><span class="mut" style="font-size:16px">${T('Artists, albums, songs…')}</span></div></div>
+      <div class="hr"></div>
+      ${title(T('Your Top Artists'), 24)}
+      <div class="row" style="gap:14px;padding:8px 16px 0;align-items:flex-start">${artists.map(([c, n]) => `<div class="col" style="width:72px;align-items:center;gap:7px;flex:none">${cv(c, 72, 36)}<span style="font-size:11px;font-weight:500;text-align:center">${T(n)}</span></div>`).join('')}</div>
+      <div style="height:24px"></div>
+      ${title(T('From Your Taste'))}<div class="row" style="gap:12px;padding:8px 16px 0;align-items:flex-start">${card(5)}${card(9, 'rated')}${card(10)}${card(13)}</div>
+      <div style="height:24px"></div>
+      ${title(Tn('Because you love %@', T('Dream Pop')))}<div class="row" style="gap:12px;padding:8px 16px 0;align-items:flex-start">${card(12)}${card(1, 4)}${card(14)}${card(6)}</div>
+      </div>${tabBar('add', o.dark)}`;
+  },
+};
+SCREENS.home = SCREENS.feed;        // legacy names from the first config
+SCREENS.rankings = SCREENS.charts;
+
+/** FlowerRateControl drag overlay (RateGaugeView): diffusing scrim, score rings, arc, popped flower. */
+function rateGauge(score, ox, oy, angleDeg) {
+  const OFF = 36, STEP = 34, maxR = OFF + 5 * STEP, endR = maxR * 1.62, ring = SPEC.ring(score), R = OFF + score * STEP;
+  const scrim = (a, at) => `rgba(8,8,12,${a}) ${(at / endR * 100).toFixed(2)}%`;
+  const stops = [scrim(0, 0), scrim(.05, OFF * .72), scrim(.3, OFF + STEP * .9), scrim(.42, OFF + STEP * 2.4), scrim(.3, maxR), scrim(0, endR)].join(',');
+  let svg = '';
+  for (const side of [-1, 1]) svg += `<line x1="${ox + side * OFF}" y1="${oy}" x2="${ox + side * maxR}" y2="${oy}" stroke="rgba(142,142,147,.4)" stroke-width="1" stroke-linecap="round" stroke-dasharray="1 5"/>`;
+  for (let s = 1; s <= 5; s++) {
+    const r = OFF + s * STEP, hit = score >= s;
+    svg += `<circle cx="${ox}" cy="${oy}" r="${r}" fill="none" stroke="${hit ? ring : 'rgba(232,234,244,.24)'}" stroke-opacity="${hit ? .7 : 1}" stroke-width="${hit ? 1.75 : 1}" ${hit ? '' : 'stroke-dasharray="2 5"'}/>`;
+  }
+  svg += `<circle cx="${ox}" cy="${oy}" r="${OFF}" fill="none" stroke="${ring}" stroke-opacity=".18" stroke-dasharray="2 4"/>`;
+  const span = 52 * Math.PI / 180, N = 22, a = angleDeg * Math.PI / 180, step = span / N;
+  for (let i = 0; i < N; i++) {
+    const t = (i + .5) / N, a0 = a - span / 2 + i * step, a1 = a0 + step * 1.04, fade = Math.sin(t * Math.PI) ** 1.4;
+    svg += `<line x1="${ox + R * Math.cos(a0)}" y1="${oy + R * Math.sin(a0)}" x2="${ox + R * Math.cos(a1)}" y2="${oy + R * Math.sin(a1)}" stroke="${ring}" stroke-opacity="${(fade * .95).toFixed(3)}" stroke-width="2.5" stroke-linecap="round"/>`;
+  }
+  const size = 30, k = 1.22;
+  return `<div class="gauge"><div class="abs" style="left:${ox - endR}px;top:${oy - endR}px;width:${endR * 2}px;height:${endR * 2}px;border-radius:50%;background:radial-gradient(closest-side, ${stops})"></div>
+    <svg class="abs" style="inset:0" width="440" height="956">${svg}</svg>
+    <div class="abs" style="left:${ox - size / 2}px;top:${oy - size / 2 - 3}px;transform:scale(${k});filter:drop-shadow(0 8px 12px rgba(0,0,0,.6)) drop-shadow(0 3px 5px rgba(0,0,0,.4))">${rateBtn(size, score)}</div></div>`;
+}
+
+/* ── Composition ────────────────────────────────────────── */
+const state = { finish: 'config' };
+
+function device(d) {
+  const finish = state.finish !== 'config' ? state.finish : (d.finish || C.device.finish);
+  const fn = SCREENS[d.screen];
+  const mock = fn ? fn({ ...(d.state || {}), dark: !!d.dark }) : '';
+  return `<div class="dev" style="left:${d.x}px;top:${d.y}px;--w:${d.w || 1000};transform:rotate(${d.rot || 0}deg);${d.z ? `z-index:${d.z}` : ''}">
+    <div class="iphone f-${finish}">
+      <i class="btn b-action"></i><i class="btn b-volup"></i><i class="btn b-voldn"></i><i class="btn b-power"></i><i class="btn b-camctl"></i>
+      <div class="bezel"><div class="screen"><div class="scr ui ${d.dark ? 'dark' : ''}">${mock}</div>${d.shot ? `<img class="shot" src="${d.shot}" alt="" style="opacity:0" onload="this.style.opacity=1" onerror="this.remove()">` : ''}</div></div>
+      <div class="island"></div>
+    </div></div>`;
+}
+
+function card(c) {
+  const pos = `left:${c.x}px;top:${c.y}px`;
+  const rot = `rotate(${c.rot || 0}deg)`;
+  if (c.kind === 'post' || c.kind === 'rating') { // a real FeedCard, scaled up from iOS points
+    const k = c.scale || 2.4, pw = c.width || 380;
+    const post = { user: USERS[c.user] || { handle: c.user || 'nora.wav' }, time: c.time || '2m', album: c.album ?? 0, score: c.rating ?? c.score ?? 4.5,
+      review: c.review, likes: c.likes, comments: c.comments, liked: c.liked, mine: c.mine };
+    return `<div class="card ui-card" style="${pos};transform:${rot} scale(${k});--pw:${pw}px"><div class="ui ${c.dark ? 'dark' : ''}" style="background:transparent">${feedCard(post)}</div></div>`;
+  }
+  if (c.kind === 'badge' || c.kind === 'score') { // ScoreBadge, poster-sized
+    const a = A[c.album ?? 0], v = c.value ?? 4.5;
+    return `<div class="card badge-card ui" style="${pos};transform:${rot}"><span style="zoom:4.4;display:inline-flex">${scoreBadge(v)}</span>
+      <div><div class="lb">${c.label || T('Your rating')}</div><div class="tt">${a.t}</div><div class="ar">${a.a}</div></div></div>`;
+  }
+  if (c.kind === 'chip') return `<div class="card chip" style="${pos};transform:${rot}"><span class="plus">${ic(c.icon || 'bookmark-filled', 34)}</span>${c.text}</div>`;
+  return '';
+}
+
+const AURORA = { soft: .86, dark: .3 };
+// Jakarta's heavy period carries a wide left bearing; at -3.5% tracking it reads as a gap, so pull it in.
+const kernStops = (h) => h.replace(/([.,])(?=(<\/em>)?\s*(<br>|$))/g, '<span class="dot">$1</span>');
+function slideHTML(i) {
+  const s = C.slides[i], cp = s.copy || {}, theme = s.theme || 'cream';
+  const tk = theme === 'blue' ? 'soft' : theme === 'ink' ? 'dark' : theme;
+  // TasteView / taste page hero: radial washes mixed from spectrum colors.
+  const aurora = AURORA[tk] ? `<div class="aurora" style="background:${[[12, 8, 4.4], [92, 14, 3.7], [70, 88, 4.8], [8, 70, 3.2]].map(([x, y, sc]) =>
+    `radial-gradient(900px 900px at ${x}% ${y}%, color-mix(in srgb, ${spectrum(sc, AURORA[tk], .65)} 55%, transparent), transparent)`).join(',')}"></div>` : '';
+  const pano = `<div class="pano" style="left:${-i * W}px;width:${W * C.slides.length}px">${(C.panorama || []).map((p) => {
+    const glyph = p.style === 'glyph';
+    const box = `left:${p.x - p.size / 2}px;top:${p.y - p.size / 2}px;width:${p.size}px;height:${p.size * (glyph ? 25.76 / 26.78 : 288.88 / 279.71)}px;transform:rotate(${p.rot || 0}deg)`;
+    return glyph ? `<div class="pflower glyph" style="${box}">${ic('flower', p.size)}</div>`
+      : `<div class="pflower" style="${box}"><img src="assets/logo-flower.svg" alt=""></div>`;
+  }).join('')}</div>`;
+  const no = cp.no ?? (cp.eyebrow ? String(i + 1).padStart(2, '0') : '');
+  const copy = `<div class="copy ${cp.align === 'center' ? 'center' : ''}" style="top:${cp.top ?? 200}px">
+    ${cp.mark ? `<div class="mark"><img src="assets/app-icon${cp.mark === 'dark' ? '-dark' : ''}.png" alt=""></div>` : ''}
+    ${cp.logo ? `<div class="lockup"><img src="assets/logo-flower.svg" alt=""><span class="wm">${wordmark()}</span></div>` : ''}
+    ${cp.eyebrow ? `<div class="eyebrow">${no ? `<span class="no">${no}</span>` : ''}<span>${cp.eyebrow}</span></div>` : ''}
+    ${cp.headline ? `<div class="headline">${kernStops(cp.headline)}</div>` : ''}
+    ${cp.sub ? `<div class="sub">${cp.sub}</div>` : ''}</div>`;
+  return `<div class="slide t-${tk}">${aurora}${pano}${copy}${(s.devices || []).map(device).join('')}${(s.cards || []).map(card).join('')}</div>`;
+}
+
+function showcaseHTML() {
+  const b = C.brand || {};
+  return `<div class="showcase"><div class="sc-deco" style="right:-420px;top:-560px;width:1900px"><img src="assets/logo-flower.svg" alt=""></div>
+    <div class="sc-deco" style="left:-360px;bottom:-620px;width:1300px"><img src="assets/logo-flower.svg" alt=""></div>
+    <div class="sc-head"><div><div class="sc-brand"><img src="assets/logo-flower.svg" alt=""><span class="wm">${wordmark()}</span></div><div class="sc-title">${kernStops(b.showcaseTitle || '')}</div></div>
+    <div class="sc-meta">${b.showcaseMeta || ''}<br>${Tn('%d frames', C.slides.length)} · ${W} × ${H}</div></div>
+    <div class="sc-row">${C.slides.map((_, i) => `<div class="sc-frame">${slideHTML(i)}</div>`).join('')}</div>
+    <div class="sc-labels">${C.slides.map((s, i) => `<div><b>${String(i + 1).padStart(2, '0')}</b>${s.label || s.id}</div>`).join('')}</div>
+  </div>`;
+}
+
+/* ── Modes ──────────────────────────────────────────────── */
+// Wait for webfonts and every <img> (logos, app icon, real screenshots) before export.mjs captures.
+const ready = () => Promise.all([document.fonts.ready, ...[...document.images].map((im) => im.complete ? 0 : new Promise((r) => { im.onload = im.onerror = r; }))])
+  .then(() => document.documentElement.setAttribute('data-ready', '1'));
+
+if (Q.has('slide')) {                       // ?slide=N → raw 1:1 canvas for export.mjs
+  document.documentElement.classList.add('raw');
+  root.innerHTML = slideHTML(Math.max(0, Math.min(C.slides.length - 1, Number(Q.get('slide')) - 1)));
+  return ready();
+}
+if (Q.has('showcase') && Q.has('raw')) {    // ?showcase&raw → raw 4800×2700 board
+  document.documentElement.classList.add('raw');
+  root.innerHTML = showcaseHTML();
+  return ready();
+}
+
+/* Gallery (default) and fitted showcase */
+const showcase = Q.has('showcase');
+const LQ = Q.get('lang') ? `lang=${Q.get('lang')}&` : '';
+root.innerHTML = `<header class="bar">
+  <h1><img src="assets/logo-flower.svg" alt=""><span class="wm">${wordmark()}</span> — App Store screenshots</h1>
+  <span class="meta">${C.device.model} · ${W} × ${H} · ${C.slides.length} frames</span>
+  <div class="ctrls">
+    <label>Finish <select id="finish"><option value="config">Per config</option><option value="silver">Silver</option><option value="orange">Cosmic Orange</option><option value="blue">Deep Blue</option><option value="black">Black</option></select></label>
+    ${showcase ? '' : `<label><input type="checkbox" id="gapless"> Panorama</label><label><input type="checkbox" id="guides"> Guides</label>
+    <label>Zoom <input type="range" id="zoom" min="0.1" max="0.5" step="0.01"></label>`}
+    <a class="btn-l" href="?${LQ}${showcase ? '' : 'showcase'}">${showcase ? '← Slides' : 'Portfolio board →'}</a>
+  </div></header><main id="main"></main>`;
+const main = document.getElementById('main');
+let zoom = Math.max(0.12, Math.min(0.32, (innerHeight - 200) / H));
+
+function render() {
+  if (showcase) {
+    const s = Math.min((innerWidth - 56) / 4800, (innerHeight - 120) / 2700);
+    main.innerHTML = `<div style="padding:28px;display:flex;justify-content:center"><div class="g-frame" style="width:${4800 * s}px;height:${2700 * s}px"><div class="g-inner" style="transform:scale(${s})">${showcaseHTML()}</div></div></div>`;
+    return;
+  }
+  main.innerHTML = `<div class="gallery" id="gal">${C.slides.map((s, i) => `<figure class="g-item" data-i="${i}">
+    <div class="g-frame" style="width:${W * zoom}px;height:${H * zoom}px"><div class="g-inner" style="transform:scale(${zoom})">${slideHTML(i)}</div></div>
+    <figcaption class="g-cap"><span class="n">${String(i + 1).padStart(2, '0')}</span>${s.label || s.id}<span class="sp"></span>
+      <a href="?${LQ}slide=${i + 1}" target="_blank" rel="noopener">1:1</a><button data-png="${i}">PNG</button></figcaption></figure>`).join('')}</div>`;
+  const gal = document.getElementById('gal');
+  gal.classList.toggle('gapless', document.getElementById('gapless').checked);
+  document.body.classList.toggle('guides', document.getElementById('guides').checked);
+}
+
+/* Quick in-browser PNG (html-to-image). For pixel-exact output use `node export.mjs`. */
+async function quickPng(i) {
+  if (!window.htmlToImage) await new Promise((ok, err) => {
+    const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js';
+    s.onload = ok; s.onerror = err; document.head.appendChild(s);
+  });
+  const node = document.querySelector(`.g-item[data-i="${i}"] .slide`);
+  const url = await window.htmlToImage.toPng(node, { width: W, height: H, pixelRatio: 1, cacheBust: true });
+  const a = document.createElement('a'); a.href = url; a.download = `${String(i + 1).padStart(2, '0')}-${C.slides[i].id}.png`; a.click();
+}
+
+document.addEventListener('input', (e) => {
+  if (e.target.id === 'finish') { state.finish = e.target.value; render(); }
+  if (e.target.id === 'zoom') { zoom = +e.target.value; render(); }
+  if (e.target.id === 'gapless') document.getElementById('gal').classList.toggle('gapless', e.target.checked);
+  if (e.target.id === 'guides') document.body.classList.toggle('guides', e.target.checked);
+});
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-png]'); if (!b) return;
+  b.textContent = '…'; quickPng(+b.dataset.png).catch((err) => alert('Quick export failed — use node export.mjs\n' + err)).finally(() => { b.textContent = 'PNG'; });
+});
+if (!showcase) document.getElementById('zoom').value = zoom;
+addEventListener('resize', () => showcase && render());
+render();
+ready();
+})();
+</script>
+</body>
+</html>
