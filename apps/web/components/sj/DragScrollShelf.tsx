@@ -104,6 +104,15 @@ export default function DragScrollShelf({
     }
   }, []);
 
+  // Covers are <img>s inside <a>s — both natively draggable. Without this the
+  // browser starts an HTML5 drag (a ghost image of the cover) a few pixels into
+  // the gesture, fires pointercancel, and the shelf never pans. Cancelling
+  // dragstart for the whole subtree is what lets grab-to-scroll win everywhere
+  // a shelf is used, with no per-card `draggable={false}`.
+  const onDragStartCapture = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+  }, []);
+
   return (
     <div className="relative group/row">
       <div
@@ -114,7 +123,8 @@ export default function DragScrollShelf({
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         onClickCapture={onClickCapture}
-        className={`flex overflow-x-auto shelf-scroll cursor-grab active:cursor-grabbing select-none ${scrollClassName}`}
+        onDragStartCapture={onDragStartCapture}
+        className={`flex overflow-x-auto shelf-scroll cursor-grab active:cursor-grabbing select-none [&_img]:[-webkit-user-drag:none] [&_a]:[-webkit-user-drag:none] ${scrollClassName}`}
       >
         {children}
       </div>

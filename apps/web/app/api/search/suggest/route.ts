@@ -17,6 +17,13 @@ const MAX_ALBUMS = 5;
 // *contains* the query above the album whose title *is* the query.
 const ARTIST_POOL = 12;
 const ALBUM_POOL = 15;
+// Songs are opt-in (`?types=songs`, the mix page's add panel) — the omnibox
+// never pays for them. A title prefix on 3.6M recordings is fast for specific
+// words but can take seconds for common ones ("love"), so it runs under a hard
+// budget and simply comes back empty when it blows it.
+const MAX_SONGS = 6;
+const SONG_POOL = 20;
+const SONG_BUDGET_MS = 1500;
 
 /** 3 = exact, 2 = prefix, 1 = substring — the strongest match across the given fields wins. */
 function intentRank(q: string, ...fields: (string | null | undefined)[]): number {
@@ -46,12 +53,24 @@ export interface SuggestAlbum {
   releaseType: string | null;
 }
 
+export interface SuggestSong {
+  id: string;
+  title: string;
+  artist: string;
+  releaseGroupId: string;
+  albumTitle: string;
+  coverUrl: string | null;
+}
+
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get('query')?.trim() ?? '';
-  if (q.length < 2) return NextResponse.json({ artists: [], albums: [] });
+  const wantSongs = (req.nextUrl.searchParams.get('types') ?? '').split(',').includes('songs');
+  if (q.length < 2) return NextResponse.json({ artists: [], albums: [], ...(wantSongs ? { songs: [] } : {}) });
 
-  const cacheKey = `sj:suggest2:${q.toLowerCase()}`;
-  const cached = await cacheGet<{ artists: SuggestArtist[]; albums: SuggestAlbum[] }>(cacheKey);
+  const cacheKey = `sj:suggest2:${wantSongs ? 'songs:' : ''}${q.toLowerCase()}`;
+  const cached = await cacheGet<{ artists: SuggestArtist[]; albums: SuggestAlbum[]; songs?: SuggestSong[] }>(
+    cacheKey,
+  );
   if (cached) return NextResponse.json(cached);
 
   const supabase = createServerClient();
@@ -59,6 +78,8 @@ export async function GET(req: NextRequest) {
 
   const ql = q.toLowerCase();
   const prefix = `${q.replace(/[%_,()]/g, ' ').trim()}%`;
+  const songsPromise: Promise<SuggestSong[]> =
+    wantSongs && q.length >= 3 ? suggestSongs(supabase, ql, prefix) : Promise.resolve([]);
   const [artistsResult, albumsResult] = await Promise.all([
     supabase
       .from('artists')
@@ -125,10 +146,67 @@ export async function GET(req: NextRequest) {
     .slice(0, MAX_ALBUMS)
     .map((r) => r.item);
 
-  const result = { artists, albums };
+  const songs = await songsPromise;
+  const result = wantSongs ? { artists, albums, songs } : { artists, albums };
   cacheSet(cacheKey, result, SUGGEST_TTL).catch(() => {});
 
   return NextResponse.json(result, {
     headers: { 'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=1800' },
   });
+}
+
+async function suggestSongs(
+  supabase: NonNullable<ReturnType<typeof createServerClient>>,
+  ql: string,
+  prefix: string,
+): Promise<SuggestSong[]> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), SONG_BUDGET_MS);
+  try {
+    const { data: recs, error } = await supabase
+      .from('recordings')
+      .select('id, title, artist_display')
+      .ilike('title', prefix)
+      .limit(SONG_POOL)
+      .abortSignal(ctrl.signal);
+    if (error || !recs?.length) return [];
+    // Each song needs an album for its cover and for mix_song_items'
+    // release_group_id — the canonical edition's, like the search page.
+    const { data: rt, error: rtErr } = await supabase
+      .from('release_tracks')
+      .select('recording_id, releases(is_canonical, release_groups(id, title, cover_url, prestige_score))')
+      .in(
+        'recording_id',
+        recs.map((r: any) => r.id),
+      )
+      .abortSignal(ctrl.signal);
+    if (rtErr) return [];
+    const rgBy: Record<string, any> = {};
+    for (const row of (rt ?? []) as any[]) {
+      const rg = row.releases?.release_groups;
+      if (!rg) continue;
+      if (row.releases?.is_canonical || !rgBy[row.recording_id]) rgBy[row.recording_id] = rg;
+    }
+    return (recs as any[])
+      .filter((r) => rgBy[r.id])
+      .map((r) => ({
+        item: {
+          id: r.id,
+          title: r.title,
+          artist: r.artist_display ?? '',
+          releaseGroupId: rgBy[r.id].id,
+          albumTitle: rgBy[r.id].title,
+          coverUrl: rgBy[r.id].cover_url ?? null,
+        } as SuggestSong,
+        rank: intentRank(ql, r.title),
+        prestige: rgBy[r.id].prestige_score ?? 0,
+      }))
+      .sort((a, b) => b.rank - a.rank || b.prestige - a.prestige)
+      .slice(0, MAX_SONGS)
+      .map((r) => r.item);
+  } catch {
+    return []; // aborted: over budget
+  } finally {
+    clearTimeout(timer);
+  }
 }

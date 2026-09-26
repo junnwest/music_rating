@@ -489,24 +489,170 @@ export function ScoreChart({
   );
 }
 
-// ── Scene mix ───────────────────────────────────────────────────────────────
+// ── Country mix ─────────────────────────────────────────────────────────────
 
-/** Part-to-whole stacked bar; 2px surface gaps; grows in on reveal. */
-export function SceneBar({
-  segments,
+export interface CountryMixData {
+  items: { code: string; count: number }[];
+  unknown: number;
+  total: number;
+}
+
+/** ISO 3166 code → localized name via Intl; MusicBrainz's pseudo-regions by hand. */
+export function countryName(code: string, lang: string, t: (k: string) => string): string {
+  if (code === 'XW') return t('sj.taste.countryWorldwide');
+  if (code === 'XE') return t('sj.taste.countryEurope');
+  try {
+    return new Intl.DisplayNames([lang], { type: 'region' }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+/**
+ * Where your music comes from, by the primary artist's actual country.
+ * Shows the top countries until they cover ~90% of what you rate (at most 5
+ * wide / 4 narrow), folds the rest into "Other (k countries)" — expandable to
+ * the full list — and keeps "Unknown" as its own muted slot, never in Other.
+ * Colours follow rank (the categorical series), Other/Unknown are neutral.
+ */
+export function CountryMix({
+  data,
+  colors,
+  lang,
+  t,
 }: {
-  segments: { share: number; color: string; title: string }[];
+  data: CountryMixData;
+  colors: string[];
+  lang: string;
+  t: (k: string) => string;
 }) {
+  const [wide, setWide] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 640px)');
+    setWide(mq.matches);
+    const on = () => setWide(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+
+  const cap = Math.min(wide ? 5 : 4, colors.length);
+  const total = Math.max(data.total, 1);
+  const shown: { code: string; count: number }[] = [];
+  let covered = 0;
+  for (const it of data.items) {
+    if (shown.length >= cap || (shown.length > 0 && covered / total >= 0.9)) break;
+    shown.push(it);
+    covered += it.count;
+  }
+  let rest = data.items.slice(shown.length);
+  // "Other (1 country)" says less than the country itself — just show it.
+  if (rest.length === 1 && shown.length < colors.length) {
+    shown.push(rest[0]);
+    rest = [];
+  }
+  const restCount = rest.reduce((a, r) => a + r.count, 0);
+  const pct = (n: number) => Math.round((n / total) * 100);
+  const pctLabel = (n: number) => (pct(n) === 0 ? '<1%' : `${pct(n)}%`);
+
+  const segments = [
+    ...shown.map((it, i) => ({
+      key: it.code,
+      share: it.count / total,
+      color: colors[i],
+      title: `${countryName(it.code, lang, t)} · ${pctLabel(it.count)}`,
+    })),
+    ...(restCount > 0
+      ? [
+          {
+            key: '__other',
+            share: restCount / total,
+            color: 'var(--viz-other)',
+            title: `${t('sj.taste.countryOther').replace('{n}', String(rest.length))} · ${pctLabel(restCount)}`,
+          },
+        ]
+      : []),
+    ...(data.unknown > 0
+      ? [
+          {
+            key: '__unknown',
+            share: data.unknown / total,
+            color:
+              'repeating-linear-gradient(135deg, var(--viz-other) 0 3px, transparent 3px 6px)',
+            title: `${t('sj.taste.countryUnknown')} · ${pctLabel(data.unknown)}`,
+          },
+        ]
+      : []),
+  ];
+
   return (
-    <div className="tr-grow mt-4 flex h-[14px] rounded-full overflow-hidden gap-[2px]">
-      {segments.map((s, i) => (
-        <span
-          key={i}
-          title={s.title}
-          className="min-w-[6px]"
-          style={{ flex: `${s.share} 1 0px`, background: s.color }}
-        />
-      ))}
+    <div>
+      <div className="tr-grow mt-4 flex h-[14px] rounded-full overflow-hidden gap-[2px]">
+        {segments.map((s) => (
+          <span
+            key={s.key}
+            title={s.title}
+            className="min-w-[6px]"
+            style={{ flex: `${s.share} 1 0px`, background: s.color }}
+          />
+        ))}
+      </div>
+      <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
+        {shown.map((it, i) => {
+          const name = countryName(it.code, lang, t);
+          return (
+            <li key={it.code} className="flex items-center gap-1.5 text-[12px] text-muted min-w-0 max-w-full">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: colors[i] }} />
+              <span className="font-semibold text-ink truncate max-w-[9rem]" title={name}>
+                {name}
+              </span>
+              <span className="tabular-nums shrink-0">{pctLabel(it.count)}</span>
+            </li>
+          );
+        })}
+        {restCount > 0 && (
+          <li className="flex items-center gap-1.5 text-[12px] text-muted">
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: 'var(--viz-other)' }} />
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              aria-expanded={showAll}
+              className="font-semibold text-ink underline decoration-dotted underline-offset-2 hover:decoration-solid"
+            >
+              {t('sj.taste.countryOther').replace('{n}', String(rest.length))}
+            </button>
+            <span className="tabular-nums">{pctLabel(restCount)}</span>
+          </li>
+        )}
+        {data.unknown > 0 && (
+          <li className="flex items-center gap-1.5 text-[12px] text-muted">
+            <span
+              className="w-2.5 h-2.5 rounded-full shrink-0 border border-divider"
+              style={{
+                background:
+                  'repeating-linear-gradient(135deg, var(--viz-other) 0 2px, transparent 2px 4px)',
+              }}
+            />
+            <span>{t('sj.taste.countryUnknown')}</span>
+            <span className="tabular-nums">{pctLabel(data.unknown)}</span>
+          </li>
+        )}
+      </ul>
+      {showAll && rest.length > 0 && (
+        <ul className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1 pl-4 border-l border-divider sj-fade-in">
+          {rest.map((it) => {
+            const name = countryName(it.code, lang, t);
+            return (
+              <li key={it.code} className="flex items-center justify-between gap-2 text-[11.5px] text-muted min-w-0">
+                <span className="truncate" title={name}>
+                  {name}
+                </span>
+                <span className="tabular-nums shrink-0">{pctLabel(it.count)}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }

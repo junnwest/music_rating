@@ -24,10 +24,12 @@ import Avatar from './Avatar';
 import { Skeleton, SkeletonLine, SkeletonRows } from './Loading';
 import ProfilePostCard from './ProfilePostCard';
 import ProfileSongPostCard from './ProfileSongPostCard';
+import MixPostCard from './MixPostCard';
 import ProfileStats from './ProfileStats';
 import FoundingBadge from './FoundingBadge';
 import FoundingLineage from './FoundingLineage';
 import { useSession } from './SessionContext';
+import { useMixName, useMixTarget } from './MixTargetContext';
 import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
 import { displayName } from '../../lib/sj/display';
@@ -49,6 +51,12 @@ import ProfileRatedList, {
   type ScoreRange,
 } from './ProfileRatedList';
 import { RG_EMBED_NATIVE } from '../../lib/sj/data';
+import {
+  loadMixShares,
+  loadMixShareSocial,
+  setMixShareLike,
+  type MixSharePost,
+} from '../../lib/sj/mixShares';
 import type { MixRow } from '../../lib/db/types';
 
 const SKIP_DELETE_CONFIRM_KEY = 'sj:skipDeleteRatingConfirm';
@@ -120,6 +128,13 @@ export default function ProfileView({ username }: { username?: string }) {
   // The table mode is gone — list and table were the same rows at two widths,
   // so they merged into one responsive view (see ProfileRatedList).
   const [displayMode, setDisplayMode] = useState<'list' | 'posts'>('list');
+  // Your mix posts (mix_shares) — interleaved into posts mode, like iOS.
+  const [mixPosts, setMixPosts] = useState<MixSharePost[]>([]);
+  const [mixPostSocial, setMixPostSocial] = useState<{
+    likes: Record<string, number>;
+    comments: Record<string, number>;
+    liked: Set<string>;
+  }>({ likes: {}, comments: {}, liked: new Set() });
   const [followModal, setFollowModal] = useState<null | 'following' | 'followers'>(null);
   const [pendingDelete, setPendingDelete] = useState<ProfileRatingItem | null>(null);
   const [skipDeleteConfirmChecked, setSkipDeleteConfirmChecked] = useState(false);
@@ -404,6 +419,23 @@ export default function ProfileView({ username }: { username?: string }) {
     return c;
   }, [items]);
 
+  // Mix posts join posts mode only while the filters mean "everything, by date" —
+  // kind/score filters and other sorts describe ratings, which a mix post isn't.
+  function withMixPosts<T extends { createdAt: string | null }>(
+    list: T[],
+  ): (T | { mixPost: MixSharePost; createdAt: string })[] {
+    const rangeActive = range[0] !== FULL_RANGE[0] || range[1] !== FULL_RANGE[1];
+    if (kind !== 'all' || rangeActive || sortCol !== 'date' || mixPosts.length === 0) return list;
+    const merged: (T | { mixPost: MixSharePost; createdAt: string })[] = [
+      ...list,
+      ...mixPosts.map((p) => ({ mixPost: p, createdAt: p.createdAt })),
+    ];
+    const at = (x: { createdAt: string | null }) => x.createdAt ?? '';
+    return merged.sort((a, b) =>
+      sortDesc ? at(b).localeCompare(at(a)) : at(a).localeCompare(at(b)),
+    );
+  }
+
   const filtered = useMemo(() => {
     const rangeActive = range[0] !== FULL_RANGE[0] || range[1] !== FULL_RANGE[1];
     const base = items.filter((i) => {
@@ -481,6 +513,55 @@ export default function ProfileView({ username }: { username?: string }) {
         .eq('recording_id', item.recordingId);
     } else {
       await supabase.from('ratings').delete().eq('id', item.ratingId);
+    }
+  }
+
+  // Posts mode only exists on your own profile, so only fetch there.
+  useEffect(() => {
+    if (!isSelf || !myId || displayMode !== 'posts') return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await loadMixShares({ userIds: [myId], limit: 30 });
+      if (cancelled) return;
+      if (error || !data) {
+        if (error) console.error('[profile] mix posts failed:', error.message);
+        return;
+      }
+      setMixPosts(data);
+      const social = await loadMixShareSocial(data.map((p) => p.id), myId);
+      if (!cancelled) setMixPostSocial(social);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isSelf, myId, displayMode]);
+
+  async function toggleMixPostLike(post: MixSharePost) {
+    if (!myId) return;
+    const wasLiked = mixPostSocial.liked.has(post.id);
+    const flip = (like: boolean) =>
+      setMixPostSocial((prev) => {
+        const liked = new Set(prev.liked);
+        if (like) liked.add(post.id);
+        else liked.delete(post.id);
+        return {
+          ...prev,
+          liked,
+          likes: { ...prev.likes, [post.id]: Math.max(0, (prev.likes[post.id] ?? 0) + (like ? 1 : -1)) },
+        };
+      });
+    flip(!wasLiked);
+    const { error } = await setMixShareLike(myId, post.id, !wasLiked);
+    if (error) flip(wasLiked);
+  }
+
+  async function deleteMixPost(post: MixSharePost) {
+    if (!supabase) return;
+    setMixPosts((prev) => prev.filter((p) => p.id !== post.id));
+    const { error } = await supabase.from('mix_shares').delete().eq('id', post.id);
+    if (error) {
+      console.error('[profile] delete mix post failed:', error.message);
+      setMixPosts((prev) => [...prev, post]);
     }
   }
 
@@ -750,8 +831,19 @@ export default function ProfileView({ username }: { username?: string }) {
                 <Empty label={t('sj.profile.noneOfType')} />
               ) : displayMode === 'posts' && isSelf ? (
                 <div className="mt-3 flex flex-col gap-2.5">
-                  {filtered.map((item) =>
-                    item.isSong ? (
+                  {withMixPosts(filtered).map((item) =>
+                    'mixPost' in item ? (
+                      <MixPostCard
+                        key={`mix:${item.mixPost.id}`}
+                        post={item.mixPost}
+                        currentUserId={myId ?? null}
+                        isLiked={mixPostSocial.liked.has(item.mixPost.id)}
+                        likesCount={mixPostSocial.likes[item.mixPost.id] ?? 0}
+                        commentsCount={mixPostSocial.comments[item.mixPost.id] ?? 0}
+                        onLike={() => toggleMixPostLike(item.mixPost)}
+                        onDelete={() => deleteMixPost(item.mixPost)}
+                      />
+                    ) : item.isSong ? (
                       <ProfileSongPostCard
                         key={item.key}
                         item={item}
@@ -908,6 +1000,8 @@ function Empty({ label }: { label: string }) {
 
 function MixLibrary({ userId, isSelf }: { userId: string; isSelf: boolean }) {
   const { t } = useLanguage();
+  const { refresh: refreshMixTargets } = useMixTarget();
+  const mixName = useMixName();
   const [mixes, setMixes] = useState<MixRow[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
@@ -929,12 +1023,17 @@ function MixLibrary({ userId, isSelf }: { userId: string; isSelf: boolean }) {
     const loaded = (data as MixRow[] | null) ?? [];
     setMixes(loaded);
     if (loaded.length > 0) {
-      const { data: itemRows } = await supabase
-        .from('mix_items')
-        .select('mix_id')
-        .in('mix_id', loaded.map((m) => m.id));
+      // Albums and songs both count as items (songs live in mix_song_items).
+      const ids = loaded.map((m) => m.id);
+      const [{ data: itemRows }, { data: songRows }] = await Promise.all([
+        supabase.from('mix_items').select('mix_id').in('mix_id', ids),
+        supabase.from('mix_song_items').select('mix_id').in('mix_id', ids),
+      ]);
       const c: Record<string, number> = {};
-      for (const r of (itemRows as { mix_id: string }[] | null) ?? []) {
+      for (const r of [
+        ...((itemRows as { mix_id: string }[] | null) ?? []),
+        ...((songRows as { mix_id: string }[] | null) ?? []),
+      ]) {
         c[r.mix_id] = (c[r.mix_id] ?? 0) + 1;
       }
       setCounts(c);
@@ -957,6 +1056,8 @@ function MixLibrary({ userId, isSelf }: { userId: string; isSelf: boolean }) {
     setName('');
     setIsPublic(false);
     load();
+    // The save dropdown's mix list is cached app-wide — let it see the new mix.
+    void refreshMixTargets();
   }
 
   // Right-click on a mix row — same "open in new tab" the rated rows have.
@@ -1003,12 +1104,12 @@ function MixLibrary({ userId, isSelf }: { userId: string; isSelf: boolean }) {
                 </span>
                 <span className="flex-1 min-w-0">
                   <span className="block text-[14.5px] font-semibold text-ink truncate">
-                    {mix.name}
+                    {mixName(mix)}
                   </span>
                   <span className="flex items-center gap-1.5 text-[12px] text-muted">
                     {(counts[mix.id] ?? 0) === 1
-                      ? t('sj.search.oneRelease')
-                      : t('sj.search.nReleases').replace('{n}', String(counts[mix.id] ?? 0))}
+                      ? t('sj.mix.oneItem')
+                      : t('sj.mix.nItems').replace('{n}', String(counts[mix.id] ?? 0))}
                     {mix.is_public && (
                       <>
                         <span className="text-divider">·</span>

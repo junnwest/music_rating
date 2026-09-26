@@ -15,11 +15,14 @@ export default function ReportModal({
   onClose,
   reportedUserId,
   ratingId,
+  onReported,
 }: {
   open: boolean;
   onClose: () => void;
   reportedUserId: string;
   ratingId: string;
+  /** Fires once the report is written — a list can drop the item right away. */
+  onReported?: () => void;
 }) {
   const { t } = useLanguage();
   const [submitted, setSubmitted] = useState(false);
@@ -52,6 +55,7 @@ export default function ReportModal({
   }
 
   function close() {
+    if (submitted) onReported?.();
     setSubmitted(false);
     setError(null);
     onClose();

@@ -15,6 +15,8 @@ import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
 import { SessionProvider, useSession } from './SessionContext';
 import { RatingsProvider } from './RatingsStore';
+import { MixTargetProvider } from './MixTargetContext';
+import MixDock from './MixDock';
 import FlowerGlyph from './FlowerGlyph';
 import SearchOmnibox from './SearchOmnibox';
 import CursorTip from './CursorTip';
@@ -29,7 +31,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
   return (
     <SessionProvider>
       <RatingsProvider>
-        <ShellInner>{children}</ShellInner>
+        <MixTargetProvider>
+          <ShellInner>{children}</ShellInner>
+        </MixTargetProvider>
       </RatingsProvider>
     </SessionProvider>
   );
@@ -201,6 +205,9 @@ function ShellInner({ children }: { children: ReactNode }) {
           </Link>
         </footer>
       </div>
+
+      {/* ── Mix Dock (≥md, save-relevant pages only) ── */}
+      <MixDock />
 
       <CursorTip />
 

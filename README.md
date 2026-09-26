@@ -42,6 +42,23 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **🔀 (2026-09-26, Windows) — PR #1 (genre taxonomy) + PR #2 (UX round 2) merged into `main` and deployed.** Comments migration renumbered to `20260926000003`, ingest-priorities to `...0004` (filenames only). Song/track community stats now use the anonymous-scores RPC so private accounts count. Still needs: browser click-through of UX round 2 on prod, iOS build. See SESSIONS.md 2026-09-26 (Windows, merge).
+>
+> **🧩 IN PROGRESS (2026-09-26, web + some iOS) — UX round 2: [`WEB_CHANGE_PROMPTS_2.md`](WEB_CHANGE_PROMPTS_2.md). Handoff + file map: [`HANDOFF_WEB_CHANGES_2.md`](HANDOFF_WEB_CHANGES_2.md).** **P1–P8 built**: mix engine (songs in mixes, last-mix target, "Saved to X · Change" dropdown), Add-page cover controls, Quick Add deleted (web + iOS), Mix Dock, mix "+" add + Post to feed, album tracklist redesign, ranked album/song comments (migration `20260926000003`, renumbered from `...0000` at merge, **applied**), song page redesign, and the Taste country chart. **Verified:** `tsc`, `next lint` (0 errors), and `next build` all pass. **Not yet verified:** the browser click-through (checklist in the handoff, step 2; gstack `/browse` isn't installed on the Windows box) and the iOS build after the Quick Add removal (needs a Mac). **Committed on branch `ux-round-2`** (off `genre-taxonomy-phase1`), not pushed. **P9 (Popular searches) deferred** by Jun.
+> Follow-ups:
+> - Drop the Quick Add RPCs (`get_quick_add_candidates`, genre-prefs #14) once the iOS release without Quick Add is the minimum version.
+> - iOS parity gaps: song items in the web dock/add panel style, the country chart (iOS still shows scenes), ranked comments, the Mix Dock, and P9.
+> - `get_mix_covers` returns only album covers, so a songs-only mix shows the icon tile on feed cards.
+> - The Add page's `%q%` song search is slow for common words (same query as before).
+> - Mix item reorder needs a `position` column (proposed, not built).
+
+> **📋 NEW (2026-09-25, Windows) — Catalog gap report: [`CATALOG_GAP_REPORT.md`](CATALOG_GAP_REPORT.md)** (every gap row also in `apps/web/scripts/data/catalog-gaps-2026-09-25.csv`). Read-only scan; nothing written. Ranked fixes, none done yet:
+> 1. **Reset 162 "ghost" queue rows to `pending`** — `mbid` rows marked `done` with 0 releases and no artist row (2026-07-01…05). List in report §5.1.
+> 2. **Investigate why re-polled artists still miss recent albums** (Taylor Swift *TTPD*/*Showgirl*, Prince, Depeche Mode, Metallica, Pearl Jam) — root cause unknown; check the pipeline device's older code first.
+> 3. **Album/EP-only ingest for the 37 heavily-featured artists** (>800 MB RGs): 29 empty stubs (Sinatra, Cash, Grateful Dead, classical) + frozen partial ingests (Springsteen, Dylan, Stones, U2, Beatles, Elvis).
+> 4. **Native-script alias backfill** (~4.3k KR / ~0.6k JP artists without Hangul/Kana names).
+> 5. Queue MB-known artists that charts/Last.fm show missing; promote charting stubs; Deezer backfill for MB-absent KR list albums; link 72 held-but-unlinked list rows; decide the live-album policy for curated lists.
+
 > **🔵 (2026-09-26, Mac) — Quick Add removed from iOS and web** (screen, banners, the Add tab's genre explorer; the Connect Spotify/Apple Music rows stay). Its `get_quick_add_*` RPCs are still in the DB, unused. Committed + deployed (`525e625`).
 >
 > **🔵 (2026-09-26, Mac) — Deactivate Account built (iOS + web). ✅ `20260926000002_account_deactivation.sql` and `20260926000001_popular_searches_catalog_only.sql` applied + verified (all 13 chart/leaderboard RPCs return the same rows as before; `active_*` views blocked for API roles; popular searches now catalog-only). ⏳ Still to do: a deactivate → reactivate round trip on a spare account (e.g. `junn223qa`) on device. All of today's work is committed + deployed (`525e625`, merged with Windows' ingest commits as `44dc902`; Vercel + CI green). **iOS needs a new TestFlight build** (bump the build number) to ship it.**

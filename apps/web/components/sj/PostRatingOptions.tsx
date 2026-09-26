@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { MessageSquare, Bookmark, ChevronUp, ChevronDown, ChevronRight } from 'lucide-react';
-import MixPickerModal from './MixPickerModal';
 import Cover from './Cover';
+import { useMixTarget } from './MixTargetContext';
 import { useLanguage } from '../../lib/i18n';
 import { releaseDisplayArtist, releaseDisplayTitle, type SJRelease } from '../../lib/sj/data';
 import { typeLabelKey } from '../../lib/sj/display';
@@ -26,7 +26,9 @@ export default function PostRatingOptions({
   const { t } = useLanguage();
   const [addingComment, setAddingComment] = useState(false);
   const [comment, setComment] = useState('');
-  const [showMixPicker, setShowMixPicker] = useState(false);
+  const { openChange, membership } = useMixTarget();
+  const mixRowRef = useRef<HTMLButtonElement>(null);
+  const inMixes = membership({ kind: 'album', releaseGroupId: release.id }).length;
 
   return (
     <div className="flex flex-col">
@@ -77,11 +79,26 @@ export default function PostRatingOptions({
 
       {/* Add to list row */}
       <button
-        onClick={() => setShowMixPicker(true)}
+        ref={mixRowRef}
+        onClick={() =>
+          mixRowRef.current &&
+          openChange({ kind: 'album', releaseGroupId: release.id }, mixRowRef.current, {
+            coverUrl: release.coverUrl,
+            title: release.title,
+          })
+        }
         className="flex items-center gap-3.5 px-5 py-3 text-left hover:bg-surface transition"
       >
-        <Bookmark size={17} className="text-ink shrink-0" />
+        <Bookmark
+          size={17}
+          className={`shrink-0 ${inMixes > 0 ? 'text-accent fill-current' : 'text-ink'}`}
+        />
         <span className="flex-1 text-[14.5px] text-ink">{t('sj.rate.addToList')}</span>
+        {inMixes > 0 && (
+          <span className="text-[12px] text-muted">
+            {t('sj.mix.inNMixes').replace('{n}', String(inMixes))}
+          </span>
+        )}
         <ChevronRight size={15} className="text-muted" />
       </button>
 
@@ -107,12 +124,6 @@ export default function PostRatingOptions({
           </button>
         )}
       </div>
-
-      <MixPickerModal
-        open={showMixPicker}
-        onClose={() => setShowMixPicker(false)}
-        releaseGroupId={release.id}
-      />
     </div>
   );
 }

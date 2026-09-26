@@ -6,6 +6,7 @@ import { ExternalLink, Flame, ListMusic, UserPlus } from 'lucide-react';
 import Avatar from '../../components/sj/Avatar';
 import { useContextMenuFor, openInNewTab } from '../../components/sj/ContextMenu';
 import FeedCard from '../../components/sj/FeedCard';
+import MixPostCard from '../../components/sj/MixPostCard';
 import TitleTabs from '../../components/sj/TitleTabs';
 import AlbumPeek from '../../components/sj/AlbumPeek';
 import Cover from '../../components/sj/Cover';
@@ -17,9 +18,20 @@ import { FEED_SELECT, type FeedItemRow } from '../../lib/sj/data';
 import { fetchFeed, fetchChartsSummary } from '../../lib/sj/apiClient';
 import { fetchNotInterestedIds, markNotInterested } from '../../lib/sj/notInterested';
 import { displayName } from '../../lib/sj/display';
+import {
+  loadMixShares,
+  loadMixShareSocial,
+  setMixShareLike,
+  type MixSharePost,
+} from '../../lib/sj/mixShares';
 import type { ChartTrendingRPC, SuggestedUserRPC } from '../../lib/db/types';
 
 type FeedTab = 'explore' | 'following';
+
+/** A feed row: a rating post or a mix post (mix_shares), interleaved. */
+type FeedEntry = { kind: 'rating'; item: FeedItemRow } | { kind: 'mix'; post: MixSharePost };
+
+const entryTime = (e: FeedEntry) => (e.kind === 'rating' ? e.item.created_at : e.post.createdAt);
 
 /**
  * Home — the social feed (web sibling of iOS HomeView). Explore = ranked
@@ -30,8 +42,8 @@ export default function HomePage() {
   const { t } = useLanguage();
   const { userId, ready, requireAuth } = useSession();
   const [tab, setTab] = useState<FeedTab>('explore');
-  const [exploreItems, setExploreItems] = useState<FeedItemRow[]>([]);
-  const [followingItems, setFollowingItems] = useState<FeedItemRow[]>([]);
+  const [exploreItems, setExploreItems] = useState<FeedEntry[]>([]);
+  const [followingItems, setFollowingItems] = useState<FeedEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
 
@@ -39,6 +51,10 @@ export default function HomePage() {
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  // Mix posts keep their own like/comment maps — their ids live in another table.
+  const [likedShareIds, setLikedShareIds] = useState<Set<string>>(new Set());
+  const [shareLikes, setShareLikes] = useState<Record<string, number>>({});
+  const [shareComments, setShareComments] = useState<Record<string, number>>({});
 
   const load = useCallback(async () => {
     if (!supabase) {
@@ -52,6 +68,8 @@ export default function HomePage() {
     // the per-user signal queries below. Falls back to the direct query if
     // the route is down.
     const cachedFeedPromise = fetchFeed().catch(() => null);
+    // Mix posts (explore pool) — same 30-newest window iOS uses.
+    const exploreSharesPromise = loadMixShares({ limit: 30 });
 
     // Personalization signals (must resolve before ranking)
     let followingIds = new Set<string>();
@@ -127,6 +145,19 @@ export default function HomePage() {
       );
     }
 
+    // Mix posts: the newest overall for Explore, the followed for Following.
+    const [exploreSharesRes, followingSharesRes] = await Promise.all([
+      exploreSharesPromise,
+      loadMixShares({ userIds: Array.from(followingIds), limit: 60 }),
+    ]);
+    if (exploreSharesRes.error) console.error('[home] mix posts failed:', exploreSharesRes.error.message);
+    const exploreShares = (exploreSharesRes.data ?? []).filter((p) => !blocked.has(p.userId));
+    const followingShares = (followingSharesRes.data ?? []).filter((p) => !blocked.has(p.userId));
+    const shareSocial = await loadMixShareSocial(
+      Array.from(new Set([...exploreShares, ...followingShares].map((p) => p.id))),
+      userId,
+    );
+
     // Social data. The cached payload already carries counts for the pool —
     // only items it doesn't cover (following feed; whole pool on fallback)
     // need a live count query. My-likes/saves are always per-user.
@@ -170,29 +201,48 @@ export default function HomePage() {
       }
     }
 
-    // Rank explore (mirrors iOS HomeViewModel.ranked)
-    const ranked = pool
-      .map((item) => {
+    // Rank explore (mirrors iOS HomeViewModel.ranked — rating and mix posts in
+    // one pool; a mix post has no artist affinity, everything else is shared).
+    const recency = (createdAt: string) => {
+      const ageHours = (Date.now() - new Date(createdAt).getTime()) / 3.6e6;
+      return ageHours < 12 ? 3 : ageHours < 72 ? 1.5 : ageHours < 336 ? 0.5 : 0;
+    };
+    const scored: (readonly [FeedEntry, number])[] = [
+      ...pool.map((item) => {
         let s = 0;
         if (followingIds.has(item.user_id)) s += 8;
         if (likedArtists.has(item.release_groups.artist_display)) s += 5;
         s += Math.log((lCounts[item.id] ?? 0) + 1) * 5;
         s += Math.log((cCounts[item.id] ?? 0) + 1) * 3;
-        const ageHours = (Date.now() - new Date(item.created_at).getTime()) / 3.6e6;
-        if (ageHours < 12) s += 3;
-        else if (ageHours < 72) s += 1.5;
-        else if (ageHours < 336) s += 0.5;
-        return [item, s] as const;
-      })
+        return [{ kind: 'rating', item } as FeedEntry, s + recency(item.created_at)] as const;
+      }),
+      ...exploreShares.map((post) => {
+        let s = 0;
+        if (followingIds.has(post.userId)) s += 8;
+        s += Math.log((shareSocial.likes[post.id] ?? 0) + 1) * 5;
+        s += Math.log((shareSocial.comments[post.id] ?? 0) + 1) * 3;
+        return [{ kind: 'mix', post } as FeedEntry, s + recency(post.createdAt)] as const;
+      }),
+    ];
+    const ranked = scored
       .sort((a, b) => b[1] - a[1])
-      .map(([item]) => item)
+      .map(([entry]) => entry)
       .slice(0, 60);
 
+    // Following is chronological: people you chose, newest first.
+    const followingFeed: FeedEntry[] = [
+      ...following.map((item) => ({ kind: 'rating', item }) as FeedEntry),
+      ...followingShares.map((post) => ({ kind: 'mix', post }) as FeedEntry),
+    ].sort((a, b) => entryTime(b).localeCompare(entryTime(a)));
+
     setExploreItems(ranked);
-    setFollowingItems(following);
+    setFollowingItems(followingFeed);
     setLikeCounts(lCounts);
     setCommentCounts(cCounts);
     setLikedIds(liked);
+    setShareLikes(shareSocial.likes);
+    setShareComments(shareSocial.comments);
+    setLikedShareIds(shareSocial.liked);
     setLoading(false);
   }, [userId]);
 
@@ -225,6 +275,39 @@ export default function HomePage() {
     }
   }
 
+  async function toggleShareLike(post: MixSharePost) {
+    if (!requireAuth() || !userId) return;
+    const wasLiked = likedShareIds.has(post.id);
+    const flip = (like: boolean) => {
+      setLikedShareIds((prev) => {
+        const next = new Set(prev);
+        if (like) next.add(post.id);
+        else next.delete(post.id);
+        return next;
+      });
+      setShareLikes((prev) => ({
+        ...prev,
+        [post.id]: Math.max(0, (prev[post.id] ?? 0) + (like ? 1 : -1)),
+      }));
+    };
+    flip(!wasLiked);
+    const { error } = await setMixShareLike(userId, post.id, !wasLiked);
+    if (error) flip(wasLiked);
+  }
+
+  async function deleteShare(post: MixSharePost) {
+    if (!supabase || !userId) return;
+    const drop = (list: FeedEntry[]) =>
+      list.filter((e) => !(e.kind === 'mix' && e.post.id === post.id));
+    setExploreItems(drop);
+    setFollowingItems(drop);
+    const { error } = await supabase.from('mix_shares').delete().eq('id', post.id);
+    if (error) {
+      console.error('[home] delete mix post failed:', error.message);
+      load();
+    }
+  }
+
   async function notInterestedAlbum(releaseGroupId: string) {
     if (!userId) return;
     setNotInterested((prev) => new Set(prev).add(releaseGroupId));
@@ -233,8 +316,10 @@ export default function HomePage() {
 
   async function blockUser(blockedUserId: string) {
     if (!supabase || !userId || blockedUserId === userId) return;
-    setExploreItems((items) => items.filter((i) => i.user_id !== blockedUserId));
-    setFollowingItems((items) => items.filter((i) => i.user_id !== blockedUserId));
+    const keep = (e: FeedEntry) =>
+      (e.kind === 'rating' ? e.item.user_id : e.post.userId) !== blockedUserId;
+    setExploreItems((items) => items.filter(keep));
+    setFollowingItems((items) => items.filter(keep));
     await supabase
       .from('blocked_users')
       .insert({ blocker_id: userId, blocked_id: blockedUserId });
@@ -244,7 +329,9 @@ export default function HomePage() {
   // what was already persisted when the feed was fetched).
   const items =
     tab === 'explore'
-      ? exploreItems.filter((i) => !notInterested.has(i.release_groups.id))
+      ? exploreItems.filter(
+          (e) => e.kind !== 'rating' || !notInterested.has(e.item.release_groups.id),
+        )
       : followingItems;
 
   return (
@@ -299,23 +386,37 @@ export default function HomePage() {
           </div>
         ) : (
           <div className="flex flex-col gap-2.5 pb-10">
-            {items.map((item) => (
-              <FeedCard
-                key={item.id}
-                item={item}
-                currentUserId={userId ?? null}
-                isLiked={likedIds.has(item.id)}
-                likesCount={likeCounts[item.id] ?? 0}
-                commentsCount={commentCounts[item.id] ?? 0}
-                onLike={() => toggleLike(item)}
-                onBlock={() => blockUser(item.user_id)}
-                onNotInterested={
-                  tab === 'explore' && userId
-                    ? () => notInterestedAlbum(item.release_groups.id)
-                    : undefined
-                }
-              />
-            ))}
+            {items.map((entry) =>
+              entry.kind === 'mix' ? (
+                <MixPostCard
+                  key={`mix:${entry.post.id}`}
+                  post={entry.post}
+                  currentUserId={userId ?? null}
+                  isLiked={likedShareIds.has(entry.post.id)}
+                  likesCount={shareLikes[entry.post.id] ?? 0}
+                  commentsCount={shareComments[entry.post.id] ?? 0}
+                  onLike={() => toggleShareLike(entry.post)}
+                  onBlock={() => blockUser(entry.post.userId)}
+                  onDelete={() => deleteShare(entry.post)}
+                />
+              ) : (
+                <FeedCard
+                  key={entry.item.id}
+                  item={entry.item}
+                  currentUserId={userId ?? null}
+                  isLiked={likedIds.has(entry.item.id)}
+                  likesCount={likeCounts[entry.item.id] ?? 0}
+                  commentsCount={commentCounts[entry.item.id] ?? 0}
+                  onLike={() => toggleLike(entry.item)}
+                  onBlock={() => blockUser(entry.item.user_id)}
+                  onNotInterested={
+                    tab === 'explore' && userId
+                      ? () => notInterestedAlbum(entry.item.release_groups.id)
+                      : undefined
+                  }
+                />
+              ),
+            )}
           </div>
         )}
       </div>
