@@ -4,6 +4,16 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-25 (Mac) — Deleted all 150 bot accounts from production.**
+
+- **User asked** to delete all the bot accounts. Read-only count first: 150 `is_bot` profiles out of 180. The bots owned 10,234 of 10,443 album ratings, about 842 follows and about 1,770 notifications. All 150 existed in `auth.users`; **none had any login method or had ever signed in**, and none had ratings after 2026-07-10. `@wiredcomet` (beta-badge demo, 2026-08-28) is one of them.
+- **Presented the impact before acting** (Rankings gate relocks, charts/feed go nearly empty). Offered back up then delete, delete with no backup, or hold off. **User chose to delete with no backup.**
+- **Deleted** all 150 via `auth.admin.deleteUser` (150/150 succeeded; the rows owned by those users were removed by the cascade). **Verified after:** `is_bot` profiles 0, profiles 30, ratings 209, follows 11, notifications 51, matching the counts predicted beforehand.
+- **Leftover scan** across every table created in migrations × common user columns: only `rating_history.user_id` has 29 rows pointing at missing users. It can't tell bot rows apart from earlier-deleted real accounts, so they were left in place. One-off scripts were written to `apps/web/scripts/_tmp_*` and deleted after running; no secrets were printed.
+- **Follow-up: the Charts tab still showed unlocked on the user's device.** The server gate was correct (`get_rankings_unlock_status` → albums 209/10,000, prestige 6/350, songs 77/2,500, both `false`). The cause was `RankingsViewModel.devForceUnlock = true`, a `#if DEBUG` override from the charts build-out that forces both tabs open in Xcode-run builds, which is how the user tests on device. Flipped to `false`. Release/TestFlight builds never included it; web has no equivalent override. Simulator build: **BUILD SUCCEEDED**.
+
+---
+
 **2026-09-25 (Mac) — Taste tab: charts in sections 4 ("Across the years") and 5 ("How you score") get press-and-hold-then-drag scrubbing back, using the flower button's own hold mechanism.**
 
 - **User reported** the charts' interactions as broken, suspecting the pager speed fix. Asked for the exact symptom first: taps showed tooltips, but hold-and-drag didn't. **Not a regression from the pager work.** Drag-to-scrub was removed on purpose on 2026-09-21 (`binHoverGesture` became tap-only `binTapGesture`) because a `DragGesture` engages on movement in any direction and kept swallowing page swipes. User wants it back, working like the flower button: hold for the same delay, then drag freely.

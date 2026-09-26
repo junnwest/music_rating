@@ -263,7 +263,7 @@ class ChartsViewModel {
     // this out of Release/TestFlight builds entirely -- flip to false or delete this block
     // once the charts work is done and real unlock behavior should be exercised again.
     #if DEBUG
-    static let devForceUnlock = true
+    static let devForceUnlock = false
     #endif
 
     var albumsUnlocked: Bool {

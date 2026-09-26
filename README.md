@@ -10,6 +10,8 @@ Every record you've loved — rated, cataloged, and remembered. A music platform
 
 ## ⚠️ Current state (2026-09-20)
 
+**2026-09-25 — the bot population is gone.** All 150 `is_bot` accounts were deleted (no backup), leaving 30 real users and 209 album ratings; Charts/Rankings are locked again (209/10,000). See START HERE.
+
 **2026-09-20 — catalog visibility + iTunes gap-filling.** Three unrelated faults made the catalog look far emptier than it is:
 
 1. **FIXED — the artist page was hiding releases.** `get_artist_release_groups` ordered newest-first and cut at 60; bootlegs and posthumous comps are the newest rows, so **Nirvana showed 0 of Bleach/Nevermind/In Utero (174 groups, 60 shown)** and Ed Sheeran 1 of 4. **1,572 artists had >60 groups and were all truncated.** Migration `20260920000001` orders by type tier then date and raises the default limit to 500; `artist/[id]/page.tsx` no longer passes `lim: 60`. Verified: Nirvana 3/3, Ed Sheeran 4/4.
@@ -39,8 +41,17 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
-> **🔵 SESSION CLOSE (2026-09-25, Mac) — Taste tab sections 4/5 charts: press-and-hold (0.06s, same as the flower button) then drag now scrubs across bins with a live tooltip. Taps still toggle. Build bumped 20 → 21 for TestFlight. Full detail in SESSIONS.md (2026-09-25).**
-> **Needs a live device test**: hold on a chart, then drag. The tooltip should follow your finger, with a selection haptic on each bin. A vertical swipe that starts on the chart must still turn the page (this was the 09-21 conflict). Tapping the shown bin again should hide it. Build-verified only. `ActivitySparkView` (By the numbers) is still tap-only; it's a one-line addition if wanted.
+> **🔵 SESSION CLOSE (2026-09-25/26, Mac) — Three things: chart scrubbing on the Taste tab, build 21 for TestFlight, and every bot account deleted from production (which re-locks Charts). Full detail in SESSIONS.md (2026-09-25).**
+> 1. **Taste tab charts (sections 4 "Across the years" / 5 "How you score")**: hold 0.06s (same `FlowerRateControl.holdBeforeDrag`/`allowableMovement` constants as the flower button), then drag to scrub bins with a live tooltip and a selection haptic per bin. Taps still toggle. New `BinScrubRecognizer` in `TasteView.swift`. This was not a regression from the pager speed fix: drag-scrub had been removed on purpose on 09-21 (tap-only) to stop it swallowing page swipes. `ActivitySparkView` (By the numbers) is still tap-only; it's a one-line addition if wanted.
+> 2. **Build bumped 20 → 21** (`85911e7`, pushed). Covers the 09-23 search overhaul, removal of the flower tap-to-sheet, the Taste tab's Back to Top button, and #1. **The user archives and uploads to TestFlight from Xcode.**
+> 3. **🔴 All 150 `is_bot` accounts DELETED from production** (user's call, **no backup**). None had ever signed in or had a login method; `@wiredcomet` (the beta-badge demo account) was one of them. **Now: 30 profiles · 209 album ratings (was 10,443) · 11 follows · 51 notifications.** Rankings/Charts gate: albums 209/10,000 (prestige 6/350), songs 77/2,500, **both locked**. Charts, community averages and the Explore feed are nearly empty until real users rate. 29 `rating_history` rows point at users that no longer exist (bot or earlier-deleted real account, can't tell), left in place. The bot scripts (`create-bots.ts`, `generate-bot-ratings.ts`, `generate-bot-social.ts`, `topup-prestige-coverage.ts`) are still in `apps/web/scripts/`; don't re-run them unless bots are wanted back.
+> 4. **iOS Charts re-locked**: the tab still showed unlocked because of `RankingsViewModel.devForceUnlock = true` (`RankingsView.swift`), a `#if DEBUG` override that only affects Xcode-run builds; TestFlight/Release never had it. Flipped to `false`. Not in build 21, and it doesn't need to be, since Release builds already honored the gate.
+>
+> **Next session:**
+> - **Live device test** of the chart scrub. Hold then drag should show the tooltip following your finger. A vertical swipe that starts on the chart must still turn the page. Tapping the shown bin again should hide it. Also run the still-pending 09-23 checks below (search, flower tap, Back to Top).
+> - **Upload build 21** to TestFlight if not done yet.
+> - **Expect empty-looking screens** (Charts locked, sparse feed and album pages) now that the bots are gone. Screens that assumed bot density may need empty states; worth a quick pass.
+> - **Pipeline weekly health check due 2026-09-27** (Windows; see PIPELINE_CHECKS.md).
 >
 > **🔵 SESSION CLOSE (2026-09-23, Mac) — Search overhaul (web + iOS: Top Match, Users, Popular Searches, category filter pills) and Taste tab work (flower tap-to-modal removed, hold-delay retuned to 0.06s, wrap-around loop swipe replaced with a "Back to Top" button). All three new migrations ✅ APPLIED and confirmed live (`search_artists`/`search_release_groups` now return `score`; `search_users`/`get_popular_searches` both verified working). Full round-by-round detail in SESSIONS.md (2026-09-23, five entries).**
 > **Nothing from today has been tested on a physical device yet** — every iOS change this session is build-verified only (`xcodebuild` **BUILD SUCCEEDED** at every step, no warnings). Before trusting any of it:
