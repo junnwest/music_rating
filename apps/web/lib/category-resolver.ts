@@ -1,69 +1,95 @@
 /**
  * Picks the homepage recommendation categories for a given user.
  *
+ * Categories are now a PROJECTION of the taxonomy (lib/genres/categories.ts —
+ * surface nodes), and membership is id-based (a tag resolves to the category node
+ * or a descendant), so this file no longer carries substring `genreFilters`; it
+ * only ranks and diversifies. (GENRE_TAXONOMY.md §4 Phase 2 task 2.)
+ *
  * Signals used (in priority order):
  *   1. Onboarding `preferred_genres` — explicit user signal
- *   2. Rating history — albums rated >= 3.5 stars, genre-tallied (revealed
- *      preference; weighted lower than onboarding to give recent ratings a
- *      voice without overriding stated preferences)
- *   3. Default categories — popular global picks shown to users with no
- *      preferences yet
+ *   2. Rating history — albums rated >= 3.5 stars, tallied by category membership
+ *      (revealed preference; weighted lower than onboarding so recent ratings get
+ *      a voice without overriding stated preferences)
+ *   3. Default mix — the surface families, shown to users with no preferences yet
  *
- * Diversification: caps each origin (korean/japanese/western/global) at
- * MAX_PER_ORIGIN to avoid showing an all-Korean grid even to users who
- * picked only Korean genres. Discovery > over-fitting.
+ * Diversification: caps each origin (korean/japanese/western/…/global) at
+ * MAX_PER_ORIGIN so a user who picked only Korean genres still sees a varied grid.
  */
 
-import { GENRE_CATEGORIES, type GenreCategory } from './genre-categories';
+import {
+  CATEGORIES,
+  albumMatchesCategory,
+  type GenreCategory,
+} from './genres/categories';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-const TARGET_COUNT = 10;       // how many rows we aim to surface on the homepage
-const MAX_PER_ORIGIN = 4;      // cap so no single origin dominates the grid
+const TARGET_COUNT = 10; // how many rows we aim to surface on the homepage
+const MAX_PER_ORIGIN = 4; // cap so no single origin dominates the grid
 
 const SCORE_ONBOARDING_MATCH = 100;
-const SCORE_RATING_MATCH = 5;  // per matching rated album (capped — see below)
-const SCORE_RATING_CAP = 50;   // ceiling on rating contribution per category
+const SCORE_RATING_MATCH = 5; // per matching rated album (capped — see below)
+const SCORE_RATING_CAP = 50; // ceiling on rating contribution per category
 const SCORE_DEFAULT = 20;
 const SCORE_SORT_ORDER_WEIGHT = 0.01;
 
+// Only sound families are shown by default (a scene/subgenre row needs an explicit
+// user signal to surface); everything else can still rank in via a signal.
+const DEFAULT_CATEGORY_IDS = new Set<string>([
+  'pop',
+  'rock',
+  'hip-hop',
+  'rnb-soul',
+  'electronic',
+  'jazz',
+  'folk',
+  'classical',
+  'metal',
+]);
+
 interface UserSignals {
-  preferredGenres: Set<string>;        // values from onboarding `preferred_genres`
-  ratedGenreTokens: Map<string, number>; // genre token → count of albums rated >= 3.5
+  /** Onboarding labels, e.g. "K-Pop" — treated as raw tags and resolved. */
+  preferredGenres: string[];
+  /** genres[] of each album the user rated >= 3.5. */
+  highRatedGenres: string[][];
 }
 
 async function loadUserSignals(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<UserSignals> {
-  const signals: UserSignals = {
-    preferredGenres: new Set(),
-    ratedGenreTokens: new Map(),
-  };
+  const signals: UserSignals = { preferredGenres: [], highRatedGenres: [] };
 
   const [{ data: profile }, { data: ratings }] = await Promise.all([
     supabase.from('profiles').select('preferred_genres').eq('id', userId).maybeSingle(),
-    supabase.from('ratings').select('release_id, score').eq('user_id', userId).gte('score', 3.5).limit(500),
+    supabase
+      .from('ratings')
+      .select('release_group_id, score')
+      .eq('user_id', userId)
+      .gte('score', 3.5)
+      .limit(500),
   ]);
 
   if (profile?.preferred_genres) {
-    for (const g of profile.preferred_genres.split(',').map((s: string) => s.trim()).filter(Boolean)) {
-      signals.preferredGenres.add(g);
-    }
+    signals.preferredGenres = profile.preferred_genres
+      .split(',')
+      .map((s: string) => s.trim())
+      .filter(Boolean);
   }
 
-  const highRatedIds = (ratings ?? []).map((r: any) => r.release_id);
+  const highRatedIds = (ratings ?? [])
+    .map((r: { release_group_id: string | null }) => r.release_group_id)
+    .filter(Boolean);
   if (highRatedIds.length > 0) {
-    const { data: releases } = await supabase
-      .from('releases')
+    // release_groups.genres is text[] (post-renovation); the old code read the
+    // dropped `releases` comma-string column and always came back empty.
+    const { data: groups } = await supabase
+      .from('release_groups')
       .select('id, genres')
       .in('id', highRatedIds);
 
-    for (const r of releases ?? []) {
-      if (!r.genres) continue;
-      const tokens = r.genres.split(',').map((g: string) => g.trim().toLowerCase()).filter(Boolean);
-      for (const t of tokens) {
-        signals.ratedGenreTokens.set(t, (signals.ratedGenreTokens.get(t) ?? 0) + 1);
-      }
+    for (const g of groups ?? []) {
+      if (Array.isArray(g.genres) && g.genres.length) signals.highRatedGenres.push(g.genres);
     }
   }
 
@@ -71,21 +97,20 @@ async function loadUserSignals(
 }
 
 function scoreCategory(cat: GenreCategory, signals: UserSignals | null): number {
-  let score = -cat.sortOrder * SCORE_SORT_ORDER_WEIGHT;
+  let score = 0;
 
-  if (cat.isDefault) score += SCORE_DEFAULT;
+  if (DEFAULT_CATEGORY_IDS.has(cat.id)) score += SCORE_DEFAULT;
 
   if (signals) {
-    if (cat.onboardingGenre && signals.preferredGenres.has(cat.onboardingGenre)) {
+    // Onboarding: a preferred label that resolves under this category is a strong
+    // explicit signal. Reuse the id-based membership (label treated as a tag).
+    if (signals.preferredGenres.some((label) => albumMatchesCategory([label], cat.id))) {
       score += SCORE_ONBOARDING_MATCH;
     }
-    // Count how many of the user's high-rated albums fall under this category
+    // Revealed preference: how many high-rated albums fall under this category.
     let ratingMatch = 0;
-    for (const filter of cat.genreFilters) {
-      const f = filter.toLowerCase();
-      for (const [token, count] of signals.ratedGenreTokens) {
-        if (token.includes(f) || f.includes(token)) ratingMatch += count;
-      }
+    for (const genres of signals.highRatedGenres) {
+      if (albumMatchesCategory(genres, cat.id)) ratingMatch += 1;
     }
     score += Math.min(ratingMatch * SCORE_RATING_MATCH, SCORE_RATING_CAP);
   }
@@ -118,12 +143,19 @@ export async function getCategoriesForUser(
 ): Promise<GenreCategory[]> {
   let signals: UserSignals | null = null;
   if (supabase && userId) {
-    try { signals = await loadUserSignals(supabase, userId); }
-    catch { signals = null; }
+    try {
+      signals = await loadUserSignals(supabase, userId);
+    } catch {
+      signals = null;
+    }
   }
 
-  const scored = GENRE_CATEGORIES
-    .map((cat) => ({ cat, score: scoreCategory(cat, signals) }))
+  const scored = CATEGORIES.map((cat, i) => ({
+    cat,
+    // Ties break on taxonomy order (earlier = broader/more prominent family).
+    score: scoreCategory(cat, signals) - i * SCORE_SORT_ORDER_WEIGHT,
+  }))
+    .filter((s) => s.score > 0) // drop categories with no signal and no default
     .sort((a, b) => b.score - a.score)
     .map((s) => s.cat);
 

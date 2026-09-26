@@ -28,7 +28,21 @@ import type {
 
 type ChartMode = 'albums' | 'songs';
 
-const GENRES = ['Hip Hop', 'K-Pop', 'Jazz', 'Electronic', 'Classical', 'Metal', 'R&B', 'Pop'];
+// [display label, taxonomy family node id]. The value passed to the leaderboard
+// RPC (p_genre) is the FAMILY ID, so a broad button matches that family + all its
+// descendants via _taxonomy_closure (a "House" album counts under Electronic,
+// "Neo Soul" under R&B, …). Display 'R&B' can't just be the raw slug: it folds to
+// the narrower r-and-b genre node, so it maps explicitly to the rnb-soul family.
+const GENRES: [string, string][] = [
+  ['Hip Hop', 'hip-hop'],
+  ['K-Pop', 'k-pop'],
+  ['Jazz', 'jazz'],
+  ['Electronic', 'electronic'],
+  ['Classical', 'classical'],
+  ['Metal', 'metal'],
+  ['R&B', 'rnb-soul'],
+  ['Pop', 'pop'],
+];
 const COUNTRIES: [string, string | null][] = [
   ['Global', null],
   ['KR', 'kr'],
@@ -352,7 +366,7 @@ function RankingBlock() {
       <div className="px-4 pt-3">
         <FilterRow
           label={t('sj.charts.genre')}
-          options={[[t('sj.charts.all'), null], ...GENRES.map((g) => [g, g] as [string, string])]}
+          options={[[t('sj.charts.all'), null] as [string, string | null], ...GENRES]}
           value={genre}
           onChange={setGenre}
         />

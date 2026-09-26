@@ -62,6 +62,24 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 > - **Expect empty-looking screens** (Charts locked, sparse feed and album pages) now that the bots are gone. Screens that assumed bot density may need empty states; worth a quick pass.
 > - **Pipeline weekly health check due 2026-09-27** (Windows; see PIPELINE_CHECKS.md).
 >
+> **📐 PHASE 2 COMPLETE + PHASE 3 STARTED (2026-09-21/22, Windows, web) — Genre taxonomy rebuild: every consumer now derives from the taxonomy; Phase 3's merge core is built and legacy `releases.genres` reads are retired. Full plan + execution checklist + work log in [`GENRE_TAXONOMY.md`](GENRE_TAXONOMY.md).**
+> Genre knowledge is spread across **six independent, drifting systems** (raw `genres[]`, `genre-categories.ts`, the triplicated `primaryGenre.ts` `PRECEDENCE`, `genreSynonyms.ts`, `profile.ts` `NEAR_DUP_COSINE`, `albumVector.ts` `tagScene`). **Decision:** one canonical taxonomy DAG (`apps/web/lib/genres/taxonomy.ts`, 164 nodes) as source of truth; everything else derives from it. New storage = `release_genres` join table fed by one idempotent resolver.
+> **✅ Phase 0 done:** the 164-node DAG + validator `npm run taxonomy:validate` (green, I1–I8).
+> **✅ Phase 1 done + APPLIED:** `apps/web/lib/genres/resolver.ts` (`resolveGenre`/`ancestorsOf`/`primaryOf`), golden tests 11/11 (`npx vitest run lib/genres`). Migration `20260921000000_release_genres.sql` **applied to Supabase** (via `scripts/db-exec.ts` — no CLI/psql on this box; verified live).
+> **✅ Phase 1.5 (taxonomy expansion):** grew the taxonomy **164→304 nodes** to cover the top unmapped tags the backfill surfaced (death/black metal, metalcore, grunge, synthwave, breakcore, samba, afrobeat, bebop, …); coverage **90.3%→96.3%** of catalog support, validator green.
+> **✅ Backfill RUN:** `npm run taxonomy:backfill` → **~850k `release_genres` rows over ~339k releases** (`is_primary` on each), **35,469 `genre_unmapped`** rows (the review queue — 919 distinct long-tail tags). Fixed a paging bug mid-run (`pageAll()` needed `.order('id')`; unstable `.range()` had skipped ~144k releases). Idempotent — safe to re-run after growing the taxonomy.
+> **✅ Phase 2 task 1 (primary genre → taxonomy walk) — TASTE side done + APPLIED:** `lib/taste/primaryGenre.ts` `primaryTagOf` derives the primary from `primaryOf`/`resolveGenre` and returns the **raw array element** (genre_weights KEYS stay raw — iOS key-shape unaffected; values self-heal on next profile view — user cleared value changes). TS `PRECEDENCE` deleted; golden tests `lib/taste/primaryGenre.test.ts` (7). SQL twin `_primary_genre_tag` repointed via a **generated** taxonomy SQL projection (`scripts/gen-taxonomy-sql.ts` → migration `20260921000001_genre_taxonomy_sql.sql`, **applied**; `_taxonomy_alias`/`_taxonomy_node` + `_genre_resolve`); SQL parity with the TS golden cases verified live. SQL taste `PRECEDENCE` deleted.
+> **✅ Phase 2 task 2 (chart-primary → closure + homepage categories → surface projection) — DONE + APPLIED 2026-09-22:** built id-based category membership as a generated **`_taxonomy_closure`** (708 edges) + `_primary_genre_id`. **Chart prong:** `rg_primary_genre` now stores node **ids** (`_compute_primary_genre`→`_primary_genre_id`; trigger writes ids), `_rg_primary_matches` rebuilt onto closure membership (migration `20260922000001`, applied; 3,818 rows re-backfilled live). The 5 chart RPCs + trigger untouched. Fixes the substring matcher's coarse-only leak (`house`/`techno` now count under the `Electronic` filter — 503 vs old 221 — while `k-pop` stays out of `Hip-Hop`). `charts/page.tsx` `GENRES` buttons now pass the family node id (`R&B`→`rnb-soul`). **Homepage prong:** new `lib/genres/categories.ts` projects categories from `surface` nodes (`albumMatchesCategory` = id membership); hand-maintained `genre-categories.ts` deleted; `category-resolver.ts` rewritten + its stale `releases`(comma-string) query fixed to `release_groups`(text[]). Tests 34/34, `taxonomy:validate` green, SQL↔TS parity verified live.
+> **✅ Phase 2 COMPLETE (2026-09-22):** synonyms/scene/display + embeddings all derive from the taxonomy. `genreSynonyms` groups on the resolver node id; `tagScene` uses scene ancestry (regex demoted); `displayGenre` uses node `display.en`; `genreVector`/`genreSupport` resolve tag→canonical id so all spellings share one vector (`NEAR_DUP_COSINE` demoted). `build-genre-embeddings.ts` is id-keyed (v2) + ready — the artifact regen (`npm run build:genre-embeddings`) is a deliberate rec-validated follow-up (the lookup layer already delivers id-canonical on the live v1 artifact). Tests `lib/taste/taxonomyDerivation.test.ts` (10).
+> **◐ Phase 3 STARTED (2026-09-22):** **merge model** `lib/genres/merge.ts` (trust × confidence × agreement → ranked canonical-id displayed set) — tested (7) + validated on live `release_genres` via READ-ONLY `scripts/merge-genres.ts` (merged set == today's `genres[]` for ~95% of sampled groups). **Legacy `releases.genres` reads retired** — audited (no live SQL reads it), last app reader `api/genres/top` repointed to `release_groups.genres`.
+> **✅ Phase 3 COMPLETE (2026-09-23) — genre display CUT OVER.** Every album's displayed `release_groups.genres` is now derived from `release_genres` (`lib/genres/display.ts`; one-off pass `scripts/derive-display-genres.ts`: ~332.6k albums with release_genres rows checked, 4,391 (1.3%) changed (synonym folds such as electronica→electronic / glam→glam rock / alternative→alternative rock, scene roots dropped, Last.fm/manual/MB evidence), 82 legacy rows retired (MB-covered albums), 34 chart primaries re-synced (0/3,812 stale after)). Format unchanged (raw-tag spellings in the same column → iOS/taste/embeddings keys unaffected). Pre-cutover arrays backed up in `release_groups_genres_backup` (restore statement in migration `20260923000001`). The writer keeps display in sync and retires `legacy` rows as MB covers each album. Dead genre scripts deleted. **⚠ On the pipeline device: `git pull` + restart the pipeline, then run the pipeline checks.** Optional follow-ups: `npm run build:genre-embeddings`; grow taxonomy from the Last.fm unmapped list; fix 33 unmatched entries in `genre-overrides.json`.
+>
+> **◐ Phase 3 acquisition cutover — groundwork + MusicBrainz DONE (2026-09-22):** `release_genres` re-keyed to PK(rg, genre_id, **source**) (migration `20260922000002`, applied); shared diff-first writer `lib/genres/sourceWriter.ts`; per-source confidence scaling in `merge.ts`; `mb-ingest` now writes `release_genres(source='musicbrainz', confidence=votes)` on every ingest/freshness re-poll (best-effort; `RELEASE_GENRES_WRITE=0` disables). Verified on My Bloody Valentine. **⚠ Restart the catalog pipeline to pick this up, then run the pipeline checks** — the freshness lane then backfills MB rows for existing albums with no extra MB calls. **Also DONE same day:** Last.fm source (`enrich:subgenres` → `release_genres(source='lastfm')`, full run: 3,838 albums, 3,772 Last.fm hits, 2,062 with ≥1 taxonomy genre, 3,897 lastfm rows written, 144 unmapped MB genres staged (top growth candidates: heartland rock, proto-punk, glitch hop, roots rock, rapcore, sophisti-pop)), manual source (`apply-genre-overrides.ts`, 53/86 matched + applied), iTunes/Deezer live-ingest hooks. Scene-root tags (`korean`) kept as evidence, excluded from display. Kill-switch for all live genre writes: `RELEASE_GENRES_WRITE=0`. **Remaining (human-gated):** restart pipeline → retire `legacy` rows → display cutover (sink/format, display cap, manual-as-override?) → delete dead scripts (list in GENRE_TAXONOMY.md §4 Phase 3). Details: GENRE_TAXONOMY.md §4 Phase 3.
+>
+> **▶ Next action (original plan, still the roadmap):** **Phase 3 staged acquisition cutover (deliberate, NOT a single pass):** rewrite each acquisition script (`backfill-genres-itunes/lastfm/rg*`, `enrich-*`, `mb-ingest`) to resolve its tags and upsert `release_genres` under its own `source` + `confidence` (additive — one source at a time), validate with `scripts/merge-genres.ts`, THEN cut the display over (choose sink/format — canonical ids vs display strings, in-place vs new column: the one human-gated big-bang), THEN delete the proven-dead per-source scripts. Also optional: run `build:genre-embeddings` to materialize the v2 id-keyed artifact.
+>
+> **All Phase-2/3 code is merged to `main` (PR #1, 2026-09-26).**
+
 > **🔵 SESSION CLOSE (2026-09-23, Mac) — Search overhaul (web + iOS: Top Match, Users, Popular Searches, category filter pills) and Taste tab work (flower tap-to-modal removed, hold-delay retuned to 0.06s, wrap-around loop swipe replaced with a "Back to Top" button). All three new migrations ✅ APPLIED and confirmed live (`search_artists`/`search_release_groups` now return `score`; `search_users`/`get_popular_searches` both verified working). Full round-by-round detail in SESSIONS.md (2026-09-23, five entries).**
 > **Nothing from today has been tested on a physical device yet** — every iOS change this session is build-verified only (`xcodebuild` **BUILD SUCCEEDED** at every step, no warnings). Before trusting any of it:
 > - **Search** (web + iOS): search a query with a strong artist match, a strong album match, and a username match — confirm Top Match picks the right one and Users never appears there; try the category filter pills (tap one from "All," multi-select, deselect back to zero and confirm it lands back on "All"); check Popular Searches chips appear once real traffic crosses the 6-query threshold (expected to stay empty for a while — traffic is very low right now, not a bug).
@@ -1370,12 +1388,12 @@ All pipeline steps done including HNSW index rebuild (2026-06-09). **Next action
 
 | Step | Command | Status |
 |------|---------|--------|
-| backfill:genres (passes 1+2) | `npm run backfill:genres` | ✅ done (2026-06-01) |
+| backfill:genres (passes 1+2) | ~~`npm run backfill:genres`~~ (script deleted 2026-09-23 — wrote the dead `releases.genres`) | ✅ done (2026-06-01) |
 | backfill:native:releases | `npm run backfill:native:releases` | ✅ done (2026-06-01) |
 | check:completeness | `npm run check:completeness` | ✅ done (2026-06-04) |
 | queue:ingest (runs 1–6) | `npm run queue:ingest` | ✅ done — ~347k releases |
 | queue:discover (runs 1–4) | `npm run queue:discover` | ✅ done — queue stable |
-| enrich:genres:lastfm | `npm run enrich:genres:lastfm` | ✅ done (2026-06-07) — 15,460 enriched |
+| enrich:genres:lastfm | ~~`npm run enrich:genres:lastfm`~~ (script deleted 2026-09-23 — superseded by `enrich:subgenres` → `release_genres`) | ✅ done (2026-06-07) — 15,460 enriched |
 | backfill:embeddings | `npm run backfill:embeddings` | ✅ done (2026-06-10); re-run 2026-06-18 for expansion releases — +69,795 embedded, 0 failed |
 | Rebuild HNSW index | psql direct (port 5432) | ✅ done (2026-06-09); ⏳ **rebuild owed** — the 69,795 new embeddings (2026-06-18) aren't indexed yet |
 | backfill:tracklists | `npm run backfill:tracklists` | ✅ done (2026-06-16) — 107,778 filled (106,652 via itunes_id, 1,126 via search), 7,826 no tracks (93% coverage) |
@@ -1401,7 +1419,7 @@ All commands run from `apps/web/` unless noted. Sessions: check this list when p
 | What | How | When | Why |
 |---|---|---|---|
 | **Pipeline health checks** | `npm run pipeline:status` / `npm run pipeline:verify` per [`PIPELINE_CHECKS.md`](PIPELINE_CHECKS.md) | Weekly steady-state; **always** after a pipeline restart, migration, or pipeline code change | Catches stalls, IO starvation, structural drift. Follow that file's cadence log. |
-| **Taste maintenance trio** (run in this order) | 1. `npm run enrich:subgenres` 2. `npm run build:genre-embeddings` 3. `npx tsx --env-file=.env.local scripts/db-exec.ts supabase/migrations/20260712000010_taste_primary_weights.sql` (safe to re-run — replaces functions idempotently + fully rebuilds `user_taste_profiles`) | Monthly, or after a burst of new users/ratings | Newly rated albums have no album-level Last.fm sub-genre tags until the next enrich pass; embeddings go stale as the catalog's tag co-occurrence grows; profiles derive from `genres[]` so they must be re-derived after enrichment changes tags. |
+| **Taste maintenance trio** (run in this order) — since 2026-09-23 `enrich:subgenres` writes `release_genres(source='lastfm')` and the display sync re-derives the affected albums' `genres[]`, so steps 2–3 still apply after it | 1. `npm run enrich:subgenres` 2. `npm run build:genre-embeddings` 3. `npx tsx --env-file=.env.local scripts/db-exec.ts supabase/migrations/20260712000010_taste_primary_weights.sql` (safe to re-run — replaces functions idempotently + fully rebuilds `user_taste_profiles`) | Monthly, or after a burst of new users/ratings | Newly rated albums have no album-level Last.fm sub-genre tags until the next enrich pass; embeddings go stale as the catalog's tag co-occurrence grows; profiles derive from `genres[]` so they must be re-derived after enrichment changes tags. |
 | **`rg_primary_genre` refresh** | `npx tsx --env-file=.env.local scripts/db-exec.ts --sql "WITH fresh AS MATERIALIZED (SELECT s.release_group_id, _compute_primary_genre(rg.genres) AS pg_new, s.primary_genre AS pg_old FROM rg_primary_genre s JOIN release_groups rg ON rg.id = s.release_group_id) UPDATE rg_primary_genre s SET primary_genre = f.pg_new FROM fresh f WHERE f.release_group_id = s.release_group_id AND f.pg_new IS DISTINCT FROM f.pg_old"` (~6s) | After ANY bulk edit to `release_groups.genres` (incl. the enrich pass above) | Its sync trigger only fires on rating INSERT — genre-array edits silently never update chart classification otherwise. |
 | **Coverage verification** | `npm run verify:coverage` (READ-ONLY) | Occasionally, after significant catalog/matching work | Measures catalog match quality vs real iTunes/Spotify discographies; classifies misses as catalog-gap vs match-bug. |
 
@@ -1824,25 +1842,28 @@ npx tsx --env-file=.env.local scripts/backfill-tracklists.ts --skip-search     #
 
 Singles skipped by default. State file: `scripts/backfill-tracklists-state.json`. ✅ **Full run complete (2026-06-16):** 115,604 non-single rows processed — 107,778 filled (106,652 via `itunes_id`, 1,126 via search), 7,826 no tracks found (93% coverage). The 7,826 misses are releases with no resolvable iTunes match (long-tail / non-iTunes catalog). Future ingests can populate tracklists inline with `npm run queue:ingest -- --with-tracks` (off by default to keep the discover→ingest loop fast).
 
-#### Genre pipeline (run after queue ingest)
+#### Genre pipeline (per-source → `release_genres` → merged display)
+
+Since 2026-09-22/23 (genre taxonomy Phase 3, see `GENRE_TAXONOMY.md`) every source writes its own
+rows to `release_genres` through `lib/genres/sourceWriter.ts`, and each album's displayed
+`release_groups.genres` is re-derived from them (`lib/genres/display.ts`). The old per-source
+scripts that wrote the dead `releases.genres` column (`backfill:genres`, `backfill:genres:lastfm`,
+`enrich:genres:lastfm`, Spotify `backfill-genres.ts`, `backfill-primary-genre.ts`) were deleted.
 
 ```bash
-# Tier 1: iTunes backfill (fills null genres from iTunes search — resumable)
-npm run backfill:genres           # or --dry-run
-# State: scripts/backfill-genres-itunes-state.json
+# MusicBrainz / iTunes / Deezer: written automatically by the pipeline on ingest + freshness re-polls
+# (RELEASE_GENRES_WRITE=0 disables). Nothing to run.
 
-# Tier 2: Last.fm fallback (fills remaining nulls via album.gettoptags)
-npm run backfill:genres:lastfm    # or --dry-run
-# State: scripts/backfill-genres-lastfm-state.json
+# Last.fm album tags for rated ∪ prestige albums (resumable with --offset=N)
+npm run enrich:subgenres          # or: npm run enrich:subgenres:dry
 
-# Tier 3: Hand-curated overrides (68 high-value rows, applied 2026-05-24)
-# Already done. Re-run if you add new overrides to genre-overrides.json:
+# Hand-curated overrides (source='manual', top trust): edit scripts/genre-overrides.json, then
+npx tsx --env-file=.env.local scripts/apply-genre-overrides.ts --dry-run   # lists unmatched entries
 npx tsx --env-file=.env.local scripts/apply-genre-overrides.ts
 
-# Supplementary: Last.fm enrichment — MERGES tags with existing genres (not just fallback)
-# Run on ALL releases (not just null-genre ones). iTunes wrote "k-pop", Last.fm adds "r&b" → "k-pop,r&b"
-npm run enrich:genres:lastfm      # or --dry-run
-# State: scripts/enrich-genres-lastfm-state.json
+# Re-derive every album's displayed genres (only after a merge-model/taxonomy change;
+# the writer keeps them in sync otherwise). Backup table: release_groups_genres_backup.
+npx tsx --env-file=.env.local scripts/derive-display-genres.ts --dry-run --limit=20000
 ```
 
 #### Normalize historical data

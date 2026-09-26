@@ -66,3 +66,5 @@ backups/
 # Run logs from scripts/ and scripts/data/ — transcripts of a single run, not source.
 apps/web/scripts/*.log
 apps/web/scripts/data/*.log
+GENRE_VOCAB_DUMP.tsv
+MB_GENRES.txt

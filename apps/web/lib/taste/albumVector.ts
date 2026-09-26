@@ -24,6 +24,8 @@ export const W_SCENE = 0.15;
  * zero out everything else. */
 const SD_FLOOR_YEARS = 8;
 
+import { resolveGenre, ancestorsOf } from '../genres/resolver';
+
 export type Scene = 'kr' | 'jp' | 'west' | 'other';
 
 const WEST = new Set(['US', 'GB', 'CA', 'AU', 'IE', 'NZ', 'XW', 'XE']);
@@ -38,14 +40,28 @@ export function sceneOf(country: string | null | undefined): Scene | null {
 }
 
 /**
- * Scene implied by a genre tag's *name* (kr/jp only — nothing else is
- * derivable from a tag). Used by the clustering step: the co-occurrence
- * embeddings put j-pop and k-pop at cosine ≈ 0.55 (they share listeners in
- * this catalog), which is above the cluster-join threshold — so without this,
- * a J-pop tag merges into a K-pop-anchored world and the world's country
- * profile then labels it "Korean scene". Verified live 2026-08-10.
+ * Scene implied by a genre tag (kr/jp only — nothing else is derivable from a
+ * tag). Used by the clustering step: the co-occurrence embeddings put j-pop and
+ * k-pop at cosine ≈ 0.55 (they share listeners in this catalog), which is above
+ * the cluster-join threshold — so without this, a J-pop tag merges into a
+ * K-pop-anchored world and the world's country profile then labels it "Korean
+ * scene". Verified live 2026-08-10.
+ *
+ * DERIVED FROM THE TAXONOMY (Phase 2, 2026-09-22): the primary source is the
+ * tag's scene ancestry — a tag that resolves to a node under the `korean` scene
+ * root is kr, under `japanese` is jp (so `k-rap`, `trot`, `city-pop`, … are
+ * covered structurally, no name pattern needed). The legacy name regex below is
+ * kept only as a SAFETY NET for tags with no taxonomy node yet.
  */
 export function tagScene(tag: string): Scene | null {
+  const id = resolveGenre(tag);
+  if (id) {
+    const anc = ancestorsOf(id);
+    if (id === 'korean' || anc.has('korean')) return 'kr';
+    if (id === 'japanese' || anc.has('japanese')) return 'jp';
+    // No scene ancestry — fall through to the name regex (never regress a tag the
+    // regex catches but whose node isn't scene-qualified in the taxonomy yet).
+  }
   const t = tag.toLowerCase().replace(/-/g, ' ').replace(/&/g, ' and ').replace(/\s+/g, ' ').trim();
   if (t.includes('korean') || /^k (pop|rap|rock|indie|ballad|folk|hip hop|r and b|rnb)\b/.test(t) || t === 'trot') {
     return 'kr';

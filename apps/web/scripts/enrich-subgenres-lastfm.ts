@@ -1,25 +1,28 @@
 /**
- * enrich-subgenres-lastfm.ts — RYM-style per-ALBUM sub-genre enrichment for the
- * albums the taste system actually reads (rated ∪ prestige pool by default).
+ * enrich-subgenres-lastfm.ts — the Last.fm genre SOURCE (GENRE_TAXONOMY.md Phase 3):
+ * per-ALBUM tags for the albums the taste system actually reads (rated ∪ prestige by
+ * default), landed in `release_genres(source='lastfm', confidence=tag weight)`.
  *
- * For each album, calls Last.fm `album.getTopTags` (album-level and count-ordered,
- * i.e. importance-ordered — unlike our MB arrays, which are alphabetical) and APPENDS
- * new sub-genre tags to release_groups.genres. A tag is admitted only if it is either
- * (a) already in the catalog's genre vocabulary, or (b) a canonical MusicBrainz genre
- * (fetched once from /ws/2/genre/all) — this rejects Last.fm noise ("seen live",
- * "favorites", decades, country adjectives) while still letting genuinely new
- * sub-genres ("twee pop", "cloud rap") enter the vocabulary.
+ * For each album, calls Last.fm `album.getTopTags` (album-level and count-ordered, weight
+ * 0–100 relative to the top tag), keeps tags with weight ≥ MIN_COUNT, and hands them to
+ * the shared per-source writer (lib/genres/sourceWriter.ts): each tag resolves to a
+ * canonical taxonomy id; the album's `lastfm` rows are replaced with the current set;
+ * other sources' rows are never touched. Tags with no taxonomy node are staged in
+ * `genre_unmapped` ONLY if they are canonical MusicBrainz genres (fetched once from
+ * /ws/2/genre/all) — real genres worth a node, while Last.fm noise ("seen live",
+ * "favorites", decades, country adjectives) is dropped.
  *
- * Existing tags are never removed or reordered; new tags are appended in Last.fm
- * count order, capped at MAX_TOTAL per album. After a run that adds tags:
- *   1. npm run build:genre-embeddings     (new tags need vectors; co-occurrence shifts)
- *   2. re-run migration 20260712000010's backfill statement (profiles derive from genres)
+ * It no longer writes `release_groups.genres`: the displayed genres come from the merge
+ * (lib/genres/merge.ts) at the display cutover. Until then a run changes only
+ * `release_genres`, so no embeddings/profile rebuild is needed afterwards.
  *
  *   npm run enrich:subgenres              # rated ∪ prestige (default)
  *   npm run enrich:subgenres -- --dry-run
  *   npm run enrich:subgenres -- --limit=200
+ *   npm run enrich:subgenres -- --offset=5000   # resume (pool order is deterministic)
  */
 import { createClient } from '@supabase/supabase-js';
+import { writeSourceGenres, resolveSourceTags, type SourceGenreInput, type WriteSourceResult } from '../lib/genres/sourceWriter';
 
 const DRY = process.argv.includes('--dry-run');
 const LIMIT = (() => {
@@ -34,17 +37,21 @@ const OFFSET = (() => {
 })();
 const DELAY_MS = 250; // ~4 req/s, under Last.fm's free-tier ceiling
 const MIN_COUNT = 20; // Last.fm tag weight (0–100); drop weak tags
-const MAX_NEW = 5; //   max tags appended per album
-const MAX_TOTAL = 10; // cap on final array length
+const MAX_TAGS = 10; //  tags recorded per album (strongest first)
+const FLUSH_EVERY = 50; // albums per writer batch
 
 const LASTFM_KEY = process.env.LASTFM_API_KEY;
 if (!LASTFM_KEY) {
   console.error('LASTFM_API_KEY is not set. Add it to .env.local.');
   process.exit(1);
 }
-const s = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
-  auth: { persistSession: false },
-});
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+if (!SUPABASE_URL || !SERVICE_KEY) {
+  console.error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in the environment.');
+  process.exit(1);
+}
+const s = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const norm = (g: string) => g.toLowerCase().trim().replace(/-/g, ' ').replace(/\s+/g, ' ');
 
@@ -52,7 +59,6 @@ interface RG {
   id: string;
   title: string;
   artist_display: string;
-  genres: string[] | null;
 }
 
 // ── canonical MB genre list (one-time, ~22 paged requests) ──────────────────
@@ -63,13 +69,17 @@ async function mbGenreVocab(): Promise<Set<string>> {
     // budget, so transient 503s are expected under live ingest.
     let data: any = null;
     for (let attempt = 0; attempt < 6; attempt++) {
-      const res = await fetch(
-        `https://musicbrainz.org/ws/2/genre/all?fmt=json&limit=100&offset=${offset}`,
-        { headers: { 'User-Agent': 'sillajuku/1.0 (redx1234550@naver.com)' } },
-      );
-      if (res.ok) {
-        data = await res.json();
-        break;
+      try {
+        const res = await fetch(
+          `https://musicbrainz.org/ws/2/genre/all?fmt=json&limit=100&offset=${offset}`,
+          { headers: { 'User-Agent': 'sillajuku/1.0 (redx1234550@naver.com)' } },
+        );
+        if (res.ok) {
+          data = await res.json();
+          break;
+        }
+      } catch {
+        // network-level failure (connect timeout/reset) — retry like a 503
       }
       await sleep(3000 * (attempt + 1));
     }
@@ -117,7 +127,7 @@ async function targets(): Promise<RG[]> {
   for (let from = 0; ; from += 1000) {
     const { data, error } = await s
       .from('ratings')
-      .select('id, release_groups(id, title, artist_display, genres)')
+      .select('id, release_groups(id, title, artist_display)')
       .order('id')
       .range(from, from + 999);
     if (error) throw new Error(error.message);
@@ -130,7 +140,7 @@ async function targets(): Promise<RG[]> {
   for (let from = 0; ; from += 1000) {
     const { data, error } = await s
       .from('release_groups')
-      .select('id, title, artist_display, genres')
+      .select('id, title, artist_display')
       .not('prestige_score', 'is', null)
       .order('id')
       .range(from, from + 999);
@@ -142,7 +152,7 @@ async function targets(): Promise<RG[]> {
 }
 
 async function main() {
-  console.log(`enrich-subgenres-lastfm ${DRY ? '(DRY RUN)' : ''}`);
+  console.log(`enrich-subgenres-lastfm → release_genres(source='lastfm') ${DRY ? '(DRY RUN)' : ''}`);
   console.log('fetching MB canonical genre vocabulary…');
   const mbVocab = await mbGenreVocab();
   console.log(`  ${mbVocab.size} canonical genres`);
@@ -152,60 +162,62 @@ async function main() {
   if (LIMIT) pool = pool.slice(0, LIMIT);
   console.log(`${pool.length} target albums (rated ∪ prestige${OFFSET ? `, offset ${OFFSET}` : ''})`);
 
-  // Catalog vocabulary: normalized key → canonical spelling already in use,
-  // so appended tags match existing rows ("synth-pop" not "synthpop").
-  const { data: vocabRows } = await s.from('genre_vectors').select('tag');
-  const catalogVocab = new Map<string, string>();
-  for (const row of (vocabRows as { tag: string }[]) ?? []) catalogVocab.set(norm(row.tag), row.tag);
-
+  const total: WriteSourceResult = { releaseGroups: 0, upserted: 0, deleted: 0, unmappedStaged: 0, unchanged: 0 };
+  const resolvedCounts = new Map<string, number>();
+  const unmappedCounts = new Map<string, number>();
   let hit = 0;
-  let updated = 0;
-  let added = 0;
-  const newTags = new Map<string, number>();
+  let withGenres = 0;
+  let batch: SourceGenreInput[] = [];
+
+  const flush = async () => {
+    if (!batch.length) return;
+    const r = await writeSourceGenres(s, 'lastfm', batch, {
+      dryRun: DRY,
+      stageUnmapped: (tag) => mbVocab.has(norm(tag)),
+    });
+    for (const k of Object.keys(total) as (keyof WriteSourceResult)[]) total[k] += r[k];
+    batch = [];
+  };
 
   for (const [i, rg] of pool.entries()) {
     if (i > 0 && i % 200 === 0) {
-      console.log(`  …${i}/${pool.length} (hits ${hit}, updated ${updated}, tags added ${added})`);
+      console.log(`  …${i}/${pool.length} (lastfm hits ${hit}, with genres ${withGenres}, rows written ${total.upserted})`);
     }
     const tags = await albumTopTags(rg.artist_display, rg.title);
-    if (!tags || tags.length === 0) continue;
+    // A failed/unknown lookup is NOT evidence the album has no tags — skip rather than
+    // replace (which would delete this source's existing rows on a transient error).
+    if (!tags) continue;
     hit++;
 
-    const existing = rg.genres ?? [];
-    const existingNorm = new Set(existing.map(norm));
-    const toAdd: string[] = [];
-    for (const t of tags) {
-      if (t.count < MIN_COUNT) continue;
-      const n = norm(t.name);
-      if (!n || existingNorm.has(n)) continue;
-      // admit: already in catalog vocab (canonical spelling) or canonical MB genre
-      const canonical = catalogVocab.get(n) ?? (mbVocab.has(n) ? t.name.toLowerCase() : null);
-      if (!canonical) continue;
-      if (toAdd.includes(canonical)) continue;
-      toAdd.push(canonical);
-      existingNorm.add(n);
-      if (toAdd.length >= MAX_NEW || existing.length + toAdd.length >= MAX_TOTAL) break;
+    const kept = tags
+      .filter((t) => t.name && t.count >= MIN_COUNT)
+      .slice(0, MAX_TAGS)
+      .map((t) => ({ tag: t.name, confidence: t.count }));
+    const { genres, unmapped } = resolveSourceTags(kept);
+    if (genres.length) withGenres++;
+    for (const g of genres) resolvedCounts.set(g.genreId, (resolvedCounts.get(g.genreId) ?? 0) + 1);
+    for (const u of unmapped) {
+      if (mbVocab.has(norm(u))) unmappedCounts.set(u.toLowerCase(), (unmappedCounts.get(u.toLowerCase()) ?? 0) + 1);
     }
-    if (toAdd.length === 0) continue;
 
-    updated++;
-    added += toAdd.length;
-    for (const t of toAdd) newTags.set(t, (newTags.get(t) ?? 0) + 1);
-    if (!DRY) {
-      const { error } = await s
-        .from('release_groups')
-        .update({ genres: [...existing, ...toAdd] })
-        .eq('id', rg.id);
-      if (error) console.error(`  write failed for ${rg.artist_display} — ${rg.title}: ${error.message}`);
-    }
+    batch.push({ releaseGroupId: rg.id, title: rg.title, tags: kept });
+    if (batch.length >= FLUSH_EVERY) await flush();
   }
+  await flush();
 
-  console.log(`\ndone: ${pool.length} albums · lastfm hits ${hit} · albums updated ${updated} · tags added ${added}`);
-  const top = Array.from(newTags.entries()).sort((a, b) => b[1] - a[1]).slice(0, 25);
-  console.log('most-added tags:', top.map(([t, n]) => `${t}(${n})`).join(', '));
-  if (!DRY && added > 0) {
-    console.log('\nNEXT: npm run build:genre-embeddings, then re-run the 20260712000010 backfill statement.');
-  }
+  console.log(
+    `\ndone: ${pool.length} albums · lastfm hits ${hit} · with ≥1 taxonomy genre ${withGenres}` +
+      ` · release_genres rows ${DRY ? 'to write' : 'written'} ${total.upserted}, deleted ${total.deleted}` +
+      ` · already current ${total.unchanged} · unmapped staged ${total.unmappedStaged}`,
+  );
+  const top = (m: Map<string, number>, n: number) =>
+    [...m].sort((a, b) => b[1] - a[1]).slice(0, n).map(([t, c]) => `${t}(${c})`).join(', ');
+  console.log('top genres:', top(resolvedCounts, 25));
+  console.log('top unmapped MB genres (taxonomy growth candidates):', top(unmappedCounts, 25) || '(none)');
+  if (DRY) console.log('\nDRY RUN — no writes.');
 }
 
-main();
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

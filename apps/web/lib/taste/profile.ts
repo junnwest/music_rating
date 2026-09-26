@@ -128,10 +128,14 @@ export interface MergedWeights {
 /**
  * Fold near-duplicate genres together for the DERIVED taste map/clusters (the
  * stored `genre_weights` row keeps its raw keys — iOS reads it). Two stages:
- *   1. spelling canonicalization (k-pop / kpop / korean pop → k-pop), and
- *   2. embedding near-twin fold — positively-weighted tags within `NEAR_DUP_COSINE`
- *      collapse into the stronger anchor (soul → r&b), summing weights so the
- *      combined `3 + w/n` stays a true weighted average.
+ *   1. spelling canonicalization — now DERIVED FROM THE TAXONOMY (all of a node's
+ *      spellings/aliases → one canonical via genreSynonyms.canonicalize, which
+ *      keys on the resolver's node id). This is the primary merge.
+ *   2. embedding near-twin fold — DEMOTED to a safety net: positively-weighted
+ *      tags whose vectors are within `NEAR_DUP_COSINE` still collapse into the
+ *      stronger anchor, but this now only catches CROSS-NODE near-twins the
+ *      taxonomy leaves separate (e.g. soul → r&b), not spelling variants (stage 1
+ *      already merged those). Summing weights keeps `3 + w/n` a true average.
  * Disliked (w ≤ 0) tags are never folded, so dislike detection is untouched.
  */
 export function mergeSynonymWeights(weights: GenreWeights): MergedWeights {

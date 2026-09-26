@@ -1,0 +1,3 @@
+pillow>=10.0
+# optional: automatic tempo/beat detection. Without it, pass --bpm manually.
+librosa>=0.10

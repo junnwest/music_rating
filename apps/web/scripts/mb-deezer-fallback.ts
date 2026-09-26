@@ -22,6 +22,7 @@ import { randomUUID } from 'node:crypto';
 import { getDB, normalizeStr, releaseGroupKey, detectLanguage, mapGenre, type DB } from './itunes-ingest-core';
 import { MB_ARTIST_OVERRIDES } from './mb-overrides';
 import { searchArtists, artistAlbums, albumWithTracks, type DzArtist } from './deezer-client';
+import { writeSourceGenresBestEffort, type SourceGenreInput } from '../lib/genres/sourceWriter';
 
 const WRITE = process.argv.includes('--write');
 const LIMIT = (() => { const a = process.argv.find(x => x.startsWith('--limit=')); return a ? parseInt(a.split('=')[1], 10) : 10; })();
@@ -122,6 +123,7 @@ export async function ingestDeezerArtist(db: DB, dz: DzArtist, country: string |
   const { data: existingRgs } = await db.from('release_groups').select('title').eq('primary_artist_id', artistId);
   const seenKey = new Set<string>((existingRgs ?? []).map((r: any) => releaseGroupKey(r.title as string)));
   let groups = 0;
+  const genreInputs: SourceGenreInput[] = [];
   for (const al of albums) {
     const key = releaseGroupKey(al.title);
     if (seenKey.has(key)) continue;        // collapse editions + skip already-present albums
@@ -140,6 +142,7 @@ export async function ingestDeezerArtist(db: DB, dz: DzArtist, country: string |
       genres: genre ? [genre] : null, native_title: native, source: 'deezer',
     });
     if (rgErr) throw new Error(`release_group "${al.title}": ${rgErr.message}`);
+    if (genre) genreInputs.push({ releaseGroupId: rgId, title: al.title, tags: [{ tag: genre }] });
 
     const relId = randomUUID();
     const { error: relErr } = await db.from('releases').insert({
@@ -161,6 +164,8 @@ export async function ingestDeezerArtist(db: DB, dz: DzArtist, country: string |
     if (rtErr) throw new Error(`release_tracks "${al.title}": ${rtErr.message}`);
     groups++;
   }
+  // Per-source genres (GENRE_TAXONOMY.md Phase 3) — best-effort, never fails the ingest.
+  await writeSourceGenresBestEffort(db, 'deezer', genreInputs, dz.name);
   return groups;
 }
 
