@@ -4,6 +4,13 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-26 (Windows, later) — Mix Dock fixes, album "Ratings" list, saved-comment state.**
+
+- **Mix Dock:** collapsed-rail covers stayed after their items were removed (removal only decremented `itemCount`; `covers` was never touched). `MixTargetContext` now re-reads the mix's count + covers from the DB after every add/remove (`getMixSummary`, stale responses dropped per mix), drops a removed item's cover optimistically, and an empty mix shows no covers. Also: failed dock remove restores the row; error state resets when switching mixes; create form stays open on failure, Escape cancels; resize ends on `pointercancel`.
+- **Default mix names:** a blank name creates "New Mix", "New Mix 2"… ("새 믹스" in Korean) from the dock, the Saved-to popover and the Profile modal; the default shows as the input placeholder.
+- **Album page "Ratings":** new `get_album_ratings` (migration `20260926000005`, ✅ applied via `db-exec`, smoke-tested) = `get_album_comments` + score-only ratings, commented ratings always first in every sort. `CommentsSection` uses it for albums (title "Ratings (N)", your score pins even without a comment); songs still list comments via `get_song_comments`. `get_album_comments` left in place (now unused by web).
+- **Album comment box:** autosave-on-typing replaced by an explicit Save (button or Ctrl/⌘+Enter). Saved, it becomes a read-only card with a check (pop animation); clicking it (or "Edit" on your pinned rating) returns to the textarea with the caret at the end. Escape discards unsaved edits; blur still saves so nothing typed is lost. Save failures are now detected (the old autosave ignored errors).
+
 **2026-09-26 (Windows) — Merged PR #1 (genre taxonomy) and PR #2 (UX round 2) into `main`.**
 
 - **Conflicts with the Mac's 09-22…26 work on `main`:** `mb-ingest.ts` (kept both the curated-live/skip counters and the per-source genre inputs); `api/activity` + `api/reviews` stay deleted (genre branch removed them; `main` had only added a private-account filter); search page (kept `main`'s Top Match / Users / category pills / Popular Searches, layered UX round 2's "Not interested" + song rows that rate the *track*); song page (UX round 2's rewrite); iOS `SearchView`/`MainTabView`/`Localizable.xcstrings` take `main`'s side (both branches had removed Quick Add; an auto-merge of `MainTabView` would have dropped `onGoToSettings` and broken the build).

@@ -476,6 +476,9 @@ const ko: Translations = {
     },
     rate: {
 
+      saveComment: '저장',
+      commentSaved: '저장됨 · 눌러서 수정',
+      editComment: '코멘트 수정',
       addComment: '코멘트 추가',
       commentPlaceholder: '어떻게 들으셨나요?',
       addToList: '믹스에 추가',
@@ -989,6 +992,9 @@ const ko: Translations = {
     commentsSection: {
       title: '코멘트',
       titleN: '코멘트 ({n})',
+      ratingsTitle: '평가',
+      ratingsTitleN: '평가 ({n})',
+      sortRatingsBy: '평가 정렬',
       sortBy: '코멘트 정렬',
       top: '인기',
       newest: '최신',
@@ -1000,9 +1006,10 @@ const ko: Translations = {
       more: '더 보기',
       less: '접기',
       showMore: '더 보기',
-      emptyAlbum: '아직 코멘트가 없어요. 이 앨범을 평가하고 코멘트를 남겨 보세요.',
+      emptyAlbum: '아직 평가가 없어요. 이 앨범을 가장 먼저 평가해 보세요.',
       emptySong: '아직 코멘트가 없어요. 이 곡을 평가하고 코멘트를 남겨 보세요.',
       emptyFollowing: '팔로우하는 사람의 코멘트가 아직 없어요.',
+      emptyFollowingRatings: '팔로우하는 사람의 평가가 아직 없어요.',
     },
   },
 };

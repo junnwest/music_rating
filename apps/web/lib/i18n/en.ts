@@ -474,6 +474,9 @@ const en = {
     },
     rate: {
 
+      saveComment: 'Save',
+      commentSaved: 'Saved · click to edit',
+      editComment: 'Edit comment',
       addComment: 'Add a comment',
       commentPlaceholder: 'What did you think?',
       addToList: 'Add to a Mix',
@@ -987,6 +990,9 @@ const en = {
     commentsSection: {
       title: 'Comments',
       titleN: 'Comments ({n})',
+      ratingsTitle: 'Ratings',
+      ratingsTitleN: 'Ratings ({n})',
+      sortRatingsBy: 'Sort ratings',
       sortBy: 'Sort comments',
       top: 'Top',
       newest: 'Newest',
@@ -998,9 +1004,10 @@ const en = {
       more: 'More',
       less: 'Less',
       showMore: 'Show more',
-      emptyAlbum: 'No comments yet. Rate this album and add a comment to start.',
+      emptyAlbum: 'No ratings yet. Be the first to rate this album.',
       emptySong: 'No comments yet. Rate this song and add a comment to start.',
       emptyFollowing: 'No one you follow has commented yet.',
+      emptyFollowingRatings: 'No one you follow has rated this yet.',
     },
   },
 };

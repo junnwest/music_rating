@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
+  Check,
   ChevronRight,
   ExternalLink,
   ListMusic,
@@ -79,11 +80,15 @@ export default function AlbumPage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
-  // Inline comment (review_text on the user's rating row)
+  // Inline comment (review_text on the user's rating row). Two states: editing
+  // (textarea + Save) and saved (a read-only card with a check; click to edit).
   const [reviewDraft, setReviewDraft] = useState('');
+  const [savedReview, setSavedReview] = useState<string | null>(null);
+  const [reviewEditing, setReviewEditing] = useState(true);
+  const [reviewSaving, setReviewSaving] = useState(false);
+  const [reviewJustSaved, setReviewJustSaved] = useState(false);
   const myReviewRef = useRef<string | null>(null);
   const reviewBoxRef = useRef<HTMLTextAreaElement>(null);
-  const reviewTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const ratingStep = profile?.manual_rating_step ?? 0.5;
 
@@ -127,32 +132,65 @@ export default function AlbumPage() {
       // (feed, charts, artist…) reflects edits made here, and vice-versa.
       applyLocal(releaseGroupId, mine?.score ?? null);
       myReviewRef.current = mine?.review_text ?? null;
+      setSavedReview(mine?.review_text ?? null);
       // Don't clobber in-progress typing
       if (document.activeElement !== reviewBoxRef.current) {
         setReviewDraft(mine?.review_text ?? '');
+        setReviewEditing(!mine?.review_text);
       }
     }
   }, [releaseGroupId, userId, applyLocal]);
 
+  /** Writes review_text; resolves false if the write failed. */
   const saveReview = useCallback(
     async (text: string) => {
-      if (!supabase || !userId) return;
+      if (!supabase || !userId) return false;
       const next = text.trim() || null;
-      if (next === myReviewRef.current) return;
+      if (next === myReviewRef.current) return true;
+      const prev = myReviewRef.current;
       myReviewRef.current = next;
-      await supabase
+      const { error } = await supabase
         .from('ratings')
         .update({ review_text: next })
         .eq('user_id', userId)
         .eq('release_group_id', releaseGroupId);
+      if (error) {
+        console.error('[album] comment save failed:', error.message);
+        myReviewRef.current = prev;
+        return false;
+      }
+      setSavedReview(next);
+      return true;
     },
     [userId, releaseGroupId],
   );
 
-  function onReviewChange(text: string) {
-    setReviewDraft(text);
-    clearTimeout(reviewTimer.current);
-    reviewTimer.current = setTimeout(() => saveReview(text), 1000);
+  /** Save: the box settles into its saved state (unless the comment is now empty). */
+  async function commitReview() {
+    if (reviewSaving) return;
+    setReviewSaving(true);
+    const ok = await saveReview(reviewDraft);
+    setReviewSaving(false);
+    if (!ok) return;
+    if (reviewDraft.trim() === '') {
+      setReviewDraft('');
+      return;
+    }
+    setReviewDraft(reviewDraft.trim());
+    setReviewEditing(false);
+    setReviewJustSaved(true);
+  }
+
+  /** Back to the textarea, caret at the end. */
+  function editReview() {
+    setReviewEditing(true);
+    setReviewJustSaved(false);
+    requestAnimationFrame(() => {
+      const el = reviewBoxRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
   }
 
   useEffect(() => {
@@ -460,20 +498,68 @@ export default function AlbumPage() {
           )}
 
           {/* Inline comment — visible whenever the user has a rating row */}
-          {userId && userScore != null && (
-            <textarea
-              ref={reviewBoxRef}
-              value={reviewDraft}
-              onChange={(e) => onReviewChange(e.target.value)}
-              onBlur={() => {
-                clearTimeout(reviewTimer.current);
-                saveReview(reviewDraft);
-              }}
-              placeholder={t('sj.rate.addComment')}
-              rows={2}
-              className="w-full mt-4 px-3.5 py-2.5 rounded-xl bg-page border border-divider text-[13.5px] leading-relaxed text-ink placeholder-placeholder outline-none focus:border-accent/60 transition resize-none"
-            />
-          )}
+          {userId &&
+            userScore != null &&
+            (reviewEditing || !savedReview ? (
+              <div className="relative mt-4">
+                <textarea
+                  ref={reviewBoxRef}
+                  value={reviewDraft}
+                  onChange={(e) => setReviewDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault();
+                      void commitReview();
+                    } else if (e.key === 'Escape' && savedReview) {
+                      // Drop the unsaved changes and settle back on the saved comment.
+                      setReviewDraft(savedReview);
+                      setReviewEditing(false);
+                    }
+                  }}
+                  // Leaving the box still keeps what was typed (it just stays editable).
+                  onBlur={() => void saveReview(reviewDraft)}
+                  placeholder={t('sj.rate.addComment')}
+                  rows={2}
+                  className="block w-full pl-3.5 pr-20 py-2.5 rounded-xl bg-page border border-divider text-[13.5px] leading-relaxed text-ink placeholder-placeholder outline-none focus:border-accent/60 transition resize-none"
+                />
+                {(reviewDraft.trim() !== '' || savedReview) && (
+                  <button
+                    type="button"
+                    // Keep the textarea focused so its blur-save doesn't race this one.
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => void commitReview()}
+                    disabled={reviewSaving}
+                    className="absolute right-2 bottom-2 inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-accent text-white text-[12px] font-semibold hover:opacity-90 disabled:opacity-60 transition sj-pop-in"
+                  >
+                    <Check size={13} strokeWidth={3} />
+                    {t('sj.rate.saveComment')}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={editReview}
+                aria-label={t('sj.rate.editComment')}
+                title={t('sj.rate.editComment')}
+                className="group relative block w-full mt-4 pl-3.5 pr-11 py-2.5 rounded-xl bg-accent/[0.05] border border-accent/25 text-left hover:border-accent/50 transition sj-pop-in"
+              >
+                <span className="block text-[13.5px] leading-relaxed text-ink whitespace-pre-wrap break-words">
+                  {savedReview}
+                </span>
+                <span
+                  className={`absolute right-2.5 top-2.5 grid place-items-center w-6 h-6 rounded-full bg-accent text-white ${
+                    reviewJustSaved ? 'sj-heart-pop' : ''
+                  }`}
+                  aria-hidden
+                >
+                  <Check size={13} strokeWidth={3} />
+                </span>
+                <span className="block mt-1 text-[11px] font-medium text-muted group-hover:text-accent transition">
+                  {t('sj.rate.commentSaved')}
+                </span>
+              </button>
+            ))}
 
           {communityCount > 0 && (
             /* Three equal columns: Avg | Ratings | Split (±population SD; "—" under 3 scores) */
@@ -529,18 +615,21 @@ export default function AlbumPage() {
           </section>
         )}
 
-        {/* Comments — ranked server-side (get_album_comments); yours pinned first */}
+        {/* Ratings — ranked server-side (get_album_ratings), commented ones
+            first; yours pinned first */}
         <CommentsSection
           kind="album"
           parentId={releaseGroupId}
           mine={
-            userId && userScore != null && reviewDraft.trim() !== ''
+            userId && userScore != null
               ? {
                   score: userScore,
-                  text: reviewDraft,
+                  text: savedReview ?? '',
                   onEdit: () => {
-                    reviewBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    reviewBoxRef.current?.focus();
+                    editReview();
+                    requestAnimationFrame(() =>
+                      reviewBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+                    );
                   },
                 }
               : null

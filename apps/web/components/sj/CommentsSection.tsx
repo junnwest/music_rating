@@ -15,12 +15,13 @@ import { useLanguage } from '../../lib/i18n';
 import { relativeTime } from '../../lib/sj/display';
 
 /**
- * P6 (+ P7) — ranked comments for an album or a song.
+ * P6 (+ P7) — ranked ratings for an album, ranked comments for a song.
  *
- * A comment is a rating with review_text; the ranking, privacy and blocking all
- * happen server-side in `get_album_comments` / `get_song_comments` (migration
- * 20260926000003, which documents the "Top" weights). Sorting is never done by
- * pulling everything to the client. The viewer's own comment is pinned first
+ * Album: every visible rating, commented ones first (`get_album_ratings`,
+ * migration 20260926000005). Song: ratings with review_text only
+ * (`get_song_comments`, 20260926000003, which documents the "Top" weights).
+ * Ranking, privacy and blocking all happen server-side — sorting is never done
+ * by pulling everything to the client. The viewer's own rating is pinned first
  * from the page's own state, with an Edit that jumps to the inline editor.
  */
 
@@ -35,7 +36,8 @@ interface CommentRow {
   avatar_url: string | null;
   is_verified: boolean;
   score: number | null;
-  review_text: string;
+  /** null for a score-only rating (album list). */
+  review_text: string | null;
   created_at: string;
   likes: number;
   replies: number;
@@ -51,7 +53,7 @@ export default function CommentsSection({
   kind: 'album' | 'song';
   /** release_group id (album) or recording id (song). */
   parentId: string;
-  /** The viewer's own comment, pinned first. */
+  /** The viewer's own rating (album) / comment (song), pinned first. */
   mine?: { score: number | null; text: string; onEdit: () => void } | null;
 }) {
   const { t, lang } = useLanguage();
@@ -64,7 +66,7 @@ export default function CommentsSection({
   const [failed, setFailed] = useState(false);
   const seq = useRef(0);
 
-  const rpc = kind === 'album' ? 'get_album_comments' : 'get_song_comments';
+  const rpc = kind === 'album' ? 'get_album_ratings' : 'get_song_comments';
   const parentArg = kind === 'album' ? 'p_release_group_id' : 'p_recording_id';
 
   const fetchPage = useCallback(
@@ -89,7 +91,7 @@ export default function CommentsSection({
           avatar_url: r.avatar_url,
           is_verified: !!r.is_verified,
           score: r.score == null ? null : Number(r.score),
-          review_text: r.review_text,
+          review_text: r.review_text || null,
           created_at: r.created_at,
           likes: Number(r.likes),
           replies: Number(r.replies),
@@ -157,7 +159,10 @@ export default function CommentsSection({
     ...(userId ? [{ key: 'following' as CommentSort, label: t('sj.commentsSection.following') }] : []),
   ];
 
-  const hasMine = !!mine && mine.text.trim() !== '';
+  // Album lists ratings, so a score alone pins yours; songs list comments.
+  const hasMine =
+    !!mine && (mine.text.trim() !== '' || (kind === 'album' && mine.score != null));
+  const titleKey = kind === 'album' ? 'ratingsTitle' : 'title';
   const count = (allCount ?? 0) + (hasMine ? 1 : 0);
 
   return (
@@ -167,14 +172,14 @@ export default function CommentsSection({
         className="text-[11px] font-semibold tracking-[0.06em] uppercase text-muted mb-2 px-1"
       >
         {allCount === null
-          ? t('sj.commentsSection.title')
-          : t('sj.commentsSection.titleN').replace('{n}', String(count))}
+          ? t(`sj.commentsSection.${titleKey}`)
+          : t(`sj.commentsSection.${titleKey}N`).replace('{n}', String(count))}
       </h2>
 
       <div className="rounded-2xl bg-surface border border-divider/60 overflow-hidden">
         <div
           role="tablist"
-          aria-label={t('sj.commentsSection.sortBy')}
+          aria-label={t(kind === 'album' ? 'sj.commentsSection.sortRatingsBy' : 'sj.commentsSection.sortBy')}
           className="flex gap-1 px-2 pt-2 pb-1.5 border-b border-divider overflow-x-auto shelf-scroll"
         >
           {tabs.map((tab) => (
@@ -215,7 +220,7 @@ export default function CommentsSection({
                   {t('sj.common.edit')}
                 </button>
               </div>
-              <ClampedText text={mine!.text} />
+              {mine!.text.trim() !== '' && <ClampedText text={mine!.text} />}
             </li>
           )}
 
@@ -236,7 +241,11 @@ export default function CommentsSection({
             hasMine && sort !== 'following' ? null : (
               <li className="px-4 py-8 text-center text-[13px] text-muted">
                 {sort === 'following'
-                  ? t('sj.commentsSection.emptyFollowing')
+                  ? t(
+                      kind === 'album'
+                        ? 'sj.commentsSection.emptyFollowingRatings'
+                        : 'sj.commentsSection.emptyFollowing',
+                    )
                   : kind === 'album'
                     ? t('sj.commentsSection.emptyAlbum')
                     : t('sj.commentsSection.emptySong')}
@@ -357,7 +366,7 @@ function CommentCard({
           </button>
         )}
       </div>
-      <ClampedText text={row.review_text} />
+      {row.review_text && <ClampedText text={row.review_text} />}
       <div className="mt-1.5 ml-11 flex items-center gap-4">
         <button
           type="button"
