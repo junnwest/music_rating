@@ -43,6 +43,26 @@ import type { PopoverAnchor } from './SavedToMixPopover';
  */
 
 export type TrackSort = 'order' | 'mine' | 'community' | 'duration';
+/**
+ * The part of a track credit worth showing under its title: the featured
+ * artists only ("feat. Lil Wayne", "with Bonnie Raitt"). A credit that is just
+ * the artist — the album artist, or a spelling/alias of them ("Yusuf" on a
+ * Cat Stevens album) — or a plain "A & B" collab shows nothing.
+ */
+export function featuredCredit(credit: string | null, albumArtist: string): string | null {
+  if (!credit) return null;
+  const c = credit.trim();
+  const feat = c.match(/(?:^|[\s([])(?:feat\.?|ft\.|featuring)\s+(.+?)[)\]]?\s*$/i);
+  if (feat) return `feat. ${feat[1].trim()}`;
+  // "Ray Charles with Elton John" — only after the album artist, so a band
+  // whose own name contains "with" isn't split.
+  const lead = albumArtist.trim().toLowerCase();
+  if (lead && c.toLowerCase().startsWith(`${lead} with `)) {
+    return `with ${c.slice(lead.length + 6).trim()}`;
+  }
+  return null;
+}
+
 const SORT_KEY = 'sj-tracklist-sort';
 
 function readSort(): { col: TrackSort; desc: boolean } {
@@ -266,11 +286,8 @@ export default function Tracklist({
               sort.col === 'order' &&
               multiDisc &&
               (i === 0 || sorted[i - 1].discNumber !== tr.discNumber);
-            // A credit that isn't just the album artist ("… feat. Guest") is worth showing.
-            const credit =
-              tr.artists && tr.artists.trim().toLowerCase() !== release.artist.trim().toLowerCase()
-                ? tr.artists
-                : null;
+            // Only the featured artists — never the artist name on its own.
+            const credit = featuredCredit(tr.artists, release.artist);
             const isCurrent = tr.recordingId === currentRecordingId;
             return (
               <Fragment key={`${tr.discNumber}-${tr.position}-${tr.recordingId}`}>

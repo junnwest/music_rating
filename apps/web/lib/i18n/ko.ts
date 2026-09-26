@@ -476,6 +476,7 @@ const ko: Translations = {
     },
     rate: {
 
+      rateTooltip: '평가하기',
       saveComment: '저장',
       editComment: '코멘트 수정',
       addComment: '코멘트 추가',

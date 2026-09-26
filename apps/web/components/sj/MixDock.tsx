@@ -28,7 +28,7 @@ import { loadMixEntries, mixEntryHref, mixEntryRef, type MixEntry } from '../../
 /**
  * P3 — the Mix Dock: a browser-style side panel on the right edge.
  *
- * Closed, it's a slim rail (bookmark + the target mix's covers + count). Open,
+ * Closed, it's a slim rail (bookmark + item count). Open,
  * it pushes the page at ≥xl and overlays below that; hidden under md, where the
  * "Saved to…" dropdown is the whole UX. While it's open, the dock's mix *is*
  * the save target (D1), so every bookmark in the app lands here — with a cover
@@ -228,8 +228,12 @@ export default function MixDock() {
       { duration: 620, easing: 'cubic-bezier(.3,.7,.4,1)' },
     );
     anim.onfinish = () => fly.remove();
+    // Backstop: a throttled/background tab can skip `finish`, which would strand
+    // the thumbnail on screen.
+    const backstop = setTimeout(() => fly.remove(), 1000);
     return () => {
       clearTimeout(clear);
+      clearTimeout(backstop);
       fly.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -292,29 +296,11 @@ export default function MixDock() {
             </span>
           )}
         </button>
-        {/* The target mix's newest covers, stacked. An empty mix shows none,
-            even if a stale cover list hasn't re-synced yet. */}
-        <button
-          type="button"
-          onClick={() => updatePrefs({ open: true })}
-          aria-label={mixName(target)}
-          className="flex flex-col items-center -space-y-5 pt-1 group"
-        >
-          {(count > 0 ? target?.covers ?? [] : []).slice(0, 3).map((c, i) => (
-            <span
-              key={`${c}-${i}`}
-              className="block rounded-md ring-2 ring-page shadow-sm transition group-hover:translate-y-0"
-              style={{ zIndex: 3 - i, transform: `translateY(${i * 2}px)` }}
-            >
-              <Cover url={c} className="w-8 h-8" rounded="rounded-md" />
-            </span>
-          ))}
-        </button>
       </div>
 
       {open && (
         <div
-          className={`absolute inset-y-0 right-0 flex flex-col bg-page border-l border-divider ${
+          className={`absolute inset-y-0 right-0 z-10 flex flex-col bg-page border-l border-divider ${
             isXl ? '' : 'shadow-2xl'
           }`}
           style={{ width }}

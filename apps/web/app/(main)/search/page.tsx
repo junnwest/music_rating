@@ -25,7 +25,7 @@ import AlbumPeek from '../../../components/sj/AlbumPeek';
 import DragScrollShelf from '../../../components/sj/DragScrollShelf';
 import { Skeleton, SkeletonLine } from '../../../components/sj/Loading';
 import { useSession } from '../../../components/sj/SessionContext';
-import { useRatings } from '../../../components/sj/RatingsStore';
+import { useRating, useRatings } from '../../../components/sj/RatingsStore';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
 import { displayName, formatScore, isPredominantlyHangul, typeLabelKey } from '../../../lib/sj/display';
@@ -609,8 +609,6 @@ function SearchResults({
             <div className="w-36">
               <AlbumCard
                 release={topResult.album}
-                rated={ratedIds.has(topResult.album.id)}
-                sessionRated={sessionRatedIds.has(topResult.album.id)}
                 ratingStep={ratingStep}
                 onAdd={() => onAdd(topResult.album)}
                 onRate={(score) => onRate(topResult.album, score)}
@@ -645,8 +643,6 @@ function SearchResults({
                   <AlbumCard
                     key={release.id}
                     release={release}
-                    rated={ratedIds.has(release.id)}
-                    sessionRated={sessionRatedIds.has(release.id)}
                     ratingStep={ratingStep}
                     onAdd={() => onAdd(release)}
                     onRate={(score) => onRate(release, score)}
@@ -1021,8 +1017,6 @@ function Discovery({
               <div key={release.id} className="w-36 shrink-0">
                 <AlbumCard
                   release={release}
-                  rated={ratedIds.has(release.id)}
-                  sessionRated={sessionRatedIds.has(release.id)}
                   ratingStep={ratingStep}
                   onAdd={() => onAdd(release)}
                   onRate={(score) => onRate(release, score)}
@@ -1076,16 +1070,12 @@ const REVEAL =
 
 function AlbumCard({
   release,
-  rated,
-  sessionRated,
   ratingStep = 0.5,
   onAdd,
   onRate,
   onNotInterested,
 }: {
   release: SJRelease;
-  rated: boolean;
-  sessionRated: boolean;
   ratingStep?: number;
   onAdd: () => void;
   onRate: (score: number | null) => void;
@@ -1096,8 +1086,7 @@ function AlbumCard({
   const { isSaved, openChange } = useMixTarget();
   const artistId = useArtistIdFor(release.id);
   const menuAnchorRef = useRef<HTMLDivElement>(null);
-  const showCheck = sessionRated;
-  const showAdd = !rated && !sessionRated;
+  const myScore = useRating(release.id);
   const mixItem = { kind: 'album' as const, releaseGroupId: release.id };
   const mixMeta = { coverUrl: release.coverUrl, title: release.title };
   const artistName = displayName(release.artist, release.artistNative);
@@ -1155,21 +1144,17 @@ function AlbumCard({
           // A saved album keeps its filled bookmark visible — that's state, not chrome.
           className={`absolute top-2 right-2 ${isSaved(mixItem) ? '' : REVEAL}`}
         />
-        {showCheck && (
-          <span className="absolute bottom-2 right-2 flex w-7 h-7 rounded-full bg-accent items-center justify-center shadow">
-            <Check size={12} strokeWidth={3} className="text-white" />
-          </span>
-        )}
-        {showAdd && (
-          <FlowerRateControl
-            ariaLabel={`${t('sj.search.add')} ${release.title}`}
-            onRate={onRate}
-            onRequestPrecise={onAdd}
-            size={30}
-            className="absolute bottom-2 right-2 opacity-90 group-hover:opacity-100 transition"
-            ratingStep={ratingStep}
-          />
-        )}
+        {/* Rated → the flower shows your score (same as home's feed cards) and
+            stays re-ratable; the score comes from the app-wide RatingsStore. */}
+        <FlowerRateControl
+          ariaLabel={`${t('sj.rate.rateTooltip')} ${release.title}`}
+          onRate={onRate}
+          onRequestPrecise={onAdd}
+          currentScore={myScore ?? null}
+          size={30}
+          className="absolute bottom-2 right-2 opacity-90 group-hover:opacity-100 transition"
+          ratingStep={ratingStep}
+        />
       </AlbumPeek>
       {/* Title → album, artist → artist: two links, not one wrapping both. */}
       <Link

@@ -474,6 +474,7 @@ const en = {
     },
     rate: {
 
+      rateTooltip: 'Rate',
       saveComment: 'Save',
       editComment: 'Edit comment',
       addComment: 'Add a comment',
