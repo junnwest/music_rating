@@ -173,6 +173,17 @@ struct EditProfileView: View {
         errorMessage = nil
 
         do {
+            if trimmedUsername != profile?.username {
+                let allowed: Bool = try await supabase
+                    .rpc("is_username_allowed", params: ["candidate": trimmedUsername])
+                    .execute()
+                    .value
+                guard allowed else {
+                    errorMessage = String(localized: "That username is unavailable.")
+                    isSaving = false
+                    return
+                }
+            }
             // Upload avatar if a new one was selected.
             // getPublicURL constructs a URL even without a real upload, so we only
             // include avatar_url in the update when the upload itself succeeds.

@@ -414,7 +414,7 @@ const ko: Translations = {
       namePlaceholder: '이름',
       usernameTitle: '사용자 이름을 만드세요.',
       usernamePlaceholder: 'username',
-      usernameTaken: '이미 사용 중인 이름입니다.',
+      usernameTaken: '사용할 수 없는 사용자 이름입니다.',
       usernameRules: '3–20자: 영문 소문자, 숫자 또는 _',
       usernameAvailable: '사용 가능합니다!',
       notificationsTitle: '알림을 켜세요.',

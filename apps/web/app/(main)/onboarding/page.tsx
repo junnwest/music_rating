@@ -138,8 +138,9 @@ export default function OnboardingPage() {
       // Full reload either way so SessionProvider picks up the fresh profile.
       const hasPendingBetaToken = window.localStorage.getItem('sj_pending_beta_token');
       window.location.href = hasPendingBetaToken ? '/beta/claim' : '/';
-    } catch {
-      setSaveError(t('sj.onboarding.saveError'));
+    } catch (error) {
+      const code = (error as { code?: string })?.code;
+      setSaveError(['23505', '23514'].includes(code ?? '') ? t('sj.onboarding.usernameTaken') : t('sj.onboarding.saveError'));
       setSaving(false);
     }
   }

@@ -93,7 +93,7 @@ export default function SettingsPage() {
       bio: bioDraft.trim() || null,
     }).eq('id', userId);
     if (error) {
-      setProfileError(error.code === '23505' ? t('sj.onboarding.usernameTaken') : t('sj.onboarding.saveError'));
+      setProfileError(['23505', '23514'].includes(error.code) ? t('sj.onboarding.usernameTaken') : t('sj.onboarding.saveError'));
       setSavingProfile(false);
       return;
     }

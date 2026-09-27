@@ -74,7 +74,7 @@ struct StepUsername: View {
                     .foregroundStyle(.red)
                     .padding(.horizontal, 2)
                 } else if usernameAvailable == false {
-                    Text("That username is already taken.")
+                    Text("That username is unavailable.")
                         .font(.jakarta(12))
                         .foregroundStyle(.red)
                         .padding(.horizontal, 2)
@@ -118,15 +118,21 @@ struct StepUsername: View {
                 // spinning forever with no error, no retry, and Continue stuck
                 // disabled. Confirmed live as the cause of a real TestFlight
                 // report ("infinite loading" on this exact step).
-                let rows: [Row] = try await withThrowingTaskGroup(of: [Row].self) { group in
+                let available: Bool = try await withThrowingTaskGroup(of: Bool.self) { group in
                     group.addTask {
-                        try await supabase
+                        let allowed: Bool = try await supabase
+                            .rpc("is_username_allowed", params: ["candidate": username])
+                            .execute()
+                            .value
+                        guard allowed else { return false }
+                        let rows: [Row] = try await supabase
                             .from("profiles")
                             .select("id")
                             .eq("username", value: username)
                             .limit(1)
                             .execute()
                             .value
+                        return rows.isEmpty
                     }
                     group.addTask {
                         try await Task.sleep(for: .seconds(10))
@@ -136,7 +142,7 @@ struct StepUsername: View {
                     return try await group.next()!
                 }
                 guard !Task.isCancelled, data.username == username else { return }
-                usernameAvailable = rows.isEmpty
+                usernameAvailable = available
             } catch {
                 guard !Task.isCancelled, data.username == username else { return }
                 usernameAvailable = nil

@@ -412,7 +412,7 @@ const en = {
       namePlaceholder: 'Your name',
       usernameTitle: 'Create a username.',
       usernamePlaceholder: 'username',
-      usernameTaken: 'That username is taken.',
+      usernameTaken: 'That username is unavailable.',
       usernameRules: '3–20 characters: lowercase letters, numbers, or _',
       usernameAvailable: 'Available!',
       notificationsTitle: 'Turn on notifications.',
