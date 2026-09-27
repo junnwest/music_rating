@@ -29,6 +29,10 @@ struct PhoneVerificationView: View {
     // credit" message must not show unconditionally. Same query
     // InviteViewModel.wasInvited already uses.
     @State private var wasInvited = false
+    /// PIPA: the phone number is an optional item, so it needs its own
+    /// consent with purpose / items / retention / right to refuse stated at
+    /// the point of collection (Privacy Policy §1-2, 2026-09-27).
+    @State private var consented = false
 
     enum Stage { case enterPhone, enterCode, done }
 
@@ -101,14 +105,48 @@ struct PhoneVerificationView: View {
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.sjBorder, lineWidth: 1))
             }
 
+            consentNotice
+
             if let errorMessage {
                 Text(errorMessage).font(.jakarta(13)).foregroundStyle(.red)
             }
 
-            submitButton(title: "Send code", disabled: localNumber.filter(\.isNumber).isEmpty) {
+            submitButton(title: "Send code", disabled: localNumber.filter(\.isNumber).isEmpty || !consented) {
                 await sendCode()
             }
         }
+    }
+
+    private var consentNotice: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Your phone number is used to confirm invites and to make sure each person claims only one founding badge. It is kept until you remove it or delete your account. A one-way hash of it stays with a claimed founding badge so the number can't claim another. Verification texts are sent by Twilio (USA). This is optional; without it, only invites and the founding badge are unavailable.")
+                .font(.jakarta(12))
+                .foregroundStyle(Color.sjMuted)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                Haptics.selection()
+                consented.toggle()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: consented ? "checkmark.square.fill" : "square")
+                        .font(.system(size: 18))
+                        .foregroundStyle(consented ? Color.sjBlue : Color.sjMuted)
+                    Text("I agree to the collection and use of my phone number")
+                        .font(.jakarta(13, weight: .semibold))
+                        .foregroundStyle(Color.sjInk)
+                        .multilineTextAlignment(.leading)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(consented ? .isSelected : [])
+            Link(String(localized: "Privacy Policy"), destination: URL(string: "https://sillajuku.com/privacy")!)
+                .font(.jakarta(12, weight: .semibold))
+                .foregroundStyle(Color.sjBlue)
+        }
+        .padding(14)
+        .background(Color.sjSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.sjBorder, lineWidth: 1))
     }
 
     private var codeStage: some View {

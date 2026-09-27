@@ -14,7 +14,7 @@ const EMAIL = 'admin@sillajuku.com';
 
 const en: { title: string; updated: string; back: string; footer: [string, string, string]; sections: Section[] } = {
   title: 'Terms of Service',
-  updated: 'Last updated: September 26, 2026',
+  updated: 'Last updated: September 27, 2026',
   back: 'Back to home',
   footer: ['By using sillajuku, you agree to these terms and our ', 'Privacy Policy', '.'],
   sections: [
@@ -31,7 +31,7 @@ const en: { title: string; updated: string; back: string; footer: [string, strin
       icon: User,
       title: '2. Your Account',
       body: [
-        'You must be at least 14 years old, or the minimum age of digital consent in your country if higher; users under that age need a legal guardian\'s consent. You agree to provide accurate information when registering and to keep it current.',
+        'You must be at least 14 years old, or the minimum age of digital consent in your country if higher. We do not accept users below that age. You agree to provide accurate information when registering and to keep it current.',
         'You are responsible for keeping your login credentials confidential and for all activity under your account. You may not sell, transfer, or lend your account to anyone else. If you learn that your account has been used without permission, notify us right away.',
         'We may refuse or later cancel a registration that uses false or someone else\'s information, comes from a user previously removed under these Terms, is created in bulk or by automated means, or is intended for improper use of the Service.',
       ],
@@ -41,14 +41,14 @@ const en: { title: string; updated: string; back: string; footer: [string, strin
       title: '3. Your Content and the License You Give Us',
       body: [
         '"User Content" means anything you post or submit on the Service, including ratings, reviews, comments, Mixes, lists, tier lists, and profile information. You keep the copyright in your User Content, and you are responsible for it.',
-        'By posting User Content, you grant sillajuku a worldwide, non-exclusive, royalty-free, sublicensable license to use, host, store, reproduce, modify, adapt, edit, translate, excerpt, create derivative works of, publish, publicly display, perform, transmit, and distribute it, in any media or format now known or later developed. We may use it to operate, display, and improve the Service, to promote sillajuku, and for statistics, research, and developing new features and services. This includes, for example:',
+        'By posting User Content, you grant sillajuku a worldwide, non-exclusive, royalty-free license to use, host, store, reproduce, modify, adapt, edit, translate, excerpt, create derivative works of, publish, publicly display, perform, transmit, and distribute it, in any media or format now known or later developed. We may sublicense these rights only to service providers who help us operate the Service, and only for that purpose. We may use it to operate, display, and improve the Service, to promote sillajuku, and for statistics, research, and developing new features and services. This includes, for example:',
         [
           'reformatting, resizing, shortening, excerpting, or translating your content so it fits a layout, device, or language, for example in previews, notifications, and share images;',
           'featuring your content in curated or editorial selections, charts, highlights, and year-in-review features;',
           'reproducing and displaying your content on other channels we or our partners operate, such as our social media accounts, newsletters, and app store pages;',
           'giving your content to press and media outlets so they can report on sillajuku.',
         ],
-        'We respect your privacy settings. We will not use content from a private account in promotion outside the Service. When we feature your content outside the Service, we may credit you by your username, but we will not share any other personal information without your consent. You will not be paid for any use of your User Content.',
+        `We respect your privacy settings. We will not use content from a private account in promotion outside the Service. When we feature your content outside the Service, we may credit you by your username, but we will not share any other personal information without your consent. You can ask us at any time, at ${EMAIL}, not to use your content in promotion outside the Service, and we will not use it in new promotional material after that. You will not be paid for any use of your User Content.`,
         'This license lasts until you delete the content or your account. After that we will not make new uses of it, except that (a) copies may stay in backups for a limited time, (b) we do not have to withdraw promotional material that was already published, (c) Aggregated Data (Section 4) is not affected, and (d) we are not responsible for copies that other users or third parties have quoted, saved, or re-shared.',
         'You confirm that you have all the rights needed to post your User Content and to grant this license, and that it does not infringe anyone\'s copyright, privacy, reputation, or other rights. You are responsible for any legal liability arising from your User Content. If you send us feedback or suggestions, we may use them freely without any obligation to you.',
       ],
@@ -146,14 +146,14 @@ const en: { title: string; updated: string; back: string; footer: [string, strin
     {
       icon: Mail,
       title: '14. Contact',
-      body: [`For legal questions, contact ${EMAIL}.`],
+      body: [`sillajuku is operated by a sole proprietor registered in the Republic of Korea. For legal questions, contact ${EMAIL}.`],
     },
   ],
 };
 
 const ko: typeof en = {
   title: '이용약관',
-  updated: '최종 수정일: 2026년 9월 26일',
+  updated: '최종 수정일: 2026년 9월 27일',
   back: '홈으로',
   footer: ['sillajuku를 이용하면 본 약관 및 ', '개인정보처리방침', '에 동의하는 것으로 봅니다.'],
   sections: [
@@ -170,7 +170,7 @@ const ko: typeof en = {
       icon: User,
       title: '제2조 (회원 계정)',
       body: [
-        '회원은 만 14세 이상이어야 하며, 거주 국가의 디지털 동의 최소 연령이 더 높은 경우 그 연령 이상이어야 합니다. 해당 연령 미만인 경우 법정대리인의 동의가 필요합니다. 회원은 가입 시 정확한 정보를 제공하고, 변경 사항이 있으면 이를 최신으로 유지해야 합니다.',
+        '회원은 만 14세 이상이어야 하며, 거주 국가의 디지털 동의 최소 연령이 더 높은 경우 그 연령 이상이어야 합니다. 해당 연령 미만인 경우 가입할 수 없습니다. 회원은 가입 시 정확한 정보를 제공하고, 변경 사항이 있으면 이를 최신으로 유지해야 합니다.',
         '회원은 자신의 로그인 정보를 안전하게 관리할 책임이 있으며, 계정에서 이루어지는 모든 활동에 대해 책임을 집니다. 회원은 계정을 제3자에게 판매, 양도, 대여할 수 없으며, 계정이 무단으로 사용되고 있음을 알게 된 경우 즉시 회사에 알려야 합니다.',
         '회사는 허위 정보나 타인의 정보를 이용한 신청, 본 약관에 따라 이용 자격을 상실한 적이 있는 자의 신청, 자동화된 방법 등으로 계정을 대량 생성하는 경우, 부정한 용도로 서비스를 이용하려는 경우에는 가입을 승낙하지 않거나 사후에 이용계약을 해지할 수 있습니다.',
       ],
@@ -180,14 +180,14 @@ const ko: typeof en = {
       title: '제3조 (게시물의 권리와 이용 허락)',
       body: [
         '"게시물"이란 회원이 서비스에 게시하거나 제출한 평점, 리뷰, 댓글, 믹스, 리스트, 티어리스트, 프로필 정보 등 일체의 콘텐츠를 말합니다. 게시물의 저작권은 이를 작성한 회원에게 있으며, 게시물에 대한 책임 또한 회원에게 있습니다.',
-        '회원은 게시물을 등록함으로써 회사에게 해당 게시물을 현재 알려져 있거나 향후 개발되는 모든 매체와 형식으로 이용, 저장, 복제, 수정, 편집, 번역, 발췌, 2차적 저작물 작성, 게시, 전시, 공연, 전송, 배포, 공중송신할 수 있는 전 세계적이고 비독점적이며 무상이고 재허락 가능한 권리를 허락합니다. 회사는 이를 서비스의 운영, 노출 및 개선, 서비스 홍보, 통계 조사·연구 및 새로운 기능과 서비스의 개발을 위해 이용할 수 있으며, 여기에는 다음과 같은 이용 형태가 포함되나 이에 한정되지 않습니다.',
+        '회원은 게시물을 등록함으로써 회사에게 해당 게시물을 현재 알려져 있거나 향후 개발되는 모든 매체와 형식으로 이용, 저장, 복제, 수정, 편집, 번역, 발췌, 2차적 저작물 작성, 게시, 전시, 공연, 전송, 배포, 공중송신할 수 있는 전 세계적이고 비독점적이며 무상인 권리를 허락합니다. 회사는 서비스 운영을 돕는 수탁자에게 그 목적의 범위에서만 이 권리를 재허락할 수 있습니다. 회사는 이를 서비스의 운영, 노출 및 개선, 서비스 홍보, 통계 조사·연구 및 새로운 기능과 서비스의 개발을 위해 이용할 수 있으며, 여기에는 다음과 같은 이용 형태가 포함되나 이에 한정되지 않습니다.',
         [
           '미리보기, 알림, 공유 이미지 등 화면 구성이나 기기, 언어에 맞도록 게시물의 형식을 변경하거나 크기를 조정·축약·발췌·번역하는 것',
           '큐레이션 및 에디토리얼 콘텐츠, 차트, 하이라이트, 연말 결산 등의 기능에 게시물을 소개하는 것',
           '회사의 소셜 미디어 계정, 뉴스레터, 앱스토어 페이지 등 회사 또는 제휴사가 운영하는 다른 채널에 게시물을 복제·전시하는 것',
           '서비스 홍보를 위해 언론 및 미디어에 게시물의 내용을 제공하여 보도하게 하는 것',
         ],
-        '회사는 회원의 공개 설정을 존중하며, 비공개 계정의 게시물은 서비스 외부의 홍보에 사용하지 않습니다. 서비스 외부에서 게시물을 소개하는 경우 회원의 사용자 이름을 출처로 표시할 수 있으나, 회원의 별도 동의 없이 그 밖의 회원정보를 제공하지 않습니다. 회원은 게시물의 이용에 대해 별도의 대가를 청구하지 않습니다.',
+        `회사는 회원의 공개 설정을 존중하며, 비공개 계정의 게시물은 서비스 외부의 홍보에 사용하지 않습니다. 서비스 외부에서 게시물을 소개하는 경우 회원의 사용자 이름을 출처로 표시할 수 있으나, 회원의 별도 동의 없이 그 밖의 회원정보를 제공하지 않습니다. 회원은 언제든지 ${EMAIL}로 요청하여 자신의 게시물을 서비스 외부 홍보에 사용하지 않도록 할 수 있으며, 회사는 요청 이후 새로 제작하는 홍보물에 해당 게시물을 사용하지 않습니다. 회원은 게시물의 이용에 대해 별도의 대가를 청구하지 않습니다.`,
         '본 조의 이용 허락은 회원이 해당 게시물을 삭제하거나 탈퇴할 때까지 유지됩니다. 삭제 또는 탈퇴 이후 회사는 해당 게시물을 새롭게 이용하지 않습니다. 다만 (가) 백업 데이터에 일정 기간 사본이 남을 수 있고, (나) 이미 제작·게시된 홍보물을 회수할 의무는 없으며, (다) 제4조의 집계 데이터에는 영향이 없고, (라) 다른 회원이나 제3자가 인용, 저장, 재공유한 사본에 대해서는 회사가 책임을 지지 않습니다.',
         '회원은 게시물을 등록하고 본 조의 권리를 허락하는 데 필요한 모든 권리를 보유하고 있으며, 게시물이 타인의 저작권, 개인정보, 명예 등 권리를 침해하지 않음을 보증합니다. 게시물로 인하여 발생하는 민·형사상 책임은 회원에게 있습니다. 회원이 회사에 제공한 의견이나 제안은 회사가 별도의 의무 없이 자유롭게 활용할 수 있습니다.',
       ],
@@ -285,7 +285,7 @@ const ko: typeof en = {
     {
       icon: Mail,
       title: '제14조 (문의)',
-      body: [`법률 관련 문의는 ${EMAIL}로 연락해 주시기 바랍니다.`],
+      body: [`sillajuku는 대한민국의 개인사업자가 운영합니다. 법률 관련 문의는 ${EMAIL}로 연락해 주시기 바랍니다.`],
     },
   ],
 };

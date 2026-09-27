@@ -4,6 +4,52 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-27 (Mac) — Privacy Policy rewritten for PIPA (Korean + English); Terms tightened; phone-verification consent.**
+
+- **Why:** a legal review found the Privacy Policy was English-only and missing several items PIPA requires (Art. 30, Decree Art. 31, the Art. 28-8 overseas-transfer disclosure). It also didn't mention phone numbers, the founding phone hash, push tokens, Apple Music, deactivation or private accounts.
+- **`/privacy`** now renders Korean or English like `/terms` (`getServerLang`). It follows the PIPC 작성지침 (2025.4) and has 14 sections, including:
+  - a table of each purpose with its data and retention;
+  - the legal basis (contract / consent / legitimate interest);
+  - deletion within 30 days, with exceptions (deactivation, banned-account records 1 yr, the founding hash, 3-month access logs);
+  - a **processor + overseas-transfer table**: Supabase Seoul, Vercel, Upstash, PostHog US, Sentry US, Twilio, Apple APNs, Jina;
+  - rights, answered within 10 days;
+  - **under-14 not accepted**;
+  - security measures, cookies (cookieless analytics, no IDFA);
+  - the **privacy officer (대표, admin@sillajuku.com)**, the Korean remedy bodies, and a change history. **Keep the processor table in sync with new services.**
+- **`/terms`** (dated 2026-09-27):
+  - The content license is no longer freely sublicensable (only to service providers).
+  - Users can opt out of promotional use outside the Service.
+  - Under-14 is now "not accepted" (was "guardian consent", which had no mechanism).
+  - §14 says the service is run by a Korean sole proprietor.
+- **iOS `PhoneVerificationView`:** a consent box (purpose, retention, the hash, Twilio USA, optional) plus a required checkbox before "Send code". 2 ko strings. **BUILD SUCCEEDED**; both web pages render 200 in ko/en locally.
+- **Commitments the policy now makes. Keep them true:**
+  - Delete account backups within 30 days (`apps/web/backups/email-accounts-deleted-…` and `account-deleted-kukurella-…` fall due Oct 26/27).
+  - PostHog and Sentry retention ≤ 1 year.
+  - Upstash region is listed as USA (verify).
+  - Answer rights requests within 10 days.
+
+---
+
+**2026-09-27 (Mac) — Deleted account `kukurella` (user request).** Google sign-in, created 2026-09-21, 18 album ratings. Backed up first to `apps/web/backups/account-deleted-kukurella-2026-09-27T19-25-20-135Z.json` (git-ignored): the auth record, the profile, 18 ratings, 26 track ratings, 3 rating_history rows, 2 comments, 3 likes, 1 mix (2 items), 1 notification, 6 follow rows. Then `auth.admin.deleteUser`; the dependent rows cascaded (0 profile / 0 ratings left).
+
+---
+
+**2026-09-27 (Mac) — iOS Taste catches up with web's two 2026-09-26 Taste changes.**
+
+- **Country mix replaces the kr/jp/west/other scene bar** on "Where your music comes from" (`CountryMixView`, new `Components/TasteDrillDown.swift`). Same rules as web's `CountryMix`: top countries until ~90% of ratings (max 4, web's narrow layout), a lone leftover shown instead of "Other (1 country)", the rest folded into **Other (N countries)**, which expands to a full list, and a striped grey **Unknown**. Names come from `Locale.current` (so Korean on a Korean phone); XW/XE become Worldwide/Europe. New lead line: "Your biggest source is {country}, at {pct}%…". Reads the new `charts.countries` (`TasteCharts.countries`, cache v12); a report without it still shows the old scene bar.
+- **"View N ratings ›" drill-down** on the year, score and country charts. Tapping or scrubbing a bar (or tapping a country) now also shows a button under the chart. It opens a sheet listing the ratings behind that bar, best first; each row opens the album. Ratings load once, on first open, with the same paginated `ratings → release_groups → artists(country)` query and bucketing as web's `useMyRatings`. The button is hidden in share snapshots.
+- 11 ko strings added. **BUILD SUCCEEDED**. Not checked on a device or simulator (the simulator needs a signed-in account).
+
+---
+
+**2026-09-27 (Mac) — Taste section 02: "Your #1 Album" (내 1위 앨범) subheader raised 12pt** (`.offset(y: -12)` in `HallOfFameView`, `TasteView.swift`), so the cover ring below doesn't move. **BUILD SUCCEEDED**.
+
+---
+
+**2026-09-27 (Mac) — Profile top-bar icons bigger.** The three icons at the top of the Profile tab (find people · Getting Started/Quests · Settings) went from 16pt glyphs to **21pt**, each with a 36×36pt tap area (`contentShape`); the quest red dot is 4 → 6pt and repositioned against the new frame. `ProfileView.swift`. **BUILD SUCCEEDED**. Not in build 22 unless it's re-archived.
+
+---
+
 **2026-09-26 (Windows, terms) — Terms of Service rewritten, Korean + English.**
 
 - `/terms` now renders Korean or English from the `sj-lang` cookie / Accept-Language (new `getServerLang()` in `lib/i18n/server.ts`; iOS links to the same page). Structure benchmarked on Watcha Pedia's 이용약관, adapted to sillajuku.
