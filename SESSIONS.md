@@ -4,6 +4,12 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-26 (Windows, terms) — Terms of Service rewritten, Korean + English.**
+
+- `/terms` now renders Korean or English from the `sj-lang` cookie / Accept-Language (new `getServerLang()` in `lib/i18n/server.ts`; iOS links to the same page). Structure benchmarked on Watcha Pedia's 이용약관, adapted to sillajuku.
+- **Content license broadened:** worldwide, non-exclusive, royalty-free, sublicensable; covers modify/adapt/translate/excerpt/derivative works; purposes include promotion, research, new development; explicit examples (share images, editorial picks, our social channels, press). Lasts until the user deletes, with carve-outs (backups, already-published promo, Aggregated Data, third-party copies). Private-account content is never used in external promotion; credit is by username only.
+- **New §4 Aggregated Data:** analysis of ratings/reviews/imported listening/usage for scores, charts, recommendations and taste systems; derived de-identified data belongs to sillajuku and survives deletion.
+- Also added: Korean-style amendment notice (7 days / 30 days for unfavorable changes, deemed consent), rating-manipulation + scraping/AI-training bans, automated moderation + 임시조치, graded enforcement + appeals, service-change/email clauses, gross-negligence carve-out on the liability cap (약관규제법), Civil Procedure Act venue, Korean-prevails language clause. No ads clause (the Privacy Policy says no advertising).
 **2026-09-26 (Mac) — Build number 21 → 22** (both Debug and Release configs) for a TestFlight upload. Build 22 covers everything since build 21: push notification fix (server-side), private accounts + follow requests, deactivation, founding badge + Hold-to-break claim, Quick Add removal, comment sheet keyboard work, song rating flow, Disc headers, bell count badge, Mix count fix, 0.03s flower delay.
 
 ---

@@ -2,8 +2,8 @@ import { cookies, headers } from 'next/headers';
 import en from './en';
 import ko from './ko';
 
-export function getServerT() {
-  let lang = 'en';
+export function getServerLang(): 'en' | 'ko' {
+  let lang: 'en' | 'ko' = 'en';
   try {
     const stored = cookies().get('sj-lang')?.value;
     if (stored === 'en' || stored === 'ko') {
@@ -15,6 +15,11 @@ export function getServerT() {
       if (primary.startsWith('ko')) lang = 'ko';
     }
   } catch {}
+  return lang;
+}
+
+export function getServerT() {
+  const lang = getServerLang();
   const dict: Record<string, any> = lang === 'ko' ? ko : en;
   return function t(key: string): string {
     return key.split('.').reduce((obj: any, k) => obj?.[k], dict) ?? key;
