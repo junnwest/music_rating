@@ -4,6 +4,10 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-26 (Mac) — Build number 21 → 22** (both Debug and Release configs) for a TestFlight upload. Build 22 covers everything since build 21: push notification fix (server-side), private accounts + follow requests, deactivation, founding badge + Hold-to-break claim, Quick Add removal, comment sheet keyboard work, song rating flow, Disc headers, bell count badge, Mix count fix, 0.03s flower delay.
+
+---
+
 **2026-09-26 (Mac) — Founding badge claim ceremony applied ("Hold to break").**
 
 - **User approved** A+E and said "apply". New `Quests/FoundingClaimCeremony.swift` (production). The founding card's **Claim Badge** now opens it full screen, replacing the old one-tap claim; the debug `ClaimEffectsLab.swift` and its link are deleted. `FXHaptics` stays as the shared Core Haptics helper.

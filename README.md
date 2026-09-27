@@ -52,7 +52,7 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 > - **Removed:** Quick Add (iOS + web; `get_quick_add_*` RPCs left in DB, unused); all 11 email-login accounts (backup `apps/web/backups/email-accounts-deleted-2026-09-26T21-59-52-860Z.json`).
 >
 > **Next session:**
-> - **Ship iOS:** bump the build number (21 → 22) and upload to TestFlight — none of today's iOS work is on TestFlight yet.
+> - **Ship iOS:** build number is now **22** (both configs) — archive and upload to TestFlight; none of today's iOS work is on TestFlight yet.
 > - **Device checks:** founding claim (success path), two-account follow request → approve, deactivate → reactivate, comment keyboard behaviour, Disc headers (Flume *Skin*).
 > - **Close loopholes:** disable the Supabase **email provider** (Auth → Providers → Email; nobody uses it now); verify one **Korean** phone number via SMS and check **Twilio geo permissions**; decide whether to expand the phone country picker (47 countries) to all.
 > - **Open, not started:** "remove follower" for private accounts; `profiles` is world-readable including `push_token` and notification settings (lock down); `/api/rankings/personalized` still takes an unauthenticated `userId`; the song ⋯ menu still offers "Edit Comment".
