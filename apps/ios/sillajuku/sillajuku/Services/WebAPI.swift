@@ -221,6 +221,9 @@ struct TasteProfileResponse: Decodable {
         // Half-star buckets, index 0 = 0.5★ … 9 = 5.0★.
         let scoreDist: [Int]
         let scenes: SceneMix?
+        // Primary-artist country mix (cache v12, 2026-09-26) -- replaces `scenes` on the
+        // "Where your music comes from" page; nil from an older cached report.
+        let countries: TasteCountryMix?
         // "YYYY-MM", oldest first, 12 entries (a rolling window, not fixed Jan-Dec).
         let timeline: [TimelineEntry]
         let peakMonthIndex: Int?

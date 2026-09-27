@@ -231,6 +231,10 @@ private struct TasteReportView: View {
     /// doesn't use that chrome (it has its own full-bleed aurora layout), so
     /// it needs this one directly.
     @State private var pendingShare: TasteShareBox?
+    /// "View N ratings" from the year / score / country charts -- port of
+    /// web's bar drill-down. Ratings load once, on first open.
+    @State private var drillStore = TasteDrillRatings()
+    @State private var drillBucket: TasteDrillBucket?
 
     private var stats: TasteProfileResponse.TasteStats { report.stats }
     private var charts: TasteProfileResponse.TasteCharts { report.charts }
@@ -298,6 +302,9 @@ private struct TasteReportView: View {
         }
         .sheet(item: $pendingShare) { box in
             SharePreviewSheet { box.view }
+        }
+        .sheet(item: $drillBucket) { bucket in
+            TasteBucketSheet(bucket: bucket, store: drillStore)
         }
     }
 
@@ -389,7 +396,8 @@ private struct TasteReportView: View {
                         aboveLabel: String(localized: "above average"),
                         belowLabel: String(localized: "below average"),
                         paceLabel: String(localized: "pace"),
-                        avgLabel: String(localized: "avg")
+                        avgLabel: String(localized: "avg"),
+                        onShowRatings: { drillBucket = $0 }
                     )
                 }
             }
@@ -400,7 +408,8 @@ private struct TasteReportView: View {
                     bins: charts.scoreDist,
                     mean: (pos: ((stats.avgScore ?? 0) - 0.25) / 5,
                            label: "\(String(localized: "avg")) \(String(format: "%.2f", stats.avgScore ?? 0))"),
-                    legend: String(localized: "score")
+                    legend: String(localized: "score"),
+                    onShowRatings: { drillBucket = $0 }
                 )
             }
         case .scene:
@@ -415,9 +424,12 @@ private struct TasteReportView: View {
             // top, pushing content off *both* edges and rendering nothing
             // at all, confirmed live before adding this.
             TastePageChrome(no: no, title: String(localized: "Where your music comes from"),
-                             lead: sceneShares.isEmpty ? nil : sceneLeadText(sceneShares),
+                             lead: charts.countries.flatMap(TasteCountry.leadText)
+                                ?? (sceneShares.isEmpty ? nil : sceneLeadText(sceneShares)),
                              topInset: topInset, bottomInset: bottomInset) {
-                SceneCanonContent(sceneShares: sceneShares, prestigeShare: stats.prestigeShare)
+                SceneCanonContent(sceneShares: sceneShares, countries: charts.countries,
+                                  prestigeShare: stats.prestigeShare,
+                                  onShowRatings: { drillBucket = $0 })
             }
         case .standings:
             TastePageChrome(
@@ -1358,7 +1370,11 @@ private struct TasteShareCard<Content: View>: View {
 /// resolved value would be reused verbatim in the share card too.
 private struct SceneCanonContent: View {
     let sceneShares: [(label: String, share: Double, color: Color)]
+    /// Country mix (web's 2026-09-26 replacement for the scene bar); the
+    /// scene bar stays as the fallback for a report cached before v12.
+    let countries: TasteCountryMix?
     let prestigeShare: Double?
+    var onShowRatings: ((TasteDrillBucket) -> Void)? = nil
 
     /// See `StandingsList`'s matching property for why: a `ScrollView`
     /// renders blank when snapshotted by `ImageRenderer` outside a window,
@@ -1382,7 +1398,10 @@ private struct SceneCanonContent: View {
 
     private var rows: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if !sceneShares.isEmpty {
+            if let countries, countries.total > 0 {
+                CountryMixView(data: countries, onShowRatings: onShowRatings)
+                Divider().padding(.vertical, 24)
+            } else if !sceneShares.isEmpty {
                 sceneBreakdown
                 Divider().padding(.vertical, 24)
             }
@@ -1848,7 +1867,9 @@ private struct YearChartView: View {
     let belowLabel: String
     let paceLabel: String
     let avgLabel: String
+    var onShowRatings: ((TasteDrillBucket) -> Void)? = nil
 
+    @Environment(\.isTasteShareSnapshot) private var isTasteShareSnapshot
     @State private var hover: Int? = nil
 
     private var totals: [Int] { years.map { $0.above + $0.below } }
@@ -1958,6 +1979,13 @@ private struct YearChartView: View {
                 }
             }
             .padding(.top, 4)
+            if let hover, years.indices.contains(hover), let onShowRatings, !isTasteShareSnapshot,
+               case let y = years[hover], y.above + y.below > 0 {
+                TasteViewRatingsButton(count: y.above + y.below) {
+                    onShowRatings(TasteDrillBucket(title: String(y.year), filter: .year(y.year)))
+                }
+                .padding(.top, 12)
+            }
         }
         .padding(.top, 12)
     }
@@ -2034,6 +2062,7 @@ private struct ScoreRampChartView: View {
     let bins: [Int]
     let mean: (pos: Double, label: String)?
     let legend: String
+    var onShowRatings: ((TasteDrillBucket) -> Void)? = nil
 
     @Environment(\.isTasteShareSnapshot) private var isTasteShareSnapshot
     @State private var hover: Int? = nil
@@ -2108,6 +2137,12 @@ private struct ScoreRampChartView: View {
             .padding(.top, 12)
             RampLegendView(label: legend)
                 .padding(.top, 10)
+            if let hover, bins.indices.contains(hover), bins[hover] > 0, let onShowRatings, !isTasteShareSnapshot {
+                TasteViewRatingsButton(count: bins[hover]) {
+                    onShowRatings(TasteDrillBucket(title: "\(String(format: "%.1f", scoreAt(hover)))★", filter: .scoreBin(hover)))
+                }
+                .padding(.top, 12)
+            }
         }
     }
 }
@@ -2318,6 +2353,9 @@ private struct HallOfFameView: View {
                 .textCase(.uppercase)
                 .foregroundStyle(Color.sjBlue.opacity(0.7))
                 .frame(maxWidth: .infinity, alignment: .leading)
+                // Raised on its own (offset, not layout) so the covers below
+                // stay exactly where they were.
+                .offset(y: -12)
 
             if n == 1 {
                 coverArt(albums[0], frontAmount: 1)

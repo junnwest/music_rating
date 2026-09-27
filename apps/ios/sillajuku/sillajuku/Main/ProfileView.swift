@@ -1093,8 +1093,10 @@ struct ProfileView: View {
                     Image("icon-user-plus")
                         .renderingMode(.template)
                         .resizable().scaledToFit()
-                        .frame(width: 16, height: 16)
+                        .frame(width: 21, height: 21)
                         .foregroundStyle(Color.sjInk)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
                 }
                 .accessibilityLabel(String(localized: "Find people"))
                 Spacer()
@@ -1104,14 +1106,16 @@ struct ProfileView: View {
                     Image("icon-list-checks")
                         .renderingMode(.template)
                         .resizable().scaledToFit()
-                        .frame(width: 16, height: 16)
+                        .frame(width: 21, height: 21)
                         .foregroundStyle(Color.sjInk)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
                         .overlay(alignment: .topTrailing) {
                             if !questVM.personalQuestsComplete {
                                 Circle()
                                     .fill(Color.red)
-                                    .frame(width: 4, height: 4)
-                                    .offset(x: 3, y: -1)
+                                    .frame(width: 6, height: 6)
+                                    .offset(x: -5, y: 6)
                             }
                         }
                 }
@@ -1120,8 +1124,10 @@ struct ProfileView: View {
                     Image("icon-settings")
                         .renderingMode(.template)
                         .resizable().scaledToFit()
-                        .frame(width: 16, height: 16)
+                        .frame(width: 21, height: 21)
                         .foregroundStyle(Color.sjInk)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
                 }
                 .accessibilityLabel(String(localized: "Settings"))
             }
