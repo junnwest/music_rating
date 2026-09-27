@@ -15,14 +15,14 @@ export interface MixSharePost {
   mixName: string;
   mixDescription: string | null;
   mixIsDefault: boolean;
-  profile: { username: string | null; display_name: string | null } | null;
+  profile: { username: string | null; display_name: string | null; avatar_url?: string | null } | null;
   coverUrls: string[];
 }
 
 export const MIX_SHARE_CAPTION_MAX = 500;
 
 const SELECT =
-  'id, user_id, mix_id, caption, created_at, mixes(id, name, description, is_default), profiles!mix_shares_user_id_fkey(username, display_name)';
+  'id, user_id, mix_id, caption, created_at, mixes(id, name, description, is_default), profiles!mix_shares_user_id_fkey(username, display_name, avatar_url)';
 
 type Err = { message: string } | null;
 

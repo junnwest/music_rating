@@ -18,9 +18,11 @@ struct MixShareComment: Codable, Identifiable {
     struct CommentProfile: Codable {
         let username: String?
         let displayName: String?
+        var avatarUrl: String? = nil
         enum CodingKeys: String, CodingKey {
             case username
             case displayName = "display_name"
+            case avatarUrl = "avatar_url"
         }
         var handle: String { username ?? displayName ?? String(localized: "someone") }
     }
@@ -213,7 +215,7 @@ struct MixShareCommentSheetView: View {
     private func loadComments() async {
         let fetched = (try? await supabase
             .from("mix_share_comments")
-            .select("id, user_id, content, created_at, profiles!mix_share_comments_user_id_fkey(username, display_name)")
+            .select("id, user_id, content, created_at, profiles!mix_share_comments_user_id_fkey(username, display_name, avatar_url)")
             .eq("mix_share_id", value: mixShareId)
             .order("created_at", ascending: true)
             .execute()
@@ -313,7 +315,7 @@ private struct MixShareCommentRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            DefaultAvatarView(size: 34)
+            UserAvatarView(url: comment.profiles?.avatarUrl, size: 34)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {

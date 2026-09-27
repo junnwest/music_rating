@@ -1574,7 +1574,8 @@ struct ProfileView: View {
             headerHandle: viewModel.profile?.username ?? "me",
             headerVerified: viewModel.profile?.isVerified == true,
             headerBadgeColor: viewModel.profile?.badgeColor,
-            headerFoundingNumber: viewModel.profile?.foundingNumber
+            headerFoundingNumber: viewModel.profile?.foundingNumber,
+            headerAvatarUrl: viewModel.profile?.avatarUrl
         )
         .padding(.horizontal, 12)
         .padding(.top, 8)
@@ -1591,6 +1592,7 @@ struct ProfileView: View {
             headerVerified: viewModel.profile?.isVerified == true,
             headerBadgeColor: viewModel.profile?.badgeColor,
             headerFoundingNumber: viewModel.profile?.foundingNumber,
+            headerAvatarUrl: viewModel.profile?.avatarUrl,
             // Matches FeedCard/AlbumDetailView's own-post ⋯ menu exactly (Share/
             // Edit/Add to Mix/Edit Comment/Delete) -- see ProfilePostCard's own
             // doc comment on `ownActions`.
@@ -2428,22 +2430,25 @@ struct PostCardHeader<Trailing: View>: View {
     let isVerified: Bool
     let badgeColor: String?
     let foundingNumber: Int?
+    let avatarUrl: String?
     let createdAt: Date
     @ViewBuilder var trailing: () -> Trailing
 
     init(handle: String, isVerified: Bool, badgeColor: String? = nil, foundingNumber: Int? = nil,
+         avatarUrl: String? = nil,
          createdAt: Date, @ViewBuilder trailing: @escaping () -> Trailing = { EmptyView() }) {
         self.handle = handle
         self.isVerified = isVerified
         self.badgeColor = badgeColor
         self.foundingNumber = foundingNumber
+        self.avatarUrl = avatarUrl
         self.createdAt = createdAt
         self.trailing = trailing
     }
 
     var body: some View {
         HStack(spacing: 9) {
-            DefaultAvatarView(size: 30)
+            UserAvatarView(url: avatarUrl, size: 30)
             HStack(spacing: 4) {
                 Text("@" + handle)
                     .font(.jakarta(13.5, weight: .semibold))
@@ -2486,6 +2491,7 @@ struct ProfilePostCard: View {
     var headerVerified: Bool = false
     var headerBadgeColor: String? = nil
     var headerFoundingNumber: Int? = nil
+    var headerAvatarUrl: String? = nil
     // Only offered on someone else's post (UserProfileView) -- redundant on your
     // own ratings.
     var onNotInterested: (() -> Void)? = nil
@@ -2507,7 +2513,7 @@ struct ProfilePostCard: View {
         VStack(alignment: .leading, spacing: 0) {
             if let handle = headerHandle {
                 PostCardHeader(handle: handle, isVerified: headerVerified,
-                               badgeColor: headerBadgeColor, foundingNumber: headerFoundingNumber,
+                               badgeColor: headerBadgeColor, foundingNumber: headerFoundingNumber, avatarUrl: headerAvatarUrl,
                                createdAt: rating.createdAt) {
                     if onNotInterested != nil || ownActions != nil {
                         Menu {
@@ -2674,6 +2680,7 @@ struct ProfileSongPostCard: View {
     var headerVerified: Bool = false
     var headerBadgeColor: String? = nil
     var headerFoundingNumber: Int? = nil
+    var headerAvatarUrl: String? = nil
     /// Same meaning as FeedCard.isDraft: the rating is mid-flow (drag committed,
     /// "Done" not yet tapped), so no like/comment bar, no ⋯ menu, and no card
     /// chrome of its own -- the host wraps it and the next step in one card.
@@ -2722,7 +2729,7 @@ struct ProfileSongPostCard: View {
         VStack(alignment: .leading, spacing: 0) {
             if let handle = headerHandle {
                 PostCardHeader(handle: handle, isVerified: headerVerified,
-                               badgeColor: headerBadgeColor, foundingNumber: headerFoundingNumber,
+                               badgeColor: headerBadgeColor, foundingNumber: headerFoundingNumber, avatarUrl: headerAvatarUrl,
                                createdAt: song.createdAt) {
                     if let own = ownActions, !isDraft { ownMenu(own) }
                 }

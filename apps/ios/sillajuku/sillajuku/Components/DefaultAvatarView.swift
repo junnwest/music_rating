@@ -21,3 +21,22 @@ struct DefaultAvatarView: View {
             .frame(width: size, height: size)
     }
 }
+
+/// A user's profile photo, falling back to `DefaultAvatarView` when they have
+/// none (or while it loads). Used wherever a post, comment, or like list shows
+/// its author -- those rows used to render `DefaultAvatarView` unconditionally.
+struct UserAvatarView: View {
+    let url: String?
+    let size: CGFloat
+
+    var body: some View {
+        if let url = url.flatMap(URL.init) {
+            CachedImage(url: url) { DefaultAvatarView(size: size) }
+                .scaledToFill()
+                .frame(width: size, height: size)
+                .clipShape(Circle())
+        } else {
+            DefaultAvatarView(size: size)
+        }
+    }
+}

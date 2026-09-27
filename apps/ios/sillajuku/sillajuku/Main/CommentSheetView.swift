@@ -13,9 +13,11 @@ struct RatingComment: Codable, Identifiable {
     struct CommentProfile: Codable {
         let username: String?
         let displayName: String?
+        var avatarUrl: String? = nil
         enum CodingKeys: String, CodingKey {
             case username
             case displayName = "display_name"
+            case avatarUrl = "avatar_url"
         }
         var handle: String { username ?? displayName ?? String(localized: "someone") }
         var initial: String { String((username ?? displayName ?? "?").prefix(1)).uppercased() }
@@ -238,7 +240,7 @@ struct CommentSheetView: View {
     private func loadComments() async {
         let fetched = (try? await supabase
             .from("rating_comments")
-            .select("id, user_id, content, created_at, profiles!rating_comments_user_id_fkey(username, display_name)")
+            .select("id, user_id, content, created_at, profiles!rating_comments_user_id_fkey(username, display_name, avatar_url)")
             .eq("rating_id", value: ratingId)
             .order("created_at", ascending: true)
             .execute()
@@ -510,7 +512,7 @@ struct SongCommentSheetView: View {
     private func loadComments() async {
         let fetched = (try? await supabase
             .from("track_rating_comments")
-            .select("id, user_id, content, created_at, profiles!track_rating_comments_user_id_fkey(username, display_name)")
+            .select("id, user_id, content, created_at, profiles!track_rating_comments_user_id_fkey(username, display_name, avatar_url)")
             .eq("track_rating_id", value: trackRatingId)
             .order("created_at", ascending: true)
             .execute()
@@ -619,7 +621,7 @@ private struct CommentRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            DefaultAvatarView(size: 34)
+            UserAvatarView(url: comment.profiles?.avatarUrl, size: 34)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {

@@ -4,6 +4,13 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-27 (Mac) — Posts now show the author's profile photo (iOS + web).** A UI bug, not a data one: the 5 users with an `avatar_url` all had working images, but post headers were hardcoded to the default avatar and the queries never selected `avatar_url`.
+
+- **iOS:** new `UserAvatarView(url:size:)` (`Components/DefaultAvatarView.swift`) falls back to `DefaultAvatarView`. `avatar_url` was added to the feed, lite-feed and mix-share selects, the album page posts, comment sheets and liker sheets. `FeedProfile`, the comment/liker profile structs, `PostCardHeader`, and `ProfilePostCard`/`ProfileSongPostCard` (`headerAvatarUrl`) carry it through. Own-post single screens (notifications, album song card) fetch your own avatar. **BUILD SUCCEEDED**. Still default by design: the comment input row (your own avatar isn't fetched there), the notifications list, share-card images.
+- **Web:** `FEED_SELECT` and the mix-share select include `avatar_url`. `FeedCard`, `MixPostCard` and the artist page's Community tab pass it to `Avatar`; comments and likers already did. Verified locally: `/api/feed` returns it for dls, kukurella and nicky.
+
+---
+
 **2026-09-27 (Mac) — Privacy Policy rewritten for PIPA (Korean + English); Terms tightened; phone-verification consent.**
 
 - **Why:** a legal review found the Privacy Policy was English-only and missing several items PIPA requires (Art. 30, Decree Art. 31, the Art. 28-8 overseas-transfer disclosure). It also didn't mention phone numbers, the founding phone hash, push tokens, Apple Music, deactivation or private accounts.

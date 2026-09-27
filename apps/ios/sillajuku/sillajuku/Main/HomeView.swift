@@ -75,10 +75,12 @@ struct FeedProfile: Codable {
     let isVerified: Bool?
     let badgeColor: String?
     let foundingNumber: Int?
+    var avatarUrl: String? = nil
     enum CodingKeys: String, CodingKey {
         case username; case displayName = "display_name"; case isBot = "is_bot"
         case isVerified = "is_verified"
         case badgeColor = "badge_color"; case foundingNumber = "founding_number"
+        case avatarUrl = "avatar_url"
     }
     var handle: String { username ?? displayName ?? String(localized: "someone") }
 }
@@ -176,7 +178,7 @@ class HomeViewModel {
     private var hasLoadedFollowing = false
 
     private static let feedSelect =
-        "id, user_id, score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey(username, display_name, is_bot, is_verified, badge_color, founding_number)"
+        "id, user_id, score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey(username, display_name, avatar_url, is_bot, is_verified, badge_color, founding_number)"
 
     // Explore's fetch is split by is_bot BEFORE ranking, not just re-ranked after — with
     // bot ratings' recency-biased backdating, a human rating usually wouldn't survive into
@@ -339,7 +341,7 @@ class HomeViewModel {
     // the identical query with the embed removed returns in <1s. release_groups
     // are fetched separately below and stitched back in client-side instead.
     private static let feedSelectLiteBotFilterable =
-        "id, user_id, score, review_text, created_at, release_group_id, profiles!ratings_user_id_fkey!inner(username, display_name, is_bot, is_verified, badge_color, founding_number)"
+        "id, user_id, score, review_text, created_at, release_group_id, profiles!ratings_user_id_fkey!inner(username, display_name, avatar_url, is_bot, is_verified, badge_color, founding_number)"
 
     private struct FeedItemLite: Codable {
         let id: UUID
@@ -398,7 +400,7 @@ class HomeViewModel {
     // Not private -- reused by ProfileViewModel to fetch the current user's
     // own mix shares for the profile posts feed.
     static let mixShareSelect =
-        "id, user_id, mix_id, caption, created_at, mixes(id, name, description), profiles!mix_shares_user_id_fkey(username, display_name, is_bot, is_verified, badge_color, founding_number)"
+        "id, user_id, mix_id, caption, created_at, mixes(id, name, description), profiles!mix_shares_user_id_fkey(username, display_name, avatar_url, is_bot, is_verified, badge_color, founding_number)"
 
     struct MixShareRow: Codable {
         let id: UUID
@@ -1423,7 +1425,7 @@ struct FeedCard: View {
             guard commentsCount > 0, prefetchedComments == nil else { return }
             prefetchedComments = (try? await supabase
                 .from("rating_comments")
-                .select("id, user_id, content, created_at, profiles!rating_comments_user_id_fkey(username, display_name)")
+                .select("id, user_id, content, created_at, profiles!rating_comments_user_id_fkey(username, display_name, avatar_url)")
                 .eq("rating_id", value: item.id)
                 .order("created_at", ascending: true)
                 .execute()
@@ -1509,7 +1511,7 @@ struct FeedCard: View {
 
     @ViewBuilder
     private var avatarLink: some View {
-        let icon = DefaultAvatarView(size: 30)
+        let icon = UserAvatarView(url: item.profiles?.avatarUrl, size: 30)
         let handle = item.profiles?.handle
         let label = handle.map { String(format: String(localized: "View @%@'s profile"), $0) }
             ?? String(localized: "View profile")
@@ -1684,9 +1686,10 @@ struct LikersSheetView: View {
             let id: UUID
             let username: String?
             let displayName: String?
+            var avatarUrl: String? = nil
             enum CodingKeys: String, CodingKey {
                 case id, username
-                case displayName = "display_name"
+                case displayName = "display_name"; case avatarUrl = "avatar_url"
             }
             var handle: String { username ?? displayName ?? String(localized: "someone") }
         }
@@ -1721,7 +1724,7 @@ struct LikersSheetView: View {
                             handle: liker.profiles?.handle ?? String(localized: "someone")
                         )) {
                             HStack(spacing: 11) {
-                                DefaultAvatarView(size: 32)
+                                UserAvatarView(url: liker.profiles?.avatarUrl, size: 32)
                                 Text("@" + (liker.profiles?.handle ?? String(localized: "someone")))
                                     .font(.jakarta(14, weight: .semibold))
                                     .foregroundStyle(Color.sjInk)
@@ -1747,7 +1750,7 @@ struct LikersSheetView: View {
     private func load() async {
         isLoading = true
         likers = (try? await supabase
-            .from("rating_likes").select("user_id, profiles!rating_likes_user_id_fkey(id, username, display_name)")
+            .from("rating_likes").select("user_id, profiles!rating_likes_user_id_fkey(id, username, display_name, avatar_url)")
             .eq("rating_id", value: ratingId).execute().value) ?? []
         isLoading = false
     }
@@ -1765,9 +1768,10 @@ struct SongLikersSheetView: View {
             let id: UUID
             let username: String?
             let displayName: String?
+            var avatarUrl: String? = nil
             enum CodingKeys: String, CodingKey {
                 case id, username
-                case displayName = "display_name"
+                case displayName = "display_name"; case avatarUrl = "avatar_url"
             }
             var handle: String { username ?? displayName ?? String(localized: "someone") }
         }
@@ -1802,7 +1806,7 @@ struct SongLikersSheetView: View {
                             handle: liker.profiles?.handle ?? String(localized: "someone")
                         )) {
                             HStack(spacing: 11) {
-                                DefaultAvatarView(size: 32)
+                                UserAvatarView(url: liker.profiles?.avatarUrl, size: 32)
                                 Text("@" + (liker.profiles?.handle ?? String(localized: "someone")))
                                     .font(.jakarta(14, weight: .semibold))
                                     .foregroundStyle(Color.sjInk)
@@ -1828,7 +1832,7 @@ struct SongLikersSheetView: View {
     private func load() async {
         isLoading = true
         likers = (try? await supabase
-            .from("track_rating_likes").select("user_id, profiles!track_rating_likes_user_id_fkey(id, username, display_name)")
+            .from("track_rating_likes").select("user_id, profiles!track_rating_likes_user_id_fkey(id, username, display_name, avatar_url)")
             .eq("track_rating_id", value: trackRatingId).execute().value) ?? []
         isLoading = false
     }

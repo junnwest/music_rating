@@ -418,6 +418,7 @@ struct AlbumPostDetailView: View {
     @State private var myVerified = false
     @State private var myBadgeColor: String? = nil
     @State private var myFoundingNumber: Int? = nil
+    @State private var myAvatarUrl: String? = nil
 
     var body: some View {
         Group {
@@ -434,7 +435,8 @@ struct AlbumPostDetailView: View {
                         headerHandle: myHandle,
                         headerVerified: myVerified,
                         headerBadgeColor: myBadgeColor,
-                        headerFoundingNumber: myFoundingNumber
+                        headerFoundingNumber: myFoundingNumber,
+                        headerAvatarUrl: myAvatarUrl
                     )
                     .padding(.horizontal, 12)
                     .padding(.top, 12)
@@ -477,18 +479,21 @@ struct AlbumPostDetailView: View {
             let isVerified: Bool?
             let badgeColor: String?
             let foundingNumber: Int?
+            let avatarUrl: String?
             enum CodingKeys: String, CodingKey {
                 case username; case isVerified = "is_verified"
                 case badgeColor = "badge_color"; case foundingNumber = "founding_number"
+                case avatarUrl = "avatar_url"
             }
         }
         if let p: MyProfile = try? await supabase.from("profiles")
-            .select("username, is_verified, badge_color, founding_number").eq("id", value: userId)
+            .select("username, is_verified, badge_color, founding_number, avatar_url").eq("id", value: userId)
             .single().execute().value {
             myHandle = p.username
             myVerified = p.isVerified == true
             myBadgeColor = p.badgeColor
             myFoundingNumber = p.foundingNumber
+            myAvatarUrl = p.avatarUrl
         }
 
         if let r = try? await supabase.from("ratings").select("*", count: .exact)
@@ -556,6 +561,7 @@ struct SongPostDetailView: View {
     @State private var myVerified = false
     @State private var myBadgeColor: String? = nil
     @State private var myFoundingNumber: Int? = nil
+    @State private var myAvatarUrl: String? = nil
 
     var body: some View {
         Group {
@@ -572,7 +578,8 @@ struct SongPostDetailView: View {
                         headerHandle: myHandle,
                         headerVerified: myVerified,
                         headerBadgeColor: myBadgeColor,
-                        headerFoundingNumber: myFoundingNumber
+                        headerFoundingNumber: myFoundingNumber,
+                        headerAvatarUrl: myAvatarUrl
                     )
                     .padding(.horizontal, 12)
                     .padding(.top, 12)
@@ -678,18 +685,21 @@ struct SongPostDetailView: View {
             let isVerified: Bool?
             let badgeColor: String?
             let foundingNumber: Int?
+            let avatarUrl: String?
             enum CodingKeys: String, CodingKey {
                 case username; case isVerified = "is_verified"
                 case badgeColor = "badge_color"; case foundingNumber = "founding_number"
+                case avatarUrl = "avatar_url"
             }
         }
         if let p: MyProfile = try? await supabase.from("profiles")
-            .select("username, is_verified, badge_color, founding_number").eq("id", value: userId)
+            .select("username, is_verified, badge_color, founding_number, avatar_url").eq("id", value: userId)
             .single().execute().value {
             myHandle = p.username
             myVerified = p.isVerified == true
             myBadgeColor = p.badgeColor
             myFoundingNumber = p.foundingNumber
+            myAvatarUrl = p.avatarUrl
         }
 
         if let r = try? await supabase.from("track_rating_likes").select("*", count: .exact)

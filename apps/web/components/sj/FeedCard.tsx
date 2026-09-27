@@ -158,7 +158,7 @@ export default function FeedCard({
           href={isOwn ? '/profile' : `/profile/${item.profiles?.username ?? ''}`}
           className="flex items-center gap-2 min-w-0 group"
         >
-          <Avatar url={null} size={30} />
+          <Avatar url={item.profiles?.avatar_url} size={30} />
           <span className="text-[13.5px] font-semibold text-ink truncate group-hover:underline">
             @{handle}
           </span>

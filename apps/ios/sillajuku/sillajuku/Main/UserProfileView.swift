@@ -850,6 +850,7 @@ struct UserProfileView: View {
                                     headerVerified: vm.profile?.isVerified == true,
                                     headerBadgeColor: vm.profile?.badgeColor,
                                     headerFoundingNumber: vm.profile?.foundingNumber,
+                                    headerAvatarUrl: vm.profile?.avatarUrl,
                                     onNotInterested: { Task { await vm.notInterested(rating: rating) } }
                                 )
                                 .padding(.horizontal, 12)

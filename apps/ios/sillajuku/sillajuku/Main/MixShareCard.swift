@@ -137,7 +137,7 @@ struct MixShareCard: View {
 
     @ViewBuilder
     private var avatarLink: some View {
-        let icon = DefaultAvatarView(size: 30)
+        let icon = UserAvatarView(url: post.profile?.avatarUrl, size: 30)
         let handle = post.profile?.handle
         let label = handle.map { String(format: String(localized: "View @%@'s profile"), $0) }
             ?? String(localized: "View profile")
@@ -256,9 +256,10 @@ struct MixShareLikersSheetView: View {
             let id: UUID
             let username: String?
             let displayName: String?
+            var avatarUrl: String? = nil
             enum CodingKeys: String, CodingKey {
                 case id, username
-                case displayName = "display_name"
+                case displayName = "display_name"; case avatarUrl = "avatar_url"
             }
             var handle: String { username ?? displayName ?? String(localized: "someone") }
         }
@@ -293,7 +294,7 @@ struct MixShareLikersSheetView: View {
                             handle: liker.profiles?.handle ?? String(localized: "someone")
                         )) {
                             HStack(spacing: 11) {
-                                DefaultAvatarView(size: 32)
+                                UserAvatarView(url: liker.profiles?.avatarUrl, size: 32)
                                 Text("@" + (liker.profiles?.handle ?? String(localized: "someone")))
                                     .font(.jakarta(14, weight: .semibold))
                                     .foregroundStyle(Color.sjInk)
@@ -319,7 +320,7 @@ struct MixShareLikersSheetView: View {
     private func load() async {
         isLoading = true
         likers = (try? await supabase
-            .from("mix_share_likes").select("user_id, profiles!mix_share_likes_user_id_fkey(id, username, display_name)")
+            .from("mix_share_likes").select("user_id, profiles!mix_share_likes_user_id_fkey(id, username, display_name, avatar_url)")
             .eq("mix_share_id", value: mixShareId).execute().value) ?? []
         isLoading = false
     }

@@ -64,11 +64,12 @@ export const RG_EMBED_NATIVE =
 export const FEED_SELECT =
   `id, user_id, score, review_text, created_at, ` +
   `release_groups(id, title, artist_display, genres, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), ` +
-  `profiles!ratings_user_id_fkey(username, display_name)`;
+  `profiles!ratings_user_id_fkey(username, display_name, avatar_url)`;
 
 export interface FeedProfileEmbed {
   username: string | null;
   display_name: string | null;
+  avatar_url?: string | null;
 }
 
 export function profileHandle(p?: FeedProfileEmbed | null): string {

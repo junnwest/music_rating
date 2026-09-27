@@ -91,7 +91,7 @@ export default function MixPostCard({
           href={isOwn ? '/profile' : `/profile/${post.profile?.username ?? ''}`}
           className="flex items-center gap-2 min-w-0 group"
         >
-          <Avatar url={null} size={30} />
+          <Avatar url={post.profile?.avatar_url} size={30} />
           <span className="text-[13.5px] font-semibold text-ink truncate group-hover:underline">
             @{handle}
           </span>

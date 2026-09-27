@@ -34,6 +34,7 @@ interface CommunityEntry {
   createdAt: string;
   handle: string;
   username: string | null;
+  avatarUrl: string | null;
 }
 
 type Tab = 'albums' | 'songs' | 'community' | 'stats';
@@ -210,7 +211,7 @@ export default function ArtistPage() {
         // Community feed
         const { data: cf } = await supabase!
           .from('ratings')
-          .select('id, user_id, release_group_id, score, created_at, profiles(username, display_name)')
+          .select('id, user_id, release_group_id, score, created_at, profiles(username, display_name, avatar_url)')
           .in('release_group_id', ids)
           .order('created_at', { ascending: false })
           .limit(60);
@@ -224,6 +225,7 @@ export default function ArtistPage() {
             createdAt: r.created_at,
             handle: r.profiles?.username ?? r.profiles?.display_name ?? 'someone',
             username: r.profiles?.username ?? null,
+            avatarUrl: r.profiles?.avatar_url ?? null,
           })),
         );
       })();
@@ -367,7 +369,7 @@ export default function ArtistPage() {
                   const score = entry.score;
                   return (
                     <li key={entry.id} className="flex items-center gap-2.5 py-2.5 px-1">
-                      <Avatar url={null} size={36} />
+                      <Avatar url={entry.avatarUrl} size={36} />
                       <span className="flex-1 min-w-0">
                         <span className="flex items-center gap-1.5 text-[12px]">
                           <Link
