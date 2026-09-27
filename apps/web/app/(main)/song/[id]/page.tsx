@@ -625,12 +625,12 @@ function SongPageInner() {
           {stats && stats.dist.some((n) => n > 0) && <RatingHistogram dist={stats.dist} userBucket={bucket} />}
         </section>
 
-        {/* Comments (track ratings with text), ranked like the album page */}
+        {/* Community ratings, with reviewed ratings first */}
         <CommentsSection
           kind="song"
           parentId={recordingId}
           mine={
-            userId && userScore != null && review.trim() !== ''
+            userId && userScore != null
               ? {
                   score: userScore,
                   text: review,

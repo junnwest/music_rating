@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronsUpDown, Download, ExternalLink, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import Cover from './Cover';
+import ArtistLink from './ArtistLink';
 import FlowerGlyph from './FlowerGlyph';
 import { useContextMenu, openInNewTab } from './ContextMenu';
 import { useLanguage } from '../../lib/i18n';
@@ -221,6 +222,7 @@ export default function ProfileRatedList({
   sortDesc,
   onSort,
   onDelete,
+  onEdit,
   canExport,
 }: {
   items: ProfileRatingItem[];
@@ -229,6 +231,7 @@ export default function ProfileRatedList({
   sortDesc: boolean;
   onSort: (col: RatedSortCol, desc: boolean) => void;
   onDelete?: (item: ProfileRatingItem) => void;
+  onEdit?: (item: ProfileRatingItem) => void;
   canExport: boolean;
 }) {
   const { t } = useLanguage();
@@ -326,6 +329,7 @@ export default function ProfileRatedList({
             item={item}
             showScore={showScores || item.score != null}
             onDelete={onDelete ? () => onDelete(item) : undefined}
+            onEdit={onEdit ? () => onEdit(item) : undefined}
           />
         ))}
       </ul>
@@ -337,10 +341,12 @@ function Row({
   item,
   showScore,
   onDelete,
+  onEdit,
 }: {
   item: ProfileRatingItem;
   showScore: boolean;
   onDelete?: () => void;
+  onEdit?: () => void;
 }) {
   const { t } = useLanguage();
   const score = item.score;
@@ -380,7 +386,11 @@ function Row({
           the cells — the cells are grid items, and an anchor around them would
           need `display: contents` (unreliable for hit-testing). The delete
           button sits above it on z-10 and stays independently clickable. */}
-      <Link href={href} aria-label={item.title} className="absolute inset-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent/50" />
+      {onEdit ? (
+        <button type="button" onClick={onEdit} aria-label={`${item.title} — ${t('sj.common.edit')}`} className="absolute inset-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent/50" />
+      ) : (
+        <Link href={href} aria-label={item.title} className="absolute inset-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent/50" />
+      )}
 
       <Cover url={item.coverUrl} className="w-[46px] h-[46px]" rounded="rounded-md" />
       <span className="min-w-0">
@@ -396,10 +406,12 @@ function Row({
             </span>
           )}
         </span>
-        <span className="block md:hidden text-[12px] text-muted truncate">{item.artistLine}</span>
+        <span className="relative z-10 block md:hidden text-[12px] text-muted truncate">
+          <ProfileArtist item={item} />
+        </span>
       </span>
-      <span className="hidden md:block min-w-0 text-[12.5px] text-muted truncate">
-        {item.artistLine}
+      <span className="relative z-10 hidden md:block min-w-0 text-[12.5px] text-muted truncate">
+        <ProfileArtist item={item} />
       </span>
       <span className="hidden md:block text-[12px] text-muted truncate">{typeLabel ?? '—'}</span>
 
@@ -437,6 +449,17 @@ function Row({
       )}
     </li>
   );
+}
+
+function ProfileArtist({ item }: { item: ProfileRatingItem }) {
+  return <>
+    {item.isSong && item.releaseTitle ? `${item.releaseTitle} · ` : null}
+    {item.artistId ? (
+      <ArtistLink href={`/artist/${item.artistId}`} className="hover:text-accent hover:underline">
+        {item.artistName}
+      </ArtistLink>
+    ) : item.artistName}
+  </>;
 }
 
 function ScoreChip({ score }: { score: number | null }) {

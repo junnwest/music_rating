@@ -42,6 +42,8 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **2026-09-27 (Windows, web) — Profile, song ratings, Taste, and Explore updates.** Profile artist links, direct rating/review editing, expandable three-line bio, editable username, single-album Taste layout, song score-only rating list, and a comment/affinity/follower-weighted Explore ranking are implemented. Apply `20260927000000_song_ratings_list.sql` and `20260927000001_feed_author_followers.sql` before expecting the new song list and follower weight in production. Browser click-through remains to do. See SESSIONS.md. The scheduled pipeline check found ingest running at 64/hr (19,708 pending), but verify stalled under live writes; `newreleases` has 13 MusicBrainz 400 errors (PIPELINE_CHECKS.md).
+
 > **🔵 SESSION CLOSE (2026-09-26, Mac) — big day: push fixed, private accounts, deactivation, founding badge + claim ceremony, Quick Add removed. All migrations ✅ applied + verified; everything committed and pushed. Detail: SESSIONS.md (2026-09-26 entries, newest first).**
 > - **Push notifications** ✅ working: new APNs key `NNB277RA2M` (Sandbox & Production) on Vercel + Mac `.env.local`; `lib/apns.ts` retries the other APNs environment. *Leftovers:* copy `APNS_KEY_ID`/`APNS_PRIVATE_KEY` to the **Windows** `.env.local`; revoke the old `48K…` and `GBCLCU25MX` keys.
 > - **Private accounts** (`20260926000000`): Instagram-style. Only approved followers see a private user's content (RESTRICTIVE RLS); follows become requests; approve/decline in Notifications (iOS + web); private scores still count anonymously.

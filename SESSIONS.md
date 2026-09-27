@@ -4,6 +4,8 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-27 (Windows, web profile and discovery) —** Added artist links to profile rating rows/cards; profile rating and review editor; three-line expandable, newline-preserving bio; editable username with format, availability, and conflict checks; static single-album Taste layout; song community rating list including score-only ratings (`20260927000000_song_ratings_list.sql`); and an Explore feed that samples recent reviews, weighs follows/follower counts, review text, liked artists/genres, engagement, freshness, and a stable daily shuffle (`20260927000001_feed_author_followers.sql`). Following remains chronological. Typecheck, 64 web tests, and production build passed; signed-in browser check remains. Both new migrations must be applied for full song/feed behavior. Scheduled pipeline status: 64/hr, 19,708 pending; verify stalled under live ingest and was stopped. See PIPELINE_CHECKS.md.
+
 **2026-09-26 (Windows, terms) — Terms of Service rewritten, Korean + English.**
 
 - `/terms` now renders Korean or English from the `sj-lang` cookie / Accept-Language (new `getServerLang()` in `lib/i18n/server.ts`; iOS links to the same page). Structure benchmarked on Watcha Pedia's 이용약관, adapted to sillajuku.

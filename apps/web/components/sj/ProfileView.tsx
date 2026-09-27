@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -24,6 +24,7 @@ import Avatar from './Avatar';
 import { Skeleton, SkeletonLine, SkeletonRows } from './Loading';
 import ProfilePostCard from './ProfilePostCard';
 import ProfileSongPostCard from './ProfileSongPostCard';
+import ProfileRatingEditor from './ProfileRatingEditor';
 import MixPostCard from './MixPostCard';
 import ProfileStats from './ProfileStats';
 import FoundingNumberBadge from './FoundingNumberBadge';
@@ -61,6 +62,30 @@ import type { MixRow } from '../../lib/db/types';
 
 const SKIP_DELETE_CONFIRM_KEY = 'sj:skipDeleteRatingConfirm';
 
+function ProfileBio({ text }: { text: string }) {
+  const { t } = useLanguage();
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  const ref = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => setOverflows(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [text]);
+
+  return <div className="mt-1">
+    <p ref={ref} className={`text-[13.5px] text-muted whitespace-pre-wrap break-words ${expanded ? '' : 'line-clamp-3'}`}>{text}</p>
+    {(overflows || expanded) && <button type="button" onClick={() => setExpanded((v) => !v)} className="mt-0.5 text-[12px] font-semibold text-accent hover:underline">
+      {t(expanded ? 'sj.commentsSection.less' : 'sj.commentsSection.more')}
+    </button>}
+  </div>;
+}
+
 export interface ProfileRatingItem {
   ratingId: string;
   key: string;
@@ -69,6 +94,8 @@ export interface ProfileRatingItem {
   releaseGroupId: string | null;
   title: string;
   artistLine: string;
+  artistId: string | null;
+  artistName: string;
   coverUrl: string | null;
   releaseType: string | null;
   score: number | null;
@@ -137,6 +164,7 @@ export default function ProfileView({ username }: { username?: string }) {
   }>({ likes: {}, comments: {}, liked: new Set() });
   const [followModal, setFollowModal] = useState<null | 'following' | 'followers'>(null);
   const [pendingDelete, setPendingDelete] = useState<ProfileRatingItem | null>(null);
+  const [editingRating, setEditingRating] = useState<ProfileRatingItem | null>(null);
   const [skipDeleteConfirmChecked, setSkipDeleteConfirmChecked] = useState(false);
 
   // Founding badge + lineage — independent of the main `load()` above (own
@@ -294,7 +322,7 @@ export default function ProfileView({ username }: { username?: string }) {
       const { data: raw } = await supabase!
         .from('track_ratings')
         .select(
-          'id, recording_id, score, review_text, created_at, recordings(id, title, artist_display)',
+          'id, recording_id, score, review_text, created_at, recordings(id, title, artist_display, primary_artist_id)',
         )
         .eq('user_id', uid)
         .order('created_at', { ascending: false })
@@ -304,7 +332,7 @@ export default function ProfileView({ username }: { username?: string }) {
       const { data: coverRows } = await supabase!
         .from('release_tracks')
         .select(
-          'recording_id, releases(is_canonical, release_groups(id, title, artist_display, cover_url))',
+          'recording_id, releases(is_canonical, release_groups(id, title, artist_display, primary_artist_id, cover_url))',
         )
         .in('recording_id', rows.map((r) => r.recording_id));
       const rgMap: Record<string, any> = {};
@@ -323,6 +351,8 @@ export default function ProfileView({ username }: { username?: string }) {
           releaseGroupId: rg?.id ?? null,
           title: r.recordings?.title ?? 'Unknown Track',
           artistLine: `${rg?.title ?? ''} · ${rg?.artist_display ?? r.recordings?.artist_display ?? ''}`,
+          artistId: r.recordings?.primary_artist_id ?? rg?.primary_artist_id ?? null,
+          artistName: rg?.artist_display ?? r.recordings?.artist_display ?? '',
           coverUrl: rg?.cover_url ?? null,
           releaseType: null,
           score: r.score,
@@ -346,6 +376,8 @@ export default function ProfileView({ username }: { username?: string }) {
         releaseGroupId: rg?.id ?? null,
         title: rg ? displayName(rg.title, rg.native_title) : '',
         artistLine: rg ? displayName(rg.artist_display, rg.artists?.name_native) : '',
+        artistId: rg?.primary_artist_id ?? null,
+        artistName: rg ? displayName(rg.artist_display, rg.artists?.name_native) : '',
         coverUrl: rg?.cover_url ?? null,
         releaseType: rg?.release_group_type ?? null,
         score: r.score,
@@ -714,7 +746,7 @@ export default function ProfileView({ username }: { username?: string }) {
         {display?.displayName && (
           <p className="text-[13px] text-muted">{display.displayName}</p>
         )}
-        {canView && display?.bio && <p className="mt-1 text-[13.5px] text-muted">{display.bio}</p>}
+        {canView && display?.bio && <ProfileBio text={display.bio} />}
         {founding && (
           <div className="mt-3">
             <FoundingLineage
@@ -869,6 +901,7 @@ export default function ProfileView({ username }: { username?: string }) {
                         isLiked={likedIds.has(item.ratingId)}
                         onLike={() => toggleSongLike(item.ratingId)}
                         onDelete={() => requestDeleteRating(item)}
+                        onEdit={() => setEditingRating(item)}
                       />
                     ) : (
                       <ProfilePostCard
@@ -879,6 +912,7 @@ export default function ProfileView({ username }: { username?: string }) {
                         isLiked={likedIds.has(item.ratingId)}
                         onLike={() => toggleLike(item.ratingId)}
                         onDelete={() => requestDeleteRating(item)}
+                        onEdit={() => setEditingRating(item)}
                       />
                     ),
                   )}
@@ -894,6 +928,7 @@ export default function ProfileView({ username }: { username?: string }) {
                     setSortDesc(d);
                   }}
                   onDelete={isSelf ? (item) => requestDeleteRating(item) : undefined}
+                  onEdit={isSelf ? (item) => setEditingRating(item) : undefined}
                   canExport={isSelf}
                 />
               )}
@@ -950,6 +985,16 @@ export default function ProfileView({ username }: { username?: string }) {
       )}
 
       {/* Delete confirm */}
+      <ProfileRatingEditor
+        item={editingRating}
+        step={myProfile?.manual_rating_step ?? 0.5}
+        onClose={() => setEditingRating(null)}
+        onChange={(updated) => {
+          setEditingRating(updated);
+          setItems((prev) => prev.map((item) => item.key === updated.key ? updated : item));
+        }}
+        onDelete={requestDeleteRating}
+      />
       <Modal
         open={pendingDelete != null}
         onClose={() => {

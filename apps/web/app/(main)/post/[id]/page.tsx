@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { AlertCircle } from 'lucide-react';
 import ProfilePostCard from '../../../../components/sj/ProfilePostCard';
 import ProfileSongPostCard from '../../../../components/sj/ProfileSongPostCard';
+import ProfileRatingEditor from '../../../../components/sj/ProfileRatingEditor';
 import type { ProfileRatingItem } from '../../../../components/sj/ProfileView';
 import { useSession } from '../../../../components/sj/SessionContext';
 import { SkeletonBlock } from '../../../../components/sj/Loading';
@@ -29,9 +30,10 @@ export default function PostPage() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
   const isSong = searchParams.get('song') === '1';
-  const { userId: myId, ready, requireAuth } = useSession();
+  const { userId: myId, profile, ready, requireAuth } = useSession();
 
   const [item, setItem] = useState<ProfileRatingItem | null>(null);
+  const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [likesCount, setLikesCount] = useState(0);
   const [commentsCount, setCommentsCount] = useState(0);
@@ -46,7 +48,7 @@ export default function PostPage() {
         const { data: raw } = await supabase!
           .from('track_ratings')
           .select(
-            'id, recording_id, score, review_text, created_at, recordings(id, title, artist_display)',
+            'id, recording_id, score, review_text, created_at, recordings(id, title, artist_display, primary_artist_id)',
           )
           .eq('id', params.id)
           .maybeSingle();
@@ -59,7 +61,7 @@ export default function PostPage() {
         const r = raw as any;
         const { data: coverRows } = await supabase!
           .from('release_tracks')
-          .select('releases(is_canonical, release_groups(id, title, artist_display, cover_url))')
+          .select('releases(is_canonical, release_groups(id, title, artist_display, primary_artist_id, cover_url))')
           .eq('recording_id', r.recording_id);
         let rg: any = null;
         for (const row of (coverRows as any[] | null) ?? []) {
@@ -76,6 +78,8 @@ export default function PostPage() {
           releaseGroupId: rg?.id ?? null,
           title: r.recordings?.title ?? 'Unknown Track',
           artistLine: `${rg?.title ?? ''} · ${rg?.artist_display ?? r.recordings?.artist_display ?? ''}`,
+          artistId: r.recordings?.primary_artist_id ?? rg?.primary_artist_id ?? null,
+          artistName: rg?.artist_display ?? r.recordings?.artist_display ?? '',
           coverUrl: rg?.cover_url ?? null,
           releaseType: null,
           score: r.score,
@@ -127,6 +131,8 @@ export default function PostPage() {
           releaseGroupId: rg?.id ?? null,
           title: rg ? displayName(rg.title, rg.native_title) : '',
           artistLine: rg ? displayName(rg.artist_display, rg.artists?.name_native) : '',
+          artistId: rg?.primary_artist_id ?? null,
+          artistName: rg ? displayName(rg.artist_display, rg.artists?.name_native) : '',
           coverUrl: rg?.cover_url ?? null,
           releaseType: rg?.release_group_type ?? null,
           score: r.score,
@@ -199,6 +205,7 @@ export default function PostPage() {
           isLiked={isLiked}
           onLike={toggleLike}
           onDelete={deleteAndReturn}
+          onEdit={() => setEditing(true)}
         />
       ) : (
         <ProfilePostCard
@@ -208,8 +215,16 @@ export default function PostPage() {
           isLiked={isLiked}
           onLike={toggleLike}
           onDelete={deleteAndReturn}
+          onEdit={() => setEditing(true)}
         />
       )}
+      <ProfileRatingEditor
+        item={editing ? item : null}
+        step={profile?.manual_rating_step ?? 0.5}
+        onClose={() => setEditing(false)}
+        onChange={setItem}
+        onDelete={() => { setEditing(false); void deleteAndReturn(); }}
+      />
     </div>
   );
 }

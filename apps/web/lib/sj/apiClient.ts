@@ -20,6 +20,7 @@ export interface FeedPayload {
   items: FeedItemRow[];
   likeCounts: Record<string, number>;
   commentCounts: Record<string, number>;
+  followerCounts: Record<string, number>;
 }
 
 export async function fetchFeed(): Promise<FeedPayload> {

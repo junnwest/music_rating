@@ -33,6 +33,14 @@ type FeedEntry = { kind: 'rating'; item: FeedItemRow } | { kind: 'mix'; post: Mi
 
 const entryTime = (e: FeedEntry) => (e.kind === 'rating' ? e.item.created_at : e.post.createdAt);
 
+// A small daily shuffle breaks ties without reordering the feed on every render.
+function dailyJitter(id: string, viewerId: string | null): number {
+  const key = `${new Date().toISOString().slice(0, 10)}:${viewerId ?? 'guest'}:${id}`;
+  let hash = 2166136261;
+  for (let i = 0; i < key.length; i++) hash = Math.imul(hash ^ key.charCodeAt(i), 16777619);
+  return ((hash >>> 0) / 0xffffffff) * 1.5;
+}
+
 /**
  * Home — the social feed (web sibling of iOS HomeView). Explore = ranked
  * global pool; Following = people you follow. Desktop adds a right rail
@@ -74,6 +82,7 @@ export default function HomePage() {
     // Personalization signals (must resolve before ranking)
     let followingIds = new Set<string>();
     let likedArtists = new Set<string>();
+    let likedGenres = new Set<string>();
     let blocked = new Set<string>();
     let dismissed = new Set<string>();
     if (userId) {
@@ -81,9 +90,11 @@ export default function HomePage() {
         supabase.from('follows').select('following_id').eq('follower_id', userId),
         supabase
           .from('ratings')
-          .select('release_groups(artist_display)')
+          .select('release_groups(artist_display, genres)')
           .eq('user_id', userId)
-          .gte('score', 4.0),
+          .gte('score', 4.0)
+          .order('created_at', { ascending: false })
+          .limit(500),
         supabase.from('blocked_users').select('blocked_id').eq('blocker_id', userId),
         fetchNotInterestedIds(userId),
       ]);
@@ -94,6 +105,9 @@ export default function HomePage() {
         ((artistsRes.data as any[] | null) ?? [])
           .map((r) => r.release_groups?.artist_display)
           .filter(Boolean),
+      );
+      likedGenres = new Set(
+        ((artistsRes.data as any[] | null) ?? []).flatMap((r) => r.release_groups?.genres ?? []),
       );
       blocked = new Set(
         ((blockedRes.data as { blocked_id: string }[] | null) ?? []).map((r) => r.blocked_id),
@@ -107,6 +121,7 @@ export default function HomePage() {
     const cachedFeed = await cachedFeedPromise;
     const lCounts: Record<string, number> = {};
     const cCounts: Record<string, number> = {};
+    const followerCounts = cachedFeed?.followerCounts ?? {};
     let pool: FeedItemRow[];
     let poolFailed = false;
     if (cachedFeed) {
@@ -212,16 +227,21 @@ export default function HomePage() {
         let s = 0;
         if (followingIds.has(item.user_id)) s += 8;
         if (likedArtists.has(item.release_groups.artist_display)) s += 5;
+        s += Math.min(4, (item.release_groups.genres ?? []).filter((genre) => likedGenres.has(genre)).length * 2);
+        if (item.review_text?.trim()) s += 10;
+        s += Math.min(6, Math.log1p(followerCounts[item.user_id] ?? 0) * 1.8);
         s += Math.log((lCounts[item.id] ?? 0) + 1) * 5;
         s += Math.log((cCounts[item.id] ?? 0) + 1) * 3;
-        return [{ kind: 'rating', item } as FeedEntry, s + recency(item.created_at)] as const;
+        return [{ kind: 'rating', item } as FeedEntry, s + recency(item.created_at) + dailyJitter(item.id, userId ?? null)] as const;
       }),
       ...exploreShares.map((post) => {
         let s = 0;
         if (followingIds.has(post.userId)) s += 8;
+        if (post.caption?.trim()) s += 6;
+        s += Math.min(6, Math.log1p(followerCounts[post.userId] ?? 0) * 1.8);
         s += Math.log((shareSocial.likes[post.id] ?? 0) + 1) * 5;
         s += Math.log((shareSocial.comments[post.id] ?? 0) + 1) * 3;
-        return [{ kind: 'mix', post } as FeedEntry, s + recency(post.createdAt)] as const;
+        return [{ kind: 'mix', post } as FeedEntry, s + recency(post.createdAt) + dailyJitter(post.id, userId ?? null)] as const;
       }),
     ];
     const ranked = scored

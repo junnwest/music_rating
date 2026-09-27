@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Heart, MessageCircle, Trash2 } from 'lucide-react';
+import { Heart, MessageCircle, Pencil, Trash2 } from 'lucide-react';
 import Cover from './Cover';
+import ArtistLink from './ArtistLink';
 import ScoreBadge from './ScoreBadge';
 import TrackCommentsModal from './TrackCommentsModal';
 import TrackLikersModal from './TrackLikersModal';
@@ -25,6 +26,7 @@ export default function ProfileSongPostCard({
   isLiked,
   onLike,
   onDelete,
+  onEdit,
 }: {
   item: ProfileRatingItem;
   likesCount: number;
@@ -32,6 +34,7 @@ export default function ProfileSongPostCard({
   isLiked: boolean;
   onLike: () => void;
   onDelete: () => void;
+  onEdit: () => void;
 }) {
   const { t, lang } = useLanguage();
   const [showComments, setShowComments] = useState(false);
@@ -41,29 +44,28 @@ export default function ProfileSongPostCard({
 
   return (
     <article className="bg-surface rounded-2xl shadow-[0_1px_4px_rgba(0,0,0,0.05)] border border-divider/60 group">
-      <Link
-        href={`/song/${item.recordingId}${item.releaseGroupId ? `?rg=${item.releaseGroupId}` : ''}`}
-        className="flex items-center gap-3.5 px-3.5 pt-3.5 pb-2.5"
-      >
-        <Cover url={item.coverUrl} className="w-20 h-20" />
+      <div className="flex items-center gap-3.5 px-3.5 pt-3.5 pb-2.5">
+        <Link href={`/song/${item.recordingId}${item.releaseGroupId ? `?rg=${item.releaseGroupId}` : ''}`}><Cover url={item.coverUrl} className="w-20 h-20" /></Link>
         <span className="flex-1 min-w-0">
           <span className="flex items-center gap-1.5">
-            <span className="text-[16.5px] font-bold text-ink line-clamp-2">{item.title}</span>
+            <Link href={`/song/${item.recordingId}${item.releaseGroupId ? `?rg=${item.releaseGroupId}` : ''}`} className="text-[16.5px] font-bold text-ink line-clamp-2 hover:underline">{item.title}</Link>
             <span className="px-1.5 py-0.5 rounded bg-accent/[0.12] text-accent text-[10px] font-medium shrink-0">
               {t('sj.type.song')}
             </span>
           </span>
           <span className="block text-[13.5px] text-muted truncate mt-0.5">
-            {item.artistLine}
+            {item.releaseTitle ? `${item.releaseTitle} · ` : null}{item.artistId ? (
+              <ArtistLink href={`/artist/${item.artistId}`} className="hover:text-accent hover:underline">{item.artistName}</ArtistLink>
+            ) : item.artistName}
           </span>
         </span>
         {score != null && <ScoreBadge score={score} size={44} />}
-      </Link>
+      </div>
 
       {item.reviewText && (
-        <p className="px-3.5 pb-2.5 text-[14px] text-ink whitespace-pre-wrap break-words">
+        <button type="button" onClick={onEdit} aria-label={t('sj.rate.editComment')} className="block w-full px-3.5 pb-2.5 text-[14px] text-ink whitespace-pre-wrap break-words text-left hover:text-accent">
           {item.reviewText}
-        </p>
+        </button>
       )}
 
       <div className="flex items-center gap-4 pl-3.5 pr-2 py-1.5 pb-2.5">
@@ -97,6 +99,7 @@ export default function ProfileSongPostCard({
         {item.createdAt && (
           <span className="text-[12px] text-muted">{relativeTime(item.createdAt, lang)}</span>
         )}
+        <button onClick={onEdit} aria-label={t('sj.common.edit')} className="p-1.5 text-muted hover:text-accent transition"><Pencil size={14} /></button>
         <button
           onClick={onDelete}
           aria-label={t('sj.profile.deleteRatingTitle')}
