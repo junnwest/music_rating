@@ -1,74 +1,41 @@
 /**
- * Which tag in an album's genres[] is its PRIMARY genre — the scene-first
- * precedence already used by the chart system, applied to taste weighting:
- * the primary tag carries full weight, co-tags carry half (see profile.ts).
+ * Which tag in an album's genres[] is its PRIMARY genre — the primary tag
+ * carries full weight in taste weighting, co-tags carry half (see profile.ts).
  *
- * Why not array position: MB's API returns genres ALPHABETICALLY and the
- * ingest discards the per-genre vote count (verified live 2026-07-12 — e.g.
- * every My Bloody Valentine album reads ["indie rock","rock","shoegaze"]), so
- * position carries no importance signal for existing rows. Precedence does:
- * a [hip hop, k-pop, pop] album is a k-pop album that happens to carry style
- * co-tags. (mb-client.ts now sorts future ingests by vote count, but the
- * 307k existing rows stay alphabetical, so this stays the durable signal.)
+ * REPOINTED (Phase 2, 2026-09-21): the scene-first precedence is no longer a
+ * hand-maintained ordered list here. It is DERIVED from the canonical taxonomy
+ * walk in lib/genres/resolver.ts — `primaryOf(tags)` picks the most-specific
+ * resolvable tag (level: subgenre > genre > family, then `rank`, then tag
+ * order), which encodes the same "scene-qualified > niche > specific > broad"
+ * ordering the old PRECEDENCE table did (a [hip hop, k-pop, pop] album → k-pop;
+ * a [indie rock, rock, shoegaze] album → shoegaze). The triplicated PRECEDENCE
+ * list is deleted from this file (GENRE_TAXONOMY.md §3.2 / §4 Phase 2).
  *
- * ⚠ THREE COPIES of this family table must stay in sync:
- *   - this file (taste weighting, TS)
- *   - scripts/backfill-primary-genre.ts PRECEDENCE (chart backfill, TS)
- *   - _compute_primary_genre / _primary_genre_tag (SQL, migrations
- *     20260706000017-ish + 20260712000010)
+ * This file's only remaining job is to map that canonical winner BACK to the
+ * album's raw array element, because taste weighting keys `genre_weights` on the
+ * raw tag strings — iOS reads those keys, so the KEY SHAPE must not change. We
+ * return the raw element, never the canonical id.
+ *
+ * Why not array position: MB's API returns genres ALPHABETICALLY and the ingest
+ * discards per-genre vote counts (e.g. every My Bloody Valentine album reads
+ * ["indie rock","rock","shoegaze"]), so position carries no importance signal —
+ * the taxonomy walk does.
  */
-
-const norm = (g: string) =>
-  g.toLowerCase().replace(/-/g, ' ').replace(/&/g, ' and ').replace(/\s+/g, ' ').trim();
-
-/** Ordered precedence (highest first) — mirror of backfill-primary-genre.ts. */
-const PRECEDENCE: string[][] = [
-  ['korean hip hop', 'k rap', 'korean rap'],
-  ['korean r and b', 'k r and b', 'korean rnb'],
-  ['korean indie', 'k indie'],
-  ['korean folk', 'k folk'],
-  ['korean ballad', 'k ballad'],
-  ['k pop', 'korean pop'],
-  ['city pop'],
-  ['j rock', 'japanese rock', 'visual kei'],
-  ['j pop', 'japanese pop'],
-  ['shoegaze', 'dream pop'],
-  ['math rock'],
-  ['post rock'],
-  ['indie rock'],
-  ['indie pop', 'bedroom pop'],
-  ['alternative', 'alt rock'],
-  ['metal'],
-  ['punk'],
-  ['classic rock', 'hard rock', 'psychedelic rock', 'prog rock', 'progressive rock'],
-  ['jazz'],
-  ['funk', 'disco'],
-  ['r and b', 'rnb', 'neo soul', 'soul'],
-  ['hip hop', 'rap', 'trap'],
-  ['electronic', 'house', 'techno', 'edm', 'idm', 'electro', 'synth pop', 'synthpop'],
-  ['ambient', 'lo fi', 'lofi'],
-  ['folk', 'singer songwriter', 'americana'],
-  ['classical', 'orchestral', 'baroque'],
-  ['country'],
-  ['bossa nova'],
-  ['afrobeat'],
-  ['rock'],
-  ['pop'],
-];
+import { primaryOf, resolveGenre } from '../genres/resolver';
 
 /**
- * The array element that is the album's primary genre: the first tag (in
- * array order) matching the highest-precedence family present, else the
- * first tag (an album whose tags match no family still has a main tag).
+ * The array element that is the album's primary genre: the first tag (in array
+ * order) that resolves to the taxonomy's most-specific node for this album.
+ * Falls back to the first tag when nothing resolves — an album whose tags are
+ * all off-taxonomy still has a main tag (unchanged from the old behavior).
  */
 export function primaryTagOf(genres: string[] | null | undefined): string | null {
   if (!genres || genres.length === 0) return null;
-  const normed = genres.map(norm);
-  for (const subs of PRECEDENCE) {
-    for (let i = 0; i < normed.length; i++) {
-      if (subs.some((sub) => normed[i].includes(sub))) return genres[i];
-    }
-  }
+  const primaryId = primaryOf(genres);
+  if (!primaryId) return genres[0];
+  // Map the canonical winner back to the first raw element that resolves to it,
+  // so the returned value is a real key present in the album's genres[].
+  for (const g of genres) if (resolveGenre(g) === primaryId) return g;
   return genres[0];
 }
 

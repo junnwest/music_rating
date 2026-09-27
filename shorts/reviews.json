@@ -1,0 +1,46 @@
+{
+  "_note": "HYPOTHETICAL. The three comments and their usernames are invented — written to build and pace the reel, not taken from any real reviewer. Replace with real Sillajuku comments (tools/export_sillajuku.py) before publishing anything that presents them as somebody's opinion.",
+  "album": {
+    "artist": "Oasis",
+    "album": "(What's the Story) Morning Glory?",
+    "year": "1995",
+    "tracklist": [
+      "Hello",
+      "Roll with It",
+      "Wonderwall",
+      "Don't Look Back in Anger",
+      "Hey Now!",
+      "The Swamp Song (Version 1)",
+      "Some Might Say",
+      "Cast No Shadow",
+      "She's Electric",
+      "Morning Glory",
+      "The Swamp Song (Version 2)",
+      "Champagne Supernova"
+    ],
+    "highlight": "Champagne Supernova"
+  },
+  "reviews": [
+    {
+      "username": "westofthemoon",
+      "rating": 4.0,
+      "date": "14 Feb 2026",
+      "text": "The singles got so large they ate the album around them. Play it start to finish and the shape is stranger than you remember — long stretches of not much, then something enormous.",
+      "text_ko": "싱글들이 너무 커져서 앨범 자체를 잡아먹어 버렸다. 처음부터 끝까지 들어보면 기억하는 것보다 이상한 모양을 하고 있다. 별것 없는 구간이 길게 이어지다가, 갑자기 거대한 무언가가 나온다."
+    },
+    {
+      "username": "b.sides",
+      "rating": 4.5,
+      "date": "3 May 2026",
+      "text": "My brother played this every morning for a year and I hated it on principle. Twenty years later I put it on by accident and had to sit down. Some records just wait you out.",
+      "text_ko": "형이 일 년 내내 아침마다 이걸 틀었고, 나는 그냥 원칙적으로 싫어했다. 이십 년이 지나 우연히 틀었다가 그 자리에 앉아버렸다. 어떤 앨범은 그냥 당신을 기다린다."
+    },
+    {
+      "username": "halfstep",
+      "rating": 3.5,
+      "date": "21 Jun 2026",
+      "text": "The drums are mixed like they are in a stadium nobody has built yet.",
+      "text_ko": "드럼이 아직 아무도 짓지 않은 경기장에서 녹음된 것처럼 믹싱되어 있다."
+    }
+  ]
+}

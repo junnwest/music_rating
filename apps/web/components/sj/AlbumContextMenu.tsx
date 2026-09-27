@@ -1,13 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bookmark, ExternalLink, EyeOff } from 'lucide-react';
+import { Bookmark, BookmarkPlus, ExternalLink, EyeOff } from 'lucide-react';
 import FlowerGlyph from './FlowerGlyph';
 import ManualRateModal from './ManualRateModal';
-import MixPickerModal from './MixPickerModal';
 import { useContextMenu, openInNewTab } from './ContextMenu';
 import { useSession } from './SessionContext';
+import { useMixName, useMixTarget } from './MixTargetContext';
 import { useLanguage } from '../../lib/i18n';
 import { supabase } from '../../lib/supabaseClient';
 import { markNotInterested } from '../../lib/sj/notInterested';
@@ -16,8 +16,8 @@ import type { SJRelease } from '../../lib/sj/data';
 
 /**
  * The standard right-click menu for an album cover/card, anywhere in the app.
- * Self-contained like `AlbumRateButton`: it owns the precise-rating modal, the
- * mix picker, and its own `ratings` upsert/delete, so a surface only has to
+ * Self-contained like `AlbumRateButton`: it owns the precise-rating modal and
+ * its own `ratings` upsert/delete, so a surface only has to
  * spread `onContextMenu` and render `menu`.
  *
  * `AlbumPeek` already wraps every album cover in the app, so wiring this there
@@ -42,7 +42,12 @@ export function useAlbumContextMenu({
   const { t } = useLanguage();
   const [score, setScore] = useState<number | null>(initialScore);
   const [rateOpen, setRateOpen] = useState(false);
-  const [mixOpen, setMixOpen] = useState(false);
+  const { target, saveAndShow, openChange } = useMixTarget();
+  const mixName = useMixName();
+  // Where the menu was opened — the "Saved to…" dropdown anchors there.
+  const pointRef = useRef({ x: 0, y: 0 });
+  const mixItem = { kind: 'album' as const, releaseGroupId: release.id };
+  const mixMeta = { coverUrl: release.coverUrl, title: release.title };
 
   async function saveRating(next: number | null) {
     if (!supabase || !userId) return;
@@ -83,9 +88,15 @@ export function useAlbumContextMenu({
       },
       {
         key: 'save-to-mix',
-        label: t('sj.context.saveToMix'),
+        label: target ? t('sj.mix.saveTo').replace('{mix}', mixName(target)) : t('sj.mix.saveToMix'),
         icon: <Bookmark size={15} />,
-        onSelect: () => setMixOpen(true),
+        onSelect: () => saveAndShow(mixItem, pointRef.current, mixMeta),
+      },
+      {
+        key: 'save-to-other-mix',
+        label: t('sj.mix.saveToAnother'),
+        icon: <BookmarkPlus size={15} />,
+        onSelect: () => openChange(mixItem, pointRef.current, mixMeta),
       },
       {
         key: 'not-interested',
@@ -100,30 +111,27 @@ export function useAlbumContextMenu({
     );
   }
 
-  const { onContextMenu, menu } = useContextMenu(items);
+  const { onContextMenu: openMenu, menu } = useContextMenu(items);
+  const onContextMenu = (e: React.MouseEvent) => {
+    pointRef.current = { x: e.clientX, y: e.clientY };
+    openMenu(e);
+  };
 
   // `Modal` is plain `fixed` markup, not a portal, and the covers this menu
   // hangs off are usually wrapped in a `<Link>` — rendering the dialog in place
   // would make every click inside it bubble up and navigate away. Portalling to
-  // the body is what keeps Rate / Save to Mix usable from a linked cover.
+  // the body is what keeps Rate usable from a linked cover.
   const dialogs =
-    (rateOpen || mixOpen) && typeof document !== 'undefined'
+    rateOpen && typeof document !== 'undefined'
       ? createPortal(
-          <>
-            {rateOpen && (
-              <ManualRateModal
-                open
-                onClose={() => setRateOpen(false)}
-                release={release}
-                existingScore={score}
-                ratingStep={profile?.manual_rating_step ?? 0.5}
-                onSave={saveRating}
-              />
-            )}
-            {mixOpen && (
-              <MixPickerModal open onClose={() => setMixOpen(false)} releaseGroupId={release.id} />
-            )}
-          </>,
+          <ManualRateModal
+            open
+            onClose={() => setRateOpen(false)}
+            release={release}
+            existingScore={score}
+            ratingStep={profile?.manual_rating_step ?? 0.5}
+            onSave={saveRating}
+          />,
           document.body,
         )
       : null;

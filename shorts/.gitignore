@@ -1,0 +1,10 @@
+__pycache__/
+cache/covers/*.jpg
+cache/cards/*.png
+cache/clips/*
+out/*
+timeline.json
+assets/music*
+assets/fonts/*.ttf
+.venv/
+cache/intro/*

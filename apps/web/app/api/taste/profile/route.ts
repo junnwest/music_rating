@@ -73,7 +73,10 @@ export async function GET(req: NextRequest) {
   // v11: 2026-08-27 — "By the numbers" rebuild adds the tied-#1 hall-of-fame list
   // (topAlbums/topScore) and richer stats (median, skew, effectiveGenres,
   // communityDelta, perfectRate). v10 scene-pinned worlds; v9 synonym-merge recs.
-  const cacheKey = `taste:profile:v11:${userId}`;
+  // v12: 2026-09-26 — adds charts.countries (per-ISO-3166 artist country, the
+  // web chart's replacement for the kr/jp/west/other scene mix). charts.scenes
+  // stays for iOS, which still renders it; the world labels keep using scenes.
+  const cacheKey = `taste:profile:v12:${userId}`;
   if (!refresh) {
     const cached = await cacheGet<object>(cacheKey);
     if (cached) return NextResponse.json(cached);
@@ -315,6 +318,20 @@ export async function GET(req: NextRequest) {
       sceneTotal += 1;
     }
   }
+
+  // Country mix: the primary artist's actual country code, every one kept —
+  // the client decides how many to show and folds the rest into "Other".
+  // Albums whose artist has no country count separately as `unknown`.
+  const countryCounts: Record<string, number> = {};
+  let countryUnknown = 0;
+  for (const r of rows) {
+    const c = r.release_groups!.artists?.country?.trim().toUpperCase();
+    if (c) countryCounts[c] = (countryCounts[c] ?? 0) + 1;
+    else countryUnknown += 1;
+  }
+  const countryItems = Object.entries(countryCounts)
+    .map(([code, count]) => ({ code, count }))
+    .sort((a, b) => b.count - a.count || a.code.localeCompare(b.code));
 
   // Rating activity over the last 12 calendar months (oldest first).
   const timeline: { month: string; count: number }[] = [];
@@ -567,6 +584,10 @@ export async function GET(req: NextRequest) {
       years: yearSeries,
       scoreDist,
       scenes: sceneTotal > 0 ? { counts: sceneCounts, total: sceneTotal } : null,
+      countries:
+        countryItems.length > 0
+          ? { items: countryItems, unknown: countryUnknown, total: rows.length }
+          : null,
       timeline,
       peakMonthIndex: peakCount > 0 ? timeline.findIndex((t) => t.count === peakCount) : null,
     },

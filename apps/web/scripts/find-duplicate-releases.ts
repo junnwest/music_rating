@@ -216,16 +216,14 @@ function groupConfidence(group: Release[]): 'high' | 'low' | 'skip' {
 async function scoreRelease(db: DB, id: string): Promise<number> {
   let score = 0;
 
-  const [{ count: ratingCount }, { count: reviewCount }, { count: pinCount }, { count: entryCount }] =
+  const [{ count: ratingCount }, { count: pinCount }, { count: entryCount }] =
     await Promise.all([
       db.from('ratings').select('id', { count: 'exact', head: true }).eq('release_id', id),
-      db.from('reviews').select('id', { count: 'exact', head: true }).eq('release_id', id),
       db.from('pinned_albums').select('id', { count: 'exact', head: true }).eq('release_id', id),
       db.from('user_ranking_entries').select('id', { count: 'exact', head: true }).eq('release_id', id),
     ]);
 
   score += (ratingCount ?? 0) * 100;
-  score += (reviewCount ?? 0) * 50;
   score += (pinCount ?? 0) * 50;
   score += (entryCount ?? 0) * 50;
 

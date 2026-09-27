@@ -1,39 +1,46 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ExternalLink, Music, X, Globe } from 'lucide-react';
+import { ExternalLink, Music, X, Globe, Plus, Send, Lock } from 'lucide-react';
 import Cover from '../../../../components/sj/Cover';
 import { useContextMenuFor, openInNewTab } from '../../../../components/sj/ContextMenu';
 import { SkeletonLine, SkeletonRows } from '../../../../components/sj/Loading';
 import { useSession } from '../../../../components/sj/SessionContext';
+import { useMixName, useMixTarget } from '../../../../components/sj/MixTargetContext';
 import { supabase } from '../../../../lib/supabaseClient';
 import { useLanguage } from '../../../../lib/i18n';
-import { displayName, typeLabelKey } from '../../../../lib/sj/display';
+import { typeLabelKey } from '../../../../lib/sj/display';
+import {
+  loadMixEntries,
+  mixEntryHref,
+  mixEntryRef,
+  type MixEntry,
+} from '../../../../lib/sj/mixEntries';
+import SongChip from '../../../../components/sj/SongChip';
+import MixMosaic from '../../../../components/sj/MixMosaic';
+import MixAddPanel from '../../../../components/sj/MixAddPanel';
+import MixPostComposer from '../../../../components/sj/MixPostComposer';
+import { itemKey } from '../../../../lib/sj/mixes';
 import type { MixRow } from '../../../../lib/db/types';
-
-interface MixItemEntry {
-  id: string;
-  release: {
-    id: string;
-    title: string;
-    artist: string;
-    coverUrl: string | null;
-    releaseType: string | null;
-  };
-}
 
 /** Mix detail — web sibling of iOS MixDetailView. Owner can remove items. */
 export default function MixPage() {
   const params = useParams<{ id: string }>();
   const mixId = params.id;
   const { t } = useLanguage();
+  const mixName = useMixName();
   const { userId, ready } = useSession();
+  const { remove, version, lastAdded } = useMixTarget();
+  const [adding, setAdding] = useState(false);
+  const [composing, setComposing] = useState(false);
+  const [posted, setPosted] = useState(false);
+  const [highlight, setHighlight] = useState<string | null>(null);
   const [mix, setMix] = useState<MixRow | null>(null);
   const [authorHandle, setAuthorHandle] = useState<string | null>(null);
   const [authorUsername, setAuthorUsername] = useState<string | null>(null);
-  const [items, setItems] = useState<MixItemEntry[]>([]);
+  const [items, setItems] = useState<MixEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -76,44 +83,14 @@ export default function MixPage() {
       setAuthorHandle(m.profiles?.username ?? m.profiles?.display_name ?? null);
       setAuthorUsername(m.profiles?.username ?? null);
 
-      const { data: itemRows, error: itemsError } = await supabase!
-        .from('mix_items')
-        .select(
-          'id, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native))',
-        )
-        .eq('mix_id', mixId)
-        .order('created_at', { ascending: false });
+      const entries = await loadMixEntries(mixId);
       if (cancelled) return;
-      if (itemsError) {
-        console.error('[mix] failed to load mix items:', itemsError.message);
+      if (!entries) {
         setFailed(true);
         setLoading(false);
         return;
       }
-      const rows = (itemRows as any[] | null) ?? [];
-      // An item whose release_group embed came back null is a dangling row (or a
-      // blocked read); it can't be rendered, but silently dropping every one of
-      // them looks identical to an empty mix, so say so in the console.
-      const usable = rows.filter((r) => r.release_groups);
-      if (rows.length > 0 && usable.length === 0) {
-        console.warn(`[mix] ${rows.length} mix_items but no release_groups resolved`);
-      }
-      setItems(
-        usable
-          .map((r) => ({
-            id: r.id,
-            release: {
-              id: r.release_groups.id,
-              title: displayName(r.release_groups.title, r.release_groups.native_title),
-              artist: displayName(
-                r.release_groups.artist_display,
-                r.release_groups.artists?.name_native,
-              ),
-              coverUrl: r.release_groups.cover_url,
-              releaseType: r.release_groups.release_group_type,
-            },
-          })),
-      );
+      setItems(entries);
       setLoading(false);
     })();
     return () => {
@@ -121,21 +98,60 @@ export default function MixPage() {
     };
   }, [mixId, ready, reloadKey]);
 
-  async function removeItem(id: string) {
-    if (!supabase) return;
-    setItems((prev) => prev.filter((i) => i.id !== id));
-    await supabase.from('mix_items').delete().eq('id', id);
-  }
+  // Saves made elsewhere (a bookmark, the dock) land here without a reload.
+  // Silent: no skeleton, the list just updates.
+  const isOwnerNow = !!mix && userId === mix.user_id;
+  useEffect(() => {
+    if (!isOwnerNow || version === 0) return;
+    let cancelled = false;
+    loadMixEntries(mixId).then((entries) => {
+      if (!cancelled && entries) setItems(entries);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [version, isOwnerNow, mixId]);
+
+  // Items added to this mix (from the add panel, the dock, anywhere) slide in
+  // highlighted once the list re-reads.
+  useEffect(() => {
+    if (!lastAdded || lastAdded.mixId !== mixId) return;
+    const key = itemKey(lastAdded.item);
+    setHighlight(key);
+    const id = setTimeout(() => setHighlight((h) => (h === key ? null : h)), 1800);
+    return () => clearTimeout(id);
+  }, [lastAdded, mixId]);
+
+  useEffect(() => {
+    if (!posted) return;
+    const id = setTimeout(() => setPosted(false), 5000);
+    return () => clearTimeout(id);
+  }, [posted]);
+
+  const covers = useMemo(
+    () =>
+      Array.from(new Set(items.map((i) => i.coverUrl).filter((c): c is string => !!c))).slice(0, 4),
+    [items],
+  );
+
+  const removeItem = useCallback(
+    async (entry: MixEntry) => {
+      setItems((prev) => prev.filter((i) => i.id !== entry.id));
+      const ok = await remove(mixEntryRef(entry), mixId);
+      if (!ok) setItems((prev) => [entry, ...prev].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+    },
+    [remove, mixId],
+  );
 
   // Right-click menu for the rows. Declared before the early returns so the hook
   // order stays stable; "Remove from Mix" is resolved per-open, not per-render.
   const { onContextMenu: onItemContextMenu, menu: itemContextMenu } =
-    useContextMenuFor<MixItemEntry>((item) => [
+    useContextMenuFor<MixEntry>((item) => [
       {
         key: 'open-new-tab',
         label: t('sj.context.openNewTab'),
         icon: <ExternalLink size={15} />,
-        onSelect: () => openInNewTab(`/album/${item.release.id}`),
+        onSelect: () => openInNewTab(mixEntryHref(item)),
       },
       ...(mix && userId === mix.user_id
         ? [
@@ -144,7 +160,7 @@ export default function MixPage() {
               label: t('sj.context.removeFromMix'),
               icon: <X size={15} />,
               destructive: true,
-              onSelect: () => void removeItem(item.id),
+              onSelect: () => void removeItem(item),
             },
           ]
         : []),
@@ -184,63 +200,133 @@ export default function MixPage() {
 
   const isOwner = userId === mix.user_id;
 
+  // Anyone can post a public mix (a repost); the owner can also post a private
+  // one, which the composer makes public first.
+  const canPost = !!userId && (mix.is_public || isOwner);
+
   return (
     <div className="mx-auto max-w-3xl px-4 md:px-6 py-8">
-      <h1 className="text-[24px] font-bold text-ink">{mix.name}</h1>
-      <p className="flex items-center gap-1.5 mt-1 text-[13px] text-muted">
-        {authorHandle && (
-          <Link href={`/profile/${authorUsername ?? ''}`} className="hover:underline">
-            @{authorHandle}
-          </Link>
-        )}
-        {mix.is_public && (
-          <>
+      <header className="flex items-start gap-4 sm:gap-5">
+        <MixMosaic
+          covers={covers}
+          isDefault={mix.is_default}
+          className="w-20 h-20 sm:w-28 sm:h-28"
+          rounded="rounded-xl"
+        />
+        <div className="min-w-0 flex-1">
+          <h1 className="text-[22px] sm:text-[26px] font-bold text-ink leading-tight break-words">
+            {mixName(mix)}
+          </h1>
+          <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-1 text-[13px] text-muted">
+            {authorHandle && (
+              <Link href={`/profile/${authorUsername ?? ''}`} className="hover:underline">
+                @{authorHandle}
+              </Link>
+            )}
             <span className="text-divider">·</span>
-            <Globe size={11} />
-            {t('sj.mix.public')}
-          </>
-        )}
-        <span className="text-divider">·</span>
-        {items.length === 1
-          ? t('sj.search.oneRelease')
-          : t('sj.search.nReleases').replace('{n}', String(items.length))}
-      </p>
+            <span className="inline-flex items-center gap-1">
+              {mix.is_public ? <Globe size={11} /> : <Lock size={11} />}
+              {mix.is_public ? t('sj.mix.public') : t('sj.mix.private')}
+            </span>
+            <span className="text-divider">·</span>
+            {items.length === 1
+              ? t('sj.mix.oneItem')
+              : t('sj.mix.nItems').replace('{n}', String(items.length))}
+          </p>
+          {mix.description && (
+            <p className="mt-1.5 text-[13.5px] text-ink/90 whitespace-pre-wrap break-words">
+              {mix.description}
+            </p>
+          )}
+          {(isOwner || canPost) && (
+            <div className="flex flex-wrap items-center gap-2 mt-3">
+              {isOwner && (
+                <button
+                  type="button"
+                  onClick={() => setAdding((v) => !v)}
+                  aria-expanded={adding}
+                  className={`inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full text-[13px] font-semibold transition ${
+                    adding
+                      ? 'bg-accent text-white'
+                      : 'bg-accent/10 text-accent hover:bg-accent/15'
+                  }`}
+                >
+                  <Plus size={15} strokeWidth={2.6} />
+                  {t('sj.mixAdd.add')}
+                </button>
+              )}
+              {canPost && (
+                <button
+                  type="button"
+                  onClick={() => setComposing(true)}
+                  className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full bg-surface border border-divider text-[13px] font-semibold text-ink hover:border-muted transition"
+                >
+                  <Send size={14} />
+                  {t('sj.mixPost.post')}
+                </button>
+              )}
+              {posted && (
+                <span className="text-[12.5px] text-accent font-medium sj-fade-in" role="status">
+                  {t('sj.mixPost.posted')}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </header>
+
+      {isOwner && adding && <MixAddPanel mixId={mix.id} onClose={() => setAdding(false)} />}
 
       {items.length === 0 ? (
-        <div className="py-24 flex flex-col items-center gap-3">
+        <div className="py-20 flex flex-col items-center gap-3">
           <Music size={36} className="text-divider" />
           <p className="text-[14.5px] text-muted">{t('sj.mix.empty')}</p>
           <p className="text-[12.5px] text-muted max-w-[280px] text-center">
             {t('sj.mix.emptyDesc')}
           </p>
+          {isOwner && !adding && (
+            <button
+              type="button"
+              onClick={() => setAdding(true)}
+              className="mt-1 inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-accent text-white text-[13px] font-semibold hover:opacity-90 transition"
+            >
+              <Plus size={15} strokeWidth={2.6} />
+              {t('sj.mixAdd.addFirst')}
+            </button>
+          )}
         </div>
       ) : (
         <ul className="mt-6 rounded-2xl bg-surface border border-divider/60 divide-y divide-divider overflow-hidden">
           {items.map((item) => (
             <li
-              key={item.id}
+              key={`${item.kind}:${item.id}`}
               onContextMenu={(e) => onItemContextMenu(e, item)}
-              className="flex items-center gap-3 px-4 py-2.5 group"
+              className={`flex items-center gap-3 px-4 py-2.5 group transition-colors duration-700 ${
+                highlight === itemKey(mixEntryRef(item)) ? 'bg-accent/10 sj-row-in' : ''
+              }`}
             >
               <Link
-                href={`/album/${item.release.id}`}
+                href={mixEntryHref(item)}
                 className="flex items-center gap-3 min-w-0 flex-1 hover:opacity-90 transition"
               >
-                <Cover url={item.release.coverUrl} className="w-[50px] h-[50px]" rounded="rounded-lg" />
+                <Cover url={item.coverUrl} className="w-[50px] h-[50px]" rounded="rounded-lg" />
                 <span className="min-w-0">
-                  <span className="block text-[14px] font-semibold text-ink truncate">
-                    {item.release.title}
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-[14px] font-semibold text-ink truncate">{item.title}</span>
+                    {item.kind === 'song' && <SongChip />}
                   </span>
                   <span className="block text-[12px] text-muted truncate">
-                    {t(typeLabelKey(item.release.releaseType))} · {item.release.artist}
+                    {item.kind === 'album'
+                      ? `${t(typeLabelKey(item.releaseType))} · ${item.subtitle}`
+                      : item.subtitle}
                   </span>
                 </span>
               </Link>
               {isOwner && (
                 <button
-                  onClick={() => removeItem(item.id)}
+                  onClick={() => removeItem(item)}
                   aria-label={t('sj.mix.remove')}
-                  className="p-1.5 text-muted hover:text-red-500 opacity-0 group-hover:opacity-100 focus:opacity-100 transition"
+                  className="p-1.5 text-muted hover:text-red-500 md:opacity-0 group-hover:opacity-100 focus:opacity-100 transition"
                 >
                   <X size={15} />
                 </button>
@@ -250,6 +336,18 @@ export default function MixPage() {
         </ul>
       )}
       {itemContextMenu}
+      {canPost && (
+        <MixPostComposer
+          open={composing}
+          onClose={() => setComposing(false)}
+          mix={mix}
+          covers={covers}
+          itemCount={items.length}
+          isOwner={isOwner}
+          onPosted={() => setPosted(true)}
+          onMadePublic={() => setMix((m) => (m ? { ...m, is_public: true } : m))}
+        />
+      )}
     </div>
   );
 }

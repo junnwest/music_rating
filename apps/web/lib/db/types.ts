@@ -126,6 +126,7 @@ export interface MixRow {
   id: string;
   user_id: string;
   name: string;
+  description?: string | null;
   is_public: boolean;
   is_default: boolean;
   created_at: string;

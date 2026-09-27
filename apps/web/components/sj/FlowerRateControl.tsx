@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Trash2 } from 'lucide-react';
 import FlowerGlyph from './FlowerGlyph';
+import { useLanguage } from '../../lib/i18n';
 import { spectrumFill, spectrumNumber, spectrumRing, formatScore } from '../../lib/sj/display';
 
 /**
@@ -22,6 +24,11 @@ import { spectrumFill, spectrumNumber, spectrumRing, formatScore } from '../../l
  * A press with no meaningful drag is treated as a tap → `onRequestPrecise`
  * (open the full rating modal). Pointer events + capture cover mouse and touch;
  * `touch-action: none` stops the page scrolling mid-drag.
+ *
+ * Releasing back inside the dead zone always cancels (the rating is left as it
+ * was). Deleting is its own gesture, as on iOS: on an already-rated item a
+ * trash target sits past the 5★ ring, and a release beyond DELETE_RADIUS calls
+ * `onRate(null)`.
  */
 
 // Radii are literal drag distances from the button's centre: OFFSET is a dead
@@ -32,6 +39,10 @@ const TAP_THRESHOLD = 8; // px of movement below which a release is a click, not
 const OFFSET = 36; // dead-zone radius — release inside cancels
 const STEP = 34; // px of drag per whole star
 const MAX_RADIUS = OFFSET + 5 * STEP;
+// Past 5★ the score just holds at 5 until DELETE_RADIUS, where a release deletes
+// the rating (rated items only). The gap keeps an enthusiastic 5 from deleting.
+const DELETE_GAP = 44;
+const DELETE_RADIUS = MAX_RADIUS + DELETE_GAP;
 const scoreRadius = (score: number) => OFFSET + score * STEP;
 
 /**
@@ -56,6 +67,8 @@ interface DragState {
   angle: number;
   score: number | null;
   maxDist: number;
+  /** Past DELETE_RADIUS on a rated item — releasing deletes the rating. */
+  deleting: boolean;
 }
 
 export default function FlowerRateControl({
@@ -67,8 +80,8 @@ export default function FlowerRateControl({
   className = '',
   ratingStep = 0.5,
 }: {
-  /** Commit a drag-selected score (0.5–5.0), or `null` to void an existing
-   *  rating (dragged back into the dead zone and released). */
+  /** Commit a drag-selected score (0.5–5.0), or `null` to delete an existing
+   *  rating (dragged out past the 5★ ring onto the trash target). */
   onRate: (score: number | null) => void;
   /** A tap (no drag) — hand off to the precise rating modal. */
   onRequestPrecise?: () => void;
@@ -82,6 +95,7 @@ export default function FlowerRateControl({
    *  tap-to-open precise modal already does. */
   ratingStep?: number;
 }) {
+  const { t } = useLanguage();
   const [drag, setDrag] = useState<DragState | null>(null);
   const dragRef = useRef<DragState | null>(null);
   dragRef.current = drag;
@@ -104,8 +118,11 @@ export default function FlowerRateControl({
       angle: 0,
       score: null,
       maxDist: 0,
+      deleting: false,
     });
   }, []);
+
+  const rated = currentScore != null;
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     const d = dragRef.current;
@@ -123,16 +140,16 @@ export default function FlowerRateControl({
     const dx = e.clientX - ox;
     const dy = e.clientY - oy;
     const dist = Math.hypot(dx, dy);
+    const deleting = rated && dist >= DELETE_RADIUS;
     setDrag({
       ox,
       oy,
       angle: dist > 1 ? Math.atan2(dy, dx) : d.angle,
-      score: distanceToScore(dist, ratingStep),
+      score: deleting ? null : distanceToScore(dist, ratingStep),
       maxDist: Math.max(d.maxDist, dist),
+      deleting,
     });
-  }, [ratingStep]);
-
-  const rated = currentScore != null;
+  }, [ratingStep, rated]);
 
   const finish = useCallback(
     (commit: boolean) => {
@@ -144,16 +161,16 @@ export default function FlowerRateControl({
         onRequestPrecise?.();
         return;
       }
-      // Dragged, but released back inside the dead zone. If the album is already
-      // rated, that's an intentional "drag it back to nothing" → void the
-      // rating. If it was never rated, there's nothing to void → plain cancel.
-      if (d.score == null) {
-        if (rated) onRate(null);
+      // Out on the trash target → delete. Back inside the dead zone → cancel,
+      // leaving any existing rating untouched.
+      if (d.deleting) {
+        onRate(null);
         return;
       }
+      if (d.score == null) return;
       onRate(d.score);
     },
-    [onRate, onRequestPrecise, rated],
+    [onRate, onRequestPrecise],
   );
 
   const onPointerUp = useCallback(
@@ -179,7 +196,8 @@ export default function FlowerRateControl({
     <>
       <button
         type="button"
-        aria-label={ariaLabel}
+        aria-label={ariaLabel ?? t('sj.rate.rateTooltip')}
+        title={t('sj.rate.rateTooltip')}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -241,7 +259,13 @@ export default function FlowerRateControl({
       </button>
       {drag && typeof document !== 'undefined' &&
         createPortal(
-          <DragGauge state={drag} rated={rated} displayScore={shown} size={size} />,
+          <DragGauge
+            state={drag}
+            rated={rated}
+            displayScore={drag.deleting ? null : shown}
+            size={size}
+            deleteLabel={t('sj.common.delete')}
+          />,
           document.body,
         )}
     </>
@@ -264,9 +288,12 @@ function DragGauge({
   rated,
   displayScore,
   size,
+  deleteLabel,
 }: {
   state: DragState;
+  /** Already rated → the trash target past 5★ is available. */
   rated: boolean;
+  deleteLabel: string;
   /** What the popped-forward flower's fill/number should show — the live
    *  drag score, or (in the dead zone) the stored score for an already-rated
    *  album so its color doesn't blank out the instant the drag starts. The
@@ -275,12 +302,14 @@ function DragGauge({
   displayScore: number | null;
   size: number;
 }) {
-  const { ox, oy, angle, score } = state;
+  const { ox, oy, angle, score, deleting } = state;
   const cancel = score == null;
-  // In the dead zone on an already-rated album, releasing removes the rating —
-  // signal that with a warm "void" tint instead of the neutral cancel grey.
-  const willVoid = cancel && rated;
   const color = spectrumRing(score ?? 0.5);
+  // The trash target rides the drag angle just past DELETE_RADIUS, so it's
+  // always out along the direction the pointer is already heading.
+  const trashR = DELETE_RADIUS + 16;
+  const trashX = ox + trashR * Math.cos(angle);
+  const trashY = oy + trashR * Math.sin(angle);
   const radius = scoreRadius(score ?? 0.5);
   const showNumber = displayScore != null;
 
@@ -380,34 +409,64 @@ function DragGauge({
             opacity={0.34}
           />
         ))}
-        {/* Dead-zone edge — release inside here cancels, or *removes* the rating
-            when the album is already rated (warm tint + heavier ring). */}
+        {/* Dead-zone edge — release inside here cancels. */}
         <circle
           cx={ox}
           cy={oy}
           r={OFFSET}
           fill="none"
-          stroke={willVoid ? 'rgb(220,72,72)' : cancel ? 'rgb(150,150,150)' : color}
-          strokeOpacity={cancel ? 0.6 : 0.18}
-          strokeWidth={willVoid ? 1.5 : 1}
+          stroke={cancel && !deleting ? 'rgb(150,150,150)' : color}
+          strokeOpacity={cancel && !deleting ? 0.6 : 0.18}
+          strokeWidth={1}
           strokeDasharray="2 4"
         />
-        {/* "Release to remove" cue, just below the flower, when a drag has
-            returned to the dead zone on an already-rated album. */}
-        {willVoid && (
-          <text
-            x={ox}
-            y={oy + OFFSET + 16}
-            textAnchor="middle"
-            fontSize={11}
-            fontWeight={700}
-            fill="rgb(232,96,96)"
-          >
-            Remove
-          </text>
+        {/* Delete boundary — only for a rated item. Faint until the drag
+            crosses it, then solid red. */}
+        {rated && (
+          <circle
+            cx={ox}
+            cy={oy}
+            r={DELETE_RADIUS}
+            fill="none"
+            stroke="rgb(232,84,84)"
+            strokeOpacity={deleting ? 0.85 : 0.35}
+            strokeWidth={deleting ? 2 : 1}
+            strokeDasharray={deleting ? undefined : '3 5'}
+          />
         )}
-        {segments}
+        {!deleting && segments}
       </svg>
+      {/* Trash target past the 5★ ring (rated items only). */}
+      {rated && (
+        <div
+          className="absolute flex flex-col items-center gap-1"
+          style={{
+            left: trashX,
+            top: trashY,
+            transform: `translate(-50%, -50%) scale(${deleting ? 1.15 : 0.9})`,
+            opacity: deleting ? 1 : 0.7,
+            transition: 'transform 140ms ease-out, opacity 140ms ease-out',
+          }}
+        >
+          <span
+            className="grid place-items-center rounded-full shadow-lg"
+            style={{
+              width: 34,
+              height: 34,
+              background: deleting ? 'rgb(220,60,60)' : 'rgba(220,60,60,0.25)',
+              border: '1px solid rgba(255,120,120,0.6)',
+              transition: 'background 140ms ease-out',
+            }}
+          >
+            <Trash2 size={16} color="#fff" strokeWidth={2.25} />
+          </span>
+          {deleting && (
+            <span className="text-[11px] font-bold" style={{ color: 'rgb(255,130,130)' }}>
+              {deleteLabel}
+            </span>
+          )}
+        </div>
+      )}
       {/* The flower itself, lifted out of the page and popped forward in 3D —
           rendered here (above the scrim) so it sits genuinely *in front of* the
           fade rather than under it. Mirrors the resting button's flower→score
@@ -419,7 +478,7 @@ function DragGauge({
           top: oy,
           width: size,
           height: size,
-          background: showNumber ? spectrumFill(displayScore!) : '#fff',
+          background: deleting ? 'rgb(220,60,60)' : showNumber ? spectrumFill(displayScore!) : '#fff',
           transform: `translate(-50%, -50%) translateY(${shown ? -3 : 0}px) scale(${shown ? 1.22 : 1})`,
           boxShadow: shown
             ? '0 14px 30px -6px rgba(0,0,0,0.6), 0 5px 12px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.10), inset 0 1px 1px rgba(255,255,255,0.35)'
@@ -432,13 +491,18 @@ function DragGauge({
           className="flex items-center justify-center"
           style={{
             gridArea: '1 / 1',
-            opacity: showNumber ? 0 : 1,
-            transform: showNumber ? 'scale(0.82)' : 'scale(1)',
+            opacity: showNumber || deleting ? 0 : 1,
+            transform: showNumber || deleting ? 'scale(0.82)' : 'scale(1)',
             transition: 'opacity 130ms ease-out, transform 130ms ease-out',
           }}
         >
           <FlowerGlyph src="/icon-flower.svg" size={Math.round(size * 0.56)} className="text-accent" />
         </span>
+        {deleting && (
+          <span className="flex items-center justify-center" style={{ gridArea: '1 / 1' }}>
+            <Trash2 size={Math.round(size * 0.5)} color="#fff" strokeWidth={2.25} />
+          </span>
+        )}
         <span
           className="font-black leading-none tabular-nums"
           style={{

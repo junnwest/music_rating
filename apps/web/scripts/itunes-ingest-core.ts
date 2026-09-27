@@ -24,6 +24,7 @@
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { randomUUID } from 'crypto';
+import { writeSourceGenresBestEffort } from '../lib/genres/sourceWriter';
 
 export type DB = SupabaseClient;
 
@@ -565,6 +566,13 @@ export async function ingestEdition(
       }
       group.canonicalReleaseId = releaseId;
       group.canonicalDate = date;
+      // Per-source genre (GENRE_TAXONOMY.md Phase 3): the group's iTunes genre is its
+      // CANONICAL edition's primaryGenreName, so editions can't flip-flop it. Best-effort.
+      await writeSourceGenresBestEffort(
+        db, 'itunes',
+        [{ releaseGroupId: group.id, title: album.collectionName, tags: genre ? [{ tag: genre }] : [] }],
+        album.collectionName,
+      );
     }
 
     // Per-release recordings + release_tracks (v1: no cross-release unification).

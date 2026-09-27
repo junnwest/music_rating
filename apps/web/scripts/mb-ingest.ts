@@ -13,6 +13,7 @@ import {
 } from './mb-client';
 import { getDB, normalizeStr, detectLanguage, type DB } from './itunes-ingest-core';
 import { MB_ARTIST_OVERRIDES } from './mb-overrides';
+import { writeSourceGenresBestEffort, type SourceGenreInput } from '../lib/genres/sourceWriter';
 
 export { detectLanguage, getDB };
 export type { DB };
@@ -241,6 +242,13 @@ async function findOrCreateArtistByMbid(db: DB, detail: MbArtistDetail): Promise
     if (detail.name) {
       await db.from('artists').update({ name: detail.name })
         .eq('id', existing.artist_id).neq('name', detail.name);
+    }
+    // Same self-heal for a missing country: 60k+ rows were created before MB had one (or
+    // via a path that never set it), so every re-poll fills it in. Only ever fills a NULL
+    // -- a country already on the row (possibly curated) is never overwritten.
+    if (detail.country) {
+      await db.from('artists').update({ country: detail.country })
+        .eq('id', existing.artist_id).is('country', null);
     }
     return { id: existing.artist_id as string, isNew: false };
   }
@@ -615,6 +623,7 @@ export async function ingestArtist(db: DB, mbid: string, coreOnly = false): Prom
 
   const curated = await loadCuratedMbids(db);
   let recCount = 0, kept = 0, skippedUnofficial = 0, skippedEmpty = 0;
+  const genreInputs: SourceGenreInput[] = [];
   for (const rg of rgs) {
     if (!shouldIngestRG(rg, mbid, curated)) continue;  // composition filter (trim to core)
     // OFFICIAL-EDITION GATE. MusicBrainz statuses each RELEASE (Official / Promotion / Bootleg /
@@ -643,6 +652,11 @@ export async function ingestArtist(db: DB, mbid: string, coreOnly = false): Prom
     } else if (!eds.some(e => e.status === 'Official')) { skippedUnofficial++; continue; }
     kept++;
     const rgId = await findOrCreateReleaseGroup(db, rg, artistId);
+    genreInputs.push({
+      releaseGroupId: rgId,
+      title: rg.title,
+      tags: rg.genreVotes.map((g) => ({ tag: g.name, confidence: g.count })),
+    });
     // Multi-artist credits (Work Item A). Guarded: if the release_group_artists migration isn't
     // applied yet, skip silently so ingestion still succeeds.
     if (!creditsTableMissing) {
@@ -657,6 +671,11 @@ export async function ingestArtist(db: DB, mbid: string, coreOnly = false): Prom
     }
     recCount += await ingestEditionFromPrefetched(db, rgId, rg, artistId, byRg.get(rg.id) ?? []);
   }
+
+  // Per-source genres (GENRE_TAXONOMY.md Phase 3): every ingest AND freshness re-poll lands the
+  // artist's MB genres + vote counts in release_genres(source='musicbrainz') — so re-polls
+  // backfill existing albums with no extra MB calls. Best-effort: never fails the ingest.
+  await writeSourceGenresBestEffort(db, 'musicbrainz', genreInputs, detail.name);
 
   // Schedule the next freshness re-poll from the artist's priority tier (default 'known').
   const { data: pr } = await db.from('artists').select('ingest_priority').eq('id', artistId).maybeSingle();

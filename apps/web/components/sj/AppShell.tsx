@@ -15,6 +15,8 @@ import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
 import { SessionProvider, useSession } from './SessionContext';
 import { RatingsProvider } from './RatingsStore';
+import { MixTargetProvider } from './MixTargetContext';
+import MixDock from './MixDock';
 import FlowerGlyph from './FlowerGlyph';
 import SearchOmnibox from './SearchOmnibox';
 import CursorTip from './CursorTip';
@@ -29,7 +31,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
   return (
     <SessionProvider>
       <RatingsProvider>
-        <ShellInner>{children}</ShellInner>
+        <MixTargetProvider>
+          <ShellInner>{children}</ShellInner>
+        </MixTargetProvider>
       </RatingsProvider>
     </SessionProvider>
   );
@@ -184,7 +188,8 @@ function ShellInner({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 pb-20 md:pb-0">{children}</main>
+        {/* data-dock-main: the Mix Dock measures this page's container to push it only as far as needed. */}
+        <main data-dock-main className="flex-1 pb-20 md:pb-0">{children}</main>
 
         <footer className="hidden md:flex items-center gap-4 px-6 py-5 border-t border-divider text-[12px] text-muted">
           <span className="inline-flex items-center gap-1.5">
@@ -201,6 +206,9 @@ function ShellInner({ children }: { children: ReactNode }) {
           </Link>
         </footer>
       </div>
+
+      {/* ── Mix Dock (≥md, save-relevant pages only) ── */}
+      <MixDock />
 
       <CursorTip />
 
