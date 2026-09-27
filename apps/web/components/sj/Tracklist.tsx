@@ -266,13 +266,13 @@ export default function Tracklist({
         {!compact && (
           <div
             role="row"
-            className="sticky top-[56px] md:top-0 z-10 flex items-center gap-2.5 sm:gap-3 px-3 sm:px-4 py-2 rounded-t-2xl bg-surface/95 backdrop-blur border-b border-divider text-[10.5px] font-semibold tracking-[0.06em] uppercase text-muted"
+            className="sticky top-[56px] md:top-0 z-10 flex items-center gap-2.5 sm:gap-3 px-3 sm:px-4 py-2 rounded-t-2xl bg-surface/95 backdrop-blur border-b border-divider text-[10.5px] font-semibold tracking-[0.06em] text-muted"
           >
             <SortHead col="order" label="#" className="w-6 justify-end" />
             <span role="columnheader" className="flex-1">{t('sj.tracklist.title')}</span>
             <SortHead col="community" label={t('sj.tracklist.community')} className="hidden sm:inline-flex w-[52px] justify-center" />
             <SortHead col="duration" label={t('sj.tracklist.time')} className="hidden sm:inline-flex w-10 justify-end" />
-            <SortHead col="mine" label={t('sj.tracklist.you')} className="w-[30px] justify-center" />
+            <SortHead col="mine" label={t('sj.tracklist.rate')} className="w-[30px] justify-center" />
             <span className="w-7" aria-hidden />
           </div>
         )}

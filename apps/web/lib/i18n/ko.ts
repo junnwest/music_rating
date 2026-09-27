@@ -986,7 +986,7 @@ const ko: Translations = {
       title: '제목',
       community: '평균',
       time: '길이',
-      you: '내 평가',
+      rate: '평가',
       summary: '{n}곡 · {time}',
       nRatings: '평가 {n}개',
     },

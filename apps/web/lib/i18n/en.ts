@@ -984,7 +984,7 @@ const en = {
       title: 'Title',
       community: 'Avg',
       time: 'Time',
-      you: 'You',
+      rate: 'Rate',
       summary: '{n} tracks · {time}',
       nRatings: '{n} ratings',
     },
