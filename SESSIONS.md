@@ -4,6 +4,111 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-26 (Mac) — Founding badge claim ceremony applied ("Hold to break").**
+
+- **User approved** A+E and said "apply". New `Quests/FoundingClaimCeremony.swift` (production). The founding card's **Claim Badge** now opens it full screen, replacing the old one-tap claim; the debug `ClaimEffectsLab.swift` and its link are deleted. `FXHaptics` stays as the shared Core Haptics helper.
+- **Flow:** hold the gauge for 1.2s (frosted ??? tile cracks and shakes; max-strength rumble with accelerating crack ticks; releasing early heals it). On completion: break haptics (crisp + deep max hits, 0.7s full thrust rumble, 14-hit shatter crunch), shards fly, rocket bursts up, orange tile appears with spinning digits, and `claim_founding_badge()` is called **in parallel**. Digits lock (+0/+0.2/+0.4, each a max hit) once the real number arrives but never before 0.95s after the break, then land at +0.65 (crisp + deep max hits, fading full rumble, sparks) → "Founding member #0XX" + Done.
+- **Failure** (phone used / sold out / quests incomplete / network): double error haptic, message, the glass tile reassembles, Close. Close and swipe-to-dismiss are disabled mid-hold and mid-launch.
+- **Accessibility:** Reduce Motion drops the shake, flying shards, rocket and sparks (fades only; haptics kept). VoiceOver: the gauge is a button labelled "Claim founding badge" with an activation action that runs the claim directly.
+- **Verified in the simulator:** a signed-out hold → full break sequence → server refusal → error state with the tile restored. No crash. The success path needs a real signed-in claim (not exercised, since it would permanently use a number). Debug + Release **BUILD SUCCEEDED**.
+
+---
+
+**2026-09-26 (Mac) — Founding badge smaller + claim-effects lab (debug) for trying on device.**
+
+- **Smaller full badge:** iOS 20 → 17pt (others' profiles, default), own header 19 → 16pt; web 22 → 18px. The compact rocket-only badges are unchanged.
+- **Claim effects:** five brainstormed options (A hold-to-launch, B countdown, C slot machine, D minted, E glass break), built as a **DEBUG-only** `Quests/ClaimEffectsLab.swift`, reached from a "Preview claim effects (debug)" link on the Quests founding card. Nothing is claimed (fake number 042), and there's a Replay button. Haptics use a new `Components/FXHaptics.swift` (Core Haptics wrapper: `hit` / `rumble` / `curve`). A's rumble ramps with the hold and stops if you let go early. Intensity curves were fixed so they don't mute later hits, and control points are kept in time order.
+- **Verified in the simulator** (screen recordings + frame extraction; haptics can't be felt there): all five render end to end. The countdown originally launched the rocket and dropped the badge at the same time, now sequenced (rocket at 2.4s, badge drops at 3.0s, lands on the 3.3s thud). For A, a short press cancels and resets, and a full hold goes launch → reveal → digits lock → landing. Debug + Release builds both succeed (Release excludes the lab).
+- **Next:** the user tries them on the iPhone and picks. Then the chosen effect gets built into the real claim, and the lab is deleted.
+- **Follow-up: "combine A and E, maximum haptics"** → new top lab entry **A+E · Hold to break** (`HoldBreakFX`). While holding, the frosted ??? tile cracks progressively (cracks track the gauge; letting go early heals them) and shakes harder (amplitude ^1.5). Hold haptics: a continuous rumble at intensity 1.0 shaped 0.35→1.0 over the hold, sharpness -0.4→+0.5, plus 11 accelerating crack ticks (0.7→1.0, sharpness 1). On completion: crisp and deep max hits together, a 0.7s full-strength thrust rumble, a 14-hit shatter crunch (25 ms apart, all 1.0), and three digit locks each with a max hit plus a micro-rumble. Landing at 1.6s: crisp and deep max hits plus a 0.45s full rumble fading out. Visuals: shards fly apart, the rocket bursts up, the orange badge rolls to 042, two spark bursts.
+- **Crash found in the simulator:** the first recording crashed on hold (SIGABRT, `-[CALayer setPosition:]` from `SDFLayer.update`, i.e. a NaN position inside iOS 26 `.glassEffect` when the view is offset every frame by the shake). The combined effect now draws its frosted glass with plain shapes (white gradient sheen + edge stroke); E, which doesn't shake, keeps `.glassEffect`. Re-recorded end to end with no crash. Debug + Release build OK.
+
+---
+
+**2026-09-26 (Mac) — Founding badge (first 500) built: claim in Quests, rocket + number.**
+
+- **Decisions (user):** filled square badge, rocket on top, three-digit number below (`#FF7A00`); claimable once every personal quest **except the invite quests** is done (profile picture, bio, 25 ratings, follow someone, verified phone); claimed **explicitly** in the Quests tab, and existing users follow the same rule (no automatic numbering); one verified phone = one number.
+- **Migration `20260926000003_founding_badges.sql`** (✅ applied + verified live: `get_founding_status` → 0/500; anon `claim_founding_badge` → permission denied; `founding_badges` returns 0 rows to anon; an owner update of `founding_number` → blocked by the guard trigger; normal profile updates still fine; no one claimed): `founding_badges(number 1–500 PK, profile_id UNIQUE ON DELETE SET NULL, phone_hash UNIQUE)`, RLS with no policies (the phone hash never leaves the DB); `profiles.founding_number` (denormalized, guarded by a trigger so only the claim can set it); `claim_founding_badge()` re-checks every quest server-side, hashes the verified phone (digits only, sha256), takes an advisory lock, and hands out MAX+1 ≤ 500. Errors: `phone_not_verified` / `quests_incomplete` / `phone_already_used` / `sold_out`. Deleted accounts keep their number retired and their phone blocked. `get_founding_status()` returns claimed / cap / my number.
+- **iOS:** `Components/FoundingNumberBadge.swift` (inline square; `compact:` = rocket-only for small rows; `FoundingBadgeHero` for the Quests card, "???" until claimed). The `is_beta_tester` plumbing was renamed to `founding_number` in every select/decoder (Profile, FeedProfile, UserProfileView, PostCardHeader params, AlbumDetail, Notifications, HomeView selects). The badge now sits where the rocket was: full badge in profile headers, compact in post headers / feed / comment rows / MixShareCard. Quests: new founding card between the timeline and Community goals (subtitle per state, "N of 500 left", orange Claim button, error messages, success haptic, posts `sjProfileUpdated`). BadgeLab removed. ko strings added. **BUILD SUCCEEDED**.
+- **Web:** `components/sj/FoundingNumberBadge.tsx` (same tile, same rocket paths); `ProfileView` shows it next to the handle instead of the old `founding_members` chip, loaded in its own query so a missing column can't break the profile. The invite-lineage UI (`FoundingLineage`) is unchanged. `tsc` + lint clean.
+- **Not done:** the web has no claim flow (claiming happens in the app, same as phone verification); the country picker still lists 47 countries; international SMS is untested.
+
+---
+
+**2026-09-26 (Mac) — Deleted all 11 email-login accounts.**
+
+- **User asked** to delete every account signed up with email (context: stopping duplicate-account farming for the first-500 badge; email sign-up is still enabled server-side even though the app has no email UI). 11 accounts: `silla_bot`, `music_lover`, `orangeandmustard` (real, 24 ratings, last seen Sep 2), `abcd`, `test`, `toyoumdwo`, `bitwiz`, `arronthkim` (real, 2 ratings; probably also owns `nevvy`), `junn223qa`, plus 2 auth users with no profile.
+- **Backup first:** `apps/web/backups/email-accounts-deleted-2026-09-26T21-59-52-860Z.json` (git-ignored). Holds the auth records, 9 profiles, 26 ratings, 1 track rating, 9 rating_history rows, 9 mixes, 8 notifications, 2 follows. Then `auth.admin.deleteUser` ×11 (11/11 ok; dependent rows cascade).
+- **After:** 0 email accounts, auth users 34 → 23, profiles 31 → 22. Only old setup scripts reference `silla_bot` / `music_lover` (`scripts/create-bot-user.ts`, `bot-actions.ts`, `create-test-user2.ts`); they'd recreate those accounts if run.
+- **Still open:** the Supabase **email provider is still enabled** (Authentication → Providers → Email). Nobody depends on it now, so it can be switched off to close the API loophole.
+
+---
+
+**2026-09-26 (Mac) — Founding badge design (first 500) + rocket (beta-tester) badge removed.**
+
+- **User asked** for a badge for the first 500 sign-ups showing a three-digit number. The first round had three directions (Pressing / Ticket / Stamp). Then: remove the rocket badge entirely and give its look to the founding badge, rocket on top, number below.
+- **Rocket removed from iOS** (the web never showed it): 7 render sites (own profile header, `UserProfileView`, `PostCardHeader`, FeedCard, album/song comment rows, MixShareCard) and the `BetaBadgeView` type. `is_beta_tester` itself is untouched: it still drives the ad-free perk, and the `isBetaTester` / `headerBetaTester` fetch plumbing is left in place to be converted into the founding-number slot.
+- **`Components/FoundingNumberBadge.swift`:** `FoundingNumberBadge` (inline, stacked rocket + `%03d` number, 22pt tall) and `FoundingBadgeHero` (large, + "FIRST 500"), launch orange `#FF7A00` (`Color.sjLaunchOrange`), three candidate treatments: bare / outlined / filled. Rendered in the simulator via a DEBUG `BadgeLab.swift` screen (`-BadgeLab`, temporary). Comparison image at `~/Desktop/founding-badge-options.png`.
+- **Open decisions:** which treatment; how numbers are assigned. The existing `founding_members` system (20260902) is invite-redemption numbered, cap 999, with pending/lock-in and 45-day reclaim, and 0 members. The proposal is a permanent 001–500 by sign-up order (current 30 users → 001–030).
+- Not wired into any screen yet. **BUILD SUCCEEDED**.
+
+---
+
+**2026-09-26 (Mac) — Comment sheets: the whole bottom area opens the keyboard.**
+
+- **User report:** the "Add a comment" target was too small; tapping below the comment line should open the keyboard too.
+- **Fix (all three comment sheets):** the input bar takes a tap anywhere (`contentShape` + `onTapGesture { isInputFocused = true }`; the text field and send button keep their own taps). The white strip below it (home-indicator safe area) uses a new `TapCatcher` (`Components/CommentInputField.swift`, a plain UIKit `UITapGestureRecognizer` view) in the bar's background, extended with `.ignoresSafeArea(edges: .bottom)`.
+- **Why UIKit:** verified in the simulator (harness + `cliclick` taps + per-handler logging) that a SwiftUI `.onTapGesture` on a background stretched into the safe area never fires there. Its UIKit view does: the catcher's logged frame was y 786–874, and taps registered at y 846/856/864/869. Only the last ~2pt at the very screen edge got nothing.
+- **Testing gotcha, for next time:** the Simulator silently fell back to hardware-keyboard mode whenever the per-device `DevicePreferences:<UDID>:ConnectHardwareKeyboard` entry was missing. The field focused (cursor shown) but no keyboard was drawn, which made several runs look like failed taps. Check the handler logs, not only the keyboard.
+- Harness, debug prints and the temporary load-skip removed; simulator prefs restored. **BUILD SUCCEEDED**.
+
+---
+
+**2026-09-26 (Mac) — Comment sheets: close the keyboard by swiping down or tapping empty space.**
+
+- **User report:** after the large-only detent change, the keyboard couldn't be closed (the swipe that used to shrink the sheet was gone). Wanted: a gentle swipe down or a tap on white space closes the keyboard and leaves the comments showing.
+- **Fix (all three comment sheets):** on `commentList`, `.scrollDismissesKeyboard(.interactively)`, `.contentShape(Rectangle()).onTapGesture { isInputFocused = false }` (rows/buttons keep their taps since child gestures win), and a `DragGesture(minimumDistance: 6)` that drops focus. It's attached with `including: isInputFocused ? .all : .subviews` so it only exists while typing. Left on, it swallowed the sheet's own swipe-to-dismiss from the content area (caught in testing). Sheet root: `.interactiveDismissDisabled(isInputFocused)`, so the first swipe while typing closes only the keyboard.
+- **Verified in the simulator** by driving real drags/taps with `cliclick` on a DEBUG harness presenting the actual `CommentSheetView` (sample comments, and the empty state): gentle swipe with keyboard up → keyboard hides, sheet stays (list + empty state); tap on empty space → keyboard hides; a second swipe with keyboard down → sheet dismisses (list + empty state). Harness and the temporary load-skip removed, simulator prefs restored. **BUILD SUCCEEDED**.
+
+---
+
+**2026-09-26 (Mac) — Comment sheet: input bar overshot when the keyboard reopened. Measured, then fixed.**
+
+- **User report:** close the keyboard, tap "Add a comment" again, and the input bar jumps higher than needed, then comes back.
+- **Reproduced in the simulator** with a temporary DEBUG harness (`-KeyboardHarness` launch arg, the same VStack list + `CommentInputField` layout, programmatic resign → refocus), a `simctl io recordVideo` capture, and an AVFoundation frame extractor. The frames show the cause: with detents `[.fraction(0.67), .large]`, refocusing makes iOS grow the sheet to `.large` while SwiftUI lifts the bar for the keyboard based on the old sheet frame, so the bar overshoots well above the keyboard and settles about 0.3 s later. On first open it looks fine because the sheet presents straight to large with the keyboard; closing the keyboard shrinks it back to 0.67, which re-arms the problem. A `.fraction(0.67)`-only sheet also overshoots (iOS slides the whole sheet up). A `.large`-only sheet rises monotonically with the keyboard: bar y 290 → 279 → 258 → 257, no overshoot.
+- **Fix:** all four comment-sheet presentations (FeedCard, MixShareCard, ProfilePostCard, ProfileSongPostCard) → `.presentationDetents([.large])`. The two album/song "View All" comment rows already used the default (large). Rationale documented on `CommentInputField`. Visible change: the sheet stays full height after the keyboard is dismissed.
+- Harness removed; simulator keyboard prefs restored. **BUILD SUCCEEDED**.
+
+---
+
+**2026-09-26 (Mac) — Comment sheets: keyboard opens together with the sheet (follow-up below replaces the first attempt).**
+
+- **Follow-up:** the user saw the sheet open first and the keyboard a beat later: the `.onAppear` focus didn't take, and only the 350 ms fallback did. `@FocusState` can't be set before the sheet has appeared. The fix is a new `Components/CommentInputField.swift`, a `UIViewRepresentable` `UITextView` that calls `becomeFirstResponder()` in `didMoveToWindow`, so iOS animates the keyboard alongside the sheet presentation. It keeps the old field's behavior: Jakarta 14pt, placeholder "Add a comment…", grows to 4 lines then scrolls, Return = send, two-way `isFocused` binding so Reply still focuses it. It replaced the `TextField` in all three sheets (`@FocusState` → `@State`), and the onAppear/timer workaround was removed. **BUILD SUCCEEDED**. Needs a device check.
+
+**(first attempt, superseded)**
+
+- User request: tapping a post's comment icon should open the keyboard right away. `CommentSheetView`, `SongCommentSheetView` and `MixShareCommentSheetView` already had `@FocusState isInputFocused` (used only by Reply). Each now sets it on appear, plus a second attempt after 350 ms in case the sheet ignores focus while animating in. All openers are comment-icon taps (FeedCard, profile post cards, album/song comment rows, MixShareCard). **BUILD SUCCEEDED**. Not yet checked on device.
+
+---
+
+**2026-09-26 (Mac) — Song page rating now works like the album page (minus comments).**
+
+- **User asked** for song rating to look like album rating, without adding comments. Before, the song page's "YOUR RATING" was a plain "Rate this track" button that opened `TrackRatingSheet`. The album page rates inline: the `MorphingRateButton` flower morphs into the post card's badge, then a post-rating step (comment / Add to a Mix / Done) shares the card until Done.
+- **`SongDetailView` (`AlbumDetailView.swift`):** same flow now. "Rate this Song" `MorphingRateButton` → draft `ProfileSongPostCard` + `PostRatingOptionsView(showComment: false)` → Done collapses it to the normal post card. New `songRatedBody` / `ratingBody` mirror the album versions (badge-only placeholder until the saved row loads, `matchedGeometryEffect` morph target).
+- **`ProfileSongPostCard`:** new `isDraft` (no action bar or ⋯ menu, no card chrome, same as `FeedCard.isDraft`) and `matchedGeometryNamespace`.
+- **`PostRatingOptionsView`:** new `showComment` (default true) and `onAddToMix` override (the song page opens `SongMixPickerView`, not the album picker). Album call sites unchanged.
+- **Bug fixed on the way:** the song page's ⋯ → Edit (`TrackRatingSheet`) only set `userScore` locally and never saved. The next reload reverted it. New `saveTrackScore` upserts via `AlbumQuickRate.saveManualTrackScore` (or deletes on nil) and reloads. Both the inline flow and the sheet use it.
+- New string "Rate this Song" (ko: 이 곡 평가하기). **BUILD SUCCEEDED**. Not yet checked on device.
+- **Open question:** the song post card's ⋯ menu still has "Edit Comment", so comments can still be added to songs that way.
+
+---
+
+**2026-09-26 (Mac) — Flower button hold delay 0.06s → 0.03s.**
+
+- User request. `FlowerRateControl.holdBeforeDrag` = 0.03 (`allowableMovement` unchanged at 4pt). `BinScrubRecognizer` (Taste tab chart scrubbing) reads the same constant, so it speeds up too. Watch on device for ordinary taps or scroll starts being mistaken for drag starts at this shorter hold. Simulator build: **BUILD SUCCEEDED**.
+
+---
+
 **2026-09-26 (Mac) — Quick Add removed from iOS and web.**
 
 - **User asked** to remove Quick Add completely. Asked about the Add tab's bottom section: remove the genre explorer (Quick Add's machinery), keep the Connect Spotify / Apple Music rows.

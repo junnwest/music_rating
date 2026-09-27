@@ -398,7 +398,7 @@ class ProfileViewModel {
     private func fetchProfile(userId: UUID) async -> Profile? {
         try? await supabase
             .from("profiles")
-            .select("id, display_name, username, rating_mode, manual_rating_step, bio, avatar_url, notify_likes, notify_replies, notify_followers, notify_rankings, notify_capsule, profile_visibility, catalog_visibility, library_visibility, stats_visibility, referral_code, badge_color, is_verified, is_beta_tester")
+            .select("id, display_name, username, rating_mode, manual_rating_step, bio, avatar_url, notify_likes, notify_replies, notify_followers, notify_rankings, notify_capsule, profile_visibility, catalog_visibility, library_visibility, stats_visibility, referral_code, badge_color, is_verified, founding_number")
             .eq("id", value: userId)
             .single()
             .execute()
@@ -1082,10 +1082,8 @@ struct ProfileView: View {
                         .frame(width: 14, height: 14)
                         .accessibilityLabel(String(localized: "Verified"))
                 }
-                if viewModel.profile?.isBetaTester == true {
-                    BetaBadgeView()
-                        .frame(width: 14, height: 14)
-                        .accessibilityLabel(String(localized: "Beta tester"))
+                if let foundingNumber = viewModel.profile?.foundingNumber {
+                    FoundingNumberBadge(number: foundingNumber, size: 16)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .center)
@@ -1570,7 +1568,7 @@ struct ProfileView: View {
             headerHandle: viewModel.profile?.username ?? "me",
             headerVerified: viewModel.profile?.isVerified == true,
             headerBadgeColor: viewModel.profile?.badgeColor,
-            headerBetaTester: viewModel.profile?.isBetaTester == true
+            headerFoundingNumber: viewModel.profile?.foundingNumber
         )
         .padding(.horizontal, 12)
         .padding(.top, 8)
@@ -1586,7 +1584,7 @@ struct ProfileView: View {
             headerHandle: viewModel.profile?.username ?? "me",
             headerVerified: viewModel.profile?.isVerified == true,
             headerBadgeColor: viewModel.profile?.badgeColor,
-            headerBetaTester: viewModel.profile?.isBetaTester == true,
+            headerFoundingNumber: viewModel.profile?.foundingNumber,
             // Matches FeedCard/AlbumDetailView's own-post ⋯ menu exactly (Share/
             // Edit/Add to Mix/Edit Comment/Delete) -- see ProfilePostCard's own
             // doc comment on `ownActions`.
@@ -2423,16 +2421,16 @@ struct PostCardHeader<Trailing: View>: View {
     let handle: String
     let isVerified: Bool
     let badgeColor: String?
-    let isBetaTester: Bool
+    let foundingNumber: Int?
     let createdAt: Date
     @ViewBuilder var trailing: () -> Trailing
 
-    init(handle: String, isVerified: Bool, badgeColor: String? = nil, isBetaTester: Bool = false,
+    init(handle: String, isVerified: Bool, badgeColor: String? = nil, foundingNumber: Int? = nil,
          createdAt: Date, @ViewBuilder trailing: @escaping () -> Trailing = { EmptyView() }) {
         self.handle = handle
         self.isVerified = isVerified
         self.badgeColor = badgeColor
-        self.isBetaTester = isBetaTester
+        self.foundingNumber = foundingNumber
         self.createdAt = createdAt
         self.trailing = trailing
     }
@@ -2454,10 +2452,8 @@ struct PostCardHeader<Trailing: View>: View {
                         .frame(width: 13, height: 13)
                         .accessibilityLabel(String(localized: "Verified"))
                 }
-                if isBetaTester {
-                    BetaBadgeView()
-                        .frame(width: 13, height: 13)
-                        .accessibilityLabel(String(localized: "Beta tester"))
+                if let foundingNumber = foundingNumber {
+                    FoundingNumberBadge(number: foundingNumber, size: 13, compact: true)
                 }
             }
             Text("·").font(.jakarta(13)).foregroundStyle(Color.sjBorder)
@@ -2483,7 +2479,7 @@ struct ProfilePostCard: View {
     var headerHandle: String? = nil
     var headerVerified: Bool = false
     var headerBadgeColor: String? = nil
-    var headerBetaTester: Bool = false
+    var headerFoundingNumber: Int? = nil
     // Only offered on someone else's post (UserProfileView) -- redundant on your
     // own ratings.
     var onNotInterested: (() -> Void)? = nil
@@ -2505,7 +2501,7 @@ struct ProfilePostCard: View {
         VStack(alignment: .leading, spacing: 0) {
             if let handle = headerHandle {
                 PostCardHeader(handle: handle, isVerified: headerVerified,
-                               badgeColor: headerBadgeColor, isBetaTester: headerBetaTester,
+                               badgeColor: headerBadgeColor, foundingNumber: headerFoundingNumber,
                                createdAt: rating.createdAt) {
                     if onNotInterested != nil || ownActions != nil {
                         Menu {
@@ -2634,7 +2630,7 @@ struct ProfilePostCard: View {
         .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 1)
         .sheet(isPresented: $showComments) {
             CommentSheetView(ratingId: rating.id)
-                .presentationDetents([.fraction(0.67), .large])
+                .presentationDetents([.large])  // large only: see CommentInputField
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showLikers) {
@@ -2671,7 +2667,14 @@ struct ProfileSongPostCard: View {
     var headerHandle: String? = nil
     var headerVerified: Bool = false
     var headerBadgeColor: String? = nil
-    var headerBetaTester: Bool = false
+    var headerFoundingNumber: Int? = nil
+    /// Same meaning as FeedCard.isDraft: the rating is mid-flow (drag committed,
+    /// "Done" not yet tapped), so no like/comment bar, no ⋯ menu, and no card
+    /// chrome of its own -- the host wraps it and the next step in one card.
+    var isDraft: Bool = false
+    /// Same as FeedCard.matchedGeometryNamespace -- ties the score badge to the
+    /// MorphingRateButton flower that just committed this rating.
+    var matchedGeometryNamespace: Namespace.ID? = nil
 
     @State private var showComments = false
     @State private var showLikers = false
@@ -2679,12 +2682,43 @@ struct ProfileSongPostCard: View {
     private var displayScore: Double? { song.score }
 
     var body: some View {
+        Group {
+            if isDraft {
+                cardContent
+            } else {
+                cardContent
+                    .background(Color.sjSurface)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 1)
+                    .overlay(alignment: .topTrailing) {
+                        // Headerless variant only -- with a header, the menu lives inside it.
+                        if let own = ownActions, headerHandle == nil {
+                            ownMenu(own)
+                                .padding(.top, 4)
+                                .padding(.trailing, 4)
+                        }
+                    }
+            }
+        }
+        .sheet(isPresented: $showComments) {
+            SongCommentSheetView(trackRatingId: song.ratingId)
+                .presentationDetents([.large])  // large only: see CommentInputField
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showLikers) {
+            SongLikersSheetView(trackRatingId: song.ratingId)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+    }
+
+    private var cardContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let handle = headerHandle {
                 PostCardHeader(handle: handle, isVerified: headerVerified,
-                               badgeColor: headerBadgeColor, isBetaTester: headerBetaTester,
+                               badgeColor: headerBadgeColor, foundingNumber: headerFoundingNumber,
                                createdAt: song.createdAt) {
-                    if let own = ownActions { ownMenu(own) }
+                    if let own = ownActions, !isDraft { ownMenu(own) }
                 }
             }
 
@@ -2715,7 +2749,12 @@ struct ProfileSongPostCard: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                     if let score = displayScore {
-                        ScoreBadge(score: score)
+                        if let matchedGeometryNamespace {
+                            ScoreBadge(score: score)
+                                .matchedGeometryEffect(id: "scoreBadge", in: matchedGeometryNamespace)
+                        } else {
+                            ScoreBadge(score: score)
+                        }
                     }
                 }
                 .contentShape(Rectangle())
@@ -2725,7 +2764,7 @@ struct ProfileSongPostCard: View {
             // Extra trailing room when the own-rating ellipsis menu overlays the
             // top-right corner (headerless variant only), so the score badge
             // doesn't sit underneath it.
-            .padding(.trailing, ownActions != nil && headerHandle == nil ? 44 : 14)
+            .padding(.trailing, ownActions != nil && headerHandle == nil && !isDraft ? 44 : 14)
             .padding(.top, headerHandle == nil ? 14 : 0)
             .padding(.bottom, 10)
 
@@ -2738,74 +2777,55 @@ struct ProfileSongPostCard: View {
                     .padding(.bottom, 10)
             }
 
-            HStack(spacing: 16) {
-                HStack(spacing: 5) {
-                    Button { Task { await onLike() } } label: {
-                        Image(isLiked ? "icon-heart-filled" : "icon-heart")
-                            .renderingMode(.template)
-                            .resizable().scaledToFit()
-                            .frame(width: 19, height: 19)
-                            .foregroundStyle(isLiked ? .red : Color.sjInk)
-                    }
-                    .buttonStyle(.plain)
-                    .animation(.easeInOut(duration: 0.15), value: isLiked)
-                    .accessibilityLabel(isLiked ? String(localized: "Unlike") : String(localized: "Like"))
-                    .sensoryFeedback(.impact(weight: .light), trigger: isLiked)
-
-                    if likesCount > 0 {
-                        Button { showLikers = true } label: {
-                            Text("\(likesCount)")
-                                .font(.jakarta(14, weight: .medium))
-                                .foregroundStyle(isLiked ? .red : Color.sjMuted)
-                                .contentShape(Rectangle())
+            if !isDraft {
+                HStack(spacing: 16) {
+                    HStack(spacing: 5) {
+                        Button { Task { await onLike() } } label: {
+                            Image(isLiked ? "icon-heart-filled" : "icon-heart")
+                                .renderingMode(.template)
+                                .resizable().scaledToFit()
+                                .frame(width: 19, height: 19)
+                                .foregroundStyle(isLiked ? .red : Color.sjInk)
                         }
                         .buttonStyle(.plain)
-                    }
-                }
-                HStack(spacing: 5) {
-                    Button { showComments = true } label: {
-                        Image("icon-message-circle")
-                            .renderingMode(.template)
-                            .resizable().scaledToFit()
-                            .frame(width: 19, height: 19).foregroundStyle(Color.sjInk)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(String(localized: "View comments"))
+                        .animation(.easeInOut(duration: 0.15), value: isLiked)
+                        .accessibilityLabel(isLiked ? String(localized: "Unlike") : String(localized: "Like"))
+                        .sensoryFeedback(.impact(weight: .light), trigger: isLiked)
 
-                    if commentsCount > 0 {
-                        Text("\(commentsCount)")
-                            .font(.jakarta(14, weight: .medium)).foregroundStyle(Color.sjMuted)
+                        if likesCount > 0 {
+                            Button { showLikers = true } label: {
+                                Text("\(likesCount)")
+                                    .font(.jakarta(14, weight: .medium))
+                                    .foregroundStyle(isLiked ? .red : Color.sjMuted)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    HStack(spacing: 5) {
+                        Button { showComments = true } label: {
+                            Image("icon-message-circle")
+                                .renderingMode(.template)
+                                .resizable().scaledToFit()
+                                .frame(width: 19, height: 19).foregroundStyle(Color.sjInk)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(String(localized: "View comments"))
+
+                        if commentsCount > 0 {
+                            Text("\(commentsCount)")
+                                .font(.jakarta(14, weight: .medium)).foregroundStyle(Color.sjMuted)
+                        }
+                    }
+                    Spacer()
+                    if headerHandle == nil {
+                        Text(song.createdAt.relativeTimeString)
+                            .font(.jakarta(12)).foregroundStyle(Color.sjMuted)
                     }
                 }
-                Spacer()
-                if headerHandle == nil {
-                    Text(song.createdAt.relativeTimeString)
-                        .font(.jakarta(12)).foregroundStyle(Color.sjMuted)
-                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-        }
-        .background(Color.sjSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 1)
-        .overlay(alignment: .topTrailing) {
-            // Headerless variant only -- with a header, the menu lives inside it.
-            if let own = ownActions, headerHandle == nil {
-                ownMenu(own)
-                    .padding(.top, 4)
-                    .padding(.trailing, 4)
-            }
-        }
-        .sheet(isPresented: $showComments) {
-            SongCommentSheetView(trackRatingId: song.ratingId)
-                .presentationDetents([.fraction(0.67), .large])
-                .presentationDragIndicator(.visible)
-        }
-        .sheet(isPresented: $showLikers) {
-            SongLikersSheetView(trackRatingId: song.ratingId)
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
         }
     }
 

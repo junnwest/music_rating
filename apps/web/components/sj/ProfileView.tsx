@@ -25,7 +25,7 @@ import { Skeleton, SkeletonLine, SkeletonRows } from './Loading';
 import ProfilePostCard from './ProfilePostCard';
 import ProfileSongPostCard from './ProfileSongPostCard';
 import ProfileStats from './ProfileStats';
-import FoundingBadge from './FoundingBadge';
+import FoundingNumberBadge from './FoundingNumberBadge';
 import FoundingLineage from './FoundingLineage';
 import { useSession } from './SessionContext';
 import { supabase } from '../../lib/supabaseClient';
@@ -127,6 +127,25 @@ export default function ProfileView({ username }: { username?: string }) {
   // Founding badge + lineage — independent of the main `load()` above (own
   // fetch, own loading state) so a slow/failed founding-data lookup never
   // blocks or breaks the rest of the profile.
+  // First-500 founding number (profiles.founding_number, migration
+  // 20260926000003). Own query so a missing column can't break the profile.
+  const [foundingNumber, setFoundingNumber] = useState<number | null>(null);
+  useEffect(() => {
+    if (!supabase || !targetId) return;
+    let cancelled = false;
+    supabase
+      .from('profiles')
+      .select('founding_number')
+      .eq('id', targetId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setFoundingNumber((data as { founding_number: number | null } | null)?.founding_number ?? null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [targetId]);
+
   const [founding, setFounding] = useState<{
     member: FoundingMember;
     inviter: { username: string | null; display_name: string | null; avatar_url: string | null } | null;
@@ -609,9 +628,7 @@ export default function ProfileView({ username }: { username?: string }) {
             so it reads as the secondary line (see also FollowListModal). */}
         <div className="flex items-center gap-2">
           <p className="text-[16px] font-semibold text-ink">@{handle}</p>
-          {founding && (
-            <FoundingBadge direction="chip" status={founding.member.status} number={founding.member.number} size={20} />
-          )}
+          {foundingNumber != null && <FoundingNumberBadge number={foundingNumber} size={18} />}
         </div>
         {display?.displayName && (
           <p className="text-[13px] text-muted">{display.displayName}</p>

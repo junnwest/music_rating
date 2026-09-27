@@ -28,9 +28,9 @@ struct Profile: Codable, Identifiable {
     var badgeColor: String?
     // Manually granted (no self-serve flow) -- see `is_verified` migration.
     var isVerified: Bool?
-    // Manually granted, permanent -- private beta-outreach accounts. See
-    // `is_beta_tester` migration.
-    var isBetaTester: Bool?
+    // 1…500 once claimed from Quests (claim_founding_badge, migration
+    // 20260926000003); nil otherwise. Shown as the rocket founding badge.
+    var foundingNumber: Int?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -51,7 +51,7 @@ struct Profile: Codable, Identifiable {
         case referralCode = "referral_code"
         case badgeColor   = "badge_color"
         case isVerified   = "is_verified"
-        case isBetaTester = "is_beta_tester"
+        case foundingNumber = "founding_number"
     }
 }
 

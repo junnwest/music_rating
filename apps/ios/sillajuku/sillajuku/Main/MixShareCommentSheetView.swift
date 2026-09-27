@@ -43,7 +43,8 @@ struct MixShareCommentSheetView: View {
     @State private var isSending = false
     @State private var errorMessage: String?
     @State private var editingComment: MixShareComment?
-    @FocusState private var isInputFocused: Bool
+    // Drives CommentInputField, which focuses itself as the sheet opens.
+    @State private var isInputFocused = false
 
     private var currentUserId: UUID? { supabase.auth.currentUser?.id }
 
@@ -51,6 +52,20 @@ struct MixShareCommentSheetView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 commentList
+                    // Closing the keyboard without leaving the comments: a gentle
+                    // drag down on the list, or a tap on empty space (rows and
+                    // buttons keep their own taps -- child gestures win).
+                    .scrollDismissesKeyboard(.interactively)
+                    .contentShape(Rectangle())
+                    .onTapGesture { isInputFocused = false }
+                    // Only while typing -- left on, it swallows the sheet's own
+                    // swipe-to-dismiss from the content area.
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 6).onChanged { value in
+                            if isInputFocused, value.translation.height > 6 { isInputFocused = false }
+                        },
+                        including: isInputFocused ? .all : .subviews
+                    )
                 if let err = errorMessage {
                     HStack(spacing: 6) {
                         Image("icon-alert-circle")
@@ -76,6 +91,9 @@ struct MixShareCommentSheetView: View {
             }
         }
         .task { await loadComments() }
+        // While typing, a swipe down closes the keyboard (above) instead of the
+        // whole sheet; with the keyboard down, the sheet dismisses as usual.
+        .interactiveDismissDisabled(isInputFocused)
     }
 
     @ViewBuilder
@@ -152,12 +170,9 @@ struct MixShareCommentSheetView: View {
             HStack(spacing: 10) {
                 DefaultAvatarView(size: 30)
 
-                TextField("Add a comment…", text: $newComment, axis: .vertical)
-                    .font(.jakarta(14))
-                    .lineLimit(1...4)
-                    .focused($isInputFocused)
-                    .submitLabel(.send)
-                    .onSubmit { Task { await submitInput() } }
+                CommentInputField(text: $newComment, isFocused: $isInputFocused) {
+                    Task { await submitInput() }
+                }
 
                 if !newComment.trimmingCharacters(in: .whitespaces).isEmpty {
                     Button {
@@ -180,7 +195,19 @@ struct MixShareCommentSheetView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
         }
-        .background(Color.sjSurface)
+        // The whole bar -- and the strip under it down to the screen edge
+        // (home-indicator safe area) -- opens the keyboard, not just the text.
+        // The text field and send button still take their own taps. The strip
+        // uses TapCatcher: SwiftUI gestures don't receive taps there.
+        .contentShape(Rectangle())
+        .onTapGesture { isInputFocused = true }
+        .background {
+            ZStack {
+                Color.sjSurface
+                TapCatcher { isInputFocused = true }
+            }
+            .ignoresSafeArea(edges: .bottom)
+        }
     }
 
     private func loadComments() async {

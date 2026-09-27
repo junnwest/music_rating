@@ -74,11 +74,11 @@ struct FeedProfile: Codable {
     let isBot: Bool?
     let isVerified: Bool?
     let badgeColor: String?
-    let isBetaTester: Bool?
+    let foundingNumber: Int?
     enum CodingKeys: String, CodingKey {
         case username; case displayName = "display_name"; case isBot = "is_bot"
         case isVerified = "is_verified"
-        case badgeColor = "badge_color"; case isBetaTester = "is_beta_tester"
+        case badgeColor = "badge_color"; case foundingNumber = "founding_number"
     }
     var handle: String { username ?? displayName ?? String(localized: "someone") }
 }
@@ -176,7 +176,7 @@ class HomeViewModel {
     private var hasLoadedFollowing = false
 
     private static let feedSelect =
-        "id, user_id, score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey(username, display_name, is_bot, is_verified, badge_color, is_beta_tester)"
+        "id, user_id, score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey(username, display_name, is_bot, is_verified, badge_color, founding_number)"
 
     // Explore's fetch is split by is_bot BEFORE ranking, not just re-ranked after — with
     // bot ratings' recency-biased backdating, a human rating usually wouldn't survive into
@@ -339,7 +339,7 @@ class HomeViewModel {
     // the identical query with the embed removed returns in <1s. release_groups
     // are fetched separately below and stitched back in client-side instead.
     private static let feedSelectLiteBotFilterable =
-        "id, user_id, score, review_text, created_at, release_group_id, profiles!ratings_user_id_fkey!inner(username, display_name, is_bot, is_verified, badge_color, is_beta_tester)"
+        "id, user_id, score, review_text, created_at, release_group_id, profiles!ratings_user_id_fkey!inner(username, display_name, is_bot, is_verified, badge_color, founding_number)"
 
     private struct FeedItemLite: Codable {
         let id: UUID
@@ -398,7 +398,7 @@ class HomeViewModel {
     // Not private -- reused by ProfileViewModel to fetch the current user's
     // own mix shares for the profile posts feed.
     static let mixShareSelect =
-        "id, user_id, mix_id, caption, created_at, mixes(id, name, description), profiles!mix_shares_user_id_fkey(username, display_name, is_bot, is_verified, badge_color, is_beta_tester)"
+        "id, user_id, mix_id, caption, created_at, mixes(id, name, description), profiles!mix_shares_user_id_fkey(username, display_name, is_bot, is_verified, badge_color, founding_number)"
 
     struct MixShareRow: Codable {
         let id: UUID
@@ -1379,7 +1379,7 @@ struct FeedCard: View {
             switch sheet {
             case .comments:
                 CommentSheetView(ratingId: item.id, preloaded: prefetchedComments)
-                    .presentationDetents([.fraction(0.67), .large])
+                    .presentationDetents([.large])  // large only: see CommentInputField
                     .presentationDragIndicator(.visible)
             case .likers:
                 LikersSheetView(ratingId: item.id)
@@ -1545,10 +1545,8 @@ struct FeedCard: View {
                     .frame(width: 13, height: 13)
                     .accessibilityLabel(String(localized: "Verified"))
             }
-            if item.profiles?.isBetaTester == true {
-                BetaBadgeView()
-                    .frame(width: 13, height: 13)
-                    .accessibilityLabel(String(localized: "Beta tester"))
+            if let foundingNumber = item.profiles?.foundingNumber {
+                FoundingNumberBadge(number: foundingNumber, size: 13, compact: true)
             }
         }
 

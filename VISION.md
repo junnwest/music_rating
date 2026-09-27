@@ -17,6 +17,8 @@ Web app live at sillajuku.com. iOS app in development as a native Swift/SwiftUI 
 - **Rate and review albums** — 0.5–5 star scale, comments with visibility control (public / friends / private), likes
 - **Profile as identity** — ratings grid, score distribution, Essentials (6 defining albums), Taste DNA badges, genre breakdown
 - **Social layer** — follow friends, activity feed, see what people you follow are hearing in real time
+- **Private accounts** — Instagram-style: approved followers only, follow requests, deactivate instead of delete
+- **Founding 500** — the first 500 members earn a numbered rocket badge (001–500) by finishing the quests, one per verified phone
 - **Taste Collisions** — albums where you and a friend rated wildly differently
 - **Taste Contradictions** — your score vs. the community average; the albums you loved that nobody else did, and vice versa
 - **Community Rankings** — vote on leaderboards (Greatest Album of All Time, Best K-Hip-Hop, etc.); seeded baseline so rankings are meaningful from day one

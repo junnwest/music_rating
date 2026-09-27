@@ -57,14 +57,14 @@ final class UserProfileViewModel {
         let avatarUrl: String?
         let badgeColor: String?
         let isVerified: Bool?
-        let isBetaTester: Bool?
+        let foundingNumber: Int?
         enum CodingKeys: String, CodingKey {
             case id, username, bio
             case displayName = "display_name"
             case avatarUrl   = "avatar_url"
             case badgeColor  = "badge_color"
             case isVerified  = "is_verified"
-            case isBetaTester = "is_beta_tester"
+            case foundingNumber = "founding_number"
         }
         var handle: String { username ?? displayName ?? String(localized: "someone") }
         var displayLabel: String { displayName ?? username ?? String(localized: "someone") }
@@ -268,7 +268,7 @@ final class UserProfileViewModel {
     private func loadProfile() async -> OtherProfile? {
         try? await supabase
             .from("profiles")
-            .select("id, username, display_name, bio, avatar_url, badge_color, is_verified, is_beta_tester")
+            .select("id, username, display_name, bio, avatar_url, badge_color, is_verified, founding_number")
             .eq("id", value: userId)
             .single()
             .execute()
@@ -509,10 +509,8 @@ struct UserProfileView: View {
                             .frame(width: 15, height: 15)
                             .accessibilityLabel(String(localized: "Verified"))
                     }
-                    if vm.profile?.isBetaTester == true {
-                        BetaBadgeView()
-                            .frame(width: 15, height: 15)
-                            .accessibilityLabel(String(localized: "Beta tester"))
+                    if let foundingNumber = vm.profile?.foundingNumber {
+                        FoundingNumberBadge(number: foundingNumber, size: 17)
                     }
                 }
             }
@@ -851,7 +849,7 @@ struct UserProfileView: View {
                                     headerHandle: vm.profile?.handle ?? initialHandle,
                                     headerVerified: vm.profile?.isVerified == true,
                                     headerBadgeColor: vm.profile?.badgeColor,
-                                    headerBetaTester: vm.profile?.isBetaTester == true,
+                                    headerFoundingNumber: vm.profile?.foundingNumber,
                                     onNotInterested: { Task { await vm.notInterested(rating: rating) } }
                                 )
                                 .padding(.horizontal, 12)

@@ -17,6 +17,7 @@ struct QuestChecklistView: View {
     @State private var showInvite = false
     @State private var showPhoneVerification = false
     @State private var showUserSearch = false
+    @State private var showClaimCeremony = false
 
     var body: some View {
         NavigationStack {
@@ -59,6 +60,8 @@ struct QuestChecklistView: View {
                     .foregroundStyle(Color.sjInk)
 
                 QuestTimeline(items: timelineItems)
+
+                foundingCard
 
                 communityBlock
             }
@@ -118,6 +121,64 @@ struct QuestChecklistView: View {
             ),
         ])
         return items
+    }
+
+    // The first-500 founding badge. Claimable (explicitly -- never automatic,
+    // including for existing users) once every quest above except the two
+    // invite quests is done; claim_founding_badge() re-checks all of it.
+    private var foundingCard: some View {
+        let number = vm.foundingNumber
+        let canClaim = number == nil && vm.meetsFoundingRequirements && !vm.foundingSoldOut
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 16) {
+                FoundingBadgeHero(number: number, size: 84)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(number.map { String(format: String(localized: "Founding member #%@"), $0.foundingDigits) }
+                         ?? String(localized: "Founding badge"))
+                        .font(.jakarta(16, weight: .bold))
+                        .foregroundStyle(Color.sjInk)
+                    Text(foundingSubtitle(number: number))
+                        .font(.jakarta(12.5))
+                        .foregroundStyle(Color.sjMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if number == nil, let status = vm.foundingStatus, !vm.foundingSoldOut {
+                        Text(String(format: String(localized: "%d of %d left"), status.remaining, status.cap))
+                            .font(.jakarta(11.5, weight: .semibold))
+                            .foregroundStyle(Color.sjLaunchOrange)
+                            .monospacedDigit()
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+
+            if canClaim {
+                // Opens the full-screen hold-to-claim ceremony, which makes the
+                // actual claim (FoundingClaimCeremony).
+                Button { showClaimCeremony = true } label: {
+                    Text("Claim Badge").font(.jakarta(15, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color.sjLaunchOrange)
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(14)
+        .background(Color.sjLaunchOrange.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.sjLaunchOrange.opacity(0.25), lineWidth: 0.5))
+        .fullScreenCover(isPresented: $showClaimCeremony, onDismiss: { Task { await vm.load() } }) {
+            FoundingClaimCeremony(vm: vm)
+        }
+    }
+
+    private func foundingSubtitle(number: Int?) -> String {
+        if number != nil { return String(localized: "One of the first 500 members of sillajuku.") }
+        if vm.foundingSoldOut { return String(localized: "All 500 founding badges have been claimed.") }
+        if vm.meetsFoundingRequirements { return String(localized: "You've finished the quests. Claim your number while they last.") }
+        return String(localized: "The first 500 members get a numbered badge. Finish every quest above except inviting friends to claim yours.")
     }
 
     // Visually distinct from the timeline above — this is collective

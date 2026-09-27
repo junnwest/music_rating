@@ -1535,9 +1535,8 @@ struct RatingCommentRow: View {
                         VerifiedBadgeView()
                             .frame(width: 12, height: 12)
                     }
-                    if item.profiles?.isBetaTester == true {
-                        BetaBadgeView()
-                            .frame(width: 12, height: 12)
+                    if let foundingNumber = item.profiles?.foundingNumber {
+                        FoundingNumberBadge(number: foundingNumber, size: 12, compact: true)
                     }
                     Text("·")
                         .font(.jakarta(12))
@@ -1951,9 +1950,8 @@ struct SongRatingCommentRow: View {
                         VerifiedBadgeView()
                             .frame(width: 12, height: 12)
                     }
-                    if item.profiles?.isBetaTester == true {
-                        BetaBadgeView()
-                            .frame(width: 12, height: 12)
+                    if let foundingNumber = item.profiles?.foundingNumber {
+                        FoundingNumberBadge(number: foundingNumber, size: 12, compact: true)
                     }
                     Text("·")
                         .font(.jakarta(12))
@@ -2039,12 +2037,18 @@ struct SongDetailView: View {
     @State private var myHandle: String? = nil
     @State private var myVerified = false
     @State private var myBadgeColor: String? = nil
-    @State private var myBetaTester = false
+    @State private var myFoundingNumber: Int? = nil
     @State private var showEditCommentSheet = false
     @State private var showDeleteConfirm = false
     @State private var showMixPicker = false
     @State private var isPreparingShare = false
     @State private var pendingShare: PendingShare? = nil
+    // Inline rating flow, same as AlbumDetailView's: the MorphingRateButton
+    // flower morphs into the post card's badge, then a post-rating step
+    // (Add to a Mix + Done -- no comment for songs) until Done is tapped.
+    @State private var showPostRatingStep = false
+    @State private var optimisticScore: Double? = nil
+    @Namespace private var ratingNamespace
 
     // Other users' ratings for this track ("Ratings & Reviews"), same shape
     // of state AlbumDetailViewModel keeps for its own `posts`.
@@ -2142,8 +2146,7 @@ struct SongDetailView: View {
         }
         .sheet(isPresented: $showRatingSheet) {
             TrackRatingSheet(track: track, release: release, existingScore: userScore, ratingStep: ratingStep) { _, score in
-                userScore = score
-                Task { await loadMyRow() }
+                Task { await saveTrackScore(score) }
             }
         }
         .sheet(isPresented: $showEditCommentSheet) {
@@ -2282,9 +2285,72 @@ struct SongDetailView: View {
                 .font(.jakarta(11, weight: .semibold))
                 .foregroundStyle(Color.sjMuted)
                 .tracking(0.8)
+            ratingBody
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 20)
+    }
+
+    /// Mirrors AlbumDetailView.ratingBody -- idle: drag-to-rate button; mid-flow:
+    /// draft card + Add to a Mix / Done in one card; finalized: the post card.
+    private var ratingBody: some View {
+        Group {
+            if let score = userScore ?? optimisticScore, showPostRatingStep {
+                VStack(alignment: .leading, spacing: 0) {
+                    songRatedBody(score: score, isDraft: true)
+                    Divider().padding(.horizontal, 14)
+                    PostRatingOptionsView(
+                        release: release,
+                        continueLabel: "Done",
+                        showHeader: false,
+                        showComment: false,
+                        onAddToMix: { showMixPicker = true },
+                        onContinue: { _ in
+                            withAnimation(.bouncy) { showPostRatingStep = false }
+                        }
+                    )
+                }
+                .background(Color.sjSurface)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 1)
+                .transition(.scale(scale: 0.94, anchor: .topTrailing).combined(with: .opacity))
+            } else if let score = userScore ?? myRow?.score {
+                songRatedBody(score: score)
+            } else {
+                MorphingRateButton(
+                    idleLabel: {
+                        Label("Rate this Song", image: "icon-plus")
+                            .font(.jakarta(15, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                    },
+                    idleShape: AnyShape(RoundedRectangle(cornerRadius: 12)),
+                    ratingStep: ratingStep,
+                    accessibilityLabelText: "Rate \(track.title)",
+                    matchedGeometryNamespace: ratingNamespace
+                ) { score in
+                    // Same synchronous flip as the album page, so the flower ->
+                    // badge morph and the card's scale-in happen on release.
+                    withAnimation(.bouncy) {
+                        showPostRatingStep = true
+                        optimisticScore = score
+                    }
+                    Task {
+                        await saveTrackScore(score)
+                        optimisticScore = nil
+                    }
+                }
+            }
+        }
+    }
+
+    /// Own rating as the regular song post card (same one the profile's Songs
+    /// tab renders), with the rated-state actions in its ⋯ menu.
+    @ViewBuilder
+    private func songRatedBody(score: Double, isDraft: Bool = false) -> some View {
+        Group {
             if let myRow {
-                // Own rating as the regular song post card (same one the profile's
-                // Songs tab renders), with the rated-state actions in its ⋯ menu.
                 ProfileSongPostCard(
                     song: myRow,
                     likesCount: myRowLikes,
@@ -2300,24 +2366,42 @@ struct SongDetailView: View {
                     headerHandle: myHandle,
                     headerVerified: myVerified,
                     headerBadgeColor: myBadgeColor,
-                    headerBetaTester: myBetaTester
+                    headerFoundingNumber: myFoundingNumber,
+                    isDraft: isDraft,
+                    matchedGeometryNamespace: isDraft ? ratingNamespace : nil
                 )
-            } else {
-                Button {
-                    showRatingSheet = true
-                } label: {
-                    Text("Rate this track")
-                        .font(.jakarta(14, weight: .semibold))
-                        .foregroundStyle(Color.sjCream)
-                        .frame(maxWidth: .infinity).frame(height: 42)
-                        .background(Color.sjBlue)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+            } else if isDraft {
+                // Before the saved row loads: just the badge, so the flower's
+                // morph target exists the instant the drag commits.
+                HStack {
+                    Spacer()
+                    ScoreBadge(score: score)
+                        .matchedGeometryEffect(id: "scoreBadge", in: ratingNamespace)
                 }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 14)
+            } else {
+                HStack {
+                    ProgressView().scaleEffect(0.9)
+                    Spacer()
+                }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 20)
+        .animation(.easeInOut(duration: 0.25), value: myRow?.ratingId)
+    }
+
+    /// Saves (or, for nil, deletes) the viewer's score for this track, then
+    /// reloads the stats and own post card. The rating sheet's Edit path used
+    /// to only set `userScore` locally without writing anything.
+    private func saveTrackScore(_ score: Double?) async {
+        guard let recordingId = track.trackId else { return }
+        guard let score else {
+            await deleteTrackRating()
+            return
+        }
+        userScore = score
+        await AlbumQuickRate.saveManualTrackScore(recordingId: recordingId, score: score)
+        await loadStats()
     }
 
     /// The song-page analog of `AlbumDetailView.otherRatingsSection` -- net
@@ -2490,19 +2574,19 @@ struct SongDetailView: View {
                 let username: String?
                 let isVerified: Bool?
                 let badgeColor: String?
-                let isBetaTester: Bool?
+                let foundingNumber: Int?
                 enum CodingKeys: String, CodingKey {
                     case username; case isVerified = "is_verified"
-                    case badgeColor = "badge_color"; case isBetaTester = "is_beta_tester"
+                    case badgeColor = "badge_color"; case foundingNumber = "founding_number"
                 }
             }
             if let p: MyProfile = try? await supabase.from("profiles")
-                .select("username, is_verified, badge_color, is_beta_tester").eq("id", value: userId)
+                .select("username, is_verified, badge_color, founding_number").eq("id", value: userId)
                 .single().execute().value {
                 myHandle = p.username
                 myVerified = p.isVerified == true
                 myBadgeColor = p.badgeColor
-                myBetaTester = p.isBetaTester == true
+                myFoundingNumber = p.foundingNumber
             }
         }
     }
@@ -2565,20 +2649,20 @@ struct SongDetailView: View {
             struct ProfileRow: Decodable {
                 let id: UUID; let username: String?; let displayName: String?
                 let isBot: Bool?; let isVerified: Bool?
-                let badgeColor: String?; let isBetaTester: Bool?
+                let badgeColor: String?; let foundingNumber: Int?
                 enum CodingKeys: String, CodingKey {
                     case id, username
                     case displayName = "display_name"; case isBot = "is_bot"; case isVerified = "is_verified"
-                    case badgeColor = "badge_color"; case isBetaTester = "is_beta_tester"
+                    case badgeColor = "badge_color"; case foundingNumber = "founding_number"
                 }
             }
             let profileRows: [ProfileRow] = (try? await supabase
                 .from("profiles")
-                .select("id, username, display_name, is_bot, is_verified, badge_color, is_beta_tester")
+                .select("id, username, display_name, is_bot, is_verified, badge_color, founding_number")
                 .in("id", values: userIds)
                 .execute().value) ?? []
             let byId = Dictionary(uniqueKeysWithValues: profileRows.map {
-                ($0.id, FeedProfile(username: $0.username, displayName: $0.displayName, isBot: $0.isBot, isVerified: $0.isVerified, badgeColor: $0.badgeColor, isBetaTester: $0.isBetaTester))
+                ($0.id, FeedProfile(username: $0.username, displayName: $0.displayName, isBot: $0.isBot, isVerified: $0.isVerified, badgeColor: $0.badgeColor, foundingNumber: $0.foundingNumber))
             })
             for i in posts.indices { posts[i].profiles = byId[posts[i].userId] }
         }
@@ -2723,20 +2807,20 @@ private class SongRatingsListViewModel {
             struct ProfileRow: Decodable {
                 let id: UUID; let username: String?; let displayName: String?
                 let isBot: Bool?; let isVerified: Bool?
-                let badgeColor: String?; let isBetaTester: Bool?
+                let badgeColor: String?; let foundingNumber: Int?
                 enum CodingKeys: String, CodingKey {
                     case id, username
                     case displayName = "display_name"; case isBot = "is_bot"; case isVerified = "is_verified"
-                    case badgeColor = "badge_color"; case isBetaTester = "is_beta_tester"
+                    case badgeColor = "badge_color"; case foundingNumber = "founding_number"
                 }
             }
             let profileRows: [ProfileRow] = (try? await supabase
                 .from("profiles")
-                .select("id, username, display_name, is_bot, is_verified, badge_color, is_beta_tester")
+                .select("id, username, display_name, is_bot, is_verified, badge_color, founding_number")
                 .in("id", values: userIds)
                 .execute().value) ?? []
             let byId = Dictionary(uniqueKeysWithValues: profileRows.map {
-                ($0.id, FeedProfile(username: $0.username, displayName: $0.displayName, isBot: $0.isBot, isVerified: $0.isVerified, badgeColor: $0.badgeColor, isBetaTester: $0.isBetaTester))
+                ($0.id, FeedProfile(username: $0.username, displayName: $0.displayName, isBot: $0.isBot, isVerified: $0.isVerified, badgeColor: $0.badgeColor, foundingNumber: $0.foundingNumber))
             })
             for i in loaded.indices { loaded[i].profiles = byId[loaded[i].userId] }
         }

@@ -17,6 +17,12 @@ struct PostRatingOptionsView: View {
     /// of repeating info already on screen. Sheet-based hosts (no other album
     /// context visible) keep the default `true`.
     var showHeader: Bool = true
+    /// False for song ratings: songs don't take comments, so the step is just
+    /// Add to a Mix + Done.
+    var showComment: Bool = true
+    /// Overrides the album MixPickerView (e.g. the song page opens its own
+    /// SongMixPickerView instead).
+    var onAddToMix: (() -> Void)? = nil
 
     @State private var isAddingComment: Bool
     @State private var commentText: String
@@ -24,12 +30,15 @@ struct PostRatingOptionsView: View {
 
     init(release: Release, continueLabel: LocalizedStringKey = "Continue", initialComment: String = "",
          onBack: (() -> Void)? = nil, onHeightChange: ((CGFloat) -> Void)? = nil,
-         showHeader: Bool = true, onContinue: @escaping (String?) -> Void) {
+         showHeader: Bool = true, showComment: Bool = true, onAddToMix: (() -> Void)? = nil,
+         onContinue: @escaping (String?) -> Void) {
         self.release = release
         self.continueLabel = continueLabel
         self.onBack = onBack
         self.onHeightChange = onHeightChange
         self.showHeader = showHeader
+        self.showComment = showComment
+        self.onAddToMix = onAddToMix
         self.onContinue = onContinue
         self._commentText = State(initialValue: initialComment)
         self._isAddingComment = State(initialValue: !initialComment.isEmpty)
@@ -41,8 +50,10 @@ struct PostRatingOptionsView: View {
                 albumHeader
                 Divider().padding(.vertical, 10)
             }
-            commentRow
-            Divider().padding(.horizontal, 20)
+            if showComment {
+                commentRow
+                Divider().padding(.horizontal, 20)
+            }
             listRow
             Divider().padding(.horizontal, 20)
             bottomButtons
@@ -170,7 +181,9 @@ struct PostRatingOptionsView: View {
     // MARK: Mix row
 
     private var listRow: some View {
-        Button { showMixPicker = true } label: {
+        Button {
+            if let onAddToMix { onAddToMix() } else { showMixPicker = true }
+        } label: {
             HStack(spacing: 14) {
                 Image("icon-square-plus")
                     .renderingMode(.template)

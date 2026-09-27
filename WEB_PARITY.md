@@ -1,5 +1,13 @@
 # Web Parity Checklist
 
+> **Parity status (2026-09-26):**
+> - **Private accounts + follow requests** — both platforms (locked profile, Request/Requested, approve/decline in notifications). DB-enforced, so parity gaps can't leak data.
+> - **Deactivate Account** — both (Settings + reactivate gate on sign-in).
+> - **Founding badge** — displayed on both profiles; **claiming is iOS-only** (it needs a verified phone, and phone verification only exists in the app).
+> - **Quick Add — removed from both** (2026-09-26). Everything below about Quick Add is historical.
+> - **Email/password** — every email-login account was deleted 2026-09-26; the Supabase email provider itself is still enabled (to be switched off).
+
+
 ## Current parity queue (2026-07-16 — iOS→web items from the rated-state/rating-UX session)
 
 Done that day: Split column (album page), Quick Add page + `/search` banner, `FlowerRatingRow`

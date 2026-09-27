@@ -76,7 +76,7 @@ struct MixShareCard: View {
             switch sheet {
             case .comments:
                 MixShareCommentSheetView(mixShareId: post.id)
-                    .presentationDetents([.fraction(0.67), .large])
+                    .presentationDetents([.large])  // large only: see CommentInputField
                     .presentationDragIndicator(.visible)
             case .likers:
                 MixShareLikersSheetView(mixShareId: post.id)
@@ -173,10 +173,8 @@ struct MixShareCard: View {
                     .frame(width: 13, height: 13)
                     .accessibilityLabel(String(localized: "Verified"))
             }
-            if post.profile?.isBetaTester == true {
-                BetaBadgeView()
-                    .frame(width: 13, height: 13)
-                    .accessibilityLabel(String(localized: "Beta tester"))
+            if let foundingNumber = post.profile?.foundingNumber {
+                FoundingNumberBadge(number: foundingNumber, size: 13, compact: true)
             }
         }
 

@@ -71,6 +71,65 @@ final class QuestChecklistViewModel {
 
     var hasClaimedBadge: Bool { profile?.badgeColor != nil }
 
+    // MARK: Founding badge (first 500, migration 20260926000003)
+
+    /// Mirrors get_founding_status.
+    struct FoundingStatus: Decodable {
+        let claimed: Int
+        let cap: Int
+        let myNumber: Int?
+        enum CodingKeys: String, CodingKey { case claimed, cap; case myNumber = "my_number" }
+        var remaining: Int { max(0, cap - claimed) }
+    }
+    private(set) var foundingStatus: FoundingStatus?
+
+    var foundingNumber: Int? { foundingStatus?.myNumber ?? profile?.foundingNumber }
+
+    /// Every personal quest except the invite quests -- the same checks
+    /// claim_founding_badge() re-verifies server-side.
+    var meetsFoundingRequirements: Bool {
+        hasAvatar && hasBio && hasTasteUnlock && hasFollow && hasVerifiedPhone
+    }
+
+    var foundingSoldOut: Bool { (foundingStatus?.remaining ?? 1) == 0 }
+
+    enum FoundingClaimError: Error {
+        case phoneAlreadyUsed, soldOut, questsIncomplete, phoneNotVerified, other
+
+        var message: String {
+            switch self {
+            case .phoneAlreadyUsed: String(localized: "This phone number has already been used to claim a founding badge.")
+            case .soldOut:          String(localized: "All 500 founding badges have been claimed.")
+            case .questsIncomplete: String(localized: "Finish the quests above first.")
+            case .phoneNotVerified: String(localized: "Verify your phone number first.")
+            case .other:            String(localized: "Couldn't claim the badge. Please try again.")
+            }
+        }
+    }
+
+    /// Claims the next number. The server re-checks every requirement.
+    func claimFoundingBadge() async -> Result<Int, FoundingClaimError> {
+        do {
+            let number: Int = try await supabase.rpc("claim_founding_badge").execute().value
+            profile?.foundingNumber = number
+            await loadFoundingStatus()
+            NotificationCenter.default.post(name: .sjProfileUpdated, object: nil)
+            return .success(number)
+        } catch {
+            let text = String(describing: error)
+            if text.contains("phone_already_used") { return .failure(.phoneAlreadyUsed) }
+            if text.contains("sold_out")           { await loadFoundingStatus(); return .failure(.soldOut) }
+            if text.contains("quests_incomplete")  { return .failure(.questsIncomplete) }
+            if text.contains("phone_not_verified") { return .failure(.phoneNotVerified) }
+            print("QuestChecklistViewModel.claimFoundingBadge failed: \(error)")
+            return .failure(.other)
+        }
+    }
+
+    private func loadFoundingStatus() async {
+        foundingStatus = try? await supabase.rpc("get_founding_status").single().execute().value
+    }
+
     // Gates the redeem sheet MainTabView auto-presents on every launch: done
     // with quests, but the one-time color choice hasn't happened yet.
     var shouldOfferBadgeRedeem: Bool { personalQuestsComplete && !hasClaimedBadge }
@@ -112,15 +171,16 @@ final class QuestChecklistViewModel {
         async let inviteTask: Void = loadInviteProgress(userId: userId)
         async let rankingsTask: Void = loadRankingsUnlock()
         async let wasInvitedTask: Void = loadWasInvited(userId: userId)
+        async let foundingTask: Void = loadFoundingStatus()
 
-        _ = await (profileTask, ratingsTask, followTask, inviteTask, rankingsTask, wasInvitedTask)
+        _ = await (profileTask, ratingsTask, followTask, inviteTask, rankingsTask, wasInvitedTask, foundingTask)
         isLoading = false
     }
 
     private func loadProfile(userId: UUID) async {
         let row: Profile? = try? await supabase
             .from("profiles")
-            .select("id, display_name, username, bio, avatar_url, referral_code, badge_color")
+            .select("id, display_name, username, bio, avatar_url, referral_code, badge_color, founding_number")
             .eq("id", value: userId)
             .single()
             .execute()

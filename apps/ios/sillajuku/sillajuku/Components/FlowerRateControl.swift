@@ -243,8 +243,8 @@ struct FlowerRateControl: View {
     /// 0.06s -- shortened again from 0.12s per the user's own request
     /// (2026-09-23, same day as the 0.2s -> 0.12s change above). Neither
     /// change was a bug fix; both were direct asks to make the hold feel
-    /// snappier.
-    static let holdBeforeDrag: TimeInterval = 0.06
+    /// snappier. 0.03s -- halved again on request (2026-09-26), same reason.
+    static let holdBeforeDrag: TimeInterval = 0.03
     /// How far a press can move before `holdBeforeDrag` elapses without
     /// failing this control's own recognizer -- passed straight through to
     /// `UILongPressGestureRecognizer.allowableMovement` (system default is

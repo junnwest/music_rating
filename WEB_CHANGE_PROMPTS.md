@@ -30,8 +30,8 @@ Build order (dependencies): ~~**#2 + #12 first** (others consume them)~~ →
 | 4 | Profile > Stats tab polish | ✅ **done** (2026-07-19) |
 | 9 | Profile — @username over display name | ✅ **done** (2026-07-19) |
 | 8 | Profile — merge list+table, add filters | ✅ **done** (2026-07-19) |
-| 13 | Quick Add — horizontal rows + arrows + See more | ✅ **done** (2026-07-19) |
-| 14 | Quick Add — explore/like genres | ✅ **done** (2026-07-19) — migration applied |
+| 13 | Quick Add — horizontal rows + arrows + See more | ✅ **done** (2026-07-19) · 🗑️ **removed 2026-09-26** (Quick Add deleted from web + iOS) |
+| 14 | Quick Add — explore/like genres | ✅ **done** (2026-07-19) — migration applied · 🗑️ **removed 2026-09-26** (Quick Add deleted from web + iOS) |
 | 6 | Taste > Graph rebuild | ✅ **done** (2026-07-20) — payload `v5` |
 | 7 | Refresh + reconstruct taste report | ✅ **done** (2026-07-20) — with #6 |
 
