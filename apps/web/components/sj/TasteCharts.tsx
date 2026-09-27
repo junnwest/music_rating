@@ -45,13 +45,10 @@ export const TASTE_MOTION_CSS = `
    events pass through to the card so a press-drag anywhere on a cover spins the
    ring (not the browser's ghost-drag) while taps still reach the link/button. */
 .hof-cover img{transform:scale(1.035);-webkit-user-drag:none;user-select:none;pointer-events:none}
-.hof-float{animation:hof-float 5.5s ease-in-out infinite}
-@keyframes hof-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
 .hof-meta{animation:hof-meta-in .5s ease}
 @keyframes hof-meta-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){
   .hof-ring{transition:none}
-  .hof-float{animation:none}
   .hof-meta{animation:none}
 }
 `;

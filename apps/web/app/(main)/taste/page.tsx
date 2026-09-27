@@ -839,7 +839,7 @@ function crowdHint(delta: number | null, t: (k: string) => string): string | und
  * Rotating 3D "hall of fame" for the albums tied at the user's top score. The
  * covers sit on a ring in 3D space; the ring auto-advances so each tied album
  * takes the front in turn, with its title/artist crossfading below. A single
- * top album just floats (no ring); clicking any cover brings it to the front,
+ * top album stays still (no ring); clicking any cover brings it to the front,
  * and the front cover links to the album. All motion collapses under
  * prefers-reduced-motion — the ring snaps instead of sweeping and the front
  * album is navigable via the dots.
@@ -932,21 +932,19 @@ function HallOfFame({
   const radius = n <= 1 ? 0 : Math.max(150, COVER / 2 / Math.tan(Math.PI / n) + 26);
 
   return (
-    <div className="shrink-0 w-full lg:w-1/2 flex flex-col items-center">
+    <div className={`shrink-0 w-full ${n === 1 ? 'lg:w-[38%]' : 'lg:w-1/2'} flex flex-col items-center justify-center`}>
       <span className="self-start text-[10px] font-black tracking-[0.1em] uppercase text-accent-deep/70">
         {t('sj.taste.topAlbum')}
       </span>
 
       {n === 1 ? (
-        <Link href={`/album/${front.id}`} className="group mt-3">
-          <div className="hof-float">
-            <Cover
-              url={front.coverUrl}
-              thumb={false}
-              className="w-44 h-44 shadow-xl"
-              rounded="rounded-xl"
-            />
-          </div>
+        <Link href={`/album/${front.id}`} className="group mt-3 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-accent/50">
+          <Cover
+            url={front.coverUrl}
+            thumb={false}
+            className="w-44 h-44 shadow-xl transition-shadow group-hover:shadow-2xl"
+            rounded="rounded-xl"
+          />
         </Link>
       ) : (
         <div

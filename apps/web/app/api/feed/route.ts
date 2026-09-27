@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../lib/supabaseServer';
 import { rateLimit } from '../../../lib/rateLimit';
 import { cacheGet, cacheSet } from '../../../lib/cache';
-import { FEED_SELECT } from '../../../lib/sj/data';
+import { FEED_SELECT, type FeedItemRow } from '../../../lib/sj/data';
 import { inList, privateUserIds } from '../../../lib/privateAccounts';
 
 // The Home explore pool is identical for every visitor, but each browser was
@@ -18,9 +18,10 @@ export const maxDuration = 15;
 const TTL_SECONDS = 60; // short — new ratings should surface within a minute
 
 interface FeedPayload {
-  items: unknown[];
+  items: FeedItemRow[];
   likeCounts: Record<string, number>;
   commentCounts: Record<string, number>;
+  followerCounts: Record<string, number>;
 }
 
 export async function GET(req: NextRequest) {
@@ -31,7 +32,7 @@ export async function GET(req: NextRequest) {
     'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=300',
   };
 
-  const key = 'feed:explore:v2'; // v2: private accounts excluded
+  const key = 'feed:explore:v3'; // review-rich candidate pool + author followers
   const cached = await cacheGet<FeedPayload>(key);
   if (cached) return NextResponse.json(cached, { headers: cdnHeaders });
 
@@ -41,21 +42,37 @@ export async function GET(req: NextRequest) {
   // Shared by every visitor, so private accounts are left out entirely
   // (their approved followers see them in the Following feed instead).
   const hidden = await privateUserIds(supabase);
-  let poolQuery = supabase.from('ratings').select(FEED_SELECT);
-  if (hidden.length > 0) poolQuery = poolQuery.not('user_id', 'in', inList(hidden));
-  const { data: pool, error } = await poolQuery
-    .order('created_at', { ascending: false })
-    .limit(150);
-  if (error) {
-    console.error('[feed] pool query error:', error.message);
-    return NextResponse.json({ error: error.message }, { status: 503 });
+  const publicRatings = () => {
+    let q = supabase.from('ratings').select(FEED_SELECT);
+    if (hidden.length > 0) q = q.not('user_id', 'in', inList(hidden));
+    return q;
+  };
+  const [recent, reviewed] = await Promise.all([
+    publicRatings().order('created_at', { ascending: false }).limit(150),
+    publicRatings().not('review_text', 'is', null).neq('review_text', '').order('created_at', { ascending: false }).limit(120),
+  ]);
+  if (recent.error || reviewed.error) {
+    console.error('[feed] pool query error:', recent.error?.message ?? reviewed.error?.message);
+    return NextResponse.json({ error: 'feed unavailable' }, { status: 503 });
   }
 
-  const items = (pool as unknown as { id: string }[] | null) ?? [];
+  const byId = new Map<string, FeedItemRow>();
+  for (const item of [
+    ...((recent.data as unknown as FeedItemRow[] | null) ?? []),
+    ...((reviewed.data as unknown as FeedItemRow[] | null) ?? []),
+  ]) byId.set(item.id, item);
+  const items = Array.from(byId.values());
   const ratingIds = items.map((i) => i.id);
 
   const likeCounts: Record<string, number> = {};
   const commentCounts: Record<string, number> = {};
+  const followerCounts: Record<string, number> = {};
+  const authors = Array.from(new Set(items.map((i) => i.user_id)));
+  if (authors.length > 0) {
+    const { data, error: followerError } = await supabase.rpc('get_feed_author_followers', { p_user_ids: authors });
+    if (followerError) console.error('[feed] follower counts unavailable:', followerError.message);
+    for (const row of (data as { user_id: string; followers: number }[] | null) ?? []) followerCounts[row.user_id] = Number(row.followers);
+  }
   if (ratingIds.length > 0) {
     const [likesRes, commentsRes] = await Promise.all([
       supabase.from('rating_likes').select('rating_id').in('rating_id', ratingIds),
@@ -69,7 +86,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const payload: FeedPayload = { items, likeCounts, commentCounts };
+  const payload: FeedPayload = { items, likeCounts, commentCounts, followerCounts };
   await cacheSet(key, payload, TTL_SECONDS);
   return NextResponse.json(payload, { headers: cdnHeaders });
 }

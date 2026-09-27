@@ -14,6 +14,7 @@ import Modal from '../../../components/sj/Modal';
 import { useSession } from '../../../components/sj/SessionContext';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
+import { isValidUsername, normalizeUsername } from '../../../lib/username';
 
 /**
  * Settings — web sibling of iOS SettingsView: profile, appearance, rating
@@ -27,7 +28,9 @@ export default function SettingsPage() {
   const { userId, profile, ready, refreshProfile, signOut } = useSession();
 
   const [displayNameDraft, setDisplayNameDraft] = useState('');
+  const [usernameDraft, setUsernameDraft] = useState('');
   const [bioDraft, setBioDraft] = useState('');
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
 
@@ -47,6 +50,7 @@ export default function SettingsPage() {
   useEffect(() => {
     if (profile) {
       setDisplayNameDraft(profile.display_name ?? '');
+      setUsernameDraft(profile.username ?? '');
       setBioDraft(profile.bio ?? '');
     }
   }, [profile]);
@@ -58,8 +62,42 @@ export default function SettingsPage() {
   }
 
   async function saveProfile() {
+    if (!supabase || !userId || !profile) return;
     setSavingProfile(true);
-    await patch({ display_name: displayNameDraft.trim(), bio: bioDraft.trim() || null });
+    setProfileError(null);
+    const username = usernameDraft.trim().toLowerCase();
+    if (!isValidUsername(username)) {
+      setProfileError(t('sj.onboarding.usernameRules'));
+      setSavingProfile(false);
+      return;
+    }
+    if (username !== profile.username) {
+      try {
+        const response = await fetch(`/api/check-username?username=${encodeURIComponent(username)}`);
+        if (!response.ok) throw new Error('availability check failed');
+        const { available } = await response.json();
+        if (!available) {
+          setProfileError(t('sj.onboarding.usernameTaken'));
+          setSavingProfile(false);
+          return;
+        }
+      } catch {
+        setProfileError(t('sj.onboarding.saveError'));
+        setSavingProfile(false);
+        return;
+      }
+    }
+    const { error } = await supabase.from('profiles').update({
+      username,
+      display_name: displayNameDraft.trim(),
+      bio: bioDraft.trim() || null,
+    }).eq('id', userId);
+    if (error) {
+      setProfileError(error.code === '23505' ? t('sj.onboarding.usernameTaken') : t('sj.onboarding.saveError'));
+      setSavingProfile(false);
+      return;
+    }
+    await refreshProfile();
     setSavingProfile(false);
     setProfileSaved(true);
     setTimeout(() => setProfileSaved(false), 2000);
@@ -125,10 +163,20 @@ export default function SettingsPage() {
             />
           </Field>
           <Field label={t('sj.settings.username')}>
-            <p className="px-3.5 py-2.5 rounded-[10px] bg-page border border-divider text-[14px] text-muted">
-              @{profile.username}
-            </p>
+            <div className="flex items-center rounded-[10px] bg-page border border-divider focus-within:border-accent/60 transition">
+              <span className="pl-3.5 text-[14px] text-muted">@</span>
+              <input
+                value={usernameDraft}
+                onChange={(e) => { setUsernameDraft(normalizeUsername(e.target.value)); setProfileError(null); setProfileSaved(false); }}
+                maxLength={20}
+                autoComplete="username"
+                aria-describedby="username-rules"
+                className="w-full px-1 py-2.5 pr-3.5 bg-transparent text-[14px] text-ink outline-none"
+              />
+            </div>
+            <p id="username-rules" className="mt-1 text-[11px] text-muted">{t('sj.onboarding.usernameRules')}</p>
           </Field>
+          {profileError && <p role="alert" className="text-[12px] text-red-500">{profileError}</p>}
           <Field label={t('sj.settings.bio')}>
             <textarea
               value={bioDraft}

@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { useLanguage } from '../../lib/i18n';
+import ArtistLink from './ArtistLink';
 import { formatCount, formatScore, spectrumRing } from '../../lib/sj/display';
 import type { ProfileRatingItem } from './ProfileView';
 
@@ -46,10 +47,10 @@ export default function ProfileStats({
 
     // Top artists — albums only, ranked by count, ties broken by average score
     // so two artists with one album each don't order arbitrarily.
-    const byArtist = new Map<string, { count: number; sum: number; scored: number }>();
+    const byArtist = new Map<string, { id: string | null; count: number; sum: number; scored: number }>();
     for (const i of albums) {
       if (!i.releaseArtist) continue;
-      const e = byArtist.get(i.releaseArtist) ?? { count: 0, sum: 0, scored: 0 };
+      const e = byArtist.get(i.releaseArtist) ?? { id: i.artistId, count: 0, sum: 0, scored: 0 };
       e.count += 1;
       const s = scoreOf(i);
       if (s != null) {
@@ -61,6 +62,7 @@ export default function ProfileStats({
     const topArtists = [...byArtist.entries()]
       .map(([name, e]) => ({
         name,
+        id: e.id,
         count: e.count,
         avg: e.scored ? e.sum / e.scored : null,
       }))
@@ -124,7 +126,9 @@ export default function ProfileStats({
             <ul className="space-y-2">
               {stats.topArtists.map((a) => (
                 <li key={a.name} className="flex items-center gap-3">
-                  <span className="flex-1 min-w-0 text-[13px] text-ink truncate">{a.name}</span>
+                  <span className="flex-1 min-w-0 text-[13px] text-ink truncate">
+                    {a.id ? <ArtistLink href={`/artist/${a.id}`} className="hover:text-accent hover:underline">{a.name}</ArtistLink> : a.name}
+                  </span>
                   {a.avg != null && (
                     <span
                       className="hidden sm:inline text-[11.5px] font-semibold tabular-nums"

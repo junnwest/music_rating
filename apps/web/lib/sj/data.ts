@@ -31,6 +31,7 @@ export interface ReleaseGroupEmbed {
   id: string;
   title: string;
   artist_display: string;
+  genres?: string[] | null;
   cover_url: string | null;
   release_group_type: string | null;
   first_release_date?: string | null;
@@ -57,12 +58,12 @@ export const RG_COLS =
 
 /** release_groups embed with the primary artist's native name joined. */
 export const RG_EMBED_NATIVE =
-  'release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native))';
+  'release_groups(id, title, artist_display, primary_artist_id, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native))';
 
 /** The feed select — identical to iOS HomeViewModel.feedSelect. */
 export const FEED_SELECT =
   `id, user_id, score, review_text, created_at, ` +
-  `release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), ` +
+  `release_groups(id, title, artist_display, genres, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), ` +
   `profiles!ratings_user_id_fkey(username, display_name)`;
 
 export interface FeedProfileEmbed {
