@@ -4,6 +4,15 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-28 (Mac) — Merged Windows's Home feed rebuild (`3001980`); fixed it so iOS builds.**
+
+- **It didn't compile on its own.** Checked by building `3001980`/`be0eae0` alone in a worktree. Cause: `onNotInterested: isExplore ? { await viewModel.notInterested(item:) } : nil` against the now-optional `FeedCard.onNotInterested`. Under default MainActor isolation that ternary crashes the type checker ("failed to produce diagnostic"). Rewritten as if/else in `ratingCard`. **Windows can't build iOS, so iOS edits made there need a Mac build before shipping.**
+- **Conflicts:** `WebAPI.get` keeps both new params (`reload:` from here; `dateDecodingStrategy:` / `onStatus:` from Windows). HomeView takes Windows's server-driven feed (`api/feed/home`, cursors, impressions) over the old direct queries; `removeMixShare` and the FeedProfile avatar/featured-badge fields carried over.
+- **`lib/feed/service.ts` PROFILE** gains `featured_badge` so Home posts show the chosen badge (feed tests 15/15 pass).
+- iOS **BUILD SUCCEEDED**; web typecheck clean.
+
+---
+
 **2026-09-28 (Mac) — Add tab pull-to-refresh actually refreshes (iOS).** `.refreshable` fired, but:
 
 - It re-requested `/api/recommendations` without `refresh=1`, so the route answered from its 2-min per-user Redis cache (identical rows, no reshuffle).

@@ -7,6 +7,19 @@ import type {
   TrendingSongRPC,
 } from '../db/types';
 import type { FeedItemRow } from './data';
+import type { FeedTab, HomeFeedPage } from '../feed/types';
+import { supabase } from '../supabaseClient';
+
+export async function fetchHomeFeed(tab: FeedTab, cursor?: string): Promise<HomeFeedPage> {
+  const session = supabase ? (await supabase.auth.getSession()).data.session : null;
+  const query = new URLSearchParams({ tab });
+  if (cursor) query.set('cursor', cursor);
+  const res = await fetch(`/api/feed/home?${query}`, {
+    cache: 'no-store', headers: session ? { Authorization: `Bearer ${session.access_token}` } : {},
+  });
+  if (!res.ok) throw new Error(`feed ${res.status}`);
+  return await res.json() as HomeFeedPage;
+}
 
 /**
  * Fetchers for the cached server routes (/api/feed, /api/charts/summary,

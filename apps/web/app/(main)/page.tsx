@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ExternalLink, Flame, ListMusic, UserPlus } from 'lucide-react';
 import Avatar from '../../components/sj/Avatar';
@@ -14,38 +14,18 @@ import { SkeletonBlock } from '../../components/sj/Loading';
 import { useSession } from '../../components/sj/SessionContext';
 import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
-import { FEED_SELECT, type FeedItemRow } from '../../lib/sj/data';
-import { fetchFeed, fetchChartsSummary } from '../../lib/sj/apiClient';
-import { fetchNotInterestedIds, markNotInterested } from '../../lib/sj/notInterested';
+import type { FeedItemRow } from '../../lib/sj/data';
+import { entryKey, type FeedEntry, type FeedTab, type HomeFeedPage } from '../../lib/feed/types';
+import FeedImpression from '../../components/sj/FeedImpression';
+import { fetchHomeFeed, fetchChartsSummary } from '../../lib/sj/apiClient';
+import { markNotInterested } from '../../lib/sj/notInterested';
 import { displayName } from '../../lib/sj/display';
 import {
-  loadMixShares,
-  loadMixShareSocial,
   setMixShareLike,
   type MixSharePost,
 } from '../../lib/sj/mixShares';
 import type { ChartTrendingRPC, SuggestedUserRPC } from '../../lib/db/types';
 
-type FeedTab = 'explore' | 'following';
-
-/** A feed row: a rating post or a mix post (mix_shares), interleaved. */
-type FeedEntry = { kind: 'rating'; item: FeedItemRow } | { kind: 'mix'; post: MixSharePost };
-
-const entryTime = (e: FeedEntry) => (e.kind === 'rating' ? e.item.created_at : e.post.createdAt);
-
-// A small daily shuffle breaks ties without reordering the feed on every render.
-function dailyJitter(id: string, viewerId: string | null): number {
-  const key = `${new Date().toISOString().slice(0, 10)}:${viewerId ?? 'guest'}:${id}`;
-  let hash = 2166136261;
-  for (let i = 0; i < key.length; i++) hash = Math.imul(hash ^ key.charCodeAt(i), 16777619);
-  return ((hash >>> 0) / 0xffffffff) * 1.5;
-}
-
-/**
- * Home — the social feed (web sibling of iOS HomeView). Explore = ranked
- * global pool; Following = people you follow. Desktop adds a right rail
- * (find-people + trending) instead of burying them behind navigation.
- */
 export default function HomePage() {
   const { t } = useLanguage();
   const { userId, ready, requireAuth } = useSession();
@@ -54,6 +34,11 @@ export default function HomePage() {
   const [followingItems, setFollowingItems] = useState<FeedEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [pages, setPages] = useState<Partial<Record<FeedTab, HomeFeedPage>>>({});
+  const [postSessions, setPostSessions] = useState<Record<string, string>>({});
+  const generation = useRef(0);
+  const loadedTabs = useRef(new Set<FeedTab>());
 
   const [notInterested, setNotInterested] = useState<Set<string>>(new Set());
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
@@ -64,211 +49,87 @@ export default function HomePage() {
   const [shareLikes, setShareLikes] = useState<Record<string, number>>({});
   const [shareComments, setShareComments] = useState<Record<string, number>>({});
 
+  const applyPage = useCallback((feedTab: FeedTab, page: HomeFeedPage, append: boolean) => {
+    loadedTabs.current.add(feedTab);
+    const merge = (previous: FeedEntry[]) => append
+      ? [...new Map([...previous, ...page.entries].map(e => [entryKey(e), e])).values()]
+      : page.entries;
+    (feedTab === 'explore' ? setExploreItems : setFollowingItems)(merge);
+    setPages(previous => ({ ...previous, [feedTab]: page }));
+    setPostSessions(previous => ({ ...previous, ...Object.fromEntries(page.entries.map(e => [feedTab + ':' + entryKey(e), page.sessionId])) }));
+    const ratingLikes: Record<string, number> = {}, ratingComments: Record<string, number> = {};
+    const mixLikes: Record<string, number> = {}, mixComments: Record<string, number> = {};
+    for (const entry of page.entries) {
+      const key = entryKey(entry);
+      const id = entry.kind === 'rating' ? entry.item.id : entry.post.id;
+      (entry.kind === 'rating' ? ratingLikes : mixLikes)[id] = page.likeCounts[key] ?? 0;
+      (entry.kind === 'rating' ? ratingComments : mixComments)[id] = page.commentCounts[key] ?? 0;
+    }
+    setLikeCounts(previous => ({ ...previous, ...ratingLikes }));
+    setCommentCounts(previous => ({ ...previous, ...ratingComments }));
+    setShareLikes(previous => ({ ...previous, ...mixLikes }));
+    setShareComments(previous => ({ ...previous, ...mixComments }));
+    setLikedIds(previous => {
+      const next = new Set(previous);
+      for (const e of page.entries) if (e.kind === 'rating') {
+        if (page.likedKeys.includes(entryKey(e))) next.add(e.item.id); else next.delete(e.item.id);
+      }
+      return next;
+    });
+    setLikedShareIds(previous => {
+      const next = new Set(previous);
+      for (const e of page.entries) if (e.kind === 'mix') {
+        if (page.likedKeys.includes(entryKey(e))) next.add(e.post.id); else next.delete(e.post.id);
+      }
+      return next;
+    });
+  }, []);
+
   const load = useCallback(async () => {
-    if (!supabase) {
-      setLoading(false);
-      return;
-    }
+    const request = ++generation.current;
     setLoading(true);
-
-    // The global explore pool + its like/comment counts come from the cached
-    // /api/feed route (service role + Redis/CDN) — started first so it races
-    // the per-user signal queries below. Falls back to the direct query if
-    // the route is down.
-    const cachedFeedPromise = fetchFeed().catch(() => null);
-    // Mix posts (explore pool) — same 30-newest window iOS uses.
-    const exploreSharesPromise = loadMixShares({ limit: 30 });
-
-    // Personalization signals (must resolve before ranking)
-    let followingIds = new Set<string>();
-    let likedArtists = new Set<string>();
-    let likedGenres = new Set<string>();
-    let blocked = new Set<string>();
-    let dismissed = new Set<string>();
-    if (userId) {
-      const [followsRes, artistsRes, blockedRes, dismissedIds] = await Promise.all([
-        supabase.from('follows').select('following_id').eq('follower_id', userId),
-        supabase
-          .from('ratings')
-          .select('release_groups(artist_display, genres)')
-          .eq('user_id', userId)
-          .gte('score', 4.0)
-          .order('created_at', { ascending: false })
-          .limit(500),
-        supabase.from('blocked_users').select('blocked_id').eq('blocker_id', userId),
-        fetchNotInterestedIds(userId),
-      ]);
-      followingIds = new Set(
-        ((followsRes.data as { following_id: string }[] | null) ?? []).map((r) => r.following_id),
-      );
-      likedArtists = new Set(
-        ((artistsRes.data as any[] | null) ?? [])
-          .map((r) => r.release_groups?.artist_display)
-          .filter(Boolean),
-      );
-      likedGenres = new Set(
-        ((artistsRes.data as any[] | null) ?? []).flatMap((r) => r.release_groups?.genres ?? []),
-      );
-      blocked = new Set(
-        ((blockedRes.data as { blocked_id: string }[] | null) ?? []).map((r) => r.blocked_id),
-      );
-      dismissed = dismissedIds;
-      setNotInterested(dismissed);
+    setLoadingMore(false);
+    setLoadFailed(false);
+    try {
+      const page = await fetchHomeFeed(tab);
+      if (request !== generation.current) return;
+      applyPage(tab, page, false);
+    } catch {
+      if (request === generation.current) setLoadFailed(true);
+    } finally {
+      if (request === generation.current) setLoading(false);
     }
-
-    // Explore pool. A failed query is an error state, NOT an empty catalog —
-    // don't let a timeout masquerade as "no ratings yet".
-    const cachedFeed = await cachedFeedPromise;
-    const lCounts: Record<string, number> = {};
-    const cCounts: Record<string, number> = {};
-    const followerCounts = cachedFeed?.followerCounts ?? {};
-    let pool: FeedItemRow[];
-    let poolFailed = false;
-    if (cachedFeed) {
-      pool = cachedFeed.items.filter((i) => !blocked.has(i.user_id));
-      Object.assign(lCounts, cachedFeed.likeCounts);
-      Object.assign(cCounts, cachedFeed.commentCounts);
-    } else {
-      const { data: poolData, error: poolError } = await supabase
-        .from('ratings')
-        .select(FEED_SELECT)
-        .order('created_at', { ascending: false })
-        .limit(150);
-      poolFailed = !!poolError && !poolData;
-      pool = ((poolData as unknown as FeedItemRow[] | null) ?? []).filter(
-        (i) => !blocked.has(i.user_id),
-      );
-    }
-    setLoadFailed(poolFailed);
-
-    // Albums the user marked "Not interested" never come back in explore. The
-    // Following feed is deliberately left alone — that's people you chose to
-    // follow, not a recommendation.
-    if (dismissed.size > 0) pool = pool.filter((i) => !dismissed.has(i.release_groups.id));
-
-    // Following feed
-    let following: FeedItemRow[] = [];
-    if (followingIds.size > 0) {
-      const { data: fData } = await supabase
-        .from('ratings')
-        .select(FEED_SELECT)
-        .in('user_id', Array.from(followingIds))
-        .order('created_at', { ascending: false })
-        .limit(60);
-      following = ((fData as unknown as FeedItemRow[] | null) ?? []).filter(
-        (i) => !blocked.has(i.user_id),
-      );
-    }
-
-    // Mix posts: the newest overall for Explore, the followed for Following.
-    const [exploreSharesRes, followingSharesRes] = await Promise.all([
-      exploreSharesPromise,
-      loadMixShares({ userIds: Array.from(followingIds), limit: 60 }),
-    ]);
-    if (exploreSharesRes.error) console.error('[home] mix posts failed:', exploreSharesRes.error.message);
-    const exploreShares = (exploreSharesRes.data ?? []).filter((p) => !blocked.has(p.userId));
-    const followingShares = (followingSharesRes.data ?? []).filter((p) => !blocked.has(p.userId));
-    const shareSocial = await loadMixShareSocial(
-      Array.from(new Set([...exploreShares, ...followingShares].map((p) => p.id))),
-      userId,
-    );
-
-    // Social data. The cached payload already carries counts for the pool —
-    // only items it doesn't cover (following feed; whole pool on fallback)
-    // need a live count query. My-likes/saves are always per-user.
-    const allItems = [...pool, ...following];
-    const ratingIds = Array.from(new Set(allItems.map((i) => i.id)));
-    const liveCountIds = Array.from(
-      new Set([...(cachedFeed ? [] : pool.map((i) => i.id)), ...following.map((i) => i.id)]),
-    );
-    const liked = new Set<string>();
-    if (ratingIds.length > 0) {
-      const [likesRes, commentsRes, myLikesRes] = await Promise.all([
-        liveCountIds.length > 0
-          ? supabase.from('rating_likes').select('rating_id').in('rating_id', liveCountIds)
-          : Promise.resolve({ data: null }),
-        liveCountIds.length > 0
-          ? supabase.from('rating_comments').select('rating_id').in('rating_id', liveCountIds)
-          : Promise.resolve({ data: null }),
-        userId
-          ? supabase
-              .from('rating_likes')
-              .select('rating_id')
-              .eq('user_id', userId)
-              .in('rating_id', ratingIds)
-          : Promise.resolve({ data: null }),
-      ]);
-      // Live counts overwrite (not add to) any cached values for the same ids
-      const freshL: Record<string, number> = {};
-      const freshC: Record<string, number> = {};
-      for (const r of (likesRes.data as { rating_id: string }[] | null) ?? []) {
-        freshL[r.rating_id] = (freshL[r.rating_id] ?? 0) + 1;
-      }
-      for (const r of (commentsRes.data as { rating_id: string }[] | null) ?? []) {
-        freshC[r.rating_id] = (freshC[r.rating_id] ?? 0) + 1;
-      }
-      for (const id of liveCountIds) {
-        lCounts[id] = freshL[id] ?? 0;
-        cCounts[id] = freshC[id] ?? 0;
-      }
-      for (const r of (myLikesRes.data as { rating_id: string }[] | null) ?? []) {
-        liked.add(r.rating_id);
-      }
-    }
-
-    // Rank explore (mirrors iOS HomeViewModel.ranked — rating and mix posts in
-    // one pool; a mix post has no artist affinity, everything else is shared).
-    const recency = (createdAt: string) => {
-      const ageHours = (Date.now() - new Date(createdAt).getTime()) / 3.6e6;
-      return ageHours < 12 ? 3 : ageHours < 72 ? 1.5 : ageHours < 336 ? 0.5 : 0;
-    };
-    const scored: (readonly [FeedEntry, number])[] = [
-      ...pool.map((item) => {
-        let s = 0;
-        if (followingIds.has(item.user_id)) s += 8;
-        if (likedArtists.has(item.release_groups.artist_display)) s += 5;
-        s += Math.min(4, (item.release_groups.genres ?? []).filter((genre) => likedGenres.has(genre)).length * 2);
-        if (item.review_text?.trim()) s += 10;
-        s += Math.min(6, Math.log1p(followerCounts[item.user_id] ?? 0) * 1.8);
-        s += Math.log((lCounts[item.id] ?? 0) + 1) * 5;
-        s += Math.log((cCounts[item.id] ?? 0) + 1) * 3;
-        return [{ kind: 'rating', item } as FeedEntry, s + recency(item.created_at) + dailyJitter(item.id, userId ?? null)] as const;
-      }),
-      ...exploreShares.map((post) => {
-        let s = 0;
-        if (followingIds.has(post.userId)) s += 8;
-        if (post.caption?.trim()) s += 6;
-        s += Math.min(6, Math.log1p(followerCounts[post.userId] ?? 0) * 1.8);
-        s += Math.log((shareSocial.likes[post.id] ?? 0) + 1) * 5;
-        s += Math.log((shareSocial.comments[post.id] ?? 0) + 1) * 3;
-        return [{ kind: 'mix', post } as FeedEntry, s + recency(post.createdAt) + dailyJitter(post.id, userId ?? null)] as const;
-      }),
-    ];
-    const ranked = scored
-      .sort((a, b) => b[1] - a[1])
-      .map(([entry]) => entry)
-      .slice(0, 60);
-
-    // Following is chronological: people you chose, newest first.
-    const followingFeed: FeedEntry[] = [
-      ...following.map((item) => ({ kind: 'rating', item }) as FeedEntry),
-      ...followingShares.map((post) => ({ kind: 'mix', post }) as FeedEntry),
-    ].sort((a, b) => entryTime(b).localeCompare(entryTime(a)));
-
-    setExploreItems(ranked);
-    setFollowingItems(followingFeed);
-    setLikeCounts(lCounts);
-    setCommentCounts(cCounts);
-    setLikedIds(liked);
-    setShareLikes(shareSocial.likes);
-    setShareComments(shareSocial.comments);
-    setLikedShareIds(shareSocial.liked);
-    setLoading(false);
-  }, [userId]);
+  }, [tab, applyPage]);
 
   useEffect(() => {
-    if (ready) load();
-  }, [ready, load]);
+    loadedTabs.current.clear();
+    setExploreItems([]); setFollowingItems([]); setPages({}); setPostSessions({});
+    setNotInterested(new Set()); setLikedIds(new Set()); setLikedShareIds(new Set());
+  }, [userId]);
+  useEffect(() => {
+    const currentGeneration = generation;
+    if (ready && !loadedTabs.current.has(tab)) void load();
+    else { setLoading(false); setLoadingMore(false); setLoadFailed(false); }
+    return () => { currentGeneration.current++; };
+  }, [ready, load, userId, tab]);
+
+  async function loadMore() {
+    const cursor = pages[tab]?.nextCursor;
+    if (!cursor || loadingMore) return;
+    const request = generation.current;
+    setLoadingMore(true);
+    setLoadFailed(false);
+    try {
+      const page = await fetchHomeFeed(tab, cursor);
+      if (request === generation.current) applyPage(tab, page, true);
+    } catch (error) {
+      if (request !== generation.current) return;
+      if (error instanceof Error && error.message === 'feed 410') await load();
+      else setLoadFailed(true);
+    } finally {
+      if (request === generation.current) setLoadingMore(false);
+    }
+  }
 
   async function toggleLike(item: FeedItemRow) {
     if (!supabase) return;
@@ -358,7 +219,7 @@ export default function HomePage() {
     <div className="mx-auto max-w-6xl px-4 md:px-6 py-5 flex gap-8">
       {/* ── Feed column ── */}
       <div className="flex-1 min-w-0 max-w-2xl">
-        <div className="mb-4">
+        <div className="mb-4 flex items-center justify-between gap-4">
           <TitleTabs
             tabs={[
               { key: 'explore' as FeedTab, label: t('sj.home.explore') },
@@ -367,6 +228,9 @@ export default function HomePage() {
             value={tab}
             onChange={setTab}
           />
+          <button onClick={() => void load()} disabled={loading} className="text-xs text-muted hover:text-ink disabled:opacity-50">
+            {t('sj.home.refresh')}
+          </button>
         </div>
 
         {loading ? (
@@ -406,8 +270,9 @@ export default function HomePage() {
           </div>
         ) : (
           <div className="flex flex-col gap-2.5 pb-10">
-            {items.map((entry) =>
-              entry.kind === 'mix' ? (
+            {items.map((entry) => (
+              <FeedImpression key={entryKey(entry)} postKey={entryKey(entry)} sessionId={postSessions[tab + ':' + entryKey(entry)]} enabled={!!userId}>
+              {entry.kind === 'mix' ? (
                 <MixPostCard
                   key={`mix:${entry.post.id}`}
                   post={entry.post}
@@ -435,9 +300,18 @@ export default function HomePage() {
                       : undefined
                   }
                 />
-              ),
-            )}
+              )}
+              </FeedImpression>
+            ))}
           </div>
+        )}
+        {!loading && pages[tab]?.nextCursor && (
+          <button onClick={() => void loadMore()} disabled={loadingMore} className="w-full py-4 text-sm text-muted hover:text-ink disabled:opacity-50">
+            {loadingMore ? t('sj.common.loading') : loadFailed ? t('sj.common.retry') : t('sj.home.loadMore')}
+          </button>
+        )}
+        {!loading && !loadFailed && items.length > 0 && !pages[tab]?.nextCursor && (
+          <p className="py-6 text-center text-sm text-muted">{t('sj.home.caughtUp')}</p>
         )}
       </div>
 
