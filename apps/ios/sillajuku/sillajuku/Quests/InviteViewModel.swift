@@ -23,6 +23,14 @@ final class InviteViewModel {
     // way. Synchronous (currentUser is already in memory).
     var hasOwnPhoneVerified: Bool { supabase.auth.currentUser?.phoneConfirmedAt != nil }
 
+    /// Invite codes can only be entered within 24 hours of signing up
+    /// (redeem_referral_code enforces the same window, migration
+    /// 20260928000001); after that the "Have an invite code?" section hides.
+    var canRedeemCode: Bool {
+        guard let created = supabase.auth.currentUser?.createdAt else { return false }
+        return Date().timeIntervalSince(created) < 24 * 60 * 60
+    }
+
     var redeemMessage: String?
     var isRedeeming = false
 

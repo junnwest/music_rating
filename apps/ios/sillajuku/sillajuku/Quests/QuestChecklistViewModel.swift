@@ -214,7 +214,7 @@ final class QuestChecklistViewModel {
             .eq("referrer_id", value: userId)
             .not("verified_at", operator: .is, value: AnyJSON.null)
             .execute()
-        verifiedInviteCount = (try? await resp)?.count ?? 0
+        verifiedInviteCount = DebugOverrides.verifiedInviteCount((try? await resp)?.count ?? 0, userId: userId)
     }
 
     private func loadWasInvited(userId: UUID) async {

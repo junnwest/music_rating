@@ -42,6 +42,7 @@ const ko: Doc = {
             ['전화번호 인증 (선택)', '전화번호, 인증 일시', '친구 초대 기능 제공, 창립 멤버 배지 1인 1회 발급 확인', '전화번호 삭제 또는 탈퇴 시까지'],
             ['창립 멤버 배지 (선택)', '전화번호의 일방향 해시값, 배지 번호, 발급 일시', '같은 전화번호로 배지가 중복 발급되는 것을 방지', '배지 제도 운영 종료 시까지 (탈퇴 시 계정과의 연결은 끊어짐)'],
             ['푸시 알림 (선택)', '기기 푸시 토큰', '알림 발송', '알림 해제, 로그아웃 또는 탈퇴 시까지'],
+            ['소셜 미디어 소개 (공개 계정)', '사용자 이름, 평점, 리뷰, 평가한 앨범·곡', 'sillajuku 공식 소셜 미디어(인스타그램) 계정에서의 서비스 홍보', '게시물은 삭제 요청 시 또는 해당 계정 운영 종료 시까지. 거부하면 이후 새로 게시하지 않음'],
             ['자동 수집', 'IP 주소, 기기·운영체제·브라우저 정보, 접속 일시, 서비스 이용 기록, 오류·성능 기록', '서비스 운영, 보안, 오류 분석, 서비스 개선', '수집일로부터 최대 1년'],
           ],
         },
@@ -57,6 +58,7 @@ const ko: Doc = {
           '필수 항목은 이용자와의 서비스 이용계약을 이행하기 위해 처리합니다(「개인정보 보호법」 제15조제1항제4호).',
           '선택 항목(음악 서비스 연동, 전화번호 인증, 창립 멤버 배지, 푸시 알림, 선택 프로필 항목)은 이용자의 동의를 받아 처리합니다(같은 항 제1호). 동의하지 않아도 서비스의 기본 기능은 이용할 수 있으며, 해당 기능만 이용할 수 없습니다.',
           '자동 수집 정보는 서비스의 안전한 운영과 개선을 위해 필요한 범위에서 처리합니다(같은 항 제6호).',
+          '공개 계정의 평점과 리뷰를 sillajuku 공식 소셜 미디어에 소개하는 것은 이용자가 이미 공개한 정보를 출처와 함께 소개하는 서비스 홍보로서, 운영자의 정당한 이익(같은 항 제6호)에 근거합니다. 비공개 계정은 소개하지 않으며, 사용자 이름 외의 회원정보는 표시하지 않습니다. 이용자는 설정의 "sillajuku 소셜 미디어에 내 평가 소개 허용"을 끄거나 아래 연락처로 요청하여 언제든지 거부할 수 있고, 요청하면 이미 게시된 게시물도 삭제하거나 이용자를 알아볼 수 없도록 수정합니다.',
         ],
         '이용자는 언제든지 설정에서 선택 기능을 해제하거나 아래 연락처로 요청하여 동의를 철회할 수 있습니다.',
       ],
@@ -82,6 +84,7 @@ const ko: Doc = {
       body: [
         '운영자는 이용자의 개인정보를 제3자에게 판매하거나 제공하지 않습니다. 다만 법령에 따라 수사기관 등이 적법한 절차로 요구하는 경우에는 예외로 합니다.',
         '프로필, 평점, 리뷰, 공개 믹스, 팔로우 관계는 기본적으로 다른 이용자에게 공개됩니다. 비공개 계정으로 설정하면 이용자가 승인한 팔로워만 이를 볼 수 있습니다. 비공개 계정의 평점도 개인을 드러내지 않는 방식으로 종합 점수에 반영됩니다.',
+        '공개 계정의 평점과 리뷰는 위 2항에 따라 sillajuku 공식 인스타그램 계정에 게시될 수 있습니다. 인스타그램에 게시된 내용은 Meta Platforms, Inc.(미국)가 자체 방침에 따라 처리하며, 인스타그램 이용자에게 공개됩니다.',
       ],
     },
     {
@@ -112,7 +115,7 @@ const ko: Doc = {
       body: [
         '이용자는 언제든지 자신의 개인정보에 대해 열람, 정정, 삭제, 처리정지를 요구하고 동의를 철회할 수 있습니다.',
         [
-          '앱과 웹의 설정에서 프로필 수정, 공개 범위 변경, 음악 서비스 연동 해제, 알림 설정, 계정 비활성화 및 탈퇴를 직접 할 수 있습니다.',
+          '앱과 웹의 설정에서 프로필 수정, 공개 범위 변경, 소셜 미디어 소개 거부, 음악 서비스 연동 해제, 알림 설정, 계정 비활성화 및 탈퇴를 직접 할 수 있습니다.',
           `그 밖의 요청은 ${EMAIL}로 보내 주시면 10일 이내에 조치하고 결과를 알려 드립니다.`,
           '법정대리인이나 위임을 받은 자를 통해서도 권리를 행사할 수 있으며, 이 경우 위임장을 제출해야 합니다.',
           '법령에 따라 보관이 필요하거나 다른 사람의 권리를 침해할 우려가 있는 경우에는 요구가 제한될 수 있으며, 이때는 그 사유를 알려 드립니다.',
@@ -184,7 +187,7 @@ const ko: Doc = {
       body: [
         '본 방침이 변경되는 경우 시행 7일 전부터 서비스에 공지하며, 수집 항목이나 이용 목적 등 이용자의 권리에 중요한 변경이 있는 경우에는 시행 30일 전부터 공지하고 전자우편 또는 서비스 내 알림으로 알립니다.',
         [
-          '2026년 9월 27일: 전면 개정 (한국어 방침 신설, 처리 항목·보유 기간·처리위탁·국외 이전·보호책임자 명시, 전화번호 인증·창립 멤버 배지·푸시 알림·계정 비활성화 반영)',
+          '2026년 9월 27일: 전면 개정 (한국어 방침 신설, 처리 항목·보유 기간·처리위탁·국외 이전·보호책임자 명시, 전화번호 인증·창립 멤버 배지·푸시 알림·계정 비활성화·공식 소셜 미디어 소개 반영)',
           '2026년 8월: 이전 방침 (영문)',
         ],
       ],
@@ -221,6 +224,7 @@ const en: Doc = {
             ['Phone verification (optional)', 'Phone number, verification time', 'Friend invites, making sure each person claims one founding badge', 'Until you remove the number or delete your account'],
             ['Founding badge (optional)', 'One-way hash of your phone number, badge number, claim time', 'Preventing the same phone number from claiming a second badge', 'Until the founding badge program ends (unlinked from your account when you delete it)'],
             ['Push notifications (optional)', 'Device push token', 'Sending notifications', 'Until you turn notifications off, sign out, or delete your account'],
+            ['Social media features (public accounts)', 'Username, ratings, reviews, rated albums and songs', "Promoting the Service on sillajuku's official social media accounts (Instagram)", 'Posts stay until you ask us to remove them or the account is closed; once you opt out we make no new posts'],
             ['Collected automatically', 'IP address, device, OS and browser information, access times, usage records, error and performance logs', 'Operating and securing the Service, diagnosing errors, improving the Service', 'Up to 1 year from collection'],
           ],
         },
@@ -236,6 +240,7 @@ const en: Doc = {
           'Required information is processed to perform our contract with you, that is, to provide the Service (PIPA Art. 15(1)(4)).',
           'Optional information (music service connection, phone verification, founding badge, push notifications, optional profile fields) is processed with your consent (Art. 15(1)(1)). If you do not consent, you can still use the core Service; only that feature is unavailable.',
           'Automatically collected information is processed to the extent needed to run the Service securely and improve it (Art. 15(1)(6)).',
+          'Featuring ratings and reviews from public accounts on sillajuku\'s official social media is promotion of the Service using information you have already made public, credited to you, and is based on our legitimate interest (Art. 15(1)(6)). We never feature private accounts, and we show nothing about you beyond your username. You can opt out at any time by turning off "Feature my ratings on sillajuku\'s social media" in Settings or by contacting us; if you ask, we will also delete or de-identify posts already published.',
         ],
         'You can withdraw consent at any time by turning the feature off in Settings or contacting us.',
       ],
@@ -261,6 +266,7 @@ const en: Doc = {
       body: [
         'We do not sell or provide your personal information to third parties, except when a court, investigative authority, or other body requests it through a lawful procedure.',
         'Your profile, ratings, reviews, public Mixes, and follows are visible to other users by default. If you make your account private, only followers you approve can see them. Ratings from private accounts still count toward overall scores in a way that does not reveal you.',
+        'Ratings and reviews from public accounts may be posted on sillajuku\'s official Instagram account as described in Section 2. Content posted on Instagram is processed by Meta Platforms, Inc. (USA) under its own policies and is visible to Instagram users.',
       ],
     },
     {
@@ -291,7 +297,7 @@ const en: Doc = {
       body: [
         'You may at any time ask to access, correct, delete, or stop the processing of your personal information, and withdraw your consent.',
         [
-          'In Settings on the app or website, you can edit your profile, change who can see your account, disconnect music services, manage notifications, and deactivate or delete your account yourself.',
+          'In Settings on the app or website, you can edit your profile, change who can see your account, opt out of social media features, disconnect music services, manage notifications, and deactivate or delete your account yourself.',
           `For anything else, email ${EMAIL}. We will act on your request and tell you the result within 10 days.`,
           'You may also exercise these rights through a legal representative or someone you authorize, who must provide a power of attorney.',
           'A request may be limited where the law requires us to keep the information or where it could infringe someone else\'s rights; if so, we will tell you why.',
@@ -364,7 +370,7 @@ const en: Doc = {
       body: [
         'We will post any change to this policy on the Service at least 7 days before it takes effect. For changes that matter to your rights, such as new kinds of information or new purposes, we will post them at least 30 days in advance and also notify you by email or in-app notice.',
         [
-          'September 27, 2026: full revision (Korean version added; information, retention, service providers, international transfers, and privacy officer set out in detail; phone verification, founding badge, push notifications, and account deactivation added)',
+          'September 27, 2026: full revision (Korean version added; information, retention, service providers, international transfers, and privacy officer set out in detail; phone verification, founding badge, push notifications, account deactivation, and official social media features added)',
           'August 2026: previous policy (English only)',
         ],
       ],

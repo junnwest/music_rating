@@ -97,6 +97,9 @@ struct QuestChecklistView: View {
             .init(
                 title: "Connect your phone number",
                 progress: (vm.hasVerifiedPhone ? 1 : 0, 1),
+                // The last step the founding badge needs (every quest except
+                // the invite ones), so its reward bubble points at the badge.
+                reward: QuestReward(icon: "icon-award", description: "Unlocks the founding member badge"),
                 action: { showPhoneVerification = true },
                 note: (vm.wasInvited && !vm.hasVerifiedPhone)
                     ? "Verifying gives whoever invited you credit"
@@ -108,16 +111,15 @@ struct QuestChecklistView: View {
             // the backstop -- this is just so tapping the row itself routes somewhere useful
             // rather than opening a screen that would immediately turn around and ask for the
             // same thing).
-            .init(
-                title: "Invite a friend",
-                progress: (vm.hasFirstInvite ? 1 : 0, 1),
-                action: vm.hasVerifiedPhone ? { showInvite = true } : { showPhoneVerification = true }
-            ),
+            // "Invite a friend" (1) was removed 2026-09-28 -- the 5-friend
+            // quest covers it. Its Invite button sits left of the reward.
             .init(
                 title: "Invite 5 friends",
                 progress: (vm.verifiedInviteCount, 5),
                 reward: QuestReward(icon: "icon-palette", description: "Unlocks a custom app icon"),
-                action: vm.hasVerifiedPhone ? { showInvite = true } : { showPhoneVerification = true }
+                action: vm.hasVerifiedPhone ? { showInvite = true } : { showPhoneVerification = true },
+                // Straight to the invite sheet, which handles the phone gate itself.
+                trailingButton: QuestTrailingButton(title: "Invite") { showInvite = true }
             ),
         ])
         return items
@@ -140,7 +142,14 @@ struct QuestChecklistView: View {
                     Text(foundingSubtitle(number: number))
                         .font(.jakarta(12.5))
                         .foregroundStyle(Color.sjMuted)
+                        .tint(Color.sjMuted)
                         .fixedSize(horizontal: false, vertical: true)
+                        // The underlined "friend invite" link opens the invite sheet.
+                        .environment(\.openURL, OpenURLAction { url in
+                            guard url.scheme == "sillajuku", url.host == "invite" else { return .systemAction }
+                            showInvite = true
+                            return .handled
+                        })
                     if number == nil, let status = vm.foundingStatus, !vm.foundingSoldOut {
                         Text(String(format: String(localized: "%d of %d left"), status.remaining, status.cap))
                             .font(.jakarta(11.5, weight: .semibold))
@@ -174,11 +183,19 @@ struct QuestChecklistView: View {
         }
     }
 
-    private func foundingSubtitle(number: Int?) -> String {
-        if number != nil { return String(localized: "One of the first 500 members of sillajuku.") }
-        if vm.foundingSoldOut { return String(localized: "All 500 founding badges have been claimed.") }
-        if vm.meetsFoundingRequirements { return String(localized: "You've finished the quests. Claim your number while they last.") }
-        return String(localized: "The first 500 members get a numbered badge. Finish every quest above except inviting friends to claim yours.")
+    private func foundingSubtitle(number: Int?) -> AttributedString {
+        if number != nil { return AttributedString(String(localized: "One of the first 500 members of sillajuku.")) }
+        if vm.foundingSoldOut { return AttributedString(String(localized: "All 500 founding badges have been claimed.")) }
+        if vm.meetsFoundingRequirements { return AttributedString(String(localized: "You've finished the quests. Claim your number while they last.")) }
+        // Markdown link, so each language underlines its own word for
+        // "inviting" (초대 in Korean); handled by the openURL override above.
+        let md = String(localized: "The first 500 members get a numbered badge. Finish every quest above except [inviting](sillajuku://invite) friends to claim yours.")
+        var text = (try? AttributedString(markdown: md)) ?? AttributedString(md)
+        for run in text.runs where run.link != nil {
+            text[run.range].underlineStyle = .single
+            text[run.range].font = .jakarta(12.5, weight: .semibold)
+        }
+        return text
     }
 
     // Visually distinct from the timeline above — this is collective
@@ -271,6 +288,11 @@ struct QuestReward {
     let description: LocalizedStringKey
 }
 
+struct QuestTrailingButton {
+    let title: LocalizedStringKey
+    let action: () -> Void
+}
+
 struct QuestTimelineItem: Identifiable {
     let title: LocalizedStringKey
     let progress: (current: Int, target: Int)
@@ -281,6 +303,8 @@ struct QuestTimelineItem: Identifiable {
     // you"), since that's otherwise completely invisible to the user
     // (redemption happens silently on first launch).
     var note: LocalizedStringKey? = nil
+    /// A small capsule button beside the row, separate from the row's own tap.
+    var trailingButton: QuestTrailingButton? = nil
     var isDone: Bool { progress.current >= progress.target }
     var id: String { "\(title)" }
 }
@@ -361,7 +385,7 @@ private struct QuestTimelineRow: View {
                         HStack(alignment: .top, spacing: 8) {
                             titleContent
                             Spacer(minLength: 0)
-                            if item.reward == nil {
+                            if item.reward == nil && item.trailingButton == nil {
                                 Image("icon-chevron-right")
                                     .renderingMode(.template)
                                     .resizable().scaledToFit()
@@ -378,6 +402,18 @@ private struct QuestTimelineRow: View {
                 }
             }
             .padding(.bottom, 22)
+
+            if let trailing = item.trailingButton {
+                Button(action: trailing.action) {
+                    Text(trailing.title)
+                        .font(.jakarta(12, weight: .semibold))
+                        .foregroundStyle(Color.sjCream)
+                        .padding(.horizontal, 12)
+                        .frame(height: 28)
+                        .background(Color.sjBlue, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
 
             if let reward = item.reward {
                 Button { showRewardInfo = true } label: {

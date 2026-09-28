@@ -57,12 +57,14 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 > - **iOS polish:** unread-count bell badge; song page rates like the album page (no comments); Disc N tracklist headers; Mix-tab counts fixed; "Post to Feed"; comment sheets open with the keyboard together, large-only detent, swipe/tap to dismiss keyboard, whole bottom area opens it; flower hold delay 0.03s; comment chevron left of score.
 > - **Removed:** Quick Add (iOS + web; `get_quick_add_*` RPCs left in DB, unused); all 11 email-login accounts (backup `apps/web/backups/email-accounts-deleted-2026-09-26T21-59-52-860Z.json`).
 >
+> **📣 (2026-09-27, Mac) — Instagram features of users' ratings: opt-out switch + policy disclosure (committed 2026-09-28).** ✅ Migrations `20260928000000_social_feature_opt_out.sql` and `20260928000001_referral_redeem_window.sql` applied 2026-09-28. Announce the Instagram change to users and wait until **~2026-10-27** before the first credited (@username) post; skip users with a private account, the switch off, or deactivated. See SESSIONS.md.
+>
 > **⚖️ (2026-09-27, Mac) — Privacy Policy rewritten for PIPA (ko + en), Terms tightened, iOS phone-verification consent (uncommitted).** To-dos only you can do: delete the account backups in `apps/web/backups/` by **2026-10-26**; set PostHog + Sentry data retention ≤ 1 year; confirm the Upstash region; update App Store Connect **App Privacy** labels (phone number, diagnostics); a short lawyer review before public launch. See SESSIONS.md.
 >
 > **🍎 (2026-09-27, Mac) — uncommitted iOS work:** Taste country mix + "View N ratings" drill-down (port of web's 2026-09-26 Taste changes), bigger Profile top-bar icons, Taste section 02 subheader raised. Builds; needs a device check. See SESSIONS.md.
 >
 > **Next session:**
-> - **Ship iOS:** build number is now **22** (both configs) — archive and upload to TestFlight; none of today's iOS work is on TestFlight yet. Re-archive to include the 2026-09-27 Taste work.
+> - **Ship iOS:** build number is now **26** (both configs) — archive and upload to TestFlight; none of today's iOS work is on TestFlight yet. Re-archive to include the 2026-09-27 Taste work.
 > - **Device checks:** founding claim (success path), two-account follow request → approve, deactivate → reactivate, comment keyboard behaviour, Disc headers (Flume *Skin*).
 > - **Close loopholes:** disable the Supabase **email provider** (Auth → Providers → Email; nobody uses it now); verify one **Korean** phone number via SMS and check **Twilio geo permissions**; decide whether to expand the phone country picker (47 countries) to all.
 > - **Open, not started:** "remove follower" for private accounts; `profiles` is world-readable including `push_token` and notification settings (lock down); `/api/rankings/personalized` still takes an unauthenticated `userId`; the song ⋯ menu still offers "Edit Comment".

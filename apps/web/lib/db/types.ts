@@ -78,6 +78,7 @@ export interface ProfileRow {
   notify_rankings: boolean | null;
   notify_capsule: boolean | null;
   profile_visibility: string | null;
+  allow_social_feature: boolean | null; // 20260928000000
   catalog_visibility: string | null;
   library_visibility: string | null; // renamed from listen_later_visibility (20260706000012)
   stats_visibility: string | null; // 20260706000012

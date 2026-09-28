@@ -516,10 +516,7 @@ struct UserProfileView: View {
             }
 
             if vm.access.profileVisible, let bio = vm.profile?.bio, !bio.isEmpty {
-                Text(bio)
-                    .font(.jakarta(14))
-                    .foregroundStyle(Color.sjMuted)
-                    .multilineTextAlignment(.center)
+                ExpandableBioText(text: bio, font: .jakarta(14), alignment: .center)
                     .padding(.horizontal, 32)
             }
 

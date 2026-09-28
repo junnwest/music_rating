@@ -398,7 +398,7 @@ class ProfileViewModel {
     private func fetchProfile(userId: UUID) async -> Profile? {
         try? await supabase
             .from("profiles")
-            .select("id, display_name, username, rating_mode, manual_rating_step, bio, avatar_url, notify_likes, notify_replies, notify_followers, notify_rankings, notify_capsule, profile_visibility, catalog_visibility, library_visibility, stats_visibility, referral_code, badge_color, is_verified, founding_number")
+            .select("id, display_name, username, rating_mode, manual_rating_step, bio, avatar_url, notify_likes, notify_replies, notify_followers, notify_rankings, notify_capsule, profile_visibility, allow_social_feature, catalog_visibility, library_visibility, stats_visibility, referral_code, badge_color, is_verified, founding_number")
             .eq("id", value: userId)
             .single()
             .execute()
@@ -1189,9 +1189,7 @@ struct ProfileView: View {
                     .foregroundStyle(Color.sjInk)
             }
             if let bio = viewModel.profile?.bio, !bio.isEmpty {
-                Text(bio)
-                    .font(.jakarta(13))
-                    .foregroundStyle(Color.sjMuted)
+                ExpandableBioText(text: bio, font: .jakarta(13))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
