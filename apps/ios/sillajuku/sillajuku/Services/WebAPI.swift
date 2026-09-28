@@ -8,7 +8,7 @@ import Auth
 // implementation that inevitably drifts from web's. Same auth pattern SettingsView's
 // deleteAccount() already uses: Config.webBaseURL + Bearer session.accessToken.
 enum WebAPI {
-    static func get<T: Decodable>(_ path: String, authed: Bool, query: [String: String] = [:]) async -> T? {
+    static func get<T: Decodable>(_ path: String, authed: Bool, query: [String: String] = [:], dateDecodingStrategy: JSONDecoder.DateDecodingStrategy = .deferredToDate, onStatus: ((Int) -> Void)? = nil) async -> T? {
         guard var components = URLComponents(url: Config.webBaseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false) else {
             return nil
         }
@@ -35,13 +35,16 @@ enum WebAPI {
             return nil
         }
         let statusCode = (response as? HTTPURLResponse)?.statusCode
+        if let statusCode { onStatus?(statusCode) }
         guard statusCode == 200 else {
             let body = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
             print("WebAPI.get(\(path)): HTTP \(statusCode.map(String.init) ?? "?") -- \(body)")
             return nil
         }
         do {
-            return try JSONDecoder().decode(T.self, from: data)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = dateDecodingStrategy
+            return try decoder.decode(T.self, from: data)
         } catch {
             print("WebAPI.get(\(path)): decode error: \(error)")
             return nil
@@ -67,6 +70,55 @@ enum WebAPI {
         guard let bodyData = try? JSONEncoder().encode(body) else { return }
         request.httpBody = bodyData
         _ = try? await URLSession.shared.data(for: request)
+    }
+}
+
+// MARK: - Shared Home feed (server owns ranking, source mix and pagination)
+
+struct HomeFeedResponse: Decodable {
+    let entries: [Entry]
+    let nextCursor: String?
+    let sessionId: String
+    let likeCounts: [String: Int]
+    let commentCounts: [String: Int]
+    let likedKeys: [String]
+
+    struct Entry: Decodable {
+        let kind: String
+        let item: FeedItem?
+        let post: MixPayload?
+        var feedPost: FeedPost? {
+            if kind == "rating", let item { return .rating(item) }
+            if kind == "mix", let post {
+                return .mixShare(MixSharePost(id: post.id, userId: post.userId, mixId: post.mixId,
+                    caption: post.caption, createdAt: post.createdAt, mixName: post.mixName,
+                    mixDescription: post.mixDescription, profile: post.profile, coverUrls: post.coverUrls))
+            }
+            return nil
+        }
+    }
+    struct MixPayload: Decodable {
+        let id: UUID
+        let userId: UUID
+        let mixId: UUID
+        let caption: String?
+        let createdAt: Date
+        let mixName: String
+        let mixDescription: String?
+        let profile: FeedProfile?
+        let coverUrls: [String?]
+    }
+    static var dateStrategy: JSONDecoder.DateDecodingStrategy {
+        .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let value = try container.decode(String.self)
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = formatter.date(from: value) { return date }
+            formatter.formatOptions = [.withInternetDateTime]
+            if let date = formatter.date(from: value) { return date }
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid feed timestamp")
+        }
     }
 }
 

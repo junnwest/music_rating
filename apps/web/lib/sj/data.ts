@@ -31,12 +31,13 @@ export interface ReleaseGroupEmbed {
   id: string;
   title: string;
   artist_display: string;
+  primary_artist_id?: string | null;
   genres?: string[] | null;
   cover_url: string | null;
   release_group_type: string | null;
   first_release_date?: string | null;
   native_title: string | null;
-  artists?: { name_native: string | null } | null;
+  artists?: { name_native: string | null; country?: string | null } | null;
 }
 
 export function releaseFromEmbed(rg: ReleaseGroupEmbed): SJRelease {

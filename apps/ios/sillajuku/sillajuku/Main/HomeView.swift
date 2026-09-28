@@ -117,6 +117,13 @@ enum FeedPost: Identifiable {
     // Key into HomeViewModel's shared likeCounts/commentCounts/likedPostIds --
     // safe across both rating_likes and mix_share_likes since UUIDs are
     // globally unique regardless of source table.
+    var serverKey: String {
+        switch self {
+        case .rating(let item): return "rating:" + item.id.uuidString.lowercased()
+        case .mixShare(let post): return "mix:" + post.id.uuidString.lowercased()
+        }
+    }
+
     var socialKey: UUID {
         switch self {
         case .rating(let i):   return i.id
@@ -177,77 +184,31 @@ class HomeViewModel {
     private var hasLoadedExplore   = false
     private var hasLoadedFollowing = false
 
-    private static let feedSelect =
-        "id, user_id, score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey(username, display_name, avatar_url, is_bot, is_verified, badge_color, founding_number)"
+    var exploreCursor: String?
+    var followingCursor: String?
+    var loadingMore = false
+    var feedErrors: Set<String> = []
+    private var feedSessions: [String: String] = [:]
+    private var feedGeneration: [String: Int] = [:]
+    private var observedPosts: Set<String> = []
+    private var impressionTasks: [String: Task<Void, Never>] = [:]
 
-    // Explore's fetch is split by is_bot BEFORE ranking, not just re-ranked after — with
-    // bot ratings' recency-biased backdating, a human rating usually wouldn't survive into
-    // a single latest-150 window at all, so re-ranking downstream of an already-all-bot pool
-    // wouldn't help. Slots sized so a thin real-user base still shows every human item that
-    // exists; humanSlotEvery below governs how those get interleaved into the visible order.
-    private static let exploreHumanFetchLimit = 40
-    private static let exploreBotFetchLimit   = 110
-    // Ratio used when interleaving humanItems/botItems back together in ranked() — 1 human
-    // slot per N bot slots. Named/tunable here since it'll want revisiting as the real user
-    // base grows relative to the bot population.
-    private static let humanSlotEvery = 3
-
-    // Personalization signals (populated before explore loads)
-    private var followingIds:  Set<UUID>   = []
-    private var likedArtists:  Set<String> = []
-
+    func setVisible(_ post: FeedPost, explore: Bool, visible: Bool) {
+        let key = (explore ? "explore:" : "following:") + post.serverKey
+        impressionTasks[key]?.cancel()
+        impressionTasks[key] = nil
+        if visible {
+            impressionTasks[key] = Task { await observe(post, explore: explore) }
+        }
+    }
     var currentUserId: UUID? { supabase.auth.currentUser?.id }
 
     func load() async {
-        await loadPersonalization()   // must run before explore so ranking has signals
         await withTaskGroup(of: Void.self) { g in
             g.addTask { await self.loadExplore() }
             g.addTask { await self.loadFollowing() }
             g.addTask { await self.refreshNotificationBadge() }
         }
-    }
-
-    private func loadPersonalization() async {
-        guard let userId = currentUserId else { return }
-        async let followsTask: [UUID] = {
-            struct Row: Codable {
-                let followingId: UUID
-                enum CodingKeys: String, CodingKey { case followingId = "following_id" }
-            }
-            let rows: [Row] = (try? await supabase
-                .from("follows").select("following_id")
-                .eq("follower_id", value: userId).execute().value) ?? []
-            return rows.map(\.followingId)
-        }()
-        async let artistsTask: [String] = {
-            struct R: Codable {
-                let releaseGroups: AR
-                struct AR: Codable {
-                    let artist: String
-                    enum CodingKeys: String, CodingKey { case artist = "artist_display" }
-                }
-                enum CodingKeys: String, CodingKey { case releaseGroups = "release_groups" }
-            }
-            let rows: [R] = (try? await supabase
-                .from("ratings").select("release_groups(artist_display)")
-                .eq("user_id", value: userId).gte("score", value: 4.0)
-                .execute().value) ?? []
-            return rows.map(\.releaseGroups.artist)
-        }()
-        async let blockedTask: [UUID] = {
-            struct Row: Codable {
-                let blockedId: UUID
-                enum CodingKeys: String, CodingKey { case blockedId = "blocked_id" }
-            }
-            let rows: [Row] = (try? await supabase
-                .from("blocked_users").select("blocked_id")
-                .eq("blocker_id", value: userId).execute().value) ?? []
-            return rows.map(\.blockedId)
-        }()
-        let (ids, artists, blocked) = await (followsTask, artistsTask, blockedTask)
-        followingIds  = Set(ids)
-        likedArtists  = Set(artists)
-        blockedUserIds = Set(blocked)
     }
 
     func blockUser(userId: UUID) async {
@@ -267,46 +228,11 @@ class HomeViewModel {
     }
 
     func notInterested(item: FeedItem) async {
-        let postId = FeedPost.rating(item).id
-        exploreFeed.removeAll   { $0.id == postId }
-        followingFeed.removeAll { $0.id == postId }
-        await NotInterested.markAlbum(releaseGroupId: item.releases.id)
-    }
-
-    private func ranked(_ posts: [FeedPost]) -> [FeedPost] {
-        let scored = posts
-            .map { post -> (FeedPost, Double) in
-                var s = 0.0
-                if followingIds.contains(post.userId) { s += 8 }
-                if let artist = post.releaseArtist, likedArtists.contains(artist) { s += 5 }
-                s += log(Double((likeCounts[post.socialKey]    ?? 0) + 1)) * 5
-                s += log(Double((commentCounts[post.socialKey] ?? 0) + 1)) * 3
-                let ageHours = -post.createdAt.timeIntervalSinceNow / 3600
-                if ageHours < 12       { s += 3 }
-                else if ageHours < 72  { s += 1.5 }
-                else if ageHours < 336 { s += 0.5 }
-                return (post, s)
-            }
-            .sorted { $0.1 > $1.1 }
-            .map(\.0)
-
-        // Guarantee human presence near the top rather than relying on the score bonuses
-        // above to overcome a large bot:human volume ratio on their own — split the
-        // already-scored order into humans/bots (each stays internally sorted by score,
-        // since filter preserves order) and interleave at a fixed ratio. Unknown/missing
-        // is_bot defaults to the bot lane, never the guaranteed-human one. Degrades to
-        // today's all-bot order when the fetched pool has no human items.
-        let humans = scored.filter { $0.isBot == false }
-        guard !humans.isEmpty else { return scored }
-        let bots = scored.filter { $0.isBot != false }
-
-        var result: [FeedPost] = []
-        var hi = 0, bi = 0
-        while hi < humans.count || bi < bots.count {
-            if hi < humans.count { result.append(humans[hi]); hi += 1 }
-            for _ in 0..<Self.humanSlotEvery where bi < bots.count { result.append(bots[bi]); bi += 1 }
+        exploreFeed.removeAll { post in
+            if case .rating(let rating) = post { return rating.releases.id == item.releases.id }
+            return false
         }
-        return result
+        await NotInterested.markAlbum(releaseGroupId: item.releases.id)
     }
 
     func refreshNotificationBadge() async {
@@ -332,69 +258,6 @@ class HomeViewModel {
         }
 
         unreadNotificationCount = (try? await query.execute())?.count ?? 0
-    }
-
-    // Same relations as feedSelect but WITHOUT the release_groups/artists embed
-    // -- with ~10k bot-authored ratings (>99% of the table), adding that embed
-    // to a query that also does ORDER BY created_at + an inner-joined is_bot
-    // filter makes Postgres blow its statement timeout (57014), confirmed live:
-    // the identical query with the embed removed returns in <1s. release_groups
-    // are fetched separately below and stitched back in client-side instead.
-    private static let feedSelectLiteBotFilterable =
-        "id, user_id, score, review_text, created_at, release_group_id, profiles!ratings_user_id_fkey!inner(username, display_name, avatar_url, is_bot, is_verified, badge_color, founding_number)"
-
-    private struct FeedItemLite: Codable {
-        let id: UUID
-        let userId: UUID
-        let score: Double?
-        let reviewText: String?
-        let createdAt: Date
-        let releaseGroupId: UUID
-        let profiles: FeedProfile?
-        enum CodingKeys: String, CodingKey {
-            case id, score, profiles
-            case userId        = "user_id"
-            case reviewText     = "review_text"
-            case createdAt      = "created_at"
-            case releaseGroupId = "release_group_id"
-        }
-    }
-
-    private static let releaseGroupSelect =
-        "id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)"
-
-    private func fetchReleaseGroups(ids: [String]) async -> [UUID: FeedRelease] {
-        guard !ids.isEmpty else { return [:] }
-        let rows: [FeedRelease] = (try? await supabase
-            .from("release_groups").select(Self.releaseGroupSelect)
-            .in("id", values: ids)
-            .execute().value) ?? []
-        return Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
-    }
-
-    /// Fetches the Explore pool split by is_bot BEFORE any ranking — see the comment on
-    /// exploreHumanFetchLimit/exploreBotFetchLimit for why this has to happen at fetch time.
-    /// Throws (rather than swallowing per-query) so callers keep their existing try?/guard
-    /// failure semantics instead of silently treating a real fetch failure as "zero results".
-    private func fetchExplorePool() async throws -> [FeedItem] {
-        async let humanTask: [FeedItemLite] = try await supabase
-            .from("ratings").select(Self.feedSelectLiteBotFilterable)
-            .eq("profiles.is_bot", value: false)
-            .order("created_at", ascending: false).limit(Self.exploreHumanFetchLimit)
-            .execute().value
-        async let botTask: [FeedItemLite] = try await supabase
-            .from("ratings").select(Self.feedSelectLiteBotFilterable)
-            .eq("profiles.is_bot", value: true)
-            .order("created_at", ascending: false).limit(Self.exploreBotFetchLimit)
-            .execute().value
-        let lite = try await (humanTask + botTask)
-        let releaseGroups = await fetchReleaseGroups(ids: Array(Set(lite.map(\.releaseGroupId.uuidString))))
-        return lite.compactMap { item in
-            guard let release = releaseGroups[item.releaseGroupId] else { return nil }
-            return FeedItem(id: item.id, userId: item.userId, score: item.score,
-                             reviewText: item.reviewText, createdAt: item.createdAt,
-                             releases: release, profiles: item.profiles)
-        }
     }
 
     // Not private -- reused by ProfileViewModel to fetch the current user's
@@ -446,61 +309,6 @@ class HomeViewModel {
         }
     }
 
-    private func fetchExploreMixShares(limit: Int = 30) async throws -> [MixSharePost] {
-        let rows: [MixShareRow] = try await supabase
-            .from("mix_shares").select(Self.mixShareSelect)
-            .order("created_at", ascending: false).limit(limit)
-            .execute().value
-        return await Self.hydrateCovers(rows)
-    }
-
-    private func fetchFollowingMixShares(userIds: [String], limit: Int = 60) async -> [MixSharePost] {
-        guard !userIds.isEmpty else { return [] }
-        let rows: [MixShareRow] = (try? await supabase
-            .from("mix_shares").select(Self.mixShareSelect)
-            .in("user_id", values: userIds)
-            .order("created_at", ascending: false).limit(limit)
-            .execute().value) ?? []
-        return await Self.hydrateCovers(rows)
-    }
-
-    private func loadMixShareSocialData(for shares: [MixSharePost]) async {
-        guard !shares.isEmpty else { return }
-        let shareIds = shares.map(\.id.uuidString)
-        struct IdRow: Codable {
-            let mixShareId: UUID
-            enum CodingKeys: String, CodingKey { case mixShareId = "mix_share_id" }
-        }
-        async let likesTask: [IdRow]? = try? await supabase
-            .from("mix_share_likes").select("mix_share_id")
-            .in("mix_share_id", values: shareIds).execute().value
-        async let commentsTask: [IdRow]? = try? await supabase
-            .from("mix_share_comments").select("mix_share_id")
-            .in("mix_share_id", values: shareIds).execute().value
-        let userId = currentUserId
-        async let myLikesTask: [IdRow]? = {
-            guard let userId else { return nil }
-            return try? await supabase
-                .from("mix_share_likes").select("mix_share_id")
-                .eq("user_id", value: userId)
-                .in("mix_share_id", values: shareIds).execute().value
-        }()
-
-        if let rows = await likesTask {
-            var counts: [UUID: Int] = [:]
-            for r in rows { counts[r.mixShareId, default: 0] += 1 }
-            for (k, v) in counts { likeCounts[k] = v }
-        }
-        if let rows = await commentsTask {
-            var counts: [UUID: Int] = [:]
-            for r in rows { counts[r.mixShareId, default: 0] += 1 }
-            for (k, v) in counts { commentCounts[k] = v }
-        }
-        if let rows = await myLikesTask {
-            for r in rows { likedPostIds.insert(r.mixShareId) }
-        }
-    }
-
     func toggleMixShareLike(for post: MixSharePost) async {
         guard let userId = currentUserId else { return }
         let wasLiked = likedPostIds.contains(post.id)
@@ -531,113 +339,88 @@ class HomeViewModel {
     }
 
     func refreshExplore() async {
-        guard let ratingPool = try? await fetchExplorePool() else { return }
-        let sharePool = (try? await fetchExploreMixShares()) ?? []
-        likedPostIds = []
-        savedReleaseIds = []
-        myScores = [:]
-        likeCounts = [:]
-        commentCounts = [:]
-        let filteredRatings = ratingPool.filter { !blockedUserIds.contains($0.userId) }
-        let filteredShares  = sharePool.filter  { !blockedUserIds.contains($0.userId) }
-        // Independent of each other (ratings vs. mix-share ids) -- run concurrently
-        // rather than as two more serial round-trips stacked onto the pool fetches above.
-        await withTaskGroup(of: Void.self) { g in
-            g.addTask { await self.loadSocialData(for: filteredRatings) }
-            g.addTask { await self.loadMixShareSocialData(for: filteredShares) }
-        }
-        let combined = filteredRatings.map(FeedPost.rating) + filteredShares.map(FeedPost.mixShare)
-        exploreFeed = Array(ranked(combined).prefix(60))
-        hasLoadedExplore = true
+        await fetchHomePage(explore: true, append: false)
         await refreshNotificationBadge()
     }
 
     func loadExplore() async {
         guard !hasLoadedExplore else { return }
-        hasLoadedExplore = true
-        isLoadingExplore = true
-        async let ratingPoolTask = fetchExplorePool()
-        async let sharePoolTask  = fetchExploreMixShares()
-        let ratingPool = (try? await ratingPoolTask) ?? []
-        let sharePool  = (try? await sharePoolTask) ?? []
-        let filteredRatings = ratingPool.filter { !blockedUserIds.contains($0.userId) }
-        let filteredShares  = sharePool.filter  { !blockedUserIds.contains($0.userId) }
-        await withTaskGroup(of: Void.self) { g in
-            g.addTask { await self.loadSocialData(for: filteredRatings) }
-            g.addTask { await self.loadMixShareSocialData(for: filteredShares) }
-        }
-        let combined = filteredRatings.map(FeedPost.rating) + filteredShares.map(FeedPost.mixShare)
-        exploreFeed = Array(ranked(combined).prefix(60))
-        isLoadingExplore = false
+        await fetchHomePage(explore: true, append: false)
     }
 
-    func refreshFollowing() async {
-        guard let userId = currentUserId else { return }
-        struct FollowRow: Codable {
-            let followingId: UUID
-            enum CodingKeys: String, CodingKey { case followingId = "following_id" }
-        }
-        let rows: [FollowRow] = (try? await supabase
-            .from("follows").select("following_id")
-            .eq("follower_id", value: userId).execute().value) ?? []
-        let ids = rows.map(\.followingId.uuidString)
-        guard !ids.isEmpty else { followingFeed = []; return }
-        async let itemsTask: [FeedItem] = (try? await supabase
-            .from("ratings").select(Self.feedSelect)
-            .in("user_id", values: ids)
-            .order("created_at", ascending: false).limit(60).execute().value) ?? []
-        async let sharesTask = fetchFollowingMixShares(userIds: ids)
-        let (items, shares) = await (itemsTask, sharesTask)
-        let filteredRatings = items.filter  { !blockedUserIds.contains($0.userId) }
-        let filteredShares  = shares.filter { !blockedUserIds.contains($0.userId) }
-        followingFeed = (filteredRatings.map(FeedPost.rating) + filteredShares.map(FeedPost.mixShare))
-            .sorted { $0.createdAt > $1.createdAt }
-        hasLoadedFollowing = true
-    }
+    func refreshFollowing() async { await fetchHomePage(explore: false, append: false) }
 
     func loadFollowing() async {
         guard !hasLoadedFollowing else { return }
-        hasLoadedFollowing = true
-        isLoadingFollowing = true
-        guard let userId = currentUserId else { isLoadingFollowing = false; return }
+        await fetchHomePage(explore: false, append: false)
+    }
 
-        struct FollowRow: Codable {
-            let followingId: UUID
-            enum CodingKeys: String, CodingKey { case followingId = "following_id" }
+    func loadMore(explore: Bool) async {
+        guard !loadingMore, (explore ? exploreCursor : followingCursor) != nil else { return }
+        loadingMore = true
+        await fetchHomePage(explore: explore, append: true)
+        loadingMore = false
+    }
+
+    private func fetchHomePage(explore: Bool, append: Bool) async {
+        let tab = explore ? "explore" : "following"
+        let viewer = currentUserId
+        let generation = (feedGeneration[tab] ?? 0) + 1
+        feedGeneration[tab] = generation
+        if !append {
+            if explore { isLoadingExplore = exploreFeed.isEmpty }
+            else { isLoadingFollowing = followingFeed.isEmpty }
         }
-        let rows: [FollowRow] = (try? await supabase
-            .from("follows").select("following_id")
-            .eq("follower_id", value: userId).execute().value) ?? []
-        let ids = rows.map(\.followingId.uuidString)
-        guard !ids.isEmpty else { isLoadingFollowing = false; return }
-
-        async let itemsTask: [FeedItem] = (try? await supabase
-            .from("ratings").select(Self.feedSelect)
-            .in("user_id", values: ids)
-            .order("created_at", ascending: false).limit(60).execute().value) ?? []
-        async let sharesTask = fetchFollowingMixShares(userIds: ids)
-        let (items, shares) = await (itemsTask, sharesTask)
-
-        let filteredRatings = items.filter  { !blockedUserIds.contains($0.userId) }
-        let filteredShares  = shares.filter { !blockedUserIds.contains($0.userId) }
-        followingFeed = (filteredRatings.map(FeedPost.rating) + filteredShares.map(FeedPost.mixShare))
-            .sorted { $0.createdAt > $1.createdAt }
-        isLoadingFollowing = false
-        await withTaskGroup(of: Void.self) { g in
-            g.addTask { await self.loadSocialData(for: filteredRatings) }
-            g.addTask { await self.loadMixShareSocialData(for: filteredShares) }
+        feedErrors.remove(tab)
+        var query = ["tab": tab]
+        var responseStatus = 200
+        if append, let cursor = explore ? exploreCursor : followingCursor { query["cursor"] = cursor }
+        let page: HomeFeedResponse? = await WebAPI.get("api/feed/home", authed: viewer != nil,
+            query: query, dateDecodingStrategy: HomeFeedResponse.dateStrategy,
+            onStatus: { responseStatus = $0 })
+        guard viewer == currentUserId, feedGeneration[tab] == generation else { return }
+        if responseStatus == 410 && append {
+            await fetchHomePage(explore: explore, append: false)
+            return
         }
+        if explore { isLoadingExplore = false } else { isLoadingFollowing = false }
+        guard let page else { feedErrors.insert(tab); return }
+        let posts = page.entries.compactMap(\.feedPost).filter { !blockedUserIds.contains($0.userId) }
+        let existing = append ? (explore ? exploreFeed : followingFeed) : []
+        var ids = Set(existing.map(\.id))
+        let combined = existing + posts.filter { ids.insert($0.id).inserted }
+        if explore { exploreFeed = combined; exploreCursor = page.nextCursor; hasLoadedExplore = true }
+        else { followingFeed = combined; followingCursor = page.nextCursor; hasLoadedFollowing = true }
+        for post in posts {
+            feedSessions[tab + ":" + post.serverKey] = page.sessionId
+            likeCounts[post.socialKey] = page.likeCounts[post.serverKey] ?? 0
+            commentCounts[post.socialKey] = page.commentCounts[post.serverKey] ?? 0
+            if page.likedKeys.contains(post.serverKey) { likedPostIds.insert(post.socialKey) }
+            else { likedPostIds.remove(post.socialKey) }
+        }
+        // Only personal save/score state is hydrated locally. Ordering and
+        // human engagement counts are exclusively supplied by the server.
+        await loadSocialData(for: posts.compactMap { if case .rating(let item) = $0 { return item }; return nil })
+    }
+
+    func observe(_ post: FeedPost, explore: Bool) async {
+        guard currentUserId != nil else { return }
+        let tab = explore ? "explore" : "following"
+        guard let session = feedSessions[tab + ":" + post.serverKey] else { return }
+        let observation = session + ":" + post.serverKey
+        guard !observedPosts.contains(observation) else { return }
+        do { try await Task.sleep(for: .seconds(1)) } catch { return }
+        let active = await MainActor.run { UIApplication.shared.applicationState == .active }
+        guard !Task.isCancelled, active else { return }
+        observedPosts.insert(observation)
+        struct Impression: Encodable { let sessionId: String; let keys: [String] }
+        await WebAPI.post("api/feed/impressions", body: Impression(sessionId: session, keys: [post.serverKey]), authed: true)
     }
 
     private func loadSocialData(for items: [FeedItem]) async {
         guard !items.isEmpty else { return }
-        let ratingIds  = items.map(\.id.uuidString)
         let releaseIds = items.map(\.releases.id.uuidString)
 
-        struct RatingIdRow: Codable {
-            let ratingId: UUID
-            enum CodingKeys: String, CodingKey { case ratingId = "rating_id" }
-        }
         struct ReleaseIdRow: Codable {
             let releaseId: UUID
             enum CodingKeys: String, CodingKey { case releaseId = "release_id" }
@@ -650,21 +433,7 @@ class HomeViewModel {
             }
         }
 
-        async let likesTask: [RatingIdRow]? = try? await supabase
-            .from("rating_likes").select("rating_id")
-            .in("rating_id", values: ratingIds).execute().value
-        async let commentsTask: [RatingIdRow]? = try? await supabase
-            .from("rating_comments").select("rating_id")
-            .in("rating_id", values: ratingIds).execute().value
-
         let userId = currentUserId
-        async let myLikesTask: [RatingIdRow]? = {
-            guard let userId else { return nil }
-            return try? await supabase
-                .from("rating_likes").select("rating_id")
-                .eq("user_id", value: userId)
-                .in("rating_id", values: ratingIds).execute().value
-        }()
         async let savedTask: [ReleaseIdRow]? = {
             guard let userId else { return nil }
             return try? await supabase
@@ -684,19 +453,6 @@ class HomeViewModel {
                 .in("release_group_id", values: releaseIds).execute().value
         }()
 
-        if let rows = await likesTask {
-            var counts: [UUID: Int] = [:]
-            for r in rows { counts[r.ratingId, default: 0] += 1 }
-            for (k, v) in counts { likeCounts[k] = v }
-        }
-        if let rows = await commentsTask {
-            var counts: [UUID: Int] = [:]
-            for r in rows { counts[r.ratingId, default: 0] += 1 }
-            for (k, v) in counts { commentCounts[k] = v }
-        }
-        if let rows = await myLikesTask {
-            for r in rows { likedPostIds.insert(r.ratingId) }
-        }
         if let rows = await savedTask {
             for r in rows { savedReleaseIds.insert(r.releaseId) }
         }
@@ -1000,7 +756,14 @@ struct HomeView: View {
     private func feedList(posts: [FeedPost], isLoading: Bool, emptyMessage: LocalizedStringKey, scrollTrigger: UUID, isExplore: Bool) -> some View {
         if isLoading {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if posts.isEmpty {
+        } else if posts.isEmpty && viewModel.feedErrors.contains(isExplore ? "explore" : "following") {
+            VStack(spacing: 14) {
+                Text("Couldn't load your feed.").foregroundStyle(Color.sjMuted)
+                Button("Retry") {
+                    Task { if isExplore { await viewModel.refreshExplore() } else { await viewModel.refreshFollowing() } }
+                }
+            }.frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if posts.isEmpty && (isExplore ? viewModel.exploreCursor : viewModel.followingCursor) == nil {
             VStack(spacing: 14) {
                 Image("icon-list-music")
                     .renderingMode(.template)
@@ -1018,10 +781,27 @@ struct HomeView: View {
                     LazyVStack(spacing: 10) {
                         Color.clear.frame(height: 0).id("feed-top")
                         ForEach(posts) { post in
-                            postCard(post)
+                            postCard(post, isExplore: isExplore)
+                                .onScrollVisibilityChange(threshold: 0.5) { visible in
+                                    viewModel.setVisible(post, explore: isExplore, visible: visible)
+                                }
                         }
-                        if !isExplore {
-                            followingFeedFooter
+                        if (isExplore ? viewModel.exploreCursor : viewModel.followingCursor) != nil {
+                            Button {
+                                Task { await viewModel.loadMore(explore: isExplore) }
+                            } label: {
+                                if viewModel.loadingMore { ProgressView() }
+                                else { Text(viewModel.feedErrors.contains(isExplore ? "explore" : "following") ? "Retry" : "Load more") }
+                            }
+                            .disabled(viewModel.loadingMore)
+                            .padding(.vertical, 16)
+                        } else if viewModel.feedErrors.contains(isExplore ? "explore" : "following") {
+                            Button("Retry") {
+                                Task { if isExplore { await viewModel.refreshExplore() } else { await viewModel.refreshFollowing() } }
+                            }.padding(.vertical, 16)
+                        } else {
+                            Text("You're all caught up.").font(.jakarta(13)).foregroundStyle(Color.sjMuted).padding(.vertical, 16)
+                            if !isExplore { followingFeedFooter }
                         }
                     }
                     .padding(.horizontal, 16)
@@ -1050,16 +830,16 @@ struct HomeView: View {
     // error). Named functions type-check independently, so this keeps each
     // branch cheap to solve.
     @ViewBuilder
-    private func postCard(_ post: FeedPost) -> some View {
+    private func postCard(_ post: FeedPost, isExplore: Bool) -> some View {
         switch post {
         case .rating(let item):
-            ratingCard(item)
+            ratingCard(item, isExplore: isExplore)
         case .mixShare(let share):
             mixShareCard(share)
         }
     }
 
-    private func ratingCard(_ item: FeedItem) -> some View {
+    private func ratingCard(_ item: FeedItem, isExplore: Bool) -> some View {
         FeedCard(
             item: item,
             currentUserId: viewModel.currentUserId,
@@ -1070,7 +850,7 @@ struct HomeView: View {
             onLike: { await viewModel.toggleLike(for: item) },
             onSave: { await viewModel.toggleSave(for: item) },
             onBlock: { await viewModel.blockUser(userId: item.userId) },
-            onNotInterested: { await viewModel.notInterested(item: item) },
+            onNotInterested: isExplore ? { await viewModel.notInterested(item: item) } : nil,
             onOwnProfileTap: onOwnProfileTap,
             myScore: viewModel.myScores[item.releases.id],
             onMyScoreChange: { viewModel.myScores[item.releases.id] = $0 },
@@ -1313,7 +1093,7 @@ struct FeedCard: View {
     let onLike: () async -> Void
     let onSave: () async -> Void
     let onBlock: () async -> Void
-    let onNotInterested: () async -> Void
+    let onNotInterested: (() async -> Void)?
     let onOwnProfileTap: () -> Void
     var ownRatingActions: OwnRatingMenuActions? = nil
     var myScore: Double? = nil
@@ -1486,8 +1266,10 @@ struct FeedCard: View {
                         Label("Share", image: "icon-share")
                     }
                     if !isOwnPost {
-                        Button { Task { await onNotInterested() } } label: {
-                            Label("Not Interested", image: "icon-thumbs-down")
+                        if let onNotInterested {
+                            Button { Task { await onNotInterested() } } label: {
+                                Label("Not Interested", image: "icon-thumbs-down")
+                            }
                         }
                         Divider()
                         Button(role: .destructive) { activeSheet = .report } label: { Label("Report", image: "icon-flag") }
