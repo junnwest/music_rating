@@ -11,7 +11,7 @@ export default function FoundingNumberBadge({ number, size = 20 }: { number: num
       aria-label={`Founding member #${digits}`}
       title={`Founding member #${digits}`}
       className="inline-flex flex-col items-center justify-center shrink-0 text-white"
-      style={{ width: size, height: size, borderRadius: size * 0.2, background: '#FF7A00', padding: size * 0.08 }}
+      style={{ width: size, height: size, borderRadius: size * 0.2, background: '#CF7A45', padding: size * 0.08 }}
     >
       <svg viewBox="0 0 24 24" fill="currentColor" style={{ height: size * 0.44 }} aria-hidden>
         <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" />

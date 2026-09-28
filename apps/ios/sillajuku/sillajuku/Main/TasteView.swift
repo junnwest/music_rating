@@ -2839,7 +2839,7 @@ private struct TasteLockView: View {
                                     .resizable().scaledToFit()
                                     .frame(width: 20, height: 20)
                                     .foregroundStyle(Color.sjAmber.opacity(0.4))
-                                Text(label)
+                                Text(LocalizedStringKey(label))
                                     .font(.jakarta(10))
                                     .foregroundStyle(Color.sjMuted.opacity(0.7))
                             }

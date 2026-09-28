@@ -17,6 +17,8 @@ struct Profile: Codable, Identifiable {
     // toggle and default for the three subtab overrides below; NULL on an
     // override means "same as profileVisibility."
     var profileVisibility: String?
+    // Opt-out for being featured (credited) on sillajuku's social accounts.
+    var allowSocialFeature: Bool?
     var catalogVisibility: String?
     var libraryVisibility: String?
     var statsVisibility: String?
@@ -45,6 +47,7 @@ struct Profile: Codable, Identifiable {
         case notifyRankings       = "notify_rankings"
         case notifyCapsule        = "notify_capsule"
         case profileVisibility    = "profile_visibility"
+        case allowSocialFeature   = "allow_social_feature"
         case catalogVisibility    = "catalog_visibility"
         case libraryVisibility    = "library_visibility"
         case statsVisibility      = "stats_visibility"

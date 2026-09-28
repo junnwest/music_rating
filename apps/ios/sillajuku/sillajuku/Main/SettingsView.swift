@@ -51,10 +51,14 @@ struct SettingsView: View {
     @State private var catalogOverride: VisibilityOverride = .inherit
     @State private var libraryOverride: VisibilityOverride = .inherit
     @State private var statsOverride:   VisibilityOverride = .inherit
+    @State private var allowSocialFeature = true
 
     // App icon (unlocked at 5 verified invites)
     @State private var verifiedInviteCount = 0
     @State private var currentIconName: String? = UIApplication.shared.alternateIconName
+
+    // Invite friends
+    @State private var showInvite = false
 
     // Sign out
     @State private var showSignOutConfirm = false
@@ -81,6 +85,18 @@ struct SettingsView: View {
                     }
                     NavigationLink("Connected Accounts") {
                         ConnectedAccountsView()
+                    }
+                    Button { showInvite = true } label: {
+                        HStack {
+                            Text("Invite friends").foregroundStyle(Color.sjInk)
+                            Spacer()
+                            Image("icon-chevron-right")
+                                .renderingMode(.template)
+                                .resizable().scaledToFit()
+                                .frame(width: 12, height: 12)
+                                .foregroundStyle(Color.sjMuted)
+                        }
+                        .contentShape(Rectangle())
                     }
                 }
 
@@ -140,6 +156,18 @@ struct SettingsView: View {
                          ? "Only followers you approve can see your ratings and Mixes. New followers have to send a request."
                          : "Public accounts are visible to everyone. Switching to Public approves any pending follow requests.")
                 }
+
+                // Opt-out for sillajuku's own social accounts (Privacy Policy §1).
+                Section {
+                    Toggle("Feature my ratings on sillajuku's social media", isOn: $allowSocialFeature)
+                        .onChange(of: allowSocialFeature) { _, v in saveBool("allow_social_feature", v, \.allowSocialFeature) }
+                        .disabled(profileVisibility == "Private")
+                } footer: {
+                    Text(profileVisibility == "Private"
+                         ? "Private accounts are never featured."
+                         : "We may share your public ratings and reviews on sillajuku's Instagram, credited with your @username. Turn this off to opt out.")
+                }
+                .tint(Color.sjAmber)
 
                 // MARK: Support
                 Section("Support") {
@@ -224,6 +252,7 @@ struct SettingsView: View {
                 Button("Cancel", role: .cancel) {}
             }
             .sheet(isPresented: $showDeleteConfirm) { deleteAccountSheet }
+            .sheet(isPresented: $showInvite) { InviteView() }
             .sheet(isPresented: $showDeactivateConfirm) { deactivateAccountSheet }
             .onAppear { loadPreferences() }
             .task { await loadVerifiedInviteCount() }
@@ -612,6 +641,7 @@ struct SettingsView: View {
         notifyRankings       = p.notifyRankings ?? true
         notifyCapsule        = p.notifyCapsule ?? true
         profileVisibility    = p.profileVisibility ?? "Public"
+        allowSocialFeature   = p.allowSocialFeature ?? true
         catalogOverride      = .from(p.catalogVisibility)
         libraryOverride      = .from(p.libraryVisibility)
         statsOverride        = .from(p.statsVisibility)

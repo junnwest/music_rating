@@ -43,7 +43,7 @@ struct InviteView: View {
                     verifyPhonePrompt
                 }
 
-                if !vm.wasInvited {
+                if !vm.wasInvited && vm.canRedeemCode {
                     redeemCard
                 }
 

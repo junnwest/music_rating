@@ -295,6 +295,21 @@ export default function SettingsPage() {
             ? t('sj.settings.privateHint')
             : t('sj.settings.publicHint')}
         </p>
+        {/* Opt-out for sillajuku's own social accounts (Privacy Policy §1). */}
+        <div className="border-t border-divider">
+          {profile.profile_visibility === 'Private' ? (
+            <p className="px-4 py-3 text-[12px] text-muted">{t('sj.settings.socialFeaturePrivate')}</p>
+          ) : (
+            <>
+              <ToggleRow
+                label={t('sj.settings.socialFeature')}
+                checked={profile.allow_social_feature ?? true}
+                onChange={(v) => patch({ allow_social_feature: v })}
+              />
+              <p className="px-4 pb-3 text-[12px] text-muted">{t('sj.settings.socialFeatureHint')}</p>
+            </>
+          )}
+        </div>
       </Section>
 
       {/* ── Support + Legal ── */}

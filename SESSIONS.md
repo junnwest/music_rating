@@ -4,6 +4,56 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-28 (Mac) — Quests follow-ups; migrations `20260927000002` + `20260927000003` ✅ applied (user confirmed).**
+
+- Removed the "Invite a friend" (1-friend) quest; the 5-friend quest covers it (completion never depended on it). Its **초대하기** button now sits on "Invite 5 friends", left of the reward bubble.
+- Settings → Notifications row is now in Korean: 푸시 알림 / 켜짐 / 켜기 / 설정 열기, plus the "notifications are off in iOS Settings" footer.
+- Rewards, as built: **founding badge** = every quest except the invite one (award bubble on the phone step); **custom app icon** = 5 verified invites (palette bubble). No change made; asked the user whether finishing *all* quests should be what earns the badge.
+- iOS build 25. **BUILD SUCCEEDED**.
+
+---
+
+**2026-09-27 (Mac) — Quests/invite tweaks (iOS).**
+
+- **Award icon for the founding badge:** a new `icon-award` asset (lucide award). It's the reward bubble on "Connect your phone number", the last step the badge needs; the popover reads "Unlocks the founding member badge".
+- **"초대" is a link:** in the founding card's subtitle, the word is underlined and tappable, and opens the invite sheet. The string is markdown `[inviting](sillajuku://invite)` in a new key, handled by an `openURL` override.
+- **"Invite" button beside 친구 초대하기:** new `QuestTrailingButton` on `QuestTimelineItem`. It opens `InviteView` directly, which handles the phone gate itself.
+- **Settings → Account → "Invite friends"** opens the same sheet.
+- **Invite codes only within 24h of signup:** `InviteViewModel.canRedeemCode` (from `auth.currentUser.createdAt`) hides "Have an invite code?" afterwards. Migration **`20260927000003_referral_redeem_window.sql` (⏳ apply)** adds the same check to `redeem_referral_code`. It's safe to ship the app before or after it.
+- **BUILD SUCCEEDED**; not device-checked.
+
+---
+
+**2026-09-27 (Mac) — iOS Taste page fully in Korean.** 37 Taste strings had never had a ko translation, including section titles, stat labels and tips, lead lines, map headers, legend labels and refresh/retry. Filled from the web's `lib/i18n/ko.ts` wherever the English matched (same wording on both platforms); the handful with no web equivalent were written in its tone. The lock-screen teaser labels were rendered with `Text(String)` (never localized) and now use `LocalizedStringKey`, with "Top Album"/"Activity" translated. Genre names stay English, as on web. **BUILD SUCCEEDED**. 94 other strings app-wide still lack ko (not Taste); worth a sweep.
+
+---
+
+**2026-09-27 (Mac) — Founding badge color toned down: #FF7A00 → #CF7A45 (muted burnt orange).** iOS `Color.sjLaunchOrange` (badge glass tint, Quests claim card, claim ceremony tile) and web `FoundingNumberBadge.tsx`. **BUILD SUCCEEDED**.
+
+---
+
+**2026-09-27 (Mac) — iOS profile bios clamp to 3 lines with "See more" / "See less"** (port of web's 3-line bio). New `Components/ExpandableBioText.swift` measures hidden full and clamped copies, so the toggle only appears when the bio really overflows. Used on your own profile (`ProfileView.nameRow`, leading) and others' profiles (`UserProfileView`, centered). ko: 더 보기 / 접기. **BUILD SUCCEEDED**; not yet seen on a device.
+
+---
+
+**2026-09-27 (Mac) — Founding (rocket) badges are liquid glass on iOS.** `FoundingNumberBadge` and `FoundingBadgeHero` replaced the flat orange fill with `.glassEffect(.regular.tint(sjLaunchOrange), in: RoundedRectangle)`, the same treatment as `ScoreBadge`. The unclaimed "???" hero is clear glass. The claim ceremony keeps its own hand-drawn tile (a per-frame offset crashes `.glassEffect`). Web badge unchanged. **BUILD SUCCEEDED**; not yet seen on a device.
+
+---
+
+**2026-09-27 (Mac) — Featuring users' ratings on sillajuku's Instagram: disclosed + opt-out switch.** User chose credited posts (@username) with an **opt-out** model.
+
+- **Migration `20260927000002_social_feature_opt_out.sql` (⏳ apply BEFORE deploying):** `profiles.allow_social_feature boolean NOT NULL DEFAULT true`. The iOS profile load and the web `PROFILE_COLS` now select it, so shipping the code before the migration breaks profile loading.
+- **Settings switch "Feature my ratings on sillajuku's social media"** on iOS (Privacy section, below visibility; disabled for private accounts) and web (Settings → Privacy). ko strings added.
+- **Privacy Policy:**
+  - §1 has a new row: username, ratings, reviews and rated albums, used for promotion on official Instagram.
+  - §2 gives the legal basis as legitimate interest over already-public info, with public accounts only, username only, opt-out via Settings or email, and existing posts deleted or de-identified on request.
+  - §4 names Instagram / Meta (USA). §6 mentions the switch. The change history is updated.
+- **Terms §3:** opt-out via Settings or email, and published promo gets removed or de-identified on request, which narrows exception (b).
+- **Before any credited post:** check `profile_visibility <> 'Private' AND allow_social_feature AND deactivated_at IS NULL` for that user. Per the policy's own §13, this is a rights-affecting change: **announce it (email or in-app notice) and wait 30 days (≈ 2026-10-27) before the first credited post**. Anonymous or aggregate posts are fine meanwhile.
+- iOS **BUILD SUCCEEDED**; web typecheck clean.
+
+---
+
 **2026-09-27 (Mac) — Posts now show the author's profile photo (iOS + web).** A UI bug, not a data one: the 5 users with an `avatar_url` all had working images, but post headers were hardcoded to the default avatar and the queries never selected `avatar_url`.
 
 - **iOS:** new `UserAvatarView(url:size:)` (`Components/DefaultAvatarView.swift`) falls back to `DefaultAvatarView`. `avatar_url` was added to the feed, lite-feed and mix-share selects, the album page posts, comment sheets and liker sheets. `FeedProfile`, the comment/liker profile structs, `PostCardHeader`, and `ProfilePostCard`/`ProfileSongPostCard` (`headerAvatarUrl`) carry it through. Own-post single screens (notifications, album song card) fetch your own avatar. **BUILD SUCCEEDED**. Still default by design: the comment input row (your own avatar isn't fetched there), the notifications list, share-card images.

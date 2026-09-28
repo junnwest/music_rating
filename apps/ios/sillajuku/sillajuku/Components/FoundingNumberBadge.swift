@@ -2,7 +2,8 @@ import SwiftUI
 
 /// Founding badge for the first 500 members (claim_founding_badge, migration
 /// 20260926000003): an orange square with the rocket on top and the member
-/// number "001"…"500" underneath. Replaced the old beta-tester rocket badge.
+/// number "001"…"500" underneath, in orange-tinted liquid glass. Replaced
+/// the old beta-tester rocket badge.
 
 extension Int {
     /// Always three digits: 7 → "007".
@@ -10,8 +11,9 @@ extension Int {
 }
 
 extension Color {
-    /// The rocket's launch orange.
-    static let sjLaunchOrange = Color(red: 1.0, green: 0.478, blue: 0.0) // #FF7A00
+    /// The rocket's launch orange -- a muted burnt orange (was a vivid
+    /// #FF7A00 until 2026-09-27; user asked for something less vivid).
+    static let sjLaunchOrange = Color(red: 0.812, green: 0.478, blue: 0.271) // #CF7A45
 }
 
 // MARK: - Inline (next to the @handle)
@@ -48,7 +50,10 @@ struct FoundingNumberBadge: View {
         }
         .foregroundStyle(.white)
         .frame(width: size, height: size)
-        .background(RoundedRectangle(cornerRadius: size * 0.2).fill(Color.sjLaunchOrange))
+        // Liquid glass tinted launch orange, same treatment as ScoreBadge.
+        // Never offset this every frame (see FoundingClaimCeremony's note on
+        // the .glassEffect NaN crash) -- the ceremony draws its own tile.
+        .glassEffect(.regular.tint(Color.sjLaunchOrange), in: RoundedRectangle(cornerRadius: size * 0.2))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(String(format: String(localized: "Founding member number %d"), number))
     }
@@ -77,8 +82,9 @@ struct FoundingBadgeHero: View {
         }
         .foregroundStyle(number == nil ? Color.sjMuted : .white)
         .frame(width: size, height: size)
-        .background(RoundedRectangle(cornerRadius: size * 0.16)
-            .fill(number == nil ? Color.sjBorder.opacity(0.5) : Color.sjLaunchOrange))
+        // Liquid glass: orange-tinted once claimed, clear glass while "???".
+        .glassEffect(number == nil ? .regular : .regular.tint(Color.sjLaunchOrange),
+                     in: RoundedRectangle(cornerRadius: size * 0.16))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(number.map { String(format: String(localized: "Founding member number %d of 500"), $0) }
                             ?? String(localized: "Founding badge, not claimed"))
