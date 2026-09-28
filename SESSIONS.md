@@ -106,6 +106,7 @@ Historical record of shipped features and session notes. Not needed at conversat
 **2026-09-27 (Mac) — Profile top-bar icons bigger.** The three icons at the top of the Profile tab (find people · Getting Started/Quests · Settings) went from 16pt glyphs to **21pt**, each with a 36×36pt tap area (`contentShape`); the quest red dot is 4 → 6pt and repositioned against the new frame. `ProfileView.swift`. **BUILD SUCCEEDED**. Not in build 22 unless it's re-archived.
 
 ---
+**2026-09-27 (Windows, web mixes) —** Added an owner-only public/private switch to the existing mix detail page. It writes `mixes.is_public`, updates the visible state and mix target cache after success, and displays a save error without changing the switch on failure. Typecheck and targeted lint passed.
 
 **2026-09-27 (Windows, web album tracklist) —** Removed the uppercase transform from the album tracklist column header and changed its last label from “You” to “Rate” (Korean: “내 평가” to “평가”). Renamed the tracklist translation key to `rate`; typecheck passed.
 

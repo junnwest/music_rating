@@ -42,6 +42,8 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **2026-09-27 (Windows, web mixes) —** Mix owners can switch an existing mix between public and private on its detail page. The visibility badge and mix target cache update after a successful save; save errors are shown beside the switch. Typecheck and targeted lint passed.
+
 > **2026-09-27 (Windows, web album tracklist) —** The column header now uses title case (`# / Title / Avg / Time / Rate`), with Korean `평가` in place of `내 평가`. Typecheck passed.
 
 > **2026-09-27 (Windows, web) — Profile, song ratings, Taste, and Explore updates.** Profile artist links, direct rating/review editing, expandable three-line bio, editable username, single-album Taste layout, song score-only rating list, and a comment/affinity/follower-weighted Explore ranking are implemented. **Both migrations applied to production:** `20260927000000_song_ratings_list.sql` and `20260927000001_feed_author_followers.sql`; a live score-only song rating was returned and the follower aggregation responded. Browser click-through remains to do. See SESSIONS.md and PIPELINE_CHECKS.md for the post-migration catalog check.

@@ -32,7 +32,7 @@ export default function MixPage() {
   const { t } = useLanguage();
   const mixName = useMixName();
   const { userId, ready } = useSession();
-  const { remove, version, lastAdded } = useMixTarget();
+  const { remove, refresh, version, lastAdded } = useMixTarget();
   const [adding, setAdding] = useState(false);
   const [composing, setComposing] = useState(false);
   const [posted, setPosted] = useState(false);
@@ -44,6 +44,8 @@ export default function MixPage() {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [visibilitySaving, setVisibilitySaving] = useState(false);
+  const [visibilityError, setVisibilityError] = useState(false);
 
   // Gated on `ready`, not just mount: every mix but an explicitly public one is
   // owner-only under RLS, so a fetch that fires before the client has restored
@@ -142,6 +144,27 @@ export default function MixPage() {
     },
     [remove, mixId],
   );
+
+  async function changeVisibility(isPublic: boolean) {
+    if (!supabase || !mix || !userId || userId !== mix.user_id || visibilitySaving) return;
+    setVisibilitySaving(true);
+    setVisibilityError(false);
+    const { data, error } = await supabase
+      .from('mixes')
+      .update({ is_public: isPublic })
+      .eq('id', mix.id)
+      .eq('user_id', userId)
+      .select('is_public')
+      .single();
+    if (error || !data) {
+      console.error('[mix] failed to change visibility:', error?.message ?? 'no mix returned');
+      setVisibilityError(true);
+    } else {
+      setMix((current) => current?.id === mix.id ? { ...current, is_public: data.is_public } : current);
+      void refresh();
+    }
+    setVisibilitySaving(false);
+  }
 
   // Right-click menu for the rows. Declared before the early returns so the hook
   // order stays stable; "Remove from Mix" is resolved per-open, not per-render.
@@ -270,6 +293,27 @@ export default function MixPage() {
                   {t('sj.mixPost.posted')}
                 </span>
               )}
+            </div>
+          )}
+          {isOwner && (
+            <div className="mt-3">
+              <label className="inline-flex items-center gap-2.5 cursor-pointer text-[13px] font-medium text-ink">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={mix.is_public}
+                  onChange={(e) => void changeVisibility(e.target.checked)}
+                  disabled={visibilitySaving}
+                  aria-describedby="mix-visibility-description"
+                  className="sr-only peer"
+                />
+                <span className="relative w-9 h-5 rounded-full bg-divider peer-checked:bg-accent peer-focus-visible:ring-2 peer-focus-visible:ring-accent peer-focus-visible:ring-offset-2 peer-disabled:opacity-50 transition-colors after:absolute after:top-0.5 after:left-0.5 after:w-4 after:h-4 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-4" />
+                {t('sj.mix.public')}
+              </label>
+              <p id="mix-visibility-description" className="mt-1 text-[12px] text-muted">
+                {mix.is_public ? t('sj.mix.publicDesc') : t('sj.mix.privateDesc')}
+              </p>
+              {visibilityError && <p role="alert" className="mt-1 text-[12px] text-red-500">{t('sj.mix.saveFailed')}</p>}
             </div>
           )}
         </div>

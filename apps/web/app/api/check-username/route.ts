@@ -13,11 +13,17 @@ export async function GET(req: NextRequest) {
   const supabase = createServerClient();
   if (!supabase) return NextResponse.json({ available: false });
 
-  const { data } = await supabase
+  const { data: allowed, error: policyError } = await supabase.rpc('is_username_allowed', { candidate: username });
+  if (policyError) return NextResponse.json({ available: false }, { status: 503 });
+  if (!allowed) return NextResponse.json({ available: false, reason: 'blocked' });
+
+  const { data, error } = await supabase
     .from('profiles')
     .select('id')
     .eq('username', username)
     .maybeSingle();
+
+  if (error) return NextResponse.json({ available: false }, { status: 503 });
 
   return NextResponse.json({ available: !data });
 }
