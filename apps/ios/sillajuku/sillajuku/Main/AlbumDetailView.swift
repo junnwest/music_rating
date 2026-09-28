@@ -377,7 +377,7 @@ class AlbumDetailViewModel {
 
     // Not private -- reused by AlbumAllRatingsListViewModel for the "View All" screen.
     static let postsSelect =
-        "id, user_id, score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey(username, display_name, avatar_url, is_bot)"
+        "id, user_id, score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey(username, display_name, avatar_url, is_bot, is_verified, badge_color, founding_number, featured_badge)"
 
     private func loadPosts(releaseGroupId: UUID) async {
         let myId = supabase.auth.currentUser?.id
@@ -1527,17 +1527,12 @@ struct RatingCommentRow: View {
                         .font(.jakarta(13, weight: .semibold))
                         .foregroundStyle(Color.sjInk)
                         .lineLimit(1)
-                    if let raw = item.profiles?.badgeColor, let badge = QuestBadgeColor(rawValue: raw) {
-                        QuestBadgeView(color: badge.color)
-                            .frame(width: 12, height: 12)
-                    }
-                    if item.profiles?.isVerified == true {
-                        VerifiedBadgeView()
-                            .frame(width: 12, height: 12)
-                    }
-                    if let foundingNumber = item.profiles?.foundingNumber {
-                        FoundingNumberBadge(number: foundingNumber, size: 12, compact: true)
-                    }
+                        .minimumScaleFactor(0.65)  // one line always, even at 20 chars
+                        .layoutPriority(1)
+                    PostBadgeView(isVerified: item.profiles?.isVerified == true,
+                                  foundingNumber: item.profiles?.foundingNumber,
+                                  badgeColor: item.profiles?.badgeColor,
+                                  featured: item.profiles?.featuredBadge, size: 12)
                     Text("·")
                         .font(.jakarta(12))
                         .foregroundStyle(Color.sjBorder)
@@ -1942,17 +1937,12 @@ struct SongRatingCommentRow: View {
                         .font(.jakarta(13, weight: .semibold))
                         .foregroundStyle(Color.sjInk)
                         .lineLimit(1)
-                    if let raw = item.profiles?.badgeColor, let badge = QuestBadgeColor(rawValue: raw) {
-                        QuestBadgeView(color: badge.color)
-                            .frame(width: 12, height: 12)
-                    }
-                    if item.profiles?.isVerified == true {
-                        VerifiedBadgeView()
-                            .frame(width: 12, height: 12)
-                    }
-                    if let foundingNumber = item.profiles?.foundingNumber {
-                        FoundingNumberBadge(number: foundingNumber, size: 12, compact: true)
-                    }
+                        .minimumScaleFactor(0.65)  // one line always, even at 20 chars
+                        .layoutPriority(1)
+                    PostBadgeView(isVerified: item.profiles?.isVerified == true,
+                                  foundingNumber: item.profiles?.foundingNumber,
+                                  badgeColor: item.profiles?.badgeColor,
+                                  featured: item.profiles?.featuredBadge, size: 12)
                     Text("·")
                         .font(.jakarta(12))
                         .foregroundStyle(Color.sjBorder)
@@ -2039,6 +2029,7 @@ struct SongDetailView: View {
     @State private var myBadgeColor: String? = nil
     @State private var myFoundingNumber: Int? = nil
     @State private var myAvatarUrl: String? = nil
+    @State private var myFeaturedBadge: String? = nil
     @State private var showEditCommentSheet = false
     @State private var showDeleteConfirm = false
     @State private var showMixPicker = false
@@ -2369,6 +2360,7 @@ struct SongDetailView: View {
                     headerBadgeColor: myBadgeColor,
                     headerFoundingNumber: myFoundingNumber,
                     headerAvatarUrl: myAvatarUrl,
+                    headerFeaturedBadge: myFeaturedBadge,
                     isDraft: isDraft,
                     matchedGeometryNamespace: isDraft ? ratingNamespace : nil
                 )
@@ -2578,20 +2570,22 @@ struct SongDetailView: View {
                 let badgeColor: String?
                 let foundingNumber: Int?
                 let avatarUrl: String?
+                let featuredBadge: String?
                 enum CodingKeys: String, CodingKey {
                     case username; case isVerified = "is_verified"
                     case badgeColor = "badge_color"; case foundingNumber = "founding_number"
-                    case avatarUrl = "avatar_url"
+                    case avatarUrl = "avatar_url"; case featuredBadge = "featured_badge"
                 }
             }
             if let p: MyProfile = try? await supabase.from("profiles")
-                .select("username, is_verified, badge_color, founding_number, avatar_url").eq("id", value: userId)
+                .select("username, is_verified, badge_color, founding_number, avatar_url, featured_badge").eq("id", value: userId)
                 .single().execute().value {
                 myHandle = p.username
                 myVerified = p.isVerified == true
                 myBadgeColor = p.badgeColor
                 myFoundingNumber = p.foundingNumber
                 myAvatarUrl = p.avatarUrl
+                myFeaturedBadge = p.featuredBadge
             }
         }
     }
@@ -2654,20 +2648,20 @@ struct SongDetailView: View {
             struct ProfileRow: Decodable {
                 let id: UUID; let username: String?; let displayName: String?
                 let isBot: Bool?; let isVerified: Bool?
-                let badgeColor: String?; let foundingNumber: Int?; let avatarUrl: String?
+                let badgeColor: String?; let foundingNumber: Int?; let avatarUrl: String?; let featuredBadge: String?
                 enum CodingKeys: String, CodingKey {
                     case id, username
                     case displayName = "display_name"; case isBot = "is_bot"; case isVerified = "is_verified"
-                    case badgeColor = "badge_color"; case foundingNumber = "founding_number"; case avatarUrl = "avatar_url"
+                    case badgeColor = "badge_color"; case foundingNumber = "founding_number"; case avatarUrl = "avatar_url"; case featuredBadge = "featured_badge"
                 }
             }
             let profileRows: [ProfileRow] = (try? await supabase
                 .from("profiles")
-                .select("id, username, display_name, is_bot, is_verified, badge_color, founding_number, avatar_url")
+                .select("id, username, display_name, is_bot, is_verified, badge_color, founding_number, avatar_url, featured_badge")
                 .in("id", values: userIds)
                 .execute().value) ?? []
             let byId = Dictionary(uniqueKeysWithValues: profileRows.map {
-                ($0.id, FeedProfile(username: $0.username, displayName: $0.displayName, isBot: $0.isBot, isVerified: $0.isVerified, badgeColor: $0.badgeColor, foundingNumber: $0.foundingNumber, avatarUrl: $0.avatarUrl))
+                ($0.id, FeedProfile(username: $0.username, displayName: $0.displayName, isBot: $0.isBot, isVerified: $0.isVerified, badgeColor: $0.badgeColor, foundingNumber: $0.foundingNumber, avatarUrl: $0.avatarUrl, featuredBadge: $0.featuredBadge))
             })
             for i in posts.indices { posts[i].profiles = byId[posts[i].userId] }
         }
@@ -2812,20 +2806,20 @@ private class SongRatingsListViewModel {
             struct ProfileRow: Decodable {
                 let id: UUID; let username: String?; let displayName: String?
                 let isBot: Bool?; let isVerified: Bool?
-                let badgeColor: String?; let foundingNumber: Int?; let avatarUrl: String?
+                let badgeColor: String?; let foundingNumber: Int?; let avatarUrl: String?; let featuredBadge: String?
                 enum CodingKeys: String, CodingKey {
                     case id, username
                     case displayName = "display_name"; case isBot = "is_bot"; case isVerified = "is_verified"
-                    case badgeColor = "badge_color"; case foundingNumber = "founding_number"; case avatarUrl = "avatar_url"
+                    case badgeColor = "badge_color"; case foundingNumber = "founding_number"; case avatarUrl = "avatar_url"; case featuredBadge = "featured_badge"
                 }
             }
             let profileRows: [ProfileRow] = (try? await supabase
                 .from("profiles")
-                .select("id, username, display_name, is_bot, is_verified, badge_color, founding_number, avatar_url")
+                .select("id, username, display_name, is_bot, is_verified, badge_color, founding_number, avatar_url, featured_badge")
                 .in("id", values: userIds)
                 .execute().value) ?? []
             let byId = Dictionary(uniqueKeysWithValues: profileRows.map {
-                ($0.id, FeedProfile(username: $0.username, displayName: $0.displayName, isBot: $0.isBot, isVerified: $0.isVerified, badgeColor: $0.badgeColor, foundingNumber: $0.foundingNumber, avatarUrl: $0.avatarUrl))
+                ($0.id, FeedProfile(username: $0.username, displayName: $0.displayName, isBot: $0.isBot, isVerified: $0.isVerified, badgeColor: $0.badgeColor, foundingNumber: $0.foundingNumber, avatarUrl: $0.avatarUrl, featuredBadge: $0.featuredBadge))
             })
             for i in loaded.indices { loaded[i].profiles = byId[loaded[i].userId] }
         }

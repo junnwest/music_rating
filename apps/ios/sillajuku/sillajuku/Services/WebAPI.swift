@@ -8,7 +8,9 @@ import Auth
 // implementation that inevitably drifts from web's. Same auth pattern SettingsView's
 // deleteAccount() already uses: Config.webBaseURL + Bearer session.accessToken.
 enum WebAPI {
-    static func get<T: Decodable>(_ path: String, authed: Bool, query: [String: String] = [:]) async -> T? {
+    /// `reload` skips URLSession's local HTTP cache (pull-to-refresh); the
+    /// server's own cache is separate -- routes that have one take `refresh=1`.
+    static func get<T: Decodable>(_ path: String, authed: Bool, query: [String: String] = [:], reload: Bool = false) async -> T? {
         guard var components = URLComponents(url: Config.webBaseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false) else {
             return nil
         }
@@ -18,6 +20,7 @@ enum WebAPI {
         guard let url = components.url else { return nil }
 
         var request = URLRequest(url: url)
+        if reload { request.cachePolicy = .reloadIgnoringLocalCacheData }
         if authed {
             guard let session = try? await supabase.auth.session else {
                 print("WebAPI.get(\(path)): no auth session available")

@@ -324,17 +324,28 @@ class DiscoveryViewModel {
         // itself can change independent of the (unrefreshed) underlying Spotify/Apple data --
         // e.g. a search-matching fix landing server-side wouldn't otherwise show up without a
         // full app relaunch.
+        //
+        // 2026-09-28 ("add tab refresh doesn't work"): the pull re-requested the
+        // same URLs, so /api/recommendations answered from its 2-min per-user
+        // cache (identical rows) and Spotify / Apple Music "Recently Listened"
+        // was never re-fetched at all. Now recommendations pass `refresh=1`
+        // (skips that cache and reshuffles server-side), local HTTP caching is
+        // bypassed, and both listening sources reload alongside.
         hasResolvedRecentlyPlayed = false
-        await reloadDiscoverySections()
+        await withTaskGroup(of: Void.self) { g in
+            g.addTask { await self.reloadDiscoverySections(fresh: true) }
+            g.addTask { await self.loadSpotify() }
+            g.addTask { await self.loadAppleMusic() }
+        }
         await resolveRecentlyPlayedIfNeeded()
         prefetchDiscoveryCovers()
     }
 
-    private func reloadDiscoverySections() async {
+    private func reloadDiscoverySections(fresh: Bool = false) async {
         await withTaskGroup(of: Void.self) { g in
-            g.addTask { await self.loadDiscovery() }
-            g.addTask { await self.loadRecommendations() }
-            g.addTask { await self.loadPopularSearches() }
+            g.addTask { await self.loadDiscovery(fresh: fresh) }
+            g.addTask { await self.loadRecommendations(fresh: fresh) }
+            g.addTask { await self.loadPopularSearches(fresh: fresh) }
         }
     }
 
@@ -546,16 +557,18 @@ class DiscoveryViewModel {
     // "Popular" mislabeled newest-first, and Trending counting every rating equally regardless
     // of is_bot). Same algorithm as web, no local reimplementation to drift out of sync. See
     // Services/WebAPI.swift.
-    private func loadDiscovery() async {
-        guard let resp: DiscoveryResponse = await WebAPI.get("/api/discovery", authed: false) else { return }
+    private func loadDiscovery(fresh: Bool = false) async {
+        // Global lists -- the server's short cache is fine here (they move over
+        // hours, not seconds); `fresh` only skips the phone's HTTP cache.
+        guard let resp: DiscoveryResponse = await WebAPI.get("/api/discovery", authed: false, reload: fresh) else { return }
         popularAlbums = filterBlocked(resp.popular)
         newReleaseAlbums = filterBlocked(resp.newReleases)
         trendingAlbums = filterBlocked(resp.trending)
         popularSongs = []  // songs in discovery deferred until Windows rebuilds search RPCs
     }
 
-    private func loadPopularSearches() async {
-        guard let resp: PopularSearchesResponse = await WebAPI.get("/api/search/popular", authed: false) else { return }
+    private func loadPopularSearches(fresh: Bool = false) async {
+        guard let resp: PopularSearchesResponse = await WebAPI.get("/api/search/popular", authed: false, reload: fresh) else { return }
         popularSearchQueries = resp.queries
     }
 
@@ -564,8 +577,11 @@ class DiscoveryViewModel {
     // gets the same taste-vector/genre-embedding clustering web has (see Services/WebAPI.swift).
     // Also the only source of blockedArtists (any artist rated <=1.5), applied here and
     // retroactively to Discovery below since that fetch runs concurrently and can't wait on this.
-    private func loadRecommendations() async {
-        guard let resp: RecommendationsResponse = await WebAPI.get("/api/recommendations", authed: true) else { return }
+    private func loadRecommendations(fresh: Bool = false) async {
+        guard let resp: RecommendationsResponse = await WebAPI.get(
+            "/api/recommendations", authed: true,
+            query: fresh ? ["refresh": "1"] : [:], reload: fresh
+        ) else { return }
         blockedArtists = Set(resp.blockedArtists)
         tasteAlbums = filterBlocked(resp.fromYourTaste)
         personalizedAlbums = filterBlocked(resp.forYou)
@@ -2077,7 +2093,7 @@ enum ArtistAlbumTypeFilter: String, CaseIterable {
 enum ArtistAlbumSortOrder: String, CaseIterable {
     case newest       = "Newest"
     case oldest       = "Oldest"
-    case topRated     = "Top Rated"
+    case topRated     = "Highest Rated"  // same sort label as the profile's
     case alphabetical = "A–Z"
 }
 

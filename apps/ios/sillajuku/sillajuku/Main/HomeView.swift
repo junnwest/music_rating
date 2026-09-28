@@ -76,11 +76,12 @@ struct FeedProfile: Codable {
     let badgeColor: String?
     let foundingNumber: Int?
     var avatarUrl: String? = nil
+    var featuredBadge: String? = nil
     enum CodingKeys: String, CodingKey {
         case username; case displayName = "display_name"; case isBot = "is_bot"
         case isVerified = "is_verified"
         case badgeColor = "badge_color"; case foundingNumber = "founding_number"
-        case avatarUrl = "avatar_url"
+        case avatarUrl = "avatar_url"; case featuredBadge = "featured_badge"
     }
     var handle: String { username ?? displayName ?? String(localized: "someone") }
 }
@@ -161,6 +162,13 @@ enum FeedPost: Identifiable {
 class HomeViewModel {
     var exploreFeed:   [FeedPost] = []
     var followingFeed: [FeedPost] = []
+
+    /// Drops a deleted own mix post from both feeds.
+    func removeMixShare(id: UUID) {
+        let keep: (FeedPost) -> Bool = { if case .mixShare(let s) = $0 { return s.id != id }; return true }
+        exploreFeed = exploreFeed.filter(keep)
+        followingFeed = followingFeed.filter(keep)
+    }
     var isLoadingExplore   = true
     var isLoadingFollowing = true
     var isLoading: Bool { isLoadingExplore }
@@ -178,7 +186,7 @@ class HomeViewModel {
     private var hasLoadedFollowing = false
 
     private static let feedSelect =
-        "id, user_id, score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey(username, display_name, avatar_url, is_bot, is_verified, badge_color, founding_number)"
+        "id, user_id, score, review_text, created_at, release_groups(id, title, artist_display, cover_url, release_group_type, native_title, artists!release_groups_primary_artist_id_fkey(name_native)), profiles!ratings_user_id_fkey(username, display_name, avatar_url, is_bot, is_verified, badge_color, founding_number, featured_badge)"
 
     // Explore's fetch is split by is_bot BEFORE ranking, not just re-ranked after — with
     // bot ratings' recency-biased backdating, a human rating usually wouldn't survive into
@@ -341,7 +349,7 @@ class HomeViewModel {
     // the identical query with the embed removed returns in <1s. release_groups
     // are fetched separately below and stitched back in client-side instead.
     private static let feedSelectLiteBotFilterable =
-        "id, user_id, score, review_text, created_at, release_group_id, profiles!ratings_user_id_fkey!inner(username, display_name, avatar_url, is_bot, is_verified, badge_color, founding_number)"
+        "id, user_id, score, review_text, created_at, release_group_id, profiles!ratings_user_id_fkey!inner(username, display_name, avatar_url, is_bot, is_verified, badge_color, founding_number, featured_badge)"
 
     private struct FeedItemLite: Codable {
         let id: UUID
@@ -400,7 +408,7 @@ class HomeViewModel {
     // Not private -- reused by ProfileViewModel to fetch the current user's
     // own mix shares for the profile posts feed.
     static let mixShareSelect =
-        "id, user_id, mix_id, caption, created_at, mixes(id, name, description), profiles!mix_shares_user_id_fkey(username, display_name, avatar_url, is_bot, is_verified, badge_color, founding_number)"
+        "id, user_id, mix_id, caption, created_at, mixes(id, name, description), profiles!mix_shares_user_id_fkey(username, display_name, avatar_url, is_bot, is_verified, badge_color, founding_number, featured_badge)"
 
     struct MixShareRow: Codable {
         let id: UUID
@@ -1087,7 +1095,8 @@ struct HomeView: View {
             commentsCount: viewModel.commentCounts[share.id] ?? 0,
             onLike: { await viewModel.toggleMixShareLike(for: share) },
             onBlock: { await viewModel.blockUser(userId: share.userId) },
-            onOwnProfileTap: onOwnProfileTap
+            onOwnProfileTap: onOwnProfileTap,
+            onDeleted: { viewModel.removeMixShare(id: share.id) }
         )
     }
 }
@@ -1537,19 +1546,14 @@ struct FeedCard: View {
             Text("@" + (item.profiles?.handle ?? String(localized: "someone")))
                 .font(.jakarta(13.5, weight: .semibold))
                 .foregroundStyle(Color.sjInk)
-            if let raw = item.profiles?.badgeColor, let badge = QuestBadgeColor(rawValue: raw) {
-                QuestBadgeView(color: badge.color)
-                    .frame(width: 13, height: 13)
-                    .accessibilityLabel(String(localized: "Quests complete"))
-            }
-            if item.profiles?.isVerified == true {
-                VerifiedBadgeView()
-                    .frame(width: 13, height: 13)
-                    .accessibilityLabel(String(localized: "Verified"))
-            }
-            if let foundingNumber = item.profiles?.foundingNumber {
-                FoundingNumberBadge(number: foundingNumber, size: 13, compact: true)
-            }
+                .lineLimit(1)
+                // One line always: shrink (to 65%, enough for even a wide 20-char handle on a
+                .minimumScaleFactor(0.65)  // 375pt phone) before the rest of the row gives way.
+                .layoutPriority(1)
+            PostBadgeView(isVerified: item.profiles?.isVerified == true,
+                          foundingNumber: item.profiles?.foundingNumber,
+                          badgeColor: item.profiles?.badgeColor,
+                          featured: item.profiles?.featuredBadge)
         }
 
         if isOwnPost {

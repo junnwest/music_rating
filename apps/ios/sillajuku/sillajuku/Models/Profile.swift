@@ -33,6 +33,7 @@ struct Profile: Codable, Identifiable {
     // 1…500 once claimed from Quests (claim_founding_badge, migration
     // 20260926000003); nil otherwise. Shown as the rocket founding badge.
     var foundingNumber: Int?
+    var featuredBadge: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -55,6 +56,7 @@ struct Profile: Codable, Identifiable {
         case badgeColor   = "badge_color"
         case isVerified   = "is_verified"
         case foundingNumber = "founding_number"
+        case featuredBadge = "featured_badge"
     }
 }
 

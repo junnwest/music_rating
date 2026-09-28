@@ -398,7 +398,7 @@ class ProfileViewModel {
     private func fetchProfile(userId: UUID) async -> Profile? {
         try? await supabase
             .from("profiles")
-            .select("id, display_name, username, rating_mode, manual_rating_step, bio, avatar_url, notify_likes, notify_replies, notify_followers, notify_rankings, notify_capsule, profile_visibility, allow_social_feature, catalog_visibility, library_visibility, stats_visibility, referral_code, badge_color, is_verified, founding_number")
+            .select("id, display_name, username, rating_mode, manual_rating_step, bio, avatar_url, notify_likes, notify_replies, notify_followers, notify_rankings, notify_capsule, profile_visibility, allow_social_feature, catalog_visibility, library_visibility, stats_visibility, referral_code, badge_color, is_verified, founding_number, featured_badge")
             .eq("id", value: userId)
             .single()
             .execute()
@@ -768,8 +768,11 @@ class ProfileViewModel {
 
 enum RatingSortOrder: String, CaseIterable {
     case recent       = "Recent"
-    case topRated     = "Top Rated"
-    case bottomRated  = "Bottom Rated"
+    // Sort-menu labels (2026-09-28): "Top/Bottom Rated" → "Highest/Lowest
+    // Rated", ko 높은/낮은 평가순. Kept separate from the Rankings chart title
+    // "Top Rated" (인기 평가), which isn't a sort order.
+    case topRated     = "Highest Rated"
+    case bottomRated  = "Lowest Rated"
     case alphabetical = "A–Z"
 }
 
@@ -891,6 +894,7 @@ struct ProfileView: View {
     @State private var showShareSheet     = false
     @State private var showFollowModal    = false
     @State private var showUserSearch     = false
+    @State private var showBadgePicker = false
     @State private var showQuestChecklist = false
     @State private var followModalInitTab: FollowMode = .following
     @State private var mixLibVM           = MixLibraryViewModel()
@@ -1072,21 +1076,38 @@ struct ProfileView: View {
                     .font(.jakarta(16, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
                     .lineLimit(1)
-                if let raw = viewModel.profile?.badgeColor, let badge = QuestBadgeColor(rawValue: raw) {
-                    QuestBadgeView(color: badge.color)
-                        .frame(width: 14, height: 14)
-                        .accessibilityLabel(String(localized: "Quests complete"))
+                // Every owned badge shows here; tapping them picks the one
+                // your posts show (FeaturedBadgePickerSheet).
+                Button { showBadgePicker = true } label: {
+                    HStack(spacing: 4) {
+                        if let raw = viewModel.profile?.badgeColor, let badge = QuestBadgeColor(rawValue: raw) {
+                            QuestBadgeView(color: badge.color)
+                                .frame(width: 14, height: 14)
+                                .accessibilityLabel(String(localized: "Quests complete"))
+                        }
+                        if viewModel.profile?.isVerified == true {
+                            VerifiedBadgeView()
+                                .frame(width: 14, height: 14)
+                                .accessibilityLabel(String(localized: "Verified"))
+                        }
+                        if let foundingNumber = viewModel.profile?.foundingNumber {
+                            FoundingNumberBadge(number: foundingNumber, size: 16)
+                        }
+                    }
+                    .contentShape(Rectangle())
                 }
-                if viewModel.profile?.isVerified == true {
-                    VerifiedBadgeView()
-                        .frame(width: 14, height: 14)
-                        .accessibilityLabel(String(localized: "Verified"))
-                }
-                if let foundingNumber = viewModel.profile?.foundingNumber {
-                    FoundingNumberBadge(number: foundingNumber, size: 16)
-                }
+                .buttonStyle(.plain)
+                .accessibilityHint(String(localized: "Choose which badge shows on your posts"))
             }
             .frame(maxWidth: .infinity, alignment: .center)
+            .sheet(isPresented: $showBadgePicker) {
+                FeaturedBadgePickerSheet(
+                    isVerified: viewModel.profile?.isVerified == true,
+                    foundingNumber: viewModel.profile?.foundingNumber,
+                    badgeColor: viewModel.profile?.badgeColor,
+                    featured: viewModel.profile?.featuredBadge
+                ) { viewModel.profile?.featuredBadge = $0 }
+            }
 
             HStack {
                 Button { showUserSearch = true } label: {
@@ -1573,7 +1594,8 @@ struct ProfileView: View {
             headerVerified: viewModel.profile?.isVerified == true,
             headerBadgeColor: viewModel.profile?.badgeColor,
             headerFoundingNumber: viewModel.profile?.foundingNumber,
-            headerAvatarUrl: viewModel.profile?.avatarUrl
+            headerAvatarUrl: viewModel.profile?.avatarUrl,
+            headerFeaturedBadge: viewModel.profile?.featuredBadge
         )
         .padding(.horizontal, 12)
         .padding(.top, 8)
@@ -1591,6 +1613,7 @@ struct ProfileView: View {
             headerBadgeColor: viewModel.profile?.badgeColor,
             headerFoundingNumber: viewModel.profile?.foundingNumber,
             headerAvatarUrl: viewModel.profile?.avatarUrl,
+            headerFeaturedBadge: viewModel.profile?.featuredBadge,
             // Matches FeedCard/AlbumDetailView's own-post ⋯ menu exactly (Share/
             // Edit/Add to Mix/Edit Comment/Delete) -- see ProfilePostCard's own
             // doc comment on `ownActions`.
@@ -1615,7 +1638,8 @@ struct ProfileView: View {
             commentsCount: viewModel.commentCounts[share.id] ?? 0,
             onLike: { await viewModel.toggleMixShareLike(for: share) },
             onBlock: {},
-            onOwnProfileTap: {}
+            onOwnProfileTap: {},
+            onDeleted: { viewModel.mixShares.removeAll { $0.id == share.id } }
         )
         .padding(.horizontal, 12)
         .padding(.top, 8)
@@ -2429,17 +2453,19 @@ struct PostCardHeader<Trailing: View>: View {
     let badgeColor: String?
     let foundingNumber: Int?
     let avatarUrl: String?
+    let featuredBadge: String?
     let createdAt: Date
     @ViewBuilder var trailing: () -> Trailing
 
     init(handle: String, isVerified: Bool, badgeColor: String? = nil, foundingNumber: Int? = nil,
-         avatarUrl: String? = nil,
+         avatarUrl: String? = nil, featuredBadge: String? = nil,
          createdAt: Date, @ViewBuilder trailing: @escaping () -> Trailing = { EmptyView() }) {
         self.handle = handle
         self.isVerified = isVerified
         self.badgeColor = badgeColor
         self.foundingNumber = foundingNumber
         self.avatarUrl = avatarUrl
+        self.featuredBadge = featuredBadge
         self.createdAt = createdAt
         self.trailing = trailing
     }
@@ -2451,19 +2477,12 @@ struct PostCardHeader<Trailing: View>: View {
                 Text("@" + handle)
                     .font(.jakarta(13.5, weight: .semibold))
                     .foregroundStyle(Color.sjInk)
-                if let raw = badgeColor, let badge = QuestBadgeColor(rawValue: raw) {
-                    QuestBadgeView(color: badge.color)
-                        .frame(width: 13, height: 13)
-                        .accessibilityLabel(String(localized: "Quests complete"))
-                }
-                if isVerified {
-                    VerifiedBadgeView()
-                        .frame(width: 13, height: 13)
-                        .accessibilityLabel(String(localized: "Verified"))
-                }
-                if let foundingNumber = foundingNumber {
-                    FoundingNumberBadge(number: foundingNumber, size: 13, compact: true)
-                }
+                    .lineLimit(1)
+                    // One line always: shrink (to 65%, enough for even a wide 20-char handle on a
+                    .minimumScaleFactor(0.65)  // 375pt phone) before the rest of the row gives way.
+                    .layoutPriority(1)
+                PostBadgeView(isVerified: isVerified, foundingNumber: foundingNumber,
+                              badgeColor: badgeColor, featured: featuredBadge)
             }
             Text("·").font(.jakarta(13)).foregroundStyle(Color.sjBorder)
             Text(createdAt.relativeTimeString)
@@ -2490,6 +2509,7 @@ struct ProfilePostCard: View {
     var headerBadgeColor: String? = nil
     var headerFoundingNumber: Int? = nil
     var headerAvatarUrl: String? = nil
+    var headerFeaturedBadge: String? = nil
     // Only offered on someone else's post (UserProfileView) -- redundant on your
     // own ratings.
     var onNotInterested: (() -> Void)? = nil
@@ -2511,7 +2531,7 @@ struct ProfilePostCard: View {
         VStack(alignment: .leading, spacing: 0) {
             if let handle = headerHandle {
                 PostCardHeader(handle: handle, isVerified: headerVerified,
-                               badgeColor: headerBadgeColor, foundingNumber: headerFoundingNumber, avatarUrl: headerAvatarUrl,
+                               badgeColor: headerBadgeColor, foundingNumber: headerFoundingNumber, avatarUrl: headerAvatarUrl, featuredBadge: headerFeaturedBadge,
                                createdAt: rating.createdAt) {
                     if onNotInterested != nil || ownActions != nil {
                         Menu {
@@ -2679,6 +2699,7 @@ struct ProfileSongPostCard: View {
     var headerBadgeColor: String? = nil
     var headerFoundingNumber: Int? = nil
     var headerAvatarUrl: String? = nil
+    var headerFeaturedBadge: String? = nil
     /// Same meaning as FeedCard.isDraft: the rating is mid-flow (drag committed,
     /// "Done" not yet tapped), so no like/comment bar, no ⋯ menu, and no card
     /// chrome of its own -- the host wraps it and the next step in one card.
@@ -2727,7 +2748,7 @@ struct ProfileSongPostCard: View {
         VStack(alignment: .leading, spacing: 0) {
             if let handle = headerHandle {
                 PostCardHeader(handle: handle, isVerified: headerVerified,
-                               badgeColor: headerBadgeColor, foundingNumber: headerFoundingNumber, avatarUrl: headerAvatarUrl,
+                               badgeColor: headerBadgeColor, foundingNumber: headerFoundingNumber, avatarUrl: headerAvatarUrl, featuredBadge: headerFeaturedBadge,
                                createdAt: song.createdAt) {
                     if let own = ownActions, !isDraft { ownMenu(own) }
                 }
