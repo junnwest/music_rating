@@ -4,7 +4,7 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
-**2026-09-28 (Mac) — Quests follow-ups; migrations `20260927000002` + `20260927000003` ✅ applied (user confirmed).**
+**2026-09-28 (Mac) — Quests follow-ups; migrations `20260928000000` + `20260928000001` (renumbered from 20260927000002/3 at merge — Windows took 000002) ✅ applied (user confirmed).**
 
 - Removed the "Invite a friend" (1-friend) quest; the 5-friend quest covers it (completion never depended on it). Its **초대하기** button now sits on "Invite 5 friends", left of the reward bubble.
 - Settings → Notifications row is now in Korean: 푸시 알림 / 켜짐 / 켜기 / 설정 열기, plus the "notifications are off in iOS Settings" footer.
@@ -19,7 +19,7 @@ Historical record of shipped features and session notes. Not needed at conversat
 - **"초대" is a link:** in the founding card's subtitle, the word is underlined and tappable, and opens the invite sheet. The string is markdown `[inviting](sillajuku://invite)` in a new key, handled by an `openURL` override.
 - **"Invite" button beside 친구 초대하기:** new `QuestTrailingButton` on `QuestTimelineItem`. It opens `InviteView` directly, which handles the phone gate itself.
 - **Settings → Account → "Invite friends"** opens the same sheet.
-- **Invite codes only within 24h of signup:** `InviteViewModel.canRedeemCode` (from `auth.currentUser.createdAt`) hides "Have an invite code?" afterwards. Migration **`20260927000003_referral_redeem_window.sql` (⏳ apply)** adds the same check to `redeem_referral_code`. It's safe to ship the app before or after it.
+- **Invite codes only within 24h of signup:** `InviteViewModel.canRedeemCode` (from `auth.currentUser.createdAt`) hides "Have an invite code?" afterwards. Migration **`20260928000001_referral_redeem_window.sql` (⏳ apply)** adds the same check to `redeem_referral_code`. It's safe to ship the app before or after it.
 - **BUILD SUCCEEDED**; not device-checked.
 
 ---
@@ -42,7 +42,7 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 **2026-09-27 (Mac) — Featuring users' ratings on sillajuku's Instagram: disclosed + opt-out switch.** User chose credited posts (@username) with an **opt-out** model.
 
-- **Migration `20260927000002_social_feature_opt_out.sql` (⏳ apply BEFORE deploying):** `profiles.allow_social_feature boolean NOT NULL DEFAULT true`. The iOS profile load and the web `PROFILE_COLS` now select it, so shipping the code before the migration breaks profile loading.
+- **Migration `20260928000000_social_feature_opt_out.sql` (⏳ apply BEFORE deploying):** `profiles.allow_social_feature boolean NOT NULL DEFAULT true`. The iOS profile load and the web `PROFILE_COLS` now select it, so shipping the code before the migration breaks profile loading.
 - **Settings switch "Feature my ratings on sillajuku's social media"** on iOS (Privacy section, below visibility; disabled for private accounts) and web (Settings → Privacy). ko strings added.
 - **Privacy Policy:**
   - §1 has a new row: username, ratings, reviews and rated albums, used for promotion on official Instagram.
