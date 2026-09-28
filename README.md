@@ -64,7 +64,7 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 > **🍎 (2026-09-27, Mac) — uncommitted iOS work:** Taste country mix + "View N ratings" drill-down (port of web's 2026-09-26 Taste changes), bigger Profile top-bar icons, Taste section 02 subheader raised. Builds; needs a device check. See SESSIONS.md.
 >
 > **Next session:**
-> - **Ship iOS:** build number is now **25** (both configs) — archive and upload to TestFlight; none of today's iOS work is on TestFlight yet. Re-archive to include the 2026-09-27 Taste work.
+> - **Ship iOS:** build number is now **26** (both configs) — archive and upload to TestFlight; none of today's iOS work is on TestFlight yet. Re-archive to include the 2026-09-27 Taste work.
 > - **Device checks:** founding claim (success path), two-account follow request → approve, deactivate → reactivate, comment keyboard behaviour, Disc headers (Flume *Skin*).
 > - **Close loopholes:** disable the Supabase **email provider** (Auth → Providers → Email; nobody uses it now); verify one **Korean** phone number via SMS and check **Twilio geo permissions**; decide whether to expand the phone country picker (47 countries) to all.
 > - **Open, not started:** "remove follower" for private accounts; `profiles` is world-readable including `push_token` and notification settings (lock down); `/api/rankings/personalized` still takes an unauthenticated `userId`; the song ⋯ menu still offers "Edit Comment".

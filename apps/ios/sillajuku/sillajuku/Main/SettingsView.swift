@@ -385,60 +385,76 @@ struct SettingsView: View {
     }
 
     // Unlocked once verifiedInviteCount >= 5 (checked at the call site above).
-    // Flower artwork is unchanged from the shipped icon — only the background
-    // color differs per option, matching the palette chosen when this reward
-    // was designed.
+    // Flower artwork is the shipped icon's; only the background differs. The
+    // first seven are hand-exported; the last six (2026-09-28, incl. patterned
+    // ones) come from apps/ios/scripts/generate-alt-icons.py.
     // `id` is a separate, always-non-nil field from `name` -- `name` is what
     // gets passed to setAlternateIconName (nil means "the default icon"), but
     // ForEach needs a Hashable identity, and LocalizedStringKey (the `label`
-    // type) doesn't conform to Hashable.
-    private static let iconOptions: [(id: String, name: String?, label: LocalizedStringKey, swatch: Color)] = [
-        ("default",     nil,           "Default",    Color(red: 0.957, green: 0.945, blue: 0.914)),
-        ("sand",        "Sand",        "Sand",       Color(red: 0.929, green: 0.890, blue: 0.827)),
-        ("blush",       "Blush",       "Blush",      Color(red: 0.953, green: 0.863, blue: 0.878)),
-        ("powderBlue",  "PowderBlue",  "Powder Blue", Color(red: 0.847, green: 0.902, blue: 0.941)),
-        ("lavender",    "Lavender",    "Lavender",   Color(red: 0.890, green: 0.863, blue: 0.933)),
-        ("mint",        "Mint",        "Mint",       Color(red: 0.843, green: 0.937, blue: 0.882)),
-        ("terracotta",  "Terracotta",  "Terracotta", Color(red: 0.910, green: 0.765, blue: 0.659)),
-        ("black",       "Black",       "Black",      Color(red: 0, green: 0, blue: 0)),
+    // type) doesn't conform to Hashable. `preview` is the bundled PNG shown as
+    // the thumbnail (the icon files themselves, copied flat into the bundle).
+    private static let iconOptions: [(id: String, name: String?, label: LocalizedStringKey, preview: String)] = [
+        ("default",     nil,           "Default",     "IconPreview-Default"),
+        ("sand",        "Sand",        "Sand",        "AppIcon-Sand"),
+        ("blush",       "Blush",       "Blush",       "AppIcon-Blush"),
+        ("powderBlue",  "PowderBlue",  "Powder Blue", "AppIcon-PowderBlue"),
+        ("lavender",    "Lavender",    "Lavender",    "AppIcon-Lavender"),
+        ("mint",        "Mint",        "Mint",        "AppIcon-Mint"),
+        ("terracotta",  "Terracotta",  "Terracotta",  "AppIcon-Terracotta"),
+        ("black",       "Black",       "Black",       "AppIcon-Black"),
+        ("midnight",    "Midnight",    "Midnight",    "AppIcon-Midnight"),
+        ("gold",        "Gold",        "Gold",        "AppIcon-Gold"),
+        ("gingham",     "Gingham",     "Gingham",     "AppIcon-Gingham"),
+        ("polkaDot",    "PolkaDot",    "Polka Dot",   "AppIcon-PolkaDot"),
+        ("sunset",      "Sunset",      "Sunset",      "AppIcon-Sunset"),
+        ("holo",        "Holo",        "Holographic", "AppIcon-Holo"),
     ]
 
     private var appIconPicker: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 12) {
-                ForEach(Self.iconOptions, id: \.id) { option in
-                    Button {
-                        setIcon(option.name)
-                    } label: {
-                        VStack(spacing: 6) {
-                            Circle()
-                                .fill(option.swatch)
-                                .frame(width: 44, height: 44)
-                                .overlay(
-                                    Circle().stroke(
-                                        currentIconName == option.name ? Color.sjAmber : Color.sjBorder,
-                                        lineWidth: currentIconName == option.name ? 2 : 1
-                                    )
-                                )
-                                .overlay {
-                                    if currentIconName == option.name {
-                                        Image("icon-check")
-                                            .renderingMode(.template)
-                                            .resizable().scaledToFit()
-                                            .frame(width: 14, height: 14)
-                                            .foregroundStyle(option.name == "Black" ? .white : Color.sjInk)
-                                    }
-                                }
-                            Text(option.label)
-                                .font(.jakarta(10, weight: .medium))
-                                .foregroundStyle(Color.sjMuted)
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 60), spacing: 10)], spacing: 14) {
+            ForEach(Self.iconOptions, id: \.id) { option in
+                let isCurrent = currentIconName == option.name
+                Button {
+                    setIcon(option.name)
+                } label: {
+                    VStack(spacing: 6) {
+                        Group {
+                            if let image = UIImage(named: option.preview) {
+                                Image(uiImage: image).resizable().scaledToFill()
+                            } else {
+                                Color.sjBorder
+                            }
                         }
+                        .frame(width: 54, height: 54)
+                        .clipShape(RoundedRectangle(cornerRadius: 12.5, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12.5, style: .continuous)
+                                .stroke(isCurrent ? Color.sjAmber : Color.sjBorder.opacity(0.6),
+                                        lineWidth: isCurrent ? 2.5 : 0.5)
+                        )
+                        .overlay(alignment: .bottomTrailing) {
+                            if isCurrent {
+                                Image("icon-check")
+                                    .renderingMode(.template)
+                                    .resizable().scaledToFit()
+                                    .frame(width: 10, height: 10)
+                                    .foregroundStyle(.white)
+                                    .frame(width: 20, height: 20)
+                                    .background(Color.sjAmber, in: Circle())
+                                    .offset(x: 5, y: 5)
+                            }
+                        }
+                        Text(option.label)
+                            .font(.jakarta(10, weight: .medium))
+                            .foregroundStyle(isCurrent ? Color.sjInk : Color.sjMuted)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                     }
-                    .buttonStyle(.plain)
                 }
+                .buttonStyle(.plain)
             }
-            .padding(.vertical, 6)
         }
+        .padding(.vertical, 8)
     }
 
     private func setIcon(_ name: String?) {
@@ -454,7 +470,7 @@ struct SettingsView: View {
             .eq("referrer_id", value: userId)
             .not("verified_at", operator: .is, value: AnyJSON.null)
             .execute()
-        verifiedInviteCount = (try? await resp)?.count ?? 0
+        verifiedInviteCount = DebugOverrides.verifiedInviteCount((try? await resp)?.count ?? 0, userId: userId)
     }
 
     @ViewBuilder
