@@ -76,11 +76,12 @@ struct FeedProfile: Codable {
     let badgeColor: String?
     let foundingNumber: Int?
     var avatarUrl: String? = nil
+    var featuredBadge: String? = nil
     enum CodingKeys: String, CodingKey {
         case username; case displayName = "display_name"; case isBot = "is_bot"
         case isVerified = "is_verified"
         case badgeColor = "badge_color"; case foundingNumber = "founding_number"
-        case avatarUrl = "avatar_url"
+        case avatarUrl = "avatar_url"; case featuredBadge = "featured_badge"
     }
     var handle: String { username ?? displayName ?? String(localized: "someone") }
 }
@@ -168,6 +169,13 @@ enum FeedPost: Identifiable {
 class HomeViewModel {
     var exploreFeed:   [FeedPost] = []
     var followingFeed: [FeedPost] = []
+
+    /// Drops a deleted own mix post from both feeds.
+    func removeMixShare(id: UUID) {
+        let keep: (FeedPost) -> Bool = { if case .mixShare(let s) = $0 { return s.id != id }; return true }
+        exploreFeed = exploreFeed.filter(keep)
+        followingFeed = followingFeed.filter(keep)
+    }
     var isLoadingExplore   = true
     var isLoadingFollowing = true
     var isLoading: Bool { isLoadingExplore }
@@ -263,7 +271,7 @@ class HomeViewModel {
     // Not private -- reused by ProfileViewModel to fetch the current user's
     // own mix shares for the profile posts feed.
     static let mixShareSelect =
-        "id, user_id, mix_id, caption, created_at, mixes(id, name, description), profiles!mix_shares_user_id_fkey(username, display_name, avatar_url, is_bot, is_verified, badge_color, founding_number)"
+        "id, user_id, mix_id, caption, created_at, mixes(id, name, description), profiles!mix_shares_user_id_fkey(username, display_name, avatar_url, is_bot, is_verified, badge_color, founding_number, featured_badge)"
 
     struct MixShareRow: Codable {
         let id: UUID
@@ -840,7 +848,16 @@ struct HomeView: View {
     }
 
     private func ratingCard(_ item: FeedItem, isExplore: Bool) -> some View {
-        FeedCard(
+        // if/else, not `isExplore ? { … } : nil` -- with default MainActor
+        // isolation the ternary form crashes the type checker ("failed to
+        // produce diagnostic"), confirmed 2026-09-28 on the Home feed rebuild.
+        let notInterested: (() async -> Void)?
+        if isExplore {
+            notInterested = { await viewModel.notInterested(item: item) }
+        } else {
+            notInterested = nil
+        }
+        return FeedCard(
             item: item,
             currentUserId: viewModel.currentUserId,
             isLiked: viewModel.likedPostIds.contains(item.id),
@@ -850,7 +867,7 @@ struct HomeView: View {
             onLike: { await viewModel.toggleLike(for: item) },
             onSave: { await viewModel.toggleSave(for: item) },
             onBlock: { await viewModel.blockUser(userId: item.userId) },
-            onNotInterested: isExplore ? { await viewModel.notInterested(item: item) } : nil,
+            onNotInterested: notInterested,
             onOwnProfileTap: onOwnProfileTap,
             myScore: viewModel.myScores[item.releases.id],
             onMyScoreChange: { viewModel.myScores[item.releases.id] = $0 },
@@ -867,7 +884,8 @@ struct HomeView: View {
             commentsCount: viewModel.commentCounts[share.id] ?? 0,
             onLike: { await viewModel.toggleMixShareLike(for: share) },
             onBlock: { await viewModel.blockUser(userId: share.userId) },
-            onOwnProfileTap: onOwnProfileTap
+            onOwnProfileTap: onOwnProfileTap,
+            onDeleted: { viewModel.removeMixShare(id: share.id) }
         )
     }
 }
@@ -1319,19 +1337,14 @@ struct FeedCard: View {
             Text("@" + (item.profiles?.handle ?? String(localized: "someone")))
                 .font(.jakarta(13.5, weight: .semibold))
                 .foregroundStyle(Color.sjInk)
-            if let raw = item.profiles?.badgeColor, let badge = QuestBadgeColor(rawValue: raw) {
-                QuestBadgeView(color: badge.color)
-                    .frame(width: 13, height: 13)
-                    .accessibilityLabel(String(localized: "Quests complete"))
-            }
-            if item.profiles?.isVerified == true {
-                VerifiedBadgeView()
-                    .frame(width: 13, height: 13)
-                    .accessibilityLabel(String(localized: "Verified"))
-            }
-            if let foundingNumber = item.profiles?.foundingNumber {
-                FoundingNumberBadge(number: foundingNumber, size: 13, compact: true)
-            }
+                .lineLimit(1)
+                // One line always: shrink (to 65%, enough for even a wide 20-char handle on a
+                .minimumScaleFactor(0.65)  // 375pt phone) before the rest of the row gives way.
+                .layoutPriority(1)
+            PostBadgeView(isVerified: item.profiles?.isVerified == true,
+                          foundingNumber: item.profiles?.foundingNumber,
+                          badgeColor: item.profiles?.badgeColor,
+                          featured: item.profiles?.featuredBadge)
         }
 
         if isOwnPost {

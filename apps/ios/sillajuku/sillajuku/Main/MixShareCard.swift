@@ -22,9 +22,24 @@ struct MixShareCard: View {
     let onLike: () async -> Void
     let onBlock: () async -> Void
     let onOwnProfileTap: () -> Void
+    /// Own post deleted -- the host removes it from its list.
+    var onDeleted: () -> Void = {}
 
     @State private var activeSheet: MixShareCardSheet?
     @State private var showBlockConfirm = false
+    // Own-post menu (Edit caption / Share / Delete), added 2026-09-28 --
+    // your own mix posts had no ⋯ menu at all.
+    @State private var showDeleteConfirm = false
+    @State private var showEditCaption = false
+    /// Set after an edit so the card updates without a reload.
+    @State private var editedCaption: String??
+
+    private var caption: String? { editedCaption ?? post.caption }
+
+    /// Web page for the shared mix.
+    private var shareURL: URL {
+        URL(string: "https://sillajuku.com/mix/\(post.mixId.uuidString.lowercased())") ?? URL(string: "https://sillajuku.com")!
+    }
 
     private var isOwnPost: Bool {
         guard let cid = currentUserId else { return false }
@@ -59,7 +74,7 @@ struct MixShareCard: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            if let caption = post.caption, !caption.isEmpty {
+            if let caption, !caption.isEmpty {
                 Text(caption)
                     .font(.jakarta(14))
                     .foregroundStyle(Color.sjInk)
@@ -94,6 +109,29 @@ struct MixShareCard: View {
         } message: {
             Text("Their posts won't appear in your feed.")
         }
+        .confirmationDialog(
+            "Delete this post?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) { Task { await deletePost() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The mix itself stays in your library.")
+        }
+        .sheet(isPresented: $showEditCaption) {
+            MixShareCaptionEditor(shareId: post.id, initial: caption ?? "") { editedCaption = .some($0) }
+        }
+    }
+
+    private func deletePost() async {
+        do {
+            try await supabase.from("mix_shares").delete().eq("id", value: post.id).execute()
+            Haptics.medium()
+            onDeleted()
+        } catch {
+            print("MixShareCard.deletePost failed for \(post.id): \(error)")
+        }
     }
 
     // MARK: Header
@@ -103,18 +141,35 @@ struct MixShareCard: View {
             avatarLink
             usernameLink
 
-            Text("shared a mix")
-                .font(.jakarta(13))
-                .foregroundStyle(Color.sjMuted)
-
+            // No "shared a mix" phrase (removed 2026-09-28) -- same header as
+            // every other post: handle, badge, time.
             Text("·").font(.jakarta(13)).foregroundStyle(Color.sjBorder)
 
             Text(post.createdAt.relativeTimeString)
                 .font(.jakarta(12)).foregroundStyle(Color.sjMuted)
+                .lineLimit(1)
+                .fixedSize()
 
             Spacer(minLength: 0)
 
-            if !isOwnPost {
+            if isOwnPost {
+                Menu {
+                    Button { showEditCaption = true } label: { Label("Edit Caption", image: "icon-square-pen") }
+                    ShareLink(item: shareURL) { Label("Share", image: "icon-share") }
+                    Button(role: .destructive) { showDeleteConfirm = true } label: {
+                        Label("Delete", image: "icon-trash")
+                    }
+                } label: {
+                    Image("icon-more-horizontal")
+                        .renderingMode(.template)
+                        .resizable().scaledToFit()
+                        .frame(width: 14, height: 14)
+                        .foregroundStyle(Color.sjMuted)
+                        .frame(width: 34, height: 34)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel(String(localized: "More options"))
+            } else {
                 Menu {
                     Button(role: .destructive) { showBlockConfirm = true } label: {
                         Label("Block this user", image: "icon-hand")
@@ -163,19 +218,14 @@ struct MixShareCard: View {
             Text("@" + (post.profile?.handle ?? String(localized: "someone")))
                 .font(.jakarta(13.5, weight: .semibold))
                 .foregroundStyle(Color.sjInk)
-            if let raw = post.profile?.badgeColor, let badge = QuestBadgeColor(rawValue: raw) {
-                QuestBadgeView(color: badge.color)
-                    .frame(width: 13, height: 13)
-                    .accessibilityLabel(String(localized: "Quests complete"))
-            }
-            if post.profile?.isVerified == true {
-                VerifiedBadgeView()
-                    .frame(width: 13, height: 13)
-                    .accessibilityLabel(String(localized: "Verified"))
-            }
-            if let foundingNumber = post.profile?.foundingNumber {
-                FoundingNumberBadge(number: foundingNumber, size: 13, compact: true)
-            }
+                .lineLimit(1)
+                // One line always: shrink (to 65%, enough for even a wide 20-char handle on a
+                .minimumScaleFactor(0.65)  // 375pt phone) before the rest of the row gives way.
+                .layoutPriority(1)
+            PostBadgeView(isVerified: post.profile?.isVerified == true,
+                          foundingNumber: post.profile?.foundingNumber,
+                          badgeColor: post.profile?.badgeColor,
+                          featured: post.profile?.featuredBadge)
         }
 
         if isOwnPost {
@@ -323,5 +373,71 @@ struct MixShareLikersSheetView: View {
             .from("mix_share_likes").select("user_id, profiles!mix_share_likes_user_id_fkey(id, username, display_name, avatar_url)")
             .eq("mix_share_id", value: mixShareId).execute().value) ?? []
         isLoading = false
+    }
+}
+
+/// Edits an own mix post's caption (mix_shares.caption, max 500 chars --
+/// the table's check constraint). Empty saves as NULL.
+private struct MixShareCaptionEditor: View {
+    let shareId: UUID
+    let initial: String
+    let onSaved: (String?) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+    @State private var isSaving = false
+    @FocusState private var focused: Bool
+
+    private static let maxLength = 500
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .trailing, spacing: 8) {
+                TextField("Add a caption", text: $text, axis: .vertical)
+                    .font(.jakarta(15))
+                    .lineLimit(4...10)
+                    .focused($focused)
+                    .padding(12)
+                    .background(Color.sjSurface, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.sjBorder, lineWidth: 1))
+                    .onChange(of: text) { _, v in
+                        if v.count > Self.maxLength { text = String(v.prefix(Self.maxLength)) }
+                    }
+                Text("\(text.count)/\(Self.maxLength)")
+                    .font(.jakarta(11)).monospacedDigit()
+                    .foregroundStyle(Color.sjMuted)
+                Spacer()
+            }
+            .padding(16)
+            .background(Color.sjCream.ignoresSafeArea())
+            .navigationTitle("Edit Caption")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") { Task { await save() } }
+                        .fontWeight(.semibold)
+                        .disabled(isSaving)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .onAppear { text = initial; focused = true }
+    }
+
+    private func save() async {
+        isSaving = true
+        defer { isSaving = false }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        struct Patch: Encodable { let caption: String? }
+        do {
+            try await supabase.from("mix_shares")
+                .update(Patch(caption: trimmed.isEmpty ? nil : trimmed))
+                .eq("id", value: shareId).execute()
+            onSaved(trimmed.isEmpty ? nil : trimmed)
+            dismiss()
+        } catch {
+            print("MixShareCaptionEditor.save failed for \(shareId): \(error)")
+        }
     }
 }

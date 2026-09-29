@@ -23,6 +23,80 @@ Historical record of shipped features and session notes. Not needed at conversat
 - **`lib/taste/worlds.ts` (new) + `/api/taste/profile` (cache v13):** a world is a language-qualified family and its tiles are qualified genres. Each album lives in exactly one world (its primary's family, in its language). Worlds below 4% share or beyond 7 fold into "Other" without losing albums. Albums with no tags borrow their artist's most common tags at half weight. Recommendation pools are country-filtered in SQL per language, then placed in Node, and only same-language, in-world fits survive. Qualified genres with no vector borrow base ⊕ language anchor. Payload shape is unchanged for iOS (clusters/graph gain `key`/`label`/`labelKo`/`language`/`displayKo`). The page shows Korean labels under `ko` and a "{lang}-language scene" note.
 - **Verified on the six most active users' real ratings (read-only):** Korean rap (E Sens, BEIGE, DETOX…) now forms Korean Hip-Hop instead of sitting in Hip-Hop with US rap; Korean indie rock forms K-Rock; J-Rock is separate from Rock. Found and fixed during that check: qualification initially let `[hip hop, k-pop]` idol albums fall into Korean Hip-Hop.
 - `vitest` 104/104 (+`language.test.ts` 17, `worlds.test.ts` 9), `tsc` clean, `taxonomy:validate` green. Not done: `/api/recommendations` + `lib/feed/taste.ts` still on `buildClusters`; qualified genres aren't shown outside the Taste map.
+---
+
+**2026-09-28 (Mac) — Merged Windows's Home feed rebuild (`3001980`); fixed it so iOS builds.**
+
+- **It didn't compile on its own.** Checked by building `3001980`/`be0eae0` alone in a worktree. Cause: `onNotInterested: isExplore ? { await viewModel.notInterested(item:) } : nil` against the now-optional `FeedCard.onNotInterested`. Under default MainActor isolation that ternary crashes the type checker ("failed to produce diagnostic"). Rewritten as if/else in `ratingCard`. **Windows can't build iOS, so iOS edits made there need a Mac build before shipping.**
+- **Conflicts:** `WebAPI.get` keeps both new params (`reload:` from here; `dateDecodingStrategy:` / `onStatus:` from Windows). HomeView takes Windows's server-driven feed (`api/feed/home`, cursors, impressions) over the old direct queries; `removeMixShare` and the FeedProfile avatar/featured-badge fields carried over.
+- **`lib/feed/service.ts` PROFILE** gains `featured_badge` so Home posts show the chosen badge (feed tests 15/15 pass).
+- iOS **BUILD SUCCEEDED**; web typecheck clean.
+
+---
+
+**2026-09-28 (Mac) — Add tab pull-to-refresh actually refreshes (iOS).** `.refreshable` fired, but:
+
+- It re-requested `/api/recommendations` without `refresh=1`, so the route answered from its 2-min per-user Redis cache (identical rows, no reshuffle).
+- It never re-fetched Spotify / Apple Music "Recently Listened".
+
+**Now:**
+- `DiscoveryViewModel.refresh()` runs `reloadDiscoverySections(fresh: true)`, `loadSpotify()` and `loadAppleMusic()` together, then re-resolves recently played.
+- `loadRecommendations(fresh:)` sends `refresh=1` (server skips cache and reshuffles "From Your Taste" / rows).
+- `WebAPI.get` gained `reload:` (`.reloadIgnoringLocalCacheData`), used for discovery, popular searches and recommendations on refresh.
+- Global Popular/Trending/New keep their 10-min server cache on purpose.
+- **BUILD SUCCEEDED**; not device-checked.
+
+---
+
+**2026-09-28 (Mac) — Taste 02: vertical scrolling works over the album covers again (iOS).** The ring's SwiftUI `DragGesture` (`.simultaneousGesture` plus an axis check inside `onChanged`) still claimed vertical touches, so a page swipe that started on the covers stalled. It's replaced by a new `HorizontalPanRecognizer` (`UIGestureRecognizerRepresentable`), a UIPanGestureRecognizer whose delegate refuses to begin unless |vx| > 1.2·|vy|, so vertical swipes fall through to the pager's ScrollView. Same pattern as `BinScrubRecognizer`. The drag math is unchanged (150pt/step, ±1 clamp, 18% / flick commit, spring snap); the flick uses translation + velocity × 0.25s. **BUILD SUCCEEDED**; needs a device check (can't drive touches on a signed-in simulator).
+
+---
+
+**2026-09-28 (Mac) — 20-character handles fit on one line on every phone (iOS).**
+
+- **Measured with the real font** (Jakarta SemiBold 13.5): typical 20-char handles are 160–170pt; the worst case (`@mmmm…` / `@wwww…`) is 245–260pt. On an iPhone SE (375pt, 351pt card) a post header has ~180pt for the handle.
+- **The `.fixedSize()` handle** from the previous change would overflow in the worst case. It's now `.lineLimit(1).minimumScaleFactor(0.65).layoutPriority(1)` in all five post headers, so a handle shrinks slightly instead of wrapping or truncating.
+- **Mix posts:** "shared a mix" is removed entirely (user follow-up: same as other posts, just handle, badge and time). It was first moved into the body, above the mix name. In the header it was cut to "님이 믹스를 공…" on small phones and to a sliver with long handles. ko is now 믹스를 공유했어요 (no 님이, since it no longer follows the name).
+- **Verified** with a macOS ImageRenderer mock at 351pt: every case fits, no ellipsis.
+- **BUILD SUCCEEDED**.
+
+---
+
+**2026-09-28 (Mac) — Own mix posts get a ⋯ menu (iOS).** `MixShareCard` only had a menu for other people's posts (Block). Your own now offer:
+
+- **Edit Caption:** new `MixShareCaptionEditor` sheet; 500-char cap to match the table check; empty saves NULL; the card updates in place.
+- **Share:** a ShareLink to `sillajuku.com/mix/<mixId>`.
+- **Delete:** with a confirmation ("the mix itself stays in your library"). It deletes the `mix_shares` row and removes the post via a new `onDeleted` callback (Profile: `viewModel.mixShares`; Home: new `HomeViewModel.removeMixShare`).
+
+Existing RLS ("users manage own mix shares", FOR ALL) already allows it, so no migration. ko strings added. **BUILD SUCCEEDED**; not device-checked.
+
+---
+
+**2026-09-28 (Mac) — Posts show one badge; handles never wrap; badge picker on the profile (iOS).** Triggered by @junnwest breaking onto two lines on a mix post (two badges + "shared a mix" squeezed it).
+
+- **Migration `20260928000002_featured_badge.sql` (✅ applied 2026-09-28):** `profiles.featured_badge` text, one of verified / founding / quest; NULL = automatic. The feed, album-page and profile selects now name it.
+- **New `Components/FeaturedBadge.swift`:**
+  - `FeaturedBadge.resolve`: the user's choice if they still own it, else the first owned in the order verified > founding > quest.
+  - `PostBadgeView`: the single badge on posts.
+  - `BadgeGlyph`, and `FeaturedBadgePickerSheet` (owned badges, Save writes `featured_badge`).
+- **Posts show one badge:** feed, mix posts, album-page posts (their select gained badge fields; before, they showed none) and profile posts (`PostCardHeader` gets `featuredBadge`, plumbed via `headerFeaturedBadge` from Profile / UserProfile / Notifications / album song card).
+- **Profile headers** still show every owned badge. On your own profile, tapping them opens the picker (배지).
+- **Handles never wrap:** the @handle is `.lineLimit(1).fixedSize()` in every post header. On mix posts "shared a mix" truncates first (`layoutPriority(-1)`).
+- **ko added:** 님이 믹스를 공유했어요 (was untranslated), 퀘스트 완료, 인증됨, 배지, and the picker footer.
+- **BUILD SUCCEEDED**; not device-checked. Web posts show no badges at all, so unchanged.
+
+---
+
+**2026-09-28 (Mac) — Rating sort labels reworded (iOS).** Profile / UserProfile sort (`RatingSortOrder`): "Top Rated" → **Highest Rated (높은 평가순)**, "Bottom Rated" → **Lowest Rated (낮은 평가순)**. Artist albums sort's "Top Rated" → Highest Rated too. Rankings' "Top Rated" chart title (인기 평가) and the genre chips are unchanged, since they aren't sort orders. **BUILD SUCCEEDED**. Web still says 높은/낮은 **평점**순 (not touched).
+
+---
+
+**2026-09-28 (Mac) — Taste 02 (Your #1 Album) carousel more sensitive and faster.** In `HallOfFameView`:
+
+- `dragPxPerStep` 260 → 150, and `minimumDistance` 10 → 8 (the horizontal-dominance guard is kept, so vertical page swipes still win).
+- Release now commits to the next or previous cover on ≥18% of a step, or on a flick whose predicted end passes half a step. Before, it only rounded past 50%.
+- Snap animation: easeInOut 0.65s → spring (response 0.34, damping 0.86). Dot-tap jumps: 0.55s → spring 0.38.
+- **BUILD SUCCEEDED**; not device-checked.
 
 ---
 

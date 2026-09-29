@@ -9,7 +9,7 @@ import { entryAuthor, entryKey, entryTime, type Candidate, type FeedEntry, type 
 const PAGE_SIZE = 20;
 const SESSION_TTL = 30 * 60;
 const ALBUM = 'id,title,artist_display,primary_artist_id,genres,first_release_date,cover_url,release_group_type,native_title,artists!release_groups_primary_artist_id_fkey(name_native,country)';
-const PROFILE = 'username,display_name,avatar_url,is_bot,is_verified,badge_color,founding_number,profile_visibility,deactivated_at';
+const PROFILE = 'username,display_name,avatar_url,is_bot,is_verified,badge_color,founding_number,featured_badge,profile_visibility,deactivated_at'; // featured_badge: 20260928000002
 const RATING = `id,user_id,score,review_text,created_at,release_groups(${ALBUM}),profiles!ratings_user_id_fkey!inner(${PROFILE})`;
 const SHARE = `id,user_id,mix_id,caption,created_at,profiles!mix_shares_user_id_fkey!inner(${PROFILE}),mixes!inner(id,name,description,is_default,is_public,mix_items(release_groups(${ALBUM})),mix_song_items(release_groups(${ALBUM})))`;
 interface Ref { kind: 'rating' | 'mix'; id: string; created_at: string }

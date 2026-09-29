@@ -58,8 +58,10 @@ final class UserProfileViewModel {
         let badgeColor: String?
         let isVerified: Bool?
         let foundingNumber: Int?
+        let featuredBadge: String?
         enum CodingKeys: String, CodingKey {
             case id, username, bio
+            case featuredBadge = "featured_badge"
             case displayName = "display_name"
             case avatarUrl   = "avatar_url"
             case badgeColor  = "badge_color"
@@ -268,7 +270,7 @@ final class UserProfileViewModel {
     private func loadProfile() async -> OtherProfile? {
         try? await supabase
             .from("profiles")
-            .select("id, username, display_name, bio, avatar_url, badge_color, is_verified, founding_number")
+            .select("id, username, display_name, bio, avatar_url, badge_color, is_verified, founding_number, featured_badge")
             .eq("id", value: userId)
             .single()
             .execute()
@@ -848,6 +850,7 @@ struct UserProfileView: View {
                                     headerBadgeColor: vm.profile?.badgeColor,
                                     headerFoundingNumber: vm.profile?.foundingNumber,
                                     headerAvatarUrl: vm.profile?.avatarUrl,
+                                    headerFeaturedBadge: vm.profile?.featuredBadge,
                                     onNotInterested: { Task { await vm.notInterested(rating: rating) } }
                                 )
                                 .padding(.horizontal, 12)

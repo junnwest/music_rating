@@ -2322,12 +2322,15 @@ private struct HallOfFameView: View {
     // hit the ±1 clamp below while the finger was still down: the whole
     // step-rotation completed instantly, un-animated, mid-drag, so by
     // release `turn` already sat exactly on the next integer and the
-    // eased snap in `dragGesture`'s `onEnded` had zero distance left to
+    // eased snap in the drag's release handler had zero distance left to
     // animate -- no duration set there could ever look smooth, because
     // there was nothing left for it to smooth. Raised so a normal swipe
     // stays in the live 1:1-tracked zone for most of its length, leaving
     // real distance for the release animation to actually glide over.
-    private let dragPxPerStep: CGFloat = 260
+    // 260 → 150 (2026-09-28 user ask: "more sensitive and fast"); a short
+    // swipe or flick now commits via `onEnded`'s threshold, so the ±1 clamp
+    // no longer needs a long runway to feel responsive.
+    private let dragPxPerStep: CGFloat = 150
 
     @State private var turn: Double = 0
     @State private var dragStartTurn: Double = 0
@@ -2377,7 +2380,11 @@ private struct HallOfFameView: View {
                 .frame(height: cover + 24)
                 .clipped()
                 .contentShape(Rectangle())
-                .simultaneousGesture(dragGesture)
+                // UIKit pan that refuses to begin unless the swipe is mostly
+                // horizontal (2026-09-28): the SwiftUI DragGesture this replaced
+                // claimed vertical touches too, so the page couldn't scroll
+                // when a swipe started over the covers.
+                .gesture(HorizontalPanRecognizer(onChanged: dragChanged, onEnded: dragEnded))
                 .onAppear { restartAutoRotate() }
                 .onDisappear { autoRotateTask?.cancel() }
                 .onChange(of: activeIndex) { old, new in
@@ -2478,50 +2485,43 @@ private struct HallOfFameView: View {
             .zIndex(depth)
     }
 
-    /// Horizontal-only, and attached with `.simultaneousGesture` (not plain
-    /// `.gesture`) -- this ring now lives on a page inside a *vertically*
-    /// paging `ScrollView`, and a bare `DragGesture` with no axis check would
-    /// compete with (and could win against) that ancestor's own pan gesture
-    /// for any touch that starts inside the ring's `cover+24`-tall hit box,
-    /// stalling the page-swipe. Web sidesteps the same conflict with CSS
-    /// `touch-action: pan-y` on the ring wrapper (`page.tsx`'s `HallOfFame`),
-    /// which has no SwiftUI `DragGesture` equivalent -- reproduced here by
-    /// (1) `simultaneousGesture` so this never exclusively claims the touch
-    /// away from the ScrollView, and (2) only reacting once the drag's
-    /// horizontal component dominates its vertical one, so an intended
-    /// vertical page-swipe that happens to start over the ring never spins it.
-    /// `minimumDistance: 10`, not the ~4pt SwiftUI default -- live feedback
-    /// was that swiping still felt off after the axis check alone; a wider
-    /// margin gives a vertical swipe more room to declare itself unambiguous
-    /// before this gesture engages at all, rather than engaging almost
-    /// immediately and relying purely on the per-frame axis guard below.
-    private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 10)
-            .onChanged { value in
-                guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                if !isDragging {
-                    isDragging = true
-                    dragStartTurn = turn
-                    autoRotateTask?.cancel() // don't fight an active drag
-                }
-                // Continuous, not step-quantized -- tracks the finger 1:1 rather
-                // than jumping a whole cover per fixed pixel distance. Clamped to
-                // ±1 step from where the drag started so one swipe can only ever
-                // advance a single album, no matter how far the finger travels --
-                // unclamped, a swipe covering several multiples of dragPxPerStep
-                // spun straight through multiple covers in one gesture (confirmed
-                // live -- "goes around the carousel multiple times" on a long swipe).
-                let raw = dragStartTurn - Double(value.translation.width) / Double(dragPxPerStep)
-                turn = min(dragStartTurn + 1, max(dragStartTurn - 1, raw))
-            }
-            .onEnded { _ in
-                guard isDragging else { return }
-                isDragging = false
-                withAnimation(.easeInOut(duration: 0.65)) {
-                    turn = turn.rounded()
-                }
-                restartAutoRotate()
-            }
+    /// Horizontal swipes only -- driven by `HorizontalPanRecognizer`, which
+    /// never begins for a mostly-vertical swipe, so those always reach the
+    /// Taste pager's vertical scroll instead of stalling on the covers.
+    private func dragChanged(_ translationX: CGFloat) {
+        if !isDragging {
+            isDragging = true
+            dragStartTurn = turn
+            autoRotateTask?.cancel() // don't fight an active drag
+        }
+        // Continuous, not step-quantized -- tracks the finger 1:1. Clamped to
+        // ±1 step from where the drag started so one swipe can only ever
+        // advance a single album, no matter how far the finger travels
+        // (unclamped, a long swipe spun through several covers at once).
+        let raw = dragStartTurn - Double(translationX) / Double(dragPxPerStep)
+        turn = min(dragStartTurn + 1, max(dragStartTurn - 1, raw))
+    }
+
+    private func dragEnded(_ predictedEndX: CGFloat) {
+        guard isDragging else { return }
+        isDragging = false
+        // Commit to the next/previous album on a short drag (≥18% of a
+        // step) or a quick flick (predicted end past half a step),
+        // instead of only past the halfway point.
+        let moved = turn - dragStartTurn
+        let flick = -Double(predictedEndX) / Double(dragPxPerStep)
+        let target: Double
+        if abs(moved) >= 0.18 {
+            target = dragStartTurn + (moved > 0 ? 1 : -1)
+        } else if abs(flick) >= 0.5 {
+            target = dragStartTurn + (flick > 0 ? 1 : -1)
+        } else {
+            target = dragStartTurn
+        }
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+            turn = target
+        }
+        restartAutoRotate()
     }
 
     /// Jump straight to album `i` (dot tap) by the shortest signed path, then
@@ -2533,7 +2533,7 @@ private struct HallOfFameView: View {
         let cur = activeIndex
         var d = ((i - cur) % n + n) % n
         if d > n / 2 { d -= n }
-        withAnimation(.easeInOut(duration: 0.55)) {
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
             turn += Double(d)
         }
         restartAutoRotate()
@@ -2860,4 +2860,45 @@ private struct TasteLockView: View {
         ("icon-drama",       "Your Style"),
         ("icon-waveform",    "Genre DNA")
     ]
+}
+
+/// A pan that only begins when the swipe is mostly horizontal. When it
+/// declines, the touch goes to whatever scrolls vertically underneath (the
+/// Taste pager), which a SwiftUI `DragGesture` -- even `.simultaneousGesture`
+/// with an axis check in `onChanged` -- doesn't reliably allow: it still
+/// claims the touch. Reports the x translation while dragging, and on release
+/// a predicted end (translation + velocity × 0.25s) for flick detection.
+private struct HorizontalPanRecognizer: UIGestureRecognizerRepresentable {
+    let onChanged: (CGFloat) -> Void
+    let onEnded: (CGFloat) -> Void
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+            guard let pan = g as? UIPanGestureRecognizer else { return true }
+            let v = pan.velocity(in: pan.view)
+            return abs(v.x) > abs(v.y) * 1.2
+        }
+    }
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
+
+    func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
+        let pan = UIPanGestureRecognizer()
+        pan.delegate = context.coordinator
+        return pan
+    }
+
+    func handleUIGestureRecognizerAction(_ pan: UIPanGestureRecognizer, context: Context) {
+        let t = pan.translation(in: pan.view).x
+        switch pan.state {
+        case .began, .changed:
+            onChanged(t)
+        case .ended:
+            onEnded(t + pan.velocity(in: pan.view).x * 0.25)
+        case .cancelled, .failed:
+            onEnded(t)
+        default:
+            break
+        }
+    }
 }
