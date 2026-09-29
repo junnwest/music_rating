@@ -394,18 +394,52 @@ export function qualifyAlbum(genres: readonly string[] | null | undefined, lang:
 }
 
 /**
+ * A localized node that stands for a whole FAMILY in its language (k-pop = pop
+ * in Korean, j-rock = rock in Japanese, k-rap = hip-hop in Korean). Tags like
+ * these are used as catch-alls: MusicBrainz editors and the iTunes store label
+ * nearly every Korean release "k-pop" — Beenzino's and Dynamic Duo's rap albums
+ * included — so on its own such a tag says "Korean", not "idol pop".
+ */
+function isCatchAll(id: string): boolean {
+  const node = NODE_BY_ID.get(id);
+  return !!node?.localizes?.some((b) => NODE_BY_ID.get(b)?.level === 'family');
+}
+
+/**
  * The album's primary genre, qualified: the taxonomy's primary walk runs on the
- * tags AS WRITTEN, and only the winner is qualified. Qualification must not make
- * a tag more specific — otherwise "hip hop" on a Korean album (→ k-rap, rank 5)
- * would tie an explicit "k-pop" tag and the tag order (often alphabetical in the
- * legacy arrays) would move idol albums into Korean Hip-Hop.
+ * tags AS WRITTEN, and only the winner is qualified (qualifying "hip hop" to
+ * k-rap must not make it more specific than it was).
+ *
+ * One correction on top: when the walk picks a catch-all localized family tag
+ * (k-pop) but a tag of a DIFFERENT sung family is listed before it, the earlier
+ * family wins. genres[] is stored in vote / merge-rank order (MusicBrainz votes
+ * sorted descending, then the Phase-3 merge ranking), so the order carries the
+ * signal the tags themselves don't: rap albums read [hip hop, k-pop], idol
+ * albums [k-pop, hip hop, dance] or [pop, k-pop, hip hop].
  */
 export function primaryOfAlbum(genres: readonly string[] | null | undefined, lang: string | null): string | null {
   const tags = (genres ?? []).filter((g) => {
     const id = resolveGenre(g);
     return id != null && !NODE_BY_ID.get(id)?.isScene;
   });
-  const primary = primaryOf(tags);
+  let primary = primaryOf(tags);
+  if (primary && isCatchAll(primary)) {
+    const ids = tags.map((t) => resolveGenre(t)!);
+    const at = ids.indexOf(primary);
+    const ownFamily = homeFamily(primary);
+    const earlier = ids
+      .slice(0, at)
+      .find((id) => {
+        const fam = homeFamily(id);
+        return fam != null && fam !== ownFamily && SENSITIVE_FAMILIES.has(fam);
+      });
+    if (earlier) {
+      // Most specific tag of that earlier family (hip hop + trap → trap).
+      const fam = homeFamily(earlier);
+      const sameFamily = tags.filter((t) => homeFamily(resolveGenre(t)!) === fam);
+      primary = primaryOf(sameFamily) ?? earlier;
+    }
+  }
   return primary ? qualify(primary, lang) : null;
 }
 

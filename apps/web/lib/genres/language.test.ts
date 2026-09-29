@@ -129,9 +129,19 @@ describe('qualifyAlbum + primaryOfAlbum', () => {
     expect(primaryOfAlbum(['hip hop'], 'ko')).toBe('k-rap');
   });
 
-  it('lets an explicit k-pop tag beat a qualified hip hop tag, whatever the order', () => {
+  it('puts Korean rap tagged [hip hop, k-pop] in Korean Hip-Hop (k-pop is a catch-all)', () => {
     expect(qualifyAlbum(['hip hop', 'k-pop'], 'ko')).toEqual(['k-rap', 'k-pop']);
-    expect(primaryOfAlbum(['hip hop', 'k-pop'], 'ko')).toBe('k-pop');
+    expect(primaryOfAlbum(['hip hop', 'k-pop'], 'ko')).toBe('k-rap'); // Beenzino
+    expect(primaryOfAlbum(['hip hop', 'r&b', 'k-pop'], 'ko')).toBe('k-rap'); // Jay Park
+    expect(primaryOfAlbum(['hip hop', 'pop', 'k-pop'], 'ko')).toBe('k-rap'); // Epik High
+    expect(primaryOfAlbum(['hip hop', 'trap', 'k-pop'], 'ko')).toBe('trap@ko');
+  });
+
+  it('keeps idol albums in K-Pop when k-pop leads the other family', () => {
+    expect(primaryOfAlbum(['k-pop', 'hip hop', 'dance'], 'ko')).toBe('k-pop'); // GOT7
+    expect(primaryOfAlbum(['pop', 'k-pop', 'hip hop'], 'ko')).toBe('k-pop'); // BTS
+    expect(primaryOfAlbum(['rock', 'k-pop', 'pop', 'hip hop'], 'ko')).toBe('rock@ko'); // earlier family still wins
+    expect(primaryOfAlbum(['k-pop', 'trap', 'hip hop'], 'ko')).toBe('k-pop');
   });
 
   it('keeps the specific genre primary inside a qualified family', () => {

@@ -41,6 +41,13 @@ describe('placeAlbum', () => {
     expect(p.world).toBe('k-pop');
   });
 
+  it('puts a Korean rap album tagged [hip hop, k-pop] in Korean Hip-Hop', () => {
+    const p = placeAlbum({ genres: ['hip hop', 'k-pop'], title: '12', artistCountry: 'KR' });
+    expect(p.world).toBe('k-rap');
+    // k-pop is not a Korean Hip-Hop tile — it only said "Korean".
+    expect(p.tiles.map((t) => t.id)).toEqual(['k-rap']);
+  });
+
   it('places the same tags from a British act in plain Rock', () => {
     const p = placeAlbum({ genres: ['alternative rock', 'rock'], title: 'x', artistCountry: 'GB' });
     expect(p.world).toBe('rock');

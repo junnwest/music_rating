@@ -4,6 +4,10 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-29 (Windows, web, later) — Korean Hip-Hop albums no longer land in K-Pop.** Cause: `k-pop` (genre, rank 5) always beat the broad `hip hop` (family) tag, and in this catalog `k-pop` is a catch-all — MB editors tag Beenzino/pH-1/Loco albums k-pop (checked live), iTunes files all Korean music under K-Pop. Neither MB album votes, MB artist genres (empty for Beenzino/pH-1/Loco/Epik High) nor our discography shares (SUHO 10/10 hip hop, pH-1 0/23 — artist-propagated legacy tags) separate idols from rappers. The signal that does is TAG ORDER (genres[] is vote/merge-rank ordered — correcting the 09-28 note that legacy arrays are alphabetical): `primaryOfAlbum` now lets a different sung family listed before a catch-all localized family tag (one that localizes a family: k-pop, j-pop, j-rock, k-rap, mandopop…) win, taking that family's most specific tag. Impact over 4,772 KR k-pop albums: 170 → Korean Hip-Hop (~130 true rap, ~40 hip-hop-leaning idol), bands → Korean Rock (The Rose, DAY6, Seo Taiji), 4,287 stay. Caches bumped (profile v16, community v2). `vitest` 111/111.
+
+---
+
 **2026-09-29 (Windows, web) — "you vs the community" rebuilt on taste-map worlds.** Old `get_user_genre_standings` compared per raw tag (a Korean rock album counted as plain "rock") and read `ratings`, so deactivated accounts were still averaged in. Now: `get_community_album_scores()` (migration `20260929000000`, ✅ applied; active_ratings, per-album sums + resolver metadata, service_role only) → `/api/taste/profile` places every community-rated album on the same genre × language map (`communityWorldTotals`, cached 10 min) → `worldStandings` (≥3 of your albums, community beyond you, top 5). Cache v15; payload adds `genreKo`; page shows Korean labels. Verified on the six most active users (e.g. K-Pop 1.93 vs community 2.98, Korean Hip-Hop 3.42 vs 3.49). `vitest` 109/109, `tsc` + eslint clean. Pipeline check logged.
 
 ---

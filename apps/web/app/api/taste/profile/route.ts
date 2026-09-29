@@ -42,7 +42,7 @@ const REC_POOL_WORLDS = 7;
 /** Tags an untagged album borrows from its artist's other albums. */
 const BORROWED_TAGS = 4;
 /** Community-per-world totals are the same for every user — cached globally. */
-const COMMUNITY_CACHE_KEY = 'taste:community-worlds:v1';
+const COMMUNITY_CACHE_KEY = 'taste:community-worlds:v2';
 const COMMUNITY_TTL_SECONDS = 600;
 
 type SupabaseServer = NonNullable<ReturnType<typeof createServerClient>>;
@@ -143,7 +143,9 @@ export async function GET(req: NextRequest) {
   // genre (only the world names the language), MB tracklist language as evidence.
   // v15: 2026-09-29 — standings ("you vs the community") are per world, not per
   // raw tag, and exclude deactivated accounts; each gains genreKo.
-  const cacheKey = `taste:profile:v15:${userId}`;
+  // v16: 2026-09-29 — catch-all k-pop no longer beats an earlier-listed family
+  // (Korean rap tagged [hip hop, k-pop] → Korean Hip-Hop).
+  const cacheKey = `taste:profile:v16:${userId}`;
   if (!refresh) {
     const cached = await cacheGet<object>(cacheKey);
     if (cached) return NextResponse.json(cached);

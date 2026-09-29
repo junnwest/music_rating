@@ -43,6 +43,8 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **2026-09-29 (later) — Korean rap no longer lands in K-Pop.** `k-pop` is a catch-all tag here (MusicBrainz editors and iTunes put it on nearly every Korean release, rap included), so `primaryOfAlbum` now lets a different sung family win when it is listed **before** a catch-all localized family tag (genres[] is in vote/merge-rank order): [hip hop, k-pop] → Korean Hip-Hop; [k-pop, hip hop, dance] / [pop, k-pop, hip hop] stay K-Pop. Catalog impact over 4,772 Korean k-pop-tagged albums: 170 → Korean Hip-Hop (≈130 real rap acts, ≈40 hip-hop-leaning idol albums), bands → Korean Rock, R&B singers → Korean R&B, 4,287 stay K-Pop. No source separates idols from rappers reliably (MB album + artist genres checked live; Last.fm does, but only on ~3.8k albums).
+
 > **2026-09-29 — Taste "you vs the community" is now per world.** Standings compare your average with everyone's in the same language-qualified world (Korean Rock vs Korean Rock, K-Pop vs K-Pop), not per raw tag, and exclude deactivated accounts. New read-only RPC `get_community_album_scores` (migration `20260929000000`, ✅ applied); per-world community totals are cached globally for 10 min. `get_user_genre_standings` is left in the DB, unused by web. Up to 5 worlds with ≥3 of your albums and community ratings beyond your own. iOS gets it through the same route (same fields, plus `genreKo`).
 
 > **🖥️ FOR THE PIPELINE PC (2026-09-28) — read before starting anything that calls MusicBrainz.**
