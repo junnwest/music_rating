@@ -350,3 +350,69 @@ export function worldAffinity(
   const era = eraAffinity(year, { meanYear: world.meanYear, sdYears: world.sdYears });
   return 0.55 * cos + 0.25 * Math.min(1, overlap) + 0.2 * era;
 }
+
+// ── you vs the community ──────────────────────────────────────────────────────
+
+export interface CommunityAlbum {
+  placement: AlbumPlacement;
+  scoreSum: number;
+  scoreCount: number;
+}
+
+/** Community score totals per world: every community-rated album placed on the
+ *  same map (genre × language), summed rating-weighted. */
+export function communityWorldTotals(albums: CommunityAlbum[]): Map<string, { sum: number; n: number }> {
+  const out = new Map<string, { sum: number; n: number }>();
+  for (const a of albums) {
+    const w = a.placement.world;
+    if (!w || a.scoreCount <= 0) continue;
+    const e = out.get(w) ?? { sum: 0, n: 0 };
+    e.sum += a.scoreSum;
+    e.n += a.scoreCount;
+    out.set(w, e);
+  }
+  return out;
+}
+
+export interface WorldStanding {
+  key: string;
+  label: { en: string; ko: string };
+  userAvg: number;
+  communityAvg: number;
+  /** Albums of yours in this world. */
+  userCount: number;
+  /** Community ratings in this world (yours included). */
+  communityCount: number;
+}
+
+/** Albums of yours a world needs before it gets a standing. */
+export const STANDING_MIN_ALBUMS = 3;
+
+/**
+ * Your average vs everyone's, per world ("Korean Rock", "Rock"…) — the largest
+ * genre, language-qualified, so Korean rock is compared with Korean rock. A world
+ * qualifies with ≥ STANDING_MIN_ALBUMS of your albums AND community ratings
+ * beyond your own (otherwise the "community" is just you).
+ */
+export function worldStandings(
+  worlds: TasteWorld[],
+  community: Map<string, { sum: number; n: number }>,
+  limit = 5,
+): WorldStanding[] {
+  const out: WorldStanding[] = [];
+  for (const w of worlds) {
+    if (w.key === OTHER_WORLD) continue;
+    const userCount = new Set(w.albumIds).size;
+    const c = community.get(w.key);
+    if (userCount < STANDING_MIN_ALBUMS || !c || c.n <= userCount) continue;
+    out.push({
+      key: w.key,
+      label: w.label,
+      userAvg: w.avg,
+      communityAvg: round(c.sum / c.n),
+      userCount,
+      communityCount: c.n,
+    });
+  }
+  return out.sort((a, b) => b.userCount - a.userCount || a.key.localeCompare(b.key)).slice(0, limit);
+}

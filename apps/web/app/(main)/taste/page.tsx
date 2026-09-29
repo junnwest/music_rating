@@ -57,7 +57,7 @@ interface TasteReport {
   totalTags: number;
   clusters: TasteWorld[];
   disliked: { tag: string; display: string; displayKo?: string }[];
-  standings: { genre: string; userAvg: number; communityAvg: number; userCount: number }[];
+  standings: { genre: string; genreKo?: string; userAvg: number; communityAvg: number; userCount: number }[];
   graph?: TasteGraphData;
   charts: {
     decades: { decade: number; count: number }[];
@@ -551,7 +551,7 @@ function ReportView({
               return (
                 <div key={s.genre}>
                   <div className="flex items-baseline justify-between mb-1">
-                    <span className="text-[13px] font-bold text-ink">{s.genre}</span>
+                    <span className="text-[13px] font-bold text-ink">{lang === 'ko' && s.genreKo ? s.genreKo : s.genre}</span>
                     <span
                       className={`text-[11.5px] font-semibold tabular-nums ${diff >= 0 ? 'text-accent-deep' : 'text-muted'}`}
                     >

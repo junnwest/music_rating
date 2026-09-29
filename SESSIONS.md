@@ -4,6 +4,10 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-29 (Windows, web) — "you vs the community" rebuilt on taste-map worlds.** Old `get_user_genre_standings` compared per raw tag (a Korean rock album counted as plain "rock") and read `ratings`, so deactivated accounts were still averaged in. Now: `get_community_album_scores()` (migration `20260929000000`, ✅ applied; active_ratings, per-album sums + resolver metadata, service_role only) → `/api/taste/profile` places every community-rated album on the same genre × language map (`communityWorldTotals`, cached 10 min) → `worldStandings` (≥3 of your albums, community beyond you, top 5). Cache v15; payload adds `genreKo`; page shows Korean labels. Verified on the six most active users (e.g. K-Pop 1.93 vs community 2.98, Korean Hip-Hop 3.42 vs 3.49). `vitest` 109/109, `tsc` + eslint clean. Pipeline check logged.
+
+---
+
 **2026-09-28 (Windows, web, later) — language on the broadest genre only; MB tracklist language stored.**
 
 - User's decisions: prefix the language name ("Korean", "Japanese") on **only the largest genre**, and store the non-English track-title language.

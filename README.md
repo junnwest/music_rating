@@ -43,6 +43,8 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **2026-09-29 — Taste "you vs the community" is now per world.** Standings compare your average with everyone's in the same language-qualified world (Korean Rock vs Korean Rock, K-Pop vs K-Pop), not per raw tag, and exclude deactivated accounts. New read-only RPC `get_community_album_scores` (migration `20260929000000`, ✅ applied); per-world community totals are cached globally for 10 min. `get_user_genre_standings` is left in the DB, unused by web. Up to 5 worlds with ≥3 of your albums and community ratings beyond your own. iOS gets it through the same route (same fields, plus `genreKo`).
+
 > **🖥️ FOR THE PIPELINE PC (2026-09-28) — read before starting anything that calls MusicBrainz.**
 > 1. `git pull` and restart the pipeline. New ingest code writes `release_groups.title_language` (the migration is already applied, so nothing to run).
 > 2. **Do NOT run `npm run backfill:title-language` on this PC.** It is already running on the Windows laptop (started 2026-09-28, about 30h, resumable, with progress saved locally on that machine). A second copy would redo the work from scratch and double the MusicBrainz traffic.

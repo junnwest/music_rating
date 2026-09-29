@@ -4,13 +4,15 @@ import { getAuthedUserId } from '../../../../lib/authGuard';
 import { rateLimit } from '../../../../lib/rateLimit';
 import { cacheGet, cacheSet } from '../../../../lib/cache';
 import { preferHangulName } from '../../../../lib/sj/display';
-import { cosine, displayGenre } from '../../../../lib/taste/embeddings';
+import { cosine } from '../../../../lib/taste/embeddings';
 import { synonymsOf } from '../../../../lib/taste/genreSynonyms';
 import { sceneOf, yearOf, type Scene } from '../../../../lib/taste/albumVector';
 import { weightsFromRatings } from '../../../../lib/taste/profile';
 import {
   buildTasteMap,
+  communityWorldTotals,
   placeAlbum,
+  worldStandings,
   qualifiedVector,
   worldAffinity,
   OTHER_WORLD,
@@ -39,6 +41,59 @@ const GRAPH_TAGS = 8;
 const REC_POOL_WORLDS = 7;
 /** Tags an untagged album borrows from its artist's other albums. */
 const BORROWED_TAGS = 4;
+/** Community-per-world totals are the same for every user — cached globally. */
+const COMMUNITY_CACHE_KEY = 'taste:community-worlds:v1';
+const COMMUNITY_TTL_SECONDS = 600;
+
+type SupabaseServer = NonNullable<ReturnType<typeof createServerClient>>;
+
+/**
+ * Community score totals per taste-map world: every community-rated album
+ * (get_community_album_scores — active accounts only) placed on the same
+ * genre × language map as the user's own. Paged past PostgREST's 1000-row cap.
+ */
+async function communityWorlds(supabase: SupabaseServer): Promise<Map<string, { sum: number; n: number }>> {
+  const cached = await cacheGet<[string, { sum: number; n: number }][]>(COMMUNITY_CACHE_KEY);
+  if (cached) return new Map(cached);
+  interface Row {
+    release_group_id: string;
+    score_sum: number | string;
+    score_count: number | string;
+    title: string;
+    native_title: string | null;
+    genres: string[] | null;
+    title_language: string | null;
+    artist_country: string | null;
+    artist_native_language: string | null;
+  }
+  const rows: Row[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase.rpc('get_community_album_scores').range(from, from + 999);
+    if (error) {
+      console.error('[taste] community scores error:', error.message);
+      return new Map();
+    }
+    const page = (data as Row[] | null) ?? [];
+    rows.push(...page);
+    if (page.length < 1000) break;
+  }
+  const totals = communityWorldTotals(
+    rows.map((r) => ({
+      scoreSum: Number(r.score_sum),
+      scoreCount: Number(r.score_count),
+      placement: placeAlbum({
+        genres: r.genres,
+        title: r.title,
+        nativeTitle: r.native_title,
+        artistCountry: r.artist_country,
+        artistNativeLanguage: r.artist_native_language,
+        titleLanguage: r.title_language,
+      }),
+    })),
+  );
+  await cacheSet(COMMUNITY_CACHE_KEY, [...totals.entries()], COMMUNITY_TTL_SECONDS);
+  return totals;
+}
 const RECS_PER_FOCUS = 6;
 /** Cap on the rated albums shipped for the side panel (score-descending). */
 const GRAPH_ALBUMS = 400;
@@ -86,7 +141,9 @@ export async function GET(req: NextRequest) {
   // their artist's tags; clusters[] gains key/label/labelKo/language.
   // v14: 2026-09-28 — language-name labels ("Korean Rock"), tiles show the plain
   // genre (only the world names the language), MB tracklist language as evidence.
-  const cacheKey = `taste:profile:v14:${userId}`;
+  // v15: 2026-09-29 — standings ("you vs the community") are per world, not per
+  // raw tag, and exclude deactivated accounts; each gains genreKo.
+  const cacheKey = `taste:profile:v15:${userId}`;
   if (!refresh) {
     const cached = await cacheGet<object>(cacheKey);
     if (cached) return NextResponse.json(cached);
@@ -95,7 +152,7 @@ export async function GET(req: NextRequest) {
   const supabase = createServerClient();
   if (!supabase) return NextResponse.json({ error: 'not configured' }, { status: 503 });
 
-  const [ratingsRes, standingsRes, trackCountRes, albumCountRes] = await Promise.all([
+  const [ratingsRes, communityTotals, trackCountRes, albumCountRes] = await Promise.all([
     supabase
       .from('ratings')
       .select(
@@ -103,7 +160,7 @@ export async function GET(req: NextRequest) {
       )
       .eq('user_id', userId)
       .limit(500),
-    supabase.rpc('get_user_genre_standings', { p_user_id: userId }),
+    communityWorlds(supabase),
     supabase
       .from('track_ratings')
       .select('recording_id', { count: 'exact', head: true })
@@ -558,17 +615,15 @@ export async function GET(req: NextRequest) {
     }
   });
 
-  interface StandingRow {
-    genre: string;
-    user_avg: number;
-    community_avg: number;
-    user_count: number;
-  }
-  const standings = ((standingsRes.data as StandingRow[] | null) ?? []).map((s) => ({
-    genre: displayGenre(s.genre),
-    userAvg: Number(s.user_avg),
-    communityAvg: Number(s.community_avg),
-    userCount: Number(s.user_count),
+  // You vs the community, per world — the largest genre, language-qualified, so
+  // Korean rock is compared with Korean rock (lib/taste/worlds.ts worldStandings).
+  // Replaces get_user_genre_standings (raw tags; counted deactivated accounts).
+  const standings = worldStandings(worlds, communityTotals).map((s) => ({
+    genre: s.label.en,
+    genreKo: s.label.ko,
+    userAvg: s.userAvg,
+    communityAvg: s.communityAvg,
+    userCount: s.userCount,
   }));
 
   // Mean signed gap between your average and the community's, over the genres you

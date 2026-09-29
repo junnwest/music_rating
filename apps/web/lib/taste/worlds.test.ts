@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { buildTasteMap, placeAlbum, worldAffinity, OTHER_WORLD, type RatedAlbum } from './worlds';
+import {
+  buildTasteMap,
+  communityWorldTotals,
+  placeAlbum,
+  worldAffinity,
+  worldStandings,
+  OTHER_WORLD,
+  type RatedAlbum,
+} from './worlds';
 
 function rated(
   id: string,
@@ -101,5 +109,35 @@ describe('worldAffinity', () => {
     const gb = placeAlbum({ genres: ['alternative rock'], title: 'x', artistCountry: 'GB' });
     expect(worldAffinity(jp, 2015, jrock)).toBeGreaterThan(0);
     expect(worldAffinity(gb, 2015, jrock)).toBe(0);
+  });
+});
+
+describe('worldStandings', () => {
+  const mine = [
+    rated('k1', 4, ['rock'], 'KR'),
+    rated('k2', 5, ['indie rock'], 'KR'),
+    rated('k3', 4.5, ['rock'], 'KR'),
+    rated('g1', 3, ['rock'], 'GB'),
+  ];
+  const community = communityWorldTotals([
+    { placement: placeAlbum({ genres: ['rock'], artistCountry: 'KR' }), scoreSum: 30, scoreCount: 8 },
+    { placement: placeAlbum({ genres: ['rock'], artistCountry: 'GB' }), scoreSum: 40, scoreCount: 10 },
+  ]);
+
+  it('compares Korean rock with Korean rock, not with all rock', () => {
+    const s = worldStandings(buildTasteMap(mine).worlds, community);
+    expect(s).toHaveLength(1);
+    expect(s[0].key).toBe('rock@ko');
+    expect(s[0].label.en).toBe('Korean Rock');
+    expect(s[0].userAvg).toBe(4.5);
+    expect(s[0].communityAvg).toBe(3.75);
+    expect(s[0].userCount).toBe(3);
+  });
+
+  it('skips worlds where the community is only you', () => {
+    const solo = communityWorldTotals([
+      { placement: placeAlbum({ genres: ['rock'], artistCountry: 'KR' }), scoreSum: 13.5, scoreCount: 3 },
+    ]);
+    expect(worldStandings(buildTasteMap(mine).worlds, solo)).toEqual([]);
   });
 });
