@@ -56,6 +56,13 @@ export interface GenreNode {
    *  in-language form of, in its own `language` — so rock by a Japanese act
    *  resolves to j-rock and hip-hop by a Korean act to k-rap. */
   localizes?: string[];
+  /** A scene-wide umbrella tag used on nearly any release from that scene (mpb =
+   *  "Brazilian popular music", cantopop, mandopop). Like a localized family tag,
+   *  it yields to a different sung family listed before it (lib/genres/language.ts). */
+  catchAll?: boolean;
+  /** Weak language evidence: used only when nothing stronger (tag, script, a
+   *  artist country at all) exists — "latin" on a country-less act → Spanish. */
+  languageHint?: string;
 }
 
 /** Terse node builder. ko defaults to en (flagged first-pass); arrays default []. */
@@ -72,6 +79,8 @@ function n(p: {
   isScene?: boolean;
   language?: string;
   localizes?: string[];
+  catchAll?: boolean;
+  languageHint?: string;
 }): GenreNode {
   return {
     id: p.id,
@@ -85,6 +94,8 @@ function n(p: {
     ...(p.isScene ? { isScene: true } : {}),
     ...(p.language ? { language: p.language } : {}),
     ...(p.localizes ? { localizes: p.localizes } : {}),
+    ...(p.catchAll ? { catchAll: true } : {}),
+    ...(p.languageHint ? { languageHint: p.languageHint } : {}),
   };
 }
 
@@ -111,7 +122,7 @@ export const TAXONOMY: GenreNode[] = [
   n({ id: 'punk', level: 'family', en: 'Punk', ko: '펑크', aliases: ['punk'], surface: true }),
   n({ id: 'blues', level: 'family', en: 'Blues', ko: '블루스', aliases: ['blues'], surface: true }),
   n({ id: 'reggae', level: 'family', en: 'Reggae', ko: '레게', aliases: ['reggae'], surface: true }),
-  n({ id: 'latin', level: 'family', en: 'Latin', ko: '라틴', aliases: ['latin'], surface: true }),
+  n({ id: 'latin', languageHint: 'es', level: 'family', en: 'Latin', ko: '라틴', aliases: ['latin'], surface: true }),
   n({ id: 'experimental', level: 'family', en: 'Experimental', ko: '실험음악', aliases: ['experimental', 'avant-garde', 'avant garde', 'avantgarde'], surface: false }),
   n({ id: 'non-music', level: 'family', en: 'Non-Music', ko: '논뮤직', aliases: ['non-music', 'spoken word', 'field recording', 'comedy'], surface: false }),
 
@@ -144,7 +155,7 @@ export const TAXONOMY: GenreNode[] = [
   n({ id: 'j-pop', localizes: ['pop'], level: 'genre', en: 'J-Pop', ko: '제이팝', sound: ['pop'], scene: ['japanese'], aliases: ['j-pop', 'jpop', 'japanese pop'], rank: 5, surface: true }),
   n({ id: 'kayokyoku', level: 'genre', en: 'Kayōkyoku', ko: '가요쿄쿠', sound: ['pop'], scene: ['japanese'], aliases: ['kayōkyoku', 'kayokyoku'], rank: 5 }),
   n({ id: 'city-pop', level: 'genre', en: 'City Pop', ko: '시티 팝', sound: ['pop', 'rnb-soul'], scene: ['japanese'], aliases: ['city pop', 'citypop'], rank: 5, surface: true }),
-  n({ id: 'mandopop', localizes: ['pop'], level: 'genre', en: 'Mandopop', ko: '만다린 팝', sound: ['pop'], scene: ['chinese'], aliases: ['mandopop', 'mandarin pop'], rank: 5 }),
+  n({ id: 'mandopop', catchAll: true, level: 'genre', en: 'Mandopop', ko: '만다린 팝', sound: ['pop'], scene: ['chinese'], aliases: ['mandopop', 'mandarin pop'], rank: 5 }),
   n({ id: 'indian-pop', localizes: ['pop'], level: 'genre', en: 'Indian Pop', ko: '인도 팝', sound: ['pop'], scene: ['indian'], aliases: ['indian pop'], rank: 5 }),
   n({ id: 'filmi', level: 'genre', en: 'Filmi', ko: '필미', sound: ['pop'], scene: ['indian'], aliases: ['filmi', 'bollywood'], rank: 5 }),
 
@@ -235,7 +246,7 @@ export const TAXONOMY: GenreNode[] = [
   n({ id: 'new-age', level: 'genre', en: 'New Age', ko: '뉴 에이지', sound: ['electronic'], aliases: ['new age'], rank: 3 }),
   n({ id: 'dance', level: 'genre', en: 'Dance', ko: '댄스', sound: ['electronic'], aliases: ['dance', 'edm', 'electronic dance music'], rank: 2 }),
   n({ id: 'lo-fi', level: 'genre', en: 'Lo-fi', ko: '로파이', sound: ['electronic'], aliases: ['lo-fi', 'lofi'], rank: 3 }),
-  n({ id: 'reggaeton', language: 'es', level: 'genre', en: 'Reggaeton', ko: '레게톤', sound: ['electronic', 'latin'], aliases: ['reggaeton'], rank: 4 }),
+  n({ id: 'reggaeton', language: 'es', level: 'genre', en: 'Reggaeton', ko: '레게톤', sound: ['latin', 'electronic'], aliases: ['reggaeton'], rank: 4 }),
 
   // ══ JAZZ ═══════════════════════════════════════════════════════════════════
   n({ id: 'swing', level: 'genre', en: 'Swing', ko: '스윙', sound: ['jazz'], aliases: ['swing'], rank: 3 }),
@@ -284,7 +295,7 @@ export const TAXONOMY: GenreNode[] = [
   // ══ LATIN ══════════════════════════════════════════════════════════════════
   n({ id: 'salsa', level: 'genre', en: 'Salsa', ko: '살사', sound: ['latin'], aliases: ['salsa'], rank: 3 }),
   n({ id: 'bossa-nova', level: 'genre', en: 'Bossa Nova', ko: '보사노바', sound: ['latin', 'jazz'], scene: ['brazilian'], aliases: ['bossa nova'], rank: 5, surface: true }),
-  n({ id: 'mpb', level: 'genre', en: 'MPB', ko: '엠피비', sound: ['latin'], scene: ['brazilian'], aliases: ['mpb', 'musica popular brasileira', 'música popular brasileira'], rank: 5 }),
+  n({ id: 'mpb', catchAll: true, level: 'genre', en: 'MPB', ko: '엠피비', sound: ['latin'], scene: ['brazilian'], aliases: ['mpb', 'musica popular brasileira', 'música popular brasileira'], rank: 5 }),
 
   // ══ Phase-1.5 coverage expansion (2026-09-21) ══════════════════════════════
   // Nodes for the highest-frequency tags the Phase-1 backfill routed to
@@ -362,7 +373,7 @@ export const TAXONOMY: GenreNode[] = [
   n({ id: 'afrobeats', level: 'genre', en: 'Afrobeats', ko: '아프로비츠', sound: ['pop', 'electronic'], aliases: ['afrobeats'], rank: 3 }),
   // Pop — scene-qualified
   n({ id: 'enka', level: 'genre', en: 'Enka', ko: '엔카', sound: ['pop'], scene: ['japanese'], aliases: ['enka'], rank: 5 }),
-  n({ id: 'cantopop', level: 'genre', en: 'Cantopop', ko: '칸토팝', sound: ['pop'], scene: ['chinese'], aliases: ['cantopop', 'canto-pop', 'cantonese pop'], rank: 5 }),
+  n({ id: 'cantopop', catchAll: true, level: 'genre', en: 'Cantopop', ko: '칸토팝', sound: ['pop'], scene: ['chinese'], aliases: ['cantopop', 'canto-pop', 'cantonese pop'], rank: 5 }),
 
   // — Electronic —
   n({ id: 'noise', level: 'genre', en: 'Noise', ko: '노이즈', sound: ['experimental'], aliases: ['noise', 'noise music'], rank: 3 }),

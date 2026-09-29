@@ -36,7 +36,7 @@
  * all use it.
  */
 import { NODE_BY_ID, TAXONOMY, type GenreLevel } from './taxonomy';
-import { ancestorsOf, primaryOf, resolveGenre } from './resolver';
+import { ancestorsOf, fold, primaryOf, resolveGenre } from './resolver';
 
 export interface LanguageInfo {
   en: string;
@@ -333,11 +333,13 @@ export function albumLanguage(input: AlbumLanguageInput): AlbumLanguage {
 
   // 1. Language-bound genre tags (k-pop, j-rock, chanson, latin pop…).
   const tagLangs = new Map<string, string>(); // lang → first tag id carrying it
+  let hint: string | null = null; // weak tag evidence ("latin" → es), used last
   for (const raw of input.genres ?? []) {
     const id = resolveGenre(raw);
     if (!id) continue;
     const l = nodeLanguage(id);
     if (l && l !== 'en' && !tagLangs.has(l)) tagLangs.set(l, id);
+    hint ??= NODE_BY_ID.get(id)?.languageHint ?? null;
   }
   const script =
     scriptLanguage(input.nativeTitle ?? '', country) ?? scriptLanguage(input.title ?? '', country);
@@ -361,12 +363,14 @@ export function albumLanguage(input: AlbumLanguageInput): AlbumLanguage {
   const nl = input.artistNativeLanguage?.trim().toLowerCase();
   if (nl === 'ko' || nl === 'ja') return { lang: nl, source: 'artist-script' };
 
-  // 4. Artist country.
-  if (country) {
-    if (ENGLISH_COUNTRIES.has(country)) return { lang: 'en', source: 'country' };
-    const cl = COUNTRY_LANG.get(country);
-    if (cl) return { lang: cl, source: 'country' };
-  }
+  // 4. Artist country — a non-English one outranks the weak tag hint (a
+  // Brazilian act tagged "latin" is Portuguese, not Spanish).
+  const cl = country ? COUNTRY_LANG.get(country) : undefined;
+  if (cl) return { lang: cl, source: 'country' };
+  if (country && ENGLISH_COUNTRIES.has(country)) return { lang: 'en', source: 'country' };
+  // 5. Weak tag hint ("latin" → Spanish), only when there is no country at all —
+  // it must not relabel an English-country act (Santana is tagged "latin").
+  if (hint && !country) return { lang: hint, source: 'tag' };
   return { lang: null, source: null };
 }
 
@@ -402,8 +406,18 @@ export function qualifyAlbum(genres: readonly string[] | null | undefined, lang:
  */
 function isCatchAll(id: string): boolean {
   const node = NODE_BY_ID.get(id);
-  return !!node?.localizes?.some((b) => NODE_BY_ID.get(b)?.level === 'family');
+  if (!node) return false;
+  return !!node.catchAll || !!node.localizes?.some((b) => NODE_BY_ID.get(b)?.level === 'family');
 }
+
+/**
+ * Store-style raw tags that resolve to a specific node but are applied as broad
+ * catch-alls — iTunes files art pop, singer-songwriters and indie electronic
+ * under "Alternative", which the resolver maps to alternative-rock (rank 3), so
+ * it outranked the album's real pop genres. For the primary walk only, such a
+ * tag counts as its broad family. Folded (see resolver.fold).
+ */
+const CATCH_ALL_RAW: ReadonlyMap<string, string> = new Map([['alternative', 'rock']]);
 
 /**
  * The album's primary genre, qualified: the taxonomy's primary walk runs on the
@@ -418,10 +432,12 @@ function isCatchAll(id: string): boolean {
  * albums [k-pop, hip hop, dance] or [pop, k-pop, hip hop].
  */
 export function primaryOfAlbum(genres: readonly string[] | null | undefined, lang: string | null): string | null {
-  const tags = (genres ?? []).filter((g) => {
-    const id = resolveGenre(g);
-    return id != null && !NODE_BY_ID.get(id)?.isScene;
-  });
+  const tags = (genres ?? [])
+    .filter((g) => {
+      const id = resolveGenre(g);
+      return id != null && !NODE_BY_ID.get(id)?.isScene;
+    })
+    .map((g) => CATCH_ALL_RAW.get(fold(g)) ?? g);
   let primary = primaryOf(tags);
   if (primary && isCatchAll(primary)) {
     const ids = tags.map((t) => resolveGenre(t)!);

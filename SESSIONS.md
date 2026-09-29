@@ -4,6 +4,10 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-29 (Windows, web, later still) — catch-all audit for other genres.** Audited j-pop, mandopop, cantopop, latin, latin pop, mpb, filmi, indian pop, korean indie and iTunes `alternative` on live data (albums also carrying another sung family, world counts + top artists). Fixed: pop@zh is now synthetic "Chinese Pop" (mandopop no longer `localizes` pop; mandopop/cantopop/mpb `catchAll: true`); reggaeton sound parents reordered [latin, electronic]; bare `alternative` counts as rock for the primary walk (`CATCH_ALL_RAW`); `latin` `languageHint: es` used only when the artist has no country (an English-country hint would relabel Santana). Left: j-pop-first J-rock bands (order carries no signal), latin-pop + hip hop pop stars (12 albums), filmi/indian pop/korean indie fine. `gen-taxonomy-sql` output identical to the applied file. Caches v17 / community v3. `vitest` 116/116, validator green.
+
+---
+
 **2026-09-29 (Windows, web, later) — Korean Hip-Hop albums no longer land in K-Pop.** Cause: `k-pop` (genre, rank 5) always beat the broad `hip hop` (family) tag, and in this catalog `k-pop` is a catch-all — MB editors tag Beenzino/pH-1/Loco albums k-pop (checked live), iTunes files all Korean music under K-Pop. Neither MB album votes, MB artist genres (empty for Beenzino/pH-1/Loco/Epik High) nor our discography shares (SUHO 10/10 hip hop, pH-1 0/23 — artist-propagated legacy tags) separate idols from rappers. The signal that does is TAG ORDER (genres[] is vote/merge-rank ordered — correcting the 09-28 note that legacy arrays are alphabetical): `primaryOfAlbum` now lets a different sung family listed before a catch-all localized family tag (one that localizes a family: k-pop, j-pop, j-rock, k-rap, mandopop…) win, taking that family's most specific tag. Impact over 4,772 KR k-pop albums: 170 → Korean Hip-Hop (~130 true rap, ~40 hip-hop-leaning idol), bands → Korean Rock (The Rose, DAY6, Seo Taiji), 4,287 stay. Caches bumped (profile v16, community v2). `vitest` 111/111.
 
 ---

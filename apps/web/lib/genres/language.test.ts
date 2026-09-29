@@ -110,6 +110,38 @@ describe('albumLanguage — evidence ladder', () => {
   });
 });
 
+describe('other catch-all tags (2026-09-29 audit)', () => {
+  it('Chinese pop is one world with Mandopop and Cantopop inside', () => {
+    expect(qualify('pop', 'zh')).toBe('pop@zh');
+    expect(qualifiedInfo('pop@zh')?.display.en).toBe('Chinese Pop');
+    expect(qualifiedInfo('cantopop')?.family).toBe('pop@zh');
+    expect(qualifiedInfo('mandopop')?.family).toBe('pop@zh');
+  });
+
+  it('mandopop / cantopop / mpb yield to an earlier-listed family', () => {
+    expect(primaryOfAlbum(['r&b', 'mandopop'], 'zh')).toBe('r-and-b@zh');
+    expect(primaryOfAlbum(['rock', 'cantopop'], 'zh')).toBe('rock@zh');
+    expect(primaryOfAlbum(['rock', 'mpb'], 'pt')).toBe('rock@pt');
+    expect(primaryOfAlbum(['mpb', 'rock'], 'pt')).toBe('mpb');
+  });
+
+  it('reggaeton lives in Latin, not Electronic', () => {
+    expect(homeFamily('reggaeton')).toBe('latin');
+  });
+
+  it('treats a bare "alternative" as broad rock for the primary', () => {
+    expect(primaryOfAlbum(['alternative', 'art pop'], null)).toBe('art-pop');
+    expect(primaryOfAlbum(['alternative rock', 'art pop'], null)).toBe('alternative-rock');
+  });
+
+  it('reads "latin" as a weak Spanish hint', () => {
+    expect(albumLanguage({ genres: ['latin', 'rock'], artistCountry: 'US' }).lang).toBe('en'); // Santana
+    expect(albumLanguage({ genres: ['rock', 'latin'] }).lang).toBe('es');
+    expect(albumLanguage({ genres: ['latin', 'pop'], artistCountry: 'BR' }).lang).toBe('pt');
+    expect(albumLanguage({ genres: ['pop'], artistCountry: 'US' }).lang).toBe('en');
+  });
+});
+
 describe('albumGenreLabels', () => {
   it('prefixes only the broadest genre', () => {
     expect(albumGenreLabels(['alternative rock', 'rock'], 'ja')).toEqual(['alternative rock', 'Japanese rock']);
