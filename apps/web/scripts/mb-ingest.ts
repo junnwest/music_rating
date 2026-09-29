@@ -34,6 +34,28 @@ export const SPECIAL_MBIDS = new Set<string>([
 // Set once if the release_group_artists table is absent (migration 20260630000001 not applied)
 // so we stop attempting credit writes for the rest of the run instead of throwing per RG.
 let creditsTableMissing = false;
+let titleLanguageMissing = false;
+
+/** MB language codes that say nothing about a non-English tracklist. */
+const NON_EVIDENCE_LANGS = new Set(['eng', 'mul', 'zxx', 'und', 'mis']);
+
+/**
+ * A release group's NON-English tracklist-title language: the most common MB
+ * text-representation language across its Official editions (all editions when
+ * none is Official). Returns null when that is English, or unknown — MB's
+ * language describes the track titles, not the lyrics, so "eng" is no evidence
+ * of English singing (Korean rap with English titles is "eng") and is never stored.
+ */
+export function trackTitleLanguage(eds: { status: string | null; language: string | null }[]): string | null {
+  const official = eds.filter((e) => e.status === 'Official');
+  const counts = new Map<string, number>();
+  for (const e of official.length ? official : eds) {
+    const l = e.language?.toLowerCase();
+    if (l && /^[a-z]{3}$/.test(l)) counts.set(l, (counts.get(l) ?? 0) + 1);
+  }
+  const top = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
+  return top && !NON_EVIDENCE_LANGS.has(top[0]) ? top[0] : null;
+}
 
 // Above this many release-groups an artist is a composer/Various-Artists-tier entity (Mozart has
 // thousands): ingesting them floods the catalog with classical comps and stalls the watchdog.
@@ -652,6 +674,21 @@ export async function ingestArtist(db: DB, mbid: string, coreOnly = false): Prom
     } else if (!eds.some(e => e.status === 'Official')) { skippedUnofficial++; continue; }
     kept++;
     const rgId = await findOrCreateReleaseGroup(db, rg, artistId);
+    // Non-English tracklist language (language evidence for the genre × language
+    // axis, lib/genres/language.ts). Free — the editions are already in hand. Only
+    // written when non-English and changed; guarded until migration 20260928000003
+    // is applied.
+    const titleLang = titleLanguageMissing ? null : trackTitleLanguage(eds);
+    if (titleLang) {
+      const { error: tlErr } = await db.from('release_groups').update({ title_language: titleLang })
+        .eq('id', rgId).or(`title_language.is.null,title_language.neq.${titleLang}`);
+      if (tlErr) {
+        if (/title_language/.test(tlErr.message)) {
+          titleLanguageMissing = true;
+          console.warn('  [title-language] release_groups.title_language missing — skipping (apply migration 20260928000003)');
+        } else console.warn(`  [title-language] ${rg.id}: ${tlErr.message}`);
+      }
+    }
     genreInputs.push({
       releaseGroupId: rgId,
       title: rg.title,

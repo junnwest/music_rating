@@ -4,6 +4,28 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-28 (Windows, web, later) — language on the broadest genre only; MB tracklist language stored.**
+
+- User's decisions: prefix the language name ("Korean", "Japanese") on **only the largest genre**, and store the non-English track-title language.
+- `language.ts`: synthetic labels are now "{Language} {Genre}" (dropped the K-/J- prefix rule; authored K-Pop/J-Pop/J-Rock names kept), with an `Intl.DisplayNames` fallback for languages outside the table (Swedish, Dutch…). New `shortDisplay`, `albumGenreLabels` (prefixes only the broadest language-neutral genre; lowest level, first on a tie), `fromTitleLanguage` (ISO 639-3 → code) and evidence step 2 = stored tracklist language (also breaks conflicting tags).
+- Album + song pages: chips use `albumGenreLabels`; links unchanged. Taste map: tiles show `shortDisplay` (world label carries the language), dislikes keep the full name; cache v14; title_language selected for rated albums and rec pools.
+- Storage: migration `20260928000003` ✅ applied (`title_language` text, CHECK 3-letter and never eng/mul/zxx/und/mis). `mb-client` keeps `text-representation.language` on both release browsers; `mb-ingest.trackTitleLanguage` = most common language across Official editions, stored only if non-English and changed (guarded, self-disables if the column is missing). Verified live via `mb:ingest:one` (Midnight Grand Orchestra: 4 groups `jpn`, English-titled singles NULL). Pipeline check logged; pipeline device needs pull + restart.
+- `vitest` 107/107, `tsc` clean, eslint clean on touched files.
+- Backfill for the existing catalog: `scripts/backfill-title-language.ts` (`npm run backfill:title-language`) + light `mb-client.browseArtistReleaseLanguages` (no tracklists). Resumable, priority-ordered, `--gap-ms` to slow it if this box shares an IP with the pipeline. Dry run on 5 rated artists → 32 groups; full run started on Windows.
+
+---
+
+**2026-09-28 (Windows, web) — genre × language: J-Rock and K-Hip-Hop split from Rock and Hip-Hop; Taste map rebuilt.**
+
+- **Review of the genre + country pipeline, measured on live data (1% RG sample + all rated albums):** ~48% of albums lack a primary-artist country. 80% of Korean albums have no genres, and ~50% of those that do carry only generic tags. `native_language` marks kanji-only Japanese artists `zh`. `artists.genres` is empty. XW/XE/XU are stored as countries. Country is fill-null-only, so wrong values persist. Probed MB live: `text-representation.language` is the tracklist-title language, not lyrics (Korean rap releases come back `eng`). Details are in README Known issues.
+- **`lib/genres/language.ts` (new):** `albumLanguage` evidence ladder (language-bound tag → title script → artist name script ko/ja → country for local-language countries; English countries → `en`; weak evidence → unqualified). `qualify(id, lang)` maps a sung, non-regional genre to its authored localized node (taxonomy `localizes`: pop@ko → k-pop, rock@ja → j-rock, hip-hop@ko → k-rap, pop@es → latin-pop) or to a synthetic `base@lang` id with a derived label (K-Rock, J-Hip-Hop, "Japanese Alternative Rock"). Jazz, classical, electronic and experimental stay unqualified, and latin/reggae are regional in themselves. `primaryOfAlbum` picks the primary on the tags as written and only then qualifies it, so an explicit `k-pop` tag isn't beaten by a qualified `hip hop` just because the legacy arrays are alphabetical.
+- **`taxonomy.ts`:** added `language` (scene roots plus chanson/schlager/krautrock/flamenco/latin-pop/reggaeton/trap-latino) and `localizes` (10 localized nodes). Both are additive and ignored by the SQL generator, so no SQL drift and no migration. `validate-taxonomy.ts` gained **I9** (language codes valid, localizations unique and onto language-neutral bases).
+- **`lib/taste/worlds.ts` (new) + `/api/taste/profile` (cache v13):** a world is a language-qualified family and its tiles are qualified genres. Each album lives in exactly one world (its primary's family, in its language). Worlds below 4% share or beyond 7 fold into "Other" without losing albums. Albums with no tags borrow their artist's most common tags at half weight. Recommendation pools are country-filtered in SQL per language, then placed in Node, and only same-language, in-world fits survive. Qualified genres with no vector borrow base ⊕ language anchor. Payload shape is unchanged for iOS (clusters/graph gain `key`/`label`/`labelKo`/`language`/`displayKo`). The page shows Korean labels under `ko` and a "{lang}-language scene" note.
+- **Verified on the six most active users' real ratings (read-only):** Korean rap (E Sens, BEIGE, DETOX…) now forms Korean Hip-Hop instead of sitting in Hip-Hop with US rap; Korean indie rock forms K-Rock; J-Rock is separate from Rock. Found and fixed during that check: qualification initially let `[hip hop, k-pop]` idol albums fall into Korean Hip-Hop.
+- `vitest` 104/104 (+`language.test.ts` 17, `worlds.test.ts` 9), `tsc` clean, `taxonomy:validate` green. Not done: `/api/recommendations` + `lib/feed/taste.ts` still on `buildClusters`; qualified genres aren't shown outside the Taste map.
+
+---
+
 **2026-09-28 (Mac) — 6 new custom app icons (13 alternates total) + thumbnail picker.**
 
 - **New icons:** Midnight (navy + faint stars), Gold (metallic gradient + sheen), Gingham (blue check), Polka Dot (coral dots on cream), Sunset (peach → pink → lilac), Holographic (iridescent pastel).
@@ -70,6 +92,10 @@ Historical record of shipped features and session notes. Not needed at conversat
 - **Terms §3:** opt-out via Settings or email, and published promo gets removed or de-identified on request, which narrows exception (b).
 - **Before any credited post:** check `profile_visibility <> 'Private' AND allow_social_feature AND deactivated_at IS NULL` for that user. Per the policy's own §13, this is a rights-affecting change: **announce it (email or in-app notice) and wait 30 days (≈ 2026-10-27) before the first credited post**. Anonymous or aggregate posts are fine meanwhile.
 - iOS **BUILD SUCCEEDED**; web typecheck clean.
+
+---
+
+**2026-09-27 — Find People recommendations.** Applied `20260927000003_suggested_users_ranking.sql` to production. The shared `get_suggested_users` RPC now excludes private and deactivated accounts, existing follows, and blocks in either direction. It ranks public accounts by agreement on shared album and song ratings, with logarithmic credit for album/song rating volume, written reviews, and replies; humans remain ahead of bots. The return shape is unchanged, so the web home rail and iOS Find People page consume it without client edits. Live smoke test: seven results for a sample active viewer, all exclusions held. Post-migration catalog check recorded in `PIPELINE_CHECKS.md`.
 
 ---
 

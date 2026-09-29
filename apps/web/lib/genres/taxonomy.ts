@@ -47,6 +47,15 @@ export interface GenreNode {
   surface: boolean;
   /** Scene root: reachable only via sceneParents, never a sound row. */
   isScene?: boolean;
+  /** Language this node is bound to (ISO 639-1): 'ko' on the korean scene root,
+   *  'fr' on chanson, 'es' on latin-pop. A tag resolving here (or under a scene
+   *  root carrying one) is language evidence for its album, and a language-bound
+   *  node is never language-qualified further (see lib/genres/language.ts). */
+  language?: string;
+  /** For a localized genre: the language-neutral base node(s) it is the
+   *  in-language form of, in its own `language` — so rock by a Japanese act
+   *  resolves to j-rock and hip-hop by a Korean act to k-rap. */
+  localizes?: string[];
 }
 
 /** Terse node builder. ko defaults to en (flagged first-pass); arrays default []. */
@@ -61,6 +70,8 @@ function n(p: {
   rank?: number;
   surface?: boolean;
   isScene?: boolean;
+  language?: string;
+  localizes?: string[];
 }): GenreNode {
   return {
     id: p.id,
@@ -72,17 +83,19 @@ function n(p: {
     rank: p.rank ?? 0,
     surface: p.surface ?? false,
     ...(p.isScene ? { isScene: true } : {}),
+    ...(p.language ? { language: p.language } : {}),
+    ...(p.localizes ? { localizes: p.localizes } : {}),
   };
 }
 
 export const TAXONOMY: GenreNode[] = [
   // ══ Scene roots (isScene families; reached only via sceneParents) ══════════
-  n({ id: 'western', level: 'family', en: 'Western', ko: '서양', isScene: true }),
-  n({ id: 'korean', level: 'family', en: 'Korean', ko: '한국', isScene: true }),
-  n({ id: 'japanese', level: 'family', en: 'Japanese', ko: '일본', isScene: true }),
-  n({ id: 'chinese', level: 'family', en: 'Chinese', ko: '중화권', isScene: true }),
-  n({ id: 'indian', level: 'family', en: 'Indian', ko: '인도', isScene: true }),
-  n({ id: 'brazilian', level: 'family', en: 'Brazilian', ko: '브라질', isScene: true }),
+  n({ id: 'western', language: 'en', level: 'family', en: 'Western', ko: '서양', isScene: true }),
+  n({ id: 'korean', language: 'ko', level: 'family', en: 'Korean', ko: '한국', isScene: true }),
+  n({ id: 'japanese', language: 'ja', level: 'family', en: 'Japanese', ko: '일본', isScene: true }),
+  n({ id: 'chinese', language: 'zh', level: 'family', en: 'Chinese', ko: '중화권', isScene: true }),
+  n({ id: 'indian', language: 'hi', level: 'family', en: 'Indian', ko: '인도', isScene: true }),
+  n({ id: 'brazilian', language: 'pt', level: 'family', en: 'Brazilian', ko: '브라질', isScene: true }),
 
   // ══ Sound families ═════════════════════════════════════════════════════════
   n({ id: 'pop', level: 'family', en: 'Pop', ko: '팝', aliases: ['pop'], surface: true }),
@@ -112,7 +125,7 @@ export const TAXONOMY: GenreNode[] = [
   n({ id: 'art-pop', level: 'genre', en: 'Art Pop', ko: '아트 팝', sound: ['pop', 'experimental'], aliases: ['art pop'], rank: 3 }),
   n({ id: 'power-pop', level: 'genre', en: 'Power Pop', ko: '파워 팝', sound: ['pop', 'rock'], aliases: ['power pop'], rank: 3 }),
   n({ id: 'europop', level: 'genre', en: 'Europop', ko: '유로팝', sound: ['pop'], aliases: ['europop'], rank: 2 }),
-  n({ id: 'schlager', level: 'genre', en: 'Schlager', ko: '슐라거', sound: ['pop'], aliases: ['schlager'], rank: 2 }),
+  n({ id: 'schlager', language: 'de', level: 'genre', en: 'Schlager', ko: '슐라거', sound: ['pop'], aliases: ['schlager'], rank: 2 }),
   n({ id: 'ballad', level: 'genre', en: 'Ballad', ko: '발라드', sound: ['pop'], aliases: ['ballad'], rank: 2 }),
   n({ id: 'easy-listening', level: 'genre', en: 'Easy Listening', ko: '이지 리스닝', sound: ['pop'], aliases: ['easy listening', 'lounge'], rank: 2 }),
   n({ id: 'musical', level: 'genre', en: 'Musical', ko: '뮤지컬', sound: ['pop'], aliases: ['musical', 'show tunes', 'showtunes'], rank: 2 }),
@@ -123,16 +136,16 @@ export const TAXONOMY: GenreNode[] = [
   n({ id: 'pop-rap', level: 'genre', en: 'Pop Rap', ko: '팝 랩', sound: ['pop', 'hip-hop'], aliases: ['pop rap'], rank: 4 }),
   n({ id: 'country-pop', level: 'genre', en: 'Country Pop', ko: '컨트리 팝', sound: ['pop', 'country'], aliases: ['country pop'], rank: 3 }),
   n({ id: 'folk-pop', level: 'genre', en: 'Folk Pop', ko: '포크 팝', sound: ['pop', 'folk'], aliases: ['folk pop'], rank: 3 }),
-  n({ id: 'latin-pop', level: 'genre', en: 'Latin Pop', ko: '라틴 팝', sound: ['pop', 'latin'], aliases: ['latin pop'], rank: 4 }),
+  n({ id: 'latin-pop', language: 'es', localizes: ['pop'], level: 'genre', en: 'Latin Pop', ko: '라틴 팝', sound: ['pop', 'latin'], aliases: ['latin pop'], rank: 4 }),
   n({ id: 'chillwave', level: 'genre', en: 'Chillwave', ko: '칠웨이브', sound: ['pop', 'electronic'], aliases: ['chillwave'], rank: 4 }),
   // Pop — scene-qualified
-  n({ id: 'k-pop', level: 'genre', en: 'K-Pop', ko: '케이팝', sound: ['pop'], scene: ['korean'], aliases: ['k-pop', 'kpop', 'korean pop'], rank: 5, surface: true }),
-  n({ id: 'korean-ballad', level: 'genre', en: 'Korean Ballad', ko: '한국 발라드', sound: ['pop'], scene: ['korean'], aliases: ['korean ballad', 'k-ballad'], rank: 5 }),
-  n({ id: 'j-pop', level: 'genre', en: 'J-Pop', ko: '제이팝', sound: ['pop'], scene: ['japanese'], aliases: ['j-pop', 'jpop', 'japanese pop'], rank: 5, surface: true }),
+  n({ id: 'k-pop', localizes: ['pop'], level: 'genre', en: 'K-Pop', ko: '케이팝', sound: ['pop'], scene: ['korean'], aliases: ['k-pop', 'kpop', 'korean pop'], rank: 5, surface: true }),
+  n({ id: 'korean-ballad', localizes: ['ballad'], level: 'genre', en: 'Korean Ballad', ko: '한국 발라드', sound: ['pop'], scene: ['korean'], aliases: ['korean ballad', 'k-ballad'], rank: 5 }),
+  n({ id: 'j-pop', localizes: ['pop'], level: 'genre', en: 'J-Pop', ko: '제이팝', sound: ['pop'], scene: ['japanese'], aliases: ['j-pop', 'jpop', 'japanese pop'], rank: 5, surface: true }),
   n({ id: 'kayokyoku', level: 'genre', en: 'Kayōkyoku', ko: '가요쿄쿠', sound: ['pop'], scene: ['japanese'], aliases: ['kayōkyoku', 'kayokyoku'], rank: 5 }),
   n({ id: 'city-pop', level: 'genre', en: 'City Pop', ko: '시티 팝', sound: ['pop', 'rnb-soul'], scene: ['japanese'], aliases: ['city pop', 'citypop'], rank: 5, surface: true }),
-  n({ id: 'mandopop', level: 'genre', en: 'Mandopop', ko: '만다린 팝', sound: ['pop'], scene: ['chinese'], aliases: ['mandopop', 'mandarin pop'], rank: 5 }),
-  n({ id: 'indian-pop', level: 'genre', en: 'Indian Pop', ko: '인도 팝', sound: ['pop'], scene: ['indian'], aliases: ['indian pop'], rank: 5 }),
+  n({ id: 'mandopop', localizes: ['pop'], level: 'genre', en: 'Mandopop', ko: '만다린 팝', sound: ['pop'], scene: ['chinese'], aliases: ['mandopop', 'mandarin pop'], rank: 5 }),
+  n({ id: 'indian-pop', localizes: ['pop'], level: 'genre', en: 'Indian Pop', ko: '인도 팝', sound: ['pop'], scene: ['indian'], aliases: ['indian pop'], rank: 5 }),
   n({ id: 'filmi', level: 'genre', en: 'Filmi', ko: '필미', sound: ['pop'], scene: ['indian'], aliases: ['filmi', 'bollywood'], rank: 5 }),
 
   // ══ ROCK ═══════════════════════════════════════════════════════════════════
@@ -155,8 +168,8 @@ export const TAXONOMY: GenreNode[] = [
   n({ id: 'math-rock', level: 'genre', en: 'Math Rock', ko: '매스 록', sound: ['rock'], aliases: ['math rock'], rank: 4 }),
   n({ id: 'shoegaze', level: 'genre', en: 'Shoegaze', ko: '슈게이즈', sound: ['rock'], aliases: ['shoegaze', 'shoegazing'], rank: 4, surface: true }),
   n({ id: 'britpop', level: 'genre', en: 'Britpop', ko: '브릿팝', sound: ['rock'], aliases: ['britpop'], rank: 3 }),
-  n({ id: 'j-rock', level: 'genre', en: 'J-Rock', ko: '제이록', sound: ['rock'], scene: ['japanese'], aliases: ['j-rock', 'jrock', 'japanese rock', 'visual kei'], rank: 5, surface: true }),
-  n({ id: 'korean-indie', level: 'genre', en: 'Korean Indie', ko: '한국 인디', sound: ['rock'], scene: ['korean'], aliases: ['korean indie', 'k-indie'], rank: 5, surface: true }),
+  n({ id: 'j-rock', localizes: ['rock'], level: 'genre', en: 'J-Rock', ko: '제이록', sound: ['rock'], scene: ['japanese'], aliases: ['j-rock', 'jrock', 'japanese rock', 'visual kei'], rank: 5, surface: true }),
+  n({ id: 'korean-indie', localizes: ['indie-rock', 'indie-pop'], level: 'genre', en: 'Korean Indie', ko: '한국 인디', sound: ['rock'], scene: ['korean'], aliases: ['korean indie', 'k-indie'], rank: 5, surface: true }),
 
   // ══ PUNK ═══════════════════════════════════════════════════════════════════
   n({ id: 'punk-rock', level: 'genre', en: 'Punk Rock', ko: '펑크 록', sound: ['punk'], aliases: ['punk rock'], rank: 3 }),
@@ -183,7 +196,7 @@ export const TAXONOMY: GenreNode[] = [
   n({ id: 'east-coast-hip-hop', level: 'genre', en: 'East Coast Hip-Hop', ko: '이스트 코스트 힙합', sound: ['hip-hop'], aliases: ['east coast hip hop'], rank: 4 }),
   n({ id: 'grime', level: 'genre', en: 'Grime', ko: '그라임', sound: ['hip-hop', 'electronic'], aliases: ['grime'], rank: 4 }),
   n({ id: 'jazz-rap', level: 'genre', en: 'Jazz Rap', ko: '재즈 랩', sound: ['hip-hop', 'jazz'], aliases: ['jazz rap'], rank: 4 }),
-  n({ id: 'k-rap', level: 'genre', en: 'Korean Hip-Hop', ko: '한국 힙합', sound: ['hip-hop'], scene: ['korean'], aliases: ['k-rap', 'korean rap', 'korean hip hop'], rank: 5, surface: true }),
+  n({ id: 'k-rap', localizes: ['hip-hop'], level: 'genre', en: 'Korean Hip-Hop', ko: '한국 힙합', sound: ['hip-hop'], scene: ['korean'], aliases: ['k-rap', 'korean rap', 'korean hip hop'], rank: 5, surface: true }),
 
   // ══ R&B & SOUL ═════════════════════════════════════════════════════════════
   n({ id: 'soul', level: 'genre', en: 'Soul', ko: '소울', sound: ['rnb-soul'], aliases: ['soul'], rank: 2, surface: true }),
@@ -196,7 +209,7 @@ export const TAXONOMY: GenreNode[] = [
   n({ id: 'gospel', level: 'genre', en: 'Gospel', ko: '가스펠', sound: ['rnb-soul'], aliases: ['gospel'], rank: 3 }),
   n({ id: 'soul-jazz', level: 'genre', en: 'Soul Jazz', ko: '소울 재즈', sound: ['rnb-soul', 'jazz'], aliases: ['soul jazz'], rank: 4 }),
   n({ id: 'jazz-funk', level: 'genre', en: 'Jazz-Funk', ko: '재즈 훵크', sound: ['rnb-soul', 'jazz'], aliases: ['jazz-funk', 'jazz funk'], rank: 4 }),
-  n({ id: 'k-r-and-b', level: 'genre', en: 'Korean R&B', ko: '한국 알앤비', sound: ['rnb-soul'], scene: ['korean'], aliases: ['k-r&b', 'korean r&b', 'korean rnb'], rank: 5, surface: true }),
+  n({ id: 'k-r-and-b', localizes: ['rnb-soul', 'r-and-b'], level: 'genre', en: 'Korean R&B', ko: '한국 알앤비', sound: ['rnb-soul'], scene: ['korean'], aliases: ['k-r&b', 'korean r&b', 'korean rnb'], rank: 5, surface: true }),
 
   // ══ ELECTRONIC ═════════════════════════════════════════════════════════════
   n({ id: 'house', level: 'genre', en: 'House', ko: '하우스', sound: ['electronic'], aliases: ['house'], rank: 3, surface: true }),
@@ -222,7 +235,7 @@ export const TAXONOMY: GenreNode[] = [
   n({ id: 'new-age', level: 'genre', en: 'New Age', ko: '뉴 에이지', sound: ['electronic'], aliases: ['new age'], rank: 3 }),
   n({ id: 'dance', level: 'genre', en: 'Dance', ko: '댄스', sound: ['electronic'], aliases: ['dance', 'edm', 'electronic dance music'], rank: 2 }),
   n({ id: 'lo-fi', level: 'genre', en: 'Lo-fi', ko: '로파이', sound: ['electronic'], aliases: ['lo-fi', 'lofi'], rank: 3 }),
-  n({ id: 'reggaeton', level: 'genre', en: 'Reggaeton', ko: '레게톤', sound: ['electronic', 'latin'], aliases: ['reggaeton'], rank: 4 }),
+  n({ id: 'reggaeton', language: 'es', level: 'genre', en: 'Reggaeton', ko: '레게톤', sound: ['electronic', 'latin'], aliases: ['reggaeton'], rank: 4 }),
 
   // ══ JAZZ ═══════════════════════════════════════════════════════════════════
   n({ id: 'swing', level: 'genre', en: 'Swing', ko: '스윙', sound: ['jazz'], aliases: ['swing'], rank: 3 }),
@@ -242,7 +255,7 @@ export const TAXONOMY: GenreNode[] = [
   n({ id: 'indie-folk', level: 'genre', en: 'Indie Folk', ko: '인디 포크', sound: ['folk'], aliases: ['indie folk'], rank: 3 }),
   n({ id: 'bluegrass', level: 'genre', en: 'Bluegrass', ko: '블루그래스', sound: ['folk', 'country'], aliases: ['bluegrass'], rank: 3 }),
   n({ id: 'americana', level: 'genre', en: 'Americana', ko: '아메리카나', sound: ['folk', 'country'], aliases: ['americana'], rank: 3 }),
-  n({ id: 'korean-folk', level: 'genre', en: 'Korean Folk', ko: '한국 포크', sound: ['folk'], scene: ['korean'], aliases: ['korean folk', 'k-folk'], rank: 5 }),
+  n({ id: 'korean-folk', localizes: ['folk'], level: 'genre', en: 'Korean Folk', ko: '한국 포크', sound: ['folk'], scene: ['korean'], aliases: ['korean folk', 'k-folk'], rank: 5 }),
   n({ id: 'bhangra', level: 'genre', en: 'Bhangra', ko: '방그라', sound: ['folk', 'electronic'], scene: ['indian'], aliases: ['bhangra'], rank: 5 }),
 
   // ══ COUNTRY ════════════════════════════════════════════════════════════════
@@ -307,7 +320,7 @@ export const TAXONOMY: GenreNode[] = [
   n({ id: 'space-rock', level: 'genre', en: 'Space Rock', ko: '스페이스 록', sound: ['rock'], aliases: ['space rock'], rank: 3 }),
   n({ id: 'stoner-rock', level: 'genre', en: 'Stoner Rock', ko: '스토너 록', sound: ['rock'], aliases: ['stoner rock', 'stoner metal'], rank: 3 }),
   n({ id: 'gothic-rock', level: 'genre', en: 'Gothic Rock', ko: '고딕 록', sound: ['rock'], aliases: ['gothic rock', 'goth rock'], rank: 3 }),
-  n({ id: 'krautrock', level: 'genre', en: 'Krautrock', ko: '크라우트록', sound: ['rock', 'experimental'], aliases: ['krautrock'], rank: 3 }),
+  n({ id: 'krautrock', language: 'de', level: 'genre', en: 'Krautrock', ko: '크라우트록', sound: ['rock', 'experimental'], aliases: ['krautrock'], rank: 3 }),
   n({ id: 'noise-rock', level: 'genre', en: 'Noise Rock', ko: '노이즈 록', sound: ['rock', 'experimental'], aliases: ['noise rock'], rank: 3 }),
   n({ id: 'experimental-rock', level: 'genre', en: 'Experimental Rock', ko: '실험 록', sound: ['rock', 'experimental'], aliases: ['experimental rock'], rank: 3 }),
   n({ id: 'symphonic-rock', level: 'genre', en: 'Symphonic Rock', ko: '심포닉 록', sound: ['rock', 'classical'], aliases: ['symphonic rock'], rank: 3 }),
@@ -345,7 +358,7 @@ export const TAXONOMY: GenreNode[] = [
   n({ id: 'doo-wop', level: 'genre', en: 'Doo-Wop', ko: '두왑', sound: ['pop', 'rnb-soul'], aliases: ['doo-wop', 'doo wop'], rank: 3 }),
   n({ id: 'progressive-pop', level: 'genre', en: 'Progressive Pop', ko: '프로그레시브 팝', sound: ['pop'], aliases: ['progressive pop'], rank: 3 }),
   n({ id: 'contemporary-christian', level: 'genre', en: 'Contemporary Christian', ko: '컨템퍼러리 크리스천', sound: ['pop'], aliases: ['contemporary christian', 'ccm', 'christian pop'], rank: 2 }),
-  n({ id: 'chanson', level: 'genre', en: 'Chanson', ko: '샹송', sound: ['pop', 'folk'], aliases: ['chanson', 'chanson française', 'chanson francaise', 'french chanson'], rank: 2 }),
+  n({ id: 'chanson', language: 'fr', level: 'genre', en: 'Chanson', ko: '샹송', sound: ['pop', 'folk'], aliases: ['chanson', 'chanson française', 'chanson francaise', 'french chanson'], rank: 2 }),
   n({ id: 'afrobeats', level: 'genre', en: 'Afrobeats', ko: '아프로비츠', sound: ['pop', 'electronic'], aliases: ['afrobeats'], rank: 3 }),
   // Pop — scene-qualified
   n({ id: 'enka', level: 'genre', en: 'Enka', ko: '엔카', sound: ['pop'], scene: ['japanese'], aliases: ['enka'], rank: 5 }),
@@ -404,7 +417,7 @@ export const TAXONOMY: GenreNode[] = [
   n({ id: 'contemporary-folk', level: 'genre', en: 'Contemporary Folk', ko: '컨템퍼러리 포크', sound: ['folk'], aliases: ['contemporary folk'], rank: 3 }),
   n({ id: 'neofolk', level: 'genre', en: 'Neofolk', ko: '네오포크', sound: ['folk'], aliases: ['neofolk', 'neo-folk'], rank: 3 }),
   n({ id: 'celtic', level: 'genre', en: 'Celtic', ko: '켈틱', sound: ['folk'], aliases: ['celtic', 'celtic folk', 'celtic music'], rank: 3 }),
-  n({ id: 'flamenco', level: 'genre', en: 'Flamenco', ko: '플라멩코', sound: ['folk'], aliases: ['flamenco'], rank: 3 }),
+  n({ id: 'flamenco', language: 'es', level: 'genre', en: 'Flamenco', ko: '플라멩코', sound: ['folk'], aliases: ['flamenco'], rank: 3 }),
   n({ id: 'qawwali', level: 'genre', en: 'Qawwali', ko: '카왈리', sound: ['folk'], scene: ['indian'], aliases: ['qawwali'], rank: 5 }),
 
   // — Country —
@@ -446,7 +459,7 @@ export const TAXONOMY: GenreNode[] = [
   n({ id: 'cumbia', level: 'genre', en: 'Cumbia', ko: '쿰비아', sound: ['latin'], aliases: ['cumbia'], rank: 3 }),
   n({ id: 'mambo', level: 'genre', en: 'Mambo', ko: '맘보', sound: ['latin'], aliases: ['mambo'], rank: 3 }),
   n({ id: 'guaracha', level: 'genre', en: 'Guaracha', ko: '과라차', sound: ['latin'], aliases: ['guaracha'], rank: 3 }),
-  n({ id: 'trap-latino', level: 'genre', en: 'Latin Trap', ko: '라틴 트랩', sound: ['latin', 'hip-hop'], aliases: ['trap latino', 'latin trap'], rank: 4 }),
+  n({ id: 'trap-latino', language: 'es', level: 'genre', en: 'Latin Trap', ko: '라틴 트랩', sound: ['latin', 'hip-hop'], aliases: ['trap latino', 'latin trap'], rank: 4 }),
 ];
 
 /** id → node, for O(1) lookup. */

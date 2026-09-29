@@ -161,6 +161,7 @@
     "ig:cover": "tsx --env-file=.env.local scripts/fetch-ig-cover.ts",
     "ig:render": "tsx --env-file=.env.local scripts/render-ig-poster.ts",
     "ig:pipeline": "tsx --env-file=.env.local scripts/run-ig-pipeline.ts",
+    "backfill:title-language": "tsx --env-file=.env.local scripts/backfill-title-language.ts",
     "taxonomy:validate": "tsx scripts/validate-taxonomy.ts",
     "taxonomy:vocab": "tsx scripts/dump-genre-vocab.ts",
     "taxonomy:mb": "tsx scripts/dump-mb-genre-tree.ts",

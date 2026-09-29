@@ -725,6 +725,7 @@ const en = {
       sceneWest: 'Western scene',
       sceneOther: 'global scene',
       sceneMixed: 'mixed scenes',
+      sceneLang: '{lang}-language scene',
       worldAvgLine: 'You rate this world {avg} on average —',
       worldVsUsualAbove: '{diff} above your usual.',
       worldVsUsualBelow: '{diff} below your usual.',

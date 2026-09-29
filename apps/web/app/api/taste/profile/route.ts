@@ -4,17 +4,19 @@ import { getAuthedUserId } from '../../../../lib/authGuard';
 import { rateLimit } from '../../../../lib/rateLimit';
 import { cacheGet, cacheSet } from '../../../../lib/cache';
 import { preferHangulName } from '../../../../lib/sj/display';
-import { cosine, displayGenre, genreVector } from '../../../../lib/taste/embeddings';
-import { canonicalize, synonymsOf } from '../../../../lib/taste/genreSynonyms';
-import { sceneOf, type Scene } from '../../../../lib/taste/albumVector';
+import { cosine, displayGenre } from '../../../../lib/taste/embeddings';
+import { synonymsOf } from '../../../../lib/taste/genreSynonyms';
+import { sceneOf, yearOf, type Scene } from '../../../../lib/taste/albumVector';
+import { weightsFromRatings } from '../../../../lib/taste/profile';
 import {
-  weightsFromRatings,
-  mergeSynonymWeights,
-  buildClusters,
-  blobAffinity,
-  clusterProfiles,
-  dislikedTags,
-} from '../../../../lib/taste/profile';
+  buildTasteMap,
+  placeAlbum,
+  qualifiedVector,
+  worldAffinity,
+  OTHER_WORLD,
+  type AlbumPlacement,
+} from '../../../../lib/taste/worlds';
+import { countriesOfLanguage, qualifiedInfo } from '../../../../lib/genres/language';
 
 // Full taste analysis for the Taste page (2026-07-13 rebuild: a graphical
 // analysis report — world composition, release-decade and score-distribution
@@ -32,11 +34,11 @@ export const maxDuration = 15;
 const TTL_SECONDS = 60;
 /** Tags per world that become sub-genre bubbles (and get their own rec list). */
 const GRAPH_TAGS = 8;
-/** Worlds that get a prestige candidate pool for the graph's side panel. Covers
- *  every world the clusterer can now emit (scene-forced worlds can push past 5),
- *  so a smaller world like J-pop gets its OWN in-genre recs instead of falling
- *  back to a bigger neighbour's (which surfaced all-k-pop under the J-pop tab). */
+/** Worlds that get a prestige candidate pool for the graph's side panel — every
+ *  world the taste map can emit (MAX_WORLDS), each filtered to its own language. */
 const REC_POOL_WORLDS = 7;
+/** Tags an untagged album borrows from its artist's other albums. */
+const BORROWED_TAGS = 4;
 const RECS_PER_FOCUS = 6;
 /** Cap on the rated albums shipped for the side panel (score-descending). */
 const GRAPH_ALBUMS = 400;
@@ -53,7 +55,9 @@ interface RatingRow {
     genres: string[] | null;
     first_release_date: string | null;
     prestige_score: number | null;
-    artists: { name_native: string | null; country: string | null } | null;
+    primary_artist_id: string | null;
+    title_language: string | null;
+    artists: { name_native: string | null; country: string | null; native_language: string | null } | null;
   } | null;
 }
 
@@ -76,7 +80,13 @@ export async function GET(req: NextRequest) {
   // v12: 2026-09-26 — adds charts.countries (per-ISO-3166 artist country, the
   // web chart's replacement for the kr/jp/west/other scene mix). charts.scenes
   // stays for iOS, which still renders it; the world labels keep using scenes.
-  const cacheKey = `taste:profile:v12:${userId}`;
+  // v13: 2026-09-28 — the taste map is rebuilt on taxonomy × language
+  // (lib/taste/worlds.ts): worlds are language-qualified families (J-Rock,
+  // Korean Hip-Hop, Rock…), tiles are qualified genres, untagged albums borrow
+  // their artist's tags; clusters[] gains key/label/labelKo/language.
+  // v14: 2026-09-28 — language-name labels ("Korean Rock"), tiles show the plain
+  // genre (only the world names the language), MB tracklist language as evidence.
+  const cacheKey = `taste:profile:v14:${userId}`;
   if (!refresh) {
     const cached = await cacheGet<object>(cacheKey);
     if (cached) return NextResponse.json(cached);
@@ -89,7 +99,7 @@ export async function GET(req: NextRequest) {
     supabase
       .from('ratings')
       .select(
-        'score, created_at, release_groups(id, title, artist_display, cover_url, native_title, genres, first_release_date, prestige_score, artists!release_groups_primary_artist_id_fkey(name_native, country))',
+        'score, created_at, release_groups(id, title, artist_display, cover_url, native_title, genres, first_release_date, prestige_score, primary_artist_id, title_language, artists!release_groups_primary_artist_id_fkey(name_native, country, native_language))',
       )
       .eq('user_id', userId)
       .limit(500),
@@ -120,34 +130,79 @@ export async function GET(req: NextRequest) {
   const weights = weightsFromRatings(
     rows.map((r) => ({ score: r.score, genres: r.release_groups!.genres })),
   );
-  // Merge near-duplicate genres (spelling variants + embedding near-twins like
-  // soul→r&b) for the derived map/clusters; the stored `genre_weights` upsert
-  // below keeps the raw keys for iOS.
-  const merged = mergeSynonymWeights(weights);
-  const clusters = buildClusters(merged.weights);
-  const disliked = dislikedTags(merged.weights);
-  // Map an album/candidate's raw genre onto its merged tile tag (spelling
-  // canonical → embedding anchor), and the reverse (anchor → every raw catalog
-  // spelling that lands on it) for genre-overlap DB queries.
-  const toTile = (raw: string) => {
-    const c = canonicalize(raw.trim());
-    return merged.anchorOf[c] ?? c;
-  };
-  const spellingsOf = new Map<string, string[]>();
-  for (const [canon, anchor] of Object.entries(merged.anchorOf)) {
-    let list = spellingsOf.get(anchor);
-    if (!list) spellingsOf.set(anchor, (list = []));
-    for (const s of synonymsOf(canon)) list.push(s);
+  // ── taste map: language-qualified worlds (lib/taste/worlds.ts) ──
+  // Albums with no genre tags of their own (most of the Korean catalog) borrow
+  // the tags most common across their artist's other albums, at half weight, so
+  // they still land in a world instead of vanishing from the map.
+  const untaggedArtists = Array.from(
+    new Set(
+      rows
+        .filter((r) => !r.release_groups!.genres?.length && r.release_groups!.primary_artist_id)
+        .map((r) => r.release_groups!.primary_artist_id!),
+    ),
+  ).slice(0, 200);
+  const borrowed = new Map<string, string[]>();
+  if (untaggedArtists.length > 0) {
+    const { data: sib, error: sibErr } = await supabase
+      .from('release_groups')
+      .select('primary_artist_id, genres')
+      .in('primary_artist_id', untaggedArtists)
+      .not('genres', 'is', null)
+      .limit(1000);
+    if (sibErr) console.error('[taste] artist genre fallback error:', sibErr.message);
+    const counts = new Map<string, { albums: number; tags: Map<string, number> }>();
+    for (const g of (sib as { primary_artist_id: string; genres: string[] | null }[] | null) ?? []) {
+      if (!g.genres?.length) continue;
+      const e = counts.get(g.primary_artist_id) ?? { albums: 0, tags: new Map<string, number>() };
+      e.albums += 1;
+      for (const t of g.genres) e.tags.set(t, (e.tags.get(t) ?? 0) + 1);
+      counts.set(g.primary_artist_id, e);
+    }
+    for (const [artist, e] of counts) {
+      const tags = [...e.tags.entries()]
+        .filter(([, n]) => n >= Math.max(1, 0.3 * e.albums))
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .slice(0, BORROWED_TAGS)
+        .map(([t]) => t);
+      if (tags.length > 0) borrowed.set(artist, tags);
+    }
   }
-  // Per-world era + scene profiles ("2020s · Korean scene") for the report.
-  const worldProfiles = clusterProfiles(
-    rows.map((r) => ({
-      genres: r.release_groups!.genres,
-      first_release_date: r.release_groups!.first_release_date,
-      country: r.release_groups!.artists?.country ?? null,
-    })),
-    clusters,
+  const placed = rows.map((r) => {
+    const rg = r.release_groups!;
+    const own = rg.genres?.length ? rg.genres : null;
+    const genres = own ?? borrowed.get(rg.primary_artist_id ?? '') ?? null;
+    return {
+      row: r,
+      inferred: !own && genres != null,
+      placement: placeAlbum({
+        genres,
+        title: rg.title,
+        nativeTitle: rg.native_title,
+        artistCountry: rg.artists?.country ?? null,
+        artistNativeLanguage: rg.artists?.native_language ?? null,
+        titleLanguage: rg.title_language,
+      }),
+    };
+  });
+  const tasteMap = buildTasteMap(
+    placed
+      .filter((p) => display(p.row) != null)
+      .map((p) => ({
+        id: p.row.release_groups!.id,
+        score: display(p.row)!,
+        year: yearOf(p.row.release_groups!.first_release_date),
+        country: p.row.release_groups!.artists?.country ?? null,
+        placement: p.placement,
+        confidence: p.inferred ? 0.5 : 1,
+      })),
   );
+  const worlds = tasteMap.worlds;
+  // Genres you demonstrably dislike: weighted average ≤ 2.0 over enough evidence.
+  const disliked = worlds
+    .filter((w) => w.key !== OTHER_WORLD)
+    .flatMap((w) => w.tiles)
+    .filter((t) => t.mass >= 1.5 && t.avg <= 2.0)
+    .sort((a, b) => a.avg - b.avg || b.mass - a.mass);
   // Fired here, awaited later (alongside recPools below) instead of blocking immediately --
   // nothing computed between here and the response depends on this write completing, it's a
   // side-effect for other consumers (iOS reads user_taste_profiles directly elsewhere). Still
@@ -192,19 +247,14 @@ export async function GET(req: NextRequest) {
       : null;
 
   // Effective genre count — the Hill number of order 1 (exp of the Shannon
-  // entropy over how many of your ratings fall in each merged genre). A genuine
+  // entropy over how many of your ratings fall in each genre). A genuine
   // diversity measure, not a raw tally: 1.0 means everything sits in one genre;
   // a value near your genre total means your listening spreads evenly across all
-  // of them. Uses the merged tile tags so spelling variants don't inflate it.
+  // of them. Uses the language-qualified taxonomy ids, so spelling variants
+  // don't inflate it and J-Rock counts apart from Rock.
   const genreCounts = new Map<string, number>();
-  for (const r of rows) {
-    const seen = new Set<string>();
-    for (const g of r.release_groups!.genres ?? []) {
-      const tag = toTile(g);
-      if (seen.has(tag)) continue;
-      seen.add(tag);
-      genreCounts.set(tag, (genreCounts.get(tag) ?? 0) + 1);
-    }
+  for (const p of placed) {
+    for (const q of p.placement.all) genreCounts.set(q, (genreCounts.get(q) ?? 0) + 1);
   }
   const genreMass = Array.from(genreCounts.values()).reduce((a, b) => a + b, 0);
   let entropy = 0;
@@ -359,40 +409,37 @@ export async function GET(req: NextRequest) {
   const r2 = (x: number | null) => (x != null ? Math.round(x * 100) / 100 : null);
 
   // ── Taste map ──────────────────────────────────────────────────────────────
-  // The graph is drawn from the same clusters the report already computes: a
-  // world is a bubble, its tags are the sub-genre bubbles you zoom into. The
-  // client lays them out from the similarity matrices below (embedding cosine),
-  // so "positioned by similarity" doesn't need the 300-dim vectors on the wire.
-  const graphWorlds = clusters.map((c, i) => {
-    const tags = c.tags.slice(0, GRAPH_TAGS);
-    const tagMass = tags.reduce((s, t) => s + t.n, 0) || 1;
-    const vecs = tags.map((t) => genreVector(t.tag));
+  // Worlds are language-qualified sound families (lib/taste/worlds.ts): a world
+  // is a tile, its qualified genres are the sub-genre tiles you zoom into. The
+  // similarity matrices ride along for clients that lay out by similarity.
+  const r3 = (x: number) => Math.round(x * 1000) / 1000;
+  const graphWorlds = worlds.map((w, i) => {
+    const tags = w.tiles.slice(0, GRAPH_TAGS);
+    const vecs = tags.map((t) => qualifiedVector(t.id));
     return {
       key: `world:${i}`,
-      label:
-        tags.length > 1 && tags[1].w >= tags[0].w * 0.5
-          ? `${displayGenre(tags[0].tag)} × ${displayGenre(tags[1].tag)}`
-          : displayGenre(tags[0]?.tag ?? ''),
-      primary: displayGenre(tags[0]?.tag ?? ''),
-      share: c.share,
-      mass: Math.round(tagMass * 10) / 10,
-      avg: r2(3 + c.tags.reduce((s, t) => s + t.w, 0) / (c.tags.reduce((s, t) => s + t.n, 0) || 1)),
-      sim: clusters.map((o) => Math.round(cosine(c.centroid, o.centroid) * 1000) / 1000),
+      label: w.label.en,
+      labelKo: w.label.ko,
+      primary: w.label.en,
+      language: w.language,
+      share: w.share,
+      mass: w.mass,
+      avg: w.avg,
+      sim: worlds.map((o) => (w.centroid && o.centroid ? r3(cosine(w.centroid, o.centroid)) : 0)),
       tags: tags.map((t) => ({
-        tag: t.tag,
-        display: displayGenre(t.tag),
-        mass: Math.round(t.n * 10) / 10,
-        share: Math.round((t.n / tagMass) * 1000) / 1000,
+        tag: t.id,
+        display: t.display.en,
+        displayKo: t.display.ko,
+        mass: t.mass,
+        share: t.share,
         avg: t.avg,
       })),
-      tagSim: vecs.map((a) =>
-        vecs.map((b) => (a && b ? Math.round(cosine(a, b) * 1000) / 1000 : 0)),
-      ),
+      tagSim: vecs.map((a) => vecs.map((b) => (a && b ? r3(cosine(a, b)) : 0))),
     };
   });
 
-  // Every tag that can be focused — the side panel filters the user's ratings
-  // against this vocabulary, so albums ship with their in-vocab tags only.
+  // Every tile that can be focused — the side panel filters the user's ratings
+  // against this vocabulary, so albums ship with their in-vocab tiles only.
   const vocab = new Set<string>();
   for (const w of graphWorlds) for (const t of w.tags) vocab.add(t.tag);
 
@@ -400,17 +447,7 @@ export async function GET(req: NextRequest) {
   const graphAlbums = scored
     .map((r) => {
       const rg = r.release_groups!;
-      // Map each genre to its merged tile tag, keep only in-vocab ones, dedup.
-      const tags: string[] = [];
-      const seenTags = new Set<string>();
-      for (const g of rg.genres ?? []) {
-        const c = toTile(g);
-        if (vocab.has(c) && !seenTags.has(c)) {
-          seenTags.add(c);
-          tags.push(c);
-          if (tags.length >= 5) break;
-        }
-      }
+      const tags = (tasteMap.albumTiles.get(rg.id) ?? []).filter((t) => vocab.has(t)).slice(0, 5);
       if (tags.length === 0) return null;
       return {
         id: rg.id,
@@ -425,35 +462,38 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => b.score - a.score)
     .slice(0, GRAPH_ALBUMS);
 
-  // One candidate pool per leading world: prestige gates it to canon-quality
-  // albums overlapping the world's (synonym-expanded) genres, then we re-rank in
-  // Node by blob affinity so the panel shows the most *on-taste* of them — not
-  // just the most prestigious — reusing the same fit math the recommender uses.
-  // Already-rated albums are excluded here, not on the client.
-  // Awaited together with upsertPromise (queued earlier) so that write finally overlaps
-  // with a network call instead of sitting alone in the middle of the handler.
+  // One candidate pool per world: prestige gates it to canon-quality albums
+  // overlapping the world's genres (every raw spelling of each tile's base
+  // genre), restricted in SQL to the language's countries where it has a
+  // country list; then every candidate is placed on the map in Node and only
+  // same-language, in-world fits survive, ranked by world affinity with
+  // prestige as the tiebreak. Already-rated albums are excluded here.
+  const poolWorlds = worlds.slice(0, REC_POOL_WORLDS);
   const [recPools, { error: upsertErr }] = await Promise.all([
     Promise.all(
-      clusters.slice(0, REC_POOL_WORLDS).map((c) =>
-        supabase
+      poolWorlds.map(async (w) => {
+        if (w.key === OTHER_WORLD) return { data: [] as unknown[], error: null };
+        const spellings = new Set<string>();
+        for (const t of w.tiles.slice(0, GRAPH_TAGS)) {
+          const info = qualifiedInfo(t.id);
+          for (const id of [t.id, info?.base]) {
+            if (id && !id.includes('@')) for (const sp of synonymsOf(id)) spellings.add(sp);
+          }
+        }
+        const countries = countriesOfLanguage(w.language);
+        let q = supabase
           .from('release_groups')
           .select(
-            'id, title, artist_display, cover_url, native_title, genres, first_release_date, prestige_score, artists!release_groups_primary_artist_id_fkey(country)',
+            `id, title, artist_display, cover_url, native_title, genres, first_release_date, prestige_score, title_language, artists!release_groups_primary_artist_id_fkey${countries.length > 0 ? '!inner' : ''}(country, native_language)`,
           )
-          .overlaps(
-            'genres',
-            // Expand each merged anchor tag back to every raw catalog spelling that
-            // folds onto it, so a rec tagged "soul" still matches the "r&b" world.
-            Array.from(
-              new Set(c.tags.slice(0, GRAPH_TAGS).flatMap((t) => spellingsOf.get(t.tag) ?? [t.tag])),
-            ),
-          )
+          .overlaps('genres', Array.from(spellings))
           .not('prestige_score', 'is', null)
           .in('release_group_type', ['album', 'ep'])
-          .not('cover_url', 'is', null)
-          .order('prestige_score', { ascending: false })
-          .limit(90),
-      ),
+          .not('cover_url', 'is', null);
+        if (countries.length > 0) q = q.in('artists.country', countries);
+        const { data, error } = await q.order('prestige_score', { ascending: false }).limit(90);
+        return { data: (data ?? []) as unknown[], error };
+      }),
     ),
     upsertPromise,
   ]);
@@ -468,7 +508,8 @@ export async function GET(req: NextRequest) {
     genres: string[] | null;
     first_release_date: string | null;
     prestige_score: number | null;
-    artists: { country: string | null } | null;
+    title_language: string | null;
+    artists: { country: string | null; native_language: string | null } | null;
   }
   const recs: Record<string, { id: string; title: string; artist: string; coverUrl: string | null }[]> =
     {};
@@ -477,40 +518,27 @@ export async function GET(req: NextRequest) {
       console.error('[taste] rec pool error:', res.error.message);
       return;
     }
-    // A scene-pinned world (j-pop/k-pop…) only recommends in-scene (or
-    // unknown-country) albums, so a J-pop world can't surface Korean K-pop even
-    // when a Korean release carries a stray j-pop tag.
-    const pinnedScene = clusters[i]?.scene ?? null;
-    // Rank by taste fit (genre + era + scene), prestige as the tiebreak.
-    const pool = ((res.data as unknown as PoolRow[] | null) ?? [])
+    const world = poolWorlds[i];
+    const pool = (res.data as PoolRow[])
       .filter((r) => !ratedIds.has(r.id))
-      .filter((r) => {
-        if (!pinnedScene) return true;
-        const s = sceneOf(r.artists?.country ?? null);
-        return s == null || s === pinnedScene;
-      })
       .map((r) => {
-        const y = r.first_release_date ? parseInt(r.first_release_date.slice(0, 4), 10) : NaN;
-        return {
-          r,
-          aff: blobAffinity(
-            {
-              genres: r.genres,
-              year: Number.isFinite(y) && y >= 1900 ? y : null,
-              scene: sceneOf(r.artists?.country ?? null),
-            },
-            clusters,
-            worldProfiles,
-          ),
-        };
+        const placement: AlbumPlacement = placeAlbum({
+          genres: r.genres,
+          title: r.title,
+          nativeTitle: r.native_title,
+          artistCountry: r.artists?.country ?? null,
+          artistNativeLanguage: r.artists?.native_language ?? null,
+          titleLanguage: r.title_language,
+        });
+        return { r, placement, aff: worldAffinity(placement, yearOf(r.first_release_date), world) };
       })
-      .sort((a, b) => b.aff - a.aff || (b.r.prestige_score ?? 0) - (a.r.prestige_score ?? 0))
-      .map((s) => s.r);
+      .filter((c) => c.aff > 0)
+      .sort((a, b) => b.aff - a.aff || (b.r.prestige_score ?? 0) - (a.r.prestige_score ?? 0));
     // One album per artist so a single prolific act can't own a panel.
-    const take = (candidates: PoolRow[]) => {
+    const take = (candidates: typeof pool) => {
       const seenArtists = new Set<string>();
       const out: { id: string; title: string; artist: string; coverUrl: string | null }[] = [];
-      for (const r of candidates) {
+      for (const { r } of candidates) {
         if (out.length >= RECS_PER_FOCUS) break;
         if (seenArtists.has(r.artist_display)) continue;
         seenArtists.add(r.artist_display);
@@ -525,7 +553,7 @@ export async function GET(req: NextRequest) {
     };
     recs[`world:${i}`] = take(pool);
     for (const t of graphWorlds[i].tags) {
-      const forTag = pool.filter((r) => (r.genres ?? []).some((g) => toTile(g) === t.tag));
+      const forTag = pool.filter((c) => c.placement.all.includes(t.tag));
       if (forTag.length > 0) recs[`tag:${t.tag}`] = take(forTag);
     }
   });
@@ -555,28 +583,28 @@ export async function GET(req: NextRequest) {
   const payload = {
     ratingCount: albumTotal + (trackCountRes.count ?? 0),
     albumRatingCount: albumTotal,
-    totalTags: Object.keys(weights).length,
-    clusters: clusters.map((c, i) => {
-      const sumW = c.tags.reduce((s, t) => s + t.w, 0);
-      const sumN = c.tags.reduce((s, t) => s + t.n, 0);
-      const p = worldProfiles[i];
-      return {
-        share: c.share,
-        avgScore: sumN > 0 ? Math.round((3 + sumW / sumN) * 100) / 100 : null,
-        meanYear: p?.meanYear ?? null,
-        sdYears: p?.sdYears ?? null,
-        dominantScene: p?.dominantScene ?? null,
-        tags: c.tags.slice(0, 8).map((t) => ({
-          tag: t.tag,
-          display: displayGenre(t.tag),
-          avg: t.avg,
-          n: Math.round(t.n * 10) / 10,
-        })),
-      };
-    }),
-    disliked: Array.from(disliked)
+    totalTags: genreCounts.size,
+    clusters: worlds.map((w) => ({
+      key: w.key,
+      label: w.label.en,
+      labelKo: w.label.ko,
+      language: w.language,
+      share: w.share,
+      avgScore: w.avg,
+      meanYear: w.meanYear,
+      sdYears: w.sdYears,
+      dominantScene: w.dominantScene,
+      tags: w.tiles.slice(0, 8).map((t) => ({
+        tag: t.id,
+        display: t.display.en,
+        displayKo: t.display.ko,
+        avg: t.avg,
+        n: t.mass,
+      })),
+    })),
+    disliked: disliked
       .slice(0, 6)
-      .map((tag) => ({ tag, display: displayGenre(tag) })),
+      .map((t) => ({ tag: t.id, display: t.fullDisplay.en, displayKo: t.fullDisplay.ko })),
     standings,
     graph: { worlds: graphWorlds, albums: graphAlbums, recs },
     charts: {

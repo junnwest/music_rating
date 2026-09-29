@@ -30,6 +30,7 @@ import { useSession } from '../../../../components/sj/SessionContext';
 import { useMixTarget } from '../../../../components/sj/MixTargetContext';
 import { supabase } from '../../../../lib/supabaseClient';
 import { useLanguage } from '../../../../lib/i18n';
+import { albumGenreLabels, albumLanguage } from '../../../../lib/genres/language';
 import { displayName, typeLabelKey, yearOf } from '../../../../lib/sj/display';
 import { releaseFromEmbed, type SJRelease, RG_COLS } from '../../../../lib/sj/data';
 import {
@@ -91,7 +92,7 @@ function SongPageInner() {
   const searchParams = useSearchParams();
   const rgHint = searchParams.get('rg');
   const router = useRouter();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const { userId, profile, requireAuth } = useSession();
   const { openChange } = useMixTarget();
   const ratingStep = profile?.manual_rating_step ?? 0.5;
@@ -99,6 +100,9 @@ function SongPageInner() {
   const [song, setSong] = useState<SongInfo | null>(null);
   const [release, setRelease] = useState<SJRelease | null>(null);
   const [genres, setGenres] = useState<string[]>([]);
+  // The album's language — the broadest genre chip gets it in front.
+  const [genreLang, setGenreLang] = useState<string | null>(null);
+  const genreLabels = albumGenreLabels(genres, genreLang, lang === 'ko' ? 'ko' : 'en');
   const [others, setOthers] = useState<OtherRelease[]>([]);
   const [tracks, setTracks] = useState<TrackEntry[]>([]);
   const [albumScores, setAlbumScores] = useState<Record<string, number>>({});
@@ -157,7 +161,9 @@ function SongPageInner() {
       // canonical) + the rest as "also on".
       const { data: rtRows } = await supabase!
         .from('release_tracks')
-        .select(`position, releases(is_canonical, release_groups(${RG_COLS}, genres))`)
+        .select(
+          `position, releases(is_canonical, release_groups(${RG_COLS}, genres, title_language, artists!release_groups_primary_artist_id_fkey(country, native_language)))`,
+        )
         .eq('recording_id', recordingId)
         .limit(40);
       if (cancelled) return;
@@ -195,6 +201,21 @@ function SongPageInner() {
       });
       setRelease(rg);
       setGenres(((preferred?.releases.release_groups.genres as string[] | null) ?? []).slice(0, 4));
+      {
+        const prg = preferred?.releases.release_groups;
+        setGenreLang(
+          prg
+            ? albumLanguage({
+                genres: prg.genres,
+                title: prg.title,
+                nativeTitle: prg.native_title,
+                artistCountry: prg.artists?.country ?? null,
+                artistNativeLanguage: prg.artists?.native_language ?? null,
+                titleLanguage: prg.title_language ?? null,
+              }).lang
+            : null,
+        );
+      }
       setOthers(otherList);
 
       // Your rating + comment, community stats, and the album's tracks — in parallel.
@@ -514,13 +535,13 @@ function SongPageInner() {
                   {formatDuration(song.durationMs)}
                 </span>
               )}
-              {genres.map((g) => (
+              {genres.map((g, i) => (
                 <Link
                   key={g}
                   href={`/charts/ranking?genre=${encodeURIComponent(g)}`}
                   className="px-2 py-0.5 rounded-full border border-divider text-[11px] text-muted hover:text-accent hover:border-accent/50 transition"
                 >
-                  {g}
+                  {genreLabels[i]}
                 </Link>
               ))}
             </div>
