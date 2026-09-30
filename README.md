@@ -97,7 +97,7 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 > - **iOS polish:** unread-count bell badge; song page rates like the album page (no comments); Disc N tracklist headers; Mix-tab counts fixed; "Post to Feed"; comment sheets open with the keyboard together, large-only detent, swipe/tap to dismiss keyboard, whole bottom area opens it; flower hold delay 0.03s; comment chevron left of score.
 > - **Removed:** Quick Add (iOS + web; `get_quick_add_*` RPCs left in DB, unused); all 11 email-login accounts (backup `apps/web/backups/email-accounts-deleted-2026-09-26T21-59-52-860Z.json`).
 >
-> **🔎 (2026-09-30, Mac) — Song search by title + artist ("독 이센스").** ✅ `…000004` applied (works). ⏳ Apply `20260930000005_search_songs_title_artist_bounded.sql` (fixes the timeout on common-word queries like "love you"). See SESSIONS.md.
+> **🔎 (2026-09-30, Mac) — Song search by title + artist ("독 이센스").** ✅ `…000004` + `…000005` (bounded; 0.2–0.35s) applied. ⏳ Apply `20260930000006_search_songs_title_artist_credit_names.sql` (credited-name match: stops "love you" matching "Jennifer Love Hewitt"). See SESSIONS.md.
 >
 > **🎵 (2026-09-30, Mac) — Artist Songs tab ordered by popularity (Last.fm).** ⏳ **Add `LASTFM_API_KEY` to Vercel** (Project → Settings → Environment Variables; same value as `.env.local`), then redeploy. Until then the Songs tab keeps its old order. iOS part ships with the next build. See SESSIONS.md.
 >

@@ -4,6 +4,14 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-30 (Mac) — Title+artist song search follow-ups.**
+
+- **`20260930000005` ✅ applied:** 0.2–0.35s (from up to 1s). "love you" no longer times out.
+- **It exposed substring false positives:** "You – Jennifer Love Hewitt" and "You – Lost Frequencies, Love Harder & Flynn" matched artist "Love" via `ILIKE '%Love%'` at 11000 (would win Top Match).
+- **`20260930000006_search_songs_title_artist_credit_names.sql` (⏳ apply):** the credit text is split into names (`, & + /` and feat. / featuring / ft. / with / x / of; not "and") and one must equal an artist name/alias. Checked on real credits: "프라이머리, E-Sens of 슈프림팀" → 프라이머리 | E-Sens | 슈프림팀.
+
+---
+
 **2026-09-30 (Mac) — Song search by "title + artist" ("독 이센스").** "독" found 독 by 프라이머리 / E-Sens but "독 이센스" found nothing.
 
 - **Data:** the recording `d8869f3e…` has `primary_artist_id` = Primary, and E-Sens appears only in the `artist_display` text ("프라이머리, E-Sens of 슈프림팀"); there's no featured-artist table. It's on *Primary and the Messengers LP* (track 7). 이센스 → artist E SENS (`name_phonetic_ko`), whose aliases include "E-Sens". Song search only matched the whole query against the title.
