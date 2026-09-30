@@ -4,6 +4,10 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-29 (Windows) — `backfill:title-language` finished.** 97,625 artists in the first pass (3 skipped on MB errors) + a resume pass covering those 3 and 6,037 newly-ingested artists; **168,002 release groups** now carry a non-English tracklist language (jpn 38,953, spa 27,189, fra 22,946, deu 14,717, ita 9,514, kor 7,812, por 7,074, rus 6,308, fin 4,222, hin 4,189, tur 3,167, zho 2,935). Korean is low because many Korean releases have English track titles (MB → eng, never stored) — Korean albums still resolve via script/country. Throughput ~4,400 artists/hr (most artists need one MB page). README pipeline-PC note updated: nothing left to run, no shared-IP clash.
+
+---
+
 **2026-09-29 (Windows, web, later still) — catch-all audit for other genres.** Audited j-pop, mandopop, cantopop, latin, latin pop, mpb, filmi, indian pop, korean indie and iTunes `alternative` on live data (albums also carrying another sung family, world counts + top artists). Fixed: pop@zh is now synthetic "Chinese Pop" (mandopop no longer `localizes` pop; mandopop/cantopop/mpb `catchAll: true`); reggaeton sound parents reordered [latin, electronic]; bare `alternative` counts as rock for the primary walk (`CATCH_ALL_RAW`); `latin` `languageHint: es` used only when the artist has no country (an English-country hint would relabel Santana). Left: j-pop-first J-rock bands (order carries no signal), latin-pop + hip hop pop stars (12 albums), filmi/indian pop/korean indie fine. `gen-taxonomy-sql` output identical to the applied file. Caches v17 / community v3. `vitest` 116/116, validator green.
 
 ---
