@@ -9,7 +9,7 @@ Historical record of shipped features and session notes. Not needed at conversat
 - **`20260930000005` ✅ applied:** 0.2–0.35s (from up to 1s). "love you" no longer times out.
 - **It exposed substring false positives:** "You – Jennifer Love Hewitt" and "You – Lost Frequencies, Love Harder & Flynn" matched artist "Love" via `ILIKE '%Love%'` at 11000 (would win Top Match).
 - **`20260930000006_search_songs_title_artist_credit_names.sql` (✅ applied; verified: "love you" no longer matches Jennifer Love Hewitt / Love Harder; 독 이센스, no boss dok2, etc. OK at 0.2–0.3s):** the credit text is split into names (`, & + /` and feat. / featuring / ft. / with / x / of; not "and") and one must equal an artist name/alias. Checked on real credits: "프라이머리, E-Sens of 슈프림팀" → 프라이머리 | E-Sens | 슈프림팀.
-- **`20260930000007_search_songs_title_artist_exact_first.sql` (⏳ apply):** after 000006, "love you" returned "You Are Something – Love" (artist Love + title prefix) at 10200, above a plain exact title (10000). Now exact title, or exact after stripping "(feat. …)" credits → 11000 (so "Seethru (feat. …)" / "Rain Song (feat. Colde)" keep it); any other prefix → 9000, listed but never Top Match.
+- **`20260930000007_search_songs_title_artist_exact_first.sql` (✅ applied; verified: "love you" → You Are Something – Love at 9000, so it can't be Top Match; all exact cases at 11000–11001, incl. "seethru primary" via feat-stripping; 0.2–0.5s):** after 000006, "love you" returned "You Are Something – Love" (artist Love + title prefix) at 10200, above a plain exact title (10000). Now exact title, or exact after stripping "(feat. …)" credits → 11000 (so "Seethru (feat. …)" / "Rain Song (feat. Colde)" keep it); any other prefix → 9000, listed but never Top Match.
 
 ---
 
