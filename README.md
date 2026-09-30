@@ -85,7 +85,9 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 > - **iOS polish:** unread-count bell badge; song page rates like the album page (no comments); Disc N tracklist headers; Mix-tab counts fixed; "Post to Feed"; comment sheets open with the keyboard together, large-only detent, swipe/tap to dismiss keyboard, whole bottom area opens it; flower hold delay 0.03s; comment chevron left of score.
 > - **Removed:** Quick Add (iOS + web; `get_quick_add_*` RPCs left in DB, unused); all 11 email-login accounts (backup `apps/web/backups/email-accounts-deleted-2026-09-26T21-59-52-860Z.json`).
 >
-> **🔎 (2026-09-29, Mac) — Short searches (1–2 chars: 독, 밤, 사랑, iu) fixed.** ✅ `20260929000000` (indexes) + `20260929000001` (short-query path) applied and verified live: 0.3–0.5s, 독 finds the eSNs song. Open: "에픽하이" returns no albums (pre-existing: long-query search doesn't match Korean artist names). See SESSIONS.md.
+> **🔎 (2026-09-30, Mac) — Album search by Korean artist names (에픽하이, 이센스).** ⏳ Apply `20260930000001_search_albums_by_artist_name.sql`. Web search now allows 1-character Korean/Japanese/Chinese too. Migrations go in `apps/web/supabase/migrations/` (the root `supabase/migrations/` is legacy). See SESSIONS.md.
+>
+> **🔎 (2026-09-29, Mac) — Short searches (1–2 chars: 독, 밤, 사랑, iu) fixed.** ✅ `20260929000000` (indexes) + `20260929000001` (short-query path) applied and verified live: 0.3–0.5s, 독 finds the eSNs song. See SESSIONS.md.
 >
 > **🏷️ (2026-09-28, Mac) — Posts show one badge (featured badge picker on your profile), handles never wrap.** ✅ `20260928000002_featured_badge.sql` applied 2026-09-28. Also today: own mix-post ⋯ menu, "shared a mix" removed, Taste 02 carousel scroll + sensitivity, Add-tab refresh, sort labels, 6 new app icons. See SESSIONS.md.
 >

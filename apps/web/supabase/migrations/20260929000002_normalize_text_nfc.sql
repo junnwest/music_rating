@@ -1,3 +1,6 @@
+-- Moved 2026-09-30 from the root supabase/migrations/ (renumbered 000000 -> 000002;
+-- that prefix was taken twice here). Already applied; filename only.
+
 -- Unicode-normalize search matching, so Korean typed as decomposed jamo finds composed text.
 --
 -- THE BUG. Hangul has two encodings: one precomposed syllable (킁, 3 bytes) or its three jamo

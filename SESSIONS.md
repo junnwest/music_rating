@@ -4,7 +4,22 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
-**2026-09-30 (Mac) — Merge note: Windows's NFC `normalize_text` meets the Mac's new short-query indexes.** Windows's `supabase/migrations/20260929000000_normalize_text_nfc.sql` (already live: NFD "독" and "킁" now match) made every *existing* normalize_text index safe by NFC-normalizing stored values first. It predates `idx_recordings_title_norm_prefix` (Mac, same day), so recordings.title was never checked, and non-NFC titles could hold stale index entries. **⏳ `apps/web/supabase/migrations/20260930000000_recordings_title_nfc.sql`** normalizes them (an UPDATE recomputes the entry); it's a harmless no-op if the index was built after the function change. The release_groups prefix index is covered by their migration. Windows's migration sits in the **root** `supabase/migrations/`, not `apps/web/supabase/migrations/`.
+**2026-09-30 (Mac) — Search follow-ups ("do all").**
+
+- **Album search now finds artists by their Korean / alternate names.** "에픽하이" and "이센스" returned 0 albums: Epik High is stored as `name` "Epik High" with `name_phonetic_ko` 에픽하이 plus aliases, and album search only compared titles and artist_display.
+  - **Migration `20260930000001_search_albums_by_artist_name.sql` (⏳ apply):** both router paths add that artist's release groups (score 9000 + prestige) when the query exactly equals an artist's name, name_native, name_phonetic_ko or an alias. All btree-indexed, and `search_release_groups_long` is untouched. It parses (pglast) but isn't run yet.
+- **Web search matches iOS:**
+  - New `lib/searchQuery.ts` (`isSearchable`: 2+ characters or 1 CJK; `normalizedLength`).
+  - Used by the search page (runSearch, popular-search logging, empty state) and `/api/search/popular`.
+  - Short song queries use `search_recordings_short`; long ILIKE song search NFC-normalizes the query.
+  - The header dropdown (`/api/search/suggest`) still needs 2+: it uses raw ILIKE prefix, which can't use an index for 1 character.
+  - tsc clean; vitest 116/116.
+- **`recordings_title_nfc` ✅ applied** (user, 2026-09-30).
+- **Moved Windows's `supabase/migrations/20260929000000_normalize_text_nfc.sql` → `apps/web/supabase/migrations/20260929000002_normalize_text_nfc.sql`** (the 000000 prefix was already taken twice). Filename only; it's already applied, and references are updated. The root `supabase/migrations/` still holds 8 older (May–July, applied) files. **New migrations belong in `apps/web/supabase/migrations/`.**
+
+---
+
+**2026-09-30 (Mac) — Merge note: Windows's NFC `normalize_text` meets the Mac's new short-query indexes.** Windows's `supabase/migrations/20260929000000_normalize_text_nfc.sql` (already live: NFD "독" and "킁" now match) made every *existing* normalize_text index safe by NFC-normalizing stored values first. It predates `idx_recordings_title_norm_prefix` (Mac, same day), so recordings.title was never checked, and non-NFC titles could hold stale index entries. **✅ `apps/web/supabase/migrations/20260930000000_recordings_title_nfc.sql` (applied)** normalizes them (an UPDATE recomputes the entry); it's a harmless no-op if the index was built after the function change. The release_groups prefix index is covered by their migration. Windows's migration sits in the **root** `supabase/migrations/`, not `apps/web/supabase/migrations/`.
 
 ---
 

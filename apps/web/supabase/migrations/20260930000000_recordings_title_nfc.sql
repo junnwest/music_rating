@@ -1,4 +1,4 @@
--- Follow-up to 20260929000000_normalize_text_nfc (Windows) and
+-- Follow-up to 20260929000002_normalize_text_nfc (Windows; moved here from the root folder) and
 -- 20260929000000_short_query_search_indexes (Mac), which landed the same day.
 --
 -- normalize_text() now NFC-normalizes. The NFC migration made every indexed

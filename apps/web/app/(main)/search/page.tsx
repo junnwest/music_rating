@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { isSearchable, normalizedLength } from '../../../lib/searchQuery';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -154,7 +155,7 @@ function SearchPageInner() {
   const runSearch = useCallback(async (q: string) => {
     if (!supabase) return;
     const trimmed = q.trim();
-    if (trimmed.length < 2) {
+    if (!isSearchable(trimmed)) {
       setArtists([]);
       setAlbums([]);
       setSongs([]);
@@ -207,11 +208,16 @@ function SearchPageInner() {
 
     // Song hits → parent release group (canonical preferred), like iOS
     const songsP = (async () => {
-      const { data: recData } = await supabase!
-        .from('recordings')
-        .select('id, title, artist_display')
-        .ilike('title', `%${trimmed}%`)
-        .limit(30);
+      // Short queries ("독") can't use the trigram index -- the ILIKE scan
+      // times out -- so they use search_recordings_short (exact title, then
+      // prefix; btree-indexed). NFC so Mac/iOS-decomposed Hangul matches.
+      const { data: recData } = normalizedLength(trimmed) < 3
+        ? await supabase!.rpc('search_recordings_short', { q: trimmed, lim: 30 })
+        : await supabase!
+            .from('recordings')
+            .select('id, title, artist_display')
+            .ilike('title', `%${trimmed.normalize('NFC')}%`)
+            .limit(30);
       const hits =
         (recData as { id: string; title: string; artist_display: string | null }[] | null) ?? [];
       if (hits.length === 0) {
@@ -303,7 +309,7 @@ function SearchPageInner() {
   useEffect(() => {
     clearTimeout(logDebounceRef.current);
     const trimmed = query.trim();
-    if (trimmed.length < 2) return;
+    if (!isSearchable(trimmed)) return;
     logDebounceRef.current = setTimeout(() => {
       if (loggedQueryRef.current === trimmed) return;
       loggedQueryRef.current = trimmed;
@@ -574,7 +580,7 @@ function SearchResults({
     ]);
 
   if (!hasAny) {
-    if (searching || query.trim().length < 2) return <div className="py-20" />;
+    if (searching || !isSearchable(query)) return <div className="py-20" />;
     return (
       <div className="py-24 flex flex-col items-center gap-3">
         <SearchIcon size={40} className="text-divider" />

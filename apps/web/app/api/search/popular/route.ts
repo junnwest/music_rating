@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../lib/supabaseServer';
 import { rateLimit } from '../../../../lib/rateLimit';
 import { cacheGet, cacheSet } from '../../../../lib/cache';
+import { isSearchable } from '../../../../lib/searchQuery';
 
 // Cross-user "Popular Searches" chips for the search page's empty-query
 // state. Mirrors /api/discovery's own shape (rate limit -> Redis cache ->
@@ -73,7 +74,7 @@ export async function POST(req: NextRequest) {
   }
 
   const query = typeof body.query === 'string' ? body.query.trim() : '';
-  if (query.length < 2 || query.length > 200) {
+  if (!isSearchable(query) || query.length > 200) {
     return NextResponse.json({ error: 'invalid query' }, { status: 400 });
   }
   const platform = body.platform === 'ios' ? 'ios' : 'web';

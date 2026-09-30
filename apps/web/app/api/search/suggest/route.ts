@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
 
   const ql = q.toLowerCase();
   // NFC first: this endpoint matches with raw ILIKE rather than normalize_text(), so it does not
-  // inherit the Unicode normalization added to that function (migration 20260929000000). Hangul
+  // inherit the Unicode normalization added to that function (migration 20260929000002_normalize_text_nfc). Hangul
   // typed on macOS/iOS arrives decomposed (킁 as ㅋ+ㅡ+ㅇ, 9 bytes) and never matches the composed
   // 3-byte form stored in the catalogue, which is why "킁" returned nothing while "Keung" worked.
   const prefix = `${q.normalize('NFC').replace(/[%_,()]/g, ' ').trim()}%`;
