@@ -40,7 +40,7 @@ Historical record of shipped features and session notes. Not needed at conversat
 - **Clients:** web artist page and iOS `ArtistPageView.loadSongs` fetch it in parallel. Ranked songs come first; the rest keep the old order (web: title; iOS: most-rated → newest).
 - **Verified locally:** Primary → Johnny, ~42, Seethru, Baby, I Know, Love…; E SENS → Writer's Block, No Boss, Back In Time…
 - iOS **BUILD SUCCEEDED**; web tsc clean, vitest 116/116.
-- **⏳ Add `LASTFM_API_KEY` to Vercel env** (it's only in local `.env.local`).
+- **✅ `LASTFM_API_KEY` added to Vercel** (user, 2026-09-30) and redeployed via empty commit `a3518ec`. Production verified: Primary 18 / E SENS 52 / IU 110 ranked, 1.3–1.8s uncached.
 - **Noticed, not changed:** duplicate recordings of the same song show twice; iOS `loadSongs` still uses `ilike` on `artist_display` (web switched to `eq` for speed).
 
 ---

@@ -99,7 +99,7 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 >
 > **🔎 (2026-09-30, Mac) — Song search by title + artist ("독 이센스").** ✅ `…000004`–`…000007` applied and verified (0.2–0.5s; whole credited-name matching; partial-title hits can't take Top Match). iOS side ships with the next build. See SESSIONS.md.
 >
-> **🎵 (2026-09-30, Mac) — Artist Songs tab ordered by popularity (Last.fm).** ⏳ **Add `LASTFM_API_KEY` to Vercel** (Project → Settings → Environment Variables; same value as `.env.local`), then redeploy. Until then the Songs tab keeps its old order. iOS part ships with the next build. See SESSIONS.md.
+> **🎵 (2026-09-30, Mac) — Artist Songs tab ordered by popularity (Last.fm).** ✅ `LASTFM_API_KEY` on Vercel (Production + Preview), redeployed (`a3518ec`), and verified in production: Primary, E SENS and IU return ranked songs. iOS part ships with the next build. See SESSIONS.md.
 >
 > **🎯 (2026-09-30, Mac) — Songs can be Top Match (독 → E-Sens's 독, not Snoop Dogg).** ✅ `20260930000002_song_search_score.sql` applied and verified. iOS side ships with the next build. See SESSIONS.md.
 >
