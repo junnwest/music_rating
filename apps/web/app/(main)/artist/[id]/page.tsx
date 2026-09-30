@@ -23,6 +23,7 @@ import {
   yearOf,
 } from '../../../../lib/sj/display';
 import { RG_COLS, type SJRelease } from '../../../../lib/sj/data';
+import { releasedFilter } from '../../../../lib/releaseWindow';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -109,6 +110,7 @@ export default function ArtistPage() {
           .from('release_groups')
           .select(RG_COLS)
           .ilike('artist_display', rawId)
+          .or(releasedFilter())
           .order('first_release_date', { ascending: false, nullsFirst: false })
           .limit(60);
         loaded = ((data as any[] | null) ?? []).map((r) => ({

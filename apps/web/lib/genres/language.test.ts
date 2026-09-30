@@ -1,0 +1,190 @@
+import { describe, expect, it } from 'vitest';
+import {
+  albumGenreLabels,
+  albumLanguage,
+  homeFamily,
+  isLanguageNeutral,
+  primaryOfAlbum,
+  qualifiedInfo,
+  qualify,
+  qualifyAlbum,
+  scriptLanguage,
+} from './language';
+
+describe('qualify — genre × language', () => {
+  it('maps a base genre to its authored localized node', () => {
+    expect(qualify('rock', 'ja')).toBe('j-rock');
+    expect(qualify('hip-hop', 'ko')).toBe('k-rap');
+    expect(qualify('pop', 'ko')).toBe('k-pop');
+    expect(qualify('pop', 'es')).toBe('latin-pop');
+    expect(qualify('indie-rock', 'ko')).toBe('korean-indie');
+  });
+
+  it('synthesizes a qualified id when no localized node exists', () => {
+    expect(qualify('rock', 'ko')).toBe('rock@ko');
+    expect(qualify('alternative-rock', 'ja')).toBe('alternative-rock@ja');
+    expect(qualify('hip-hop', 'ja')).toBe('hip-hop@ja');
+  });
+
+  it('leaves English, unknown language and non-sensitive genres as is', () => {
+    expect(qualify('rock', 'en')).toBe('rock');
+    expect(qualify('rock', null)).toBe('rock');
+    expect(qualify('jazz', 'ja')).toBe('jazz');
+    expect(qualify('house', 'ko')).toBe('house');
+    expect(qualify('salsa', 'es')).toBe('salsa');
+    expect(qualify('k-pop', 'ja')).toBe('k-pop'); // already language-bound
+  });
+
+  it('knows which nodes can take a language', () => {
+    expect(isLanguageNeutral('shoegaze')).toBe(true);
+    expect(isLanguageNeutral('j-rock')).toBe(false);
+    expect(isLanguageNeutral('chanson')).toBe(false);
+    expect(isLanguageNeutral('techno')).toBe(false);
+    expect(homeFamily('synth-pop')).toBe('pop');
+    expect(homeFamily('trip-hop')).toBe('electronic');
+  });
+});
+
+describe('qualifiedInfo — display and world family', () => {
+  it('puts the language name in front', () => {
+    expect(qualifiedInfo('rock@ko')?.display.en).toBe('Korean Rock');
+    expect(qualifiedInfo('hip-hop@ja')?.display.en).toBe('Japanese Hip-Hop');
+    expect(qualifiedInfo('alternative-rock@ja')?.shortDisplay.en).toBe('Alternative Rock');
+    expect(qualifiedInfo('rock@sv')?.display.en).toBe('Swedish Rock');
+    expect(qualifiedInfo('alternative-rock@ja')?.display.en).toBe('Japanese Alternative Rock');
+    expect(qualifiedInfo('rock@es')?.display.en).toBe('Spanish Rock');
+    expect(qualifiedInfo('rock@ko')?.display.ko).toBe('한국 록');
+  });
+
+  it('puts every genre under its language form of the family', () => {
+    expect(qualifiedInfo('alternative-rock@ja')?.family).toBe('j-rock');
+    expect(qualifiedInfo('trap@ko')?.family).toBe('k-rap');
+    expect(qualifiedInfo('korean-indie')?.family).toBe('rock@ko');
+    expect(qualifiedInfo('city-pop')?.family).toBe('j-pop');
+    expect(qualifiedInfo('chanson')?.family).toBe('pop@fr');
+    expect(qualifiedInfo('alternative-rock')?.family).toBe('rock');
+    expect(qualifiedInfo('bossa-nova')?.family).toBe('latin');
+  });
+});
+
+describe('albumLanguage — evidence ladder', () => {
+  it('trusts a language-bound tag first', () => {
+    expect(albumLanguage({ genres: ['j-rock', 'rock'], artistCountry: 'US' }).lang).toBe('ja');
+  });
+
+  it('lets the title script pick between conflicting tags (a K-pop act’s Japanese single)', () => {
+    const r = albumLanguage({ genres: ['k-pop', 'j-pop'], title: 'えがおのまほう', artistCountry: 'KR' });
+    expect(r).toEqual({ lang: 'ja', source: 'tag' });
+  });
+
+  it('reads the title script before the artist country', () => {
+    expect(albumLanguage({ genres: ['pop'], title: 'Fancy', nativeTitle: '팬시', artistCountry: 'US' }).lang).toBe('ko');
+    expect(albumLanguage({ genres: ['rock'], title: 'ロック', artistCountry: 'KR' }).lang).toBe('ja');
+  });
+
+  it('splits Han-only titles by country, never guessing Chinese for Japan', () => {
+    expect(scriptLanguage('東京', 'JP')).toBe('ja');
+    expect(scriptLanguage('北京', 'CN')).toBe('zh');
+    expect(scriptLanguage('東京', null)).toBeNull();
+  });
+
+  it('uses a stored non-English tracklist language, never eng', () => {
+    expect(albumLanguage({ genres: ['rock'], titleLanguage: 'deu', artistCountry: 'DE' })).toEqual({
+      lang: 'de',
+      source: 'title-language',
+    });
+    expect(albumLanguage({ genres: ['rock'], titleLanguage: 'swe' }).lang).toBe('sv');
+    expect(albumLanguage({ genres: ['hip hop'], titleLanguage: 'eng', artistCountry: 'KR' }).lang).toBe('ko');
+  });
+
+  it('ignores the unreliable stored zh but accepts ko/ja name scripts', () => {
+    expect(albumLanguage({ genres: ['rock'], artistNativeLanguage: 'zh' }).lang).toBeNull();
+    expect(albumLanguage({ genres: ['rock'], artistNativeLanguage: 'ja' }).lang).toBe('ja');
+  });
+
+  it('falls back to countries whose acts sing in the local language', () => {
+    expect(albumLanguage({ genres: ['hip hop'], title: 'HUNNIT', artistCountry: 'KR' }).lang).toBe('ko');
+    expect(albumLanguage({ genres: ['rock'], artistCountry: 'GB' }).lang).toBe('en');
+    expect(albumLanguage({ genres: ['rock'], artistCountry: 'SE' }).lang).toBeNull();
+    expect(albumLanguage({ genres: ['rock'], artistCountry: 'XE' }).lang).toBeNull();
+  });
+});
+
+describe('other catch-all tags (2026-09-29 audit)', () => {
+  it('Chinese pop is one world with Mandopop and Cantopop inside', () => {
+    expect(qualify('pop', 'zh')).toBe('pop@zh');
+    expect(qualifiedInfo('pop@zh')?.display.en).toBe('Chinese Pop');
+    expect(qualifiedInfo('cantopop')?.family).toBe('pop@zh');
+    expect(qualifiedInfo('mandopop')?.family).toBe('pop@zh');
+  });
+
+  it('mandopop / cantopop / mpb yield to an earlier-listed family', () => {
+    expect(primaryOfAlbum(['r&b', 'mandopop'], 'zh')).toBe('r-and-b@zh');
+    expect(primaryOfAlbum(['rock', 'cantopop'], 'zh')).toBe('rock@zh');
+    expect(primaryOfAlbum(['rock', 'mpb'], 'pt')).toBe('rock@pt');
+    expect(primaryOfAlbum(['mpb', 'rock'], 'pt')).toBe('mpb');
+  });
+
+  it('reggaeton lives in Latin, not Electronic', () => {
+    expect(homeFamily('reggaeton')).toBe('latin');
+  });
+
+  it('treats a bare "alternative" as broad rock for the primary', () => {
+    expect(primaryOfAlbum(['alternative', 'art pop'], null)).toBe('art-pop');
+    expect(primaryOfAlbum(['alternative rock', 'art pop'], null)).toBe('alternative-rock');
+  });
+
+  it('reads "latin" as a weak Spanish hint', () => {
+    expect(albumLanguage({ genres: ['latin', 'rock'], artistCountry: 'US' }).lang).toBe('en'); // Santana
+    expect(albumLanguage({ genres: ['rock', 'latin'] }).lang).toBe('es');
+    expect(albumLanguage({ genres: ['latin', 'pop'], artistCountry: 'BR' }).lang).toBe('pt');
+    expect(albumLanguage({ genres: ['pop'], artistCountry: 'US' }).lang).toBe('en');
+  });
+});
+
+describe('albumGenreLabels', () => {
+  it('prefixes only the broadest genre', () => {
+    expect(albumGenreLabels(['alternative rock', 'rock'], 'ja')).toEqual(['alternative rock', 'Japanese rock']);
+    expect(albumGenreLabels(['shoegaze', 'dream pop'], 'ko', 'ko')).toEqual(['한국 shoegaze', 'dream pop']);
+  });
+
+  it('leaves English, unknown and already language-bound lists alone', () => {
+    expect(albumGenreLabels(['rock'], 'en')).toEqual(['rock']);
+    expect(albumGenreLabels(['rock'], null)).toEqual(['rock']);
+    expect(albumGenreLabels(['k-pop', 'jazz'], 'ko')).toEqual(['k-pop', 'jazz']);
+  });
+});
+
+describe('qualifyAlbum + primaryOfAlbum', () => {
+  it('turns a Korean album tagged only hip hop into K-Hip-Hop', () => {
+    expect(qualifyAlbum(['hip hop'], 'ko')).toEqual(['k-rap']);
+    expect(primaryOfAlbum(['hip hop'], 'ko')).toBe('k-rap');
+  });
+
+  it('puts Korean rap tagged [hip hop, k-pop] in Korean Hip-Hop (k-pop is a catch-all)', () => {
+    expect(qualifyAlbum(['hip hop', 'k-pop'], 'ko')).toEqual(['k-rap', 'k-pop']);
+    expect(primaryOfAlbum(['hip hop', 'k-pop'], 'ko')).toBe('k-rap'); // Beenzino
+    expect(primaryOfAlbum(['hip hop', 'r&b', 'k-pop'], 'ko')).toBe('k-rap'); // Jay Park
+    expect(primaryOfAlbum(['hip hop', 'pop', 'k-pop'], 'ko')).toBe('k-rap'); // Epik High
+    expect(primaryOfAlbum(['hip hop', 'trap', 'k-pop'], 'ko')).toBe('trap@ko');
+  });
+
+  it('keeps idol albums in K-Pop when k-pop leads the other family', () => {
+    expect(primaryOfAlbum(['k-pop', 'hip hop', 'dance'], 'ko')).toBe('k-pop'); // GOT7
+    expect(primaryOfAlbum(['pop', 'k-pop', 'hip hop'], 'ko')).toBe('k-pop'); // BTS
+    expect(primaryOfAlbum(['rock', 'k-pop', 'pop', 'hip hop'], 'ko')).toBe('rock@ko'); // earlier family still wins
+    expect(primaryOfAlbum(['k-pop', 'trap', 'hip hop'], 'ko')).toBe('k-pop');
+  });
+
+  it('keeps the specific genre primary inside a qualified family', () => {
+    expect(primaryOfAlbum(['alternative rock', 'rock'], 'ja')).toBe('alternative-rock@ja');
+  });
+
+  it('keeps an English rock album unmarked', () => {
+    expect(qualifyAlbum(['indie rock', 'rock', 'shoegaze'], 'en')).toEqual(['indie-rock', 'rock', 'shoegaze']);
+  });
+
+  it('drops scene roots and unresolved tags', () => {
+    expect(qualifyAlbum(['korean', 'rock', 'yodeling'], 'ko')).toEqual(['rock@ko']);
+  });
+});

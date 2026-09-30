@@ -29,6 +29,7 @@ import { useRatings } from '../../../../components/sj/RatingsStore';
 import { supabase } from '../../../../lib/supabaseClient';
 import { albumCommunityScores } from '../../../../lib/sj/communityScores';
 import { useLanguage } from '../../../../lib/i18n';
+import { albumGenreLabels, albumLanguage } from '../../../../lib/genres/language';
 import {
   displayName,
   typeLabelKey,
@@ -66,6 +67,10 @@ export default function AlbumPage() {
 
   const [release, setRelease] = useState<SJRelease | null>(null);
   const [genres, setGenres] = useState<string[]>([]);
+  // Album language (lib/genres/language.ts) — the broadest genre chip gets it in
+  // front ("Japanese rock"); links keep the raw tag.
+  const [genreLang, setGenreLang] = useState<string | null>(null);
+  const genreLabels = albumGenreLabels(genres, genreLang, lang === 'ko' ? 'ko' : 'en');
   const [credits, setCredits] = useState<ReleaseGroupCreditRPC[]>([]);
   const [tracks, setTracks] = useState<TrackEntry[]>([]);
   const [trackRatings, setTrackRatings] = useState<Record<string, number>>({});
@@ -212,7 +217,7 @@ export default function AlbumPage() {
       const { data: rg } = await supabase!
         .from('release_groups')
         .select(
-          'id, title, artist_display, cover_url, release_group_type, first_release_date, native_title, genres, artists!release_groups_primary_artist_id_fkey(name_native)',
+          'id, title, artist_display, cover_url, release_group_type, first_release_date, native_title, genres, title_language, artists!release_groups_primary_artist_id_fkey(name_native, country, native_language)',
         )
         .eq('id', releaseGroupId)
         .maybeSingle();
@@ -234,6 +239,16 @@ export default function AlbumPage() {
         artistNative: rgAny.artists?.name_native ?? null,
       });
       setGenres(((rgAny.genres as string[] | null) ?? []).slice(0, 4));
+      setGenreLang(
+        albumLanguage({
+          genres: rgAny.genres,
+          title: rgAny.title,
+          nativeTitle: rgAny.native_title,
+          artistCountry: rgAny.artists?.country ?? null,
+          artistNativeLanguage: rgAny.artists?.native_language ?? null,
+          titleLanguage: rgAny.title_language ?? null,
+        }).lang,
+      );
 
       // Parallel: credits, ratings, mixes, tracklist
       const creditsP = supabase!
@@ -436,13 +451,13 @@ export default function AlbumPage() {
             </div>
             {genres.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mt-2.5">
-                {genres.map((g) => (
+                {genres.map((g, i) => (
                   <Link
                     key={g}
                     href={`/charts/ranking?genre=${encodeURIComponent(g)}`}
                     className="px-2 py-0.5 rounded-full border border-divider text-[11px] text-muted hover:text-accent hover:border-accent/50 transition"
                   >
-                    {g}
+                    {genreLabels[i]}
                   </Link>
                 ))}
               </div>

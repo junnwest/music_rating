@@ -29,6 +29,7 @@ import { useRating, useRatings } from '../../../components/sj/RatingsStore';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
 import { displayName, formatScore, isPredominantlyHangul, typeLabelKey } from '../../../lib/sj/display';
+import { releasedFilter } from '../../../lib/releaseWindow';
 import { RG_COLS, type SJRelease } from '../../../lib/sj/data';
 import { useArtistIdFor } from '../../../lib/sj/artistIds';
 import { saveTrackRating } from '../../../lib/sj/trackRatings';
@@ -876,6 +877,7 @@ function Discovery({
           .select(RG_COLS)
           .in('release_group_type', ['album', 'ep'])
           .not('cover_url', 'is', null)
+          .or(releasedFilter())
           .order('first_release_date', { ascending: false, nullsFirst: false })
           .limit(50);
         if (!cancelled) setNewReleases(mapRows(data as any[]));
@@ -940,6 +942,7 @@ function Discovery({
             .in('artist_display', lovedArtists)
             .in('release_group_type', ['album', 'ep'])
             .not('cover_url', 'is', null)
+            .or(releasedFilter())
             .order('first_release_date', { ascending: false, nullsFirst: false })
             .limit(200);
           if (cancelled) return;

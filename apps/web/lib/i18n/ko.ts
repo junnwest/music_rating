@@ -727,6 +727,7 @@ const ko: Translations = {
       sceneWest: '서구권 씬',
       sceneOther: '글로벌 씬',
       sceneMixed: '여러 씬',
+      sceneLang: '{lang} 씬',
       worldAvgLine: '이 세계의 평균 점수는 {avg}점 —',
       worldVsUsualAbove: '평소보다 {diff}점 높아요.',
       worldVsUsualBelow: '평소보다 {diff}점 낮아요.',

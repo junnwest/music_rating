@@ -98,7 +98,12 @@ export function stripEditionSuffix(title: string): string {
 }
 
 export function releaseGroupKey(title: string): string {
-  return normalizeStr(stripEditionSuffix(title));
+  // Internal spaces are dropped, not just collapsed. normalizeStr squeezes runs of whitespace but
+  // keeps one, so "3 Songs" and "3Songs" hash to different keys and the same-title dedup never
+  // sees them as one release — a real pair in the catalogue (Giriboy, 2018-05-26, 3 tracks each).
+  // Spacing carries no meaning in a release title across sources: iTunes and MusicBrainz disagree
+  // about it constantly ("#LoveMe" / "#Love Me", "Lavatory Lovemachine" / "Lavatory Love Machine").
+  return normalizeStr(stripEditionSuffix(title)).replace(/\s+/g, '');
 }
 
 // ── iTunes value mapping ──────────────────────────────────────────────────────
@@ -478,7 +483,7 @@ async function loadOrCreateGroup(
       artist_display:     args.artistDisplay,
       title:              args.title,
       release_group_type: groupType,
-      first_release_date: args.firstReleaseDate,
+      first_release_date: saneReleaseDate(args.firstReleaseDate),
       cover_url:          args.coverUrl,
       genres:             args.genre ? [args.genre] : null,
     });
@@ -601,4 +606,26 @@ export async function ingestEdition(
 
     return 'inserted';
   });
+}
+
+// A release date far in the future is never real data. MusicBrainz legitimately carries
+// announced releases, but it also carries typos and year-only placeholders that land
+// decades out — a Dolly Parton single dated 2045-08-18, a title of "[unknown]". Those rows
+// then lead every newest-first surface forever, because all of them order by
+// first_release_date DESC and nothing bounded the top end.
+//
+// The date is dropped to null rather than the row being rejected: the album is usually
+// real and only its date is junk (Big Thief's "Horsepower" carries MB's year-only
+// 2027-01-01 convention, not a claim about January 1st). Nulling composes with the
+// existing `nullsFirst: false` orderings, so such a row sorts last instead of first.
+// Announced releases inside the horizon are kept — they are real and worth showing.
+export const FUTURE_DATE_HORIZON_MONTHS = 18;
+
+export function saneReleaseDate(d: string | null | undefined): string | null {
+  if (!d) return null;
+  const t = Date.parse(d);
+  if (Number.isNaN(t)) return null;
+  const horizon = new Date();
+  horizon.setMonth(horizon.getMonth() + FUTURE_DATE_HORIZON_MONTHS);
+  return t > horizon.getTime() ? null : d;
 }

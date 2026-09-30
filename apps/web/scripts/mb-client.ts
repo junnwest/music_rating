@@ -147,6 +147,9 @@ export interface MbReleaseStub {
   date: string | null;
   country: string | null;
   trackCount: number;
+  /** MB text-representation language (ISO 639-3) — the language of the TRACKLIST
+   *  TITLES, not the lyrics (a Korean rap release with English titles is 'eng'). */
+  language: string | null;
 }
 export interface MbTrack {
   position: number;
@@ -360,6 +363,7 @@ export async function browseReleases(releaseGroupMbid: string): Promise<MbReleas
     date: r.date || null,
     country: r.country ?? null,
     trackCount: (r.media ?? []).reduce((n: number, m: any) => n + (m['track-count'] ?? 0), 0),
+    language: r['text-representation']?.language ?? null,
   }));
 }
 
@@ -448,6 +452,9 @@ export interface MbArtistRelease {
   trackCount: number;
   coverFront: boolean;       // Cover Art Archive has front art for this release
   tracks: MbTrack[];
+  /** MB text-representation language (ISO 639-3) — the language of the TRACKLIST
+   *  TITLES, not the lyrics (a Korean rap release with English titles is 'eng'). */
+  language: string | null;
 }
 
 // Bulk-fetch ALL of an artist's release editions WITH tracks+ISRCs in pages of 100.
@@ -499,6 +506,7 @@ export async function browseArtistReleasesDetailed(
         trackCount: (r.media ?? []).reduce((n: number, m: any) => n + (m['track-count'] ?? (m.tracks?.length ?? 0)), 0),
         coverFront: r['cover-art-archive']?.front ?? false,
         tracks: parseMedia(r.media),
+        language: r['text-representation']?.language ?? null,
       });
     }
     total = data?.['release-count'] ?? out.length;
@@ -540,6 +548,30 @@ function parseCredits(credit: any[] | undefined): MbCredit[] {
     name: c.name ?? c.artist?.name ?? '',
     joinphrase: c.joinphrase ?? '',
   })).filter(c => c.name);
+}
+
+/**
+ * Light edition listing for the tracklist-language backfill: every release the
+ * artist is credited on, as { rgId, status, language } only (no media/recordings,
+ * so each page is small). Caps at maxPages×100 releases — a partial listing is
+ * fine here, the language is a plurality over whatever editions were seen.
+ */
+export async function browseArtistReleaseLanguages(
+  artistMbid: string,
+  maxPages = 10,
+): Promise<{ rgId: string; status: string | null; language: string | null }[]> {
+  const out: { rgId: string; status: string | null; language: string | null }[] = [];
+  for (let page = 0, offset = 0; page < maxPages; page++) {
+    const data = await mbGet(`/release?artist=${artistMbid}&inc=release-groups&limit=100&offset=${offset}`);
+    const rs: any[] = data?.releases ?? [];
+    for (const r of rs) {
+      const rgId = r['release-group']?.id;
+      if (rgId) out.push({ rgId, status: r.status ?? null, language: r['text-representation']?.language ?? null });
+    }
+    offset += rs.length;
+    if (rs.length === 0 || offset >= (data?.['release-count'] ?? 0)) break;
+  }
+  return out;
 }
 
 export { MB_BASE, USER_AGENT };

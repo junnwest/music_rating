@@ -15,6 +15,9 @@
  *       always isScene nodes; families are not surfaced via sound unless intended
  *   I7  every node's scene set is derivable (ancestor walk terminates)
  *   I8  display.en / display.ko non-empty
+ *   I9  language axis: every `language` is a known LANGUAGES code (or 'en');
+ *       a `localizes` node has a language, each base exists and is
+ *       language-neutral, and no (base, language) pair is localized twice
  *
  * Run (from apps/web/):
  *   npx tsx scripts/validate-taxonomy.ts
@@ -23,6 +26,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { NODE_BY_ID, TAXONOMY, type GenreNode } from '../lib/genres/taxonomy';
+import { LANGUAGES, isLanguageNeutral, nodeLanguage } from '../lib/genres/language';
 
 const errors: string[] = [];
 const warnings: string[] = [];
@@ -151,6 +155,27 @@ for (const node of TAXONOMY) {
   if (!node.display.en?.trim()) fail(`I8 ${node.id}: empty display.en`);
   if (!node.display.ko?.trim()) fail(`I8 ${node.id}: empty display.ko`);
   if (node.display.ko === node.display.en && node.level !== 'family') warn(`ko == en (first-pass) for ${node.id}`);
+}
+
+// ── I9: language axis ───────────────────────────────────────────────────────
+{
+  const pairs = new Map<string, string>();
+  for (const node of TAXONOMY) {
+    if (node.language && node.language !== 'en' && !LANGUAGES[node.language]) {
+      fail(`I9 ${node.id}: unknown language "${node.language}"`);
+    }
+    if (!node.localizes) continue;
+    const lang = nodeLanguage(node.id);
+    if (!lang) fail(`I9 ${node.id}: localizes without a language (own or scene root)`);
+    for (const base of node.localizes) {
+      if (!NODE_BY_ID.has(base)) fail(`I9 ${node.id}: localizes missing node ${base}`);
+      else if (!isLanguageNeutral(base)) fail(`I9 ${node.id}: localizes ${base}, which is not language-neutral`);
+      const key = `${base}@${lang}`;
+      const prev = pairs.get(key);
+      if (prev) fail(`I9 ${key} localized by both ${prev} and ${node.id}`);
+      pairs.set(key, node.id);
+    }
+  }
 }
 
 // ── Report + coverage ───────────────────────────────────────────────────────

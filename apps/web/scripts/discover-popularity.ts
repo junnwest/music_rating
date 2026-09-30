@@ -24,7 +24,7 @@
  *   npx tsx --env-file=.env.local scripts/discover-popularity.ts --limit=3000 --deezer-limit=200
  */
 import { getDB, resolveArtist } from './mb-ingest';
-import { pickArtist, ingestDeezerArtist } from './mb-deezer-fallback';
+import { pickArtistBridged, ingestDeezerArtist } from './mb-deezer-fallback';
 import { searchArtists as dzSearchArtists } from './deezer-client';
 
 const KEY = process.env.LASTFM_API_KEY;
@@ -150,10 +150,10 @@ async function main() {
     console.log(`[popularity] ${nonMb.length} charting artists not in MB → trying Deezer (top ${dzRanked.length})${DRY ? '  [DRY RUN]' : ''}…`);
     let dz = 0, skip = 0, none = 0;
     for (const c of dzRanked) {
-      const hit = pickArtist(await dzSearchArtists(c.name), c.name);
+      const hit = await pickArtistBridged(await dzSearchArtists(c.name), c.name);
       if (!hit) { none++; continue; }
       if (DRY) { console.log(`  [dz] ${c.name} (${(c.listeners / 1000).toFixed(0)}k) → Deezer "${hit.name}" (${hit.nbFan} fans, ${hit.nbAlbum} albums)`); dz++; continue; }
-      const g = await ingestDeezerArtist(db, hit, null);
+      const g = await ingestDeezerArtist(db, hit, null, c.name);
       if (g < 0) skip++; else { dz++; console.log(`  [dz] ${c.name} → "${hit.name}" — ${g} groups`); }
     }
     console.log(`[popularity] Deezer: ${dz} ${DRY ? 'matched' : 'ingested/matched'} · ${skip} already in catalog · ${none} no Deezer match`);

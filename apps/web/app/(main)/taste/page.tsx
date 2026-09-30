@@ -28,6 +28,7 @@ import {
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
 import { formatScore, spectrumColor, spectrumFill, spectrumNumber } from '../../../lib/sj/display';
+import { LANGUAGES } from '../../../lib/genres/language';
 
 const UNLOCK_THRESHOLD = 25;
 
@@ -45,6 +46,8 @@ interface TasteWorld {
   meanYear: number | null;
   sdYears: number | null;
   dominantScene: Scene | null;
+  /** Language of a language-qualified world (J-Rock → 'ja'); null = unmarked. */
+  language?: string | null;
   tags: WorldTag[];
 }
 
@@ -53,8 +56,8 @@ interface TasteReport {
   albumRatingCount: number;
   totalTags: number;
   clusters: TasteWorld[];
-  disliked: { tag: string; display: string }[];
-  standings: { genre: string; userAvg: number; communityAvg: number; userCount: number }[];
+  disliked: { tag: string; display: string; displayKo?: string }[];
+  standings: { genre: string; genreKo?: string; userAvg: number; communityAvg: number; userCount: number }[];
   graph?: TasteGraphData;
   charts: {
     decades: { decade: number; count: number }[];
@@ -234,13 +237,26 @@ function ReportView({
   // The graph's worlds carry the era/scene sentence the old world cards showed;
   // clusters and graph.worlds are built from the same array server-side, so the
   // indexes line up.
+  // Worlds and tiles carry Korean labels (labelKo/displayKo) alongside English.
+  const ko = lang === 'ko';
   const graph: TasteGraphData | null =
     report.graph && report.graph.worlds.length > 0
       ? {
           ...report.graph,
-          worlds: report.graph.worlds.map(
-            (w, i): TasteGraphWorld => ({ ...w, note: clusters[i] ? worldNote(clusters[i], t) : null }),
-          ),
+          worlds: report.graph.worlds.map((w, i): TasteGraphWorld => {
+            const loc = w as TasteGraphWorld & { labelKo?: string };
+            const label = ko && loc.labelKo ? loc.labelKo : w.label;
+            return {
+              ...w,
+              label,
+              primary: ko && loc.labelKo ? loc.labelKo : w.primary,
+              tags: w.tags.map((tg) => {
+                const dk = (tg as typeof tg & { displayKo?: string }).displayKo;
+                return ko && dk ? { ...tg, display: dk } : tg;
+              }),
+              note: clusters[i] ? worldNote(clusters[i], t, lang) : null,
+            };
+          }),
         }
       : null;
 
@@ -535,7 +551,7 @@ function ReportView({
               return (
                 <div key={s.genre}>
                   <div className="flex items-baseline justify-between mb-1">
-                    <span className="text-[13px] font-bold text-ink">{s.genre}</span>
+                    <span className="text-[13px] font-bold text-ink">{lang === 'ko' && s.genreKo ? s.genreKo : s.genre}</span>
                     <span
                       className={`text-[11.5px] font-semibold tabular-nums ${diff >= 0 ? 'text-accent-deep' : 'text-muted'}`}
                     >
@@ -564,7 +580,7 @@ function ReportView({
                 key={d.tag}
                 className="px-3 py-1.5 rounded-full bg-divider/50 text-[12.5px] text-muted line-through decoration-muted/50"
               >
-                {d.display}
+                {lang === 'ko' && d.displayKo ? d.displayKo : d.display}
               </span>
             ))}
           </div>
@@ -764,8 +780,9 @@ function HeroStat({ value, label }: { value: number; label: string }) {
   );
 }
 
-/** "mostly 2010s · Korean scene" — the world's era + scene in one line. */
-function worldNote(world: TasteWorld, t: (k: string) => string): string {
+/** "mostly 2010s · Korean scene" — the world's era + scene in one line. A
+ *  language-qualified world other than Korean/Japanese names its language. */
+function worldNote(world: TasteWorld, t: (k: string) => string, lang: string): string {
   const parts: string[] = [];
   if (world.meanYear != null) {
     const decade = Math.floor(world.meanYear / 10) * 10;
@@ -775,7 +792,12 @@ function worldNote(world: TasteWorld, t: (k: string) => string): string {
         : t('sj.taste.worldEraDecade').replace('{decade}', String(decade)),
     );
   }
-  parts.push(t(world.dominantScene ? SCENE_KEYS[world.dominantScene] : 'sj.taste.sceneMixed'));
+  const info = world.language ? LANGUAGES[world.language] : undefined;
+  if (info && world.language !== 'ko' && world.language !== 'ja') {
+    parts.push(t('sj.taste.sceneLang').replace('{lang}', lang === 'ko' ? info.ko : info.en));
+  } else {
+    parts.push(t(world.dominantScene ? SCENE_KEYS[world.dominantScene] : 'sj.taste.sceneMixed'));
+  }
   return parts.join(' · ');
 }
 
