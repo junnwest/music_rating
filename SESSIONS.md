@@ -4,6 +4,33 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-30 (pipeline PC) — MusicBrainz search now hard-caps paging at offset 500; two lanes were spinning on it.**
+
+- **Symptom:** after a restart, `pipeline:status` showed `area` and `newreleases` both `error` with
+  `MusicBrainz unavailable (400)`. The log carried **164 of them in the first five minutes**, always at
+  `offset=500`, always the same two URLs.
+- **Cause is upstream, not ours.** Probed the live API directly:
+  `/artist?query=country:KR&limit=100&offset=400` → **200**, `offset=500` → **400**, `offset=600` → **400**.
+  Only the first 500 results of any Lucene search are reachable now, whatever `count` reports (`area`
+  claims 16,323; `newreleases` 15,659). A 400 is permanent, so retrying it is pure waste — and the waste
+  lands on the **shared MB rate budget the `ingest` lane depends on**.
+- **Root fix:** `MB_SEARCH_MAX_OFFSET = 400` in `scripts/mb-client.ts`; `searchArtistsByQuery` and
+  `searchReleaseGroupsByQuery` return an **empty page** past it rather than requesting one.
+  Empty rather than throwing is the part that matters: all three paging loops
+  (`discover-mb-area`, `discover-mb-newreleases`, `discover-ig-newreleases`) already `break` on an empty
+  page but keep going while `offset + PER < count`, so an error — or a short page with the true count —
+  would have left them looping. One fix in the shared client covers every lane.
+- **Verified live:** after the restart, **0 × 400**. `newreleases` swept 500 groups → flagged 31 catalog
+  artists for re-poll; `area` finished its country + city sweep and queued +16 net-new.
+- **Coverage consequence, stated plainly:** each query now yields at most 500 results instead of 16k.
+  The way past that is **narrower queries** — which is what `area`'s per-city split already does — not
+  deeper paging, which upstream no longer serves. Worth a follow-up pass at widening the query set.
+- Also this session: restarted once beforehand to pick up the `title_language` ingest code per README.
+  **Storage: 11,346MB of 12,288MB.** `release_groups` is 6,235MB of it (the embedding column), with
+  **149,717 dead tuples** (~19% of live rows) not autovacuumed since 09-28. See README.
+
+---
+
 **2026-09-30 (Mac) — Songs can be Top Match (최적의 결과).** Reported: "독" showed Snoop Dogg as Top Match instead of 독 by E-Sens.
 
 - **Why:** Top Match only compared the best artist and the best album. `search_artists('독')` scores Snoop Dogg 1595 on loose cross-script similarity; the best album was only a prefix hit (500). Songs never competed, and four songs are titled exactly 독.

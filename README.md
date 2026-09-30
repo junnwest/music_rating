@@ -62,6 +62,14 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 > **2026-09-29 — Taste "you vs the community" is now per world.** Standings compare your average with everyone's in the same language-qualified world (Korean Rock vs Korean Rock, K-Pop vs K-Pop), not per raw tag, and exclude deactivated accounts. New read-only RPC `get_community_album_scores` (migration `20260929000000`, ✅ applied); per-world community totals are cached globally for 10 min. `get_user_genre_standings` is left in the DB, unused by web. Up to 5 worlds with ≥3 of your albums and community ratings beyond your own. iOS gets it through the same route (same fields, plus `genreKo`).
 
+> **⚠️ MusicBrainz search paging is capped at offset 500 (found 2026-09-30).** MB now returns a hard
+> **400** for any search `offset >= 500`, so only the first 500 results of a Lucene query are reachable
+> no matter what `count` says. `mb-client.ts` caps at `MB_SEARCH_MAX_OFFSET = 400` and returns an empty
+> page past it, which is what stops the `area` / `newreleases` lanes spinning (they were issuing 164
+> unsatisfiable requests every five minutes, against the same rate budget `ingest` uses). **Don't
+> "fix" a lane's coverage by raising that cap** — upstream won't serve it. Widen coverage with
+> narrower queries instead, the way `area` already splits by city.
+
 > **🖥️ FOR THE PIPELINE PC (2026-09-28) — read before starting anything that calls MusicBrainz.**
 > 1. `git pull` and restart the pipeline. New ingest code writes `release_groups.title_language` (the migration is already applied, so nothing to run).
 > 2. **The `backfill:title-language` run is FINISHED (2026-09-29, on the Windows laptop)** — 97,625 + 6,037 artists, **168,002 albums** filled (jpn 38,953 · spa 27,189 · fra 22,946 · deu 14,717 · ita 9,514 · kor 7,812 · por 7,074 · rus 6,308 …). No need to run it here; the restarted pipeline keeps it current for new ingests. MusicBrainz traffic from the laptop is back to zero, so no shared-IP clash.
