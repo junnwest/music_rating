@@ -230,6 +230,12 @@ function SearchPageInner() {
       // Short queries ("독") can't use the trigram index -- the ILIKE scan
       // times out -- so they use search_recordings_short (exact title, then
       // prefix; btree-indexed). NFC so Mac/iOS-decomposed Hangul matches.
+      // "Title + artist" queries ("독 이센스") also go through
+      // search_songs_title_artist (artist part resolved via names / Korean
+      // pronunciation / aliases, featured credits checked); its hits first.
+      const titleArtistP = /\s/.test(trimmed)
+        ? supabase!.rpc('search_songs_title_artist', { q: trimmed, lim: 20 }).then(({ data }) => data ?? [])
+        : Promise.resolve([]);
       const { data: recData } = normalizedLength(trimmed) < 3
         ? await supabase!.rpc('search_recordings_short', { q: trimmed, lim: 30 })
         : await supabase!
@@ -237,8 +243,13 @@ function SearchPageInner() {
             .select('id, title, artist_display')
             .ilike('title', `%${trimmed.normalize('NFC')}%`)
             .limit(30);
-      const hits =
-        (recData as { id: string; title: string; artist_display: string | null; score?: number }[] | null) ?? [];
+      type RecHit = { id: string; title: string; artist_display: string | null; score?: number };
+      const titleArtistHits = (await titleArtistP) as RecHit[];
+      const seenTA = new Set(titleArtistHits.map((h) => h.id));
+      const hits = [
+        ...titleArtistHits,
+        ...(((recData as RecHit[] | null) ?? []).filter((h) => !seenTA.has(h.id))),
+      ];
       if (hits.length === 0) {
         if (fresh()) setSongs([]);
         return;

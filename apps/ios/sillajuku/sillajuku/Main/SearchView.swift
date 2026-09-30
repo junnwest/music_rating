@@ -859,7 +859,17 @@ class SearchViewModel {
         // Short queries ("독") can't use the trigram index -- the ILIKE scan
         // never finishes inside the 2s cutoff -- so they go through
         // search_recordings_short (exact title, then prefix; btree-indexed).
-        let hits: [RecordingHit]
+        // "Title + artist" queries ("독 이센스"): the song search below only
+        // matches titles, so a multi-word query also goes through
+        // search_songs_title_artist, which resolves the artist part via
+        // names / Korean pronunciation / aliases and checks the credit text
+        // for featured artists. Its hits come first (2026-09-30).
+        struct TAParams: Encodable { let q: String; let lim: Int }
+        async let titleArtistTask: [RecordingHit] = q.contains(" ")
+            ? ((try? await supabase.rpc("search_songs_title_artist", params: TAParams(q: q, lim: 20))
+                .execute().value) ?? [])
+            : []
+        var hits: [RecordingHit]
         if Self.normalizedLength(q) < 3 {
             struct ShortParams: Encodable { let q: String; let lim: Int }
             hits = (try? await supabase
@@ -874,6 +884,12 @@ class SearchViewModel {
                 .limit(30)
                 .execute()
                 .value) ?? []
+        }
+
+        let titleArtistHits = await titleArtistTask
+        if !titleArtistHits.isEmpty {
+            let seen = Set(titleArtistHits.map(\.id))
+            hits = titleArtistHits + hits.filter { !seen.contains($0.id) }
         }
 
         guard !hits.isEmpty else { return [] }
