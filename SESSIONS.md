@@ -7,7 +7,7 @@ Historical record of shipped features and session notes. Not needed at conversat
 **2026-09-30 (Mac) — Song search by "title + artist" ("독 이센스").** "독" found 독 by 프라이머리 / E-Sens but "독 이센스" found nothing.
 
 - **Data:** the recording `d8869f3e…` has `primary_artist_id` = Primary, and E-Sens appears only in the `artist_display` text ("프라이머리, E-Sens of 슈프림팀"); there's no featured-artist table. It's on *Primary and the Messengers LP* (track 7). 이센스 → artist E SENS (`name_phonetic_ko`), whose aliases include "E-Sens". Song search only matched the whole query against the title.
-- **Migration `20260930000004_search_songs_title_artist.sql` (⏳ apply):** `search_songs_title_artist(q, lim)`.
+- **Migration `20260930000004_search_songs_title_artist.sql` (✅ applied; verified live: 독 이센스 / 이센스 독 / 독 프라이머리 → E-Sens's 독 at 11001; rain song epik high (either order), hype boy newjeans, 밤 이적, the stranger billy joel all correct in 0.25–1.0s. **But "love you" timed out**, so it needs the bounded follow-up `20260930000005` (⏳ apply): main-artist candidates via `primary_artist_id` + title prefix (≤200), featured credits via exact title only (≤500), ≤5 artists per split):** `search_songs_title_artist(q, lim)`.
   - For every split of the words into [artist][title] or [title][artist], the artist part is resolved by exact normalized name / native / phonetic_ko / alias (indexed).
   - Recordings match when their title starts with the title part (`idx_recordings_title_norm_prefix`) AND their primary artist is that artist, or their `artist_display` ILIKE-contains one of its names/aliases (catches featured credits).
   - Score: exact title 11000, prefix 10200, + album prestige. This beats plain title matches, so Top Match picks it. pglast OK.
