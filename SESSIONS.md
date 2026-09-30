@@ -4,6 +4,30 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-29 (Mac) — Short searches ("독", "밤", "사랑", "iu") work.** Reported: "독" (a song by eSNs) wasn't findable.
+
+- **Three causes:**
+  - iOS (and web) refused queries under 2 characters.
+  - `search_release_groups` **times out (57014) for every 1–2 character query**. Confirmed live for 독 / 사랑 / 밤 / iu / ab: every path is `LIKE '%q%'` or trigram, and trigram indexes need 3+ characters, so it seq-scans ~670k release_groups. That means searching "IU" returned no albums.
+  - Song search was a raw `recordings.title ILIKE '%q%'` scan (2.3M+ rows) cut off at 2s. 독 is a *song* (4 recordings titled 독 exist; no release group titled 독).
+- **Migration `20260929000000_short_query_search_indexes.sql` (✅ applied; each CREATE INDEX CONCURRENTLY has to run on its own, since running the file whole fails with 25001):** text_pattern_ops btree indexes on `normalize_text(title)` for release_groups and recordings.
+- **Migration `20260929000001_short_query_search.sql` (✅ applied):**
+  - `search_release_groups` becomes a plpgsql router. Queries of 3+ normalized characters go to `search_release_groups_long` (the previous body, verbatim).
+  - Shorter queries take a short path: exact title / native title (10000), exact artist name → that artist's releases (9000), and title prefix via `~>=~` / `~<~` (500), plus prestige.
+  - New `search_recordings_short(q, lim)` for songs: exact, then prefix.
+  - **Verified live (anon key):** albums 독 / 밤 / 사랑 / iu / 夜 / ab return in 0.26–0.5s (were 57014 timeouts). Songs: 독 finds "독 – 프라이머리, E-Sens of 슈프림팀". Long queries unchanged (newjeans 14 rows, the stranger 30 rows in ~1s). Pre-existing gap noticed: "에픽하이" → 0 albums (the long path doesn't match Korean artist names).
+- **iOS:**
+  - `SearchViewModel.isSearchable`: 2+ characters, or 1 for Hangul / Kana / Han. Used by search, popular-search logging and the "No results" state.
+  - Song search calls `search_recordings_short` when the normalized length is < 3.
+  - **BUILD SUCCEEDED**.
+- **Not changed:** web search still needs 2+ characters. `search_artists` answers 1-character queries in ~2s but with sound-alike noise (독 → Snoop Dogg).
+
+---
+
+**2026-09-29 (Mac) — Add-tab search results use the flower rate button (iOS).** Search's Top Match and Albums grid used the old `AlbumCard`: a "+" that opened `ManualRatingSheet`, then a static checkmark once rated. `AlbumCard` now shows `AlbumRateButton` (size 30) bound to the tab's shared `scoreBinding(for:)` plus the user's rating step, same as `DiscoveryAlbumCard`. So it shows your score, stays tappable to change it, and stays in sync with other rows. The now-unreachable quick-rate path (`quickRateRelease` / `quickRateScore` state, the sheet, `addRelease`, `saveQuickRating`) is removed. **BUILD SUCCEEDED**; not device-checked.
+
+---
+
 **2026-09-28 (Mac) — Merged Windows's Home feed rebuild (`3001980`); fixed it so iOS builds.**
 
 - **It didn't compile on its own.** Checked by building `3001980`/`be0eae0` alone in a worktree. Cause: `onNotInterested: isExplore ? { await viewModel.notInterested(item:) } : nil` against the now-optional `FeedCard.onNotInterested`. Under default MainActor isolation that ternary crashes the type checker ("failed to produce diagnostic"). Rewritten as if/else in `ratingCard`. **Windows can't build iOS, so iOS edits made there need a Mac build before shipping.**
