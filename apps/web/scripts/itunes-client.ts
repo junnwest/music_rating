@@ -118,14 +118,21 @@ export async function searchAlbum(title: string, artist: string, nativeLang: str
   return null;
 }
 
-/** Resolve an artist by name → iTunes artistId (exact-name match preferred). */
-export async function searchArtist(name: string): Promise<{ artistId: number; artistName: string } | null> {
+/**
+ * Resolve an artist by name → iTunes artistId (exact-name match preferred).
+ *
+ * `artistLinkUrl` is returned because it carries the romanization Apple publishes for the act
+ * ("와비사비룸" → /artist/wavisabiroom/964403996). That slug is the only authoritative Hangul→Latin
+ * mapping we get for free: Revised Romanization yields "wabisabirum", which does not match the
+ * label's own "Wavisabiroom", and guessing the difference is what fuzzy matching would do.
+ */
+export async function searchArtist(name: string): Promise<{ artistId: number; artistName: string; artistLinkUrl: string | null } | null> {
   const data = await itunesGet(`${ITUNES_BASE}/search?term=${encodeURIComponent(name)}&entity=musicArtist&limit=5`);
   const results: any[] = data?.results ?? [];
   const nn = norm(name);
   const best = results.find(r => r.wrapperType === 'artist' && norm(r.artistName ?? '') === nn)
     ?? results.find(r => r.wrapperType === 'artist');
-  return best ? { artistId: best.artistId, artistName: best.artistName } : null;
+  return best ? { artistId: best.artistId, artistName: best.artistName, artistLinkUrl: best.artistLinkUrl ?? null } : null;
 }
 
 const NOISE_RE = /\b(sped[- ]up|slowed|remix(?:es)?|instrumental|karaoke|off[- ]vocal|mr\.?|inst\.?)\b/i;

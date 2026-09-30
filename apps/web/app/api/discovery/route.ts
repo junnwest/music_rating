@@ -68,6 +68,11 @@ export async function GET(req: NextRequest) {
       .select(RG_COLS)
       .in('release_group_type', ['album', 'ep'])
       .not('cover_url', 'is', null)
+      // A newest-first feed must not be led by albums that do not exist yet. The catalog
+      // carries announced releases from MusicBrainz, and among them typos that land years
+      // out, so an unbounded DESC sort puts unreleased rows permanently on top. Ingest now
+      // nulls dates beyond a horizon; this bounds what is already stored.
+      .lte('first_release_date', new Date().toISOString().slice(0, 10))
       .order('first_release_date', { ascending: false, nullsFirst: false })
       .limit(50),
     // Skinny rows; ~8k/month at current volume, fetched once per cache TTL.

@@ -19,9 +19,10 @@
  * uncontrolled pollution. Review a dry-run before --write.
  */
 import { randomUUID } from 'node:crypto';
-import { getDB, normalizeStr, releaseGroupKey, detectLanguage, mapGenre, type DB } from './itunes-ingest-core';
+import { getDB, normalizeStr, releaseGroupKey, detectLanguage, mapGenre, saneReleaseDate, type DB } from './itunes-ingest-core';
 import { MB_ARTIST_OVERRIDES } from './mb-overrides';
 import { searchArtists, artistAlbums, albumWithTracks, type DzArtist } from './deezer-client';
+import { searchArtist } from './itunes-client';
 
 const WRITE = process.argv.includes('--write');
 const LIMIT = (() => { const a = process.argv.find(x => x.startsWith('--limit=')); return a ? parseInt(a.split('=')[1], 10) : 10; })();
@@ -68,13 +69,57 @@ export function pickArtist(cands: DzArtist[], rawName: string): DzArtist | null 
   return ts[0] ?? null;
 }
 
-async function findOrCreateArtist(db: DB, dz: DzArtist, country: string | null): Promise<string> {
+const HANGUL_RE = /[가-힣]/;
+
+/**
+ * Bridge a Hangul artist name to the romanization a non-MB source lists it under.
+ *
+ * The three non-MB recovery tiers (pipeline miss lane, discover-popularity, seed-deezer-artist)
+ * all route through pickArtist, which compares strings. Korean underground acts — precisely the
+ * population MusicBrainz lacks — are usually listed on Deezer romanized: "와비사비룸" is
+ * "Wavisabiroom" there, sharing no character and no token with the query, so every tier found the
+ * right artist and then refused it. That made an artist absent from MB, unsearched and uncharted
+ * permanently unreachable.
+ *
+ * The romanization is taken from Apple's own artist URL slug rather than computed: Revised
+ * Romanization gives "wabisabirum", and closing the gap to "Wavisabiroom" would require fuzzy
+ * matching — which this path deliberately refuses (missing beats wrong; the Deezer path has
+ * produced duplicate artists twice before). iTunes is only trusted when the artist name it returns
+ * is the query, so the alias describes the same act.
+ */
+export async function romanizedAliases(rawName: string): Promise<string[]> {
+  if (!HANGUL_RE.test(rawName)) return [];
+  const hit = await searchArtist(rawName).catch(() => null);
+  if (!hit || normalizeStr(hit.artistName) !== normalizeStr(rawName)) return [];
+  const slug = hit.artistLinkUrl?.match(/\/artist\/([^/]+)\//)?.[1];
+  return slug ? [decodeURIComponent(slug).replace(/-/g, ' ')] : [];
+}
+
+/**
+ * pickArtist, plus the Hangul→romanization bridge when the plain comparison finds nothing.
+ * Costs one iTunes request, and only on a Hangul query that would otherwise be given up on.
+ */
+export async function pickArtistBridged(cands: DzArtist[], rawName: string): Promise<DzArtist | null> {
+  const direct = pickArtist(cands, rawName);
+  if (direct) return direct;
+  for (const alias of await romanizedAliases(rawName)) {
+    const viaAlias = pickArtist(cands, alias);
+    if (viaAlias) return viaAlias;
+  }
+  return null;
+}
+
+async function findOrCreateArtist(db: DB, dz: DzArtist, country: string | null, nativeHint?: string | null): Promise<string> {
   const { data: ext } = await db.from('artist_external_ids')
     .select('artist_id').eq('source', 'deezer').eq('external_id', String(dz.id)).maybeSingle();
   if (ext?.artist_id) return ext.artist_id as string;
 
   const id = randomUUID();
-  const native = detectLanguage(dz.name) ? dz.name : null;
+  // The Deezer name can be a romanization ("Wavisabiroom"), which leaves a KR artist with no Hangul
+  // anywhere — unfindable by the very Korean search that asked for them. When the lookup started
+  // from a native-script query, keep it as name_native so the artist is searchable as typed.
+  const native = detectLanguage(dz.name) ? dz.name
+    : (nativeHint && detectLanguage(nativeHint) ? nativeHint : null);
   const { error } = await db.from('artists').insert({
     id, name: dz.name, name_native: native, native_language: native ? detectLanguage(native) : null,
     country, disambiguation: null, source_status: 'gapfill_unverified', ingest_state: 'tracks_done',
@@ -106,7 +151,7 @@ async function existingCatalogArtist(db: DB, name: string): Promise<string | nul
  * Ingest a Deezer artist. Returns the number of release groups added, or -1 if SKIPPED because
  * the artist is already in the catalog under another source (cross-source dedup guard).
  */
-export async function ingestDeezerArtist(db: DB, dz: DzArtist, country: string | null): Promise<number> {
+export async function ingestDeezerArtist(db: DB, dz: DzArtist, country: string | null, nativeHint?: string | null): Promise<number> {
   // Already Deezer-ingested (this exact Deezer id)? → reuse that row (a re-run must not duplicate).
   const { data: priorDz } = await db.from('artist_external_ids')
     .select('artist_id').eq('source', 'deezer').eq('external_id', String(dz.id)).maybeSingle();
@@ -114,7 +159,7 @@ export async function ingestDeezerArtist(db: DB, dz: DzArtist, country: string |
     // New Deezer artist → refuse if a same-named artist already exists (MB or other source).
     if (await existingCatalogArtist(db, dz.name)) return -1;
   }
-  const artistId = await findOrCreateArtist(db, dz, country);
+  const artistId = await findOrCreateArtist(db, dz, country, nativeHint);
   const albums = (await artistAlbums(dz.id)).filter(a => a.recordType !== 'compilation'); // skip VA comps
   // Release-group idempotency: Deezer RGs have no stable external key (random-UUID insert), so
   // seed the seen-set with the artist's EXISTING album keys — otherwise a re-ingest (or an
@@ -136,7 +181,7 @@ export async function ingestDeezerArtist(db: DB, dz: DzArtist, country: string |
     const { error: rgErr } = await db.from('release_groups').insert({
       id: rgId, primary_artist_id: artistId, artist_display: dz.name, title: al.title,
       release_group_type: ['album', 'ep', 'single'].includes(al.recordType) ? al.recordType : 'album',
-      first_release_date: date, cover_url: detail.cover || al.cover || null,
+      first_release_date: saneReleaseDate(date), cover_url: detail.cover || al.cover || null,
       genres: genre ? [genre] : null, native_title: native, source: 'deezer',
     });
     if (rgErr) throw new Error(`release_group "${al.title}": ${rgErr.message}`);

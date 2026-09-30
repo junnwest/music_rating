@@ -48,7 +48,7 @@ import * as path from 'path';
 import { randomUUID } from 'crypto';
 import {
   getDB, createIngestContext, findOrCreateReleaseGroup, ingestEdition, releaseGroupKey,
-  releaseType, artworkUrl, mapGenre, detectLanguage, type AlbumInput, type DB,
+  releaseType, artworkUrl, mapGenre, detectLanguage, saneReleaseDate, type AlbumInput, type DB,
 } from './itunes-ingest-core';
 import { fetchDiscography, fetchAlbumTracks } from './itunes-client';
 import { artistAlbums, albumWithTracks } from './deezer-client';
@@ -335,7 +335,7 @@ async function ingestFromDeezer(db: DB, a: Candidate, dzArtistId: number, write:
       const { error: rgErr } = await db.from('release_groups').insert({
         id: rgId, primary_artist_id: a.id, artist_display: display, title: al.title,
         release_group_type: ['album', 'ep', 'single'].includes(al.recordType) ? al.recordType : 'album',
-        first_release_date: date, cover_url: detail.cover || al.cover || null,
+        first_release_date: saneReleaseDate(date), cover_url: detail.cover || al.cover || null,
         genres: genre ? [genre] : null, native_title: native, source: 'deezer',
       });
       if (rgErr) throw new Error(`release_group "${al.title}": ${rgErr.message}`);
@@ -539,7 +539,7 @@ async function ingestFromSpotify(db: DB, a: Candidate, spotifyArtistId: string, 
       const native = detectLanguage(al.title) ? al.title : null;
       const { error: rgErr } = await db.from('release_groups').insert({
         id: rgId, primary_artist_id: a.id, artist_display: display, title: al.title,
-        release_group_type: rgType, first_release_date: date, cover_url: al.coverUrl ?? null,
+        release_group_type: rgType, first_release_date: saneReleaseDate(date), cover_url: al.coverUrl ?? null,
         genres: detail.genres?.length ? [mapGenre(detail.genres[0])].filter(Boolean) : null,
         native_title: native, source: 'spotify',
       });

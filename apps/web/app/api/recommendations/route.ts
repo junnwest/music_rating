@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../lib/supabaseServer';
 import { getAuthedUserId } from '../../../lib/authGuard';
 import { rateLimit } from '../../../lib/rateLimit';
+import { releasedFilter } from '../../../lib/releaseWindow';
 import { cacheGet, cacheSet } from '../../../lib/cache';
 import { albumCentroid, cosine, displayGenre } from '../../../lib/taste/embeddings';
 import {
@@ -222,6 +223,7 @@ export async function GET(req: NextRequest) {
           .in('artist_display', lovedList)
           .in('release_group_type', ['album', 'ep'])
           .not('cover_url', 'is', null)
+          .or(releasedFilter())
           .order('first_release_date', { ascending: false, nullsFirst: false })
           .limit(150)
       : Promise.resolve({ data: [] as CandidateRow[], error: null }),

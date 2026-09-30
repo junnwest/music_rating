@@ -46,6 +46,13 @@ const arg = (f: string, d?: string) => { const i = argv.indexOf(f); return i >= 
 const LIMIT = parseInt(arg('--limit', '80')!, 10);
 const THRESHOLD = parseFloat(arg('--threshold', '0.25')!);
 const ALL = argv.includes('--all'); // sample all CAA covers, not just prestige
+// --apply repoints cover_url for the CAA outliers to the cross-source image. Safe to automate for
+// exactly the flagged set and no wider: a row is only flagged when Deezer and iTunes agree with
+// EACH OTHER (dz~it within threshold) and both differ from CAA, so the replacement is the image two
+// independent sources already concur on. Rows where the two sources disagree are "edition variance"
+// and are never flagged, never written. Without this the audit could only name the problem -
+// YANGHONGWON / 오보에 sat wrong in the catalogue for months as this file's own header example.
+const APPLY = argv.includes('--apply');
 const JSON_OUT = arg('--json', 'scripts/output/caa-cover-audit.json')!;
 
 const db = getDB();
@@ -129,10 +136,30 @@ async function main() {
     }
   }
 
+  if (APPLY && flagged.length) {
+    console.log(`
+  applying ${flagged.length} cover replacement(s)...`);
+    let fixed = 0;
+    for (const f of flagged) {
+      // iTunes first: its artwork URLs are stable CDN paths at a requested size, whereas Deezer's
+      // are tied to a cover hash. Either is the agreed image; this just picks the sturdier host.
+      const replacement = f.itunes ?? f.deezer;
+      if (!replacement) continue;
+      const { error: upErr } = await db.from('release_groups')
+        .update({ cover_url: replacement }).eq('id', f.id).eq('cover_url', f.caa);
+      if (upErr) { console.log(`    ! ${f.artist} - "${f.title}": ${upErr.message}`); continue; }
+      fixed++;
+      console.log(`    OK ${f.artist} - "${f.title}"`);
+    }
+    console.log(`  REPOINTED ${fixed} cover(s)`);
+  }
+
   try { mkdirSync(JSON_OUT.replace(/[/\\][^/\\]+$/, ''), { recursive: true }); } catch { /* exists */ }
   writeFileSync(JSON_OUT, JSON.stringify({ threshold: THRESHOLD, sampled: rows.length, crossChecked: checked, agree, editionVariance: inconclusive.length, insufficient, imgErr, flagged, inconclusive }, null, 2));
   console.log(`\n  Full report → ${JSON_OUT}`);
-  console.log('  (READ-ONLY — CAA outliers are cross-verified by 2 independent sources; a human confirms before repointing cover_url.)\n');
+  console.log(APPLY
+    ? '  (APPLIED - only rows where Deezer and iTunes agreed against CAA were repointed.)'
+    : '  (report only - re-run with --apply to repoint the flagged cover_url values.)');
 }
 
 main().catch(e => { console.error(e); process.exit(1); });
