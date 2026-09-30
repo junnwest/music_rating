@@ -7,7 +7,7 @@ Historical record of shipped features and session notes. Not needed at conversat
 **2026-09-30 (Mac) — Search follow-ups ("do all").**
 
 - **Album search now finds artists by their Korean / alternate names.** "에픽하이" and "이센스" returned 0 albums: Epik High is stored as `name` "Epik High" with `name_phonetic_ko` 에픽하이 plus aliases, and album search only compared titles and artist_display.
-  - **Migration `20260930000001_search_albums_by_artist_name.sql` (⏳ apply):** both router paths add that artist's release groups (score 9000 + prestige) when the query exactly equals an artist's name, name_native, name_phonetic_ko or an alias. All btree-indexed, and `search_release_groups_long` is untouched. It parses (pglast) but isn't run yet.
+  - **Migration `20260930000001_search_albums_by_artist_name.sql` (✅ applied; verified live: 에픽하이 → 30 Epik High albums, 이센스 → 12 E SENS, 방탄소년단 / 빅뱅 / 아이유 fine; steady-state 0.2–1.0s over 3 rounds. One burst of 57014 timeouts on "the stranger" / "good kid" hit `search_release_groups_long` alone too, then cleared, so it was transient DB load, not this change):** both router paths add that artist's release groups (score 9000 + prestige) when the query exactly equals an artist's name, name_native, name_phonetic_ko or an alias. All btree-indexed, and `search_release_groups_long` is untouched.
 - **Web search matches iOS:**
   - New `lib/searchQuery.ts` (`isSearchable`: 2+ characters or 1 CJK; `normalizedLength`).
   - Used by the search page (runSearch, popular-search logging, empty state) and `/api/search/popular`.
