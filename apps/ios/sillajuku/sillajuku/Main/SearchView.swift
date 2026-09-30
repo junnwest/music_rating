@@ -11,6 +11,9 @@ struct SongResult: Codable, Identifiable {
     let title: String
     let artists: String?
     let releases: SongRelease
+    /// Same scale as album/artist search scores (exact title 10000 + album
+    /// popularity) -- only set for short queries (search_recordings_short).
+    var score: Double? = nil
 
     struct SongRelease: Codable {
         let id: UUID
@@ -661,6 +664,7 @@ struct SearchUserResult: Codable, Identifiable {
 enum SearchTopResult {
     case artist(SearchArtist)
     case album(Release)
+    case song(SongResult)
 }
 
 // Category filter pills (All/Albums/Songs/Artists/Users) beneath the search bar. Empty
@@ -847,8 +851,9 @@ class SearchViewModel {
         // Step 1 — match recordings by title
         struct RecordingHit: Codable, Identifiable {
             let id: UUID; let title: String; let artistDisplay: String?
+            var score: Double? = nil
             enum CodingKeys: String, CodingKey {
-                case id, title; case artistDisplay = "artist_display"
+                case id, title, score; case artistDisplay = "artist_display"
             }
         }
         // Short queries ("독") can't use the trigram index -- the ILIKE scan
@@ -913,7 +918,8 @@ class SearchViewModel {
             return SongResult(id: hit.id, title: hit.title, artists: hit.artistDisplay,
                               releases: SongResult.SongRelease(
                                   id: rg.id, title: rg.title,
-                                  artist: rg.artistDisplay ?? "", coverUrl: rg.coverUrl))
+                                  artist: rg.artistDisplay ?? "", coverUrl: rg.coverUrl),
+                              score: hit.score)
         }
     }
 }
@@ -982,14 +988,27 @@ struct SearchView: View {
     // Takes the category-filtered arrays (not searchVM's raw results directly) so a filtered-out
     // category can never surface via Top Match either -- e.g. deselecting Artists should hide an
     // artist from Top Match too, not just from its own section.
-    private func pickTopResult(artists: [SearchArtist], albums: [Release]) -> SearchTopResult? {
-        let topArtist = artists.first
-        let topAlbum  = albums.first
-        guard topArtist != nil || topAlbum != nil else { return nil }
-        if let topArtist, topAlbum == nil || (topArtist.score ?? 0) >= (topAlbum?.score ?? 0) {
-            return .artist(topArtist)
+    /// Highest score wins; ties go artist > album > song. A song only
+    /// competes when its title is an exact match (score >= 10000) -- added
+    /// 2026-09-30 so "독" shows the song 독, not a loose artist match (Snoop
+    /// Dogg scores ~1600 on search_artists' cross-script similarity).
+    private func pickTopResult(artists: [SearchArtist], albums: [Release], songs: [SongResult], query: String) -> SearchTopResult? {
+        let norm: (String) -> String = { s in
+            String(s.precomposedStringWithCanonicalMapping.lowercased().unicodeScalars
+                .filter { CharacterSet.alphanumerics.contains($0) })
         }
-        return .album(topAlbum!)
+        let q = norm(query)
+        let topSong: (SongResult, Double)? = songs.lazy.compactMap { song -> (SongResult, Double)? in
+            if let s = song.score, s >= 10000 { return (song, s) }
+            // Long queries (ILIKE path) carry no score: exact title = 10000.
+            if song.score == nil, !q.isEmpty, norm(song.title) == q { return (song, 10000) }
+            return nil
+        }.first
+        var best: (SearchTopResult, Double)?
+        if let a = artists.first { best = (.artist(a), a.score ?? 0) }
+        if let r = albums.first, (r.score ?? 0) > (best?.1 ?? -.infinity) { best = (.album(r), r.score ?? 0) }
+        if let (song, s) = topSong, s > (best?.1 ?? -.infinity) { best = (.song(song), s) }
+        return best?.0
     }
 
     private func categoryIncluded(_ cat: SearchCategory) -> Bool {
@@ -1241,7 +1260,8 @@ struct SearchView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            let topResult = pickTopResult(artists: filteredArtists, albums: filteredAlbums)
+            let topResult = pickTopResult(artists: filteredArtists, albums: filteredAlbums,
+                                          songs: filteredSongs, query: searchVM.query)
             let restArtists: [SearchArtist] = {
                 if case .artist = topResult { return Array(filteredArtists.dropFirst()) }
                 return filteredArtists
@@ -1249,6 +1269,10 @@ struct SearchView: View {
             let restAlbums: [Release] = {
                 if case .album = topResult { return Array(filteredAlbums.dropFirst()) }
                 return filteredAlbums
+            }()
+            let restSongs: [SongResult] = {
+                if case .song(let top) = topResult { return filteredSongs.filter { $0.id != top.id } }
+                return filteredSongs
             }()
 
             ScrollView(showsIndicators: false) {
@@ -1274,6 +1298,14 @@ struct SearchView: View {
                             .albumContextMenu(release)
                             .frame(width: 140)
                             .padding(.horizontal, 16)
+                            .padding(.bottom, 24)
+                        case .song(let song):
+                            let pr = songParentRelease(song)
+                            NavigationLink(value: pr) {
+                                SongRow(song: song, scoreBinding: scoreBinding(for: song.releases.id), ratingStep: userRatingStep)
+                            }
+                            .buttonStyle(.plain)
+                            .albumContextMenu(pr)
                             .padding(.bottom, 24)
                         }
                     }
@@ -1309,17 +1341,17 @@ struct SearchView: View {
                     }
 
                     // ── Songs ─────────────────────────────────
-                    if hasSongs {
+                    if !restSongs.isEmpty {
                         sectionLabel("Songs")
                         VStack(spacing: 0) {
-                            ForEach(filteredSongs) { song in
+                            ForEach(restSongs) { song in
                                 let pr = songParentRelease(song)
                                 NavigationLink(value: pr) {
                                     SongRow(song: song, scoreBinding: scoreBinding(for: song.releases.id), ratingStep: userRatingStep)
                                 }
                                 .buttonStyle(.plain)
                                 .albumContextMenu(pr)
-                                if song.id != filteredSongs.last?.id {
+                                if song.id != restSongs.last?.id {
                                     Divider().padding(.leading, 72)
                                 }
                             }
