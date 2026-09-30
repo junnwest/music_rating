@@ -22,11 +22,18 @@
  * 70% of Korean albums have none) → the rest. Resumable through the stored
  * fetched_at: an artist whose sources were all fetched within --stale-days is skipped.
  *
- *   npx tsx --env-file=.env.local scripts/backfill-artist-genres.ts [--rated-only] [--limit=N]
+ *   npx tsx --env-file=.env.local scripts/backfill-artist-genres.ts [--rated-only] [--only-thin] [--limit=N]
  *       [--stale-days=60] [--sources=musicbrainz,lastfm,wikidata,itunes] [--gap-ms=0] [--dry-run]
  *
  * --gap-ms adds a pause between artists on top of the MB limiter — raise it if this
  * machine shares an IP with the running pipeline (MB limits per IP).
+ *
+ * Two-pass use (iTunes is the slow source, ~20 calls/min): first everything but iTunes,
+ *   npm run backfill:artist-genres -- --sources=musicbrainz,lastfm,wikidata
+ * then iTunes only where that left the artist THIN — all three fetched, fewer than
+ * --thin-tags (default 3) tags between them (a shared-name Last.fm page counts as none):
+ *   npm run backfill:artist-genres -- --only-thin
+ * (--only-thin implies --sources=itunes.) Stop any time with Ctrl+C; re-running resumes.
  */
 import { getArtist } from './mb-client';
 import { getDB } from './mb-ingest';
@@ -55,7 +62,11 @@ const STALE_DAYS = Number(arg('--stale-days') ?? 60);
 const GAP_MS = Number(arg('--gap-ms') ?? 0);
 const DRY = process.argv.includes('--dry-run');
 const RATED_ONLY = process.argv.includes('--rated-only');
-const SOURCES = new Set((arg('--sources') ?? 'musicbrainz,lastfm,wikidata,itunes').split(',') as GenreSource[]);
+const ONLY_THIN = process.argv.includes('--only-thin');
+const THIN_TAGS = Number(arg('--thin-tags') ?? 3);
+const SOURCES = new Set(
+  (arg('--sources') ?? (ONLY_THIN ? 'itunes' : 'musicbrainz,lastfm,wikidata,itunes')).split(',') as GenreSource[],
+);
 const ITUNES_GAP_MS = 3200;
 const ENGLISH = new Set(['US', 'GB', 'CA', 'AU', 'IE', 'NZ']);
 const UA = 'sillajuku-genre-backfill/1.0 (admin@sillajuku.com)';
@@ -203,7 +214,12 @@ interface Link {
     name: string;
     name_native: string | null;
     country: string | null;
-    genre_evidence: StoredGenreEvidence | null;
+    // Only the small parts of genre_evidence (not iTunes' per-album map) — read for every artist.
+    fetched_at: StoredGenreEvidence['fetched_at'] | null;
+    musicbrainz: StoredGenreEvidence['musicbrainz'] | null;
+    lastfm: StoredGenreEvidence['lastfm'] | null;
+    wikidata: StoredGenreEvidence['wikidata'] | null;
+    lastfm_shared_name: boolean | null;
   } | null;
 }
 
@@ -219,15 +235,30 @@ async function main() {
   const links = await pageAll<Link>('artists', (a, b) =>
     db
       .from('artist_external_ids')
-      .select('artist_id, external_id, artists(name, name_native, country, genre_evidence)')
+      .select(
+        'artist_id, external_id, artists(name, name_native, country, fetched_at:genre_evidence->fetched_at, ' +
+          'musicbrainz:genre_evidence->musicbrainz, lastfm:genre_evidence->lastfm, wikidata:genre_evidence->wikidata, ' +
+          'lastfm_shared_name:genre_evidence->lastfm_shared_name)',
+      )
       .eq('source', 'musicbrainz')
       .order('artist_id')
       .range(a, b),
   );
   const cutoff = Date.now() - STALE_DAYS * 86_400_000;
+  /** All three non-iTunes sources fetched, and they said (almost) nothing. */
+  const thin = (l: Link) => {
+    const ev = l.artists;
+    const at = ev?.fetched_at ?? {};
+    if (!at.musicbrainz || !at.lastfm || !at.wikidata) return false;
+    const n =
+      (ev?.musicbrainz?.length ?? 0) +
+      (ev?.lastfm_shared_name ? 0 : (ev?.lastfm?.length ?? 0)) +
+      (ev?.wikidata?.length ?? 0);
+    return n < THIN_TAGS;
+  };
   const due = (l: Link) =>
     [...SOURCES].filter((s) => {
-      const at = l.artists?.genre_evidence?.fetched_at?.[s];
+      const at = l.artists?.fetched_at?.[s];
       return !at || Date.parse(at) < cutoff;
     });
   const tier = (l: Link) => {
@@ -238,13 +269,13 @@ async function main() {
   const seen = new Set<string>();
   const queue = links
     .filter((l) => !seen.has(l.artist_id) && seen.add(l.artist_id))
-    .filter((l) => due(l).length > 0 && (!RATED_ONLY || tier(l) === 0))
+    .filter((l) => due(l).length > 0 && (!RATED_ONLY || tier(l) === 0) && (!ONLY_THIN || thin(l)))
     .sort((x, y) => tier(x) - tier(y))
     .slice(0, LIMIT);
   console.log(
     `${links.length} MB artists · ${queue.length} due (rated ${queue.filter((l) => tier(l) === 0).length}, ` +
       `non-English/unknown ${queue.filter((l) => tier(l) === 1).length}, English ${queue.filter((l) => tier(l) === 2).length})` +
-      ` · sources ${[...SOURCES].join(',')}${DRY ? ' · DRY RUN' : ''}`,
+      ` · sources ${[...SOURCES].join(',')}${ONLY_THIN ? ` · only thin (< ${THIN_TAGS} tags)` : ''}${DRY ? ' · DRY RUN' : ''}`,
   );
 
   const started = Date.now();
