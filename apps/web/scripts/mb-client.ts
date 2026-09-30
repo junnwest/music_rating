@@ -118,6 +118,7 @@ export interface MbArtistDetail {
   disambiguation: string | null;
   aliases: MbAlias[];
   genres: string[];
+  genreVotes: MbGenreVote[];   // same genres WITH vote counts (artists.genre_evidence.musicbrainz)
 }
 export interface MbCredit {
   mbid: string | null;   // credited artist's MBID (null for pure free-text credits)
@@ -288,6 +289,7 @@ export async function getArtist(mbid: string): Promise<MbArtistDetail | null> {
       name: al.name, locale: al.locale ?? null, primary: al.primary ?? null, type: al.type ?? null,
     })),
     genres: sortGenresByVotes(a.genres),
+    genreVotes: genreVotes(a.genres),
   };
 }
 

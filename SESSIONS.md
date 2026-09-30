@@ -4,6 +4,18 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-29 (Windows, web + pipeline code) — evidence-weighted genre placement shipped (`GENRE_AUDIT.md` §9).** New `lib/genres/placement.ts` (world = best-supported family from own tags + artist prior; hybrids split; descriptors/catch-alls via new taxonomy `evidence` field); `worlds.placeAlbum` rebuilt on it; `/api/taste/profile` places user + community albums with `lib/taste/artistPrior.ts` (stored `artists.genre_evidence` + the artist's other albums/EPs) instead of borrowing sibling tags (cache profile v18, community v4). Migration `20260930000003` ✅ applied (`artists.genre_evidence`; community RPC returns the artist, keeps untagged albums). `mb-client`/`mb-ingest` now store MB artist genre votes on every ingest (pipeline device needs pull + restart). New `npm run backfill:artist-genres` (MB + Last.fm by MB id + Wikidata) ✅ run for the 97 rated artists. Golden fixture `lib/genres/__fixtures__/placement-golden.json` (347 labelled albums) + `placement.test.ts`. Second pass (§9.1) fixed the remaining misses systematically: `trot` node, iTunes as a half-weight source (US store, artist matched by title overlap), artist-level language fallback (≥3 releases, ≥70% one language), Last.fm shared-name pages dropped; TAEYEON *VOICE* relabelled J-Pop. Result 91.8/98.5% rated, 90.1/100% Korean holdout. `pop rap` home parent → Hip-Hop. vitest 133/133 in lib/genres+lib/taste, tsc + eslint clean. Still on the old primary: genre_weights (iOS), chart SQL primary, /api/recommendations, feed.
+
+---
+
+**2026-09-29 (Windows, experiment) — genre source/rule bake-off (`GENRE_AUDIT.md` §8).** Hand-labelled 195 rated albums + a 152-album Korean holdout; compared current code vs evidence-weighted placement with MusicBrainz/Last.fm/Discogs/Wikidata at album and artist level. Winner: own tags + artist prior (our other albums + MB artist genres + Last.fm artist tags + Wikidata artist, equal weights) — rated 68.7→88.7% best-label (80→96% acceptable), Korean holdout 51→88% (62→97%). Per-album external sources incl. Discogs added nothing. Last.fm artist pages collide on shared names (Loco, Paloalto; name lookup turns "Ye" into Yes). No code changed; scratch harness not committed.
+
+---
+
+**2026-09-29 (Windows, audit) — genre placement audit.** User reported wrong Taste-map worlds (808s → R&B, 양홍원 → K-Pop, Korean indie → Korean Rock, 기리보이 → Classical). Wrote `GENRE_AUDIT.md`: six root causes (most-specific-wins primary, first-parent hybrids, descriptor tags as genres, scene labels as sounds, 70% of Korean albums untagged, MB votes never landed — 91 rows) with live measurements, target model and an 8-step plan. No code changed.
+
+---
+
 **2026-09-29 (Windows) — `backfill:title-language` finished.** 97,625 artists in the first pass (3 skipped on MB errors) + a resume pass covering those 3 and 6,037 newly-ingested artists; **168,002 release groups** now carry a non-English tracklist language (jpn 38,953, spa 27,189, fra 22,946, deu 14,717, ita 9,514, kor 7,812, por 7,074, rus 6,308, fin 4,222, hin 4,189, tur 3,167, zho 2,935). Korean is low because many Korean releases have English track titles (MB → eng, never stored) — Korean albums still resolve via script/country. Throughput ~4,400 artists/hr (most artists need one MB page). README pipeline-PC note updated: nothing left to run, no shared-IP clash.
 
 ---

@@ -274,7 +274,7 @@ export function fromTitleLanguage(code: string | null | undefined): string | nul
 
 // ── album language ────────────────────────────────────────────────────────────
 
-export type LanguageSource = 'tag' | 'title-language' | 'script' | 'artist-script' | 'country';
+export type LanguageSource = 'tag' | 'title-language' | 'script' | 'artist-script' | 'country' | 'artist-releases';
 
 export interface AlbumLanguageInput {
   genres: readonly string[] | null | undefined;

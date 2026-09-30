@@ -36,9 +36,24 @@ describe('placeAlbum', () => {
     expect(p.tiles[0].weight).toBe(1);
   });
 
-  it('keeps a K-pop album with rap co-tags in K-Pop', () => {
-    const p = placeAlbum({ genres: ['k-pop', 'trap', 'hip hop'], title: 'x', artistCountry: 'KR' });
-    expect(p.world).toBe('k-pop');
+  it('decides a K-pop album with rap co-tags by its artist', () => {
+    // k-pop is a catch-all, so on tags alone two rap tags outweigh it…
+    const tags = ['k-pop', 'trap', 'hip hop'];
+    expect(placeAlbum({ genres: tags, title: 'x', artistCountry: 'KR' }).world).toBe('k-rap');
+    // …but an idol group's own genres (dance-pop, pop) pull it back to K-Pop.
+    const idol = {
+      musicbrainz: [{ tag: 'k-pop', weight: 5 }, { tag: 'dance-pop', weight: 3 }, { tag: 'pop', weight: 2 }],
+      catalog: [{ tag: 'k-pop', weight: 6 }, { tag: 'dance-pop', weight: 4 }, { tag: 'pop', weight: 3 }],
+    };
+    expect(placeAlbum({ genres: tags, title: 'x', artistCountry: 'KR', artist: idol }).world).toBe('k-pop');
+  });
+
+  it('puts pop rap in Hip-Hop when the album also says hip hop (MBDTF)', () => {
+    const p = placeAlbum({ genres: ['hip hop', 'pop rap', 'contemporary r&b'], title: 'x', artistCountry: 'US' });
+    expect(p.world).toBe('hip-hop');
+    // A hybrid is a tile in each of its parents' worlds.
+    expect(p.tiles.map((t) => t.id)).toEqual(['hip-hop', 'pop-rap']);
+    expect(p.primary).toBe('pop-rap');
   });
 
   it('puts a Korean rap album tagged [hip hop, k-pop] in Korean Hip-Hop', () => {
@@ -55,10 +70,21 @@ describe('placeAlbum', () => {
   });
 
   it('keeps out-of-family co-tags out of the world tiles', () => {
-    const p = placeAlbum({ genres: ['jazz rap', 'jazz'], title: 'x', artistCountry: 'US' });
+    const p = placeAlbum({ genres: ['jazz rap', 'hip hop', 'jazz'], title: 'x', artistCountry: 'US' });
     expect(p.world).toBe('hip-hop');
-    expect(p.tiles.map((t) => t.id)).toEqual(['jazz-rap']);
+    expect(p.tiles.map((t) => t.id)).toEqual(['jazz-rap', 'hip-hop']);
     expect(p.all).toContain('jazz');
+  });
+
+  it('gives an untagged album its world as the one tile', () => {
+    const p = placeAlbum({
+      genres: [],
+      title: 'SLOWMO',
+      artistCountry: 'KR',
+      artist: { wikidata: [{ tag: 'hip-hop' }, { tag: 'korean hip-hop' }] },
+    });
+    expect(p.world).toBe('k-rap');
+    expect(p.tiles).toEqual([{ id: 'k-rap', weight: 1 }]);
   });
 });
 

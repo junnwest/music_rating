@@ -19,6 +19,7 @@ import {
   type AlbumPlacement,
 } from '../../../../lib/taste/worlds';
 import { countriesOfLanguage, qualifiedInfo } from '../../../../lib/genres/language';
+import { artistInputFor, loadArtistPriors } from '../../../../lib/taste/artistPrior';
 
 // Full taste analysis for the Taste page (2026-07-13 rebuild: a graphical
 // analysis report — world composition, release-decade and score-distribution
@@ -39,10 +40,8 @@ const GRAPH_TAGS = 8;
 /** Worlds that get a prestige candidate pool for the graph's side panel — every
  *  world the taste map can emit (MAX_WORLDS), each filtered to its own language. */
 const REC_POOL_WORLDS = 7;
-/** Tags an untagged album borrows from its artist's other albums. */
-const BORROWED_TAGS = 4;
 /** Community-per-world totals are the same for every user — cached globally. */
-const COMMUNITY_CACHE_KEY = 'taste:community-worlds:v3';
+const COMMUNITY_CACHE_KEY = 'taste:community-worlds:v4';
 const COMMUNITY_TTL_SECONDS = 600;
 
 type SupabaseServer = NonNullable<ReturnType<typeof createServerClient>>;
@@ -50,7 +49,8 @@ type SupabaseServer = NonNullable<ReturnType<typeof createServerClient>>;
 /**
  * Community score totals per taste-map world: every community-rated album
  * (get_community_album_scores — active accounts only) placed on the same
- * genre × language map as the user's own. Paged past PostgREST's 1000-row cap.
+ * genre × language map as the user's own — with the same artist prior, so an
+ * untagged album counts in its artist's world. Paged past PostgREST's 1000-row cap.
  */
 async function communityWorlds(supabase: SupabaseServer): Promise<Map<string, { sum: number; n: number }>> {
   const cached = await cacheGet<[string, { sum: number; n: number }][]>(COMMUNITY_CACHE_KEY);
@@ -65,6 +65,8 @@ async function communityWorlds(supabase: SupabaseServer): Promise<Map<string, { 
     title_language: string | null;
     artist_country: string | null;
     artist_native_language: string | null;
+    primary_artist_id: string | null;
+    artist_name: string | null;
   }
   const rows: Row[] = [];
   for (let from = 0; ; from += 1000) {
@@ -77,6 +79,7 @@ async function communityWorlds(supabase: SupabaseServer): Promise<Map<string, { 
     rows.push(...page);
     if (page.length < 1000) break;
   }
+  const priors = await loadArtistPriors(supabase, rows.map((r) => r.primary_artist_id));
   const totals = communityWorldTotals(
     rows.map((r) => ({
       scoreSum: Number(r.score_sum),
@@ -88,6 +91,8 @@ async function communityWorlds(supabase: SupabaseServer): Promise<Map<string, { 
         artistCountry: r.artist_country,
         artistNativeLanguage: r.artist_native_language,
         titleLanguage: r.title_language,
+        artistName: r.artist_name,
+        ...artistInputFor(priors, r.primary_artist_id, r.release_group_id, r.artist_country),
       }),
     })),
   );
@@ -112,7 +117,12 @@ interface RatingRow {
     prestige_score: number | null;
     primary_artist_id: string | null;
     title_language: string | null;
-    artists: { name_native: string | null; country: string | null; native_language: string | null } | null;
+    artists: {
+      name: string | null;
+      name_native: string | null;
+      country: string | null;
+      native_language: string | null;
+    } | null;
   } | null;
 }
 
@@ -147,7 +157,10 @@ export async function GET(req: NextRequest) {
   // (Korean rap tagged [hip hop, k-pop] → Korean Hip-Hop).
   // v17: 2026-09-29 — catch-all audit: Chinese Pop world, mpb/cantopop/mandopop
   // catch-alls, reggaeton → Latin, bare "alternative" = broad rock, latin → es hint.
-  const cacheKey = `taste:profile:v17:${userId}`;
+  // v18: 2026-09-29 — placement by weighted evidence + artist prior
+  // (lib/genres/placement.ts, GENRE_AUDIT.md §8): the world is the best-supported
+  // family, not the most specific tag; untagged albums are placed by their artist.
+  const cacheKey = `taste:profile:v18:${userId}`;
   if (!refresh) {
     const cached = await cacheGet<object>(cacheKey);
     if (cached) return NextResponse.json(cached);
@@ -160,7 +173,7 @@ export async function GET(req: NextRequest) {
     supabase
       .from('ratings')
       .select(
-        'score, created_at, release_groups(id, title, artist_display, cover_url, native_title, genres, first_release_date, prestige_score, primary_artist_id, title_language, artists!release_groups_primary_artist_id_fkey(name_native, country, native_language))',
+        'score, created_at, release_groups(id, title, artist_display, cover_url, native_title, genres, first_release_date, prestige_score, primary_artist_id, title_language, artists!release_groups_primary_artist_id_fkey(name, name_native, country, native_language))',
       )
       .eq('user_id', userId)
       .limit(500),
@@ -192,58 +205,27 @@ export async function GET(req: NextRequest) {
     rows.map((r) => ({ score: r.score, genres: r.release_groups!.genres })),
   );
   // ── taste map: language-qualified worlds (lib/taste/worlds.ts) ──
-  // Albums with no genre tags of their own (most of the Korean catalog) borrow
-  // the tags most common across their artist's other albums, at half weight, so
-  // they still land in a world instead of vanishing from the map.
-  const untaggedArtists = Array.from(
-    new Set(
-      rows
-        .filter((r) => !r.release_groups!.genres?.length && r.release_groups!.primary_artist_id)
-        .map((r) => r.release_groups!.primary_artist_id!),
-    ),
-  ).slice(0, 200);
-  const borrowed = new Map<string, string[]>();
-  if (untaggedArtists.length > 0) {
-    const { data: sib, error: sibErr } = await supabase
-      .from('release_groups')
-      .select('primary_artist_id, genres')
-      .in('primary_artist_id', untaggedArtists)
-      .not('genres', 'is', null)
-      .limit(1000);
-    if (sibErr) console.error('[taste] artist genre fallback error:', sibErr.message);
-    const counts = new Map<string, { albums: number; tags: Map<string, number> }>();
-    for (const g of (sib as { primary_artist_id: string; genres: string[] | null }[] | null) ?? []) {
-      if (!g.genres?.length) continue;
-      const e = counts.get(g.primary_artist_id) ?? { albums: 0, tags: new Map<string, number>() };
-      e.albums += 1;
-      for (const t of g.genres) e.tags.set(t, (e.tags.get(t) ?? 0) + 1);
-      counts.set(g.primary_artist_id, e);
-    }
-    for (const [artist, e] of counts) {
-      const tags = [...e.tags.entries()]
-        .filter(([, n]) => n >= Math.max(1, 0.3 * e.albums))
-        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-        .slice(0, BORROWED_TAGS)
-        .map(([t]) => t);
-      if (tags.length > 0) borrowed.set(artist, tags);
-    }
-  }
+  // Each album is placed by its own tags plus its artist prior (the artist's other
+  // albums here + MusicBrainz / Last.fm / Wikidata genres, lib/taste/artistPrior.ts),
+  // so the untagged majority of the Korean catalog still lands in its artist's world.
+  const priors = await loadArtistPriors(
+    supabase,
+    rows.map((r) => r.release_groups!.primary_artist_id),
+  );
   const placed = rows.map((r) => {
     const rg = r.release_groups!;
-    const own = rg.genres?.length ? rg.genres : null;
-    const genres = own ?? borrowed.get(rg.primary_artist_id ?? '') ?? null;
-    return {
-      row: r,
-      inferred: !own && genres != null,
-      placement: placeAlbum({
-        genres,
-        title: rg.title,
-        nativeTitle: rg.native_title,
-        artistCountry: rg.artists?.country ?? null,
-        artistNativeLanguage: rg.artists?.native_language ?? null,
-        titleLanguage: rg.title_language,
-      }),
-    };
+    const placement = placeAlbum({
+      genres: rg.genres,
+      title: rg.title,
+      nativeTitle: rg.native_title,
+      artistCountry: rg.artists?.country ?? null,
+      artistNativeLanguage: rg.artists?.native_language ?? null,
+      titleLanguage: rg.title_language,
+      artistName: rg.artists?.name ?? null,
+      ...artistInputFor(priors, rg.primary_artist_id, rg.id, rg.artists?.country),
+    });
+    // Placed by its artist alone → counts half on the map.
+    return { row: r, inferred: !rg.genres?.length && placement.world != null, placement };
   });
   const tasteMap = buildTasteMap(
     placed

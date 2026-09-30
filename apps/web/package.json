@@ -162,6 +162,7 @@
     "ig:render": "tsx --env-file=.env.local scripts/render-ig-poster.ts",
     "ig:pipeline": "tsx --env-file=.env.local scripts/run-ig-pipeline.ts",
     "backfill:title-language": "tsx --env-file=.env.local scripts/backfill-title-language.ts",
+    "backfill:artist-genres": "tsx --env-file=.env.local scripts/backfill-artist-genres.ts",
     "taxonomy:validate": "tsx scripts/validate-taxonomy.ts",
     "taxonomy:vocab": "tsx scripts/dump-genre-vocab.ts",
     "taxonomy:mb": "tsx scripts/dump-mb-genre-tree.ts",
