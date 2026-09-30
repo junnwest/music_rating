@@ -78,7 +78,12 @@ function categoriesAreMusicArtist(cats: string[]): boolean | null {
 function pickKo(links: { lang: string; title: string }[]): string | null {
   const link = links.find(l => l.lang === 'ko');
   if (!link) return null;
-  const name = stripDisambig(link.title);
+  // NFC before the Hangul guard, and therefore before the write. Two reasons, both learned the hard
+  // way on 2026-09-29: hasHangul tests [가-힣], which are PRECOMPOSED syllables only, so a title
+  // arriving decomposed (jamo live at U+1100-U+11FF) would fail the guard and be silently dropped
+  // rather than stored; and a decomposed value that did get stored would be unfindable through
+  // /api/search/suggest, which normalizes the query but compares it against the raw column.
+  const name = stripDisambig(link.title).normalize('NFC');
   return hasHangul(name) ? name : null;
 }
 
