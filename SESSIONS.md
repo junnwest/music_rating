@@ -4,6 +4,62 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-30 (Mac) — Songs can be Top Match (최적의 결과).** Reported: "독" showed Snoop Dogg as Top Match instead of 독 by E-Sens.
+
+- **Why:** Top Match only compared the best artist and the best album. `search_artists('독')` scores Snoop Dogg 1595 on loose cross-script similarity; the best album was only a prefix hit (500). Songs never competed, and four songs are titled exactly 독.
+- **Migration `20260930000002_song_search_score.sql` (✅ applied; verified live: 독 → E-Sens's 독 first at 10000.7, the other three at 10000.0; ~0.8–0.9s including the popularity join, up from ~0.4s. Caveat: most Korean albums have prestige_score 0, so ties among exact matches (밤, 사랑) are effectively arbitrary; rating counts would be a better tiebreak later):** drops and recreates `search_recordings_short` with a `score` column on the album/artist scale (exact 10000 / prefix 500, plus 2 × the best prestige_score among release groups the recording is on). Checked ahead: E-Sens's 독 (Primary and the Messengers LP, prestige 0.35) outranks the other three (0).
+- **iOS + web:**
+  - `pickTopResult` takes songs and the query. A song competes only on an exact title match (its score ≥ 10000; or, on the long-query ILIKE path, which has no score, an exact normalized title counts as 10000). Highest score wins, and ties go artist > album > song.
+  - The top song is rendered as a SongRow in Top Match and dropped from the Songs list.
+  - Works before the migration too (the no-score fallback); the migration adds the popularity order.
+  - iOS **BUILD SUCCEEDED**; web tsc clean.
+  - Songs load slightly after albums/artists, so Top Match can switch to the song a moment later.
+
+---
+
+**2026-09-30 (Mac) — Search follow-ups ("do all").**
+
+- **Album search now finds artists by their Korean / alternate names.** "에픽하이" and "이센스" returned 0 albums: Epik High is stored as `name` "Epik High" with `name_phonetic_ko` 에픽하이 plus aliases, and album search only compared titles and artist_display.
+  - **Migration `20260930000001_search_albums_by_artist_name.sql` (✅ applied; verified live: 에픽하이 → 30 Epik High albums, 이센스 → 12 E SENS, 방탄소년단 / 빅뱅 / 아이유 fine; steady-state 0.2–1.0s over 3 rounds. One burst of 57014 timeouts on "the stranger" / "good kid" hit `search_release_groups_long` alone too, then cleared, so it was transient DB load, not this change):** both router paths add that artist's release groups (score 9000 + prestige) when the query exactly equals an artist's name, name_native, name_phonetic_ko or an alias. All btree-indexed, and `search_release_groups_long` is untouched.
+- **Web search matches iOS:**
+  - New `lib/searchQuery.ts` (`isSearchable`: 2+ characters or 1 CJK; `normalizedLength`).
+  - Used by the search page (runSearch, popular-search logging, empty state) and `/api/search/popular`.
+  - Short song queries use `search_recordings_short`; long ILIKE song search NFC-normalizes the query.
+  - The header dropdown (`/api/search/suggest`) still needs 2+: it uses raw ILIKE prefix, which can't use an index for 1 character.
+  - tsc clean; vitest 116/116.
+- **`recordings_title_nfc` ✅ applied** (user, 2026-09-30).
+- **Moved Windows's `supabase/migrations/20260929000000_normalize_text_nfc.sql` → `apps/web/supabase/migrations/20260929000002_normalize_text_nfc.sql`** (the 000000 prefix was already taken twice). Filename only; it's already applied, and references are updated. The root `supabase/migrations/` still holds 8 older (May–July, applied) files. **New migrations belong in `apps/web/supabase/migrations/`.**
+
+---
+
+**2026-09-30 (Mac) — Merge note: Windows's NFC `normalize_text` meets the Mac's new short-query indexes.** Windows's `supabase/migrations/20260929000000_normalize_text_nfc.sql` (already live: NFD "독" and "킁" now match) made every *existing* normalize_text index safe by NFC-normalizing stored values first. It predates `idx_recordings_title_norm_prefix` (Mac, same day), so recordings.title was never checked, and non-NFC titles could hold stale index entries. **✅ `apps/web/supabase/migrations/20260930000000_recordings_title_nfc.sql` (applied)** normalizes them (an UPDATE recomputes the entry); it's a harmless no-op if the index was built after the function change. The release_groups prefix index is covered by their migration. Windows's migration sits in the **root** `supabase/migrations/`, not `apps/web/supabase/migrations/`.
+
+---
+
+**2026-09-29 (Mac) — Short searches ("독", "밤", "사랑", "iu") work.** Reported: "독" (a song by eSNs) wasn't findable.
+
+- **Three causes:**
+  - iOS (and web) refused queries under 2 characters.
+  - `search_release_groups` **times out (57014) for every 1–2 character query**. Confirmed live for 독 / 사랑 / 밤 / iu / ab: every path is `LIKE '%q%'` or trigram, and trigram indexes need 3+ characters, so it seq-scans ~670k release_groups. That means searching "IU" returned no albums.
+  - Song search was a raw `recordings.title ILIKE '%q%'` scan (2.3M+ rows) cut off at 2s. 독 is a *song* (4 recordings titled 독 exist; no release group titled 독).
+- **Migration `20260929000000_short_query_search_indexes.sql` (✅ applied; each CREATE INDEX CONCURRENTLY has to run on its own, since running the file whole fails with 25001):** text_pattern_ops btree indexes on `normalize_text(title)` for release_groups and recordings.
+- **Migration `20260929000001_short_query_search.sql` (✅ applied):**
+  - `search_release_groups` becomes a plpgsql router. Queries of 3+ normalized characters go to `search_release_groups_long` (the previous body, verbatim).
+  - Shorter queries take a short path: exact title / native title (10000), exact artist name → that artist's releases (9000), and title prefix via `~>=~` / `~<~` (500), plus prestige.
+  - New `search_recordings_short(q, lim)` for songs: exact, then prefix.
+  - **Verified live (anon key):** albums 독 / 밤 / 사랑 / iu / 夜 / ab return in 0.26–0.5s (were 57014 timeouts). Songs: 독 finds "독 – 프라이머리, E-Sens of 슈프림팀". Long queries unchanged (newjeans 14 rows, the stranger 30 rows in ~1s). Pre-existing gap noticed: "에픽하이" → 0 albums (the long path doesn't match Korean artist names).
+- **iOS:**
+  - `SearchViewModel.isSearchable`: 2+ characters, or 1 for Hangul / Kana / Han. Used by search, popular-search logging and the "No results" state.
+  - Song search calls `search_recordings_short` when the normalized length is < 3.
+  - **BUILD SUCCEEDED**.
+- **Not changed:** web search still needs 2+ characters. `search_artists` answers 1-character queries in ~2s but with sound-alike noise (독 → Snoop Dogg).
+
+---
+
+**2026-09-29 (Mac) — Add-tab search results use the flower rate button (iOS).** Search's Top Match and Albums grid used the old `AlbumCard`: a "+" that opened `ManualRatingSheet`, then a static checkmark once rated. `AlbumCard` now shows `AlbumRateButton` (size 30) bound to the tab's shared `scoreBinding(for:)` plus the user's rating step, same as `DiscoveryAlbumCard`. So it shows your score, stays tappable to change it, and stays in sync with other rows. The now-unreachable quick-rate path (`quickRateRelease` / `quickRateScore` state, the sheet, `addRelease`, `saveQuickRating`) is removed. **BUILD SUCCEEDED**; not device-checked.
+
+---
+
 **2026-09-29 (Windows, web + pipeline code) — evidence-weighted genre placement shipped (`GENRE_AUDIT.md` §9).** New `lib/genres/placement.ts` (world = best-supported family from own tags + artist prior; hybrids split; descriptors/catch-alls via new taxonomy `evidence` field); `worlds.placeAlbum` rebuilt on it; `/api/taste/profile` places user + community albums with `lib/taste/artistPrior.ts` (stored `artists.genre_evidence` + the artist's other albums/EPs) instead of borrowing sibling tags (cache profile v18, community v4). Migration `20260930000003` ✅ applied (`artists.genre_evidence`; community RPC returns the artist, keeps untagged albums). `mb-client`/`mb-ingest` now store MB artist genre votes on every ingest (pipeline device needs pull + restart). New `npm run backfill:artist-genres` (MB + Last.fm by MB id + Wikidata) ✅ run for the 97 rated artists. Golden fixture `lib/genres/__fixtures__/placement-golden.json` (347 labelled albums) + `placement.test.ts`. Second pass (§9.1) fixed the remaining misses systematically: `trot` node, iTunes as a half-weight source (US store, artist matched by title overlap), artist-level language fallback (≥3 releases, ≥70% one language), Last.fm shared-name pages dropped; TAEYEON *VOICE* relabelled J-Pop. Result 91.8/98.5% rated, 90.1/100% Korean holdout. `pop rap` home parent → Hip-Hop. vitest 133/133 in lib/genres+lib/taste, tsc + eslint clean. Still on the old primary: genre_weights (iOS), chart SQL primary, /api/recommendations, feed.
 
 ---
@@ -15,7 +71,6 @@ Historical record of shipped features and session notes. Not needed at conversat
 **2026-09-29 (Windows, audit) — genre placement audit.** User reported wrong Taste-map worlds (808s → R&B, 양홍원 → K-Pop, Korean indie → Korean Rock, 기리보이 → Classical). Wrote `GENRE_AUDIT.md`: six root causes (most-specific-wins primary, first-parent hybrids, descriptor tags as genres, scene labels as sounds, 70% of Korean albums untagged, MB votes never landed — 91 rows) with live measurements, target model and an 8-step plan. No code changed.
 
 ---
-
 **2026-09-29 (Windows) — `backfill:title-language` finished.** 97,625 artists in the first pass (3 skipped on MB errors) + a resume pass covering those 3 and 6,037 newly-ingested artists; **168,002 release groups** now carry a non-English tracklist language (jpn 38,953, spa 27,189, fra 22,946, deu 14,717, ita 9,514, kor 7,812, por 7,074, rus 6,308, fin 4,222, hin 4,189, tur 3,167, zho 2,935). Korean is low because many Korean releases have English track titles (MB → eng, never stored) — Korean albums still resolve via script/country. Throughput ~4,400 artists/hr (most artists need one MB page). README pipeline-PC note updated: nothing left to run, no shared-IP clash.
 
 ---
@@ -489,8 +544,32 @@ Existing RLS ("users manage own mix shares", FOR ALL) already allows it, so no m
 - **Verified on queries the report does not name:** `"kid"` → Kid Abelha(21), Kid Cudi(61), Kid Rock(52), Kid606(51) — previously nine artists with no releases; `"kid kudi"` → Kid Cudi first; `씨잼` → C Jamm(18); `양홍원` → YANGHONGWON(17); `"jessie ware"` → the real one, the empty twin gone. `npm run lint` clean, 9/9 tests pass.
 - **Still running, chained so the two MusicBrainz lanes never contend** (the limiter in `mb-client` is per-process, not global): native-alias backfill → `ingest-core-artists` pass 2; Deezer popularity backfill (11,400/86,617) → tier recompute, so the rank floors apply to the whole catalogue rather than the rows that happened to be filled in; iTunes stub write pass (16,174 groups added, ~62%) → pipeline restart with the `RECENCY` iTunes bridge back **on**, which is the standing fix for albums MusicBrainz genuinely lacks (Jerd *BOMM*, Stray Kids *5-STAR*, B-Free).
 
----
 
+**2026-09-26 (Windows, evening) — overnight supervision: the run finished itself, and two bugs found by watching it**
+
+- **Handoff items closed.** `pipeline:verify` finally ran to a result (**~13 min**, 6/7; it never needed idle lanes — the 03:00 attempt was killed, not wedged). All five reported recency albums landed once chain4 restarted the pipeline with RECENCY on. Rolling Stones studio-only rescue confirmed: 752 groups, 259 album/ep.
+- **`pipeline:verify` cries wolf under load.** Its `integrity` check reported *167,130 groups with >1 canonical*; the true figure is **0**. `scripts/mb-qc.ts:51` pages `releases` with `.range()` and **no `.order()`**, then never re-verifies candidates, so concurrent inserts shift the pagination window and rows are counted twice. `health-audit.ts` does the same scan correctly — ordered, plus a targeted re-count — with a comment warning of exactly this. A 5.6s server-side `GROUP BY … HAVING` settles it. Also inflated: 0-canonical reported 218, true **90**. Real finding: **1,902 duplicate artist names** (the credit-stub duplication — `Lazza` and `Tony Boy` each have two MBIDs).
+- **Future-dated albums led every newest-first surface** — see README Known issues. 18-month horizon at ingest, `newReleases` bounded, 4 junk rows deleted.
+- **The iTunes write pass crashed** at 07:22 on a statement timeout (`write-pass-exit=1`) at 21,419 of 26,998 groups, and **both downstream chains fired on the death, not a success** — they only poll `alive`. Resumed, but the script has no offset flag: a full re-walk measured **22 groups/min → ~18h, ~14h of it redundant**. Slicing the report at the last artist the first run reached (order-based, not name-based — 1,902 duplicate names make name targeting unsafe) cut it to 548 artists / 5,291 groups, done in **~5h**. Finished `exit=0`: 5,291 groups, 5,161 editions, 17,130 tracks.
+- **The watcher was lying in three ways**, all fixed in `watch.sh`: four lanes were in `JOBS` but absent from `LOGF`, so they had **no stall detection at all**; a missing log file crashed the helper; and only phrase-matched summaries counted as completion, so every clean finish reported `[DIED]`. The wrappers already write `<name>-exit=N` — `exit=0` is now the completion signal, and it correctly labelled the write pass `[FINISHED]` and its earlier crash `[DIED]`.
+- **`TaskStop` does not reap the bash tree.** Six orphaned watchers from 09-22/23 were still polling the database every 15 min; that is also why the previous session's watcher outlived it.
+- **The genre work is not live.** All 10 commits of the Phase 1-3 genres series sit on `origin/genre-taxonomy-phase1`, unmerged (10 ahead, **125 behind** main); `apps/web/lib/genres/` does not exist in the working tree and `scripts/pipeline.ts` has no genre wiring. But the **schema was applied to production**: `release_genres` holds 837,753 rows covering 53% of groups, frozen since 09-23, and every group ingested since (~30,000 tonight) gets no genre rows. Merging gets harder daily and will want a backfill, not just a code merge.
+- **core-ingest pass 2** tripped 7 `[STALLED]` alerts; all benign — 1000+-release artists at ~30-90 min each, confirmed each time by CPU delta and row growth rather than assumed.
+
+- **Two user-reported gaps, investigated from the report rather than the guess.**
+  - **Covers ("I think it is the other end") — user was right, my first explanation was wrong.** Three named albums (だから僕は音楽を辞めた, The Definitive Collection: Disc 1, Hell Breaks Loose) all carry correct `coverartarchive.org/release-group/{mbid}/front-500` URLs that 307 twice into Internet Archive storage. Two returned 500 with a 170-byte body; one of those returned **200 once** via `ia600504` and 500 twice via `dn711106`, which I read as "`dn*` replicas are broken". A 52-URL random sample then came back **52/52 ok**, served largely by `dn*` nodes — so it is **item-level damage on IA**, not node-level, CAA is healthy, and the queued CAA pass is safe to run. `coverartarchive` is 299,715 of 658,456 covers (46%), so the blast radius would have mattered if the node theory had been right.
+  - **와비사비룸 — the MB-gap matcher.** See README. Root cause is the session's recurring shape once again: every non-MB recovery tier is seeded from our own catalogue or from user demand (`search_misses` — this artist had none), and the one escape hatch that reaches outside compared strings across scripts. `kr-scene-report` cannot help either: it pairs iTunes data onto artists we *already have*, so an artist we lack is not in it (0 matches for this one).---
+  - **"is that the case" — no, and asking it was the useful part.** Three user-reported faults (오보에 wrong cover, 와비사비룸 missing an EP, ヨルシカ cover not loading) were fixed as single rows; asked whether they were root fixes, the honest answer was no, and building the root versions exposed the shared cause: **every automated repair is append-only into empty fields**, so only MISSING data is ever fixed, never WRONG or ABSENT data. See README for the three tools. Two things worth keeping:
+    - The 오보에 row was NOT damaged by the dedup run — checked against the applied plan (0 matching sets) before assuming. Its title genuinely is "3 STEPS FORWARD, 2 STEPS BACK" with 오보에 as native_title, which iTunes corroborates; only the cover was wrong.
+    - **The discography-gap tool was dangerous on its first run and the smoke test caught it.** iTunes' artist lookup returns everything an artist is credited on, so an unfiltered diff called features and OST parts "missing albums" — 103 across 12 artists. Requiring the collection's own artistId to match the linked artist cut it to 25 across 6. Shipping the first version would have manufactured the same credit-stub pollution the catalogue already carries ~38,800 of.
+    - I also swapped the ヨルシカ cover to iTunes after previously arguing the proxy's retries plus the year-long edge cache made a change unnecessary. At ~1-in-6 upstream success it was not converging in practice, and the user seeing it broken repeatedly was the evidence that mattered over my reasoning.
+  - **Duplicate release groups (user-reported, 3 classes).** See README. The investigative lesson: **every mechanical gate I proposed was broken by the user's next example.** Same date → 9Cut/9컷 are 4.5 months apart. ±7-day window → 호구/Hogu are 27 days. Same source → 하이에나/Hyena OST Pt.4 are both iTunes. Same type → Fatal Album II is album on iTunes, ep on MB. Same track count → Mechanical Album is 7 vs 21. Normalized title → `3 Songs`/`3Songs` hashed differently. Each failure raised my estimate (2,951 → 2,757 → 3,472 → "a floor, not a count"), which is the signal that a title/date rule was the wrong shape entirely.
+    - **ISRC looked like the answer and was not.** 1,954 sets share identical ISRC sets, but coverage is 28% and **iTunes rows carry zero ISRCs** — so the one key that is language-independent is absent on exactly the side that needs it. Checked before building, which is why no tool got shipped against the wrong class.
+    - **Track duration is the key that works** — independent of title, date, type and source. Validated first on the two hardest pairs (appendix/별책 identical to the second; 9Cut ⊂ 9컷 within 1s despite the 4.5-month gap), then run catalogue-wide: 2,971 sets / 6,089 rows. **1,122 involve a compilation and are false positives** (a greatest-hits and another comp share recordings, so their signatures match) — the same trap as ISRC sharing. Filtering to mixed-script, non-compilation, unrated leaves a **500-set review queue**.
+    - Shipped: `releaseGroupKey()` strips internal whitespace (994→1,003 dedup sets, 9 gained, 0 lost); `db-exec` gained `--out=` because its 2,000-char cap silently truncates any report-shaped query — and its inline form joins all remaining argv into the SQL, so the flag has to be stripped before assembly (my first version passed `--out=` through as a migration filename and crashed).
+    - **The obvious root fix is unsafe, and measuring it is what proved that.** Asked for a root fix, I wrote cross-source adoption into `findOrCreateReleaseGroup`: same artist + same normalized title + dates within 31 days + type ignored -> claim the existing row instead of inserting a twin. Then measured the predicate against the catalogue before shipping: of **10,019** pairs it would match (both sides having >=3 track durations), only **240 share content** and **9,779 do not**. The rule is wrong **97.6%** of the time. The sample says why: an album and its same-named lead single ("Sexplosion!" album/13 vs single/4, same day), compilations vs albums, and distinct classical performances ("Symphony No. 7" album/4 vs album/4). Adoption would have merged all of them, irreversibly, at pipeline speed. **Reverted** — and prevention at insert time cannot be rescued, because the tracklist does not exist yet when the group row is written, so the only reliable signal is unavailable at exactly the moment a decision is needed.
+    - Therefore the real root fix is **detect on content after ingest, merge deliberately** — duration signature once tracks are written, excluding compilations (1,122 of 2,971 signature sets are greatest-hits sharing recordings) and never touching rated rows. Not built.
+    - NOT done: no merges applied; the mb-ingest one-directional guard is unfixed, so the classes keep growing; 622 same-title sets and the 500-set queue await the owner.
 **2026-09-26 (Mac) — Push notifications don't arrive on Xcode builds or on TestFlight.**
 
 - **Traced the chain.** Tokens *are* saved (7 profiles have `push_token`, junnwest included). Notifications rows are being created. The production webhook (`/api/push/send-webhook`) accepts the secret and returns `{"ok":true}`.

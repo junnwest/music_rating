@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { isSearchable, normalizedLength } from '../../../lib/searchQuery';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -29,6 +30,7 @@ import { useRating, useRatings } from '../../../components/sj/RatingsStore';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
 import { displayName, formatScore, isPredominantlyHangul, typeLabelKey } from '../../../lib/sj/display';
+import { releasedFilter } from '../../../lib/releaseWindow';
 import { RG_COLS, type SJRelease } from '../../../lib/sj/data';
 import { useArtistIdFor } from '../../../lib/sj/artistIds';
 import { saveTrackRating } from '../../../lib/sj/trackRatings';
@@ -43,6 +45,9 @@ interface SongResult {
   title: string;
   artists: string | null;
   release: SJRelease;
+  /** Same scale as album/artist scores (exact title 10000 + album popularity);
+   *  only set for short queries (search_recordings_short). */
+  score?: number | null;
 }
 
 type SearchCategory = 'albums' | 'songs' | 'artists' | 'users';
@@ -56,14 +61,30 @@ interface SearchAlbumResult extends SJRelease {
 
 type TopResult =
   | { kind: 'artist'; artist: SearchArtistRPC }
-  | { kind: 'album'; album: SearchAlbumResult };
+  | { kind: 'album'; album: SearchAlbumResult }
+  | { kind: 'song'; song: SongResult };
+
+const normForMatch = (s: string) => [...s.normalize('NFC').toLowerCase()].filter((c) => /[\p{L}\p{N}]/u.test(c)).join('');
 
 function pickTopResult(
   artists: SearchArtistRPC[],
   albums: SearchAlbumResult[],
+  songs: SongResult[] = [],
+  query = '',
 ): TopResult | null {
   const topArtist = artists[0];
   const topAlbum = albums[0];
+  // A song competes only on an exact title match (2026-09-30: "독" showed a
+  // loose artist match, Snoop Dogg ~1600, over the song 독). Short queries
+  // carry search_recordings_short's score; long ones score an exact title 10000.
+  const q = normForMatch(query);
+  let topSong: { song: SongResult; score: number } | null = null;
+  for (const song of songs) {
+    if (song.score != null && song.score >= 10000) { topSong = { song, score: song.score }; break; }
+    if (song.score == null && q && normForMatch(song.title) === q) { topSong = { song, score: 10000 }; break; }
+  }
+  const best = Math.max(topArtist?.score ?? 0, topAlbum?.score ?? 0);
+  if (topSong && topSong.score > best) return { kind: 'song', song: topSong.song };
   if (!topArtist && !topAlbum) return null;
   // `?? 0` also keeps this artist-first (today's order) if the `score` column
   // isn't live yet (migration 20260923000000 not yet applied) rather than
@@ -153,7 +174,7 @@ function SearchPageInner() {
   const runSearch = useCallback(async (q: string) => {
     if (!supabase) return;
     const trimmed = q.trim();
-    if (trimmed.length < 2) {
+    if (!isSearchable(trimmed)) {
       setArtists([]);
       setAlbums([]);
       setSongs([]);
@@ -206,13 +227,18 @@ function SearchPageInner() {
 
     // Song hits → parent release group (canonical preferred), like iOS
     const songsP = (async () => {
-      const { data: recData } = await supabase!
-        .from('recordings')
-        .select('id, title, artist_display')
-        .ilike('title', `%${trimmed}%`)
-        .limit(30);
+      // Short queries ("독") can't use the trigram index -- the ILIKE scan
+      // times out -- so they use search_recordings_short (exact title, then
+      // prefix; btree-indexed). NFC so Mac/iOS-decomposed Hangul matches.
+      const { data: recData } = normalizedLength(trimmed) < 3
+        ? await supabase!.rpc('search_recordings_short', { q: trimmed, lim: 30 })
+        : await supabase!
+            .from('recordings')
+            .select('id, title, artist_display')
+            .ilike('title', `%${trimmed.normalize('NFC')}%`)
+            .limit(30);
       const hits =
-        (recData as { id: string; title: string; artist_display: string | null }[] | null) ?? [];
+        (recData as { id: string; title: string; artist_display: string | null; score?: number }[] | null) ?? [];
       if (hits.length === 0) {
         if (fresh()) setSongs([]);
         return;
@@ -239,6 +265,7 @@ function SearchPageInner() {
             id: h.id,
             title: h.title,
             artists: h.artist_display,
+            score: h.score ?? null,
             release: {
               id: rgMap[h.id].id,
               title: rgMap[h.id].title,
@@ -302,7 +329,7 @@ function SearchPageInner() {
   useEffect(() => {
     clearTimeout(logDebounceRef.current);
     const trimmed = query.trim();
-    if (trimmed.length < 2) return;
+    if (!isSearchable(trimmed)) return;
     logDebounceRef.current = setTimeout(() => {
       if (loggedQueryRef.current === trimmed) return;
       loggedQueryRef.current = trimmed;
@@ -573,7 +600,7 @@ function SearchResults({
     ]);
 
   if (!hasAny) {
-    if (searching || query.trim().length < 2) return <div className="py-20" />;
+    if (searching || !isSearchable(query)) return <div className="py-20" />;
     return (
       <div className="py-24 flex flex-col items-center gap-3">
         <SearchIcon size={40} className="text-divider" />
@@ -589,9 +616,10 @@ function SearchResults({
   // best hit is the stronger match out into its own card above both
   // sections, so a great album match isn't buried under a mediocre artist
   // list (or vice versa).
-  const topResult = pickTopResult(artists, albums);
+  const topResult = pickTopResult(artists, albums, songs, query);
   const restArtists = topResult?.kind === 'artist' ? artists.slice(1) : artists;
   const restAlbums = topResult?.kind === 'album' ? albums.slice(1) : albums;
+  const restSongs = topResult?.kind === 'song' ? songs.filter((s) => s.id !== topResult.song.id) : songs;
 
   return (
     <div className="mt-7">
@@ -601,6 +629,16 @@ function SearchResults({
           {topResult.kind === 'artist' ? (
             <ul className="max-w-sm rounded-2xl bg-surface border border-divider/60 divide-y divide-divider overflow-hidden">
               <ArtistRow artist={topResult.artist} onContextMenu={onArtistContextMenu} />
+            </ul>
+          ) : topResult.kind === 'song' ? (
+            <ul className="max-w-md rounded-2xl bg-surface border border-divider/60 divide-y divide-divider overflow-hidden">
+              <SongRow
+                song={topResult.song}
+                score={trackScores[topResult.song.id] ?? null}
+                ratingStep={ratingStep}
+                onRatePrecise={() => onRateSongPrecise(topResult.song)}
+                onRate={(score) => onRateSong(topResult.song, score)}
+              />
             </ul>
           ) : (
             // w-36, matching the compact card size Discovery's shelves already
@@ -654,11 +692,11 @@ function SearchResults({
           )}
 
           {/* Songs */}
-          {songs.length > 0 && (
+          {restSongs.length > 0 && (
             <section className="mt-8">
               <SectionLabel>{t('sj.search.songs')}</SectionLabel>
               <ul className="rounded-2xl bg-surface border border-divider/60 divide-y divide-divider overflow-hidden">
-                {songs.map((song) => (
+                {restSongs.map((song) => (
                   <SongRow
                     key={song.id}
                     song={song}
@@ -876,6 +914,7 @@ function Discovery({
           .select(RG_COLS)
           .in('release_group_type', ['album', 'ep'])
           .not('cover_url', 'is', null)
+          .or(releasedFilter())
           .order('first_release_date', { ascending: false, nullsFirst: false })
           .limit(50);
         if (!cancelled) setNewReleases(mapRows(data as any[]));
@@ -940,6 +979,7 @@ function Discovery({
             .in('artist_display', lovedArtists)
             .in('release_group_type', ['album', 'ep'])
             .not('cover_url', 'is', null)
+            .or(releasedFilter())
             .order('first_release_date', { ascending: false, nullsFirst: false })
             .limit(200);
           if (cancelled) return;

@@ -77,14 +77,24 @@ export async function GET(req: NextRequest) {
   if (!supabase) return NextResponse.json({ artists: [], albums: [] });
 
   const ql = q.toLowerCase();
-  const prefix = `${q.replace(/[%_,()]/g, ' ').trim()}%`;
+  // NFC first: this endpoint matches with raw ILIKE rather than normalize_text(), so it does not
+  // inherit the Unicode normalization added to that function (migration 20260929000002_normalize_text_nfc). Hangul
+  // typed on macOS/iOS arrives decomposed (킁 as ㅋ+ㅡ+ㅇ, 9 bytes) and never matches the composed
+  // 3-byte form stored in the catalogue, which is why "킁" returned nothing while "Keung" worked.
+  const prefix = `${q.normalize('NFC').replace(/[%_,()]/g, ' ').trim()}%`;
   const songsPromise: Promise<SuggestSong[]> =
     wantSongs && q.length >= 3 ? suggestSongs(supabase, ql, prefix) : Promise.resolve([]);
   const [artistsResult, albumsResult] = await Promise.all([
     supabase
       .from('artists')
-      .select('id, name, name_native, cover_url')
-      .or(`name.ilike.${prefix},name_native.ilike.${prefix}`)
+      .select('id, name, name_native, name_phonetic_ko, cover_url')
+      // name_phonetic_ko is matched too, or the typeahead cannot find an artist by the Korean
+      // spelling a Korean user actually types. C Jamm carries name_phonetic_ko = 씨잼 with a NULL
+      // name_native, so "씨잼" returned nothing here while the full search page found it fine —
+      // app/(main)/search/page.tsx goes through the search_artists RPC, which has been
+      // phonetic-aware since migration 20260703000006. This endpoint was the odd one out, which is
+      // why the gap kept being read as missing data and answered with another name backfill.
+      .or(`name.ilike.${prefix},name_native.ilike.${prefix},name_phonetic_ko.ilike.${prefix}`)
       .limit(ARTIST_POOL),
     supabase
       .from('release_groups')

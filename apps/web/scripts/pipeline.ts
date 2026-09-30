@@ -45,7 +45,7 @@ import { listenBrainzTopUp } from './mb-discover';
 import { wikipediaTopUp, REGIONS } from './build-global-queue';
 import { integrityCheck, requeueFailures, recomputePriorities } from './mb-qc';
 import { gapfillGroups, gapfillSkippedArtists, MigrationNeeded } from './mb-gapfill';
-import { runDeezerFallback, pickArtist, ingestDeezerArtist } from './mb-deezer-fallback';
+import { runDeezerFallback, pickArtistBridged, ingestDeezerArtist } from './mb-deezer-fallback';
 import { searchArtists as dzSearchArtists } from './deezer-client';
 import { ItunesBlockedError, resetBlock, itunesBlocked } from './itunes-client';
 import { mbLastActivityAt, countArtistReleaseGroups, MbUnavailableError } from './mb-client';
@@ -566,9 +566,9 @@ async function ingestLoop(db: DB) {
           // against a one-off typo) and confident-match only (guards against wrong artist).
           const { count } = await db.from('search_misses').select('id', { count: 'exact', head: true }).eq('query', m.query);
           if ((count ?? 0) >= MISS_MIN_DEMAND) {
-            const hit = pickArtist(await dzSearchArtists(m.query, 8), m.query);
+            const hit = await pickArtistBridged(await dzSearchArtists(m.query, 8), m.query);
             if (hit) {
-              const g = await ingestDeezerArtist(db, hit, null); // -1 = already in catalog (cross-source guard)
+              const g = await ingestDeezerArtist(db, hit, null, m.query); // -1 = already in catalog (cross-source guard)
               if (g >= 0) console.log(`  [misses] ${m.query} → Deezer "${hit.name}" (${hit.nbFan} fans) — ${g} groups [MB-missing, ${count}× demand]`);
             }
           }

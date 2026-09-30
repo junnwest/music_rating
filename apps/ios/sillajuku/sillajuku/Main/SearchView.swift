@@ -11,6 +11,9 @@ struct SongResult: Codable, Identifiable {
     let title: String
     let artists: String?
     let releases: SongRelease
+    /// Same scale as album/artist search scores (exact title 10000 + album
+    /// popularity) -- only set for short queries (search_recordings_short).
+    var score: Double? = nil
 
     struct SongRelease: Codable {
         let id: UUID
@@ -661,6 +664,7 @@ struct SearchUserResult: Codable, Identifiable {
 enum SearchTopResult {
     case artist(SearchArtist)
     case album(Release)
+    case song(SongResult)
 }
 
 // Category filter pills (All/Albums/Songs/Artists/Users) beneath the search bar. Empty
@@ -719,11 +723,35 @@ class SearchViewModel {
     // repeated "settled" debounce firing on the same string doesn't re-log it.
     private var lastLoggedQuery: String?
 
+    /// Searchable once it's 2+ characters -- or just 1 for Korean, Chinese or
+    /// Japanese, where a single syllable/character is a whole word ("독",
+    /// "밤", "夜"). 2026-09-29; the server's short-query path (migration
+    /// 20260929000001) makes these fast.
+    static func isSearchable(_ raw: String) -> Bool {
+        let q = raw.trimmingCharacters(in: .whitespaces)
+        if q.count >= 2 { return true }
+        return q.unicodeScalars.contains { s in
+            switch s.value {
+            case 0xAC00...0xD7A3, 0x1100...0x11FF, 0x3130...0x318F,   // Hangul
+                 0x3040...0x30FF,                                     // Kana
+                 0x4E00...0x9FFF, 0x3400...0x4DBF:                    // CJK ideographs
+                return true
+            default: return false
+            }
+        }
+    }
+
+    /// Letters/digits only -- mirrors normalize_text closely enough to pick
+    /// the short-query path (< 3) the server uses.
+    private static func normalizedLength(_ q: String) -> Int {
+        q.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }.count
+    }
+
     func search() async {
         let q = query.trimmingCharacters(in: .whitespaces)
         searchGeneration += 1
         let generation = searchGeneration
-        guard q.count >= 2 else {
+        guard Self.isSearchable(q) else {
             artistResults = []
             albumResults  = []
             songResults   = []
@@ -823,17 +851,30 @@ class SearchViewModel {
         // Step 1 — match recordings by title
         struct RecordingHit: Codable, Identifiable {
             let id: UUID; let title: String; let artistDisplay: String?
+            var score: Double? = nil
             enum CodingKeys: String, CodingKey {
-                case id, title; case artistDisplay = "artist_display"
+                case id, title, score; case artistDisplay = "artist_display"
             }
         }
-        let hits: [RecordingHit] = (try? await supabase
-            .from("recordings")
-            .select("id, title, artist_display")
-            .ilike("title", pattern: "%\(q)%")
-            .limit(30)
-            .execute()
-            .value) ?? []
+        // Short queries ("독") can't use the trigram index -- the ILIKE scan
+        // never finishes inside the 2s cutoff -- so they go through
+        // search_recordings_short (exact title, then prefix; btree-indexed).
+        let hits: [RecordingHit]
+        if Self.normalizedLength(q) < 3 {
+            struct ShortParams: Encodable { let q: String; let lim: Int }
+            hits = (try? await supabase
+                .rpc("search_recordings_short", params: ShortParams(q: q, lim: 30))
+                .execute()
+                .value) ?? []
+        } else {
+            hits = (try? await supabase
+                .from("recordings")
+                .select("id, title, artist_display")
+                .ilike("title", pattern: "%\(q)%")
+                .limit(30)
+                .execute()
+                .value) ?? []
+        }
 
         guard !hits.isEmpty else { return [] }
 
@@ -877,7 +918,8 @@ class SearchViewModel {
             return SongResult(id: hit.id, title: hit.title, artists: hit.artistDisplay,
                               releases: SongResult.SongRelease(
                                   id: rg.id, title: rg.title,
-                                  artist: rg.artistDisplay ?? "", coverUrl: rg.coverUrl))
+                                  artist: rg.artistDisplay ?? "", coverUrl: rg.coverUrl),
+                              score: hit.score)
         }
     }
 }
@@ -897,8 +939,6 @@ struct SearchView: View {
     // toggleCategory below for why an empty set is the right representation, not a derived
     // "all four happen to be selected" check.
     @State private var categoryFilter: Set<SearchCategory> = []
-    @State private var quickRateRelease: Release?
-    @State private var quickRateScore: Double?     = nil
     @State private var userRatingStep: Double = 0.5
     @State private var ratedReleaseIds: Set<UUID> = []   // loaded from DB at launch — used to hide pre-rated items
     @State private var sessionRatedIds: Set<UUID>  = []   // tapped in this session — shows checkmark
@@ -948,14 +988,27 @@ struct SearchView: View {
     // Takes the category-filtered arrays (not searchVM's raw results directly) so a filtered-out
     // category can never surface via Top Match either -- e.g. deselecting Artists should hide an
     // artist from Top Match too, not just from its own section.
-    private func pickTopResult(artists: [SearchArtist], albums: [Release]) -> SearchTopResult? {
-        let topArtist = artists.first
-        let topAlbum  = albums.first
-        guard topArtist != nil || topAlbum != nil else { return nil }
-        if let topArtist, topAlbum == nil || (topArtist.score ?? 0) >= (topAlbum?.score ?? 0) {
-            return .artist(topArtist)
+    /// Highest score wins; ties go artist > album > song. A song only
+    /// competes when its title is an exact match (score >= 10000) -- added
+    /// 2026-09-30 so "독" shows the song 독, not a loose artist match (Snoop
+    /// Dogg scores ~1600 on search_artists' cross-script similarity).
+    private func pickTopResult(artists: [SearchArtist], albums: [Release], songs: [SongResult], query: String) -> SearchTopResult? {
+        let norm: (String) -> String = { s in
+            String(s.precomposedStringWithCanonicalMapping.lowercased().unicodeScalars
+                .filter { CharacterSet.alphanumerics.contains($0) })
         }
-        return .album(topAlbum!)
+        let q = norm(query)
+        let topSong: (SongResult, Double)? = songs.lazy.compactMap { song -> (SongResult, Double)? in
+            if let s = song.score, s >= 10000 { return (song, s) }
+            // Long queries (ILIKE path) carry no score: exact title = 10000.
+            if song.score == nil, !q.isEmpty, norm(song.title) == q { return (song, 10000) }
+            return nil
+        }.first
+        var best: (SearchTopResult, Double)?
+        if let a = artists.first { best = (.artist(a), a.score ?? 0) }
+        if let r = albums.first, (r.score ?? 0) > (best?.1 ?? -.infinity) { best = (.album(r), r.score ?? 0) }
+        if let (song, s) = topSong, s > (best?.1 ?? -.infinity) { best = (.song(song), s) }
+        return best?.0
     }
 
     private func categoryIncluded(_ cat: SearchCategory) -> Bool {
@@ -1011,16 +1064,6 @@ struct SearchView: View {
             .navigationDestination(for: ArtistDestination.self) { ArtistPageView(artist: $0) }
             .navigationDestination(for: UserProfileDestination.self) { UserProfileView(userId: $0.userId, initialHandle: $0.handle) }
             .navigationDestination(for: RecentlyPlayedDestination.self) { ResolvingAlbumView(item: $0, discoveryVM: discoveryVM) }
-            .sheet(item: $quickRateRelease) { release in
-                ManualRatingSheet(
-                    release: release,
-                    existingScore: $quickRateScore,
-                    ratingStep: userRatingStep
-                ) { score in
-                    guard let score else { return }
-                    Task { await saveQuickRating(score, for: release) }
-                }
-            }
         }
         .task {
             // loadUserRatingStep/loadRatedReleaseIds are plain
@@ -1103,30 +1146,6 @@ struct SearchView: View {
         }
     }
 
-    private func addRelease(_ release: Release) {
-        quickRateScore   = nil
-        quickRateRelease = release
-    }
-
-    private func saveQuickRating(_ score: Double, for release: Release) async {
-        guard let userId = supabase.auth.currentUser?.id else { return }
-        struct Payload: Encodable {
-            let userId: UUID; let releaseGroupId: UUID; let score: Double
-            enum CodingKeys: String, CodingKey {
-                case userId = "user_id"; case releaseGroupId = "release_group_id"; case score
-            }
-        }
-        try? await supabase.from("ratings")
-            .upsert(Payload(userId: userId, releaseGroupId: release.id, score: score),
-                    onConflict: "user_id,release_group_id")
-            .execute()
-        sessionRatedIds.insert(release.id)
-        ratedReleaseIds.insert(release.id)
-        scoresByRelease[release.id] = score
-        NotificationCenter.default.post(name: .ratingChanged,
-            object: RatingChangeInfo(releaseGroupId: release.id, score: score))
-    }
-
     // MARK: - Search bar
 
     private var searchBar: some View {
@@ -1157,7 +1176,7 @@ struct SearchView: View {
                         try? await Task.sleep(for: .milliseconds(1500))
                         guard !Task.isCancelled, searchVM.query == q else { return }
                         let trimmed = q.trimmingCharacters(in: .whitespaces)
-                        guard trimmed.count >= 2 else { return }
+                        guard SearchViewModel.isSearchable(trimmed) else { return }
                         await searchVM.logSettledQuery(trimmed)
                     }
                 }
@@ -1229,7 +1248,7 @@ struct SearchView: View {
                     .resizable().scaledToFit()
                     .frame(width: 44, height: 44)
                     .foregroundStyle(Color.sjBorder)
-                if searchVM.query.trimmingCharacters(in: .whitespaces).count >= 2 {
+                if SearchViewModel.isSearchable(searchVM.query) {
                     Text(String(format: String(localized: "No results for \"%@\""), searchVM.query))
                         .font(.jakarta(15))
                         .foregroundStyle(Color.sjMuted)
@@ -1241,7 +1260,8 @@ struct SearchView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            let topResult = pickTopResult(artists: filteredArtists, albums: filteredAlbums)
+            let topResult = pickTopResult(artists: filteredArtists, albums: filteredAlbums,
+                                          songs: filteredSongs, query: searchVM.query)
             let restArtists: [SearchArtist] = {
                 if case .artist = topResult { return Array(filteredArtists.dropFirst()) }
                 return filteredArtists
@@ -1249,6 +1269,10 @@ struct SearchView: View {
             let restAlbums: [Release] = {
                 if case .album = topResult { return Array(filteredAlbums.dropFirst()) }
                 return filteredAlbums
+            }()
+            let restSongs: [SongResult] = {
+                if case .song(let top) = topResult { return filteredSongs.filter { $0.id != top.id } }
+                return filteredSongs
             }()
 
             ScrollView(showsIndicators: false) {
@@ -1267,18 +1291,21 @@ struct SearchView: View {
                             artistRow(artist)
                                 .padding(.bottom, 24)
                         case .album(let release):
-                            let rated = ratedReleaseIds.contains(release.id)
                             NavigationLink(value: release) {
-                                AlbumCard(
-                                    release: release,
-                                    onAdd: rated ? nil : { addRelease(release) },
-                                    isRated: rated
-                                )
+                                AlbumCard(release: release, scoreBinding: scoreBinding(for: release.id), ratingStep: userRatingStep)
                             }
                             .buttonStyle(.plain)
                             .albumContextMenu(release)
                             .frame(width: 140)
                             .padding(.horizontal, 16)
+                            .padding(.bottom, 24)
+                        case .song(let song):
+                            let pr = songParentRelease(song)
+                            NavigationLink(value: pr) {
+                                SongRow(song: song, scoreBinding: scoreBinding(for: song.releases.id), ratingStep: userRatingStep)
+                            }
+                            .buttonStyle(.plain)
+                            .albumContextMenu(pr)
                             .padding(.bottom, 24)
                         }
                     }
@@ -1302,13 +1329,8 @@ struct SearchView: View {
                         sectionLabel("Albums")
                         LazyVGrid(columns: threeColumns, spacing: 14) {
                             ForEach(restAlbums) { release in
-                                let rated = ratedReleaseIds.contains(release.id)
                                 NavigationLink(value: release) {
-                                    AlbumCard(
-                                        release: release,
-                                        onAdd: rated ? nil : { addRelease(release) },
-                                        isRated: rated
-                                    )
+                                    AlbumCard(release: release, scoreBinding: scoreBinding(for: release.id), ratingStep: userRatingStep)
                                 }
                                 .buttonStyle(.plain)
                                 .albumContextMenu(release)
@@ -1319,17 +1341,17 @@ struct SearchView: View {
                     }
 
                     // ── Songs ─────────────────────────────────
-                    if hasSongs {
+                    if !restSongs.isEmpty {
                         sectionLabel("Songs")
                         VStack(spacing: 0) {
-                            ForEach(filteredSongs) { song in
+                            ForEach(restSongs) { song in
                                 let pr = songParentRelease(song)
                                 NavigationLink(value: pr) {
                                     SongRow(song: song, scoreBinding: scoreBinding(for: song.releases.id), ratingStep: userRatingStep)
                                 }
                                 .buttonStyle(.plain)
                                 .albumContextMenu(pr)
-                                if song.id != filteredSongs.last?.id {
+                                if song.id != restSongs.last?.id {
                                     Divider().padding(.leading, 72)
                                 }
                             }

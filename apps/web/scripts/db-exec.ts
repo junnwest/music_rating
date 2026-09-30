@@ -7,7 +7,7 @@
 //
 // Requires SUPABASE_ACCESS_TOKEN (personal access token, sbp_…) in .env.local.
 // The project ref is derived from NEXT_PUBLIC_SUPABASE_URL.
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 
 const token = process.env.SUPABASE_ACCESS_TOKEN;
 if (!token) {
@@ -21,7 +21,12 @@ if (!ref) {
   process.exit(1);
 }
 
-const args = process.argv.slice(2);
+const argv = process.argv.slice(2);
+// --out= is pulled out BEFORE the SQL is assembled: the inline form joins every remaining argument
+// into the query, so a flag left in place would either be read as a migration filename (when it
+// comes first) or spliced into the SQL text (when it comes last).
+const OUT = argv.find(a => a.startsWith('--out='))?.slice('--out='.length);
+const args = argv.filter(a => !a.startsWith('--out='));
 let sql: string;
 let label: string;
 if (args[0] === '--sql') {
@@ -49,8 +54,16 @@ async function main() {
     process.exit(1);
   }
   console.log(`ok ${label} (${ms}ms)`);
-  // Query results (empty array for DDL) — print compactly for SELECTs.
-  if (body && body !== '[]') console.log(body.slice(0, 2000));
+  // Query results (empty array for DDL) — print compactly for SELECTs. The 2000-char cap keeps a
+  // stray select-star from flooding a terminal, but it also silently truncates a result you meant to
+  // keep, which is unusable for anything report-shaped: pass --out=<file> to get the full body.
+  const out = OUT;
+  if (out) {
+    writeFileSync(out, body);
+    console.log(`  full result → ${out} (${body.length} bytes)`);
+  } else if (body && body !== '[]') {
+    console.log(body.slice(0, 2000));
+  }
 }
 
 main();

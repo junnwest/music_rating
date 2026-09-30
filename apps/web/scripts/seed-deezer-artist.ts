@@ -11,7 +11,7 @@
  */
 import { getDB } from './itunes-ingest-core';
 import { searchArtists } from './deezer-client';
-import { pickArtist, ingestDeezerArtist } from './mb-deezer-fallback';
+import { pickArtistBridged, ingestDeezerArtist } from './mb-deezer-fallback';
 
 const arg = (f: string) => { const i = process.argv.indexOf(f); return i >= 0 ? process.argv[i + 1] : undefined; };
 const NAME = arg('--name');
@@ -24,7 +24,7 @@ async function main() {
   console.log(`\n  seed-deezer-artist ${WRITE ? '[WRITE]' : '[dry-run]'} — "${NAME}"${COUNTRY ? ` [${COUNTRY}]` : ''}\n`);
 
   const cands = await searchArtists(NAME, 8);
-  const hit = pickArtist(cands, NAME);
+  const hit = await pickArtistBridged(cands, NAME);
   if (!hit) {
     console.log(`  ✗ no confident Deezer match for "${NAME}" (candidates: ${cands.map(c => `${c.name}(${c.nbFan})`).join(', ') || 'none'})`);
     console.log('    (requires an exact-name or same-token match — missing beats wrong.)\n');
@@ -33,7 +33,7 @@ async function main() {
   console.log(`  ✓ Deezer ${hit.id} "${hit.name}" — ${hit.nbFan} fans, ${hit.nbAlbum} albums`);
 
   if (!WRITE) { console.log('\n  [dry-run] no writes — re-run with --write to ingest.\n'); return; }
-  const groups = await ingestDeezerArtist(db, hit, COUNTRY);
+  const groups = await ingestDeezerArtist(db, hit, COUNTRY, NAME);
   if (groups < 0) {
     console.log(`\n  already in catalog under another source (MusicBrainz) — skipped to avoid a duplicate.\n`);
   } else {

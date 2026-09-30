@@ -2,8 +2,10 @@ import SwiftUI
 
 struct AlbumCard: View {
     let release: Release
-    var onAdd: (() -> Void)? = nil
-    var isRated: Bool = false
+    /// The tab's shared per-release score, so the flower shows (and edits) the
+    /// same score everywhere this release appears.
+    var scoreBinding: Binding<Double?> = .constant(nil)
+    var ratingStep: Double = 0.5
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -14,38 +16,11 @@ struct AlbumCard: View {
                     // exact release, so a separate label would just repeat it.
                     .accessibilityHidden(true)
 
-                if isRated {
-                    ZStack {
-                        Circle()
-                            .fill(Color.sjBlue)
-                            .frame(width: 28, height: 28)
-                            .shadow(color: .black.opacity(0.15), radius: 4, y: 1)
-                        Image("icon-check")
-                            .renderingMode(.template)
-                            .resizable().scaledToFit()
-                            .frame(width: 11, height: 11)
-                            .foregroundStyle(.white)
-                    }
-                    .allowsHitTesting(false)
-                    .padding(6)
-                } else if let onAdd {
-                    Button(action: onAdd) {
-                        ZStack {
-                            Circle()
-                                .fill(.white)
-                                .frame(width: 28, height: 28)
-                                .shadow(color: .black.opacity(0.15), radius: 4, y: 1)
-                            Image("icon-plus")
-                                .renderingMode(.template)
-                                .resizable().scaledToFit()
-                                .frame(width: 12, height: 12)
-                                .foregroundStyle(Color.sjBlue)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .padding(6)
-                    .accessibilityLabel(String(format: String(localized: "Add %@"), release.displayTitle))
-                }
+                // The flower rate button, same as every other Add-tab section
+                // (DiscoveryAlbumCard) -- replaced the old "+" (opened a sheet) /
+                // static checkmark on 2026-09-29.
+                AlbumRateButton(release: release, externalScore: scoreBinding, ratingStep: ratingStep, size: 30)
+                    .padding(4)
             }
 
             VStack(alignment: .leading, spacing: 2) {
