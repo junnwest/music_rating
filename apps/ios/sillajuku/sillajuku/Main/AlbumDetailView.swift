@@ -1317,13 +1317,9 @@ struct AlbumDetailView: View {
                 }
                 TrackRow(
                     track: track,
-                    existingScore: track.trackId.flatMap { viewModel.trackRatings[$0] },
+                    release: release,
+                    score: trackScoreBinding(track.trackId),
                     onTap: track.trackId != nil ? { selectedSong = track } : nil,
-                    onAdd: track.trackId.map { recordingId in
-                        { (score: Double) in
-                            Task { await viewModel.rateTrack(recordingId: recordingId, score: score) }
-                        }
-                    },
                     ratingStep: viewModel.ratingStep
                 )
                 if i < viewModel.tracks.count - 1
@@ -1333,6 +1329,16 @@ struct AlbumDetailView: View {
             }
         }
         .padding(.bottom, 20)
+    }
+
+    /// SongRateButton saves to track_ratings itself; this keeps the page's
+    /// score dictionary in sync with what it wrote.
+    private func trackScoreBinding(_ recordingId: UUID?) -> Binding<Double?> {
+        guard let recordingId else { return .constant(nil) }
+        return Binding(
+            get: { viewModel.trackRatings[recordingId] },
+            set: { viewModel.trackRatings[recordingId] = $0 }
+        )
     }
 
     private func discHeader(_ disc: Int, isFirst: Bool) -> some View {
@@ -1740,11 +1746,11 @@ struct AlbumAllRatingsView: View {
 
 private struct TrackRow: View {
     let track: TrackEntry
-    var existingScore: Double? = nil
+    let release: Release
+    /// The album page's per-recording score (viewModel.trackRatings), so the
+    /// flower shows and edits the same value everywhere on this page.
+    var score: Binding<Double?> = .constant(nil)
     var onTap: (() -> Void)? = nil
-    // Takes the drag-committed score directly -- MorphingRateButton, not a
-    // plain tap-to-open-sheet button (see body).
-    var onAdd: ((Double) -> Void)? = nil
     var ratingStep: Double = 0.5
 
     @State private var didMarkNotInterested = false
@@ -1753,10 +1759,6 @@ private struct TrackRow: View {
         guard let ms = track.durationMs, ms > 0 else { return "" }
         let s = ms / 1000
         return String(format: "%d:%02d", s / 60, s % 60)
-    }
-
-    private func scoreLabel(_ s: Double) -> String {
-        s.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(s))" : String(format: "%.1f", s)
     }
 
     var body: some View {
@@ -1781,27 +1783,13 @@ private struct TrackRow: View {
                 Text(formattedDuration)
                     .font(.jakarta(12)).foregroundStyle(Color.sjMuted)
             }
-            if let score = existingScore {
-                Text(scoreLabel(score))
-                    .font(.jakarta(11, weight: .bold)).foregroundStyle(Color.sjBlue)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Color.sjBlue.opacity(0.1)).clipShape(RoundedRectangle(cornerRadius: 4))
-            } else if let onAdd {
-                MorphingRateButton(
-                    idleLabel: {
-                        Image("icon-plus")
-                            .renderingMode(.template)
-                            .resizable().scaledToFit()
-                            .frame(width: 11, height: 11)
-                            .foregroundStyle(Color.sjBlue)
-                            .frame(width: 26, height: 26)
-                    },
-                    idleShape: AnyShape(Circle()),
-                    idleTintOpacity: 0.35,
-                    ratingStep: ratingStep,
-                    accessibilityLabelText: String(format: String(localized: "Rate %@"), track.title),
-                    onRate: onAdd
-                )
+            // The flower rate button, same as the song page and every other
+            // rating surface: tap/drag to rate, shows your score once rated,
+            // stays editable (and deletable). Replaced a static score chip
+            // (rated) / "+" MorphingRateButton (unrated) on 2026-09-30.
+            if track.trackId != nil {
+                SongRateButton(track: track, release: release, externalScore: score,
+                               ratingStep: ratingStep, size: 28)
             }
         }
         .padding(.vertical, 11).padding(.horizontal, 20)

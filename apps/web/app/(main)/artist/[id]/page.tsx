@@ -127,11 +127,18 @@ export default function ArtistPage() {
       if (cancelled) return;
       setReleases(loaded);
 
-      // Songs (title-sorted recordings by this artist)
+      // Songs: most popular first (Last.fm play counts via /api/artist/top-tracks,
+      // 2026-09-30), then the rest by title. Was title order only.
       const songsP = (async () => {
         const artistName = isId ? undefined : rawId;
         const nameForSongs = artistName ?? loaded[0]?.artist;
         if (!nameForSongs) return;
+        const popularityP: Promise<string[]> = fetch(
+          `/api/artist/top-tracks?${isId ? `artistId=${rawId}` : `name=${encodeURIComponent(nameForSongs)}`}`,
+        )
+          .then((r) => (r.ok ? r.json() : { order: [] }))
+          .then((j) => (Array.isArray(j?.order) ? j.order : []))
+          .catch(() => []);
         // eq, not ilike: ILIKE cannot use idx_recordings_artist_display (case-insensitive match on a
         // plain btree), so this seq-scanned the 1.37GB recordings table on every artist page load —
         // 4.2s and ~630MB of reads, measured. `nameForSongs` is either the URL segment or an
@@ -158,15 +165,20 @@ export default function ArtistPage() {
             rgMap[row.recording_id] = rg;
           }
         }
+        const popularity = await popularityP;
         if (cancelled) return;
+        const rank = new Map(popularity.map((id, i) => [id, i]));
         setSongs(
-          hitRows.map((h) => ({
-            id: h.id,
-            title: h.title,
-            albumId: rgMap[h.id]?.id ?? null,
-            albumTitle: rgMap[h.id]?.title ?? '',
-            albumCoverUrl: rgMap[h.id]?.cover_url ?? null,
-          })),
+          hitRows
+            .map((h) => ({
+              id: h.id,
+              title: h.title,
+              albumId: rgMap[h.id]?.id ?? null,
+              albumTitle: rgMap[h.id]?.title ?? '',
+              albumCoverUrl: rgMap[h.id]?.cover_url ?? null,
+            }))
+            // Stable: unranked songs keep the query's title order.
+            .sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity)),
         );
       })();
 

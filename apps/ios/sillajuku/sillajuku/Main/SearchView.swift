@@ -2626,6 +2626,14 @@ struct ArtistPageView: View {
     }
 
     private func loadSongs() async {
+        // Popularity order (Last.fm play counts via /api/artist/top-tracks,
+        // 2026-09-30) -- fetched alongside the catalog queries below.
+        async let popularityTask: [UUID] = {
+            struct TopTracks: Decodable { let order: [String] }
+            let query = artist.artistId.map { ["artistId": $0.uuidString.lowercased()] } ?? ["name": artist.name]
+            let resp: TopTracks? = await WebAPI.get("/api/artist/top-tracks", authed: false, query: query)
+            return (resp?.order ?? []).compactMap(UUID.init(uuidString:))
+        }()
         struct RecHit: Codable { let id: UUID; let title: String }
         let hits: [RecHit] = (try? await supabase
             .from("recordings").select("id, title")
@@ -2686,8 +2694,12 @@ struct ArtistPageView: View {
             }
         }
 
-        // Default order: most-rated first, ties broken by newest release -- matches the
-        // Albums tab's "newest first" convention for the tie-break direction.
+        // Default order: most popular first (Last.fm play counts), then songs
+        // with no popularity data by most-rated, ties broken by newest release.
+        // Popularity replaced most-rated-first on 2026-09-30 -- with few
+        // ratings that order was effectively newest-first and read as random.
+        let popularity = await popularityTask
+        let rank = Dictionary(popularity.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
         songs = hits.compactMap { hit in
             let rg = rgMap[hit.id]
             let sum = trSum[hit.id]
@@ -2698,8 +2710,14 @@ struct ArtistPageView: View {
                               avgScore: sum.map { $0.sum / Double($0.n) },
                               myScore: myMap[hit.id])
         }.sorted { a, b in
-            if a.ratingCount != b.ratingCount { return a.ratingCount > b.ratingCount }
-            return (a.releaseDate ?? "") > (b.releaseDate ?? "")
+            switch (rank[a.id], rank[b.id]) {
+            case let (ra?, rb?): return ra < rb
+            case (.some, nil):  return true
+            case (nil, .some):  return false
+            case (nil, nil):
+                if a.ratingCount != b.ratingCount { return a.ratingCount > b.ratingCount }
+                return (a.releaseDate ?? "") > (b.releaseDate ?? "")
+            }
         }
     }
 

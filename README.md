@@ -85,6 +85,8 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 > - **iOS polish:** unread-count bell badge; song page rates like the album page (no comments); Disc N tracklist headers; Mix-tab counts fixed; "Post to Feed"; comment sheets open with the keyboard together, large-only detent, swipe/tap to dismiss keyboard, whole bottom area opens it; flower hold delay 0.03s; comment chevron left of score.
 > - **Removed:** Quick Add (iOS + web; `get_quick_add_*` RPCs left in DB, unused); all 11 email-login accounts (backup `apps/web/backups/email-accounts-deleted-2026-09-26T21-59-52-860Z.json`).
 >
+> **🎵 (2026-09-30, Mac) — Artist Songs tab ordered by popularity (Last.fm).** ⏳ **Add `LASTFM_API_KEY` to Vercel** (Project → Settings → Environment Variables; same value as `.env.local`), then redeploy. Until then the Songs tab keeps its old order. iOS part ships with the next build. See SESSIONS.md.
+>
 > **🎯 (2026-09-30, Mac) — Songs can be Top Match (독 → E-Sens's 독, not Snoop Dogg).** ✅ `20260930000002_song_search_score.sql` applied and verified. iOS side ships with the next build. See SESSIONS.md.
 >
 > **🔎 (2026-09-30, Mac) — Album search by Korean artist names (에픽하이, 이센스).** ✅ `20260930000001_search_albums_by_artist_name.sql` applied and verified. Web search now allows 1-character Korean/Japanese/Chinese too. Migrations go in `apps/web/supabase/migrations/` (the root `supabase/migrations/` is legacy). See SESSIONS.md.

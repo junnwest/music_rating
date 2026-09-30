@@ -4,6 +4,31 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-30 (Mac) — Artist page Songs ordered by popularity (Last.fm play counts), web + iOS.** Reported: Primary (프라이머리)'s songs looked "recently ordered".
+
+- **Why:** there's no per-song popularity in the catalog. `artists.popularity` is artist-level (Deezer fans), and `release_groups.prestige_score` is sparse. iOS sorted most-rated → newest (effectively newest-first); web sorted by title.
+- **Sources compared:**
+  - Deezer `/artist/{id}/top`: Beatles 98 matched, IU 26, Epik High 16, but Primary 0 and E SENS 1.
+  - Last.fm `artist.getTopTracks`: Primary 24, E SENS 64, Epik High 81, IU 25.
+  - Picked Last.fm.
+- **New `app/api/artist/top-tracks/route.ts`** (`?artistId=` or `?name=`):
+  - Queries Last.fm under name / name_native / name_phonetic_ko, keeping the max play count.
+  - Title key strips featured-artist credits but keeps version tags, so "(Instrumental)" / "[Live]" don't inherit the original's plays (that bug showed up in testing with Epik High and is fixed).
+  - Returns our recording ids (`artist_display` = name) most-played first.
+  - Redis cache `sj:toptracks:v2:*`: 7 days, or 1h when empty. Rate limit 60/min.
+  - No `LASTFM_API_KEY` → `{order: []}`.
+- **Clients:** web artist page and iOS `ArtistPageView.loadSongs` fetch it in parallel. Ranked songs come first; the rest keep the old order (web: title; iOS: most-rated → newest).
+- **Verified locally:** Primary → Johnny, ~42, Seethru, Baby, I Know, Love…; E SENS → Writer's Block, No Boss, Back In Time…
+- iOS **BUILD SUCCEEDED**; web tsc clean, vitest 116/116.
+- **⏳ Add `LASTFM_API_KEY` to Vercel env** (it's only in local `.env.local`).
+- **Noticed, not changed:** duplicate recordings of the same song show twice; iOS `loadSongs` still uses `ilike` on `artist_display` (web switched to `eq` for speed).
+
+---
+
+**2026-09-30 (Mac) — Album page tracklist uses flower rate buttons (iOS).** `TrackRow` showed a static score chip once rated and a "+" `MorphingRateButton` before that, so a song rating couldn't be changed from the tracklist. It now shows `SongRateButton` (size 28), the same flower as the song page: tap or drag to rate, shows your score, stays editable, and the rating can be deleted. It's bound to `viewModel.trackRatings` via a new `trackScoreBinding(_:)`, so the page stays in sync (SongRateButton writes track_ratings itself). The dead `scoreLabel` helper is removed; `viewModel.rateTrack` is still used by the song sheet. Web's tracklist already used `FlowerRateControl`. **BUILD SUCCEEDED**; not device-checked.
+
+---
+
 **2026-09-30 (Mac) — Songs can be Top Match (최적의 결과).** Reported: "독" showed Snoop Dogg as Top Match instead of 독 by E-Sens.
 
 - **Why:** Top Match only compared the best artist and the best album. `search_artists('독')` scores Snoop Dogg 1595 on loose cross-script similarity; the best album was only a prefix hit (500). Songs never competed, and four songs are titled exactly 독.
