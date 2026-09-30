@@ -118,6 +118,7 @@ export interface MbArtistDetail {
   disambiguation: string | null;
   aliases: MbAlias[];
   genres: string[];
+  genreVotes: MbGenreVote[];   // same genres WITH vote counts (artists.genre_evidence.musicbrainz)
 }
 export interface MbCredit {
   mbid: string | null;   // credited artist's MBID (null for pure free-text credits)
@@ -215,6 +216,27 @@ export async function searchArtists(name: string, limit = 8): Promise<MbArtistCa
   }));
 }
 
+/**
+ * MB's SEARCH endpoints now refuse `offset >= 500` with a hard 400 — only the first 500 results of
+ * any Lucene query are reachable, whatever `count` claims. Measured 2026-09-30 against the live API:
+ * `/artist?query=country:KR&limit=100&offset=400` → 200, `offset=500` and `offset=600` → 400.
+ *
+ * This is not a transient outage, so it must not be retried as one. Before this guard the AREA lane
+ * (16,322 claimed results) and the NEWRELEASES lane (15,659) each paged straight into the wall and
+ * then spun on it: 164 failed requests in the first five minutes after a restart, none of which
+ * could ever succeed, all of them spending the shared MB rate budget that the INGEST lane needs.
+ *
+ * Returning an EMPTY PAGE rather than throwing is what actually stops the spin: all three paging
+ * loops (discover-mb-area, discover-mb-newreleases, discover-ig-newreleases) break on an empty page
+ * but keep going while `offset + PER < count`, so an error — or a short page with the real count —
+ * leaves them looping. `count` is still reported truthfully for the log line.
+ *
+ * The lanes consequently see 500 results per query, not 16k. That is a COVERAGE limit, not a bug to
+ * work around here: the way past it is narrower queries (AREA already splits by city, which is why
+ * it finds artists `country:KR` misses), not deeper paging, which upstream no longer serves.
+ */
+export const MB_SEARCH_MAX_OFFSET = 400;
+
 // One page of an arbitrary Lucene artist query (e.g. `country:KR AND tag:"hip hop"`). MBID comes
 // straight from the result, so no name resolution is needed — captures Hangul-named artists too.
 export interface MbArtistPage {
@@ -222,6 +244,7 @@ export interface MbArtistPage {
   artists: { id: string; name: string; country: string | null; type: string | null }[];
 }
 export async function searchArtistsByQuery(luceneQuery: string, limit = 100, offset = 0): Promise<MbArtistPage> {
+  if (offset > MB_SEARCH_MAX_OFFSET) return { count: 0, artists: [] };
   const data = await mbGet(`/artist?query=${enc(luceneQuery)}&limit=${limit}&offset=${offset}`);
   const artists = (data?.artists ?? []).map((a: any) => ({
     id: a.id,
@@ -249,6 +272,7 @@ export interface MbReleaseGroupPage {
   }[];
 }
 export async function searchReleaseGroupsByQuery(luceneQuery: string, limit = 100, offset = 0): Promise<MbReleaseGroupPage> {
+  if (offset > MB_SEARCH_MAX_OFFSET) return { count: 0, groups: [] };
   const data = await mbGet(`/release-group?query=${enc(luceneQuery)}&limit=${limit}&offset=${offset}`);
   const groups = (data?.['release-groups'] ?? []).map((rg: any) => ({
     id: rg.id,
@@ -288,6 +312,7 @@ export async function getArtist(mbid: string): Promise<MbArtistDetail | null> {
       name: al.name, locale: al.locale ?? null, primary: al.primary ?? null, type: al.type ?? null,
     })),
     genres: sortGenresByVotes(a.genres),
+    genreVotes: genreVotes(a.genres),
   };
 }
 

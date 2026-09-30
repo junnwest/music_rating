@@ -27,6 +27,31 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 **2026-09-30 (Mac) — Album page tracklist uses flower rate buttons (iOS).** `TrackRow` showed a static score chip once rated and a "+" `MorphingRateButton` before that, so a song rating couldn't be changed from the tracklist. It now shows `SongRateButton` (size 28), the same flower as the song page: tap or drag to rate, shows your score, stays editable, and the rating can be deleted. It's bound to `viewModel.trackRatings` via a new `trackScoreBinding(_:)`, so the page stays in sync (SongRateButton writes track_ratings itself). The dead `scoreLabel` helper is removed; `viewModel.rateTrack` is still used by the song sheet. Web's tracklist already used `FlowerRateControl`. **BUILD SUCCEEDED**; not device-checked.
 
+**2026-09-30 (pipeline PC) — MusicBrainz search now hard-caps paging at offset 500; two lanes were spinning on it.**
+
+- **Symptom:** after a restart, `pipeline:status` showed `area` and `newreleases` both `error` with
+  `MusicBrainz unavailable (400)`. The log carried **164 of them in the first five minutes**, always at
+  `offset=500`, always the same two URLs.
+- **Cause is upstream, not ours.** Probed the live API directly:
+  `/artist?query=country:KR&limit=100&offset=400` → **200**, `offset=500` → **400**, `offset=600` → **400**.
+  Only the first 500 results of any Lucene search are reachable now, whatever `count` reports (`area`
+  claims 16,323; `newreleases` 15,659). A 400 is permanent, so retrying it is pure waste — and the waste
+  lands on the **shared MB rate budget the `ingest` lane depends on**.
+- **Root fix:** `MB_SEARCH_MAX_OFFSET = 400` in `scripts/mb-client.ts`; `searchArtistsByQuery` and
+  `searchReleaseGroupsByQuery` return an **empty page** past it rather than requesting one.
+  Empty rather than throwing is the part that matters: all three paging loops
+  (`discover-mb-area`, `discover-mb-newreleases`, `discover-ig-newreleases`) already `break` on an empty
+  page but keep going while `offset + PER < count`, so an error — or a short page with the true count —
+  would have left them looping. One fix in the shared client covers every lane.
+- **Verified live:** after the restart, **0 × 400**. `newreleases` swept 500 groups → flagged 31 catalog
+  artists for re-poll; `area` finished its country + city sweep and queued +16 net-new.
+- **Coverage consequence, stated plainly:** each query now yields at most 500 results instead of 16k.
+  The way past that is **narrower queries** — which is what `area`'s per-city split already does — not
+  deeper paging, which upstream no longer serves. Worth a follow-up pass at widening the query set.
+- Also this session: restarted once beforehand to pick up the `title_language` ingest code per README.
+  **Storage: 11,346MB of 12,288MB.** `release_groups` is 6,235MB of it (the embedding column), with
+  **149,717 dead tuples** (~19% of live rows) not autovacuumed since 09-28. See README.
+
 ---
 
 **2026-09-30 (Mac) — Songs can be Top Match (최적의 결과).** Reported: "독" showed Snoop Dogg as Top Match instead of 독 by E-Sens.
@@ -85,7 +110,17 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-29 (Windows, web + pipeline code) — evidence-weighted genre placement shipped (`GENRE_AUDIT.md` §9).** New `lib/genres/placement.ts` (world = best-supported family from own tags + artist prior; hybrids split; descriptors/catch-alls via new taxonomy `evidence` field); `worlds.placeAlbum` rebuilt on it; `/api/taste/profile` places user + community albums with `lib/taste/artistPrior.ts` (stored `artists.genre_evidence` + the artist's other albums/EPs) instead of borrowing sibling tags (cache profile v18, community v4). Migration `20260930000003` ✅ applied (`artists.genre_evidence`; community RPC returns the artist, keeps untagged albums). `mb-client`/`mb-ingest` now store MB artist genre votes on every ingest (pipeline device needs pull + restart). New `npm run backfill:artist-genres` (MB + Last.fm by MB id + Wikidata) ✅ run for the 97 rated artists. Golden fixture `lib/genres/__fixtures__/placement-golden.json` (347 labelled albums) + `placement.test.ts`. Second pass (§9.1) fixed the remaining misses systematically: `trot` node, iTunes as a half-weight source (US store, artist matched by title overlap), artist-level language fallback (≥3 releases, ≥70% one language), Last.fm shared-name pages dropped; TAEYEON *VOICE* relabelled J-Pop. Result 91.8/98.5% rated, 90.1/100% Korean holdout. `pop rap` home parent → Hip-Hop. vitest 133/133 in lib/genres+lib/taste, tsc + eslint clean. Still on the old primary: genre_weights (iOS), chart SQL primary, /api/recommendations, feed.
 
+---
+
+**2026-09-29 (Windows, experiment) — genre source/rule bake-off (`GENRE_AUDIT.md` §8).** Hand-labelled 195 rated albums + a 152-album Korean holdout; compared current code vs evidence-weighted placement with MusicBrainz/Last.fm/Discogs/Wikidata at album and artist level. Winner: own tags + artist prior (our other albums + MB artist genres + Last.fm artist tags + Wikidata artist, equal weights) — rated 68.7→88.7% best-label (80→96% acceptable), Korean holdout 51→88% (62→97%). Per-album external sources incl. Discogs added nothing. Last.fm artist pages collide on shared names (Loco, Paloalto; name lookup turns "Ye" into Yes). No code changed; scratch harness not committed.
+
+---
+
+**2026-09-29 (Windows, audit) — genre placement audit.** User reported wrong Taste-map worlds (808s → R&B, 양홍원 → K-Pop, Korean indie → Korean Rock, 기리보이 → Classical). Wrote `GENRE_AUDIT.md`: six root causes (most-specific-wins primary, first-parent hybrids, descriptor tags as genres, scene labels as sounds, 70% of Korean albums untagged, MB votes never landed — 91 rows) with live measurements, target model and an 8-step plan. No code changed.
+
+---
 **2026-09-29 (Windows) — `backfill:title-language` finished.** 97,625 artists in the first pass (3 skipped on MB errors) + a resume pass covering those 3 and 6,037 newly-ingested artists; **168,002 release groups** now carry a non-English tracklist language (jpn 38,953, spa 27,189, fra 22,946, deu 14,717, ita 9,514, kor 7,812, por 7,074, rus 6,308, fin 4,222, hin 4,189, tur 3,167, zho 2,935). Korean is low because many Korean releases have English track titles (MB → eng, never stored) — Korean albums still resolve via script/country. Throughput ~4,400 artists/hr (most artists need one MB page). README pipeline-PC note updated: nothing left to run, no shared-IP clash.
 
 ---

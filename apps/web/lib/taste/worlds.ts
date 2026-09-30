@@ -29,14 +29,14 @@
 import { cosine, genreVector } from './embeddings';
 import { eraAffinity, sceneOf, type Scene } from './albumVector';
 import {
-  albumLanguage,
   parseQualified,
-  primaryOfAlbum,
   qualifiedInfo,
+  qualify,
   qualifyAlbum,
-  type AlbumLanguageInput,
   type LanguageSource,
 } from '../genres/language';
+import { chooseWorld, evidenceOf, familiesOf, type PlacementInput } from '../genres/placement';
+import { primaryOf, resolveGenre } from '../genres/resolver';
 import { NODE_BY_ID } from '../genres/taxonomy';
 
 /** Most worlds shown before the rest fold into "Other". */
@@ -115,18 +115,38 @@ export interface AlbumPlacement {
   all: string[];
 }
 
-/** Where one album sits on the map. */
-export function placeAlbum(input: AlbumLanguageInput): AlbumPlacement {
-  const { lang, source } = albumLanguage(input);
+/**
+ * Where one album sits on the map. The WORLD is the family with the most evidence
+ * — the album's tags plus its artist prior (lib/genres/placement.ts) — in the
+ * album's language. The tiles are the album's own genres inside that world (a
+ * hybrid counts in each of its parents' worlds: pop rap is a Hip-Hop tile), and
+ * the primary is the most specific of them (shoegaze over rock). An album whose
+ * own tags say nothing about its world (untagged, or only "k-pop" on a rap record
+ * placed by its artist) gets the world itself as its one tile.
+ */
+export function placeAlbum(input: PlacementInput): AlbumPlacement {
+  const { family, lang, source } = chooseWorld(input);
   const all = qualifyAlbum(input.genres, lang);
-  const primary = primaryOfAlbum(input.genres, lang);
-  const world = primary ? (qualifiedInfo(primary)?.family ?? null) : null;
-  const tiles = world
-    ? all
-        .filter((q) => qualifiedInfo(q)?.family === world)
-        .map((id) => ({ id, weight: id === primary ? 1 : 0.5 }))
-    : [];
-  return { lang, langSource: source, primary, world, tiles, all };
+  if (!family) return { lang, langSource: source, primary: null, world: null, tiles: [], all };
+  const world = qualify(family, lang);
+
+  const inWorld = (input.genres ?? []).filter((g) => {
+    const id = resolveGenre(g);
+    return id != null && !NODE_BY_ID.get(id)?.isScene && familiesOf(id).includes(family);
+  });
+  // Descriptors (ballad, instrumental…) are tiles but never the primary unless alone.
+  const sound = inWorld.filter((g) => evidenceOf(resolveGenre(g)!) > 0);
+  const primaryBase = primaryOf(sound.length > 0 ? sound : inWorld);
+  const primary = primaryBase ? qualify(primaryBase, lang) : world;
+
+  const tileIds: string[] = [];
+  for (const g of inWorld) {
+    const q = qualify(resolveGenre(g)!, lang);
+    if (!tileIds.includes(q)) tileIds.push(q);
+  }
+  if (tileIds.length === 0) tileIds.push(world);
+  const tiles = tileIds.map((id) => ({ id, weight: id === primary ? 1 : 0.5 }));
+  return { lang, langSource: source, primary, world, tiles, all: all.length > 0 ? all : [world] };
 }
 
 // ── per user ──────────────────────────────────────────────────────────────────

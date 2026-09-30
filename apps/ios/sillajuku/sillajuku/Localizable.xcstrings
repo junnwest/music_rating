@@ -1,21 +1,6 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "Couldn't load your feed." : {
-      "localizations" : {
-        "ko" : { "stringUnit" : { "state" : "translated", "value" : "피드를 불러오지 못했어요." } }
-      }
-    },
-    "Load more" : {
-      "localizations" : {
-        "ko" : { "stringUnit" : { "state" : "translated", "value" : "더 보기" } }
-      }
-    },
-    "You're all caught up." : {
-      "localizations" : {
-        "ko" : { "stringUnit" : { "state" : "translated", "value" : "모두 확인했어요." } }
-      }
-    },
     "" : {
       "shouldTranslate" : false
     },
@@ -803,6 +788,7 @@
       }
     },
     "Add %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -1822,6 +1808,16 @@
     },
     "Couldn't load this artist's releases." : {
 
+    },
+    "Couldn't load your feed." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "피드를 불러오지 못했어요."
+          }
+        }
+      }
     },
     "Couldn't load your mixes." : {
       "comment" : "A message displayed when a user's mixes can't be loaded.",
@@ -3150,6 +3146,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "리스트"
+          }
+        }
+      }
+    },
+    "Load more" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "더 보기"
           }
         }
       }
@@ -6612,6 +6618,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "요청이 승인되면 평가와 믹스를 볼 수 있어요."
+          }
+        }
+      }
+    },
+    "You're all caught up." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "모두 확인했어요."
           }
         }
       }

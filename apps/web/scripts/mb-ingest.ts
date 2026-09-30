@@ -14,6 +14,7 @@ import {
 import { getDB, normalizeStr, detectLanguage, saneReleaseDate, type DB } from './itunes-ingest-core';
 import { MB_ARTIST_OVERRIDES } from './mb-overrides';
 import { writeSourceGenresBestEffort, type SourceGenreInput } from '../lib/genres/sourceWriter';
+import { writeMbArtistGenresBestEffort } from '../lib/genres/artistEvidence';
 
 export { detectLanguage, getDB };
 export type { DB };
@@ -571,6 +572,9 @@ export async function ingestArtist(db: DB, mbid: string, coreOnly = false): Prom
   const detail = await getArtist(mbid);
   if (!detail) throw new Error(`MB artist not found: ${mbid}`);
   const { id: artistId, isNew } = await findOrCreateArtistByMbid(db, detail);
+  // The artist's MB genres + votes feed the taste map's artist prior (lib/genres/placement.ts)
+  // — fetched above anyway, so every ingest and freshness re-poll keeps them current.
+  await writeMbArtistGenresBestEffort(db, artistId, detail.genreVotes, detail.name);
 
   let rgs = await browseReleaseGroups(mbid);
 
