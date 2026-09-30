@@ -11,7 +11,7 @@ import {
   type MbArtistCandidate, type MbArtistDetail, type MbReleaseGroup, type MbArtistRelease, type MbTrack,
   type MbCredit,
 } from './mb-client';
-import { getDB, normalizeStr, detectLanguage, type DB } from './itunes-ingest-core';
+import { getDB, normalizeStr, detectLanguage, saneReleaseDate, type DB } from './itunes-ingest-core';
 import { MB_ARTIST_OVERRIDES } from './mb-overrides';
 import { writeSourceGenresBestEffort, type SourceGenreInput } from '../lib/genres/sourceWriter';
 
@@ -329,7 +329,7 @@ async function findOrCreateReleaseGroup(db: DB, rg: MbReleaseGroup, primaryArtis
     title: rg.title || '(untitled)',
     native_title: scriptOf(rg.title) !== 'latin' ? rg.title : null,
     release_group_type: mbTypeToGroupType(rg.primaryType, rg.secondaryTypes),
-    first_release_date: padDate(rg.firstReleaseDate),
+    first_release_date: saneReleaseDate(padDate(rg.firstReleaseDate)),
     genres: rg.genres.length ? rg.genres : null,
     source: 'musicbrainz',
   }, { onConflict: 'mb_release_group_id', ignoreDuplicates: true });
