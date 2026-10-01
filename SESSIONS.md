@@ -4,6 +4,76 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-30 (Mac) — Title+artist song search follow-ups.**
+
+- **`20260930000005` ✅ applied:** 0.2–0.35s (from up to 1s). "love you" no longer times out.
+- **It exposed substring false positives:** "You – Jennifer Love Hewitt" and "You – Lost Frequencies, Love Harder & Flynn" matched artist "Love" via `ILIKE '%Love%'` at 11000 (would win Top Match).
+- **`20260930000006_search_songs_title_artist_credit_names.sql` (✅ applied; verified: "love you" no longer matches Jennifer Love Hewitt / Love Harder; 독 이센스, no boss dok2, etc. OK at 0.2–0.3s):** the credit text is split into names (`, & + /` and feat. / featuring / ft. / with / x / of; not "and") and one must equal an artist name/alias. Checked on real credits: "프라이머리, E-Sens of 슈프림팀" → 프라이머리 | E-Sens | 슈프림팀.
+- **`20260930000007_search_songs_title_artist_exact_first.sql` (✅ applied; verified: "love you" → You Are Something – Love at 9000, so it can't be Top Match; all exact cases at 11000–11001, incl. "seethru primary" via feat-stripping; 0.2–0.5s):** after 000006, "love you" returned "You Are Something – Love" (artist Love + title prefix) at 10200, above a plain exact title (10000). Now exact title, or exact after stripping "(feat. …)" credits → 11000 (so "Seethru (feat. …)" / "Rain Song (feat. Colde)" keep it); any other prefix → 9000, listed but never Top Match.
+
+---
+
+**2026-09-30 (Mac) — Song search by "title + artist" ("독 이센스").** "독" found 독 by 프라이머리 / E-Sens but "독 이센스" found nothing.
+
+- **Data:** the recording `d8869f3e…` has `primary_artist_id` = Primary, and E-Sens appears only in the `artist_display` text ("프라이머리, E-Sens of 슈프림팀"); there's no featured-artist table. It's on *Primary and the Messengers LP* (track 7). 이센스 → artist E SENS (`name_phonetic_ko`), whose aliases include "E-Sens". Song search only matched the whole query against the title.
+- **Migration `20260930000004_search_songs_title_artist.sql` (✅ applied; verified live: 독 이센스 / 이센스 독 / 독 프라이머리 → E-Sens's 독 at 11001; rain song epik high (either order), hype boy newjeans, 밤 이적, the stranger billy joel all correct in 0.25–1.0s. **But "love you" timed out**, so it needs the bounded follow-up `20260930000005` (⏳ apply): main-artist candidates via `primary_artist_id` + title prefix (≤200), featured credits via exact title only (≤500), ≤5 artists per split):** `search_songs_title_artist(q, lim)`.
+  - For every split of the words into [artist][title] or [title][artist], the artist part is resolved by exact normalized name / native / phonetic_ko / alias (indexed).
+  - Recordings match when their title starts with the title part (`idx_recordings_title_norm_prefix`) AND their primary artist is that artist, or their `artist_display` ILIKE-contains one of its names/aliases (catches featured credits).
+  - Score: exact title 11000, prefix 10200, + album prestige. This beats plain title matches, so Top Match picks it. pglast OK.
+- **iOS + web:** multi-word queries call it in parallel with the normal song search and put its hits first (deduped). It's a no-op until the migration is applied. iOS **BUILD SUCCEEDED**; web tsc clean.
+
+---
+
+**2026-09-30 (Mac) — Artist page Songs ordered by popularity (Last.fm play counts), web + iOS.** Reported: Primary (프라이머리)'s songs looked "recently ordered".
+
+- **Why:** there's no per-song popularity in the catalog. `artists.popularity` is artist-level (Deezer fans), and `release_groups.prestige_score` is sparse. iOS sorted most-rated → newest (effectively newest-first); web sorted by title.
+- **Sources compared:**
+  - Deezer `/artist/{id}/top`: Beatles 98 matched, IU 26, Epik High 16, but Primary 0 and E SENS 1.
+  - Last.fm `artist.getTopTracks`: Primary 24, E SENS 64, Epik High 81, IU 25.
+  - Picked Last.fm.
+- **New `app/api/artist/top-tracks/route.ts`** (`?artistId=` or `?name=`):
+  - Queries Last.fm under name / name_native / name_phonetic_ko, keeping the max play count.
+  - Title key strips featured-artist credits but keeps version tags, so "(Instrumental)" / "[Live]" don't inherit the original's plays (that bug showed up in testing with Epik High and is fixed).
+  - Returns our recording ids (`artist_display` = name) most-played first.
+  - Redis cache `sj:toptracks:v2:*`: 7 days, or 1h when empty. Rate limit 60/min.
+  - No `LASTFM_API_KEY` → `{order: []}`.
+- **Clients:** web artist page and iOS `ArtistPageView.loadSongs` fetch it in parallel. Ranked songs come first; the rest keep the old order (web: title; iOS: most-rated → newest).
+- **Verified locally:** Primary → Johnny, ~42, Seethru, Baby, I Know, Love…; E SENS → Writer's Block, No Boss, Back In Time…
+- iOS **BUILD SUCCEEDED**; web tsc clean, vitest 116/116.
+- **✅ `LASTFM_API_KEY` added to Vercel** (user, 2026-09-30) and redeployed via empty commit `a3518ec`. Production verified: Primary 18 / E SENS 52 / IU 110 ranked, 1.3–1.8s uncached.
+- **Noticed, not changed:** duplicate recordings of the same song show twice; iOS `loadSongs` still uses `ilike` on `artist_display` (web switched to `eq` for speed).
+
+---
+
+**2026-09-30 (Mac) — Album page tracklist uses flower rate buttons (iOS).** `TrackRow` showed a static score chip once rated and a "+" `MorphingRateButton` before that, so a song rating couldn't be changed from the tracklist. It now shows `SongRateButton` (size 28), the same flower as the song page: tap or drag to rate, shows your score, stays editable, and the rating can be deleted. It's bound to `viewModel.trackRatings` via a new `trackScoreBinding(_:)`, so the page stays in sync (SongRateButton writes track_ratings itself). The dead `scoreLabel` helper is removed; `viewModel.rateTrack` is still used by the song sheet. Web's tracklist already used `FlowerRateControl`. **BUILD SUCCEEDED**; not device-checked.
+
+**2026-09-30 (pipeline PC) — MusicBrainz search now hard-caps paging at offset 500; two lanes were spinning on it.**
+
+- **Symptom:** after a restart, `pipeline:status` showed `area` and `newreleases` both `error` with
+  `MusicBrainz unavailable (400)`. The log carried **164 of them in the first five minutes**, always at
+  `offset=500`, always the same two URLs.
+- **Cause is upstream, not ours.** Probed the live API directly:
+  `/artist?query=country:KR&limit=100&offset=400` → **200**, `offset=500` → **400**, `offset=600` → **400**.
+  Only the first 500 results of any Lucene search are reachable now, whatever `count` reports (`area`
+  claims 16,323; `newreleases` 15,659). A 400 is permanent, so retrying it is pure waste — and the waste
+  lands on the **shared MB rate budget the `ingest` lane depends on**.
+- **Root fix:** `MB_SEARCH_MAX_OFFSET = 400` in `scripts/mb-client.ts`; `searchArtistsByQuery` and
+  `searchReleaseGroupsByQuery` return an **empty page** past it rather than requesting one.
+  Empty rather than throwing is the part that matters: all three paging loops
+  (`discover-mb-area`, `discover-mb-newreleases`, `discover-ig-newreleases`) already `break` on an empty
+  page but keep going while `offset + PER < count`, so an error — or a short page with the true count —
+  would have left them looping. One fix in the shared client covers every lane.
+- **Verified live:** after the restart, **0 × 400**. `newreleases` swept 500 groups → flagged 31 catalog
+  artists for re-poll; `area` finished its country + city sweep and queued +16 net-new.
+- **Coverage consequence, stated plainly:** each query now yields at most 500 results instead of 16k.
+  The way past that is **narrower queries** — which is what `area`'s per-city split already does — not
+  deeper paging, which upstream no longer serves. Worth a follow-up pass at widening the query set.
+- Also this session: restarted once beforehand to pick up the `title_language` ingest code per README.
+  **Storage: 11,346MB of 12,288MB.** `release_groups` is 6,235MB of it (the embedding column), with
+  **149,717 dead tuples** (~19% of live rows) not autovacuumed since 09-28. See README.
+
+---
+
 **2026-09-30 (Mac) — Songs can be Top Match (최적의 결과).** Reported: "독" showed Snoop Dogg as Top Match instead of 독 by E-Sens.
 
 - **Why:** Top Match only compared the best artist and the best album. `search_artists('독')` scores Snoop Dogg 1595 on loose cross-script similarity; the best album was only a prefix hit (500). Songs never competed, and four songs are titled exactly 독.

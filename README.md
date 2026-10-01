@@ -62,6 +62,14 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 > **2026-09-29 — Taste "you vs the community" is now per world.** Standings compare your average with everyone's in the same language-qualified world (Korean Rock vs Korean Rock, K-Pop vs K-Pop), not per raw tag, and exclude deactivated accounts. New read-only RPC `get_community_album_scores` (migration `20260929000000`, ✅ applied); per-world community totals are cached globally for 10 min. `get_user_genre_standings` is left in the DB, unused by web. Up to 5 worlds with ≥3 of your albums and community ratings beyond your own. iOS gets it through the same route (same fields, plus `genreKo`).
 
+> **⚠️ MusicBrainz search paging is capped at offset 500 (found 2026-09-30).** MB now returns a hard
+> **400** for any search `offset >= 500`, so only the first 500 results of a Lucene query are reachable
+> no matter what `count` says. `mb-client.ts` caps at `MB_SEARCH_MAX_OFFSET = 400` and returns an empty
+> page past it, which is what stops the `area` / `newreleases` lanes spinning (they were issuing 164
+> unsatisfiable requests every five minutes, against the same rate budget `ingest` uses). **Don't
+> "fix" a lane's coverage by raising that cap** — upstream won't serve it. Widen coverage with
+> narrower queries instead, the way `area` already splits by city.
+
 > **🖥️ FOR THE PIPELINE PC (2026-09-28) — read before starting anything that calls MusicBrainz.**
 > 1. `git pull` and restart the pipeline. New ingest code writes `release_groups.title_language` (the migration is already applied, so nothing to run).
 > 2. **The `backfill:title-language` run is FINISHED (2026-09-29, on the Windows laptop)** — 97,625 + 6,037 artists, **168,002 albums** filled (jpn 38,953 · spa 27,189 · fra 22,946 · deu 14,717 · ita 9,514 · kor 7,812 · por 7,074 · rus 6,308 …). No need to run it here; the restarted pipeline keeps it current for new ingests. MusicBrainz traffic from the laptop is back to zero, so no shared-IP clash.
@@ -88,6 +96,10 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 > - **Popular Searches** (`20260926000001`): artists/releases only, catalog spelling.
 > - **iOS polish:** unread-count bell badge; song page rates like the album page (no comments); Disc N tracklist headers; Mix-tab counts fixed; "Post to Feed"; comment sheets open with the keyboard together, large-only detent, swipe/tap to dismiss keyboard, whole bottom area opens it; flower hold delay 0.03s; comment chevron left of score.
 > - **Removed:** Quick Add (iOS + web; `get_quick_add_*` RPCs left in DB, unused); all 11 email-login accounts (backup `apps/web/backups/email-accounts-deleted-2026-09-26T21-59-52-860Z.json`).
+>
+> **🔎 (2026-09-30, Mac) — Song search by title + artist ("독 이센스").** ✅ `…000004`–`…000007` applied and verified (0.2–0.5s; whole credited-name matching; partial-title hits can't take Top Match). iOS side ships with the next build. See SESSIONS.md.
+>
+> **🎵 (2026-09-30, Mac) — Artist Songs tab ordered by popularity (Last.fm).** ✅ `LASTFM_API_KEY` on Vercel (Production + Preview), redeployed (`a3518ec`), and verified in production: Primary, E SENS and IU return ranked songs. iOS part ships with the next build. See SESSIONS.md.
 >
 > **🎯 (2026-09-30, Mac) — Songs can be Top Match (독 → E-Sens's 독, not Snoop Dogg).** ✅ `20260930000002_song_search_score.sql` applied and verified. iOS side ships with the next build. See SESSIONS.md.
 >
