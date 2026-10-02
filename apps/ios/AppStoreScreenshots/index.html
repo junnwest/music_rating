@@ -125,6 +125,27 @@ html.raw body { width: max-content; }
 }
 .mark img { width: 100%; height: 100%; display: block; }
 
+/* ── Animated reel scene (?anim) ──────────────────────────────────────────
+   Every layer is stacked in one stage and driven only by inline opacity/transform from seek(). There
+   are deliberately NO transitions or animations declared here: the capture asks for one frame at a
+   time, so any CSS easing would still be mid-flight when the screenshot is taken and frames would
+   depend on how long the browser had been sitting on them. */
+.a-stage { position: relative; overflow: hidden; background: transparent; }
+.a-bg { position: absolute; inset: 0; z-index: 0; will-change: opacity; }
+.a-bgfill { position: absolute; inset: 0; background: var(--bg); }
+.a-panowrap { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
+.a-panowrap .pano { will-change: transform; }
+.a-copy { z-index: 6; will-change: transform, opacity; }
+.a-copy .a-el { will-change: transform, opacity; }
+/* The copy layers stack, so they must not reserve space from one another. */
+.a-copy { position: absolute; }
+.a-dev { z-index: 5; transform-origin: 50% 42%; will-change: transform; }
+.a-screens { position: absolute; inset: 0; }
+/* The wrapper is what animates. .scr sizes itself with its own `transform: scale(...)`, so putting the
+   handover transform on that element would REPLACE the scale and the mock would render at 440x956 inside
+   a much larger phone - which is exactly what the first run did, leaving a black band down one side. */
+.a-scr { position: absolute; inset: 0; will-change: transform, opacity; }
+
 /* Guides overlay (gallery toggle) */
 .guides .slide::before {
   content: ''; position: absolute; inset: 0 calc(110px * var(--s, 1)); z-index: 99; pointer-events: none;
@@ -850,6 +871,152 @@ function showcaseHTML() {
 // Wait for webfonts and every <img> (logos, app icon, real screenshots) before export.mjs captures.
 const ready = () => Promise.all([document.fonts.ready, ...[...document.images].map((im) => im.complete ? 0 : new Promise((r) => { im.onload = im.onerror = r; }))])
   .then(() => document.documentElement.setAttribute('data-ready', '1'));
+
+/* ─────────────────────── Animated reel scene (?anim) ───────────────────────
+   The still formats paint six independent cards. A reel built by sliding those cards past each other
+   is a slideshow: nothing on card 2 has any relationship to card 1, so every cut throws the whole
+   frame away. This mode instead builds ONE continuous scene in which elements persist and hand over
+   to their successors.
+
+   THE PHONE IS THE SHARED ELEMENT. A single .iphone is rendered once and never moves; the six app
+   screens are stacked inside its .screen and cross-dissolve with a short vertical push, which is what
+   navigating the real app looks like. The frame, the buttons and the Dynamic Island hold still through
+   every section, so the viewer reads one device being used rather than six pictures of a device.
+
+   COPY HANDS OVER PER ELEMENT, not per card: the outgoing eyebrow/headline/sub lift and fade while the
+   incoming ones rise in sequence, so the eye follows each line to its replacement.
+
+   REAL APP MOTION rides on top of the handover. The rate section drives the actual rate control:
+   SCREENS.album takes a `gauge`, so that screen is re-rendered each frame with the gauge sweeping up
+   to the score — the app's own drag-to-rate animation, not an effect applied to a picture of it. Every
+   section also drifts its screen content upward through its hold, which reads as the list scrolling.
+
+   seek(t) IS A PURE FUNCTION OF TIME. Nothing here uses CSS transitions, requestAnimationFrame or the
+   wall clock, so frame N is identical whenever it is asked for. That is what lets render-frames.mjs
+   capture frames one at a time, out of order, and resume. */
+if (Q.has('anim')) {
+  document.documentElement.classList.add('raw');
+  const R = C.reel || {};
+  const SEG = R.hold ?? 2.6, TR = R.transition ?? 0.75;
+  const N = C.slides.length;
+  const DURATION = SEG * N;
+  const ease = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+  const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
+
+  const themeOf = (i) => { const t = C.slides[i].theme || 'cream'; return t === 'blue' ? 'soft' : t === 'ink' ? 'dark' : t; };
+  const auroraFor = (tk) => (AURORA[tk] ? `<div class="aurora" style="background:${[[12, 8, 4.4], [92, 14, 3.7], [70, 88, 4.8], [8, 70, 3.2]].map(([x, y, sc]) =>
+    `radial-gradient(900px 900px at ${x}% ${y}%, color-mix(in srgb, ${spectrum(sc, AURORA[tk], .65)} 55%, transparent), transparent)`).join(',')}"></div>` : '');
+
+  const copyInner = (i) => {
+    const cp = C.slides[i].copy || {};
+    const no = cp.no ?? (cp.eyebrow ? String(i + 1).padStart(2, '0') : '');
+    return [
+      cp.mark ? `<div class="mark"><img src="assets/app-icon${cp.mark === 'dark' ? '-dark' : ''}.png" alt=""></div>` : '',
+      cp.logo ? `<div class="lockup"><img src="assets/logo-flower.svg" alt=""><span class="wm">${wordmark()}</span></div>` : '',
+      cp.eyebrow ? `<div class="eyebrow">${no ? `<span class="no">${no}</span>` : ''}<span>${cp.eyebrow}</span></div>` : '',
+      cp.headline ? `<div class="headline">${kernStops(cp.headline)}</div>` : '',
+      cp.sub ? `<div class="sub">${cp.sub}</div>` : '',
+    ].filter(Boolean).map((h) => `<div class="a-el">${h}</div>`).join('');
+  };
+
+  // One phone, six screens. Geometry comes from the first slide that names a device, so the frame has a
+  // single fixed home for the whole reel instead of jumping between per-slide positions.
+  const d0 = (C.slides.find((s) => s.devices && s.devices.length) || {}).devices[0];
+  const screenOf = (i) => {
+    const d = (C.slides[i].devices || [])[0] || d0;
+    const fn = SCREENS[d.screen];
+    const st = { ...(d.state || {}), dark: !!d.dark };
+    return `<div class="a-scr" data-i="${i}"><div class="scr ui ${d.dark ? 'dark' : ''}">${fn ? fn(st) : ''}</div></div>`;
+  };
+
+  root.innerHTML = `<div class="slide a-stage">
+    ${C.slides.map((_, i) => `<div class="a-bg t-${themeOf(i)}" data-i="${i}"><div class="a-bgfill"></div>${auroraFor(themeOf(i))}</div>`).join('')}
+    <div class="a-panowrap"><div class="pano" style="left:0;width:${W * N}px">${(C.panorama || []).map((p) => {
+      const glyph = p.style === 'glyph';
+      const box = `left:${p.x - p.size / 2}px;top:${p.y - p.size / 2}px;width:${p.size}px;height:${p.size * (glyph ? 25.76 / 26.78 : 288.88 / 279.71)}px;transform:rotate(${p.rot || 0}deg)`;
+      return glyph ? `<div class="pflower glyph" style="${box}">${ic('flower', p.size)}</div>`
+        : `<div class="pflower" style="${box}"><img src="assets/logo-flower.svg" alt=""></div>`;
+    }).join('')}</div></div>
+    ${C.slides.map((s, i) => `<div class="a-copy copy ${(s.copy || {}).align === 'center' ? 'center' : ''} t-${themeOf(i)}" data-i="${i}" style="top:${(s.copy || {}).top ?? 200}px">${copyInner(i)}</div>`).join('')}
+    <div class="a-dev dev" style="left:${d0.x}px;top:${d0.y}px;--w:${d0.w || 1000}">
+      <div class="iphone f-${C.device.finish}">
+        <i class="btn b-action"></i><i class="btn b-volup"></i><i class="btn b-voldn"></i><i class="btn b-power"></i><i class="btn b-camctl"></i>
+        <div class="bezel"><div class="screen"><div class="a-screens">${C.slides.map((_, i) => screenOf(i)).join('')}</div></div></div>
+        <div class="island"></div>
+      </div></div>
+  </div>`;
+
+  const bgs = [...root.querySelectorAll('.a-bg')];
+  const copies = [...root.querySelectorAll('.a-copy')];
+  const screensHost = root.querySelector('.a-screens');
+  const panoEl = root.querySelector('.a-panowrap .pano');
+  const devEl = root.querySelector('.a-dev');
+
+  // The rate screen is the one that redraws: its gauge is the app's own control, not a static picture.
+  const rateIndex = C.slides.findIndex((s) => (s.devices || []).some((d) => d.screen === 'album'));
+  const rateTarget = rateIndex >= 0 ? ((C.slides[rateIndex].devices[0].state || {}).gauge ?? 4.5) : 4.5;
+  let lastGauge = 'init';
+
+  function seek(t) {
+    const tc = Math.max(0, Math.min(DURATION - 0.0001, t));
+    const i = Math.min(N - 1, Math.floor(tc / SEG));
+    const local = tc - i * SEG;
+    const p = i === 0 ? 1 : ease(clamp01(local / TR));
+
+    for (let k = 0; k < N; k++) {
+      const isCur = k === i, isPrev = k === i - 1;
+      bgs[k].style.opacity = String(isCur ? p : isPrev ? 1 - p : 0);
+
+      const c = copies[k];
+      c.style.opacity = String(isCur ? 1 : isPrev ? clamp01(1 - p * 1.7) : 0);
+      c.style.visibility = isCur || isPrev ? 'visible' : 'hidden';
+      const els = [...c.children];
+      if (isPrev) {
+        c.style.transform = `translateY(${(-70 * p).toFixed(2)}px)`;
+        els.forEach((el) => { el.style.opacity = '1'; el.style.transform = 'none'; });
+      } else if (isCur) {
+        c.style.transform = 'none';
+        els.forEach((el, k2) => {
+          const stag = 0.09 * k2;
+          const q = ease(clamp01((p - stag) / Math.max(0.2, 1 - stag)));
+          el.style.opacity = String(q);
+          el.style.transform = `translateY(${(78 * (1 - q)).toFixed(2)}px)`;
+        });
+      }
+    }
+
+    const scrs = [...screensHost.children];
+    const held = clamp01((local - TR) / Math.max(0.001, SEG - TR));
+    scrs.forEach((el, k) => {
+      const isCur = k === i, isPrev = k === i - 1;
+      const o = isCur ? p : isPrev ? 1 - p : 0;
+      el.style.opacity = String(o);
+      el.style.visibility = o > 0.002 ? 'visible' : 'hidden';
+      const push = isCur ? 54 * (1 - p) : isPrev ? -30 * p : 0;
+      const drift = isCur ? -26 * held : 0;
+      el.style.transform = `translateY(${(push + drift).toFixed(2)}px)`;
+    });
+
+    if (rateIndex >= 0) {
+      const g = i === rateIndex ? +(rateTarget * ease(clamp01((local - TR * 0.9) / 1.15))).toFixed(2) : null;
+      if (g !== lastGauge) {
+        lastGauge = g;
+        const d = C.slides[rateIndex].devices[0];
+        const st = { ...(d.state || {}), dark: !!d.dark };
+        if (g != null) st.gauge = g; else delete st.gauge;
+        scrs[rateIndex].firstElementChild.innerHTML = SCREENS.album(st);
+      }
+    }
+
+    panoEl.style.transform = `translateX(${(-(W * (N - 1)) * (tc / DURATION)).toFixed(2)}px)`;
+    const beat = i === 0 && local < TR ? 0 : Math.sin(Math.PI * clamp01(local / TR));
+    devEl.style.transform = `scale(${(1 + 0.014 * beat).toFixed(4)})`;
+  }
+
+  window.SJ_REEL = { seek, duration: DURATION, fps: R.fps ?? 30, seg: SEG, transition: TR };
+  seek(Number(Q.get('t') || 0));
+  return ready();
+}
 
 if (Q.has('slide')) {                       // ?slide=N → raw 1:1 canvas for export.mjs
   document.documentElement.classList.add('raw');

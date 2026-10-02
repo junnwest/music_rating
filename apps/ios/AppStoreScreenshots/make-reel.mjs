@@ -44,6 +44,26 @@ const FPS = Number(opt('fps', 30));
 const DIR = path.resolve(ROOT, opt('dir', 'reel/out'));
 const OUT = path.resolve(ROOT, opt('out', 'reel/out/reel.mp4'));
 
+/* FRAME-SEQUENCE MODE is the real reel: render-frames.mjs writes one PNG per frame from the animated
+   scene, and ffmpeg only has to encode them. The card mode below stays because it needs no frame
+   capture at all - useful for a quick look - but it can only ever push and wipe whole cards, which is
+   a slideshow. Element-level handover and the app's own control animations live in the scene. */
+const FRAMES = opt('frames', '');
+if (FRAMES) {
+  const fdir = path.resolve(ROOT, FRAMES);
+  const n = fs.readdirSync(fdir).filter((f) => /^\d+\.png$/.test(f)).length;
+  if (!n) { console.error(`No frames in ${fdir}. Run: node render-frames.mjs --lang=reel`); process.exit(1); }
+  fs.mkdirSync(path.dirname(OUT), { recursive: true });
+  const ff = ['-y', '-framerate', String(FPS), '-i', path.join(fdir, '%04d.png'),
+    '-c:v', 'libx264', '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-crf', '18', '-preset', 'slow',
+    '-movflags', '+faststart', OUT];
+  console.log(`${n} frames @ ${FPS}fps → ${(n / FPS).toFixed(2)}s`);
+  const r = spawnSync('ffmpeg', ff, { stdio: ['ignore', 'ignore', 'pipe'], encoding: 'utf8' });
+  if (r.status !== 0) { console.error(r.stderr?.split(String.fromCharCode(10)).slice(-18).join(String.fromCharCode(10)) || r.error); process.exit(1); }
+  console.log(`  ✓ ${path.relative(process.cwd(), OUT)}  ${(fs.statSync(OUT).size / 1e6).toFixed(1)} MB`);
+  process.exit(0);
+}
+
 const cards = fs.readdirSync(DIR).filter((f) => /^\d+\.png$/.test(f)).sort();
 if (cards.length < 2) {
   console.error(`Need at least 2 cards in ${DIR}. Run: node export.mjs --lang=reel --no-showcase`);

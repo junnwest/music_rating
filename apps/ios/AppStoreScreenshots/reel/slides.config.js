@@ -32,6 +32,10 @@ window.APPSHOTS = {
 
   output: { naming: 'index' },
 
+  // Timing for the animated scene (?anim). hold = seconds per section INCLUDING its handover, so the
+  // reel runs hold * slides; transition = how long the handover itself takes.
+  reel: { hold: 2.6, transition: 0.75, fps: 30 },
+
   device: { model: 'iPhone 17 Pro Max', finish: 'silver' },
 
   // Seams of a six-card strip at 1080 wide; the flower carries across cuts in the video too.

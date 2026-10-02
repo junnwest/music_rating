@@ -59,7 +59,43 @@ own hand-tuned numbers. At 1320 wide `--s` is exactly 1 and the store sets are u
 ```bash
 node export.mjs --lang=ig          # -> ig/out/01-home.png ... (1080 x 1350)
 node export.mjs --lang=ig --serve  # preview at index.html?lang=ig
+
+node render-frames.mjs --lang=reel        # animated scene -> reel/frames/0001.png ...
+node make-reel.mjs --frames=reel/frames   # -> reel/out/reel.mp4  (15.6s, H.264)
 ```
+
+### The reel is one continuous scene, not six cards in sequence
+
+A reel made by sliding the stills past each other is a slideshow: nothing on card 2 relates to card 1,
+so every cut throws the whole frame away. `index.html?anim` instead builds one stage in which elements
+persist and hand over to their successors.
+
+- **The phone is a shared element.** One `.iphone` is rendered and never moves; the six app screens are
+  stacked inside its `.screen` and cross-dissolve with a short push, the way navigating the app looks.
+  The viewer reads one device being used rather than six pictures of a device.
+- **Copy hands over per element**, not per card: the outgoing eyebrow/headline/sub lift away while the
+  incoming ones rise in sequence, so the eye follows each line to its replacement.
+- **The rate section runs the app's own control.** `SCREENS.album` takes a `gauge`, so that screen is
+  re-rendered every frame with the gauge sweeping up to the score — the real drag-to-rate animation,
+  not an effect applied to a picture of it.
+- Theme, aurora and the panorama flower carry across the whole scene instead of cutting.
+
+`seek(t)` is **a pure function of time** — no CSS transitions, no `requestAnimationFrame`, no wall clock
+— so a frame is identical whenever it is asked for. That is what makes frame-at-a-time capture valid,
+and a crashed run resumable: existing frames are skipped unless `--force`.
+
+`render-frames.mjs` keeps **one** browser open and drives it over CDP through Node's global WebSocket,
+so no dependency is added. That matters: `export.mjs` spawns a browser per image, fine for six stills
+and hopeless for 468 frames — **109s versus roughly 25 minutes**.
+
+Timing lives in the config's `reel: { hold, transition, fps }`. The 9:16 layout is arranged around
+Instagram's chrome, which covers roughly the bottom third. No audio: sound is chosen at upload.
+
+`make-reel.mjs` **without** `--frames` still cuts a slideshow from the six stills, kept for a quick look.
+Two traps if you touch it: a dissolve between text-heavy cards leaves both headlines legible and they
+overlap into mush (use a slide), and ffmpeg's `zoompan` `d` is frames per *input* frame, which against a
+looped still multiplies the length — the first build was 180s instead of 13.
+
 
 **Scaling is not the same as re-laying-out.** The App Store slide is a tall column with the whole phone
 standing inside it. A 4:5 post is relatively much wider, so a full phone would have to shrink until the
