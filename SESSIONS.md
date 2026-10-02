@@ -4,6 +4,10 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-10-02 (Windows) — `backfill:artist-genres` pass 1 finished; pass 2 running.** Pass 1 (`--sources=musicbrainz,lastfm,wikidata`) covered all **104,740** MB-linked artists in ~2 days on Windows (~2,100/hr; 3 failed, to be retried by any re-run; stretches of MusicBrainz 503 throttling, likely sharing an IP with the pipeline, absorbed by the limiter). Result: 48,575 artists have ≥ 3 tags across the three sources; **56,314 are thin** (< 3), 42,866 with nothing at all, but only **11,382 thin artists have releases in our catalog** (2,982 Korean); the rest are the known empty MB entities, skipped without an iTunes call. Pass 2 (`--only-thin`, iTunes) started on Windows, ~30 h expected. The Mac handoff zip prepared on 2026-09-30 wasn't needed.
+
+---
+
 **2026-09-30 (Mac) — Title+artist song search follow-ups.**
 
 - **`20260930000005` ✅ applied:** 0.2–0.35s (from up to 1s). "love you" no longer times out.
