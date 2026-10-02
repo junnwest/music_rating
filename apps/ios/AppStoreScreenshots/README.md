@@ -54,7 +54,8 @@ own hand-tuned numbers. At 1320 wide `--s` is exactly 1 and the store sets are u
 | `.` | 1320 x 2868 | App Store, English |
 | `ko/` | 1320 x 2868 | App Store, Korean |
 | `ig/` | 1080 x 1350 | Instagram feed carousel, Korean (4:5) |
-| `reel/` | 1080 x 1920 | Instagram reel / story, Korean (9:16) |
+| `reel/` | 1080 x 1920 | Instagram reel / story, Korean (9:16) — the store set re-cut |
+| `promo/` | 1080 x 1920 | Instagram **Reels promo**, Korean — designed for the format, not re-cut |
 
 ```bash
 node export.mjs --lang=ig          # -> ig/out/01-home.png ... (1080 x 1350)
@@ -109,7 +110,22 @@ and a crashed run resumable: existing frames are skipped unless `--force`.
 so no dependency is added. That matters: `export.mjs` spawns a browser per image, fine for six stills
 and hopeless for 468 frames — **109s versus roughly 25 minutes**.
 
-Timing lives in the config's `reel: { hold, transition, fps }`. The 9:16 layout is arranged around
+#### promo/ is a different brief, not a different size
+
+A store listing and a reel are opposite problems: someone on a store page has already decided to look,
+someone on Reels is deciding whether to keep scrolling, in about a second, usually with the sound off.
+So `promo/` drops the logo-first opening (the most-skipped start in the format — the brand moved to the
+end), carries **three** features instead of six (2.5s each is too short to mean anything), and opens cold
+on the rate gesture, which is strange enough to stop a thumb and obvious enough to need no caption.
+
+Two scene features exist for it. Each slide may set its own **`dur`**, because equal beats are what make
+a promo feel like a slideshow — the promo runs 4.6 / 4.0 / 3.4 / 2.2s. And each may set a **`camera`**
+(`{ scale, x, y }`, interpolated across the handover): moving the viewpoint is a film move and is honest,
+unlike faking app motion. Check the arithmetic when you change `camera.scale` — at `w: 790` the device is
+1655 tall with its origin at 42%, so scale 1.26 puts its top edge at y≈429, straight through a headline
+ending at y≈493.
+
+Timing lives in the config's `reel: { hold, transition, fps, rateAt, rateDur }`. The 9:16 layout is arranged around
 Instagram's chrome, which covers roughly the bottom third. No audio: sound is chosen at upload.
 
 `make-reel.mjs` **without** `--frames` still cuts a slideshow from the six stills, kept for a quick look.

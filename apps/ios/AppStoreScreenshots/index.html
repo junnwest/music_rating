@@ -897,9 +897,14 @@ const ready = () => Promise.all([document.fonts.ready, ...[...document.images].m
 if (Q.has('anim')) {
   document.documentElement.classList.add('raw');
   const R = C.reel || {};
-  const SEG = R.hold ?? 2.6, TR = R.transition ?? 0.75;
+  const TR = R.transition ?? 0.75;
   const N = C.slides.length;
-  const DURATION = SEG * N;
+  /* PER-BEAT DURATION. A reel needs an uneven rhythm - the hook has to land fast, the payoff needs room
+     to be read - so each slide may set its own `dur`. A config that sets none falls back to a uniform
+     hold and behaves exactly as before. */
+  const DUR = C.slides.map((s) => s.dur ?? R.hold ?? 2.6);
+  const START = DUR.map((_, k) => DUR.slice(0, k).reduce((a, d) => a + d, 0));
+  const DURATION = DUR.reduce((a, d) => a + d, 0);
   const ease = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
   const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
 
@@ -959,8 +964,9 @@ if (Q.has('anim')) {
 
   function seek(t) {
     const tc = Math.max(0, Math.min(DURATION - 0.0001, t));
-    const i = Math.min(N - 1, Math.floor(tc / SEG));
-    const local = tc - i * SEG;
+    let i = 0; while (i < N - 1 && tc >= START[i + 1]) i++;
+    const local = tc - START[i];
+    const SEG = DUR[i];
     const p = i === 0 ? 1 : ease(clamp01(local / TR));
 
     for (let k = 0; k < N; k++) {
@@ -1029,10 +1035,14 @@ if (Q.has('anim')) {
     if (rateIndex >= 0) {
       let g = null;
       if (i === rateIndex) {
-        const DRAG_AT = 0.5, DRAG_DUR = 0.62;
-        // Linear while held: a drag has no easing, the value simply tracks the finger.
-        const drag = clamp01((local - DRAG_AT) / DRAG_DUR);
-        g = +(rateTarget * drag).toFixed(2);
+        const DRAG_AT = R.rateAt ?? 0.5, DRAG_DUR = R.rateDur ?? 0.62;
+        // Before the finger lands the control is idle - the plain flower button, no gauge, which is
+        // what the screen actually shows until you touch it. Leaving it at 0.0 instead would claim the
+        // album had been rated zero.
+        if (local >= DRAG_AT) {
+          // Linear while held: a drag has no easing, the value simply tracks the finger.
+          g = +(rateTarget * clamp01((local - DRAG_AT) / DRAG_DUR)).toFixed(2);
+        }
       }
       if (g !== lastGauge) {
         lastGauge = g;
@@ -1051,12 +1061,21 @@ if (Q.has('anim')) {
     const panoFrom = -W * Math.max(0, i - 1), panoTo = -W * i;
     panoEl.style.transform = `translateX(${(panoFrom + (panoTo - panoFrom) * p).toFixed(2)}px)`;
 
-    // The device itself stays put. A phone that pulses every few seconds is the other thing no real
-    // app does; the handover is carried by the screen and the copy.
-    devEl.style.transform = 'none';
+    /* THE CAMERA MOVES, THE PHONE DOES NOT. Faking app motion is what made the earlier cut look wrong,
+       but moving the viewpoint is a film move, not a UI one - a reel can push in on a control the way a
+       camera would and still be honest about what the app does. Each beat may set
+       `camera: { scale, x, y }` and the move is interpolated across the handover. */
+    const camOf = (k) => C.slides[Math.max(0, Math.min(N - 1, k))].camera || {};
+    const a0 = camOf(i - 1), a1 = camOf(i);
+    const lerp = (u, v, q) => (u ?? 1) + ((v ?? 1) - (u ?? 1)) * q;
+    const lerp0 = (u, v, q) => (u ?? 0) + ((v ?? 0) - (u ?? 0)) * q;
+    const cs = i === 0 ? (a1.scale ?? 1) : lerp(a0.scale, a1.scale, p);
+    const cx = i === 0 ? (a1.x ?? 0) : lerp0(a0.x, a1.x, p);
+    const cy = i === 0 ? (a1.y ?? 0) : lerp0(a0.y, a1.y, p);
+    devEl.style.transform = `translate(${cx.toFixed(1)}px, ${cy.toFixed(1)}px) scale(${cs.toFixed(4)})`;
   }
 
-  window.SJ_REEL = { seek, duration: DURATION, fps: R.fps ?? 30, seg: SEG, transition: TR };
+  window.SJ_REEL = { seek, duration: DURATION, fps: R.fps ?? 30, beats: DUR, starts: START, transition: TR };
   seek(Number(Q.get('t') || 0));
   return ready();
 }
