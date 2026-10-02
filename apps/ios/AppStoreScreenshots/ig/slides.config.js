@@ -32,6 +32,10 @@ window.APPSHOTS = {
   // 4:5, the tallest ratio the feed renders without cropping.
   canvas: { width: 1080, height: 1350 },
 
+  // Finished cards live with the other Instagram posts, named the way those upload folders expect:
+  //   node export.mjs --lang=ig --no-showcase   //     --out=../../../../insta_posts/posts/app-tour
+  output: { naming: 'index' },
+
   device: { model: 'iPhone 17 Pro Max', finish: 'silver' },
 
   // Seams of a six-card carousel at 1080 wide.
