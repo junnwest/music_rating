@@ -54,6 +54,7 @@ own hand-tuned numbers. At 1320 wide `--s` is exactly 1 and the store sets are u
 | `.` | 1320 x 2868 | App Store, English |
 | `ko/` | 1320 x 2868 | App Store, Korean |
 | `ig/` | 1080 x 1350 | Instagram feed carousel, Korean (4:5) |
+| `reel/` | 1080 x 1920 | Instagram reel / story, Korean (9:16) |
 
 ```bash
 node export.mjs --lang=ig          # -> ig/out/01-home.png ... (1080 x 1350)
