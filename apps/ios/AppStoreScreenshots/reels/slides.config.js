@@ -1,29 +1,31 @@
 /*
- * Instagram Reels — Korean, 1080 x 1920, ~13s. Full-bleed app, kinetic type over it.
+ * Instagram Reels — Korean, 1080 x 1920, ~11.5s. Full-bleed app, kinetic type, visible touch.
  *
  *   node render-frames.mjs --lang=reels
  *   node make-reel.mjs --frames=reels/frames --out=reels/out/reels.mp4
  *
- * THIS IS NOT THE STORE TEMPLATE RESIZED. `../promo` was, and that is why it still read like a store
- * screenshot in a feed: a headline band on top, a phone standing below, cream margins around it. The
- * composition itself was the problem, not its proportions. This config drives `?reels`, a different
- * renderer (see index.html) whose rules are the format's, not the listing's:
+ * THE STRUCTURE IS BORROWED, NOT INVENTED. Earlier cuts of this were my own layout re-proportioned
+ * three times, which is why each one still read like a store screenshot. This follows what app demo
+ * videos that work actually do:
  *
- *   the app fills the frame      no device chrome, no margin - you are looking at the app, not a photo of a phone
- *   type sits ON the app         captions ride the UI with a scrim, the way the format actually captions things
- *   cuts are hard                a dissolve between two full-frame UIs is mush; beats change on a cut with a punch
- *   beats are short              1.9-2.6s, not 4
+ *   SHOW END FIRST. One of the highest-performing hook types on the platform (~22% of top hooks), and
+ *   the opposite of what the earlier cuts did - they opened on step one of a process and asked the
+ *   viewer to wait for the point. Beat 1 is the finished taste map: the result, before the method. The
+ *   question "how?" is what carries someone into beat 2.
  *
- * THREE FEATURES, in the order that answers a stranger's questions: what do I do (drag), what do I get
- * (my taste), why come back (other people). Profile, feed and discover are gone.
+ *   MOTION IN THE FIRST FRAME. Cited as the single most reliable hook enhancer. Nothing here fades up
+ *   from a still: the first frame is already mid-scroll with the caption arriving.
  *
- * NO LOGO UNTIL THE END. A wordmark on frame one asks for brand recall from someone with no reason to
- * give it; it is the most-skipped opening in the format. It lands last, on someone who just watched the
- * app work.
+ *   VISIBLE TAP POINTS. Apple's own Journal walkthrough highlights where it touches, and Duolingo
+ *   layers motion over real screens with on-screen text and no narration. A screen that changes by
+ *   itself reads as a video OF a UI; a finger pressing and dragging reads as someone using one. This
+ *   is the piece every earlier cut was missing.
  *
- * SOUND OFF IS THE DEFAULT - every claim is type. BUILT TO LOOP - the end card is quiet and cream, so a
- * replay reads as a breath. SAFE AREA - captions sit between y 300 and y 1250, clear of Instagram's own
- * chrome top and bottom.
+ *   GROUPED BY USER LOGIC, NOT MENU ORDER (Klarna, Traveloka). Result -> how -> it accumulates -> other
+ *   people, which is the order a stranger's questions actually arrive in.
+ *
+ * MUTE-READABLE THROUGHOUT: every claim is type, nothing depends on audio. BUILT TO LOOP: the end card
+ * is quiet so a replay reads as a breath. SAFE AREA: captions sit clear of Instagram's chrome.
  */
 window.APPSHOTS = {
   lang: 'ko',
@@ -31,7 +33,7 @@ window.APPSHOTS = {
 
   brand: {
     name: 'sillajuku',
-    showcaseTitle: '드래그 한 번이면<br><em>평가 끝.</em>',
+    showcaseTitle: '1년 치 음악 취향,<br><em>한 장으로.</em>',
     showcaseMeta: 'Instagram Reels · 1080 × 1920 · 2026',
   },
 
@@ -39,63 +41,64 @@ window.APPSHOTS = {
   output: { naming: 'index' },
   device: { model: 'iPhone 17 Pro Max', finish: 'silver' },
 
-  // The drag starts almost immediately: the gesture is the hook, so it cannot wait for a caption.
-  reel: { fps: 30, rateAt: 0.35, rateDur: 1.1 },
+  reel: { fps: 30 },
 
   slides: [
     {
-      /* 1 — COLD OPEN ON THE GESTURE. No logo, no setup. The album page fills the frame and the flower
-         is already being dragged by the time a thumb could decide to move. */
-      id: 'drag',
-      theme: 'cream',
-      dur: 2.6,
-      capTop: 300,
-      // Push the album page down so its own title clears the caption band; the gauge then sits
-      // mid-frame, which is where the eye goes.
-      shiftY: 300,
-      caption: '앨범 하나에<br><em>드래그 한 번.</em>',
-      devices: [{ screen: 'album', state: { gauge: 4.5 }, w: 440 }],
-    },
-    {
-      /* 2 — THE SAME SCREEN, SCORED. A cut back to the album with the rating in place: the payoff of
-         beat one, stated in two words so it reads in a glance. */
-      id: 'done',
-      theme: 'cream',
-      dur: 1.9,
-      capTop: 300,
-      shiftY: 300,
-      caption: '<em>평가 끝.</em>',
-      sub: '0.5점 단위로, 5초 안에.',
-      devices: [{ screen: 'album', state: { gauge: 4.5, score: 4.5 }, w: 440 }],
-    },
-    {
-      /* 3 — WHAT IT ADDS UP TO. The taste map, dark, full frame. This is the reason to rate anything,
-         so it gets the longest beat of the three features. */
-      id: 'taste',
+      /* 1 — THE RESULT, FIRST. Dark, dense, and unlike anything else in a feed, which is the point: it
+         has to look like something before it has to mean something. The claim is the payoff of the whole
+         app, stated before any method. */
+      id: 'end-first',
       theme: 'dark',
-      dur: 2.8,
+      dur: 2.5,
       capTop: 300,
       shiftY: 250,
-      caption: '쌓이면<br><em>내 취향이 보여요.</em>',
-      sub: '장르도, 시대도, 점수 습관까지.',
+      caption: '1년 치 음악 취향,<br><em>한 장으로.</em>',
       devices: [{ screen: 'taste', dark: true, w: 440 }],
     },
     {
-      /* 4 — WHY COME BACK. Other people. Shortest of the three: it is the supporting argument. */
+      /* 2 — "HOW?" The method, with a finger doing it. The touch arrives, presses the control, drags,
+         and lifts; the gauge tracks it. Longest beat, because this is the thing people have to
+         understand, and the only one where the gesture has to be legible. */
+      id: 'drag',
+      theme: 'cream',
+      dur: 3.1,
+      capTop: 300,
+      shiftY: 300,
+      caption: '꽃을 끌어당기면<br><em>평가 끝.</em>',
+      // Canvas coordinates, on the rate control. at/dur line the press up with the gauge sweep below.
+      // Ends ON the badge: this control keeps the badge in place and fills the arc, so a finger that
+      // trails below it reads as dragging empty space rather than holding the thing that is moving.
+      touch: { x1: 1002, y1: 1300, x2: 1002, y2: 1190, at: 0.5, dur: 1.15 },
+      devices: [{ screen: 'album', state: { gauge: 4.5 }, w: 440 }],
+    },
+    {
+      /* 3 — IT ACCUMULATES. The list, already full. Short: it is a fact, not an argument. */
+      id: 'stack',
+      theme: 'cream',
+      dur: 2.1,
+      capTop: 300,
+      shiftY: 180,
+      caption: '한 장씩 쌓이고.',
+      sub: '앨범도, 곡도, 0.5점 단위로.',
+      devices: [{ screen: 'profile', w: 440 }],
+    },
+    {
+      /* 4 — OTHER PEOPLE. The reason to come back rather than to try. */
       id: 'charts',
       theme: 'soft',
-      dur: 2.4,
+      dur: 2.1,
       capTop: 300,
       shiftY: 260,
       caption: '차트는<br><em>리스너가 만들어요.</em>',
       devices: [{ screen: 'charts', w: 440 }],
     },
     {
-      /* 5 — BRAND AND CTA, last, on someone who has now seen the app work. Type only, centred, quiet,
-         and back on cream so the loop to beat one is a breath rather than a cut. */
+      /* 5 — CTA last, on someone who has now watched the app work. Back to cream and quiet so the loop
+         to beat 1 reads as a breath rather than a cut. */
       id: 'end',
       theme: 'cream',
-      dur: 2.3,
+      dur: 2.0,
       end: true,
       caption: '지금<br><em>기록을 시작하세요.</em>',
       sub: 'App Store · sillajuku.com',

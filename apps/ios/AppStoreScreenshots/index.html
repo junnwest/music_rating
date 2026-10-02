@@ -163,6 +163,14 @@ html.raw body { width: max-content; }
    underneath - text on text. That beat covers the whole frame instead, keeping the app as a faint
    texture behind the brand rather than a competing layer. */
 .r-scrim-full { background: color-mix(in srgb, var(--bg) 94%, transparent); }
+/* The touch indicator. Sized like a fingertip contact patch rather than a mouse cursor - a pointer
+   arrow would read as a desktop screencast. */
+.r-touch { position: absolute; left: 0; top: 0; z-index: 9; width: 0; height: 0; pointer-events: none; }
+.r-dot { position: absolute; left: -46px; top: -46px; width: 92px; height: 92px; border-radius: 50%;
+  background: rgba(255,255,255,.34); box-shadow: 0 0 0 2.5px rgba(255,255,255,.72), 0 10px 26px rgba(10,10,14,.28);
+  backdrop-filter: blur(2px); }
+.r-ripple { position: absolute; left: -70px; top: -70px; width: 140px; height: 140px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,.55) 0 55%, transparent 70%); }
 .r-cap { position: absolute; left: 70px; right: 70px; z-index: 8; text-align: center; }
 .r-line { will-change: transform, opacity; }
 .r-big { font-size: calc(96px * var(--s, 1)); font-weight: 800; line-height: 1.18; letter-spacing: -.025em;
@@ -992,12 +1000,15 @@ if (Q.has('reels')) {
     ${C.slides.map((_, i) => shotOf(i)).join('')}
     ${C.slides.map((sl, i) => `<div class="r-scrim ${sl.end ? 'r-scrim-full' : ''} t-${themeOf(i)}" data-i="${i}"></div>`).join('')}
     ${C.slides.map((_, i) => capOf(i)).join('')}
+    <div class="r-touch" hidden><span class="r-ripple"></span><span class="r-dot"></span></div>
   </div>`;
 
   const shots = [...root.querySelectorAll('.r-shot')];
   const fills = [...root.querySelectorAll('.r-fill')];
   const scrims = [...root.querySelectorAll('.r-scrim')];
   const caps = [...root.querySelectorAll('.r-cap')];
+  const touchEl = root.querySelector('.r-touch');
+  const rippleEl = root.querySelector('.r-ripple');
 
   const rateIndex = C.slides.findIndex((s) => (s.devices || []).some((d) => d.screen === 'album'));
   const rateTarget = rateIndex >= 0 ? ((C.slides[rateIndex].devices[0].state || {}).gauge ?? 4.5) : 4.5;
@@ -1042,6 +1053,33 @@ if (Q.has('reels')) {
         line.style.transform = `translateY(${((1 - q) * 26 - out * 14).toFixed(2)}px)`;
       });
     });
+
+    /* A VISIBLE TOUCH. Apple's own Journal walkthrough highlights its tap points, and it is the single
+       thing that separates "an app being used" from "an app being displayed" - without it a screen that
+       changes by itself reads as a video of a UI, not a person using one. The indicator presses (a
+       ripple), drags, and lifts, in canvas coordinates set per beat. */
+    const tch = s.touch;
+    if (tch) {
+      const at = tch.at ?? 0.3, dur = tch.dur ?? 1.0;
+      const lead = 0.18;                                   // the finger arrives just before it presses
+      const live = local >= at - lead && local <= at + dur + 0.26;
+      touchEl.hidden = !live;
+      if (live) {
+        const inq = easeOutQ(clamp01((local - (at - lead)) / lead));     // fade/scale in
+        const q = clamp01((local - at) / dur);                            // the drag itself, linear
+        const lift = clamp01((local - (at + dur)) / 0.26);                // release
+        const x = (tch.x1 ?? 0) + ((tch.x2 ?? tch.x1 ?? 0) - (tch.x1 ?? 0)) * q;
+        const y = (tch.y1 ?? 0) + ((tch.y2 ?? tch.y1 ?? 0) - (tch.y1 ?? 0)) * q;
+        touchEl.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+        touchEl.style.opacity = String(inq * (1 - lift));
+        // The press ripple fires once, on contact.
+        const rp = clamp01((local - at) / 0.42);
+        rippleEl.style.transform = `scale(${(0.35 + 1.5 * rp).toFixed(3)})`;
+        rippleEl.style.opacity = String((1 - rp) * 0.5 * inq);
+      }
+    } else {
+      touchEl.hidden = true;
+    }
 
     if (rateIndex >= 0) {
       let g = null;

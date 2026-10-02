@@ -125,6 +125,20 @@ worth keeping, the real mock screens and the app's real motion spec:
 - **cuts are hard** — a dissolve between two full-frame UIs is mush — with a short punch carrying the cut
 - **beats are 1.9–2.8s**, not four
 
+**The structure is borrowed, not invented.** Three earlier cuts were this repo's own layout
+re-proportioned, which is why each still read like a store screenshot. The current one follows what app
+demo videos that work actually do: **show end first** (one of the highest-performing hook types, ~22% —
+beat 1 is the finished taste map, the result before the method), **motion in the first frame** (cited as
+the single most reliable hook enhancer), **visible tap points** (Apple's Journal walkthrough highlights
+where it touches; Duolingo layers motion over real screens, text only, no narration), and **grouping by
+user logic rather than menu order** (Klarna, Traveloka).
+
+**A visible touch is the piece every earlier cut was missing.** A screen that changes by itself reads as
+a video *of* a UI; a finger pressing and dragging reads as someone using one. `touch: { x1, y1, x2, y2,
+at, dur }` per beat, in canvas coordinates — it arrives ~0.18s before contact, presses with a ripple,
+drags linearly, lifts. It must end **on** the control: the rate control keeps its badge in place and
+fills the arc, so a finger trailing below reads as dragging empty space.
+
 Two traps. **`shiftY`** nudges a screen inside its crop so the UI's own headings fall below the caption
 band; without it the caption landed on the album title, bold type on bold type. And a slide with
 **`end: true`** gets a full-frame scrim rather than the top band, because a centred type-only beat
