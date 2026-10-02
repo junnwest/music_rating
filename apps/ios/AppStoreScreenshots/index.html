@@ -985,20 +985,55 @@ if (Q.has('anim')) {
       }
     }
 
+    /* IN-PHONE MOTION FOLLOWS THE APP'S OWN SPEC, not the video's.
+       The first cut moved the screen 54px over 0.75s and then drifted the content continuously for the
+       rest of the section. Neither is anything the app does, and that is what read as fake: measured
+       across the real codebase, iOS animates in 0.12-0.28s (easeInOut 0.2 and 0.15 are the two most
+       common by a wide margin) and the web app's keyframes in globals.css run 0.14-0.3s over 4-10px.
+       A real app is also STILL until it is touched, then moves fast and stops. So the phone now holds
+       still and fires short, app-accurate bursts: a screen change on the app's curve, then one
+       interaction, then nothing. */
     const scrs = [...screensHost.children];
-    const held = clamp01((local - TR) / Math.max(0.001, SEG - TR));
+
+    // apps/web/app/globals.css: cubic-bezier(.16,1,.3,1) is the app's entrance curve (sj-row-in,
+    // sj-modal-in). Expressed here as a closed form so seek(t) stays a pure function.
+    const expoOut = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : 1 - Math.pow(2, -10 * x));
+    const easeOutQ = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : 1 - Math.pow(1 - x, 2));
+
+    const SCREEN_CHANGE = 0.22;   // iOS: .easeInOut(duration: 0.2) is the app's most common value
+    const sp = easeOutQ(clamp01(local / SCREEN_CHANGE));
+
+    /* ONE SCROLL FLICK PER SECTION, with momentum decay, then stillness. A finger flicks the list and
+       it coasts to a stop in about half a second; it does not creep for two seconds. */
+    const FLICK_AT = 0.72, FLICK_DUR = 0.52, FLICK_PX = 104;
+    const flick = -FLICK_PX * expoOut(clamp01((local - FLICK_AT) / FLICK_DUR));
+
     scrs.forEach((el, k) => {
       const isCur = k === i, isPrev = k === i - 1;
-      const o = isCur ? p : isPrev ? 1 - p : 0;
+      // The screens cross-dissolve on the app's own timing rather than over the whole handover.
+      const o = isCur ? sp : isPrev ? 1 - sp : 0;
       el.style.opacity = String(o);
       el.style.visibility = o > 0.002 ? 'visible' : 'hidden';
-      const push = isCur ? 54 * (1 - p) : isPrev ? -30 * p : 0;
-      const drift = isCur ? -26 * held : 0;
-      el.style.transform = `translateY(${(push + drift).toFixed(2)}px)`;
+      // 16px, the scale the app actually moves things (globals.css entrances travel 4-10px).
+      const enter = isCur ? 16 * (1 - sp) : isPrev ? -10 * sp : 0;
+      const scroll = isCur && k !== rateIndex ? flick : 0;
+      el.style.transform = `translateY(${(enter + scroll).toFixed(2)}px)`;
     });
 
+    /* THE RATE CONTROL, as the app performs it: the flower is dragged and the gauge tracks the finger
+       continuously, because a drag has no easing - the value is wherever the finger is.
+       FlowerRateControl.swift:559 pops the badge on release with .timingCurve(0.34, 1.5, 0.64, 1),
+       but that curve scales the BADGE; it does not overshoot the score. Driving the value through it
+       (as the first version of this did) made the gauge read 5.0 for a few frames - a rating nobody
+       gave - so the value lands on the score and stays there. */
     if (rateIndex >= 0) {
-      const g = i === rateIndex ? +(rateTarget * ease(clamp01((local - TR * 0.9) / 1.15))).toFixed(2) : null;
+      let g = null;
+      if (i === rateIndex) {
+        const DRAG_AT = 0.5, DRAG_DUR = 0.62;
+        // Linear while held: a drag has no easing, the value simply tracks the finger.
+        const drag = clamp01((local - DRAG_AT) / DRAG_DUR);
+        g = +(rateTarget * drag).toFixed(2);
+      }
       if (g !== lastGauge) {
         lastGauge = g;
         const d = C.slides[rateIndex].devices[0];
@@ -1008,9 +1043,17 @@ if (Q.has('anim')) {
       }
     }
 
-    panoEl.style.transform = `translateX(${(-(W * (N - 1)) * (tc / DURATION)).toFixed(2)}px)`;
-    const beat = i === 0 && local < TR ? 0 : Math.sin(Math.PI * clamp01(local / TR));
-    devEl.style.transform = `scale(${(1 + 0.014 * beat).toFixed(4)})`;
+    /* THE FLOWER STRIP DOES NOT SLIDE. It was drawn to bleed across the seams of a swiped carousel, so
+       dragging it continuously through the video turned a quiet background texture into the most
+       moving thing on screen - which is exactly backwards. Each section now sits on its own slice of
+       the strip, exactly where the still would put it, and the slices cross-dissolve with the
+       background instead of travelling. */
+    const panoFrom = -W * Math.max(0, i - 1), panoTo = -W * i;
+    panoEl.style.transform = `translateX(${(panoFrom + (panoTo - panoFrom) * p).toFixed(2)}px)`;
+
+    // The device itself stays put. A phone that pulses every few seconds is the other thing no real
+    // app does; the handover is carried by the screen and the copy.
+    devEl.style.transform = 'none';
   }
 
   window.SJ_REEL = { seek, duration: DURATION, fps: R.fps ?? 30, seg: SEG, transition: TR };

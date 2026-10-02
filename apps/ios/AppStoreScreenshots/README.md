@@ -76,9 +76,30 @@ persist and hand over to their successors.
 - **Copy hands over per element**, not per card: the outgoing eyebrow/headline/sub lift away while the
   incoming ones rise in sequence, so the eye follows each line to its replacement.
 - **The rate section runs the app's own control.** `SCREENS.album` takes a `gauge`, so that screen is
-  re-rendered every frame with the gauge sweeping up to the score — the real drag-to-rate animation,
-  not an effect applied to a picture of it.
-- Theme, aurora and the panorama flower carry across the whole scene instead of cutting.
+  re-rendered every frame with the gauge tracking a drag up to the score.
+- Theme and aurora carry across the scene instead of cutting.
+
+#### In-phone motion follows the app's spec, not the video's
+
+This is the difference between reading as an app and reading as a slideshow with a phone in it, and it
+is worth stating in numbers. Measured across this repo: iOS animates in **0.12–0.28s** (`.easeInOut(0.2)`
+and `.easeInOut(0.15)` are the two most common by a wide margin), and the web app's keyframes in
+`apps/web/app/globals.css` run **0.14–0.3s over 4–10px**, on `cubic-bezier(.16, 1, .3, 1)`.
+
+An earlier cut moved the screen 54px over 0.75s and then drifted the content for the rest of the
+section — roughly 4x too slow, 8x too far, and continuous. **A real app is still until it is touched,
+then moves fast and stops.** So the phone holds still and fires short bursts: a screen change on the
+app's curve (0.22s, 16px), one scroll flick with momentum decay, then nothing.
+
+Two traps in copying a control's curve. `FlowerRateControl.swift` pops the badge on release with
+`.timingCurve(0.34, 1.5, 0.64, 1)`, but that curve scales the **badge** — driving the *score* through it
+made the gauge read 5.0 for a few frames, a rating nobody gave. And a drag has no easing at all: while
+the finger is down the value is simply wherever the finger is, so the sweep is linear, not eased.
+
+**The flower strip does not slide.** It was drawn to bleed across the seams of a swiped carousel; dragging
+it continuously through the video turned a quiet background texture into the most moving thing on screen.
+Each section sits on its own slice of the strip, exactly where the still puts it, and the slices
+cross-dissolve with the background.
 
 `seek(t)` is **a pure function of time** — no CSS transitions, no `requestAnimationFrame`, no wall clock
 — so a frame is identical whenever it is asked for. That is what makes frame-at-a-time capture valid,
