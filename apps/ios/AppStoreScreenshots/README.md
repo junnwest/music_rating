@@ -55,7 +55,8 @@ own hand-tuned numbers. At 1320 wide `--s` is exactly 1 and the store sets are u
 | `ko/` | 1320 x 2868 | App Store, Korean |
 | `ig/` | 1080 x 1350 | Instagram feed carousel, Korean (4:5) |
 | `reel/` | 1080 x 1920 | Instagram reel / story, Korean (9:16) — the store set re-cut |
-| `promo/` | 1080 x 1920 | Instagram **Reels promo**, Korean — designed for the format, not re-cut |
+| `promo/` | 1080 x 1920 | Reels promo on the poster composition — superseded |
+| `reels/` | 1080 x 1920 | **Reels-native** (`?reels`): full-bleed app, type over it — post this one |
 
 ```bash
 node export.mjs --lang=ig          # -> ig/out/01-home.png ... (1080 x 1350)
@@ -109,6 +110,25 @@ and a crashed run resumable: existing frames are skipped unless `--force`.
 `render-frames.mjs` keeps **one** browser open and drives it over CDP through Node's global WebSocket,
 so no dependency is added. That matters: `export.mjs` spawns a browser per image, fine for six stills
 and hopeless for 468 frames — **109s versus roughly 25 minutes**.
+
+#### reels/ is a different renderer, not a different canvas
+
+`promo/` was the store composition trimmed and resized, and it still read as a store screenshot in a
+feed — because the composition was the problem, not its proportions. A headline band on top and a phone
+standing in a cream margin below is an App Store move. `?reels` throws it away and keeps only what is
+worth keeping, the real mock screens and the app's real motion spec:
+
+- **the app fills the frame** — no device chrome, no margin. The mock is 440x956, the canvas 1080x1920,
+  so it is scaled to cover the width and the ~427px of overflow is cropped evenly. The status bar and
+  the tab bar are the least interesting parts of any screen.
+- **type sits on the app** with a scrim, the way the format captions things, instead of in a reserved band
+- **cuts are hard** — a dissolve between two full-frame UIs is mush — with a short punch carrying the cut
+- **beats are 1.9–2.8s**, not four
+
+Two traps. **`shiftY`** nudges a screen inside its crop so the UI's own headings fall below the caption
+band; without it the caption landed on the album title, bold type on bold type. And a slide with
+**`end: true`** gets a full-frame scrim rather than the top band, because a centred type-only beat
+otherwise sits on the list underneath.
 
 #### promo/ is a different brief, not a different size
 

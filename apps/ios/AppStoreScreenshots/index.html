@@ -146,6 +146,35 @@ html.raw body { width: max-content; }
    a much larger phone - which is exactly what the first run did, leaving a black band down one side. */
 .a-scr { position: absolute; inset: 0; will-change: transform, opacity; }
 
+/* ── Reels mode (?reels) ───────────────────────────────────────────────────
+   Full-bleed app, type over it. Nothing here is shared with the poster layout on purpose. */
+.r-stage { position: relative; overflow: hidden; background: #000; }
+.r-shot { position: absolute; inset: 0; overflow: hidden; background: var(--bg); }
+.r-fill { position: absolute; left: 0; top: 0; width: 440px; height: 956px; }
+.r-fill .scr { position: absolute; left: 0; top: 0; transform: none; }
+/* A caption sitting on a live UI needs separation from it, so each beat carries a soft scrim keyed to
+   its own background rather than a flat black bar, which would read as a subtitle burn-in. */
+/* Solid for the first third, then out. A gentle wash was not enough: bold type landed straight on the
+   album title underneath and read as text on text. */
+.r-scrim { position: absolute; inset: 0; z-index: 4; pointer-events: none;
+  background: linear-gradient(180deg, var(--bg) 0%, var(--bg) 30%,
+    color-mix(in srgb, var(--bg) 55%, transparent) 46%, color-mix(in srgb, var(--bg) 0%, transparent) 64%); }
+/* The end card is type only and centred, so a top-band scrim leaves its lines sitting on the list
+   underneath - text on text. That beat covers the whole frame instead, keeping the app as a faint
+   texture behind the brand rather than a competing layer. */
+.r-scrim-full { background: color-mix(in srgb, var(--bg) 94%, transparent); }
+.r-cap { position: absolute; left: 70px; right: 70px; z-index: 8; text-align: center; }
+.r-line { will-change: transform, opacity; }
+.r-big { font-size: calc(96px * var(--s, 1)); font-weight: 800; line-height: 1.18; letter-spacing: -.025em;
+  color: var(--fg); word-break: keep-all; text-wrap: balance; }
+.r-big em { font-style: normal; color: var(--accent); }
+.r-sub { margin-top: calc(26px * var(--s, 1)); font-size: calc(40px * var(--s, 1)); font-weight: 600;
+  line-height: 1.4; letter-spacing: -.015em; color: var(--mid); word-break: keep-all; }
+/* The end card is the one beat that is type only, so it centres in the frame instead of riding the top. */
+.r-endcard { top: 50%; transform: translateY(-50%); }
+.r-endcard .lockup { margin-bottom: calc(52px * var(--s, 1)); }
+.r-endcard .lockup img { width: calc(132px * var(--s, 1)); }
+
 /* Guides overlay (gallery toggle) */
 .guides .slide::before {
   content: ''; position: absolute; inset: 0 calc(110px * var(--s, 1)); z-index: 99; pointer-events: none;
@@ -894,6 +923,148 @@ const ready = () => Promise.all([document.fonts.ready, ...[...document.images].m
    seek(t) IS A PURE FUNCTION OF TIME. Nothing here uses CSS transitions, requestAnimationFrame or the
    wall clock, so frame N is identical whenever it is asked for. That is what lets render-frames.mjs
    capture frames one at a time, out of order, and resume. */
+/* ─────────────────────── Reels mode (?reels) ───────────────────────
+   A SEPARATE RENDERER, not the slide template with a different canvas. The poster layout - headline
+   zone on top, phone standing in a cream margin below - is an App Store composition, and resizing it
+   to 9:16 produces something that still reads as a store screenshot in a feed. Reels-native content
+   does the opposite of all three of its moves:
+
+     the app fills the frame          (no device chrome, no margin, screen edge to edge)
+     type sits ON the content         (not in a reserved band above it)
+     cuts are hard and fast           (not 0.75s dissolves between whole compositions)
+
+   So this mode throws the composition away and keeps only what is worth keeping: the real mock screens
+   and the app's real motion spec.
+
+   THE SCREEN IS SCALED TO COVER. A mock is 440x956 (0.46); the canvas is 1080x1920 (0.5625). Covering
+   the width needs scale = 1080/440 and overflows the height by ~427px, which is cropped evenly top and
+   bottom. Cropping is correct here: the status bar and the tab bar are the least interesting parts of
+   any screen, and in a feed the viewer is close to the glass.
+
+   CAPTIONS ARE OVERLAYS WITH A SCRIM. Type on top of a live UI needs separation or it mixes with the
+   content behind it, so each caption carries a soft gradient scrim keyed to the beat's own background.
+   They snap in on the app's entrance curve (~0.18s) rather than drifting - this is kinetic type, which
+   is the format's own idiom, not a title sequence.
+
+   seek(t) is a pure function of time, like the other scene: no transitions, no rAF, no wall clock. */
+if (Q.has('reels')) {
+  document.documentElement.classList.add('raw');
+  const R = C.reel || {};
+  const N = C.slides.length;
+  const DUR = C.slides.map((s) => s.dur ?? 2.4);
+  const START = DUR.map((_, k) => DUR.slice(0, k).reduce((a, d) => a + d, 0));
+  const DURATION = DUR.reduce((a, d) => a + d, 0);
+  const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
+  const easeOutQ = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : 1 - Math.pow(1 - x, 2));
+  // apps/web/app/globals.css: the app's entrance curve, cubic-bezier(.16, 1, .3, 1).
+  const expoOut = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : 1 - Math.pow(2, -10 * x));
+
+  const themeOf = (i) => { const t = C.slides[i].theme || 'cream'; return t === 'blue' ? 'soft' : t === 'ink' ? 'dark' : t; };
+  const COVER = W / 440;                       // scale that makes a mock cover the canvas width
+  const CROP = (956 * COVER - H) / 2;          // overflow, split evenly top and bottom
+
+  const shotOf = (i) => {
+    const d = (C.slides[i].devices || [])[0];
+    if (!d) return `<div class="r-shot" data-i="${i}"></div>`;
+    const fn = SCREENS[d.screen];
+    const st = { ...(d.state || {}), dark: !!d.dark };
+    // shiftY nudges the screen inside its crop so the UI's own headings fall below the caption band
+    // instead of fighting it. Positive moves the content down.
+    return `<div class="r-shot t-${themeOf(i)}" data-i="${i}"><div class="r-fill" data-shift="${C.slides[i].shiftY ?? 0}" style="transform:translateY(${-CROP + (C.slides[i].shiftY ?? 0)}px) scale(${COVER});transform-origin:0 0">
+      <div class="scr ui ${d.dark ? 'dark' : ''}">${fn ? fn(st) : ''}</div></div></div>`;
+  };
+
+  const capOf = (i) => {
+    const s = C.slides[i];
+    if (s.end) {
+      return `<div class="r-cap r-endcard t-${themeOf(i)}" data-i="${i}">
+        <div class="r-line"><div class="lockup"><img src="assets/logo-flower.svg" alt=""><span class="wm">${wordmark()}</span></div></div>
+        ${s.caption ? `<div class="r-line r-big">${kernStops(s.caption)}</div>` : ''}
+        ${s.sub ? `<div class="r-line r-sub">${s.sub}</div>` : ''}</div>`;
+    }
+    const lines = (s.caption || '').split('<br>').filter(Boolean);
+    return `<div class="r-cap t-${themeOf(i)}" data-i="${i}" style="${s.capBottom ? `bottom:${s.capBottom}px;top:auto` : `top:${s.capTop ?? 360}px`}">
+      ${lines.map((l) => `<div class="r-line r-big">${kernStops(l)}</div>`).join('')}
+      ${s.sub ? `<div class="r-line r-sub">${s.sub}</div>` : ''}</div>`;
+  };
+
+  root.innerHTML = `<div class="slide r-stage">
+    ${C.slides.map((_, i) => shotOf(i)).join('')}
+    ${C.slides.map((sl, i) => `<div class="r-scrim ${sl.end ? 'r-scrim-full' : ''} t-${themeOf(i)}" data-i="${i}"></div>`).join('')}
+    ${C.slides.map((_, i) => capOf(i)).join('')}
+  </div>`;
+
+  const shots = [...root.querySelectorAll('.r-shot')];
+  const fills = [...root.querySelectorAll('.r-fill')];
+  const scrims = [...root.querySelectorAll('.r-scrim')];
+  const caps = [...root.querySelectorAll('.r-cap')];
+
+  const rateIndex = C.slides.findIndex((s) => (s.devices || []).some((d) => d.screen === 'album'));
+  const rateTarget = rateIndex >= 0 ? ((C.slides[rateIndex].devices[0].state || {}).gauge ?? 4.5) : 4.5;
+  let lastGauge = 'init';
+
+  function seek(t) {
+    const tc = Math.max(0, Math.min(DURATION - 0.0001, t));
+    let i = 0; while (i < N - 1 && tc >= START[i + 1]) i++;
+    const local = tc - START[i];
+    const SEG = DUR[i];
+    const s = C.slides[i];
+
+    /* HARD CUTS. A dissolve between two full-frame UIs is mush, and the format does not use one: beats
+       change on a cut, with a short punch on the incoming frame to carry the energy across it. */
+    const CUT = 0.14;
+    const cut = easeOutQ(clamp01(local / CUT));
+
+    shots.forEach((el, k) => {
+      const on = k === i;
+      el.style.opacity = on ? '1' : '0';
+      el.style.visibility = on ? 'visible' : 'hidden';
+    });
+
+    // Punch in on the cut, then a slow drift so the frame is never completely dead.
+    const punch = 1.045 - 0.045 * cut;
+    const drift = 1 + 0.022 * clamp01((local - CUT) / Math.max(0.001, SEG - CUT));
+    const shiftY = Number(fills[i].dataset.shift || 0);
+    fills[i].style.transform = `translateY(${(-CROP + shiftY).toFixed(1)}px) scale(${(COVER * punch * drift).toFixed(4)})`;
+
+    scrims.forEach((el, k) => { el.style.opacity = k === i ? '1' : '0'; });
+
+    /* KINETIC TYPE: each line snaps in on the app's entrance curve, staggered, and the caption leaves
+       just before the cut so it never collides with the next beat's line. */
+    caps.forEach((el, k) => {
+      const on = k === i;
+      el.style.visibility = on ? 'visible' : 'hidden';
+      if (!on) return;
+      const out = clamp01((local - (SEG - 0.22)) / 0.22);
+      [...el.children].forEach((line, j) => {
+        const q = expoOut(clamp01((local - 0.06 - j * 0.085) / 0.3));
+        line.style.opacity = String(q * (1 - out));
+        line.style.transform = `translateY(${((1 - q) * 26 - out * 14).toFixed(2)}px)`;
+      });
+    });
+
+    if (rateIndex >= 0) {
+      let g = null;
+      if (i === rateIndex) {
+        const DRAG_AT = R.rateAt ?? 0.45, DRAG_DUR = R.rateDur ?? 1.05;
+        // Idle until the finger lands: a gauge reading 0.0 would claim the album was rated zero.
+        if (local >= DRAG_AT) g = +(rateTarget * clamp01((local - DRAG_AT) / DRAG_DUR)).toFixed(2);
+      }
+      if (g !== lastGauge) {
+        lastGauge = g;
+        const d = C.slides[rateIndex].devices[0];
+        const st = { ...(d.state || {}), dark: !!d.dark };
+        if (g != null) st.gauge = g; else delete st.gauge;
+        shots[rateIndex].querySelector('.scr').innerHTML = SCREENS.album(st);
+      }
+    }
+  }
+
+  window.SJ_REEL = { seek, duration: DURATION, fps: R.fps ?? 30, beats: DUR, starts: START };
+  seek(Number(Q.get('t') || 0));
+  return ready();
+}
+
 if (Q.has('anim')) {
   document.documentElement.classList.add('raw');
   const R = C.reel || {};

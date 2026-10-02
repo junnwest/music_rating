@@ -116,7 +116,9 @@ await call('Page.enable');
 await call('Runtime.enable');
 await call('Emulation.setDeviceMetricsOverride', { width: W, height: H, deviceScaleFactor: Number(opt('scale', 1)), mobile: false });
 
-const url = `http://127.0.0.1:${port}/index.html?${LANG ? `lang=${LANG}&` : ''}anim&t=0`;
+// `mode` lets a config choose its renderer: the poster scene (anim) or the full-bleed Reels one.
+const MODE = opt('mode', cfg.mode || 'anim');
+const url = `http://127.0.0.1:${port}/index.html?${LANG ? `lang=${LANG}&` : ''}${MODE}&t=0`;
 const loaded = once('Page.loadEventFired');
 await call('Page.navigate', { url });
 await loaded;
