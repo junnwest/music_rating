@@ -42,6 +42,38 @@ The export checks every PNG's size and exits non-zero on a mismatch. App Store C
 
 The first three slides carry the story. In search results the App Store shows only the first three portrait screenshots, so 01–03 have to sell the app on their own.
 
+## Formats
+
+The same renderer drives more than the App Store canvas. `canvas` in a config sets the size, and the
+renderer derives a scale factor **`--s` = `canvas.width` / 1320** that every size in the design system
+is expressed against, so a narrower format keeps the store layout's proportions instead of needing its
+own hand-tuned numbers. At 1320 wide `--s` is exactly 1 and the store sets are unaffected.
+
+| dir | canvas | use |
+|-----|--------|-----|
+| `.` | 1320 x 2868 | App Store, English |
+| `ko/` | 1320 x 2868 | App Store, Korean |
+| `ig/` | 1080 x 1350 | Instagram feed carousel, Korean (4:5) |
+
+```bash
+node export.mjs --lang=ig          # -> ig/out/01-home.png ... (1080 x 1350)
+node export.mjs --lang=ig --serve  # preview at index.html?lang=ig
+```
+
+**Scaling is not the same as re-laying-out.** The App Store slide is a tall column with the whole phone
+standing inside it. A 4:5 post is relatively much wider, so a full phone would have to shrink until the
+screen content is unreadable -- the one thing these slides exist to show. The `ig/` set instead keeps the
+phone legible and lets it **bleed off the bottom edge**, holding the top half of the screen in frame.
+Any new format needs that kind of decision made for it; only the type scale comes for free.
+
+Two things are deliberately *not* driven by `--s`, because they are per-format authoring choices: device
+`x`/`y`/`w` and card `x`/`y`, which each config states in its own canvas pixels, and the `panorama` strip,
+whose seams sit at multiples of `canvas.width`.
+
+**The export is not byte-deterministic.** Two runs of identical code differ by a few bytes, so a byte
+comparison is not a regression test. Check the printed dimensions (the export already exits non-zero on a
+mismatch, which is what App Store Connect rejects on) and look at the image.
+
 ## Design system
 
 The slides follow the design language the web app and the iOS app already share, so the listing reads as the same product.

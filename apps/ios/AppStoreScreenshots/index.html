@@ -74,8 +74,12 @@ html.raw body { width: max-content; }
    one typeface (Plus Jakarta Sans, heavy + tight), cream page / accent-soft panel / near-black dark,
    one blue accent, tiny uppercase eyebrows with a section number, the halftone flower at ~9% bleeding
    off the edges, and plain second-person copy in sentence case. */
+/* Canvas geometry comes from the config, not from these rules. --cw/--ch are the canvas size and
+   --s is the type scale, canvas.width / 1320, so a narrower format keeps the same proportions
+   instead of needing its own hand-tuned numbers. The App Store sets are 1320 wide, so --s is 1
+   there and their output is unchanged. See the FORMATS note in the README. */
 .slide {
-  position: relative; width: 1320px; height: 2868px; overflow: hidden; background: var(--bg);
+  position: relative; width: var(--cw, 1320px); height: var(--ch, 2868px); overflow: hidden; background: var(--bg);
   color: var(--fg); font-family: 'Plus Jakarta Sans', 'Pretendard', sans-serif; -webkit-font-smoothing: antialiased;
 }
 .t-cream, .t-paper { --bg: #F8F8F5; --fg: #1A1A18; --mid: #5A5A58; --muted: #8C8C8A; --accent: #2979B7; --accent-deep: #1B5481; --deco-o: .09; }
@@ -90,19 +94,19 @@ html.raw body { width: max-content; }
 .pflower.glyph { color: var(--accent); }
 .pflower .ic { width: 100%; height: 100%; }
 
-.copy { position: absolute; left: 110px; right: 110px; z-index: 6; }
+.copy { position: absolute; left: calc(110px * var(--s, 1)); right: calc(110px * var(--s, 1)); z-index: 6; }
 .copy.center { text-align: center; }
 .eyebrow {
-  display: flex; gap: 24px; align-items: baseline; font-size: 34px; font-weight: 800;
-  letter-spacing: .14em; text-transform: uppercase; color: color-mix(in srgb, var(--accent-deep) 75%, transparent); margin-bottom: 40px;
+  display: flex; gap: calc(24px * var(--s, 1)); align-items: baseline; font-size: calc(34px * var(--s, 1)); font-weight: 800;
+  letter-spacing: .14em; text-transform: uppercase; color: color-mix(in srgb, var(--accent-deep) 75%, transparent); margin-bottom: calc(40px * var(--s, 1));
 }
 .eyebrow .no { color: color-mix(in srgb, var(--accent) 65%, transparent); letter-spacing: .04em; font-variant-numeric: tabular-nums; }
 .copy.center .eyebrow { justify-content: center; }
-.lockup { display: flex; flex-direction: column; gap: 12px; align-items: center; margin-bottom: 56px; color: var(--fg); }
-.lockup img { width: 150px; height: auto; display: block; }
-.lockup .wm { height: 48px; display: inline-flex; }
+.lockup { display: flex; flex-direction: column; gap: calc(12px * var(--s, 1)); align-items: center; margin-bottom: calc(56px * var(--s, 1)); color: var(--fg); }
+.lockup img { width: calc(150px * var(--s, 1)); height: auto; display: block; }
+.lockup .wm { height: calc(48px * var(--s, 1)); display: inline-flex; }
 .lockup .wm svg { height: 100%; width: auto; }
-.headline { font-size: 124px; line-height: 1.06; letter-spacing: -.035em; font-weight: 800; }
+.headline { font-size: calc(124px * var(--s, 1)); line-height: 1.06; letter-spacing: -.035em; font-weight: 800; }
 .headline em { font-style: normal; color: var(--accent); }
 .headline .dot, .sc-title .dot { margin-left: -.07em; }
 /* Korean: looser leading, whole-word wrapping, less tracking on the uppercase-style labels. */
@@ -112,18 +116,18 @@ html.raw body { width: max-content; }
 .lang-ko .sub { line-height: 1.5; letter-spacing: -.02em; }
 .lang-ko .eyebrow, .lang-ko .sc-labels div { letter-spacing: .06em; }
 .lang-ko .ui { word-break: keep-all; }
-.sub { margin-top: 40px; font-size: 44px; line-height: 1.42; font-weight: 500; letter-spacing: -.01em; color: var(--mid); max-width: 1000px; text-wrap: balance; }
+.sub { margin-top: calc(40px * var(--s, 1)); font-size: calc(44px * var(--s, 1)); line-height: 1.42; font-weight: 500; letter-spacing: -.01em; color: var(--mid); max-width: calc(1000px * var(--s, 1)); text-wrap: balance; }
 .headline { text-wrap: balance; }
 .copy.center .sub { margin-left: auto; margin-right: auto; }
 .mark {
-  width: 240px; height: 240px; margin: 0 auto 64px; border-radius: 54px; overflow: hidden; position: relative;
+  width: calc(240px * var(--s, 1)); height: calc(240px * var(--s, 1)); margin: 0 auto calc(64px * var(--s, 1)); border-radius: calc(54px * var(--s, 1)); overflow: hidden; position: relative;
   box-shadow: 0 30px 60px -28px rgba(20,20,18,.35), 0 0 0 1.5px rgba(20,20,18,.06);
 }
 .mark img { width: 100%; height: 100%; display: block; }
 
 /* Guides overlay (gallery toggle) */
 .guides .slide::before {
-  content: ''; position: absolute; inset: 0 110px; z-index: 99; pointer-events: none;
+  content: ''; position: absolute; inset: 0 calc(110px * var(--s, 1)); z-index: 99; pointer-events: none;
   border-left: 3px dashed rgba(233,69,96,.55); border-right: 3px dashed rgba(233,69,96,.55);
 }
 .guides .slide::after {
@@ -174,20 +178,23 @@ html.raw body { width: max-content; }
 .card { position: absolute; z-index: 8; }
 /* Floating callouts are real app surfaces (sjSurface, 16pt corners) scaled up, with one soft lift shadow. */
 .card.chip {
-  display: flex; gap: 22px; align-items: center; background: #fff; color: #1A1A18; border-radius: 999px; padding: 26px 50px 26px 26px;
-  font-size: 38px; font-weight: 700; letter-spacing: -.015em;
+  display: flex; gap: calc(22px * var(--s, 1)); align-items: center; background: #fff; color: #1A1A18; border-radius: 999px;
+  padding: calc(26px * var(--s, 1)) calc(50px * var(--s, 1)) calc(26px * var(--s, 1)) calc(26px * var(--s, 1));
+  font-size: calc(38px * var(--s, 1)); font-weight: 700; letter-spacing: -.015em;
   box-shadow: 0 30px 60px -26px rgba(20,20,18,.35), 0 0 0 1.5px rgba(20,20,18,.04);
 }
-.card.chip .plus { width: 72px; height: 72px; border-radius: 50%; background: #E9F1F8; color: #2979B7; display: grid; place-items: center; }
-.card.chip .plus .ic { width: 34px; height: 34px; }
+.card.chip .plus { width: calc(72px * var(--s, 1)); height: calc(72px * var(--s, 1)); border-radius: 50%; background: #E9F1F8; color: #2979B7; display: grid; place-items: center; }
+.card.chip .plus .ic { width: calc(34px * var(--s, 1)); height: calc(34px * var(--s, 1)); }
 .card.ui-card { transform-origin: 0 0; }
 .card.ui-card > .ui { width: var(--pw); border-radius: 16px; overflow: hidden;
   box-shadow: 0 14px 28px -12px rgba(20,20,18,.32), 0 0 0 .5px rgba(20,20,18,.05); }
-.card.badge-card { display: flex; gap: 44px; align-items: center; background: #fff; color: #1A1A18; border-radius: 40px; padding: 44px 70px 44px 44px;
+.card.badge-card { display: flex; gap: calc(44px * var(--s, 1)); align-items: center; background: #fff; color: #1A1A18;
+  border-radius: calc(40px * var(--s, 1));
+  padding: calc(44px * var(--s, 1)) calc(70px * var(--s, 1)) calc(44px * var(--s, 1)) calc(44px * var(--s, 1));
   box-shadow: 0 30px 60px -26px rgba(20,20,18,.35), 0 0 0 1.5px rgba(20,20,18,.04); font-family: 'Plus Jakarta Sans', 'Pretendard', sans-serif; }
-.badge-card .lb { font-size: 26px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #8C8C8A; }
-.badge-card .tt { font-size: 50px; font-weight: 800; letter-spacing: -.03em; margin-top: 12px; }
-.badge-card .ar { font-size: 36px; font-weight: 500; color: #2979B7; margin-top: 6px; }
+.badge-card .lb { font-size: calc(26px * var(--s, 1)); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #8C8C8A; }
+.badge-card .tt { font-size: calc(50px * var(--s, 1)); font-weight: 800; letter-spacing: -.03em; margin-top: calc(12px * var(--s, 1)); }
+.badge-card .ar { font-size: calc(36px * var(--s, 1)); font-weight: 500; color: #2979B7; margin-top: calc(6px * var(--s, 1)); }
 
 /* ───────────────────────── Cover art (abstract, fictional) ───────────────────────── */
 .c0  { background: radial-gradient(circle at 34% 40%, #ffe2b0 0 15%, #ffd08a 15.5%, transparent 24%), radial-gradient(120% 90% at 80% 110%, #6cc0ef, transparent 60%), linear-gradient(165deg, #3a8fcf, #123a63 70%, #0a2340); }
@@ -335,6 +342,13 @@ html.raw body { width: max-content; }
 (() => {
 const C = window.APPSHOTS;
 const W = C.canvas.width, H = C.canvas.height;
+/* The canvas drives the layout. --s scales the type system off the 1320-wide App Store design, so a
+   1080-wide Instagram format reuses every ratio rather than re-tuning each size by hand; at 1320 it
+   is exactly 1 and the store sets render byte-identically. */
+const SCALE = C.canvas.scale ?? (W / 1320);
+document.documentElement.style.setProperty('--cw', W + 'px');
+document.documentElement.style.setProperty('--ch', H + 'px');
+document.documentElement.style.setProperty('--s', String(SCALE));
 const Q = new URLSearchParams(location.search);
 const root = document.getElementById('root');
 const AS = window.SJ_ASSETS || { icons: {}, logoText: '' };
@@ -789,10 +803,10 @@ function card(c) {
   }
   if (c.kind === 'badge' || c.kind === 'score') { // ScoreBadge, poster-sized
     const a = A[c.album ?? 0], v = c.value ?? 4.5;
-    return `<div class="card badge-card ui" style="${pos};transform:${rot}"><span style="zoom:4.4;display:inline-flex">${scoreBadge(v)}</span>
+    return `<div class="card badge-card ui" style="${pos};transform:${rot}"><span style="zoom:${4.4 * SCALE};display:inline-flex">${scoreBadge(v)}</span>
       <div><div class="lb">${c.label || T('Your rating')}</div><div class="tt">${a.t}</div><div class="ar">${a.a}</div></div></div>`;
   }
-  if (c.kind === 'chip') return `<div class="card chip" style="${pos};transform:${rot}"><span class="plus">${ic(c.icon || 'bookmark-filled', 34)}</span>${c.text}</div>`;
+  if (c.kind === 'chip') return `<div class="card chip" style="${pos};transform:${rot}"><span class="plus">${ic(c.icon || 'bookmark-filled', 34 * SCALE)}</span>${c.text}</div>`;
   return '';
 }
 
