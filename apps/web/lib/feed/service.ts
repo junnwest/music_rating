@@ -165,7 +165,8 @@ export async function homeFeed(db: SupabaseClient, viewer: string | null, tab: F
           authorAffinity: following.has(author) ? 1 : signals.affinity.get(author) ?? 0,
           // Cold-start bounded evidence; do not pretend raw counts are impression-normalized rates.
           response: 1 - Math.exp(-(signals.participants[key] ?? 0) / 10),
-          seen: seen.has(key), knownArtist: albums.some(taste.knownArtist), followed: following.has(author) };
+          seen: seen.has(key), knownArtist: albums.some(taste.knownArtist),
+          rated: albums.some(taste.hasRated), followed: following.has(author) };
       });
       snapshot.refs = rankExplore(candidates, profile?.recommendation_adventurousness ?? 50, snapshot.createdAt);
     }

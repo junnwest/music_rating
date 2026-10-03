@@ -37,5 +37,7 @@ export interface Candidate {
   response: number;
   seen: boolean;
   knownArtist: boolean;
+  /** The viewer has rated one of this post's albums - they have their own opinion to compare. */
+  rated: boolean;
   followed: boolean;
 }
