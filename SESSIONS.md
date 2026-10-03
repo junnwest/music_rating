@@ -4,6 +4,16 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-09-25 → 10-02 (Windows) — Instagram editorial posts and launch promo (outside this repo).** All work lives in `coding/insta_posts/` (sibling folder, not a git repo) plus the `/insta-post` skill in `~/.claude/skills/insta-post/`.
+
+- **Pipeline:** `work/<slug>/post.json` (+ `assets/`, `sources.md`) → `node render.mjs <slug>` → `posts/<slug>/` (1080×1350 PNGs + `caption.txt`). Playwright renderer with auto-fit titles and warnings (overflow, body > 4 lines). Photos only from Wikimedia Commons with a license check (`tools/commons.mjs`: PD / CC0 / CC BY / BY-SA); credits are collected into the caption.
+- **Design (theme "label"):** title + body text on the image, real photos on every slide (no generated graphics), summary slide = photo band + two-column fact box, white end card with the flower logo, centered wordmark.
+- **Voice (saved in memory):** no first person, mostly ~입니다 with occasional ~요, noun-ending sentences OK, ≤ 4 lines per slide, one-line titles, no aphoristic closers.
+- **Posts:** 001–041 across 용어사전 / 명반 한 장 / 한국 음반 / 그날의 음악사 / 한 곡 한 순간 / 비하인드, each fact checked against 2 sources; legends written as "~라는 설 / ~로 알려져". Korean album topics (신중현, 들국화, 어떤날, 언니네 이발관, 대마초 파동) left open: Commons has almost no usable photos.
+- **Launch promo** (`posts/launch-promo/`): slide 1 flower + wordmark + official Korean App Store badge (developer.apple.com) + sillajuku.com in Plus Jakarta Sans; slide 2 "처음 함께하는 500명 한정, 런칭 배지를 드립니다." + the iOS rocket icon in launch orange #FF7A00. **Open:** the rocket is the beta-tester badge and the founding cap is 999 — the app has no "first 500" grant yet (see README START HERE).
+
+---
+
 **2026-10-02 (Windows) — `backfill:artist-genres` pass 1 finished; pass 2 running.** Pass 1 (`--sources=musicbrainz,lastfm,wikidata`) covered all **104,740** MB-linked artists in ~2 days on Windows (~2,100/hr; 3 failed, to be retried by any re-run; stretches of MusicBrainz 503 throttling, likely sharing an IP with the pipeline, absorbed by the limiter). Result: 48,575 artists have ≥ 3 tags across the three sources; **56,314 are thin** (< 3), 42,866 with nothing at all, but only **11,382 thin artists have releases in our catalog** (2,982 Korean); the rest are the known empty MB entities, skipped without an iTunes call. Pass 2 (`--only-thin`, iTunes) started on Windows, ~30 h expected. The Mac handoff zip prepared on 2026-09-30 wasn't needed.
 
 ---
