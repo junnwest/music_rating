@@ -4,6 +4,10 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-10-04 (Windows) — `backfill:artist-genres` complete (both passes).** Pass 2 (`--only-thin`, iTunes US store) processed all 56,303 thin artists with **0 failures** (~1,200/hr; empty MB entities skipped without an iTunes call): **11,787 gained iTunes data**, 7,376 matched an iTunes artist (1,977 Korean), 4,523 had no match. Left with no outside genre data and real releases: **2,957 artists**; their albums place from their own tags + the artist's catalog only. Also confirmed the pipeline PC is on the new code (mb-ingest has written MB artist genres for 2,378 artists since 10-03). Scheduled pipeline check logged in PIPELINE_CHECKS (queue drained, 0 pending).
+
+---
+
 **2026-09-25 → 10-02 (Windows) — Instagram editorial posts and launch promo (outside this repo).** All work lives in `coding/insta_posts/` (sibling folder, not a git repo) plus the `/insta-post` skill in `~/.claude/skills/insta-post/`.
 
 - **Pipeline:** `work/<slug>/post.json` (+ `assets/`, `sources.md`) → `node render.mjs <slug>` → `posts/<slug>/` (1080×1350 PNGs + `caption.txt`). Playwright renderer with auto-fit titles and warnings (overflow, body > 4 lines). Photos only from Wikimedia Commons with a license check (`tools/commons.mjs`: PD / CC0 / CC BY / BY-SA); credits are collected into the caption.
