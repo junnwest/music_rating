@@ -125,15 +125,23 @@ async function main() {
   const done = loadState();
 
   // Only artists we can search for: ManiaDB is Korean-indexed, so name_native IS the key.
-  const { data: artists, error } = await db
-    .from('artists')
-    .select('id, name, name_native')
-    .eq('country', 'KR')
-    .not('name_native', 'is', null)
-    .limit(LIMIT * 4);
-  if (error) { console.error('DB error:', error.message); process.exit(1); }
+  // PostgREST caps a response at 1,000 rows, so this pages. Without it a --limit above 1,000 silently
+  // fetched the same first page forever and the other ~8,000 artists were unreachable.
+  const artists: any[] = [];
+  for (let from = 0; from < 40000; from += 1000) {
+    const { data, error } = await db
+      .from('artists')
+      .select('id, name, name_native')
+      .eq('country', 'KR')
+      .not('name_native', 'is', null)
+      .range(from, from + 999);
+    if (error) { console.error('DB error:', error.message); process.exit(1); }
+    if (!data?.length) break;
+    artists.push(...data);
+    if (data.length < 1000) break;
+  }
 
-  const todo = (artists ?? []).filter((a: any) => !done.has(a.id) && HANGUL.test(a.name_native ?? '')).slice(0, LIMIT);
+  const todo = artists.filter((a: any) => !done.has(a.id) && HANGUL.test(a.name_native ?? '')).slice(0, LIMIT);
   console.log(`  ${todo.length} artist(s) to check\n`);
 
   let matched = 0, written = 0, throttled = 0, noAlbums = 0, ambiguous = 0;
