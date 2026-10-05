@@ -228,7 +228,24 @@ async function main() {
       union all select 'list_items', count(*)::text from list_items where release_group_id in (${quoted})
       union all select 'pinned_albums', count(*)::text from pinned_albums where release_group_id in (${quoted})
       union all select 'saved_releases', count(*)::text from saved_releases where release_group_id in (${quoted})
-      union all select 'ranking_votes', count(*)::text from ranking_votes where release_group_id in (${quoted})`);
+      union all select 'ranking_votes', count(*)::text from ranking_votes where release_group_id in (${quoted})
+      /* TRACK RATINGS HIDE ONE LEVEL DOWN, and that is how a real rating was lost. The guards above all
+         name tables keyed on release_group_id, which is where this stopped looking - but track_ratings
+         is keyed on RECORDING. Deleting a release group cascades release_groups -> releases ->
+         release_tracks, which strips a recording of its last link without touching the recording row,
+         so a song someone rated survives as an orphan with no release and therefore no cover. Reported
+         as "makkeoli banger lost its cover": the rating was intact, the song simply had nothing to
+         hang on any more. Counted here through the same two hops the cascade takes. */
+      union all select 'track_ratings (orphaned)', count(*)::text from track_ratings tr
+        where exists (select 1 from release_tracks rt join releases r on r.id = rt.release_id
+                       where rt.recording_id = tr.recording_id and r.release_group_id in (${quoted}))
+          and not exists (select 1 from release_tracks rt2 join releases r2 on r2.id = rt2.release_id
+                           where rt2.recording_id = tr.recording_id and r2.release_group_id not in (${quoted}))
+      union all select 'mix_song_items (orphaned)', count(*)::text from mix_song_items m
+        where exists (select 1 from release_tracks rt join releases r on r.id = rt.release_id
+                       where rt.recording_id = m.recording_id and r.release_group_id in (${quoted}))
+          and not exists (select 1 from release_tracks rt2 join releases r2 on r2.id = rt2.release_id
+                           where rt2.recording_id = m.recording_id and r2.release_group_id not in (${quoted}))`);
     const blocking = guard.filter(g => Number(g.n) > 0);
     if (blocking.length) {
       console.error('\n  ABORTED — rows being removed carry user data this tool will not merge:');

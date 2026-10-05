@@ -53,8 +53,11 @@ function typeOf(a: { collectionType?: string | null; trackCount?: number | null 
 async function main() {
   console.log(`\n  discography gaps — up to ${LIMIT} linked artist(s)${APPLY ? '  *** APPLY ***' : '  (report only)'}\n`);
 
-  const { data: links, error } = await db.from('artist_external_ids')
-    .select('artist_id, external_id').eq('source', 'itunes').limit(LIMIT);
+  // --artist <uuid> points the audit at one artist, for a reported gap rather than a sweep.
+  const ONLY = arg('--artist');
+  let q = db.from('artist_external_ids').select('artist_id, external_id').eq('source', 'itunes');
+  if (ONLY) q = q.eq('artist_id', ONLY);
+  const { data: links, error } = await q.limit(ONLY ? 1 : LIMIT);
   if (error) { console.error('DB error:', error.message); process.exit(1); }
 
   const rows: unknown[] = [];
