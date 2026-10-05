@@ -97,6 +97,8 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 > - **iOS polish:** unread-count bell badge; song page rates like the album page (no comments); Disc N tracklist headers; Mix-tab counts fixed; "Post to Feed"; comment sheets open with the keyboard together, large-only detent, swipe/tap to dismiss keyboard, whole bottom area opens it; flower hold delay 0.03s; comment chevron left of score.
 > - **Removed:** Quick Add (iOS + web; `get_quick_add_*` RPCs left in DB, unused); all 11 email-login accounts (backup `apps/web/backups/email-accounts-deleted-2026-09-26T21-59-52-860Z.json`).
 >
+> **🍎 (2026-10-05) — App Review rejected build 26: Sign in with Apple failed.** Cause: Supabase Apple provider Client IDs lost `com.sillajuku.app` (Sentry: "Unacceptable audience in id_token" ×16 since Aug 11). ⏳ Set Client IDs = `com.sillajuku.app.signin,com.sillajuku.app`, test on device with a fresh Apple ID, then upload **build 27** (already set) and resubmit. See SESSIONS.md.
+>
 > **🔎 (2026-09-30, Mac) — Song search by title + artist ("독 이센스").** ✅ `…000004`–`…000007` applied and verified (0.2–0.5s; whole credited-name matching; partial-title hits can't take Top Match). iOS side ships with the next build. See SESSIONS.md.
 >
 > **🎵 (2026-09-30, Mac) — Artist Songs tab ordered by popularity (Last.fm).** ✅ `LASTFM_API_KEY` on Vercel (Production + Preview), redeployed (`a3518ec`), and verified in production: Primary, E SENS and IU return ranked songs. iOS part ships with the next build. See SESSIONS.md.

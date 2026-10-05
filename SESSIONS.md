@@ -4,6 +4,16 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-10-05 (Mac) — App Review rejected build 26 (Guideline 2.1(a), iPhone 17 Pro Max / iOS 27.0): "Sign in with Apple … an error message displayed." Root cause found: a Supabase config change, not app code.**
+
+- **Sentry** (sillajuku/apple-ios) has `Auth.AuthError: "Unacceptable audience in id_token: [com.sillajuku.app]"` ×16 since 2026-08-11, last at 2026-10-05 18:36 UTC, which is the review. The reviewer then signed up with Google instead (`tester76` / "Ethan East", created 18:36:58).
+- **Why:** native Sign in with Apple tokens have `aud` = the bundle ID `com.sillajuku.app`. During the July/Aug Apple-linking fix, Supabase's Apple provider **Client IDs** was *replaced* with the web Services ID `com.sillajuku.app.signin`. So every native Apple sign-in since then has been rejected, and no account has an Apple identity.
+- **Fix (user, in the Supabase dashboard):** Authentication → Sign In / Providers → Apple → Client IDs = `com.sillajuku.app.signin,com.sillajuku.app` (both, comma-separated). No app change needed.
+- **Other events in the review session** were harmless: Cover Art Archive images returning 500, and `loadSpotify exhausted retries` (the reviewer has no Spotify).
+- **Next:** test on a device with a fresh Apple ID, then reply to App Review and resubmit. Build number is already 27 (bumped 2026-09-28, never uploaded); Release build verified to compile.
+
+---
+
 **2026-09-30 (Mac) — Title+artist song search follow-ups.**
 
 - **`20260930000005` ✅ applied:** 0.2–0.35s (from up to 1s). "love you" no longer times out.
