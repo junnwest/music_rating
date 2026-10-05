@@ -64,6 +64,11 @@ interface Row {
 
 // True when a title carries non-Latin script (Hangul, Kana, CJK, Cyrillic). Written as a code-point
 // test rather than a regex character class so no invisible escape characters live in the source.
+// Words that mark a release as a distinct edition rather than the same record under another name.
+const EDITION = ['acoustic', 'live', 'remix', 'remaster', 'remastered', 'deluxe', 'instrumental',
+  'karaoke', 'demo', 'edit', 'version', 'ver.', 'mix', 'reissue', 'anniversary', 'expanded',
+  'unplugged', 'inst.', '에디션', '리마스터', '라이브'];
+
 const isNonLatin = (s: string): boolean =>
   [...(s ?? '')].some((ch) => {
     const cp = ch.codePointAt(0) ?? 0;
@@ -120,12 +125,22 @@ async function main() {
     sets.get(k)!.push(r);
   }
 
-  const skipped = { compilation: 0, rated: 0, singleton: 0, sameScript: 0 };
+  const skipped = { compilation: 0, rated: 0, singleton: 0, sameScript: 0, edition: 0 };
   const plans: { keep: Row; drop: Row[] }[] = [];
   for (const group of sets.values()) {
     if (group.length < 2) { skipped.singleton++; continue; }
     if (group.some(r => r.type === 'compilation')) { skipped.compilation++; continue; }
-    if (group.some(r => Number(r.ratings) > 0)) { skipped.rated++; continue; }
+    // Rated sets are MERGED now, not skipped. Skipping them was self-defeating: it meant the tool
+    // refused to touch precisely the duplicates a user had interacted with, which are the only ones
+    // anybody ever notices on their own profile. The ratings are moved to the survivor below.
+    /* AN EDITION IS NOT A DUPLICATE. A duration signature cannot tell "Tales of the Eternal Kingdom"
+       from "Tales of the Eternal Kingdom (acoustic edit)" — an alternate take can run to the same
+       seconds as the original, and a remaster almost always does. Those are distinct releases a
+       listener may well want to rate separately, so if one title in a set carries an edition marker
+       its siblings do not, the set is left alone. Caught in review of a 1,716-row apply, where this
+       pair would have destroyed the acoustic edit. */
+    const editions = group.map(r => EDITION.filter(w => (r.title ?? '').toLowerCase().includes(w)).join('|'));
+    if (new Set(editions).size > 1) { skipped.edition++; continue; }
     if (MIXED_ONLY) {
       const titles = group.map(r => r.title ?? '');
       const nonLatin = titles.filter(t => isNonLatin(t)).length;
@@ -151,7 +166,9 @@ async function main() {
   if (LIMIT > 0) plans.splice(LIMIT);
   const dropCount = plans.reduce((n, p) => n + p.drop.length, 0);
   console.log(`\n[dedup-duration] ${plans.length} set(s), ${dropCount} row(s) to remove${APPLY ? '  *** APPLY ***' : '  (report only)'}`);
-  console.log(`  skipped: ${skipped.compilation} compilation, ${skipped.rated} rated, ${skipped.sameScript} same-script${MIXED_ONLY ? ' (--mixed-script-only)' : ''}`);
+  console.log(`  skipped: ${skipped.compilation} compilation, ${skipped.edition} edition-variant, ${skipped.sameScript} same-script${MIXED_ONLY ? ' (--mixed-script-only)' : ''}`);
+  const ratedSets = plans.filter(p => [p.keep, ...p.drop].some(r => Number(r.ratings) > 0));
+  if (ratedSets.length) console.log(`  ${ratedSets.length} set(s) carry ratings — merged, keeping each user's latest`);
   fs.writeFileSync(OUT, JSON.stringify(plans, null, 1));
 
   console.log('\nsample:');
@@ -188,6 +205,56 @@ async function main() {
     }
   }
   const ids = plans.flatMap(p => p.drop.map(d => d.id));
+
+  /* EVERY FOREIGN KEY INTO release_groups IS ON DELETE CASCADE — ratings, reviews, mix_items,
+     mix_song_items, list_items, pinned_albums, saved_releases, ranking_votes, pairwise_comparisons.
+     So removing a duplicate row does not merely remove a duplicate: it silently takes whatever a user
+     attached to it. Two consequences, and neither is optional.
+
+     Ratings are MIGRATED. Each user's latest rating wins (they carry review_text, and
+     (user_id, release_group_id) is unique, so the older row is removed before the newer one is
+     re-pointed at the survivor).
+
+     Everything else is a REFUSAL rather than a migration. There is none of it in the catalogue today,
+     and guessing how to fold someone's mix or list into another release is worse than stopping. If a
+     row being removed ever carries one, the run aborts and names the table instead of quietly taking
+     it along. */
+  const quoted = ids.map(x => `'${x}'`).join(',');
+  if (ids.length) {
+    const guard = await query<{ table_name: string; n: string }>(`
+      select 'reviews' table_name, count(*)::text n from reviews where release_group_id in (${quoted})
+      union all select 'mix_items', count(*)::text from mix_items where release_group_id in (${quoted})
+      union all select 'mix_song_items', count(*)::text from mix_song_items where release_group_id in (${quoted})
+      union all select 'list_items', count(*)::text from list_items where release_group_id in (${quoted})
+      union all select 'pinned_albums', count(*)::text from pinned_albums where release_group_id in (${quoted})
+      union all select 'saved_releases', count(*)::text from saved_releases where release_group_id in (${quoted})
+      union all select 'ranking_votes', count(*)::text from ranking_votes where release_group_id in (${quoted})`);
+    const blocking = guard.filter(g => Number(g.n) > 0);
+    if (blocking.length) {
+      console.error('\n  ABORTED — rows being removed carry user data this tool will not merge:');
+      for (const b of blocking) console.error(`    ${b.table_name}: ${b.n} row(s)`);
+      console.error('  Move those by hand, then re-run.');
+      process.exit(1);
+    }
+  }
+
+  let migrated = 0;
+  for (const p of plans) {
+    if (![p.keep, ...p.drop].some(r => Number(r.ratings) > 0)) continue;
+    const all = [p.keep, ...p.drop].map(r => `'${r.id}'`).join(',');
+    const dropIds = p.drop.map(d => `'${d.id}'`).join(',');
+    // Keep one rating per user across the whole set: the most recently touched one.
+    await query(`with ranked as (
+        select id, row_number() over (partition by user_id
+          order by greatest(coalesce(updated_at, created_at), created_at) desc, id desc) rn
+        from ratings where release_group_id in (${all}))
+      delete from ratings where id in (select id from ranked where rn > 1)`);
+    const moved = await query<{ id: string }>(`update ratings set release_group_id = '${p.keep.id}'
+      where release_group_id in (${dropIds}) returning id`);
+    migrated += moved.length;
+  }
+  if (migrated) console.log(`  migrated ${migrated} rating(s) onto survivors`);
+
   console.log(`  deleting ${ids.length} duplicate row(s)...`);
   for (let i = 0; i < ids.length; i += 100) {
     const batch = ids.slice(i, i + 100).map(x => `'${x}'`).join(',');

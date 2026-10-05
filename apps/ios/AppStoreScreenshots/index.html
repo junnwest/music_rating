@@ -74,8 +74,12 @@ html.raw body { width: max-content; }
    one typeface (Plus Jakarta Sans, heavy + tight), cream page / accent-soft panel / near-black dark,
    one blue accent, tiny uppercase eyebrows with a section number, the halftone flower at ~9% bleeding
    off the edges, and plain second-person copy in sentence case. */
+/* Canvas geometry comes from the config, not from these rules. --cw/--ch are the canvas size and
+   --s is the type scale, canvas.width / 1320, so a narrower format keeps the same proportions
+   instead of needing its own hand-tuned numbers. The App Store sets are 1320 wide, so --s is 1
+   there and their output is unchanged. See the FORMATS note in the README. */
 .slide {
-  position: relative; width: 1320px; height: 2868px; overflow: hidden; background: var(--bg);
+  position: relative; width: var(--cw, 1320px); height: var(--ch, 2868px); overflow: hidden; background: var(--bg);
   color: var(--fg); font-family: 'Plus Jakarta Sans', 'Pretendard', sans-serif; -webkit-font-smoothing: antialiased;
 }
 .t-cream, .t-paper { --bg: #F8F8F5; --fg: #1A1A18; --mid: #5A5A58; --muted: #8C8C8A; --accent: #2979B7; --accent-deep: #1B5481; --deco-o: .09; }
@@ -90,19 +94,19 @@ html.raw body { width: max-content; }
 .pflower.glyph { color: var(--accent); }
 .pflower .ic { width: 100%; height: 100%; }
 
-.copy { position: absolute; left: 110px; right: 110px; z-index: 6; }
+.copy { position: absolute; left: calc(110px * var(--s, 1)); right: calc(110px * var(--s, 1)); z-index: 6; }
 .copy.center { text-align: center; }
 .eyebrow {
-  display: flex; gap: 24px; align-items: baseline; font-size: 34px; font-weight: 800;
-  letter-spacing: .14em; text-transform: uppercase; color: color-mix(in srgb, var(--accent-deep) 75%, transparent); margin-bottom: 40px;
+  display: flex; gap: calc(24px * var(--s, 1)); align-items: baseline; font-size: calc(34px * var(--s, 1)); font-weight: 800;
+  letter-spacing: .14em; text-transform: uppercase; color: color-mix(in srgb, var(--accent-deep) 75%, transparent); margin-bottom: calc(40px * var(--s, 1));
 }
 .eyebrow .no { color: color-mix(in srgb, var(--accent) 65%, transparent); letter-spacing: .04em; font-variant-numeric: tabular-nums; }
 .copy.center .eyebrow { justify-content: center; }
-.lockup { display: flex; flex-direction: column; gap: 12px; align-items: center; margin-bottom: 56px; color: var(--fg); }
-.lockup img { width: 150px; height: auto; display: block; }
-.lockup .wm { height: 48px; display: inline-flex; }
+.lockup { display: flex; flex-direction: column; gap: calc(12px * var(--s, 1)); align-items: center; margin-bottom: calc(56px * var(--s, 1)); color: var(--fg); }
+.lockup img { width: calc(150px * var(--s, 1)); height: auto; display: block; }
+.lockup .wm { height: calc(48px * var(--s, 1)); display: inline-flex; }
 .lockup .wm svg { height: 100%; width: auto; }
-.headline { font-size: 124px; line-height: 1.06; letter-spacing: -.035em; font-weight: 800; }
+.headline { font-size: calc(124px * var(--s, 1)); line-height: 1.06; letter-spacing: -.035em; font-weight: 800; }
 .headline em { font-style: normal; color: var(--accent); }
 .headline .dot, .sc-title .dot { margin-left: -.07em; }
 /* Korean: looser leading, whole-word wrapping, less tracking on the uppercase-style labels. */
@@ -112,18 +116,76 @@ html.raw body { width: max-content; }
 .lang-ko .sub { line-height: 1.5; letter-spacing: -.02em; }
 .lang-ko .eyebrow, .lang-ko .sc-labels div { letter-spacing: .06em; }
 .lang-ko .ui { word-break: keep-all; }
-.sub { margin-top: 40px; font-size: 44px; line-height: 1.42; font-weight: 500; letter-spacing: -.01em; color: var(--mid); max-width: 1000px; text-wrap: balance; }
+.sub { margin-top: calc(40px * var(--s, 1)); font-size: calc(44px * var(--s, 1)); line-height: 1.42; font-weight: 500; letter-spacing: -.01em; color: var(--mid); max-width: calc(1000px * var(--s, 1)); text-wrap: balance; }
 .headline { text-wrap: balance; }
 .copy.center .sub { margin-left: auto; margin-right: auto; }
 .mark {
-  width: 240px; height: 240px; margin: 0 auto 64px; border-radius: 54px; overflow: hidden; position: relative;
+  width: calc(240px * var(--s, 1)); height: calc(240px * var(--s, 1)); margin: 0 auto calc(64px * var(--s, 1)); border-radius: calc(54px * var(--s, 1)); overflow: hidden; position: relative;
   box-shadow: 0 30px 60px -28px rgba(20,20,18,.35), 0 0 0 1.5px rgba(20,20,18,.06);
 }
 .mark img { width: 100%; height: 100%; display: block; }
 
+/* ── Animated reel scene (?anim) ──────────────────────────────────────────
+   Every layer is stacked in one stage and driven only by inline opacity/transform from seek(). There
+   are deliberately NO transitions or animations declared here: the capture asks for one frame at a
+   time, so any CSS easing would still be mid-flight when the screenshot is taken and frames would
+   depend on how long the browser had been sitting on them. */
+.a-stage { position: relative; overflow: hidden; background: transparent; }
+.a-bg { position: absolute; inset: 0; z-index: 0; will-change: opacity; }
+.a-bgfill { position: absolute; inset: 0; background: var(--bg); }
+.a-panowrap { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
+.a-panowrap .pano { will-change: transform; }
+.a-copy { z-index: 6; will-change: transform, opacity; }
+.a-copy .a-el { will-change: transform, opacity; }
+/* The copy layers stack, so they must not reserve space from one another. */
+.a-copy { position: absolute; }
+.a-dev { z-index: 5; transform-origin: 50% 42%; will-change: transform; }
+.a-screens { position: absolute; inset: 0; }
+/* The wrapper is what animates. .scr sizes itself with its own `transform: scale(...)`, so putting the
+   handover transform on that element would REPLACE the scale and the mock would render at 440x956 inside
+   a much larger phone - which is exactly what the first run did, leaving a black band down one side. */
+.a-scr { position: absolute; inset: 0; will-change: transform, opacity; }
+
+/* ── Reels mode (?reels) ───────────────────────────────────────────────────
+   Full-bleed app, type over it. Nothing here is shared with the poster layout on purpose. */
+.r-stage { position: relative; overflow: hidden; background: #000; }
+.r-shot { position: absolute; inset: 0; overflow: hidden; background: var(--bg); }
+.r-fill { position: absolute; left: 0; top: 0; width: 440px; height: 956px; }
+.r-fill .scr { position: absolute; left: 0; top: 0; transform: none; }
+/* A caption sitting on a live UI needs separation from it, so each beat carries a soft scrim keyed to
+   its own background rather than a flat black bar, which would read as a subtitle burn-in. */
+/* Solid for the first third, then out. A gentle wash was not enough: bold type landed straight on the
+   album title underneath and read as text on text. */
+.r-scrim { position: absolute; inset: 0; z-index: 4; pointer-events: none;
+  background: linear-gradient(180deg, var(--bg) 0%, var(--bg) 30%,
+    color-mix(in srgb, var(--bg) 55%, transparent) 46%, color-mix(in srgb, var(--bg) 0%, transparent) 64%); }
+/* The end card is type only and centred, so a top-band scrim leaves its lines sitting on the list
+   underneath - text on text. That beat covers the whole frame instead, keeping the app as a faint
+   texture behind the brand rather than a competing layer. */
+.r-scrim-full { background: color-mix(in srgb, var(--bg) 94%, transparent); }
+/* The touch indicator. Sized like a fingertip contact patch rather than a mouse cursor - a pointer
+   arrow would read as a desktop screencast. */
+.r-touch { position: absolute; left: 0; top: 0; z-index: 9; width: 0; height: 0; pointer-events: none; }
+.r-dot { position: absolute; left: -46px; top: -46px; width: 92px; height: 92px; border-radius: 50%;
+  background: rgba(255,255,255,.34); box-shadow: 0 0 0 2.5px rgba(255,255,255,.72), 0 10px 26px rgba(10,10,14,.28);
+  backdrop-filter: blur(2px); }
+.r-ripple { position: absolute; left: -70px; top: -70px; width: 140px; height: 140px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,.55) 0 55%, transparent 70%); }
+.r-cap { position: absolute; left: 70px; right: 70px; z-index: 8; text-align: center; }
+.r-line { will-change: transform, opacity; }
+.r-big { font-size: calc(96px * var(--s, 1)); font-weight: 800; line-height: 1.18; letter-spacing: -.025em;
+  color: var(--fg); word-break: keep-all; text-wrap: balance; }
+.r-big em { font-style: normal; color: var(--accent); }
+.r-sub { margin-top: calc(26px * var(--s, 1)); font-size: calc(40px * var(--s, 1)); font-weight: 600;
+  line-height: 1.4; letter-spacing: -.015em; color: var(--mid); word-break: keep-all; }
+/* The end card is the one beat that is type only, so it centres in the frame instead of riding the top. */
+.r-endcard { top: 50%; transform: translateY(-50%); }
+.r-endcard .lockup { margin-bottom: calc(52px * var(--s, 1)); }
+.r-endcard .lockup img { width: calc(132px * var(--s, 1)); }
+
 /* Guides overlay (gallery toggle) */
 .guides .slide::before {
-  content: ''; position: absolute; inset: 0 110px; z-index: 99; pointer-events: none;
+  content: ''; position: absolute; inset: 0 calc(110px * var(--s, 1)); z-index: 99; pointer-events: none;
   border-left: 3px dashed rgba(233,69,96,.55); border-right: 3px dashed rgba(233,69,96,.55);
 }
 .guides .slide::after {
@@ -174,20 +236,23 @@ html.raw body { width: max-content; }
 .card { position: absolute; z-index: 8; }
 /* Floating callouts are real app surfaces (sjSurface, 16pt corners) scaled up, with one soft lift shadow. */
 .card.chip {
-  display: flex; gap: 22px; align-items: center; background: #fff; color: #1A1A18; border-radius: 999px; padding: 26px 50px 26px 26px;
-  font-size: 38px; font-weight: 700; letter-spacing: -.015em;
+  display: flex; gap: calc(22px * var(--s, 1)); align-items: center; background: #fff; color: #1A1A18; border-radius: 999px;
+  padding: calc(26px * var(--s, 1)) calc(50px * var(--s, 1)) calc(26px * var(--s, 1)) calc(26px * var(--s, 1));
+  font-size: calc(38px * var(--s, 1)); font-weight: 700; letter-spacing: -.015em;
   box-shadow: 0 30px 60px -26px rgba(20,20,18,.35), 0 0 0 1.5px rgba(20,20,18,.04);
 }
-.card.chip .plus { width: 72px; height: 72px; border-radius: 50%; background: #E9F1F8; color: #2979B7; display: grid; place-items: center; }
-.card.chip .plus .ic { width: 34px; height: 34px; }
+.card.chip .plus { width: calc(72px * var(--s, 1)); height: calc(72px * var(--s, 1)); border-radius: 50%; background: #E9F1F8; color: #2979B7; display: grid; place-items: center; }
+.card.chip .plus .ic { width: calc(34px * var(--s, 1)); height: calc(34px * var(--s, 1)); }
 .card.ui-card { transform-origin: 0 0; }
 .card.ui-card > .ui { width: var(--pw); border-radius: 16px; overflow: hidden;
   box-shadow: 0 14px 28px -12px rgba(20,20,18,.32), 0 0 0 .5px rgba(20,20,18,.05); }
-.card.badge-card { display: flex; gap: 44px; align-items: center; background: #fff; color: #1A1A18; border-radius: 40px; padding: 44px 70px 44px 44px;
+.card.badge-card { display: flex; gap: calc(44px * var(--s, 1)); align-items: center; background: #fff; color: #1A1A18;
+  border-radius: calc(40px * var(--s, 1));
+  padding: calc(44px * var(--s, 1)) calc(70px * var(--s, 1)) calc(44px * var(--s, 1)) calc(44px * var(--s, 1));
   box-shadow: 0 30px 60px -26px rgba(20,20,18,.35), 0 0 0 1.5px rgba(20,20,18,.04); font-family: 'Plus Jakarta Sans', 'Pretendard', sans-serif; }
-.badge-card .lb { font-size: 26px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #8C8C8A; }
-.badge-card .tt { font-size: 50px; font-weight: 800; letter-spacing: -.03em; margin-top: 12px; }
-.badge-card .ar { font-size: 36px; font-weight: 500; color: #2979B7; margin-top: 6px; }
+.badge-card .lb { font-size: calc(26px * var(--s, 1)); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #8C8C8A; }
+.badge-card .tt { font-size: calc(50px * var(--s, 1)); font-weight: 800; letter-spacing: -.03em; margin-top: calc(12px * var(--s, 1)); }
+.badge-card .ar { font-size: calc(36px * var(--s, 1)); font-weight: 500; color: #2979B7; margin-top: calc(6px * var(--s, 1)); }
 
 /* ───────────────────────── Cover art (abstract, fictional) ───────────────────────── */
 .c0  { background: radial-gradient(circle at 34% 40%, #ffe2b0 0 15%, #ffd08a 15.5%, transparent 24%), radial-gradient(120% 90% at 80% 110%, #6cc0ef, transparent 60%), linear-gradient(165deg, #3a8fcf, #123a63 70%, #0a2340); }
@@ -335,6 +400,13 @@ html.raw body { width: max-content; }
 (() => {
 const C = window.APPSHOTS;
 const W = C.canvas.width, H = C.canvas.height;
+/* The canvas drives the layout. --s scales the type system off the 1320-wide App Store design, so a
+   1080-wide Instagram format reuses every ratio rather than re-tuning each size by hand; at 1320 it
+   is exactly 1 and the store sets render byte-identically. */
+const SCALE = C.canvas.scale ?? (W / 1320);
+document.documentElement.style.setProperty('--cw', W + 'px');
+document.documentElement.style.setProperty('--ch', H + 'px');
+document.documentElement.style.setProperty('--s', String(SCALE));
 const Q = new URLSearchParams(location.search);
 const root = document.getElementById('root');
 const AS = window.SJ_ASSETS || { icons: {}, logoText: '' };
@@ -789,10 +861,10 @@ function card(c) {
   }
   if (c.kind === 'badge' || c.kind === 'score') { // ScoreBadge, poster-sized
     const a = A[c.album ?? 0], v = c.value ?? 4.5;
-    return `<div class="card badge-card ui" style="${pos};transform:${rot}"><span style="zoom:4.4;display:inline-flex">${scoreBadge(v)}</span>
+    return `<div class="card badge-card ui" style="${pos};transform:${rot}"><span style="zoom:${4.4 * SCALE};display:inline-flex">${scoreBadge(v)}</span>
       <div><div class="lb">${c.label || T('Your rating')}</div><div class="tt">${a.t}</div><div class="ar">${a.a}</div></div></div>`;
   }
-  if (c.kind === 'chip') return `<div class="card chip" style="${pos};transform:${rot}"><span class="plus">${ic(c.icon || 'bookmark-filled', 34)}</span>${c.text}</div>`;
+  if (c.kind === 'chip') return `<div class="card chip" style="${pos};transform:${rot}"><span class="plus">${ic(c.icon || 'bookmark-filled', 34 * SCALE)}</span>${c.text}</div>`;
   return '';
 }
 
@@ -836,6 +908,386 @@ function showcaseHTML() {
 // Wait for webfonts and every <img> (logos, app icon, real screenshots) before export.mjs captures.
 const ready = () => Promise.all([document.fonts.ready, ...[...document.images].map((im) => im.complete ? 0 : new Promise((r) => { im.onload = im.onerror = r; }))])
   .then(() => document.documentElement.setAttribute('data-ready', '1'));
+
+/* ─────────────────────── Animated reel scene (?anim) ───────────────────────
+   The still formats paint six independent cards. A reel built by sliding those cards past each other
+   is a slideshow: nothing on card 2 has any relationship to card 1, so every cut throws the whole
+   frame away. This mode instead builds ONE continuous scene in which elements persist and hand over
+   to their successors.
+
+   THE PHONE IS THE SHARED ELEMENT. A single .iphone is rendered once and never moves; the six app
+   screens are stacked inside its .screen and cross-dissolve with a short vertical push, which is what
+   navigating the real app looks like. The frame, the buttons and the Dynamic Island hold still through
+   every section, so the viewer reads one device being used rather than six pictures of a device.
+
+   COPY HANDS OVER PER ELEMENT, not per card: the outgoing eyebrow/headline/sub lift and fade while the
+   incoming ones rise in sequence, so the eye follows each line to its replacement.
+
+   REAL APP MOTION rides on top of the handover. The rate section drives the actual rate control:
+   SCREENS.album takes a `gauge`, so that screen is re-rendered each frame with the gauge sweeping up
+   to the score — the app's own drag-to-rate animation, not an effect applied to a picture of it. Every
+   section also drifts its screen content upward through its hold, which reads as the list scrolling.
+
+   seek(t) IS A PURE FUNCTION OF TIME. Nothing here uses CSS transitions, requestAnimationFrame or the
+   wall clock, so frame N is identical whenever it is asked for. That is what lets render-frames.mjs
+   capture frames one at a time, out of order, and resume. */
+/* ─────────────────────── Reels mode (?reels) ───────────────────────
+   A SEPARATE RENDERER, not the slide template with a different canvas. The poster layout - headline
+   zone on top, phone standing in a cream margin below - is an App Store composition, and resizing it
+   to 9:16 produces something that still reads as a store screenshot in a feed. Reels-native content
+   does the opposite of all three of its moves:
+
+     the app fills the frame          (no device chrome, no margin, screen edge to edge)
+     type sits ON the content         (not in a reserved band above it)
+     cuts are hard and fast           (not 0.75s dissolves between whole compositions)
+
+   So this mode throws the composition away and keeps only what is worth keeping: the real mock screens
+   and the app's real motion spec.
+
+   THE SCREEN IS SCALED TO COVER. A mock is 440x956 (0.46); the canvas is 1080x1920 (0.5625). Covering
+   the width needs scale = 1080/440 and overflows the height by ~427px, which is cropped evenly top and
+   bottom. Cropping is correct here: the status bar and the tab bar are the least interesting parts of
+   any screen, and in a feed the viewer is close to the glass.
+
+   CAPTIONS ARE OVERLAYS WITH A SCRIM. Type on top of a live UI needs separation or it mixes with the
+   content behind it, so each caption carries a soft gradient scrim keyed to the beat's own background.
+   They snap in on the app's entrance curve (~0.18s) rather than drifting - this is kinetic type, which
+   is the format's own idiom, not a title sequence.
+
+   seek(t) is a pure function of time, like the other scene: no transitions, no rAF, no wall clock. */
+if (Q.has('reels')) {
+  document.documentElement.classList.add('raw');
+  const R = C.reel || {};
+  const N = C.slides.length;
+  const DUR = C.slides.map((s) => s.dur ?? 2.4);
+  const START = DUR.map((_, k) => DUR.slice(0, k).reduce((a, d) => a + d, 0));
+  const DURATION = DUR.reduce((a, d) => a + d, 0);
+  const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
+  const easeOutQ = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : 1 - Math.pow(1 - x, 2));
+  // apps/web/app/globals.css: the app's entrance curve, cubic-bezier(.16, 1, .3, 1).
+  const expoOut = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : 1 - Math.pow(2, -10 * x));
+
+  const themeOf = (i) => { const t = C.slides[i].theme || 'cream'; return t === 'blue' ? 'soft' : t === 'ink' ? 'dark' : t; };
+  const COVER = W / 440;                       // scale that makes a mock cover the canvas width
+  const CROP = (956 * COVER - H) / 2;          // overflow, split evenly top and bottom
+
+  const shotOf = (i) => {
+    const d = (C.slides[i].devices || [])[0];
+    if (!d) return `<div class="r-shot" data-i="${i}"></div>`;
+    const fn = SCREENS[d.screen];
+    const st = { ...(d.state || {}), dark: !!d.dark };
+    // shiftY nudges the screen inside its crop so the UI's own headings fall below the caption band
+    // instead of fighting it. Positive moves the content down.
+    return `<div class="r-shot t-${themeOf(i)}" data-i="${i}"><div class="r-fill" data-shift="${C.slides[i].shiftY ?? 0}" style="transform:translateY(${-CROP + (C.slides[i].shiftY ?? 0)}px) scale(${COVER});transform-origin:0 0">
+      <div class="scr ui ${d.dark ? 'dark' : ''}">${fn ? fn(st) : ''}</div></div></div>`;
+  };
+
+  const capOf = (i) => {
+    const s = C.slides[i];
+    if (s.end) {
+      return `<div class="r-cap r-endcard t-${themeOf(i)}" data-i="${i}">
+        <div class="r-line"><div class="lockup"><img src="assets/logo-flower.svg" alt=""><span class="wm">${wordmark()}</span></div></div>
+        ${s.caption ? `<div class="r-line r-big">${kernStops(s.caption)}</div>` : ''}
+        ${s.sub ? `<div class="r-line r-sub">${s.sub}</div>` : ''}</div>`;
+    }
+    const lines = (s.caption || '').split('<br>').filter(Boolean);
+    return `<div class="r-cap t-${themeOf(i)}" data-i="${i}" style="${s.capBottom ? `bottom:${s.capBottom}px;top:auto` : `top:${s.capTop ?? 360}px`}">
+      ${lines.map((l) => `<div class="r-line r-big">${kernStops(l)}</div>`).join('')}
+      ${s.sub ? `<div class="r-line r-sub">${s.sub}</div>` : ''}</div>`;
+  };
+
+  root.innerHTML = `<div class="slide r-stage">
+    ${C.slides.map((_, i) => shotOf(i)).join('')}
+    ${C.slides.map((sl, i) => `<div class="r-scrim ${sl.end ? 'r-scrim-full' : ''} t-${themeOf(i)}" data-i="${i}"></div>`).join('')}
+    ${C.slides.map((_, i) => capOf(i)).join('')}
+    <div class="r-touch" hidden><span class="r-ripple"></span><span class="r-dot"></span></div>
+  </div>`;
+
+  const shots = [...root.querySelectorAll('.r-shot')];
+  const fills = [...root.querySelectorAll('.r-fill')];
+  const scrims = [...root.querySelectorAll('.r-scrim')];
+  const caps = [...root.querySelectorAll('.r-cap')];
+  const touchEl = root.querySelector('.r-touch');
+  const rippleEl = root.querySelector('.r-ripple');
+
+  const rateIndex = C.slides.findIndex((s) => (s.devices || []).some((d) => d.screen === 'album'));
+  const rateTarget = rateIndex >= 0 ? ((C.slides[rateIndex].devices[0].state || {}).gauge ?? 4.5) : 4.5;
+  let lastGauge = 'init';
+
+  function seek(t) {
+    const tc = Math.max(0, Math.min(DURATION - 0.0001, t));
+    let i = 0; while (i < N - 1 && tc >= START[i + 1]) i++;
+    const local = tc - START[i];
+    const SEG = DUR[i];
+    const s = C.slides[i];
+
+    /* HARD CUTS. A dissolve between two full-frame UIs is mush, and the format does not use one: beats
+       change on a cut, with a short punch on the incoming frame to carry the energy across it. */
+    const CUT = 0.14;
+    const cut = easeOutQ(clamp01(local / CUT));
+
+    shots.forEach((el, k) => {
+      const on = k === i;
+      el.style.opacity = on ? '1' : '0';
+      el.style.visibility = on ? 'visible' : 'hidden';
+    });
+
+    // Punch in on the cut, then a slow drift so the frame is never completely dead.
+    const punch = 1.045 - 0.045 * cut;
+    const drift = 1 + 0.022 * clamp01((local - CUT) / Math.max(0.001, SEG - CUT));
+    const shiftY = Number(fills[i].dataset.shift || 0);
+    fills[i].style.transform = `translateY(${(-CROP + shiftY).toFixed(1)}px) scale(${(COVER * punch * drift).toFixed(4)})`;
+
+    scrims.forEach((el, k) => { el.style.opacity = k === i ? '1' : '0'; });
+
+    /* KINETIC TYPE: each line snaps in on the app's entrance curve, staggered, and the caption leaves
+       just before the cut so it never collides with the next beat's line. */
+    caps.forEach((el, k) => {
+      const on = k === i;
+      el.style.visibility = on ? 'visible' : 'hidden';
+      if (!on) return;
+      const out = clamp01((local - (SEG - 0.22)) / 0.22);
+      [...el.children].forEach((line, j) => {
+        const q = expoOut(clamp01((local - 0.06 - j * 0.085) / 0.3));
+        line.style.opacity = String(q * (1 - out));
+        line.style.transform = `translateY(${((1 - q) * 26 - out * 14).toFixed(2)}px)`;
+      });
+    });
+
+    /* A VISIBLE TOUCH. Apple's own Journal walkthrough highlights its tap points, and it is the single
+       thing that separates "an app being used" from "an app being displayed" - without it a screen that
+       changes by itself reads as a video of a UI, not a person using one. The indicator presses (a
+       ripple), drags, and lifts, in canvas coordinates set per beat. */
+    const tch = s.touch;
+    if (tch) {
+      const at = tch.at ?? 0.3, dur = tch.dur ?? 1.0;
+      const lead = 0.18;                                   // the finger arrives just before it presses
+      const live = local >= at - lead && local <= at + dur + 0.26;
+      touchEl.hidden = !live;
+      if (live) {
+        const inq = easeOutQ(clamp01((local - (at - lead)) / lead));     // fade/scale in
+        const q = clamp01((local - at) / dur);                            // the drag itself, linear
+        const lift = clamp01((local - (at + dur)) / 0.26);                // release
+        const x = (tch.x1 ?? 0) + ((tch.x2 ?? tch.x1 ?? 0) - (tch.x1 ?? 0)) * q;
+        const y = (tch.y1 ?? 0) + ((tch.y2 ?? tch.y1 ?? 0) - (tch.y1 ?? 0)) * q;
+        touchEl.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+        touchEl.style.opacity = String(inq * (1 - lift));
+        // The press ripple fires once, on contact.
+        const rp = clamp01((local - at) / 0.42);
+        rippleEl.style.transform = `scale(${(0.35 + 1.5 * rp).toFixed(3)})`;
+        rippleEl.style.opacity = String((1 - rp) * 0.5 * inq);
+      }
+    } else {
+      touchEl.hidden = true;
+    }
+
+    if (rateIndex >= 0) {
+      let g = null;
+      if (i === rateIndex) {
+        const DRAG_AT = R.rateAt ?? 0.45, DRAG_DUR = R.rateDur ?? 1.05;
+        // Idle until the finger lands: a gauge reading 0.0 would claim the album was rated zero.
+        if (local >= DRAG_AT) g = +(rateTarget * clamp01((local - DRAG_AT) / DRAG_DUR)).toFixed(2);
+      }
+      if (g !== lastGauge) {
+        lastGauge = g;
+        const d = C.slides[rateIndex].devices[0];
+        const st = { ...(d.state || {}), dark: !!d.dark };
+        if (g != null) st.gauge = g; else delete st.gauge;
+        shots[rateIndex].querySelector('.scr').innerHTML = SCREENS.album(st);
+      }
+    }
+  }
+
+  window.SJ_REEL = { seek, duration: DURATION, fps: R.fps ?? 30, beats: DUR, starts: START };
+  seek(Number(Q.get('t') || 0));
+  return ready();
+}
+
+if (Q.has('anim')) {
+  document.documentElement.classList.add('raw');
+  const R = C.reel || {};
+  const TR = R.transition ?? 0.75;
+  const N = C.slides.length;
+  /* PER-BEAT DURATION. A reel needs an uneven rhythm - the hook has to land fast, the payoff needs room
+     to be read - so each slide may set its own `dur`. A config that sets none falls back to a uniform
+     hold and behaves exactly as before. */
+  const DUR = C.slides.map((s) => s.dur ?? R.hold ?? 2.6);
+  const START = DUR.map((_, k) => DUR.slice(0, k).reduce((a, d) => a + d, 0));
+  const DURATION = DUR.reduce((a, d) => a + d, 0);
+  const ease = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+  const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
+
+  const themeOf = (i) => { const t = C.slides[i].theme || 'cream'; return t === 'blue' ? 'soft' : t === 'ink' ? 'dark' : t; };
+  const auroraFor = (tk) => (AURORA[tk] ? `<div class="aurora" style="background:${[[12, 8, 4.4], [92, 14, 3.7], [70, 88, 4.8], [8, 70, 3.2]].map(([x, y, sc]) =>
+    `radial-gradient(900px 900px at ${x}% ${y}%, color-mix(in srgb, ${spectrum(sc, AURORA[tk], .65)} 55%, transparent), transparent)`).join(',')}"></div>` : '');
+
+  const copyInner = (i) => {
+    const cp = C.slides[i].copy || {};
+    const no = cp.no ?? (cp.eyebrow ? String(i + 1).padStart(2, '0') : '');
+    return [
+      cp.mark ? `<div class="mark"><img src="assets/app-icon${cp.mark === 'dark' ? '-dark' : ''}.png" alt=""></div>` : '',
+      cp.logo ? `<div class="lockup"><img src="assets/logo-flower.svg" alt=""><span class="wm">${wordmark()}</span></div>` : '',
+      cp.eyebrow ? `<div class="eyebrow">${no ? `<span class="no">${no}</span>` : ''}<span>${cp.eyebrow}</span></div>` : '',
+      cp.headline ? `<div class="headline">${kernStops(cp.headline)}</div>` : '',
+      cp.sub ? `<div class="sub">${cp.sub}</div>` : '',
+    ].filter(Boolean).map((h) => `<div class="a-el">${h}</div>`).join('');
+  };
+
+  // One phone, six screens. Geometry comes from the first slide that names a device, so the frame has a
+  // single fixed home for the whole reel instead of jumping between per-slide positions.
+  const d0 = (C.slides.find((s) => s.devices && s.devices.length) || {}).devices[0];
+  const screenOf = (i) => {
+    const d = (C.slides[i].devices || [])[0] || d0;
+    const fn = SCREENS[d.screen];
+    const st = { ...(d.state || {}), dark: !!d.dark };
+    return `<div class="a-scr" data-i="${i}"><div class="scr ui ${d.dark ? 'dark' : ''}">${fn ? fn(st) : ''}</div></div>`;
+  };
+
+  root.innerHTML = `<div class="slide a-stage">
+    ${C.slides.map((_, i) => `<div class="a-bg t-${themeOf(i)}" data-i="${i}"><div class="a-bgfill"></div>${auroraFor(themeOf(i))}</div>`).join('')}
+    <div class="a-panowrap"><div class="pano" style="left:0;width:${W * N}px">${(C.panorama || []).map((p) => {
+      const glyph = p.style === 'glyph';
+      const box = `left:${p.x - p.size / 2}px;top:${p.y - p.size / 2}px;width:${p.size}px;height:${p.size * (glyph ? 25.76 / 26.78 : 288.88 / 279.71)}px;transform:rotate(${p.rot || 0}deg)`;
+      return glyph ? `<div class="pflower glyph" style="${box}">${ic('flower', p.size)}</div>`
+        : `<div class="pflower" style="${box}"><img src="assets/logo-flower.svg" alt=""></div>`;
+    }).join('')}</div></div>
+    ${C.slides.map((s, i) => `<div class="a-copy copy ${(s.copy || {}).align === 'center' ? 'center' : ''} t-${themeOf(i)}" data-i="${i}" style="top:${(s.copy || {}).top ?? 200}px">${copyInner(i)}</div>`).join('')}
+    <div class="a-dev dev" style="left:${d0.x}px;top:${d0.y}px;--w:${d0.w || 1000}">
+      <div class="iphone f-${C.device.finish}">
+        <i class="btn b-action"></i><i class="btn b-volup"></i><i class="btn b-voldn"></i><i class="btn b-power"></i><i class="btn b-camctl"></i>
+        <div class="bezel"><div class="screen"><div class="a-screens">${C.slides.map((_, i) => screenOf(i)).join('')}</div></div></div>
+        <div class="island"></div>
+      </div></div>
+  </div>`;
+
+  const bgs = [...root.querySelectorAll('.a-bg')];
+  const copies = [...root.querySelectorAll('.a-copy')];
+  const screensHost = root.querySelector('.a-screens');
+  const panoEl = root.querySelector('.a-panowrap .pano');
+  const devEl = root.querySelector('.a-dev');
+
+  // The rate screen is the one that redraws: its gauge is the app's own control, not a static picture.
+  const rateIndex = C.slides.findIndex((s) => (s.devices || []).some((d) => d.screen === 'album'));
+  const rateTarget = rateIndex >= 0 ? ((C.slides[rateIndex].devices[0].state || {}).gauge ?? 4.5) : 4.5;
+  let lastGauge = 'init';
+
+  function seek(t) {
+    const tc = Math.max(0, Math.min(DURATION - 0.0001, t));
+    let i = 0; while (i < N - 1 && tc >= START[i + 1]) i++;
+    const local = tc - START[i];
+    const SEG = DUR[i];
+    const p = i === 0 ? 1 : ease(clamp01(local / TR));
+
+    for (let k = 0; k < N; k++) {
+      const isCur = k === i, isPrev = k === i - 1;
+      bgs[k].style.opacity = String(isCur ? p : isPrev ? 1 - p : 0);
+
+      const c = copies[k];
+      c.style.opacity = String(isCur ? 1 : isPrev ? clamp01(1 - p * 1.7) : 0);
+      c.style.visibility = isCur || isPrev ? 'visible' : 'hidden';
+      const els = [...c.children];
+      if (isPrev) {
+        c.style.transform = `translateY(${(-70 * p).toFixed(2)}px)`;
+        els.forEach((el) => { el.style.opacity = '1'; el.style.transform = 'none'; });
+      } else if (isCur) {
+        c.style.transform = 'none';
+        els.forEach((el, k2) => {
+          const stag = 0.09 * k2;
+          const q = ease(clamp01((p - stag) / Math.max(0.2, 1 - stag)));
+          el.style.opacity = String(q);
+          el.style.transform = `translateY(${(78 * (1 - q)).toFixed(2)}px)`;
+        });
+      }
+    }
+
+    /* IN-PHONE MOTION FOLLOWS THE APP'S OWN SPEC, not the video's.
+       The first cut moved the screen 54px over 0.75s and then drifted the content continuously for the
+       rest of the section. Neither is anything the app does, and that is what read as fake: measured
+       across the real codebase, iOS animates in 0.12-0.28s (easeInOut 0.2 and 0.15 are the two most
+       common by a wide margin) and the web app's keyframes in globals.css run 0.14-0.3s over 4-10px.
+       A real app is also STILL until it is touched, then moves fast and stops. So the phone now holds
+       still and fires short, app-accurate bursts: a screen change on the app's curve, then one
+       interaction, then nothing. */
+    const scrs = [...screensHost.children];
+
+    // apps/web/app/globals.css: cubic-bezier(.16,1,.3,1) is the app's entrance curve (sj-row-in,
+    // sj-modal-in). Expressed here as a closed form so seek(t) stays a pure function.
+    const expoOut = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : 1 - Math.pow(2, -10 * x));
+    const easeOutQ = (x) => (x <= 0 ? 0 : x >= 1 ? 1 : 1 - Math.pow(1 - x, 2));
+
+    const SCREEN_CHANGE = 0.22;   // iOS: .easeInOut(duration: 0.2) is the app's most common value
+    const sp = easeOutQ(clamp01(local / SCREEN_CHANGE));
+
+    /* ONE SCROLL FLICK PER SECTION, with momentum decay, then stillness. A finger flicks the list and
+       it coasts to a stop in about half a second; it does not creep for two seconds. */
+    const FLICK_AT = 0.72, FLICK_DUR = 0.52, FLICK_PX = 104;
+    const flick = -FLICK_PX * expoOut(clamp01((local - FLICK_AT) / FLICK_DUR));
+
+    scrs.forEach((el, k) => {
+      const isCur = k === i, isPrev = k === i - 1;
+      // The screens cross-dissolve on the app's own timing rather than over the whole handover.
+      const o = isCur ? sp : isPrev ? 1 - sp : 0;
+      el.style.opacity = String(o);
+      el.style.visibility = o > 0.002 ? 'visible' : 'hidden';
+      // 16px, the scale the app actually moves things (globals.css entrances travel 4-10px).
+      const enter = isCur ? 16 * (1 - sp) : isPrev ? -10 * sp : 0;
+      const scroll = isCur && k !== rateIndex ? flick : 0;
+      el.style.transform = `translateY(${(enter + scroll).toFixed(2)}px)`;
+    });
+
+    /* THE RATE CONTROL, as the app performs it: the flower is dragged and the gauge tracks the finger
+       continuously, because a drag has no easing - the value is wherever the finger is.
+       FlowerRateControl.swift:559 pops the badge on release with .timingCurve(0.34, 1.5, 0.64, 1),
+       but that curve scales the BADGE; it does not overshoot the score. Driving the value through it
+       (as the first version of this did) made the gauge read 5.0 for a few frames - a rating nobody
+       gave - so the value lands on the score and stays there. */
+    if (rateIndex >= 0) {
+      let g = null;
+      if (i === rateIndex) {
+        const DRAG_AT = R.rateAt ?? 0.5, DRAG_DUR = R.rateDur ?? 0.62;
+        // Before the finger lands the control is idle - the plain flower button, no gauge, which is
+        // what the screen actually shows until you touch it. Leaving it at 0.0 instead would claim the
+        // album had been rated zero.
+        if (local >= DRAG_AT) {
+          // Linear while held: a drag has no easing, the value simply tracks the finger.
+          g = +(rateTarget * clamp01((local - DRAG_AT) / DRAG_DUR)).toFixed(2);
+        }
+      }
+      if (g !== lastGauge) {
+        lastGauge = g;
+        const d = C.slides[rateIndex].devices[0];
+        const st = { ...(d.state || {}), dark: !!d.dark };
+        if (g != null) st.gauge = g; else delete st.gauge;
+        scrs[rateIndex].firstElementChild.innerHTML = SCREENS.album(st);
+      }
+    }
+
+    /* THE FLOWER STRIP DOES NOT SLIDE. It was drawn to bleed across the seams of a swiped carousel, so
+       dragging it continuously through the video turned a quiet background texture into the most
+       moving thing on screen - which is exactly backwards. Each section now sits on its own slice of
+       the strip, exactly where the still would put it, and the slices cross-dissolve with the
+       background instead of travelling. */
+    const panoFrom = -W * Math.max(0, i - 1), panoTo = -W * i;
+    panoEl.style.transform = `translateX(${(panoFrom + (panoTo - panoFrom) * p).toFixed(2)}px)`;
+
+    /* THE CAMERA MOVES, THE PHONE DOES NOT. Faking app motion is what made the earlier cut look wrong,
+       but moving the viewpoint is a film move, not a UI one - a reel can push in on a control the way a
+       camera would and still be honest about what the app does. Each beat may set
+       `camera: { scale, x, y }` and the move is interpolated across the handover. */
+    const camOf = (k) => C.slides[Math.max(0, Math.min(N - 1, k))].camera || {};
+    const a0 = camOf(i - 1), a1 = camOf(i);
+    const lerp = (u, v, q) => (u ?? 1) + ((v ?? 1) - (u ?? 1)) * q;
+    const lerp0 = (u, v, q) => (u ?? 0) + ((v ?? 0) - (u ?? 0)) * q;
+    const cs = i === 0 ? (a1.scale ?? 1) : lerp(a0.scale, a1.scale, p);
+    const cx = i === 0 ? (a1.x ?? 0) : lerp0(a0.x, a1.x, p);
+    const cy = i === 0 ? (a1.y ?? 0) : lerp0(a0.y, a1.y, p);
+    devEl.style.transform = `translate(${cx.toFixed(1)}px, ${cy.toFixed(1)}px) scale(${cs.toFixed(4)})`;
+  }
+
+  window.SJ_REEL = { seek, duration: DURATION, fps: R.fps ?? 30, beats: DUR, starts: START, transition: TR };
+  seek(Number(Q.get('t') || 0));
+  return ready();
+}
 
 if (Q.has('slide')) {                       // ?slide=N → raw 1:1 canvas for export.mjs
   document.documentElement.classList.add('raw');

@@ -105,7 +105,11 @@ async function exportAll() {
   const only = opt('only') ? opt('only').split(',').map(Number) : cfg.slides.map((_, i) => i + 1);
   const jobs = only.map((n) => ({
     url: `${base}?${lq}slide=${n}`, w: W, h: H,
-    out: path.join(outDir, `${String(n).padStart(2, '0')}-${cfg.slides[n - 1].id}.png`),
+    // `naming: 'index'` writes 01.png instead of 01-home.png, which is what the insta_posts
+    // upload folders expect; the slide id stays in the config for anyone reading it.
+    out: path.join(outDir, cfg.output?.naming === 'index'
+      ? `${String(n).padStart(2, '0')}.png`
+      : `${String(n).padStart(2, '0')}-${cfg.slides[n - 1].id}.png`),
   }));
   if (!has('no-showcase')) jobs.push({ url: `${base}?${lq}showcase&raw`, w: 4800, h: 2700, out: path.join(outDir, 'showcase.png') });
 

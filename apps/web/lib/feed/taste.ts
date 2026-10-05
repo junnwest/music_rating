@@ -51,7 +51,11 @@ export function buildFeedTaste(rows: TasteRating[], now: number) {
       return 0.60 * genre + 0.25 * artistAffinity(album.primary_artist_id) + 0.15 * eraScene;
     }));
   }
+  // The viewer's own rated releases. Free here: these rows are already loaded to build the taste model,
+  // so familiarity costs no extra query.
+  const ratedIds = new Set(rated.map(r => r.release_groups.id));
   return {
+    hasRated: (album: ReleaseGroupEmbed) => ratedIds.has(album.id),
     artistIds: [...artists].filter(([, v]) => v.sum > 0).sort((a, b) => b[1].sum - a[1].sum).slice(0, 30).map(([id]) => id),
     genres: [...new Set(positive.flatMap(r => r.release_groups.genres ?? []))].slice(0, 40),
     knownArtist: (album: ReleaseGroupEmbed) => !!album.primary_artist_id && artists.has(album.primary_artist_id),

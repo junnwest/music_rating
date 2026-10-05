@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bucketShares, rankExplore, scoreCandidate } from './ranking';
+import { bucketShares, familiarity, rankExplore, scoreCandidate, thoughtfulness } from './ranking';
 import type { Candidate } from './types';
 
 const now = Date.parse('2026-09-28T12:00:00Z');
@@ -8,7 +8,7 @@ const candidate = (id: number, overrides: Partial<Candidate> = {}): Candidate =>
   format: 'review', albums: [{ id: `album-${id}`, title: '', artist_display: '', primary_artist_id: `artist-${id}`,
     cover_url: null, release_group_type: 'album', native_title: null }],
   text: 'A thoughtful account of what makes this record worth hearing.', relevance: 0.75,
-  authorAffinity: 0.2, response: 0.2, seen: false, knownArtist: false, followed: false, ...overrides,
+  authorAffinity: 0.2, response: 0.2, seen: false, knownArtist: false, rated: false, followed: false, ...overrides,
 });
 
 describe('Explore ordering', () => {
@@ -60,5 +60,57 @@ describe('Explore ordering', () => {
     expect(scoreCandidate(candidate(1, { response: 1000 }), now)).toBe(scoreCandidate(candidate(1, { response: 1 }), now));
     expect(scoreCandidate(candidate(1, { text: 'x'.repeat(10000) }), now) - scoreCandidate(candidate(1, { text: '' }), now)).toBeLessThan(0.1);
     expect(Number.isFinite(scoreCandidate(candidate(1, { createdAt: 'invalid' }), now))).toBe(true);
+  });
+});
+
+describe('Thoughtfulness', () => {
+  const real = '이 앨범은 전작보다 훨씬 차분해요. 특히 3번 트랙의 색소폰이 좋았고, 가사도 담백합니다. 다만 후반부는 조금 늘어져요.';
+  const realEn = 'Calmer than the last record. The saxophone on track three is the best thing here, and the lyrics stay plain. The back half drags a little.';
+
+  it('ranks a written review above a reaction, in both languages', () => {
+    expect(thoughtfulness(real, 'review')).toBeGreaterThan(thoughtfulness('짱', 'review'));
+    expect(thoughtfulness(realEn, 'review')).toBeGreaterThan(thoughtfulness('love it', 'review'));
+  });
+
+  it('does not rank Korean below English of the same substance', () => {
+    // A 어절 carries more than an English word, so a single token threshold would penalise Korean.
+    expect(thoughtfulness(real, 'review')).toBeGreaterThan(0.8 * thoughtfulness(realEn, 'review'));
+  });
+
+  it('is not fooled by padding — the failure mode a type-token ratio would miss', () => {
+    // 'x'.repeat(n) has a perfect TTR of 1.0; distinct-token counting puts it near the floor.
+    expect(thoughtfulness('x'.repeat(5000), 'review')).toBeLessThan(thoughtfulness(real, 'review'));
+    expect(thoughtfulness('좋아요 좋아요 좋아요 좋아요 좋아요 좋아요', 'review')).toBeLessThan(thoughtfulness(real, 'review'));
+  });
+
+  it('still cannot be gamed by length alone', () => {
+    expect(scoreCandidate(candidate(1, { text: 'x'.repeat(10000) }), now)
+      - scoreCandidate(candidate(1, { text: '' }), now)).toBeLessThan(0.1);
+  });
+});
+
+describe('Familiarity', () => {
+  it('ranks an album the viewer rated above one by an artist they know, above a stranger', () => {
+    expect(familiarity(candidate(1, { rated: true }))).toBeGreaterThan(familiarity(candidate(1, { knownArtist: true })));
+    expect(familiarity(candidate(1, { knownArtist: true }))).toBeGreaterThan(familiarity(candidate(1)));
+  });
+
+  it('lifts a rated release above an unknown one, all else equal', () => {
+    expect(scoreCandidate(candidate(1, { rated: true, knownArtist: true }), now))
+      .toBeGreaterThan(scoreCandidate(candidate(2), now));
+  });
+
+  it('keeps adventurousness meaningful: discovery readers are not forced into the familiar', () => {
+    const known = candidate(1, { rated: true, knownArtist: true });
+    const fresh = candidate(2);
+    const cautious = scoreCandidate(known, now, 0) - scoreCandidate(fresh, now, 0);
+    const adventurous = scoreCandidate(known, now, 100) - scoreCandidate(fresh, now, 100);
+    expect(cautious).toBeGreaterThan(adventurous);
+  });
+
+  it('does not let familiarity outweigh a much better predicted match', () => {
+    const familiarMeh = candidate(1, { rated: true, knownArtist: true, relevance: 0.1 });
+    const unknownGreat = candidate(2, { relevance: 0.95 });
+    expect(scoreCandidate(unknownGreat, now)).toBeGreaterThan(scoreCandidate(familiarMeh, now));
   });
 });

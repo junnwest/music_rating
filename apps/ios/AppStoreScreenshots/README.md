@@ -42,6 +42,146 @@ The export checks every PNG's size and exits non-zero on a mismatch. App Store C
 
 The first three slides carry the story. In search results the App Store shows only the first three portrait screenshots, so 01–03 have to sell the app on their own.
 
+## Formats
+
+The same renderer drives more than the App Store canvas. `canvas` in a config sets the size, and the
+renderer derives a scale factor **`--s` = `canvas.width` / 1320** that every size in the design system
+is expressed against, so a narrower format keeps the store layout's proportions instead of needing its
+own hand-tuned numbers. At 1320 wide `--s` is exactly 1 and the store sets are unaffected.
+
+| dir | canvas | use |
+|-----|--------|-----|
+| `.` | 1320 x 2868 | App Store, English |
+| `ko/` | 1320 x 2868 | App Store, Korean |
+| `ig/` | 1080 x 1350 | Instagram feed carousel, Korean (4:5) |
+| `reel/` | 1080 x 1920 | Instagram reel / story, Korean (9:16) — the store set re-cut |
+| `promo/` | 1080 x 1920 | Reels promo on the poster composition — superseded |
+| `reels/` | 1080 x 1920 | **Reels-native** (`?reels`): full-bleed app, type over it — post this one |
+
+```bash
+node export.mjs --lang=ig          # -> ig/out/01-home.png ... (1080 x 1350)
+node export.mjs --lang=ig --serve  # preview at index.html?lang=ig
+
+node render-frames.mjs --lang=reel        # animated scene -> reel/frames/0001.png ...
+node make-reel.mjs --frames=reel/frames   # -> reel/out/reel.mp4  (15.6s, H.264)
+```
+
+### The reel is one continuous scene, not six cards in sequence
+
+A reel made by sliding the stills past each other is a slideshow: nothing on card 2 relates to card 1,
+so every cut throws the whole frame away. `index.html?anim` instead builds one stage in which elements
+persist and hand over to their successors.
+
+- **The phone is a shared element.** One `.iphone` is rendered and never moves; the six app screens are
+  stacked inside its `.screen` and cross-dissolve with a short push, the way navigating the app looks.
+  The viewer reads one device being used rather than six pictures of a device.
+- **Copy hands over per element**, not per card: the outgoing eyebrow/headline/sub lift away while the
+  incoming ones rise in sequence, so the eye follows each line to its replacement.
+- **The rate section runs the app's own control.** `SCREENS.album` takes a `gauge`, so that screen is
+  re-rendered every frame with the gauge tracking a drag up to the score.
+- Theme and aurora carry across the scene instead of cutting.
+
+#### In-phone motion follows the app's spec, not the video's
+
+This is the difference between reading as an app and reading as a slideshow with a phone in it, and it
+is worth stating in numbers. Measured across this repo: iOS animates in **0.12–0.28s** (`.easeInOut(0.2)`
+and `.easeInOut(0.15)` are the two most common by a wide margin), and the web app's keyframes in
+`apps/web/app/globals.css` run **0.14–0.3s over 4–10px**, on `cubic-bezier(.16, 1, .3, 1)`.
+
+An earlier cut moved the screen 54px over 0.75s and then drifted the content for the rest of the
+section — roughly 4x too slow, 8x too far, and continuous. **A real app is still until it is touched,
+then moves fast and stops.** So the phone holds still and fires short bursts: a screen change on the
+app's curve (0.22s, 16px), one scroll flick with momentum decay, then nothing.
+
+Two traps in copying a control's curve. `FlowerRateControl.swift` pops the badge on release with
+`.timingCurve(0.34, 1.5, 0.64, 1)`, but that curve scales the **badge** — driving the *score* through it
+made the gauge read 5.0 for a few frames, a rating nobody gave. And a drag has no easing at all: while
+the finger is down the value is simply wherever the finger is, so the sweep is linear, not eased.
+
+**The flower strip does not slide.** It was drawn to bleed across the seams of a swiped carousel; dragging
+it continuously through the video turned a quiet background texture into the most moving thing on screen.
+Each section sits on its own slice of the strip, exactly where the still puts it, and the slices
+cross-dissolve with the background.
+
+`seek(t)` is **a pure function of time** — no CSS transitions, no `requestAnimationFrame`, no wall clock
+— so a frame is identical whenever it is asked for. That is what makes frame-at-a-time capture valid,
+and a crashed run resumable: existing frames are skipped unless `--force`.
+
+`render-frames.mjs` keeps **one** browser open and drives it over CDP through Node's global WebSocket,
+so no dependency is added. That matters: `export.mjs` spawns a browser per image, fine for six stills
+and hopeless for 468 frames — **109s versus roughly 25 minutes**.
+
+#### reels/ is a different renderer, not a different canvas
+
+`promo/` was the store composition trimmed and resized, and it still read as a store screenshot in a
+feed — because the composition was the problem, not its proportions. A headline band on top and a phone
+standing in a cream margin below is an App Store move. `?reels` throws it away and keeps only what is
+worth keeping, the real mock screens and the app's real motion spec:
+
+- **the app fills the frame** — no device chrome, no margin. The mock is 440x956, the canvas 1080x1920,
+  so it is scaled to cover the width and the ~427px of overflow is cropped evenly. The status bar and
+  the tab bar are the least interesting parts of any screen.
+- **type sits on the app** with a scrim, the way the format captions things, instead of in a reserved band
+- **cuts are hard** — a dissolve between two full-frame UIs is mush — with a short punch carrying the cut
+- **beats are 1.9–2.8s**, not four
+
+**The structure is borrowed, not invented.** Three earlier cuts were this repo's own layout
+re-proportioned, which is why each still read like a store screenshot. The current one follows what app
+demo videos that work actually do: **show end first** (one of the highest-performing hook types, ~22% —
+beat 1 is the finished taste map, the result before the method), **motion in the first frame** (cited as
+the single most reliable hook enhancer), **visible tap points** (Apple's Journal walkthrough highlights
+where it touches; Duolingo layers motion over real screens, text only, no narration), and **grouping by
+user logic rather than menu order** (Klarna, Traveloka).
+
+**A visible touch is the piece every earlier cut was missing.** A screen that changes by itself reads as
+a video *of* a UI; a finger pressing and dragging reads as someone using one. `touch: { x1, y1, x2, y2,
+at, dur }` per beat, in canvas coordinates — it arrives ~0.18s before contact, presses with a ripple,
+drags linearly, lifts. It must end **on** the control: the rate control keeps its badge in place and
+fills the arc, so a finger trailing below reads as dragging empty space.
+
+Two traps. **`shiftY`** nudges a screen inside its crop so the UI's own headings fall below the caption
+band; without it the caption landed on the album title, bold type on bold type. And a slide with
+**`end: true`** gets a full-frame scrim rather than the top band, because a centred type-only beat
+otherwise sits on the list underneath.
+
+#### promo/ is a different brief, not a different size
+
+A store listing and a reel are opposite problems: someone on a store page has already decided to look,
+someone on Reels is deciding whether to keep scrolling, in about a second, usually with the sound off.
+So `promo/` drops the logo-first opening (the most-skipped start in the format — the brand moved to the
+end), carries **three** features instead of six (2.5s each is too short to mean anything), and opens cold
+on the rate gesture, which is strange enough to stop a thumb and obvious enough to need no caption.
+
+Two scene features exist for it. Each slide may set its own **`dur`**, because equal beats are what make
+a promo feel like a slideshow — the promo runs 4.6 / 4.0 / 3.4 / 2.2s. And each may set a **`camera`**
+(`{ scale, x, y }`, interpolated across the handover): moving the viewpoint is a film move and is honest,
+unlike faking app motion. Check the arithmetic when you change `camera.scale` — at `w: 790` the device is
+1655 tall with its origin at 42%, so scale 1.26 puts its top edge at y≈429, straight through a headline
+ending at y≈493.
+
+Timing lives in the config's `reel: { hold, transition, fps, rateAt, rateDur }`. The 9:16 layout is arranged around
+Instagram's chrome, which covers roughly the bottom third. No audio: sound is chosen at upload.
+
+`make-reel.mjs` **without** `--frames` still cuts a slideshow from the six stills, kept for a quick look.
+Two traps if you touch it: a dissolve between text-heavy cards leaves both headlines legible and they
+overlap into mush (use a slide), and ffmpeg's `zoompan` `d` is frames per *input* frame, which against a
+looped still multiplies the length — the first build was 180s instead of 13.
+
+
+**Scaling is not the same as re-laying-out.** The App Store slide is a tall column with the whole phone
+standing inside it. A 4:5 post is relatively much wider, so a full phone would have to shrink until the
+screen content is unreadable -- the one thing these slides exist to show. The `ig/` set instead keeps the
+phone legible and lets it **bleed off the bottom edge**, holding the top half of the screen in frame.
+Any new format needs that kind of decision made for it; only the type scale comes for free.
+
+Two things are deliberately *not* driven by `--s`, because they are per-format authoring choices: device
+`x`/`y`/`w` and card `x`/`y`, which each config states in its own canvas pixels, and the `panorama` strip,
+whose seams sit at multiples of `canvas.width`.
+
+**The export is not byte-deterministic.** Two runs of identical code differ by a few bytes, so a byte
+comparison is not a regression test. Check the printed dimensions (the export already exits non-zero on a
+mismatch, which is what App Store Connect rejects on) and look at the image.
+
 ## Design system
 
 The slides follow the design language the web app and the iOS app already share, so the listing reads as the same product.
