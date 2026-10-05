@@ -458,6 +458,30 @@ async function loadOrCreateGroup(
   const match = (rows ?? []).find(r => releaseGroupKey(r.title) === wantKey);
 
   if (match) {
+    /* THE GROUP MUST NOT INHERIT AN EDITION'S IDENTITY. Editions collapse onto one group by design -
+       releaseGroupKey strips "(Deluxe)", "(Remastered)", "(Instrumental)" and the rest - but whichever
+       edition happened to be ingested FIRST used to set the group's title and date and keep them.
+       B-Free's "FREE THE MANE 3 (Instrumental)" arrived before the album itself, so the real
+       2025-10-03 release was filed under the instrumental's name and 2026-02-17 date and was
+       effectively invisible. Four more groups across the catalogue had the same defect.
+
+       A group is named for the work, so: prefer a BASE title over an edition title, and always keep
+       the EARLIEST date. Both are narrowing corrections - the title only moves from an edition form to
+       a plain one, never the reverse, and the date only moves backwards - so a later edition can never
+       overwrite good data with its own. */
+    const patch: Record<string, string> = {};
+    const incomingIsBase = stripEditionSuffix(args.title) === args.title;
+    const storedIsEdition = stripEditionSuffix(match.title) !== match.title;
+    if (incomingIsBase && storedIsEdition) patch.title = args.title;
+    const incomingDate = saneReleaseDate(args.firstReleaseDate);
+    if (incomingDate && (!match.first_release_date || incomingDate < match.first_release_date)) {
+      patch.first_release_date = incomingDate;
+    }
+    if (Object.keys(patch).length && !opts.dryRun) {
+      const { error } = await db.from('release_groups').update(patch).eq('id', match.id);
+      if (error) throw new Error(`release_group correct "${match.title}": ${error.message}`);
+    }
+
     // Load the existing canonical edition so cross-run canonical logic is correct.
     const { data: canon } = await db
       .from('releases')
