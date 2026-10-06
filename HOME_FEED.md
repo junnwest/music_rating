@@ -12,10 +12,28 @@ before hydration. Only public, active, explicitly human authors qualify; the
 viewer's own posts are excluded. Mixes must still be public and visible under
 the requesting viewer's RLS.
 
-Normalized score: musical relevance 35%, author relevance 20%, modest text/context
-value 15%, freshness 15%, distinct human response 10%, novelty 5%. Freshness has
-a 48-hour half-life. Follower count, verification, and the post's star score
-do not buy placement. Text value saturates; it is a proxy, not a quality model.
+Normalized score (`home-v5`, 2026-10-06): musical relevance 30%, thoughtfulness 22%,
+familiarity/novelty 17% shared, author relevance 14%, freshness 10%, distinct human
+response 7%. Freshness has a 48-hour half-life. Follower count, verification, and the
+post's star score do not buy placement.
+
+**Thoughtfulness is not a length proxy.** The previous term scored characters and said
+so. `thoughtfulness()` caps length at 40% of its score and derives the rest from
+DISTINCT TOKENS and sentence count — distinct tokens rather than a type-token ratio,
+because TTR fails on exactly the input it has to catch: `"xxxx…x"` is one token
+repeated, so its TTR is a perfect 1.0. Measured: a reaction (짱) 0.027, 5,000
+characters of padding 0.124, a real three-sentence review 0.58. The token threshold
+drops for Hangul/CJK-dominant text — a 어절 carries more than an English word, and a
+single threshold would rank Korean reviews below English ones of the same substance in
+a Korean-first app. It separates a reaction from a paragraph; it does not judge taste.
+
+**Familiarity and novelty are one budget, not two bonuses.** A viewer who has rated an
+album has an opinion to compare and is the likeliest reader of a review of it; a viewer
+who knows the artist can at least place it. But that pulls against discovery, so the two
+share a single weight split by the viewer's own adventurousness setting: at 50 a rated
+release outranks an unknown one, at 100 that inverts. Relevance remains the largest
+single term, and a test asserts a much better predicted match still beats a familiar
+one — familiarity is a tiebreaker, not an echo chamber.
 
 Taste uses the existing genre embeddings and separate taste clusters, canonical
 artist IDs, era and scene. The viewer's rating baseline shrinks toward 3 for

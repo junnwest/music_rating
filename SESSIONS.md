@@ -4,6 +4,75 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-10-02 → 10-06 (Windows, pipeline PC) — explore ranking, duplicate merging, Korean metadata, and the
+reported data gaps.** Long session; the through-line is that most of it came from checking results rather than
+trusting them.
+
+**Explore ranking (`home-v4` → `home-v5`).** Two signals in `lib/feed/ranking.ts` worked against the brief.
+`value` scored character count and said so in its own comment; it is replaced by `thoughtfulness()`, where
+length is capped at 40% and DISTINCT TOKENS plus sentence count carry the rest. Distinct tokens rather than a
+type-token ratio, because TTR fails on exactly the input it must catch — `"xxxx…x"` is one token repeated, so
+its TTR is a perfect 1.0. Measured: a reaction (짱) 0.027, 5,000 characters of padding 0.124, a real
+three-sentence review 0.58. The token threshold drops for Hangul/CJK-dominant text, because a 어절 carries more
+than an English word and a single threshold would have ranked Korean reviews below English ones of the same
+substance in a Korean-first app. Separately `novelty` REWARDED unfamiliar artists, the opposite of the ask;
+familiarity (rated album > known artist > stranger) now shares ONE budget with novelty, split by the viewer's
+own adventurousness setting, so at 50 a rated release ranks above an unknown one and at 100 that inverts.
+Relevance stays the largest term and a test asserts a better predicted match still beats a familiar one.
+Both clients get this from one change: web and iOS both call `/api/feed/home`, and iOS has no ranking of its
+own. (The older `/api/feed` route does not use this service at all — nothing calls it; possibly retire.)
+
+**Duplicate merging.** `dedup-by-duration` skipped any set containing a rating, which was self-defeating:
+every FK into `release_groups` is ON DELETE CASCADE, so skipping was its only safe option — and the effect was
+that the duplicates users had interacted with were the only ones guaranteed to survive. Rated sets are now
+merged (latest rating per user wins); every other user-owned table is a refusal rather than a migration.
+Applied 1,631 rows across 1,542 sets. An **edition guard** was added after review caught
+`"Tales of the Eternal Kingdom"` queued to absorb its own acoustic edit — it held back 84 sets.
+
+Then a reported bug found the gap in that guard: **`track_ratings` is keyed on RECORDING, one cascade hop
+below every table I had enumerated.** Deleting a group cascades `release_groups → releases → release_tracks`,
+orphaning a recording without touching it, so a rated song survives with no release and therefore no cover
+("makkeoli banger lost its cover"). One rating, one user, moved to the surviving recording; the guard now
+counts through both hops.
+
+**Korean metadata.** Four sources were measured before anything was built. iTunes **KR storefront** — which
+`itunes-client.ts` could always reach but never asked, because its store rotation exists for AVAILABILITY and
+returns on the first match (US, which answers with the romanization) — yields 8%, **59 names**. Discogs ~0% on
+this population (its 57k Korean releases skew physical; the gap is long-tail digital). Wikidata 949 albums,
+the same population Wikipedia already covers. **ManiaDB** is the real source and the only one with the digital
+long tail; sillajuku has permission, HTTPS and curl are required (`fetch()` gets 403 — the WAF fingerprints
+below the header level), and it is Korean-INDEXED, so it chains off `name_native` rather than bootstrapping.
+**67 album titles** written.
+
+The best win was an accident: writing 컨츠리 꼬꼬 returned a duplicate-alias error, because MusicBrainz had supplied
+that alias long ago. These artists were SEARCHABLE in Korean all along; only the DISPLAY name was missing,
+because `backfill-native-aliases-mb.ts` writes `artist_aliases` and never `name_native`. **151 names**
+promoted from aliases already held, no API calls. Two near-misses were caught in review: 204 no-ops
+(잔나비 → 잔나비) and, worse, `SUHO → 김준면` / `JIN → 박명은` — LEGAL names. MusicBrainz separates those
+from artist names and `artist_aliases` has no type column, so `primary_for_locale` is the only thing encoding
+the claim; requiring it cut 1,122 candidates to 151. **Storing MB's alias type is the one schema change that
+would unlock most of the other 971.**
+
+**Ingest fix — a release group must not inherit an edition's identity.** Editions collapse onto one group by
+design, but whichever arrived FIRST kept the title and date: B-Free's `FREE THE MANE 3 (Instrumental)` landed
+before the album, so the real 2025-10-03 release was filed under the instrumental's name. Four more groups
+catalogue-wide had it. A group now prefers a BASE title and the EARLIEST date — both corrections only narrow,
+so a later edition can never overwrite good data.
+
+**Reported gaps, all four different causes.** 황세현's Korean title existed in no reachable source (set by hand,
+corroborated against the K-hiphop wiki; its deluxe cover is on no source at all). **재달/JaeDal** seeded from
+Deezer — MusicBrainz has the entity with ZERO release groups, so queuing it would have made another empty
+artist. **unofficialboyy** +17 and **B-Free** +63 releases: both had only a MusicBrainz link, so the
+discography audit (which needs an iTunes link) had never seen them — B-Free's catalogue had stopped dead at
+2020-11-15. `Time To Glo 3` was not missing, just released the previous day.
+
+Counts: 210 Korean artist names, 67 Korean album titles, 1,631 duplicate rows merged, 80 releases added.
+Still open: ~8,200 artists unreached by ManiaDB (~34h at their speed), 69 left by throttling, and **6,644 of
+7,145 Korean `native_title`s are byte-identical to the title** — written by older backfills onto albums that
+were already Korean, so any coverage metric built on `native_title IS NOT NULL` overstates by ~13×.
+
+---
+
 **2026-10-05 (Mac) — App Review rejected build 26 (Guideline 2.1(a), iPhone 17 Pro Max / iOS 27.0): "Sign in with Apple … an error message displayed." Root cause found: a Supabase config change, not app code.**
 
 - **Sentry** (sillajuku/apple-ios) has `Auth.AuthError: "Unacceptable audience in id_token: [com.sillajuku.app]"` ×16 since 2026-08-11, last at 2026-10-05 18:36 UTC, which is the review. The reviewer then signed up with Google instead (`tester76` / "Ethan East", created 18:36:58).
