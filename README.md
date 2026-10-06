@@ -112,6 +112,46 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 > **2026-09-27 (Windows, web) — Profile, song ratings, Taste, and Explore updates.** Profile artist links, direct rating/review editing, expandable three-line bio, editable username, single-album Taste layout, song score-only rating list, and a comment/affinity/follower-weighted Explore ranking are implemented. **Both migrations applied to production:** `20260927000000_song_ratings_list.sql` and `20260927000001_feed_author_followers.sql`; a live score-only song rating was returned and the follower aggregation responded. Browser click-through remains to do. See SESSIONS.md and PIPELINE_CHECKS.md for the post-migration catalog check.
 
+> **🔵 SESSION CLOSE (2026-10-06, Mac) — covers 2026-09-27 → 10-06. Everything committed and pushed; every migration below ✅ applied and verified live. Detail: SESSIONS.md (newest first).**
+> - **App Store:** build **26 rejected** (2.1(a), Sign in with Apple error). Root cause from Sentry: the Supabase Apple provider's **Client IDs** had lost `com.sillajuku.app` (only the web Services ID `com.sillajuku.app.signin` was left), so every native Apple sign-in since Aug 11 failed with "Unacceptable audience in id_token" (×16; 0 accounts have an Apple identity). **Build 27** is set and compiles; the upload was blocked by Apple's **updated Program License Agreement**, which also disables Xcode's cloud-managed distribution signing ("No iOS Distribution certificate"); no certificate change is needed.
+> - **Search:** 1–2 character queries (독, 밤, 사랑, iu) used to time out and now return in ~0.3s (`20260929000000/1`). Albums are found by Korean / alias artist names, e.g. 에픽하이 (`20260930000001`). Songs can be **Top Match**, ranked by album popularity (`…0002`). **"title + artist"** song search works, e.g. 독 이센스 or rain song epik high (`…0004`–`…0007`: bounded, whole credited-name matching, partial titles can't take Top Match). Web search allows 1-character CJK. A later fix: `20260930000000` NFC-normalized recordings after Windows's NFC `normalize_text`.
+> - **Artist Songs tab ordered by popularity** (Last.fm play counts, new `/api/artist/top-tracks`, 7-day cache). `LASTFM_API_KEY` is on Vercel and verified in production; iOS gets it in build 27.
+> - **iOS UI:** one **featured badge** on posts, with a picker on your profile (`20260928000002`). @handles never wrap. Own mix posts have ⋯ (edit caption / share / delete), and "shared a mix" is gone. **Flower rate buttons** in search results and the album tracklist. Founding badge is liquid glass, muted `#CF7A45`. Bios clamp at 3 lines with See more. Taste: country mix + "View N ratings" drill-down, the 02 carousel is faster and scrolls vertically over the covers, and the page is fully Korean. Add-tab refresh really refreshes. Sort labels are 높은/낮은 평가순. Quests: award icon, 1-friend quest removed, Invite button; Settings → Invite friends. **13 alternate app icons** with a thumbnail picker (`apps/ios/scripts/generate-alt-icons.py`).
+> - **Web / legal:** **PIPA Privacy Policy** (ko + en) and tighter Terms. Instagram opt-out switch, `profiles.allow_social_feature` (`20260928000000`). Invite codes only within 24h of signup (`20260928000001`). Phone-verification consent on iOS. Avatars on web posts.
+> - **Merged Windows's server-driven Home feed** (`api/feed/home`). Its iOS half didn't compile; fixed on the Mac. Windows can't build iOS, so iOS edits from there need a Mac build.
+> - **Data:** deleted `kukurella` (backup in `apps/web/backups/`); they re-registered 20 min later.
+>
+> **Next session (Mac):**
+> 1. **Ship build 27:**
+>    - The Account Holder accepts the updated PLA (developer.apple.com/account, plus App Store Connect → Business).
+>    - Supabase → Auth → Providers → Apple → **Client IDs = `com.sillajuku.app.signin,com.sillajuku.app`**.
+>    - Device test of Sign in with Apple with a **fresh Apple ID**.
+>    - Archive → Distribute → App Store Connect → **Upload**.
+>    - In App Store Connect, swap version 1.0 to build 27, reply to the review message and resubmit.
+> 2. **Privacy commitments:**
+>    - Delete `apps/web/backups/email-accounts-deleted-…json` and `account-deleted-kukurella-…json` **by 2026-10-26**.
+>    - PostHog + Sentry retention ≤ 1 year.
+>    - Confirm the Upstash region.
+>    - Update the App Store **App Privacy** labels (phone number, diagnostics).
+>    - Short lawyer review before public launch.
+> 3. **Instagram:** announce the credited-post change; **no credited (@username) post before ~2026-10-27**. Skip private / opted-out / deactivated users.
+> 4. **Remove the junnwest preview override** in `apps/ios/sillajuku/sillajuku/Components/DebugOverrides.swift` once done previewing app icons. It's Debug-only but makes the quest-badge colour picker appear, and picking a colour is permanent.
+> 5. **Device checks** (build 27):
+>    - search: 1-character, title + artist, Top Match songs;
+>    - tracklist flowers; featured badge picker; mix-post ⋯ menu;
+>    - Taste 02 vertical scroll; Add-tab refresh;
+>    - app icon picker; bio See more;
+>    - plus the older ones: founding claim, follow request → approve, deactivate → reactivate.
+> 6. **Open, not started:**
+>    - web header search dropdown still needs 2+ characters;
+>    - duplicate recordings show twice on artist Songs tabs;
+>    - iOS `loadSongs` uses `ilike` on `artist_display` (web uses `eq`);
+>    - `testji` (non-bot test account?) appears in Explore;
+>    - "remove follower";
+>    - `profiles` is world-readable incl. `push_token`;
+>    - `/api/rankings/personalized` takes an unauthenticated `userId`;
+>    - disable the Supabase email provider; verify a Korean SMS number + Twilio geo permissions.
+>
 > **🔵 SESSION CLOSE (2026-09-26, Mac) — big day: push fixed, private accounts, deactivation, founding badge + claim ceremony, Quick Add removed. All migrations ✅ applied + verified; everything committed and pushed. Detail: SESSIONS.md (2026-09-26 entries, newest first).**
 > - **Push notifications** ✅ working: new APNs key `NNB277RA2M` (Sandbox & Production) on Vercel + Mac `.env.local`; `lib/apns.ts` retries the other APNs environment. *Leftovers:* copy `APNS_KEY_ID`/`APNS_PRIVATE_KEY` to the **Windows** `.env.local`; revoke the old `48K…` and `GBCLCU25MX` keys.
 > - **Private accounts** (`20260926000000`): Instagram-style. Only approved followers see a private user's content (RESTRICTIVE RLS); follows become requests; approve/decline in Notifications (iOS + web); private scores still count anonymously.
@@ -120,32 +160,6 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 > - **Popular Searches** (`20260926000001`): artists/releases only, catalog spelling.
 > - **iOS polish:** unread-count bell badge; song page rates like the album page (no comments); Disc N tracklist headers; Mix-tab counts fixed; "Post to Feed"; comment sheets open with the keyboard together, large-only detent, swipe/tap to dismiss keyboard, whole bottom area opens it; flower hold delay 0.03s; comment chevron left of score.
 > - **Removed:** Quick Add (iOS + web; `get_quick_add_*` RPCs left in DB, unused); all 11 email-login accounts (backup `apps/web/backups/email-accounts-deleted-2026-09-26T21-59-52-860Z.json`).
->
-> **🍎 (2026-10-05) — App Review rejected build 26: Sign in with Apple failed.** Cause: Supabase Apple provider Client IDs lost `com.sillajuku.app` (Sentry: "Unacceptable audience in id_token" ×16 since Aug 11). ⏳ Set Client IDs = `com.sillajuku.app.signin,com.sillajuku.app`, test on device with a fresh Apple ID, then upload **build 27** (already set) and resubmit. See SESSIONS.md.
->
-> **🔎 (2026-09-30, Mac) — Song search by title + artist ("독 이센스").** ✅ `…000004`–`…000007` applied and verified (0.2–0.5s; whole credited-name matching; partial-title hits can't take Top Match). iOS side ships with the next build. See SESSIONS.md.
->
-> **🎵 (2026-09-30, Mac) — Artist Songs tab ordered by popularity (Last.fm).** ✅ `LASTFM_API_KEY` on Vercel (Production + Preview), redeployed (`a3518ec`), and verified in production: Primary, E SENS and IU return ranked songs. iOS part ships with the next build. See SESSIONS.md.
->
-> **🎯 (2026-09-30, Mac) — Songs can be Top Match (독 → E-Sens's 독, not Snoop Dogg).** ✅ `20260930000002_song_search_score.sql` applied and verified. iOS side ships with the next build. See SESSIONS.md.
->
-> **🔎 (2026-09-30, Mac) — Album search by Korean artist names (에픽하이, 이센스).** ✅ `20260930000001_search_albums_by_artist_name.sql` applied and verified. Web search now allows 1-character Korean/Japanese/Chinese too. Migrations go in `apps/web/supabase/migrations/` (the root `supabase/migrations/` is legacy). See SESSIONS.md.
->
-> **🔎 (2026-09-29, Mac) — Short searches (1–2 chars: 독, 밤, 사랑, iu) fixed.** ✅ `20260929000000` (indexes) + `20260929000001` (short-query path) applied and verified live: 0.3–0.5s, 독 finds the eSNs song. See SESSIONS.md.
->
-> **🏷️ (2026-09-28, Mac) — Posts show one badge (featured badge picker on your profile), handles never wrap.** ✅ `20260928000002_featured_badge.sql` applied 2026-09-28. Also today: own mix-post ⋯ menu, "shared a mix" removed, Taste 02 carousel scroll + sensitivity, Add-tab refresh, sort labels, 6 new app icons. See SESSIONS.md.
->
-> **📣 (2026-09-27, Mac) — Instagram features of users' ratings: opt-out switch + policy disclosure (committed 2026-09-28).** ✅ Migrations `20260928000000_social_feature_opt_out.sql` and `20260928000001_referral_redeem_window.sql` applied 2026-09-28. Announce the Instagram change to users and wait until **~2026-10-27** before the first credited (@username) post; skip users with a private account, the switch off, or deactivated. See SESSIONS.md.
->
-> **⚖️ (2026-09-27, Mac) — Privacy Policy rewritten for PIPA (ko + en), Terms tightened, iOS phone-verification consent (uncommitted).** To-dos only you can do: delete the account backups in `apps/web/backups/` by **2026-10-26**; set PostHog + Sentry data retention ≤ 1 year; confirm the Upstash region; update App Store Connect **App Privacy** labels (phone number, diagnostics); a short lawyer review before public launch. See SESSIONS.md.
->
-> **🍎 (2026-09-27, Mac) — uncommitted iOS work:** Taste country mix + "View N ratings" drill-down (port of web's 2026-09-26 Taste changes), bigger Profile top-bar icons, Taste section 02 subheader raised. Builds; needs a device check. See SESSIONS.md.
->
-> **Next session:**
-> - **Ship iOS:** build number is now **27** (both configs) — archive and upload to TestFlight; none of today's iOS work is on TestFlight yet. Re-archive to include the 2026-09-27 Taste work.
-> - **Device checks:** founding claim (success path), two-account follow request → approve, deactivate → reactivate, comment keyboard behaviour, Disc headers (Flume *Skin*).
-> - **Close loopholes:** disable the Supabase **email provider** (Auth → Providers → Email; nobody uses it now); verify one **Korean** phone number via SMS and check **Twilio geo permissions**; decide whether to expand the phone country picker (47 countries) to all.
-> - **Open, not started:** "remove follower" for private accounts; `profiles` is world-readable including `push_token` and notification settings (lock down); `/api/rankings/personalized` still takes an unauthenticated `userId`; the song ⋯ menu still offers "Edit Comment".
 >
 > **🌍 (2026-09-26, Windows) — `artists.country` backfill available: `npm run backfill:artist-country`** (60,550 artists lack a country; MB has one for nearly all). Rated artists done (13/14). The full backlog is ~17h at MB's 1 req/s — run it on the pipeline device (or in `--limit=` chunks) when convenient; the pipeline also self-heals on re-poll once it pulls this code.
 >

@@ -4,6 +4,19 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-10-06 (Mac) — SESSION CLOSE (2026-09-27 → 10-06).** Pulled and merged Windows's latest (dedup guards, maniadb paging, ingest title/date guard, its own session close). No conflicts this time. All Mac work is committed and pushed; every migration from this stretch is applied and verified live. The per-change entries below have the details. Hand-off:
+
+- **Build 27 is ready but not uploaded.** Two things block it:
+  - Apple's updated Program License Agreement isn't accepted yet. That also disables Xcode's cloud-managed distribution signing, which is why it reported "No iOS Distribution certificate"; no certificate is needed.
+  - The Supabase Apple **Client IDs** still need `com.sillajuku.app` added back (the cause of build 26's rejection).
+- **Time-boxed promises:**
+  - Delete the account backups by **2026-10-26** (Privacy Policy §3).
+  - No credited Instagram post before **~2026-10-27** (Policy §13 notice period).
+- **Debug-only junnwest override** (`DebugOverrides.swift`) is still in place; remove it when done.
+- **Full checklist:** README → START HERE → "SESSION CLOSE (2026-10-06, Mac)".
+
+---
+
 **2026-10-02 → 10-06 (Windows, pipeline PC) — explore ranking, duplicate merging, Korean metadata, and the
 reported data gaps.** Long session; the through-line is that most of it came from checking results rather than
 trusting them.

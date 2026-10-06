@@ -1,5 +1,18 @@
 # Web Parity Checklist
 
+> **Parity status (2026-10-06):**
+> - **Search:** same on both. 1-character CJK queries, Korean/alias artist names → albums, songs in Top Match, "title + artist" song search. All server-side, plus a shared client rule (`lib/searchQuery.ts` ↔ `SearchViewModel.isSearchable`). **Gap:** the web header dropdown (`/api/search/suggest`) still needs 2+ characters.
+> - **Artist Songs tab, popularity order:** both (`/api/artist/top-tracks`).
+> - **Home feed:** both use `api/feed/home` (Windows rebuild).
+> - **Taste:** country mix + "View N ratings" drill-down on both.
+> - **iOS-only, by design or not yet ported:**
+>   - featured-badge picker (web posts show no badges at all);
+>   - own mix-post ⋯ menu (edit caption / share / delete). Web `MixPostCard` has delete only;
+>   - alternate app icons;
+>   - founding claim;
+>   - 3-line bio clamp: both (web did it first).
+> - **Legal:** the Privacy Policy and Terms are web pages, which iOS links to. The Instagram opt-out switch is in both Settings screens.
+
 > **Parity status (2026-09-26):**
 > - **Private accounts + follow requests** — both platforms (locked profile, Request/Requested, approve/decline in notifications). DB-enforced, so parity gaps can't leak data.
 > - **Deactivate Account** — both (Settings + reactivate gate on sign-in).
