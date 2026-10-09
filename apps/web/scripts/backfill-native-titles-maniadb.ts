@@ -74,7 +74,7 @@ const pick = (block: string, tag: string): string | null => {
   return m ? cdata(m[1]) : null;
 };
 
-interface MdbAlbum { id: string; title: string; date: string }
+interface MdbAlbum { id: string; title: string; date: string; image: string | null }
 
 /** One artist's albums. `null` means "could not tell" (throttled) — never "none". */
 async function albumsFor(koreanName: string): Promise<MdbAlbum[] | null> {
@@ -100,7 +100,8 @@ async function albumsFor(koreanName: string): Promise<MdbAlbum[] | null> {
         // matched to the day, and matching on the year alone would pair the wrong album whenever an
         // artist released twice in a year - which is common. Dropped rather than guessed.
         const precise = date.length === 8 && !date.endsWith('0000') && date.slice(4, 6) !== '00' && date.slice(6, 8) !== '00';
-        if (id && title && precise) out.push({ id, title, date });
+        const image = pick(raw, 'image');
+        if (id && title && precise) out.push({ id, title, date, image: image || null });
       }
       return out;
     } catch { await sleep(4000); }
@@ -149,7 +150,7 @@ async function main() {
     .slice(0, LIMIT);
   console.log(`  ${todo.length} artist(s) to check\n`);
 
-  let matched = 0, written = 0, throttled = 0, noAlbums = 0, ambiguous = 0;
+  let matched = 0, written = 0, throttled = 0, noAlbums = 0, ambiguous = 0, covers = 0;
   let n = 0;
   for (const a of todo as any[]) {
     // Printed per artist: with back-off this can idle for half a minute, which otherwise reads as a hang.
@@ -162,9 +163,9 @@ async function main() {
 
     const { data: ours } = await db
       .from('release_groups')
-      .select('id, title, native_title, first_release_date')
+      .select('id, title, native_title, cover_url, first_release_date')
       .eq('primary_artist_id', a.id)
-      .is('native_title', null)
+      .or('native_title.is.null,cover_url.is.null')
       .not('first_release_date', 'is', null);
 
     // How many of OUR releases sit on each day, so a one-to-one match can be insisted on.
@@ -189,9 +190,22 @@ async function main() {
       if (sameDay.length !== 1) { if (sameDay.length > 1) ambiguous++; continue; }
       // A ManiaDB record may be spent once. Belt and braces alongside the check above.
       if (usedTheirs.has(sameDay[0].id)) { ambiguous++; continue; }
-      const korean = albumTitleFor(sameDay[0].title, a.name_native);
-      if (!korean || !HANGUL.test(korean) || korean === rg.title) continue;
       usedTheirs.add(sameDay[0].id);
+
+      /* COVERS TOO, not just titles. 114,330 release groups have no cover at all and they skew
+         Korean, which is exactly where ManiaDB is strong - it had art for every 황세현 release when
+         CAA, Last.fm, Deezer and iTunes between them had none for the deluxe. The artist is already
+         resolved and the album already matched on date, so the image costs no extra request.
+         Its URLs are http-only (https answers 403); /api/img proxies them, which is why maniadb.com
+         is on that allowlist. Only ever fills a NULL - an existing cover is never replaced. */
+      if (!rg.cover_url && sameDay[0].image) {
+        const { error: ce } = await db.from('release_groups')
+          .update({ cover_url: sameDay[0].image }).eq('id', rg.id).is('cover_url', null);
+        if (!ce) covers++;
+      }
+
+      const korean = albumTitleFor(sameDay[0].title, a.name_native);
+      if (!korean || !HANGUL.test(korean) || korean === rg.title || rg.native_title) continue;
 
       matched++;
       if (!APPLY) { if (matched <= 25) console.log(`  ${a.name} — "${rg.title}"  ->  "${korean}"  (${ymd})`); continue; }
@@ -208,6 +222,7 @@ async function main() {
   console.log(`  artists checked:      ${todo.length - throttled}`);
   console.log(`  titles matched:       ${matched}`);
   if (APPLY) console.log(`  native_title written: ${written}`);
+  if (APPLY) console.log(`  covers filled:        ${covers}`);
   console.log(`  artist not in ManiaDB:${noAlbums}`);
   console.log(`  ambiguous (same date):${ambiguous}`);
   if (throttled) console.log(`  throttled, left for the next run: ${throttled}`);
