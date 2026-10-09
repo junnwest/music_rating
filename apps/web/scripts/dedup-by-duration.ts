@@ -55,17 +55,35 @@ const OUT = arg('--out') ?? 'scripts/data/dedup-by-duration.json';
 // Applies in reviewed batches rather than all at once: 512 deletions against production is not a
 // thing to do in one unattended shot, and the sets are independent so a partial run is consistent.
 const LIMIT = Number(arg('--limit') ?? 0);
+// Seconds of per-track disagreement tolerated. 0 restores the old exact-hash behaviour.
+const TOLERANCE = Number(arg('--tolerance') ?? 1);
+// Days apart two releases may be when only the TOLERANCE made them match.
+const DATE_WINDOW = Number(arg('--date-window') ?? 45);
+/* --ids a,b[,c] merges a SPECIFIC, already-verified set, skipping detection entirely. Detection by
+   duration is evidence; a human confirming "these two are the same record" is better evidence, and a
+   reported duplicate should not have to satisfy a heuristic to get fixed. The merge still runs every
+   guard below - rating migration, the cascade refusal, native_title preservation, survivor choice. */
+const ONLY_IDS = (arg('--ids') ?? '').split(',').map(x => x.trim()).filter(Boolean);
+const withinDays = (a: string | null, b: string | null, days: number): boolean => {
+  if (!a || !b) return false;                       // an unknown date corroborates nothing
+  const ta = Date.parse(a), tb = Date.parse(b);
+  return Number.isFinite(ta) && Number.isFinite(tb) && Math.abs(ta - tb) <= days * 86400000;
+};
 
 interface Row {
   id: string; title: string; native_title: string | null; type: string; date: string | null;
   artist: string; artist_id: string; source: string; editions: number; tracks: number;
-  ratings: number; sig: string;
+  ratings: number; sig: string; secs: number[];
 }
 
 // True when a title carries non-Latin script (Hangul, Kana, CJK, Cyrillic). Written as a code-point
 // test rather than a regex character class so no invisible escape characters live in the source.
 // Words that mark a release as a distinct edition rather than the same record under another name.
-const EDITION = ['acoustic', 'live', 'remix', 'remaster', 'remastered', 'deluxe', 'instrumental',
+// Language variants are distinct releases that share a backing track exactly - a Tamil dub of a Hindi
+// soundtrack has identical durations by construction, and a duration match says nothing about them.
+const EDITION = ['tamil', 'hindi', 'telugu', 'malayalam', 'kannada', 'japanese', 'korean', 'mandarin',
+  'cantonese', 'english ver', 'japanese ver', 'korean ver', 'chinese ver',
+  'acoustic', 'live', 'remix', 'remaster', 'remastered', 'deluxe', 'instrumental',
   'karaoke', 'demo', 'edit', 'version', 'ver.', 'mix', 'reissue', 'anniversary', 'expanded',
   'unplugged', 'inst.', '에디션', '리마스터', '라이브'];
 
@@ -89,40 +107,74 @@ async function query<T>(sql: string): Promise<T[]> {
 }
 
 async function main() {
-  // The signature is built per release group from the SECOND-rounded durations of its tracks, so an
-  // iTunes row and a MusicBrainz row describing one album land on the same hash regardless of title.
-  const sql = `
+  if (ONLY_IDS.length >= 2) return mergeSpecific(ONLY_IDS);
+  /* PAIRING HAPPENS IN SQL, clustering in code.
+     The comparison is per-track with a tolerance, which a hash cannot express - E SENS's 저금통 and its
+     iTunes twin Moneybox share twelve of thirteen durations exactly and differ on the thirteenth by ONE
+     second (127 vs 126), so their hashes differ and the pair survived every previous run. Measured
+     across the catalogue, +/-1s finds 1,274 pairs exact matching cannot see.
+     It is done in SQL rather than by shipping the duration arrays here: bucketing by (artist, track
+     count) and returning every array produced a 105MB response that could not even be parsed. Only the
+     matching PAIRS come back. */
+  const pairSql = `
     with d as (
       select rg.id, rg.primary_artist_id pid,
-             count(rec.duration_ms) n,
-             count(*) total,
-             md5(string_agg((rec.duration_ms / 1000)::text, ',' order by (rec.duration_ms / 1000))) sig
+             count(rec.duration_ms) n, count(*) total,
+             array_agg((rec.duration_ms / 1000) order by (rec.duration_ms / 1000)) secs
         from release_groups rg
         join releases r on r.release_group_id = rg.id
         join release_tracks rt on rt.release_id = r.id
         join recordings rec on rec.id = rt.recording_id
        group by 1, 2
     ),
-    -- EVERY track must be timed (n = total). The signature is built only from tracks that carry a
-    -- duration, so a row whose durations are mostly missing collapses to a short signature and can
-    -- collide with a genuinely shorter release: Giriboy's 21-track "기계적인 앨범" had 4 timed tracks
-    -- and matched the 4-track EP "Lonely 4Songs", which would have merged two different albums.
-    dup as (select pid, sig from d where n >= ${MIN_TRACKS} and n = total group by 1, 2 having count(*) > 1)
-    select rg.id, rg.title, rg.native_title, rg.release_group_type type, rg.first_release_date::text date,
-           rg.source, dd.pid artist_id, a.name artist, dd.sig, dd.n tracks,
-           (select count(*) from releases r2 where r2.release_group_id = rg.id) editions,
-           (select count(*) from ratings t where t.release_group_id = rg.id) ratings
-      from d dd
-      join dup on dup.pid = dd.pid and dup.sig = dd.sig
-      join release_groups rg on rg.id = dd.id
-      join artists a on a.id = dd.pid`;
+    -- EVERY track must be timed (n = total): a row whose durations are mostly missing collapses to a
+    -- short vector and can collide with a genuinely shorter release.
+    e as (select * from d where n >= ${MIN_TRACKS} and n = total)
+    select a.id ida, b.id idb,
+           (a.secs = b.secs) exact
+      from e a
+      join e b on b.pid = a.pid and b.id > a.id and array_length(b.secs, 1) = array_length(a.secs, 1)
+     where not exists (
+       select 1 from generate_subscripts(a.secs, 1) i where abs(a.secs[i] - b.secs[i]) > ${TOLERANCE}
+     )`;
+  const pairs = await query<{ ida: string; idb: string; exact: boolean }>(pairSql);
+  if (!pairs.length) { console.log('\n[dedup-duration] no candidate pairs'); return; }
 
-  const rows = await query<Row>(sql);
+  const candidateIds = [...new Set(pairs.flatMap(p => [p.ida, p.idb]))];
+  const rows: Row[] = [];
+  for (let i = 0; i < candidateIds.length; i += 500) {
+    const batch = candidateIds.slice(i, i + 500).map(x => `'${x}'`).join(',');
+    rows.push(...await query<Row>(`
+      select rg.id, rg.title, rg.native_title, rg.release_group_type type, rg.first_release_date::text date,
+             rg.source, rg.primary_artist_id artist_id, a.name artist, '' sig,
+             (select count(*) from releases r2 where r2.release_group_id = rg.id) editions,
+             (select count(*) from release_tracks rt2 join releases r3 on r3.id = rt2.release_id
+               where r3.release_group_id = rg.id) tracks,
+             (select count(*) from ratings t where t.release_group_id = rg.id) ratings
+        from release_groups rg join artists a on a.id = rg.primary_artist_id
+       where rg.id in (${batch})`));
+  }
+  const byId = new Map(rows.map(r => [r.id, r]));
+
+  /* WEAKER DURATION EVIDENCE DEMANDS STRONGER DATE EVIDENCE. An exact match is strong enough to pair
+     releases months apart - 9Cut 2020-12-23 and 9컷 2021-05-10 are one record. A pair that needed the
+     tolerance is not: three-track singles land within a second of each other by chance, and a first
+     run paired メロン記念日's アンフォゲッタブル (2007-03-28) with a different single from 2008-03-19. */
+  const parent = new Map<string, string>();
+  const find = (x: string): string => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x)!)!); x = parent.get(x)!; } return x; };
+  for (const id of candidateIds) parent.set(id, id);
+  for (const p of pairs) {
+    if (!byId.has(p.ida) || !byId.has(p.idb)) continue;
+    if (!p.exact && !withinDays(byId.get(p.ida)!.date, byId.get(p.idb)!.date, DATE_WINDOW)) continue;
+    const ra = find(p.ida), rb = find(p.idb);
+    if (ra !== rb) parent.set(ra, rb);
+  }
   const sets = new Map<string, Row[]>();
-  for (const r of rows) {
-    const k = `${r.artist_id}|${r.sig}`;
-    if (!sets.has(k)) sets.set(k, []);
-    sets.get(k)!.push(r);
+  for (const id of candidateIds) {
+    if (!byId.has(id)) continue;
+    const root = find(id);
+    if (!sets.has(root)) sets.set(root, []);
+    sets.get(root)!.push(byId.get(id)!);
   }
 
   const skipped = { compilation: 0, rated: 0, singleton: 0, sameScript: 0, edition: 0 };
@@ -183,6 +235,12 @@ async function main() {
     return;
   }
 
+  await applyPlans(plans);
+}
+
+
+/** The write half, shared by the swept path and by an explicit --ids merge. */
+async function applyPlans(plans: { keep: Row; drop: Row[] }[]) {
   let titlesKept = 0;
   let deleted = 0;
   // Progress is printed as it goes: each survivor needs its own round-trip, so ~500 sets means
@@ -281,6 +339,45 @@ async function main() {
   }
   console.log(`\n  native_title preserved on ${titlesKept} survivor(s)`);
   console.log(`  DELETED ${deleted} release group(s)`);
+}
+
+/**
+ * Merge an explicitly listed set. Used for duplicates a person reported and confirmed, which should
+ * not have to satisfy a duration heuristic to get fixed — several real pairs do not: E SENS's 이방인
+ * (15 tracks) and its iTunes twin The Stranger (13) describe one album with different track data.
+ *
+ * Every protection the swept path has still applies. The survivor is chosen by the same ranking, a
+ * non-Latin loser title is preserved as native_title, ratings are migrated keeping each user's latest,
+ * and the run aborts rather than let a cascade take a review, mix, list, pin or save.
+ */
+async function mergeSpecific(ids: string[]) {
+  const quoted = ids.map(x => `'${x}'`).join(',');
+  const rows = await query<Row>(`
+    select rg.id, rg.title, rg.native_title, rg.release_group_type type, rg.first_release_date::text date,
+           rg.source, rg.primary_artist_id artist_id, a.name artist, '' sig,
+           (select count(*) from releases r2 where r2.release_group_id = rg.id) editions,
+           (select count(*) from release_tracks rt2 join releases r3 on r3.id = rt2.release_id
+             where r3.release_group_id = rg.id) tracks,
+           (select count(*) from ratings t where t.release_group_id = rg.id) ratings
+      from release_groups rg join artists a on a.id = rg.primary_artist_id
+     where rg.id in (${quoted})`);
+  if (rows.length < 2) { console.error(`  only ${rows.length} of ${ids.length} id(s) exist — nothing to merge`); process.exit(1); }
+  const artists = new Set(rows.map(r => r.artist_id));
+  if (artists.size > 1) { console.error('  ABORTED — these release groups belong to different artists'); process.exit(1); }
+
+  const ranked = [...rows].sort((a, b) =>
+    Number(isNonLatin(a.title ?? '')) - Number(isNonLatin(b.title ?? ''))
+    || Number(b.editions) - Number(a.editions)
+    || Number(b.tracks) - Number(a.tracks)
+    || String(a.date ?? '9999').localeCompare(String(b.date ?? '9999'))
+    || a.id.localeCompare(b.id));
+  const plan = { keep: ranked[0], drop: ranked.slice(1) };
+  console.log(`
+[dedup-duration] explicit merge${APPLY ? '  *** APPLY ***' : '  (report only)'}`);
+  console.log(`  KEEP "${plan.keep.title}" [${plan.keep.source}/${plan.keep.type}/tr${plan.keep.tracks}/${plan.keep.date}] ratings ${plan.keep.ratings}`);
+  for (const d of plan.drop) console.log(`     drop "${d.title}" [${d.source}/${d.type}/tr${d.tracks}/${d.date}] ratings ${d.ratings}`);
+  if (!APPLY) { console.log('\n  (report only — re-run with --apply)'); return; }
+  await applyPlans([plan]);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
