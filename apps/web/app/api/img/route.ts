@@ -18,8 +18,14 @@ export const runtime = 'nodejs';
 export const maxDuration = 15;
 
 // SSRF guard: only proxy the known cover-art image hosts.
-const ALLOWED = ['coverartarchive.org', 'archive.org', 'mzstatic.com', 'dzcdn.net'];
+const ALLOWED = ['coverartarchive.org', 'archive.org', 'mzstatic.com', 'dzcdn.net', 'maniadb.com'];
 const hostAllowed = (h: string) => ALLOWED.some((d) => h === d || h.endsWith('.' + d));
+/* ManiaDB serves its cover art over HTTP ONLY — its https endpoint answers 403. That makes those
+   images unusable directly from an https page (mixed content is blocked), so they have to come
+   through here. Plaintext is confined to this one allowlisted host: everything else must still be
+   https, and the SSRF allowlist applies either way. ManiaDB is often the only source that has a
+   Korean release's art at all — h3hyeon's deluxe is on no other service we can reach. */
+const PLAINTEXT_OK = (h: string) => h === 'maniadb.com' || h.endsWith('.maniadb.com');
 
 export async function GET(request: NextRequest) {
   const target = request.nextUrl.searchParams.get('url');
@@ -31,7 +37,8 @@ export async function GET(request: NextRequest) {
   } catch {
     return new Response('bad url', { status: 400 });
   }
-  if (u.protocol !== 'https:' || !hostAllowed(u.hostname)) {
+  const schemeOk = u.protocol === 'https:' || (u.protocol === 'http:' && PLAINTEXT_OK(u.hostname));
+  if (!schemeOk || !hostAllowed(u.hostname)) {
     return new Response('forbidden host', { status: 403 });
   }
 

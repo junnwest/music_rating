@@ -11,7 +11,10 @@ import { thumbnailUrl } from '../../lib/sj/display';
 const isCaa = (u: string) => {
   try {
     const h = new URL(u).hostname;
-    return h === 'coverartarchive.org' || h === 'archive.org' || h.endsWith('.archive.org');
+    // ManiaDB is http-only (its https 403s), so it MUST be proxied or the browser blocks it as
+    // mixed content — not a speed choice like CAA, a correctness one.
+    return h === 'coverartarchive.org' || h === 'archive.org' || h.endsWith('.archive.org')
+      || h === 'maniadb.com' || h.endsWith('.maniadb.com');
   } catch {
     return false;
   }
