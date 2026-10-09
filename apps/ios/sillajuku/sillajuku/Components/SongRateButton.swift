@@ -72,6 +72,7 @@ struct SongRateButton: View {
             .upsert(Upsert(userId: userId, recordingId: recordingId, score: s),
                     onConflict: "user_id,recording_id")
             .execute()
+        PostRatedTracks.shared.invalidate(userId: userId)
         onScoreChange?(s)
     }
 
@@ -97,6 +98,7 @@ struct SongRateButton: View {
                 .eq("recording_id", value: recordingId)
                 .execute()
         }
+        PostRatedTracks.shared.invalidate(userId: userId)
         onScoreChange?(s)
     }
 }

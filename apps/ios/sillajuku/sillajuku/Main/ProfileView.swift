@@ -19,14 +19,14 @@ struct UserRating: Codable, Identifiable {
     }
 }
 
+/// A song rating -- a score only. Song ratings stopped being posts on
+/// 2026-10-06 (no comment, likes or replies), so this is list-row data.
 struct SongRatingRow: Identifiable {
     // The track_ratings row's own uuid -- distinct from `id` (String, keyed on recordingId,
-    // used throughout for view identity/diffing). This is what track_rating_likes/
-    // track_rating_comments/notifications.track_rating_id actually reference.
+    // used throughout for view identity/diffing).
     let ratingId: UUID
     let recordingId: UUID
     let score: Double?
-    let reviewText: String?
     let trackTitle: String?
     let release: ReleaseRef
     let createdAt: Date
@@ -218,7 +218,6 @@ class ProfileViewModel {
     var likedRatingIds: Set<UUID> = []
     var mixShares: [MixSharePost] = []
     var likedMixShareIds: Set<UUID> = []
-    var likedSongRatingIds: Set<UUID> = []
 
     var followingCount: Int? = nil
     var followerCount:  Int? = nil
@@ -305,7 +304,7 @@ class ProfileViewModel {
         guard ok, let idx = songRatings.firstIndex(where: { $0.recordingId == item.recordingId }) else { return }
         songRatings[idx] = SongRatingRow(
             ratingId: item.ratingId, recordingId: item.recordingId, score: score,
-            reviewText: item.reviewText, trackTitle: item.trackTitle,
+            trackTitle: item.trackTitle,
             release: item.release, createdAt: item.createdAt
         )
     }
@@ -330,30 +329,6 @@ class ProfileViewModel {
             .execute()
         NotificationCenter.default.post(name: .ratingChanged,
             object: RatingChangeInfo(releaseGroupId: item.releases.id, score: item.score))
-    }
-
-    /// Same, for a song rating's comment -- patches `songRatings` locally, same
-    /// reasoning as `editSongRating`.
-    func editSongComment(_ item: SongRatingRow, text: String?) async {
-        struct Update: Encodable {
-            let reviewText: String?
-            enum CodingKeys: String, CodingKey { case reviewText = "review_text" }
-            func encode(to encoder: Encoder) throws {
-                var container = encoder.container(keyedBy: CodingKeys.self)
-                if let reviewText { try container.encode(reviewText, forKey: .reviewText) }
-                else { try container.encodeNil(forKey: .reviewText) }
-            }
-        }
-        _ = try? await supabase.from("track_ratings")
-            .update(Update(reviewText: text))
-            .eq("id", value: item.ratingId)
-            .execute()
-        guard let idx = songRatings.firstIndex(where: { $0.recordingId == item.recordingId }) else { return }
-        songRatings[idx] = SongRatingRow(
-            ratingId: item.ratingId, recordingId: item.recordingId, score: item.score,
-            reviewText: text, trackTitle: item.trackTitle,
-            release: item.release, createdAt: item.createdAt
-        )
     }
 
     func load() async {
@@ -384,7 +359,6 @@ class ProfileViewModel {
 
         songRatings = await songsFetch
         ImageCache.prefetch(songRatings.compactMap { URL(string: $0.release.coverUrl?.thumbnailUrl ?? "") })
-        if !songRatings.isEmpty { await loadSongRatingSocialData() }
 
         let follows = await followsFetch
         followingCount = follows.following
@@ -501,7 +475,6 @@ class ProfileViewModel {
             let id: UUID
             let recordingId: UUID
             let score: Double?
-            let reviewText: String?
             let createdAt: Date
             let recordings: RecordingInfo
             struct RecordingInfo: Codable {
@@ -512,13 +485,12 @@ class ProfileViewModel {
             }
             enum CodingKeys: String, CodingKey {
                 case id, recordingId = "recording_id"; case score
-                case reviewText = "review_text"
                 case createdAt = "created_at"; case recordings
             }
         }
         let rawSongs: [TrackRatingNew] = (try? await supabase
             .from("track_ratings")
-            .select("id, recording_id, score, review_text, created_at, recordings(id, title, artist_display)")
+            .select("id, recording_id, score, created_at, recordings(id, title, artist_display)")
             .eq("user_id", value: userId)
             .order("created_at", ascending: false)
             .limit(60)
@@ -578,7 +550,6 @@ class ProfileViewModel {
                 ratingId:    r.id,
                 recordingId: r.recordingId,
                 score:       r.score,
-                reviewText:  r.reviewText,
                 trackTitle:  r.recordings.title,
                 release:     ref,
                 createdAt:   r.createdAt
@@ -647,72 +618,6 @@ class ProfileViewModel {
         }
     }
 
-    // Song-rating counterpart to loadMixShareSocialData -- same shape, keyed on
-    // SongRatingRow.ratingId (the track_ratings row's own id, what track_rating_likes/
-    // track_rating_comments actually reference) rather than recordingId.
-    private func loadSongRatingSocialData() async {
-        guard !songRatings.isEmpty, let userId = supabase.auth.currentUser?.id else { return }
-        let songRatingIds = songRatings.map(\.ratingId.uuidString)
-        struct IdRow: Codable {
-            let trackRatingId: UUID
-            enum CodingKeys: String, CodingKey { case trackRatingId = "track_rating_id" }
-        }
-        async let likesTask: [IdRow]? = try? await supabase
-            .from("track_rating_likes").select("track_rating_id")
-            .in("track_rating_id", values: songRatingIds).execute().value
-        async let commentsTask: [IdRow]? = try? await supabase
-            .from("track_rating_comments").select("track_rating_id")
-            .in("track_rating_id", values: songRatingIds).execute().value
-        async let myLikesTask: [IdRow]? = try? await supabase
-            .from("track_rating_likes").select("track_rating_id")
-            .eq("user_id", value: userId)
-            .in("track_rating_id", values: songRatingIds).execute().value
-
-        if let rows = await likesTask {
-            var counts: [UUID: Int] = [:]
-            for r in rows { counts[r.trackRatingId, default: 0] += 1 }
-            for (k, v) in counts { likeCounts[k] = v }
-        }
-        if let rows = await commentsTask {
-            var counts: [UUID: Int] = [:]
-            for r in rows { counts[r.trackRatingId, default: 0] += 1 }
-            for (k, v) in counts { commentCounts[k] = v }
-        }
-        if let rows = await myLikesTask {
-            likedSongRatingIds = Set(rows.map(\.trackRatingId))
-        }
-    }
-
-    func toggleSongLike(ratingId: UUID) async {
-        guard let userId = supabase.auth.currentUser?.id else { return }
-        let wasLiked = likedSongRatingIds.contains(ratingId)
-        if wasLiked {
-            likedSongRatingIds.remove(ratingId)
-            likeCounts[ratingId] = max(0, (likeCounts[ratingId] ?? 1) - 1)
-        } else {
-            likedSongRatingIds.insert(ratingId)
-            likeCounts[ratingId] = (likeCounts[ratingId] ?? 0) + 1
-        }
-        do {
-            if wasLiked {
-                try await supabase.from("track_rating_likes").delete()
-                    .eq("user_id", value: userId).eq("track_rating_id", value: ratingId).execute()
-            } else {
-                struct Payload: Encodable {
-                    let userId: UUID; let trackRatingId: UUID
-                    enum CodingKeys: String, CodingKey {
-                        case userId = "user_id"; case trackRatingId = "track_rating_id"
-                    }
-                }
-                try await supabase.from("track_rating_likes")
-                    .insert(Payload(userId: userId, trackRatingId: ratingId)).execute()
-            }
-        } catch {
-            if wasLiked { likedSongRatingIds.insert(ratingId); likeCounts[ratingId] = (likeCounts[ratingId] ?? 0) + 1 }
-            else { likedSongRatingIds.remove(ratingId); likeCounts[ratingId] = max(0, (likeCounts[ratingId] ?? 1) - 1) }
-        }
-    }
-
     func reload() async {
         hasLoaded = false
         await load()
@@ -776,10 +681,28 @@ enum RatingSortOrder: String, CaseIterable {
     case alphabetical = "A–Z"
 }
 
+/// The profile's rated list is albums only, split by release type -- no "All",
+/// and no songs: a song rating shows only in its album's tracklist and in the
+/// "Rated N tracks" list on the album post (2026-10-09).
 enum RatingTypeFilter: String, CaseIterable {
-    case all    = "All"
-    case albums = "Albums"
-    case songs  = "Songs"
+    case albums  = "Albums"
+    case eps     = "EPs"
+    case singles = "Singles"
+
+    /// The section an album rating belongs to. Compilations, soundtracks etc. sit with Albums.
+    static func of(_ releaseType: String?) -> RatingTypeFilter {
+        switch releaseType?.lowercased() {
+        case "ep":     return .eps
+        case "single": return .singles
+        default:       return .albums
+        }
+    }
+
+    /// For "12 albums" / "No EPs rated yet" -- lowercased, except the EP acronym.
+    var noun: String {
+        let label = String(localized: String.LocalizationValue(rawValue))
+        return self == .eps ? label : label.lowercased()
+    }
 }
 
 enum RatingDisplayMode {
@@ -801,7 +724,7 @@ enum ProfileRatedItem: Identifiable {
         switch self { case .album(let r): return r.score; case .song(let r): return r.score }
     }
     var reviewText: String? {
-        switch self { case .album(let r): return r.reviewText; case .song(let r): return r.reviewText }
+        switch self { case .album(let r): return r.reviewText; case .song: return nil }
     }
     var createdAt: Date {
         switch self { case .album(let r): return r.createdAt; case .song(let r): return r.createdAt }
@@ -844,20 +767,17 @@ enum ProfileRatedItem: Identifiable {
 // up here too instead of only in the Home feed.
 enum ProfilePost: Identifiable {
     case rating(UserRating)
-    case song(SongRatingRow)
     case mixShare(MixSharePost)
 
     var id: String {
         switch self {
         case .rating(let r):   return "rating-\(r.id.uuidString)"
-        case .song(let s):     return "song-\(s.id)"
         case .mixShare(let s): return "mixshare-\(s.id.uuidString)"
         }
     }
     var createdAt: Date {
         switch self {
         case .rating(let r):   return r.createdAt
-        case .song(let s):     return s.createdAt
         case .mixShare(let s): return s.createdAt
         }
     }
@@ -899,11 +819,11 @@ struct ProfileView: View {
     @State private var followModalInitTab: FollowMode = .following
     @State private var mixLibVM           = MixLibraryViewModel()
     @State private var ratingSortOrder:    RatingSortOrder = .recent
-    @State private var ratingTypeFilter:   RatingTypeFilter = .all
+    @State private var ratingTypeFilter:   RatingTypeFilter = .albums
     @State private var ratingDisplayMode:  RatingDisplayMode = .posts
     @State private var pendingDeleteItem:  ProfileRatedItem? = nil
     // Own-post ⋯ menu plumbing for the "post" display mode's rating cards --
-    // mirrors AlbumDetailView/SongDetailView's identical own-rating menu
+    // mirrors AlbumDetailView's identical own-rating menu
     // (Share/Edit/Add to Mix/Edit Comment/Delete), item-scoped (unlike those
     // single-item pages) since this list can show many ratings at once.
     @State private var editRatingTarget:   ProfileRatedItem? = nil
@@ -1264,14 +1184,9 @@ struct ProfileView: View {
     // MARK: - Tab content
 
     private var filteredItems: [ProfileRatedItem] {
-        let albums = viewModel.ratings.map { ProfileRatedItem.album($0) }
-        let songs  = viewModel.songRatings.map { ProfileRatedItem.song($0) }
-        let base: [ProfileRatedItem]
-        switch ratingTypeFilter {
-        case .all:    base = albums + songs
-        case .albums: base = albums
-        case .songs:  base = songs
-        }
+        let base = viewModel.ratings
+            .filter { RatingTypeFilter.of($0.releases.releaseType) == ratingTypeFilter }
+            .map { ProfileRatedItem.album($0) }
         switch ratingSortOrder {
         case .recent:       return base
         case .topRated:     return base.sorted { itemScore($0) > itemScore($1) }
@@ -1280,23 +1195,16 @@ struct ProfileView: View {
         }
     }
 
-    // Album + song ratings, in whatever order/filter the user picked, plus own mix shares merged
-    // in by recency -- only under the default "Recent" sort, since "top/bottom rated" and "A-Z"
-    // don't have a sensible place for a score-less mix share to slot into. Previously this
-    // compactMap only ever matched the .album case, so filtering to Songs in Posts view showed
-    // nothing but mix shares -- filteredItems already has exactly two cases, so a plain map
-    // covering both is exhaustive.
+    // Album ratings, in whatever order the user picked, plus own mix shares merged in by
+    // recency -- only under the default "Recent" sort, since "top/bottom rated" and "A-Z" don't
+    // have a sensible place for a score-less mix share to slot into. Mix shares live in the
+    // Albums section only, so they show once rather than on every type tab.
     private var postsFeed: [ProfilePost] {
-        let ratingPosts: [ProfilePost] = filteredItems.map {
-            switch $0 {
-            case .album(let r): return .rating(r)
-            case .song(let s):  return .song(s)
-            }
+        let ratingPosts: [ProfilePost] = filteredItems.compactMap {
+            if case .album(let r) = $0 { return .rating(r) }
+            return nil
         }
-        // Mix shares are neither an album nor a song rating -- only belong in the unfiltered
-        // "All" view. This guard previously only checked sort order, so a mix share kept showing
-        // up even while filtered to Albums or Songs specifically.
-        guard ratingSortOrder == .recent, ratingTypeFilter == .all else { return ratingPosts }
+        guard ratingSortOrder == .recent, ratingTypeFilter == .albums else { return ratingPosts }
         let sharePosts: [ProfilePost] = viewModel.mixShares.map { .mixShare($0) }
         return (ratingPosts + sharePosts).sorted { $0.createdAt > $1.createdAt }
     }
@@ -1308,7 +1216,7 @@ struct ProfileView: View {
     @ViewBuilder
     private var ratedGrid: some View {
         let items = filteredItems
-        let hasAny = !viewModel.ratings.isEmpty || !viewModel.songRatings.isEmpty
+        let hasAny = !viewModel.ratings.isEmpty
 
         if !hasAny {
             VStack(spacing: 12) {
@@ -1365,13 +1273,9 @@ struct ProfileView: View {
 
                 // Count + sort
                 HStack {
-                    // For "All", prefer the exact ratedTotal over items.count -- the
-                    // latter is the size of the loaded (60-capped per type) arrays,
-                    // same undercount as the header stat used to have, just showing
-                    // up here too. Falls back to items.count until ratedTotal's fetch
-                    // resolves. Per-type filters (Albums/Songs) still use items.count --
-                    // there's no exact per-type total fetched, only the combined one.
-                    Text(String(format: String(localized: "%d %@"), ratingTypeFilter == .all ? (viewModel.ratedTotal ?? items.count) : items.count, ratingTypeFilter == .all ? String(localized: "ratings") : String(localized: String.LocalizationValue(ratingTypeFilter.rawValue)).lowercased()))
+                    // items.count is the loaded (60-capped per type) array; there's no
+                    // exact per-type total fetched, only the combined `ratedTotal`.
+                    Text(String(format: String(localized: "%d %@"), items.count, ratingTypeFilter.noun))
                         .font(.jakarta(12))
                         .foregroundStyle(Color.sjMuted)
                     Spacer()
@@ -1404,12 +1308,12 @@ struct ProfileView: View {
 
                 if items.isEmpty {
                     VStack(spacing: 10) {
-                        Image(ratingTypeFilter == .songs ? "icon-music" : "icon-layout-grid")
+                        Image("icon-layout-grid")
                             .renderingMode(.template)
                             .resizable().scaledToFit()
                             .frame(width: 28, height: 28)
                             .foregroundStyle(Color.sjMuted)
-                        Text(String(format: String(localized: "No %@ rated yet"), String(localized: String.LocalizationValue(ratingTypeFilter.rawValue)).lowercased()))
+                        Text(String(format: String(localized: "No %@ rated yet"), ratingTypeFilter.noun))
                             .font(.jakarta(14))
                             .foregroundStyle(Color.sjMuted)
                     }
@@ -1514,18 +1418,9 @@ struct ProfileView: View {
                     .presentationBackground(Color.sjCream)
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
-                case .song(let song):
-                    CommentEditSheet(
-                        release: song.release.asRelease,
-                        trackTitle: song.trackTitle,
-                        initialComment: song.reviewText ?? ""
-                    ) { text in
-                        Task { await viewModel.editSongComment(song, text: text) }
-                        editCommentTarget = nil
-                    }
-                    .presentationBackground(Color.sjCream)
-                    .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
+                case .song:
+                    // A song rating has no comment (2026-10-06); nothing sets this.
+                    EmptyView()
                 }
             }
             .sheet(item: $mixPickerTarget) { rating in
@@ -1539,7 +1434,7 @@ struct ProfileView: View {
         }
     }
 
-    /// Mirrors AlbumDetailView/SongDetailView's own `prepareShare` -- resolves the
+    /// Mirrors AlbumDetailView's own `prepareShare` -- resolves the
     /// real data the share card needs, then opens the same preview sheet. Skips
     /// the extra `profiles` fetch those do (Profile already has the username
     /// cached in `viewModel.profile`).
@@ -1570,35 +1465,8 @@ struct ProfileView: View {
     private func postCard(_ post: ProfilePost) -> some View {
         switch post {
         case .rating(let rating):     ratingCard(rating)
-        case .song(let song):         songCard(song)
         case .mixShare(let share):    mixShareCard(share)
         }
-    }
-
-    private func songCard(_ song: SongRatingRow) -> some View {
-        ProfileSongPostCard(
-            song: song,
-            likesCount: viewModel.likeCounts[song.ratingId] ?? 0,
-            commentsCount: viewModel.commentCounts[song.ratingId] ?? 0,
-            isLiked: viewModel.likedSongRatingIds.contains(song.ratingId),
-            onLike: { await viewModel.toggleSongLike(ratingId: song.ratingId) },
-            // Matches FeedCard/AlbumDetailView's own-post ⋯ menu (Share/Edit/Edit
-            // Comment/Delete -- songs have no "Add to Mix", mixes are album-level).
-            ownActions: SongOwnRatingMenuActions(
-                onShare: { Task { await prepareShare(for: .song(song)) } },
-                onEdit: { editRatingTarget = .song(song) },
-                onEditComment: { editCommentTarget = .song(song) },
-                onDelete: { pendingDeleteItem = .song(song) }
-            ),
-            headerHandle: viewModel.profile?.username ?? "me",
-            headerVerified: viewModel.profile?.isVerified == true,
-            headerBadgeColor: viewModel.profile?.badgeColor,
-            headerFoundingNumber: viewModel.profile?.foundingNumber,
-            headerAvatarUrl: viewModel.profile?.avatarUrl,
-            headerFeaturedBadge: viewModel.profile?.featuredBadge
-        )
-        .padding(.horizontal, 12)
-        .padding(.top, 8)
     }
 
     private func ratingCard(_ rating: UserRating) -> some View {
@@ -1623,7 +1491,8 @@ struct ProfileView: View {
                 onAddToMix: { mixPickerTarget = rating },
                 onEditComment: { editCommentTarget = .album(rating) },
                 onDelete: { pendingDeleteItem = .album(rating) }
-            )
+            ),
+            authorId: supabase.auth.currentUser?.id
         )
         .padding(.horizontal, 12)
         .padding(.top, 8)
@@ -2520,6 +2389,8 @@ struct ProfilePostCard: View {
     // Mutually exclusive with `onNotInterested` in practice (never both set for the
     // same card -- one is for someone else's profile, this is for your own).
     var ownActions: OwnRatingMenuActions? = nil
+    /// The post's author, for its "Rated N tracks" list (`UserRating` carries no user id).
+    var authorId: UUID? = nil
 
     @State private var showComments = false
     @State private var showLikers = false
@@ -2606,6 +2477,12 @@ struct ProfilePostCard: View {
                     .padding(.bottom, 10)
             }
 
+            if let authorId {
+                RatedTracksDisclosure(userId: authorId, release: rating.releases.asRelease)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 8)
+            }
+
             // Action bar: likes · comments · date
             HStack(spacing: 16) {
                 HStack(spacing: 5) {
@@ -2669,215 +2546,6 @@ struct ProfilePostCard: View {
                 .presentationDragIndicator(.visible)
         }
         .sensoryFeedback(.success, trigger: didMarkNotInterested)
-    }
-}
-
-// Song-rating counterpart to ProfilePostCard -- full parity now (migration 20260713000001 added
-// track_ratings.review_text + the track_rating_likes/track_rating_comments tables song ratings
-// were previously missing entirely).
-/// Menu actions for rendering the current user's own song rating as a card on
-/// the song detail page. Songs have no share URL or mix membership anywhere in
-/// the app, so unlike the album card's menu this carries only edit/comment/delete.
-struct SongOwnRatingMenuActions {
-    let onShare: () -> Void
-    let onEdit: () -> Void
-    let onEditComment: () -> Void
-    let onDelete: () -> Void
-}
-
-struct ProfileSongPostCard: View {
-    let song: SongRatingRow
-    let likesCount: Int
-    let commentsCount: Int
-    let isLiked: Bool
-    let onLike: () async -> Void
-    var ownActions: SongOwnRatingMenuActions? = nil
-    // FeedCard-style header row; when set, the ⋯ menu (if any) renders inside
-    // it instead of as a corner overlay, and the action-bar timestamp moves up.
-    var headerHandle: String? = nil
-    var headerVerified: Bool = false
-    var headerBadgeColor: String? = nil
-    var headerFoundingNumber: Int? = nil
-    var headerAvatarUrl: String? = nil
-    var headerFeaturedBadge: String? = nil
-    /// Same meaning as FeedCard.isDraft: the rating is mid-flow (drag committed,
-    /// "Done" not yet tapped), so no like/comment bar, no ⋯ menu, and no card
-    /// chrome of its own -- the host wraps it and the next step in one card.
-    var isDraft: Bool = false
-    /// Same as FeedCard.matchedGeometryNamespace -- ties the score badge to the
-    /// MorphingRateButton flower that just committed this rating.
-    var matchedGeometryNamespace: Namespace.ID? = nil
-
-    @State private var showComments = false
-    @State private var showLikers = false
-
-    private var displayScore: Double? { song.score }
-
-    var body: some View {
-        Group {
-            if isDraft {
-                cardContent
-            } else {
-                cardContent
-                    .background(Color.sjSurface)
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 1)
-                    .overlay(alignment: .topTrailing) {
-                        // Headerless variant only -- with a header, the menu lives inside it.
-                        if let own = ownActions, headerHandle == nil {
-                            ownMenu(own)
-                                .padding(.top, 4)
-                                .padding(.trailing, 4)
-                        }
-                    }
-            }
-        }
-        .sheet(isPresented: $showComments) {
-            SongCommentSheetView(trackRatingId: song.ratingId)
-                .presentationDetents([.large])  // large only: see CommentInputField
-                .presentationDragIndicator(.visible)
-        }
-        .sheet(isPresented: $showLikers) {
-            SongLikersSheetView(trackRatingId: song.ratingId)
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-        }
-    }
-
-    private var cardContent: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if let handle = headerHandle {
-                PostCardHeader(handle: handle, isVerified: headerVerified,
-                               badgeColor: headerBadgeColor, foundingNumber: headerFoundingNumber, avatarUrl: headerAvatarUrl, featuredBadge: headerFeaturedBadge,
-                               createdAt: song.createdAt) {
-                    if let own = ownActions, !isDraft { ownMenu(own) }
-                }
-            }
-
-            NavigationLink(value: song.release.asRelease) {
-                HStack(spacing: 13) {
-                    CoverImage(url: song.release.coverUrl)
-                        .frame(width: 66, height: 66)
-                        .accessibilityHidden(true) // title/artist text alongside already describes it
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            Text(song.trackTitle ?? "Unknown Track")
-                                .font(.jakarta(14, weight: .bold))
-                                .foregroundStyle(Color.sjInk)
-                                .lineLimit(2)
-                            Text("Song")
-                                .font(.jakarta(10, weight: .medium))
-                                .foregroundStyle(Color.sjAmber)
-                                .padding(.horizontal, 5).padding(.vertical, 2)
-                                .background(Color.sjAmber.opacity(0.12))
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                        }
-                        Text("\(song.release.displayTitle) · \(song.release.displayArtist)")
-                            .font(.jakarta(11.5))
-                            .foregroundStyle(Color.sjMuted)
-                            .lineLimit(1)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                    if let score = displayScore {
-                        if let matchedGeometryNamespace {
-                            ScoreBadge(score: score)
-                                .matchedGeometryEffect(id: "scoreBadge", in: matchedGeometryNamespace)
-                        } else {
-                            ScoreBadge(score: score)
-                        }
-                    }
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .padding(.leading, 14)
-            // Extra trailing room when the own-rating ellipsis menu overlays the
-            // top-right corner (headerless variant only), so the score badge
-            // doesn't sit underneath it.
-            .padding(.trailing, ownActions != nil && headerHandle == nil && !isDraft ? 44 : 14)
-            .padding(.top, headerHandle == nil ? 14 : 0)
-            .padding(.bottom, 10)
-
-            if let text = song.reviewText, !text.isEmpty {
-                Text(text)
-                    .font(.jakarta(14))
-                    .foregroundStyle(Color.sjInk)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 10)
-            }
-
-            if !isDraft {
-                HStack(spacing: 16) {
-                    HStack(spacing: 5) {
-                        Button { Task { await onLike() } } label: {
-                            Image(isLiked ? "icon-heart-filled" : "icon-heart")
-                                .renderingMode(.template)
-                                .resizable().scaledToFit()
-                                .frame(width: 19, height: 19)
-                                .foregroundStyle(isLiked ? .red : Color.sjInk)
-                        }
-                        .buttonStyle(.plain)
-                        .animation(.easeInOut(duration: 0.15), value: isLiked)
-                        .accessibilityLabel(isLiked ? String(localized: "Unlike") : String(localized: "Like"))
-                        .sensoryFeedback(.impact(weight: .light), trigger: isLiked)
-
-                        if likesCount > 0 {
-                            Button { showLikers = true } label: {
-                                Text("\(likesCount)")
-                                    .font(.jakarta(14, weight: .medium))
-                                    .foregroundStyle(isLiked ? .red : Color.sjMuted)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    HStack(spacing: 5) {
-                        Button { showComments = true } label: {
-                            Image("icon-message-circle")
-                                .renderingMode(.template)
-                                .resizable().scaledToFit()
-                                .frame(width: 19, height: 19).foregroundStyle(Color.sjInk)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(String(localized: "View comments"))
-
-                        if commentsCount > 0 {
-                            Text("\(commentsCount)")
-                                .font(.jakarta(14, weight: .medium)).foregroundStyle(Color.sjMuted)
-                        }
-                    }
-                    Spacer()
-                    if headerHandle == nil {
-                        Text(song.createdAt.relativeTimeString)
-                            .font(.jakarta(12)).foregroundStyle(Color.sjMuted)
-                    }
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 6)
-            }
-        }
-    }
-
-    private func ownMenu(_ own: SongOwnRatingMenuActions) -> some View {
-        Menu {
-            Button { own.onShare() } label: { Label("Share", image: "icon-share") }
-            Button { own.onEdit() } label: { Label("Edit", image: "icon-square-pen") }
-            Button { own.onEditComment() } label: { Label("Edit Comment", image: "icon-message-square") }
-            Divider()
-            Button(role: .destructive) { own.onDelete() } label: { Label("Delete", image: "icon-trash") }
-        } label: {
-            Image("icon-more-horizontal")
-                .renderingMode(.template)
-                .resizable().scaledToFit()
-                .frame(width: 14, height: 14)
-                .foregroundStyle(Color.sjMuted)
-                .frame(width: 34, height: 34)
-                .contentShape(Rectangle())
-        }
-        .accessibilityLabel(String(localized: "More options"))
     }
 }
 

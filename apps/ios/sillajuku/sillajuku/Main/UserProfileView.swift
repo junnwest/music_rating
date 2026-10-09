@@ -178,13 +178,11 @@ final class UserProfileViewModel {
                 id: UUID(), title: "", artist: "", coverUrl: nil,
                 releaseType: nil, titleNative: nil, primaryArtist: nil
             )
-            // get_profile_song_ratings doesn't return the track_ratings row id, review_text, or
-            // created_at -- this view's Posts mode excludes songs entirely (album-only, by
-            // design) and its List mode has no like/comment/date affordance for any item, so none
-            // of these are ever actually read here. Placeholders are safe for now; add the real
-            // columns to the RPC if this view ever needs song-post parity too.
+            // get_profile_song_ratings doesn't return the track_ratings row id or created_at --
+            // song ratings are list-only (no posts), and the list has no date affordance, so
+            // neither is ever read here. Placeholders are safe.
             return SongRatingRow(ratingId: UUID(), recordingId: recordingId, score: score,
-                                  reviewText: nil, trackTitle: trackTitle, release: ref, createdAt: Date())
+                                  trackTitle: trackTitle, release: ref, createdAt: Date())
         }
     }
 
@@ -377,7 +375,7 @@ struct UserProfileView: View {
     @State private var vm: UserProfileViewModel
     @State private var activeTab: ProfileTab = .rated
     @State private var ratingSortOrder:   RatingSortOrder  = .recent
-    @State private var ratingTypeFilter:  RatingTypeFilter = .all
+    @State private var ratingTypeFilter:  RatingTypeFilter = .albums
     @State private var ratingDisplayMode: RatingDisplayMode = .posts
     @State private var showFollowModal = false
     @State private var followModalInitTab: FollowMode = .followers
@@ -694,14 +692,9 @@ struct UserProfileView: View {
     // MARK: Rated tab -- same filter/sort/display-mode controls as ProfileView
 
     private var filteredItems: [ProfileRatedItem] {
-        let albums = vm.catalogAlbums.map { ProfileRatedItem.album($0) }
-        let songs  = vm.catalogSongs.map { ProfileRatedItem.song($0) }
-        let base: [ProfileRatedItem]
-        switch ratingTypeFilter {
-        case .all:    base = albums + songs
-        case .albums: base = albums
-        case .songs:  base = songs
-        }
+        let base = vm.catalogAlbums
+            .filter { RatingTypeFilter.of($0.releases.releaseType) == ratingTypeFilter }
+            .map { ProfileRatedItem.album($0) }
         switch ratingSortOrder {
         case .recent:       return base
         case .topRated:     return base.sorted { itemScore($0) > itemScore($1) }
@@ -717,7 +710,7 @@ struct UserProfileView: View {
     @ViewBuilder
     private var ratedTabContent: some View {
         let items = filteredItems
-        let hasAny = !vm.catalogAlbums.isEmpty || !vm.catalogSongs.isEmpty
+        let hasAny = !vm.catalogAlbums.isEmpty
 
         if !hasAny {
             VStack(spacing: 12) {
@@ -767,7 +760,7 @@ struct UserProfileView: View {
                 .padding(.horizontal, 12).padding(.top, 8)
 
                 HStack {
-                    Text(String(format: String(localized: "%d %@"), items.count, ratingTypeFilter == .all ? String(localized: "ratings") : String(localized: String.LocalizationValue(ratingTypeFilter.rawValue)).lowercased()))
+                    Text(String(format: String(localized: "%d %@"), items.count, ratingTypeFilter.noun))
                         .font(.jakarta(12))
                         .foregroundStyle(Color.sjMuted)
                     Spacer()
@@ -797,12 +790,12 @@ struct UserProfileView: View {
 
                 if items.isEmpty {
                     VStack(spacing: 10) {
-                        Image(ratingTypeFilter == .songs ? "icon-music" : "icon-layout-grid")
+                        Image("icon-layout-grid")
                             .renderingMode(.template)
                             .resizable().scaledToFit()
                             .frame(width: 28, height: 28)
                             .foregroundStyle(Color.sjMuted)
-                        Text(String(format: String(localized: "No %@ rated yet"), String(localized: String.LocalizationValue(ratingTypeFilter.rawValue)).lowercased()))
+                        Text(String(format: String(localized: "No %@ rated yet"), ratingTypeFilter.noun))
                             .font(.jakarta(14)).foregroundStyle(Color.sjMuted)
                     }
                     .frame(maxWidth: .infinity).padding(.top, 40)
@@ -851,7 +844,8 @@ struct UserProfileView: View {
                                     headerFoundingNumber: vm.profile?.foundingNumber,
                                     headerAvatarUrl: vm.profile?.avatarUrl,
                                     headerFeaturedBadge: vm.profile?.featuredBadge,
-                                    onNotInterested: { Task { await vm.notInterested(rating: rating) } }
+                                    onNotInterested: { Task { await vm.notInterested(rating: rating) } },
+                                    authorId: userId
                                 )
                                 .padding(.horizontal, 12)
                                 .padding(.top, 8)

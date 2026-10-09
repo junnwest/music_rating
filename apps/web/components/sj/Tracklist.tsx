@@ -1,19 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import {
-  ArrowDown,
-  ArrowUp,
-  Bookmark,
-  BookmarkPlus,
-  ExternalLink,
-  Link2,
-  MoreHorizontal,
-  Music2,
-  X,
-} from 'lucide-react';
+import { ArrowDown, ArrowUp, Bookmark, BookmarkPlus, Link2, MoreHorizontal, X } from 'lucide-react';
 import FlowerGlyph from './FlowerGlyph';
 import FlowerRateControl from './FlowerRateControl';
 import ManualRateModal from './ManualRateModal';
@@ -22,24 +10,24 @@ import ScoreBadge from './ScoreBadge';
 import { OverflowMenuSurface, type OverflowItem } from './AlbumOverflowMenu';
 import { useSession } from './SessionContext';
 import { useMixName, useMixTarget } from './MixTargetContext';
-import { openInNewTab } from './ContextMenu';
 import { useLanguage } from '../../lib/i18n';
-import { formatScore } from '../../lib/sj/display';
 import { formatDuration, type TrackEntry, type TrackStats } from '../../lib/sj/tracks';
+import { trackAnchorHref, trackAnchorId } from '../../lib/sj/trackLinks';
 import type { SJRelease } from '../../lib/sj/data';
 import type { PopoverAnchor } from './SavedToMixPopover';
 
 /**
  * P5 — the album tracklist as a real list component.
  *
- * Each row: number · title (→ song page) + featured credit · hover bookmark ·
- * community average · duration · your rating (the same drag-or-tap flower as
- * album covers) · "…". Right-click (or long-press, or "…") opens the row menu.
+ * Each row: number · title + featured credit · hover bookmark · community
+ * average · duration · your rating (the same drag-or-tap flower as album
+ * covers) · "…". Right-click (or long-press, or "…") opens the row menu.
  * A sticky header sorts by track order / your rating / community / duration —
  * remembered for the session; multi-disc grouping only in track order.
  *
- * `compact` is the song page's "other tracks on this album" mini-list: no
- * header or community column, the current track highlighted.
+ * There are no song pages: this list is where a song is rated and seen. Each
+ * row is an anchor (`#track-<recordingId>`, see lib/sj/trackLinks) that song
+ * links elsewhere point at; arriving on one scrolls to it and highlights it.
  */
 
 export type TrackSort = 'order' | 'mine' | 'community' | 'duration';
@@ -85,8 +73,6 @@ export default function Tracklist({
   stats,
   scoresLoading = false,
   onRate,
-  compact = false,
-  currentRecordingId,
 }: {
   tracks: TrackEntry[];
   release: SJRelease;
@@ -96,11 +82,8 @@ export default function Tracklist({
   stats: Record<string, TrackStats> | null;
   scoresLoading?: boolean;
   onRate: (recordingId: string, score: number | null) => Promise<void> | void;
-  compact?: boolean;
-  currentRecordingId?: string;
 }) {
   const { t } = useLanguage();
-  const router = useRouter();
   const mixName = useMixName();
   const { userId, profile, requireAuth } = useSession();
   const { target, saveAndShow, openChange } = useMixTarget();
@@ -109,10 +92,35 @@ export default function Tracklist({
   const [menu, setMenu] = useState<{ x: number; y: number; track: TrackEntry } | null>(null);
   const [precise, setPrecise] = useState<TrackEntry | null>(null);
   const [copied, setCopied] = useState(false);
+  const [highlighted, setHighlighted] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!compact) setSort(readSort());
-  }, [compact]);
+    setSort(readSort());
+  }, []);
+
+  // A song link (`/album/<id>#track-<recordingId>`) lands here. Tracks load
+  // after the page, so this runs once they're in, not on mount.
+  const hasTracks = tracks.length > 0;
+  useEffect(() => {
+    if (!hasTracks) return;
+    const focus = () => {
+      const id = decodeURIComponent(window.location.hash.slice(1));
+      if (!id.startsWith('track-')) return;
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      setHighlighted(id.slice('track-'.length));
+    };
+    focus();
+    window.addEventListener('hashchange', focus);
+    return () => window.removeEventListener('hashchange', focus);
+  }, [hasTracks]);
+
+  useEffect(() => {
+    if (!highlighted) return;
+    const timer = setTimeout(() => setHighlighted(null), 2600);
+    return () => clearTimeout(timer);
+  }, [highlighted]);
 
   function applySort(col: TrackSort) {
     setSort((cur) => {
@@ -133,8 +141,8 @@ export default function Tracklist({
 
   const multiDisc = tracks.some((tr) => tr.discNumber !== tracks[0]?.discNumber);
   const sorted = useMemo(() => {
-    if (compact || sort.col === 'order') {
-      return sort.desc && !compact ? [...tracks].reverse() : tracks;
+    if (sort.col === 'order') {
+      return sort.desc ? [...tracks].reverse() : tracks;
     }
     const key = (tr: TrackEntry): number | null =>
       sort.col === 'mine'
@@ -152,7 +160,7 @@ export default function Tracklist({
         return (sort.desc ? b.k - a.k : a.k - b.k) || a.i - b.i;
       })
       .map((x) => x.tr);
-  }, [tracks, sort, myScores, stats, compact]);
+  }, [tracks, sort, myScores, stats]);
 
   const totalMs = tracks.reduce((a, tr) => a + (tr.durationMs ?? 0), 0);
 
@@ -162,7 +170,7 @@ export default function Tracklist({
     releaseGroupId: release.id,
   });
   const songMeta = (tr: TrackEntry) => ({ coverUrl: release.coverUrl, title: tr.title });
-  const href = (tr: TrackEntry) => `/song/${tr.recordingId}?rg=${release.id}`;
+  const href = (tr: TrackEntry) => trackAnchorHref(release.id, tr.recordingId);
 
   function menuItems(tr: TrackEntry, anchor: PopoverAnchor): OverflowItem[] {
     const rated = myScores[tr.recordingId] != null;
@@ -184,18 +192,6 @@ export default function Tracklist({
         label: t('sj.mix.saveToAnother'),
         icon: <BookmarkPlus size={15} />,
         onSelect: () => openChange(songItem(tr), anchor, songMeta(tr)),
-      },
-      {
-        key: 'open-song',
-        label: t('sj.context.openSong'),
-        icon: <Music2 size={15} />,
-        onSelect: () => router.push(href(tr)),
-      },
-      {
-        key: 'open-new-tab',
-        label: t('sj.context.openNewTab'),
-        icon: <ExternalLink size={15} />,
-        onSelect: () => openInNewTab(href(tr)),
       },
       {
         key: 'copy-link',
@@ -248,47 +244,42 @@ export default function Tracklist({
 
   return (
     <div>
-      {!compact && (
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-2 px-1">
-          <p className="text-[12px] text-muted">
-            {t('sj.tracklist.summary')
-              .replace('{n}', String(tracks.length))
-              .replace('{time}', formatDuration(totalMs) || '—')}
-          </p>
-        </div>
-      )}
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2 px-1">
+        <p className="text-[12px] text-muted">
+          {t('sj.tracklist.summary')
+            .replace('{n}', String(tracks.length))
+            .replace('{time}', formatDuration(totalMs) || '—')}
+        </p>
+      </div>
 
       <div
-        className={`rounded-2xl bg-surface border border-divider/60 ${compact ? 'overflow-hidden' : ''}`}
+        className="rounded-2xl bg-surface border border-divider/60"
         role="table"
         aria-label={t('sj.album.tracklist')}
       >
-        {!compact && (
-          <div
-            role="row"
-            className="sticky top-[56px] md:top-0 z-10 flex items-center gap-2.5 sm:gap-3 px-3 sm:px-4 py-2 rounded-t-2xl bg-surface/95 backdrop-blur border-b border-divider text-[10.5px] font-semibold tracking-[0.06em] text-muted"
-          >
-            <SortHead col="order" label="#" className="w-6 justify-end" />
-            <span role="columnheader" className="flex-1">{t('sj.tracklist.title')}</span>
-            <SortHead col="community" label={t('sj.tracklist.community')} className="hidden sm:inline-flex w-[52px] justify-center" />
-            <SortHead col="duration" label={t('sj.tracklist.time')} className="hidden sm:inline-flex w-10 justify-end" />
-            <SortHead col="mine" label={t('sj.tracklist.rate')} className="w-[30px] justify-center" />
-            <span className="w-7" aria-hidden />
-          </div>
-        )}
+        <div
+          role="row"
+          className="sticky top-[56px] md:top-0 z-10 flex items-center gap-2.5 sm:gap-3 px-3 sm:px-4 py-2 rounded-t-2xl bg-surface/95 backdrop-blur border-b border-divider text-[10.5px] font-semibold tracking-[0.06em] text-muted"
+        >
+          <SortHead col="order" label="#" className="w-6 justify-end" />
+          <span role="columnheader" className="flex-1">{t('sj.tracklist.title')}</span>
+          <SortHead col="community" label={t('sj.tracklist.community')} className="hidden sm:inline-flex w-[52px] justify-center" />
+          <SortHead col="duration" label={t('sj.tracklist.time')} className="hidden sm:inline-flex w-10 justify-end" />
+          <SortHead col="mine" label={t('sj.tracklist.rate')} className="w-[30px] justify-center" />
+          <span className="w-7" aria-hidden />
+        </div>
 
         <div className="divide-y divide-divider [&>*:last-child]:rounded-b-2xl">
           {sorted.map((tr, i) => {
             const mine = myScores[tr.recordingId] ?? null;
             const st = stats?.[tr.recordingId];
             const showDisc =
-              !compact &&
               sort.col === 'order' &&
               multiDisc &&
               (i === 0 || sorted[i - 1].discNumber !== tr.discNumber);
             // Only the featured artists — never the artist name on its own.
             const credit = featuredCredit(tr.artists, release.artist);
-            const isCurrent = tr.recordingId === currentRecordingId;
+            const isFocused = tr.recordingId === highlighted;
             return (
               <Fragment key={`${tr.discNumber}-${tr.position}-${tr.recordingId}`}>
                 {showDisc && (
@@ -298,70 +289,52 @@ export default function Tracklist({
                 )}
                 <div
                   role="row"
+                  id={trackAnchorId(tr.recordingId)}
                   onContextMenu={(e) => {
                     const el = e.target as Element;
                     if (el.closest('input, textarea')) return;
                     e.preventDefault();
                     setMenu({ x: e.clientX, y: e.clientY, track: tr });
                   }}
-                  aria-current={isCurrent ? 'true' : undefined}
-                  className={`group flex items-center gap-2.5 sm:gap-3 px-3 sm:px-4 ${
-                    compact ? 'py-2' : 'py-2.5'
-                  } transition ${isCurrent ? 'bg-accent/[0.08]' : 'hover:bg-page/60'}`}
+                  className={`group flex items-center gap-2.5 sm:gap-3 px-3 sm:px-4 py-2.5 scroll-mt-24 transition-colors duration-700 ${
+                    isFocused ? 'bg-accent/[0.12]' : 'hover:bg-page/60'
+                  }`}
                 >
                   <span
                     className={`w-6 text-right text-[13px] tabular-nums shrink-0 ${
-                      isCurrent ? 'text-accent font-bold' : 'text-muted'
+                      isFocused ? 'text-accent font-bold' : 'text-muted'
                     }`}
                   >
                     {tr.position}
                   </span>
                   <span className="flex-1 min-w-0">
-                    {isCurrent ? (
-                      <span className="block text-[14px] font-semibold text-ink truncate">{tr.title}</span>
-                    ) : (
-                      <Link href={href(tr)} className="block text-[14px] text-ink truncate hover:underline">
-                        {tr.title}
-                      </Link>
-                    )}
+                    <span className="block text-[14px] text-ink truncate">{tr.title}</span>
                     {credit && <span className="block text-[11.5px] text-muted truncate">{credit}</span>}
                   </span>
-                  {!compact && (
-                    <SaveToMixButton
-                      item={songItem(tr)}
-                      meta={songMeta(tr)}
-                      variant="inline"
-                      size={28}
-                      className="shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 aria-pressed:opacity-100 [@media(hover:none)]:hidden transition"
-                    />
-                  )}
-                  {!compact && (
-                    <span className="hidden sm:flex w-[52px] justify-center shrink-0">
-                      {stats === null ? (
-                        <span className="w-6 h-6 rounded-full bg-divider/50 animate-pulse" />
-                      ) : st?.avg != null ? (
-                        <span title={t('sj.tracklist.nRatings').replace('{n}', String(st.count))}>
-                          <ScoreBadge score={st.avg} size={22} ringStroke={1.5} ringGap={1} />
-                        </span>
-                      ) : (
-                        <span className="text-[12px] text-divider">—</span>
-                      )}
-                    </span>
-                  )}
-                  <span
-                    className={`${compact ? '' : 'hidden sm:block'} w-10 text-right text-[12px] text-muted tabular-nums shrink-0`}
-                  >
+                  <SaveToMixButton
+                    item={songItem(tr)}
+                    meta={songMeta(tr)}
+                    variant="inline"
+                    size={28}
+                    className="shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 aria-pressed:opacity-100 [@media(hover:none)]:hidden transition"
+                  />
+                  <span className="hidden sm:flex w-[52px] justify-center shrink-0">
+                    {stats === null ? (
+                      <span className="w-6 h-6 rounded-full bg-divider/50 animate-pulse" />
+                    ) : st?.avg != null ? (
+                      <span title={t('sj.tracklist.nRatings').replace('{n}', String(st.count))}>
+                        <ScoreBadge score={st.avg} size={22} ringStroke={1.5} ringGap={1} />
+                      </span>
+                    ) : (
+                      <span className="text-[12px] text-divider">—</span>
+                    )}
+                  </span>
+                  <span className="hidden sm:block w-10 text-right text-[12px] text-muted tabular-nums shrink-0">
                     {formatDuration(tr.durationMs)}
                   </span>
                   <span className="w-[30px] flex justify-center shrink-0">
                     {scoresLoading ? (
                       <span className="w-[30px] h-[30px] rounded-full bg-divider/50 animate-pulse" />
-                    ) : compact ? (
-                      mine != null ? (
-                        <span className="px-1.5 py-0.5 rounded bg-accent/10 text-accent text-[11px] font-bold tabular-nums">
-                          {formatScore(mine)}
-                        </span>
-                      ) : null
                     ) : (
                       <FlowerRateControl
                         ariaLabel={`${t('sj.album.rateTrack')} ${tr.title}`}
@@ -374,20 +347,18 @@ export default function Tracklist({
                       />
                     )}
                   </span>
-                  {!compact && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        const r = e.currentTarget.getBoundingClientRect();
-                        setMenu(menu ? null : { x: r.right, y: r.bottom + 6, track: tr });
-                      }}
-                      aria-label={t('sj.common.moreOptions')}
-                      aria-haspopup="menu"
-                      className="grid place-items-center w-7 h-7 rounded-lg text-muted hover:text-ink hover:bg-page transition shrink-0"
-                    >
-                      <MoreHorizontal size={16} />
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      const r = e.currentTarget.getBoundingClientRect();
+                      setMenu(menu ? null : { x: r.right, y: r.bottom + 6, track: tr });
+                    }}
+                    aria-label={t('sj.common.moreOptions')}
+                    aria-haspopup="menu"
+                    className="grid place-items-center w-7 h-7 rounded-lg text-muted hover:text-ink hover:bg-page transition shrink-0"
+                  >
+                    <MoreHorizontal size={16} />
+                  </button>
                 </div>
               </Fragment>
             );

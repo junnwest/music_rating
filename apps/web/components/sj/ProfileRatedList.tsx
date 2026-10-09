@@ -9,6 +9,7 @@ import FlowerGlyph from './FlowerGlyph';
 import { useContextMenu, openInNewTab } from './ContextMenu';
 import { useLanguage } from '../../lib/i18n';
 import { formatScore, spectrumFill, spectrumNumber, spectrumRing, typeLabelKey } from '../../lib/sj/display';
+import { songHref } from '../../lib/sj/trackLinks';
 import type { ProfileRatingItem } from './ProfileView';
 
 /**
@@ -26,7 +27,15 @@ import type { ProfileRatingItem } from './ProfileView';
  */
 
 export type RatedSortCol = 'title' | 'artist' | 'type' | 'score' | 'date';
-export type KindFilter = 'all' | 'albums' | 'eps' | 'singles' | 'songs';
+/** The bucket a rating falls into: three release types, or a song. */
+export type RatedBucket = 'albums' | 'eps' | 'singles' | 'songs';
+/**
+ * The rated list is albums only, one release type at a time: Albums / EPs /
+ * Singles, no "All". Songs aren't listed — a song rating shows only in its
+ * album's tracklist and in the "Rated N tracks" list on the album post
+ * (2026-10-09).
+ */
+export type RatedSection = 'albums' | 'eps' | 'singles';
 /** Inclusive score bounds, on the 0–5 display scale. `[0, 5]` means "no filter". */
 export type ScoreRange = [number, number];
 
@@ -37,8 +46,8 @@ export function effectiveScore(i: ProfileRatingItem): number | null {
   return i.score;
 }
 
-/** The bucket a row falls into for the kind filter. */
-export function kindOf(i: ProfileRatingItem): KindFilter {
+/** The bucket a row falls into for the section / type filters. */
+export function kindOf(i: ProfileRatingItem): RatedBucket {
   if (i.isSong) return 'songs';
   const t = (i.releaseType ?? '').toLowerCase();
   if (t === 'ep') return 'eps';
@@ -48,33 +57,57 @@ export function kindOf(i: ProfileRatingItem): KindFilter {
 
 // ── Filter bar ──────────────────────────────────────────────────────────────
 
-const KINDS: { key: KindFilter; labelKey: string }[] = [
-  { key: 'all', labelKey: 'sj.profile.filterAll' },
+const SECTIONS: { key: RatedSection; labelKey: string }[] = [
   { key: 'albums', labelKey: 'sj.profile.filterAlbums' },
   { key: 'eps', labelKey: 'sj.profile.filterEps' },
   { key: 'singles', labelKey: 'sj.profile.filterSingles' },
-  { key: 'songs', labelKey: 'sj.profile.filterSongs' },
 ];
 
+/** Albums | EPs | Singles — the top of the rated list, above everything else. */
+export function RatedSectionTabs({
+  section,
+  onSection,
+  counts,
+}: {
+  section: RatedSection;
+  onSection: (s: RatedSection) => void;
+  counts: Record<RatedBucket, number>;
+}) {
+  const { t } = useLanguage();
+  return (
+    <div role="tablist" className="inline-flex rounded-xl bg-surface border border-divider/60 p-0.5">
+      {SECTIONS.map(({ key, labelKey }) => (
+        <button
+          key={key}
+          role="tab"
+          aria-selected={section === key}
+          onClick={() => onSection(key)}
+          className={`px-3.5 py-1.5 rounded-[10px] text-[12.5px] font-semibold transition ${
+            section === key ? 'bg-ink text-page' : 'text-muted hover:text-ink'
+          }`}
+        >
+          {t(labelKey)}
+          <span className={`ml-1.5 tabular-nums font-medium ${section === key ? 'opacity-70' : 'opacity-60'}`}>
+            {counts[key]}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function RatedFilterBar({
-  kind,
-  onKind,
   range,
   onRange,
   sortCol,
   sortDesc,
   onSort,
-  counts,
 }: {
-  kind: KindFilter;
-  onKind: (k: KindFilter) => void;
   range: ScoreRange;
   onRange: (r: ScoreRange) => void;
   sortCol: RatedSortCol;
   sortDesc: boolean;
   onSort: (col: RatedSortCol, desc: boolean) => void;
-  /** How many rows fall in each bucket, so empty filters can be hidden. */
-  counts: Record<KindFilter, number>;
 }) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
@@ -112,17 +145,6 @@ export function RatedFilterBar({
 
   return (
     <div className="flex items-center gap-1 flex-wrap">
-      {KINDS.filter((k) => k.key === 'all' || counts[k.key] > 0).map(({ key, labelKey }) => (
-        <button
-          key={key}
-          onClick={() => onKind(key)}
-          className={`px-3 py-1.5 rounded-lg text-[12px] transition ${
-            kind === key ? 'bg-accent/10 text-accent font-semibold' : 'text-muted hover:text-ink'
-          }`}
-        >
-          {t(labelKey)}
-        </button>
-      ))}
 
       <span className="flex-1" />
 
@@ -351,7 +373,7 @@ function Row({
   const { t } = useLanguage();
   const score = item.score;
   const href = item.isSong
-    ? `/song/${item.recordingId}${item.releaseGroupId ? `?rg=${item.releaseGroupId}` : ''}`
+    ? songHref(item.recordingId!, item.releaseGroupId)
     : `/album/${item.releaseGroupId}`;
   const typeKey = item.isSong ? 'sj.type.song' : typeLabelKey(item.releaseType);
   const typeLabel = typeKey ? t(typeKey) : null;

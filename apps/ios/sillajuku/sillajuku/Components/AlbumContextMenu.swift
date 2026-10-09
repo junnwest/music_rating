@@ -71,7 +71,7 @@ enum AlbumQuickRate {
 /// File-scope, not nested in `prepareShare()` -- Swift disallows a locally-declared
 /// type inside a closure/function body belonging to a generic type (`AlbumContextMenu`
 /// is generic over `ExtraItems`), unlike the equivalent inline declarations in
-/// AlbumDetailView/SongDetailView/MixDetailView's own non-generic `prepareShare`s.
+/// AlbumDetailView/MixDetailView's own non-generic `prepareShare`s.
 private struct ShareProfileRow: Decodable { let username: String? }
 
 private struct AlbumMenuPreview: View {

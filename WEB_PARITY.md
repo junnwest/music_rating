@@ -1,5 +1,11 @@
 # Web Parity Checklist
 
+> **Parity status (2026-10-06, later) — songs aren't posts.** Built on both platforms at once:
+> - no song pages (a song link opens the album at that track);
+> - no song review text, likes, comments or notifications;
+> - "Rated N tracks" dropdown on album posts;
+> - profile Albums | EPs | Singles, with no "All" and no Songs (revised 2026-10-09).
+
 > **Parity status (2026-10-06):**
 > - **Search:** same on both. 1-character CJK queries, Korean/alias artist names → albums, songs in Top Match, "title + artist" song search. All server-side, plus a shared client rule (`lib/searchQuery.ts` ↔ `SearchViewModel.isSearchable`). **Gap:** the web header dropdown (`/api/search/suggest`) still needs 2+ characters.
 > - **Artist Songs tab, popularity order:** both (`/api/artist/top-tracks`).

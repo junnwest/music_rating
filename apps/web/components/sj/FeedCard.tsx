@@ -24,6 +24,7 @@ import { useContextMenu } from './ContextMenu';
 import CommentsModal from './CommentsModal';
 import LikersModal from './LikersModal';
 import ReportModal from './ReportModal';
+import RatedTracksDropdown from './RatedTracksDropdown';
 import { useLanguage } from '../../lib/i18n';
 import {
   profileHandle,
@@ -278,6 +279,8 @@ export default function FeedCard({
           {item.review_text}
         </p>
       )}
+
+      <RatedTracksDropdown userId={item.user_id} releaseGroupId={rg.id} className="px-3.5 pb-2" />
 
       {/* Action bar */}
       <div className="flex items-center gap-4 pl-3.5 py-1.5 pb-2.5">

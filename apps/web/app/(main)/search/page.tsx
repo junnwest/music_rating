@@ -34,6 +34,7 @@ import { releasedFilter } from '../../../lib/releaseWindow';
 import { RG_COLS, type SJRelease } from '../../../lib/sj/data';
 import { useArtistIdFor } from '../../../lib/sj/artistIds';
 import { saveTrackRating } from '../../../lib/sj/trackRatings';
+import { trackAnchorHref } from '../../../lib/sj/trackLinks';
 import type {
   SearchArtistRPC,
   SearchReleaseGroupRPC,
@@ -1262,7 +1263,7 @@ function SongRow({
     releaseGroupId: song.release.id,
   };
   const mixMeta = { coverUrl: song.release.coverUrl, title: song.title };
-  const href = `/song/${song.id}?rg=${song.release.id}`;
+  const href = trackAnchorHref(song.release.id, song.id);
 
   // Right-click parity with album cards (whose menu rides on AlbumPeek).
   const { onContextMenu, menu } = useContextMenu([

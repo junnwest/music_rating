@@ -648,7 +648,7 @@ function DockList({
   const { onContextMenu, menu } = useContextMenuFor<MixEntry>((entry) => [
     {
       key: 'open',
-      label: entry.kind === 'song' ? t('sj.context.openSong') : t('sj.context.openAlbum'),
+      label: t('sj.context.openAlbum'),
       icon: <ChevronRight size={15} />,
       onSelect: () => router.push(mixEntryHref(entry)),
     },

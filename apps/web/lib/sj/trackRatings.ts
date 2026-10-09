@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient';
+import { invalidatePostRatedTracks } from './postRatedTracks';
 
 /** Upsert (or, with `null`, delete) the user's rating for one track. */
 export async function saveTrackRating(
@@ -21,5 +22,6 @@ export async function saveTrackRating(
           .eq('user_id', userId)
           .eq('recording_id', recordingId);
   if (error) console.error('[trackRatings] save failed:', error.message);
+  else invalidatePostRatedTracks(userId);
   return { error };
 }

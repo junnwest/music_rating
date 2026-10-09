@@ -6,9 +6,9 @@ import { MessageCircle } from 'lucide-react';
 import Modal from './Modal';
 import InlineRatingEditor from './InlineRatingEditor';
 import CommentsModal from './CommentsModal';
-import TrackCommentsModal from './TrackCommentsModal';
 import { useLanguage } from '../../lib/i18n';
 import { supabase } from '../../lib/supabaseClient';
+import { songHref } from '../../lib/sj/trackLinks';
 import type { ProfileRatingItem } from './ProfileView';
 
 export default function ProfileRatingEditor({
@@ -49,21 +49,27 @@ export default function ProfileRatingEditor({
     if (!item || !supabase || saving) return;
     setSaving(true);
     const text = draft.trim() || null;
-    const table = item.isSong ? 'track_ratings' : 'ratings';
-    const { error: updateError } = await supabase.from(table).update({ review_text: text }).eq('id', item.ratingId);
+    const { error: updateError } = await supabase.from('ratings').update({ review_text: text }).eq('id', item.ratingId);
     if (updateError) setError(t('sj.onboarding.saveError'));
     else { setError(null); onChange({ ...item, reviewText: text }); }
     setSaving(false);
   }
 
   const href = item?.isSong
-    ? `/song/${item.recordingId}${item.releaseGroupId ? `?rg=${item.releaseGroupId}` : ''}`
+    ? songHref(item.recordingId!, item.releaseGroupId)
     : `/album/${item?.releaseGroupId}`;
 
   return <>
     <Modal open={item != null && !showReplies} onClose={onClose} title={item?.title ?? ''} maxWidth="max-w-lg">
       {item && <div className="p-5 space-y-4">
         <InlineRatingEditor score={item.score} step={step} onSave={saveScore} />
+        {/* A song rating is a score only -- no comment, no replies (2026-10-06). */}
+        {item.isSong ? (
+          <>
+            {error && <p role="alert" className="text-[12px] text-red-500">{error}</p>}
+            <Link href={href} className="inline-block text-[12px] text-muted hover:text-accent hover:underline">{t('sj.context.openAlbum')}</Link>
+          </>
+        ) : <>
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -82,12 +88,11 @@ export default function ProfileRatingEditor({
             {t('sj.common.save')}
           </button>
         </div>
+        </>}
       </div>}
     </Modal>
-    {item?.isSong ? (
-      <TrackCommentsModal open={showReplies} onClose={() => setShowReplies(false)} trackRatingId={item.ratingId} />
-    ) : item ? (
+    {item && !item.isSong && (
       <CommentsModal open={showReplies} onClose={() => setShowReplies(false)} ratingId={item.ratingId} />
-    ) : null}
+    )}
   </>;
 }

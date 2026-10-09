@@ -640,7 +640,6 @@ export default function AlbumPage() {
         {/* Ratings — ranked server-side (get_album_ratings), commented ones
             first; yours pinned first */}
         <CommentsSection
-          kind="album"
           parentId={releaseGroupId}
           mine={
             userId && userScore != null

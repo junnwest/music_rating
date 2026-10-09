@@ -1,6 +1,7 @@
 import { supabase } from '../supabaseClient';
 import { displayName } from './display';
 import type { MixItemRef } from './mixes';
+import { trackAnchorHref } from './trackLinks';
 
 /** One row of the mix — an album (`mix_items`) or a song (`mix_song_items`). */
 export interface MixEntry {
@@ -18,7 +19,7 @@ export interface MixEntry {
 
 export function mixEntryHref(e: Pick<MixEntry, 'kind' | 'releaseGroupId' | 'recordingId'>) {
   return e.kind === 'song'
-    ? `/song/${e.recordingId}?rg=${e.releaseGroupId}`
+    ? trackAnchorHref(e.releaseGroupId, e.recordingId!)
     : `/album/${e.releaseGroupId}`;
 }
 

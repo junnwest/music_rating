@@ -6,7 +6,7 @@ import { BadgeCheck, Flag, Heart, MessageCircle, MoreHorizontal, Pencil } from '
 import Avatar from './Avatar';
 import ScoreBadge from './ScoreBadge';
 import CommentsModal from './CommentsModal';
-import TrackCommentsModal from './TrackCommentsModal';
+import RatedTracksDropdown from './RatedTracksDropdown';
 import ReportModal from './ReportModal';
 import { OverflowMenuSurface } from './AlbumOverflowMenu';
 import { useSession } from './SessionContext';
@@ -15,9 +15,9 @@ import { useLanguage } from '../../lib/i18n';
 import { relativeTime } from '../../lib/sj/display';
 
 /**
- * P6 (+ P7) — ranked ratings for an album, ranked comments for a song.
- *
- * Album and song: every visible rating, commented ones first.
+ * P6 — ranked ratings for an album: every visible rating, commented ones
+ * first, each with the tracks its author rated on the album. (Songs had their
+ * own section on the song page until song pages were retired, 2026-10-06.)
  * Ranking, privacy and blocking all happen server-side — sorting is never done
  * by pulling everything to the client. The viewer's own rating is pinned first
  * from the page's own state, with an Edit that jumps to the inline editor.
@@ -44,12 +44,10 @@ interface CommentRow {
 }
 
 export default function CommentsSection({
-  kind,
   parentId,
   mine,
 }: {
-  kind: 'album' | 'song';
-  /** release_group id (album) or recording id (song). */
+  /** release_group id. */
   parentId: string;
   /** The viewer's own rating, pinned first. */
   mine?: { score: number | null; text: string; onEdit: () => void } | null;
@@ -64,30 +62,22 @@ export default function CommentsSection({
   const [failed, setFailed] = useState(false);
   const seq = useRef(0);
 
-  const rpc = kind === 'album' ? 'get_album_ratings' : 'get_song_ratings';
-  const parentArg = kind === 'album' ? 'p_release_group_id' : 'p_recording_id';
-
   const fetchPage = useCallback(
     async (s: CommentSort, offset: number) => {
       if (!supabase) return null;
-      const args = {
-        [parentArg]: parentId,
+      const { data, error } = await supabase.rpc('get_album_ratings', {
+        p_release_group_id: parentId,
         p_sort: s,
         p_limit: PAGE,
         p_offset: offset,
-      };
-      let { data, error } = await supabase.rpc(rpc, args);
-      // During a rolling deploy, the UI can arrive before the new SQL function.
-      if (error?.code === 'PGRST202' && kind === 'song') {
-        ({ data, error } = await supabase.rpc('get_song_comments', args));
-      }
+      });
       if (error) {
-        console.error(`[comments] ${rpc} failed:`, error.message);
+        console.error('[comments] get_album_ratings failed:', error.message);
         return null;
       }
       return ((data as any[]) ?? []).map(
         (r): CommentRow => ({
-          id: r.rating_id ?? r.track_rating_id,
+          id: r.rating_id,
           user_id: r.user_id,
           username: r.username,
           display_name: r.display_name,
@@ -103,7 +93,7 @@ export default function CommentsSection({
         }),
       );
     },
-    [rpc, parentArg, parentId, kind],
+    [parentId],
   );
 
   useEffect(() => {
@@ -143,11 +133,9 @@ export default function CommentsSection({
         ) ?? prev,
       );
     patch(like);
-    const table = kind === 'album' ? 'rating_likes' : 'track_rating_likes';
-    const col = kind === 'album' ? 'rating_id' : 'track_rating_id';
     const { error } = like
-      ? await supabase.from(table).insert({ user_id: userId, [col]: row.id })
-      : await supabase.from(table).delete().eq('user_id', userId).eq(col, row.id);
+      ? await supabase.from('rating_likes').insert({ user_id: userId, rating_id: row.id })
+      : await supabase.from('rating_likes').delete().eq('user_id', userId).eq('rating_id', row.id);
     if (error) {
       console.error('[comments] like failed:', error.message);
       patch(!like);
@@ -251,7 +239,7 @@ export default function CommentsSection({
               <CommentCard
                 key={row.id}
                 row={row}
-                kind={kind}
+                releaseGroupId={parentId}
                 lang={lang}
                 onLike={() => toggleLike(row)}
                 onReported={() => setRows((prev) => prev?.filter((r) => r.id !== row.id) ?? prev)}
@@ -311,13 +299,13 @@ function ClampedText({ text }: { text: string }) {
 
 function CommentCard({
   row,
-  kind,
+  releaseGroupId,
   lang,
   onLike,
   onReported,
 }: {
   row: CommentRow;
-  kind: 'album' | 'song';
+  releaseGroupId: string;
   lang: 'en' | 'ko';
   onLike: () => void;
   onReported: () => void;
@@ -347,21 +335,20 @@ function CommentCard({
           </span>
         </Link>
         {row.score != null && <ScoreBadge score={row.score} size={28} ringStroke={2} />}
-        {kind === 'album' && (
-          <button
-            type="button"
-            onClick={(e) => {
-              const r = e.currentTarget.getBoundingClientRect();
-              setMenuAt(menuAt ? null : { x: r.right, y: r.bottom + 6 });
-            }}
-            aria-label={t('sj.common.moreOptions')}
-            className="grid place-items-center w-7 h-7 -mr-1.5 rounded-lg text-muted hover:text-ink hover:bg-page transition"
-          >
-            <MoreHorizontal size={15} />
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            setMenuAt(menuAt ? null : { x: r.right, y: r.bottom + 6 });
+          }}
+          aria-label={t('sj.common.moreOptions')}
+          className="grid place-items-center w-7 h-7 -mr-1.5 rounded-lg text-muted hover:text-ink hover:bg-page transition"
+        >
+          <MoreHorizontal size={15} />
+        </button>
       </div>
       {row.review_text && <ClampedText text={row.review_text} />}
+      <RatedTracksDropdown userId={row.user_id} releaseGroupId={releaseGroupId} className="mt-2 ml-11" />
       <div className="mt-1.5 ml-11 flex items-center gap-4">
         <button
           type="button"
@@ -402,17 +389,9 @@ function CommentCard({
           onClose={() => setMenuAt(null)}
         />
       )}
-      {thread &&
-        (kind === 'album' ? (
-          <CommentsModal open onClose={() => setThread(false)} ratingId={row.id} onCountChange={setReplies} />
-        ) : (
-          <TrackCommentsModal
-            open
-            onClose={() => setThread(false)}
-            trackRatingId={row.id}
-            onCountChange={setReplies}
-          />
-        ))}
+      {thread && (
+        <CommentsModal open onClose={() => setThread(false)} ratingId={row.id} onCountChange={setReplies} />
+      )}
       {reporting && (
         <ReportModal
           open

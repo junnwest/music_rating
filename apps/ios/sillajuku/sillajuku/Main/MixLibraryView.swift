@@ -488,7 +488,8 @@ struct MixDetailView: View {
             }
         }
         .navigationDestination(item: $selectedSongItem) { item in
-            SongDetailView(track: item.asTrackEntry, release: item.releaseGroups.asRelease)
+            // No song pages: a song opens its album, scrolled to the track.
+            AlbumDetailView(release: item.releaseGroups.asRelease, focusRecordingId: item.asTrackEntry.trackId)
                 .onDisappear { if selectedSongItem == item { selectedSongItem = nil } }
         }
         .task { await load() }

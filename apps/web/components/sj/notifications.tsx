@@ -16,7 +16,6 @@ export interface NotificationEntry {
   rating_id: string | null;
   mix_id: string | null;
   mix_share_id: string | null;
-  track_rating_id: string | null;
   actor_id: string | null;
   actor: { username: string | null; display_name: string | null; avatar_url: string | null } | null;
   rating: {
@@ -33,7 +32,7 @@ export interface NotificationEntry {
 }
 
 export const NOTIFICATION_SELECT =
-  'id, type, created_at, rating_id, mix_id, mix_share_id, track_rating_id, actor_id, ' +
+  'id, type, created_at, rating_id, mix_id, mix_share_id, actor_id, ' +
   'actor:actor_id(username, display_name, avatar_url), ' +
   'rating:rating_id(release_groups(id, title, artist_display, native_title, ' +
   'artists!release_groups_primary_artist_id_fkey(name_native))), ' +
@@ -70,25 +69,18 @@ export function notificationBody(
       return t('sj.notifications.mixShareLiked').replace('{who}', who);
     case 'mix_share_comment':
       return t('sj.notifications.mixShareCommented').replace('{who}', who);
-    case 'track_rating_like':
-      return t('sj.notifications.songLiked').replace('{who}', who);
-    case 'track_rating_comment':
-      return t('sj.notifications.songCommented').replace('{who}', who);
     default:
       return t('sj.notifications.interacted').replace('{who}', who);
   }
 }
 
 // A like/comment notification is about a specific post (the rating, with its own review
-// text/like-comment thread) -- linking to the bare album/song page loses that entirely (those
-// pages only show aggregate community stats, never individual posts). These route to the
-// dedicated /post page instead -- web sibling of iOS's albumPostDestination/songPostDestination.
+// text/like-comment thread) -- linking to the bare album page loses that entirely (it only
+// shows aggregate community stats, never individual posts). These route to the dedicated
+// /post page instead -- web sibling of iOS's albumPostDestination.
 export function notificationHref(n: NotificationEntry): string | null {
   if ((n.type === 'like' || n.type === 'comment') && n.rating_id) {
     return `/post/${n.rating_id}`;
-  }
-  if ((n.type === 'track_rating_like' || n.type === 'track_rating_comment') && n.track_rating_id) {
-    return `/post/${n.track_rating_id}?song=1`;
   }
   if ((n.type === 'follow' || n.type === 'follow_request' || n.type === 'follow_accept') && n.actor?.username) {
     return `/profile/${n.actor.username}`;
@@ -107,11 +99,9 @@ function typeBadgeStyle(type: string): { icon: typeof Heart; className: string }
     case 'like':
     case 'mix_like':
     case 'mix_share_like':
-    case 'track_rating_like':
       return { icon: Heart, className: 'bg-red-500 text-white' };
     case 'comment':
     case 'mix_share_comment':
-    case 'track_rating_comment':
       return { icon: MessageSquare, className: 'bg-accent text-white' };
     case 'follow':
     case 'follow_request':

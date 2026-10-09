@@ -23,7 +23,6 @@ import { useContextMenuFor, openInNewTab } from './ContextMenu';
 import Avatar from './Avatar';
 import { Skeleton, SkeletonLine, SkeletonRows } from './Loading';
 import ProfilePostCard from './ProfilePostCard';
-import ProfileSongPostCard from './ProfileSongPostCard';
 import ProfileRatingEditor from './ProfileRatingEditor';
 import MixPostCard from './MixPostCard';
 import ProfileStats from './ProfileStats';
@@ -45,9 +44,11 @@ import {
 import ProfileRatedList, {
   FULL_RANGE,
   RatedFilterBar,
+  RatedSectionTabs,
   effectiveScore,
   kindOf,
-  type KindFilter,
+  type RatedBucket,
+  type RatedSection,
   type RatedSortCol,
   type ScoreRange,
 } from './ProfileRatedList';
@@ -148,7 +149,7 @@ export default function ProfileView({ username }: { username?: string }) {
   const [notFound, setNotFound] = useState(false);
 
   const [tab, setTab] = useState<ProfileTab>('rated');
-  const [kind, setKind] = useState<KindFilter>('all');
+  const [section, setSection] = useState<RatedSection>('albums');
   const [range, setRange] = useState<ScoreRange>(FULL_RANGE);
   const [sortCol, setSortCol] = useState<RatedSortCol>('date');
   const [sortDesc, setSortDesc] = useState(true);
@@ -322,7 +323,7 @@ export default function ProfileView({ username }: { username?: string }) {
       const { data: raw } = await supabase!
         .from('track_ratings')
         .select(
-          'id, recording_id, score, review_text, created_at, recordings(id, title, artist_display, primary_artist_id)',
+          'id, recording_id, score, created_at, recordings(id, title, artist_display, primary_artist_id)',
         )
         .eq('user_id', uid)
         .order('created_at', { ascending: false })
@@ -356,7 +357,7 @@ export default function ProfileView({ username }: { username?: string }) {
           coverUrl: rg?.cover_url ?? null,
           releaseType: null,
           score: r.score,
-          reviewText: r.review_text,
+          reviewText: null,
           createdAt: r.created_at,
           releaseTitle: rg?.title ?? '',
           releaseArtist: rg?.artist_display ?? '',
@@ -390,12 +391,9 @@ export default function ProfileView({ username }: { username?: string }) {
 
     setItems([...albumItems, ...songItems]);
 
-    // Like/comment counts for posts mode -- albums (rating_id) and songs (track_rating_id)
-    // merged into the same dicts, keyed by item.ratingId either way. Safe to merge: album
-    // ratingIds and song ratingIds come from two different tables' own uuid PKs, so collision
-    // isn't possible.
+    // Like/comment counts for posts mode -- album ratings only; a song rating is a score,
+    // not a post (2026-10-06).
     const ratingIds = albumItems.map((i) => i.ratingId);
-    const songRatingIds = songItems.map((i) => i.ratingId);
     const lc: Record<string, number> = {};
     const cc: Record<string, number> = {};
     const liked = new Set<string>();
@@ -414,38 +412,12 @@ export default function ProfileView({ username }: { username?: string }) {
               : Promise.resolve({ data: null }),
           ])
         : null;
-    const songCountsP =
-      songRatingIds.length > 0
-        ? Promise.all([
-            supabase.from('track_rating_likes').select('track_rating_id').in('track_rating_id', songRatingIds),
-            supabase
-              .from('track_rating_comments')
-              .select('track_rating_id')
-              .in('track_rating_id', songRatingIds),
-            myId
-              ? supabase
-                  .from('track_rating_likes')
-                  .select('track_rating_id')
-                  .eq('user_id', myId)
-                  .in('track_rating_id', songRatingIds)
-              : Promise.resolve({ data: null }),
-          ])
-        : null;
-
-    const [albumCounts, songCounts] = await Promise.all([albumCountsP, songCountsP]);
+    const albumCounts = await albumCountsP;
     if (albumCounts) {
       const [likesRes, commentsRes, myLikesRes] = albumCounts;
       for (const r of (likesRes.data as any[] | null) ?? []) lc[r.rating_id] = (lc[r.rating_id] ?? 0) + 1;
       for (const r of (commentsRes.data as any[] | null) ?? []) cc[r.rating_id] = (cc[r.rating_id] ?? 0) + 1;
       for (const r of (myLikesRes.data as any[] | null) ?? []) liked.add(r.rating_id);
-    }
-    if (songCounts) {
-      const [likesRes, commentsRes, myLikesRes] = songCounts;
-      for (const r of (likesRes.data as any[] | null) ?? [])
-        lc[r.track_rating_id] = (lc[r.track_rating_id] ?? 0) + 1;
-      for (const r of (commentsRes.data as any[] | null) ?? [])
-        cc[r.track_rating_id] = (cc[r.track_rating_id] ?? 0) + 1;
-      for (const r of (myLikesRes.data as any[] | null) ?? []) liked.add(r.track_rating_id);
     }
     setLikeCounts(lc);
     setCommentCounts(cc);
@@ -465,18 +437,20 @@ export default function ProfileView({ username }: { username?: string }) {
 
   /** Per-bucket totals, so the filter bar can hide buckets nobody has. */
   const kindCounts = useMemo(() => {
-    const c: Record<KindFilter, number> = { all: items.length, albums: 0, eps: 0, singles: 0, songs: 0 };
+    const c: Record<RatedBucket, number> = { albums: 0, eps: 0, singles: 0, songs: 0 };
     for (const i of items) c[kindOf(i)] += 1;
     return c;
   }, [items]);
 
-  // Mix posts join posts mode only while the filters mean "everything, by date" —
-  // kind/score filters and other sorts describe ratings, which a mix post isn't.
+  // Mix posts join the Albums posts view only while its filters mean "everything, by
+  // date" — score filters and other sorts describe ratings, which a mix post isn't.
+  // Albums only, so they show once rather than on every type tab.
   function withMixPosts<T extends { createdAt: string | null }>(
     list: T[],
   ): (T | { mixPost: MixSharePost; createdAt: string })[] {
     const rangeActive = range[0] !== FULL_RANGE[0] || range[1] !== FULL_RANGE[1];
-    if (kind !== 'all' || rangeActive || sortCol !== 'date' || mixPosts.length === 0) return list;
+    if (section !== 'albums' || rangeActive || sortCol !== 'date' || mixPosts.length === 0)
+      return list;
     const merged: (T | { mixPost: MixSharePost; createdAt: string })[] = [
       ...list,
       ...mixPosts.map((p) => ({ mixPost: p, createdAt: p.createdAt })),
@@ -490,7 +464,9 @@ export default function ProfileView({ username }: { username?: string }) {
   const filtered = useMemo(() => {
     const rangeActive = range[0] !== FULL_RANGE[0] || range[1] !== FULL_RANGE[1];
     const base = items.filter((i) => {
-      if (kind !== 'all' && kindOf(i) !== kind) return false;
+      const bucket = kindOf(i);
+      // Songs never list here (their bucket matches no section).
+      if (bucket !== section) return false;
       if (rangeActive) {
         const s = effectiveScore(i);
         // An unscored row has no place on a score range — narrowing the range
@@ -510,7 +486,7 @@ export default function ProfileView({ username }: { username?: string }) {
       else cmp = (a.createdAt ?? '').localeCompare(b.createdAt ?? '');
       return cmp * dir;
     });
-  }, [items, kind, range, sortCol, sortDesc]);
+  }, [items, section, range, sortCol, sortDesc]);
 
   /** Follow / Request, or unfollow / withdraw the request. A follow on a
    *  private account is turned into a request by a DB trigger. Following
@@ -638,33 +614,6 @@ export default function ProfileView({ username }: { username?: string }) {
         .eq('rating_id', ratingId);
     } else {
       await supabase.from('rating_likes').insert({ user_id: myId, rating_id: ratingId });
-    }
-  }
-
-  async function toggleSongLike(trackRatingId: string) {
-    if (!supabase) return;
-    if (!requireAuth() || !myId) return;
-    const wasLiked = likedIds.has(trackRatingId);
-    setLikedIds((prev) => {
-      const next = new Set(prev);
-      if (wasLiked) next.delete(trackRatingId);
-      else next.add(trackRatingId);
-      return next;
-    });
-    setLikeCounts((prev) => ({
-      ...prev,
-      [trackRatingId]: Math.max(0, (prev[trackRatingId] ?? 0) + (wasLiked ? -1 : 1)),
-    }));
-    if (wasLiked) {
-      await supabase
-        .from('track_rating_likes')
-        .delete()
-        .eq('user_id', myId)
-        .eq('track_rating_id', trackRatingId);
-    } else {
-      await supabase
-        .from('track_rating_likes')
-        .insert({ user_id: myId, track_rating_id: trackRatingId });
     }
   }
 
@@ -830,11 +779,16 @@ export default function ProfileView({ username }: { username?: string }) {
       {/* ── Rated tab ── */}
       {tab === 'rated' && (
         <div className="mt-3">
-          {items.length === 0 ? (
+          {items.every((i) => i.isSong) ? (
             <Empty label={t('sj.profile.noRatings')} />
           ) : (
             <>
-              <div className="flex items-center gap-2 flex-wrap">
+              <RatedSectionTabs
+                section={section}
+                onSection={setSection}
+                counts={kindCounts}
+              />
+              <div className="mt-2.5 flex items-center gap-2 flex-wrap">
                 {isSelf && (
                   <span className="flex gap-0.5 order-last sm:order-none">
                     <button
@@ -861,8 +815,6 @@ export default function ProfileView({ username }: { username?: string }) {
                     you're looking at, not how they're drawn. */}
                 <span className="flex-1 min-w-0">
                   <RatedFilterBar
-                    kind={kind}
-                    onKind={setKind}
                     range={range}
                     onRange={setRange}
                     sortCol={sortCol}
@@ -871,7 +823,6 @@ export default function ProfileView({ username }: { username?: string }) {
                       setSortCol(c);
                       setSortDesc(d);
                     }}
-                    counts={kindCounts}
                   />
                 </span>
               </div>
@@ -892,21 +843,11 @@ export default function ProfileView({ username }: { username?: string }) {
                         onLike={() => toggleMixPostLike(item.mixPost)}
                         onDelete={() => deleteMixPost(item.mixPost)}
                       />
-                    ) : item.isSong ? (
-                      <ProfileSongPostCard
-                        key={item.key}
-                        item={item}
-                        likesCount={likeCounts[item.ratingId] ?? 0}
-                        commentsCount={commentCounts[item.ratingId] ?? 0}
-                        isLiked={likedIds.has(item.ratingId)}
-                        onLike={() => toggleSongLike(item.ratingId)}
-                        onDelete={() => requestDeleteRating(item)}
-                        onEdit={() => setEditingRating(item)}
-                      />
                     ) : (
                       <ProfilePostCard
                         key={item.key}
                         item={item}
+                        userId={myId!}
                         likesCount={likeCounts[item.ratingId] ?? 0}
                         commentsCount={commentCounts[item.ratingId] ?? 0}
                         isLiked={likedIds.has(item.ratingId)}

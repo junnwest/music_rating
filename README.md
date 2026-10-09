@@ -52,6 +52,23 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **2026-10-06 (Mac, later) — songs stop being posts; albums come first. Code done on web + iOS, NOT committed. Both migrations ✅ APPLIED 2026-10-08 (verified live), BEFORE the deploy, so production is running old code against the new schema until web deploys and iOS ships.**
+> Song pages are gone on both platforms. Web `/song/<id>` now 308-redirects to `/album/<rg>#track-<id>`,
+> and the tracklist scrolls to that row and highlights it. On iOS a song opens its album scrolled to the track,
+> and tapping a track title opens the rating sheet. A song rating is a score only: no review text, likes,
+> comments or notifications. Song ratings show in the album tracklist and in a new **"♪ Rated N tracks ⌄"**
+> dropdown on album posts (feed, profile posts, `/post`, album-page ratings), which expands in place.
+> Profile (revised 2026-10-09): no "All" and no Songs. It's **Albums | EPs | Singles** on both platforms, so song
+> ratings show only on the album page and in the album-post dropdown. Song charts and song search results stay.
+> **2026-10-09 fix:** the iOS dropdown never appeared, because its load was attached to an empty `Group`.
+> It only applies to the 19 album posts whose author also rated tracks on that album (82 of 101 user-album song
+> pairs have no album post). Test case: @nicky · Geography (15 tracks).
+> **To ship, in order:**
+> 1. **USER: apply `20261006000000_post_rated_tracks.sql`** (SQL editor). Additive. New RPC `get_post_rated_tracks`; without it the dropdown just stays hidden.
+> 2. Deploy web + ship an iOS build.
+> 3. **USER: apply `20261006000001_song_ratings_no_posts.sql`.** Destructive: deletes the 1 song like and 1 song comment, drops `track_rating_likes`/`track_rating_comments`, their notify triggers, `get_song_comments`/`get_song_ratings`, and the two notification types. It aborts if any function still references the dropped tables. **2026-10-08:** the first run aborted on `get_suggested_users`, whose live definition existed only in the DB (edited in place, never in a migration) and counted song comments and reviews. The migration now carries that live definition, minus the song comments and reviews, so the repo has it for the first time. Re-run the whole file. `track_ratings.review_text` and `notifications.track_rating_id` are cleared but **kept**, because older iOS builds select them; drop them in a follow-up once those builds age out.
+> **Not done:** a hands-on pass on device/browser (the dropdown needs step 1 first). Interim: Mix share posts live in the Albums posts view until Mixes are typed album/song (next task: chosen at creation, unchangeable; album Mixes → Albums, song Mixes → Songs).
+
 > **2026-10-06 (pipeline PC) — explore ranking, duplicate merging, Korean metadata, reported gaps.**
 > **Explore `home-v5`:** `value` scored character count (its own comment admitted it); replaced by
 > `thoughtfulness()` — length capped at 40%, DISTINCT TOKENS and sentence count carry the rest (a type-token

@@ -4,6 +4,27 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-10-06 (Mac, later) — songs stop being posts.** Goal: prioritise album rating and keep songs from
+interrupting people who rate albums. (1) Song pages deleted on web and iOS. Web `/song/[id]` is a server redirect
+to `/album/<rg>#track-<recordingId>` (canonical edition when there's no `?rg`; `lib/sj/trackLinks.ts`). The
+tracklist rows are anchors and highlight on arrival. iOS `AlbumDetailView(focusRecordingId:)` scrolls with a
+`ScrollViewReader`. (2) Song posts removed: `ProfileSongPostCard`, `TrackCommentsModal`/`TrackLikersModal`
+(web), `SongPostDetailView`/`SongCommentSheetView`/`SongLikersSheetView` (iOS), song notifications, and song
+review text. `CommentsSection` is album-only. (3) New `get_post_rated_tracks(p_user_ids, p_release_group_ids)`
+RPC (SECURITY INVOKER, so track_ratings' private-account RLS applies, plus catalog visibility) powers a
+"Rated N tracks" dropdown on album posts. On web it's batched per tick (`lib/sj/postRatedTracks.ts`); on iOS it's
+batched over 30 ms (`Services/PostRatedTracks.swift`). (4) Profile: no "All"; Albums | Songs, Songs list-only, and
+the web Albums section has a release-type sub-filter. Live data before the change: 56 song ratings (kept), 0 with
+text, 1 like, 1 comment. Migrations split additive/destructive, see README. Web typecheck + lint clean, iOS CLI
+build clean, `/song` redirect verified on a dev server. **2026-10-09 fix (iOS):** the album page's "Ratings & Reviews"
+preview listed only ratings WITH review text, so the section vanished on 180 of 202 rated albums (only 25 of 259
+ratings have text). An album could appear as a feed post yet list nobody. It now shows every other rating,
+commented first, matching web's `get_album_ratings` order. **Also 2026-10-09:** the profile became Albums | EPs |
+Singles on both platforms (songs are no longer listed on profiles at all). The iOS "Rated N tracks" dropdown never
+rendered: `.task` sat on a `Group` that is empty until the tracks load, so the load never ran. Fixed with a `VStack`.
+
+---
+
 **2026-10-06 (Mac) — SESSION CLOSE (2026-09-27 → 10-06).** Pulled and merged Windows's latest (dedup guards, maniadb paging, ingest title/date guard, its own session close). No conflicts this time. All Mac work is committed and pushed; every migration from this stretch is applied and verified live. The per-change entries below have the details. Hand-off:
 
 - **Build 27 is ready but not uploaded.** Two things block it:

@@ -15,12 +15,6 @@ struct AppNotification: Codable, Identifiable {
     let rating: RatingInfo?
     let mix: MixInfo?
     let mixShare: MixShareInfo?
-    // No embedded song/release info yet (unlike `rating`/`mix`/`mixShare`) -- recordings aren't
-    // directly joinable to release_groups via a single FK the way ratings/mixes are, so a
-    // track_rating_like/comment notification degrades to generic text + no tap target for now,
-    // same as any other notification type this model doesn't recognize (see the `default:` cases
-    // below). Revisit if that's worth the extra nested-embed complexity.
-    let trackRatingId: UUID?
 
     struct Actor: Codable {
         let username: String?
@@ -85,7 +79,6 @@ struct AppNotification: Codable, Identifiable {
         case mixShareId    = "mix_share_id"
         case actorId       = "actor_id"
         case mixShare      = "mix_share"
-        case trackRatingId = "track_rating_id"
     }
 
     // A like/comment notification is about a specific post (the rating, with its own review
@@ -95,11 +88,6 @@ struct AppNotification: Codable, Identifiable {
     var albumPostDestination: AlbumPostDestination? {
         guard (type == "like" || type == "comment"), let ratingId else { return nil }
         return AlbumPostDestination(ratingId: ratingId)
-    }
-
-    var songPostDestination: SongPostDestination? {
-        guard (type == "track_rating_like" || type == "track_rating_comment"), let trackRatingId else { return nil }
-        return SongPostDestination(ratingId: trackRatingId)
     }
 
     var actorDestination: UserProfileDestination? {
@@ -147,10 +135,6 @@ struct AppNotification: Codable, Identifiable {
             return String(format: String(localized: "%@ liked your shared mix"), who)
         case "mix_share_comment":
             return String(format: String(localized: "%@ commented on your shared mix"), who)
-        case "track_rating_like":
-            return String(format: String(localized: "%@ liked your song rating"), who)
-        case "track_rating_comment":
-            return String(format: String(localized: "%@ commented on your song rating"), who)
         default:
             return String(format: String(localized: "%@ interacted with your content"), who)
         }
@@ -158,20 +142,20 @@ struct AppNotification: Codable, Identifiable {
 
     var iconName: String {
         switch type {
-        case "like", "mix_like", "mix_share_like", "track_rating_like": return "icon-heart-filled"
-        case "comment", "mix_share_comment", "track_rating_comment":    return "icon-message-square"
-        case "follow", "follow_request":                                return "icon-user-plus"
-        case "follow_accept":                                           return "icon-check"
-        default:                                                        return "icon-bell"
+        case "like", "mix_like", "mix_share_like":   return "icon-heart-filled"
+        case "comment", "mix_share_comment":         return "icon-message-square"
+        case "follow", "follow_request":             return "icon-user-plus"
+        case "follow_accept":                        return "icon-check"
+        default:                                     return "icon-bell"
         }
     }
 
     var iconColor: Color {
         switch type {
-        case "like", "mix_like", "mix_share_like", "track_rating_like": return .red
-        case "comment", "mix_share_comment", "track_rating_comment":    return Color.sjAmber
-        case "follow", "follow_request", "follow_accept":               return Color.sjAmber
-        default:                                                        return Color.sjMuted
+        case "like", "mix_like", "mix_share_like":           return .red
+        case "comment", "mix_share_comment":                 return Color.sjAmber
+        case "follow", "follow_request", "follow_accept":    return Color.sjAmber
+        default:                                             return Color.sjMuted
         }
     }
 }
@@ -203,10 +187,6 @@ struct NotificationsView: View {
                 List(notifications) { notif in
                     Group {
                         if let dest = notif.albumPostDestination {
-                            NavigationLink(value: dest) {
-                                NotificationRow(notif: notif)
-                            }
-                        } else if let dest = notif.songPostDestination {
                             NavigationLink(value: dest) {
                                 NotificationRow(notif: notif)
                             }
@@ -246,7 +226,7 @@ struct NotificationsView: View {
         isLoading = true
         notifications = (try? await supabase
             .from("notifications")
-            .select("id, type, created_at, rating_id, mix_id, mix_share_id, actor_id, track_rating_id, actor:actor_id(username, display_name, avatar_url), rating:rating_id(release_groups(id, title, artist_display, native_title, cover_url, artists!release_groups_primary_artist_id_fkey(name_native))), mix:mix_id(id, user_id, name, description, is_public, is_default, created_at), mix_share:mix_share_id(mixes(id, user_id, name, description, is_public, is_default, created_at))")
+            .select("id, type, created_at, rating_id, mix_id, mix_share_id, actor_id, actor:actor_id(username, display_name, avatar_url), rating:rating_id(release_groups(id, title, artist_display, native_title, cover_url, artists!release_groups_primary_artist_id_fkey(name_native))), mix:mix_id(id, user_id, name, description, is_public, is_default, created_at), mix_share:mix_share_id(mixes(id, user_id, name, description, is_public, is_default, created_at))")
             .eq("user_id", value: userId)
             .order("created_at", ascending: false)
             .limit(60)
@@ -293,7 +273,7 @@ private struct NotificationRow: View {
     @State private var isResponding = false
 
     // Every notification type in this system is actor-driven (like/comment/follow/mix_like/
-    // mix_share_like/mix_share_comment/track_rating_like/track_rating_comment all set actor_id
+    // mix_share_like/mix_share_comment all set actor_id
     // to the acting user) -- so the actor's own avatar is always the more informative image, with
     // the old icon-only circle demoted to a small type badge in the corner (who did it + what
     // they did, instead of just what).
@@ -386,16 +366,12 @@ private struct NotificationRow: View {
 
 // MARK: - Single-post destinations
 
-// A notification's rating_id/track_rating_id always belongs to the CURRENT signed-in user --
+// A notification's rating_id always belongs to the CURRENT signed-in user --
 // the notify triggers explicitly set the recipient to the rating's owner and exclude self-
 // notifications (owner_id <> actor), so "the post this notification is about" is always one of
 // my own ratings, never someone else's. That's what makes a plain ratingId-keyed fetch safe here
 // without an extra ownership check.
 struct AlbumPostDestination: Hashable {
-    let ratingId: UUID
-}
-
-struct SongPostDestination: Hashable {
     let ratingId: UUID
 }
 
@@ -438,7 +414,9 @@ struct AlbumPostDetailView: View {
                         headerBadgeColor: myBadgeColor,
                         headerFoundingNumber: myFoundingNumber,
                         headerAvatarUrl: myAvatarUrl,
-                        headerFeaturedBadge: myFeaturedBadge
+                        headerFeaturedBadge: myFeaturedBadge,
+                        // A notification's post is always the signed-in user's own.
+                        authorId: supabase.auth.currentUser?.id
                     )
                     .padding(.horizontal, 12)
                     .padding(.top, 12)
@@ -541,214 +519,6 @@ struct AlbumPostDetailView: View {
                 }
                 try await supabase.from("rating_likes")
                     .insert(Payload(userId: userId, ratingId: ratingId)).execute()
-            }
-        } catch {
-            isLiked = wasLiked
-            likesCount = max(0, likesCount + (wasLiked ? 1 : -1))
-        }
-    }
-}
-
-// MARK: - Song post detail
-
-// Single-post screen for a song-rating like/comment notification -- reuses ProfileSongPostCard
-// exactly (Main/ProfileView.swift), same shape as AlbumPostDetailView above.
-struct SongPostDetailView: View {
-    let ratingId: UUID
-
-    @State private var song: SongRatingRow?
-    @State private var isLoading = true
-    @State private var likesCount = 0
-    @State private var commentsCount = 0
-    @State private var isLiked = false
-    @State private var myHandle: String? = nil
-    @State private var myVerified = false
-    @State private var myBadgeColor: String? = nil
-    @State private var myFoundingNumber: Int? = nil
-    @State private var myAvatarUrl: String? = nil
-    @State private var myFeaturedBadge: String? = nil
-
-    var body: some View {
-        Group {
-            if isLoading {
-                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let song {
-                ScrollView(showsIndicators: false) {
-                    ProfileSongPostCard(
-                        song: song,
-                        likesCount: likesCount,
-                        commentsCount: commentsCount,
-                        isLiked: isLiked,
-                        onLike: toggleLike,
-                        headerHandle: myHandle,
-                        headerVerified: myVerified,
-                        headerBadgeColor: myBadgeColor,
-                        headerFoundingNumber: myFoundingNumber,
-                        headerAvatarUrl: myAvatarUrl,
-                        headerFeaturedBadge: myFeaturedBadge
-                    )
-                    .padding(.horizontal, 12)
-                    .padding(.top, 12)
-                }
-            } else {
-                VStack(spacing: 12) {
-                    Image("icon-alert-circle")
-                        .renderingMode(.template)
-                        .resizable().scaledToFit()
-                        .frame(width: 36, height: 36)
-                        .foregroundStyle(Color.sjBorder)
-                    Text("This rating is no longer available")
-                        .font(.jakarta(15)).foregroundStyle(Color.sjMuted)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
-        .background(Color.sjCream.ignoresSafeArea())
-        .navigationTitle("Post")
-        .navigationBarTitleDisplayMode(.inline)
-        .task { await load() }
-    }
-
-    private func load() async {
-        guard let userId = supabase.auth.currentUser?.id else { isLoading = false; return }
-
-        struct TrackRatingRow: Codable {
-            let id: UUID
-            let recordingId: UUID
-            let score: Double?
-            let reviewText: String?
-            let createdAt: Date
-            let recordings: RecordingInfo
-            struct RecordingInfo: Codable {
-                let id: UUID; let title: String; let artistDisplay: String?
-                enum CodingKeys: String, CodingKey {
-                    case id, title; case artistDisplay = "artist_display"
-                }
-            }
-            enum CodingKeys: String, CodingKey {
-                case id, recordingId = "recording_id"; case score
-                case reviewText = "review_text"
-                case createdAt = "created_at"; case recordings
-            }
-        }
-        guard let raw: TrackRatingRow = try? await supabase
-            .from("track_ratings")
-            .select("id, recording_id, score, review_text, created_at, recordings(id, title, artist_display)")
-            .eq("id", value: ratingId)
-            .single()
-            .execute()
-            .value else {
-            isLoading = false
-            return
-        }
-
-        struct RTCoverRow: Codable {
-            let releases: CoverRelRow?
-            struct CoverRelRow: Codable {
-                let isCanonical: Bool?
-                let releaseGroups: RGCover?
-                struct RGCover: Codable {
-                    let id: UUID; let title: String; let artistDisplay: String?; let coverUrl: String?
-                    let titleNative: String?; let primaryArtist: NativeArtistRef?
-                    enum CodingKeys: String, CodingKey {
-                        case id, title; case artistDisplay = "artist_display"; case coverUrl = "cover_url"
-                        case titleNative = "native_title"; case primaryArtist = "artists"
-                    }
-                }
-                enum CodingKeys: String, CodingKey {
-                    case isCanonical = "is_canonical"; case releaseGroups = "release_groups"
-                }
-            }
-        }
-        let coverRows: [RTCoverRow] = (try? await supabase
-            .from("release_tracks")
-            .select("releases(is_canonical, release_groups(id, title, artist_display, cover_url, native_title, artists!release_groups_primary_artist_id_fkey(name_native)))")
-            .eq("recording_id", value: raw.recordingId)
-            .execute()
-            .value) ?? []
-        var rg: RTCoverRow.CoverRelRow.RGCover?
-        for row in coverRows {
-            guard let rel = row.releases, let candidate = rel.releaseGroups else { continue }
-            if rel.isCanonical == true || rg == nil { rg = candidate }
-        }
-        let ref = ReleaseRef(
-            id:            rg?.id ?? UUID(),
-            title:         rg?.title ?? "",
-            artist:        rg?.artistDisplay ?? raw.recordings.artistDisplay ?? "",
-            coverUrl:      rg?.coverUrl,
-            releaseType:   nil,
-            titleNative:   rg?.titleNative,
-            primaryArtist: rg?.primaryArtist
-        )
-        song = SongRatingRow(
-            ratingId: raw.id, recordingId: raw.recordingId, score: raw.score,
-            reviewText: raw.reviewText, trackTitle: raw.recordings.title, release: ref, createdAt: raw.createdAt
-        )
-
-        // Own-post header identity (see AlbumPostDetailView's matching fetch).
-        struct MyProfile: Decodable {
-            let username: String?
-            let isVerified: Bool?
-            let badgeColor: String?
-            let foundingNumber: Int?
-            let avatarUrl: String?
-            let featuredBadge: String?
-            enum CodingKeys: String, CodingKey {
-                case username; case isVerified = "is_verified"
-                case badgeColor = "badge_color"; case foundingNumber = "founding_number"
-                case avatarUrl = "avatar_url"; case featuredBadge = "featured_badge"
-            }
-        }
-        if let p: MyProfile = try? await supabase.from("profiles")
-            .select("username, is_verified, badge_color, founding_number, avatar_url, featured_badge").eq("id", value: userId)
-            .single().execute().value {
-            myHandle = p.username
-            myVerified = p.isVerified == true
-            myBadgeColor = p.badgeColor
-            myFoundingNumber = p.foundingNumber
-            myAvatarUrl = p.avatarUrl
-            myFeaturedBadge = p.featuredBadge
-        }
-
-        if let r = try? await supabase.from("track_rating_likes").select("*", count: .exact)
-            .eq("track_rating_id", value: ratingId).execute() {
-            likesCount = r.count ?? 0
-        }
-        if let r = try? await supabase.from("track_rating_comments").select("*", count: .exact)
-            .eq("track_rating_id", value: ratingId).execute() {
-            commentsCount = r.count ?? 0
-        }
-        struct IdRow: Decodable {
-            let trackRatingId: UUID
-            enum CodingKeys: String, CodingKey { case trackRatingId = "track_rating_id" }
-        }
-        if let rows: [IdRow] = try? await supabase
-            .from("track_rating_likes").select("track_rating_id")
-            .eq("user_id", value: userId).eq("track_rating_id", value: ratingId)
-            .execute().value {
-            isLiked = !rows.isEmpty
-        }
-        isLoading = false
-    }
-
-    private func toggleLike() async {
-        guard let userId = supabase.auth.currentUser?.id else { return }
-        let wasLiked = isLiked
-        isLiked.toggle()
-        likesCount = max(0, likesCount + (wasLiked ? -1 : 1))
-        do {
-            if wasLiked {
-                try await supabase.from("track_rating_likes").delete()
-                    .eq("user_id", value: userId).eq("track_rating_id", value: ratingId).execute()
-            } else {
-                struct Payload: Encodable {
-                    let userId: UUID; let trackRatingId: UUID
-                    enum CodingKeys: String, CodingKey {
-                        case userId = "user_id"; case trackRatingId = "track_rating_id"
-                    }
-                }
-                try await supabase.from("track_rating_likes")
-                    .insert(Payload(userId: userId, trackRatingId: ratingId)).execute()
             }
         } catch {
             isLiked = wasLiked

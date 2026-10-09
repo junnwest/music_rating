@@ -8,6 +8,7 @@ import ArtistLink from './ArtistLink';
 import ScoreBadge from './ScoreBadge';
 import CommentsModal from './CommentsModal';
 import LikersModal from './LikersModal';
+import RatedTracksDropdown from './RatedTracksDropdown';
 import { useLanguage } from '../../lib/i18n';
 import { relativeTime, typeLabelKey } from '../../lib/sj/display';
 import type { ProfileRatingItem } from './ProfileView';
@@ -18,6 +19,7 @@ import type { ProfileRatingItem } from './ProfileView';
  */
 export default function ProfilePostCard({
   item,
+  userId,
   likesCount,
   commentsCount,
   isLiked,
@@ -26,6 +28,8 @@ export default function ProfilePostCard({
   onEdit,
 }: {
   item: ProfileRatingItem;
+  /** The post's author -- for its rated-tracks dropdown. */
+  userId: string;
   likesCount: number;
   commentsCount: number;
   isLiked: boolean;
@@ -60,6 +64,10 @@ export default function ProfilePostCard({
         <button type="button" onClick={onEdit} aria-label={t('sj.rate.editComment')} className="block w-full px-3.5 pb-2.5 text-[14px] text-ink whitespace-pre-wrap break-words text-left hover:text-accent">
           {item.reviewText}
         </button>
+      )}
+
+      {item.releaseGroupId && (
+        <RatedTracksDropdown userId={userId} releaseGroupId={item.releaseGroupId} className="px-3.5 pb-2" />
       )}
 
       <div className="flex items-center gap-4 pl-3.5 pr-2 py-1.5 pb-2.5">

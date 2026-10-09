@@ -24,6 +24,7 @@ import {
 } from '../../../../lib/sj/display';
 import { RG_COLS, type SJRelease } from '../../../../lib/sj/data';
 import { releasedFilter } from '../../../../lib/releaseWindow';
+import { songHref } from '../../../../lib/sj/trackLinks';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -355,7 +356,7 @@ export default function ArtistPage() {
                 {songs.map((s) => (
                   <li key={s.id}>
                     <Link
-                      href={`/song/${s.id}${s.albumId ? `?rg=${s.albumId}` : ''}`}
+                      href={songHref(s.id, s.albumId)}
                       className="flex items-center gap-3 py-2.5 px-1 hover:bg-surface/70 rounded-lg transition"
                     >
                       <Cover url={s.albumCoverUrl} className="w-11 h-11" rounded="rounded-md" />

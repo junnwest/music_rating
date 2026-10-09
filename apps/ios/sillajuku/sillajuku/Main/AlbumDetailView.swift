@@ -21,8 +21,8 @@ struct RatingChangeInfo {
 
 // MARK: - Shared hero background
 
-/// Full-bleed blurred cover art, used behind both `AlbumDetailView` and
-/// `SongDetailView`'s hero sections. Blur technique mirrors
+/// Full-bleed blurred cover art, used behind `AlbumDetailView`'s hero
+/// section. Blur technique mirrors
 /// `SharePreviewSheet`'s `.cover` background page: scale up before blurring
 /// so the blur's faded edges land outside the visible frame instead of
 /// showing a soft border, then fade to the page background at the bottom so
@@ -249,6 +249,7 @@ class AlbumDetailViewModel {
                 .execute()
             trackRatings.removeValue(forKey: recordingId)
         }
+        PostRatedTracks.shared.invalidate(userId: userId)
     }
 
     func loadRatings(releaseGroupId: UUID) async {
@@ -803,6 +804,9 @@ struct ManualRatingSheet: View {
 struct AlbumDetailView: View {
     let release: Release
     var onRated: ((UUID) -> Void)? = nil
+    /// Opens the page scrolled to this track, briefly highlighted -- where a
+    /// song link lands now that there are no song pages (2026-10-06).
+    var focusRecordingId: UUID? = nil
 
     @State private var viewModel = AlbumDetailViewModel()
     @State private var showManualSheet = false
@@ -831,7 +835,10 @@ struct AlbumDetailView: View {
     @State private var showEditCommentSheet = false
     @State private var showDeleteConfirm = false
     @State private var trackRatingTarget: TrackEntry? = nil
-    @State private var selectedSong: TrackEntry? = nil
+    /// A track to scroll to (the initial `focusRecordingId`, or one picked in
+    /// a rating's "Rated N tracks" list); cleared once scrolled.
+    @State private var scrollToTrackId: UUID? = nil
+    @State private var highlightedTrackId: UUID? = nil
     @State private var credits: [Credit] = []
     @State private var isPreparingShare = false
     @State private var pendingShare: PendingShare? = nil
@@ -889,6 +896,7 @@ struct AlbumDetailView: View {
         // would also push the cover/title up behind the chrome instead of
         // just extending the backdrop.
         GeometryReader { proxy in
+          ScrollViewReader { scroller in
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     heroSection(topInset: proxy.safeAreaInsets.top)
@@ -898,7 +906,7 @@ struct AlbumDetailView: View {
                         Divider().padding(.horizontal, 20)
                         tracklistSection
                     }
-                    if !commentedPosts.isEmpty {
+                    if !previewPosts.isEmpty {
                         Divider().padding(.horizontal, 20)
                         otherRatingsSection
                     }
@@ -909,6 +917,23 @@ struct AlbumDetailView: View {
                 }
             }
             .ignoresSafeArea(edges: .top)
+            // Tracks arrive after the page, so the initial focus waits for them.
+            .onChange(of: viewModel.tracks.count) { _, count in
+                if count > 0, let focusRecordingId, highlightedTrackId == nil { scrollToTrackId = focusRecordingId }
+            }
+            .onChange(of: scrollToTrackId) { _, target in
+                guard let target, viewModel.tracks.contains(where: { $0.trackId == target }) else { return }
+                withAnimation(.easeInOut(duration: 0.35)) { scroller.scrollTo(target, anchor: .center) }
+                highlightedTrackId = target
+                scrollToTrackId = nil
+                Task {
+                    try? await Task.sleep(for: .seconds(2.6))
+                    if highlightedTrackId == target {
+                        withAnimation(.easeOut(duration: 0.6)) { highlightedTrackId = nil }
+                    }
+                }
+            }
+          }
         }
         .background(Color.sjCream.ignoresSafeArea())
         .navigationTitle(release.displayTitle)
@@ -1005,13 +1030,6 @@ struct AlbumDetailView: View {
                     }
                 }
             }
-        }
-        // Reset on disappear -- a stale non-nil item binding can get spuriously re-presented
-        // on top of a later push made from within its own destination (e.g. tapping the artist
-        // name inside SongDetailView re-showing this album on top of the artist page).
-        .navigationDestination(item: $selectedSong) { track in
-            SongDetailView(track: track, release: release)
-                .onDisappear { if selectedSong == track { selectedSong = nil } }
         }
         // No Release/ArtistDestination navigationDestination here -- every stack that hosts
         // this view (Home/Rankings/Profile/Search) declares both at its own root. A second
@@ -1272,7 +1290,8 @@ struct AlbumDetailView: View {
                     },
                     isDraft: isDraft,
                     matchedGeometryNamespace: isDraft ? ratingNamespace : nil,
-                    ratingStep: viewModel.ratingStep
+                    ratingStep: viewModel.ratingStep,
+                    showsRatedTracks: false
                 )
             } else if isDraft {
                 // Mid-flow, before the post-shaped row (myPost) has loaded --
@@ -1315,13 +1334,16 @@ struct AlbumDetailView: View {
                 if isMultiDisc && (i == 0 || viewModel.tracks[i - 1].discNumber != track.discNumber) {
                     discHeader(track.discNumber, isFirst: i == 0)
                 }
+                // No song pages: tapping a title opens the precise rating sheet.
                 TrackRow(
                     track: track,
                     release: release,
                     score: trackScoreBinding(track.trackId),
-                    onTap: track.trackId != nil ? { selectedSong = track } : nil,
-                    ratingStep: viewModel.ratingStep
+                    onTap: track.trackId != nil ? { trackRatingTarget = track } : nil,
+                    ratingStep: viewModel.ratingStep,
+                    isHighlighted: track.trackId != nil && track.trackId == highlightedTrackId
                 )
+                .id(track.trackId)
                 if i < viewModel.tracks.count - 1
                     && viewModel.tracks[i + 1].discNumber == track.discNumber {
                     Divider().padding(.leading, 56)
@@ -1362,8 +1384,13 @@ struct AlbumDetailView: View {
     /// The preview (unlike "View All") only has room for a handful of rows,
     /// so it prioritizes rows with an actual written review -- a comment-less
     /// score-only row is the least useful thing to spend that space on.
-    private var commentedPosts: [FeedItem] {
-        viewModel.posts.filter { !($0.reviewText?.isEmpty ?? true) }
+    /// Everyone else's ratings, commented ones first (newest first within each
+    /// group, as loaded) -- same order as web's album ratings list. Used to be
+    /// commented-only, which hid the section on ~90% of albums: most ratings
+    /// are score-only, so an album could show up as a feed post yet list nobody.
+    private var previewPosts: [FeedItem] {
+        let hasText: (FeedItem) -> Bool = { !($0.reviewText?.isEmpty ?? true) }
+        return viewModel.posts.filter(hasText) + viewModel.posts.filter { !hasText($0) }
     }
 
     private var otherRatingsSection: some View {
@@ -1373,15 +1400,17 @@ struct AlbumDetailView: View {
             }
 
             VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(commentedPosts.prefix(5).enumerated()), id: \.element.id) { i, item in
+                ForEach(Array(previewPosts.prefix(5).enumerated()), id: \.element.id) { i, item in
                     RatingCommentRow(
                         item: item,
                         isLiked: viewModel.likedPostIds.contains(item.id),
                         likesCount: viewModel.likeCounts[item.id] ?? 0,
                         commentsCount: viewModel.commentCounts[item.id] ?? 0,
-                        onLike: { await viewModel.toggleLike(for: item) }
+                        onLike: { await viewModel.toggleLike(for: item) },
+                        release: release,
+                        onSelectTrack: { scrollToTrackId = $0 }
                     )
-                    if i < min(5, commentedPosts.count) - 1 {
+                    if i < min(5, previewPosts.count) - 1 {
                         Divider().padding(.leading, 58)
                     }
                 }
@@ -1520,6 +1549,10 @@ struct RatingCommentRow: View {
     let likesCount: Int
     let commentsCount: Int
     let onLike: () async -> Void
+    /// The album, for the "Rated N tracks" list under the rating.
+    var release: Release? = nil
+    /// On the album page itself, scrolls to the track instead of pushing the album again.
+    var onSelectTrack: ((UUID) -> Void)? = nil
 
     @State private var showComments = false
 
@@ -1556,6 +1589,11 @@ struct RatingCommentRow: View {
                         .font(.jakarta(14))
                         .foregroundStyle(Color.sjInk)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let release {
+                    RatedTracksDisclosure(userId: item.userId, release: release, onSelectTrack: onSelectTrack)
+                        .padding(.top, 2)
                 }
 
                 HStack(spacing: 16) {
@@ -1724,7 +1762,8 @@ struct AlbumAllRatingsView: View {
                                 isLiked: vm.likedPostIds.contains(item.id),
                                 likesCount: vm.likeCounts[item.id] ?? 0,
                                 commentsCount: vm.commentCounts[item.id] ?? 0,
-                                onLike: { await vm.toggleLike(for: item) }
+                                onLike: { await vm.toggleLike(for: item) },
+                                release: release
                             )
                             if i < vm.posts.count - 1 {
                                 Divider().padding(.leading, 58)
@@ -1752,6 +1791,8 @@ private struct TrackRow: View {
     var score: Binding<Double?> = .constant(nil)
     var onTap: (() -> Void)? = nil
     var ratingStep: Double = 0.5
+    /// Landed on from a song link (or picked in a "Rated N tracks" list).
+    var isHighlighted: Bool = false
 
     @State private var didMarkNotInterested = false
 
@@ -1783,8 +1824,7 @@ private struct TrackRow: View {
                 Text(formattedDuration)
                     .font(.jakarta(12)).foregroundStyle(Color.sjMuted)
             }
-            // The flower rate button, same as the song page and every other
-            // rating surface: tap/drag to rate, shows your score once rated,
+            // The flower rate button, same as every other rating surface: tap/drag to rate, shows your score once rated,
             // stays editable (and deletable). Replaced a static score chip
             // (rated) / "+" MorphingRateButton (unrated) on 2026-09-30.
             if track.trackId != nil {
@@ -1793,6 +1833,7 @@ private struct TrackRow: View {
             }
         }
         .padding(.vertical, 11).padding(.horizontal, 20)
+        .background(Color.sjAmber.opacity(isHighlighted ? 0.14 : 0))
         .contextMenu {
             if let recordingId = track.trackId {
                 Button {
@@ -1876,1051 +1917,6 @@ struct TrackRatingSheet: View {
         .presentationBackground(Color.sjCream)
         .presentationDetents([.fraction(0.33)])
         .presentationDragIndicator(.visible)
-    }
-}
-
-// MARK: - Song rating post (other users' track ratings)
-
-/// Mirrors `FeedItem`'s shape but for `track_ratings` -- one other user's
-/// rating/review of a specific track, joined to their profile. Kept
-/// separate from `SongRatingRow` (which is used for the *viewer's own*
-/// track rating and has no userId/profile fields) the same way the album
-/// side keeps `FeedItem` separate from the plain rating row types.
-struct SongRatingPost: Identifiable {
-    let id: UUID
-    let userId: UUID
-    let score: Double?
-    let reviewText: String?
-    let createdAt: Date
-    // Filled in by a separate `profiles` lookup after the initial fetch --
-    // `track_ratings.user_id` references `auth.users`, not `profiles`
-    // directly (unlike `track_rating_likes`/`track_rating_comments`, which
-    // do), so there's no FK for PostgREST to embed a `profiles!...fkey(...)`
-    // join through in one query.
-    var profiles: FeedProfile?
-}
-
-/// Flat comment-style row for a `SongRatingPost` -- the song-page analog of
-/// `RatingCommentRow`, targeting `track_rating_likes`/`track_rating_comments`
-/// and opening `SongCommentSheetView` instead of `CommentSheetView`. Built as
-/// a literal parallel type rather than a shared generic, matching this
-/// codebase's existing convention for album/song pairs (`CommentSheetView`/
-/// `SongCommentSheetView`, `ProfilePostCard`/`ProfileSongPostCard`, etc.).
-struct SongRatingCommentRow: View {
-    let item: SongRatingPost
-    let isLiked: Bool
-    let likesCount: Int
-    let commentsCount: Int
-    let onLike: () async -> Void
-
-    @State private var showComments = false
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            UserAvatarView(url: item.profiles?.avatarUrl, size: 28)
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text("@" + (item.profiles?.handle ?? String(localized: "someone")))
-                        .font(.jakarta(13, weight: .semibold))
-                        .foregroundStyle(Color.sjInk)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.65)  // one line always, even at 20 chars
-                        .layoutPriority(1)
-                    PostBadgeView(isVerified: item.profiles?.isVerified == true,
-                                  foundingNumber: item.profiles?.foundingNumber,
-                                  badgeColor: item.profiles?.badgeColor,
-                                  featured: item.profiles?.featuredBadge, size: 12)
-                    Text("·")
-                        .font(.jakarta(12))
-                        .foregroundStyle(Color.sjBorder)
-                    Text(item.createdAt.relativeTimeString)
-                        .font(.jakarta(12))
-                        .foregroundStyle(Color.sjMuted)
-                    Spacer(minLength: 0)
-                    if let score = item.score {
-                        ScoreBadge(score: score, badgeSize: 24, ringStroke: 1.5, ringGap: 1)
-                    }
-                }
-
-                if let text = item.reviewText, !text.isEmpty {
-                    Text(text)
-                        .font(.jakarta(14))
-                        .foregroundStyle(Color.sjInk)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                HStack(spacing: 16) {
-                    Button {
-                        Task { await onLike() }
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(isLiked ? "icon-heart-filled" : "icon-heart")
-                                .renderingMode(.template)
-                                .resizable().scaledToFit()
-                                .frame(width: 14, height: 14)
-                                .foregroundStyle(isLiked ? .red : Color.sjMuted)
-                            if likesCount > 0 {
-                                Text("\(likesCount)").foregroundStyle(Color.sjMuted)
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .font(.jakarta(13, weight: .medium))
-                    .animation(.easeInOut(duration: 0.15), value: isLiked)
-                    .accessibilityLabel(isLiked ? String(localized: "Unlike") : String(localized: "Like"))
-
-                    Button {
-                        showComments = true
-                    } label: {
-                        Text(commentsCount > 0 ? "\(commentsCount) repl\(commentsCount == 1 ? "y" : "ies")" : "Reply")
-                            .foregroundStyle(Color.sjMuted)
-                    }
-                    .buttonStyle(.plain)
-                    .font(.jakarta(13, weight: .medium))
-                }
-                .padding(.top, 2)
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .sheet(isPresented: $showComments) {
-            SongCommentSheetView(trackRatingId: item.id)
-        }
-    }
-}
-
-// MARK: - Song Detail View
-
-struct SongDetailView: View {
-    let track: TrackEntry
-    let release: Release
-
-    // Reached from several unrelated screens (album detail, mixes, search) --
-    // simpler for this leaf destination to load its own copy of the setting,
-    // same pattern AlbumDetailViewModel already uses, than to thread a param
-    // through every one of those callers.
-    @State private var ratingStep: Double = 0.5
-    @State private var communityAvg: Double? = nil
-    @State private var communityCount: Int = 0
-    @State private var userScore: Double? = nil
-    @State private var isLoaded = false
-    @State private var showRatingSheet = false
-    // Own rating in post-card shape (same card the profile's Songs tab uses),
-    // plus the social state that card renders.
-    @State private var myRow: SongRatingRow? = nil
-    @State private var myRowLikes = 0
-    @State private var myRowComments = 0
-    @State private var myRowLiked = false
-    @State private var myHandle: String? = nil
-    @State private var myVerified = false
-    @State private var myBadgeColor: String? = nil
-    @State private var myFoundingNumber: Int? = nil
-    @State private var myAvatarUrl: String? = nil
-    @State private var myFeaturedBadge: String? = nil
-    @State private var showEditCommentSheet = false
-    @State private var showDeleteConfirm = false
-    @State private var showMixPicker = false
-    @State private var isPreparingShare = false
-    @State private var pendingShare: PendingShare? = nil
-    // Inline rating flow, same as AlbumDetailView's: the MorphingRateButton
-    // flower morphs into the post card's badge, then a post-rating step
-    // (Add to a Mix + Done -- no comment for songs) until Done is tapped.
-    @State private var showPostRatingStep = false
-    @State private var optimisticScore: Double? = nil
-    @Namespace private var ratingNamespace
-
-    // Other users' ratings for this track ("Ratings & Reviews"), same shape
-    // of state AlbumDetailViewModel keeps for its own `posts`.
-    @State private var otherPosts: [SongRatingPost] = []
-    @State private var otherLikedIds: Set<UUID> = []
-    @State private var otherLikeCounts: [UUID: Int] = [:]
-    @State private var otherCommentCounts: [UUID: Int] = [:]
-
-    private var durationString: String {
-        guard let ms = track.durationMs, ms > 0 else { return "" }
-        let s = ms / 1000
-        return String(format: "%d:%02d", s / 60, s % 60)
-    }
-
-    private var shareScore: Double? { myRow?.score }
-
-    /// Mirrors AlbumDetailView's own `prepareShare` -- resolves the real data
-    /// the share card needs, then opens the same preview sheet.
-    private func prepareShare() async {
-        guard let userId = supabase.auth.currentUser?.id else { return }
-        isPreparingShare = true
-        defer { isPreparingShare = false }
-
-        struct ProfileRow: Decodable { let username: String? }
-        let profile: ProfileRow? = try? await supabase
-            .from("profiles").select("username")
-            .eq("id", value: userId).single().execute().value
-
-        let coverImage: UIImage? = await {
-            guard let coverUrl = release.coverUrl, let url = URL(string: coverUrl) else { return nil }
-            return try? await InstagramShare.downloadImage(from: url)
-        }()
-
-        pendingShare = PendingShare(
-            username: profile?.username ?? "someone",
-            coverImages: [coverImage],
-            title: track.title,
-            subtitle: "Song · " + release.displayArtist,
-            score: shareScore,
-            reviewText: nil
-        )
-    }
-
-    var body: some View {
-        // See AlbumDetailView.body -- same reasoning for the GeometryReader.
-        GeometryReader { proxy in
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                songHero(topInset: proxy.safeAreaInsets.top)
-                Divider().padding(.horizontal, 20)
-                ratingSection
-                if !commentedSongPosts.isEmpty {
-                    Divider().padding(.horizontal, 20)
-                    otherSongRatingsSection
-                }
-                Divider().padding(.horizontal, 20)
-                appearsOnSection
-            }
-            .padding(.bottom, 40)
-        }
-        .ignoresSafeArea(edges: .top)
-        }
-        .background(Color.sjCream.ignoresSafeArea())
-        .navigationTitle(track.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbar {
-            if let trackId = track.trackId {
-                ToolbarItem(placement: .topBarTrailing) {
-                    ShareLink(item: URL(string: "https://sillajuku.com/song/\(trackId)")!) {
-                        Image("icon-share")
-                            .renderingMode(.template)
-                            .resizable().scaledToFit()
-                            .frame(width: 17, height: 17)
-                    }
-                }
-            }
-        }
-        .sheet(isPresented: $showMixPicker) {
-            if let trackId = track.trackId {
-                SongMixPickerView(recordingId: trackId, releaseGroupId: release.id, songTitle: track.title)
-            }
-        }
-        .sheet(item: $pendingShare) { pending in
-            SharePreviewSheet(pending: pending)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-        }
-        .task {
-            guard !isLoaded else { return }
-            isLoaded = true
-            await loadStats()
-            await loadOtherRatings()
-            await loadRatingStep()
-        }
-        .sheet(isPresented: $showRatingSheet) {
-            TrackRatingSheet(track: track, release: release, existingScore: userScore, ratingStep: ratingStep) { _, score in
-                Task { await saveTrackScore(score) }
-            }
-        }
-        .sheet(isPresented: $showEditCommentSheet) {
-            // Comment-only edit; the header names the track being commented on.
-            CommentEditSheet(
-                release: release,
-                trackTitle: track.title,
-                initialComment: myRow?.reviewText ?? ""
-            ) { text in
-                Task {
-                    await updateTrackReviewText(text)
-                    showEditCommentSheet = false
-                }
-            }
-            .presentationBackground(Color.sjCream)
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
-        }
-        .confirmationDialog(
-            "Delete Rating?",
-            isPresented: $showDeleteConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive) { Task { await deleteTrackRating() } }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Your rating for this track will be removed.")
-        }
-    }
-
-    private func songHero(topInset: CGFloat) -> some View {
-        ZStack(alignment: .top) {
-            HeroBlurredBackground(coverUrl: release.coverUrl, height: 260 + topInset)
-
-            VStack(spacing: 10) {
-                ZStack(alignment: .bottomTrailing) {
-                    CoverImage(url: release.coverUrl, cornerRadius: 12)
-                        .frame(width: 128, height: 128)
-                        .shadow(color: .black.opacity(0.25), radius: 16, y: 8)
-                        .accessibilityHidden(true) // track title text below already describes it
-
-                    if supabase.auth.currentUser?.id != nil {
-                        SongRateButton(
-                            track: track,
-                            release: release,
-                            externalScore: $userScore,
-                            ratingStep: ratingStep,
-                            onScoreChange: { _ in Task { await loadStats() } },
-                            size: 32
-                        )
-                        .offset(x: 5, y: 5)
-                    }
-                }
-
-                VStack(spacing: 6) {
-                    Text(String(format: String(localized: "Track %d"), track.position))
-                        .font(.jakarta(11, weight: .semibold))
-                        .foregroundStyle(Color.sjMuted)
-                        .textCase(.uppercase)
-                        .tracking(0.5)
-                    Text(track.title)
-                        .font(.jakarta(20, weight: .bold))
-                        .foregroundStyle(Color.sjInk)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                    NavigationLink(value: ArtistDestination(artistId: nil, name: release.displayArtist)) {
-                        Text(release.displayArtist)
-                            .font(.jakarta(14))
-                            .foregroundStyle(Color.sjMuted)
-                            .lineLimit(1)
-                    }
-                    .buttonStyle(.plain)
-
-                    HStack(spacing: 6) {
-                        Text("Song")
-                            .font(.jakarta(11, weight: .semibold))
-                            .foregroundStyle(Color.sjAmber)
-                            .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(Color.sjAmber.opacity(0.12)).clipShape(Capsule())
-                        if !durationString.isEmpty {
-                            Text(durationString)
-                                .font(.jakarta(11, weight: .semibold))
-                                .foregroundStyle(Color.sjMuted)
-                                .padding(.horizontal, 8).padding(.vertical, 3)
-                                .background(Color.sjMuted.opacity(0.1)).clipShape(Capsule())
-                        }
-                    }
-                    .padding(.top, 2)
-
-                    if communityCount > 0 {
-                        HStack(spacing: 6) {
-                            Image("icon-flower")
-                                .renderingMode(.template).resizable().scaledToFit()
-                                .frame(width: 11, height: 11).foregroundStyle(Color.sjBlue)
-                            Text(communityAvg.map {
-                                $0.truncatingRemainder(dividingBy: 1) == 0
-                                    ? "\(Int($0))" : String(format: "%.2f", $0)
-                            } ?? "—")
-                                .font(.jakarta(13, weight: .bold)).foregroundStyle(Color.sjInk)
-                            Text("·").font(.jakarta(12)).foregroundStyle(Color.sjBorder)
-                            Text(communityCount == 1 ? "1 rating" : "\(communityCount) ratings")
-                                .font(.jakarta(13)).foregroundStyle(Color.sjMuted)
-                        }
-                        .padding(.top, 6)
-                    }
-                }
-            }
-            .padding(.top, 20 + topInset)
-            .padding(.bottom, 16)
-            .padding(.horizontal, 24)
-        }
-        .frame(maxWidth: .infinity)
-        .overlay(alignment: .topTrailing) {
-            if track.trackId != nil {
-                Button { showMixPicker = true } label: {
-                    Image("icon-bookmark")
-                        .renderingMode(.template)
-                        .resizable().scaledToFit()
-                        .frame(width: 16, height: 16)
-                        .foregroundStyle(Color.sjInk)
-                        .padding(10)
-                        .background(.ultraThinMaterial, in: Circle())
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 12 + topInset)
-                .padding(.trailing, 16)
-                .accessibilityLabel(String(localized: "Add to Mix"))
-            }
-        }
-    }
-
-    private var ratingSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("YOUR RATING")
-                .font(.jakarta(11, weight: .semibold))
-                .foregroundStyle(Color.sjMuted)
-                .tracking(0.8)
-            ratingBody
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 20)
-    }
-
-    /// Mirrors AlbumDetailView.ratingBody -- idle: drag-to-rate button; mid-flow:
-    /// draft card + Add to a Mix / Done in one card; finalized: the post card.
-    private var ratingBody: some View {
-        Group {
-            if let score = userScore ?? optimisticScore, showPostRatingStep {
-                VStack(alignment: .leading, spacing: 0) {
-                    songRatedBody(score: score, isDraft: true)
-                    Divider().padding(.horizontal, 14)
-                    PostRatingOptionsView(
-                        release: release,
-                        continueLabel: "Done",
-                        showHeader: false,
-                        showComment: false,
-                        onAddToMix: { showMixPicker = true },
-                        onContinue: { _ in
-                            withAnimation(.bouncy) { showPostRatingStep = false }
-                        }
-                    )
-                }
-                .background(Color.sjSurface)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 1)
-                .transition(.scale(scale: 0.94, anchor: .topTrailing).combined(with: .opacity))
-            } else if let score = userScore ?? myRow?.score {
-                songRatedBody(score: score)
-            } else {
-                MorphingRateButton(
-                    idleLabel: {
-                        Label("Rate this Song", image: "icon-plus")
-                            .font(.jakarta(15, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 13)
-                    },
-                    idleShape: AnyShape(RoundedRectangle(cornerRadius: 12)),
-                    ratingStep: ratingStep,
-                    accessibilityLabelText: "Rate \(track.title)",
-                    matchedGeometryNamespace: ratingNamespace
-                ) { score in
-                    // Same synchronous flip as the album page, so the flower ->
-                    // badge morph and the card's scale-in happen on release.
-                    withAnimation(.bouncy) {
-                        showPostRatingStep = true
-                        optimisticScore = score
-                    }
-                    Task {
-                        await saveTrackScore(score)
-                        optimisticScore = nil
-                    }
-                }
-            }
-        }
-    }
-
-    /// Own rating as the regular song post card (same one the profile's Songs
-    /// tab renders), with the rated-state actions in its ⋯ menu.
-    @ViewBuilder
-    private func songRatedBody(score: Double, isDraft: Bool = false) -> some View {
-        Group {
-            if let myRow {
-                ProfileSongPostCard(
-                    song: myRow,
-                    likesCount: myRowLikes,
-                    commentsCount: myRowComments,
-                    isLiked: myRowLiked,
-                    onLike: { await toggleMyRowLike() },
-                    ownActions: SongOwnRatingMenuActions(
-                        onShare: { Task { await prepareShare() } },
-                        onEdit: { showRatingSheet = true },
-                        onEditComment: { showEditCommentSheet = true },
-                        onDelete: { showDeleteConfirm = true }
-                    ),
-                    headerHandle: myHandle,
-                    headerVerified: myVerified,
-                    headerBadgeColor: myBadgeColor,
-                    headerFoundingNumber: myFoundingNumber,
-                    headerAvatarUrl: myAvatarUrl,
-                    headerFeaturedBadge: myFeaturedBadge,
-                    isDraft: isDraft,
-                    matchedGeometryNamespace: isDraft ? ratingNamespace : nil
-                )
-            } else if isDraft {
-                // Before the saved row loads: just the badge, so the flower's
-                // morph target exists the instant the drag commits.
-                HStack {
-                    Spacer()
-                    ScoreBadge(score: score)
-                        .matchedGeometryEffect(id: "scoreBadge", in: ratingNamespace)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 14)
-            } else {
-                HStack {
-                    ProgressView().scaleEffect(0.9)
-                    Spacer()
-                }
-            }
-        }
-        .animation(.easeInOut(duration: 0.25), value: myRow?.ratingId)
-    }
-
-    /// Saves (or, for nil, deletes) the viewer's score for this track, then
-    /// reloads the stats and own post card. The rating sheet's Edit path used
-    /// to only set `userScore` locally without writing anything.
-    private func saveTrackScore(_ score: Double?) async {
-        guard let recordingId = track.trackId else { return }
-        guard let score else {
-            await deleteTrackRating()
-            return
-        }
-        userScore = score
-        await AlbumQuickRate.saveManualTrackScore(recordingId: recordingId, score: score)
-        await loadStats()
-    }
-
-    /// The song-page analog of `AlbumDetailView.otherRatingsSection` -- net
-    /// new, since the song page previously had no way to see other users'
-    /// track reviews at all (only the aggregate community stats above).
-    /// Same reasoning as AlbumDetailView.commentedPosts -- the preview only
-    /// has room for a handful of rows, so it prioritizes actual written
-    /// reviews over comment-less score-only rows.
-    private var commentedSongPosts: [SongRatingPost] {
-        otherPosts.filter { !($0.reviewText?.isEmpty ?? true) }
-    }
-
-    private var otherSongRatingsSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("RATINGS & REVIEWS")
-                    .font(.jakarta(11, weight: .semibold))
-                    .foregroundStyle(Color.sjMuted)
-                    .tracking(0.8)
-                Spacer()
-                if otherPosts.count > 5, let recordingId = track.trackId {
-                    NavigationLink(destination: SongAllRatingsView(recordingId: recordingId, release: release)) {
-                        Text("View All")
-                            .font(.jakarta(12, weight: .semibold))
-                            .foregroundStyle(Color.sjBlue)
-                    }
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 12)
-
-            ForEach(Array(commentedSongPosts.prefix(5).enumerated()), id: \.element.id) { i, item in
-                SongRatingCommentRow(
-                    item: item,
-                    isLiked: otherLikedIds.contains(item.id),
-                    likesCount: otherLikeCounts[item.id] ?? 0,
-                    commentsCount: otherCommentCounts[item.id] ?? 0,
-                    onLike: { await toggleOtherLike(item) }
-                )
-                if i < min(5, commentedSongPosts.count) - 1 {
-                    Divider().padding(.leading, 58)
-                }
-            }
-        }
-        .padding(.vertical, 20)
-    }
-
-    private var appearsOnSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("APPEARS ON")
-                .font(.jakarta(11, weight: .semibold))
-                .foregroundStyle(Color.sjMuted)
-                .tracking(0.8)
-            NavigationLink(value: release) {
-                HStack(spacing: 12) {
-                    CoverImage(url: release.coverUrl, cornerRadius: 6)
-                        .frame(width: 44, height: 44)
-                        .accessibilityHidden(true) // title/artist text alongside already describes it
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(release.displayTitle)
-                            .font(.jakarta(14, weight: .semibold))
-                            .foregroundStyle(Color.sjInk).lineLimit(1)
-                        Text(release.artist)
-                            .font(.jakarta(12))
-                            .foregroundStyle(Color.sjMuted).lineLimit(1)
-                    }
-                    Spacer()
-                    Image("icon-chevron-right")
-                        .renderingMode(.template)
-                        .resizable().scaledToFit()
-                        .frame(width: 12, height: 12)
-                        .foregroundStyle(Color.sjMuted)
-                }
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 20)
-    }
-
-    private func loadRatingStep() async {
-        guard let userId = supabase.auth.currentUser?.id else { return }
-        struct P: Decodable {
-            let manualRatingStep: Double?
-            enum CodingKeys: String, CodingKey { case manualRatingStep = "manual_rating_step" }
-        }
-        if let p: P = try? await supabase.from("profiles")
-            .select("manual_rating_step").eq("id", value: userId)
-            .single().execute().value {
-            ratingStep = p.manualRatingStep ?? 0.5
-        }
-    }
-
-    private func loadStats() async {
-        guard let recordingId = track.trackId else { return }
-        let scores = await CommunityScores.songs([recordingId]).compactMap(\.score)
-        communityCount = scores.count
-        communityAvg = scores.isEmpty ? nil : scores.reduce(0, +) / Double(scores.count)
-
-        await loadMyRow()
-    }
-
-    /// Fetches the user's own track_ratings row in full and rebuilds the
-    /// post-card state from it. Also called after rating/comment/delete
-    /// actions so the card always reflects what's stored.
-    private func loadMyRow() async {
-        guard let recordingId = track.trackId,
-              let userId = supabase.auth.currentUser?.id else { return }
-        struct OwnRow: Decodable {
-            let id: UUID
-            let score: Double?
-            let reviewText: String?
-            let createdAt: Date
-            enum CodingKeys: String, CodingKey {
-                case id, score
-                case reviewText = "review_text"
-                case createdAt = "created_at"
-            }
-        }
-        let rows: [OwnRow] = (try? await supabase
-            .from("track_ratings")
-            .select("id, score, review_text, created_at")
-            .eq("user_id", value: userId)
-            .eq("recording_id", value: recordingId)
-            .limit(1)
-            .execute()
-            .value) ?? []
-        guard let own = rows.first else {
-            myRow = nil
-            userScore = nil
-            return
-        }
-        userScore = own.score
-        myRow = SongRatingRow(
-            ratingId: own.id,
-            recordingId: recordingId,
-            score: own.score,
-            reviewText: own.reviewText,
-            trackTitle: track.title,
-            release: ReleaseRef(
-                id: release.id, title: release.title, artist: release.artist,
-                coverUrl: release.coverUrl, releaseType: release.releaseType,
-                titleNative: release.titleNative,
-                primaryArtist: NativeArtistRef(nameNative: release.artistNative)
-            ),
-            createdAt: own.createdAt
-        )
-
-        // Social state for the card.
-        struct CountRow: Decodable {
-            let userId: UUID?
-            enum CodingKeys: String, CodingKey { case userId = "user_id" }
-        }
-        let likeRows: [CountRow] = (try? await supabase
-            .from("track_rating_likes").select("user_id")
-            .eq("track_rating_id", value: own.id)
-            .execute().value) ?? []
-        myRowLikes = likeRows.count
-        myRowLiked = likeRows.contains { $0.userId == userId }
-        let commentResp = try? await supabase
-            .from("track_rating_comments").select("id", head: true, count: .exact)
-            .eq("track_rating_id", value: own.id)
-            .execute()
-        myRowComments = commentResp?.count ?? 0
-
-        // Header identity for the post card (fetch once).
-        if myHandle == nil {
-            struct MyProfile: Decodable {
-                let username: String?
-                let isVerified: Bool?
-                let badgeColor: String?
-                let foundingNumber: Int?
-                let avatarUrl: String?
-                let featuredBadge: String?
-                enum CodingKeys: String, CodingKey {
-                    case username; case isVerified = "is_verified"
-                    case badgeColor = "badge_color"; case foundingNumber = "founding_number"
-                    case avatarUrl = "avatar_url"; case featuredBadge = "featured_badge"
-                }
-            }
-            if let p: MyProfile = try? await supabase.from("profiles")
-                .select("username, is_verified, badge_color, founding_number, avatar_url, featured_badge").eq("id", value: userId)
-                .single().execute().value {
-                myHandle = p.username
-                myVerified = p.isVerified == true
-                myBadgeColor = p.badgeColor
-                myFoundingNumber = p.foundingNumber
-                myAvatarUrl = p.avatarUrl
-                myFeaturedBadge = p.featuredBadge
-            }
-        }
-    }
-
-    private func toggleMyRowLike() async {
-        guard let myRow, let userId = supabase.auth.currentUser?.id else { return }
-        let wasLiked = myRowLiked
-        myRowLiked.toggle()
-        myRowLikes += wasLiked ? -1 : 1
-        do {
-            if wasLiked {
-                try await supabase.from("track_rating_likes").delete()
-                    .eq("user_id", value: userId).eq("track_rating_id", value: myRow.ratingId).execute()
-            } else {
-                struct Payload: Encodable {
-                    let userId: UUID; let trackRatingId: UUID
-                    enum CodingKeys: String, CodingKey {
-                        case userId = "user_id"; case trackRatingId = "track_rating_id"
-                    }
-                }
-                try await supabase.from("track_rating_likes")
-                    .insert(Payload(userId: userId, trackRatingId: myRow.ratingId)).execute()
-            }
-        } catch {
-            myRowLiked = wasLiked
-            myRowLikes += wasLiked ? 1 : -1
-        }
-    }
-
-    // MARK: Other users' ratings ("Ratings & Reviews")
-
-    private func loadOtherRatings() async {
-        guard let recordingId = track.trackId else { return }
-        let myId = supabase.auth.currentUser?.id
-        struct Row: Decodable {
-            let id: UUID; let userId: UUID; let score: Double?; let reviewText: String?; let createdAt: Date
-            enum CodingKeys: String, CodingKey {
-                case id, score
-                case userId = "user_id"; case reviewText = "review_text"; case createdAt = "created_at"
-            }
-        }
-        var query = supabase
-            .from("track_ratings")
-            .select("id, user_id, score, review_text, created_at")
-            .eq("recording_id", value: recordingId)
-        if let myId { query = query.neq("user_id", value: myId) }
-        let rows: [Row] = (try? await query
-            .order("created_at", ascending: false)
-            .limit(20)
-            .execute()
-            .value) ?? []
-
-        var posts = rows.map {
-            SongRatingPost(id: $0.id, userId: $0.userId, score: $0.score,
-                            reviewText: $0.reviewText, createdAt: $0.createdAt, profiles: nil)
-        }
-
-        let userIds = Array(Set(rows.map(\.userId).map(\.uuidString)))
-        if !userIds.isEmpty {
-            struct ProfileRow: Decodable {
-                let id: UUID; let username: String?; let displayName: String?
-                let isBot: Bool?; let isVerified: Bool?
-                let badgeColor: String?; let foundingNumber: Int?; let avatarUrl: String?; let featuredBadge: String?
-                enum CodingKeys: String, CodingKey {
-                    case id, username
-                    case displayName = "display_name"; case isBot = "is_bot"; case isVerified = "is_verified"
-                    case badgeColor = "badge_color"; case foundingNumber = "founding_number"; case avatarUrl = "avatar_url"; case featuredBadge = "featured_badge"
-                }
-            }
-            let profileRows: [ProfileRow] = (try? await supabase
-                .from("profiles")
-                .select("id, username, display_name, is_bot, is_verified, badge_color, founding_number, avatar_url, featured_badge")
-                .in("id", values: userIds)
-                .execute().value) ?? []
-            let byId = Dictionary(uniqueKeysWithValues: profileRows.map {
-                ($0.id, FeedProfile(username: $0.username, displayName: $0.displayName, isBot: $0.isBot, isVerified: $0.isVerified, badgeColor: $0.badgeColor, foundingNumber: $0.foundingNumber, avatarUrl: $0.avatarUrl, featuredBadge: $0.featuredBadge))
-            })
-            for i in posts.indices { posts[i].profiles = byId[posts[i].userId] }
-        }
-        otherPosts = posts
-        await loadOtherSocialData()
-    }
-
-    private func loadOtherSocialData() async {
-        let ratingIds = otherPosts.map(\.id.uuidString)
-        guard !ratingIds.isEmpty else { return }
-        struct IdRow: Decodable {
-            let trackRatingId: UUID
-            enum CodingKeys: String, CodingKey { case trackRatingId = "track_rating_id" }
-        }
-        async let likesTask: [IdRow]? = try? await supabase
-            .from("track_rating_likes").select("track_rating_id")
-            .in("track_rating_id", values: ratingIds).execute().value
-        async let commentsTask: [IdRow]? = try? await supabase
-            .from("track_rating_comments").select("track_rating_id")
-            .in("track_rating_id", values: ratingIds).execute().value
-        if let rows = await likesTask {
-            for r in rows { otherLikeCounts[r.trackRatingId, default: 0] += 1 }
-        }
-        if let rows = await commentsTask {
-            for r in rows { otherCommentCounts[r.trackRatingId, default: 0] += 1 }
-        }
-        if let userId = supabase.auth.currentUser?.id {
-            let mineRows: [IdRow] = (try? await supabase
-                .from("track_rating_likes").select("track_rating_id")
-                .eq("user_id", value: userId)
-                .in("track_rating_id", values: ratingIds).execute().value) ?? []
-            otherLikedIds = Set(mineRows.map(\.trackRatingId))
-        }
-    }
-
-    private func toggleOtherLike(_ item: SongRatingPost) async {
-        guard let userId = supabase.auth.currentUser?.id else { return }
-        let wasLiked = otherLikedIds.contains(item.id)
-        if wasLiked {
-            otherLikedIds.remove(item.id)
-            otherLikeCounts[item.id] = max(0, (otherLikeCounts[item.id] ?? 1) - 1)
-        } else {
-            otherLikedIds.insert(item.id)
-            otherLikeCounts[item.id] = (otherLikeCounts[item.id] ?? 0) + 1
-        }
-        do {
-            if wasLiked {
-                try await supabase.from("track_rating_likes").delete()
-                    .eq("user_id", value: userId).eq("track_rating_id", value: item.id).execute()
-            } else {
-                struct Payload: Encodable {
-                    let userId: UUID; let trackRatingId: UUID
-                    enum CodingKeys: String, CodingKey {
-                        case userId = "user_id"; case trackRatingId = "track_rating_id"
-                    }
-                }
-                try await supabase.from("track_rating_likes")
-                    .insert(Payload(userId: userId, trackRatingId: item.id)).execute()
-            }
-        } catch {
-            if wasLiked {
-                otherLikedIds.insert(item.id)
-                otherLikeCounts[item.id] = (otherLikeCounts[item.id] ?? 0) + 1
-            } else {
-                otherLikedIds.remove(item.id)
-                otherLikeCounts[item.id] = max(0, (otherLikeCounts[item.id] ?? 1) - 1)
-            }
-        }
-    }
-
-    /// Same explicit-null encode as AlbumDetailViewModel.updateReviewText, so
-    /// clearing the comment writes SQL NULL instead of silently omitting the key.
-    private func updateTrackReviewText(_ text: String?) async {
-        guard let myRow else { return }
-        struct Update: Encodable {
-            let reviewText: String?
-            enum CodingKeys: String, CodingKey { case reviewText = "review_text" }
-            func encode(to encoder: Encoder) throws {
-                var container = encoder.container(keyedBy: CodingKeys.self)
-                if let reviewText { try container.encode(reviewText, forKey: .reviewText) }
-                else { try container.encodeNil(forKey: .reviewText) }
-            }
-        }
-        try? await supabase.from("track_ratings")
-            .update(Update(reviewText: text))
-            .eq("id", value: myRow.ratingId)
-            .execute()
-        await loadMyRow()
-    }
-
-    private func deleteTrackRating() async {
-        guard let myRow else { return }
-        _ = try? await supabase.from("track_ratings")
-            .delete()
-            .eq("id", value: myRow.ratingId)
-            .execute()
-        self.myRow = nil
-        userScore = nil
-        NotificationCenter.default.post(name: .ratingChanged, object: nil)
-        await loadStats()
-    }
-}
-
-// MARK: - View All: song ratings
-
-/// Song-page analog of `AlbumAllRatingsView` -- the full list of other
-/// users' ratings for one track, scoped by `recordingId`.
-@Observable
-private class SongRatingsListViewModel {
-    var isLoading = true
-    var posts: [SongRatingPost] = []
-    var likedIds: Set<UUID> = []
-    var likeCounts: [UUID: Int] = [:]
-    var commentCounts: [UUID: Int] = [:]
-
-    func load(recordingId: UUID) async {
-        let myId = supabase.auth.currentUser?.id
-        struct Row: Decodable {
-            let id: UUID; let userId: UUID; let score: Double?; let reviewText: String?; let createdAt: Date
-            enum CodingKeys: String, CodingKey {
-                case id, score
-                case userId = "user_id"; case reviewText = "review_text"; case createdAt = "created_at"
-            }
-        }
-        var query = supabase
-            .from("track_ratings")
-            .select("id, user_id, score, review_text, created_at")
-            .eq("recording_id", value: recordingId)
-        if let myId { query = query.neq("user_id", value: myId) }
-        let rows: [Row] = (try? await query
-            .order("created_at", ascending: false)
-            .limit(200)
-            .execute().value) ?? []
-
-        var loaded = rows.map {
-            SongRatingPost(id: $0.id, userId: $0.userId, score: $0.score,
-                            reviewText: $0.reviewText, createdAt: $0.createdAt, profiles: nil)
-        }
-
-        let userIds = Array(Set(rows.map(\.userId).map(\.uuidString)))
-        if !userIds.isEmpty {
-            struct ProfileRow: Decodable {
-                let id: UUID; let username: String?; let displayName: String?
-                let isBot: Bool?; let isVerified: Bool?
-                let badgeColor: String?; let foundingNumber: Int?; let avatarUrl: String?; let featuredBadge: String?
-                enum CodingKeys: String, CodingKey {
-                    case id, username
-                    case displayName = "display_name"; case isBot = "is_bot"; case isVerified = "is_verified"
-                    case badgeColor = "badge_color"; case foundingNumber = "founding_number"; case avatarUrl = "avatar_url"; case featuredBadge = "featured_badge"
-                }
-            }
-            let profileRows: [ProfileRow] = (try? await supabase
-                .from("profiles")
-                .select("id, username, display_name, is_bot, is_verified, badge_color, founding_number, avatar_url, featured_badge")
-                .in("id", values: userIds)
-                .execute().value) ?? []
-            let byId = Dictionary(uniqueKeysWithValues: profileRows.map {
-                ($0.id, FeedProfile(username: $0.username, displayName: $0.displayName, isBot: $0.isBot, isVerified: $0.isVerified, badgeColor: $0.badgeColor, foundingNumber: $0.foundingNumber, avatarUrl: $0.avatarUrl, featuredBadge: $0.featuredBadge))
-            })
-            for i in loaded.indices { loaded[i].profiles = byId[loaded[i].userId] }
-        }
-        posts = loaded
-        isLoading = false
-
-        let ratingIds = posts.map(\.id.uuidString)
-        guard !ratingIds.isEmpty else { return }
-        struct IdRow: Decodable {
-            let trackRatingId: UUID
-            enum CodingKeys: String, CodingKey { case trackRatingId = "track_rating_id" }
-        }
-        async let likesTask: [IdRow]? = try? await supabase
-            .from("track_rating_likes").select("track_rating_id")
-            .in("track_rating_id", values: ratingIds).execute().value
-        async let commentsTask: [IdRow]? = try? await supabase
-            .from("track_rating_comments").select("track_rating_id")
-            .in("track_rating_id", values: ratingIds).execute().value
-        if let rows = await likesTask {
-            for r in rows { likeCounts[r.trackRatingId, default: 0] += 1 }
-        }
-        if let rows = await commentsTask {
-            for r in rows { commentCounts[r.trackRatingId, default: 0] += 1 }
-        }
-        if let userId = myId {
-            let mineRows: [IdRow] = (try? await supabase
-                .from("track_rating_likes").select("track_rating_id")
-                .eq("user_id", value: userId)
-                .in("track_rating_id", values: ratingIds).execute().value) ?? []
-            likedIds = Set(mineRows.map(\.trackRatingId))
-        }
-    }
-
-    func toggleLike(item: SongRatingPost) async {
-        guard let userId = supabase.auth.currentUser?.id else { return }
-        let wasLiked = likedIds.contains(item.id)
-        if wasLiked {
-            likedIds.remove(item.id)
-            likeCounts[item.id] = max(0, (likeCounts[item.id] ?? 1) - 1)
-        } else {
-            likedIds.insert(item.id)
-            likeCounts[item.id] = (likeCounts[item.id] ?? 0) + 1
-        }
-        do {
-            if wasLiked {
-                try await supabase.from("track_rating_likes").delete()
-                    .eq("user_id", value: userId).eq("track_rating_id", value: item.id).execute()
-            } else {
-                struct Payload: Encodable {
-                    let userId: UUID; let trackRatingId: UUID
-                    enum CodingKeys: String, CodingKey {
-                        case userId = "user_id"; case trackRatingId = "track_rating_id"
-                    }
-                }
-                try await supabase.from("track_rating_likes")
-                    .insert(Payload(userId: userId, trackRatingId: item.id)).execute()
-            }
-        } catch {
-            if wasLiked {
-                likedIds.insert(item.id)
-                likeCounts[item.id] = (likeCounts[item.id] ?? 0) + 1
-            } else {
-                likedIds.remove(item.id)
-                likeCounts[item.id] = max(0, (likeCounts[item.id] ?? 1) - 1)
-            }
-        }
-    }
-}
-
-struct SongAllRatingsView: View {
-    let recordingId: UUID
-    let release: Release
-    @State private var vm = SongRatingsListViewModel()
-
-    var body: some View {
-        Group {
-            if vm.isLoading {
-                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if vm.posts.isEmpty {
-                VStack(spacing: 14) {
-                    Image("icon-message-circle")
-                        .renderingMode(.template)
-                        .resizable().scaledToFit()
-                        .frame(width: 44, height: 44)
-                        .foregroundStyle(Color.sjBorder)
-                    Text("No ratings from other users yet.")
-                        .font(.jakarta(15)).foregroundStyle(Color.sjMuted)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(vm.posts.enumerated()), id: \.element.id) { i, item in
-                            SongRatingCommentRow(
-                                item: item,
-                                isLiked: vm.likedIds.contains(item.id),
-                                likesCount: vm.likeCounts[item.id] ?? 0,
-                                commentsCount: vm.commentCounts[item.id] ?? 0,
-                                onLike: { await vm.toggleLike(item: item) }
-                            )
-                            if i < vm.posts.count - 1 {
-                                Divider().padding(.leading, 58)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 8)
-                }
-            }
-        }
-        .background(Color.sjCream.ignoresSafeArea())
-        .navigationTitle("Ratings & Reviews")
-        .navigationBarTitleDisplayMode(.inline)
-        .task { await vm.load(recordingId: recordingId) }
     }
 }
 

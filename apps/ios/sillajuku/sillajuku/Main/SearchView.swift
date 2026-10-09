@@ -2262,9 +2262,10 @@ struct ArtistPageView: View {
         // instead (confirmed live).
         // Reset on disappear -- a stale non-nil item binding can get spuriously re-presented
         // on top of a later push made from within its own destination (e.g. tapping the artist
-        // name inside SongDetailView). See the matching note on SearchView's own item targets.
+        // name inside the pushed page). See the matching note on SearchView's own item targets.
+        // No song pages: a song opens its album, scrolled to the track.
         .navigationDestination(item: $songNavTarget) { target in
-            SongDetailView(track: target.track, release: target.release)
+            AlbumDetailView(release: target.release, focusRecordingId: target.track.trackId)
                 .onDisappear { if songNavTarget?.id == target.id { songNavTarget = nil } }
         }
         .task { await load() }
