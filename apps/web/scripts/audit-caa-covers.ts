@@ -54,6 +54,7 @@ const ALL = argv.includes('--all'); // sample all CAA covers, not just prestige
 // YANGHONGWON / 오보에 sat wrong in the catalogue for months as this file's own header example.
 const APPLY = argv.includes('--apply');
 const JSON_OUT = arg('--json', 'scripts/output/caa-cover-audit.json')!;
+const ONLY_IDS = (arg('--ids', '') ?? '').split(',').map(x => x.trim()).filter(Boolean);
 
 const db = getDB();
 
@@ -80,9 +81,15 @@ async function main() {
   // Prestige-first sample (most user-visible). CAA URLs are coverartarchive.org / archive.org.
   let q = db.from('release_groups')
     .select('id, title, artist_display, native_title, cover_url, prestige_score')
-    .or('cover_url.ilike.%coverartarchive%,cover_url.ilike.%archive.org%')
-    .in('release_group_type', ['album', 'ep']);
-  q = ALL ? q.limit(LIMIT) : q.gt('prestige_score', 0).order('prestige_score', { ascending: false }).limit(LIMIT);
+    .or('cover_url.ilike.%coverartarchive%,cover_url.ilike.%archive.org%');
+  /* --ids checks specific release groups. A reported wrong cover should not have to be prestigious
+     enough to reach the top of a sweep, and the type filter is dropped for it too: a single can carry
+     a wrong cover just as easily as an album. */
+  if (ONLY_IDS.length) q = q.in('id', ONLY_IDS);
+  else {
+    q = q.in('release_group_type', ['album', 'ep']);
+    q = ALL ? q.limit(LIMIT) : q.gt('prestige_score', 0).order('prestige_score', { ascending: false }).limit(LIMIT);
+  }
   const { data, error } = await q;
   if (error) { console.error('DB error:', error.message); process.exit(1); }
   const rows = (data ?? []) as RgRow[];
