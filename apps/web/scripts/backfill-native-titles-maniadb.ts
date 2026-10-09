@@ -50,6 +50,9 @@ const APPLY = argv.includes('--apply');
 const KEY = process.env.MANIADB_KEY ?? arg('--key', '');
 const STATE = arg('--state', 'scripts/data/maniadb-titles.json');
 const GAP_MS = parseInt(arg('--gap', '2500'), 10);
+// --artist <uuid> fixes one reported artist instead of sweeping. The full pass is ~34 hours at
+// ManiaDB's speed, which is the wrong tool for "염따's 살아숨셔 series has no Korean title".
+const ONLY_ARTIST = arg('--artist', '');
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36';
 const HANGUL = /[가-힣]/;
@@ -141,7 +144,9 @@ async function main() {
     if (data.length < 1000) break;
   }
 
-  const todo = artists.filter((a: any) => !done.has(a.id) && HANGUL.test(a.name_native ?? '')).slice(0, LIMIT);
+  const todo = artists
+    .filter((a: any) => (ONLY_ARTIST ? a.id === ONLY_ARTIST : !done.has(a.id)) && HANGUL.test(a.name_native ?? ''))
+    .slice(0, LIMIT);
   console.log(`  ${todo.length} artist(s) to check\n`);
 
   let matched = 0, written = 0, throttled = 0, noAlbums = 0, ambiguous = 0;

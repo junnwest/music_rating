@@ -16,10 +16,34 @@ async function releaseByAnyId(
   id: string,
   select: string,
 ): Promise<{ data: any }> {
-  const q = (supabase as any).from('releases').select(select);
-  if (isUUID(id)) return q.eq('id', id).maybeSingle();
-  if (isItunesId(id)) return q.eq('itunes_id', parseInt(id, 10)).maybeSingle();
-  return q.eq('spotify_id', id).maybeSingle();
+  const q = () => (supabase as any).from('releases').select(select);
+  if (isUUID(id)) return q().eq('id', id).maybeSingle();
+  if (isItunesId(id)) return q().eq('itunes_id', parseInt(id, 10)).maybeSingle();
+
+  const direct = await q().eq('spotify_id', id).maybeSingle();
+  if (direct.data) return direct;
+
+  /* A SPOTIFY ID ALMOST NEVER MATCHES, so a miss here means nothing about whether we hold the album.
+     Only 793 of 834,786 releases carry a `spotify_id` (0.1%) — the catalogue is built from
+     MusicBrainz, iTunes and Deezer, and `spotify_id` is set only on the handful of rows that came in
+     through a Spotify path. Keying the lookup on it therefore reported "not in our catalog" for
+     essentially every Spotify-sourced link; reported for SURL's "I Know", which we have had since
+     2019 under a MusicBrainz row with a null spotify_id.
+
+     So on a miss, resolve the id to its metadata and match on THAT. Title + artist + release date is
+     the same evidence the Deezer and iTunes matchers use, and the date keeps it honest: a title and
+     artist alone would pair a single with the album that shares its name. */
+  const { getSpotifyAlbum } = await import('./spotify');
+  const album = await getSpotifyAlbum(id).catch(() => null);
+  if (!album?.title || !album.date) return direct;
+
+  const byMeta = await q()
+    .ilike('title', album.title)
+    .eq('release_date', album.date.slice(0, 10))
+    .limit(2);
+  // Exactly one candidate, or the match is not safe to make.
+  if (byMeta.data?.length === 1) return { data: byMeta.data[0] };
+  return direct;
 }
 
 // NOTE: saveBasicReleases()/saveItunesReleases() removed (2026-07-02). They persisted bare
