@@ -184,16 +184,37 @@ async function main() {
   // --reverify: re-check already-converted mzstatic URLs for wrong matches
   // Normal mode: only target remaining CAA URLs
   const filter = REVERIFY ? '%mzstatic%' : '%coverartarchive%';
-  const { data: rows, error } = await supabase
-    .from('release_groups')
-    .select('id, title, native_title, artist_display')
-    .ilike('cover_url', filter)
-    .order('id');
+  /* PAGED. PostgREST caps a response at 1,000 rows, so this fetched 1,000 and reported "Total with
+     CAA: 1000" — against 543,393 that actually carry one. Ordered by id and walked with a keyset
+     cursor rather than .range(), so rows cannot shift under the scan while the script is writing
+     cover_url on the same table. */
+  const rows: { id: string; title: string; native_title: string | null; artist_display: string; prestige_score?: number | null }[] = [];
+  let after = '';
+  for (;;) {
+    let q = supabase
+      .from('release_groups')
+      .select('id, title, native_title, artist_display, prestige_score')
+      .ilike('cover_url', filter)
+      .order('id')
+      .limit(1000);
+    if (after) q = q.gt('id', after);
+    const { data: page, error } = await q;
+    if (error) { console.error('DB fetch failed:', error); process.exit(1); }
+    if (!page?.length) break;
+    rows.push(...(page as typeof rows));
+    after = page[page.length - 1].id;
+    if (page.length < 1000) break;
+    if (rows.length % 50000 === 0) console.log(`  …fetched ${rows.length}`);
+  }
+  if (!rows.length) { console.log(`No entries matching ${filter} found.`); return; }
 
-  if (error) { console.error('DB fetch failed:', error); process.exit(1); }
-  if (!rows?.length) { console.log(`No entries matching ${filter} found.`); return; }
-
-  const todo = rows.filter(r => !processed.has(r.id));
+  /* MOST-SEEN FIRST. At ~1-2s per lookup this is days of work against 543,393 rows, so the order
+     decides how soon anyone notices. Sorting by prestige_score means the albums people actually open
+     get a fast CDN in the first hours instead of whenever an id-ordered scan happens to reach them;
+     the long tail still gets done, just later. Resumable either way. */
+  const todo = rows
+    .filter(r => !processed.has(r.id))
+    .sort((a: any, b: any) => Number(b.prestige_score ?? 0) - Number(a.prestige_score ?? 0));
   console.log(`Total with CAA: ${rows.length}  |  Todo: ${todo.length}  |  Already done: ${processed.size}`);
 
   let updated = 0, kept = 0, failed = 0;
