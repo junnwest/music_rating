@@ -10,7 +10,7 @@ import { useMixTarget } from './MixTargetContext';
 import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
 import { displayName, typeLabelKey } from '../../lib/sj/display';
-import type { MixItemRef } from '../../lib/sj/mixes';
+import type { MixItemRef, MixKind } from '../../lib/sj/mixes';
 
 /**
  * P4 — the mix page's inline "+" add mode (owner only). Same suggest API as the
@@ -19,6 +19,10 @@ import type { MixItemRef } from '../../lib/sj/mixes';
  * their tracks, so any song is reachable even when a title search is too broad.
  *
  * Keyboard: type → ↑/↓ → Enter toggles, → / ← expand/collapse an album, Esc closes.
+ *
+ * Mixes are typed (20261011000000): an album Mix offers albums only (no track
+ * expander); a song Mix offers songs, with albums shown only as expanders to
+ * pick their tracks from — an album itself can't be added there.
  */
 
 interface Row {
@@ -30,7 +34,15 @@ interface Row {
   coverUrl: string | null;
 }
 
-export default function MixAddPanel({ mixId, onClose }: { mixId: string; onClose: () => void }) {
+export default function MixAddPanel({
+  mixId,
+  kind,
+  onClose,
+}: {
+  mixId: string;
+  kind: MixKind;
+  onClose: () => void;
+}) {
   const { t } = useLanguage();
   const { userId } = useSession();
   const { membership, add, remove } = useMixTarget();
@@ -111,7 +123,7 @@ export default function MixAddPanel({ mixId, onClose }: { mixId: string; onClose
             typeLabel: null,
             coverUrl: s.coverUrl,
           }));
-          setResults([...albums, ...songs]);
+          setResults(kind === 'album' ? albums : [...songs, ...albums]);
           setActive(0);
           setLoading(false);
         })
@@ -132,7 +144,14 @@ export default function MixAddPanel({ mixId, onClose }: { mixId: string; onClose
     recent,
   ]);
 
+  const canAdd = (row: Row) => row.item.kind === kind;
+  const canExpand = (row: Row) => kind === 'song' && row.item.kind === 'album';
+
   function toggle(row: Row, el?: HTMLElement | null) {
+    if (!canAdd(row)) {
+      if (canExpand(row)) setExpanded((cur) => (cur === row.key ? null : row.key));
+      return;
+    }
     if (membership(row.item).includes(mixId)) void remove(row.item, mixId);
     else
       void add(row.item, {
@@ -159,7 +178,7 @@ export default function MixAddPanel({ mixId, onClose }: { mixId: string; onClose
       e.preventDefault();
       const row = rows[active];
       if (row) toggle(row, listRef.current?.children[active]?.querySelector('button[data-add]') as HTMLElement);
-    } else if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && rows[active]?.item.kind === 'album') {
+    } else if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && rows[active] && canExpand(rows[active])) {
       e.preventDefault();
       setExpanded(e.key === 'ArrowRight' ? rows[active].key : null);
     }
@@ -229,7 +248,7 @@ export default function MixAddPanel({ mixId, onClose }: { mixId: string; onClose
                   onMouseEnter={() => setActive(i)}
                   className={`flex items-center gap-2 pl-2 pr-3 py-1.5 ${i === active ? 'bg-page/70' : ''}`}
                 >
-                  {row.item.kind === 'album' ? (
+                  {canExpand(row) ? (
                     <button
                       type="button"
                       tabIndex={-1}
@@ -253,6 +272,7 @@ export default function MixAddPanel({ mixId, onClose }: { mixId: string; onClose
                       {row.typeLabel ? `${row.typeLabel} · ${row.subtitle}` : row.subtitle}
                     </span>
                   </span>
+                  {canAdd(row) && (
                   <button
                     type="button"
                     data-add
@@ -272,8 +292,9 @@ export default function MixAddPanel({ mixId, onClose }: { mixId: string; onClose
                   >
                     {inMix ? <Check size={15} strokeWidth={3} /> : <Plus size={16} strokeWidth={2.6} />}
                   </button>
+                  )}
                 </div>
-                {isOpen && row.item.kind === 'album' && (
+                {isOpen && canExpand(row) && row.item.kind === 'album' && (
                   <AlbumSongPicker
                     releaseGroupId={row.item.releaseGroupId}
                     coverUrl={row.coverUrl}

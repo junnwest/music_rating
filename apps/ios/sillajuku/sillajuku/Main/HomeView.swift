@@ -99,6 +99,9 @@ struct MixSharePost: Identifiable {
     let mixDescription: String?
     let profile: FeedProfile?
     var coverUrls: [String?] = []
+    /// "album" / "song". Album-Mix posts sit with album ratings on the profile;
+    /// song-Mix posts show in the feed and on the Mix tab only.
+    var mixKind: String = "album"
 }
 
 // The feed mixes two kinds of posts (ratings + mix shares) sorted together
@@ -271,7 +274,7 @@ class HomeViewModel {
     // Not private -- reused by ProfileViewModel to fetch the current user's
     // own mix shares for the profile posts feed.
     static let mixShareSelect =
-        "id, user_id, mix_id, caption, created_at, mixes(id, name, description), profiles!mix_shares_user_id_fkey(username, display_name, avatar_url, is_bot, is_verified, badge_color, founding_number, featured_badge)"
+        "id, user_id, mix_id, caption, created_at, mixes(id, name, description, kind), profiles!mix_shares_user_id_fkey(username, display_name, avatar_url, is_bot, is_verified, badge_color, founding_number, featured_badge)"
 
     struct MixShareRow: Codable {
         let id: UUID
@@ -281,7 +284,7 @@ class HomeViewModel {
         let createdAt: Date
         let mixes: MixRef
         let profiles: FeedProfile?
-        struct MixRef: Codable { let id: UUID; let name: String; let description: String? }
+        struct MixRef: Codable { let id: UUID; let name: String; let description: String?; var kind: String? = nil }
         enum CodingKeys: String, CodingKey {
             case id, caption, profiles, mixes
             case userId = "user_id"; case mixId = "mix_id"; case createdAt = "created_at"
@@ -313,7 +316,8 @@ class HomeViewModel {
         return rows.map {
             MixSharePost(id: $0.id, userId: $0.userId, mixId: $0.mixId, caption: $0.caption,
                          createdAt: $0.createdAt, mixName: $0.mixes.name, mixDescription: $0.mixes.description,
-                         profile: $0.profiles, coverUrls: byMix[$0.mixId] ?? [])
+                         profile: $0.profiles, coverUrls: byMix[$0.mixId] ?? [],
+                         mixKind: $0.mixes.kind ?? "album")
         }
     }
 
@@ -1223,6 +1227,7 @@ struct FeedCard: View {
                 .from("mixes")
                 .select("*", count: .exact)
                 .eq("user_id", value: userId)
+                .eq("kind", value: "album")  // saving an album only ever targets album Mixes
                 .execute()
             userMixCount = resp?.count ?? 0
         }

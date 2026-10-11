@@ -36,7 +36,8 @@ extension Font {
 
 extension String {
     // Returns a downscaled cover URL (iTunes 600x600bb / 1200x1200bb → 300x300bb;
-    // CAA front-500 → front-250).
+    // CAA front-500 → front-250; Deezer 1000x1000 → 500x500, a third of the bytes --
+    // the largest cover the app draws is 128pt, 384px at 3x).
     //
     // The CAA -> `/api/img` proxy routing lives in `ImageCache.fetch`, not here,
     // so cache keys stay the original URLs and a proxy failure can fall back to
@@ -47,6 +48,7 @@ extension String {
             .replacingOccurrences(of: "600x600bb",   with: "300x300bb")
             .replacingOccurrences(of: "1200x1200bb", with: "300x300bb")
             .replacingOccurrences(of: "front-500",   with: "front-250")
+            .replacingOccurrences(of: "/1000x1000-", with: "/500x500-")
     }
 }
 

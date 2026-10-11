@@ -52,6 +52,19 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **2026-10-11 (Mac, later) — typed Mixes + cover decoding. Code done on web + iOS, NOT committed. ⏳ USER: apply
+> `20261011000000_mix_kinds.sql` BEFORE deploying** (the new code selects `mixes.kind`).
+> **Mix types:** a Mix holds albums or songs, chosen at creation and fixed (DB triggers enforce the item kind and the
+> type's immutability; Listen Later is always an album Mix). The one mixed Mix, 믹스엔믹스마스터, becomes an album Mix
+> and loses its 1 song. Save targets are per kind; pickers list only matching Mixes and can create one; song-Mix share
+> posts are excluded from the profile's Albums posts view (feed + Mix tab only). `get_mix_covers` now covers song Mixes;
+> `get_profile_mixes` returns `kind`. Drift guard on both. iOS gained "Save to Mix" on tracklist rows
+> (`SongMixPickerView` had had no caller since song pages were deleted). Old App Store builds that try to put a song
+> in an album Mix now get an error.
+> **Covers (item 4):** iOS decodes and downsamples covers off the main thread (ImageIO, ≤600px), and asks Deezer for
+> 500px instead of 1000px (a third of the bytes). Share cards still fetch full size.
+> **Still unanswered:** should profile Stats keep counting song ratings?
+
 > **2026-10-11 (Mac) — load-time diagnosis + first two fixes (uncommitted until pushed).** Measured from the US:
 > Cover Art Archive covers (60% of visible covers) take 2.9s median, up to 6.7s, with occasional 500s, while web's
 > `/api/img` proxy serves them in 0.11s once edge-cached. iOS had stopped using the proxy on 07-08 (prod 502s, since
@@ -67,7 +80,7 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 > browser user agent gets a 403, which suggests an IP or region block too. Options: copy those 82 images into Supabase
 > Storage from the pipeline PC, or, if the block is regional, check `/api/img` for ManiaDB from icn1 after the region move.
 > iOS proxies ManiaDB too now (matching `Cover.tsx`), so it'll start working there whenever the proxy does.
-> **After deploy:** re-time those routes. **Still open, in order:** downsample and decode covers off the main thread
+> **✅ Deployed + verified 2026-10-11:** functions run in icn1. From the US, `/api/feed/home` went from 2.35s to 0.59s, and search/popular and charts/songs to 0.11–0.16s warm. CAA through `/api/img` returns 200 from icn1 and 0.1s edge HITs. ManiaDB still 403s from icn1 too, so the block isn't regional: copy those 82 images into Storage. **Still open, in order:** downsample and decode covers off the main thread
 > (Deezer covers are 1000px, ~190KB); stale-while-revalidate page caching on iOS (every round trip from the US is
 > 215ms); `search_artists` does ~600ms of real DB work.
 

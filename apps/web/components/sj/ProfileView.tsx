@@ -25,6 +25,8 @@ import { Skeleton, SkeletonLine, SkeletonRows } from './Loading';
 import ProfilePostCard from './ProfilePostCard';
 import ProfileRatingEditor from './ProfileRatingEditor';
 import MixPostCard from './MixPostCard';
+import MixKindPicker from './MixKindPicker';
+import type { MixKind } from '../../lib/sj/mixes';
 import ProfileStats from './ProfileStats';
 import FoundingNumberBadge from './FoundingNumberBadge';
 import FoundingLineage from './FoundingLineage';
@@ -449,11 +451,13 @@ export default function ProfileView({ username }: { username?: string }) {
     list: T[],
   ): (T | { mixPost: MixSharePost; createdAt: string })[] {
     const rangeActive = range[0] !== FULL_RANGE[0] || range[1] !== FULL_RANGE[1];
-    if (section !== 'albums' || rangeActive || sortCol !== 'date' || mixPosts.length === 0)
+    // Album-Mix posts only: song-Mix posts show in the feed and on the Mix tab.
+    const albumMixPosts = mixPosts.filter((p) => p.mixKind === 'album');
+    if (section !== 'albums' || rangeActive || sortCol !== 'date' || albumMixPosts.length === 0)
       return list;
     const merged: (T | { mixPost: MixSharePost; createdAt: string })[] = [
       ...list,
-      ...mixPosts.map((p) => ({ mixPost: p, createdAt: p.createdAt })),
+      ...albumMixPosts.map((p) => ({ mixPost: p, createdAt: p.createdAt })),
     ];
     const at = (x: { createdAt: string | null }) => x.createdAt ?? '';
     return merged.sort((a, b) =>
@@ -1011,6 +1015,7 @@ function MixLibrary({ userId, isSelf }: { userId: string; isSelf: boolean }) {
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState('');
   const [isPublic, setIsPublic] = useState(false);
+  const [kind, setKind] = useState<MixKind>('album');
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -1057,11 +1062,13 @@ function MixLibrary({ userId, isSelf }: { userId: string; isSelf: boolean }) {
       name: name.trim() || defaultMixName || t('sj.mix.newMix'),
       is_public: isPublic,
       is_default: false,
+      kind,
     });
     setSaving(false);
     setShowCreate(false);
     setName('');
     setIsPublic(false);
+    setKind('album');
     load();
     // The save dropdown's mix list is cached app-wide — let it see the new mix.
     void refreshMixTargets();
@@ -1114,6 +1121,8 @@ function MixLibrary({ userId, isSelf }: { userId: string; isSelf: boolean }) {
                     {mixName(mix)}
                   </span>
                   <span className="flex items-center gap-1.5 text-[12px] text-muted">
+                    {(mix.kind ?? 'album') === 'song' ? t('sj.mix.kindSongMix') : t('sj.mix.kindAlbumMix')}
+                    <span className="text-divider">·</span>
                     {(counts[mix.id] ?? 0) === 1
                       ? t('sj.mix.oneItem')
                       : t('sj.mix.nItems').replace('{n}', String(counts[mix.id] ?? 0))}
@@ -1140,6 +1149,7 @@ function MixLibrary({ userId, isSelf }: { userId: string; isSelf: boolean }) {
         maxWidth="max-w-sm"
       >
         <div className="px-5 pb-5 pt-2">
+          <MixKindPicker value={kind} onChange={setKind} className="mb-3" />
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}

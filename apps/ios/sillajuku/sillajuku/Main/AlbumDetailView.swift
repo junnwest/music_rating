@@ -1817,6 +1817,7 @@ private struct TrackRow: View {
     var isHighlighted: Bool = false
 
     @State private var didMarkNotInterested = false
+    @State private var showMixPicker = false
 
     private var formattedDuration: String {
         guard let ms = track.durationMs, ms > 0 else { return "" }
@@ -1857,6 +1858,12 @@ private struct TrackRow: View {
         .padding(.vertical, 11).padding(.horizontal, 20)
         .background(Color.sjAmber.opacity(isHighlighted ? 0.14 : 0))
         .contextMenu {
+            if track.trackId != nil {
+                // Songs go in song Mixes (20261011000000); the picker creates one if needed.
+                Button { showMixPicker = true } label: {
+                    Label("Save to Mix", image: "icon-bookmark")
+                }
+            }
             if let recordingId = track.trackId {
                 Button {
                     Task {
@@ -1870,6 +1877,13 @@ private struct TrackRow: View {
             }
         }
         .sensoryFeedback(.success, trigger: didMarkNotInterested)
+        .sheet(isPresented: $showMixPicker) {
+            if let recordingId = track.trackId {
+                SongMixPickerView(recordingId: recordingId, releaseGroupId: release.id, songTitle: track.title)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+            }
+        }
     }
 }
 

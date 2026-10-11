@@ -86,7 +86,8 @@ export default function Tracklist({
   const { t } = useLanguage();
   const mixName = useMixName();
   const { userId, profile, requireAuth } = useSession();
-  const { target, saveAndShow, openChange } = useMixTarget();
+  const { targetFor, saveAndShow, openChange } = useMixTarget();
+  const target = targetFor('song');
   const ratingStep = profile?.manual_rating_step ?? 0.5;
   const [sort, setSort] = useState<{ col: TrackSort; desc: boolean }>({ col: 'order', desc: false });
   const [menu, setMenu] = useState<{ x: number; y: number; track: TrackEntry } | null>(null);

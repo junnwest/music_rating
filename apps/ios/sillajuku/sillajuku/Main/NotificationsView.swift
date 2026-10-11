@@ -60,8 +60,9 @@ struct AppNotification: Codable, Identifiable {
         let isPublic: Bool
         let isDefault: Bool
         let createdAt: Date
+        var kind: String? = nil
         enum CodingKeys: String, CodingKey {
-            case id, name, description
+            case id, name, description, kind
             case userId = "user_id"; case isPublic = "is_public"
             case isDefault = "is_default"; case createdAt = "created_at"
         }
@@ -98,11 +99,11 @@ struct AppNotification: Codable, Identifiable {
     var mixDestination: Mix? {
         if type == "mix_like", let m = mix {
             return Mix(id: m.id, userId: m.userId, name: m.name, isPublic: m.isPublic,
-                       isDefault: m.isDefault, createdAt: m.createdAt, description: m.description)
+                       isDefault: m.isDefault, createdAt: m.createdAt, description: m.description, kind: m.kind)
         }
         if (type == "mix_share_like" || type == "mix_share_comment"), let m = mixShare?.mixes {
             return Mix(id: m.id, userId: m.userId, name: m.name, isPublic: m.isPublic,
-                       isDefault: m.isDefault, createdAt: m.createdAt, description: m.description)
+                       isDefault: m.isDefault, createdAt: m.createdAt, description: m.description, kind: m.kind)
         }
         return nil
     }
@@ -226,7 +227,7 @@ struct NotificationsView: View {
         isLoading = true
         notifications = (try? await supabase
             .from("notifications")
-            .select("id, type, created_at, rating_id, mix_id, mix_share_id, actor_id, actor:actor_id(username, display_name, avatar_url), rating:rating_id(release_groups(id, title, artist_display, native_title, cover_url, artists!release_groups_primary_artist_id_fkey(name_native))), mix:mix_id(id, user_id, name, description, is_public, is_default, created_at), mix_share:mix_share_id(mixes(id, user_id, name, description, is_public, is_default, created_at))")
+            .select("id, type, created_at, rating_id, mix_id, mix_share_id, actor_id, actor:actor_id(username, display_name, avatar_url), rating:rating_id(release_groups(id, title, artist_display, native_title, cover_url, artists!release_groups_primary_artist_id_fkey(name_native))), mix:mix_id(id, user_id, name, description, is_public, is_default, created_at, kind), mix_share:mix_share_id(mixes(id, user_id, name, description, is_public, is_default, created_at, kind))")
             .eq("user_id", value: userId)
             .order("created_at", ascending: false)
             .limit(60)

@@ -4,6 +4,21 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-10-11 (Mac) — speed + typed Mixes.** Diagnosed slow loads with measurements:
+- **CAA covers:** 2.9s median. iOS had stopped using `/api/img` (0.11s edge HIT) and never went back.
+- **Function region:** Vercel functions ran in iad1 against the Seoul DB, about 180ms per query.
+- **Round trips:** 215ms each from the US.
+
+Fixed: iOS covers via the proxy, plus ManiaDB (http-only, which ATS blocks); `regions: ["icn1"]` (feed 2.35s → 0.59s);
+background ImageIO downsampling; Deezer at 500px.
+
+Found: ManiaDB covers 403 from the proxy in both regions (Cloudflare), so they need copying into Storage.
+
+Then typed Mixes (`20261011000000`). Decided with the user: Listen Later is album-only, the one mixed Mix keeps its
+albums and drops its song, and song-Mix posts show in the feed and on the Mix tab only. See README for the full list.
+
+---
+
 **2026-10-06 (Mac, later) — songs stop being posts.** Goal: prioritise album rating and keep songs from
 interrupting people who rate albums. (1) Song pages deleted on web and iOS. Web `/song/[id]` is a server redirect
 to `/album/<rg>#track-<recordingId>` (canonical edition when there's no `?rg`; `lib/sj/trackLinks.ts`). The

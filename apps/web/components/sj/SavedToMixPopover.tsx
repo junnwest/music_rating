@@ -146,8 +146,11 @@ export default function SavedToMixPopover({ state, onChangeView, onClose }: Prop
 
   if (typeof document === 'undefined') return null;
 
-  const filtered = (mixes ?? []).filter((m) =>
-    query.trim() === '' ? true : mixName(m).toLowerCase().includes(query.trim().toLowerCase()),
+  // Only Mixes of this item's kind — an album can't go in a song Mix or vice versa.
+  const filtered = (mixes ?? []).filter(
+    (m) =>
+      m.kind === item.kind &&
+      (query.trim() === '' ? true : mixName(m).toLowerCase().includes(query.trim().toLowerCase())),
   );
 
   async function toggle(mixId: string) {
@@ -163,7 +166,8 @@ export default function SavedToMixPopover({ state, onChangeView, onClose }: Prop
     if (busy) return;
     setBusy(true);
     // A blank name is fine — createMix falls back to defaultMixName.
-    const mix = await createMix(newName);
+    // Created from a save, so it's a Mix of this item's kind.
+    const mix = await createMix(newName, item.kind);
     if (mix) {
       setTarget(mix.id);
       await add(item, { mixId: mix.id, meta: state.meta, from: anchorRect(anchor) });
@@ -326,7 +330,7 @@ export default function SavedToMixPopover({ state, onChangeView, onClose }: Prop
                   className="flex-1 flex items-center gap-2 px-2.5 py-2 rounded-lg text-[13px] font-medium text-ink hover:bg-page transition"
                 >
                   <Plus size={15} className="text-accent" />
-                  {t('sj.mix.newMix')}
+                  {item.kind === 'song' ? t('sj.mix.newSongMix') : t('sj.mix.newAlbumMix')}
                 </button>
                 <button
                   type="button"

@@ -252,6 +252,8 @@ export default function MixPage() {
               {mix.is_public ? t('sj.mix.public') : t('sj.mix.private')}
             </span>
             <span className="text-divider">·</span>
+            {(mix.kind ?? 'album') === 'song' ? t('sj.mix.kindSongMix') : t('sj.mix.kindAlbumMix')}
+            {' · '}
             {items.length === 1
               ? t('sj.mix.oneItem')
               : t('sj.mix.nItems').replace('{n}', String(items.length))}
@@ -319,7 +321,9 @@ export default function MixPage() {
         </div>
       </header>
 
-      {isOwner && adding && <MixAddPanel mixId={mix.id} onClose={() => setAdding(false)} />}
+      {isOwner && adding && (
+        <MixAddPanel mixId={mix.id} kind={mix.kind ?? 'album'} onClose={() => setAdding(false)} />
+      )}
 
       {items.length === 0 ? (
         <div className="py-20 flex flex-col items-center gap-3">

@@ -95,7 +95,8 @@ struct HomeFeedResponse: Decodable {
             if kind == "mix", let post {
                 return .mixShare(MixSharePost(id: post.id, userId: post.userId, mixId: post.mixId,
                     caption: post.caption, createdAt: post.createdAt, mixName: post.mixName,
-                    mixDescription: post.mixDescription, profile: post.profile, coverUrls: post.coverUrls))
+                    mixDescription: post.mixDescription, profile: post.profile, coverUrls: post.coverUrls,
+                    mixKind: post.mixKind ?? "album"))
             }
             return nil
         }
@@ -110,6 +111,8 @@ struct HomeFeedResponse: Decodable {
         let mixDescription: String?
         let profile: FeedProfile?
         let coverUrls: [String?]
+        /// Added 2026-10-11 (typed Mixes); absent from older feed responses.
+        let mixKind: String?
     }
     static var dateStrategy: JSONDecoder.DateDecodingStrategy {
         .custom { decoder in

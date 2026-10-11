@@ -19,6 +19,106 @@
         }
       }
     },
+    "%d items" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d개"
+          }
+        }
+      }
+    },
+    "1 item" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1개"
+          }
+        }
+      }
+    },
+    "A Mix holds albums or songs, and this can't be changed later." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "믹스는 앨범 또는 곡만 담을 수 있고, 나중에 바꿀 수 없어요."
+          }
+        }
+      }
+    },
+    "Album Mix" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "앨범 믹스"
+          }
+        }
+      }
+    },
+    "Mix type" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "믹스 종류"
+          }
+        }
+      }
+    },
+    "New album Mix" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 앨범 믹스"
+          }
+        }
+      }
+    },
+    "New song Mix" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 곡 믹스"
+          }
+        }
+      }
+    },
+    "Save songs from an album's tracklist to add them here." : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "앨범 트랙리스트에서 곡을 저장하면 여기에 담겨요."
+          }
+        }
+      }
+    },
+    "Song Mix" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "곡 믹스"
+          }
+        }
+      }
+    },
+    "Type" : {
+      "localizations" : {
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "종류"
+          }
+        }
+      }
+    },
     "–" : {
 
     },

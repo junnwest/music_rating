@@ -48,7 +48,7 @@ struct MixShareCard: View {
 
     private var mixDestination: Mix {
         Mix(id: post.mixId, userId: post.userId, name: post.mixName, isPublic: true,
-            isDefault: false, createdAt: post.createdAt, description: post.mixDescription)
+            isDefault: false, createdAt: post.createdAt, description: post.mixDescription, kind: post.mixKind)
     }
 
     var body: some View {

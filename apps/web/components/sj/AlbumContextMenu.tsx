@@ -42,7 +42,8 @@ export function useAlbumContextMenu({
   const { t } = useLanguage();
   const [score, setScore] = useState<number | null>(initialScore);
   const [rateOpen, setRateOpen] = useState(false);
-  const { target, saveAndShow, openChange } = useMixTarget();
+  const { targetFor, saveAndShow, openChange } = useMixTarget();
+  const target = targetFor('album');
   const mixName = useMixName();
   // Where the menu was opened — the "Saved to…" dropdown anchors there.
   const pointRef = useRef({ x: 0, y: 0 });

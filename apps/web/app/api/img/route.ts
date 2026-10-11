@@ -15,11 +15,9 @@ import type { NextRequest } from 'next/server';
 // POPs (hard 502s in prod — flagged 2026-07-08); the serverless egress IPs
 // get through. Edge caching of the response is unaffected (s-maxage below).
 export const runtime = 'nodejs';
-// Everything else runs in Seoul (vercel.json `regions: ["icn1"]`, next to the
-// database). This route talks to archive.org, not the database, and archive.org
-// is in the US -- and is known to block some Vercel egress -- so it stays in
-// iad1, where it's verified working (2026-10-11).
-export const preferredRegion = 'iad1';
+// Runs in Seoul with everything else (vercel.json `regions: ["icn1"]`).
+// archive.org answers from icn1 too: verified 2026-10-11, 200s cold and 0.1s
+// edge HITs warm. (A `preferredRegion = 'iad1'` pin was tried and ignored.)
 export const maxDuration = 15;
 
 // SSRF guard: only proxy the known cover-art image hosts.

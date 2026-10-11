@@ -15,6 +15,8 @@ export interface MixSharePost {
   mixName: string;
   mixDescription: string | null;
   mixIsDefault: boolean;
+  /** Album-Mix posts sit with album ratings on the profile; song-Mix posts don't. */
+  mixKind: 'album' | 'song';
   profile: { username: string | null; display_name: string | null; avatar_url?: string | null } | null;
   coverUrls: string[];
 }
@@ -22,7 +24,7 @@ export interface MixSharePost {
 export const MIX_SHARE_CAPTION_MAX = 500;
 
 const SELECT =
-  'id, user_id, mix_id, caption, created_at, mixes(id, name, description, is_default), profiles!mix_shares_user_id_fkey(username, display_name, avatar_url)';
+  'id, user_id, mix_id, caption, created_at, mixes(id, name, description, is_default, kind), profiles!mix_shares_user_id_fkey(username, display_name, avatar_url)';
 
 type Err = { message: string } | null;
 
@@ -66,6 +68,7 @@ export async function loadMixShares(opts: {
       mixName: r.mixes.name,
       mixDescription: r.mixes.description ?? null,
       mixIsDefault: !!r.mixes.is_default,
+      mixKind: r.mixes.kind === 'song' ? 'song' : 'album',
       profile: r.profiles ?? null,
       coverUrls: byMix[r.mix_id] ?? [],
     })),

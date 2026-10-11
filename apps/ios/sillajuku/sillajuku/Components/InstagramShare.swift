@@ -87,13 +87,11 @@ enum InstagramShare {
         return renderer.uiImage
     }
 
-    /// Cache first (the cover is usually already on screen), then the network --
-    /// via `ImageCache.fetch`, so CAA covers take the fast `/api/img` proxy.
+    /// Full resolution (the share card is far larger than the <= 600px cached
+    /// covers), via `ImageCache.fetchFullSize` so CAA covers take the fast
+    /// `/api/img` proxy and ManiaDB's http-only art loads at all.
     static func downloadImage(from url: URL) async throws -> UIImage? {
-        if let cached = await ImageCache.shared.image(for: url) { return cached }
-        guard let (img, data) = await ImageCache.fetch(url) else { return nil }
-        ImageCache.shared.store(img, data: data, for: url)
-        return img
+        await ImageCache.fetchFullSize(url)
     }
 
     /// Parallel fetch for a mix's multiple cover URLs -- mirrors `downloadImage`

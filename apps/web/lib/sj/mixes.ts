@@ -14,6 +14,13 @@ export type MixItemRef =
   | { kind: 'album'; releaseGroupId: string }
   | { kind: 'song'; recordingId: string; releaseGroupId: string };
 
+/**
+ * A Mix holds albums or songs, never both (migration 20261011000000). Chosen
+ * at creation and fixed; the DB rejects an item of the other kind. Listen
+ * Later is always an album Mix.
+ */
+export type MixKind = MixItemRef['kind'];
+
 /** Optional display context for a saved item (dock row, flying thumbnail). */
 export interface MixItemMeta {
   coverUrl?: string | null;
@@ -26,6 +33,7 @@ export interface MixSummary {
   name: string;
   is_public: boolean;
   is_default: boolean;
+  kind: MixKind;
   created_at: string;
   itemCount: number;
   /** Up to 4 most-recent covers (albums and songs), newest first. */
@@ -44,6 +52,7 @@ interface MixRowWithEmbeds {
   name: string;
   is_public: boolean;
   is_default: boolean;
+  kind: MixKind | null;
   created_at: string;
   albums: { count: number }[] | null;
   songs: { count: number }[] | null;
@@ -61,6 +70,8 @@ function toSummary(r: MixRowWithEmbeds): MixSummary {
     name: r.name,
     is_public: r.is_public,
     is_default: r.is_default,
+    // `?? 'album'`: rows read before the migration has run.
+    kind: r.kind ?? 'album',
     created_at: r.created_at,
     itemCount: (r.albums?.[0]?.count ?? 0) + (r.songs?.[0]?.count ?? 0),
     covers: Array.from(new Set(recent)).slice(0, 4),
@@ -68,7 +79,7 @@ function toSummary(r: MixRowWithEmbeds): MixSummary {
 }
 
 const SUMMARY_COLS =
-  'id, name, is_public, is_default, created_at, ' +
+  'id, name, is_public, is_default, kind, created_at, ' +
   'albums:mix_items(count), songs:mix_song_items(count), ' +
   'recent:mix_items(created_at, release_groups(cover_url)), ' +
   'recentSongs:mix_song_items(created_at, release_groups(cover_url))';
@@ -238,12 +249,13 @@ export async function createMix(
   userId: string,
   name: string,
   isPublic: boolean,
+  kind: MixKind,
 ): Promise<{ data: MixSummary | null; error: Err }> {
   if (!supabase) return { data: null, error: { message: 'no client' } };
   const { data, error } = await supabase
     .from('mixes')
-    .insert({ user_id: userId, name: name.trim(), is_public: isPublic, is_default: false })
-    .select('id, name, is_public, is_default, created_at')
+    .insert({ user_id: userId, name: name.trim(), is_public: isPublic, is_default: false, kind })
+    .select('id, name, is_public, is_default, kind, created_at')
     .single();
   if (error || !data) return { data: null, error: error ?? { message: 'insert returned no row' } };
   const row = data as Omit<MixSummary, 'itemCount' | 'covers'>;

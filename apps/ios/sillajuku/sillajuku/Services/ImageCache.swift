@@ -1,5 +1,6 @@
 import UIKit
 import CryptoKit
+import ImageIO
 
 /// App-wide two-tier image cache: NSCache in memory + a persistent disk layer
 /// in Caches/, both keyed by the ORIGINAL request URL.
@@ -52,11 +53,37 @@ final class ImageCache {
         return c?.url
     }
 
-    private static func download(_ url: URL) async -> (UIImage, Data)? {
+    private static func downloadData(_ url: URL) async -> Data? {
         guard let (data, resp) = try? await session.data(from: url),
-              (resp as? HTTPURLResponse)?.statusCode == 200,
-              let img = UIImage(data: data) else { return nil }
+              (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        return data
+    }
+
+    private static func download(_ url: URL) async -> (UIImage, Data)? {
+        guard let data = await downloadData(url), let img = decode(data) else { return nil }
         return (img, data)
+    }
+
+    /// Longest side kept in memory. The largest cover drawn is 128pt (384px at
+    /// 3x); 600 leaves headroom without holding 1000px Deezer bitmaps (~4 MB
+    /// decoded each) for a 60pt thumbnail.
+    private static let maxPixelSize = 600
+
+    /// Decodes AND downsamples now, on the calling (background) thread.
+    /// `UIImage(data:)` decodes lazily -- at first draw, on the main thread --
+    /// which is what made scrolling past fresh covers stutter. ImageIO's
+    /// thumbnail with `ShouldCacheImmediately` returns an already-decoded bitmap.
+    static func decode(_ data: Data) -> UIImage? {
+        let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions) else { return nil }
+        let options = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+        ] as CFDictionary
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options) else { return UIImage(data: data) }
+        return UIImage(cgImage: cg)
     }
 
     /// Downloads a cover, through the proxy for CAA/ManiaDB URLs, falling back to the
@@ -65,6 +92,15 @@ final class ImageCache {
     static func fetch(_ url: URL) async -> (UIImage, Data)? {
         if needsProxy(url), let viaProxy = proxied(url), let hit = await download(viaProxy) { return hit }
         return await download(url)
+    }
+
+    /// Same route, but full resolution and not cached -- for share cards, which
+    /// are drawn far larger than any on-screen cover (the cache holds <= 600px).
+    static func fetchFullSize(_ url: URL) async -> UIImage? {
+        if needsProxy(url), let viaProxy = proxied(url), let data = await downloadData(viaProxy),
+           let img = UIImage(data: data) { return img }
+        guard let data = await downloadData(url) else { return nil }
+        return UIImage(data: data)
     }
 
     private let cache: NSCache<NSString, UIImage> = {
@@ -113,7 +149,7 @@ final class ImageCache {
         if let hit = self[url] { return hit }
         let path = diskPath(for: url)
         let loaded: UIImage? = await Task.detached(priority: .userInitiated) {
-            guard let data = try? Data(contentsOf: path), let img = UIImage(data: data) else { return nil }
+            guard let data = try? Data(contentsOf: path), let img = ImageCache.decode(data) else { return nil }
             return img
         }.value
         if let loaded { self[url] = loaded }

@@ -11,7 +11,7 @@ const SESSION_TTL = 30 * 60;
 const ALBUM = 'id,title,artist_display,primary_artist_id,genres,first_release_date,cover_url,release_group_type,native_title,artists!release_groups_primary_artist_id_fkey(name_native,country)';
 const PROFILE = 'username,display_name,avatar_url,is_bot,is_verified,badge_color,founding_number,featured_badge,profile_visibility,deactivated_at'; // featured_badge: 20260928000002
 const RATING = `id,user_id,score,review_text,created_at,release_groups(${ALBUM}),profiles!ratings_user_id_fkey!inner(${PROFILE})`;
-const SHARE = `id,user_id,mix_id,caption,created_at,profiles!mix_shares_user_id_fkey!inner(${PROFILE}),mixes!inner(id,name,description,is_default,is_public,mix_items(release_groups(${ALBUM})),mix_song_items(release_groups(${ALBUM})))`;
+const SHARE = `id,user_id,mix_id,caption,created_at,profiles!mix_shares_user_id_fkey!inner(${PROFILE}),mixes!inner(id,name,description,is_default,is_public,kind,mix_items(release_groups(${ALBUM})),mix_song_items(release_groups(${ALBUM})))`;
 interface Ref { kind: 'rating' | 'mix'; id: string; created_at: string }
 interface Snapshot {
   viewer: string | null;
@@ -84,6 +84,7 @@ async function loadEntries(db: SupabaseClient, refs: RankedRef[], tab: FeedTab, 
       entries.push({ kind: 'mix', post: { id: row.id, userId: row.user_id, mixId: row.mix_id,
         caption: row.caption, createdAt: row.created_at, mixName: row.mixes.name,
         mixDescription: row.mixes.description, mixIsDefault: row.mixes.is_default,
+        mixKind: row.mixes.kind === 'song' ? 'song' : 'album',
         profile: row.profiles, coverUrls: unique.map(a => a.cover_url).filter((s): s is string => !!s).slice(0, 4) } });
     }
   }

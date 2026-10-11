@@ -17,12 +17,12 @@ import {
 import Cover from './Cover';
 import MixMosaic from './MixMosaic';
 import SongChip from './SongChip';
-import AlbumSongPicker from './AlbumSongPicker';
 import { useContextMenuFor, openInNewTab } from './ContextMenu';
 import { useSession } from './SessionContext';
 import { useMixName, useMixTarget } from './MixTargetContext';
 import { useLanguage } from '../../lib/i18n';
-import { itemKey, type MixItemRef } from '../../lib/sj/mixes';
+import { itemKey, type MixItemRef, type MixKind } from '../../lib/sj/mixes';
+import MixKindPicker from './MixKindPicker';
 import { loadMixEntries, mixEntryHref, mixEntryRef, type MixEntry } from '../../lib/sj/mixEntries';
 
 /**
@@ -120,12 +120,17 @@ function neededPush(panelW: number): number {
   return panelW;
 }
 
-/** /album/<id> or /song/<id>?rg=<rg> dropped from a dragged link → a mix item. */
+/**
+ * /album/<id>, a song link /album/<rg>#track-<recording> (lib/sj/trackLinks), or
+ * a legacy /song/<id>?rg=<rg>, dropped from a dragged link → a mix item.
+ */
 function itemFromUrl(raw: string): MixItemRef | null {
   try {
     const url = new URL(raw.trim().split('\n')[0], window.location.origin);
     if (url.origin !== window.location.origin) return null;
     const album = url.pathname.match(/^\/album\/([0-9a-f-]{36})$/i);
+    const track = url.hash.match(/^#track-([0-9a-f-]{36})$/i);
+    if (album && track) return { kind: 'song', recordingId: track[1], releaseGroupId: album[1] };
     if (album) return { kind: 'album', releaseGroupId: album[1] };
     const song = url.pathname.match(/^\/song\/([0-9a-f-]{36})$/i);
     const rg = url.searchParams.get('rg');
@@ -141,8 +146,11 @@ export default function MixDock() {
   const { userId } = useSession();
   const { t } = useLanguage();
   const mixName = useMixName();
-  const { mixes, target, setTarget, setDockMixId, lastAdded, version, add, remove, createMix } =
+  const { mixes, targetFor, dockMixId, setTarget, setDockMixId, lastAdded, version, add, remove, createMix } =
     useMixTarget();
+  // The dock shows one Mix of either kind; it's the save target only for its kind.
+  const albumTarget = targetFor('album');
+  const target = (dockMixId ? mixes?.find((m) => m.id === dockMixId) : undefined) ?? albumTarget;
   const isMd = useMedia('(min-width: 768px)');
   const isXl = useMedia('(min-width: 1280px)');
   const [prefs, setPrefs] = useState({ open: false, width: DEFAULT_W });
@@ -168,13 +176,15 @@ export default function MixDock() {
     [userId],
   );
 
-  // D1: while the dock is open, its mix is the target. Opening adopts the
-  // current target; closing hands control back to "last used".
+  // D1: while the dock is open, its mix is the target (for its own kind).
+  // Opening adopts the album target; closing hands control back to "last used".
   const targetId = target?.id ?? null;
+  const albumTargetId = albumTarget?.id ?? null;
   useEffect(() => {
-    if (open && targetId) setDockMixId(targetId);
-    if (!open) setDockMixId(null);
-  }, [open, targetId, setDockMixId]);
+    if (open && !dockMixId && albumTargetId) setDockMixId(albumTargetId);
+    if (!open && dockMixId) setDockMixId(null);
+  }, [open, dockMixId, albumTargetId, setDockMixId]);
+  const [kindRefused, setKindRefused] = useState(false);
 
   // Alt+M toggles the dock (by key code, so macOS's Option+M → "µ" still works).
   useEffect(() => {
@@ -285,6 +295,12 @@ export default function MixDock() {
     const item = itemFromUrl(e.dataTransfer.getData('text/uri-list'));
     if (!item || !targetId) return;
     e.preventDefault();
+    if (target && item.kind !== target.kind) {
+      // A Mix holds one kind: say so instead of silently dropping it.
+      setKindRefused(true);
+      setTimeout(() => setKindRefused(false), 2400);
+      return;
+    }
     void add(item, { mixId: targetId, from: new DOMRect(e.clientX - 22, e.clientY - 22, 44, 44) });
   };
 
@@ -403,9 +419,12 @@ export default function MixDock() {
         <DockHeader
           onClose={() => updatePrefs({ open: false })}
           onPick={setTarget}
-          onCreate={async (name) => {
-            const mix = await createMix(name);
-            if (mix) setTarget(mix.id);
+          onCreate={async (name, kind) => {
+            const mix = await createMix(name, kind);
+            if (mix) {
+              setDockMixId(mix.id);
+              setTarget(mix.id);
+            }
             return !!mix;
           }}
         />
@@ -450,6 +469,11 @@ export default function MixDock() {
               {t('sj.dock.dropHere').replace('{mix}', mixName(target))}
             </div>
           )}
+          {kindRefused && (
+            <p role="status" className="absolute inset-x-2 bottom-2 rounded-lg bg-ink text-page text-[12px] font-medium px-3 py-2 sj-fade-in">
+              {target?.kind === 'song' ? t('sj.mix.songsOnly') : t('sj.mix.albumsOnly')}
+            </p>
+          )}
         </div>
         <p className="px-4 py-2 border-t border-divider text-[11px] text-muted">
           {t('sj.dock.hint')}
@@ -469,11 +493,13 @@ function DockHeader({
   onClose: () => void;
   onPick: (mixId: string) => void;
   /** Resolves false when the mix couldn't be created (the form stays open). */
-  onCreate: (name: string) => Promise<boolean>;
+  onCreate: (name: string, kind: MixKind) => Promise<boolean>;
 }) {
   const { t } = useLanguage();
   const mixName = useMixName();
-  const { mixes, target, defaultMixName } = useMixTarget();
+  const { mixes, targetFor, dockMixId, defaultMixName } = useMixTarget();
+  const target = (dockMixId ? mixes?.find((m) => m.id === dockMixId) : undefined) ?? targetFor('album');
+  const [newKind, setNewKind] = useState<MixKind>('album');
   const [switching, setSwitching] = useState(false);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
@@ -581,12 +607,14 @@ function DockHeader({
                   if (busy) return;
                   // A blank name is fine — the mix gets defaultMixName.
                   setBusy(true);
-                  const ok = await onCreate(name);
+                  const ok = await onCreate(name, newKind);
                   setBusy(false);
                   if (ok) setSwitching(false);
                 }}
-                className="flex items-center gap-1.5 p-1"
+                className="p-1"
               >
+                <MixKindPicker value={newKind} onChange={setNewKind} className="mb-1.5" />
+                <div className="flex items-center gap-1.5">
                 <input
                   autoFocus
                   value={name}
@@ -610,6 +638,7 @@ function DockHeader({
                 >
                   {t('sj.mix.createBtn')}
                 </button>
+                </div>
               </form>
             ) : (
               <button
@@ -643,7 +672,6 @@ function DockList({
 }) {
   const { t } = useLanguage();
   const router = useRouter();
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const { onContextMenu, menu } = useContextMenuFor<MixEntry>((entry) => [
     {
@@ -671,7 +699,6 @@ function DockList({
     <ul className="py-1">
       {entries.map((entry) => {
         const key = itemKey(mixEntryRef(entry));
-        const isOpen = expanded.has(entry.id);
         return (
           <li key={`${entry.kind}:${entry.id}`}>
             <div
@@ -680,26 +707,8 @@ function DockList({
                 highlight === key ? 'bg-accent/10 sj-row-in' : 'hover:bg-surface'
               }`}
             >
-              {entry.kind === 'album' ? (
-                <button
-                  type="button"
-                  onClick={() =>
-                    setExpanded((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(entry.id)) next.delete(entry.id);
-                      else next.add(entry.id);
-                      return next;
-                    })
-                  }
-                  aria-expanded={isOpen}
-                  aria-label={isOpen ? t('sj.dock.hideSongs') : t('sj.dock.showSongs')}
-                  className="grid place-items-center w-6 h-6 rounded-md text-muted hover:text-ink hover:bg-page transition shrink-0"
-                >
-                  <ChevronRight size={14} className={`transition ${isOpen ? 'rotate-90' : ''}`} />
-                </button>
-              ) : (
-                <span className="w-6 shrink-0" />
-              )}
+              {/* No "show songs" expander: an album Mix can't hold songs (20261011000000). */}
+              <span className="w-1 shrink-0" />
               <Link href={mixEntryHref(entry)} className="flex items-center gap-2.5 min-w-0 flex-1">
                 <Cover url={entry.coverUrl} className="w-10 h-10" rounded="rounded-md" />
                 <span className="min-w-0 flex-1">
@@ -719,9 +728,6 @@ function DockList({
                 <X size={14} />
               </button>
             </div>
-            {entry.kind === 'album' && isOpen && (
-              <AlbumSongPicker releaseGroupId={entry.releaseGroupId} coverUrl={entry.coverUrl} mixId={mixId} />
-            )}
           </li>
         );
       })}

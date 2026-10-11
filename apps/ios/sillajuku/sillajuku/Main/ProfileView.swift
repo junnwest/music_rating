@@ -1205,7 +1205,8 @@ struct ProfileView: View {
             return nil
         }
         guard ratingSortOrder == .recent, ratingTypeFilter == .albums else { return ratingPosts }
-        let sharePosts: [ProfilePost] = viewModel.mixShares.map { .mixShare($0) }
+        // Album-Mix posts only; song-Mix posts show in the feed and on the Mix tab.
+        let sharePosts: [ProfilePost] = viewModel.mixShares.filter { $0.mixKind == "album" }.map { .mixShare($0) }
         return (ratingPosts + sharePosts).sorted { $0.createdAt > $1.createdAt }
     }
 

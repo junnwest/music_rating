@@ -130,6 +130,8 @@ export interface MixRow {
   description?: string | null;
   is_public: boolean;
   is_default: boolean;
+  /** Albums or songs, fixed at creation (20261011000000). */
+  kind?: 'album' | 'song';
   created_at: string;
 }
 

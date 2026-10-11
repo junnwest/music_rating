@@ -31,7 +31,8 @@ export default function SaveToMixButton({
 }) {
   const { t } = useLanguage();
   const mixName = useMixName();
-  const { target, isSaved, saveAndShow } = useMixTarget();
+  const { targetFor, isSaved, saveAndShow } = useMixTarget();
+  const target = targetFor(item.kind);
   const btnRef = useRef<HTMLButtonElement>(null);
   const saved = isSaved(item);
 

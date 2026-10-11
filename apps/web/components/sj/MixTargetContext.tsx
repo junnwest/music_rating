@@ -24,15 +24,19 @@ import {
   removeFromMix,
   type MixItemMeta,
   type MixItemRef,
+  type MixKind,
   type MixSummary,
 } from '../../lib/sj/mixes';
 
 /**
  * App-wide "add to mix" state (P1 of WEB_CHANGE_PROMPTS_2).
  *
- * - **Target (D1):** dock mix (when the Mix Dock is open) → the last mix the
- *   user saved to (localStorage, per user) → the default "Listen Later" mix.
- *   Choosing a mix anywhere updates it.
+ * - **Target (D1), one per kind** — Mixes are typed (album or song, migration
+ *   20261011000000), so an album and a song each save to a Mix of their own
+ *   kind: the dock mix (when the Mix Dock is open and of that kind) → the last
+ *   mix of that kind the user saved to (localStorage, per user and kind) →
+ *   for albums the default "Listen Later" mix, for songs the first song Mix.
+ *   With no song Mix yet, saving a song opens the list to create one.
  * - **Membership (D3):** one in-memory index of every item the user has saved,
  *   so each bookmark knows its filled state without a query per cover. A
  *   filled bookmark pressed again unsaves (see `saveAndShow`).
@@ -63,7 +67,8 @@ interface PopoverState {
 interface MixTargetValue {
   /** null while loading (or signed out). */
   mixes: MixSummary[] | null;
-  target: MixSummary | null;
+  /** Where a one-tap save of this kind of item goes; null if no Mix of that kind exists. */
+  targetFor: (kind: MixKind) => MixSummary | null;
   setTarget: (mixId: string) => void;
   /** Set by the Mix Dock while it's open; it then *is* the target. */
   dockMixId: string | null;
@@ -84,8 +89,8 @@ interface MixTargetValue {
   ) => Promise<boolean>;
   /** `coverUrl`, when known, drops that cover from the mix's thumbnails right away. */
   remove: (item: MixItemRef, mixId: string, meta?: MixItemMeta) => Promise<boolean>;
-  /** A blank name gets `defaultMixName`. */
-  createMix: (name: string, isPublic?: boolean) => Promise<MixSummary | null>;
+  /** A blank name gets `defaultMixName`. The kind is fixed for the Mix's life. */
+  createMix: (name: string, kind: MixKind, isPublic?: boolean) => Promise<MixSummary | null>;
   /** What a mix created with a blank name will be called ("New Mix", "New Mix 2"…). */
   defaultMixName: string;
   /**
@@ -106,7 +111,7 @@ interface MixTargetValue {
 const noop = async () => false;
 const MixTargetContext = createContext<MixTargetValue>({
   mixes: null,
-  target: null,
+  targetFor: () => null,
   setTarget: () => {},
   dockMixId: null,
   setDockMixId: () => {},
@@ -123,19 +128,26 @@ const MixTargetContext = createContext<MixTargetValue>({
   refresh: async () => {},
 });
 
-const storageKey = (userId: string) => `sj-mix-target:${userId}`;
+// The album key is the pre-2026-10-11 single key, so existing targets carry over.
+const storageKey = (userId: string, kind: MixKind) =>
+  kind === 'album' ? `sj-mix-target:${userId}` : `sj-mix-target:${userId}:song`;
 
-function readStoredTarget(userId: string): string | null {
-  try {
-    return localStorage.getItem(storageKey(userId));
-  } catch {
-    return null;
-  }
+type StoredTargets = Record<MixKind, string | null>;
+
+function readStoredTargets(userId: string): StoredTargets {
+  const read = (kind: MixKind) => {
+    try {
+      return localStorage.getItem(storageKey(userId, kind));
+    } catch {
+      return null;
+    }
+  };
+  return { album: read('album'), song: read('song') };
 }
 
-function writeStoredTarget(userId: string, mixId: string) {
+function writeStoredTarget(userId: string, kind: MixKind, mixId: string) {
   try {
-    localStorage.setItem(storageKey(userId), mixId);
+    localStorage.setItem(storageKey(userId, kind), mixId);
   } catch {
     /* private mode / storage blocked — the target just won't persist */
   }
@@ -156,7 +168,7 @@ export function MixTargetProvider({ children }: { children: ReactNode }) {
   const { t } = useLanguage();
   const [mixes, setMixes] = useState<MixSummary[] | null>(null);
   const [index, setIndex] = useState<Map<string, Set<string>>>(new Map());
-  const [storedTargetId, setStoredTargetId] = useState<string | null>(null);
+  const [storedTargets, setStoredTargets] = useState<StoredTargets>({ album: null, song: null });
   const [dockMixId, setDockMixId] = useState<string | null>(null);
   const [lastAdded, setLastAdded] = useState<LastAdded | null>(null);
   const [popover, setPopover] = useState<PopoverState | null>(null);
@@ -196,7 +208,7 @@ export function MixTargetProvider({ children }: { children: ReactNode }) {
       loadRef.current = null;
       return;
     }
-    setStoredTargetId(readStoredTarget(userId));
+    setStoredTargets(readStoredTargets(userId));
     loadRef.current = load();
   }, [userId, load]);
 
@@ -207,29 +219,40 @@ export function MixTargetProvider({ children }: { children: ReactNode }) {
   }, [load]);
 
   const resolveTarget = useCallback(
-    (list: MixSummary[] | null): MixSummary | null => {
-      if (!list || list.length === 0) return null;
+    (list: MixSummary[] | null, kind: MixKind): MixSummary | null => {
+      const ofKind = (list ?? []).filter((m) => m.kind === kind);
+      if (ofKind.length === 0) return null;
+      const stored = storedTargets[kind];
       return (
-        (dockMixId ? list.find((m) => m.id === dockMixId) : undefined) ??
-        (storedTargetId ? list.find((m) => m.id === storedTargetId) : undefined) ??
-        list.find((m) => m.is_default) ??
-        list[0]
+        (dockMixId ? ofKind.find((m) => m.id === dockMixId) : undefined) ??
+        (stored ? ofKind.find((m) => m.id === stored) : undefined) ??
+        ofKind.find((m) => m.is_default) ??
+        ofKind[0]
       );
     },
-    [dockMixId, storedTargetId],
+    [dockMixId, storedTargets],
   );
 
-  const target = useMemo(() => resolveTarget(mixes), [resolveTarget, mixes]);
+  const targetFor = useCallback((kind: MixKind) => resolveTarget(mixes, kind), [resolveTarget, mixes]);
+
+  const remember = useCallback(
+    (mixId: string, kind: MixKind) => {
+      if (!userId) return;
+      setStoredTargets((prev) => ({ ...prev, [kind]: mixId }));
+      writeStoredTarget(userId, kind, mixId);
+    },
+    [userId],
+  );
 
   const setTarget = useCallback(
     (mixId: string) => {
-      if (!userId) return;
-      setStoredTargetId(mixId);
-      writeStoredTarget(userId, mixId);
+      const mix = mixesRef.current?.find((m) => m.id === mixId);
+      if (!mix) return;
+      remember(mixId, mix.kind);
       // While the dock is open it *is* the target — keep the two in step.
       setDockMixId((cur) => (cur ? mixId : cur));
     },
-    [userId],
+    [remember],
   );
 
   const membership = useCallback(
@@ -291,15 +314,15 @@ export function MixTargetProvider({ children }: { children: ReactNode }) {
     async (item, opts = {}) => {
       if (!userId) return false;
       const list = mixesRef.current ?? (await loadRef.current) ?? null;
-      const mixId = opts.mixId ?? resolveTarget(list)?.id;
+      const mixId = opts.mixId ?? resolveTarget(list, item.kind)?.id;
       if (!mixId) return false;
+      // A Mix holds one kind; the DB would reject this anyway.
+      const mix = list?.find((m) => m.id === mixId);
+      if (mix && mix.kind !== item.kind) return false;
       if (indexRef.current.get(itemKey(item))?.has(mixId)) return true;
       patchIndex(item, mixId, true);
       patchMix(mixId, 1, opts.meta?.coverUrl);
-      if (opts.remember !== false) {
-        setStoredTargetId(mixId);
-        writeStoredTarget(userId, mixId);
-      }
+      if (opts.remember !== false) remember(mixId, item.kind);
       seqRef.current += 1;
       setLastAdded({ seq: seqRef.current, item, meta: opts.meta, mixId, from: opts.from ?? null });
       const { error } = await addToMix(mixId, item);
@@ -314,7 +337,7 @@ export function MixTargetProvider({ children }: { children: ReactNode }) {
       void syncMix(mixId);
       return true;
     },
-    [userId, resolveTarget, syncMix],
+    [userId, resolveTarget, syncMix, remember],
   );
 
   const remove = useCallback<MixTargetValue['remove']>(
@@ -346,9 +369,9 @@ export function MixTargetProvider({ children }: { children: ReactNode }) {
   );
 
   const createMix = useCallback<MixTargetValue['createMix']>(
-    async (name, isPublic = false) => {
+    async (name, kind, isPublic = false) => {
       if (!userId) return null;
-      const { data, error } = await createMixRow(userId, name.trim() || defaultMixName, isPublic);
+      const { data, error } = await createMixRow(userId, name.trim() || defaultMixName, isPublic, kind);
       if (error || !data) {
         console.error('[mixes] create failed:', error?.message);
         return null;
@@ -366,7 +389,7 @@ export function MixTargetProvider({ children }: { children: ReactNode }) {
       const current = Array.from(indexRef.current.get(itemKey(item)) ?? []);
       if (current.length > 0) {
         // Press again to unsave (toggle). Unambiguous cases act directly.
-        const tgt = resolveTarget(mixesRef.current);
+        const tgt = resolveTarget(mixesRef.current, item.kind);
         const from =
           tgt && current.includes(tgt.id) ? tgt.id : current.length === 1 ? current[0] : null;
         if (from) {
@@ -379,10 +402,10 @@ export function MixTargetProvider({ children }: { children: ReactNode }) {
       }
       void (async () => {
         const list = mixesRef.current ?? (await loadRef.current) ?? null;
-        const tgt = resolveTarget(list);
+        const tgt = resolveTarget(list, item.kind);
         if (!tgt) {
-          // No mixes at all (the default-mix trigger should prevent this) —
-          // go straight to the list, where "+ New mix" lives.
+          // No Mix of this kind yet (the usual case for a first song save) —
+          // go straight to the list, where "+ New mix" creates one of this kind.
           setPopover({ item, meta, anchor, mixId: null, view: 'change', error: false });
           return;
         }
@@ -405,7 +428,7 @@ export function MixTargetProvider({ children }: { children: ReactNode }) {
 
   const value: MixTargetValue = {
     mixes: userId ? mixes : null,
-    target: userId ? target : null,
+    targetFor: (kind) => (userId ? targetFor(kind) : null),
     setTarget,
     dockMixId,
     setDockMixId,

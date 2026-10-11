@@ -11,9 +11,15 @@ struct Mix: Codable, Identifiable, Hashable {
     let isDefault: Bool
     let createdAt: Date
     var description: String? = nil
+    /// "album" or "song" -- a Mix holds one kind, chosen at creation and fixed
+    /// (migration 20261011000000). Optional only so rows from before it decode.
+    var kind: String? = nil
+
+    var isSongMix: Bool { kind == "song" }
+    var kindLabel: String { isSongMix ? String(localized: "Song Mix") : String(localized: "Album Mix") }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, description
+        case id, name, description, kind
         case userId    = "user_id"
         case isPublic  = "is_public"
         case isDefault = "is_default"
@@ -313,7 +319,7 @@ struct MixRow: View {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color.sjAmber.opacity(0.12))
                     .frame(width: 52, height: 52)
-                Image(mix.isDefault ? "icon-clock" : "icon-list-music")
+                Image(mix.isDefault ? "icon-clock" : (mix.isSongMix ? "icon-music" : "icon-list-music"))
                     .renderingMode(.template)
                     .resizable().scaledToFit()
                     .frame(width: 20, height: 20)
@@ -326,7 +332,13 @@ struct MixRow: View {
                     .foregroundStyle(Color.sjInk)
 
                 HStack(spacing: 6) {
-                    Text(count == 1 ? String(localized: "1 release") : String(format: String(localized: "%d releases"), count))
+                    Text(mix.kindLabel)
+                        .font(.jakarta(12))
+                        .foregroundStyle(Color.sjMuted)
+                    Text("·")
+                        .font(.jakarta(12))
+                        .foregroundStyle(Color.sjBorder)
+                    Text(count == 1 ? String(localized: "1 item") : String(format: String(localized: "%d items"), count))
                         .font(.jakarta(12))
                         .foregroundStyle(Color.sjMuted)
 
@@ -528,7 +540,9 @@ struct MixDetailView: View {
             Text("Nothing in this mix yet")
                 .font(.jakarta(15))
                 .foregroundStyle(Color.sjMuted)
-            Text("Save releases from your feed to add them here.")
+            Text(mix.isSongMix
+                 ? String(localized: "Save songs from an album's tracklist to add them here.")
+                 : String(localized: "Save releases from your feed to add them here."))
                 .font(.jakarta(13))
                 .foregroundStyle(Color.sjMuted)
                 .multilineTextAlignment(.center)
@@ -589,6 +603,10 @@ struct MixDetailView: View {
                         Text(mix.name)
                             .font(.jakarta(22, weight: .bold))
                             .foregroundStyle(Color.sjInk)
+                        // The type is fixed, so it's shown here but never editable.
+                        Text(mix.kindLabel)
+                            .font(.jakarta(12, weight: .semibold))
+                            .foregroundStyle(Color.sjAmber)
                         if let d = mix.description, !d.isEmpty {
                             Text(d)
                                 .font(.jakarta(14))
@@ -977,12 +995,41 @@ struct CreateMixView: View {
     @State private var name = ""
     @State private var description = ""
     @State private var isPublic = false
+    @State private var kind: String
     @State private var isSaving = false
     @State private var errorMessage: String?
+    /// Called with the new Mix's id (the pickers select it right away).
+    var onCreated: ((UUID) -> Void)? = nil
+
+    /// `kind` presets the type (a picker creating one for an album or a song);
+    /// `lockKind` hides the choice there, since the item already decides it.
+    private let lockKind: Bool
+
+    init(kind: String = "album", lockKind: Bool = false, onCreated: ((UUID) -> Void)? = nil) {
+        _kind = State(initialValue: kind)
+        self.lockKind = lockKind
+        self.onCreated = onCreated
+    }
 
     var body: some View {
         NavigationStack {
             Form {
+                if !lockKind {
+                    Section {
+                        Picker("Mix type", selection: $kind) {
+                            Text("Albums").tag("album")
+                            Text("Songs").tag("song")
+                        }
+                        .pickerStyle(.segmented)
+                    } header: {
+                        Text("Type")
+                    } footer: {
+                        Text("A Mix holds albums or songs, and this can't be changed later.")
+                            .font(.jakarta(12))
+                            .foregroundStyle(Color.sjMuted)
+                    }
+                }
+
                 Section {
                     TextField("Mix name", text: $name)
                         .font(.jakarta(16))
@@ -1052,17 +1099,24 @@ struct CreateMixView: View {
         let trimmedDesc = description.trimmingCharacters(in: .whitespacesAndNewlines)
         struct Payload: Encodable {
             let userId: UUID; let name: String; let description: String?; let isPublic: Bool; let isDefault: Bool
+            let kind: String
             enum CodingKeys: String, CodingKey {
                 case userId = "user_id"; case name; case description
-                case isPublic = "is_public"; case isDefault = "is_default"
+                case isPublic = "is_public"; case isDefault = "is_default"; case kind
             }
         }
+        struct Created: Decodable { let id: UUID }
         do {
-            try await supabase
+            let created: Created = try await supabase
                 .from("mixes")
                 .insert(Payload(userId: userId, name: trimmed, description: trimmedDesc.isEmpty ? nil : trimmedDesc,
-                                 isPublic: isPublic, isDefault: false))
+                                 isPublic: isPublic, isDefault: false, kind: kind))
+                .select("id")
+                .single()
                 .execute()
+                .value
+            NotificationCenter.default.post(name: .mixLibraryChanged, object: nil)
+            onCreated?(created.id)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
@@ -1082,6 +1136,7 @@ struct MixPickerView: View {
     @State private var selectedIds: Set<UUID> = []
     @State private var isLoading = true
     @State private var isSaving = false
+    @State private var showCreate = false
 
     var body: some View {
         NavigationStack {
@@ -1090,7 +1145,17 @@ struct MixPickerView: View {
                     ProgressView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    List(mixes) { mix in
+                    List {
+                        // Create one of this picker's kind and select it -- for songs this is
+                        // usually the first step, since nobody has a song Mix by default.
+                        Button { showCreate = true } label: {
+                            Label(newMixLabel, image: "icon-plus")
+                                .font(.jakarta(15, weight: .semibold))
+                                .foregroundStyle(Color.sjAmber)
+                        }
+                        .buttonStyle(.plain)
+                        .listRowBackground(Color.sjSurface)
+                        ForEach(mixes) { mix in
                         Button {
                             if selectedIds.contains(mix.id) {
                                 selectedIds.remove(mix.id)
@@ -1125,6 +1190,7 @@ struct MixPickerView: View {
                         .buttonStyle(.plain)
                         .listRowBackground(Color.sjSurface)
                         .listRowSeparatorTint(Color.sjBorder.opacity(0.5))
+                        }
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
@@ -1156,9 +1222,17 @@ struct MixPickerView: View {
             }
         }
         .task { await load() }
+        .sheet(isPresented: $showCreate) {
+            CreateMixView(kind: "album", lockKind: true) { id in
+                selectedIds.insert(id)
+                Task { await load(keeping: selectedIds) }
+            }
+        }
     }
 
-    private func load() async {
+    private var newMixLabel: String { String(localized: "New album Mix") }
+
+    private func load(keeping kept: Set<UUID> = []) async {
         guard let userId = supabase.auth.currentUser?.id else { isLoading = false; return }
         isLoading = true
 
@@ -1166,6 +1240,7 @@ struct MixPickerView: View {
             .from("mixes")
             .select("*")
             .eq("user_id", value: userId)
+            .eq("kind", value: "album")  // an album can only go in an album Mix
             .order("is_default", ascending: false)
             .order("created_at", ascending: true)
             .execute()
@@ -1188,6 +1263,7 @@ struct MixPickerView: View {
             .value {
             selectedIds = Set(existing.map(\.mixId))
         }
+        selectedIds.formUnion(kept)
 
         isLoading = false
     }
@@ -1237,6 +1313,7 @@ struct SongMixPickerView: View {
     @State private var selectedIds: Set<UUID> = []
     @State private var isLoading = true
     @State private var isSaving = false
+    @State private var showCreate = false
 
     var body: some View {
         NavigationStack {
@@ -1245,7 +1322,17 @@ struct SongMixPickerView: View {
                     ProgressView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    List(mixes) { mix in
+                    List {
+                        // Create one of this picker's kind and select it -- for songs this is
+                        // usually the first step, since nobody has a song Mix by default.
+                        Button { showCreate = true } label: {
+                            Label(newMixLabel, image: "icon-plus")
+                                .font(.jakarta(15, weight: .semibold))
+                                .foregroundStyle(Color.sjAmber)
+                        }
+                        .buttonStyle(.plain)
+                        .listRowBackground(Color.sjSurface)
+                        ForEach(mixes) { mix in
                         Button {
                             if selectedIds.contains(mix.id) {
                                 selectedIds.remove(mix.id)
@@ -1280,6 +1367,7 @@ struct SongMixPickerView: View {
                         .buttonStyle(.plain)
                         .listRowBackground(Color.sjSurface)
                         .listRowSeparatorTint(Color.sjBorder.opacity(0.5))
+                        }
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
@@ -1311,9 +1399,17 @@ struct SongMixPickerView: View {
             }
         }
         .task { await load() }
+        .sheet(isPresented: $showCreate) {
+            CreateMixView(kind: "song", lockKind: true) { id in
+                selectedIds.insert(id)
+                Task { await load(keeping: selectedIds) }
+            }
+        }
     }
 
-    private func load() async {
+    private var newMixLabel: String { String(localized: "New song Mix") }
+
+    private func load(keeping kept: Set<UUID> = []) async {
         guard let userId = supabase.auth.currentUser?.id else { isLoading = false; return }
         isLoading = true
 
@@ -1321,7 +1417,7 @@ struct SongMixPickerView: View {
             .from("mixes")
             .select("*")
             .eq("user_id", value: userId)
-            .order("is_default", ascending: false)
+            .eq("kind", value: "song")  // a song can only go in a song Mix
             .order("created_at", ascending: true)
             .execute()
             .value) ?? []
@@ -1343,6 +1439,7 @@ struct SongMixPickerView: View {
             .value {
             selectedIds = Set(existing.map(\.mixId))
         }
+        selectedIds.formUnion(kept)
 
         isLoading = false
     }

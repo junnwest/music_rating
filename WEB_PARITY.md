@@ -1,5 +1,9 @@
 # Web Parity Checklist
 
+> **Parity status (2026-10-11) — typed Mixes:** both platforms. Type chosen at creation, shown on Mix rows and pages,
+> pickers filtered by kind with an in-picker "New album/song Mix". Web-only: the Mix Dock refuses an item of the wrong
+> kind with a message. iOS-only: "Save to Mix" in the tracklist row's long-press menu (web has the row's bookmark button).
+
 > **Parity status (2026-10-06, later) — songs aren't posts.** Built on both platforms at once:
 > - no song pages (a song link opens the album at that track);
 > - no song review text, likes, comments or notifications;
