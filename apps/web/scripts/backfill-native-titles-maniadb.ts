@@ -74,7 +74,7 @@ const pick = (block: string, tag: string): string | null => {
   return m ? cdata(m[1]) : null;
 };
 
-interface MdbAlbum { id: string; title: string; date: string; image: string | null }
+interface MdbAlbum { id: string; title: string; date: string; image: string | null; tracks: number | null }
 
 /** One artist's albums. `null` means "could not tell" (throttled) — never "none". */
 async function albumsFor(koreanName: string): Promise<MdbAlbum[] | null> {
@@ -101,7 +101,10 @@ async function albumsFor(koreanName: string): Promise<MdbAlbum[] | null> {
         // artist released twice in a year - which is common. Dropped rather than guessed.
         const precise = date.length === 8 && !date.endsWith('0000') && date.slice(4, 6) !== '00' && date.slice(6, 8) !== '00';
         const image = pick(raw, 'image');
-        if (id && title && precise) out.push({ id, title, date, image: image || null });
+        // track_count is what breaks a same-date tie; absent or 0 means "cannot tell", never "zero".
+        const tc = Number(pick(raw, 'track_count') ?? '');
+        const tracks = Number.isFinite(tc) && tc > 0 ? tc : null;
+        if (id && title && precise) out.push({ id, title, date, image: image || null, tracks });
       }
       return out;
     } catch { await sleep(4000); }
@@ -150,7 +153,7 @@ async function main() {
     .slice(0, LIMIT);
   console.log(`  ${todo.length} artist(s) to check\n`);
 
-  let matched = 0, written = 0, throttled = 0, noAlbums = 0, ambiguous = 0, covers = 0;
+  let matched = 0, written = 0, throttled = 0, noAlbums = 0, ambiguous = 0, covers = 0, brokenByTracks = 0;
   let n = 0;
   for (const a of todo as any[]) {
     // Printed per artist: with back-off this can idle for half a minute, which otherwise reads as a hang.
@@ -176,6 +179,68 @@ async function main() {
     }
     const usedTheirs = new Set<string>();
 
+    /* OUR TRACK COUNT PER RELEASE GROUP — the second axis for a same-date tie.
+       Date alone left 1,476 albums unmatched in the first full sweep: an idol act putting out two
+       singles on one day is ordinary, and the run could not tell which Korean title belonged to
+       which. ManiaDB ships <track_count>, so a 1-track single and a 12-track album on the same
+       date are separable. A few DB reads per artist against ManiaDB's ~15s per artist is free.
+
+       READ release_tracks, NOT tracks. The `tracks` table exists in the schema and is EMPTY — 0 rows
+       against 837,310 release groups — so the first version of this silently computed nothing and
+       broke zero ties while looking like it worked. Tracklists live in release_tracks (7.65M rows),
+       joined release_id -> releases.release_group_id, which is the path dedup-by-duration.ts uses.
+
+       MAX ACROSS EDITIONS, NOT SUM. A release group can hold several releases (original, reissue,
+       deluxe); summing them would report a 12-track album as 36 tracks and never match anything. */
+    const ourTracks = new Map<string, number>();
+    {
+      const rgIds = ((ours ?? []) as any[]).map(r => r.id);
+      if (rgIds.length) {
+        const { data: rels } = await db.from('releases').select('id, release_group_id').in('release_group_id', rgIds);
+        const relToRg = new Map<string, string>();
+        for (const r of (rels ?? []) as any[]) relToRg.set(r.id, r.release_group_id);
+        const relIds = [...relToRg.keys()];
+        const perRelease = new Map<string, number>();
+        // Small chunks plus range paging: 7.65M rows and a 1,000-row cap mean a box set can fill a
+        // page on its own, and a truncated page would understate a count and mispair a title.
+        for (let i = 0; i < relIds.length; i += 40) {
+          const chunk = relIds.slice(i, i + 40);
+          for (let from = 0; ; from += 1000) {
+            const { data: tks, error } = await db.from('release_tracks')
+              .select('release_id').in('release_id', chunk).range(from, from + 999);
+            if (error) { console.warn(`  ! release_tracks: ${error.message}`); break; }
+            if (!tks?.length) break;
+            for (const t of tks as { release_id: string }[]) {
+              perRelease.set(t.release_id, (perRelease.get(t.release_id) ?? 0) + 1);
+            }
+            if (tks.length < 1000) break;
+          }
+        }
+        for (const [relId, n] of perRelease) {
+          const rgId = relToRg.get(relId);
+          if (!rgId) continue;
+          ourTracks.set(rgId, Math.max(ourTracks.get(rgId) ?? 0, n));
+        }
+      }
+    }
+
+    /* Resolve one of our albums against the same-date candidates, using track count only when the
+       date is not already decisive. Strictness is unchanged: a pairing is accepted only when it is
+       unique in BOTH directions, so an ambiguous day still yields nothing rather than a guess. */
+    const resolveSameDay = (rgId: string, ymd: string, candidates: MdbAlbum[]): MdbAlbum | null => {
+      if (candidates.length === 1 && ourDates.get(ymd) === 1) return candidates[0];
+      const mine = ourTracks.get(rgId);
+      if (!mine) return null;
+      const fits = candidates.filter(c => c.tracks === mine);
+      if (fits.length !== 1) return null;
+      // …and no OTHER album of ours on this day has the same count, or both would claim this record.
+      const rivals = ((ours ?? []) as any[]).filter(o =>
+        o.id !== rgId
+        && String(o.first_release_date).replace(/\D/g, '').slice(0, 8) === ymd
+        && ourTracks.get(o.id) === mine);
+      return rivals.length ? null : fits[0];
+    };
+
     for (const rg of (ours ?? []) as any[]) {
       const ymd = String(rg.first_release_date).replace(/\D/g, '').slice(0, 8);
       if (ymd.length !== 8) continue;
@@ -185,12 +250,15 @@ async function main() {
       // Our side must be unambiguous too: two of our releases on one day cannot both be the single
       // ManiaDB record. A dry run matched one 거울 to both "MIRROR" and "Mirror (feat. …)" - the same
       // Korean title written onto two different albums, one of them necessarily wrong.
-      if (ourDates.get(ymd) !== 1) { if ((ourDates.get(ymd) ?? 0) > 1) ambiguous++; continue; }
-      const sameDay = theirs.filter(t => t.date === ymd);
-      if (sameDay.length !== 1) { if (sameDay.length > 1) ambiguous++; continue; }
+      const candidates = theirs.filter(t => t.date === ymd);
+      if (!candidates.length) continue;
+      const pick1 = resolveSameDay(rg.id, ymd, candidates);
+      if (!pick1) { ambiguous++; continue; }
       // A ManiaDB record may be spent once. Belt and braces alongside the check above.
-      if (usedTheirs.has(sameDay[0].id)) { ambiguous++; continue; }
-      usedTheirs.add(sameDay[0].id);
+      if (usedTheirs.has(pick1.id)) { ambiguous++; continue; }
+      usedTheirs.add(pick1.id);
+      const sameDay = [pick1];
+      if (candidates.length > 1 || (ourDates.get(ymd) ?? 0) > 1) brokenByTracks++;
 
       /* COVERS TOO, not just titles. 114,330 release groups have no cover at all and they skew
          Korean, which is exactly where ManiaDB is strong - it had art for every 황세현 release when
@@ -225,6 +293,7 @@ async function main() {
   if (APPLY) console.log(`  covers filled:        ${covers}`);
   console.log(`  artist not in ManiaDB:${noAlbums}`);
   console.log(`  ambiguous (same date):${ambiguous}`);
+  console.log(`  tie broken by tracks: ${brokenByTracks}`);
   if (throttled) console.log(`  throttled, left for the next run: ${throttled}`);
   if (!APPLY) console.log('\n  (report only — re-run with --apply to write)');
 }

@@ -4,6 +4,45 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-10-11 (Windows) — the cover backfill, and why it was retired.** Tried to move 563k Cover Art
+Archive URLs onto faster CDNs (iTunes/Spotify). Retired the same day: the Mac session's `/api/img`
+routing (2.9s → 0.11s) fixes every row at once, while this converted ~4,400 at a 16% hit rate and
+needed 3–4 weeks for the Korean subset alone. Kept for the lessons, which cost more than the covers.
+
+- **Spotify credentials are shared with production.** Leading lookups with Spotify at ~2,700 rows/hr
+  tripped a *daily* quota, not a per-second limit: `Retry-After: 76816` (21.3h), then **23.8h on the
+  first request after that lapsed**. Production search ran on its iTunes/DB fallbacks for ~24h.
+  `scripts/spotify-circuit.ts` exists for precisely this and `backfill-fast-covers.ts` was the one
+  script not using it; it now reads the shared breaker at startup and publishes its own 429s.
+- **A long `Retry-After` is not a sleep instruction.** The old code slept the header value with no
+  ceiling, so one response parked the job for 21h at row 608 *while still looking alive*. Past a
+  10-min ceiling the source is now marked unavailable and rows fall through instead.
+- **"No match" and "nobody answered" are different outcomes.** With iTunes fused and Spotify blocked,
+  every lookup returned null instantly and **18,905 rows were logged "no match" and written to the
+  state file as done without a single request being made** — they would have been skipped forever.
+  A row is now only recorded if a source was actually asked. Repaired: 647 genuinely migrated kept,
+  19,150 requeued.
+- **The matchers were too loose for a Korean catalogue.** `artistsMatch` accepted FIRST-WORD equality,
+  so "Kim Jaehwan" matched "Kim Namjoon" and "NCT 127" matched "NCT DREAM"; `titlesMatch` accepted
+  bare substring, so "Touch" matched "Touchdown". That is the wrong-cover class reported against
+  사랑하기 때문에 and 201. Containment is now word-boundary anchored and short titles must match exactly.
+- **The backlog drains slower than it fills.** CAA rows went 549,204 → 563,250 in a day (ingest adds
+  ~700/hr) against ~20/hr converted. No backfill converges against that; the fix belongs at ingest
+  time or at the proxy — which is where it landed.
+- Apple's throttle is short-window, not daily: a clean 3-of-3 probe came back within 30s of going
+  idle. Sustained pace is the constraint, so `--itunes-delay` / `--itunes-cooldown` are flags now.
+
+**ManiaDB.** `tracks` is **EMPTY** (0 rows against 837k release groups) — tracklists live in
+`release_tracks` (7.65M), joined via `releases.release_group_id`. A track-count tie-breaker for the
+1,476 same-date ambiguities resolved **2 of 40** on the worst collision artists: 73% of collision
+groups share one track count (same-day singles), so **durations**, not counts, are the only
+language-independent signal that could work — the titles differ by translation, not romanization
+(꼬리에 꼬리를 무는 이야기 vs "A STORY GOES ON AND ON"). `MANIADB_KEY` now lives in `.env.local`; their
+key is just an unvalidated contact address, and without it the 8,163-artist sweep was irreproducible.
+Their terms ask commercial users to contact maniadb@gmail.com — unresolved.
+
+---
+
 **2026-10-11 (Mac) — speed + typed Mixes.** Diagnosed slow loads with measurements:
 - **CAA covers:** 2.9s median. iOS had stopped using `/api/img` (0.11s edge HIT) and never went back.
 - **Function region:** Vercel functions ran in iad1 against the Seoul DB, about 180ms per query.
