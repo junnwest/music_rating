@@ -169,7 +169,7 @@ export async function GET(req: NextRequest) {
   const supabase = createServerClient();
   if (!supabase) return NextResponse.json({ error: 'not configured' }, { status: 503 });
 
-  const [ratingsRes, communityTotals, trackCountRes, albumCountRes] = await Promise.all([
+  const [ratingsRes, communityTotals, albumCountRes] = await Promise.all([
     supabase
       .from('ratings')
       .select(
@@ -178,12 +178,9 @@ export async function GET(req: NextRequest) {
       .eq('user_id', userId)
       .limit(500),
     communityWorlds(supabase),
-    supabase
-      .from('track_ratings')
-      .select('recording_id', { count: 'exact', head: true })
-      .eq('user_id', userId),
-    // Exact album total — the row fetch above is capped at 500, and the "rated"
-    // headline must agree with the profile header, which counts everything.
+    // Exact album total — the row fetch above is capped at 500. Taste is albums
+    // only (2026-10-11): the unlock gate and the "rated" headline count album
+    // ratings, matching the profile header (get_follow_state, 20261011000001).
     supabase
       .from('ratings')
       .select('release_group_id', { count: 'exact', head: true })
@@ -622,7 +619,7 @@ export async function GET(req: NextRequest) {
 
   const albumTotal = albumCountRes.count ?? rows.length;
   const payload = {
-    ratingCount: albumTotal + (trackCountRes.count ?? 0),
+    ratingCount: albumTotal,
     albumRatingCount: albumTotal,
     totalTags: genreCounts.size,
     clusters: worlds.map((w) => ({

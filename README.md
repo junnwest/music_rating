@@ -67,8 +67,9 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 > **Profile numbers are albums only (decided 2026-10-11):** the Stats tab drops the Songs tile and averages
 > and plots album scores only; the header "Rated" count is albums only (`get_follow_state.ratings_count`). **Left as-is, flag for
 > later:** Taste unlock progress and the quest checklist still count albums + songs (TasteView's comment says it should
-> agree with the "Rated" stat, which it no longer does). **Decided 2026-10-11: keep both counting songs.** Taste is a
-> personal tool with its own song pages, and quests are onboarding; neither is a social surface. Migration
+> agree with the "Rated" stat, which it no longer does). **Decided 2026-10-11 (corrected): Taste is albums only** —
+> unlock gate and "rated" headline count album ratings (web `/api/taste/profile` + iOS TasteView); the analysis was
+> already albums-only. Re-locks exactly one user, @nicky (18 albums + 43 songs). **Quests still count songs.** Migration
 > `20261011000001` ✅ applied and verified (@nicky: 18 albums + 43 songs → "Rated" 18, was 61).
 
 > **2026-10-11 (Mac) — load-time diagnosis + first two fixes (uncommitted until pushed).** Measured from the US:
