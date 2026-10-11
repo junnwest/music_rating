@@ -53,8 +53,9 @@ final class TasteViewModel {
         isLoading = true
         loadFailed = false
 
-        // Cheap counts only, just to decide the unlock gate -- matching ProfileView's
-        // `totalRatings` so the unlock progress agrees with the "Rated" stat on the profile.
+        // Cheap counts only, just to decide the unlock gate. Albums AND songs on purpose:
+        // songs are real taste signal and Taste has its own song pages. (The profile's
+        // "Rated" count is albums only since 2026-10-11, so the two differ by design.)
         // The report itself comes from web's own /api/taste/profile (one algorithm, one
         // source of truth) -- kicked off here, in parallel with the counts, rather than
         // after them: most visits ARE already unlocked (25 ratings is a low bar), so

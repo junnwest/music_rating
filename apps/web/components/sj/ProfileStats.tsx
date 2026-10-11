@@ -31,12 +31,13 @@ export default function ProfileStats({
   const stats = useMemo(() => {
     const scoreOf = (i: ProfileRatingItem): number | null => i.score;
 
+    // Albums only (2026-10-11): song ratings show only on album pages and in the
+    // album-post dropdown, so they don't shape a profile's numbers either.
     const albums = items.filter((i) => !i.isSong);
-    const songs = items.filter((i) => i.isSong);
 
     const scored: number[] = [];
     const dist = Array.from({ length: BUCKETS }, () => 0);
-    for (const i of items) {
+    for (const i of albums) {
       const s = scoreOf(i);
       if (s == null) continue;
       scored.push(s);
@@ -71,7 +72,6 @@ export default function ProfileStats({
 
     return {
       albums: albums.length,
-      songs: songs.length,
       artists: byArtist.size,
       scored,
       dist,
@@ -80,16 +80,15 @@ export default function ProfileStats({
     };
   }, [items]);
 
-  if (items.length === 0) {
+  if (stats.albums === 0) {
     return <p className="py-16 text-center text-[14px] text-muted">{t('sj.profile.noStats')}</p>;
   }
 
   return (
     <div className="mt-5 space-y-4">
       {/* ── Headline numbers ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+      <div className="grid grid-cols-3 gap-2.5">
         <KpiTile value={formatCount(stats.albums)} label={t('sj.profile.filterAlbums')} />
-        <KpiTile value={formatCount(stats.songs)} label={t('sj.profile.filterSongs')} />
         <KpiTile value={formatCount(stats.artists)} label={t('sj.profile.statArtists')} />
         <KpiTile
           value={stats.avg != null ? stats.avg.toFixed(2) : '—'}
