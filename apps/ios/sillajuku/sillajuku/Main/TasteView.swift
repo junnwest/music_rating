@@ -53,9 +53,8 @@ final class TasteViewModel {
         isLoading = true
         loadFailed = false
 
-        // Cheap counts only, just to decide the unlock gate. Albums AND songs on purpose:
-        // songs are real taste signal and Taste has its own song pages. (The profile's
-        // "Rated" count is albums only since 2026-10-11, so the two differ by design.)
+        // A cheap count only, just to decide the unlock gate. Albums only (2026-10-11),
+        // like the rest of Taste and the profile's "Rated" stat.
         // The report itself comes from web's own /api/taste/profile (one algorithm, one
         // source of truth) -- kicked off here, in parallel with the counts, rather than
         // after them: most visits ARE already unlocked (25 ratings is a low bar), so
@@ -67,17 +66,14 @@ final class TasteViewModel {
         // recomputation per visit -- the exact Vercel-CPU bug fixed on web 2026-07-15.
         async let reportTask: TasteProfileResponse? = WebAPI.get("/api/taste/profile", authed: true)
         async let albumTask = fetchCount(table: "ratings", userId: user.id)
-        async let songTask  = fetchCount(table: "track_ratings", userId: user.id)
         var albumCount = await albumTask
-        var songCount  = await songTask
-        if albumCount == nil { albumCount = await fetchCount(table: "ratings", userId: user.id) }        // one retry
-        if songCount  == nil { songCount  = await fetchCount(table: "track_ratings", userId: user.id) }  // one retry
-        guard let albumCount, let songCount else {
+        if albumCount == nil { albumCount = await fetchCount(table: "ratings", userId: user.id) }  // one retry
+        guard let albumCount else {
             loadFailed = true
             isLoading = false
             return
         }
-        ratingCount = albumCount + songCount
+        ratingCount = albumCount
 
         if isUnlocked {
             report = await reportTask
@@ -106,10 +102,9 @@ final class TasteViewModel {
     /// early-return on `isUnlocked` the way an earlier version of this fix did.
     func refreshRatingCount() async {
         guard let user = supabase.auth.currentUser else { return }
-        async let albumTask = fetchCount(table: "ratings", userId: user.id)
-        async let songTask  = fetchCount(table: "track_ratings", userId: user.id)
-        guard let albumCount = await albumTask, let songCount = await songTask else { return }
-        ratingCount = albumCount + songCount
+        // Albums only, like `load()`.
+        guard let albumCount = await fetchCount(table: "ratings", userId: user.id) else { return }
+        ratingCount = albumCount
 
         if isUnlocked {
             // Crossed up into (or still) unlocked -- make sure there's a report to show;
