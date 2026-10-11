@@ -64,7 +64,12 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 > in an album Mix now get an error.
 > **Covers (item 4):** iOS decodes and downsamples covers off the main thread (ImageIO, ≤600px), and asks Deezer for
 > 500px instead of 1000px (a third of the bytes). Share cards still fetch full size.
-> **Still unanswered:** should profile Stats keep counting song ratings?
+> **Profile numbers are albums only (decided 2026-10-11):** the Stats tab drops the Songs tile and averages
+> and plots album scores only; the header "Rated" count is albums only (`get_follow_state.ratings_count`). **Left as-is, flag for
+> later:** Taste unlock progress and the quest checklist still count albums + songs (TasteView's comment says it should
+> agree with the "Rated" stat, which it no longer does). **Decided 2026-10-11: keep both counting songs.** Taste is a
+> personal tool with its own song pages, and quests are onboarding; neither is a social surface. Migration
+> `20261011000001` ✅ applied and verified (@nicky: 18 albums + 43 songs → "Rated" 18, was 61).
 
 > **2026-10-11 (Mac) — load-time diagnosis + first two fixes (uncommitted until pushed).** Measured from the US:
 > Cover Art Archive covers (60% of visible covers) take 2.9s median, up to 6.7s, with occasional 500s, while web's

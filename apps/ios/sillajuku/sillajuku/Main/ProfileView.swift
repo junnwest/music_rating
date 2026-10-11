@@ -61,9 +61,9 @@ struct RatingStatsSnapshot {
     let topArtists: [ArtistCount]
 
     static func compute(ratings: [UserRating], songRatings: [SongRatingRow]) -> RatingStatsSnapshot {
-        let albumScores: [Double] = ratings.compactMap(\.score)
-        let songScores: [Double] = songRatings.compactMap(\.score)
-        let allScores = albumScores + songScores
+        // Albums only (2026-10-11): song ratings show only on album pages and in the
+        // album-post dropdown, so they don't shape a profile's numbers either.
+        let allScores: [Double] = ratings.compactMap(\.score)
 
         let avgScore: Double = allScores.isEmpty ? 0 : allScores.reduce(0, +) / Double(allScores.count)
 
@@ -91,7 +91,7 @@ struct RatingStatsSnapshot {
         return RatingStatsSnapshot(
             albumCount: ratings.count,
             songCount: songRatings.count,
-            totalRatings: ratings.count + songRatings.count,
+            totalRatings: ratings.count,
             avgScore: avgScore,
             scoreDistribution: scoreDistribution,
             topArtists: topArtists
@@ -254,7 +254,8 @@ class ProfileViewModel {
 
     func deleteRating(_ item: ProfileRatedItem) async {
         guard let userId = supabase.auth.currentUser?.id else { return }
-        ratedTotal = ratedTotal.map { max(0, $0 - 1) }
+        // The "Rated" count is albums only, so only an album delete moves it.
+        if case .album = item { ratedTotal = ratedTotal.map { max(0, $0 - 1) } }
         switch item {
         case .album(let r):
             ratings.removeAll { $0.id == r.id }
@@ -437,14 +438,12 @@ class ProfileViewModel {
         // certainly why this (and fetchFollowCounts below, same bug) turned
         // multi-second for anyone with a substantial history. `head: true`
         // makes it a HEAD request -- count-only, no body.
-        async let albumsFetch = try? await supabase.from("ratings")
+        // Albums only (2026-10-11), matching get_follow_state.ratings_count
+        // (20261011000001) that other people's profiles use.
+        let albums = try? await supabase.from("ratings")
             .select("*", head: true, count: .exact)
             .eq("user_id", value: userId).execute()
-        async let songsFetch = try? await supabase.from("track_ratings")
-            .select("*", head: true, count: .exact)
-            .eq("user_id", value: userId).execute()
-        let (albums, songs) = await (albumsFetch, songsFetch)
-        return (albums?.count ?? 0) + (songs?.count ?? 0)
+        return albums?.count ?? 0
     }
 
     private func fetchFollowCounts(userId: UUID) async -> (following: Int, followers: Int) {
@@ -1568,8 +1567,6 @@ struct RatingStatsView: View {
     private var statsNumbersRow: some View {
         HStack(spacing: 0) {
             statsCell(value: "\(snapshot.albumCount)", label: "Albums")
-            Divider().frame(height: 30)
-            statsCell(value: "\(snapshot.songCount)", label: "Songs")
             Divider().frame(height: 30)
             statsCell(value: String(format: "%.2f", snapshot.avgScore), label: "Avg Score")
         }

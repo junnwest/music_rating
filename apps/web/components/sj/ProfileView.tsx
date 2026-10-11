@@ -535,7 +535,8 @@ export default function ProfileView({ username }: { username?: string }) {
   async function deleteRating(item: ProfileRatingItem) {
     if (!supabase || !myId) return;
     setItems((prev) => prev.filter((i) => i.key !== item.key));
-    setRatedTotal((n) => (n == null ? n : Math.max(0, n - 1)));
+    // The "Rated" count is albums only (20261011000001).
+    if (!item.isSong) setRatedTotal((n) => (n == null ? n : Math.max(0, n - 1)));
     if (item.isSong && item.recordingId) {
       await supabase
         .from('track_ratings')
