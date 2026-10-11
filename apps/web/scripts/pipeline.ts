@@ -204,6 +204,26 @@ const AREA_INTERVAL_MS = envInt('AREA_DISCOVERY_INTERVAL_MS', 604_800_000); // r
 const AREA_CHECK_MS  = envInt('AREA_DISCOVERY_CHECK_MS', 3_600_000);        // re-check the due-gate hourly
 const AREA_STATE = path.resolve('scripts/pipeline-area-state.json');
 
+/* DEDUP DETECTION — the duplicate class REGENERATES, so finding it has to be recurring.
+   iTunes and MusicBrainz each insert the same release under its own language's title, so every
+   ingest cycle mints new cross-language twins: 1,631 were merged in an earlier sweep and 284 more
+   on 2026-10-11. The ingest-time fix was written, measured and reverted (see dedup-by-duration.ts's
+   header) because durations are the only trustworthy evidence and they do not exist yet when the
+   group row is written -- the decision point and the evidence are in the wrong order. Detection
+   therefore belongs here, after tracks land.
+
+   REPORT-ONLY BY DEFAULT, deliberately. Merging deletes production rows, and the class has a live
+   false-positive neighbour: 初星学園 ships one "-Solo Version Album-" per member on the same day,
+   13 tracks each over identical backing music, so the signatures match while the releases differ.
+   The --cross-source-only filter excludes that shape, but an unattended delete still wants a human
+   to have looked once. This lane surfaces the count; `npm run dedup:kr:apply` does the merging.
+   Set DEDUP_AUTO_APPLY=1 only if you have accepted that trade. */
+const DEDUP_DETECT     = process.env.DEDUP_DETECT !== '0';
+const DEDUP_AUTO_APPLY = process.env.DEDUP_AUTO_APPLY === '1';
+const DEDUP_INTERVAL_MS = envInt('DEDUP_INTERVAL_MS', 86_400_000);  // once a day
+const DEDUP_CHECK_MS    = envInt('DEDUP_CHECK_MS', 3_600_000);      // re-check the due-gate hourly
+const DEDUP_STATE = path.resolve('scripts/pipeline-dedup-state.json');
+
 // ── NEWRELEASES lane (MB date-window sweep) — how the WHOLE catalog stays current ──
 // FRESHNESS alone can't do this: ~3 MB requests per artist × 67.5k artists ≈ 2.3 days of solid MB
 // time per full cycle, so new releases were always weeks stale. This lane asks MB the inverted
@@ -926,6 +946,44 @@ async function reconcileLoop(db: DB) {
 function areaCursor(): number { try { return Date.parse(JSON.parse(fs.readFileSync(AREA_STATE, 'utf8')).lastRunAt) || 0; } catch { return 0; } }
 function saveAreaCursor() { try { fs.writeFileSync(AREA_STATE, JSON.stringify({ lastRunAt: now() })); } catch { /* best-effort */ } }
 
+function dedupCursor(): number { try { return Date.parse(JSON.parse(fs.readFileSync(DEDUP_STATE, 'utf8')).lastRunAt) || 0; } catch { return 0; } }
+function saveDedupCursor() { try { fs.writeFileSync(DEDUP_STATE, JSON.stringify({ lastRunAt: now() })); } catch { /* best-effort */ } }
+
+/** Cross-language duplicate detection. Runs the standalone script so the SQL pairing stays in one place. */
+async function dedupLoop(db: DB) {
+  if (!DEDUP_DETECT) { await beat(db, 'dedup', { status: 'off', last_active: now() }); return; }
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const run = promisify(execFile);
+  let found = 0, errs = 0;
+  for (;;) {
+    try {
+      const dueIn = DEDUP_INTERVAL_MS - (Date.now() - dedupCursor());
+      if (dueIn > 0) {
+        await beat(db, 'dedup', { status: 'idle', last_active: now(), items_done: found, current_item: `next scan in ~${Math.round(dueIn / 3_600_000)}h` });
+        await sleep(DEDUP_CHECK_MS); continue;
+      }
+      await beat(db, 'dedup', { status: 'running', last_active: now(), current_item: 'scanning for cross-language twins…' });
+      const args = ['tsx', '--env-file=.env.local', 'scripts/dedup-by-duration.ts',
+        '--mixed-script-only', '--cross-source-only', '--script=korean', '--tolerance=1', '--date-window=45'];
+      if (DEDUP_AUTO_APPLY) args.push('--apply');
+      const { stdout } = await run('npx', args, { maxBuffer: 32 << 20, windowsHide: true });
+      const m = stdout.match(/\[dedup-duration\] (\d+) set\(s\)/);
+      const n = m ? Number(m[1]) : 0;
+      found += n;
+      saveDedupCursor();   // stamp AFTER a clean scan so a mid-scan crash retries next cycle
+      console.log(`  [dedup] ${n} cross-language duplicate set(s)${DEDUP_AUTO_APPLY ? ' — MERGED' : ' — report only, run npm run dedup:kr:apply to merge'}`);
+      await beat(db, 'dedup', { status: 'idle', last_active: now(), items_done: found, current_item: `${n} set(s) found; next in ~${Math.round(DEDUP_INTERVAL_MS / 3_600_000)}h` });
+      await sleep(DEDUP_CHECK_MS);
+    } catch (e) {
+      errs++;
+      await beat(db, 'dedup', { status: 'error', last_active: now(), errors: errs, current_item: (e as Error).message.slice(0, 120) });
+      console.log(`  [dedup] ERROR: ${(e as Error).message}`);
+      await sleep(DEDUP_CHECK_MS);
+    }
+  }
+}
+
 async function areaLoop(db: DB) {
   if (!AREA_DISCOVERY) { await beat(db, 'area', { status: 'off', last_active: now() }); return; }
   let queuedTotal = 0, errs = 0;
@@ -1115,6 +1173,7 @@ async function main() {
     supervise(db, 'recency', recencyLoop),     // iTunes — recent releases MB lacks (auto but safe)
     supervise(db, 'recency-spotify', recencySpotifyLoop), // Spotify — same job, independent circuit/cursor
     supervise(db, 'reconcile', reconcileLoop), // link source='itunes' rows to MB once it catches up
+    supervise(db, 'dedup', dedupLoop),    // cross-language duplicate detection (daily, report-only by default)
     supervise(db, 'area', areaLoop),           // MB country/area re-sweep — keeps KR coverage current (weekly)
     supervise(db, 'newreleases', newReleasesLoop), // MB date-window sweep — flags artists with actual new releases (daily)
   ]);

@@ -376,8 +376,15 @@ async function createArtist(ctx: IngestContext, args: ArtistArgs): Promise<strin
     if (!opts.dryRun) {
       const { error } = await db.from('artists').insert({
         id:               artistId,
+        /* INVARIANT: name_native holds the Korean form whenever we know it. When the artist's
+           PRIMARY name is already Hangul and no separate native name was derived, the Korean form
+           is the name itself -- leaving this null claims we do not know it. 검정치마 was stored
+           that way (name '검정치마', name_native null), which made it invisible to every lookup
+           keyed on name_native and to backfill-native-names-from-aliases.ts, whose whole guard is
+           "the stored name is NOT Hangul". 279 KR artists were in that state. Display is
+           unaffected either way: displayName() picks one of the two, never both. */
         name,
-        name_native:      nativeName,
+        name_native:      nativeName ?? (/[가-힣]/.test(name) ? name : null),
         native_language:  lang,
         country:          args.country ?? null,
         ingest_priority:  'known',

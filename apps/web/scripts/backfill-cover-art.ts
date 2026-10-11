@@ -20,6 +20,7 @@
 import fs from 'fs';
 import path from 'path';
 import { createClient } from '@supabase/supabase-js';
+import { recordSpotify429, spotifyCircuitRemainingMs } from './spotify-circuit';
 
 const DRY_RUN      = process.argv.includes('--dry-run');
 const SKIP_SPOTIFY = process.argv.includes('--skip-spotify');
@@ -166,6 +167,8 @@ async function coverFromSpotifyBatch(releases: { id: string; title: string; arti
   if (!token) return result;
 
   // Spotify album search — one call per release (we don't have Spotify IDs for iTunes-sourced rows)
+  // Don't start a Spotify sweep while production is in cooldown.
+  if ((await spotifyCircuitRemainingMs()) > 0) return result;
   for (const r of releases) {
     await sleep(SPOTIFY_DELAY);
     try {
@@ -173,6 +176,11 @@ async function coverFromSpotifyBatch(releases: { id: string; title: string; arti
       const res = await fetch(`https://api.spotify.com/v1/search?q=${q}&type=album&limit=1`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
+      // Shared credentials: a 429 here is production's problem too, so say so and stop asking.
+      if (res.status === 429) {
+        await recordSpotify429(Number(res.headers.get('Retry-After') ?? 30), 'backfill-cover-art');
+        break;
+      }
       if (!res.ok) continue;
       const data = await res.json();
       const item = data.albums?.items?.[0];

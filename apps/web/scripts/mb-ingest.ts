@@ -283,7 +283,8 @@ async function findOrCreateArtistByMbid(db: DB, detail: MbArtistDetail): Promise
   const { error: insErr } = await db.from('artists').insert({
     id,
     name: detail.name,
-    name_native: native,
+    // Same invariant as itunes-ingest-core: a Hangul primary name IS the native name.
+    name_native: native ?? (/[가-힣]/.test(detail.name ?? '') ? detail.name : null),
     native_language: native ? detectLanguage(native) : null,
     country: detail.country,
     disambiguation: detail.disambiguation,

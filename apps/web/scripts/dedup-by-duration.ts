@@ -50,11 +50,15 @@ import * as fs from 'node:fs';
 const arg = (f: string) => process.argv.find(a => a.startsWith(`${f}=`))?.split('=').slice(1).join('=');
 const APPLY = process.argv.includes('--apply');
 const MIXED_ONLY = process.argv.includes('--mixed-script-only');
+const CROSS_SOURCE_ONLY = process.argv.includes('--cross-source-only');
 const MIN_TRACKS = Number(arg('--min-tracks') ?? 3);
 const OUT = arg('--out') ?? 'scripts/data/dedup-by-duration.json';
 // Applies in reviewed batches rather than all at once: 512 deletions against production is not a
 // thing to do in one unattended shot, and the sets are independent so a partial run is consistent.
 const LIMIT = Number(arg('--limit') ?? 0);
+// --script=korean|japanese : only sets whose titles carry that script. Keeps a Korean clean-up
+// from sweeping in Japanese and Cyrillic pairs that nobody has reviewed.
+const SCRIPT_FILTER = arg('--script') ?? '';
 // Seconds of per-track disagreement tolerated. 0 restores the old exact-hash behaviour.
 const TOLERANCE = Number(arg('--tolerance') ?? 1);
 // Days apart two releases may be when only the TOLERANCE made them match.
@@ -177,7 +181,7 @@ async function main() {
     sets.get(root)!.push(byId.get(id)!);
   }
 
-  const skipped = { compilation: 0, rated: 0, singleton: 0, sameScript: 0, edition: 0 };
+  const skipped = { compilation: 0, rated: 0, singleton: 0, sameScript: 0, edition: 0, sameSource: 0, script: 0 };
   const plans: { keep: Row; drop: Row[] }[] = [];
   for (const group of sets.values()) {
     if (group.length < 2) { skipped.singleton++; continue; }
@@ -206,6 +210,30 @@ async function main() {
         continue;
       }
     }
+    /* CROSS-SOURCE ONLY: the pair must come from two different ingests.
+       A duration signature is strong evidence of shared CONTENT, not of a duplicate ROW, and the
+       difference shows up in provenance. When iTunes and MusicBrainz each inserted the same release
+       under its own language's title, that is a twin we created and should collapse — 281 of the 359
+       sets found in the catalogue-wide run, e.g. Lovechild/사생아, DBSG 3/돈 벌 시간 3.
+       When ONE source holds both rows, that source deliberately kept them apart, and the reason is
+       usually real: 初星学園 ships one "-Solo Version Album-" per member on the same day, 13 tracks
+       each over identical backing music, so the signatures match while the releases differ. Merging
+       those destroys distinct releases. Same-source pairs can still be genuine (the header's
+       하이에나 / Hyena case is two iTunes rows), so this is an opt-in narrowing for unattended bulk
+       applies, not a claim that same-source pairs are always wrong. Review those by hand. */
+    if (CROSS_SOURCE_ONLY) {
+      const sources = new Set(group.map(r => r.source ?? '?'));
+      if (sources.size < 2) { skipped.sameSource++; continue; }
+    }
+    /* SCRIPT GATE. --script=korean keeps only sets where some title carries Hangul, so a Korean
+       catalogue clean-up does not also sweep up Japanese and Cyrillic pairs nobody has reviewed. */
+    if (SCRIPT_FILTER) {
+      const txt = group.map(r => r.title ?? '').join('');
+      const re = SCRIPT_FILTER === 'korean' ? /[가-힣]/
+        : SCRIPT_FILTER === 'japanese' ? /[぀-ゟ゠-ヿ]/
+        : null;
+      if (re && !re.test(txt)) { skipped.script++; continue; }
+    }
     const ranked = [...group].sort((a, b) =>
       Number(isNonLatin(a.title ?? '')) - Number(isNonLatin(b.title ?? ''))
       || Number(b.editions) - Number(a.editions)
@@ -218,7 +246,9 @@ async function main() {
   if (LIMIT > 0) plans.splice(LIMIT);
   const dropCount = plans.reduce((n, p) => n + p.drop.length, 0);
   console.log(`\n[dedup-duration] ${plans.length} set(s), ${dropCount} row(s) to remove${APPLY ? '  *** APPLY ***' : '  (report only)'}`);
-  console.log(`  skipped: ${skipped.compilation} compilation, ${skipped.edition} edition-variant, ${skipped.sameScript} same-script${MIXED_ONLY ? ' (--mixed-script-only)' : ''}`);
+  console.log(`  skipped: ${skipped.compilation} compilation, ${skipped.edition} edition-variant, ${skipped.sameScript} same-script${MIXED_ONLY ? ' (--mixed-script-only)' : ''}`
+    + `${CROSS_SOURCE_ONLY ? `, ${skipped.sameSource} same-source (--cross-source-only)` : ''}`
+    + `${SCRIPT_FILTER ? `, ${skipped.script} off-script (--script=${SCRIPT_FILTER})` : ''}`);
   const ratedSets = plans.filter(p => [p.keep, ...p.drop].some(r => Number(r.ratings) > 0));
   if (ratedSets.length) console.log(`  ${ratedSets.length} set(s) carry ratings — merged, keeping each user's latest`);
   fs.writeFileSync(OUT, JSON.stringify(plans, null, 1));

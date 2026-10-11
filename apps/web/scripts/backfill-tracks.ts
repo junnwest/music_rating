@@ -1,4 +1,18 @@
 /**
+ * RETIRED 2026-10-11 — DO NOT RUN. The `tracks` table it fills was renamed to
+ * `tracks_legacy_unused` by 20261011000002_retire_empty_tracks_table.sql, so this script now
+ * fails instead of writing.
+ *
+ * Why: `tracks` sat at 0 rows while real tracklists accumulated in `release_tracks` (7.65M), which
+ * is what the app, dedup-by-duration.ts and the ManiaDB matcher all read. The plan below (songs as
+ * first-class rows keyed by `tracks.id`) was superseded by `recordings` + `release_tracks`, where
+ * `track_ratings.recording_id` already points. Keeping an empty table around cost real debugging
+ * time: a query against it succeeds and returns nothing, so callers cannot distinguish "no tracks"
+ * from "wrong table" — the tie-breaker silently compared against zero and reported success.
+ *
+ * Kept for the tracklist-parsing logic only. Anything new should read `release_tracks`.
+ *
+ * ────────────────────────────────────────────────────────────────────────────────
  * Backfill the `tracks` table from `releases.tracklist` (JSONB).
  *
  * Songs become first-class rows (stable UUIDs) so they can have pages, ratings,

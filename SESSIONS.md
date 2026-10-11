@@ -4,6 +4,53 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-10-11 (Windows) — root fixes behind the session's data problems.** Each item below was a
+recurring cause, not a symptom; the one-off repairs are in the entry under this one.
+
+- **Cross-language duplicates regenerate, so detection is now scheduled.** iTunes and MusicBrainz
+  each insert the same release under its own language's title, so every ingest cycle mints twins
+  (1,631 merged earlier, 284 on 2026-10-11). The ingest-time fix stays reverted for the reason in
+  dedup-by-duration.ts's header — durations are the only trustworthy evidence and do not exist when
+  the group row is written. New `dedup` pipeline lane runs daily, **report-only** (`DEDUP_AUTO_APPLY=1`
+  to merge), plus `npm run dedup:kr` / `dedup:kr:apply`. Report-only because the class has a live
+  false-positive neighbour: 初星学園 ships one "-Solo Version Album-" per member on one day, 13
+  tracks each over identical backing music, so signatures match while releases differ.
+  New filters `--cross-source-only` (provenance proves a twin WE made; one source holding both rows
+  means it kept them apart deliberately) and `--script=korean`.
+- **A script can no longer rate-limit production Spotify by omission.** The credentials are the web
+  server's. Nine scripts called api.spotify.com, six cooperated with spotify-circuit.ts and three
+  did not — and the one that did not degraded live search for ~24h. All three fixed, and
+  `npm run check:spotify-guard` now FAILS the build on a raw Spotify call outside the hardened
+  client. Cooperation was documented and reviewed and still skipped, so it is enforced rather than
+  expected.
+- **The empty `tracks` table is retired** (→ `tracks_legacy_unused`, migration aborts if non-empty).
+  0 rows against 837k release groups while real tracklists sat in `release_tracks` (7.65M). An empty
+  table is worse than a missing one: the query succeeds, so a caller cannot tell "no tracks" from
+  "wrong table" — the ManiaDB tie-breaker compared against it and reported success having measured
+  nothing. backfill-tracks.ts marked RETIRED.
+- **PostgREST's silent 1,000-row cap** has now cost five scripts, every time as a plausible-looking
+  undercount. `scripts/db-page.ts` provides `pageByKeyset` (stable while writing to the table being
+  scanned, which several backfills do), `pageByRange`, and `looksTruncated()`.
+- **`name_native` invariant.** A Hangul primary name IS the native name; storing null there claims
+  we do not know it. 검정치마 was held as name='검정치마', name_native=null, which hid it from every
+  name_native lookup and permanently from backfill-native-names-from-aliases.ts (whose guard is "the
+  stored name is NOT Hangul"). Fixed in both ingest paths + migration for 279 rows. Display-neutral:
+  displayName() picks one of the two, never both.
+- **Skipped work is recorded, not just counted.** "ambiguous: 1476" with no list meant the follow-up
+  had to be reconstructed in SQL. The ManiaDB sweep now writes `maniadb-ambiguous.json` with each
+  release, its candidates and the reason.
+- **Korean song titles are now expressible.** `recordings` had no native_title column at all, so
+  C JAMM's 킁 could not store its Korean track names even in principle. Added, plus
+  `release_groups.maniadb_album_id` — the first sweep matched 2,451 albums and discarded every
+  ManiaDB id, and song titles come from /api/album/[album_id]/, so filling them would have meant a
+  ~34h re-sweep to recover ids already paid for. The matcher now persists the id. Endpoint verified
+  to return per-song `<title>` and `<runningtime>`; those runtimes are also the language-independent
+  signal that could finally resolve the 1,476 ambiguous albums. Backfill script not written — it
+  needs ids populated first, and an untested one would be guesswork. **Not every English track title
+  is wrong**; Korean hip-hop ships genuine ones, so that backfill must run report-only first.
+
+---
+
 **2026-10-11 (Windows) — the cover backfill, and why it was retired.** Tried to move 563k Cover Art
 Archive URLs onto faster CDNs (iTunes/Spotify). Retired the same day: the Mac session's `/api/img`
 routing (2.9s → 0.11s) fixes every row at once, while this converted ~4,400 at a 16% hit rate and

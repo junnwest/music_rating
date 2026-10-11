@@ -37,6 +37,7 @@ import fs from 'fs';
 import path from 'path';
 import { createClient } from '@supabase/supabase-js';
 import { searchAlbums, type DzAlbumHit } from './deezer-client';
+import { recordSpotify429, spotifyCircuitRemainingMs } from './spotify-circuit';
 
 const WRITE = process.argv.includes('--write');
 const DRY_RUN = !WRITE;
@@ -141,6 +142,8 @@ async function getSpotifyToken(): Promise<string | null> {
 
 async function coverFromSpotify(title: string, artist: string): Promise<string | null> {
   if (Date.now() < spotifyBlockedUntil) return null; // circuit open — skip without a request
+  // Refuse to call while production is already in cooldown — running would prolong its outage.
+  if ((await spotifyCircuitRemainingMs()) > 0) return null;
   const token = await getSpotifyToken();
   if (!token) return null;
   await sleep(SPOTIFY_DELAY);
@@ -150,6 +153,10 @@ async function coverFromSpotify(title: string, artist: string): Promise<string |
       headers: { Authorization: `Bearer ${token}` },
     });
     if (res.status === 429) {
+      /* Publish to the SHARED breaker, not just the local streak. The local one protects this
+         script's throughput; the shared one protects the production web server, which uses the same
+         credentials and would otherwise discover the ban by hitting it. */
+      await recordSpotify429(Number(res.headers.get('Retry-After') ?? 30), 'backfill-rg-covers-all');
       if (++spotify429Streak >= 5) {
         spotifyBlockedUntil = Date.now() + 30 * 60 * 1000; // 30 min cooldown, then try again
         console.log(`  [spotify 429×${spotify429Streak} — circuit open 30m]`);

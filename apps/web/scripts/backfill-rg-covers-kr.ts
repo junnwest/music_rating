@@ -35,6 +35,7 @@
 import fs from 'fs';
 import path from 'path';
 import { createClient } from '@supabase/supabase-js';
+import { recordSpotify429, spotifyCircuitRemainingMs } from './spotify-circuit';
 
 const WRITE   = process.argv.includes('--write');
 const DRY_RUN = !WRITE;
@@ -219,7 +220,13 @@ async function getSpotifyToken(): Promise<string | null> {
   }
 }
 
+/* COOPERATES WITH THE SHARED BREAKER. These credentials are the production web server's, so a 429
+   this script earns is an outage the live site is about to walk into. Three cover scripts called
+   Spotify with a bare fetch() and none of them checked the breaker or published its own penalty;
+   that is how a backfill left production search on its fallbacks for ~24h on 2026-10-10. Checking
+   costs one Redis read per row and publishing costs one write per 429. */
 async function coverFromSpotify(title: string, artist: string): Promise<string | null> {
+  if ((await spotifyCircuitRemainingMs()) > 0) return null;
   const token = await getSpotifyToken();
   if (!token) return null;
   await sleep(SPOTIFY_DELAY);
@@ -228,6 +235,11 @@ async function coverFromSpotify(title: string, artist: string): Promise<string |
     const res = await fetch(`https://api.spotify.com/v1/search?q=${q}&type=album&limit=5`, {
       headers: { Authorization: `Bearer ${token}` },
     });
+    if (res.status === 429) {
+      const retryAfter = Number(res.headers.get('Retry-After') ?? 30);
+      await recordSpotify429(retryAfter, 'backfill-rg-covers-kr');
+      return null;
+    }
     if (!res.ok) return null;
     const data = await res.json();
     const items: any[] = data.albums?.items ?? [];

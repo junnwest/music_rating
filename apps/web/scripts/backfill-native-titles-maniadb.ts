@@ -49,6 +49,11 @@ const LIMIT = parseInt(arg('--limit', '50'), 10);
 const APPLY = argv.includes('--apply');
 const KEY = process.env.MANIADB_KEY ?? arg('--key', '');
 const STATE = arg('--state', 'scripts/data/maniadb-titles.json');
+/* A COUNT IS NOT A RECORD. The first full sweep reported "ambiguous (same date): 1476" and kept no
+   list, so the follow-up could not be targeted or resumed -- the candidates had to be reconstructed
+   with SQL, and the per-artist detail (which ManiaDB rows collided) was gone for good. Skipped work
+   is written out now, so a later pass can pick it up directly. */
+const AMBIG_REPORT = arg('--ambiguous-out', 'scripts/data/maniadb-ambiguous.json');
 const GAP_MS = parseInt(arg('--gap', '2500'), 10);
 // --artist <uuid> fixes one reported artist instead of sweeping. The full pass is ~34 hours at
 // ManiaDB's speed, which is the wrong tool for "염따's 살아숨셔 series has no Korean title".
@@ -153,7 +158,8 @@ async function main() {
     .slice(0, LIMIT);
   console.log(`  ${todo.length} artist(s) to check\n`);
 
-  let matched = 0, written = 0, throttled = 0, noAlbums = 0, ambiguous = 0, covers = 0, brokenByTracks = 0;
+  let matched = 0, written = 0, throttled = 0, noAlbums = 0, ambiguous = 0, covers = 0, brokenByTracks = 0, idsSaved = 0;
+  const ambiguousRows: { artist: string; artist_id: string; rg_id: string; our_title: string; date: string; candidates: { id: string; title: string; tracks: number | null }[]; reason: string }[] = [];
   let n = 0;
   for (const a of todo as any[]) {
     // Printed per artist: with back-off this can idle for half a minute, which otherwise reads as a hang.
@@ -166,7 +172,7 @@ async function main() {
 
     const { data: ours } = await db
       .from('release_groups')
-      .select('id, title, native_title, cover_url, first_release_date')
+      .select('id, title, native_title, cover_url, first_release_date, maniadb_album_id')
       .eq('primary_artist_id', a.id)
       .or('native_title.is.null,cover_url.is.null')
       .not('first_release_date', 'is', null);
@@ -253,9 +259,25 @@ async function main() {
       const candidates = theirs.filter(t => t.date === ymd);
       if (!candidates.length) continue;
       const pick1 = resolveSameDay(rg.id, ymd, candidates);
-      if (!pick1) { ambiguous++; continue; }
+      if (!pick1) {
+        ambiguous++;
+        ambiguousRows.push({
+          artist: a.name_native, artist_id: a.id, rg_id: rg.id, our_title: rg.title ?? '', date: ymd,
+          candidates: candidates.map(c => ({ id: c.id, title: c.title, tracks: c.tracks })),
+          reason: candidates.length > 1 ? 'multiple same-date candidates' : 'our side has siblings on this date',
+        });
+        continue;
+      }
       // A ManiaDB record may be spent once. Belt and braces alongside the check above.
-      if (usedTheirs.has(pick1.id)) { ambiguous++; continue; }
+      if (usedTheirs.has(pick1.id)) {
+        ambiguous++;
+        ambiguousRows.push({
+          artist: a.name_native, artist_id: a.id, rg_id: rg.id, our_title: rg.title ?? '', date: ymd,
+          candidates: [{ id: pick1.id, title: pick1.title, tracks: pick1.tracks }],
+          reason: 'ManiaDB record already claimed by another of our releases',
+        });
+        continue;
+      }
       usedTheirs.add(pick1.id);
       const sameDay = [pick1];
       if (candidates.length > 1 || (ourDates.get(ymd) ?? 0) > 1) brokenByTracks++;
@@ -270,6 +292,17 @@ async function main() {
         const { error: ce } = await db.from('release_groups')
           .update({ cover_url: sameDay[0].image }).eq('id', rg.id).is('cover_url', null);
         if (!ce) covers++;
+      }
+
+      /* KEEP THE MATCHED ManiaDB ID. The first sweep matched 2,451 albums and threw every id away,
+         so filling SONG titles later -- which needs /api/album/[album_id]/ -- would have meant
+         repeating the whole 8,163-artist search (~34h) just to recover ids we had already paid for.
+         Written whenever we have a confident date match, independent of whether the TITLE turns out
+         to be usable below: the id is just as valuable on an album whose ManiaDB title is romanized. */
+      if (APPLY && !rg.maniadb_album_id && sameDay[0].id) {
+        const { error: ide } = await db.from('release_groups')
+          .update({ maniadb_album_id: sameDay[0].id }).eq('id', rg.id).is('maniadb_album_id', null);
+        if (!ide) idsSaved++;
       }
 
       const korean = albumTitleFor(sameDay[0].title, a.name_native);
@@ -294,6 +327,16 @@ async function main() {
   console.log(`  artist not in ManiaDB:${noAlbums}`);
   console.log(`  ambiguous (same date):${ambiguous}`);
   console.log(`  tie broken by tracks: ${brokenByTracks}`);
+  console.log(`  maniadb ids saved:    ${idsSaved}`);
+  if (ambiguousRows.length) {
+    try {
+      fs.mkdirSync(AMBIG_REPORT.replace(/[/\\][^/\\]+$/, ''), { recursive: true });
+      fs.writeFileSync(AMBIG_REPORT, JSON.stringify(ambiguousRows, null, 2));
+      console.log(`  ambiguous detail ->  ${AMBIG_REPORT}  (${ambiguousRows.length} row(s))`);
+    } catch (e) {
+      console.warn(`  ! could not write ${AMBIG_REPORT}: ${(e as Error).message}`);
+    }
+  }
   if (throttled) console.log(`  throttled, left for the next run: ${throttled}`);
   if (!APPLY) console.log('\n  (report only — re-run with --apply to write)');
 }
