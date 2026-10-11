@@ -964,10 +964,19 @@ async function dedupLoop(db: DB) {
         await sleep(DEDUP_CHECK_MS); continue;
       }
       await beat(db, 'dedup', { status: 'running', last_active: now(), current_item: 'scanning for cross-language twins…' });
-      const args = ['tsx', '--env-file=.env.local', 'scripts/dedup-by-duration.ts',
+      /* node + tsx's CLI directly, NOT npx. execFile('npx') is ENOENT on Windows (npx is a .cmd)
+         and Node now refuses to execFile a .cmd without a shell at all (EINVAL), so the obvious
+         spelling would have errored on every cycle -- survivably, since supervise() catches it, but
+         the lane would simply never have run. Using process.execPath also avoids a shell entirely. */
+      const tsxCli = [
+        path.resolve('node_modules/tsx/dist/cli.mjs'),
+        path.resolve('../../node_modules/tsx/dist/cli.mjs'),
+      ].find(p => fs.existsSync(p));
+      if (!tsxCli) throw new Error('tsx CLI not found — cannot run the dedup scan');
+      const args = [tsxCli, '--env-file=.env.local', 'scripts/dedup-by-duration.ts',
         '--mixed-script-only', '--cross-source-only', '--script=korean', '--tolerance=1', '--date-window=45'];
       if (DEDUP_AUTO_APPLY) args.push('--apply');
-      const { stdout } = await run('npx', args, { maxBuffer: 32 << 20, windowsHide: true });
+      const { stdout } = await run(process.execPath, args, { maxBuffer: 32 << 20, windowsHide: true });
       const m = stdout.match(/\[dedup-duration\] (\d+) set\(s\)/);
       const n = m ? Number(m[1]) : 0;
       found += n;
