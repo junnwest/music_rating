@@ -338,6 +338,7 @@ private struct NotificationRow: View {
                     } label: {
                         Text("Confirm")
                             .font(.jakarta(12, weight: .semibold))
+                            .lineLimit(1)
                             .foregroundStyle(Color.sjCream)
                             .padding(.horizontal, 12).padding(.vertical, 6)
                             .background(Color.sjAmber)
@@ -348,6 +349,7 @@ private struct NotificationRow: View {
                     } label: {
                         Text("Delete")
                             .font(.jakarta(12, weight: .semibold))
+                            .lineLimit(1)
                             .foregroundStyle(Color.sjInk)
                             .padding(.horizontal, 12).padding(.vertical, 6)
                             .background(Color.sjBorder.opacity(0.4))
@@ -355,6 +357,9 @@ private struct NotificationRow: View {
                     }
                 }
                 .buttonStyle(.borderless)
+                // Natural width, always: the body text wraps instead. Without this the
+                // HStack squeezed the buttons and broke "Confirm"/"Delete" over two lines.
+                .fixedSize()
                 .disabled(isResponding)
                 .opacity(isResponding ? 0.5 : 1)
                 .padding(.top, 4)

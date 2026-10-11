@@ -21,7 +21,10 @@ preview listed only ratings WITH review text, so the section vanished on 180 of 
 ratings have text). An album could appear as a feed post yet list nobody. It now shows every other rating,
 commented first, matching web's `get_album_ratings` order. **Also 2026-10-09:** the profile became Albums | EPs |
 Singles on both platforms (songs are no longer listed on profiles at all). The iOS "Rated N tracks" dropdown never
-rendered: `.task` sat on a `Group` that is empty until the tracks load, so the load never ran. Fixed with a `VStack`.
+rendered: `.task` sat on a `Group` that is empty until the tracks load, so the load never ran. Fixed with a `VStack`. iOS album-page rating rows: the avatar and @handle now open the author's profile (web already did). **Push text:** like and comment pushes never named the album. `send-webhook` embedded `ratings → releases(title)`,
+a relationship that hasn't existed since the 06-24 renovation; the error was ignored, so every push fell back to
+"liked your rating". Now `release_groups(title, native_title)`, logged on failure. iOS follow-request Confirm/Delete
+no longer wrap (`.fixedSize()` on the button pair).
 
 ---
 

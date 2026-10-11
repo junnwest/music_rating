@@ -38,14 +38,10 @@ extension String {
     // Returns a downscaled cover URL (iTunes 600x600bb / 1200x1200bb → 300x300bb;
     // CAA front-500 → front-250).
     //
-    // NOTE: this used to also route CAA/archive.org URLs (~95% of covers) through
-    // a caching edge proxy (`/api/img`) to skip CAA's redirect-to-archive.org hop.
-    // That proxy returns 502 in production -- archive.org blocks Vercel's
-    // datacenter IPs -- so every CAA cover was failing outright instead of just
-    // loading slowly (confirmed live 2026-07-08: covers stuck on the placeholder
-    // indefinitely, not just delayed). Reverted to direct CAA URLs until the
-    // proxy is fixed server-side (see SESSIONS.md 2026-07-06/07-08 cover entries
-    // for the planned side-table resolver).
+    // The CAA -> `/api/img` proxy routing lives in `ImageCache.fetch`, not here,
+    // so cache keys stay the original URLs and a proxy failure can fall back to
+    // the direct URL (2026-10-11; it was reverted here on 2026-07-08 while the
+    // proxy 502'd in production).
     var thumbnailUrl: String {
         self
             .replacingOccurrences(of: "600x600bb",   with: "300x300bb")

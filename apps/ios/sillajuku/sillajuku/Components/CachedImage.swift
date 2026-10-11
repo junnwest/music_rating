@@ -36,11 +36,11 @@ struct CachedImage<Placeholder: View>: View {
             guard let url else { image = nil; return }
             if let cached = ImageCache.shared[url] { image = cached; return }
             image = nil  // show placeholder while fetching
-            // Disk tier before network: skips CAA's uncacheable ~1s redirect
-            // hop for any cover the app has ever fetched (see ImageCache).
+            // Disk tier before network: skips the network entirely for any
+            // cover the app has ever fetched (see ImageCache).
             if let disk = await ImageCache.shared.image(for: url) { image = disk; return }
-            guard let (data, _) = try? await ImageCache.session.data(from: url),
-                  let uiImage = UIImage(data: data) else { return }
+            // CAA covers go through the edge-cached /api/img proxy (ImageCache.fetch).
+            guard let (uiImage, data) = await ImageCache.fetch(url) else { return }
             ImageCache.shared.store(uiImage, data: data, for: url)
             image = uiImage
         }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '../../../../lib/supabaseServer';
 import { sendPushNotification } from '../../../../lib/apns';
+import { preferHangulName } from '../../../../lib/sj/display';
 
 // Called by the notifications-table DB trigger (migration 20260703000002).
 // Not meant to be called directly by clients.
@@ -38,14 +39,21 @@ export async function POST(req: NextRequest) {
     : { data: null };
   const actorName = actor?.username ?? 'Someone';
 
+  // ratings key on release_group_id (renovation 20260624). This used to embed
+  // `releases(title)`, a relationship ratings doesn't have: the query errored,
+  // the error was ignored, and every like/comment push said just "liked your
+  // rating" with no album (until 2026-10-09). Same title rule as iOS's
+  // displayTitle: Hangul native title when there is one.
   let releaseTitle: string | null = null;
   if (notification.rating_id) {
-    const { data: rating } = await supabase
+    const { data: rating, error } = await supabase
       .from('ratings')
-      .select('releases(title)')
+      .select('release_groups(title, native_title)')
       .eq('id', notification.rating_id)
       .maybeSingle();
-    releaseTitle = (rating as any)?.releases?.title ?? null;
+    if (error) console.error('[push] album lookup failed:', error.message);
+    const rg = (rating as any)?.release_groups;
+    releaseTitle = rg?.title ? preferHangulName(rg.title, rg.native_title) : null;
   }
 
   const messages: Record<string, string> = {

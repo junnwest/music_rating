@@ -87,9 +87,13 @@ enum InstagramShare {
         return renderer.uiImage
     }
 
+    /// Cache first (the cover is usually already on screen), then the network --
+    /// via `ImageCache.fetch`, so CAA covers take the fast `/api/img` proxy.
     static func downloadImage(from url: URL) async throws -> UIImage? {
-        let (data, _) = try await URLSession.shared.data(from: url)
-        return UIImage(data: data)
+        if let cached = await ImageCache.shared.image(for: url) { return cached }
+        guard let (img, data) = await ImageCache.fetch(url) else { return nil }
+        ImageCache.shared.store(img, data: data, for: url)
+        return img
     }
 
     /// Parallel fetch for a mix's multiple cover URLs -- mirrors `downloadImage`

@@ -28,6 +28,45 @@ final class ImageCache {
         return URLSession(configuration: config)
     }()
 
+    // MARK: Network fetch
+
+    /// Cover Art Archive (and the archive.org hosts it redirects to) is ~60% of
+    /// covers and slow direct: 2.9s median, up to 6.7s, with occasional 500s
+    /// (measured 2026-10-11). The web app's `/api/img` proxy follows that
+    /// redirect server-side and is edge-cached for a year: 0.11s on a cache hit.
+    /// iOS used it once, but the proxy 502'd in prod (archive.org blocked
+    /// Vercel's edge IPs) and iOS was reverted on 2026-07-08; the proxy has
+    /// since moved to the Node runtime and works again.
+    /// ManiaDB too, for correctness rather than speed: its art is http-only (its
+    /// https answers 403), and App Transport Security blocks plain http, so a
+    /// direct load always fails on iOS. Matches web's `Cover.tsx` proxied hosts.
+    private static func needsProxy(_ url: URL) -> Bool {
+        guard let host = url.host?.lowercased() else { return false }
+        return host == "coverartarchive.org" || host == "archive.org" || host.hasSuffix(".archive.org")
+            || host == "maniadb.com" || host.hasSuffix(".maniadb.com")
+    }
+
+    private static func proxied(_ url: URL) -> URL? {
+        var c = URLComponents(url: Config.webBaseURL.appendingPathComponent("api/img"), resolvingAgainstBaseURL: false)
+        c?.queryItems = [URLQueryItem(name: "url", value: url.absoluteString)]
+        return c?.url
+    }
+
+    private static func download(_ url: URL) async -> (UIImage, Data)? {
+        guard let (data, resp) = try? await session.data(from: url),
+              (resp as? HTTPURLResponse)?.statusCode == 200,
+              let img = UIImage(data: data) else { return nil }
+        return (img, data)
+    }
+
+    /// Downloads a cover, through the proxy for CAA/ManiaDB URLs, falling back to the
+    /// direct URL if the proxy fails (as web's `Cover.tsx` does). Callers key
+    /// the cache on the ORIGINAL url, so existing disk entries stay valid.
+    static func fetch(_ url: URL) async -> (UIImage, Data)? {
+        if needsProxy(url), let viaProxy = proxied(url), let hit = await download(viaProxy) { return hit }
+        return await download(url)
+    }
+
     private let cache: NSCache<NSString, UIImage> = {
         let c = NSCache<NSString, UIImage>()
         c.countLimit = 400
@@ -131,9 +170,7 @@ final class ImageCache {
                         while let url = await queue.next() {
                             if shared[url] != nil { continue }
                             if await shared.image(for: url) != nil { continue }
-                            guard let (data, resp) = try? await session.data(from: url),
-                                  (resp as? HTTPURLResponse)?.statusCode == 200,
-                                  let img = UIImage(data: data) else { continue }
+                            guard let (img, data) = await fetch(url) else { continue }
                             shared.store(img, data: data, for: url)
                         }
                     }

@@ -1556,22 +1556,44 @@ struct RatingCommentRow: View {
 
     @State private var showComments = false
 
+    /// The author's profile, behind both the avatar and the handle (same as
+    /// FeedCard). Nil when the profile didn't load -- then neither is a link.
+    private var profileDestination: UserProfileDestination? {
+        item.profiles.map { UserProfileDestination(userId: item.userId, handle: $0.handle) }
+    }
+
+    @ViewBuilder
+    private func profileLink<Label: View>(@ViewBuilder _ label: () -> Label) -> some View {
+        if let profileDestination {
+            NavigationLink(value: profileDestination) { label() }
+                .buttonStyle(.plain)
+        } else {
+            label()
+        }
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            UserAvatarView(url: item.profiles?.avatarUrl, size: 28)
+            profileLink { UserAvatarView(url: item.profiles?.avatarUrl, size: 28) }
+                .accessibilityLabel("@" + (item.profiles?.handle ?? String(localized: "someone")))
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text("@" + (item.profiles?.handle ?? String(localized: "someone")))
-                        .font(.jakarta(13, weight: .semibold))
-                        .foregroundStyle(Color.sjInk)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.65)  // one line always, even at 20 chars
-                        .layoutPriority(1)
-                    PostBadgeView(isVerified: item.profiles?.isVerified == true,
-                                  foundingNumber: item.profiles?.foundingNumber,
-                                  badgeColor: item.profiles?.badgeColor,
-                                  featured: item.profiles?.featuredBadge, size: 12)
+                    profileLink {
+                        HStack(spacing: 6) {
+                            Text("@" + (item.profiles?.handle ?? String(localized: "someone")))
+                                .font(.jakarta(13, weight: .semibold))
+                                .foregroundStyle(Color.sjInk)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.65)  // one line always, even at 20 chars
+                                .layoutPriority(1)
+                            PostBadgeView(isVerified: item.profiles?.isVerified == true,
+                                          foundingNumber: item.profiles?.foundingNumber,
+                                          badgeColor: item.profiles?.badgeColor,
+                                          featured: item.profiles?.featuredBadge, size: 12)
+                        }
+                    }
+                    .layoutPriority(1)
                     Text("·")
                         .font(.jakarta(12))
                         .foregroundStyle(Color.sjBorder)

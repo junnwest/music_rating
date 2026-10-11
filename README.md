@@ -52,6 +52,34 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **2026-10-11 (Mac) — load-time diagnosis + first two fixes (uncommitted until pushed).** Measured from the US:
+> Cover Art Archive covers (60% of visible covers) take 2.9s median, up to 6.7s, with occasional 500s, while web's
+> `/api/img` proxy serves them in 0.11s once edge-cached. iOS had stopped using the proxy on 07-08 (prod 502s, since
+> fixed) and never went back. **Fix 1 (iOS):** `ImageCache.fetch` routes CAA through the proxy, falling back to
+> direct; cache keys unchanged; share downloads use the cache too. **Fix 2 (web):** Vercel functions ran in `iad1`
+> (default) against a **Seoul** DB, about 180ms per query, so `/api/feed/home` took 2.35s, search/popular 1.6s and
+> charts/songs 1.8s. `vercel.json` now sets `"regions": ["icn1"]`; `/api/img` is pinned to `iad1` (archive.org).
+> **Windows's CAA → iTunes/Spotify backfill (c5a66f7) doesn't replace this:** rated-album covers went from 120 to 48
+> CAA, but the catalog is still 563,242 CAA (~67%) and the backfill keeps CAA wherever it finds no match. **⚠ For
+> Windows: ManiaDB covers (82) don't load anywhere.** `/api/img` gets a Cloudflare 403 from ManiaDB, so it falls back to a
+> 302 to the http URL, which browsers block as mixed content and iOS blocks outright. The cause is Node `fetch`
+> plus the proxy's own user agent; the backfill script uses curl for exactly this reason. From the Mac, even curl with a
+> browser user agent gets a 403, which suggests an IP or region block too. Options: copy those 82 images into Supabase
+> Storage from the pipeline PC, or, if the block is regional, check `/api/img` for ManiaDB from icn1 after the region move.
+> iOS proxies ManiaDB too now (matching `Cover.tsx`), so it'll start working there whenever the proxy does.
+> **After deploy:** re-time those routes. **Still open, in order:** downsample and decode covers off the main thread
+> (Deezer covers are 1000px, ~190KB); stale-while-revalidate page caching on iOS (every round trip from the US is
+> 215ms); `search_artists` does ~600ms of real DB work.
+
+> **2026-10-09 (Mac) — search: exact-title album ties now break by artist popularity. ✅ `20261009000000_search_album_popularity_tiebreak.sql` applied + verified ("SWAG" → Justin Bieber 11791, 8ruki 11689).**
+> "SWAG" put 8ruki's single in Top Match over Justin Bieber's album. Every exact-title album scores 11500 and the only
+> popularity term (`prestige_score`, critic-derived) is null for almost all of them, so ties fell in arbitrary order
+> ("Adele", "Coldplay" and "Justin Bieber" had the same problem). Album scores now add `artists.popularity` × 3 (0–300),
+> which is below the exact-match tier and keeps albums under exact artist hits (12000+). The migration aborts if either
+> live function differs from the repo version (drift guard, after get_suggested_users). `artists.popularity` is NOT
+> dead: 64,607 of 113,049 artists have it now (older notes say 0). **Still open:** an artist's own albums (by-artist path,
+> 9000) rank below unrelated albums that merely share the artist's name as a title (11500), e.g. "Adele".
+
 > **2026-10-06 (Mac, later) — songs stop being posts; albums come first. Code done on web + iOS, NOT committed. Both migrations ✅ APPLIED 2026-10-08 (verified live), BEFORE the deploy, so production is running old code against the new schema until web deploys and iOS ships.**
 > Song pages are gone on both platforms. Web `/song/<id>` now 308-redirects to `/album/<rg>#track-<id>`,
 > and the tracklist scrolls to that row and highlights it. On iOS a song opens its album scrolled to the track,
