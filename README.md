@@ -52,8 +52,9 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
-> **2026-10-11 (Mac, later) — typed Mixes + cover decoding. Code done on web + iOS, NOT committed. ⏳ USER: apply
-> `20261011000000_mix_kinds.sql` BEFORE deploying** (the new code selects `mixes.kind`).
+> **2026-10-11 (Mac, later) — typed Mixes + cover decoding. ✅ Shipped in `245c225`; migration `20261011000000`
+> applied and verified live (wrong-kind items, type changes and a song-type default are all rejected; song Mixes get
+> covers). Web deployed; iOS needs a build.**
 > **Mix types:** a Mix holds albums or songs, chosen at creation and fixed (DB triggers enforce the item kind and the
 > type's immutability; Listen Later is always an album Mix). The one mixed Mix, 믹스엔믹스마스터, becomes an album Mix
 > and loses its 1 song. Save targets are per kind; pickers list only matching Mixes and can create one; song-Mix share
