@@ -178,6 +178,63 @@ orphan_primary as (
   from release_groups rg
   where rg.primary_artist_id is not null
     and not exists (select 1 from artists a where a.id = rg.primary_artist_id)
+),
+-- 10b. DUPLICATE ARTIST ROWS. Not previously tested for, and worse than a duplicate album: two
+--      rows for one artist SPLIT the discography, so each page shows half the catalogue and neither
+--      looks wrong. Keyed on an exact lowercased name plus country so homonyms in different
+--      countries (a Korean and an American act sharing a name) are not falsely paired.
+dup_artist as (
+  select 'duplicate_artist_name' as check, 'high' as severity, count(*) as n,
+         coalesce((select json_agg(x) from (
+           select lower(a.name) as nm, a.country, count(*) as cnt,
+                  sum(coalesce(a.mb_rg_count, 0)) as mb_total
+           from artists a
+           where a.name is not null and trim(a.name) <> ''
+           group by lower(a.name), a.country
+           having count(*) > 1
+           order by count(*) desc limit 6) x), '[]'::json) as examples
+  from (select 1 from artists a
+        where a.name is not null and trim(a.name) <> ''
+        group by lower(a.name), a.country having count(*) > 1) s
+),
+-- 10c. Informational: albums with no artwork at all. Known large; tracked so it can be watched.
+no_cover as (
+  select 'release_group_without_cover' as check, 'low' as severity, count(*) as n,
+         '[]'::json as examples
+  from release_groups where cover_url is null
+),
+-- 11. iTunes' " - Single"/" - EP" format label left in the title. Stripped at the source in
+--     itunes-ingest-core.stripItunesFormatSuffix and backfilled 2026-10-12 (5,420 renamed); the
+--     ~311 that remain collide with a title the same artist already has, i.e. they are duplicates
+--     awaiting duration arbitration rather than renames. A rising number here means a regression.
+itunes_suffix as (
+  select 'itunes_format_suffix_in_title' as check, 'low' as severity, count(*) as n,
+         '[]'::json as examples
+  from release_groups where title ~ ' - (Single|EP)$'
+),
+-- 12. INFORMATIONAL, NOT AN ERROR LIST -- read this before "fixing" anything in it.
+--     Groups dated more than a year before the earliest Official release we hold. The tempting fix
+--     ("use the earliest official date") would CORRUPT the catalogue: sampling shows the usual
+--     cause is that we simply do not hold the original pressing, so the only status-known Official
+--     release is a modern reissue -- Fats Waller's 1926 compilation reissued 2006, Connie Francis
+--     1959 vs a 2023 digital reissue. Applying it would re-date historic records to their reissue
+--     years. The genuine defect in this shape is the inverse and much rarer: MusicBrainz's
+--     group-level first-release-date counts BOOTLEGS, which is why Madvillainy read 2002 (the leak)
+--     instead of 2004. Telling the two apart needs an actual Bootleg status at our stored date,
+--     which the database almost entirely lacks.
+date_vs_official as (
+  select 'dated_before_earliest_official' as check, 'low' as severity, count(*) as n,
+         '[]'::json as examples
+  from (
+    select r.release_group_id as rgid, min(r.release_date::date) as eo
+    from releases r
+    where r.status = 'Official'
+      and r.release_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+      and r.release_group_id is not null
+    group by r.release_group_id) o
+  join release_groups rg on rg.id = o.rgid
+  where rg.first_release_date is not null
+    and rg.first_release_date < o.eo - interval '365 days'
 )
 select * from over_count
 union all select * from under_count
@@ -188,4 +245,8 @@ union all select * from no_tracks
 union all select * from bad_dates
 union all select * from native_noop
 union all select * from empty_artist
-union all select * from orphan_primary;
+union all select * from orphan_primary
+union all select * from dup_artist
+union all select * from no_cover
+union all select * from itunes_suffix
+union all select * from date_vs_official;

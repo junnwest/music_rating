@@ -73,11 +73,17 @@ async function main() {
       if (mb) targets.push({ id: a.id, name: a.name, mbid: mb.external_id });
     }
   } else {
-    // Highest-prestige artists first: aliases matter most where someone will actually look.
-    const { data } = await db.from('artists')
-      .select('id, name, prestige_score, artist_external_ids!inner(source, external_id)')
-      .order('prestige_score', { ascending: false, nullsFirst: false })
+    /* Order by mb_rg_count, NOT prestige_score — `artists` has no prestige_score column (only
+       release_groups does), and ordering by it made PostgREST return an error that this function
+       then swallowed, reporting a cheerful "no targets with a MusicBrainz id" while doing nothing.
+       The error is checked now. mb_rg_count is the honest proxy available here: an artist with many
+       release groups is one whose persona links are worth resolving. */
+    const { data, error } = await db.from('artists')
+      .select('id, name, mb_rg_count, artist_external_ids!inner(source, external_id)')
+      .not('mb_rg_count', 'is', null)
+      .order('mb_rg_count', { ascending: false })
       .limit(LIMIT * 3);
+    if (error) throw new Error(`target selection failed: ${error.message}`);
     for (const a of (data ?? []) as any[]) {
       const mb = (a.artist_external_ids ?? []).find((e: any) => e.source === 'musicbrainz');
       if (mb) targets.push({ id: a.id, name: a.name, mbid: mb.external_id });
@@ -96,8 +102,15 @@ async function main() {
     const pairs: Pair[] = [];
     const missing: string[] = [];
 
-    // member of band -> 'group' (directional: t is a member of the group)
-    for (const r of detail.relations.filter(r => r.type === 'member of band')) {
+    /* DIRECTION IS NOT OPTIONAL. 'member of band' is reported from both ends, and MusicBrainz marks
+       which end you are on: on MF DOOM's page, "member of band -> Madvillain" is direction
+       'forward' and means DOOM is IN Madvillain. On a band's page the same relation type appears as
+       direction 'backward' and means the other artist is in THIS band.
+       The first run ignored direction and created both, which put David Byrne's 54 solo albums on
+       Talking Heads' page, 규현's 58 on SUPER JUNIOR's, and ONEW's on SHINee's — the exact opposite
+       of the problem this script exists to solve. Only 'forward' answers "whose discography is
+       this?". */
+    for (const r of detail.relations.filter(r => r.type === 'member of band' && r.direction === 'forward')) {
       const other = await ourArtist(r.artistId);
       if (!other) { missing.push(`${r.artistName} [group]`); continue; }
       pairs.push({ artist_id: t.id, related_artist_id: other.id, relation_type: 'group' });
