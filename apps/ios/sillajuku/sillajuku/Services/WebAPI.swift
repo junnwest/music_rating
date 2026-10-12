@@ -10,7 +10,10 @@ import Auth
 enum WebAPI {
     /// `reload` skips URLSession's local HTTP cache (pull-to-refresh); the
     /// server's own cache is separate -- routes that have one take `refresh=1`.
-    static func get<T: Decodable>(_ path: String, authed: Bool, query: [String: String] = [:], reload: Bool = false, dateDecodingStrategy: JSONDecoder.DateDecodingStrategy = .deferredToDate, onStatus: ((Int) -> Void)? = nil) async -> T? {
+    /// `cacheKey`: also keep the last good response on disk (Caches/WebAPI), so a
+    /// screen can show it instantly next launch via `cached(_:)` while this
+    /// fetch refreshes it. Only bytes that decoded successfully are kept.
+    static func get<T: Decodable>(_ path: String, authed: Bool, query: [String: String] = [:], reload: Bool = false, dateDecodingStrategy: JSONDecoder.DateDecodingStrategy = .deferredToDate, cacheKey: String? = nil, onStatus: ((Int) -> Void)? = nil) async -> T? {
         guard var components = URLComponents(url: Config.webBaseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false) else {
             return nil
         }
@@ -47,11 +50,41 @@ enum WebAPI {
         do {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = dateDecodingStrategy
-            return try decoder.decode(T.self, from: data)
+            let value = try decoder.decode(T.self, from: data)
+            if let cacheKey { Self.writeCache(data, key: cacheKey) }
+            return value
         } catch {
             print("WebAPI.get(\(path)): decode error: \(error)")
             return nil
         }
+    }
+
+    // MARK: Last-response disk cache
+
+    private nonisolated static var cacheDirectory: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("WebAPI", isDirectory: true)
+    }
+
+    private nonisolated static func cacheFile(_ key: String) -> URL {
+        // Keys can carry a user id; keep the filename to safe characters.
+        let safe = key.map { $0.isLetter || $0.isNumber || $0 == "-" ? $0 : "_" }
+        return cacheDirectory.appendingPathComponent(String(safe) + ".json")
+    }
+
+    private static func writeCache(_ data: Data, key: String) {
+        let file = cacheFile(key)
+        Task.detached(priority: .utility) {
+            try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+            try? data.write(to: file, options: .atomic)
+        }
+    }
+
+    /// The last response saved under `cacheKey`, read and decoded off the main
+    /// thread; nil if there's none yet (first launch) or it no longer decodes.
+    @concurrent nonisolated static func cached<T: Decodable>(_ key: String) async -> T? {
+        guard let data = try? Data(contentsOf: cacheFile(key)) else { return nil }
+        return try? JSONDecoder().decode(T.self, from: data)
     }
 
     // Fire-and-forget POST -- no return value, matching the "failure is harmless" telemetry
@@ -129,8 +162,10 @@ struct HomeFeedResponse: Decodable {
 }
 
 // MARK: - /api/discovery (unauthenticated)
+// The three Add-tab responses are `nonisolated` so `WebAPI.cached` can decode them
+// off the main thread (this target defaults to MainActor isolation).
 
-struct DiscoveryResponse: Decodable {
+nonisolated struct DiscoveryResponse: Decodable {
     let popular: [Release]
     let newReleases: [Release]
     let trending: [Release]
@@ -138,13 +173,13 @@ struct DiscoveryResponse: Decodable {
 
 // MARK: - /api/search/popular (unauthenticated)
 
-struct PopularSearchesResponse: Decodable {
+nonisolated struct PopularSearchesResponse: Decodable {
     let queries: [String]
 }
 
 // MARK: - /api/recommendations (authenticated)
 
-struct RecommendationsResponse: Decodable {
+nonisolated struct RecommendationsResponse: Decodable {
     let fromYourTaste: [Release]
     let forYou: [Release]
     let worlds: [World]

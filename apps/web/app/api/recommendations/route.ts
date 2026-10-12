@@ -52,6 +52,15 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 15;
 
 const TTL_SECONDS = 120;
+/**
+ * get_taste_similar_releases (HNSW over release_groups.embedding) times out on
+ * EVERY call now -- 8.4s then a statement-timeout error, even with one seed
+ * (measured 2026-10-12; it was ~3.3s for 4 seeds when written, on a smaller
+ * catalog). Each uncached Add-tab load waited those 8s for a result that was
+ * then discarded, and the DB still did the 8s of work. Off until the RPC is
+ * fixed; set RECS_SIMILAR=1 to turn it back on.
+ */
+const USE_SIMILAR_RPC = process.env.RECS_SIMILAR === '1';
 const BLOCK_SCORE = 1.5; // ≤ this → artist suppressed from all suggestion rows
 const LOVED_SCORE = 3.5; // ≥ this → artist eligible to seed "From Your Taste"
 const SEED_SCORE = 4.0; //  ≥ this → album eligible to seed the similarity RPC
@@ -95,6 +104,19 @@ function shuffle<T>(arr: T[]): T[] {
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
+}
+
+/**
+ * A pull-to-refresh should visibly change the personalized rows (2026-10-11:
+ * For You and the world rows were affinity-sorted, so a pull returned the same
+ * picks). With `vary`, the best `2n` of an already best-first list are shuffled
+ * and the rest follow: still strong matches, a different selection each pull.
+ * Plain loads stay best-first.
+ */
+function rotateTop<T>(sorted: T[], n: number, vary: boolean): T[] {
+  if (!vary) return sorted;
+  const k = Math.min(sorted.length, n * 2);
+  return [...shuffle(sorted.slice(0, k)), ...sorted.slice(k)];
 }
 
 // Bucket proportions from adventurousness (0–100), carried over from the old
@@ -227,8 +249,8 @@ export async function GET(req: NextRequest) {
           .order('first_release_date', { ascending: false, nullsFirst: false })
           .limit(150)
       : Promise.resolve({ data: [] as CandidateRow[], error: null }),
-    // (b) embedding-similar new artists (existing HNSW RPC)
-    seedIds.length > 0
+    // (b) embedding-similar new artists (existing HNSW RPC) -- see USE_SIMILAR_RPC
+    USE_SIMILAR_RPC && seedIds.length > 0
       ? supabase.rpc('get_taste_similar_releases', {
           p_seed_ids: seedIds,
           p_exclude_artists: Array.from(new Set([...lovedArtists, ...blockedArtists])),
@@ -283,6 +305,7 @@ export async function GET(req: NextRequest) {
     disliked,
     lovedArtists,
     adventurousness,
+    vary: refresh,
   });
 
   // World rows: cluster-pure, deduped against everything already shown above.
@@ -290,7 +313,7 @@ export async function GET(req: NextRequest) {
     ...fromYourTaste.slice(0, FROM_TASTE_SIZE).map((r) => r.id),
     ...forYou.map((r) => r.id),
   ]);
-  const worlds = buildWorldRows(clusters, profiles, poolsByCluster, usedIds, disliked);
+  const worlds = buildWorldRows(clusters, profiles, poolsByCluster, usedIds, disliked, refresh);
 
   const payload = {
     fromYourTaste: shuffle(fromYourTaste).slice(0, FROM_TASTE_SIZE).map(strip),
@@ -315,6 +338,7 @@ function buildWorldRows(
   poolsByCluster: CandidateRow[][],
   usedIds: Set<string>,
   disliked: Set<string>,
+  vary = false,
 ): { label: string; albums: CandidateRow[] }[] {
   const rows: { label: string; albums: CandidateRow[] }[] = [];
   clusters.slice(0, MAX_WORLD_ROWS).forEach((cluster, i) => {
@@ -337,10 +361,11 @@ function buildWorldRows(
         return { row, sim };
       })
       .sort((a, b) => b.sim - a.sim);
+    const ordered = rotateTop(scored, WORLD_ROW_SIZE, vary);
 
     const albums: CandidateRow[] = [];
     const artistCount: Record<string, number> = {};
-    for (const { row } of scored) {
+    for (const { row } of ordered) {
       if (albums.length >= WORLD_ROW_SIZE) break;
       const n = artistCount[row.artist_display] ?? 0;
       if (n >= 2) continue;
@@ -369,8 +394,10 @@ function rankForYou(args: {
   disliked: Set<string>;
   lovedArtists: Set<string>;
   adventurousness: number;
+  /** Pull-to-refresh: draw from the top of each bucket instead of strictly best-first. */
+  vary?: boolean;
 }): CandidateRow[] {
-  const { explore, pools, clusters, profiles, disliked, lovedArtists, adventurousness } = args;
+  const { explore, pools, clusters, profiles, disliked, lovedArtists, adventurousness, vary = false } = args;
 
   const seen = new Set<string>();
   const candidates: { row: CandidateRow; affinity: number; fromRpc: boolean }[] = [];
@@ -407,7 +434,7 @@ function rankForYou(args: {
     n: number,
     shuffled = false,
   ) => {
-    const ordered = shuffled ? shuffle(pool) : [...pool].sort(byAffinity);
+    const ordered = shuffled ? shuffle(pool) : rotateTop([...pool].sort(byAffinity), n, vary);
     let taken = 0;
     for (const c of ordered) {
       if (taken >= n) break;

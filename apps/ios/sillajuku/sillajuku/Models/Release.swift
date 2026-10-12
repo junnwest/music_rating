@@ -4,7 +4,7 @@ extension String {
     /// True when more than half of this string's letters are Hangul (syllables or jamo).
     /// Used to guard native-name fields that are mixed-provenance — some hold real Korean,
     /// others hold Japanese/Chinese transliterations from a different backfill pass.
-    var isPredominantlyHangul: Bool {
+    nonisolated var isPredominantlyHangul: Bool {
         var hangulCount = 0
         var letterCount = 0
         for scalar in unicodeScalars where CharacterSet.letters.contains(scalar) {
@@ -21,14 +21,15 @@ extension String {
     }
 }
 
-struct TrackItem: Codable {
+nonisolated struct TrackItem: Codable {
     let position: Int
     let title: String
     let durationMs: Int?
     let artists: [String]?
 }
 
-struct Release: Codable, Identifiable, Hashable {
+// nonisolated: plain data, decoded off the main thread (WebAPI.cached).
+nonisolated struct Release: Codable, Identifiable, Hashable {
     let id: UUID
     let title: String
     let artist: String
