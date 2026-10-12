@@ -1,5 +1,15 @@
 # Web Parity Checklist
 
+> **Parity status (2026-10-12):**
+> - **Albums-only numbers:** both. Profile Stats (no Songs tile; average and histogram from album scores), the "Rated"
+>   count (`get_follow_state`), and Taste's unlock gate and headline count albums.
+> - **Add tab:**
+>   - Both call `/api/recommendations` without the similarity RPC, and a pull varies For You and the world rows.
+>   - **iOS-only:** last-session shelves restored from disk on open, and shimmer shelves on a fresh install.
+>   - **Web-only:** the shared shelves render without waiting for the personal ones. Not needed on iOS, where each
+>     shelf already appears independently.
+> - **Covers:** both route CAA and ManiaDB through `/api/img`. ManiaDB still fails there for everyone (Cloudflare 403).
+
 > **Parity status (2026-10-11) — typed Mixes:** both platforms. Type chosen at creation, shown on Mix rows and pages,
 > pickers filtered by kind with an in-picker "New album/song Mix". Web-only: the Mix Dock refuses an item of the wrong
 > kind with a message. iOS-only: "Save to Mix" in the tracklist row's long-press menu (web has the row's bookmark button).

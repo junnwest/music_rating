@@ -52,13 +52,42 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
-> **2026-10-12 (Mac) — ⚠ `get_taste_similar_releases` times out on every call (8.4s → statement timeout, even with one
-> seed).** It was ~3.3s for 4 seeds when written (20260710000000), on a much smaller catalog. Every uncached Add-tab load
+> **SESSION CLOSE (2026-10-12, Mac) — everything below through 10-06 (Mac, later) is shipped and on `main`
+> (`147650d` → `f39bc5f`); all migrations applied and verified live. Web is deployed; iOS needs a build.**
+> **Next session:**
+> 1. **Upload an iOS build** (TestFlight/App Store). Everything iOS from 10-06 → 10-12 rides on it: song pivot,
+>    typed Mixes + "Save to Mix" on tracks, albums-only profile/Taste, proxied + background-decoded covers, launch
+>    typing fix, Add-tab saved shelves, connect-nudge fix, rating-row profile links, follow-request buttons. Until
+>    then App Store users keep the pre-pivot app (dead song like/comment buttons; a song into an album Mix errors).
+> 2. **Hands-on pass** (only verified by builds/typechecks + live DB checks): web Add tab speed; iOS Add tab opens on
+>    saved shelves, no Connect rows when linked; Mix creation/picking per kind; "Rated N tracks" dropdown
+>    (test: @nicky · Geography); `/song/<id>` redirect lands highlighted.
+> 3. **For the pipeline PC (Windows):**
+>    - Pipeline health check due **2026-10-13** (PIPELINE_CHECKS.md).
+>    - **ManiaDB covers (82) load nowhere:** Cloudflare 403s the proxy from iad1 AND icn1, so copy them into Storage.
+>    - **Repair `get_taste_similar_releases`** (see 10-12 below; off via `RECS_SIMILAR`).
+> 4. **Open follow-ups:**
+>    - Drop `track_ratings.review_text` + `notifications.track_rating_id` once pre-pivot iOS builds are gone.
+>    - Search: an artist's own albums rank below same-titled albums ("Adele"); `search_artists` does ~600ms of DB
+>      work and returns nothing at `lim=1`.
+>    - Mix like/share pushes still say "interacted with your activity".
+>    - Explore has only 50 eligible public posts, so a pull can't rotate anything in. Options: reorder per pull,
+>      "all caught up", or raise the 12-per-author cap.
+>    - Taste lock screen says "releases", which is now accurate; quests still count songs (not discussed).
+>    - Stale-while-revalidate caching for the other iOS tabs (Add has it now).
+>    - Audit live DB functions vs repo (get_suggested_users had drifted).
+
+> **2026-10-12 (Mac) — ✅ shipped `f39bc5f`. ⚠ `get_taste_similar_releases` times out on every call (8.4s → statement
+> timeout, even with one seed).** It was ~3.3s for 4 seeds when written (20260710000000), on a much smaller catalog. Every uncached Add-tab load
 > on web AND iOS waited those 8s for a result `/api/recommendations` then discarded, and the DB still did the work. The
 > route now skips it (`RECS_SIMILAR=1` re-enables), so For You is built from the cluster pools only, which is what it had
 > effectively been for a while. **To fix properly:** the HNSW lookup with its genre-overlap post-filter at
 > `ef_search=150` over the grown embedding set. Options: lower ef_search, pre-filter candidates, or precompute a
 > similar-releases table offline. The web Add page also stops gating the shared shelves (~0.1s) on the personal ones.
+> Same push: a pull (`refresh=1`) draws For You and world rows from the top of their pools, so they visibly change;
+> iOS ImageCache fetch/decode really off the main thread now (`@concurrent`; this target defaults to MainActor), which
+> fixed seconds of typing freeze after launch; iOS Add shows last session's shelves from disk instantly
+> (`WebAPI.get(cacheKey:)`), shimmer shelves on a fresh install, and Connect rows only for an explicit "not linked".
 
 > **2026-10-11 (Mac, later) — typed Mixes + cover decoding. ✅ Shipped in `245c225`; migration `20261011000000`
 > applied and verified live (wrong-kind items, type changes and a song-type default are all rejected; song Mixes get
@@ -80,13 +109,14 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 > already albums-only. Re-locks exactly one user, @nicky (18 albums + 43 songs). **Quests still count songs.** Migration
 > `20261011000001` ✅ applied and verified (@nicky: 18 albums + 43 songs → "Rated" 18, was 61).
 
-> **2026-10-11 (Mac) — load-time diagnosis + first two fixes (uncommitted until pushed).** Measured from the US:
+> **2026-10-11 (Mac) — load-time diagnosis + first two fixes. ✅ shipped (`9ef46f8`, `245c225`).** Measured from the US:
 > Cover Art Archive covers (60% of visible covers) take 2.9s median, up to 6.7s, with occasional 500s, while web's
 > `/api/img` proxy serves them in 0.11s once edge-cached. iOS had stopped using the proxy on 07-08 (prod 502s, since
 > fixed) and never went back. **Fix 1 (iOS):** `ImageCache.fetch` routes CAA through the proxy, falling back to
 > direct; cache keys unchanged; share downloads use the cache too. **Fix 2 (web):** Vercel functions ran in `iad1`
 > (default) against a **Seoul** DB, about 180ms per query, so `/api/feed/home` took 2.35s, search/popular 1.6s and
-> charts/songs 1.8s. `vercel.json` now sets `"regions": ["icn1"]`; `/api/img` is pinned to `iad1` (archive.org).
+> charts/songs 1.8s. `vercel.json` now sets `"regions": ["icn1"]`. (A `preferredRegion = 'iad1'` pin for `/api/img` was ignored by Vercel
+> and removed; CAA works from icn1.)
 > **Windows's CAA → iTunes/Spotify backfill (c5a66f7) doesn't replace this:** rated-album covers went from 120 to 48
 > CAA, but the catalog is still 563,242 CAA (~67%) and the backfill keeps CAA wherever it finds no match. **⚠ For
 > Windows: ManiaDB covers (82) don't load anywhere.** `/api/img` gets a Cloudflare 403 from ManiaDB, so it falls back to a
@@ -108,7 +138,7 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 > dead: 64,607 of 113,049 artists have it now (older notes say 0). **Still open:** an artist's own albums (by-artist path,
 > 9000) rank below unrelated albums that merely share the artist's name as a title (11500), e.g. "Adele".
 
-> **2026-10-06 (Mac, later) — songs stop being posts; albums come first. Code done on web + iOS, NOT committed. Both migrations ✅ APPLIED 2026-10-08 (verified live), BEFORE the deploy, so production is running old code against the new schema until web deploys and iOS ships.**
+> **2026-10-06 (Mac, later) — songs stop being posts; albums come first. ✅ Shipped (`147650d`, follow-ups through `3c621ac`). Both migrations ✅ APPLIED 2026-10-08 (verified live), BEFORE the deploy, so production is running old code against the new schema until web deploys and iOS ships.**
 > Song pages are gone on both platforms. Web `/song/<id>` now 308-redirects to `/album/<rg>#track-<id>`,
 > and the tracklist scrolls to that row and highlights it. On iOS a song opens its album scrolled to the track,
 > and tapping a track title opens the rating sheet. A song rating is a score only: no review text, likes,
@@ -119,11 +149,11 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 > **2026-10-09 fix:** the iOS dropdown never appeared, because its load was attached to an empty `Group`.
 > It only applies to the 19 album posts whose author also rated tracks on that album (82 of 101 user-album song
 > pairs have no album post). Test case: @nicky · Geography (15 tracks).
-> **To ship, in order:**
+> **Ship steps (migrations ✅, web ✅, iOS build ⏳ — see SESSION CLOSE):**
 > 1. **USER: apply `20261006000000_post_rated_tracks.sql`** (SQL editor). Additive. New RPC `get_post_rated_tracks`; without it the dropdown just stays hidden.
-> 2. Deploy web + ship an iOS build.
+> 2. Deploy web ✅ + ship an iOS build ⏳.
 > 3. **USER: apply `20261006000001_song_ratings_no_posts.sql`.** Destructive: deletes the 1 song like and 1 song comment, drops `track_rating_likes`/`track_rating_comments`, their notify triggers, `get_song_comments`/`get_song_ratings`, and the two notification types. It aborts if any function still references the dropped tables. **2026-10-08:** the first run aborted on `get_suggested_users`, whose live definition existed only in the DB (edited in place, never in a migration) and counted song comments and reviews. The migration now carries that live definition, minus the song comments and reviews, so the repo has it for the first time. Re-run the whole file. `track_ratings.review_text` and `notifications.track_rating_id` are cleared but **kept**, because older iOS builds select them; drop them in a follow-up once those builds age out.
-> **Not done:** a hands-on pass on device/browser (the dropdown needs step 1 first). Interim: Mix share posts live in the Albums posts view until Mixes are typed album/song (next task: chosen at creation, unchangeable; album Mixes → Albums, song Mixes → Songs).
+> **Since then:** the dropdown works on iOS (10-09 fix); Mixes are typed (10-11), so the interim "Mix posts in Albums" rule is now "album-Mix posts only".
 
 > **2026-10-06 (pipeline PC) — explore ranking, duplicate merging, Korean metadata, reported gaps.**
 > **Explore `home-v5`:** `value` scored character count (its own comment admitted it); replaced by

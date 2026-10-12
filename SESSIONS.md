@@ -4,6 +4,30 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-10-06 → 10-12 (Mac) — SESSION CLOSE: albums first, typed Mixes, and a speed pass.** All on `main`
+(`147650d` → `f39bc5f`), and every migration applied and verified live. Web deployed; **iOS build not yet uploaded.**
+
+- **Song pivot:** no song pages (redirect to album#track); song ratings are scores only. "Rated N tracks" dropdown on
+  album posts. Profile is Albums | EPs | Singles. Stats, the "Rated" count and Taste count albums only.
+- **Typed Mixes (album or song), DB-enforced.**
+- **Search:** exact-title ties broken by artist popularity.
+- **Fixes:** push notifications name the album (a dead `ratings→releases` embed); rating-row profile links; the iOS
+  "Ratings & Reviews" preview showed only reviewed ratings, so it was empty on ~90% of albums.
+- **Speed:**
+  - Vercel functions moved to icn1, next to the Seoul DB (feed 2.35s → 0.59s from the US).
+  - iOS covers go through `/api/img` (0.11s edge hit vs 2.9s CAA) and decode off the main thread. This target's
+    MainActor default had put them on the main thread and frozen typing at launch.
+  - Add tab: saved shelves and an honest connect nudge.
+  - Recommendations stopped waiting on the timing-out similarity RPC.
+
+**Lessons worth keeping:**
+1. Live DB functions drift from the repo (get_suggested_users), so rewrites now carry an md5 drift guard.
+2. On this iOS target nothing is off-main by default (`@concurrent` / `Task.detached`).
+3. A "refresh does nothing" report can be correct behaviour: Explore had 50 eligible public posts, all seen.
+4. Measure before fixing. Every speed fix here came from a timing that contradicted the first guess.
+
+---
+
 **2026-10-12 (Windows) — storage: 11,875 MB -> 8,350 MB, and the limits of auditing against MusicBrainz.**
 
 **STORAGE.** The 12 GB plan was 97% full. The received wisdom ("your rows are fat, probably raw API
