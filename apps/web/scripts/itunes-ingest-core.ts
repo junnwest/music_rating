@@ -85,6 +85,19 @@ const EDITION_PAREN_RE = new RegExp(
 );
 const EDITION_DASH_RE = new RegExp(`\\s*[-–—]\\s.*\\b(?:${EDITION_KW})\\b.*$`, 'i');
 
+/* iTunes appends a FORMAT label to collection names: "Fire - Single", "Bookhead - EP". It is not
+   part of the title — release_group_type already carries the format — and it reached users as
+   "Fire - Single" on artist pages. 5,725 rows had it before this existed.
+
+   DELIBERATELY NOT PART OF EDITION_KW. stripEditionSuffix answers "is this a deluxe/remaster of
+   something else?", and releaseGroupKey() hashes its output, so adding Single/EP there would shift
+   dedup keys across the whole catalogue and change which rows match which. A format label is a
+   different question and gets a different function. */
+export function stripItunesFormatSuffix(title: string): string {
+  const t = (title ?? '').replace(/\s+-\s+(Single|EP)$/i, '').trim();
+  return t || (title ?? '').trim();   // never return empty
+}
+
 export function stripEditionSuffix(title: string): string {
   let t = title;
   // Strip repeatedly: "Album (Deluxe) (Remastered)" → "Album".
@@ -436,6 +449,12 @@ type ReleaseGroupArgs = {
 };
 
 export async function findOrCreateReleaseGroup(ctx: IngestContext, args: ReleaseGroupArgs): Promise<GroupCacheEntry> {
+  /* Strip iTunes' format label at the single point every caller funnels through, BEFORE the group
+     key is computed. Doing it here rather than at each call site also prevents the duplicate from
+     being created at all: "Fire - Single" keyed to "firesingle" and never matched the existing
+     "Fire" group, so iTunes minted a second release group for the same record. It now keys to
+     "fire" and adopts the existing row. */
+  args = { ...args, title: stripItunesFormatSuffix(args.title) };
   const groupType = toGroupType(args.appReleaseType);
   const key = `${args.primaryArtistId}::${releaseGroupKey(args.title)}::${groupType}`;
   const cached = ctx.groupByKey.get(key);
@@ -550,6 +569,8 @@ export async function ingestEdition(
   const { db, opts } = ctx;
   const { album, group } = args;
 
+  // Strip iTunes' format label once, here, so every downstream write sees the real title.
+  const albumTitle = stripItunesFormatSuffix(album.collectionName);
   const rtype = releaseType(album.trackCount ?? 0, album.collectionName);
   if (opts.skipSingles && rtype === 'Single') return 'skipped';
   if (opts.dryRun) return 'inserted';
@@ -575,7 +596,7 @@ export async function ingestEdition(
       is_canonical:     isCanonical,
       region:           album.country ?? null,
       itunes_id:        album.collectionId,
-      title:            album.collectionName,
+      title:            albumTitle,
       artist:           album.artistName,
       title_native:     native?.titleNative ?? null,
       artist_native:    native?.artistNative ?? null,

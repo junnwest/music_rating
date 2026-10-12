@@ -70,6 +70,8 @@
     "backfill:genres:rg:lastfm": "tsx --env-file=.env.local scripts/backfill-genres-rg-lastfm.ts",
     "backfill:genres:rg:lastfm:dry": "tsx --env-file=.env.local scripts/backfill-genres-rg-lastfm.ts --dry-run",
     "check:spotify-guard": "tsx scripts/check-spotify-guard.ts",
+    "audit:data": "tsx --env-file=.env.local scripts/db-exec.ts scripts/audit-data-errors.sql --out=scripts/data/audit-report.json",
+    "fix:itunes-suffix": "tsx --env-file=.env.local scripts/fix-itunes-format-suffix.ts",
     "dedup:kr": "tsx --env-file=.env.local scripts/dedup-by-duration.ts --mixed-script-only --cross-source-only --script=korean --tolerance=1 --date-window=45",
     "dedup:kr:apply": "tsx --env-file=.env.local scripts/dedup-by-duration.ts --mixed-script-only --cross-source-only --script=korean --tolerance=1 --date-window=45 --apply",
     "check:view": "tsx --env-file=.env.local scripts/check-recommendable-view.ts",
