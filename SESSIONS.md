@@ -4,6 +4,74 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-10-12 (Windows) — storage: 11,875 MB -> 8,350 MB, and the limits of auditing against MusicBrainz.**
+
+**STORAGE.** The 12 GB plan was 97% full. The received wisdom ("your rows are fat, probably raw API
+JSON") was WRONG for this database and worth disproving before acting on it: `releases` averages
+**305 bytes/row**, `artists_json` is entirely NULL, `tracklist` exists on 33,968 rows totalling 11 MB.
+Trimming fields would have recovered nothing.
+
+Where it actually was: **~7 of 12 GB was indexes**, and ONE index -- `idx_release_groups_embedding_hnsw`
+-- was 3,155 MB, 25% of the database. With its 2,144 MB of TOASTed vectors the embedding feature was
+**44% of the catalogue**, while covering only 402,448 of 838,049 release groups.
+
+Done: dropped `idx_releases_fts` (33 MB, 0 scans in 6.5 months) and `idx_recordings_isrc` (68 MB, 16
+scans); converted `embedding` from `vector(1024)` to **`halfvec(1024)`** (TOAST 2,144 -> 1,066 MB) and
+rebuilt HNSW (3,155 -> **1,047 MB**). Net **-3,525 MB**; headroom 414 MB -> ~3.9 GB. No application
+change was needed: the RPC compares `rg.embedding <=> s.seed_embedding` (both from the column, so
+halfvec<=>halfvec) and the writer sends `JSON.stringify(vec)`, which halfvec parses identically.
+
+NOT dropped, deliberately: the three title trigram indexes (234 MB) are three DIFFERENT expressions
+(`title`, `lower(title)`, `normalize_text(title)`), all used -- dropping one means a seq scan over
+837k rows. `release_groups_genres_backup` (51 MB) is NOT redundant: 13,724 release groups have genres
+there and none in `release_genres`, and the genre remap may have removed them deliberately.
+
+**THREE FAILED INDEX BUILDS, each failing differently, which is why the lessons are worth keeping:**
+1. Via the Management API: "finished" after 85 min having created **nothing**. Its HTTP gateway cuts
+   off at ~125s while the statement keeps running, and the only signal there is `pg_stat_activity`.
+   **Absence from pg_stat_activity is not success** -- `pg_index` showed no index at all.
+2. Direct connection, `maintenance_work_mem='2GB'`: died in seconds with *could not resize shared
+   memory segment to 2144367168 bytes: No space left on device*. That is **/dev/shm**, requested by
+   PARALLEL workers -- no amount of database free space helps.
+3. Over-corrected to 512MB: 824 MB of vectors does not fit, so it spilled and collapsed from 37,000
+   tuples/min to **600/min**. Killed at 82 min.
+What worked: `max_parallel_maintenance_workers=0` (no shared segment, so the memory is backend-local
+and can safely be large) plus `maintenance_work_mem='1536MB'`. **23.5 min.** See
+scripts/build-embedding-index.ts. Also: `DATABASE_URL` exists and points at the SESSION-mode pooler
+(port 5432), so db-exec.ts's header claim "no DB URL on this machine" is out of date -- long DDL
+should go direct rather than through the API.
+
+**AUDITING: internal consistency is not accuracy.** audit-data-errors.sql compares against
+`artists.mb_rg_count`, a cached MusicBrainz figure. If MusicBrainz is itself unreliable -- it counts
+bootlegs in first-release-date, catalogues leaks, splits personas -- then that largely measures how
+faithfully we copied MusicBrainz, and can never catch "this discography is completely wrong", because
+MB and we would be wrong together.
+
+So scripts/audit-sample-vs-sources.ts asks **iTunes live**, on a random stratified sample. Two
+corrections it forced:
+  * A pure title diff measures NAMING, not gaps. Kim Hyun Sik came out "ours 19 / iTunes 19" with 5
+    missing AND 5 extra, because the same albums are held in Korean on one side and romanized on the
+    other. Matching on **release date** first, with `title_disagreement` as its own category, took a
+    6-artist smoke test from 0 exact matches / 57 missing to 3 / 4.
+  * Prestige must come from `external_scores` (Rolling Stone 500, Grammy AOTY, Mercury, BRIT,
+    Pitchfork perfect scores -- Kanye has 18 rows), NOT `release_groups.prestige_score`, which is
+    capped at 1.0, covers 766 artists and is overwhelmingly K-pop.
+
+First run (51 artists, 7 exact matches) found gaps consistently in ONE direction -- we hold fewer than
+iTunes: TWICE 36/56, SUPER JUNIOR 32/40, EXO 21/34, SHINee 30/37.
+
+**TWO OPEN ITEMS, both real:**
+  * The prestige stratum FAILED: 31 of 80 requested, and almost entirely Korean. Cause: the sampler
+    looks discographies up **by iTunes artist id**, and The Beatles, Bob Dylan, Radiohead, Kendrick
+    Lamar, Beyonce, Frank Ocean and Fiona Apple have **no iTunes id** (MusicBrainz only), so every
+    canonical Western artist was silently excluded. Fix: fall back to iTunes NAME SEARCH when no id
+    exists. Until then this audit measures Korean-catalogue accuracy only.
+  * **There is no "Kanye West" row.** He is stored as **"Ye"** (US, 109 release groups, 37 albums/EPs).
+    Defensible -- MusicBrainz renamed him -- but search finds him only via an alias, and it is likely
+    connected to the discography problem reported before this session. Unverified.
+
+---
+
 **2026-10-11 (Windows) — MF DOOM, and why a discography looked nothing like Spotify's.** Reported as
 "MF DOOM discography is different from what I see on Spotify and YouTube Music". Two causes, both fixed.
 
