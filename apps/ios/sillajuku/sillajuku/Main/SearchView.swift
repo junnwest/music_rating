@@ -59,8 +59,15 @@ class DiscoveryViewModel {
     // real connection state, not a data-presence proxy -- a linked account with genuinely no
     // listening history yet would otherwise show a "Connect" nudge for a service it's already
     // connected to. Checked once via checkConnectionStatus() below, not on every load().
-    var isSpotifyLinked = false
-    var isAppleMusicAuthorized = false
+    // nil = not known yet: the nudge only shows for an explicit `false`, so a connected
+    // account never sees "Connect" while the check is in flight (it used to, for ~5s, since
+    // both started as false). Seeded synchronously from what's already on the device --
+    // the signed-in user's cached identities and the MusicKit permission -- then confirmed
+    // live by checkConnectionStatus().
+    var isSpotifyLinked: Bool? = supabase.auth.currentUser?.identities.map {
+        $0.contains { $0.provider == Provider.spotify.rawValue }
+    }
+    var isAppleMusicAuthorized: Bool? = MusicAuthorization.currentStatus == .authorized
 
     // DB-personalized (based on user's ratings)
     var personalizedAlbums: [Release] = []
@@ -163,7 +170,13 @@ class DiscoveryViewModel {
         // now starts resolving the moment loadSpotify/loadAppleMusic finish, full stop, regardless of
         // how long Discovery takes on either attempt.
         async let discoveryChain: Void = {
-            if !hasDiscoveryData { await reloadDiscoverySections() }
+            // Last session's sections first, from disk -- the tab shows real rows the moment
+            // it opens instead of ~5s of nothing -- then always fetch fresh ones once.
+            if !hasDiscoveryData { await restoreCachedSections() }
+            if !hasFetchedDiscovery {
+                await reloadDiscoverySections()
+                hasFetchedDiscovery = true
+            }
             // One retry if discovery/recommendations came back empty -- loadDiscovery/
             // loadRecommendations each silently swallow a failed fetch (network
             // blip, timeout, or cold-launch contention with Home/Quest's own concurrent queries) as
@@ -200,8 +213,11 @@ class DiscoveryViewModel {
     // ConnectedAccountsView's own Apple Music row already uses -- a device permission, not a
     // Supabase identity, so it's unrelated to whether "apple" shows under Connected Accounts.
     private func checkConnectionStatus() async {
-        let identities = (try? await supabase.auth.userIdentities()) ?? []
-        isSpotifyLinked = identities.contains { $0.provider == Provider.spotify.rawValue }
+        // A failed check keeps what we already knew (nil or the seeded value) instead of
+        // reading as "not linked" -- that's what put a wrong Connect Spotify row on screen.
+        if let identities = try? await supabase.auth.userIdentities() {
+            isSpotifyLinked = identities.contains { $0.provider == Provider.spotify.rawValue }
+        }
         isAppleMusicAuthorized = MusicAuthorization.currentStatus == .authorized
     }
 
@@ -342,6 +358,32 @@ class DiscoveryViewModel {
         }
         await resolveRecentlyPlayedIfNeeded()
         prefetchDiscoveryCovers()
+    }
+
+    private var hasFetchedDiscovery = false
+
+    /// First open with nothing saved yet (fresh install): placeholder shelves instead
+    /// of a blank screen while the first fetch is in flight.
+    var showsPlaceholderShelves: Bool { !hasDiscoveryData && !hasFetchedDiscovery }
+
+    /// Cache keys for the three sections' last good responses (WebAPI's disk cache).
+    /// Recommendations are per-user, so their key carries the user id.
+    private static let discoveryCacheKey = "discovery"
+    private static let popularSearchesCacheKey = "search-popular"
+    private static func recommendationsCacheKey() -> String? {
+        supabase.auth.currentUser.map { "recommendations-\($0.id.uuidString)" }
+    }
+
+    private func restoreCachedSections() async {
+        async let discovery: DiscoveryResponse? = WebAPI.cached(Self.discoveryCacheKey)
+        async let popular: PopularSearchesResponse? = WebAPI.cached(Self.popularSearchesCacheKey)
+        let recsKey = Self.recommendationsCacheKey()
+        async let recs: RecommendationsResponse? = recsKey == nil ? nil : WebAPI.cached(recsKey!)
+        let (d, p, r) = await (discovery, popular, recs)
+        // Recommendations first: they carry blockedArtists, which filters the rest.
+        if let r { applyRecommendations(r) }
+        if let d { applyDiscovery(d) }
+        if let p, popularSearchQueries.isEmpty { popularSearchQueries = p.queries }
     }
 
     private func reloadDiscoverySections(fresh: Bool = false) async {
@@ -563,7 +605,13 @@ class DiscoveryViewModel {
     private func loadDiscovery(fresh: Bool = false) async {
         // Global lists -- the server's short cache is fine here (they move over
         // hours, not seconds); `fresh` only skips the phone's HTTP cache.
-        guard let resp: DiscoveryResponse = await WebAPI.get("/api/discovery", authed: false, reload: fresh) else { return }
+        guard let resp: DiscoveryResponse = await WebAPI.get(
+            "/api/discovery", authed: false, reload: fresh, cacheKey: Self.discoveryCacheKey
+        ) else { return }
+        applyDiscovery(resp)
+    }
+
+    private func applyDiscovery(_ resp: DiscoveryResponse) {
         popularAlbums = filterBlocked(resp.popular)
         newReleaseAlbums = filterBlocked(resp.newReleases)
         trendingAlbums = filterBlocked(resp.trending)
@@ -571,7 +619,9 @@ class DiscoveryViewModel {
     }
 
     private func loadPopularSearches(fresh: Bool = false) async {
-        guard let resp: PopularSearchesResponse = await WebAPI.get("/api/search/popular", authed: false, reload: fresh) else { return }
+        guard let resp: PopularSearchesResponse = await WebAPI.get(
+            "/api/search/popular", authed: false, reload: fresh, cacheKey: Self.popularSearchesCacheKey
+        ) else { return }
         popularSearchQueries = resp.queries
     }
 
@@ -583,8 +633,13 @@ class DiscoveryViewModel {
     private func loadRecommendations(fresh: Bool = false) async {
         guard let resp: RecommendationsResponse = await WebAPI.get(
             "/api/recommendations", authed: true,
-            query: fresh ? ["refresh": "1"] : [:], reload: fresh
+            query: fresh ? ["refresh": "1"] : [:], reload: fresh,
+            cacheKey: Self.recommendationsCacheKey()
         ) else { return }
+        applyRecommendations(resp)
+    }
+
+    private func applyRecommendations(_ resp: RecommendationsResponse) {
         blockedArtists = Set(resp.blockedArtists)
         tasteAlbums = filterBlocked(resp.fromYourTaste)
         personalizedAlbums = filterBlocked(resp.forYou)
@@ -1396,6 +1451,26 @@ struct SearchView: View {
 
     // MARK: - Discovery
 
+    /// Shape of a discovery shelf (title + a row of covers), shimmering.
+    private var placeholderShelf: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ShimmerView()
+                .frame(width: 140, height: 14)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+            HStack(spacing: 12) {
+                ForEach(0..<3, id: \.self) { _ in
+                    ShimmerView()
+                        .frame(width: 140, height: 140)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .padding(.bottom, 12)
+        .accessibilityHidden(true)
+    }
+
     @ViewBuilder
     private var discoveryView: some View {
         if discoveryVM.isLoading {
@@ -1404,6 +1479,10 @@ struct SearchView: View {
         } else {
             ScrollView(showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 0) {
+
+                    if discoveryVM.showsPlaceholderShelves {
+                        ForEach(0..<3, id: \.self) { _ in placeholderShelf }
+                    }
 
                     // ── Popular Searches ──────────────────────
                     // Cross-user trending query chips -- see DiscoveryViewModel.popularSearchQueries's
@@ -1545,13 +1624,13 @@ struct SearchView: View {
                     // checks (see their own comment), not data-presence proxies, so a
                     // linked-but-no-data-yet account doesn't get a wrong "Connect" nudge.
                     VStack(spacing: 10) {
-                        if !discoveryVM.isSpotifyLinked {
+                        if discoveryVM.isSpotifyLinked == false {
                             Button { onGoToSettings() } label: {
                                 NudgeRow(icon: "icon-link", title: "Connect Spotify")
                             }
                             .buttonStyle(.plain)
                         }
-                        if !discoveryVM.isAppleMusicAuthorized {
+                        if discoveryVM.isAppleMusicAuthorized == false {
                             Button { onGoToSettings() } label: {
                                 NudgeRow(icon: "icon-link", title: "Connect Apple Music")
                             }
@@ -1559,7 +1638,7 @@ struct SearchView: View {
                         }
                     }
                     .padding(.horizontal, 16)
-                    .padding(.bottom, discoveryVM.isSpotifyLinked && discoveryVM.isAppleMusicAuthorized ? 0 : 16)
+                    .padding(.bottom, discoveryVM.isSpotifyLinked == false || discoveryVM.isAppleMusicAuthorized == false ? 16 : 0)
 
                     Spacer().frame(height: 36)
                 }

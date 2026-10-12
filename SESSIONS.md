@@ -206,6 +206,26 @@ Found: ManiaDB covers 403 from the proxy in both regions (Cloudflare), so they n
 Then typed Mixes (`20261011000000`). Decided with the user: Listen Later is album-only, the one mixed Mix keeps its
 albums and drops its song, and song-Mix posts show in the feed and on the Mix tab only. See README for the full list.
 
+**Same day, later — typing froze for seconds right after launch (iOS).** The target sets
+`SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` + approachable concurrency, so `ImageCache`'s fetch/decode ran on the
+MAIN thread, and the morning's "decode off the main thread" change had made each decode eager
+(`ShouldCacheImmediately`). Launch prefetches covers from Profile (up to 120), Rankings and Discovery, so a burst of
+main-thread decodes lined up with the first keystroke. Fix: the fetch/decode path is `nonisolated` +
+`@concurrent` (a plain `nonisolated async` still runs on the caller's actor under approachable concurrency);
+`Config.webBaseURL` is nonisolated. **Lesson for this target: "off the main thread" needs `@concurrent` or
+`Task.detached`; nothing is off-main by default.** Pending the user's on-device retest.
+
+**Same day — Add tab's first ~5s (iOS).** Two faults. First, the connect nudges: `isSpotifyLinked` and
+`isAppleMusicAuthorized` started as `false` ("not connected"), so connected accounts saw both Connect rows until
+`checkConnectionStatus()` finished, and a failed identities call also read as unlinked. They're now `Bool?`
+(nil = unknown, the nudge needs an explicit false), seeded synchronously from `supabase.auth.currentUser?.identities`
+and `MusicAuthorization.currentStatus`, and a failed live check keeps the known value. Second, the empty shelves:
+discovery, recommendations and popular-searches responses are now saved by `WebAPI.get(cacheKey:)` (Caches/WebAPI,
+recommendations keyed per user) and restored by `WebAPI.cached` before the fetch, so every open after the first shows
+last session's shelves instantly and refreshes them. A fresh install shows shimmer placeholder shelves. Deliberately NOT
+preloaded at launch (MainTabView's measured contention note). `Release`, `TrackItem` and the three response types are
+now `nonisolated` so they decode off the main thread.
+
 ---
 
 **2026-10-06 (Mac, later) — songs stop being posts.** Goal: prioritise album rating and keep songs from

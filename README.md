@@ -52,6 +52,14 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
+> **2026-10-12 (Mac) — ⚠ `get_taste_similar_releases` times out on every call (8.4s → statement timeout, even with one
+> seed).** It was ~3.3s for 4 seeds when written (20260710000000), on a much smaller catalog. Every uncached Add-tab load
+> on web AND iOS waited those 8s for a result `/api/recommendations` then discarded, and the DB still did the work. The
+> route now skips it (`RECS_SIMILAR=1` re-enables), so For You is built from the cluster pools only, which is what it had
+> effectively been for a while. **To fix properly:** the HNSW lookup with its genre-overlap post-filter at
+> `ef_search=150` over the grown embedding set. Options: lower ef_search, pre-filter candidates, or precompute a
+> similar-releases table offline. The web Add page also stops gating the shared shelves (~0.1s) on the personal ones.
+
 > **2026-10-11 (Mac, later) — typed Mixes + cover decoding. ✅ Shipped in `245c225`; migration `20261011000000`
 > applied and verified live (wrong-kind items, type changes and a song-type default are all rejected; song Mixes get
 > covers). Web deployed; iOS needs a build.**

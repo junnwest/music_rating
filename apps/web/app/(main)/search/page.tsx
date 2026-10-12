@@ -881,7 +881,11 @@ function Discovery({
   const [popular, setPopular] = useState<SJRelease[]>([]);
   const [newReleases, setNewReleases] = useState<SJRelease[]>([]);
   const [trending, setTrending] = useState<SJRelease[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Separate flags: the shared shelves (/api/discovery, ~0.1s) used to wait for
+  // the personal ones (/api/recommendations), which made the whole tab as slow
+  // as the slowest request (2026-10-12).
+  const [globalLoading, setGlobalLoading] = useState(true);
+  const [personalLoading, setPersonalLoading] = useState(true);
 
   useEffect(() => {
     if (!supabase || !ready) return;
@@ -1014,8 +1018,9 @@ function Discovery({
         }
       })();
 
+      void globalP.finally(() => !cancelled && setGlobalLoading(false));
+      void personalP.finally(() => !cancelled && setPersonalLoading(false));
       await Promise.all([globalP, personalP]);
-      if (!cancelled) setLoading(false);
     })();
     return () => {
       cancelled = true;
@@ -1030,21 +1035,19 @@ function Discovery({
         !dismissedIds.has(a.id),
     );
 
-  if (loading) {
-    return (
-      <div className="mt-8 space-y-8" aria-hidden>
-        {[0, 1].map((i) => (
-          <div key={i}>
-            <SkeletonLine w="w-40" h="h-6" className="mb-3" />
-            <div className="flex gap-4 overflow-hidden">
-              {Array.from({ length: 6 }).map((_, j) => (
-                <Skeleton key={j} className="w-36 h-48 rounded-xl bg-surface shrink-0" />
-              ))}
-            </div>
-          </div>
+  const shelfSkeleton = (key: number) => (
+    <div key={key} aria-hidden>
+      <SkeletonLine w="w-40" h="h-6" className="mb-3" />
+      <div className="flex gap-4 overflow-hidden">
+        {Array.from({ length: 6 }).map((_, j) => (
+          <Skeleton key={j} className="w-36 h-48 rounded-xl bg-surface shrink-0" />
         ))}
       </div>
-    );
+    </div>
+  );
+
+  if (globalLoading && personalLoading) {
+    return <div className="mt-8 space-y-8">{[0, 1].map(shelfSkeleton)}</div>;
   }
 
   const sections: { title: string; albums: SJRelease[] }[] = [
@@ -1061,6 +1064,8 @@ function Discovery({
 
   return (
     <div className="mt-8 space-y-9 pb-10">
+      {/* Personal rows sort first; hold their place while they're still coming. */}
+      {personalLoading && !!userId && shelfSkeleton(-1)}
       {sections.map(({ title, albums }) => (
         <section key={title}>
           <h2 className="text-[19px] font-bold text-ink mb-3">{title}</h2>

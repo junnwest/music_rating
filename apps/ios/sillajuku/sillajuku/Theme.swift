@@ -54,7 +54,7 @@ extension String {
 
 // MARK: - Shimmer placeholder
 
-private struct ShimmerView: View {
+struct ShimmerView: View {
     @State private var phase: CGFloat = 0
 
     var body: some View {

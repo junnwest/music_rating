@@ -21,7 +21,14 @@ final class ImageCache {
     /// is disabled — this class owns its own disk tier keyed by the
     /// pre-redirect URL, and double-storing the bytes helps nothing (the
     /// redirect hops themselves are never HTTP-cacheable anyway).
-    static let session: URLSession = {
+    // `nonisolated` throughout the fetch/decode path: this target defaults to
+    // MainActor isolation (SWIFT_DEFAULT_ACTOR_ISOLATION) with approachable
+    // concurrency, so without it every download's decode ran on the MAIN thread --
+    // and launch prefetches hundreds of covers (Profile, Rankings, Discovery),
+    // which froze typing for seconds right after opening the app (2026-10-11).
+    // `@concurrent` on the async ones: a plain `nonisolated async` func still runs
+    // on its caller's actor under approachable concurrency.
+    nonisolated static let session: URLSession = {
         let config = URLSessionConfiguration.default
         config.httpMaximumConnectionsPerHost = 12
         config.timeoutIntervalForRequest = 20
@@ -41,25 +48,25 @@ final class ImageCache {
     /// ManiaDB too, for correctness rather than speed: its art is http-only (its
     /// https answers 403), and App Transport Security blocks plain http, so a
     /// direct load always fails on iOS. Matches web's `Cover.tsx` proxied hosts.
-    private static func needsProxy(_ url: URL) -> Bool {
+    private nonisolated static func needsProxy(_ url: URL) -> Bool {
         guard let host = url.host?.lowercased() else { return false }
         return host == "coverartarchive.org" || host == "archive.org" || host.hasSuffix(".archive.org")
             || host == "maniadb.com" || host.hasSuffix(".maniadb.com")
     }
 
-    private static func proxied(_ url: URL) -> URL? {
+    private nonisolated static func proxied(_ url: URL) -> URL? {
         var c = URLComponents(url: Config.webBaseURL.appendingPathComponent("api/img"), resolvingAgainstBaseURL: false)
         c?.queryItems = [URLQueryItem(name: "url", value: url.absoluteString)]
         return c?.url
     }
 
-    private static func downloadData(_ url: URL) async -> Data? {
+    @concurrent private nonisolated static func downloadData(_ url: URL) async -> Data? {
         guard let (data, resp) = try? await session.data(from: url),
               (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
         return data
     }
 
-    private static func download(_ url: URL) async -> (UIImage, Data)? {
+    @concurrent private nonisolated static func download(_ url: URL) async -> (UIImage, Data)? {
         guard let data = await downloadData(url), let img = decode(data) else { return nil }
         return (img, data)
     }
@@ -67,13 +74,13 @@ final class ImageCache {
     /// Longest side kept in memory. The largest cover drawn is 128pt (384px at
     /// 3x); 600 leaves headroom without holding 1000px Deezer bitmaps (~4 MB
     /// decoded each) for a 60pt thumbnail.
-    private static let maxPixelSize = 600
+    private nonisolated static let maxPixelSize = 600
 
     /// Decodes AND downsamples now, on the calling (background) thread.
     /// `UIImage(data:)` decodes lazily -- at first draw, on the main thread --
     /// which is what made scrolling past fresh covers stutter. ImageIO's
     /// thumbnail with `ShouldCacheImmediately` returns an already-decoded bitmap.
-    static func decode(_ data: Data) -> UIImage? {
+    nonisolated static func decode(_ data: Data) -> UIImage? {
         let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
         guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions) else { return nil }
         let options = [
@@ -89,14 +96,14 @@ final class ImageCache {
     /// Downloads a cover, through the proxy for CAA/ManiaDB URLs, falling back to the
     /// direct URL if the proxy fails (as web's `Cover.tsx` does). Callers key
     /// the cache on the ORIGINAL url, so existing disk entries stay valid.
-    static func fetch(_ url: URL) async -> (UIImage, Data)? {
+    @concurrent nonisolated static func fetch(_ url: URL) async -> (UIImage, Data)? {
         if needsProxy(url), let viaProxy = proxied(url), let hit = await download(viaProxy) { return hit }
         return await download(url)
     }
 
     /// Same route, but full resolution and not cached -- for share cards, which
     /// are drawn far larger than any on-screen cover (the cache holds <= 600px).
-    static func fetchFullSize(_ url: URL) async -> UIImage? {
+    @concurrent nonisolated static func fetchFullSize(_ url: URL) async -> UIImage? {
         if needsProxy(url), let viaProxy = proxied(url), let data = await downloadData(viaProxy),
            let img = UIImage(data: data) { return img }
         guard let data = await downloadData(url) else { return nil }
