@@ -110,6 +110,13 @@ export interface MbArtistCandidate {
   disambiguation: string | null;
   aliases: string[];       // alias + sort-name variants — for alias-aware exact matching
 }
+/** One MB artist-artist relationship, as it bears on "whose discography is this?". */
+export interface MbArtistRelation {
+  type: string;            // 'is person' | 'member of band' | 'collaboration' | ...
+  direction: string;       // 'forward' | 'backward'
+  artistId: string;        // the OTHER artist's MBID
+  artistName: string;
+}
 export interface MbArtistDetail {
   id: string;
   name: string;
@@ -119,6 +126,7 @@ export interface MbArtistDetail {
   aliases: MbAlias[];
   genres: string[];
   genreVotes: MbGenreVote[];   // same genres WITH vote counts (artists.genre_evidence.musicbrainz)
+  relations: MbArtistRelation[];
 }
 export interface MbCredit {
   mbid: string | null;   // credited artist's MBID (null for pure free-text credits)
@@ -300,7 +308,13 @@ export function artistCountry(a: any): string | null {
 }
 
 export async function getArtist(mbid: string): Promise<MbArtistDetail | null> {
-  const a = await mbGet(`/artist/${mbid}?inc=${enc('aliases genres')}`);
+  /* artist-rels rides along on this existing request, so the persona graph costs ZERO extra MB
+     calls. It is what lets one artist's page show work released under their other names: MF DOOM
+     is `member of band` Madvillain / DANGERDOOM / JJ DOOM / NehruvianDOOM, and `is person`
+     Daniel Dumile -- who in turn is `is person` Viktor Vaughn, King Geedorah and Metal Fingers.
+     Without it those five albums sit on pages nobody navigates to, which is the whole reason our
+     DOOM discography looked nothing like Spotify's. */
+  const a = await mbGet(`/artist/${mbid}?inc=${enc('aliases genres artist-rels')}`);
   if (!a) return null;
   return {
     id: a.id,
@@ -313,6 +327,14 @@ export async function getArtist(mbid: string): Promise<MbArtistDetail | null> {
     })),
     genres: sortGenresByVotes(a.genres),
     genreVotes: genreVotes(a.genres),
+    relations: (a.relations ?? [])
+      .filter((r: any) => r?.artist?.id)
+      .map((r: any): MbArtistRelation => ({
+        type: String(r.type ?? ''),
+        direction: String(r.direction ?? ''),
+        artistId: r.artist.id,
+        artistName: r.artist.name ?? '',
+      })),
   };
 }
 

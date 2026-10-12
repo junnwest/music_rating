@@ -4,6 +4,41 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-10-11 (Windows) — MF DOOM, and why a discography looked nothing like Spotify's.** Reported as
+"MF DOOM discography is different from what I see on Spotify and YouTube Music". Two causes, both fixed.
+
+- **Personas were disconnected islands.** The page listed 74 releases and omitted Madvillainy,
+  Vaudeville Villain, Take Me to Your Leader, The Mouse and the Mask and Key to the Kuffs — most of
+  what he is known for — because each is credited to a separate artist row. get_artist_release_groups
+  already unioned primary_artist_id with release_group_artists, so a credit WOULD have surfaced; what
+  was missing is that **we never imported MusicBrainz artist-artist relationships**.
+  MB's shape matters: MF DOOM is NOT related to Viktor Vaughn or King Geedorah. All three are
+  `is person` → **Daniel Dumile**, so sibling personas are only reachable by going out to the human
+  and back — two hops. `member of band` gives the groups (Madvillain, DANGERDOOM, JJ DOOM…).
+  New `artist_relations` table stores the resolved closure FLAT and symmetric, so reads stay one hop.
+  `artist-rels` now rides along on getArtist's existing request, so this costs **zero extra MB calls**
+  for newly-ingested artists; only the backlog needs the backfill.
+  Narrow on purpose: 'collaboration' and 'named after artist' are excluded — a one-off feature is not
+  a discography, and Metal Face Terrorists are not DOOM.
+- **Bootlegs led the page.** It opened with Metaphorical Villainy (a Nujabes mashup), Metal Chambers
+  (a Wu-Tang mashup) and DoomStarks (never released), then 20 compilations (Doomilation, The Lost
+  Relics of Dumile I–VI, The Acapella Archive…). MusicBrainz catalogues bootlegs deliberately;
+  streaming does not. `releases.status` already existed and browseReleases already parsed MB's
+  Official/Promotion/Bootleg — but it was 62% NULL with **zero Bootleg rows in the entire database**,
+  so the signal was absent, not wrong. New three-state `release_groups.is_official`; NULL means
+  "not established" and sorts WITH official, because the whole catalogue is NULL and demoting
+  unknowns would bury everything. A wrong `false` hides a real album; failing to demote a bootleg
+  merely annoys.
+
+RESULT for MF DOOM: 74 → 99 rows, 11 → 18 albums, all five canonical albums present, and the first
+bootleg moved from the top four to **position 84 of 99**. 24 official / 25 unofficial, 0 unestablished.
+
+Still open: NehruvianDOOM, Metal Fingers (hence the Special Herbs series) and 7 other related acts are
+absent from the catalogue, so those links cannot be made yet; Madvillainy is dated 2002-11-01 against
+an actual 2004-03-23.
+
+---
+
 **2026-10-11 (Windows) — root fixes behind the session's data problems.** Each item below was a
 recurring cause, not a symptom; the one-off repairs are in the entry under this one.
 
