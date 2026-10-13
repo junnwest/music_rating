@@ -63,7 +63,8 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 >    saved shelves, no Connect rows when linked; Mix creation/picking per kind; "Rated N tracks" dropdown
 >    (test: @nicky · Geography); `/song/<id>` redirect lands highlighted.
 > 3. **For the pipeline PC (Windows):**
->    - Pipeline health check due **2026-10-13** (PIPELINE_CHECKS.md).
+>    - Pipeline check ✅ done 2026-10-13 (status only; healthy, queue drained). Next due **2026-10-20**. Look at
+>      `recordings 0` in `pipeline:status`: probably a count timeout, since release_tracks reads 7.7M.
 >    - **ManiaDB covers (82) load nowhere:** Cloudflare 403s the proxy from iad1 AND icn1, so copy them into Storage.
 >    - **Repair `get_taste_similar_releases`** (see 10-12 below; off via `RECS_SIMILAR`).
 > 4. **Open follow-ups:**
