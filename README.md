@@ -52,12 +52,14 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 
 ### ► START HERE — next session checklist
 
-> **SESSION CLOSE (2026-10-12, Mac) — everything below through 10-06 (Mac, later) is shipped and on `main`
-> (`147650d` → `f39bc5f`); all migrations applied and verified live. Web is deployed; iOS needs a build.**
+> **SESSION CLOSE (2026-10-13, Mac) — profile social links shipped to `main` (migration `20261013000000` applied
+> and verified live). Web deploys from `main`; iOS needs a build.** Earlier: everything through 10-06 (Mac, later)
+> is on `main` (`147650d` → `f39bc5f`) with all migrations applied.
 > **Next session:**
 > 1. **Upload an iOS build** (TestFlight/App Store). Everything iOS from 10-06 → 10-12 rides on it: song pivot,
 >    typed Mixes + "Save to Mix" on tracks, albums-only profile/Taste, proxied + background-decoded covers, launch
->    typing fix, Add-tab saved shelves, connect-nudge fix, rating-row profile links, follow-request buttons. Until
+>    typing fix, Add-tab saved shelves, connect-nudge fix, rating-row profile links, follow-request buttons,
+>    profile social links (10-13). Until
 >    then App Store users keep the pre-pivot app (dead song like/comment buttons; a song into an album Mix errors).
 > 2. **Hands-on pass** (only verified by builds/typechecks + live DB checks): web Add tab speed; iOS Add tab opens on
 >    saved shelves, no Connect rows when linked; Mix creation/picking per kind; "Rated N tracks" dropdown
@@ -67,7 +69,11 @@ Features shipped as of 2026-06-08: Daily Question, preferred streaming platform,
 >      `recordings 0` in `pipeline:status`: probably a count timeout, since release_tracks reads 7.7M.
 >    - **ManiaDB covers (82) load nowhere:** Cloudflare 403s the proxy from iad1 AND icn1, so copy them into Storage.
 >    - **Repair `get_taste_similar_releases`** (see 10-12 below; off via `RECS_SIMILAR`).
-> 4. **Open follow-ups:**
+> 4. **Profile social links (2026-10-13, Mac): ✅ pushed, migration applied — not yet tried by hand.** Hands-on:
+>    add/remove links in web Settings and iOS Edit Profile; chips show logos (YouTube) and the link fallback (CHZZK)
+>    on own + other profiles; a private account hides them from non-followers. Possible follow-up: real logos for
+>    Melon/CHZZK/SOOP (not in Simple Icons). See SESSIONS 2026-10-13.
+> 5. **Open follow-ups:**
 >    - Drop `track_ratings.review_text` + `notifications.track_rating_id` once pre-pivot iOS builds are gone.
 >    - Search: an artist's own albums rank below same-titled albums ("Adele"); `search_artists` does ~600ms of DB
 >      work and returns nothing at `lim=1`.

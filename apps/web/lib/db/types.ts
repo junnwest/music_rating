@@ -69,6 +69,7 @@ export interface ProfileRow {
   username: string | null;
   display_name: string | null;
   bio: string | null;
+  social_links: string[] | null; // 20261013000000
   avatar_url: string | null;
   manual_rating_step: number | null; // 0.5 | 0.1
   notifications_last_seen_at: string | null;

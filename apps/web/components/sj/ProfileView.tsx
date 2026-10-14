@@ -17,6 +17,7 @@ import {
   Plus,
   ExternalLink,
   Lock,
+  Link2,
 } from 'lucide-react';
 import Modal from './Modal';
 import { useContextMenuFor, openInNewTab } from './ContextMenu';
@@ -35,6 +36,8 @@ import { useMixName, useMixTarget } from './MixTargetContext';
 import { supabase } from '../../lib/supabaseClient';
 import { useLanguage } from '../../lib/i18n';
 import { displayName } from '../../lib/sj/display';
+import { renderableSocialLinks, socialLinkPlatform } from '../../lib/socialLinks';
+import { SOCIAL_ICON_PATHS } from '../../lib/socialIcons';
 import {
   getFoundingMember,
   listInvitees,
@@ -89,6 +92,28 @@ function ProfileBio({ text }: { text: string }) {
   </div>;
 }
 
+function ProfileLinks({ links }: { links: string[] }) {
+  if (!links.length) return null;
+  return <div className="mt-2 flex flex-wrap gap-1.5">
+    {links.map((url) => {
+      const { label, icon } = socialLinkPlatform(url);
+      return <a
+        key={url}
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer nofollow ugc"
+        title={url}
+        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-divider text-[12px] font-medium text-ink hover:bg-surface transition"
+      >
+        {icon
+          ? <svg viewBox="0 0 24 24" width={12} height={12} fill="currentColor" aria-hidden="true"><path d={SOCIAL_ICON_PATHS[icon]} /></svg>
+          : <Link2 size={12} className="text-muted" />}
+        {label}
+      </a>;
+    })}
+  </div>;
+}
+
 export interface ProfileRatingItem {
   ratingId: string;
   key: string;
@@ -127,6 +152,7 @@ export default function ProfileView({ username }: { username?: string }) {
     username: string | null;
     displayName: string | null;
     bio: string | null;
+    socialLinks: string[];
     avatarUrl: string | null;
   } | null>(null);
   const [items, setItems] = useState<ProfileRatingItem[]>([]);
@@ -249,13 +275,14 @@ export default function ProfileView({ username }: { username?: string }) {
           username: myProfile.username,
           displayName: myProfile.display_name,
           bio: myProfile.bio,
+          socialLinks: renderableSocialLinks(myProfile.social_links),
           avatarUrl: myProfile.avatar_url,
         });
       }
     } else {
       const { data } = await supabase
         .from('profiles')
-        .select('id, username, display_name, bio, avatar_url')
+        .select('id, username, display_name, bio, social_links, avatar_url')
         .eq('username', username)
         .maybeSingle();
       const p = data as any;
@@ -269,6 +296,7 @@ export default function ProfileView({ username }: { username?: string }) {
         username: p.username,
         displayName: p.display_name,
         bio: p.bio,
+        socialLinks: renderableSocialLinks(p.social_links),
         avatarUrl: p.avatar_url,
       });
     }
@@ -701,6 +729,7 @@ export default function ProfileView({ username }: { username?: string }) {
           <p className="text-[13px] text-muted">{display.displayName}</p>
         )}
         {canView && display?.bio && <ProfileBio text={display.bio} />}
+        {canView && display && <ProfileLinks links={display.socialLinks} />}
         {founding && (
           <div className="mt-3">
             <FoundingLineage

@@ -6,6 +6,8 @@ struct Profile: Codable, Identifiable {
     var username: String?
     var ratingStep: Double?
     var bio: String?
+    // Outside links shown under the bio (migration 20261013000000).
+    var socialLinks: [String]?
     var avatarUrl: String?
     // Notification preferences (default true)
     var notifyLikes: Bool?
@@ -41,6 +43,7 @@ struct Profile: Codable, Identifiable {
         case username
         case ratingStep           = "manual_rating_step"
         case bio
+        case socialLinks          = "social_links"
         case avatarUrl            = "avatar_url"
         case notifyLikes          = "notify_likes"
         case notifyReplies        = "notify_replies"

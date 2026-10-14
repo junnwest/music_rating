@@ -180,7 +180,7 @@ final class QuestChecklistViewModel {
     private func loadProfile(userId: UUID) async {
         let row: Profile? = try? await supabase
             .from("profiles")
-            .select("id, display_name, username, bio, avatar_url, referral_code, badge_color, founding_number")
+            .select("id, display_name, username, bio, social_links, avatar_url, referral_code, badge_color, founding_number")
             .eq("id", value: userId)
             .single()
             .execute()

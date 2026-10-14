@@ -20,6 +20,7 @@ struct EditProfileView: View {
     @State private var displayName  = ""
     @State private var username     = ""
     @State private var bio          = ""
+    @State private var links: [String] = []
     @State private var isSaving     = false
     @State private var errorMessage: String?
 
@@ -84,6 +85,43 @@ struct EditProfileView: View {
                 Section("Bio") {
                     TextField("Tell people about yourself…", text: $bio, axis: .vertical)
                         .lineLimit(4...6)
+                }
+
+                // MARK: Links
+                Section {
+                    ForEach(links.indices, id: \.self) { i in
+                        HStack {
+                            // Bounds-checked: removing a row can re-render this
+                            // field once more with a stale index.
+                            TextField("https://", text: Binding(
+                                get: { links.indices.contains(i) ? links[i] : "" },
+                                set: { if links.indices.contains(i) { links[i] = $0 } }
+                            ))
+                                .keyboardType(.URL)
+                                .textContentType(.URL)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                            Button {
+                                links.remove(at: i)
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(Color.sjMuted)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(String(localized: "Remove link"))
+                        }
+                    }
+                    if links.count < SocialLinks.maxCount {
+                        Button {
+                            links.append("")
+                        } label: {
+                            Label("Add link", systemImage: "plus")
+                        }
+                    }
+                } header: {
+                    Text("Links")
+                } footer: {
+                    Text("YouTube, Instagram, your streaming channel, a website. Up to 5.")
                 }
 
                 if let errorMessage {
@@ -157,6 +195,7 @@ struct EditProfileView: View {
         displayName = profile?.displayName ?? ""
         username    = profile?.username    ?? ""
         bio         = profile?.bio         ?? ""
+        links       = profile?.socialLinks ?? []
     }
 
     // MARK: - Save
@@ -167,6 +206,15 @@ struct EditProfileView: View {
         guard Username.isValid(trimmedUsername) else {
             errorMessage = String(localized: "Username must be 3-20 characters and can only contain lowercase letters, numbers, and underscores.")
             return
+        }
+
+        var normalizedLinks: [String] = []
+        for raw in links where !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            guard let link = SocialLinks.normalize(raw) else {
+                errorMessage = String(localized: "One of your links isn’t a valid web address.")
+                return
+            }
+            if !normalizedLinks.contains(link) { normalizedLinks.append(link) }
         }
 
         isSaving     = true
@@ -211,13 +259,16 @@ struct EditProfileView: View {
                 }
             }
 
-            var update: [String: String] = [
-                "display_name": displayName.trimmingCharacters(in: .whitespacesAndNewlines),
-                "username":     trimmedUsername,
-                "bio":          bio.trimmingCharacters(in: .whitespacesAndNewlines),
-            ]
-            if let url = newAvatarUrl {
-                update["avatar_url"] = url
+            var update = ProfileUpdate(
+                displayName: displayName.trimmingCharacters(in: .whitespacesAndNewlines),
+                username:    trimmedUsername,
+                bio:         bio.trimmingCharacters(in: .whitespacesAndNewlines),
+                avatarUrl:   newAvatarUrl
+            )
+            // Only sent when edited, so a presenter whose profile fetch left
+            // social_links out can't wipe them with an empty list.
+            if normalizedLinks != (profile?.socialLinks ?? []) {
+                update.socialLinks = .some(normalizedLinks.isEmpty ? nil : Array(normalizedLinks.prefix(SocialLinks.maxCount)))
             }
 
             try await supabase
@@ -233,6 +284,31 @@ struct EditProfileView: View {
         }
 
         isSaving = false
+    }
+}
+
+private struct ProfileUpdate: Encodable {
+    let displayName: String
+    let username: String
+    let bio: String
+    let avatarUrl: String?
+    // nil = leave unchanged; .some(nil) = clear.
+    var socialLinks: [String]??
+
+    enum CodingKeys: String, CodingKey {
+        case displayName = "display_name"
+        case username, bio
+        case avatarUrl   = "avatar_url"
+        case socialLinks = "social_links"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(displayName, forKey: .displayName)
+        try c.encode(username, forKey: .username)
+        try c.encode(bio, forKey: .bio)
+        try c.encodeIfPresent(avatarUrl, forKey: .avatarUrl)
+        if let socialLinks { try c.encode(socialLinks, forKey: .socialLinks) }
     }
 }
 

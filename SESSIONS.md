@@ -4,6 +4,25 @@ Historical record of shipped features and session notes. Not needed at conversat
 
 ---
 
+**2026-10-13 (Mac) — Profile social links (web + iOS). Migration applied and verified live; pushed to `main`. iOS rides the next build.**
+
+- Users can list up to 5 outside links (YouTube, Instagram, a Twitch/CHZZK/SOOP channel, Spotify, a website...),
+  shown as chips under the bio. Aimed at creators, open to everyone.
+- `profiles.social_links text[]`, migration `20261013000000` (applied). The CHECK
+  (`_sj_social_links_valid`) is the security boundary: http(s) only, ≤300 chars, ≤5 links.
+- Platform label is inferred from the host (`lib/socialLinks.ts` / `Models/SocialLinks.swift`, kept in sync), so a
+  new platform needs no migration. Unknown hosts show the bare domain.
+- Modeled on GitHub's profile social accounts (paste a URL, platform detected), chosen over Linktree-style
+  "pick platform, enter handle" because it covers CHZZK/SOOP/any site with no per-platform handle rules. Chips show
+  monochrome brand logos from Simple Icons v16.35.0 (CC0): `lib/socialIcons.ts` (web) and `social-*.imageset` (iOS).
+  Melon, CHZZK and SOOP have no Simple Icons logo and use the generic link icon.
+- Edit: web Settings → Account; iOS Edit Profile. Hidden from non-followers of a private account, same as the bio.
+- iOS sends `social_links` only when edited, because the Quests checklist presents Edit Profile from its own fetch.
+- **Order matters:** web `SessionContext` and iOS `ProfileView` now select `social_links`, so the migration must be
+  applied before the web deploy, or every signed-in profile load errors.
+
+---
+
 **2026-10-06 → 10-12 (Mac) — SESSION CLOSE: albums first, typed Mixes, and a speed pass.** All on `main`
 (`147650d` → `f39bc5f`), and every migration applied and verified live. Web deployed; **iOS build not yet uploaded.**
 

@@ -1,5 +1,10 @@
 # Web Parity Checklist
 
+> **Parity status (2026-10-13) — profile social links:** both platforms. Up to 5 pasted URLs (GitHub-style), platform
+> detected from the host with Simple Icons logos, shown under the bio and hidden like the bio on private accounts.
+> Rules shared by `lib/socialLinks.ts` ↔ `Models/SocialLinks.swift` ↔ the DB CHECK. Editor: web Settings → Account,
+> iOS Edit Profile. No gaps.
+
 > **Parity status (2026-10-12):**
 > - **Albums-only numbers:** both. Profile Stats (no Songs tile; average and histogram from album scores), the "Rated"
 >   count (`get_follow_state`), and Taste's unlock gate and headline count albums.

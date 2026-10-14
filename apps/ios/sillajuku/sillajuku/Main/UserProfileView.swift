@@ -54,6 +54,7 @@ final class UserProfileViewModel {
         let username: String?
         let displayName: String?
         let bio: String?
+        let socialLinks: [String]?
         let avatarUrl: String?
         let badgeColor: String?
         let isVerified: Bool?
@@ -62,6 +63,7 @@ final class UserProfileViewModel {
         enum CodingKeys: String, CodingKey {
             case id, username, bio
             case featuredBadge = "featured_badge"
+            case socialLinks = "social_links"
             case displayName = "display_name"
             case avatarUrl   = "avatar_url"
             case badgeColor  = "badge_color"
@@ -268,7 +270,7 @@ final class UserProfileViewModel {
     private func loadProfile() async -> OtherProfile? {
         try? await supabase
             .from("profiles")
-            .select("id, username, display_name, bio, avatar_url, badge_color, is_verified, founding_number, featured_badge")
+            .select("id, username, display_name, bio, social_links, avatar_url, badge_color, is_verified, founding_number, featured_badge")
             .eq("id", value: userId)
             .single()
             .execute()
@@ -518,6 +520,11 @@ struct UserProfileView: View {
             if vm.access.profileVisible, let bio = vm.profile?.bio, !bio.isEmpty {
                 ExpandableBioText(text: bio, font: .jakarta(14), alignment: .center)
                     .padding(.horizontal, 32)
+            }
+
+            if vm.access.profileVisible {
+                SocialLinksRow(links: vm.profile?.socialLinks, alignment: .center)
+                    .padding(.horizontal, 24)
             }
 
             statsRow

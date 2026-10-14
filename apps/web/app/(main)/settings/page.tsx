@@ -9,12 +9,15 @@ import {
   Moon,
   Monitor,
   ExternalLink,
+  Plus,
+  X,
 } from 'lucide-react';
 import Modal from '../../../components/sj/Modal';
 import { useSession } from '../../../components/sj/SessionContext';
 import { supabase } from '../../../lib/supabaseClient';
 import { useLanguage } from '../../../lib/i18n';
 import { isValidUsername, normalizeUsername } from '../../../lib/username';
+import { SOCIAL_LINKS_MAX, normalizeSocialLink } from '../../../lib/socialLinks';
 
 /**
  * Settings — web sibling of iOS SettingsView: profile, appearance, rating
@@ -30,6 +33,7 @@ export default function SettingsPage() {
   const [displayNameDraft, setDisplayNameDraft] = useState('');
   const [usernameDraft, setUsernameDraft] = useState('');
   const [bioDraft, setBioDraft] = useState('');
+  const [linksDraft, setLinksDraft] = useState<string[]>([]);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
@@ -52,6 +56,7 @@ export default function SettingsPage() {
       setDisplayNameDraft(profile.display_name ?? '');
       setUsernameDraft(profile.username ?? '');
       setBioDraft(profile.bio ?? '');
+      setLinksDraft(profile.social_links ?? []);
     }
   }, [profile]);
 
@@ -70,6 +75,17 @@ export default function SettingsPage() {
       setProfileError(t('sj.onboarding.usernameRules'));
       setSavingProfile(false);
       return;
+    }
+    const links: string[] = [];
+    for (const raw of linksDraft) {
+      if (!raw.trim()) continue;
+      const link = normalizeSocialLink(raw);
+      if (!link) {
+        setProfileError(t('sj.settings.invalidLink'));
+        setSavingProfile(false);
+        return;
+      }
+      if (!links.includes(link)) links.push(link);
     }
     if (username !== profile.username) {
       try {
@@ -91,12 +107,14 @@ export default function SettingsPage() {
       username,
       display_name: displayNameDraft.trim(),
       bio: bioDraft.trim() || null,
+      social_links: links.length ? links.slice(0, SOCIAL_LINKS_MAX) : null,
     }).eq('id', userId);
     if (error) {
       setProfileError(['23505', '23514'].includes(error.code) ? t('sj.onboarding.usernameTaken') : t('sj.onboarding.saveError'));
       setSavingProfile(false);
       return;
     }
+    setLinksDraft(links);
     await refreshProfile();
     setSavingProfile(false);
     setProfileSaved(true);
@@ -184,6 +202,43 @@ export default function SettingsPage() {
               rows={2}
               className="w-full px-3.5 py-2.5 rounded-[10px] bg-page border border-divider text-[14px] text-ink outline-none focus:border-accent/60 resize-none transition"
             />
+          </Field>
+          <Field label={t('sj.settings.links')}>
+            <div className="space-y-2">
+              {linksDraft.map((link, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input
+                    value={link}
+                    onChange={(e) => { const v = e.target.value; setLinksDraft((d) => d.map((x, j) => (j === i ? v : x))); setProfileError(null); setProfileSaved(false); }}
+                    type="url"
+                    inputMode="url"
+                    autoComplete="url"
+                    placeholder="https://"
+                    maxLength={300}
+                    className="w-full px-3.5 py-2.5 rounded-[10px] bg-page border border-divider text-[14px] text-ink outline-none focus:border-accent/60 transition"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setLinksDraft((d) => d.filter((_, j) => j !== i))}
+                    aria-label={t('sj.settings.removeLink')}
+                    className="p-2 rounded-lg text-muted hover:text-ink hover:bg-surface transition"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              ))}
+              {linksDraft.length < SOCIAL_LINKS_MAX && (
+                <button
+                  type="button"
+                  onClick={() => setLinksDraft((d) => [...d, ''])}
+                  className="flex items-center gap-1.5 text-[13px] font-semibold text-accent hover:underline"
+                >
+                  <Plus size={14} />
+                  {t('sj.settings.addLink')}
+                </button>
+              )}
+            </div>
+            <p className="mt-1 text-[11px] text-muted">{t('sj.settings.linksHint')}</p>
           </Field>
           <div className="flex justify-end">
             <button
